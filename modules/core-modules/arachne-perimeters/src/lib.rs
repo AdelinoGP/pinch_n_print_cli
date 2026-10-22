@@ -621,6 +621,14 @@ impl LayerModule for ArachnePerimeters {
         let bridge_flow_ratio = config.require_float("bridge_flow")? as f32;
         let thick_bridges = config.require_bool("thick_bridges")?;
 
+        // Consume-only-when-read (t20): the per-vertex overhang stamps are
+        // read only by overhang-classifier-default, and only when its own
+        // liveness predicate holds. Read the same predicate here so this
+        // per-layer producer skips both spatial query loops when nobody reads
+        // them; when live, the exact same stamps as before are produced.
+        let overhang_annotations_consumed =
+            slicer_sdk::config_predicates::overhang_annotations_consumed_or_inactive(config);
+
         // Per-color (MMU) wiring (P112 Step 10B): `regions` already contains
         // one entry per paint-color cell (see PrePass::PaintSegmentation) plus
         // any residual base-color region — no per-tool grouping/splitting is
@@ -765,6 +773,7 @@ impl LayerModule for ArachnePerimeters {
                     bridge_flow_ratio,
                     thick_bridges,
                     &spatial_context,
+                    overhang_annotations_consumed,
                     output,
                 )?;
                 continue;
@@ -807,6 +816,7 @@ impl LayerModule for ArachnePerimeters {
                 bridge_flow_ratio,
                 thick_bridges,
                 &spatial_context,
+                overhang_annotations_consumed,
             )?;
             commit_wall_sequence(&mut walls, sequence);
             for wall in walls {
@@ -924,6 +934,7 @@ impl ArachnePerimeters {
         bridge_flow_ratio: f32,
         thick_bridges: bool,
         context: &PerimeterSpatialContext,
+        overhang_annotations_consumed: bool,
     ) -> Result<Vec<WallLoop>, ModuleError> {
         let bridge_areas = region.bridge_areas();
         let overhang_bands = region.overhang_quartile_polygons();
@@ -1029,18 +1040,20 @@ impl ArachnePerimeters {
                 }
             }
 
-            for pt in &mut path.points {
-                pt.overhang_distance_mm = if prev_layer_boundary.is_empty() {
-                    None
-                } else {
-                    Some(context.signed_distance_to_boundary(pt.x, pt.y) + 0.5 * pt.width)
-                };
+            if overhang_annotations_consumed {
+                for pt in &mut path.points {
+                    pt.overhang_distance_mm = if prev_layer_boundary.is_empty() {
+                        None
+                    } else {
+                        Some(context.signed_distance_to_boundary(pt.x, pt.y) + 0.5 * pt.width)
+                    };
+                }
             }
 
             // AC-5 (packet 148): overhang_quartile is set per-vertex on
             // every wall type, for every vertex whose path point lies
             // inside a `overhang_quartile_polygons` band's polygon(s).
-            if !overhang_bands.is_empty() {
+            if overhang_annotations_consumed && !overhang_bands.is_empty() {
                 for pt in &mut path.points {
                     pt.overhang_quartile = context.overhang_quartile(pt.x, pt.y);
                 }
@@ -1111,6 +1124,7 @@ impl ArachnePerimeters {
         bridge_flow_ratio: f32,
         thick_bridges: bool,
         context: &PerimeterSpatialContext,
+        overhang_annotations_consumed: bool,
         output: &mut PerimeterOutputBuilder,
     ) -> Result<(), ModuleError> {
         let sequence =
@@ -1185,6 +1199,7 @@ impl ArachnePerimeters {
             bridge_flow_ratio,
             thick_bridges,
             context,
+            overhang_annotations_consumed,
         )?;
 
         // Not-top remainder. Generation comes from the SHRUNK outline, because
@@ -1226,6 +1241,7 @@ impl ArachnePerimeters {
                 bridge_flow_ratio,
                 thick_bridges,
                 context,
+                overhang_annotations_consumed,
             )?;
             commit_wall_sequence(&mut fb_walls, sequence);
             for w in fb_walls {
@@ -1288,6 +1304,7 @@ impl ArachnePerimeters {
             bridge_flow_ratio,
             thick_bridges,
             context,
+            overhang_annotations_consumed,
         )?;
 
         // Step 7: merge — top single wall + renumbered second-pass inner walls.

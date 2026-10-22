@@ -19,7 +19,7 @@ use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
-fn make_config() -> ConfigView {
+fn make_config(overhang_speed_active: bool) -> ConfigView {
     ConfigViewBuilder::new()
         .int("wall_count", 2)
         .float("inner_wall_line_width", 0.4)
@@ -52,6 +52,18 @@ fn make_config() -> ConfigView {
         .float("bridge_flow", 1.0)
         .bool("thick_bridges", false)
         .float("seam_candidate_angle_threshold_deg", 30.0)
+        // t20 consume-only-when-read gate: the distance stamp is produced
+        // only when the overhang-classifier consumer is live. This fixture
+        // exercises the live path explicitly; the dead path has its own test
+        // below.
+        .bool("enable_overhang_speed", true)
+        .float(
+            "overhang_1_4_speed",
+            if overhang_speed_active { 30.0 } else { 0.0 },
+        )
+        .float("overhang_2_4_speed", 0.0)
+        .float("overhang_3_4_speed", 0.0)
+        .float("overhang_4_4_speed", 0.0)
         .build()
 }
 
@@ -70,7 +82,7 @@ fn make_region() -> SliceRegionView {
 
 #[test]
 fn arachne_stamps_distance_for_regions_with_no_overhang_bands() {
-    let config = make_config();
+    let config = make_config(true);
     let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![make_region()];
     let paint = PaintRegionLayerView::new(0);
@@ -96,6 +108,44 @@ fn arachne_stamps_distance_for_regions_with_no_overhang_bands() {
                 pt.x,
                 pt.y,
                 pt.overhang_distance_mm
+            );
+        }
+    }
+
+    assert!(
+        checked_any_point,
+        "expected at least one path point to verify"
+    );
+}
+
+#[test]
+fn arachne_skips_distance_when_the_overhang_consumer_is_inactive() {
+    let config = make_config(false);
+    let module = ArachnePerimeters::from_config(&config).unwrap();
+    let regions = vec![make_region()];
+    let paint = PaintRegionLayerView::new(0);
+    let mut output = PerimeterOutputBuilder::new();
+
+    module
+        .run_perimeters(0, &regions, &paint, &mut output, &config)
+        .unwrap();
+
+    assert!(
+        !output.wall_loops().is_empty(),
+        "expected at least one wall loop to be emitted"
+    );
+
+    let mut checked_any_point = false;
+    for wall in output.wall_loops() {
+        for pt in &wall.path.points {
+            checked_any_point = true;
+            assert_eq!(
+                pt.overhang_distance_mm, None,
+                "all overhang bands are zero, so no consumer reads the distance"
+            );
+            assert_eq!(
+                pt.overhang_quartile, None,
+                "all overhang bands are zero, so no consumer reads the quartile"
             );
         }
     }

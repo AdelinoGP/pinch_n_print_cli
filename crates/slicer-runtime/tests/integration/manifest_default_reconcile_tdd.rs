@@ -282,6 +282,17 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("detect_overhang_wall", Unread), // declared; classic never reads it
     ("overhang_reverse", Unread),
     ("overhang_reverse_internal_only", Unread),
+    // t20 consume-only-when-read gate: run_perimeters reads the same
+    // liveness predicate as overhang-classifier-default through
+    // slicer_sdk::config_predicates. The producer-side helper reports
+    // inactive when a key is missing, so the composite code fallback is
+    // "(true, all bands 0) => inactive"; the manifest defaults below are
+    // the per-key values that compose it.
+    ("enable_overhang_speed", Bool(true)),
+    ("overhang_1_4_speed", Float(0.0)),
+    ("overhang_2_4_speed", Float(0.0)),
+    ("overhang_3_4_speed", Float(0.0)),
+    ("overhang_4_4_speed", Float(0.0)),
     ("min_width_top_surface", Str("0.0")),
     ("alternate_extra_wall", Unread),
     ("bridge_flow", Float(1.0)),
@@ -356,6 +367,17 @@ const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("overhang_reverse", Bool(false)),
     ("overhang_reverse_internal_only", Bool(false)),
     ("overhang_reverse_threshold", Str("0.0")), // float_or_percent; unwrap_or(0.0)
+    // t20 consume-only-when-read gate: run_perimeters reads the same
+    // liveness predicate as overhang-classifier-default through
+    // slicer_sdk::config_predicates. The producer-side helper reports
+    // inactive when a key is missing, so the composite code fallback is
+    // "(true, all bands 0) => inactive"; the manifest defaults below are
+    // the per-key values that compose it.
+    ("enable_overhang_speed", Bool(true)),
+    ("overhang_1_4_speed", Float(0.0)),
+    ("overhang_2_4_speed", Float(0.0)),
+    ("overhang_3_4_speed", Float(0.0)),
+    ("overhang_4_4_speed", Float(0.0)),
     ("extra_perimeters_on_overhangs", Unread),  // declared; arachne never reads it
     // float_or_percent; code fallback is 0.0 = "filter disabled"
     // (get_abs_value(..).unwrap_or(0.0)). Upstream's default is 300%, but the

@@ -58,6 +58,7 @@ is the authoritative catalog of their defaults and ranges.
 | `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `arachne-perimeters` |
 | `detect_overhang_wall` | bool | `true` | — | — | `arachne-perimeters` |
 | `detect_thin_wall` | bool | `false` | — | — | `arachne-perimeters` |
+| `enable_overhang_speed` | bool | `true` | — | — | `arachne-perimeters` |
 | `extra_perimeters` | int | `0` | [0.0, 10.0] | — | `arachne-perimeters` |
 | `extra_perimeters_on_overhangs` | bool | `false` | — | — | `arachne-perimeters` |
 | `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `arachne-perimeters` |
@@ -77,6 +78,10 @@ is the authoritative catalog of their defaults and ranges.
 | `only_one_wall_top` | bool | `false` | — | — | `arachne-perimeters` |
 | `outer_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | base `nozzle_diameter` | `arachne-perimeters` |
 | `outer_wall_offset` | float | `0` | >= 0.0 | — | `arachne-perimeters` |
+| `overhang_1_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `arachne-perimeters` |
+| `overhang_2_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `arachne-perimeters` |
+| `overhang_3_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `arachne-perimeters` |
+| `overhang_4_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `arachne-perimeters` |
 | `overhang_reverse` | bool | `false` | — | — | `arachne-perimeters` |
 | `overhang_reverse_internal_only` | bool | `false` | — | — | `arachne-perimeters` |
 | `overhang_reverse_threshold` | float_or_percent | `"0.0"` | [0.0, 10.0] | — | `arachne-perimeters` |
@@ -100,6 +105,7 @@ is the authoritative catalog of their defaults and ranges.
 | `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `classic-perimeters` |
 | `detect_overhang_wall` | bool | `true` | — | — | `classic-perimeters` |
 | `detect_thin_wall` | bool | `true` | — | — | `classic-perimeters` |
+| `enable_overhang_speed` | bool | `true` | — | — | `classic-perimeters` |
 | `extra_perimeters` | int | `0` | [0.0, 10.0] | — | `classic-perimeters` |
 | `extra_perimeters_on_overhangs` | bool | `false` | — | — | `classic-perimeters` |
 | `filter_out_gap_fill` | float | `0.5` | [0.0, 5.0] | — | `classic-perimeters` |
@@ -118,6 +124,10 @@ is the authoritative catalog of their defaults and ranges.
 | `only_one_wall_top` | bool | `false` | — | — | `classic-perimeters` |
 | `outer_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | base `nozzle_diameter` | `classic-perimeters` |
 | `outer_wall_speed` | float | `30.0` | [0.0, 300.0] | — | `classic-perimeters` |
+| `overhang_1_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `classic-perimeters` |
+| `overhang_2_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `classic-perimeters` |
+| `overhang_3_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `classic-perimeters` |
+| `overhang_4_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `classic-perimeters` |
 | `overhang_reverse` | bool | `false` | — | — | `classic-perimeters` |
 | `overhang_reverse_internal_only` | bool | `false` | — | — | `classic-perimeters` |
 | `perimeter_arc_tolerance` | float | `0.0125` | [0.0, 1.0] | — | `classic-perimeters` |
@@ -485,6 +495,16 @@ speed-factor mutation is gone. The host's `overhang_classifier::classify_layers`
 prepass stamps the point annotations; it does NOT read the speed keys. Treat
 the source column above as "registration site"; treat ADR-0008 as the
 authoritative pointer to the consumer.
+
+**Consume-only-when-read (ticket 20, 2026-10-21):** `classic-perimeters` and
+`arachne-perimeters` now also declare these five keys so their per-layer
+`run_perimeters` can read the classifier's own liveness predicate through
+`slicer_sdk::config_predicates::overhang_annotations_consumed`. When the
+predicate is false (the matched jobs: `enable_overhang_speed=true` with all
+four bands at their `0.0` default), the generators skip both per-vertex
+annotation queries and emit `None` for `overhang_quartile` and
+`overhang_distance_mm` (`PathAnnotationMode::Unconsumed`); when it is true, the
+pre-ticket stamps are produced unchanged.
 
 <!-- VERIFY: this section previously documented a `union_paint_regions_at_harvest`
      bool key (default true) on a `paint-segmentation` scope, plus a

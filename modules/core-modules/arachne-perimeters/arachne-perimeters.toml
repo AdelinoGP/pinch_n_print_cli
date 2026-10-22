@@ -452,6 +452,54 @@ group       = "Support"
   description = "Allowed positional error (mm; squared internally) for Arachne's wall simplification, replacing meshfix_maximum_deviation for the wall path (canonical `WallToolPaths::simplifyToolPaths`). Code fallback is 0.005mm (ArachneParams::default's allowed_error_distance_squared = 0.000025 mm²); the manifest default states the code fallback per the reconcile guard. The previous 0.025 here was a 5x lie against the code fallback (see D-160's reconcile follow-up)."
   group       = "Walls"
 
+# ── Consume-only-when-read gate (t20) ──────────────────────────────────
+# The per-vertex overhang stamps (`overhang_quartile` /
+# `overhang_distance_mm`) are read only by overhang-classifier-default, whose
+# liveness predicate is exactly (`enable_overhang_speed` && any overhang band
+# != 0). These five keys mirror that module's schema so `run_perimeters` can
+# read the same predicate from its own ConfigView and skip both spatial
+# queries when nobody reads them. Types, defaults and denied_scopes must stay
+# compatible with `overhang-classifier-default.toml`; both declarations feed
+# one registry entry.
+
+[config.schema.enable_overhang_speed]
+type    = "bool"
+default = true
+display = "Enable Overhang Speed"
+group   = "Speed"
+
+[config.schema.overhang_1_4_speed]
+type    = "float_or_percent"
+base_key = "outer_wall_speed"
+default = 0.0
+display = "Overhang 1/4 Speed"
+group   = "Speed"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
+
+[config.schema.overhang_2_4_speed]
+type    = "float_or_percent"
+base_key = "outer_wall_speed"
+default = 0.0
+display = "Overhang 2/4 Speed"
+group   = "Speed"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
+
+[config.schema.overhang_3_4_speed]
+type    = "float_or_percent"
+base_key = "outer_wall_speed"
+default = 0.0
+display = "Overhang 3/4 Speed"
+group   = "Speed"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
+
+[config.schema.overhang_4_4_speed]
+type    = "float_or_percent"
+base_key = "outer_wall_speed"
+default = 0.0
+display = "Overhang 4/4 Speed"
+group   = "Speed"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
+
 # Region-split activation. Declaring `material` registers it in the
 # cross-manifest aggregate at plan-build time. `paint_only` is deliberately
 # absent (defaults to false): Arachne perimeters must run on unpainted layers

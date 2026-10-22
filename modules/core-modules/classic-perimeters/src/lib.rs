@@ -341,6 +341,24 @@ impl LayerModule for ClassicPerimeters {
         let bridge_flow_ratio = _config.require_float("bridge_flow")? as f32;
         let thick_bridges = _config.require_bool("thick_bridges")?;
 
+        // Consume-only-when-read (t20): the per-vertex overhang stamps are
+        // read only by overhang-classifier-default, and only when its own
+        // liveness predicate holds. Read the same predicate here so this
+        // per-layer producer skips both spatial queries when nobody reads
+        // them; when live, the exact same modes as before are used.
+        let overhang_annotations_consumed =
+            slicer_sdk::config_predicates::overhang_annotations_consumed_or_inactive(_config);
+        let planar_annotation_mode = if overhang_annotations_consumed {
+            PathAnnotationMode::Planar
+        } else {
+            PathAnnotationMode::Unconsumed
+        };
+        let nonplanar_annotation_mode = if overhang_annotations_consumed {
+            PathAnnotationMode::NonPlanarNoQuartile
+        } else {
+            PathAnnotationMode::Unconsumed
+        };
+
         for region in regions {
             output.begin_region(
                 region.object_id(),
@@ -373,6 +391,7 @@ impl LayerModule for ClassicPerimeters {
                     layer_height,
                     output,
                     &spatial_context,
+                    nonplanar_annotation_mode,
                 )?;
                 continue;
             }
@@ -461,6 +480,7 @@ impl LayerModule for ClassicPerimeters {
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
                         &spatial_context,
+                        planar_annotation_mode,
                     )?;
                 }
                 if !split.non_top_portion.is_empty() {
@@ -491,6 +511,7 @@ impl LayerModule for ClassicPerimeters {
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
                         &spatial_context,
+                        planar_annotation_mode,
                     )?;
                 }
             } else if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
@@ -555,6 +576,7 @@ impl LayerModule for ClassicPerimeters {
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
                         &spatial_context,
+                        planar_annotation_mode,
                     )?;
                 }
                 if !split.non_top_portion.is_empty() {
@@ -585,6 +607,7 @@ impl LayerModule for ClassicPerimeters {
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
                         &spatial_context,
+                        planar_annotation_mode,
                     )?;
                 }
             } else {
@@ -615,6 +638,7 @@ impl LayerModule for ClassicPerimeters {
                     medial_axis_enabled,
                     seam_candidate_angle_threshold_deg,
                     &spatial_context,
+                    planar_annotation_mode,
                 )?;
             }
         }
@@ -684,6 +708,7 @@ impl ClassicPerimeters {
         medial_axis_enabled: bool,
         seam_candidate_angle_threshold_deg: f32,
         context: &PerimeterSpatialContext,
+        annotation_mode: PathAnnotationMode,
     ) -> Result<(), ModuleError> {
         // P109 degeneracy guard: a contour needs >=3 non-collinear vertices
         // (strictly positive enclosed area) to be offsettable. Clipper's polygon
@@ -870,7 +895,7 @@ impl ClassicPerimeters {
                     z,
                     bead_flow_width_mm,
                     context,
-                    PathAnnotationMode::Planar,
+                    annotation_mode,
                 );
                 if points.is_empty() {
                     return None;
@@ -1210,6 +1235,7 @@ impl ClassicPerimeters {
         layer_height: f32,
         output: &mut PerimeterOutputBuilder,
         context: &PerimeterSpatialContext,
+        annotation_mode: PathAnnotationMode,
     ) -> Result<(), ModuleError> {
         // D-105 residual (packet 185): inset consecutive shells by Flow
         // *spacing* (rounded cross-section via `line_width_to_spacing`), not by
@@ -1249,14 +1275,14 @@ impl ClassicPerimeters {
                 ExtrusionRole::InnerWall
             };
             for poly in &inset_result {
-                // Non-planar shells are an explicitly separate concern (D-3); never
+                // Non-planar shells are an explicitly separate concern (D-3): never
                 // stamp overhang_quartile here.
                 let points = expolygon_to_path3d_indexed(
                     &poly.contour,
                     z,
                     width,
                     context,
-                    PathAnnotationMode::NonPlanarNoQuartile,
+                    annotation_mode,
                 );
                 if points.is_empty() {
                     continue;
