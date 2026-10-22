@@ -100,7 +100,35 @@ Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
 
-**Current selection scope (2026-10-22, on the ticket 77 take):** the frontier
+**Current selection scope (2026-10-22, on the ticket 78 take):** the human's
+"continue" named no ticket, so the session took the only frontier ticket,
+[78](issues/78-tree-support-planner-emit-batching.md), and **resolved it
+(2026-10-22, human-approved KEEP, candidate committed `73a6f1e8`)**.
+`build_roles` stays as the serial reference; `build_roles_batched` runs the emit
+pass four layers at a time through `clip_polygons_batch` (per-region carve, role
+union, set-wide difference, three body-minus-interface rounds, territory
+intersect), keeping entry order and every per-call argument identical. **Proof
+16/16 PASS**: baseline and candidate are byte-identical in every cell and equal
+to the preserved t58 references; the snapshots differ in exactly one module file
+per mode (`tree-support-planner.wasm`) and their binaries are byte-identical.
+**Standing gate PASS in all four pre-declared classic supports-on cells**,
+6 alternating pairs each, 24/24 retained, zero starvation exclusions, every pair
+byte-identical: wall **−13.41 % / −12.30 % / −7.22 % / −16.66 %** and CPU
+**+0.51 % / +1.51 % / +0.74 % / +2.80 %** (ordinary/accelerated × benchy/base;
+accelerated-base's +2.80 % sits 0.2 pp under the pre-declared +3.0 % ceiling).
+Attribution: `PrePass::SupportGeometry` **127,723 → 81,362 ms**,
+`com.core.tree-support-planner` **109,018 → 60,038 ms** — the 79.7 s clip core
+falls to ~30.7 s, a **2.6x** effective speedup rather than the 12x idealized
+ceiling. Guest suite 146/0, including an item-for-item parity test against
+`build_roles`; guest and workspace clippy clean, `check-literals` 0,
+`check-test-quality --report` 0, both freshness gates exit 0. Frontier now: **no
+open child remains**; the unswept `EMIT_BATCH_LAYERS`/`CLIP_BATCH_MAX_REQUESTS`
+lever and the rest of the fog are the human's to route. Standing paired
+acceptance and KEEP/DROP rules unchanged. Evidence:
+[`evidence/t78-planner-emit-batching/`](evidence/t78-planner-emit-batching/FINDINGS.md)
+(`verify.py` exits 0 checkout-only with 19/19 negative controls rejected).
+
+**Previous selection scope (2026-10-22, on the ticket 77 take):** the frontier
 re-derivation found **no open child** (all 76 children resolved), so the route
 returned to the human, who selected the **tree-support planner union/carve**
 option. [77](issues/77-tree-support-planner-batch-parallel-contract.md) was
@@ -864,6 +892,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Tree-support planner emit-pass batched carve and role union](issues/78-tree-support-planner-emit-batching.md): **resolved (2026-10-22; human-approved KEEP — candidate committed `73a6f1e8`)** — the emit pass buffers four layers of `build_roles` inputs and issues each clip phase as one cross-item `clip_polygons_batch` call (per-region carve, role union, set-wide difference, three body-minus-interface rounds, territory intersect), with `build_roles` kept as the serial reference, `largest_part` shared by both carve paths, and entry order unchanged. **Proof 16/16 PASS** — baseline and candidate byte-identical in every cell *and* equal to the preserved t58 references. **Standing gate PASS in all four pre-declared classic supports-on cells**, 24/24 pairs retained, zero starvation exclusions, every pair byte-identical: wall **−13.41 % / −12.30 % / −7.22 % / −16.66 %** and CPU **+0.51 % / +1.51 % / +0.74 % / +2.80 %** (ordinary/accelerated × benchy/base; accelerated-base's +2.80 % is 0.2 pp under the pre-declared +3.0 % ceiling). Attribution: `PrePass::SupportGeometry` **127,723 → 81,362 ms** and `com.core.tree-support-planner` **109,018 → 60,038 ms**, i.e. the 79.7 s clip core falls to ~30.7 s (**2.6x effective**, not the 12x idealized ceiling); `EMIT_BATCH_LAYERS = 4` and `CLIP_BATCH_MAX_REQUESTS = 256` remain unswept. Evidence: [`evidence/t78-planner-emit-batching/`](evidence/t78-planner-emit-batching/FINDINGS.md) (`verify.py` exits 0 checkout-only with 19/19 negative controls rejected).
+
 - [Tree-support planner native union/carve batch-or-parallel host contract](issues/77-tree-support-planner-batch-parallel-contract.md): **resolved (2026-10-22; measured attribution + contract — no production edit, no timing campaign; one candidate graduated)** — the planner's `clip_polygons` core is **79.659 s of a 126.674 s module stage** (stage `PrePass::SupportGeometry` 147.040 s), and **99.03 % of that core (78.885 s) sits inside `build_roles`**: **472 role unions** (52.4 %; median 79.2 ms, p95 301.6 ms, mean 312 input polygons, max 1,023) plus **69,161 per-region carves** (44.9 %; median 0.474 ms, 1.96 clip polygons). The shapes the fog pointed at are **refuted by measurement**: the `layer_outlines_below` running-union prefix chain is **494 calls / 0.102 s / 0.13 %** (each layer contributes ~1 polygon; the accumulator stays ~1k vertices), t76's intra-call partition has **no target** (no union above 436 ms) and its sliver tolerance does not transfer because the union output *is* printed support geometry, and the 20,275 `ladder_union` calls are 0.662 s. The surviving contract is **cross-call batching** through the existing `clip_polygons_batch` (`crate::batch::map_batch`, fan-out at 4,096 primitives, input-order results): each batch item is the same single operation with the same arguments, so exactness is **per-call identical** (t65 precedent), unlike a partition. Idealized ceiling **72.3 s off a 147.0 s stage** (arithmetic, unmeasured; excludes marshalling 69k requests, buffering memory, imperfect scaling and the 47.0 s of non-clip module time). Probe (`probe.patch`) output byte-identical to the t58 reference `f60e5e9b…`, reverted; both freshness gates exit 0. Evidence: [`evidence/t77-planner-contract/`](evidence/t77-planner-contract/FINDINGS.md) (`verify.py` exits 0 checkout-only, 8/8 negative controls rejected). Graduated: [emit-pass batched carve and role union](issues/78-tree-support-planner-emit-batching.md).
 
 - [Consume-only-when-read annotations](issues/20-consume-only-when-read-annotations.md): **resolved (2026-10-22; human-approved KEEP — candidate committed `053904aa`)** — the only semantic reader of `overhang_quartile` / `overhang_distance_mm` is `OverhangClassifierDefault::run_finalization`, which returns before reading a stamp when `enable_overhang_speed` is false or all four `overhang_{1..4}_4_speed` bands are zero; none of the matched configs authors those keys, so the stamps were unread work. The candidate shares that exact predicate through `slicer_sdk::config_predicates::overhang_annotations_consumed` (the classifier calls the same helper), declares the five keys on both perimeter manifests, and selects `PathAnnotationMode::Unconsumed` when the predicate is false, skipping both per-vertex exact scans. Dynamic premise check: `consumed=false` on 495 base classic-off layers. **Proof 16/16 PASS** against the t58 references; standing gate **PASS in all four pre-declared classic supports-off cells**, 6/6 pairs, every pair byte-identical: wall **−25.93 % / −34.47 % / −14.38 % / −18.10 %** and CPU **−37.67 % / −39.61 % / −24.47 % / −21.58 %** (ordinary/accelerated × benchy/base). `is_bridge` was deliberately untouched (no consumer liveness predicate; t18's hot split is the two scan families). Evidence: [`evidence/t20-consume-only/`](evidence/t20-consume-only/FINDINGS.md) (`verify.py` exits 0 checkout-only with four negative controls rejected).
@@ -1122,8 +1152,14 @@ Standing decisions for this effort (2026-09-22):
   2026-10-22): **99.03 % of its 79.659 s clip core is inside `build_roles`**
   (472 big role unions + 69,161 tiny per-region carves, both independent per
   item), so the shape is **cross-call batching** through the existing
-  `clip_polygons_batch` — exact per call — and the graduated candidate is
-  [emit-pass batched carve and role union](issues/78-tree-support-planner-emit-batching.md).
+  `clip_polygons_batch` — exact per call — and the graduated candidate
+  [emit-pass batched carve and role union](issues/78-tree-support-planner-emit-batching.md)
+  is **resolved 2026-10-22, human-approved KEEP `73a6f1e8`**: proof 16/16 and
+  the standing gate PASS in all four classic supports-on cells (wall
+  −13.41/−12.30/−7.22/−16.66 %, CPU +0.51/+1.51/+0.74/+2.80 %), taking the
+  79.7 s clip core to ~30.7 s (2.6x effective). The un-swept
+  `EMIT_BATCH_LAYERS`/`CLIP_BATCH_MAX_REQUESTS` lever is the obvious follow-up
+  and stays in the fog pending a measured reason.
   The prefix chain, t76's intra-call partition and the ladder unions are
   measured dead (0.13 %, no target above 436 ms, 0.7 %). Still fog: the
   `PrePass::OverhangAnnotation` (9.3-10.9 s wall, heavily parallel) and

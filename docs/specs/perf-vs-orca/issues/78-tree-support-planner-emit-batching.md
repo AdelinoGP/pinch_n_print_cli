@@ -2,8 +2,8 @@
 
 Type: task
 Label: wayfinder:task
-Status: open
-Assignee: unclaimed
+Status: resolved (2026-10-22; human-approved KEEP — candidate committed `73a6f1e8`; proof 16/16; standing gate PASS in all four classic supports-on cells; see ## Comments)
+Assignee: 2026-10-22 OpenCode wayfinder session — human selected "continue" (only frontier ticket)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 
@@ -60,3 +60,75 @@ elapsed is never process CPU or uninstrumented wall. Guest freshness gates must
 exit 0 before any module-dispatch conclusion. Chunk size, batch payload
 marshalling and buffering memory are part of the measured result, not
 assumptions to be waved through.
+
+## Comments
+
+**Take opened 2026-10-22.** Frontier re-derived on resume: this is the only open
+child (77 children, 76 resolved). Claimed before any work.
+
+**Pre-declaration (recorded before any candidate measurement).** Cells: the four
+**classic supports-on** cells of the standing gate —
+`ordinary-benchy-classic-on`, `ordinary-base-classic-on`,
+`accelerated-benchy-classic-on`, `accelerated-base-classic-on`. This follows the
+ticket's own "natural cells" sentence and the standing harness, which refuses
+any other job in its measure phase (`run-cell.ps1`: `$Generator -ne 'classic' -or
+$Supports -ne 'on'` throws `unapproved timing job`). Gate: paired medians in both
+modes, 6/6 retained pairs per cell, every pair's output byte-identical, process
+CPU corroborating (never contradicting) wall; KEEP/DROP stays the human's.
+
+**Pre-declaration amendment (still before any campaign run).** The CPU
+corroboration clause is a **ceiling of +3.0 %** on the paired-median CPU delta,
+not CPU equality: the candidate is a parallelization, so per-item marshalling
+may legitimately add CPU while wall falls. A CPU *drop* with byte-identical
+output is reported, not failed — identity rules out skipped work. Wall must
+fall in all four cells, 6/6 retained pairs each.
+
+**Candidate implemented; full gate run; measured recommendation KEEP
+(2026-10-22).** `build_roles` is kept as the serial reference;
+`build_roles_batched` is production and the emit pass buffers four layers at a
+time (then flushes) so the carve, union, set-wide difference, three
+body-minus-interface rounds and territory intersect each become one cross-item
+`clip_polygons_batch` call. `largest_part` is shared by both carve paths.
+Evidence: [FINDINGS](../evidence/t78-planner-emit-batching/FINDINGS.md),
+`candidate.patch`, `qualification.json`, `ab-reduction.json` (`verify.py` exits 0
+with 19/19 negative controls rejected).
+
+**Proof matrix — 16/16 cells pass.** Baseline and candidate are byte-identical
+in every cell *and* equal to the preserved t58 reference; every run is
+`status=ok`, `degraded=false`, zero fatal and zero non-fatal, with non-vacuous
+role counts. The snapshots differ from each other in exactly one module file
+per mode (`tree-support-planner.wasm`); the binaries and the other 23 modules
+are byte-identical.
+
+**Standing gate — PASS in all four pre-declared classic supports-on cells**,
+6 alternating pairs each, 24/24 retained, zero starvation exclusions, every
+pair's outputs byte-identical:
+
+| cell | wall (paired median) | CPU | occupancy |
+| --- | ---: | ---: | ---: |
+| `ordinary-benchy-classic-on` | **−13.41 %** | +0.51 % | 3.46 → 4.12 |
+| `ordinary-base-classic-on` | **−12.30 %** | +1.51 % | 4.06 → 4.76 |
+| `accelerated-benchy-classic-on` | **−7.22 %** | +0.74 % | 3.79 → 4.50 |
+| `accelerated-base-classic-on` | **−16.66 %** | +2.80 % | 5.14 → 6.34 |
+
+`accelerated-base`'s **+2.80 % CPU sits 0.2 pp under the pre-declared +3.0 %
+ceiling** — a real per-item marshalling cost in that cell, disclosed rather than
+smoothed. In `ordinary-base`, pairs 3–4 are the window where both arms slowed
+(baseline 351/385 s against 307–336 s elsewhere); the paired median is −12.30 %.
+
+Same-instrument attribution (ordinary base classic supports-on, attribution
+only): `PrePass::SupportGeometry` **127,723 → 81,362 ms (−46.4 s)** and
+`com.core.tree-support-planner` **109,018 → 60,038 ms (−49.0 s)**. Against t77's
+79.7 s clip core, the ~29 s of non-clip module time is unchanged, so the clip
+core fell to ~30.7 s — a **2.6x** effective speedup rather than the 12x idealized
+ceiling (eight dependent batch phases per chunk plus marshalling).
+
+Verification: `build_roles_batched_matches_the_serial_path_per_item` compares
+the batched path to `build_roles` item-for-item; guest suite **146 passed / 0
+failed**; guest and workspace clippy clean, `check-literals` 0,
+`check-test-quality --report` 0, both freshness gates exit 0.
+
+**Human-approved KEEP (2026-10-22); candidate committed `73a6f1e8`.** Guests were
+rebuilt and both freshness gates exit 0; the standing `target/dist` and
+`target/dist-accelerated` artifacts are built from the kept HEAD.
+
