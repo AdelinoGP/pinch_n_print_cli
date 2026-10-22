@@ -2295,8 +2295,29 @@ fn captured_slices(capture: &PreparationVisualCapture) -> BTreeMap<u32, SliceIR>
 }
 
 /// The recorder's exact input-digest surface: the committed `SliceIR` identities
-/// and polygons plus the five `ResolvedConfig` scalars the planner reads.
-fn inputs_digest(case: &BaselineCase, slices: &BTreeMap<u32, SliceIR>) -> String {
+/// and polygons plus the five planner scalars **as supplied to the run**.
+///
+/// The scalars are read back from the options the caller actually handed the
+/// pipeline (`SliceRunOptions::config_overrides`), never from the baseline
+/// record. A plumbing defect that drops or rewrites an override therefore moves
+/// this digest, which is what lets AC-2 report an input defect rather than an
+/// algorithm difference. `module_plan_matches_recorded_baseline` carries the
+/// control that perturbs one supplied scalar and requires the digest to move.
+fn inputs_digest(config: &HashMap<String, ConfigValue>, slices: &BTreeMap<u32, SliceIR>) -> String {
+    let float = |key: &str| -> f64 {
+        match config.get(key) {
+            Some(ConfigValue::Float(value)) => *value,
+            Some(other) => panic!("supplied config override `{key}` must be a Float: {other:?}"),
+            None => panic!("supplied config override `{key}` is missing"),
+        }
+    };
+    let sparse_fill_holder = match config.get("sparse_fill_holder") {
+        Some(ConfigValue::String(value)) => value.clone(),
+        Some(other) => {
+            panic!("supplied config override `sparse_fill_holder` must be a String: {other:?}")
+        }
+        None => panic!("supplied config override `sparse_fill_holder` is missing"),
+    };
     let mut layers = Vec::new();
     for slice in slices.values() {
         let regions: Vec<Value> = slice
@@ -2337,11 +2358,11 @@ fn inputs_digest(case: &BaselineCase, slices: &BTreeMap<u32, SliceIR>) -> String
     }
     sha256_canonical(&json!({
         "config": {
-            "sparse_fill_holder": case.config.sparse_fill_holder,
-            "infill_density": case.config.infill_density,
-            "layer_height": case.config.layer_height,
-            "infill_angle": case.config.infill_angle,
-            "line_width": case.config.line_width,
+            "sparse_fill_holder": sparse_fill_holder,
+            "infill_density": float("infill_density"),
+            "layer_height": float("layer_height"),
+            "infill_angle": float("infill_angle"),
+            "line_width": float("line_width"),
         },
         "layers": layers,
     }))
@@ -2389,7 +2410,12 @@ fn assert_prepared_owner(capture: &PreparationCapture, case_id: &str) {
 /// module's generated prepared pair with them enabled. Because the ordinary stage
 /// now reads its pieces (Step 8a), the infill-derived population below measures
 /// the **module's** plan on both arms.
-fn assert_arm_matches_baseline(case: &BaselineCase, capture: &PreparationVisualCapture, arm: &str) {
+fn assert_arm_matches_baseline(
+    case: &BaselineCase,
+    capture: &PreparationVisualCapture,
+    arm: &str,
+    config: &HashMap<String, ConfigValue>,
+) {
     let slices = captured_slices(capture);
     assert_eq!(
         slices.len() as u64,
@@ -2397,7 +2423,7 @@ fn assert_arm_matches_baseline(case: &BaselineCase, capture: &PreparationVisualC
         "case `{}` ({arm}): the committed schedule must expose every recorded layer to the tap",
         case.case_id
     );
-    let actual_inputs = inputs_digest(case, &slices);
+    let actual_inputs = inputs_digest(config, &slices);
     assert_eq!(
         actual_inputs, case.digests.inputs_sha256,
         "case `{}` ({arm}): input digest diverged first (recorded {}, actual {actual_inputs}); \
@@ -2446,11 +2472,17 @@ fn assert_arm_matches_baseline(case: &BaselineCase, capture: &PreparationVisualC
 // AC-1
 // ---------------------------------------------------------------------------
 
-/// AC-1 — the committed oracle is deterministic as an artifact: strict decode,
-/// nonempty per-case populations, cross-file agreement and recorded digests that
-/// its own bytes and entries reproduce. The producer is never re-run here: the
-/// recorder already proved determinism, and this test validates what was
-/// committed. Mutation controls prove every rejection is real.
+/// AC-1 — the committed oracle is deterministic **as an artifact**: strict
+/// decode, nonempty per-case populations, cross-file agreement and recorded
+/// digests that its own bytes and entries reproduce. Mutation controls prove
+/// every rejection is real.
+///
+/// What this does *not* prove: the recorder's two-run byte-identity. That run
+/// happened against the pre-migration producer and is not reproducible from
+/// this tree — the recorder was deleted with the producer (implementation-plan
+/// Step 14f, recorded limitation). The evidence for pre-deletion determinism is
+/// the committed fixture plus its `derivation`/digests, not a re-runnable
+/// capture.
 #[test]
 fn baseline_is_deterministic_and_strict() {
     let root = workspace_root();
@@ -2582,6 +2614,9 @@ fn module_plan_matches_recorded_baseline() {
     for case in &baseline.cases {
         let wasm_trace = Arc::new(Trace::default());
         let options = case_options(&root, case_input(&root, &baseline, case), case, false);
+        // The digest hashes the overrides this run is handed, not the baseline
+        // record: a plumbing defect has to move it.
+        let wasm_config = options.config_overrides.clone();
         let wasm_capture = run_visual(
             options,
             Vec::new(),
@@ -2590,7 +2625,22 @@ fn module_plan_matches_recorded_baseline() {
             Arc::clone(&wasm_trace),
         )
         .unwrap_or_else(|error| panic!("case `{}`: the WASM arm failed: {error}", case.case_id));
-        assert_arm_matches_baseline(case, &wasm_capture, "wasm");
+        assert_arm_matches_baseline(case, &wasm_capture, "wasm", &wasm_config);
+
+        // Control: a changed supplied scalar must move the digest. Deriving the
+        // digest from `case.config` instead would leave this unchanged, which is
+        // the self-referential-oracle failure AC-2 exists to prevent.
+        let mut perturbed = wasm_config.clone();
+        perturbed.insert(
+            "infill_density".to_owned(),
+            ConfigValue::Float(case.config.infill_density + 0.01),
+        );
+        assert_ne!(
+            inputs_digest(&perturbed, &captured_slices(&wasm_capture)),
+            case.digests.inputs_sha256,
+            "case `{}`: the input digest ignored a changed supplied scalar",
+            case.case_id
+        );
 
         // Native arm: the module's real prepared pair. The lightning guest is
         // absent from the search roots so the integrated registration (and its
@@ -2602,6 +2652,7 @@ fn module_plan_matches_recorded_baseline() {
             true,
             native_module_dirs(&root),
         );
+        let native_config = native_options.config_overrides.clone();
         let native_trace = Arc::new(Trace::default());
         let native_capture = run_visual_native(
             native_options,
@@ -2610,7 +2661,7 @@ fn module_plan_matches_recorded_baseline() {
             Arc::clone(&native_trace),
         )
         .unwrap_or_else(|error| panic!("case `{}`: the native arm failed: {error}", case.case_id));
-        assert_arm_matches_baseline(case, &native_capture, "native");
+        assert_arm_matches_baseline(case, &native_capture, "native", &native_config);
     }
 }
 
@@ -4045,6 +4096,15 @@ const COMPILE_WITNESSES: &[CompileWitness] = &[
     },
 ];
 
+/// Positive control for the compile-witness harness: a symbol that must still
+/// resolve. If this fails, the harness itself is unsound — wrong rlib, wrong
+/// `--extern` flags — and every retirement witness it accepts is meaningless.
+const SURVIVING_WITNESS: CompileWitness = CompileWitness {
+    crate_name: "slicer_ir",
+    symbol: "SliceIR",
+    source: "use slicer_ir::SliceIR;\npub fn probe(_: Option<SliceIR>) {}\n",
+};
+
 /// Locate the newest built rlib for `crate_name` in the target dir that `cargo
 /// test` is already using.
 fn find_rlib(crate_name: &str) -> PathBuf {
@@ -4122,6 +4182,21 @@ fn compile_witness(witness: &CompileWitness) -> Result<(), String> {
             witness.symbol
         ));
     }
+    // A symbol appearing in stderr is not a name-resolution diagnostic: the
+    // compiler's source excerpt reproduces the `use` line, and loader failures
+    // such as a missing rlib quote it too. Require an actual resolution error
+    // code before accepting the witness.
+    const NAME_RESOLUTION_CODES: [&str; 5] = ["E0432", "E0433", "E0425", "E0412", "E0599"];
+    if !NAME_RESOLUTION_CODES
+        .iter()
+        .any(|code| stderr.contains(code))
+    {
+        return Err(format!(
+            "compile witness for '{}' failed without a name-resolution diagnostic \
+             (expected one of {NAME_RESOLUTION_CODES:?}): {stderr}",
+            witness.symbol
+        ));
+    }
     for other in COMPILE_WITNESSES {
         if other.symbol != witness.symbol && stderr.contains(other.symbol) {
             return Err(format!(
@@ -4137,6 +4212,18 @@ fn compile_witness(witness: &CompileWitness) -> Result<(), String> {
 /// still emits baseline-equivalent infill through the module path only.
 #[test]
 fn retirement_leaves_no_host_fallback() {
+    // Harness soundness first: a surviving symbol must compile against the same
+    // rlib and `--extern` setup. `compile_witness` reports success as an error
+    // ("still resolves"), so the expected outcome here is exactly that message;
+    // any other failure means the harness itself is misconfigured and every
+    // retirement witness below would prove nothing.
+    match compile_witness(&SURVIVING_WITNESS) {
+        Err(error) if error.contains("still resolves") => {}
+        other => panic!(
+            "compile-witness harness is unsound: a surviving symbol did not compile cleanly ({other:?})"
+        ),
+    }
+
     let failures: Vec<String> = COMPILE_WITNESSES
         .iter()
         .filter_map(|witness| compile_witness(witness).err())
