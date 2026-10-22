@@ -1000,6 +1000,12 @@ Standing decisions for this effort (2026-09-22):
   so the painted path of `build_wall_flags` (nearest-original reprojection
   reuse) is not even selectable as a candidate. Needs a fixture/scenario before
   it can graduate into a ticket.
+- **Classic `is_bridge` empty-area parity guard (t20 observation, 2026-10-22).**
+  Arachne guards its per-vertex `context.is_bridge` loop with
+  `!bridge_areas.is_empty()`; classic calls it for every ring vertex even when
+  the region has no bridge areas. The call is not in t18's measured hot set
+  (the two exact scan families are), so this graduates only with its own
+  measured reason; it was deliberately excluded from the t20 candidate.
 - **New candidates from the structural splits.** [Gap budget per cell](issues/12-gap-budget-per-cell.md)'s
   route tickets (24/22/27/28 and the re-scoped 18) may surface further
   candidates inside the serial floor, the query path, or the marshalling
