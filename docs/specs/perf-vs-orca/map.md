@@ -525,7 +525,9 @@ Standing decisions for this effort (2026-09-22):
   contour simplification before walls and infill are generated
   (`PerimeterGenerator`'s `surface_simplify_resolution` → `simplify_p`,
   `Fill.cpp`); PnP implements no slicing-time equivalent, only emission-time
-  per-role D-P (`gcode_resolution` / `infill_resolution` / `support_resolution`).
+  per-role D-P (`gcode_resolution` / `infill_resolution` / `support_resolution`),
+  whose defaults are exactly Orca's internal per-role constants — faithful
+  porting of a *different* mechanism.
   Running Orca at its canonical 0.001 mm floor instead costs it **+9.5 % to
   +65.2 % wall** across the eight cells (median **+40.2 %**, CPU +21 % to
   +92 %) — so every ratio in this map compares PnP at full contour detail

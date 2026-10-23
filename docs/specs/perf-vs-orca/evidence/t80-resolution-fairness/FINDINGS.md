@@ -31,32 +31,41 @@ Canonical consumption sites that precede wall and infill generation:
 
 | site | what it simplifies |
 | --- | --- |
-| `PerimeterGenerator.cpp`'s `surface_simplify_resolution` → `union_ex(surface.expolygon.simplify_p(...))` | the sliced surfaces each island's perimeter loops are generated from |
-| `PerimeterGenerator.cpp`'s `ex.douglas_peucker(surface_simplify_resolution)` | infill contours |
+| `PerimeterGenerator`'s `m_scaled_resolution` → `surface.expolygon.simplify_p(...)` / `ex.simplify_p(m_scaled_resolution, &pp)` | the sliced surfaces each island's perimeter loops are generated from, and the infill contours (`ExPolygon::simplify_p` → `MultiPoint::_douglas_peucker`) |
+| `PerimeterGenerator`'s second `ex.douglas_peucker(surface_simplify_resolution)` | infill contours |
 | `Fill.cpp`'s `resolution` read | the fill path |
-| `Layer::simplify_support_path` / `LayerRegion`'s path simplify | emitted support and region paths (with `enable_arc_fitting`, `0.2 ×` and `SCALED_SUPPORT_RESOLUTION`) |
+| `Layer::simplify_support_path` / `LayerRegion`'s path simplify | emitted support and region paths |
 
-The first two are the ones that change how much geometry every downstream stage
-must process. The emit-side sites are a separate, smaller effect.
+`PerimeterGenerator`'s member is initialised as
+`scaled<double>(print_config->resolution.value > EPSILON ? ... : EPSILON)`, and
+`scale_` divides by `SCALING_FACTOR` (`1e-6`), i.e. Orca's internal unit is
+10⁶ per mm. PnP's unit is 100 per mm, so a port must convert the tolerance.
+
+The first two rows are the ones that change how much geometry every downstream
+stage must process. The emit-side rows are a separate, smaller effect.
 
 ## What PnP does instead
 
 PnP has **no** `resolution` implementation (`docs/ORCA_CONFIG_REFERENCE.md` marks
 it ❌). Its nearest keys are emission-time per-role Douglas–Peucker tolerances:
 
-| PnP key | default | applied at |
-| --- | ---: | --- |
-| `gcode_resolution` | 0.0125 mm | `slicer-gcode` emission, perimeter/gap/brim/raft roles |
-| `infill_resolution` | 0.04 mm | emission, infill roles |
-| `support_resolution` | 0.0375 mm | emission, support roles |
+| PnP key | default | applied at | canonical origin |
+| --- | ---: | --- | --- |
+| `gcode_resolution` | 0.0125 mm | `slicer-gcode` emission, perimeter/gap/brim/raft roles | Orca's internal `RESOLUTION` constant |
+| `infill_resolution` | 0.04 mm | emission, infill roles | Orca's internal `SPARSE_INFILL_RESOLUTION` constant |
+| `support_resolution` | 0.0375 mm | emission, support roles | Orca's internal `SUPPORT_RESOLUTION` constant |
 
-plus `min_segment_length` (0.05 mm) at emission. The mesh slicer's
+Those three defaults are **exactly** Orca's own per-role constants
+(`libslic3r.h`: `RESOLUTION = 0.0125`, `SPARSE_INFILL_RESOLUTION = 0.04`,
+`SUPPORT_RESOLUTION = 0.0375`), so PnP's emission split is a faithful port of a
+*different* mechanism, not a mis-valued copy of the config key. The mesh slicer's
 `simplify_polygon_points` (`crates/slicer-core/src/triangle_mesh_slicer.rs`)
 removes only exactly collinear points and takes no tolerance.
 
-So the two sides are not the same mechanism at a different value: Orca simplifies
-the **surfaces it generates geometry from**; PnP simplifies **paths it is about
-to write**.
+So the two sides are not the same mechanism at a different value: the config key
+`resolution` (0.01) is what Orca applies to the **surfaces it generates geometry
+from**; PnP has no key there at all, and simplifies only **paths it is about to
+write**, at Orca's constants.
 
 ### What the trackers believed
 
@@ -151,9 +160,18 @@ does not edit that tracker.
 - This prices **Orca's** sensitivity to its own key. It does not measure what a
   faithful PnP implementation would recover; PnP's pipeline differs and the
   ceiling needs its own candidate.
-- PnP's infill/support emission tolerances (0.04 / 0.0375) are **coarser** than
-  Orca's 0.01 and run the opposite way. They are not netted out here, so this
-  bounds one side of the asymmetry rather than settling net work parity.
+- PnP's emission path simplification runs at Orca's own per-role constants, which
+  are **coarser than the config key's 0.01** for infill (0.04) and support
+  (0.0375) and slightly coarser for perimeters (0.0125). At emission PnP
+  therefore removes *more* points than Orca does at 0.01 — the opposite sign to
+  the missing slicing-time pass. The two are not netted out here, so this bounds
+  one side of the asymmetry rather than settling net work parity.
+- Orca's `resolution` also drives emit-time path simplification when arc fitting
+  is off (`Layer`, `LayerRegion` use `scaled(print_config.resolution.value)`;
+  with arc fitting on they switch to `SCALED_SUPPORT_RESOLUTION` /
+  `SCALED_SPARSE_INFILL_RESOLUTION` and the surface tolerance becomes `0.2 ×`).
+  The measured delta therefore mixes the slicing-time and emit-time uses of the
+  key; this take does not split them.
 - The floor arm (0.001 mm) is not "no simplification": the canonical clamp
   prevents that. The measured delta is therefore a **lower bound** on what full
   contour detail costs Orca.

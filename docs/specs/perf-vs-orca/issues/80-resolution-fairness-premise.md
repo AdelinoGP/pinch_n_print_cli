@@ -107,7 +107,10 @@ asymmetry is large.** The matched Orca profile inherits `resolution = 0.01 mm`
 from the vendor process profile and applies it as a **slicing-time contour
 simplification** before walls and infill are generated; PnP implements no
 equivalent (its `gcode_resolution` / `infill_resolution` / `support_resolution`
-are emission-time only). Running the same profile at Orca's canonical 0.001 mm
+are emission-time only, and their defaults are exactly Orca's internal per-role
+constants `RESOLUTION` / `SPARSE_INFILL_RESOLUTION` / `SUPPORT_RESOLUTION` — so
+that half is faithful porting of a different mechanism, not a mis-valued copy).
+Running the same profile at Orca's canonical 0.001 mm
 floor (the clamp makes "off" inexpressible) costs Orca **+9.5 % to +65.2 % wall**
 across the eight cells — median **+40.2 %**, CPU **+21 % to +92 %** — with
 +9 % to +91 % more G-code, in 3 alternating pairs per cell with every run's

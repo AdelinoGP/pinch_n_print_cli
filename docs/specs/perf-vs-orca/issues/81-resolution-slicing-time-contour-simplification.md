@@ -42,7 +42,11 @@ PnP's existing tolerances are emission-time only
 (`gcode_resolution` 0.0125 / `infill_resolution` 0.04 / `support_resolution`
 0.0375 in `crates/slicer-gcode/src/serialize.rs`, fed from
 `crates/slicer-ir/src/resolved_config.rs`) and cannot substitute: they run after
-all geometry work. The mesh slicer's `simplify_polygon_points`
+all geometry work. Note their defaults are **exactly** Orca's internal per-role
+constants (`RESOLUTION = 0.0125`, `SPARSE_INFILL_RESOLUTION = 0.04`,
+`SUPPORT_RESOLUTION = 0.0375` in `libslic3r.h`), so that half is faithful porting
+of a different mechanism — do not "correct" those values while adding
+`resolution`. The mesh slicer's `simplify_polygon_points`
 (`crates/slicer-core/src/triangle_mesh_slicer.rs`) removes only exactly collinear
 points and takes no tolerance.
 
@@ -54,13 +58,19 @@ paired A/B, not inherit a fraction of the Orca number.
 ## Work
 
 1. **Parity definition first.** Derive from canonical what the simplified
-   surfaces must be: `simplify_p` semantics (Douglas–Peucker variant, tolerance
-   in scaled units, per-polygon and per-hole, start-vertex sensitivity) and the
-   exact stage at which it applies relative to
-   `PrePass::Slice` / `PrePass::ShellClassification` / the perimeter modules.
+   surfaces must be. The canonical call is `ExPolygon::simplify_p(tolerance)`
+   (`ExPolygon.cpp`): it runs `MultiPoint::_douglas_peucker` on the contour and
+   then on **each hole independently**, and it closes the ring before the pass
+   (`p.points.push_back(p.points.front())` … `p.points.pop_back()`), so the
+   simplification is per-ring and wrap-around-sensitive. `PerimeterGenerator`'s
+   tolerance is `m_scaled_resolution`, initialised as
+   `scaled<double>(print_config->resolution.value > EPSILON ? value : EPSILON)`;
+   `scale_` divides by `SCALING_FACTOR` (`1e-6`, i.e. 10⁶ units per mm) while
+   PnP's unit is 100 per mm, so the tolerance must be converted, not copied.
    Decide where in PnP's pipeline the equivalent belongs — a prepass stage
-   (host-side, before module dispatch) or inside each perimeter/fill module —
-   and state why.
+   (host-side, before module dispatch) or inside each perimeter/fill module — and
+   state why. Also decide whether PnP's existing
+   `simplify_polygon_points` (collinear-only) stays as a separate pre-pass.
 2. **Key and default.** Add the `resolution` config key with canonical default
    `0.01` and canonical clamp (`DynamicPrintConfig::normalize_fdm` raises values
    below `0.001` to `0.001`).
