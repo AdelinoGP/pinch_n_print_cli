@@ -2205,25 +2205,29 @@ fn diagnostic_options(
     )
 }
 
-/// Run one real consumer-side diagnostic and return the layer-stage failure text.
+/// Run one real consumer-side diagnostic and return the layer-stage failure
+/// text **and** the lifecycle trace.
 ///
 /// The mode affects publication only, so preparation succeeds; the ordinary
 /// `Layer::Infill` stage then fails when it reads its own layer's piece. A
 /// failure that is not a slice (layer-stage) failure would prove the wrong
-/// boundary, so it panics instead of being normalized.
-fn consumer_failure_text(
+/// boundary, so it panics instead of being normalized. The trace is returned
+/// because a consumer failure happens *after* allocation, so its cleanup is an
+/// assertion rather than an assumption.
+fn consumer_failure(
     root: &Path,
     baseline: &Baseline,
     case: &BaselineCase,
     mode: &str,
-) -> String {
+) -> (String, Arc<Trace>) {
     let options = diagnostic_options(root, baseline, case, mode);
+    let trace = Arc::new(Trace::default());
     let error = match run_visual(
         options,
         Vec::new(),
         vec![INFILL_TAP.to_owned()],
         layer_indices(case),
-        Arc::new(Trace::default()),
+        Arc::clone(&trace),
     ) {
         Ok(capture) => panic!(
             "case `{}`, mode `{mode}`: the run completed with {} owner(s); the diagnostic \
@@ -2233,13 +2237,59 @@ fn consumer_failure_text(
         ),
         Err(error) => error,
     };
-    match error {
+    let text = match error {
         PreparationVisualCaptureError::Slice(inner) => inner.0,
         other => panic!(
             "case `{}`, mode `{mode}`: the failure must be a real layer-stage failure, got {other:?}",
             case.case_id
         ),
-    }
+    };
+    (text, trace)
+}
+
+/// A consumer failure occurs after a fully allocated plan, so cleanup must
+/// dispose real bytes.
+///
+/// `max_retained_after_disposal()` returns zero when *no* disposal record
+/// exists, so this asserts the population first: allocation observed, at least
+/// one disposal, and every disposal at zero. Without that ordering a
+/// failure-only retention regression would read as clean.
+fn assert_failure_cleanup(trace: &Trace, case_id: &str, mode: &str) {
+    let records = trace.records();
+    let ready = records
+        .iter()
+        .find(|record| {
+            record.module_id.as_str() == MODULE_ID
+                && record.lifecycle_phase == PreparationLifecyclePhase::Preparation
+                && record.status == PreparationLifecycleStatus::Ready
+                && !record.pieces.is_empty()
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "case `{case_id}`, mode `{mode}`: no Ready preparation holding pieces was \
+                 observed, so the failure never exercised an allocated plan"
+            )
+        });
+    assert!(
+        ready.retained_bytes > 0,
+        "case `{case_id}`, mode `{mode}`: the failed consumption must have held bytes"
+    );
+    let disposals: Vec<_> = records
+        .iter()
+        .filter(|record| {
+            record.module_id.as_str() == MODULE_ID
+                && record.status == PreparationLifecycleStatus::Disposed
+        })
+        .collect();
+    assert!(
+        !disposals.is_empty(),
+        "case `{case_id}`, mode `{mode}`: a failed consumption must record actual disposal, \
+         not merely an absent one"
+    );
+    assert!(
+        disposals.iter().all(|record| record.retained_bytes == 0),
+        "case `{case_id}`, mode `{mode}`: a failed consumption releases every piece"
+    );
 }
 
 /// The recorded case's mesh plus its committed print config.
@@ -3830,7 +3880,8 @@ fn failed_or_malformed_plan_never_falls_back() {
         .max()
         .expect("the pooled case records plan entries");
 
-    let missing = consumer_failure_text(&root, &baseline, case, "missing_piece");
+    let (missing, missing_trace) = consumer_failure(&root, &baseline, case, "missing_piece");
+    assert_failure_cleanup(&missing_trace, &case.case_id, "missing_piece");
     assert!(
         missing.contains(MODULE_ID),
         "57401 must come from the module consumer: {missing}"
@@ -3851,7 +3902,8 @@ fn failed_or_malformed_plan_never_falls_back() {
         "57401 must stay distinct from the other three failures: {missing}"
     );
 
-    let malformed = consumer_failure_text(&root, &baseline, case, "malformed_piece");
+    let (malformed, malformed_trace) = consumer_failure(&root, &baseline, case, "malformed_piece");
+    assert_failure_cleanup(&malformed_trace, &case.case_id, "malformed_piece");
     assert!(
         malformed.contains(MODULE_ID) && malformed.contains("57410"),
         "a decoder-rejected body is this module's 57410: {malformed}"
@@ -3871,7 +3923,9 @@ fn failed_or_malformed_plan_never_falls_back() {
         "57410 must stay distinct from the other three failures: {malformed}"
     );
 
-    let unsupported = consumer_failure_text(&root, &baseline, case, "unsupported_version");
+    let (unsupported, unsupported_trace) =
+        consumer_failure(&root, &baseline, case, "unsupported_version");
+    assert_failure_cleanup(&unsupported_trace, &case.case_id, "unsupported_version");
     assert!(
         unsupported.contains(MODULE_ID) && unsupported.contains("57411"),
         "a stale-version piece is this module's 57411: {unsupported}"
