@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: layer-module-preparation_08_lightning-migration
 task_ids:
   - TASK-577
