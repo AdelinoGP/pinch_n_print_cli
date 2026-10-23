@@ -2,8 +2,12 @@
 
 Type: task
 Label: wayfinder:task
-Status: open
-Assignee: unclaimed
+Status: resolved (2026-10-23; human-approved KEEP — the port is committed.
+Parity: invariants + exact stage confinement in all 8 cells. Speed: classic
+cells double digits, Arachne wall-neutral, CPU down in every cell — see ## Answer)
+Assignee: 2026-10-22/23 OpenCode wayfinder session — the human said "continue the
+perf vs orca map" with no ticket named, so the session took the only frontier
+ticket (81/81) in order
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [Resolution-matched fairness premise](80-resolution-fairness-premise.md)
@@ -105,4 +109,130 @@ paired A/B, not inherit a fraction of the Orca number.
 
 ## Answer
 
-_(unresolved)_
+**Resolved 2026-10-23 — human-approved KEEP. The port is committed.**
+
+### Parity condition (work item 1)
+
+Derived from the canonical checkout, then implemented once in
+`crates/slicer-sdk/src/contour_resolution.rs`:
+
+- `ExPolygon::simplify_p` closes each ring before `MultiPoint::_douglas_peucker`
+  (push first point, simplify, pop), runs the contour and **each hole
+  independently**, then `simplify_polygons` re-unions the rings with NonZero.
+- The DP is reproduced exactly: iterative stack, `<=` acceptance, strictly
+  greater furthest-index tie-break, and the seeded degenerate segment at the
+  ring's first vertex (which is what makes the first split land on the vertex
+  furthest from the ring start).
+- Units are converted, never copied: canonical 1e-6 mm (`SCALING_FACTOR`, 10 000
+  units for 0.01 mm) versus PnP's 100 nm unit (100 units for 0.01 mm).
+- The `normalize_fdm` floor is applied **in the resolver**
+  (`crates/slicer-config/src/resolution.rs`), so the G-code appendix discloses
+  the value the modules apply; "disabled" stays inexpressible, as canonical
+  requires.
+- The key rides the `ResolvedConfig::extensions` carrier, not a fixed typed
+  field: `RegionMapIR` interns `ResolvedConfig`, so a typed field would change
+  the Postcard layout and break the frozen 3.0.0 fixture (the constraint that
+  reverted the packet-10 fixed-field addition). `ResolvedConfig::resolution()`
+  reads it, with the canonical default when absent. The extension refactor
+  landed after the campaign; both fixtures reproduce the measured G-code bytes
+  exactly (`3672dc7e…` benchy classic-off, `292df501…` base classic-off), so the
+  timing numbers describe the committed source.
+
+Placement follows canonical's call sites rather than one host pass. PnP has no
+`Surface` decomposition at the perimeter stage, so site 1 runs at region
+granularity (contour + holes) at the same point in the wall pass:
+
+| Canonical site | PnP seam |
+|---|---|
+| pre-wall `union_ex(surface.expolygon.simplify_p(...))` (classic + arachne) | perimeter module, before wall generation |
+| gap `douglas_peucker` before `medial_axis` | classic `filtered_gaps` loop |
+| classic innermost contour → infill boundary | before the infill-boundary offset |
+| classic inner-part pass | **no PnP counterpart — recorded, not invented** |
+| arachne `infill_contour` | `publish_infill_areas` |
+
+The `0.2 ×` arc-fitting tolerance branch is unexpressible (PnP has no
+`enable_arc_fitting`) and inert on the matched job (appendix-verified
+`enable_arc_fitting = 0` in t80's captures).
+
+### Parity evidence (work item 3)
+
+The repo's Parity Evidence Standard is invariants, not goldens, and no Orca test
+covers `simplify_p`/`_douglas_peucker`, so there was nothing to port. The
+invariant suite pins canonical's actual guarantee (every removed vertex within
+tolerance of the output segment that replaced it), subsequence/anchoring,
+corner survival, monotonicity, no re-introduction, ring closure, first-split
+seeding, hole topology + exact area, and the unit/floor conversion.
+
+Disclosed caveat: canonical's `simplify_polygons` runs on **legacy Clipper 6.4.2**
+(`StrictlySimple(true)` + NonZero), while PnP unions through `clipper2-rust`
+(NonZero, no strictly-simple pass). Same set semantics, different
+representation; byte-identical output is not claimable and is not claimed.
+
+### Stage confinement
+
+`evidence/t81-resolution-port/confinement.py` compares typed IR captures
+exactly: **20/20 PASS** across all eight cells — `Layer::Slice` identical in all
+eight, `Layer::Perimeters` differs in all eight, and the
+`PrePass::SupportGeometry` silhouette is byte-identical in all four supports-on
+cells (raster evidence, disclosed as such because that tap has no typed
+capture). At 1024² the perimeter PNGs are visually indistinguishable between
+arms, which is why the exact IR is the evidence and the image is only an
+artifact.
+
+### Paired A/B (work item 4)
+
+Pre-declared: wall < 0 and CPU ≤ +3.0 % in all eight cells, 6 alternating pairs,
+stop by rule at the first failing cell. **Gate met on the campaign of record:**
+
+| cell | n | wall | CPU | bytes |
+|---|---:|---:|---:|---:|
+| benchy classic-off | 6 | **−14.31 %** | −23.12 % | −9.40 % |
+| benchy classic-on | 6 | **−9.00 %** | −18.77 % | −4.69 % |
+| benchy arachne-off | 6 | −0.07 % | −3.16 % | −1.51 % |
+| benchy arachne-on | 6 | −1.87 % | −1.80 % | −0.74 % |
+| base classic-off | 6 | **−22.24 %** | −26.87 % | −6.26 % |
+| base classic-on | 6 | **−10.87 %** | −20.29 % | −3.20 % |
+| base arachne-off | 12 | −1.07 % | −2.08 % | −1.58 % |
+| base arachne-on | 6 | −0.88 % | −1.44 % | −0.78 % |
+
+`base arachne-off` failed its first six pairs at **+2.30 %** and stopped the
+campaign by rule; the human's explicit "run it again" re-measured it at
+**−2.77 %** (combined n=12 median −1.07 %, spread −5.57 … +29.71). That cell is
+**wall-neutral within measurement resolution** — the spread, not the sign, is
+the finding, and one of its twelve samples is visibly disturbed. The other three
+Arachne cells are likewise inside their own spread. Classic is the real speed
+case: −9 to −22 % wall, −18 to −27 % CPU.
+
+Every cell produced exactly one G-code SHA across all its runs (deterministic),
+no sample was starved by the recipe's criterion (cpu/wall 7.57–8.30 against the
+~6.5 clean 12-thread floor), and the baseline arm reproduces the standing t58
+classic-off reference `34886ccb…` exactly.
+
+### Reference regime (work item 4)
+
+The byte-identity regime cannot survive a geometry change. Replaced by: invariants
++ stage confinement + determinism, with per-cell candidate SHAs recorded in
+`evidence/t81-resolution-port/campaign/*.csv` as the new reference set. Any later
+take comparing against the old t58 references for this job is comparing against a
+superseded regime and must say so.
+
+### Ordering note (work item 5)
+
+Attributions that predate this port describe the unsimplified pipeline. t73's base
+split, t75/t76/t78's keeps and the t72 scoreboard were all measured on
+full-detail contours; do not quote them as current without re-deriving.
+
+### Limits, as stated up front
+
+- Orca's +9.5–65.2 % is Orca's sensitivity. PnP's own response was measured here
+  and differs by generator: classic large, Arachne ~nil.
+- PnP's emission-side tolerances (`gcode_resolution` 0.0125 / `infill_resolution`
+  0.04 / `support_resolution` 0.0375) are Orca's own per-role constants and do
+  not net against `resolution`; they run after all geometry work.
+- Canonical's clamp means "no simplification" cannot be measured; the 0.001 mm
+  floor is not the same experiment as "off".
+- Geometry-affecting keep: every later output-identity gate must name its
+  reference regime.
+
+Evidence: [`evidence/t81-resolution-port/`](../evidence/t81-resolution-port/FINDINGS.md)
+(`confinement.py` 20/20, `run_port_pair.ps1`, `campaign/`, `corrected_scoreboard.py`).
