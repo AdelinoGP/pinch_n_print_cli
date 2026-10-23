@@ -1,0 +1,15 @@
+{
+  "cell": "ordinary-base-classic-on",
+  "model": "tmp/base.stl",
+  "config": "docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-classic-supports-on.json",
+  "expected_sha": "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319",
+  "variants": [
+    { "e": 4, "c": 256, "repeats": 1 },
+    { "e": 8, "c": 256, "repeats": 1 },
+    { "e": 16, "c": 256, "repeats": 1 },
+    { "e": 32, "c": 256, "repeats": 1 },
+    { "e": 2, "c": 256, "repeats": 1 },
+    { "e": 1, "c": 256, "repeats": 1 },
+    { "e": 4, "c": 256, "repeats": 1 }
+  ]
+}

@@ -1,0 +1,93 @@
+{
+ "cell": "ordinary-base-classic-on",
+ "control": {
+  "e": 4,
+  "c": 256
+ },
+ "chosen": {
+  "e": 4,
+  "c": 4096
+ },
+ "reference_sha256": "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319",
+ "reference_bytes": 43912792,
+ "screening": {
+  "instrumented_only": true,
+  "chunk_bracket_ms": {
+   "1": 92875,
+   "2": 75503,
+   "4": 61519,
+   "8": 65492,
+   "16": 62574,
+   "32": 76813
+  },
+  "cap_bracket_ms": {
+   "64": 71158,
+   "256": 61519,
+   "1024": 61044,
+   "4096": 58113.0
+  },
+  "peak_working_set_mb_max": 5326.5,
+  "chosen_bracket_ms": 58113.0,
+  "control_bracket_ms": 61519,
+  "bracket_delta_pct": -5.5365009184154435
+ },
+ "confirmation": {
+  "wall_delta_pct_paired_median": 6.300223840385044,
+  "cpu_delta_pct_paired_median": 1.3391102005694044,
+  "direction": "candidate not faster",
+  "pairs": [
+   {
+    "pair": 1,
+    "baseline_wall_s": 220.8575618,
+    "candidate_wall_s": 231.82506,
+    "baseline_cpu_s": 1333.5625,
+    "candidate_cpu_s": 1346.265625,
+    "wall_ratio": 1.0496586945478088,
+    "cpu_ratio": 1.009525706519192,
+    "sha_equal": true
+   },
+   {
+    "pair": 2,
+    "baseline_wall_s": 226.2717689,
+    "candidate_wall_s": 243.5466641,
+    "baseline_cpu_s": 1336.453125,
+    "candidate_cpu_s": 1359.515625,
+    "wall_ratio": 1.0763457822598919,
+    "cpu_ratio": 1.017256497492196,
+    "sha_equal": true
+   }
+  ]
+ },
+ "snapshots": {
+  "pass": true,
+  "ordinary": {
+   "files": 49,
+   "differing": [
+    "modules/tree-support-planner/tree-support-planner.wasm"
+   ],
+   "module_differing": [
+    "modules/tree-support-planner/tree-support-planner.wasm"
+   ],
+   "executable_equal": true,
+   "baseline_planner_sha256": "621e4ce9b0d0bf56e975457b6f0e7a599c069679432ffb8ea33a7551053786ef",
+   "candidate_planner_sha256": "362e2fcebe0f6247218fbec367f7879f653f4dde091936d427b15e20b6c4ae1b"
+  },
+  "accelerated": {
+   "files": 50,
+   "differing": [
+    "modules/tree-support-planner/tree-support-planner.wasm"
+   ],
+   "module_differing": [
+    "modules/tree-support-planner/tree-support-planner.wasm"
+   ],
+   "executable_equal": true,
+   "baseline_planner_sha256": "0246671608ce9d4cf9c52b7623c475eda1232357b92f6179441f7c279bf90f4b",
+   "candidate_planner_sha256": "0054f2a54ca5d8a306b9407bd880990e803a2f98837dbb35b7d227f4f5c34c89"
+  }
+ },
+ "gate": {
+  "status": "not_run_by_rule",
+  "reason": "The pre-gate confirmation showed the candidate slower on wall in both measured pairs (+4.97 %, +7.63 %; paired median +6.30 %) on the base cell where the screening signal lived, with byte-identical output. The standing campaign was not started; measured recommendation DROP."
+ },
+ "verdict": "DROP - no constant change adopted; EMIT_BATCH_LAYERS stays 4 and CLIP_BATCH_MAX_REQUESTS stays 256"
+}
