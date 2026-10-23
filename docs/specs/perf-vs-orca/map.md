@@ -100,7 +100,35 @@ Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
 
-**Current selection scope (2026-10-22, on the ticket 79 take):** the frontier
+**Current selection scope (2026-10-22, on the ticket 80 take):** the frontier
+re-derivation found no open child (79/79 resolved), and the human's route answer
+challenged the map's own fairness contract instead of choosing a route — "has this
+study been running on the same resolution as Orca does? The resolution defaults
+for PNP are higher". [80](issues/80-resolution-fairness-premise.md) was
+graduated, claimed and **resolved as a measurement-only premise audit**: the job
+has **not** been resolution-matched. Orca's matched profile inherits
+`resolution = 0.01 mm` and applies it as a **slicing-time contour
+simplification before walls and infill are generated**, while PnP implements only
+emission-time per-role D-P; re-running the same profile at Orca's canonical
+0.001 mm floor costs Orca **+9.5 % to +65.2 % wall** across all eight cells
+(median **+40.2 %**; CPU **+21 % to +92 %**; G-code **+9 % to +91 %**), 3
+alternating appendix-verified pairs per cell. A first attempt at a `resolution =
+0` arm was rejected by the appendix gate, which is how the canonical **0.001 mm
+clamp** was found — "disabled" is not expressible in OrcaSlicer. The disclosure
+is now in the fairness contract above; the implementation candidate is graduated
+as [81](issues/81-resolution-slicing-time-contour-simplification.md) (open,
+unclaimed) and is explicitly **canonical parity work, not output-preserving**,
+so its proof gate cannot be byte-identity against the t58 references. The
+feature-gap tracker's `03-asset-scoped-gap.md` adjudication (per-domain emission
+keys as `resolution`'s counterpart) covers only the emission half and needs
+re-deriving there. No production edit, no PnP build, no candidate, no scoreboard
+revision. Evidence:
+[`evidence/t80-resolution-fairness/`](evidence/t80-resolution-fairness/FINDINGS.md)
+(`verify.py` exits 0 checkout-only with 5/5 negative controls rejected).
+Frontier now: **ticket 81 only**; the take order is the human's. Standing paired
+acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-22, on the ticket 79 take):** the frontier
 re-derivation found **no open child** (78 children, all resolved) and returned
 the route to the human, who selected the **t78 constant sweep**.
 [79](issues/79-tree-support-planner-emit-batch-constant-sweep.md) was
@@ -491,6 +519,20 @@ Standing decisions for this effort (2026-09-22):
   wall and infill counts, wall generator, supports). Every comparison discloses
   output stats (bytes, TYPE counts, degraded flag); a known work-skipping
   defect disqualifies that cell.
+  **Resolution is NOT matched (disclosed 2026-10-22 by
+  [ticket 80](issues/80-resolution-fairness-premise.md)).** The matched Orca
+  profile inherits `resolution = 0.01 mm` and applies it as a *slicing-time*
+  contour simplification before walls and infill are generated
+  (`PerimeterGenerator`'s `surface_simplify_resolution` → `simplify_p`,
+  `Fill.cpp`); PnP implements no slicing-time equivalent, only emission-time
+  per-role D-P (`gcode_resolution` / `infill_resolution` / `support_resolution`).
+  Running Orca at its canonical 0.001 mm floor instead costs it **+9.5 % to
+  +65.2 % wall** across the eight cells (median **+40.2 %**, CPU +21 % to
+  +92 %) — so every ratio in this map compares PnP at full contour detail
+  against an Orca doing materially less geometric work. Correction factor per
+  cell is `1 + Δ` from
+  [`evidence/t80-resolution-fairness/summary.json`](evidence/t80-resolution-fairness/summary.json);
+  apply it to a current ratio, never quote it as a scoreboard.
 - **Win matrix**: all 8 cells decide, so support-correctness defects are route
   work — a degraded slice is not Orca's job.
 - **Measurement mode**: paired ordinary + accelerated runs are the default
@@ -912,6 +954,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Resolution-matched fairness premise for the matched job](issues/80-resolution-fairness-premise.md): **resolved (2026-10-22; measurement-only — the job was NOT resolution-matched; disclosure recorded, one candidate graduated)** — Orca's matched profile inherits `resolution = 0.01 mm` and consumes it as a **slicing-time** contour simplification before wall/infill generation (`PerimeterGenerator.cpp`'s `surface_simplify_resolution` → `union_ex(surface.expolygon.simplify_p(...))` and `ex.douglas_peucker(...)`, `Fill.cpp`'s `resolution` read), while PnP implements only emission-time per-role D-P (`gcode_resolution` 0.0125 / `infill_resolution` 0.04 / `support_resolution` 0.0375) and a collinear-only slicer filter. Re-running the same profile at Orca's canonical 0.001 mm floor (`DynamicPrintConfig::normalize_fdm` clamps anything below it, so "disabled" is inexpressible) costs Orca **+58.4 / +65.2 / +32.1 / +47.3 % wall** (benchy classic-off/on, arachne-off/on) and **+37.5 / +42.8 / +9.5 / +30.9 %** (base), median **+40.2 %**, CPU **+21 % to +92 %**, G-code **+9 % to +91 %**, 3 alternating appendix-verified pairs per cell; `base/arachne-off` wall is noise-limited (CPU +46.3 % stable). The default arm reproduces the historical matched Orca bytes (−0.0003 %). Follow-ups: the map's fairness contract now carries the disclosure, and [81](issues/81-resolution-slicing-time-contour-simplification.md) is graduated as **canonical parity work, not an output-preserving optimization**. Evidence: [`evidence/t80-resolution-fairness/`](evidence/t80-resolution-fairness/FINDINGS.md) (`verify.py` exits 0 checkout-only with 5/5 negative controls rejected).
+
 - [Tree-support planner emit-batch chunk and request-cap sweep](issues/79-tree-support-planner-emit-batch-constant-sweep.md): **resolved (2026-10-22; measurement-only — DROP, no constant changed)** — the chunk sweep found the committed `EMIT_BATCH_LAYERS = 4` at the knee (`com.core.tree-support-planner` module bracket 92,875 / 75,503 / **61,519** / 65,492 / 62,574 / 76,813 ms at 1 / 2 / 4 / 8 / 16 / 32, instrumented screening only), and the cap sweep chose `CLIP_BATCH_MAX_REQUESTS = 4096` on a 5.5 % bracket edge over `256` (58,113 vs 61,519 ms; 3.4 % in an interleaved paired window) after the `64` leader failed to replicate and a pass-3 host-load spike confounded the single-sample cells. **The frozen-snapshot pre-gate confirmation rejected it:** two alternating byte-identical pairs measured the candidate **+4.97 % and +7.63 % slower on wall** (paired median **+6.30 %**, CPU +1.34 %), so the 16-cell proof and 6-pair campaign were **not started** by the stop discipline. Peak working set ~5.3 GB at `4 / 256`. Planner source restored byte-identical to HEAD (blob `a59a11e5…`), both guest freshness gates exit 0, standing `target/dist` and `target/dist-accelerated` rebuilt from the restored HEAD; no production edit, adoption or commit. Evidence: [`evidence/t79-emit-batch-sweep/`](evidence/t79-emit-batch-sweep/FINDINGS.md) (`verify.py` exits 0 checkout-only with 13/13 negative controls rejected; `candidate.patch` is the one-line re-appliable 256 → 4096 diff).
 
 - [Tree-support planner emit-pass batched carve and role union](issues/78-tree-support-planner-emit-batching.md): **resolved (2026-10-22; human-approved KEEP — candidate committed `73a6f1e8`)** — the emit pass buffers four layers of `build_roles` inputs and issues each clip phase as one cross-item `clip_polygons_batch` call (per-region carve, role union, set-wide difference, three body-minus-interface rounds, territory intersect), with `build_roles` kept as the serial reference, `largest_part` shared by both carve paths, and entry order unchanged. **Proof 16/16 PASS** — baseline and candidate byte-identical in every cell *and* equal to the preserved t58 references. **Standing gate PASS in all four pre-declared classic supports-on cells**, 24/24 pairs retained, zero starvation exclusions, every pair byte-identical: wall **−13.41 % / −12.30 % / −7.22 % / −16.66 %** and CPU **+0.51 % / +1.51 % / +0.74 % / +2.80 %** (ordinary/accelerated × benchy/base; accelerated-base's +2.80 % is 0.2 pp under the pre-declared +3.0 % ceiling). Attribution: `PrePass::SupportGeometry` **127,723 → 81,362 ms** and `com.core.tree-support-planner` **109,018 → 60,038 ms**, i.e. the 79.7 s clip core falls to ~30.7 s (**2.6x effective**, not the 12x idealized ceiling); `EMIT_BATCH_LAYERS = 4` and `CLIP_BATCH_MAX_REQUESTS = 256` remain unswept. Evidence: [`evidence/t78-planner-emit-batching/`](evidence/t78-planner-emit-batching/FINDINGS.md) (`verify.py` exits 0 checkout-only with 19/19 negative controls rejected).
@@ -1052,6 +1096,19 @@ Standing decisions for this effort (2026-09-22):
 
 ## Not yet specified
 
+- **Work-relevant key parity of the matched job (surfaced 2026-10-22 by
+  [ticket 80](issues/80-resolution-fairness-premise.md)).** `resolution` turned
+  out to be a *slicing-time* work lever that the map had silently left unmatched
+  while believing the emission split keys covered it. The general question is
+  whether it is the only one: enumerate the keys the matched Orca vendor profile
+  actually resolves (from the G-code appendix, not the profile file) that change
+  pre-emission geometry work, and check PnP's counterpart **and its default** on
+  the matched job. `slice_closing_radius` (canonical default 0.049 mm,
+  `PrePass::Slice`'s closing is 40–43 s of base prepass) and
+  `enable_arc_fitting` are the obvious first candidates; `precise_outer_wall`,
+  `only_one_wall_top` and the `wall_maximum_*` family are geometry-affecting but
+  already adjudicated as parity work. Not ticketed: it is a new question, so it
+  needs the human's route decision rather than inheriting ticket 80's authority.
 - **Fan-command reference boundary (graduated from ticket 47, 2026-10-03;
   boundary settled by ticket 46, 2026-10-05).**
   The finalization annotation repair intentionally changed BOTH legs' output:

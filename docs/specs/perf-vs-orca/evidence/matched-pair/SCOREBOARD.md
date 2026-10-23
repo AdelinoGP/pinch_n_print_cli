@@ -60,8 +60,13 @@ claim-holder agreement) plus a gyroid dispatch check on the stderr event stream.
 Uncontrolled by design (disclosed, not matched): speeds/accelerations, seam
 policy, support internals/coordinates, bed size and placement (Orca X1C profile
 is 200x200, PNP defaults 250x250), top/bottom surface patterns, line-width
-resolution of `0` (Orca auto) vs 0.4 mm, skirt/brim details. Geometry parity is
-out of scope for this map; output is disclosed evidence only.
+resolution of `0` (Orca auto) vs 0.4 mm, skirt/brim details, and **path
+`resolution`** — Orca's `resolution = 0.01 mm` slices contours simplified before
+walls and infill are generated (`PerimeterGenerator`'s `surface_simplify_resolution`,
+`Fill.cpp`) and has **no** PnP counterpart (PnP's tolerances are emission-time
+only). Measured worth on Orca's own wall: **+9.5 % to +65.2 %** across the eight
+cells, median +40.2 % ([t80](../t80-resolution-fairness/FINDINGS.md)). Geometry
+parity is out of scope for this map; output is disclosed evidence only.
 
 ## Protocol
 
