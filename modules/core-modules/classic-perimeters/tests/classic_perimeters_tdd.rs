@@ -26,6 +26,7 @@ fn make_square(side_mm: f32) -> ExPolygon {
 /// their explicit value wins.
 fn baseline_config() -> ConfigViewBuilder {
     ConfigViewBuilder::new()
+        .float("resolution", 0.01)
         .float("nozzle_diameter", 0.4)
         .float("layer_height", 0.2)
         .float("bridge_line_width", 0.0)

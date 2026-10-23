@@ -26,6 +26,15 @@ max-ir-schema     = "5.0.0"
 
 [config.schema]
 
+[config.schema.resolution]
+type    = "float"
+default = 0.01
+min     = 0.0
+unit    = "mm"
+display = "Resolution"
+description = "Slicing-time contour simplification — Douglas-Peucker tolerance applied to the region contour and to each hole before wall generation, and again to the inner contour before the infill area is published (mm). OrcaSlicer `ExPolygon::simplify_p` at `surface_simplify_resolution` / `m_scaled_resolution`. Canonical clamps values below 0.001 mm to 0.001 mm (`DynamicPrintConfig::normalize_fdm`), so zero means the 1 um floor, not \"off\"."
+group   = "Quality"
+
   # ── Module error codes (ModuleError.code; module-specific per WIT docs) ──
   #   1 = ERR_NEGATIVE_SPACING (D-162, fatal): a wall line width is too small
   #       for the layer height — line_width_to_spacing produced a non-positive

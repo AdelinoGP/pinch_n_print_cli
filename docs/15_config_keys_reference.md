@@ -86,6 +86,7 @@ is the authoritative catalog of their defaults and ranges.
 | `overhang_reverse_internal_only` | bool | `false` | — | — | `arachne-perimeters` |
 | `overhang_reverse_threshold` | float_or_percent | `"0.0"` | [0.0, 10.0] | — | `arachne-perimeters` |
 | `precise_outer_wall` | bool | `false` | — | — | `arachne-perimeters` |
+| `resolution` | float | `0.01` | >= 0.0 | — | `arachne-perimeters` |
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | — | `arachne-perimeters` |
 | `sparse_infill_density` | float | `20.0` | [0.0, 100.0] | — | `arachne-perimeters` |
 | `spiral_vase` | bool | `false` | — | — | `arachne-perimeters` |
@@ -132,6 +133,7 @@ is the authoritative catalog of their defaults and ranges.
 | `overhang_reverse_internal_only` | bool | `false` | — | — | `classic-perimeters` |
 | `perimeter_arc_tolerance` | float | `0.0125` | [0.0, 1.0] | — | `classic-perimeters` |
 | `precise_outer_wall` | bool | `false` | — | — | `classic-perimeters` |
+| `resolution` | float | `0.01` | >= 0.0 | — | `classic-perimeters` |
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | — | `classic-perimeters` |
 | `slice_has_paint` | bool | `false` | — | — | `classic-perimeters` |
 | `smaller_perimeter_line_width` | float | `0.25` | [0.05, 2.0] | — | `classic-perimeters` |
@@ -444,6 +446,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `gcode_xy_decimals` | int | `3` | [1, 6] (X / Y / Z token formatting) | — | `resolved_config.rs::ResolvedConfig` |
 | `infill_resolution` | float | `0.04` | >= 0 (D-P tolerance for infill / bridge / top / bottom) | — | `resolved_config.rs::ResolvedConfig` |
 | `min_segment_length` | float | `0.05` | >= 0 (short-segment dropper) | — | `resolved_config.rs::ResolvedConfig` |
+| `resolution` | float | `0.01` | >= 0 (clamped up to 0.001 by the resolver, canonical `normalize_fdm`) (slicing-time contour simplification before walls / infill (OrcaSlicer `resolution`)) | — | `resolved_config.rs::ResolvedConfig` |
 | `slice_closing_radius` | float | `0.049` | >= 0 (per-layer Clipper2 close) | — | `resolved_config.rs::ResolvedConfig` |
 | `sparse_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:sparse-fill (packet 37)) | — | `resolved_config.rs::ResolvedConfig` |
 | `support_bottom_z_distance` | float | `0.2` | >= 0 | — | `resolved_config.rs::ResolvedConfig` |

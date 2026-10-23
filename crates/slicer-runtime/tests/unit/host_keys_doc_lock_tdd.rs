@@ -33,6 +33,9 @@ fn resolved_num(c: &ResolvedConfig, key: &str) -> Option<f64> {
         "bottom_shell_layers" => c.bottom_shell_layers as f64,
         "gcode_xy_decimals" => c.gcode_xy_decimals as f64,
         "gcode_resolution" => c.gcode_resolution as f64,
+        // Carried in `extensions` (a typed field would break the frozen
+        // RegionMapIR layout); see `ResolvedConfig::resolution`.
+        "resolution" => f64::from(c.resolution()),
         "infill_resolution" => c.infill_resolution as f64,
         "support_resolution" => c.support_resolution as f64,
         "support_threshold_angle" => c.support_threshold_angle as f64,

@@ -39,6 +39,7 @@ const BASE_WALL_COUNT: usize = 2;
 /// gate. Tests layer their own keys on top so the explicit value wins.
 fn base_config() -> ConfigViewBuilder {
     ConfigViewBuilder::new()
+        .float("resolution", 0.01)
         .float("layer_height", 0.2)
         .float("nozzle_diameter", 0.4)
         .float("line_width", 0.45)
@@ -132,6 +133,7 @@ fn only_one_wall_top_second_pass() {
     const MAX_BEAD: i64 = 6; // -> 3 walls in the naive single pass ({0,1,2})
 
     let naive_config = ConfigViewBuilder::new()
+        .float("resolution", 0.01)
         .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
         .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
         .int("wall_count", BASE_WALL_COUNT as i64)
@@ -164,6 +166,7 @@ fn only_one_wall_top_second_pass() {
         .float("min_width_top_surface", 0.0)
         .build();
     let second_config = ConfigViewBuilder::new()
+        .float("resolution", 0.01)
         .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
         .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
         .int("wall_count", BASE_WALL_COUNT as i64)

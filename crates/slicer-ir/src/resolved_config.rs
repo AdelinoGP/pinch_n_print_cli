@@ -324,6 +324,27 @@ impl ResolvedConfig {
 }
 
 impl ResolvedConfig {
+    /// Slicing-time contour simplification in mm (OrcaSlicer `resolution`).
+    ///
+    /// Carried in [`ResolvedConfig::extensions`] rather than as a fixed typed
+    /// field: `RegionMapIR` interns this struct, so a new typed field changes the
+    /// Postcard layout and breaks the frozen 3.0.0 fixture (the same constraint
+    /// that reverted the packet-10 fixed-field addition — see
+    /// `crates/slicer-ir/tests/region_map_versioned_decode_tdd.rs`). An absent
+    /// key reads as [`DEFAULT_RESOLUTION_MM`].
+    ///
+    /// The resolver applies canonical's [`RESOLUTION_FLOOR_MM`] clamp
+    /// (`DynamicPrintConfig::normalize_fdm`) after the scope stack is assembled,
+    /// so a caller never sees a value below the floor.
+    #[must_use]
+    pub fn resolution(&self) -> f32 {
+        match self.extensions.get("resolution") {
+            Some(ConfigValue::Float(value)) => *value as f32,
+            Some(ConfigValue::Int(value)) => *value as f32,
+            _ => DEFAULT_RESOLUTION_MM,
+        }
+    }
+
     /// Effective `filament_max_volumetric_speed` in mm³/s for the selected
     /// tool, read from the [`ResolvedConfig::extensions`] carrier.
     ///
@@ -2135,6 +2156,21 @@ macro_rules! __drc {
 
 // ── Field declarations: the single source of truth ─────────────────────────
 
+/// Canonical default of OrcaSlicer's `resolution` key, in millimetres.
+///
+/// `PrintConfig.cpp`'s `PrintConfigDef::init_fff_params` declares `resolution`
+/// as `coFloat` with `def->min = 0` and default `0.01`.
+pub const DEFAULT_RESOLUTION_MM: f32 = 0.01;
+
+/// Canonical lower clamp of `resolution`, in millimetres.
+///
+/// `DynamicPrintConfig::normalize_fdm` raises any explicitly-set value to at
+/// least this floor ("Resolution will be above 1um"), so "disabled" is not
+/// expressible in canonical and must not be expressible here. The config
+/// resolver applies this clamp after the scope stack is assembled, so the
+/// disclosed value is always the applied one.
+pub const RESOLUTION_FLOOR_MM: f32 = 0.001;
+
 declare_resolved_config! {
     // Geometry
     /// Layer height in millimeters.
@@ -3022,6 +3058,40 @@ mod config_map_parity_tests {
             arachne_min_feature_size: Some(0.25),
             ..ResolvedConfig::default()
         }
+    }
+
+    /// `resolution` rides in the `extensions` carrier (a typed field would break
+    /// the frozen `RegionMapIR` layout), so pin that it still reaches the config
+    /// map — the appendix and the per-module `ConfigView` both read it there —
+    /// and that two configs differing only in it are unequal.
+    #[test]
+    fn resolution_extension_reaches_the_config_map_and_participates_in_eq() {
+        let mut coarse = ResolvedConfig::default();
+        coarse
+            .extensions
+            .insert("resolution".into(), ConfigValue::Float(0.01));
+        let mut coarse_twin = ResolvedConfig::default();
+        coarse_twin
+            .extensions
+            .insert("resolution".into(), ConfigValue::Float(0.01));
+        let mut fine = ResolvedConfig::default();
+        fine.extensions
+            .insert("resolution".into(), ConfigValue::Float(0.03));
+
+        assert_eq!(coarse, coarse_twin);
+        assert_ne!(coarse, fine);
+        assert!((coarse.resolution() - 0.01).abs() < 1e-6);
+        assert!((fine.resolution() - 0.03).abs() < 1e-6);
+        assert_eq!(
+            coarse.to_config_map().get("resolution"),
+            Some(&ConfigValue::Float(0.01)),
+            "the appendix and module views read the key from the merged map"
+        );
+    }
+
+    #[test]
+    fn resolution_absent_reads_as_the_canonical_default() {
+        assert!((ResolvedConfig::default().resolution() - 0.01).abs() < 1e-6);
     }
 
     #[test]

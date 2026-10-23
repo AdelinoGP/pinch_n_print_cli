@@ -25,6 +25,7 @@ use classic_perimeters::ClassicPerimeters;
 /// pre-migration fallback behavior exactly.
 fn config_1_wall() -> ConfigView {
     ConfigViewBuilder::new()
+        .float("resolution", 0.01)
         .float("nozzle_diameter", 0.4)
         .float("layer_height", 0.2)
         .float("bridge_line_width", 0.0)
@@ -70,6 +71,7 @@ fn config_1_wall() -> ConfigView {
 /// Helper: default config with wall_count=2 for inner wall tests.
 fn config_2_walls() -> ConfigView {
     ConfigViewBuilder::new()
+        .float("resolution", 0.01)
         .float("nozzle_diameter", 0.4)
         .float("layer_height", 0.2)
         .float("bridge_line_width", 0.0)

@@ -746,11 +746,12 @@ const ORCA_CONFIG_ALIAS_KEYS: &[(&str, &str)] = &[
     // gyroid-/rectilinear-infill read `infill_angle`; Orca names the same
     // degrees value `infill_direction`.
     ("infill_direction", "infill_angle"),
-    // Host precision key. Orca has one global `resolution`; the adjudicated
-    // PnP counterpart is `gcode_resolution` (03-asset-scoped-gap.md), whose
-    // resolved default is `0.0125` (`ResolvedConfig::gcode_resolution`), not
-    // Orca's snapshot default `0.01`.
-    ("resolution", "gcode_resolution"),
+    // `resolution` is a real PnP key now (slicing-time contour simplification),
+    // so it renders itself. It used to alias `gcode_resolution`, which is a
+    // *different* mechanism (emission-time per-role Douglas-Peucker): the
+    // feature-gap tracker's `resolution` <-> `gcode_resolution` adjudication
+    // ("exact") is superseded by perf-vs-orca ticket 80's measurement.
+    ("resolution", "resolution"),
     // Legacy Slic3r spelling of the support toggle; the resolved bool is
     // `enable_support`.
     ("support_material", "enable_support"),
@@ -779,7 +780,7 @@ fn render_appendix_alias_value(value: &ConfigValue, appendix_key: &str) -> Optio
     match value {
         ConfigValue::Bool(b) => Some(u8::from(*b).to_string()),
         ConfigValue::Int(i) => Some(i.to_string()),
-        ConfigValue::Float(f) => Some(format!("{f}")),
+        ConfigValue::Float(f) => Some(format_config_float(*f)),
         ConfigValue::String(s) => Some(translate_appendix_enum(appendix_key, s).to_string()),
         ConfigValue::List(_) | ConfigValue::Percent(_) | ConfigValue::FloatOrPercent { .. } => None,
     }
@@ -1299,15 +1300,21 @@ mod tests {
     }
 
     #[test]
-    fn config_block_discloses_distinct_resolved_precision_and_infill_direction() {
-        let cfg = ResolvedConfig {
+    fn config_block_discloses_resolution_as_its_own_key_not_gcode_resolution() {
+        // `resolution` is the slicing-time contour tolerance; `gcode_resolution`
+        // is the emission-time per-role Douglas-Peucker tolerance. Rendering the
+        // latter under the former's name was the disclosure lie perf-vs-orca
+        // ticket 80 measured (the appendix claimed a matched setting the job did
+        // not have); each key now discloses only its own value.
+        let mut cfg = ResolvedConfig {
             gcode_resolution: 0.025,
             infill_resolution: 0.08,
             infill_angle: 30.0,
             ..ResolvedConfig::default()
         };
-        let mut map = resolved_config_to_map(&cfg);
-        map.insert("resolution".into(), ConfigValue::Float(0.5));
+        cfg.extensions
+            .insert("resolution".into(), ConfigValue::Float(0.03));
+        let map = resolved_config_to_map(&cfg);
         let block = serialize_config_block(&map, &filament_colour_csv(1), GcodeFlavor::Marlin);
         let resolution: Vec<_> = block
             .lines()
@@ -1317,7 +1324,7 @@ mod tests {
             .lines()
             .filter(|line| line.starts_with("; infill_direction = "))
             .collect();
-        assert_eq!(resolution, ["; resolution = 0.025"], "{block}");
+        assert_eq!(resolution, ["; resolution = 0.03"], "{block}");
         assert_eq!(direction, ["; infill_direction = 30"], "{block}");
     }
 

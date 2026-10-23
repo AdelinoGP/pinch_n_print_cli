@@ -23,6 +23,7 @@ fn config_one_outer_wall() -> ConfigView {
     // fixture's `line_width` (the already-expanded base width), matching the
     // pre-migration fallback behavior exactly.
     ConfigViewBuilder::new()
+        .float("resolution", 0.01)
         .float("nozzle_diameter", 0.4)
         .float("layer_height", 0.2)
         .float("bridge_line_width", 0.0)

@@ -52,6 +52,7 @@ overhang_4_4_speed         = { default = 0.0,   range = ">= 0", note = "0 = no o
 top_shell_layers        = { default = 3,      range = "[1, 10]", note = "deviates from OrcaSlicer's 4" }
 bottom_shell_layers     = { default = 3,      range = "[1, 10]" }
 gcode_resolution        = { default = 0.0125, range = ">= 0", note = "D-P tolerance for walls / brim" }
+resolution              = { default = 0.01,   range = ">= 0 (clamped up to 0.001 by the resolver, canonical `normalize_fdm`)", note = "slicing-time contour simplification before walls / infill (OrcaSlicer `resolution`)" }
 infill_resolution       = { default = 0.04,   range = ">= 0", note = "D-P tolerance for infill / bridge / top / bottom" }
 support_resolution      = { default = 0.0375, range = ">= 0", note = "D-P tolerance for support / interface" }
 min_segment_length      = { default = 0.05,   range = ">= 0", note = "short-segment dropper" }

@@ -23,6 +23,7 @@ use slicer_sdk::views::SliceRegionView;
 /// before being stored (see `arachne-perimeters.toml`).
 fn make_config(detect_thin_wall_on: bool) -> ConfigView {
     ConfigViewBuilder::new()
+        .float("resolution", 0.01)
         .int("wall_count", 2)
         .float("inner_wall_line_width", 0.4)
         .float("outer_wall_line_width", 0.4)

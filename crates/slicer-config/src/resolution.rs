@@ -628,6 +628,17 @@ pub fn resolve_scope_stack(
     seed_registry_defaults(registry, &mut config)?;
 
     expand_automatic_values(registry, &mut config, expansion, target.tool_index)?;
+    // Canonical `DynamicPrintConfig::normalize_fdm` raises an explicitly-set
+    // `resolution` below 1 µm to 1 µm ("Resolution will be above 1um"). Applied
+    // here, after every scope has landed, so the value the appendix discloses and
+    // the tolerance the perimeter modules apply are the same number. The key
+    // rides in the `extensions` carrier (see `ResolvedConfig::resolution`).
+    if config.resolution() < slicer_ir::RESOLUTION_FLOOR_MM {
+        config.extensions.insert(
+            "resolution".to_owned(),
+            slicer_ir::ConfigValue::Float(f64::from(slicer_ir::RESOLUTION_FLOOR_MM)),
+        );
+    }
     Ok(config)
 }
 

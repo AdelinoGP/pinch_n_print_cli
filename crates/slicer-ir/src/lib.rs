@@ -27,7 +27,7 @@ pub use polygon_predicate::{point_in_contour_winding, point_in_polygon_winding};
 pub use prepared_regions::PreparedRegionData;
 pub use resolved_config::{
     classify_declared_key, is_declared_float_or_percent_key, ConfigResolutionError,
-    DeclaredKeyKind, ResolvedConfig,
+    DeclaredKeyKind, ResolvedConfig, DEFAULT_RESOLUTION_MM, RESOLUTION_FLOOR_MM,
 };
 pub use slice_ir::{AggregatedRegionSplitEntry, RegionSplitValueType};
 pub use stage_io::{

@@ -22,6 +22,7 @@
 pub mod builders;
 pub mod config_predicates;
 pub mod config_resolution;
+pub mod contour_resolution;
 pub mod coords;
 pub mod error;
 pub mod host;

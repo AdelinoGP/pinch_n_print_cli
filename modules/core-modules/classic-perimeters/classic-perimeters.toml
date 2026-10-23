@@ -25,6 +25,14 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "5.0.0"
 
 [config.schema]
+[config.schema.resolution]
+type    = "float"
+default = 0.01
+min     = 0.0
+unit    = "mm"
+display = "Resolution"
+description = "Slicing-time contour simplification — Douglas-Peucker tolerance applied to the region contour and to each hole before wall generation (mm). OrcaSlicer `ExPolygon::simplify_p` at `surface_simplify_resolution`, called immediately before the wall pass. Canonical clamps values below 0.001 mm to 0.001 mm (`DynamicPrintConfig::normalize_fdm`), so zero means the 1 um floor, not \"off\"."
+group   = "Quality"
 [config.schema.wall_count]
 type    = "int"
 default = 3

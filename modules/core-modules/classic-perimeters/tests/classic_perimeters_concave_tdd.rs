@@ -35,6 +35,7 @@ fn concave_region_emits_outer_wall_without_panic() {
     // fixture's `line_width` (the already-expanded base width), matching the
     // pre-migration fallback behavior exactly.
     let cfg = ConfigViewBuilder::new()
+        .float("resolution", 0.01)
         .float("nozzle_diameter", 0.4)
         .float("layer_height", 0.2)
         .float("bridge_line_width", 0.0)
