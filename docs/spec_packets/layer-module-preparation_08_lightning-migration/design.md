@@ -71,7 +71,7 @@ Each deletion step owns every constructor, literal, exhaustive match, old-value 
 
 ### D5 — The evidence harness is the fixture, not a status field (was B5)
 
-The former non-zero `python -c … sys.exit('BLOCKED …')` hold is deleted. Its replacement is the baseline fixture plus the recorder test, which fail when the baseline is missing, stale (input digest mismatch), non-deterministic (two runs differ) or incomplete (a case absent). Nothing in this packet reads a gate status to decide eligibility, so no synthetic status can substitute for evidence.
+The former non-zero `python -c … sys.exit('BLOCKED …')` hold is deleted. Its replacement is the baseline fixture plus its validator, which fail when the baseline is missing, stale (input digest mismatch) or incomplete (a case absent). Capture-time determinism was the recorder's own condition and is no longer re-derivable from this tree: the recorder was retired with the producer it drove (Step 14f), and AC-1's approved 2026-10-23 amendment scopes the validator to the committed artifact rather than a re-run. Nothing in this packet reads a gate status to decide eligibility, so no synthetic status can substitute for evidence.
 
 ### D6 — Failure-path reachability is module-owned (new)
 
