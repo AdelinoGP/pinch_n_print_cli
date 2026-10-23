@@ -89,7 +89,7 @@ AC-N2's `57401`/`57410`/`57411` are produced **inside** the module: `57401` come
 
 Equivalence is asserted at three points, and the distinction matters:
 
-1. **Input identity** — the baseline records `sha256` of the exact inputs the producer consumed, computed over the constructed `Vec<SliceIR>` and the constructed `ResolvedConfig` (all five scalars, `sparse_fill_holder` included); a differing input hash is a plumbing defect, not an algorithm verdict.
+1. **Input identity** — the baseline records `sha256` of the exact inputs the producer consumed, computed over the constructed `Vec<SliceIR>` and the constructed `ResolvedConfig` (all five scalars, `sparse_fill_holder` included); a differing input hash is a plumbing defect, not an algorithm verdict. **Implemented note (AC-2):** the arm's digest is computed over the `SliceRunOptions::config_overrides` the run is handed, not over a `ResolvedConfig` read back from the adapter. A dropped or rewritten override therefore diverges — the plumbing defect this point exists to catch — but a defect *inside* the adapter's resolution of those already-supplied scalars would not move the digest, because the module publishes no resolved-config view. That residual limit is recorded in `docs/07_implementation_status.md` TASK-577 and Step 14f.
 2. **Plan identity** — key set equality with full identity including ordered `variant_chain`, edge multiset equality with multiplicity, grounding/root witness set equality.
 3. **Output identity** — per caller, the emitted segment multiset, role `ExtrusionRole::SparseInfill`, widths, and the `variant_chain` that reached the emitted region.
 

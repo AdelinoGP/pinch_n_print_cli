@@ -68,7 +68,9 @@ use slicer_runtime::{
     PreparationLifecycleStatus, PreparationViewRequest, PreparationVisualCapture,
     PreparationVisualCaptureError, SliceRunOptions, SliceRuntimeExtensions,
 };
-use slicer_schema::preparation::{PreparationDeclaration, PreparationTransportError};
+use slicer_schema::preparation::{
+    PreparationDeclaration, PreparationProjectionError, PreparationTransportError,
+};
 use slicer_schema::PreparationExportSchema;
 use slicer_sdk::native::NativePreparedStageEntry;
 use slicer_sdk::preparation::PreparationProjectionGeometry;
@@ -2055,6 +2057,30 @@ impl PreparationLifecycleObserver for Trace {
     }
 }
 
+/// Records lifecycle events **and** requests cancellation the moment the
+/// module's preparation reports `Ready` while holding pieces.
+///
+/// AC-3 requires cleanup accounting after cancellation. A flag set before the
+/// run starts never allocates a plan, so it proves nothing about disposal; this
+/// observer raises the flag only after publication has committed bytes.
+struct CancelAfterPublication {
+    trace: Arc<Trace>,
+    flag: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl PreparationLifecycleObserver for CancelAfterPublication {
+    fn on_preparation_lifecycle(&self, record: &PreparationLifecycleRecord) {
+        if record.module_id.as_str() == MODULE_ID
+            && record.lifecycle_phase == PreparationLifecyclePhase::Preparation
+            && record.status == PreparationLifecycleStatus::Ready
+            && !record.pieces.is_empty()
+        {
+            self.flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        PreparationLifecycleObserver::on_preparation_lifecycle(&*self.trace, record);
+    }
+}
+
 fn extensions(
     views: Vec<PreparationViewRequest>,
     prepared_native: Vec<(String, NativePreparedStageEntry, PreparationExportSchema)>,
@@ -2303,6 +2329,8 @@ fn captured_slices(capture: &PreparationVisualCapture) -> BTreeMap<u32, SliceIR>
 /// this digest, which is what lets AC-2 report an input defect rather than an
 /// algorithm difference. `module_plan_matches_recorded_baseline` carries the
 /// control that perturbs one supplied scalar and requires the digest to move.
+/// It cannot see the scalars the module resolves from those overrides; that
+/// would need the module to publish them (`docs/07` TASK-577 records the limit).
 fn inputs_digest(config: &HashMap<String, ConfigValue>, slices: &BTreeMap<u32, SliceIR>) -> String {
     let float = |key: &str| -> f64 {
         match config.get(key) {
@@ -2840,21 +2868,68 @@ fn fresh_consumers_emit_baseline_segments() {
             case.case_id
         );
 
-        // Cancellation: the run is cancelled before it can publish, and cleanup
-        // still reports zero retained bytes.
-        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        // Cancellation after allocation: the flag is raised only once the module
+        // reports a Ready preparation that holds pieces, so this leg exercises
+        // disposal of an already-committed plan. A pre-set flag would cancel
+        // before anything was allocated and prove nothing about cleanup.
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let mut cancel_options =
             case_options(&root, case_input(&root, &baseline, case), case, false);
         cancel_options.cancel_flag = Some(Arc::clone(&cancel));
         let cancel_trace = Arc::new(Trace::default());
-        let error = run_slice_preparation_capture(
+        let cancel_observer = Arc::new(CancelAfterPublication {
+            trace: Arc::clone(&cancel_trace),
+            flag: Arc::clone(&cancel),
+        });
+        let error = run_slice_with_runtime_extensions(
             cancel_options,
-            extensions(Vec::new(), Vec::new(), Arc::clone(&cancel_trace)),
+            SliceRuntimeExtensions::new(Vec::new(), Vec::new(), Vec::new(), Some(cancel_observer)),
         )
-        .expect_err("a pre-set cancel flag must cancel the print");
+        .expect_err("cancellation after publication must abort the print");
+        assert!(
+            cancel.load(std::sync::atomic::Ordering::SeqCst),
+            "case `{}`: the cancellation trigger never fired, so this leg would be vacuous",
+            case.case_id
+        );
         assert!(
             format!("{error}").to_lowercase().contains("cancel"),
             "case `{}`: cancellation must be reported as cancellation: {error}",
+            case.case_id
+        );
+        let allocation = cancel_trace
+            .records()
+            .into_iter()
+            .find(|record| {
+                record.module_id.as_str() == MODULE_ID
+                    && record.lifecycle_phase == PreparationLifecyclePhase::Preparation
+                    && record.status == PreparationLifecycleStatus::Ready
+                    && !record.pieces.is_empty()
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "case `{}`: no Ready preparation holding pieces was observed, so cancellation \
+                     was never exercised against an allocated plan",
+                    case.case_id
+                )
+            });
+        assert!(
+            allocation.retained_bytes > 0,
+            "case `{}`: the cancelled preparation must have held bytes",
+            case.case_id
+        );
+        let disposals: Vec<_> = cancel_trace
+            .records()
+            .into_iter()
+            .filter(|record| record.status == PreparationLifecycleStatus::Disposed)
+            .collect();
+        assert!(
+            !disposals.is_empty(),
+            "case `{}`: cancellation must record actual disposal, not merely an absent one",
+            case.case_id
+        );
+        assert!(
+            disposals.iter().all(|record| record.retained_bytes == 0),
+            "case `{}`: cancellation releases every piece",
             case.case_id
         );
         assert_eq!(
@@ -3077,8 +3152,9 @@ fn typed_projection_is_atomic_and_neutral() {
     );
     assert!(with.layer_count > 0, "the captured slice must emit layers");
 
-    // A requested-but-undeclared view is the named row-06 failure, never a silent
-    // empty scene. This leg is real today and stays real after the migration.
+    // A requested-but-undeclared view is a named row-06 failure, never a silent
+    // empty scene. This is the undeclared half; the declared-but-unpublished
+    // half is the `MissingScene` leg below.
     let options = case_options(&root, case_input(&root, &baseline, case), case, false);
     let error = run_visual(
         options,
@@ -3090,14 +3166,47 @@ fn typed_projection_is_atomic_and_neutral() {
         vec![0],
         Arc::new(Trace::default()),
     )
-    .expect_err("a requested-but-missing scene must fail closed");
+    .expect_err("a requested-but-undeclared view must fail closed");
     assert!(
         matches!(
             error,
             PreparationVisualCaptureError::UnknownView { ref module_id, ref view }
                 if module_id.as_str() == MODULE_ID && view == "lightning_plan_absent"
         ),
-        "a requested-but-missing scene must be the named row-06 view error: {error:?}"
+        "a requested-but-undeclared view must be the named row-06 view error: {error:?}"
+    );
+
+    // A declared-but-unpublished scene is `MissingScene`, not `UnknownView`:
+    // `missing_scene` keeps the manifest declaration and the plan pieces and
+    // skips only the projection publication, so the request reaches a completed
+    // owner with nothing published. Without this leg the AC's "requested-but-
+    // missing scene" claim is exercised only by the undeclared case, which the
+    // host rejects before it ever looks for a scene.
+    // test-quality: the diagnostic key is the only real-adapter trigger for the
+    // module-owned missing-scene publication path named by AC-4; it is inert at
+    // its default and never reaches the kernel.
+    let options = diagnostic_options(&root, &baseline, case, "missing_scene");
+    let error = run_visual(
+        options,
+        vec![PreparationViewRequest {
+            module_id: MODULE_ID.into(),
+            view: VIEW.into(),
+        }],
+        Vec::new(),
+        vec![0],
+        Arc::new(Trace::default()),
+    )
+    .expect_err("a declared view with no published scene must fail closed");
+    assert!(
+        matches!(
+            error,
+            PreparationVisualCaptureError::ProjectionRejected {
+                ref module_id,
+                ref view,
+                reason: PreparationProjectionError::MissingScene,
+            } if module_id.as_str() == MODULE_ID && view == VIEW
+        ),
+        "a declared-but-unpublished scene must be the named MissingScene rejection: {error:?}"
     );
 
     // Explicit empty scene (D6 `empty_plan`): the module publishes one empty

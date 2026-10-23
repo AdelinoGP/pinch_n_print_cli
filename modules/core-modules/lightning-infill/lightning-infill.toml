@@ -119,10 +119,10 @@ group   = "Infill"
 # Ready/no-work case.
 [config.schema.prepared_plan_diagnostic]
 type        = "enum"
-values      = ["none", "missing_piece", "malformed_piece", "unsupported_version", "empty_plan"]
+values      = ["none", "missing_piece", "malformed_piece", "unsupported_version", "empty_plan", "missing_scene"]
 default     = "none"
 display     = "Prepared plan diagnostic"
-description = "Diagnostic publication mode for whole-print preparation. `none` publishes the normal pieces; the other values stage one named diagnostic output after planning so the module's own decoder and empty-plan paths are reachable without a host injector."
+description = "Diagnostic publication mode for whole-print preparation. `none` publishes the normal pieces; the other values stage one named diagnostic output after planning so the module's own decoder, empty-plan and missing-scene paths are reachable without a host injector."
 group       = "Diagnostics"
 advanced    = true
 

@@ -71,6 +71,11 @@ enum PreparedPlanDiagnostic {
     UnsupportedVersion,
     /// Publish one empty plan per layer and the empty `lightning-plan` scene.
     EmptyPlan,
+    /// Publish the normal pieces but leave the declared `planning_geometry`
+    /// scene unpublished, so the host's `MissingScene` rejection is reachable
+    /// through the real module instead of a fixture guest. The view stays
+    /// declared in the manifest; only this mode's publication is skipped.
+    MissingScene,
 }
 
 impl PreparedPlanDiagnostic {
@@ -91,6 +96,7 @@ impl PreparedPlanDiagnostic {
             "malformed_piece" => Ok(Self::MalformedPiece),
             "unsupported_version" => Ok(Self::UnsupportedVersion),
             "empty_plan" => Ok(Self::EmptyPlan),
+            "missing_scene" => Ok(Self::MissingScene),
             other => Err(ModuleError::fatal(
                 1,
                 format!("unknown {DIAGNOSTIC_KEY} value: {other}"),
@@ -101,7 +107,9 @@ impl PreparedPlanDiagnostic {
     /// The body this mode publishes for one layer.
     fn piece_body(self, plan: &KernelPlan, layer_index: i32) -> Vec<u8> {
         match self {
-            Self::None | Self::MissingPiece => encode_layer_piece(plan, layer_index),
+            Self::None | Self::MissingPiece | Self::MissingScene => {
+                encode_layer_piece(plan, layer_index)
+            }
             Self::MalformedPiece => malformed_piece_body(plan, layer_index),
             Self::UnsupportedVersion => unsupported_version_piece_body(layer_index),
             Self::EmptyPlan => encode_layer_piece(&KernelPlan::default(), layer_index),
@@ -199,12 +207,18 @@ impl LayerPreparation for LightningInfill {
             )?;
         }
 
-        publish_projection(
-            output,
-            &plan,
-            &regions,
-            diagnostic == PreparedPlanDiagnostic::EmptyPlan,
-        )?;
+        // `missing_scene` keeps the pieces and deliberately publishes no scene:
+        // the view stays declared, so the host's request reaches a completed
+        // owner with nothing published and reports `MissingScene` — the
+        // declared-but-unpublished case, not the undeclared-view case.
+        if diagnostic != PreparedPlanDiagnostic::MissingScene {
+            publish_projection(
+                output,
+                &plan,
+                &regions,
+                diagnostic == PreparedPlanDiagnostic::EmptyPlan,
+            )?;
+        }
 
         Ok(())
     }
