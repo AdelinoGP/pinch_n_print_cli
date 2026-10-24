@@ -69,3 +69,8 @@
 # disclosures; preserve their bytes on add/checkout instead of normalizing line
 # endings.
 /docs/specs/perf-vs-orca/evidence/scoreboard-refresh-20261017/** -text whitespace=cr-at-eol
+
+# The t82 fairness-key audit carries eight Orca resolved-config appendices
+# written by `Set-Content` (CRLF) and a generated key table; preserve their
+# bytes on add/checkout instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/t82-fairness-key-audit/** -text whitespace=cr-at-eol

@@ -100,7 +100,61 @@ Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
 
-**Current selection scope (2026-10-23, on the ticket 81 take):** the human's
+**Current selection scope (2026-10-23, on the ticket 82 take):** the human's
+"continue the perf vs orca map" named no ticket; the frontier re-derivation
+found **no open child** (81/81 resolved) and the human selected the
+**Fairness-key parity audit** from the route options.
+[82](issues/82-fairness-key-parity-audit.md) was graduated, claimed and
+**resolved (2026-10-23) as a measurement-only take — no candidate, no timing,
+no production edit**. Eight Orca runs produced a **618-key resolved-config
+appendix per cell** (identical key set in all eight; only `wall_generator`,
+`enable_support` and `print_settings_id` vary by cell) and every key was
+classified: 227 in pre-emission geometry scope, 14 `geometry-differs`, 18
+`absent-material`, 112 equal (value / unit / rename / canonical clamp), 40
+emission-only, 102 absent-and-inert, 332 absent-and-not-geometry.
+
+**Verdict: no third `resolution`-class lever at scale.** The only unmatched
+geometry pair where PnP does materially more work than the matched Orca job is
+the Arachne wall-simplification tolerance pair — `wall_maximum_resolution`
+**0.5 mm vs 0.05 mm** and `wall_maximum_deviation` **0.025 mm vs 0.005 mm**
+(PnP 10x / 5x tighter), Arachne cells only, **magnitude unmeasured**. It is
+already logged as `D-168-ARACHNE-SIMPLIFY-FALLBACKS-TIGHTER-THAN-CANONICAL`
+(re-derive the row from `docs/DEVIATION_LOG.md`) but has never been priced
+against wall, and **the generated deviations table cannot see it**: that table
+compares against `docs/ORCA_CONFIG_REFERENCE.md`, dated 2026-05-19, and **82 of
+the 618 resolved keys postdate the snapshot** — the same blind spot that made
+`resolution` a lucky catch rather than a systematic one. Everything else runs
+in the other direction or is inert: Orca resolves `top_shell_layers` 4 vs PnP 3,
+`support_interface_top_layers` 3 vs 2, `precise_outer_wall` 1 vs 0, and ports
+`ensure_vertical_shell_thickness` / `detect_narrow_internal_solid_infill` /
+tree-support brim that PnP lacks, so the measured ratios **understate** PnP's
+per-unit-work deficit where they differ at all.
+
+**Controls matched in all eight cells:** `resolution = 0.01` (ticket 81's port
+is visible in the appendix) and `slice_closing_radius = 0.049` (same key, same
+default, applied before the resolution simplify — same order as canonical).
+The `slice_closing_radius` half of the fog entry is therefore retired;
+`enable_arc_fitting` remains unexpressible and inert (`= 0` on the matched
+job). **Observations recorded, not defects proven:** `classic-perimeters.toml`
+declares `detect_thin_wall = true` while `arachne-perimeters.toml` declares
+`false` and the emitted block records `0` (two modules, one key, two defaults —
+matched with Orca by accident); `support_interface_bottom_layers` is declared
+`-1` but emits `2`; `brim_width` (8 mm vs 0) is unresolved at the output level
+because both captured cells emit a `Brim` role; and Orca's overhang speed bands
+are live (50/30/10) while PnP's matched config leaves all four at 0, so t20's
+consume-only gate is valid for PnP's job but the two engines are not doing the
+same work there. Evidence:
+[`evidence/t82-fairness-key-audit/`](evidence/t82-fairness-key-audit/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 9/9 negative controls rejected;
+`key-table.csv` carries all 618 rows). Frontier now: the pricing take is
+graduated as
+[83](issues/83-arachne-wall-simplification-tolerance-pricing.md) (open,
+unclaimed) — price the Arachne tolerance match on the four Arachne cells with
+its own pre-declared gate — and the fog carries the snapshot-staleness method
+note. The take order is the human's. Standing paired acceptance and KEEP/DROP
+rules unchanged.
+
+**Previous selection scope (2026-10-23, on the ticket 81 take):** the human's
 "continue the perf vs orca map" named no ticket, so the session took the only
 frontier ticket, [81](issues/81-resolution-slicing-time-contour-simplification.md),
 and **resolved it (2026-10-23, human-approved KEEP)**. Nine decisions were put to
@@ -1007,6 +1061,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Fairness-key parity audit of the matched job](issues/82-fairness-key-parity-audit.md): **resolved (2026-10-23; measurement-only — all 618 resolved keys classified, no candidate, no timing)** — eight Orca runs gave a 618-key resolved appendix per cell; only `wall_generator`, `enable_support` and `print_settings_id` vary. **Verdict: no third `resolution`-class lever at scale.** The one unmatched geometry pair where PnP does materially more work is the Arachne tolerance pair — `wall_maximum_resolution` 0.5 vs 0.05 mm and `wall_maximum_deviation` 0.025 vs 0.005 mm (PnP 10x / 5x tighter), Arachne cells only, magnitude unmeasured, already `D-168` but invisible to the generated deviations table because **82 of the 618 keys postdate its 2026-05-19 upstream snapshot**. Everything else either makes Orca do more (`top_shell_layers` 4 vs 3, `support_interface_top_layers` 3 vs 2, `precise_outer_wall` 1 vs 0, `ensure_vertical_shell_thickness`, `detect_narrow_internal_solid_infill`, tree-support brim), is layer-0-only, shape-only, or inert. **Controls matched in all eight cells:** `resolution = 0.01` and `slice_closing_radius = 0.049` (same key, default and order as canonical), retiring the fog's `slice_closing_radius` half. Observations: `detect_thin_wall` declared `true` by classic-perimeters but emitted `0`; `support_interface_bottom_layers` declared `-1`, emitted `2`; `brim_width` 8 vs 0 unresolved at output level; Orca's overhang bands live while PnP's are 0. Recommended next step is a pricing take on the Arachne match, not implemented here. Evidence: [`evidence/t82-fairness-key-audit/`](evidence/t82-fairness-key-audit/FINDINGS.md) (`verify.py --self-test` exit 0, 9/9 negative controls rejected).
+
 - [Slicing-time contour simplification (`resolution`) port](issues/81-resolution-slicing-time-contour-simplification.md): **resolved (2026-10-23; human-approved KEEP — committed)** — `resolution` (default 0.01 mm, canonical 0.001 mm floor applied in the resolver so the appendix discloses what the modules apply) now runs at four canonical call sites: pre-wall simplify in both perimeter modules (region granularity — PnP has no `Surface` model), the gap `douglas_peucker` before `medial_axis`, the classic innermost contour before the infill boundary, and the arachne infill contour. Canonical's classic inner-part site has no PnP counterpart (recorded, not invented); the `0.2 ×` arc-fitting branch is unexpressible and inert on the matched job. The DP is canonical-exact (closed-ring seeding, `<=` acceptance, strictly-greater tie-break, tolerance converted across the 1e6 → 1e4 units/mm scale); the union runs on `clipper2-rust` against canonical's legacy Clipper 6.4.2 `StrictlySimple` union, so set semantics match and representation does not (disclosed). **Confinement 20/20** on typed IR (`Layer::Slice` identical in all 8 cells, `Layer::Perimeters` differs in all 8, support silhouette identical supports-on). **Campaign: gate met, 8/8 wall-negative and 8/8 CPU-negative** — classic −14.31/−9.00 % (benchy) and −22.24/−10.87 % (base) wall with CPU −18…−27 %; Arachne −0.07…−1.87 % (wall-neutral); `base arachne-off` failed its first six pairs at +2.30 %, stopped by rule, re-ran at −2.77 % (n=12 −1.07 %, spread ±9 — neutral within resolution). Deterministic (one SHA per arm/cell) and the baseline reproduces the t58 reference `34886ccb…`. This is a **geometry-affecting keep**: the byte-identity proof regime is replaced by invariants + confinement + determinism, with new per-cell references in `evidence/t81-resolution-port/campaign/`. Evidence: [`evidence/t81-resolution-port/`](evidence/t81-resolution-port/FINDINGS.md).
 
 - [Resolution-matched fairness premise for the matched job](issues/80-resolution-fairness-premise.md): **resolved (2026-10-22; measurement-only — the job was NOT resolution-matched; disclosure recorded, one candidate graduated)** — Orca's matched profile inherits `resolution = 0.01 mm` and consumes it as a **slicing-time** contour simplification before wall/infill generation (`PerimeterGenerator.cpp`'s `surface_simplify_resolution` → `union_ex(surface.expolygon.simplify_p(...))` and `ex.douglas_peucker(...)`, `Fill.cpp`'s `resolution` read), while PnP implements only emission-time per-role D-P (`gcode_resolution` 0.0125 / `infill_resolution` 0.04 / `support_resolution` 0.0375) and a collinear-only slicer filter. Re-running the same profile at Orca's canonical 0.001 mm floor (`DynamicPrintConfig::normalize_fdm` clamps anything below it, so "disabled" is inexpressible) costs Orca **+58.4 / +65.2 / +32.1 / +47.3 % wall** (benchy classic-off/on, arachne-off/on) and **+37.5 / +42.8 / +9.5 / +30.9 %** (base), median **+40.2 %**, CPU **+21 % to +92 %**, G-code **+9 % to +91 %**, 3 alternating appendix-verified pairs per cell; `base/arachne-off` wall is noise-limited (CPU +46.3 % stable). The default arm reproduces the historical matched Orca bytes (−0.0003 %). Follow-ups: the map's fairness contract now carries the disclosure, and [81](issues/81-resolution-slicing-time-contour-simplification.md) is graduated as **canonical parity work, not an output-preserving optimization**. Evidence: [`evidence/t80-resolution-fairness/`](evidence/t80-resolution-fairness/FINDINGS.md) (`verify.py` exits 0 checkout-only with 5/5 negative controls rejected).
@@ -1151,23 +1207,26 @@ Standing decisions for this effort (2026-09-22):
 
 ## Not yet specified
 
-- **Work-relevant key parity of the matched job (surfaced 2026-10-22 by
-  [ticket 80](issues/80-resolution-fairness-premise.md); `resolution` itself
-  closed 2026-10-23 by
-  [ticket 81](issues/81-resolution-slicing-time-contour-simplification.md)).**
-  `resolution` turned out to be a *slicing-time* work lever the map had silently
-  left unmatched while believing the emission split keys covered it. That one is
-  now ported and matched; **the general question survives**: enumerate the keys
-  the matched Orca vendor profile actually resolves (from the G-code appendix,
-  not the profile file) that change pre-emission geometry work, and check PnP's
-  counterpart **and its default** on the matched job. `slice_closing_radius`
-  (canonical default 0.049 mm, `PrePass::Slice`'s closing is 40–43 s of base
-  prepass) is the obvious next candidate, and `enable_arc_fitting` matters only
-  if arc fitting is ever ported (it halves `resolution`'s tolerance — see ticket
-  81's disclosures). `precise_outer_wall`, `only_one_wall_top` and the
-  `wall_maximum_*` family are geometry-affecting but already adjudicated as
-  parity work. Not ticketed: it is a new question, so it needs the human's route
-  decision rather than inheriting ticket 81's authority.
+- **Fairness machinery reads a stale upstream snapshot (surfaced 2026-10-23 by
+  [ticket 82](issues/82-fairness-key-parity-audit.md)).** The generated
+  *Deviations from OrcaSlicer* table in `docs/15_config_keys_reference.md` (27
+  rows) compares PnP defaults against `docs/ORCA_CONFIG_REFERENCE.md`, dated
+  **2026-05-19**. Ticket 82 measured **82 of the 618 keys the matched job
+  resolves absent from that snapshot**, including both Arachne tolerance keys —
+  which is why the deviation that makes PnP do 10x/5x more Arachne wall
+  simplification never appeared in the table. Any future fairness audit
+  inherits this blind spot: the matched job's own G-code appendix is the only
+  authority for what the comparison engine resolves. Regenerating the snapshot
+  (or making the generator read an appendix) is method work, not route work;
+  it graduates only with its own reason.
+- **`enable_arc_fitting` is unexpressible and inert on the matched job
+  (settled 2026-10-23 by [ticket 82](issues/82-fairness-key-parity-audit.md)).**
+  Orca resolves `enable_arc_fitting = 0` in all eight cells, so there is no work
+  difference today. It matters only if arc fitting is ever ported, because it
+  halves `resolution`'s tolerance
+  ([ticket 81](issues/81-resolution-slicing-time-contour-simplification.md)'s
+  disclosures). No action while it stays 0.
+
 - **Fan-command reference boundary (graduated from ticket 47, 2026-10-03;
   boundary settled by ticket 46, 2026-10-05).**
   The finalization annotation repair intentionally changed BOTH legs' output:
