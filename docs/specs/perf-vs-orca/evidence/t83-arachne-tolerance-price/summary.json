@@ -1,0 +1,1379 @@
+{
+ "gate": {
+  "wall_floor_pct_of_cell_wall": 0.8,
+  "material_in_any_cell": false,
+  "cells": []
+ },
+ "runs": {
+  "base-arachne-supports-off-canonical-r1": {
+   "fixture": "base",
+   "cell": "arachne-supports-off",
+   "arm": "canonical",
+   "repeat": 1,
+   "order_index": 9,
+   "process_wall_s": 93.7334205,
+   "process_cpu_s": 751.453125,
+   "cpu_wall_ratio": 8.016917775874829,
+   "slice_elapsed_ms": 92036,
+   "phases_ms": {
+    "validation": 86,
+    "prepass": 80175,
+    "per_layer": 9281,
+    "postpass": 1213
+   },
+   "per_layer_ms": 9281,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 87,
+    "com.core.arachne-perimeters": 50602,
+    "com.core.fuzzy-skin": 487,
+    "com.core.seam-placer": 497,
+    "com.core.raft-default": 31818,
+    "com.core.gyroid-infill": 852,
+    "com.core.lightning-infill": 670,
+    "com.core.rectilinear-infill": 705,
+    "com.core.top-surface-ironing": 656,
+    "com.core.wave-overhangs": 649,
+    "com.core.infill-linker": 5880,
+    "com.core.tree-support": 765,
+    "com.core.support-surface-ironing": 626,
+    "com.core.path-optimization-default": 344
+   },
+   "arachne_accumulated_ms": 50602,
+   "total_per_layer_module_accumulated_ms": 94638,
+   "phase_parallelism": 10.196961534317422,
+   "arachne_fuel": 106766213319,
+   "fuel_total": 161140944025,
+   "arachne_fuel_share_pct": 66.25641544115312,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "c47015cc5a644c88de4df48cc6af6f1a641e3fee28b21d2300c26e2fdc23d049",
+    "bytes": 19131553,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 844,
+     "Inner wall": 844,
+     "Bridge": 77,
+     "Bottom surface": 61,
+     "Sparse infill": 590,
+     "Top surface": 77,
+     "Internal Bridge": 6,
+     "Internal solid infill": 2
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "preprocess_input_outline dropped a feature smaller than epsilon_offset (0.012499 mm) at centroid (124.159167, 101.696667) mm": 1,
+    "open_loop": 82,
+    "malformed_layer_marker": 359
+   }
+  },
+  "base-arachne-supports-off-canonical-r2": {
+   "fixture": "base",
+   "cell": "arachne-supports-off",
+   "arm": "canonical",
+   "repeat": 2,
+   "order_index": 10,
+   "process_wall_s": 92.910182,
+   "process_cpu_s": 735.859375,
+   "cpu_wall_ratio": 7.920115526197118,
+   "slice_elapsed_ms": 91227,
+   "phases_ms": {
+    "validation": 92,
+    "prepass": 79859,
+    "per_layer": 8808,
+    "postpass": 1206
+   },
+   "per_layer_ms": 8808,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 73,
+    "com.core.arachne-perimeters": 47581,
+    "com.core.fuzzy-skin": 424,
+    "com.core.seam-placer": 460,
+    "com.core.raft-default": 30071,
+    "com.core.gyroid-infill": 839,
+    "com.core.lightning-infill": 684,
+    "com.core.rectilinear-infill": 684,
+    "com.core.top-surface-ironing": 668,
+    "com.core.wave-overhangs": 652,
+    "com.core.infill-linker": 5569,
+    "com.core.tree-support": 770,
+    "com.core.support-surface-ironing": 660,
+    "com.core.path-optimization-default": 333
+   },
+   "arachne_accumulated_ms": 47581,
+   "total_per_layer_module_accumulated_ms": 89468,
+   "phase_parallelism": 10.157584014532244,
+   "arachne_fuel": 106766428962,
+   "fuel_total": 161141472258,
+   "arachne_fuel_share_pct": 66.25633207015676,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "c47015cc5a644c88de4df48cc6af6f1a641e3fee28b21d2300c26e2fdc23d049",
+    "bytes": 19131553,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 844,
+     "Inner wall": 844,
+     "Bridge": 77,
+     "Bottom surface": 61,
+     "Sparse infill": 590,
+     "Top surface": 77,
+     "Internal Bridge": 6,
+     "Internal solid infill": 2
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "preprocess_input_outline dropped a feature smaller than epsilon_offset (0.012499 mm) at centroid (124.159167, 101.696667) mm": 1,
+    "open_loop": 82,
+    "malformed_layer_marker": 359
+   }
+  },
+  "base-arachne-supports-off-default-r1": {
+   "fixture": "base",
+   "cell": "arachne-supports-off",
+   "arm": "default",
+   "repeat": 1,
+   "order_index": 8,
+   "process_wall_s": 89.506236,
+   "process_cpu_s": 738.84375,
+   "cpu_wall_ratio": 8.254662278503142,
+   "slice_elapsed_ms": 87922,
+   "phases_ms": {
+    "validation": 94,
+    "prepass": 76885,
+    "per_layer": 8524,
+    "postpass": 1150
+   },
+   "per_layer_ms": 8524,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 38,
+    "com.core.arachne-perimeters": 46899,
+    "com.core.fuzzy-skin": 459,
+    "com.core.seam-placer": 510,
+    "com.core.raft-default": 28634,
+    "com.core.gyroid-infill": 815,
+    "com.core.lightning-infill": 633,
+    "com.core.rectilinear-infill": 636,
+    "com.core.top-surface-ironing": 618,
+    "com.core.wave-overhangs": 621,
+    "com.core.infill-linker": 5286,
+    "com.core.tree-support": 732,
+    "com.core.support-surface-ironing": 568,
+    "com.core.path-optimization-default": 347
+   },
+   "arachne_accumulated_ms": 46899,
+   "total_per_layer_module_accumulated_ms": 86796,
+   "phase_parallelism": 10.182543406851243,
+   "arachne_fuel": 127427912320,
+   "fuel_total": 182205017089,
+   "arachne_fuel_share_pct": 69.9365551815494,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97",
+    "bytes": 20846160,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 844,
+     "Inner wall": 844,
+     "Bridge": 77,
+     "Bottom surface": 61,
+     "Sparse infill": 590,
+     "Top surface": 77,
+     "Internal Bridge": 6,
+     "Internal solid infill": 2
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "preprocess_input_outline dropped a feature smaller than epsilon_offset (0.012499 mm) at centroid (124.159167, 101.696667) mm": 1,
+    "open_loop": 82,
+    "malformed_layer_marker": 359
+   }
+  },
+  "base-arachne-supports-off-default-r2": {
+   "fixture": "base",
+   "cell": "arachne-supports-off",
+   "arm": "default",
+   "repeat": 2,
+   "order_index": 11,
+   "process_wall_s": 96.4229672,
+   "process_cpu_s": 740.890625,
+   "cpu_wall_ratio": 7.683756749190767,
+   "slice_elapsed_ms": 94792,
+   "phases_ms": {
+    "validation": 85,
+    "prepass": 82822,
+    "per_layer": 9369,
+    "postpass": 1300
+   },
+   "per_layer_ms": 9369,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 66,
+    "com.core.arachne-perimeters": 52033,
+    "com.core.fuzzy-skin": 469,
+    "com.core.seam-placer": 536,
+    "com.core.raft-default": 31803,
+    "com.core.gyroid-infill": 854,
+    "com.core.lightning-infill": 670,
+    "com.core.rectilinear-infill": 705,
+    "com.core.top-surface-ironing": 616,
+    "com.core.wave-overhangs": 652,
+    "com.core.infill-linker": 6059,
+    "com.core.tree-support": 728,
+    "com.core.support-surface-ironing": 623,
+    "com.core.path-optimization-default": 358
+   },
+   "arachne_accumulated_ms": 52033,
+   "total_per_layer_module_accumulated_ms": 96172,
+   "phase_parallelism": 10.264916213043014,
+   "arachne_fuel": 127427653146,
+   "fuel_total": 182205889844,
+   "arachne_fuel_share_pct": 69.93607794737058,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97",
+    "bytes": 20846160,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 844,
+     "Inner wall": 844,
+     "Bridge": 77,
+     "Bottom surface": 61,
+     "Sparse infill": 590,
+     "Top surface": 77,
+     "Internal Bridge": 6,
+     "Internal solid infill": 2
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "preprocess_input_outline dropped a feature smaller than epsilon_offset (0.012499 mm) at centroid (124.159167, 101.696667) mm": 1,
+    "open_loop": 82,
+    "malformed_layer_marker": 359
+   }
+  },
+  "base-arachne-supports-on-canonical-r1": {
+   "fixture": "base",
+   "cell": "arachne-supports-on",
+   "arm": "canonical",
+   "repeat": 1,
+   "order_index": 13,
+   "process_wall_s": 208.5130222,
+   "process_cpu_s": 1097.609375,
+   "cpu_wall_ratio": 5.26398477859672,
+   "slice_elapsed_ms": 206374,
+   "phases_ms": {
+    "validation": 100,
+    "prepass": 167606,
+    "per_layer": 17803,
+    "postpass": 19249
+   },
+   "per_layer_ms": 17803,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 96,
+    "com.core.arachne-perimeters": 54728,
+    "com.core.fuzzy-skin": 768,
+    "com.core.seam-placer": 837,
+    "com.core.raft-default": 36189,
+    "com.core.gyroid-infill": 1885,
+    "com.core.lightning-infill": 1721,
+    "com.core.rectilinear-infill": 1661,
+    "com.core.top-surface-ironing": 1668,
+    "com.core.wave-overhangs": 1687,
+    "com.core.infill-linker": 5663,
+    "com.core.tree-support": 58304,
+    "com.core.support-surface-ironing": 1392,
+    "com.core.path-optimization-default": 668
+   },
+   "arachne_accumulated_ms": 54728,
+   "total_per_layer_module_accumulated_ms": 167267,
+   "phase_parallelism": 9.395438970959951,
+   "arachne_fuel": 106766248255,
+   "fuel_total": 663324181841,
+   "arachne_fuel_share_pct": 16.095636368732908,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "4ba73822a8e1ae7c962560d1d1e65727082e0804ae33e23d4f661432b2202468",
+    "bytes": 40615661,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 844,
+     "Inner wall": 844,
+     "Support": 431,
+     "Bridge": 77,
+     "Bottom surface": 61,
+     "Sparse infill": 590,
+     "Support interface": 70,
+     "Top surface": 77,
+     "Internal Bridge": 6,
+     "Internal solid infill": 2
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "preprocess_input_outline dropped a feature smaller than epsilon_offset (0.012499 mm) at centroid (124.159167, 101.696667) mm": 1,
+    "open_loop": 82,
+    "malformed_layer_marker": 432
+   }
+  },
+  "base-arachne-supports-on-canonical-r2": {
+   "fixture": "base",
+   "cell": "arachne-supports-on",
+   "arm": "canonical",
+   "repeat": 2,
+   "order_index": 14,
+   "process_wall_s": 204.2074058,
+   "process_cpu_s": 1094.4375,
+   "cpu_wall_ratio": 5.359440788704246,
+   "slice_elapsed_ms": 201909,
+   "phases_ms": {
+    "validation": 238,
+    "prepass": 164070,
+    "per_layer": 16406,
+    "postpass": 18978
+   },
+   "per_layer_ms": 16406,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 17,
+    "com.core.arachne-perimeters": 58351,
+    "com.core.fuzzy-skin": 525,
+    "com.core.seam-placer": 519,
+    "com.core.raft-default": 37887,
+    "com.core.gyroid-infill": 1719,
+    "com.core.lightning-infill": 1477,
+    "com.core.rectilinear-infill": 1500,
+    "com.core.top-surface-ironing": 1411,
+    "com.core.wave-overhangs": 1451,
+    "com.core.infill-linker": 6151,
+    "com.core.tree-support": 64081,
+    "com.core.support-surface-ironing": 1179,
+    "com.core.path-optimization-default": 499
+   },
+   "arachne_accumulated_ms": 58351,
+   "total_per_layer_module_accumulated_ms": 176767,
+   "phase_parallelism": 10.7745337071803,
+   "arachne_fuel": 106766246931,
+   "fuel_total": 663324357240,
+   "arachne_fuel_share_pct": 16.09563191305675,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "4ba73822a8e1ae7c962560d1d1e65727082e0804ae33e23d4f661432b2202468",
+    "bytes": 40615661,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 844,
+     "Inner wall": 844,
+     "Support": 431,
+     "Bridge": 77,
+     "Bottom surface": 61,
+     "Sparse infill": 590,
+     "Support interface": 70,
+     "Top surface": 77,
+     "Internal Bridge": 6,
+     "Internal solid infill": 2
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "preprocess_input_outline dropped a feature smaller than epsilon_offset (0.012499 mm) at centroid (124.159167, 101.696667) mm": 1,
+    "open_loop": 82,
+    "malformed_layer_marker": 432
+   }
+  },
+  "base-arachne-supports-on-default-r1": {
+   "fixture": "base",
+   "cell": "arachne-supports-on",
+   "arm": "default",
+   "repeat": 1,
+   "order_index": 12,
+   "process_wall_s": 210.4247455,
+   "process_cpu_s": 1107.453125,
+   "cpu_wall_ratio": 5.2629414965836325,
+   "slice_elapsed_ms": 208486,
+   "phases_ms": {
+    "validation": 85,
+    "prepass": 170716,
+    "per_layer": 15303,
+    "postpass": 20581
+   },
+   "per_layer_ms": 15303,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 22,
+    "com.core.arachne-perimeters": 55746,
+    "com.core.fuzzy-skin": 570,
+    "com.core.seam-placer": 591,
+    "com.core.raft-default": 35048,
+    "com.core.gyroid-infill": 1452,
+    "com.core.lightning-infill": 1218,
+    "com.core.rectilinear-infill": 1272,
+    "com.core.top-surface-ironing": 1200,
+    "com.core.wave-overhangs": 1266,
+    "com.core.infill-linker": 5636,
+    "com.core.tree-support": 58969,
+    "com.core.support-surface-ironing": 1034,
+    "com.core.path-optimization-default": 511
+   },
+   "arachne_accumulated_ms": 55746,
+   "total_per_layer_module_accumulated_ms": 164535,
+   "phase_parallelism": 10.751813369927465,
+   "arachne_fuel": 127427548715,
+   "fuel_total": 684388436469,
+   "arachne_fuel_share_pct": 18.61918494304834,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c",
+    "bytes": 42330265,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 844,
+     "Inner wall": 844,
+     "Support": 431,
+     "Bridge": 77,
+     "Bottom surface": 61,
+     "Sparse infill": 590,
+     "Support interface": 70,
+     "Top surface": 77,
+     "Internal Bridge": 6,
+     "Internal solid infill": 2
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "preprocess_input_outline dropped a feature smaller than epsilon_offset (0.012499 mm) at centroid (124.159167, 101.696667) mm": 1,
+    "open_loop": 82,
+    "malformed_layer_marker": 432
+   }
+  },
+  "base-arachne-supports-on-default-r2": {
+   "fixture": "base",
+   "cell": "arachne-supports-on",
+   "arm": "default",
+   "repeat": 2,
+   "order_index": 15,
+   "process_wall_s": 204.5487968,
+   "process_cpu_s": 1101.890625,
+   "cpu_wall_ratio": 5.386932811330035,
+   "slice_elapsed_ms": 202670,
+   "phases_ms": {
+    "validation": 116,
+    "prepass": 162464,
+    "per_layer": 19979,
+    "postpass": 18219
+   },
+   "per_layer_ms": 19979,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 29,
+    "com.core.arachne-perimeters": 74028,
+    "com.core.fuzzy-skin": 983,
+    "com.core.seam-placer": 1005,
+    "com.core.raft-default": 48198,
+    "com.core.gyroid-infill": 2958,
+    "com.core.lightning-infill": 2732,
+    "com.core.rectilinear-infill": 2745,
+    "com.core.top-surface-ironing": 2625,
+    "com.core.wave-overhangs": 2668,
+    "com.core.infill-linker": 6067,
+    "com.core.tree-support": 65417,
+    "com.core.support-surface-ironing": 2247,
+    "com.core.path-optimization-default": 900
+   },
+   "arachne_accumulated_ms": 74028,
+   "total_per_layer_module_accumulated_ms": 212602,
+   "phase_parallelism": 10.641273337003854,
+   "arachne_fuel": 127427495088,
+   "fuel_total": 684388639369,
+   "arachne_fuel_share_pct": 18.61917158728511,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c",
+    "bytes": 42330265,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 844,
+     "Inner wall": 844,
+     "Support": 431,
+     "Bridge": 77,
+     "Bottom surface": 61,
+     "Sparse infill": 590,
+     "Support interface": 70,
+     "Top surface": 77,
+     "Internal Bridge": 6,
+     "Internal solid infill": 2
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "preprocess_input_outline dropped a feature smaller than epsilon_offset (0.012499 mm) at centroid (124.159167, 101.696667) mm": 1,
+    "open_loop": 82,
+    "malformed_layer_marker": 432
+   }
+  },
+  "benchy-arachne-supports-off-canonical-r1": {
+   "fixture": "benchy",
+   "cell": "arachne-supports-off",
+   "arm": "canonical",
+   "repeat": 1,
+   "order_index": 1,
+   "process_wall_s": 10.2542101,
+   "process_cpu_s": 55.09375,
+   "cpu_wall_ratio": 5.37279317107029,
+   "slice_elapsed_ms": 10070,
+   "phases_ms": {
+    "validation": 101,
+    "prepass": 5994,
+    "per_layer": 2479,
+    "postpass": 272
+   },
+   "per_layer_ms": 2479,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 284,
+    "com.core.arachne-perimeters": 3543,
+    "com.core.fuzzy-skin": 340,
+    "com.core.seam-placer": 510,
+    "com.core.raft-default": 1439,
+    "com.core.gyroid-infill": 560,
+    "com.core.lightning-infill": 575,
+    "com.core.rectilinear-infill": 526,
+    "com.core.top-surface-ironing": 520,
+    "com.core.wave-overhangs": 549,
+    "com.core.infill-linker": 2470,
+    "com.core.tree-support": 598,
+    "com.core.support-surface-ironing": 378,
+    "com.core.path-optimization-default": 415
+   },
+   "arachne_accumulated_ms": 3543,
+   "total_per_layer_module_accumulated_ms": 12707,
+   "phase_parallelism": 5.125857200484067,
+   "arachne_fuel": 9087094154,
+   "fuel_total": 34006711953,
+   "arachne_fuel_share_pct": 26.721472415678093,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "8048caa8eb7f3e10e341ddfc9333fae6e626ebe94afc209b57b4a3f5836e8c5a",
+    "bytes": 3742107,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 700,
+     "Inner wall": 690,
+     "Bottom surface": 27,
+     "Bridge": 23,
+     "Sparse infill": 222,
+     "Internal solid infill": 13,
+     "Top surface": 67,
+     "Internal Bridge": 12
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "open_loop": 11,
+    "malformed_layer_marker": 154
+   }
+  },
+  "benchy-arachne-supports-off-canonical-r2": {
+   "fixture": "benchy",
+   "cell": "arachne-supports-off",
+   "arm": "canonical",
+   "repeat": 2,
+   "order_index": 2,
+   "process_wall_s": 10.1541201,
+   "process_cpu_s": 55.015625,
+   "cpu_wall_ratio": 5.41805931564666,
+   "slice_elapsed_ms": 9971,
+   "phases_ms": {
+    "validation": 109,
+    "prepass": 5948,
+    "per_layer": 2355,
+    "postpass": 276
+   },
+   "per_layer_ms": 2355,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 265,
+    "com.core.arachne-perimeters": 3370,
+    "com.core.fuzzy-skin": 217,
+    "com.core.seam-placer": 510,
+    "com.core.raft-default": 1320,
+    "com.core.gyroid-infill": 509,
+    "com.core.lightning-infill": 549,
+    "com.core.rectilinear-infill": 513,
+    "com.core.top-surface-ironing": 464,
+    "com.core.wave-overhangs": 456,
+    "com.core.infill-linker": 2398,
+    "com.core.tree-support": 582,
+    "com.core.support-surface-ironing": 259,
+    "com.core.path-optimization-default": 345
+   },
+   "arachne_accumulated_ms": 3370,
+   "total_per_layer_module_accumulated_ms": 11757,
+   "phase_parallelism": 4.992356687898089,
+   "arachne_fuel": 9087187637,
+   "fuel_total": 34007938594,
+   "arachne_fuel_share_pct": 26.720783477900206,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "8048caa8eb7f3e10e341ddfc9333fae6e626ebe94afc209b57b4a3f5836e8c5a",
+    "bytes": 3742107,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 700,
+     "Inner wall": 690,
+     "Bottom surface": 27,
+     "Bridge": 23,
+     "Sparse infill": 222,
+     "Internal solid infill": 13,
+     "Top surface": 67,
+     "Internal Bridge": 12
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "open_loop": 11,
+    "malformed_layer_marker": 154
+   }
+  },
+  "benchy-arachne-supports-off-default-r1": {
+   "fixture": "benchy",
+   "cell": "arachne-supports-off",
+   "arm": "default",
+   "repeat": 1,
+   "order_index": 0,
+   "process_wall_s": 10.3656849,
+   "process_cpu_s": 55.109375,
+   "cpu_wall_ratio": 5.3165203777321075,
+   "slice_elapsed_ms": 10174,
+   "phases_ms": {
+    "validation": 81,
+    "prepass": 5980,
+    "per_layer": 2580,
+    "postpass": 303
+   },
+   "per_layer_ms": 2580,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 324,
+    "com.core.arachne-perimeters": 3779,
+    "com.core.fuzzy-skin": 386,
+    "com.core.seam-placer": 585,
+    "com.core.raft-default": 1459,
+    "com.core.gyroid-infill": 605,
+    "com.core.lightning-infill": 593,
+    "com.core.rectilinear-infill": 536,
+    "com.core.top-surface-ironing": 528,
+    "com.core.wave-overhangs": 581,
+    "com.core.infill-linker": 2631,
+    "com.core.tree-support": 605,
+    "com.core.support-surface-ironing": 437,
+    "com.core.path-optimization-default": 396
+   },
+   "arachne_accumulated_ms": 3779,
+   "total_per_layer_module_accumulated_ms": 13445,
+   "phase_parallelism": 5.211240310077519,
+   "arachne_fuel": 10182750986,
+   "fuel_total": 35206704328,
+   "arachne_fuel_share_pct": 28.922761105763673,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b",
+    "bytes": 4064270,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 700,
+     "Inner wall": 690,
+     "Bottom surface": 27,
+     "Bridge": 23,
+     "Sparse infill": 222,
+     "Internal solid infill": 13,
+     "Top surface": 67,
+     "Internal Bridge": 12
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "open_loop": 11,
+    "malformed_layer_marker": 152
+   }
+  },
+  "benchy-arachne-supports-off-default-r2": {
+   "fixture": "benchy",
+   "cell": "arachne-supports-off",
+   "arm": "default",
+   "repeat": 2,
+   "order_index": 3,
+   "process_wall_s": 10.1745045,
+   "process_cpu_s": 55.640625,
+   "cpu_wall_ratio": 5.468632403671354,
+   "slice_elapsed_ms": 9993,
+   "phases_ms": {
+    "validation": 98,
+    "prepass": 6000,
+    "per_layer": 2413,
+    "postpass": 225
+   },
+   "per_layer_ms": 2413,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 262,
+    "com.core.arachne-perimeters": 3407,
+    "com.core.fuzzy-skin": 234,
+    "com.core.seam-placer": 601,
+    "com.core.raft-default": 1252,
+    "com.core.gyroid-infill": 526,
+    "com.core.lightning-infill": 579,
+    "com.core.rectilinear-infill": 526,
+    "com.core.top-surface-ironing": 544,
+    "com.core.wave-overhangs": 522,
+    "com.core.infill-linker": 2422,
+    "com.core.tree-support": 596,
+    "com.core.support-surface-ironing": 265,
+    "com.core.path-optimization-default": 282
+   },
+   "arachne_accumulated_ms": 3407,
+   "total_per_layer_module_accumulated_ms": 12018,
+   "phase_parallelism": 4.980522171570659,
+   "arachne_fuel": 10183014103,
+   "fuel_total": 35206944896,
+   "arachne_fuel_share_pct": 28.923310821430952,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b",
+    "bytes": 4064270,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 700,
+     "Inner wall": 690,
+     "Bottom surface": 27,
+     "Bridge": 23,
+     "Sparse infill": 222,
+     "Internal solid infill": 13,
+     "Top surface": 67,
+     "Internal Bridge": 12
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "open_loop": 11,
+    "malformed_layer_marker": 152
+   }
+  },
+  "benchy-arachne-supports-on-canonical-r1": {
+   "fixture": "benchy",
+   "cell": "arachne-supports-on",
+   "arm": "canonical",
+   "repeat": 1,
+   "order_index": 5,
+   "process_wall_s": 15.3727483,
+   "process_cpu_s": 71.90625,
+   "cpu_wall_ratio": 4.677514299769027,
+   "slice_elapsed_ms": 15174,
+   "phases_ms": {
+    "validation": 84,
+    "prepass": 10648,
+    "per_layer": 2419,
+    "postpass": 753
+   },
+   "per_layer_ms": 2419,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 180,
+    "com.core.arachne-perimeters": 3302,
+    "com.core.fuzzy-skin": 175,
+    "com.core.seam-placer": 376,
+    "com.core.raft-default": 1228,
+    "com.core.gyroid-infill": 461,
+    "com.core.lightning-infill": 441,
+    "com.core.rectilinear-infill": 447,
+    "com.core.top-surface-ironing": 441,
+    "com.core.wave-overhangs": 445,
+    "com.core.infill-linker": 2339,
+    "com.core.tree-support": 5255,
+    "com.core.support-surface-ironing": 258,
+    "com.core.path-optimization-default": 211
+   },
+   "arachne_accumulated_ms": 3302,
+   "total_per_layer_module_accumulated_ms": 15559,
+   "phase_parallelism": 6.431996692848284,
+   "arachne_fuel": 9087091414,
+   "fuel_total": 83729157732,
+   "arachne_fuel_share_pct": 10.852959303718222,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "b5cb2cdbb0ebf1e54470ee05ee1d261eaa5d5d8f49e0ebad8a84e2643e97c1f4",
+    "bytes": 8067990,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 700,
+     "Inner wall": 690,
+     "Bottom surface": 27,
+     "Support": 179,
+     "Bridge": 23,
+     "Sparse infill": 222,
+     "Internal solid infill": 13,
+     "Top surface": 67,
+     "Internal Bridge": 12,
+     "Support interface": 4
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "open_loop": 11,
+    "malformed_layer_marker": 177
+   }
+  },
+  "benchy-arachne-supports-on-canonical-r2": {
+   "fixture": "benchy",
+   "cell": "arachne-supports-on",
+   "arm": "canonical",
+   "repeat": 2,
+   "order_index": 6,
+   "process_wall_s": 15.4551106,
+   "process_cpu_s": 71.453125,
+   "cpu_wall_ratio": 4.623268435232033,
+   "slice_elapsed_ms": 15260,
+   "phases_ms": {
+    "validation": 83,
+    "prepass": 10773,
+    "per_layer": 2440,
+    "postpass": 738
+   },
+   "per_layer_ms": 2440,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 183,
+    "com.core.arachne-perimeters": 3349,
+    "com.core.fuzzy-skin": 188,
+    "com.core.seam-placer": 399,
+    "com.core.raft-default": 1274,
+    "com.core.gyroid-infill": 454,
+    "com.core.lightning-infill": 460,
+    "com.core.rectilinear-infill": 436,
+    "com.core.top-surface-ironing": 457,
+    "com.core.wave-overhangs": 431,
+    "com.core.infill-linker": 2402,
+    "com.core.tree-support": 5224,
+    "com.core.support-surface-ironing": 213,
+    "com.core.path-optimization-default": 231
+   },
+   "arachne_accumulated_ms": 3349,
+   "total_per_layer_module_accumulated_ms": 15701,
+   "phase_parallelism": 6.43483606557377,
+   "arachne_fuel": 9086957958,
+   "fuel_total": 83729278896,
+   "arachne_fuel_share_pct": 10.85278420860031,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "b5cb2cdbb0ebf1e54470ee05ee1d261eaa5d5d8f49e0ebad8a84e2643e97c1f4",
+    "bytes": 8067990,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 700,
+     "Inner wall": 690,
+     "Bottom surface": 27,
+     "Support": 179,
+     "Bridge": 23,
+     "Sparse infill": 222,
+     "Internal solid infill": 13,
+     "Top surface": 67,
+     "Internal Bridge": 12,
+     "Support interface": 4
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "open_loop": 11,
+    "malformed_layer_marker": 177
+   }
+  },
+  "benchy-arachne-supports-on-default-r1": {
+   "fixture": "benchy",
+   "cell": "arachne-supports-on",
+   "arm": "default",
+   "repeat": 1,
+   "order_index": 4,
+   "process_wall_s": 15.7946848,
+   "process_cpu_s": 72.703125,
+   "cpu_wall_ratio": 4.603012084166441,
+   "slice_elapsed_ms": 15606,
+   "phases_ms": {
+    "validation": 85,
+    "prepass": 11153,
+    "per_layer": 2453,
+    "postpass": 744
+   },
+   "per_layer_ms": 2453,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 181,
+    "com.core.arachne-perimeters": 3492,
+    "com.core.fuzzy-skin": 187,
+    "com.core.seam-placer": 433,
+    "com.core.raft-default": 1261,
+    "com.core.gyroid-infill": 527,
+    "com.core.lightning-infill": 519,
+    "com.core.rectilinear-infill": 476,
+    "com.core.top-surface-ironing": 467,
+    "com.core.wave-overhangs": 444,
+    "com.core.infill-linker": 2315,
+    "com.core.tree-support": 5219,
+    "com.core.support-surface-ironing": 229,
+    "com.core.path-optimization-default": 226
+   },
+   "arachne_accumulated_ms": 3492,
+   "total_per_layer_module_accumulated_ms": 15976,
+   "phase_parallelism": 6.512841418671015,
+   "arachne_fuel": 10182753587,
+   "fuel_total": 84928986842,
+   "arachne_fuel_share_pct": 11.989726906720044,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05",
+    "bytes": 8390168,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 700,
+     "Inner wall": 690,
+     "Bottom surface": 27,
+     "Support": 179,
+     "Bridge": 23,
+     "Sparse infill": 222,
+     "Internal solid infill": 13,
+     "Top surface": 67,
+     "Internal Bridge": 12,
+     "Support interface": 4
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "open_loop": 11,
+    "malformed_layer_marker": 173
+   }
+  },
+  "benchy-arachne-supports-on-default-r2": {
+   "fixture": "benchy",
+   "cell": "arachne-supports-on",
+   "arm": "default",
+   "repeat": 2,
+   "order_index": 7,
+   "process_wall_s": 15.9677667,
+   "process_cpu_s": 72.375,
+   "cpu_wall_ratio": 4.532568727973712,
+   "slice_elapsed_ms": 15754,
+   "phases_ms": {
+    "validation": 80,
+    "prepass": 10832,
+    "per_layer": 2505,
+    "postpass": 1063
+   },
+   "per_layer_ms": 2505,
+   "module_accumulated_ms": {
+    "host:paint_annotator": 229,
+    "com.core.arachne-perimeters": 3553,
+    "com.core.fuzzy-skin": 227,
+    "com.core.seam-placer": 423,
+    "com.core.raft-default": 1350,
+    "com.core.gyroid-infill": 460,
+    "com.core.lightning-infill": 474,
+    "com.core.rectilinear-infill": 478,
+    "com.core.top-surface-ironing": 461,
+    "com.core.wave-overhangs": 406,
+    "com.core.infill-linker": 2454,
+    "com.core.tree-support": 5390,
+    "com.core.support-surface-ironing": 268,
+    "com.core.path-optimization-default": 260
+   },
+   "arachne_accumulated_ms": 3553,
+   "total_per_layer_module_accumulated_ms": 16433,
+   "phase_parallelism": 6.560079840319362,
+   "arachne_fuel": 10182504852,
+   "fuel_total": 84928889760,
+   "arachne_fuel_share_pct": 11.989447737718784,
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "output": {
+    "sha256": "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05",
+    "bytes": 8390168,
+    "type_counts": {
+     "Skirt": 1,
+     "Brim": 1,
+     "Outer wall": 700,
+     "Inner wall": 690,
+     "Bottom surface": 27,
+     "Support": 179,
+     "Bridge": 23,
+     "Sparse infill": 222,
+     "Internal solid infill": 13,
+     "Top surface": 67,
+     "Internal Bridge": 12,
+     "Support interface": 4
+    },
+    "status": "ok",
+    "degraded": false,
+    "fatal": 0,
+    "non_fatal": 0
+   },
+   "warnings": {
+    "open_loop": 11,
+    "malformed_layer_marker": 173
+   }
+  }
+ },
+ "cells": {
+  "base-arachne-supports-off": {
+   "default": {
+    "runs": 2,
+    "process_wall_s": 92.96460160000001,
+    "process_cpu_s": 739.8671875,
+    "per_layer_ms": 8946.5,
+    "arachne_accumulated_ms": 49466.0,
+    "total_per_layer_module_accumulated_ms": 91484.0,
+    "phase_parallelism": 10.223729809947129,
+    "arachne_fuel": 127427782733.0,
+    "arachne_fuel_share_pct": 69.93631656445999,
+    "arachne_fuel_samples": [
+     127427912320,
+     127427653146
+    ],
+    "arachne_accum_samples": [
+     46899,
+     52033
+    ]
+   },
+   "canonical": {
+    "runs": 2,
+    "process_wall_s": 93.32180125,
+    "process_cpu_s": 743.65625,
+    "per_layer_ms": 9044.5,
+    "arachne_accumulated_ms": 49091.5,
+    "total_per_layer_module_accumulated_ms": 92053.0,
+    "phase_parallelism": 10.177272774424832,
+    "arachne_fuel": 106766321140.5,
+    "arachne_fuel_share_pct": 66.25637375565495,
+    "arachne_fuel_samples": [
+     106766213319,
+     106766428962
+    ],
+    "arachne_accum_samples": [
+     50602,
+     47581
+    ]
+   },
+   "module_wall_equivalent_ms": 4838.3516504781155,
+   "module_share_of_wall_pct": 5.204509638298838,
+   "delta": {
+    "arachne_accumulated_ms": 374.5,
+    "arachne_accumulated_reduction_pct": 0.7570856750090972,
+    "arachne_fuel": 20661461592.5,
+    "arachne_fuel_reduction_pct": 16.2142518290474,
+    "fuel_repeat_spread_pct": 0.00020338892699957626,
+    "fuel_delta_outside_spread": true,
+    "idealized_serial_ceiling_ms": 374.5,
+    "idealized_serial_ceiling_pct_of_wall": 0.40284150478196634,
+    "occupancy_normalized_ceiling_ms": 36.63046725233603,
+    "occupancy_normalized_ceiling_pct_of_wall": 0.03940259692602827,
+    "fuel_proportional_ceiling_pct_of_wall": 0.8438722992208174
+   },
+   "material": false
+  },
+  "base-arachne-supports-on": {
+   "default": {
+    "runs": 2,
+    "process_wall_s": 207.48677114999998,
+    "process_cpu_s": 1104.671875,
+    "per_layer_ms": 17641.0,
+    "arachne_accumulated_ms": 64887.0,
+    "total_per_layer_module_accumulated_ms": 188568.5,
+    "phase_parallelism": 10.69654335346566,
+    "arachne_fuel": 127427521901.5,
+    "arachne_fuel_share_pct": 18.619178265166724,
+    "arachne_fuel_samples": [
+     127427548715,
+     127427495088
+    ],
+    "arachne_accum_samples": [
+     55746,
+     74028
+    ]
+   },
+   "canonical": {
+    "runs": 2,
+    "process_wall_s": 206.36021399999998,
+    "process_cpu_s": 1096.0234375,
+    "per_layer_ms": 17104.5,
+    "arachne_accumulated_ms": 56539.5,
+    "total_per_layer_module_accumulated_ms": 172017.0,
+    "phase_parallelism": 10.084986339070126,
+    "arachne_fuel": 106766247593.0,
+    "arachne_fuel_share_pct": 16.09563414089483,
+    "arachne_fuel_samples": [
+     106766248255,
+     106766246931
+    ],
+    "arachne_accum_samples": [
+     54728,
+     58351
+    ]
+   },
+   "module_wall_equivalent_ms": 6066.165288712333,
+   "module_share_of_wall_pct": 2.9236395434226856,
+   "delta": {
+    "arachne_accumulated_ms": 8347.5,
+    "arachne_accumulated_reduction_pct": 12.86467243053308,
+    "arachne_fuel": 20661274308.5,
+    "arachne_fuel_reduction_pct": 16.214138045053506,
+    "fuel_repeat_spread_pct": 4.208431522466006e-05,
+    "fuel_delta_outside_spread": true,
+    "idealized_serial_ceiling_ms": 8347.5,
+    "idealized_serial_ceiling_pct_of_wall": 4.023148056010413,
+    "occupancy_normalized_ceiling_ms": 780.3922934875429,
+    "occupancy_normalized_ceiling_pct_of_wall": 0.3761166503108615,
+    "fuel_proportional_ceiling_pct_of_wall": 0.47404295151032627
+   },
+   "material": false
+  },
+  "benchy-arachne-supports-off": {
+   "default": {
+    "runs": 2,
+    "process_wall_s": 10.2700947,
+    "process_cpu_s": 55.375,
+    "per_layer_ms": 2496.5,
+    "arachne_accumulated_ms": 3593.0,
+    "total_per_layer_module_accumulated_ms": 12731.5,
+    "phase_parallelism": 5.095881240824089,
+    "arachne_fuel": 10182882544.5,
+    "arachne_fuel_share_pct": 28.923035963597314,
+    "arachne_fuel_samples": [
+     10182750986,
+     10183014103
+    ],
+    "arachne_accum_samples": [
+     3779,
+     3407
+    ]
+   },
+   "canonical": {
+    "runs": 2,
+    "process_wall_s": 10.2041651,
+    "process_cpu_s": 55.0546875,
+    "per_layer_ms": 2417.0,
+    "arachne_accumulated_ms": 3456.5,
+    "total_per_layer_module_accumulated_ms": 12232.0,
+    "phase_parallelism": 5.059106944191077,
+    "arachne_fuel": 9087140895.5,
+    "arachne_fuel_share_pct": 26.72112794678915,
+    "arachne_fuel_samples": [
+     9087094154,
+     9087187637
+    ],
+    "arachne_accum_samples": [
+     3543,
+     3370
+    ]
+   },
+   "module_wall_equivalent_ms": 705.079225790386,
+   "module_share_of_wall_pct": 6.865362456593375,
+   "delta": {
+    "arachne_accumulated_ms": 136.5,
+    "arachne_accumulated_reduction_pct": 3.7990537155580295,
+    "arachne_fuel": 1095741649.0,
+    "arachne_fuel_reduction_pct": 10.760623469941075,
+    "fuel_repeat_spread_pct": 0.002583914710300919,
+    "fuel_delta_outside_spread": true,
+    "idealized_serial_ceiling_ms": 136.5,
+    "idealized_serial_ceiling_pct_of_wall": 1.3291016683614418,
+    "occupancy_normalized_ceiling_ms": 26.786338525017445,
+    "occupancy_normalized_ceiling_pct_of_wall": 0.2608188074937366,
+    "fuel_proportional_ceiling_pct_of_wall": 0.7387558038007098
+   },
+   "material": false
+  },
+  "benchy-arachne-supports-on": {
+   "default": {
+    "runs": 2,
+    "process_wall_s": 15.88122575,
+    "process_cpu_s": 72.5390625,
+    "per_layer_ms": 2479.0,
+    "arachne_accumulated_ms": 3522.5,
+    "total_per_layer_module_accumulated_ms": 16204.5,
+    "phase_parallelism": 6.536460629495188,
+    "arachne_fuel": 10182629219.5,
+    "arachne_fuel_share_pct": 11.989587322219414,
+    "arachne_fuel_samples": [
+     10182753587,
+     10182504852
+    ],
+    "arachne_accum_samples": [
+     3492,
+     3553
+    ]
+   },
+   "canonical": {
+    "runs": 2,
+    "process_wall_s": 15.41392945,
+    "process_cpu_s": 71.6796875,
+    "per_layer_ms": 2429.5,
+    "arachne_accumulated_ms": 3325.5,
+    "total_per_layer_module_accumulated_ms": 15630.0,
+    "phase_parallelism": 6.433416379211027,
+    "arachne_fuel": 9087024686.0,
+    "arachne_fuel_share_pct": 10.852871756159267,
+    "arachne_fuel_samples": [
+     9087091414,
+     9086957958
+    ],
+    "arachne_accum_samples": [
+     3302,
+     3349
+    ]
+   },
+   "module_wall_equivalent_ms": 538.9002090986423,
+   "module_share_of_wall_pct": 3.393316218671864,
+   "delta": {
+    "arachne_accumulated_ms": 197.0,
+    "arachne_accumulated_reduction_pct": 5.592618878637332,
+    "arachne_fuel": 1095604533.5,
+    "arachne_fuel_reduction_pct": 10.759544611541868,
+    "fuel_repeat_spread_pct": 0.0024427384581937445,
+    "fuel_delta_outside_spread": true,
+    "idealized_serial_ceiling_ms": 197.0,
+    "idealized_serial_ceiling_pct_of_wall": 1.240458407311539,
+    "occupancy_normalized_ceiling_ms": 30.13863483106672,
+    "occupancy_normalized_ceiling_pct_of_wall": 0.18977524345730507,
+    "fuel_proportional_ceiling_pct_of_wall": 0.36510537235868484
+   },
+   "material": false
+  }
+ }
+}

@@ -74,3 +74,8 @@
 # written by `Set-Content` (CRLF) and a generated key table; preserve their
 # bytes on add/checkout instead of normalizing line endings.
 /docs/specs/perf-vs-orca/evidence/t82-fairness-key-audit/** -text whitespace=cr-at-eol
+
+# The t83 Arachne-tolerance pricing set carries reduced per-run captures, a
+# generated summary and its wall-pair reduction; preserve their bytes on
+# add/checkout instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/t83-arachne-tolerance-price/** -text whitespace=cr-at-eol

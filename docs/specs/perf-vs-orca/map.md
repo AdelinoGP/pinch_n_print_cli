@@ -100,7 +100,34 @@ Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
 
-**Current selection scope (2026-10-23, on the ticket 82 take):** the human's
+**Current selection scope (2026-10-23 → 2026-10-24, on the ticket 83 take):** the human's
+"continue the perf vs orca map" named no ticket; the frontier re-derivation
+found [83](issues/83-arachne-wall-simplification-tolerance-pricing.md) as the
+only open child and the session took it. It is **resolved (2026-10-24) as a
+measurement-only pricing take — DROP, below the map's pre-declared floor; no
+candidate, no parity port, no production edit.** One binary, one module tree,
+two config-only arms (default 0.05/0.005 mm vs canonical 0.5/0.025 mm), 2
+alternating instrumented pairs per Arachne cell plus 6 uninstrumented pairs on
+the two borderline cells. The tolerance is **real work**: arachne guest fuel
+falls **−10.76 %** (benchy) / **−16.21 %** (base), whole-job fuel −3.41/−1.41 %
+and −11.56/−3.08 %, G-code bytes −3.84…−8.23 % with identical TYPE counts, all
+runs clean and byte-deterministic per arm (the default arm reproduces t81's
+base-arachne-off reference `01a1434c…`). But the module is only **2.9–6.9 % of
+cell wall** at **5.1–10.7x** phase parallelism, so the occupancy-normalized
+ceiling is **0.039–0.376 %** of wall against the pre-declared **0.80 %** floor;
+the generous fuel-proportional bound reaches only 0.844 % (base-off, whose
+measured elapsed moved +0.8 % the wrong way). The direct wall check agrees:
+base-off **+0.17 % wall / +0.09 % CPU**, benchy-on **+3.18 % wall / +0.17 %
+CPU** (paired medians; benchy-on's instrumented −2.9 % was load drift). `D-168`
+is retained with this measured magnitude. An observation, not a ticket:
+`tree_support_branch_distance` (Orca 5 mm vs PnP 1 mm, supports-on) is the other
+t82 "PnP does more work" geometry key, unmeasured and parity-scoped. Frontier
+now: **no open child remains**; the fog and the next route are the human's.
+Standing paired acceptance and KEEP/DROP rules unchanged. Evidence:
+[`evidence/t83-arachne-tolerance-price/`](evidence/t83-arachne-tolerance-price/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 5/5 negative controls rejected).
+
+**Previous selection scope (2026-10-23, on the ticket 82 take):** the human's
 "continue the perf vs orca map" named no ticket; the frontier re-derivation
 found **no open child** (81/81 resolved) and the human selected the
 **Fairness-key parity audit** from the route options.
@@ -1061,6 +1088,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Arachne wall-simplification tolerance pricing](issues/83-arachne-wall-simplification-tolerance-pricing.md): **resolved (2026-10-24; measurement-only pricing take — DROP, below the map's pre-declared 0.80 % wall floor; no candidate, no parity port, no production edit)** — one binary and module tree, two config-only arms (default 0.05/0.005 mm vs canonical 0.5/0.025 mm), 2 alternating instrumented pairs per Arachne cell plus a 6-pair uninstrumented wall check on the two borderline cells. The tolerance is **real work**: arachne guest fuel **−10.76 %** (benchy) / **−16.21 %** (base), whole-job fuel −3.41/−1.41 % and −11.56/−3.08 %, G-code bytes **−3.84…−8.23 %** with identical TYPE counts, all runs clean and byte-deterministic per arm, and the default arm reproduces t81's base-arachne-off reference `01a1434c…`. It is not a wall lever: the module is only **2.9–6.9 % of cell wall** at **5.1–10.7x** phase parallelism, so the occupancy-normalized ceiling is **0.039–0.376 %** of wall (fuel-proportional bound 0.844 % best case, whose measured elapsed moved +0.8 % the wrong way). The direct wall check agrees — base-off **+0.17 % wall / +0.09 % CPU**, benchy-on **+3.18 % wall / +0.17 % CPU** (paired medians; benchy-on's instrumented −2.9 % was load drift). `D-168` is retained with the measured magnitude. Observed, not ticketed: `tree_support_branch_distance` (Orca 5 mm vs PnP 1 mm, supports-on) is the other t82 "PnP does more work" geometry key, unmeasured and parity-scoped. Evidence: [`evidence/t83-arachne-tolerance-price/`](evidence/t83-arachne-tolerance-price/FINDINGS.md) (`verify.py --self-test` exit 0, 5/5 negative controls rejected).
+
 - [Fairness-key parity audit of the matched job](issues/82-fairness-key-parity-audit.md): **resolved (2026-10-23; measurement-only — all 618 resolved keys classified, no candidate, no timing)** — eight Orca runs gave a 618-key resolved appendix per cell; only `wall_generator`, `enable_support` and `print_settings_id` vary. **Verdict: no third `resolution`-class lever at scale.** The one unmatched geometry pair where PnP does materially more work is the Arachne tolerance pair — `wall_maximum_resolution` 0.5 vs 0.05 mm and `wall_maximum_deviation` 0.025 vs 0.005 mm (PnP 10x / 5x tighter), Arachne cells only, magnitude unmeasured, already `D-168` but invisible to the generated deviations table because **82 of the 618 keys postdate its 2026-05-19 upstream snapshot**. Everything else either makes Orca do more (`top_shell_layers` 4 vs 3, `support_interface_top_layers` 3 vs 2, `precise_outer_wall` 1 vs 0, `ensure_vertical_shell_thickness`, `detect_narrow_internal_solid_infill`, tree-support brim), is layer-0-only, shape-only, or inert. **Controls matched in all eight cells:** `resolution = 0.01` and `slice_closing_radius = 0.049` (same key, default and order as canonical), retiring the fog's `slice_closing_radius` half. Observations: `detect_thin_wall` declared `true` by classic-perimeters but emitted `0`; `support_interface_bottom_layers` declared `-1`, emitted `2`; `brim_width` 8 vs 0 unresolved at output level; Orca's overhang bands live while PnP's are 0. Recommended next step is a pricing take on the Arachne match, not implemented here. Evidence: [`evidence/t82-fairness-key-audit/`](evidence/t82-fairness-key-audit/FINDINGS.md) (`verify.py --self-test` exit 0, 9/9 negative controls rejected).
 
 - [Slicing-time contour simplification (`resolution`) port](issues/81-resolution-slicing-time-contour-simplification.md): **resolved (2026-10-23; human-approved KEEP — committed)** — `resolution` (default 0.01 mm, canonical 0.001 mm floor applied in the resolver so the appendix discloses what the modules apply) now runs at four canonical call sites: pre-wall simplify in both perimeter modules (region granularity — PnP has no `Surface` model), the gap `douglas_peucker` before `medial_axis`, the classic innermost contour before the infill boundary, and the arachne infill contour. Canonical's classic inner-part site has no PnP counterpart (recorded, not invented); the `0.2 ×` arc-fitting branch is unexpressible and inert on the matched job. The DP is canonical-exact (closed-ring seeding, `<=` acceptance, strictly-greater tie-break, tolerance converted across the 1e6 → 1e4 units/mm scale); the union runs on `clipper2-rust` against canonical's legacy Clipper 6.4.2 `StrictlySimple` union, so set semantics match and representation does not (disclosed). **Confinement 20/20** on typed IR (`Layer::Slice` identical in all 8 cells, `Layer::Perimeters` differs in all 8, support silhouette identical supports-on). **Campaign: gate met, 8/8 wall-negative and 8/8 CPU-negative** — classic −14.31/−9.00 % (benchy) and −22.24/−10.87 % (base) wall with CPU −18…−27 %; Arachne −0.07…−1.87 % (wall-neutral); `base arachne-off` failed its first six pairs at +2.30 %, stopped by rule, re-ran at −2.77 % (n=12 −1.07 %, spread ±9 — neutral within resolution). Deterministic (one SHA per arm/cell) and the baseline reproduces the t58 reference `34886ccb…`. This is a **geometry-affecting keep**: the byte-identity proof regime is replaced by invariants + confinement + determinism, with new per-cell references in `evidence/t81-resolution-port/campaign/`. Evidence: [`evidence/t81-resolution-port/`](evidence/t81-resolution-port/FINDINGS.md).
@@ -1226,6 +1255,13 @@ Standing decisions for this effort (2026-09-22):
   halves `resolution`'s tolerance
   ([ticket 81](issues/81-resolution-slicing-time-contour-simplification.md)'s
   disclosures). No action while it stays 0.
+
+- **`tree_support_branch_distance` is the other t82 "PnP does more work" key
+  (surfaced 2026-10-23 by [ticket 83](issues/83-arachne-wall-simplification-tolerance-pricing.md)'s
+  resolution).** Orca resolves 5 mm, PnP 1 mm — PnP places branches 5x denser on
+  supports-on cells. Magnitude unmeasured, and it is parity-scoped geometry work
+  (changing it changes support placement), so it graduates only with the human's
+  route — this observation is not an implicit authorisation.
 
 - **Fan-command reference boundary (graduated from ticket 47, 2026-10-03;
   boundary settled by ticket 46, 2026-10-05).**
