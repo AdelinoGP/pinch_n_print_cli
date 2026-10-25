@@ -7,10 +7,9 @@ use super::generator::generate_initial_internal_overhangs;
 use super::generator::Generator;
 use super::layer::Layer;
 use super::tree_node::Node;
-use slicer_core::{difference, offset, OffsetJoinType};
 use slicer_ir::{
-    mm_to_units, slice_ir::BoundingBox2, units_to_mm, ExPolygon, PaintValue, Point2, Polygon,
-    ResolvedConfig, SliceIR, SlicedRegion,
+    mm_to_units, slice_ir::BoundingBox2, ExPolygon, PaintValue, Point2, Polygon, ResolvedConfig,
+    SliceIR, SlicedRegion,
 };
 
 #[test]
@@ -59,19 +58,6 @@ fn expolygon(points: Vec<Point2>) -> ExPolygon {
     }
 }
 
-fn flatten_expolygons(polygons: &[ExPolygon]) -> Vec<Point2> {
-    let mut points = Vec::new();
-    for polygon in polygons {
-        for ring in std::iter::once(&polygon.contour).chain(polygon.holes.iter()) {
-            points.extend_from_slice(&ring.points);
-            if ring.points.last() != ring.points.first() {
-                points.push(ring.points[0]);
-            }
-        }
-    }
-    points
-}
-
 fn square_bbox(size_mm: f32) -> BoundingBox2 {
     BoundingBox2 {
         min: Point2::from_mm(0.0, 0.0),
@@ -97,7 +83,7 @@ fn lightning_distance_field() {
 
 // Orca ref: DistanceField::update (OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/DistanceField.cpp)
 #[test]
-fn lightning_distance_field_rectangle_consumes_past_circle() {
+fn lightning_distance_field_branch_does_not_consume_past_leaf_circle() {
     let outline = square(1.0);
     let supporting_radius = mm_to_units(1.0);
     let overhang = outline.clone();
@@ -120,7 +106,43 @@ fn lightning_distance_field_rectangle_consumes_past_circle() {
     circle_only.update(added_leaf, added_leaf);
     segment_support.update(to_node, added_leaf);
 
-    assert!(circle_only.unsupported_count() > segment_support.unsupported_count());
+    assert_eq!(
+        circle_only.unsupported_count(),
+        segment_support.unsupported_count()
+    );
+}
+
+#[test]
+fn lightning_distance_field_keeps_branch_midpoint_outside_leaf_circle() {
+    // Cell size is one: this one-cell overhang samples exactly (10, 0).
+    let outline = vec![
+        Point2 { x: 0, y: -10 },
+        Point2 { x: 30, y: -10 },
+        Point2 { x: 30, y: 10 },
+        Point2 { x: 0, y: 10 },
+    ];
+    let overhang = vec![
+        Point2 { x: 10, y: 0 },
+        Point2 { x: 11, y: 0 },
+        Point2 { x: 11, y: 1 },
+        Point2 { x: 10, y: 1 },
+    ];
+    let bbox = BoundingBox2 {
+        min: outline[0],
+        max: outline[2],
+    };
+    let mut field = DistanceField::new(6, &outline, bbox, &overhang);
+    assert_eq!(field.try_get_next_point(), Some(Point2 { x: 10, y: 0 }));
+    field.update(Point2 { x: 0, y: 0 }, Point2 { x: 20, y: 0 });
+    // (10 - 20)^2 = 100 > 6^2 = 36, even though the cell is on the branch.
+    assert_eq!(field.unsupported_count(), 1);
+    assert_eq!(field.try_get_next_point(), Some(Point2 { x: 10, y: 0 }));
+    field.update(Point2 { x: 0, y: 0 }, Point2 { x: 16, y: 0 });
+    assert_eq!(
+        field.unsupported_count(),
+        0,
+        "the leaf circle includes its boundary"
+    );
 }
 
 // Orca ref: DistanceField::update and Node::propagateToNextLayer (OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/DistanceField.cpp; TreeNode.cpp)
@@ -146,7 +168,7 @@ fn lightning_empty_inputs_no_panic() {
     assert!(propagated.is_empty());
 }
 
-/// AC-1: the first layer has no predecessor and layer N is outline N minus the dilated outline N-1.
+/// Canonical seeds the eroded top layer and subtracts the un-eroded layer above below it.
 #[test]
 fn lightning_generator_overhangs() {
     let layer_zero = square(10.0);
@@ -157,17 +179,60 @@ fn lightning_generator_overhangs() {
         &[layer_zero.clone(), layer_one.clone()],
         wall_supporting_radius,
     );
-    let dilated_previous = offset(
-        &[expolygon(layer_zero)],
-        units_to_mm(wall_supporting_radius),
-        OffsetJoinType::Miter,
-        0.0,
-    );
-    let expected = difference(&[expolygon(layer_one)], &dilated_previous);
 
     assert_eq!(overhangs.len(), 2);
     assert!(overhangs[0].is_empty());
-    assert_eq!(overhangs[1], flatten_expolygons(&expected));
+    assert_eq!(
+        overhangs[1],
+        vec![
+            Point2 {
+                x: 195_000,
+                y: 195_000
+            },
+            Point2 {
+                x: 5_000,
+                y: 195_000
+            },
+            Point2 { x: 5_000, y: 5_000 },
+            Point2 {
+                x: 195_000,
+                y: 5_000
+            },
+            Point2 {
+                x: 195_000,
+                y: 195_000
+            },
+        ]
+    );
+    let bounds = overhangs[1]
+        .iter()
+        .fold((i64::MAX, i64::MIN), |(min, max), p| {
+            (min.min(p.x), max.max(p.x))
+        });
+    assert_eq!(bounds, (5_000, 195_000));
+}
+
+#[test]
+fn lightning_overhangs_include_bottom_and_reset_above_after_empty_layer() {
+    let overhangs = generate_initial_internal_overhangs(&[square(20.0), square(10.0)], 5_000);
+    // Bottom's 19x19 eroded square minus the 10x10 square above has area
+    // 19^2 - 9.5^2 = 270.75 mm² (their intersection is 9.5x9.5).
+    let twice_area = |ring: &[Point2]| -> i128 {
+        ring.windows(2)
+            .map(|p| {
+                i128::from(p[0].x) * i128::from(p[1].y) - i128::from(p[1].x) * i128::from(p[0].y)
+            })
+            .sum::<i128>()
+            .abs()
+    };
+    assert_eq!(twice_area(&overhangs[0]), 54_150_000_000);
+    let separated = generate_initial_internal_overhangs(
+        &[square(10.0), vec![Point2::default()], square(10.0)],
+        5_000,
+    );
+    assert_eq!(separated[0], separated[2]);
+    assert!(!separated[0].is_empty());
+    assert!(separated[1].is_empty());
 }
 
 // Orca ref: DistanceField::update and Node::straighten (OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/DistanceField.cpp; TreeNode.cpp)
@@ -409,12 +474,87 @@ fn lightning_tree_node_reroot_with_new_parent() {
     let root_x = Node::new(Point2 { x: 10, y: 0 });
 
     node_b.borrow().reroot(Some(Rc::clone(&root_x)));
+    // Canonical reroot sets the parent link; its caller appends the child once.
+    root_x.borrow().add_child_node(Rc::clone(&node_b));
 
     let a_children = root_a.borrow().children();
     assert!(a_children.iter().all(|child| !Rc::ptr_eq(child, &node_b)));
     let x_children = root_x.borrow().children();
-    assert!(x_children.iter().any(|child| Rc::ptr_eq(child, &node_b)));
+    assert_eq!(x_children.len(), 1);
+    assert!(Rc::ptr_eq(&x_children[0], &node_b));
+    let b_children = node_b.borrow().children();
+    assert_eq!(b_children.len(), 1);
+    assert!(Rc::ptr_eq(&b_children[0], &root_a));
     assert!(!node_b.borrow().is_root());
+}
+
+#[test]
+fn lightning_reroot_reverses_each_edge_once() {
+    let root = Node::new(Point2::default());
+    let middle = root.borrow().add_child(Point2 { x: 5, y: 0 });
+    let leaf = middle.borrow().add_child(Point2 { x: 10, y: 0 });
+    leaf.borrow().reroot(None);
+    assert!(leaf.borrow().is_root());
+    assert!(!middle.borrow().is_root());
+    assert!(!root.borrow().is_root());
+    assert_eq!(leaf.borrow().children().len(), 1);
+    assert!(Rc::ptr_eq(&leaf.borrow().children()[0], &middle));
+    assert_eq!(middle.borrow().children().len(), 1);
+    assert!(Rc::ptr_eq(&middle.borrow().children()[0], &root));
+    assert!(root.borrow().children().is_empty());
+}
+
+#[test]
+fn lightning_deep_copy_normalizes_grounding_by_root_status() {
+    let root = Node::new(Point2 { x: 10, y: 20 });
+    let child = root.borrow().add_child(Point2 { x: 30, y: 40 });
+    child
+        .borrow()
+        .set_last_grounding_location(Some(Point2 { x: 99, y: 99 }));
+    let copy = root.borrow().deep_copy();
+    assert_eq!(
+        copy.borrow().get_last_grounding_location(),
+        Some(Point2 { x: 10, y: 20 })
+    );
+    assert_eq!(
+        copy.borrow().children()[0]
+            .borrow()
+            .get_last_grounding_location(),
+        None
+    );
+    assert_eq!(root.borrow().get_last_grounding_location(), None);
+    root.borrow()
+        .set_last_grounding_location(Some(Point2 { x: 1, y: 2 }));
+    assert_eq!(
+        root.borrow()
+            .deep_copy()
+            .borrow()
+            .get_last_grounding_location(),
+        Some(Point2 { x: 1, y: 2 })
+    );
+}
+
+#[test]
+fn lightning_grid_point_truncates_negative_relative_coordinates() {
+    let bbox = BoundingBox2 {
+        min: Point2 { x: 10, y: 10 },
+        max: Point2 { x: 100, y: 100 },
+    };
+    assert_eq!(
+        super::tree_node::to_grid_point(Point2 { x: 9, y: 5 }, bbox, 4),
+        (0, -1)
+    );
+}
+
+#[test]
+fn lightning_straighten_keeps_collinear_backtracking_node() {
+    let root = Node::new(Point2 { x: 0, y: 0 });
+    let middle = root.borrow().add_child(Point2 { x: 20, y: 0 });
+    middle.borrow().add_child(Point2 { x: 10, y: 0 });
+    root.borrow().straighten(0, 100);
+    assert_eq!(root.borrow().children().len(), 1);
+    assert!(Rc::ptr_eq(&root.borrow().children()[0], &middle));
+    assert_eq!(middle.borrow().children().len(), 1);
 }
 
 // Orca ref: Node constructor and getLastGroundingLocation (TreeNode.cpp)
@@ -667,34 +807,11 @@ fn distance_to_outline(point: Point2, outline: &[Point2]) -> f64 {
         .fold(f64::INFINITY, f64::min)
 }
 
-// NAME IS HISTORICAL, AND NOW THE OPPOSITE OF WHAT IT ASSERTS. Since
-// `Node::realign` was ported this test pins that trees do NOT cross layers on
-// this fixture — see the structural argument below for why that is correct
-// here, and TASK-300 in docs/07_implementation_status.md for the generator-level
-// propagation-success case that no fixture can currently reach. The name is kept
-// because packets 139 and 140 cite it verbatim in their verification commands.
-//
 // Orca ref: Generator::generateTrees and Node::realign
 // (OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Generator.cpp; TreeNode.cpp)
 //
-// Structure of the `[10, 10, 10, 12]` prism fixture, once `Node::realign` is
-// ported (before the port, `propagate_to_next_layer` discarded `next_outlines`
-// entirely and every tree was copied down unconditionally):
-//
-//  * `generate_initial_internal_overhangs` gives layer N the area of layer N
-//    minus the *dilated outline of layer N-1*, so layers 0..=2 — three
-//    identical 10 mm squares — have an empty overhang and seed nothing.
-//  * Layer 3 (12 mm) has an overhang band that begins outside the 10 mm square
-//    dilated by `wall_supporting_radius`, so every node layer 3 seeds sits
-//    outside layer 2's outline.
-//  * Propagating layer 3 downward therefore takes canonical `realign`'s
-//    "outside" branch at the root and at every descendant, the whole tree is
-//    dropped, and layers 0..=2 stay empty. The trees that the pre-realign port
-//    left on those layers were floating outside their own layer's outline.
-//
-// The cross-layer continuity that this fixture used to claim is consequently
-// vacuous for it; what the fixture still pins precisely is grounding and
-// containment, both of which the pre-realign port violated.
+// The eroded 12 mm top seeds interior trees, which propagate into the three
+// 10 mm layers below. Those lower layers have no new internal overhangs.
 #[test]
 fn lightning_generator_tree_continuity() {
     let outlines = lightning_prism_outlines();
@@ -712,45 +829,42 @@ fn lightning_generator_tree_continuity() {
         .collect();
     assert_eq!(
         layers_with_trees,
-        vec![top_layer],
-        "only the layer whose outline exceeds the layer below has an overhang, \
-         and realign keeps its tree from propagating into the smaller layer"
+        vec![0, 1, 2, 3],
+        "top-layer interior trees must propagate through every lower layer"
     );
 
-    let below_outline_max = mm_to_units(10.0);
-    let own_outline_max = mm_to_units(12.0);
-    for root in &generator.get_trees_for_layer(top_layer).tree_roots {
-        assert!(root.borrow().is_root());
-        // Every tree is grounded on its own layer's wall: `attach` creates the
-        // root at the closest point of the current outline.
-        assert!(
-            distance_to_outline(root.borrow().location(), &outlines[top_layer]) < 1.0,
-            "root {:?} is not grounded on its own outline",
-            root.borrow().location()
-        );
+    for (layer_id, outline) in outlines.iter().enumerate() {
+        let own_outline_max = if layer_id == top_layer {
+            mm_to_units(12.0)
+        } else {
+            mm_to_units(10.0)
+        };
+        for root in &generator.get_trees_for_layer(layer_id).tree_roots {
+            assert!(root.borrow().is_root());
+            // Every tree is grounded on its own layer's wall: `attach` creates the
+            // root at the closest point of the current outline.
+            assert!(
+                distance_to_outline(root.borrow().location(), outline) < 1.0,
+                "root {:?} is not grounded on its own outline",
+                root.borrow().location()
+            );
 
-        for node in tree_nodes(root) {
-            // Containment: realign guarantees no node survives outside the
-            // outline of the layer that owns it.
-            assert!(
-                node.x >= 0 && node.x <= own_outline_max,
-                "node {node:?} escapes its own layer outline"
-            );
-            assert!(
-                node.y >= 0 && node.y <= own_outline_max,
-                "node {node:?} escapes its own layer outline"
-            );
-            // ...and every node is outside the layer below, which is exactly
-            // why nothing propagates down out of this fixture.
-            assert!(
-                node.x > below_outline_max || node.y > below_outline_max,
-                "node {node:?} is inside the layer below, so realign should have \
-                 propagated it downward"
-            );
+            for node in tree_nodes(root) {
+                // Containment: realign guarantees no node survives outside the
+                // outline of the layer that owns it.
+                assert!(
+                    node.x >= 0 && node.x <= own_outline_max,
+                    "node {node:?} escapes its own layer outline"
+                );
+                assert!(
+                    node.y >= 0 && node.y <= own_outline_max,
+                    "node {node:?} escapes its own layer outline"
+                );
+            }
+
+            // A grounded root always carries at least one overhang node.
+            assert!(!tree_endpoints(root).is_empty());
         }
-
-        // A grounded root always carries at least one overhang node.
-        assert!(!tree_endpoints(root).is_empty());
     }
 }
 

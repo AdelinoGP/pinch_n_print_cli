@@ -135,10 +135,6 @@ impl DistanceField {
         }
 
         let grid = self.branch_search_bbox(to_node, added_leaf);
-        let segment_x = added_leaf.x as f64 - to_node.x as f64;
-        let segment_y = added_leaf.y as f64 - to_node.y as f64;
-        let segment_length2 = segment_x * segment_x + segment_y * segment_y;
-        let radius = self.supporting_radius as f64;
         for (point, erased) in self
             .unsupported_points
             .iter()
@@ -148,23 +144,7 @@ impl DistanceField {
                 continue;
             }
 
-            let in_supporting_circle =
-                squared_distance(point.loc, added_leaf) <= self.supporting_radius2;
-            let in_supporting_rectangle = if segment_length2 > 0.0 {
-                let point_x = point.loc.x as f64 - to_node.x as f64;
-                let point_y = point.loc.y as f64 - to_node.y as f64;
-                let projection = point_x * segment_x + point_y * segment_y;
-                if (0.0..=segment_length2).contains(&projection) {
-                    let cross = point_x * segment_y - point_y * segment_x;
-                    cross * cross <= radius * radius * segment_length2
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            if in_supporting_circle || in_supporting_rectangle {
+            if squared_distance(point.loc, added_leaf) <= self.supporting_radius2 {
                 *erased = true;
             }
         }

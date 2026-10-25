@@ -28,8 +28,8 @@ pub type NodeRef = Rc<RefCell<Node>>;
 pub(crate) fn to_grid_point(location: Point2, bbox: BoundingBox2, cell_size: i64) -> (i32, i32) {
     let cell_size = cell_size.max(1);
     (
-        location.x.saturating_sub(bbox.min.x).div_euclid(cell_size) as i32,
-        location.y.saturating_sub(bbox.min.y).div_euclid(cell_size) as i32,
+        (location.x.saturating_sub(bbox.min.x) / cell_size) as i32,
+        (location.y.saturating_sub(bbox.min.y) / cell_size) as i32,
     )
 }
 
@@ -218,8 +218,11 @@ impl Node {
 
     /// Copy this node and its complete descendant tree.
     pub fn deep_copy(&self) -> NodeRef {
-        let copy =
-            Self::new_with_grounding_location(self.location(), self.get_last_grounding_location());
+        let grounding = self.is_root().then(|| {
+            self.get_last_grounding_location()
+                .unwrap_or(self.location())
+        });
+        let copy = Self::new_with_grounding_location(self.location(), grounding);
         copy.borrow().is_root.set(self.is_root());
         for child in self.children() {
             let child_copy = child.borrow().deep_copy();
@@ -376,11 +379,6 @@ impl Node {
             self.children
                 .borrow_mut()
                 .retain(|child| !Rc::ptr_eq(child, &new_parent));
-            new_parent
-                .borrow()
-                .children
-                .borrow_mut()
-                .push(Rc::clone(&self_rc));
             self.is_root.set(false);
             *self.parent.borrow_mut() = Rc::downgrade(&new_parent);
         } else {
@@ -473,11 +471,11 @@ impl Node {
                     let parent_location = parent.borrow().location();
                     let child_location = child.borrow().location();
                     if squared_distance(child_location, parent_location) < max_remove_colinear_dist2
-                        && distance_to_line_squared(
+                        && distance_to_segment_squared(
                             self.location(),
                             parent_location,
                             child_location,
-                        ) <= CLOSE_ENOUGH_PNP_UNITS * CLOSE_ENOUGH_PNP_UNITS
+                        ) < CLOSE_ENOUGH_PNP_UNITS * CLOSE_ENOUGH_PNP_UNITS
                     {
                         *child.borrow().parent.borrow_mut() = Rc::downgrade(&parent);
                         let self_rc = self.self_ref.borrow().upgrade();
@@ -729,7 +727,7 @@ fn segment_segment_intersection(
     Some((a0.x as f64 + t * rx, a0.y as f64 + t * ry))
 }
 
-fn distance_to_line_squared(point: Point2, start: Point2, end: Point2) -> f64 {
+fn distance_to_segment_squared(point: Point2, start: Point2, end: Point2) -> f64 {
     let line_x = (end.x - start.x) as f64;
     let line_y = (end.y - start.y) as f64;
     let point_x = (point.x - start.x) as f64;
@@ -738,7 +736,9 @@ fn distance_to_line_squared(point: Point2, start: Point2, end: Point2) -> f64 {
     if line_length2 == 0.0 {
         point_x * point_x + point_y * point_y
     } else {
-        let cross = point_x * line_y - point_y * line_x;
-        cross * cross / line_length2
+        let projection = ((point_x * line_x + point_y * line_y) / line_length2).clamp(0.0, 1.0);
+        let dx = point_x - projection * line_x;
+        let dy = point_y - projection * line_y;
+        dx * dx + dy * dy
     }
 }

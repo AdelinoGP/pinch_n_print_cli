@@ -63,7 +63,7 @@ pub struct Generator {
     pub per_layer_outlines: Vec<Vec<Point2>>,
     /// Radius used to resolve unsupported cells into branches.
     pub supporting_radius: i64,
-    /// Radius used to classify an outline as supported by the previous layer.
+    /// Inward wall-support erosion applied before subtracting the layer above.
     pub wall_supporting_radius: i64,
     /// Maximum branch length removed while propagating to the next layer.
     pub prune_length: i64,
@@ -221,28 +221,24 @@ pub fn generate_initial_internal_overhangs(
     per_layer_outlines: &[Vec<Point2>],
     wall_supporting_radius: i64,
 ) -> Vec<Vec<Point2>> {
-    let mut internal_overhangs = Vec::with_capacity(per_layer_outlines.len());
-
-    for (layer_index, current_outline) in per_layer_outlines.iter().enumerate() {
-        if layer_index == 0 || current_outline.len() < 3 {
-            internal_overhangs.push(Vec::new());
-            continue;
-        }
-
-        let current = expolygon(current_outline);
-        let previous_outline = &per_layer_outlines[layer_index - 1];
-        let supporting = if previous_outline.len() < 3 {
+    let mut internal_overhangs = vec![Vec::new(); per_layer_outlines.len()];
+    let mut above = Vec::new();
+    for layer_index in (0..per_layer_outlines.len()).rev() {
+        let current_outline = &per_layer_outlines[layer_index];
+        let current = if current_outline.len() < 3 {
             Vec::new()
         } else {
-            offset(
-                &[expolygon(previous_outline)],
-                units_to_mm(wall_supporting_radius),
-                OffsetJoinType::Miter,
-                0.0,
-            )
+            vec![expolygon(current_outline)]
         };
-        let unsupported = difference(&[current], &supporting);
-        internal_overhangs.push(flatten_expolygons(&unsupported));
+        let eroded = offset(
+            &current,
+            -units_to_mm(wall_supporting_radius),
+            OffsetJoinType::Miter,
+            0.0,
+        );
+        let unsupported = difference(&eroded, &above);
+        internal_overhangs[layer_index] = flatten_expolygons(&unsupported);
+        above = current;
     }
 
     internal_overhangs

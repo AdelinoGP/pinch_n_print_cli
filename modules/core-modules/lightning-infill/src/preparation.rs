@@ -244,8 +244,8 @@ mod tests {
     // Fixture: the kernel's 10/10/10/12 mm prism, one region per layer
     // -----------------------------------------------------------------------
 
-    /// Square outline; the prism's fourth layer is 12 mm, so it seeds the only
-    /// overhang in the fixture and therefore the only plan entries.
+    /// Square outline; the prism's fourth layer is 12 mm, so it is the fixture's
+    /// top layer and its eroded outline minus nothing seeds the only trees.
     fn square(side_mm: f32) -> ExPolygon {
         let max = slicer_ir::mm_to_units(side_mm);
         ExPolygon {
@@ -326,15 +326,16 @@ mod tests {
     }
 
     impl Fixture {
-        /// Four schedule layers: 10, 10, 10, 12 mm outlines, so planning emits
-        /// entries on layer 3 only and layers 0..=2 publish header-only pieces.
+        /// Four schedule layers: 10, 10, 10, 12 mm outlines. Layer 3 is the top, so
+        /// its eroded outline minus nothing seeds the interior trees, and canonical
+        /// downward propagation gives the three 10 mm layers plan entries too.
         fn prism(per_layer_diagnostics: Option<&[&str]>) -> Self {
             Self::with_sides(&[10.0, 10.0, 10.0, 12.0], per_layer_diagnostics)
         }
 
-        /// The prism plus one 12 mm layer on top of the 12 mm layer, which is
-        /// supported and therefore seeds no trees: its schedule top has no plan
-        /// entries, so the `missing_piece` target is layer 3, not layer 4.
+        /// The prism plus one 12 mm layer on top of the 12 mm layer. Canonical
+        /// subtracts nothing above the top, so layer 4 seeds the interior trees and
+        /// is also the topmost planned layer: the `missing_piece` target.
         fn tower(per_layer_diagnostics: Option<&[&str]>) -> Self {
             Self::with_sides(&[10.0, 10.0, 10.0, 12.0, 12.0], per_layer_diagnostics)
         }
@@ -525,9 +526,10 @@ mod tests {
     // Tests
     // -----------------------------------------------------------------------
 
-    /// The `none` path is the normal plan: one piece per committed schedule
-    /// layer, header-only where the prism seeds no trees, and one scene derived
-    /// from the same plan.
+    /// The `none` path is the normal plan: one piece per committed schedule layer,
+    /// each carrying an entry because the 12 mm top seeds the fixture's trees and
+    /// canonical downward propagation pushes a run into every layer below it, and
+    /// one scene derived from the same plan.
     #[test]
     fn none_publishes_the_normal_pieces_and_the_derived_scene() {
         let (pieces, sink) = prepare(Fixture::prism(Some(&["none", "none", "none", "none"])));
@@ -537,24 +539,26 @@ mod tests {
         for (index, (name, body)) in pieces.iter().enumerate() {
             assert_eq!(name, &format!("lightning-layer-{index}"));
             let plan = decode_layer_piece(name, body).expect("normal pieces decode");
-            if index == 3 {
-                assert!(
-                    !plan.entries.is_empty(),
-                    "the 12 mm prism layer carries the fixture's only trees"
-                );
-            } else {
-                assert!(
-                    plan.entries.is_empty(),
-                    "lower prism layers are inside the layer below, so they seed nothing"
-                );
-                assert_eq!(body.len(), 10, "a tree-less layer is a header-only piece");
-            }
-            for entry in &plan.entries {
-                plan_edges
-                    .entry(entry.global_layer_index)
-                    .or_default()
-                    .extend(entry.tree_edge_segments.iter().copied());
-            }
+            assert_eq!(
+                plan.entries.len(),
+                1,
+                "one region island per layer: one entry"
+            );
+            let entry = &plan.entries[0];
+            assert_eq!(entry.global_layer_index, index as i32);
+            assert!(
+                !entry.tree_edge_segments.is_empty(),
+                "the 12 mm top seeds the fixture's only trees, and canonical downward \
+                 propagation carries a run into every layer below it"
+            );
+            assert!(
+                body.len() > 10,
+                "a layer that carries a plan entry is more than a header-only piece"
+            );
+            plan_edges
+                .entry(entry.global_layer_index)
+                .or_default()
+                .extend(entry.tree_edge_segments.iter().copied());
         }
 
         let scenes = sink.scenes.lock().expect("scene log poisoned");
@@ -623,10 +627,11 @@ mod tests {
         assert_eq!(recorded.pieces.lock().unwrap().len(), 4);
     }
 
-    /// `missing_piece` omits the topmost layer that carries plan entries, not the
-    /// topmost scheduled layer: the tower's fifth layer is supported and seeds no
-    /// trees, so its consumer would never ask for a *plan* entry, while layer 3's
-    /// consumer always runs.
+    /// `missing_piece` omits the topmost layer that carries plan entries. Canonical
+    /// derives a layer's overhang as its eroded outline minus the un-eroded layer
+    /// above, so the topmost schedule layer subtracts nothing, seeds the interior
+    /// trees, and is therefore also the topmost planned layer: its piece is the one
+    /// omitted while every layer below still publishes.
     #[test]
     fn missing_piece_omits_the_topmost_planned_layer() {
         let (pieces, _) = prepare(Fixture::tower(Some(&[
@@ -644,9 +649,9 @@ mod tests {
                 "lightning-layer-0",
                 "lightning-layer-1",
                 "lightning-layer-2",
-                "lightning-layer-4"
+                "lightning-layer-3"
             ],
-            "layer 3 carries the plan's topmost entries, so its piece is absent"
+            "layer 4 is the plan's topmost planned layer, so its piece is absent"
         );
         for (name, body) in pieces.iter() {
             decode_layer_piece(name, body).expect("the remaining pieces are valid");

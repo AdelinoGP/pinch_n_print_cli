@@ -23,7 +23,8 @@ use super::distance_field::DistanceField;
 use super::tree_node::{to_grid_point, Node, NodeRef};
 
 const TREE_CONNECTING_IGNORE_OFFSET: i64 = 1;
-const TREE_NODE_LOCATOR_CELL_SIZE: i64 = 4;
+// Canonical TreeNode.hpp::locator_cell_size is scaled(4.), i.e. 4 mm.
+const TREE_NODE_LOCATOR_CELL_SIZE: i64 = 40_000;
 
 pub(crate) enum GroundingLocation {
     Boundary(Point2),
@@ -89,7 +90,7 @@ impl Layer {
                 continue;
             };
             let grounding_point = grounding.point();
-            self.attach(unsupported_location, grounding);
+            self.attach(unsupported_location, grounding, outlines_bbox);
             distance_field.update(grounding_point, unsupported_location);
         }
     }
@@ -268,19 +269,27 @@ impl Layer {
         clip_polylines(&polylines, &[limit])
     }
 
-    fn attach(&mut self, unsupported_location: Point2, grounding: GroundingLocation) -> NodeRef {
-        match grounding {
+    fn attach(
+        &mut self,
+        unsupported_location: Point2,
+        grounding: GroundingLocation,
+        bbox: BoundingBox2,
+    ) -> NodeRef {
+        let new_child = match grounding {
             GroundingLocation::Boundary(boundary_location) => {
                 let new_root =
                     Node::new_with_grounding_location(boundary_location, Some(boundary_location));
                 let new_child = new_root.borrow().add_child(unsupported_location);
+                self.index_tree_node(&new_root, bbox);
                 self.tree_roots.push(new_root);
                 new_child
             }
             GroundingLocation::Tree(tree_node) => {
                 tree_node.borrow().add_child(unsupported_location)
             }
-        }
+        };
+        self.index_tree_node(&new_child, bbox);
+        new_child
     }
 
     fn rebuild_tree_node_locator(&mut self, bbox: BoundingBox2) {
@@ -385,4 +394,43 @@ fn distance_between(first: Point2, second: Point2) -> i64 {
     let dx = (first.x - second.x) as f64;
     let dy = (first.y - second.y) as f64;
     dx.hypot(dy) as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn consecutive_seeds_attach_to_newly_indexed_nodes() {
+        let outline = [
+            Point2 { x: 0, y: 0 },
+            Point2 { x: 100, y: 0 },
+            Point2 { x: 100, y: 100 },
+            Point2 { x: 0, y: 100 },
+        ];
+        let bbox = bounding_box(&outline);
+        let mut layer = Layer::default();
+        layer.rebuild_tree_node_locator(bbox);
+        let first = Point2 { x: 50, y: 50 };
+        let grounding = layer
+            .get_best_grounding_location(first, &outline, bbox, 6, 1, &|| {})
+            .unwrap();
+        assert!(matches!(grounding, GroundingLocation::Boundary(_)));
+        let first_node = layer.attach(first, grounding, bbox);
+        let second = Point2 { x: 57, y: 50 };
+        let grounding = layer
+            .get_best_grounding_location(second, &outline, bbox, 6, 1, &|| {})
+            .unwrap();
+        let GroundingLocation::Tree(parent) = &grounding else {
+            panic!("the second seed must find the first seed's new node");
+        };
+        assert!(Rc::ptr_eq(parent, &first_node));
+        let second_node = layer.attach(second, grounding, bbox);
+        assert_eq!(layer.tree_roots.len(), 1);
+        assert_eq!(first_node.borrow().children().len(), 1);
+        assert!(Rc::ptr_eq(&first_node.borrow().children()[0], &second_node));
+        let cell = to_grid_point(first, bbox, TREE_NODE_LOCATOR_CELL_SIZE);
+        assert_eq!(cell, (0, 0)); // Both seeds and the root share the canonical 4 mm cell.
+        assert_eq!(layer.tree_node_locator[&cell].len(), 3);
+    }
 }
