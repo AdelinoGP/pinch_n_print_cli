@@ -4,8 +4,10 @@ Canonical task crosswalk: `TASK-576` in `docs/07_implementation_status.md`, no p
 blocking `TASK-577`. Status is mutable; re-derive it before execution and before updating it.
 Source-plan queue row 07 is split by explicit approval into this packet (Gate A: canonical input
 fidelity) and `layer-module-preparation_09_lightning-kernel-portability` (Gate B: native/WASM
-portability). The split does not waive either sub-gate, and neither packet authorizes row-08
-generation until both verified outcomes and implemented generic framework acceptance exist.
+portability). The split does not waive either sub-gate. The row-08 packet was re-scoped on
+2026-10-20 to recorded behavioural equivalence, so it is not gated by these feasibility gates;
+`TASK-576` remains `[~]` until both gates pass. (corrected 2026-10-25 against the plan's
+2026-10-20 row-08 re-scope)
 
 | Task | Packet steps | Primary authority | Expected code surface | Canonical refs | Cost | Obligation |
 | --- | --- | --- | --- | --- | --- | --- |

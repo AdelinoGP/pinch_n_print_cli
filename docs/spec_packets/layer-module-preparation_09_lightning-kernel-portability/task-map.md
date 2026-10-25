@@ -6,9 +6,11 @@ native/WASM portability sub-gate split out of source-plan queue row 07 by explic
 sub-gate and publishes the fixtures this packet consumes. Packet
 `layer-module-preparation_08_lightning-migration` owns the ownership move into
 `modules/core-modules/lightning-infill/src/kernel/` and its recorded-equivalence proof; that proof is
-**not** a parity claim and does not resolve Gate B. The split does not waive either sub-gate, and
-neither packet authorizes row-08 generation until both verified outcomes and implemented generic
-framework acceptance exist. This packet does not reopen `TASK-577`; re-derive its state at
+**not** a parity claim and does not resolve Gate B. The split does not waive either sub-gate. The
+row-08 packet was re-scoped on 2026-10-20 to recorded behavioural equivalence, so it is not gated
+by these feasibility gates; `TASK-576` remains `[~]` until both gates pass. (corrected 2026-10-25
+against the plan's 2026-10-20 row-08 re-scope) This packet does not reopen `TASK-577`; re-derive
+its state at
 activation rather than quoting a status here.
 
 | Task | Packet steps | Primary authority | Expected code surface | Canonical refs | Cost | Obligation |

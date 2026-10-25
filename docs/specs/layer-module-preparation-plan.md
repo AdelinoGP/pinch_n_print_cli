@@ -735,7 +735,7 @@ of the Q23 approval:
 | 04 | whole-print-input-views | Expose declaration-gated typed whole-print PrePass read views and selected-target/configuration data through the shared projection. | TASK-574 | #1, #3 | generated | docs/spec_packets/layer-module-preparation_04_whole-print-input-views/ |
 | 05 | preparation-runtime-lifecycle | Integrate eligibility, late-PrePass execution before Layer calls, failure/cancellation handling, storage release, and truthful runtime lifecycle diagnostics. | TASK-574 | #3, #4 | implemented | docs/spec_packets/layer-module-preparation_05_preparation-runtime-lifecycle/ |
 | 06 | preparation-plan-visuals | Publish validated optional XY diagnostic projections atomically with prepared plans, then capture and render them through the existing visual-debug request and bundle path with truthful execution metadata. | TASK-575 | #5 | generated | docs/spec_packets/layer-module-preparation_06_preparation-plan-visuals/ |
-| 07 | lightning-geometry-portability-gate | Establish the reproducible canonical planning-domain/input oracle and verify the module-owned kernel through native and WASM adapters; record both outcomes in this source plan. | TASK-576 | - | generated | docs/spec_packets/layer-module-preparation_07_lightning-geometry-portability-gate/ (Gate A); docs/spec_packets/layer-module-preparation_09_lightning-kernel-portability/ (Gate B) |
+| 07 | lightning-geometry-portability-gate | Establish the reproducible canonical planning-domain/input oracle and verify the module-owned kernel through native and WASM adapters; record both outcomes in this source plan. | TASK-576 | - | implemented | docs/spec_packets/layer-module-preparation_07_lightning-geometry-portability-gate/ (Gate A); docs/spec_packets/layer-module-preparation_09_lightning-kernel-portability/ (Gate B) |
 | 08 | lightning-migration | Migrate lightning to module-owned preparation and directly retire the host producer, `LightningTreeIR`, and `lightning-tree-segments` accessor. | TASK-577 | #5, #6 | implemented (re-scoped 2026-10-20; closed 2026-10-23) | docs/spec_packets/layer-module-preparation_08_lightning-migration/ |
 
 **Row 08 re-scope (2026-10-20).** Row 08 previously required "complete generic
@@ -785,6 +785,7 @@ equivalence still returns the migration for a design decision; approximate
 geometry is not a fallback. The queue above records generation status, not
 implementation acceptance. The row-08 packet remains `draft` pending explicit
 finalization approval.
+**Status correction (2026-10-25):** the row-08 packet is `implemented` and was closed 2026-10-23; the preceding sentence is superseded.
 
 ## Lightning geometry/portability gate outcomes
 
