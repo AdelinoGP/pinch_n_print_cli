@@ -100,7 +100,43 @@ Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
 
-**Current selection scope (2026-10-25, on the ticket 87 take):** the human's
+**Current selection scope (2026-10-25, on the ticket 88 take):** the human's
+"continue the perf vs orca map" named no ticket; the frontier re-derivation
+found [88](issues/88-supports-on-increment-attribution.md) as the only open
+child, and the session took it in order. It is **resolved (2026-10-25) as a
+measurement-only attribution — no candidate, no production edit, no keep/drop
+campaign.** Four quiet (5 % load) instrumented base captures at HEAD
+`5c7fa03e`, all byte-identical to the post-t81 references, plus a
+corroborating loaded pass (68–73 % desktop load) and a config-only
+`tree_support_branch_distance = 5.0` arm. The supports-on increment is
+**106.8 s classic / 109.7 s arachne** and is **~69 % the support geometry
+itself** (planner 55.5 s = 52.0 % of the classic increment; canonical contact
+detection 10.2 s; per-layer render 5.9 s wall) plus **~31 % host-side**: a
+**serial 15.2 / 13.9 s exact-Z validation loop** (99.3 % of the post-planner
+gap, every entry independent) and **one finalization clone + two whole-collection
+drops** (finalization 6.8 s, emission 6.3 s, teardown 4.6 s; the probe's
+`SystemTime` marks show the emitter's clone is ~5 ms and the 6 s is the drop).
+Two candidates graduate on the map's 0.80 % floor:
+[89](issues/89-support-plan-exact-z-validation-parallel.md) — parallelize the
+validation, **8.28 % / 7.42 %** of the cell — and
+[90](issues/90-postpass-layer-collection-ownership.md) — one ownership path
+through finalization/emission, **5.84 % / 5.47 % net** (9.18 % / 8.60 % upper).
+Measured dead/geometry-bound: the SupportAnalysis eligibility fold (2.24 s
+gross, no above-floor removable term), the contact kernel (10.2 s, parallel canonical), the
+planner (55.5 s, support geometry, t78 batching in place) and the per-layer
+render (5.9 s wall, already parallel). The **`tree_support_branch_distance`
+5 mm arm is −7.25 s (−3.94 %) and ~6.8 s of the increment (6.4 %)** — a modest
+driver, not the reason; the parity ruling stays with the human. The probe also
+caught a measurement trap: an `Instant` clock read disagreed with the event
+timestamps, so a 5 ms clone read as 4.09 s; all probe claims use the
+`SystemTime` marks and the stage brackets. The probe is reverted; both
+freshness gates exit 0. Evidence:
+[`evidence/t88-supports-increment/`](evidence/t88-supports-increment/FINDINGS.md)
+(`verify.py` exit 0 checkout-only, `--self-test` 8/8 negative controls
+rejected). Frontier now: **tickets 89 and 90, open and unclaimed**; the take
+order is the human's. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-25, on the ticket 87 take):** the human's
 "continue the perf vs orca map" named no ticket; the frontier re-derivation
 found **86/86 children resolved**, and the human selected the **Scoreboard
 refresh** route from the options presented.
@@ -886,6 +922,13 @@ Standing decisions for this effort (2026-09-22):
   is plausible but its cause was not isolated
   ([Tree-planner substage
   attribution](issues/22-tree-planner-substage-attribution.md), 2026-09-24).
+- **Recipe trap (new 2026-10-25, t88):** a probe's `Instant` bracket can disagree
+  with the event timestamps by the width of an earlier phase (clock-read
+  hoisting or a non-monotonic QPC on this host), so a 5 ms clone can read as
+  4.09 s while the run is otherwise correct. Anchor probe marks to
+  `SystemTime` (`at_ms`) or black-box the clock, and cross-check every
+  `Instant` delta against the event timestamps before quoting it
+  ([ticket 88](issues/88-supports-on-increment-attribution.md)).
 - Measured keep/drop recommendations return to the human; candidates are never
    auto-committed.
   **Prepared-cache experiment completed; DROP approved (2026-10-06):**
@@ -1189,6 +1232,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Supports-on increment attribution at post-resolution-port HEAD](issues/88-supports-on-increment-attribution.md): **resolved (2026-10-25; measurement-only — no candidate, no production edit)** — at HEAD `5c7fa03e`, four quiet (5 % load) instrumented base captures plus a loaded corroborating pass and a config-only `tree_support_branch_distance = 5.0` arm; all 1 mm outputs byte-identical to the post-t81 references. The increment is **106.8 s classic / 109.7 s arachne** and is **~69 % support geometry** (planner 55.5 s = 52.0 % of the classic increment, canonical contact detection 10.2 s, per-layer render 5.9 s wall) plus **~31 % host-side** — a **serial exact-Z validation loop** at **15.24 / 13.94 s** (99.3 % of the post-planner gap; every entry independent; cache keys on `region_id` although the computation is object-wide) and **one finalization clone + two whole-collection drops** (finalization 6.76 s, emission 6.26 s = a ~6.15 s drop after a ~5 ms clone, postpass teardown gap 4.58 s). Graduated [89](issues/89-support-plan-exact-z-validation-parallel.md) (parallelize the validation; **8.28 / 7.42 %** of the cell) and [90](issues/90-postpass-layer-collection-ownership.md) (one ownership path; **5.84 / 5.47 %** net, 9.18 / 8.60 % upper). Measured dead: the SupportAnalysis eligibility fold (2.24 s gross, no above-floor removable term), the contact kernel (10.2 s, parallel canonical), the planner (55.5 s, support geometry; t78 batching in place), the per-layer render (5.9 s wall, already parallel). The **`tree_support_branch_distance` 5 mm arm is −7.25 s (−3.94 %)** and **~6.8 s of the increment (6.4 %)** — a modest driver; the parity ruling returns to the human. Probe trap recorded: an `Instant` clock read disagreed with the event timestamps by the width of an earlier phase, so a 5 ms clone read as 4.09 s; all probe claims use the `SystemTime` marks and stage brackets. Evidence: [`evidence/t88-supports-increment/`](evidence/t88-supports-increment/FINDINGS.md) (`verify.py` exit 0 checkout-only, `--self-test` 8/8 negative controls rejected).
+
 - [Matched-pair scoreboard refresh at post-resolution-port HEAD](issues/87-scoreboard-refresh-post-resolution-port.md): **resolved (2026-10-25; measurement-only — the first fully resolution-matched 8-cell scoreboard)** — at HEAD `6e71c1a1` with both trees rebuilt, Orca still wins all 8 at **2.71x–9.36x**, CPU corroborating (PnP burns 4.1x–21.3x Orca's CPU). Best cell **2.71x** benchy classic-off accelerated (2.75x ordinary; 2.74x benchy arachne-off), worst **9.36x** base arachne-on ordinary. **No cell within ~1.5x → the below-fold park is still binding**, though the release bound moved **3.30x → 2.71x**. PnP ordinary walls fell **39.7–66.2 %** since 2026-10-18; Orca also measured **16.2–35.3 % faster** (drift, disclosed; today-vs-today). **Supports-on is the concentration:** base off 5.18–5.28x vs on 9.20–9.36x, PnP increment **+97.90 / +113.38 s** vs Orca **+4.50 / +5.79 s** with *fewer* PnP support sections. 96 rows / 72 measured, 1 warmup + 3 measured per group, **zero starvation exclusions**, zero validation failures; PnP ordinary ≡ accelerated bytes/SHA in all 8 cells; new post-t81 reference set recorded (base SHAs reproduce t83/t84/t85). Disclosure: an accidental duplicate benchy round is preserved but not ledger input. Graduated [88](issues/88-supports-on-increment-attribution.md). Evidence: [`evidence/scoreboard-refresh-20261025/`](evidence/scoreboard-refresh-20261025/SCOREBOARD.md) (`verify.py` exit 0 checkout-only, `--self-test` 8/8 negative controls).
 
 - [Seam planner inset-offset batching](issues/85-seam-inset-offset-batching.md): **resolved (2026-10-25; human-approved KEEP — gate met in all four base classic cells)** — the seam planner's 495 per-region inset offsets become **one** `offset_polygons_batch`; wall **−7.46 / −2.72 %** (ordinary) and **−7.03 / −3.86 %** (accelerated), CPU **+0.34…+0.47 %**, 24/24 pairs byte-identical, 16/16 output identity, zero exclusions; seam stage **8,356 → 1,737 ms** = **≈7x batch occupancy** (conservative 4.4x, floor 1.15x), so t84's 5.43 % pricing is beaten and the stage drops to 2.3 % of a base cell. Parity is exact by construction, pinned by a per-entry serial-reference test.
@@ -1378,13 +1423,23 @@ Standing decisions for this effort (2026-09-22):
 - **`tree_support_branch_distance` is the other t82 "PnP does more work" key
   (surfaced 2026-10-23 by [ticket 83](issues/83-arachne-wall-simplification-tolerance-pricing.md)'s
   resolution).** Orca resolves 5 mm, PnP 1 mm — PnP places branches 5x denser on
-  supports-on cells. Magnitude unmeasured, and it is parity-scoped geometry work
-  (changing it changes support placement), so it graduates only with the human's
-  route — this observation is not an implicit authorisation. **The 2026-10-25
-  scoreboard made supports-on the concentration (base on 9.20–9.36x vs off
-  5.18–5.28x), and [ticket 88](issues/88-supports-on-increment-attribution.md)
-  (graduated, open, unclaimed) now prices this key as one hypothesis; changing
-  it remains a separate parity ruling.**
+  supports-on cells. **Measured 2026-10-25 by
+  [ticket 88](issues/88-supports-on-increment-attribution.md)**: a config-only
+  5 mm arm is **−7.25 s slice wall (−3.94 %)** and **−6.8 s of the 106.8 s
+  support increment (6.4 %)**, with G-code bytes −0.83 % and a changed SHA —
+  a modest driver, not the reason PnP pays the increment. It remains
+  parity-scoped geometry work (changing it changes support placement), so it
+  still needs a separate human ruling on parity grounds; the performance case
+  for changing it is weak.
+
+- **Tree-support planner non-clip residual (surfaced 2026-10-25 by
+  [ticket 88](issues/88-supports-on-increment-attribution.md)).** The planner
+  is still 55.5 s classic / 55.3 s arachne (52.0 / 50.4 % of the increment)
+  after t78's clip batching. The batched clip core is in place; the remaining
+  non-clip work is the serial avoidance ladder, offsets, MST and node moves —
+  support geometry, not a host batch shape. No representation-safe reduction
+  was found in this take; re-enter only with a canonical-parity shape and its
+  own measured reason.
 
 - **Fan-command reference boundary (graduated from ticket 47, 2026-10-03;
   boundary settled by ticket 46, 2026-10-05).**
