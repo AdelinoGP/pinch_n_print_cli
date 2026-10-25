@@ -175,13 +175,20 @@ impl LayerModule for LightningInfill {
                     })
                     .collect();
 
-                let _ = output.push_sparse_path(ExtrusionPath3D {
-                    points,
-                    role: ExtrusionRole::SparseInfill,
-                    speed_factor,
-                    tool_index: None,
-                    order_lock: None,
-                });
+                output
+                    .push_sparse_path(ExtrusionPath3D {
+                        points,
+                        role: ExtrusionRole::SparseInfill,
+                        speed_factor,
+                        tool_index: None,
+                        order_lock: None,
+                    })
+                    .map_err(|error| {
+                        ModuleError::fatal(
+                            57413,
+                            format!("lightning sparse path emission: {error}"),
+                        )
+                    })?;
             }
         }
 

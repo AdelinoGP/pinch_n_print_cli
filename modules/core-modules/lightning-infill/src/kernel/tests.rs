@@ -13,6 +13,25 @@ use slicer_ir::{
     ResolvedConfig, SliceIR, SlicedRegion,
 };
 
+#[test]
+fn adapter_constants_match_orca_lightning_scalars() {
+    let generator = Generator::new(
+        Vec::new(),
+        0.15,
+        mm_to_units(0.45),
+        1,
+        mm_to_units(0.2),
+        super::ORCA_LIGHTNING_OVERHANG_ANGLE_DEG,
+        super::ORCA_LIGHTNING_PRUNE_ANGLE_DEG,
+        super::ORCA_LIGHTNING_STRAIGHTENING_ANGLE_DEG,
+    );
+
+    assert_eq!(generator.supporting_radius, 30_000);
+    assert_eq!(generator.wall_supporting_radius, 2_000);
+    assert_eq!(generator.prune_length, 175);
+    assert_eq!(generator.straightening_max_distance, 175);
+}
+
 fn square(size_mm: f32) -> Vec<Point2> {
     vec![
         Point2::from_mm(0.0, 0.0),
@@ -602,9 +621,7 @@ fn lightning_generator(outlines: Vec<Vec<Point2>>) -> Generator {
     )
 }
 
-fn tree_endpoints(
-    root: &Rc<std::cell::RefCell<super::tree_node::Node>>,
-) -> Vec<Point2> {
+fn tree_endpoints(root: &Rc<std::cell::RefCell<super::tree_node::Node>>) -> Vec<Point2> {
     let (location, is_root, children) = {
         let node = root.borrow();
         (node.location(), node.is_root(), node.children())
@@ -619,9 +636,7 @@ fn tree_endpoints(
     endpoints
 }
 
-fn tree_nodes(
-    root: &Rc<std::cell::RefCell<super::tree_node::Node>>,
-) -> Vec<Point2> {
+fn tree_nodes(root: &Rc<std::cell::RefCell<super::tree_node::Node>>) -> Vec<Point2> {
     let mut nodes = Vec::new();
     root.borrow()
         .visit_nodes(|node| nodes.push(node.borrow().location()));
@@ -929,15 +944,12 @@ fn source_ordered_chains_remain_distinct_in_generated_lightning() {
         ..ResolvedConfig::default()
     };
 
-    let combined =
-        super::generate_lightning_trees(&make_slices(true, true), &config)
-            .expect("combined sibling-source lightning IR must generate");
-    let forward_only =
-        super::generate_lightning_trees(&make_slices(true, false), &config)
-            .expect("forward-chain-only lightning IR must generate");
-    let reversed_only =
-        super::generate_lightning_trees(&make_slices(false, true), &config)
-            .expect("reversed-chain-only lightning IR must generate");
+    let combined = super::generate_lightning_trees(&make_slices(true, true), &config)
+        .expect("combined sibling-source lightning IR must generate");
+    let forward_only = super::generate_lightning_trees(&make_slices(true, false), &config)
+        .expect("forward-chain-only lightning IR must generate");
+    let reversed_only = super::generate_lightning_trees(&make_slices(false, true), &config)
+        .expect("reversed-chain-only lightning IR must generate");
 
     fn entries_for<'a>(
         ir: &'a super::KernelPlan,

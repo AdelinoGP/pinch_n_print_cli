@@ -29,6 +29,12 @@ pub(crate) use plan::{KernelPlan, PlanEntry};
 
 const DEFAULT_NOZZLE_DIAMETER_MM: f32 = 0.4;
 
+/// OrcaSlicer's lightning defaults, recorded identically by the canonical capture.
+/// PnP exposes no lightning-specific config keys yet, so these are fixed rather than per-profile.
+const ORCA_LIGHTNING_OVERHANG_ANGLE_DEG: f64 = 45.0;
+const ORCA_LIGHTNING_PRUNE_ANGLE_DEG: f64 = 5.0;
+const ORCA_LIGHTNING_STRAIGHTENING_ANGLE_DEG: f64 = 5.0;
+
 /// Generate the per-object, per-region, per-layer plan for one print.
 ///
 /// The caller supplies the print-wide resolved config. Each `(object_id,
@@ -107,9 +113,9 @@ pub(crate) fn generate_lightning_trees(
                 mm_to_units(line_width_mm),
                 1,
                 mm_to_units(config.layer_height as f32),
-                config.infill_angle as f64,
-                5.0,
-                0.0,
+                ORCA_LIGHTNING_OVERHANG_ANGLE_DEG,
+                ORCA_LIGHTNING_PRUNE_ANGLE_DEG,
+                ORCA_LIGHTNING_STRAIGHTENING_ANGLE_DEG,
             );
             generator.generate_trees(&|| {});
             for (layer_id, global_layer_index) in layer_indices.iter().enumerate() {
