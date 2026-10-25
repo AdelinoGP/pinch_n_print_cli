@@ -39,6 +39,7 @@ mod contours;
 #[allow(dead_code)]
 mod visibility;
 
+use slicer_sdk::host_batch::{offset_polygons_batch, OffsetRequest};
 use slicer_sdk::prelude::*;
 
 use crate::comparator::EnforcedBlockedSeamPoint;
@@ -276,6 +277,30 @@ fn fallback_region_position(region: &SeamPlanningRegionInput) -> Option<Point3Wi
     })
 }
 
+/// One admitted region whose seam is chosen but not yet projected.
+///
+/// Pass A of [`run_region_planning_entries`] fills these in plan order; the
+/// inset offset that pass B needs is issued for the whole vector at once.
+struct PendingSeamEntry<'a> {
+    /// Region the entry belongs to (key fields and polygon source).
+    region: &'a SeamPlanningRegionInput,
+    /// Candidate-selected or fallback position, still on the raw boundary.
+    chosen_position: Point3WithWidth,
+    /// Exactly what `region_candidates` produced for this region.
+    scored_candidates: Vec<ScoredSeamCandidate>,
+    /// Inset distance for this region's toolpath: `-0.5 * width`. Units: mm.
+    inset_delta_mm: f32,
+}
+
+/// Build the seam plan for every admitted region of a print.
+///
+/// Two passes with **one** host offset call between them. Every region's inset
+/// is an independent offset of its own polygons, so the 495-odd requests that
+/// used to be 495 sequential host round trips (each one serial native clipper
+/// work on the host thread) are issued as a single `offset_polygons_batch`,
+/// which the host fans out over its rayon pool in input order. Per-request
+/// arguments are byte-for-byte what the loop passed: the same polygons, the
+/// same `-0.5 * width` delta, Miter joins, arc tolerance 0.0, no miter limit.
 fn run_region_planning_entries(
     region_input: &SeamPlanningView,
     mode: SeamPlannerMode,
@@ -289,7 +314,9 @@ fn run_region_planning_entries(
             .then(left.variant_chain.cmp(&right.variant_chain))
     });
 
-    let mut entries = Vec::new();
+    // Pass A — choose every region's seam, in plan order, without touching the
+    // host. The scoring/fallback logic is unchanged; only the offset moves.
+    let mut pending: Vec<PendingSeamEntry<'_>> = Vec::new();
     let mut previous_key: Option<(u32, String, String, Vec<(String, slicer_ir::PaintValue)>)> =
         None;
     for region in regions {
@@ -305,7 +332,7 @@ fn run_region_planning_entries(
         previous_key = Some(key);
 
         let scored_candidates = region_candidates(region);
-        let mut chosen_position =
+        let chosen_position =
             match choose_region_candidate(&scored_candidates, mode, region.global_layer_index) {
                 Some(chosen) => chosen.position,
                 // Paint (or an empty boundary) can empty the scored set. The
@@ -327,27 +354,51 @@ fn run_region_planning_entries(
         // on the original vertices — paint annotations are indexed by
         // `(contour_idx, vertex_idx)` on those vertices, and a per-vertex remap
         // would sever that indexing. Only the reported `chosen_position` moves.
-        let inset_delta_mm = -0.5 * chosen_position.width; // mm
-        let insets = host::offset_polygons(
-            &region.ex_polygons,
-            inset_delta_mm,
-            OffsetJoinType::Miter,
-            0.0,
-        );
-        if let Some(projected) =
-            project_point_onto_inset_boundary(&insets, [chosen_position.x, chosen_position.y])
-        {
+        pending.push(PendingSeamEntry {
+            region,
+            inset_delta_mm: -0.5 * chosen_position.width, // mm
+            chosen_position,
+            scored_candidates,
+        });
+    }
+    if pending.is_empty() {
+        return Vec::new();
+    }
+
+    // The whole print's insets in one call. One request per pending entry, in
+    // plan order, so `insets[i]` belongs to `pending[i]` by construction.
+    let requests: Vec<OffsetRequest> = pending
+        .iter()
+        .map(|entry| OffsetRequest {
+            polygons: entry.region.ex_polygons.clone(),
+            delta_mm: entry.inset_delta_mm,
+            join: OffsetJoinType::Miter,
+            arc_tolerance_mm: 0.0,
+            miter_limit: None,
+        })
+        .collect();
+    let insets = offset_polygons_batch(&requests);
+
+    // Pass B — project each chosen seam onto its own returned inset and emit
+    // the entry. Field-for-field and order-for-order what the loop emitted.
+    let mut entries = Vec::with_capacity(pending.len());
+    for (entry, region_insets) in pending.into_iter().zip(insets) {
+        let mut chosen_position = entry.chosen_position;
+        if let Some(projected) = project_point_onto_inset_boundary(
+            &region_insets,
+            [chosen_position.x, chosen_position.y],
+        ) {
             chosen_position.x = projected[0];
             chosen_position.y = projected[1];
         }
         entries.push(SeamPlanEntry {
-            global_layer_index: region.global_layer_index,
-            object_id: region.object_id.clone(),
-            region_id: region.region_id.clone(),
-            variant_chain: region.variant_chain.clone(),
+            global_layer_index: entry.region.global_layer_index,
+            object_id: entry.region.object_id.clone(),
+            region_id: entry.region.region_id.clone(),
+            variant_chain: entry.region.variant_chain.clone(),
             chosen_position,
             chosen_wall_index: 0,
-            scored_candidates,
+            scored_candidates: entry.scored_candidates,
         });
     }
     entries
@@ -449,6 +500,186 @@ impl PrepassModule for SeamPlannerDefault {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Square `[x0, y0] .. [x0 + side, y0 + side]` region boundary, in mm.
+    fn square_region(
+        global_layer_index: u32,
+        region_id: &str,
+        x0: f32,
+        y0: f32,
+        side: f32,
+        scoring_width: f32,
+    ) -> SeamPlanningRegionInput {
+        SeamPlanningRegionInput {
+            global_layer_index,
+            object_id: "obj".to_string(),
+            region_id: region_id.to_string(),
+            z: 0.2 * global_layer_index as f32,
+            ex_polygons: vec![ExPolygon {
+                contour: Polygon {
+                    points: vec![
+                        Point2::from_mm(x0, y0),
+                        Point2::from_mm(x0 + side, y0),
+                        Point2::from_mm(x0 + side, y0 + side),
+                        Point2::from_mm(x0, y0 + side),
+                    ],
+                },
+                holes: Vec::new(),
+            }],
+            scoring_width,
+            ..Default::default()
+        }
+    }
+
+    /// The pre-batching loop: one `host::offset_polygons` call per region,
+    /// issued inside the entry loop.
+    ///
+    /// This is the reference the batched production path must reproduce entry
+    /// for entry. It exists so the batch restructure can be checked item by
+    /// item on native builds, where the host fan-out itself is compiled out —
+    /// the two paths differ only in *where* each offset is computed and how
+    /// results are carried back, which is precisely what a mis-association
+    /// would break.
+    fn serial_reference_entries(
+        region_input: &SeamPlanningView,
+        mode: SeamPlannerMode,
+    ) -> Vec<SeamPlanEntry> {
+        let mut regions: Vec<&SeamPlanningRegionInput> = region_input.regions.iter().collect();
+        regions.sort_by(|left, right| {
+            left.global_layer_index
+                .cmp(&right.global_layer_index)
+                .then(left.object_id.cmp(&right.object_id))
+                .then(left.region_id.cmp(&right.region_id))
+                .then(left.variant_chain.cmp(&right.variant_chain))
+        });
+
+        let mut entries = Vec::new();
+        let mut previous_key: Option<(u32, String, String, Vec<(String, PaintValue)>)> = None;
+        for region in regions {
+            let key = (
+                region.global_layer_index,
+                region.object_id.clone(),
+                region.region_id.clone(),
+                region.variant_chain.clone(),
+            );
+            if previous_key.as_ref() == Some(&key) {
+                continue;
+            }
+            previous_key = Some(key);
+
+            let scored_candidates = region_candidates(region);
+            let mut chosen_position = match choose_region_candidate(
+                &scored_candidates,
+                mode,
+                region.global_layer_index,
+            ) {
+                Some(chosen) => chosen.position,
+                None => match fallback_region_position(region) {
+                    Some(position) => position,
+                    None => continue,
+                },
+            };
+            let inset_delta_mm = -0.5 * chosen_position.width; // mm
+            let insets = host::offset_polygons(
+                &region.ex_polygons,
+                inset_delta_mm,
+                OffsetJoinType::Miter,
+                0.0,
+            );
+            if let Some(projected) =
+                project_point_onto_inset_boundary(&insets, [chosen_position.x, chosen_position.y])
+            {
+                chosen_position.x = projected[0];
+                chosen_position.y = projected[1];
+            }
+            entries.push(SeamPlanEntry {
+                global_layer_index: region.global_layer_index,
+                object_id: region.object_id.clone(),
+                region_id: region.region_id.clone(),
+                variant_chain: region.variant_chain.clone(),
+                chosen_position,
+                chosen_wall_index: 0,
+                scored_candidates,
+            });
+        }
+        entries
+    }
+
+    /// The batched restructure must be indistinguishable from the serial loop,
+    /// and each region's projection must use **its own** inset distance.
+    ///
+    /// Two regions carry deliberately different `scoring_width` values (0.4 mm
+    /// and 1.2 mm, so insets of 0.2 mm and 0.6 mm), which makes a
+    /// result-to-region mis-association visible: the expected positions are
+    /// derived from the fixture arithmetic below, not read back from output.
+    #[test]
+    fn batched_inset_offsets_match_the_serial_reference_per_region() {
+        /// Tolerance for the offset round trip (Clipper2 rounds to 100 nm).
+        const TOL_MM: f32 = 1e-4;
+
+        let view = SeamPlanningView {
+            regions: vec![
+                // Region A: 10 mm square at the origin, 0.4 mm width -> 0.2 mm.
+                square_region(0, "a", 0.0, 0.0, 10.0, 0.4),
+                // Region B: 20 mm square at (5,5), 1.2 mm width -> 0.6 mm.
+                square_region(1, "b", 5.0, 5.0, 20.0, 1.2),
+                // Same key as region B: the dedupe must drop it on both paths.
+                square_region(1, "b", 40.0, 40.0, 4.0, 9.9),
+                // Region C: every vertex paint-blocked -> the fallback path,
+                // which must be projected through the same batched inset.
+                SeamPlanningRegionInput {
+                    segment_annotations: vec![(
+                        PaintSemantic::Custom("seam_blocker".to_string()),
+                        vec![vec![
+                            Some(PaintValue::Flag(true)),
+                            Some(PaintValue::Flag(true)),
+                            Some(PaintValue::Flag(true)),
+                            Some(PaintValue::Flag(true)),
+                        ]],
+                    )],
+                    ..square_region(2, "c", 0.0, 0.0, 20.0, 0.6)
+                },
+            ],
+        };
+
+        let batched = run_region_planning_entries(&view, SeamPlannerMode::Aligned);
+        let serial = serial_reference_entries(&view, SeamPlannerMode::Aligned);
+
+        assert_eq!(
+            batched.len(),
+            3,
+            "one entry per admitted region, duplicate key dropped"
+        );
+        assert_eq!(
+            batched, serial,
+            "batching must not change any entry's content or order"
+        );
+
+        // Fixture-derived expectations: Aligned picks the lowest-y, then
+        // lowest-x vertex, so each region projects its (x0, y0) corner inward by
+        // its own half-width. A swapped result would move A to 0.6 or B to 0.2.
+        let expected = [("a", 0.2_f32), ("b", 0.6), ("c", 0.3)];
+        for (entry, (region_id, inset)) in batched.iter().zip(expected) {
+            assert_eq!(entry.region_id, region_id);
+            let x0 = if region_id == "b" { 5.0 } else { 0.0 };
+            assert!(
+                (entry.chosen_position.x - (x0 + inset)).abs() < TOL_MM
+                    && (entry.chosen_position.y - (x0 + inset)).abs() < TOL_MM,
+                "region {region_id} must be inset by {inset} mm from ({x0}, {x0}); got ({}, {})",
+                entry.chosen_position.x,
+                entry.chosen_position.y
+            );
+        }
+        assert!(
+            batched[2].scored_candidates.is_empty(),
+            "the fallback region supplies a position, not a scored candidate"
+        );
+        assert_eq!(
+            batched[0].scored_candidates.len(),
+            4,
+            "the scored path keeps every boundary candidate"
+        );
+    }
 
     fn candidate(x: f32, y: f32, score: f32) -> ScoredSeamCandidate {
         ScoredSeamCandidate {
