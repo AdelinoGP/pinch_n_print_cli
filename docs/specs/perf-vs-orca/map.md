@@ -100,7 +100,40 @@ Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
 
-**Current selection scope (2026-10-25, on the ticket 85 take):** the human's
+**Current selection scope (2026-10-25, on the ticket 87 take):** the human's
+"continue the perf vs orca map" named no ticket; the frontier re-derivation
+found **86/86 children resolved**, and the human selected the **Scoreboard
+refresh** route from the options presented.
+[87](issues/87-scoreboard-refresh-post-resolution-port.md) is **resolved
+(2026-10-25) as a measurement-only take — no candidate, no production edit.**
+The first fully resolution-matched scoreboard, measured at HEAD `6e71c1a1`
+with both standing trees rebuilt from clean HEAD: **Orca still wins all 8
+cells at 2.71x–9.36x**, CPU corroborating in every cell (PnP burns
+4.1x–21.3x Orca's CPU). Best cell **2.71x** (benchy classic-off accelerated;
+2.75x ordinary; 2.74x benchy arachne-off), worst **9.36x** (base arachne-on
+ordinary). **No cell within ~1.5x — the below-fold park is still binding**,
+though the release bound has moved **3.30x → 2.71x**. PnP ordinary wall fell
+**39.7–66.2 %** in all eight cells since 2026-10-18 (t74/t75/t76/t20/t78/t81/t85
++ t65 on Arachne), while **Orca also measured 16.2–35.3 % faster today**
+(machine drift, disclosed; ratios are today-vs-today). Output: PnP 16/16
+`degraded=false`/`non_fatal=0`, ordinary ≡ accelerated **byte for byte in all
+8 cells**, one SHA per group, new post-t81 reference set recorded; the base
+SHAs reproduce the t83/t84/t85 references. 96 rows / 72 measured, zero
+starvation exclusions, zero validation failures, both freshness gates exit 0.
+Disclosed: an accidental duplicate benchy round (preserved as
+`rows-benchy-duplicate-round.csv`, not ledger input; the two rounds agree
+within ~1 %, and the clean ledger re-run is 4–6 % slower on PnP, so **benchy
+uncertainty is larger than base's**). The headline finding — every supports-on
+cell is the worse of its pair, and the base increment is **+97.90 / +113.38 s**
+for PnP against **+4.50 / +5.79 s** for Orca while PnP emits *fewer* support
+sections — graduated
+[88](issues/88-supports-on-increment-attribution.md) (open, unclaimed).
+Evidence: [`evidence/scoreboard-refresh-20261025/`](evidence/scoreboard-refresh-20261025/SCOREBOARD.md)
+(`verify.py` exit 0 checkout-only, `--self-test` 8/8 negative controls
+detected). Frontier now: ticket 88 only; the take order is the human's.
+Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-25, on the ticket 85 take):** the human's
 "continue the perf vs orca map" named no ticket, so the session took the only
 frontier ticket, [85](issues/85-seam-inset-offset-batching.md) — and it is
 **resolved (2026-10-25, human-approved KEEP)**. The candidate batches the seam
@@ -1156,6 +1189,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Matched-pair scoreboard refresh at post-resolution-port HEAD](issues/87-scoreboard-refresh-post-resolution-port.md): **resolved (2026-10-25; measurement-only — the first fully resolution-matched 8-cell scoreboard)** — at HEAD `6e71c1a1` with both trees rebuilt, Orca still wins all 8 at **2.71x–9.36x**, CPU corroborating (PnP burns 4.1x–21.3x Orca's CPU). Best cell **2.71x** benchy classic-off accelerated (2.75x ordinary; 2.74x benchy arachne-off), worst **9.36x** base arachne-on ordinary. **No cell within ~1.5x → the below-fold park is still binding**, though the release bound moved **3.30x → 2.71x**. PnP ordinary walls fell **39.7–66.2 %** since 2026-10-18; Orca also measured **16.2–35.3 % faster** (drift, disclosed; today-vs-today). **Supports-on is the concentration:** base off 5.18–5.28x vs on 9.20–9.36x, PnP increment **+97.90 / +113.38 s** vs Orca **+4.50 / +5.79 s** with *fewer* PnP support sections. 96 rows / 72 measured, 1 warmup + 3 measured per group, **zero starvation exclusions**, zero validation failures; PnP ordinary ≡ accelerated bytes/SHA in all 8 cells; new post-t81 reference set recorded (base SHAs reproduce t83/t84/t85). Disclosure: an accidental duplicate benchy round is preserved but not ledger input. Graduated [88](issues/88-supports-on-increment-attribution.md). Evidence: [`evidence/scoreboard-refresh-20261025/`](evidence/scoreboard-refresh-20261025/SCOREBOARD.md) (`verify.py` exit 0 checkout-only, `--self-test` 8/8 negative controls).
+
 - [Seam planner inset-offset batching](issues/85-seam-inset-offset-batching.md): **resolved (2026-10-25; human-approved KEEP — gate met in all four base classic cells)** — the seam planner's 495 per-region inset offsets become **one** `offset_polygons_batch`; wall **−7.46 / −2.72 %** (ordinary) and **−7.03 / −3.86 %** (accelerated), CPU **+0.34…+0.47 %**, 24/24 pairs byte-identical, 16/16 output identity, zero exclusions; seam stage **8,356 → 1,737 ms** = **≈7x batch occupancy** (conservative 4.4x, floor 1.15x), so t84's 5.43 % pricing is beaten and the stage drops to 2.3 % of a base cell. Parity is exact by construction, pinned by a per-entry serial-reference test.
 
 - [Accelerated shim workspace-root resolution](issues/86-accelerated-shim-workspace-root.md): **resolved (2026-10-25; infra prerequisite of the t85 take)** — the rustc shim resolved the workspace root from CWD, which is a cargo-registry package directory when cargo compiles a dependency's `build.rs`, so every cold accelerated build died; the accelerated entry points now export `PNP_XTASK_WORKSPACE_ROOT` and `resolve_shim_root` re-validates it (env → CWD → binary dir). `cargo test -p xtask` 187/0, a 48-guest cold accelerated build completes, both freshness gates exit 0.
@@ -1345,7 +1380,11 @@ Standing decisions for this effort (2026-09-22):
   resolution).** Orca resolves 5 mm, PnP 1 mm — PnP places branches 5x denser on
   supports-on cells. Magnitude unmeasured, and it is parity-scoped geometry work
   (changing it changes support placement), so it graduates only with the human's
-  route — this observation is not an implicit authorisation.
+  route — this observation is not an implicit authorisation. **The 2026-10-25
+  scoreboard made supports-on the concentration (base on 9.20–9.36x vs off
+  5.18–5.28x), and [ticket 88](issues/88-supports-on-increment-attribution.md)
+  (graduated, open, unclaimed) now prices this key as one hypothesis; changing
+  it remains a separate parity ruling.**
 
 - **Fan-command reference boundary (graduated from ticket 47, 2026-10-03;
   boundary settled by ticket 46, 2026-10-05).**
@@ -1457,6 +1496,10 @@ Standing decisions for this effort (2026-09-22):
   **Re-derived 2026-10-18 on the
   [scoreboard refresh](issues/72-scoreboard-refresh.md): the best cell is
   3.30x (benchy arachne-off) — the park is still binding.**
+  **Re-derived 2026-10-25 on the
+  [post-resolution-port refresh](issues/87-scoreboard-refresh-post-resolution-port.md):
+  the best cell is 2.71x (benchy classic-off accelerated) and no cell is within
+  ~1.5x — still binding, with the release bound moved 3.30x → 2.71x.**
   **Base refresh (2026-10-18):** the fresh base split graduated three
   tickets — [supports-on finalization view
   cost](issues/74-layerfinalization-supports-on-view-cost.md) (**resolved

@@ -70,6 +70,11 @@
 # endings.
 /docs/specs/perf-vs-orca/evidence/scoreboard-refresh-20261017/** -text whitespace=cr-at-eol
 
+# The 2026-10-25 scoreboard-refresh set carries five verbatim batch row CSVs plus
+# the preserved duplicate-round disclosure; preserve their bytes on add/checkout
+# instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/scoreboard-refresh-20261025/** -text whitespace=cr-at-eol
+
 # The t82 fairness-key audit carries eight Orca resolved-config appendices
 # written by `Set-Content` (CRLF) and a generated key table; preserve their
 # bytes on add/checkout instead of normalizing line endings.
