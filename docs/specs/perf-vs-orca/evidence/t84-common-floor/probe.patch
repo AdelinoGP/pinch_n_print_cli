@@ -1,0 +1,417 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index ffe4d5dd..2c17761a 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3316,6 +3316,7 @@ name = "seam-planner-default"
+ version = "0.1.0"
+ dependencies = [
+  "faer",
++ "slicer-core",
+  "slicer-ir",
+  "slicer-schema",
+  "slicer-sdk",
+diff --git a/crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs b/crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs
+index d038b2d4..81952f0b 100644
+--- a/crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs
++++ b/crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs
+@@ -123,7 +123,16 @@ pub fn commit_overhang_annotation_builtin(
+ 
+     let line_width_mm = resolve_line_width_mm(raw_config_source);
+ 
++    // t84 probe (env-gated; reverted with probe.patch before the take closes).
++    let probe = std::env::var_os("PNP_T84_PROBE").is_some();
++    let mut gather_ns = 0u128;
++    let mut kernel_ns = 0u128;
++    let mut merge_ns = 0u128;
++    let (mut n_layers, mut n_polys, mut n_points) = (0usize, 0usize, 0usize);
++    let (mut n_prev_all, mut n_prev_in_window) = (0usize, 0usize);
++
+     let mesh = blackboard.mesh();
++    let n_objects = mesh.objects.len();
+     // object id -> layer index -> quartile bands, preserving object iteration.
+     let mut per_quartile: HashMap<String, HashMap<u32, Vec<QuartileBand>>> = HashMap::new();
+     let mut prev_layer_boundaries: HashMap<String, HashMap<u32, Vec<ExPolygon>>> = HashMap::new();
+@@ -134,6 +143,7 @@ pub fn commit_overhang_annotation_builtin(
+         // so overlapping sibling regions need no explicit pre-union. Keyed by
+         // each slice's `global_layer_index` — the same key the WIT marshal uses
+         // to hand overhang polygons to layer-tier modules.
++        let t_gather = std::time::Instant::now();
+         let layer_footprints: Vec<(u32, Vec<ExPolygon>)> = slice_ir
+             .iter()
+             .map(|slice| {
+@@ -146,12 +156,65 @@ pub fn commit_overhang_annotation_builtin(
+                 (slice.global_layer_index, footprint)
+             })
+             .collect();
++        gather_ns += t_gather.elapsed().as_nanos();
++        if probe {
++            for (_, polys) in &layer_footprints {
++                n_layers += 1;
++                n_polys += polys.len();
++                for p in polys {
++                    n_points += p.contour.points.len()
++                        + p.holes.iter().map(|h| h.points.len()).sum::<usize>();
++                }
++            }
++        }
+ 
++        if probe {
++            // t84 operand bound: what fraction of `previous`'s points would a
++            // bbox window (current bbox + 0.7 mm) retain? Only the retained
++            // part could ever be removed from the three round offsets.
++            for i in 1..layer_footprints.len() {
++                let current = &layer_footprints[i].1;
++                let previous = &layer_footprints[i - 1].1;
++                if current.is_empty() || previous.is_empty() {
++                    continue;
++                }
++                let (mut min_x, mut max_x, mut min_y, mut max_y) =
++                    (i64::MAX, i64::MIN, i64::MAX, i64::MIN);
++                for p in current {
++                    for q in &p.contour.points {
++                        min_x = min_x.min(q.x);
++                        max_x = max_x.max(q.x);
++                        min_y = min_y.min(q.y);
++                        max_y = max_y.max(q.y);
++                    }
++                }
++                if min_x > max_x {
++                    continue;
++                }
++                let pad = 70; // 0.7 mm in units
++                for p in previous {
++                    for q in &p.contour.points {
++                        n_prev_all += 1;
++                        if q.x >= min_x - pad
++                            && q.x <= max_x + pad
++                            && q.y >= min_y - pad
++                            && q.y <= max_y + pad
++                        {
++                            n_prev_in_window += 1;
++                        }
++                    }
++                }
++            }
++        }
++
++        let t_kernel = std::time::Instant::now();
+         let (per_object, per_object_boundaries) =
+             slicer_core::algos::overhang_annotation::annotate_overhangs(
+                 &layer_footprints,
+                 line_width_mm,
+             );
++        kernel_ns += t_kernel.elapsed().as_nanos();
++        let t_merge = std::time::Instant::now();
+         let mut object_quartile: HashMap<u32, HashMap<u8, Vec<ExPolygon>>> = HashMap::new();
+         for (layer_index, bands) in per_object {
+             let layer_entry = object_quartile.entry(layer_index).or_default();
+@@ -183,15 +246,62 @@ pub fn commit_overhang_annotation_builtin(
+                 .extend(boundaries);
+         }
+         prev_layer_boundaries.insert(object.id.clone(), object_boundaries);
++        merge_ns += t_merge.elapsed().as_nanos();
+     }
+ 
+-    let updated = SurfaceClassificationIR {
+-        overhang_quartile_polygons: per_quartile,
+-        prev_layer_boundaries,
+-        ..surface_classification.as_ref().clone()
+-    };
++    let (mut n_band_layers, mut n_bands, mut n_prev_layers, mut n_prev_polys, mut n_prev_points) =
++        (0usize, 0usize, 0usize, 0usize, 0usize);
++    if probe {
++        for layers in per_quartile.values() {
++            n_band_layers += layers.len();
++            n_bands += layers.values().map(|bands| bands.len()).sum::<usize>();
++        }
++        for layers in prev_layer_boundaries.values() {
++            n_prev_layers += layers.len();
++            for polys in layers.values() {
++                n_prev_polys += polys.len();
++                for p in polys {
++                    n_prev_points += p.contour.points.len()
++                        + p.holes.iter().map(|h| h.points.len()).sum::<usize>();
++                }
++            }
++        }
++    }
++
++    let t_clone = std::time::Instant::now();
++    let mut updated: SurfaceClassificationIR = surface_classification.as_ref().clone();
++    let clone_ns = t_clone.elapsed().as_nanos();
++    updated.overhang_quartile_polygons = per_quartile;
++    updated.prev_layer_boundaries = prev_layer_boundaries;
+ 
+-    blackboard
++    let t_commit = std::time::Instant::now();
++    let result = blackboard
+         .replace_surface_classification(Arc::new(updated))
+-        .map_err(|source| OverhangAnnotationBuiltinError::Blackboard { source })
++        .map_err(|source| OverhangAnnotationBuiltinError::Blackboard { source });
++    if probe {
++        eprintln!(
++            "[t84] stage=overhang gather_ms={:.3} kernel_ms={:.3} merge_ms={:.3} clone_ms={:.3} commit_ms={:.3} objects={} layer_entries={} polys={} points={} band_layers={} bands={} prev_layers={} prev_polys={} prev_points={}",
++            gather_ns as f64 / 1e6,
++            kernel_ns as f64 / 1e6,
++            merge_ns as f64 / 1e6,
++            clone_ns as f64 / 1e6,
++            t_commit.elapsed().as_nanos() as f64 / 1e6,
++            n_objects,
++            n_layers,
++            n_polys,
++            n_points,
++            n_band_layers,
++            n_bands,
++            n_prev_layers,
++            n_prev_polys,
++            n_prev_points,
++        );
++        eprintln!(
++            "[t84] stage=overhang_window prev_points={} prev_in_window={} retained_frac={:.6}",
++            n_prev_all,
++            n_prev_in_window,
++            if n_prev_all == 0 { 0.0 } else { n_prev_in_window as f64 / n_prev_all as f64 },
++        );
++    }
++    result
+ }
+diff --git a/crates/slicer-wasm-host/src/dispatch.rs b/crates/slicer-wasm-host/src/dispatch.rs
+index bfaf3074..14986ee5 100644
+--- a/crates/slicer-wasm-host/src/dispatch.rs
++++ b/crates/slicer-wasm-host/src/dispatch.rs
+@@ -1453,12 +1453,40 @@ impl WasmRuntimeDispatcher {
+                     .as_deref()
+                     .map(host::project_layer_plan_view)
+                     .unwrap_or_else(|| host::prepass::LayerPlanView { layers: Vec::new() });
++                let t84_probe = std::env::var_os("PNP_T84_PROBE").is_some();
++                let t84_project = std::time::Instant::now();
+                 let region_input = crate::marshal::in_::project_seam_planning_view(
+                     slice_ir.as_deref().map_or(&[], Vec::as_slice),
+                     layer_plan.as_deref(),
+                     region_map.as_deref(),
+                     config_view,
+                 );
++                let t84_project_ns = t84_project.elapsed().as_nanos();
++                let t84_view_stats = if t84_probe {
++                    let regions = region_input.regions.len();
++                    let polys: usize = region_input
++                        .regions
++                        .iter()
++                        .map(|r| r.ex_polygons.len())
++                        .sum();
++                    let points: usize = region_input
++                        .regions
++                        .iter()
++                        .flat_map(|r| r.ex_polygons.iter())
++                        .map(|ep| {
++                            ep.contour.points.len()
++                                + ep.holes.iter().map(|h| h.points.len()).sum::<usize>()
++                        })
++                        .sum();
++                    let annotations: usize = region_input
++                        .regions
++                        .iter()
++                        .map(|r| r.segment_annotations.iter().map(|e| e.polygons.len()).sum::<usize>())
++                        .sum();
++                    (regions, polys, points, annotations)
++                } else {
++                    (0, 0, 0, 0)
++                };
+                 let region_input = store
+                     .data_mut()
+                     .push_seam_planning_view(region_input)
+@@ -1467,6 +1495,7 @@ impl WasmRuntimeDispatcher {
+                     .data_mut()
+                     .push_seam_planning_output()
+                     .map_err(mk_ctx_err)?;
++                let t84_call = std::time::Instant::now();
+                 let call_result = bindings
+                     .slicer_prepass_seam_planning_seam_planning()
+                     .call_run(
+@@ -1478,6 +1507,24 @@ impl WasmRuntimeDispatcher {
+                         own(region_input),
+                     )
+                     .map_err(mk_call_err)?;
++                let t84_call_ns = t84_call.elapsed().as_nanos();
++                let (t84_push_ns, t84_pushes) = host::t84_take_push_stats();
++                if t84_probe {
++                    eprintln!(
++                        "[t84] stage=seam_project project_ms={:.3} regions={} polys={} points={} annotations={}",
++                        t84_project_ns as f64 / 1e6,
++                        t84_view_stats.0,
++                        t84_view_stats.1,
++                        t84_view_stats.2,
++                        t84_view_stats.3,
++                    );
++                    eprintln!(
++                        "[t84] stage=seam_call call_ms={:.3} push_ms={:.3} pushes={}",
++                        t84_call_ns as f64 / 1e6,
++                        t84_push_ns as f64 / 1e6,
++                        t84_pushes,
++                    );
++                }
+                 Ok((call_result, store))
+             }
+             "PrePass::SupportGeometry" => {
+@@ -2931,6 +2978,19 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
+         }
+ 
+         if stage_id == "PrePass::SeamPlanning" {
++            let t84_probe = std::env::var_os("PNP_T84_PROBE").is_some();
++            let (t84_entries, t84_candidates) = if t84_probe {
++                (
++                    ctx.seam_plan_entries.len(),
++                    ctx.seam_plan_entries
++                        .iter()
++                        .map(|entry| entry.scored_candidates.len())
++                        .sum::<usize>(),
++                )
++            } else {
++                (0, 0)
++            };
++            let t84_harvest = std::time::Instant::now();
+             let ir = harvest_seam_plan_ir(stage_id, module_id_str, ctx).map_err(|msg| {
+                 slicer_ir::PrepassRunnerError::FatalModule {
+                     stage_id: stage_id.clone(),
+@@ -2938,6 +2998,14 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
+                     message: msg,
+                 }
+             })?;
++            if t84_probe {
++                eprintln!(
++                    "[t84] stage=seam_harvest harvest_ms={:.3} entries={} candidates={}",
++                    t84_harvest.elapsed().as_nanos() as f64 / 1e6,
++                    t84_entries,
++                    t84_candidates,
++                );
++            }
+             return Ok(slicer_core::PrepassStageOutput::SeamPlan(
+                 std::sync::Arc::new(ir),
+             ));
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index 720a8fd7..2c08bf88 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -788,6 +788,25 @@ pub struct SeamPlanningViewData {
+     /// Active region inputs projected from the committed SliceIR.
+     pub regions: Vec<prepass_seam_planning::SeamPlanningRegionInput>,
+ }
++
++// ── t84 probe (env-gated; reverted with probe.patch) ──────────────────
++fn t84_probe_enabled() -> bool {
++    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++    *ON.get_or_init(|| std::env::var_os("PNP_T84_PROBE").is_some())
++}
++
++thread_local! {
++    static T84_PUSH_NS: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
++}
++
++/// Drain and reset the accumulated host-side `push_seam_plan` time/count.
++pub fn t84_take_push_stats() -> (u64, u64) {
++    T84_PUSH_NS.with(|cell| {
++        let stats = cell.get();
++        cell.set((0, 0));
++        stats
++    })
++}
+ /// Table-entry tag for the `support-geometry-output` builder resource.
+ ///
+ /// The `SupportGeometry` prepass stage now passes a `support-geometry-output`
+@@ -4558,7 +4577,15 @@ mod prepass_impls {
+                     "seam-planning-output: chosen_position must have finite coordinates",
+                 )));
+             }
++            let t84_start = t84_probe_enabled().then(std::time::Instant::now);
+             self.seam_plan_entries.push(entry);
++            if let Some(start) = t84_start {
++                let ns = start.elapsed().as_nanos() as u64;
++                T84_PUSH_NS.with(|cell| {
++                    let (total, count) = cell.get();
++                    cell.set((total + ns, count + 1));
++                });
++            }
+             Ok(Ok(()))
+         }
+         fn drop(&mut self, rep: Resource<psp::SeamPlanningOutput>) -> wasmtime::Result<()> {
+diff --git a/modules/core-modules/seam-planner-default/Cargo.toml b/modules/core-modules/seam-planner-default/Cargo.toml
+index 4dec74ca..8c0a52e7 100644
+--- a/modules/core-modules/seam-planner-default/Cargo.toml
++++ b/modules/core-modules/seam-planner-default/Cargo.toml
+@@ -10,6 +10,8 @@ faer = { version = "0.24", default-features = false, features = ["std"] }
+ slicer-ir = { path = "../../../crates/slicer-ir" }
+ slicer-schema = { path = "../../../crates/slicer-schema" }
+ slicer-sdk = { path = "../../../crates/slicer-sdk" }
++# t84 probe only (reverted with probe.patch): supplies `profile::scope`.
++slicer-core = { path = "../../../crates/slicer-core" }
+ 
+ [dev-dependencies]
+ slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }
+diff --git a/modules/core-modules/seam-planner-default/src/lib.rs b/modules/core-modules/seam-planner-default/src/lib.rs
+index 18924997..daeac579 100644
+--- a/modules/core-modules/seam-planner-default/src/lib.rs
++++ b/modules/core-modules/seam-planner-default/src/lib.rs
+@@ -276,6 +276,10 @@ fn fallback_region_position(region: &SeamPlanningRegionInput) -> Option<Point3Wi
+     })
+ }
+ 
++fn t84_scope(name: &str) -> Option<slicer_core::profile::ScopeGuard> {
++    slicer_sdk::profile::register_scope(name).map(slicer_core::profile::scope)
++}
++
+ fn run_region_planning_entries(
+     region_input: &SeamPlanningView,
+     mode: SeamPlannerMode,
+@@ -304,8 +308,12 @@ fn run_region_planning_entries(
+         }
+         previous_key = Some(key);
+ 
+-        let scored_candidates = region_candidates(region);
+-        let mut chosen_position =
++        let scored_candidates = {
++            let _t84_candidates = t84_scope("t84.candidates");
++            region_candidates(region)
++        };
++        let mut chosen_position = {
++            let _t84_choose = t84_scope("t84.choose");
+             match choose_region_candidate(&scored_candidates, mode, region.global_layer_index) {
+                 Some(chosen) => chosen.position,
+                 // Paint (or an empty boundary) can empty the scored set. The
+@@ -319,7 +327,8 @@ fn run_region_planning_entries(
+                     Some(position) => position,
+                     None => continue,
+                 },
+-            };
++            }
++        };
+         // The planner emits planner coordinates, not raw region-boundary
+         // coordinates: the chosen seam is projected onto the inset boundary the
+         // toolpath actually follows for this region's scoring width. The
+@@ -327,6 +336,7 @@ fn run_region_planning_entries(
+         // on the original vertices — paint annotations are indexed by
+         // `(contour_idx, vertex_idx)` on those vertices, and a per-vertex remap
+         // would sever that indexing. Only the reported `chosen_position` moves.
++        let _t84_offset = t84_scope("t84.offset_project");
+         let inset_delta_mm = -0.5 * chosen_position.width; // mm
+         let insets = host::offset_polygons(
+             &region.ex_polygons,
+@@ -340,6 +350,7 @@ fn run_region_planning_entries(
+             chosen_position.x = projected[0];
+             chosen_position.y = projected[1];
+         }
++        drop(_t84_offset);
+         entries.push(SeamPlanEntry {
+             global_layer_index: region.global_layer_index,
+             object_id: region.object_id.clone(),
+diff --git a/modules/core-modules/seam-planner-default/wit-guest/Cargo.lock b/modules/core-modules/seam-planner-default/wit-guest/Cargo.lock
+index 120c4fd4..6ef49ef9 100644
+--- a/modules/core-modules/seam-planner-default/wit-guest/Cargo.lock
++++ b/modules/core-modules/seam-planner-default/wit-guest/Cargo.lock
+@@ -822,6 +822,7 @@ name = "seam-planner-default"
+ version = "0.1.0"
+ dependencies = [
+  "faer",
++ "slicer-core",
+  "slicer-ir",
+  "slicer-schema",
+  "slicer-sdk",

@@ -100,7 +100,29 @@ Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
 
-**Current selection scope (2026-10-23 → 2026-10-24, on the ticket 83 take):** the human's
+**Current selection scope (2026-10-24, on the ticket 84 take):** the human's
+"continue the perf vs orca map" named no ticket; the frontier re-derivation
+found **no open child** (83/83 resolved) and the human selected the **Base
+common-floor attribution** route.
+[84](issues/84-base-common-floor-attribution.md) is **resolved as an
+attribution take — one candidate graduated, two shapes measured dead; no
+production edit, probe reverted.** The seam stage's wall is **92.4 / 93.2 %** one
+serial native `offset_polygons` per region (495 calls, 8,195 / 8,177 ms of a
+9.14 / 8.97 s stage = **8.83 / 3.92 %** of the 92.8 / 208.6 s cell walls); the
+candidate list is 0.29 / 0.13 % and host projection + harvest are under 1 %. The
+overhang stage is **engine-bound**: 99.7 % is the parallel `annotate_overhangs`
+kernel and 85.4 % of its work is the canonical three round offsets per band
+layer (1,455 calls) at **11.86x** measured parallelism; the only operand-side
+shape (bbox window) retains **97.84 %** of the previous points, a
+**0.189 / 0.080 %** ceiling. Graduated
+[85](issues/85-seam-inset-offset-batching.md) (open, unclaimed): batch the inset
+offsets through the existing `offset_polygons_batch`, ceiling **8.83 / 3.92 %**
+upper and **5.43 / 2.41 %** at t78's measured 2.6x. Frontier now: ticket 85
+only; t83's `tree_support_branch_distance` observation stays fog. Evidence:
+[`evidence/t84-common-floor/`](evidence/t84-common-floor/FINDINGS.md)
+(`verify.py --self-test` exits 0, 8/8 negative controls rejected).
+
+**Previous selection scope (2026-10-23 → 2026-10-24, on the ticket 83 take):** the human's
 "continue the perf vs orca map" named no ticket; the frontier re-derivation
 found [83](issues/83-arachne-wall-simplification-tolerance-pricing.md) as the
 only open child and the session took it. It is **resolved (2026-10-24) as a
@@ -1088,6 +1110,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Base common-floor attribution: SeamPlanning and OverhangAnnotation](issues/84-base-common-floor-attribution.md): **resolved (2026-10-24; attribution take — one candidate graduated, two shapes measured dead; no production edit, probe reverted)** — at HEAD `ce8f3992` on base classic off/on, both arms byte-identical to the t81 references `292df501…` / `22200671…`. **SeamPlanning** (9.14 / 8.97 s = 9.84 / 4.30 % of cell wall) is **92.4 / 93.2 %** one serial native `offset_polygons` per region: 495 calls, 8,195 / 8,177 ms; candidate generation 94.6 / 94.3 ms, scoring 16.6 / 16.1 ms, harvest 58.1 / 44.7 ms, host view projection 4.2 / 11.4 ms — the candidate list is **not** the wall problem. **OverhangAnnotation** (10.01 / 10.30 s = 10.78 / 4.94 %) is **99.7 %** the parallel `annotate_overhangs` kernel; 1,455 round offsets (485 band layers × 3) are **85.4 %** of its native work at **11.86x** parallelism; host gather + merge + clone + commit is **0.18 %**. Graduated [85](issues/85-seam-inset-offset-batching.md): batch the inset offsets through the existing `offset_polygons_batch` — upper bound **8.83 / 3.92 %** of wall, **5.43 / 2.41 %** at t78's measured 2.6x. Dropped with measured ceilings: overhang bbox-window operand (retains **97.84 %** of previous points → **0.189 / 0.080 %**) and the seam candidate list (**0.288 / 0.127 %**). Evidence: [`evidence/t84-common-floor/`](evidence/t84-common-floor/FINDINGS.md) (`verify.py --self-test` exits 0, 8/8 negative controls rejected).
+
 - [Arachne wall-simplification tolerance pricing](issues/83-arachne-wall-simplification-tolerance-pricing.md): **resolved (2026-10-24; measurement-only pricing take — DROP, below the map's pre-declared 0.80 % wall floor; no candidate, no parity port, no production edit)** — one binary and module tree, two config-only arms (default 0.05/0.005 mm vs canonical 0.5/0.025 mm), 2 alternating instrumented pairs per Arachne cell plus a 6-pair uninstrumented wall check on the two borderline cells. The tolerance is **real work**: arachne guest fuel **−10.76 %** (benchy) / **−16.21 %** (base), whole-job fuel −3.41/−1.41 % and −11.56/−3.08 %, G-code bytes **−3.84…−8.23 %** with identical TYPE counts, all runs clean and byte-deterministic per arm, and the default arm reproduces t81's base-arachne-off reference `01a1434c…`. It is not a wall lever: the module is only **2.9–6.9 % of cell wall** at **5.1–10.7x** phase parallelism, so the occupancy-normalized ceiling is **0.039–0.376 %** of wall (fuel-proportional bound 0.844 % best case, whose measured elapsed moved +0.8 % the wrong way). The direct wall check agrees — base-off **+0.17 % wall / +0.09 % CPU**, benchy-on **+3.18 % wall / +0.17 % CPU** (paired medians; benchy-on's instrumented −2.9 % was load drift). `D-168` is retained with the measured magnitude. Observed, not ticketed: `tree_support_branch_distance` (Orca 5 mm vs PnP 1 mm, supports-on) is the other t82 "PnP does more work" geometry key, unmeasured and parity-scoped. Evidence: [`evidence/t83-arachne-tolerance-price/`](evidence/t83-arachne-tolerance-price/FINDINGS.md) (`verify.py --self-test` exit 0, 5/5 negative controls rejected).
 
 - [Fairness-key parity audit of the matched job](issues/82-fairness-key-parity-audit.md): **resolved (2026-10-23; measurement-only — all 618 resolved keys classified, no candidate, no timing)** — eight Orca runs gave a 618-key resolved appendix per cell; only `wall_generator`, `enable_support` and `print_settings_id` vary. **Verdict: no third `resolution`-class lever at scale.** The one unmatched geometry pair where PnP does materially more work is the Arachne tolerance pair — `wall_maximum_resolution` 0.5 vs 0.05 mm and `wall_maximum_deviation` 0.025 vs 0.005 mm (PnP 10x / 5x tighter), Arachne cells only, magnitude unmeasured, already `D-168` but invisible to the generated deviations table because **82 of the 618 keys postdate its 2026-05-19 upstream snapshot**. Everything else either makes Orca do more (`top_shell_layers` 4 vs 3, `support_interface_top_layers` 3 vs 2, `precise_outer_wall` 1 vs 0, `ensure_vertical_shell_thickness`, `detect_narrow_internal_solid_infill`, tree-support brim), is layer-0-only, shape-only, or inert. **Controls matched in all eight cells:** `resolution = 0.01` and `slice_closing_radius = 0.049` (same key, default and order as canonical), retiring the fog's `slice_closing_radius` half. Observations: `detect_thin_wall` declared `true` by classic-perimeters but emitted `0`; `support_interface_bottom_layers` declared `-1`, emitted `2`; `brim_width` 8 vs 0 unresolved at output level; Orca's overhang bands live while PnP's are 0. Recommended next step is a pricing take on the Arachne match, not implemented here. Evidence: [`evidence/t82-fairness-key-audit/`](evidence/t82-fairness-key-audit/FINDINGS.md) (`verify.py --self-test` exit 0, 9/9 negative controls rejected).
@@ -1398,10 +1422,15 @@ Standing decisions for this effort (2026-09-22):
   wall** in the frozen-snapshot confirmation), so no constant changed.
   The prefix chain, t76's intra-call partition and the ladder unions are
   measured dead (0.13 %, no target above 436 ms, 0.7 %). Still fog: the
-  `PrePass::OverhangAnnotation` (9.3-10.9 s wall, heavily parallel) and
-  `SeamPlanning` (8.6-10.9 s serial) stages lack a measured reduction. The rest
-  of the base common floor is ticket 59's closed Slice verdict plus the two
-  now-ticketed stages. After t75 the residual phase-B serial work is the
+  `PrePass::OverhangAnnotation` (9.3-10.9 s wall) and `SeamPlanning`
+  (8.6-10.9 s serial) are **resolved by
+  [ticket 84](issues/84-base-common-floor-attribution.md)** (2026-10-24). Seam
+  is 92-93 % one serial native inset offset per region and graduates as
+  [85](issues/85-seam-inset-offset-batching.md); overhang is engine-bound
+  (99.7 % kernel, 85.4 % canonical three-offset work, 11.86x parallel, operand
+  window retains 97.84 %), so no shape ticket exists and only an engine-level
+  speedup moves it. The rest of the base common floor is ticket 59's closed
+  Slice verdict. After t75 the residual phase-B serial work is the
   depth gather, the angles step and the 9/121 affected-layer recompute; the
   stage's Pass 1 `apply_opening` round-join arc-tolerance-0 anomaly (t27
   candidate (a)) remains the largest measured, un-ticketed term in the stage
