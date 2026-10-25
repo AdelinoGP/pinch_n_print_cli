@@ -1,0 +1,71 @@
+{
+ "ticket": 85,
+ "verdict": "PASS (wall falls, CPU inside the +3.0 % band, every pair byte-identical and one SHA per arm, in all four pre-declared base classic cells)",
+ "qualification_pass": true,
+ "qualified_cells": 16,
+ "cross_mode_mismatches": [],
+ "paired_gate": {
+  "ordinary-base-classic-off": {
+   "wall_delta_pct": -7.464957989379761,
+   "cpu_delta_pct": 0.4489827833771276,
+   "retained_pairs": 6,
+   "excluded_pairs": []
+  },
+  "ordinary-base-classic-on": {
+   "wall_delta_pct": -2.718321873119589,
+   "cpu_delta_pct": 0.34392949238659654,
+   "retained_pairs": 6,
+   "excluded_pairs": []
+  },
+  "accelerated-base-classic-off": {
+   "wall_delta_pct": -7.031276477024662,
+   "cpu_delta_pct": 0.4699442099104001,
+   "retained_pairs": 6,
+   "excluded_pairs": []
+  },
+  "accelerated-base-classic-on": {
+   "wall_delta_pct": -3.861005383460925,
+   "cpu_delta_pct": 0.3479372310428941,
+   "retained_pairs": 6,
+   "excluded_pairs": []
+  }
+ },
+ "attribution": {
+  "ordinary-base-classic-off": {
+   "baseline": {
+    "slice_ms": 80462,
+    "seam_stage_ms": 8356,
+    "seam_module_ms": 8355,
+    "seam_module_fuel": 3858490856
+   },
+   "candidate": {
+    "slice_ms": 72347,
+    "seam_stage_ms": 1737,
+    "seam_module_ms": 1736,
+    "seam_module_fuel": 3978325219
+   },
+   "stage_drop_ms": 6619,
+   "stage_drop_pct": 79.21254188606989
+  },
+  "ordinary-base-classic-on": {
+   "baseline": {
+    "slice_ms": 172296,
+    "seam_stage_ms": 8288,
+    "seam_module_ms": 8287,
+    "seam_module_fuel": 3858490856
+   },
+   "candidate": {
+    "slice_ms": 165258,
+    "seam_stage_ms": 1703,
+    "seam_module_ms": 1703,
+    "seam_module_fuel": 3978325219
+   },
+   "stage_drop_ms": 6585,
+   "stage_drop_pct": 79.45222007722008
+  }
+ },
+ "measure_cells_reference_wall_s": {
+  "ordinary-base-classic-off": 84.55363295000001,
+  "ordinary-base-classic-on": 189.17313455
+ }
+}

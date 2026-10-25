@@ -100,7 +100,53 @@ Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
 
-**Current selection scope (2026-10-24, on the ticket 84 take):** the human's
+**Current selection scope (2026-10-25, on the ticket 85 take):** the human's
+"continue the perf vs orca map" named no ticket, so the session took the only
+frontier ticket, [85](issues/85-seam-inset-offset-batching.md) — and it is
+**resolved (2026-10-25, human-approved KEEP)**. The candidate batches the seam
+planner's 495 per-region inset offsets into **one** `offset_polygons_batch`
+(two guest passes, unchanged per-request arguments, unchanged entry order and
+fallback path), and the standing gate **PASSED in all four pre-declared base
+classic cells**: wall **−7.46 % / −2.72 %** (ordinary) and
+**−7.03 % / −3.86 %** (accelerated), process CPU **+0.34 … +0.47 %** (ceiling
++3.0 %), **24/24 pairs byte-identical**, one SHA per arm, **zero starvation
+exclusions**, zero pair moving the wrong way (individual wall ratios
+0.887–0.977). Output identity is **16/16** against the derived post-t81
+reference set, with cross-mode equality **8/8**.
+
+Attribution: the seam stage falls **8,356 → 1,737 ms** (off) and
+**8,288 → 1,703 ms** (on) in instrumented captures — **≈7x batch occupancy** on
+the offset request set (conservative bound 4.4x), against this ticket's
+pre-declared **1.15x** DROP floor. **t78's 2.6x pricing was too pessimistic**,
+which is why ticket 84's predicted 5.43 % (off) is beaten by the measured
+7.46 %; the shape is now 2.3 % of a base cell, so the seam stage has left the
+base common floor. The parity case is exact by construction (no geometry
+change) and pinned by
+`batched_inset_offsets_match_the_serial_reference_per_region`
+(`modules/core-modules/seam-planner-default/src/lib.rs`), which compares the
+batched path entry-for-entry with the pre-batching serial loop on a fixture
+whose two regions carry different insets.
+
+**One infra prerequisite was repaired inside this take:**
+[86](issues/86-accelerated-shim-workspace-root.md) — a cold accelerated build
+died in `proc-macro2`'s build script because the rustc shim resolved the
+workspace root from CWD (t71's runtime-walk contract, wrong for the one caller
+whose CWD is a cargo-registry package). Fixed by exporting
+`PNP_XTASK_WORKSPACE_ROOT` from the three accelerated entry points and
+re-validating it in `resolve_shim_root` (`xtask/src/rustc_driver.rs`;
+`cargo test -p xtask` 187/0). No candidate behaviour depends on it; without it
+the accelerated arm of this gate could not be measured.
+
+Disclosures: the two arms' `pnp_cli.exe` differ (the seam planner is linked into
+the host via `slicer-integrated-modules`; both arms run
+`--no-integrated-modules`, so it is inert), guest fuel rises +3.1 %, and the
+pre-campaign sanity pair taken under desktop load is not used anywhere.
+Evidence: [`evidence/t85-seam-inset-batching/`](evidence/t85-seam-inset-batching/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 8/8 negative controls rejected).
+Frontier now: **no open child remains**; the fog and the next route are the
+human's. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-24, on the ticket 84 take):** the human's
 "continue the perf vs orca map" named no ticket; the frontier re-derivation
 found **no open child** (83/83 resolved) and the human selected the **Base
 common-floor attribution** route.
@@ -1110,6 +1156,10 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Seam planner inset-offset batching](issues/85-seam-inset-offset-batching.md): **resolved (2026-10-25; human-approved KEEP — gate met in all four base classic cells)** — the seam planner's 495 per-region inset offsets become **one** `offset_polygons_batch`; wall **−7.46 / −2.72 %** (ordinary) and **−7.03 / −3.86 %** (accelerated), CPU **+0.34…+0.47 %**, 24/24 pairs byte-identical, 16/16 output identity, zero exclusions; seam stage **8,356 → 1,737 ms** = **≈7x batch occupancy** (conservative 4.4x, floor 1.15x), so t84's 5.43 % pricing is beaten and the stage drops to 2.3 % of a base cell. Parity is exact by construction, pinned by a per-entry serial-reference test.
+
+- [Accelerated shim workspace-root resolution](issues/86-accelerated-shim-workspace-root.md): **resolved (2026-10-25; infra prerequisite of the t85 take)** — the rustc shim resolved the workspace root from CWD, which is a cargo-registry package directory when cargo compiles a dependency's `build.rs`, so every cold accelerated build died; the accelerated entry points now export `PNP_XTASK_WORKSPACE_ROOT` and `resolve_shim_root` re-validates it (env → CWD → binary dir). `cargo test -p xtask` 187/0, a 48-guest cold accelerated build completes, both freshness gates exit 0.
+
 - [Base common-floor attribution: SeamPlanning and OverhangAnnotation](issues/84-base-common-floor-attribution.md): **resolved (2026-10-24; attribution take — one candidate graduated, two shapes measured dead; no production edit, probe reverted)** — at HEAD `ce8f3992` on base classic off/on, both arms byte-identical to the t81 references `292df501…` / `22200671…`. **SeamPlanning** (9.14 / 8.97 s = 9.84 / 4.30 % of cell wall) is **92.4 / 93.2 %** one serial native `offset_polygons` per region: 495 calls, 8,195 / 8,177 ms; candidate generation 94.6 / 94.3 ms, scoring 16.6 / 16.1 ms, harvest 58.1 / 44.7 ms, host view projection 4.2 / 11.4 ms — the candidate list is **not** the wall problem. **OverhangAnnotation** (10.01 / 10.30 s = 10.78 / 4.94 %) is **99.7 %** the parallel `annotate_overhangs` kernel; 1,455 round offsets (485 band layers × 3) are **85.4 %** of its native work at **11.86x** parallelism; host gather + merge + clone + commit is **0.18 %**. Graduated [85](issues/85-seam-inset-offset-batching.md): batch the inset offsets through the existing `offset_polygons_batch` — upper bound **8.83 / 3.92 %** of wall, **5.43 / 2.41 %** at t78's measured 2.6x. Dropped with measured ceilings: overhang bbox-window operand (retains **97.84 %** of previous points → **0.189 / 0.080 %**) and the seam candidate list (**0.288 / 0.127 %**). Evidence: [`evidence/t84-common-floor/`](evidence/t84-common-floor/FINDINGS.md) (`verify.py --self-test` exits 0, 8/8 negative controls rejected).
 
 - [Arachne wall-simplification tolerance pricing](issues/83-arachne-wall-simplification-tolerance-pricing.md): **resolved (2026-10-24; measurement-only pricing take — DROP, below the map's pre-declared 0.80 % wall floor; no candidate, no parity port, no production edit)** — one binary and module tree, two config-only arms (default 0.05/0.005 mm vs canonical 0.5/0.025 mm), 2 alternating instrumented pairs per Arachne cell plus a 6-pair uninstrumented wall check on the two borderline cells. The tolerance is **real work**: arachne guest fuel **−10.76 %** (benchy) / **−16.21 %** (base), whole-job fuel −3.41/−1.41 % and −11.56/−3.08 %, G-code bytes **−3.84…−8.23 %** with identical TYPE counts, all runs clean and byte-deterministic per arm, and the default arm reproduces t81's base-arachne-off reference `01a1434c…`. It is not a wall lever: the module is only **2.9–6.9 % of cell wall** at **5.1–10.7x** phase parallelism, so the occupancy-normalized ceiling is **0.039–0.376 %** of wall (fuel-proportional bound 0.844 % best case, whose measured elapsed moved +0.8 % the wrong way). The direct wall check agrees — base-off **+0.17 % wall / +0.09 % CPU**, benchy-on **+3.18 % wall / +0.17 % CPU** (paired medians; benchy-on's instrumented −2.9 % was load drift). `D-168` is retained with the measured magnitude. Observed, not ticketed: `tree_support_branch_distance` (Orca 5 mm vs PnP 1 mm, supports-on) is the other t82 "PnP does more work" geometry key, unmeasured and parity-scoped. Evidence: [`evidence/t83-arachne-tolerance-price/`](evidence/t83-arachne-tolerance-price/FINDINGS.md) (`verify.py --self-test` exit 0, 5/5 negative controls rejected).
@@ -1259,6 +1309,16 @@ Standing decisions for this effort (2026-09-22):
 - [Config padding disclosure boundary and viewer-key gate](issues/34-config-padding-disclosure-boundary.md): **resolved (2026-10-07, disclosure/correctness only)** — premise corrected: `ORCA_CONFIG_PADDING` never fires on any production path (the registry projection reaches 233 pairs; the loop breaks at 96), so its values are unreachable there and only the test/legacy callers consume the table. The audit nonetheless found two **live** wire-format defects in the emitted block: booleans rendered as `true`/`false` where OrcaSlicer's wire literals are `1`/`0` (23 production lines; `ConfigBase::set_deserialize_raw`'s substitution branch — `enum_looks_like_true_value` is true only for `enabled`/`on` — loaded every rendered `true` as `false`, e.g. `detect_overhang_wall` and `support_remove_small_overhang`), and four enum values carrying PnP-internal spellings (`wall_sequence` `InnerOuter`, `wall_generator` `Classic`, `wall_direction` `counter_clockwise`, and the `seam_mode` alias rendering `rear`) that Orca's strict `enum_keys_map` lookup answers by replacing the option with its own default; two keys PnP models as `bool` but Orca declares `coEnum` (`dont_filter_internal_bridges`, `enable_extra_bridge_layer`) needed the same treatment. Fixed in one documented `translate_appendix_enum` table applied only at the appendix (module `ConfigView`s unchanged). Table audited row by row: 10 values were corrected (7 to the pinned upstream default, 3 more in enum domain), 3 rows named keys OrcaSlicer cannot load (`support_material`/`extra_perimeters` removed as non-Orca keys; `wipe_tower_width` kept — `handle_legacy` renames it), and 4 rows named keys absent from OrcaSlicer entirely, replaced with real cosmetic keys. A freshly generated production block now measures **0 strict wire violations**; the edited table compares **0 default mismatches** against the pinned `PrintConfig.cpp`. Residual: the padding-only fallback block still cannot satisfy Orca's `>= 80` loadable-pair gate because the remaining unloadable lines are PnP's own key names (registry-projected, not table rows) — recorded, not patched. No timing, geometry, adoption, default or guest change; all required gates pass.
 
 ## Not yet specified
+
+- **`map_batch` occupancy must be measured per request set, not borrowed
+  (surfaced 2026-10-25 by [ticket 85](issues/85-seam-inset-offset-batching.md)).**
+  Ticket 84 priced the seam batching at t78's measured **2.6x** effective
+  speedup for the same `map_batch` fan-out; the candidate actually achieved
+  **≈7x** (8,356 → 1,737 ms), so the pricing under-predicted the wall win by
+  roughly a third of the recoverable time. Any future batch-adoption candidate
+  that copies that 2.6x as a planning constant inherits the same bias; price
+  with the request set's own measured occupancy, or state the ceiling as a
+  range. Method note, not route work — it graduates only with its own reason.
 
 - **Fairness machinery reads a stale upstream snapshot (surfaced 2026-10-23 by
   [ticket 82](issues/82-fairness-key-parity-audit.md)).** The generated
