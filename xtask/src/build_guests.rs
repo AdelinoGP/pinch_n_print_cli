@@ -919,6 +919,7 @@ fn guest_build_cargo_command_for_mode(
                 crate::rustc_driver::PNP_XTASK_EXE_ENV,
                 std::env::current_exe().expect("resolve current xtask executable"),
             )
+            .env(crate::rustc_driver::PNP_WORKSPACE_ROOT_ENV, ws_root)
             .env(crate::rustc_driver::ACCELERATED_ENV, "1")
             .env(crate::rustc_driver::ACCELERATED_MODE_ENV, "guest-release");
     }

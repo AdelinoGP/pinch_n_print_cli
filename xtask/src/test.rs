@@ -209,7 +209,7 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         cmd.arg("test");
         if let Some(wrapper) = accelerated_wrapper.as_deref() {
             cmd.current_dir(ws_root);
-            configure_accelerated_host_command(&mut cmd, wrapper, true);
+            configure_accelerated_host_command(&mut cmd, wrapper, ws_root, true);
         }
         cmd.args(&test_args);
         cmd.stdout(std::process::Stdio::piped());
@@ -325,12 +325,18 @@ const ACCELERATED_TEST_CONFIG: &[&str] = &[
     "profile.dev.package.slicer-core.debug-assertions=true",
 ];
 
-fn configure_accelerated_host_command(cmd: &mut Command, wrapper: &Path, test_profile: bool) {
+fn configure_accelerated_host_command(
+    cmd: &mut Command,
+    wrapper: &Path,
+    ws_root: &Path,
+    test_profile: bool,
+) {
     cmd.env("RUSTC", wrapper)
         .env(
             crate::rustc_driver::PNP_XTASK_EXE_ENV,
             std::env::current_exe().expect("resolve current xtask executable"),
         )
+        .env(crate::rustc_driver::PNP_WORKSPACE_ROOT_ENV, ws_root)
         .env(crate::rustc_driver::ACCELERATED_ENV, "1")
         .env(crate::rustc_driver::ACCELERATED_MODE_ENV, "host-debug");
     if test_profile {
@@ -384,7 +390,7 @@ fn ensure_pnp_cli_fresh_accelerated(ws_root: &Path, wrapper: &Path) -> PnpCliFre
     ensure_pnp_cli_fresh_with(ws_root, |ws_root| {
         let mut cmd = Command::new("cargo");
         cmd.args(["build", "--bin", "pnp_cli"]).current_dir(ws_root);
-        configure_accelerated_host_command(&mut cmd, wrapper, true);
+        configure_accelerated_host_command(&mut cmd, wrapper, ws_root, true);
         cmd.status()
     })
 }
@@ -432,7 +438,7 @@ fn run_streaming_test(
     let mut cmd = Command::new("cargo");
     cmd.arg("test");
     if let Some(wrapper) = accelerated_wrapper {
-        configure_accelerated_host_command(&mut cmd, wrapper, true);
+        configure_accelerated_host_command(&mut cmd, wrapper, ws_root, true);
     }
     let mut child = cmd
         .args(test_args)
