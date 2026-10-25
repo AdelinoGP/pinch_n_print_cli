@@ -25,6 +25,7 @@ slicer-schema = { path = "../slicer-schema" }
 slicer-sdk = { path = "../slicer-sdk" }
 
 [dev-dependencies]
+lightning-portability-guest = { path = "test-guests/lightning-portability-guest" }
 preparation-pilot-infill = { path = "test-guests/preparation-pilot-infill" }
 preparation-pilot-path = { path = "test-guests/preparation-pilot-path" }
 preparation-transport-path = { path = "test-guests/preparation-transport-path" }

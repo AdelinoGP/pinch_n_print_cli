@@ -10,8 +10,10 @@
 
 //! Isolated owned Lightning geometry feasibility kernel.
 //!
-//! This crate is intentionally independent of `slicer-core`, `slicer-runtime`,
-//! `slicer-wasm-host`, and every WIT/guest boundary. It is a plain `rlib` with
+//! This crate stays independent of `slicer-runtime`, `slicer-wasm-host`, every
+//! host algorithm (no `host-algos`/`rayon`/`boostvoronoi`), and every WIT/guest
+//! boundary. It takes `slicer-core` with default features only because the
+//! included module kernel source links against it. It is a plain `rlib` with
 //! no filesystem or configuration access; all inputs are explicit typed records
 //! transported by the caller.
 //!
@@ -25,9 +27,12 @@
 
 pub mod distance_field;
 pub mod domain;
+pub mod kernel;
 pub mod model;
+#[allow(clippy::result_large_err)]
 pub mod planner;
 pub mod polygon;
+#[allow(clippy::result_large_err)]
 pub mod tree;
 
 pub use model::*;

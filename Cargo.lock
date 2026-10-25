@@ -2049,6 +2049,7 @@ dependencies = [
  "clipper2-rust",
  "serde",
  "serde_json",
+ "slicer-core",
  "slicer-ir",
 ]
 
@@ -2057,6 +2058,18 @@ name = "lightning-infill"
 version = "0.1.0"
 dependencies = [
  "slicer-core",
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "lightning-portability-guest"
+version = "0.1.0"
+dependencies = [
+ "lightning-feasibility-kernel",
+ "serde_json",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -3736,6 +3749,7 @@ name = "slicer-wasm-host"
 version = "0.1.0"
 dependencies = [
  "lightning-feasibility-kernel",
+ "lightning-portability-guest",
  "log",
  "preparation-pilot-infill",
  "preparation-pilot-path",

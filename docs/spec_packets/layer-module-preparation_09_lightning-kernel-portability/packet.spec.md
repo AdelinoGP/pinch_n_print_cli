@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: layer-module-preparation_09_lightning-kernel-portability
 task_ids:
   - TASK-576

@@ -8,4 +8,5 @@ mod common;
 
 mod foreign_language_feasibility_tdd;
 mod lightning_oracle_tdd;
+mod lightning_portability_tdd;
 mod wasm_instance_tdd;

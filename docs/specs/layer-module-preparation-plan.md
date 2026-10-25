@@ -941,3 +941,113 @@ independent comparator's policy *population* branch is exercised but its field-b
 branch is exercised only by the synthetic single-field mutation control inside AC-4.
 Packet `layer-module-preparation_09_lightning-kernel-portability` must re-exercise both
 before it relies on this derivation.
+
+### Gate B record — five Classic families
+
+Gate B's aggregate verdict is **fail**, with `executed: true` and
+`build_guests_check_exit: 0`. This is a measured comparison result, not a skip.
+`target/lightning-portability/outcome.json`, written by
+`lightning_portability_support::write_outcome`
+(`crates/slicer-wasm-host/tests/integration/lightning_portability_support.rs`),
+records the four included kernel paths and their per-file SHA-256 hashes, the guest
+artifact hash, native/WASM counts, per-case planned and clipped statuses, observed
+commands/exits and log hashes, non-comparable populations, and migration blockers.
+
+Counts below are nodes / edges / roots; native and WASM match each other, but every
+case's planned comparison fails against the canonical replay:
+
+AC-1 transports and validates every recorded planning layer, including
+`anchor_bridge_classic`'s empty layer 2 (zero internal domains, two temporary
+anchors), with unchanged provenance; the per-case node/edge/root counts are
+aggregates over those layers.
+
+Contract correction: the outline horizon is the highest recorded planning layer,
+justified by the checked canonical-node layer invariant in
+`planned_graph_native_and_wasm`
+(`crates/slicer-wasm-host/tests/integration/lightning_portability_tdd.rs`), which
+requires every canonical node to occupy a recorded planning layer and none above
+that horizon; the design's replay-horizon wording cannot be satisfied by the
+declared `plan_lightning(&KernelInput)` signature with an empty `layers` arm.
+
+| case_id | planned status | native | WASM | canonical | recorded clipped fill count |
+| --- | --- | --- | --- | --- | --- |
+| `anchor_bridge_classic` | fail | 34 / 17 / 17 | 34 / 17 / 17 | 27 / 16 / 11 | 13 |
+| `pooled_regions_classic` | fail | 52 / 26 / 26 | 52 / 26 / 26 | 46 / 32 / 14 | 2 |
+| `hole_void_classic` | fail | 54 / 27 / 27 | 54 / 27 / 27 | 41 / 27 / 14 | 2 |
+| `island_split_merge_classic` | fail | 44 / 22 / 22 | 44 / 22 / 22 | 41 / 25 / 16 | 4 |
+| `paint_modifier_config_classic` | fail | 72 / 36 / 36 | 72 / 36 / 36 | 48 / 30 / 18 | 6 |
+
+For every case and both arms, the first difference is
+`missing/reversed/disconnected node (point,parent point,root point,is_root) entry 0`.
+The measured kernel graphs are structurally shallower: every non-root node is a
+single-level child of a root, whereas the canonical replay has multi-level chains.
+Unrecorded layers are empty inputs to `plan_lightning`
+(`modules/core-modules/lightning-infill/feasibility-kernel/src/planner.rs`), so the
+recorded layer is treated as entirely overhanging. Native/WASM agreement does not
+turn this canonical mismatch into a pass.
+
+The clipped comparison is **inconclusive** for each case. The exact
+`reference.final_fills` absence reason in
+`crates/slicer-wasm-host/tests/fixtures/lightning_gate/manifest.json` is
+`FinalFillInput.policy needs per-region resolved angles the capture does not record`.
+The recorded fill counts are **13 / 2 / 2 / 4 / 6**, in the table's case order;
+these are recorded populations, not successful canonical clip comparisons.
+Constructed-fill clipping checks do not establish canonical final-fill parity.
+Final-fill contributor attribution remains limited: grouped/unioned fills cannot
+be assigned complete canonical per-contributor provenance from this capture;
+`combine_infill`/grouped-union provenance repair is not established by Gate B.
+
+The seven named non-comparable populations are `origin_region_index`,
+`per_node_provenance`, `sampled_segments`, `grounding.kind`,
+`reference.final_fills`, `reference.policies`, and
+`final_fill_contributor_attribution`. They remain explicitly
+non-comparable rather than silently defaulted or counted as passes.
+The contributor evidence records unavailable contributor-dispatch counts of
+**21 / 1 / 2 / 2 / 1**, in the table's case order, all with the recorded reason
+`unresolved contributor: surface created after the pre-anchor snapshot`.
+
+Implementation notes:
+
+- Canonical fixture geometry uses 1 nm units and is converted to PnP 100 nm units
+  using `round-half-away-from-zero(v/100)` before planning; the two coordinate
+  scales are not interchangeable.
+- The test guest at
+  `crates/slicer-wasm-host/test-guests/lightning-portability-guest/` is a root
+  workspace member, not a `[workspace]`-sentinel guest. Its vestigial lockfile is
+  excluded from guest-lock divergence analysis. The feasibility kernel's exact
+  `clipper2-rust = "=1.1.0"` pin matches the root lock, so it cannot conflict with
+  the 30 other guest lockfiles through that excluded vestigial lockfile.
+
+The four integration acceptance filters in
+`crates/slicer-wasm-host/tests/integration/lightning_portability_tdd.rs` are:
+
+- `lightning_portability_tdd::planned_graph_native_and_wasm`
+- `lightning_portability_tdd::gate_b_decision_is_truthful`
+- `lightning_portability_tdd::rejects_canned_echo_and_fallback`
+- `lightning_portability_tdd::outcome_records_gate_b`
+
+AC-4's negative controls are validated against a known-good synthetic baseline,
+and each corruption is rejected with its own named failure, including a well-formed
+canned payload for a different case, an echoed input, and a region-isolated payload.
+
+The outcome also records the observed child execution of
+`planner::tests::clip_lightning_semantics_tdd`
+(`modules/core-modules/lightning-infill/feasibility-kernel/src/planner.rs`).
+Child commands have observed exit 0; the outcome writer cannot observe its own
+still-running invocation's exit and records `null` with that explicit reason.
+The enclosing test harness supplies the completion result.
+
+`migration_eligible` is **false**: eligibility requires the conjunction of Gate A
+pass, Gate B pass, independently recorded framework acceptance, and executed
+artifacts. The named
+blockers are `MIGRATION_BLOCKED_GATE_A` (A recorded **fail**),
+`MIGRATION_BLOCKED_GATE_B` (B measured **fail**), and
+`MIGRATION_BLOCKED_FRAMEWORK` (framework acceptance **not independently verified**
+by this packet). The preceding A record is preserved as historical evidence;
+this B record supersedes its statement that B had not executed, without changing
+the A verdict or asserting canonical-parity migration acceptance.
+The `(Gate A, Gate B, framework acceptance, executed)` conjunction computing
+`migration_eligible` is exercised as a full truth table, with framework acceptance
+recorded `Unverified` and named `MIGRATION_BLOCKED_FRAMEWORK`; an inconclusive
+gate blocks eligibility just as a failed gate does, and unexecuted artifacts add
+`MIGRATION_BLOCKED_UNEXECUTED`.
