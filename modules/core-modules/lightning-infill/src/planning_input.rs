@@ -3,8 +3,11 @@
 //! This adapter is additive: it supplies the inputs the relocated algorithm
 //! already reads and changes no arithmetic. The planner consumes only
 //! `SliceIR::{global_layer_index, regions}` and, per region, `object_id`,
-//! `region_id`, `variant_chain` and `polygons`; every other `SlicedRegion`
-//! field keeps its default. `SliceIR::z` is carried unread for layer identity.
+//! `region_id`, `variant_chain` and `sparse_infill_area`; every other
+//! `SlicedRegion` field keeps its default. `SliceIR::z` is carried unread for
+//! layer identity. The fill surfaces are the canonical Lightning input; the
+//! region outline (`polygons`) is not a planning domain because it includes the
+//! wall-interior band.
 //!
 //! The five `ResolvedConfig` scalars the planner reads are print-wide on the
 //! host but per-region on the typed surface, so they must agree across every
@@ -13,7 +16,8 @@
 
 use std::collections::BTreeMap;
 
-use slicer_ir::{ResolvedConfig, SliceIR, SlicedRegion};
+use slicer_core::polygon_ops::{difference, union};
+use slicer_ir::{ExPolygon, ResolvedConfig, SliceIR, SlicedRegion};
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::preparation::{PreparationRegion, PreparationRegionConfig, PreparationRegionKey};
 
@@ -81,6 +85,38 @@ fn carries_layer_height(region: &PreparationRegion) -> bool {
     region.effective_layer_height > 0.0
 }
 
+/// The Lightning planning domain available at whole-print preparation time.
+///
+/// Canonical `Generator` consumes `stInternal`/`stInternalVoid` fill surfaces.
+/// The host commits that set as `sparse_infill_area`, but that field is written
+/// by `region_partition` during per-layer execution, *after* whole-print
+/// preparation has already run; preparation therefore sees it empty on the
+/// ordinary path. The prepass has already classified bridges and top/bottom
+/// solid shells, so derive the sparse domain from `infill_areas` minus those
+/// classified areas. When preparation is ever supplied a committed
+/// `sparse_infill_area`, it is used verbatim. Wall-inset geometry remains
+/// unavailable at this seam (the perimeter pass runs later), so this is closer
+/// to canonical than the raw region outline but not identical to
+/// `region_partition`'s final subtraction.
+fn planning_fill_area(region: &PreparationRegion) -> Vec<ExPolygon> {
+    if !region.sparse_infill_area.is_empty() {
+        return region.sparse_infill_area.clone();
+    }
+    let base = if region.infill_areas.is_empty() {
+        &region.polygons
+    } else {
+        &region.infill_areas
+    };
+    let solid = union(
+        &union(
+            &union(&region.bridge_areas, &region.top_solid_fill),
+            &region.bottom_solid_fill,
+        ),
+        &union(&region.internal_solid_fill, &region.internal_bridge_areas),
+    );
+    difference(base, &solid)
+}
+
 /// Build the kernel's `Vec<SliceIR>` and `ResolvedConfig` from committed typed
 /// preparation records.
 ///
@@ -134,10 +170,8 @@ pub(crate) fn build_planner_inputs(
                 }
                 Some(_) => {}
                 None => {
-                    layer_heights.insert(
-                        config.key.global_layer_index,
-                        region.effective_layer_height,
-                    );
+                    layer_heights
+                        .insert(config.key.global_layer_index, region.effective_layer_height);
                 }
             }
         }
@@ -170,15 +204,21 @@ pub(crate) fn build_planner_inputs(
 
     let mut layers: BTreeMap<u32, SliceIR> = BTreeMap::new();
     for region in regions {
-        let layer = layers.entry(region.global_layer_index).or_insert_with(|| SliceIR {
-            global_layer_index: region.global_layer_index,
-            z: region.z,
-            ..SliceIR::default()
-        });
+        let layer = layers
+            .entry(region.global_layer_index)
+            .or_insert_with(|| SliceIR {
+                global_layer_index: region.global_layer_index,
+                z: region.z,
+                ..SliceIR::default()
+            });
         let sliced = SlicedRegion {
             object_id: region.object_id.clone(),
             region_id: region.region_id,
-            polygons: region.polygons.clone(),
+            // Canonical Lightning plans over the `stInternal`/`stInternalVoid`
+            // fill surfaces; see `planning_fill_area` for the preparation-time
+            // derivation. `polygons` is the full region outline and includes
+            // wall-interior area.
+            sparse_infill_area: planning_fill_area(region),
             variant_chain: region
                 .variant_chain
                 .iter()
@@ -256,7 +296,11 @@ mod tests {
         }
     }
 
-    fn config_for(region: &PreparationRegion, line_width: f64, layer_height: f64) -> PreparationRegionConfig {
+    fn config_for(
+        region: &PreparationRegion,
+        line_width: f64,
+        layer_height: f64,
+    ) -> PreparationRegionConfig {
         PreparationRegionConfig {
             key: PreparationRegionKey {
                 global_layer_index: region.global_layer_index,
@@ -266,6 +310,47 @@ mod tests {
             },
             config: planner_config(line_width, layer_height),
         }
+    }
+
+    fn rectangle(x0: i64, y0: i64, x1: i64, y1: i64) -> ExPolygon {
+        ExPolygon {
+            contour: slicer_ir::Polygon {
+                points: vec![
+                    slicer_ir::Point2 { x: x0, y: y0 },
+                    slicer_ir::Point2 { x: x1, y: y0 },
+                    slicer_ir::Point2 { x: x1, y: y1 },
+                    slicer_ir::Point2 { x: x0, y: y1 },
+                ],
+            },
+            holes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn preparation_derives_the_sparse_fill_area_when_the_committed_set_is_empty() {
+        let mut source = region("obj", 0, 0, 0.2);
+        source.polygons = vec![rectangle(0, 0, 20_000, 20_000)];
+        source.infill_areas = source.polygons.clone();
+        source.top_solid_fill = vec![rectangle(0, 10_000, 20_000, 20_000)];
+        source.bridge_areas = vec![rectangle(0, 0, 2_000, 2_000)];
+
+        let fill = planning_fill_area(&source);
+        assert_eq!(fill.len(), 1);
+        // 20x20 minus the 20x10 top band and the 2x2 bridge corner. The union
+        // of the two cutters is one connected L, so the remainder is one
+        // expolygon with one rectilinear contour.
+        let points = &fill[0].contour.points;
+        assert!(points.iter().all(|point| point.y <= 10_000));
+        assert!(!points.contains(&slicer_ir::Point2 { x: 0, y: 0 }));
+        assert!(points.contains(&slicer_ir::Point2 { x: 2_000, y: 0 }));
+        assert!(points.contains(&slicer_ir::Point2 { x: 0, y: 2_000 }));
+
+        source.sparse_infill_area = vec![rectangle(0, 0, 5_000, 5_000)];
+        assert_eq!(
+            planning_fill_area(&source),
+            source.sparse_infill_area,
+            "a committed sparse set is used verbatim"
+        );
     }
 
     /// Regression: paint segmentation and region split rebuild their regions from

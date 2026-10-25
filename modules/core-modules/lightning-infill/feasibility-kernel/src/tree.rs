@@ -241,13 +241,13 @@ mod tests {
     fn tree_extraction_tdd() {
         let mut generator = Generator::new(
             vec![
-                vec![
+                vec![vec![
                     Point2::from_mm(0.0, 0.0),
                     Point2::from_mm(10.0, 0.0),
                     Point2::from_mm(10.0, 10.0),
                     Point2::from_mm(0.0, 10.0),
-                ],
-                outline(),
+                ]],
+                vec![outline()],
             ],
             0.15,
             4_500,
@@ -256,6 +256,7 @@ mod tests {
             45.0,
             5.0,
             5.0,
+            2_250,
         );
         generator.generate_trees(&|| {});
         let layer = (0..2)

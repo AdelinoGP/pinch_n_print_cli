@@ -149,7 +149,7 @@ impl LayerModule for LightningInfill {
             // variant_chain)` must match the committed plan entry. A pair-only
             // lookup is never a fallback; an empty chain is the exact identity
             // for a genuinely chain-less source, never a wildcard.
-            let segments = plan
+            let segments: Vec<[slicer_ir::Point2; 2]> = plan
                 .entries
                 .iter()
                 .filter(|entry| {
@@ -158,10 +158,11 @@ impl LayerModule for LightningInfill {
                         && entry.region_id == *region.region_id()
                         && entry.variant_chain.as_slice() == region.variant_chain()
                 })
-                .flat_map(|entry| entry.tree_edge_segments.iter());
+                .flat_map(|entry| entry.tree_edge_segments.iter().copied())
+                .collect();
 
-            for segment in segments {
-                let points = segment
+            for polyline in chain_tree_segments(&segments) {
+                let points = polyline
                     .iter()
                     .map(|point| Point3WithWidth {
                         x: slicer_ir::units_to_mm(point.x),
@@ -196,6 +197,38 @@ impl LayerModule for LightningInfill {
     }
 }
 
+/// Recover the generator's polylines from the ordered tree-edge segments.
+///
+/// The plan carries directed two-point segments because the prepared-piece wire
+/// format pins four i64 coordinates per edge. The planner appends each
+/// `Node::convertToPolylines` result contiguously, so a run of segments whose
+/// end matches the next start is one branch polyline. Emitting that run as one
+/// extrusion path restores canonical's line-per-branch shape instead of one
+/// travel-separated path per edge.
+pub(crate) fn chain_tree_segments(
+    segments: &[[slicer_ir::Point2; 2]],
+) -> Vec<Vec<slicer_ir::Point2>> {
+    let mut lines = Vec::new();
+    let mut current: Vec<slicer_ir::Point2> = Vec::new();
+    for [start, end] in segments {
+        match current.last() {
+            Some(last) if last == start => current.push(*end),
+            _ => {
+                if current.len() > 1 {
+                    lines.push(std::mem::take(&mut current));
+                } else {
+                    current.clear();
+                }
+                current.extend([*start, *end]);
+            }
+        }
+    }
+    if current.len() > 1 {
+        lines.push(current);
+    }
+    lines
+}
+
 /// Read and decode the prepared piece for one layer.
 ///
 /// `PreparedPlanView::current()` is the call-local view the ordinary stage runs
@@ -214,6 +247,23 @@ fn read_layer_plan(layer_index: u32) -> Result<KernelPlan, ModuleError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chained_segments_recover_branch_polylines() {
+        let point = |x| slicer_ir::Point2 { x, y: 0 };
+        let lines = chain_tree_segments(&[
+            [point(0), point(1)],
+            [point(1), point(2)],
+            [point(10), point(11)],
+        ]);
+        assert_eq!(
+            lines,
+            vec![
+                vec![point(0), point(1), point(2)],
+                vec![point(10), point(11)],
+            ]
+        );
+    }
 
     #[test]
     fn from_config_defaults() {

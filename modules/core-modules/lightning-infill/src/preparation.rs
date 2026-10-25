@@ -283,7 +283,7 @@ mod tests {
             is_bridge: false,
             bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
+            sparse_infill_area: vec![square(side_mm)],
             internal_solid_fill: Vec::new(),
             internal_bridge_areas: Vec::new(),
             internal_bridge_angles_deg: Vec::new(),
@@ -584,11 +584,11 @@ mod tests {
             );
             match (&primitive.class[..], &primitive.geometry) {
                 ("tree_branch", PreparationProjectionGeometry::Polyline(points)) => {
-                    assert_eq!(points.len(), 2);
+                    assert!(points.len() >= 2);
                     scene_edges
                         .entry(primitive.global_layer_index as i32)
                         .or_default()
-                        .push([points[0], points[1]]);
+                        .extend(points.windows(2).map(|pair| [pair[0], pair[1]]));
                 }
                 ("tree_root", PreparationProjectionGeometry::Point(_)) => roots += 1,
                 ("grounding", PreparationProjectionGeometry::Point(_)) => groundings += 1,

@@ -675,11 +675,15 @@ location, not a portable fixture dependency; implementation must establish a
 reproducible oracle with canonical file/function provenance rather than requiring
 that machine-specific path.
 
-The current driver also groups by `(object_id, region_id)` and pairs islands
+The pre-migration driver grouped by `(object_id, region_id)` and paired islands
 across layers by polygon-vector position in `generate_lightning_trees`
-(`crates/slicer-core/src/algos/lightning/mod.rs`). Canonical `generateTrees`
-collects all eligible outlines for a layer instead. Migration must audit these
-differences; relocation alone is not proof of algorithm correctness.
+(`crates/slicer-core/src/algos/lightning/mod.rs`, retired by packet 08).
+Canonical `generateTrees` collects all eligible outlines for a layer instead.
+The 2026-10-25 fidelity pass removed the positional pairing: the module-owned
+`generate_lightning_trees` now groups by region identity only and flattens every
+`stInternal`/`stInternalVoid` expolygon's contour and holes into one ring set per
+layer. Cross-region grouping remains a PnP ownership choice (the plan is
+per-region), not a canonical claim.
 
 The lightning module is currently hidden behind `host-algos` in
 `crates/slicer-core/src/algos/mod.rs`; that feature enables `rayon` and
@@ -978,14 +982,62 @@ declared `plan_lightning(&KernelInput)` signature with an empty `layers` arm.
 | `island_split_merge_classic` | fail | 44 / 22 / 22 | 44 / 22 / 22 | 41 / 25 / 16 | 4 |
 | `paint_modifier_config_classic` | fail | 72 / 36 / 36 | 72 / 36 / 36 | 48 / 30 / 18 | 6 |
 
-For every case and both arms, the first difference is
-`missing/reversed/disconnected node (point,parent point,root point,is_root) entry 0`.
-The measured kernel graphs are structurally shallower: every non-root node is a
+These are the counts recorded by the packet-09 run, before the 2026-10-25
+fidelity pass. That run's first difference for every case and both arms was
+`missing/reversed/disconnected node (point,parent point,root point,is_root) entry 0`,
+and its kernel graphs were structurally shallower: every non-root node was a
 single-level child of a root, whereas the canonical replay has multi-level chains.
-Unrecorded layers are empty inputs to `plan_lightning`
-(`modules/core-modules/lightning-infill/feasibility-kernel/src/planner.rs`), so the
-recorded layer is treated as entirely overhanging. Native/WASM agreement does not
-turn this canonical mismatch into a pass.
+Those observations are historical; the current measurements are recorded below.
+
+### Gate B fidelity re-run — 2026-10-25
+
+The seeding model was corrected (`Generator::generateInitialInternalOverhangs`
+now walks top-down and `generateTrees` seeds before propagating), and the
+following canonical behaviours replaced earlier approximations:
+
+- the Gate B adapter consumes the recorded `stInternal`/`stInternalVoid` fill
+  surfaces, and every expolygon's contour and holes are flattened into one flat
+  ring set per region and layer. Production preparation cannot see
+  `region_partition`'s committed `sparse_infill_area` because preparation runs
+  before per-layer execution; it derives a planning domain from prepass
+  `infill_areas` minus the already-classified bridge/top/bottom/internal-solid
+  areas, and uses a committed `sparse_infill_area` verbatim when one is present.
+  Wall-inset geometry is still unavailable at the preparation seam;
+- islands are no longer paired positionally across layers;
+- `Layer::getBestGroundingLocation` uses the canonical boundary-distance gate,
+  square search box, inclusion test and cell tie-break, and
+  `reconnectRoots` has the bounded-last-grounding branch;
+- `Node::convertToPolylines` selects the continuation child with the
+  root-seeded `mt19937_64` draw.
+
+All five cases still measure **fail**, and the first mismatch remains
+`entry 0`. The measured counts are now:
+
+| case_id | planned status | native | WASM | canonical |
+| --- | --- | --- | --- | --- |
+| `anchor_bridge_classic` | fail | 28 / 17 / 11 | 28 / 17 / 11 | 27 / 16 / 11 |
+| `pooled_regions_classic` | fail | 46 / 31 / 15 | 46 / 31 / 15 | 46 / 32 / 14 |
+| `hole_void_classic` | fail | 37 / 24 / 13 | 37 / 24 / 13 | 41 / 27 / 14 |
+| `island_split_merge_classic` | fail | 37 / 23 / 14 | 37 / 23 / 14 | 41 / 25 / 16 |
+| `paint_modifier_config_classic` | fail | 58 / 35 / 23 | 58 / 35 / 23 | 48 / 30 / 18 |
+
+Native/WASM agreement is unchanged. The remaining structural divergence is the
+`DistanceField` seeding order: canonical feeds a non-transitive pairwise
+comparator to `std::stable_sort` (undefined behaviour, but deterministic for a
+given libstdc++), while the port uses the total-order band repair documented in
+`DistanceField::new`. That repair changes which overhang cell is seeded first and
+therefore the whole tree multiset. Exact Gate B parity would require reproducing
+the C++ unstable ordering, not a parameter change.
+
+Emission moved partway toward canonical in the same pass. `Layer::convertToLines`
+now receives the derived half-spacing overlap, the fill driver clips against the
+`0.5 * spacing` inset expolygon with holes preserved, and the consumer rejoins
+contiguous tree-edge segments into one extrusion path per branch. Still not
+ported: `smooth_polylines_corners` (canonical's default smooth factor is 0, so
+this is inert on the recorded profile), `multiline_fill` for `fill_multiline > 1`,
+and canonical `connect_infill` anchor hooks/contour routing. The per-region
+`lightning_*_angle` / `fill_multiline` config keys and the nozzle-diameter source
+are also still fixed constants rather than a resolved config surface.
 
 The clipped comparison is **inconclusive** for each case. The exact
 `reference.final_fills` absence reason in

@@ -14,6 +14,7 @@ use slicer_ir::{units_to_mm, ExPolygon, Point2, Polygon};
 use slicer_core::{difference, offset, OffsetJoinType};
 
 use super::layer::Layer;
+use super::Polygons;
 
 /// Cell size of the outline locator used while propagating trees downward.
 ///
@@ -27,40 +28,128 @@ const OUTLINE_LOCATOR_CELL_SIZE: i64 = 40_000;
 
 // [FWD] `lightning_overhang_angle` and `layer_height` feed the supporting radius; `sparse_infill_line_width` feeds infill resolution.
 
-fn expolygon(outline: &[Point2]) -> ExPolygon {
-    ExPolygon {
-        contour: Polygon {
-            points: outline.to_vec(),
-        },
-        holes: Vec::new(),
-    }
-}
-
-fn append_ring(points: &mut Vec<Point2>, ring: &[Point2]) {
-    if ring.is_empty() {
+fn append_ring(rings: &mut Polygons, ring: &[Point2]) {
+    if ring.len() < 3 {
         return;
     }
-    points.extend_from_slice(ring);
-    if ring.last() != ring.first() {
-        points.push(ring[0]);
+    let mut closed = ring.to_vec();
+    if closed.last() != closed.first() {
+        closed.push(closed[0]);
     }
+    rings.push(closed);
 }
 
-fn flatten_expolygons(polygons: &[ExPolygon]) -> Vec<Point2> {
-    let mut points = Vec::new();
+pub(crate) fn flatten_expolygons(polygons: &[ExPolygon]) -> Polygons {
+    let mut rings = Vec::new();
     for polygon in polygons {
-        append_ring(&mut points, &polygon.contour.points);
+        append_ring(&mut rings, &polygon.contour.points);
         for hole in &polygon.holes {
-            append_ring(&mut points, &hole.points);
+            append_ring(&mut rings, &hole.points);
         }
     }
-    points
+    rings
+}
+
+/// Group flat rings back into expolygons for a Clipper boolean operation.
+///
+/// Canonical passes flat `Polygons` to Clipper with its non-zero fill rule:
+/// outer rings are CCW and holes are CW, and an island nested inside a hole is
+/// CCW again. `slicer_core`'s boolean entry points take `ExPolygon`s, so this
+/// reconstructs the same filled region from ring orientation and containment.
+/// Rings are closed first so a caller's open ring is not treated as missing its
+/// final edge.
+fn expolygons_from_rings(rings: &Polygons) -> Vec<ExPolygon> {
+    let mut closed: Vec<(usize, i128)> = rings
+        .iter()
+        .filter(|ring| ring.len() >= 3)
+        .enumerate()
+        .map(|(index, ring)| {
+            let area2: i128 = ring
+                .iter()
+                .zip(ring.iter().cycle().skip(1))
+                .take(ring.len())
+                .map(|(a, b)| i128::from(a.x) * i128::from(b.y) - i128::from(b.x) * i128::from(a.y))
+                .sum();
+            (index, area2)
+        })
+        .collect();
+    // Canonical's flat `Polygons` order is contour-then-hole per expolygon. Sort
+    // outers before holes so the smallest-containing-outer search sees them.
+    closed.sort_by_key(|(_, area2)| -*area2);
+
+    let mut out: Vec<ExPolygon> = Vec::new();
+    let mut outer_index_for: Vec<Option<usize>> = vec![None; rings.len()];
+    for &(index, area2) in &closed {
+        if area2 > 0 {
+            outer_index_for[index] = Some(out.len());
+            out.push(ExPolygon {
+                contour: Polygon {
+                    points: rings[index].clone(),
+                },
+                holes: Vec::new(),
+            });
+        } else if area2 < 0 {
+            let hole = &rings[index];
+            let probe = hole[0];
+            let mut best: Option<(i128, usize)> = None;
+            for &(outer_index, outer_area2) in &closed {
+                if outer_area2 <= 0 || outer_index == index {
+                    continue;
+                }
+                if point_in_ring(probe, &rings[outer_index]) {
+                    let area = outer_area2.abs();
+                    if best.is_none_or(|(best_area, _)| area < best_area) {
+                        best = Some((area, outer_index_for[outer_index].unwrap()));
+                    }
+                }
+            }
+            if let Some((_, outer_index)) = best {
+                out[outer_index].holes.push(Polygon {
+                    points: hole.clone(),
+                });
+            } else {
+                // A non-zero fill rule fills a lone clockwise ring too. Reversing
+                // it to the outer orientation preserves that filled area instead
+                // of silently dropping the ring.
+                let mut contour = hole.clone();
+                contour.reverse();
+                out.push(ExPolygon {
+                    contour: Polygon { points: contour },
+                    holes: Vec::new(),
+                });
+            }
+        }
+    }
+    out
+}
+
+fn point_in_ring(point: Point2, ring: &[Point2]) -> bool {
+    if ring.len() < 3 {
+        return false;
+    }
+    let mut inside = false;
+    for (start, end) in ring
+        .iter()
+        .zip(ring.iter().cycle().skip(1))
+        .take(ring.len())
+    {
+        if (start.y > point.y) != (end.y > point.y) {
+            let intersection_x = start.x as f64
+                + (point.y - start.y) as f64 * (end.x - start.x) as f64 / (end.y - start.y) as f64;
+            if (point.x as f64) < intersection_x {
+                inside = !inside;
+            }
+        }
+    }
+    inside
 }
 
 /// Cross-layer Lightning tree generator for one object's ordered layer outlines.
 pub struct Generator {
-    /// Sparse-infill outline for each layer, from bottom to top.
-    pub per_layer_outlines: Vec<Vec<Point2>>,
+    /// Sparse-infill outline for each layer, from bottom to top. Each layer is a
+    /// flat ring set: contour rings and reversed hole rings are siblings, exactly
+    /// as canonical `to_polygons(surface.expolygon)` produces them.
+    pub per_layer_outlines: Vec<Polygons>,
     /// Radius used to resolve unsupported cells into branches.
     pub supporting_radius: i64,
     /// Inward wall-support erosion applied before subtracting the layer above.
@@ -75,7 +164,7 @@ pub struct Generator {
     pub layer_thickness: i64,
     /// Lightning overhang angle in radians.
     pub lightning_overhang_angle: f64,
-    m_overhang_per_layer: Vec<Vec<Point2>>,
+    m_overhang_per_layer: Vec<Polygons>,
     m_layers: Vec<Layer>,
     committed_segments: Vec<[Point2; 2]>,
     committed_segments_by_layer: Vec<Vec<[Point2; 2]>>,
@@ -83,8 +172,13 @@ pub struct Generator {
 
 impl Generator {
     /// Construct a generator and compute the per-layer internal overhangs.
+    ///
+    /// `line_overlap` is canonical's `0.5 * spacing - overlap`, which the fill
+    /// driver passes to `Layer::convertToLines`; it is not derived from the
+    /// supporting radius.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        per_layer_outlines: Vec<Vec<Point2>>,
+        per_layer_outlines: Vec<Polygons>,
         density: f64,
         extrusion_width: i64,
         n_multiline: i64,
@@ -92,6 +186,7 @@ impl Generator {
         lightning_overhang_angle: f64,
         lightning_prune_angle: f64,
         lightning_straightening_angle: f64,
+        line_overlap: i64,
     ) -> Self {
         let lightning_overhang_angle = lightning_overhang_angle.to_radians();
         let supporting_radius = if density > 0.0 {
@@ -116,7 +211,7 @@ impl Generator {
             wall_supporting_radius,
             prune_length,
             straightening_max_distance,
-            line_overlap: 200,
+            line_overlap,
             layer_thickness,
             lightning_overhang_angle,
             m_overhang_per_layer,
@@ -215,21 +310,19 @@ fn angle_distance(layer_thickness: i64, angle: f64) -> i64 {
 
 /// Port of `Generator::generateInitialInternalOverhangs` in `Generator.cpp`.
 ///
-/// Each output entry corresponds to one input layer. Its points contain the
-/// Clipper result's closed contour and hole rings in output order.
+/// Canonical walks top-down. For each layer it erodes that layer's raw fill
+/// area by the wall-supporting radius and subtracts the **un-eroded** area of
+/// the layer above, then retains that raw area as the next `above`. The result
+/// is a flat ring set: the Clipper result's contours and reversed hole rings,
+/// in output order.
 pub fn generate_initial_internal_overhangs(
-    per_layer_outlines: &[Vec<Point2>],
+    per_layer_outlines: &[Polygons],
     wall_supporting_radius: i64,
-) -> Vec<Vec<Point2>> {
+) -> Vec<Polygons> {
     let mut internal_overhangs = vec![Vec::new(); per_layer_outlines.len()];
     let mut above = Vec::new();
     for layer_index in (0..per_layer_outlines.len()).rev() {
-        let current_outline = &per_layer_outlines[layer_index];
-        let current = if current_outline.len() < 3 {
-            Vec::new()
-        } else {
-            vec![expolygon(current_outline)]
-        };
+        let current = expolygons_from_rings(&per_layer_outlines[layer_index]);
         let eroded = offset(
             &current,
             -units_to_mm(wall_supporting_radius),

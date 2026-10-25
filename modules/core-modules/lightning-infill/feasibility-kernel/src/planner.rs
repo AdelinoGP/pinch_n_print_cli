@@ -3,9 +3,10 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use slicer_core::polygon_ops::clip_polylines;
-use slicer_ir::{mm_to_units, Point2};
+use slicer_ir::mm_to_units;
 
-use crate::kernel::{generator::Generator, generator_from_parameters};
+use crate::kernel::generator::{flatten_expolygons, Generator};
+use crate::kernel::generator_from_parameters;
 use crate::model::{
     ClippedFill, ClippedLayer, EvidenceLocation, GraphLayer, GraphProvenance, KernelError,
     KernelInput, KernelPlan, LightningParameters, PlanningLayer, RegionIdentity,
@@ -171,7 +172,11 @@ pub fn plan_lightning(input: &KernelInput) -> Result<KernelPlan, KernelError> {
         });
     };
     let mut merged = BTreeMap::new();
-    let mut groups = BTreeMap::<(u32, usize), BTreeMap<u32, Vec<Point2>>>::new();
+    // Canonical Lightning accumulates every `stInternal`/`stInternalVoid`
+    // expolygon of a layer into one flat ring set. The adapter therefore groups
+    // by source region only: islands and holes of that region share a
+    // generator, and no island is paired positionally with a later layer.
+    let mut groups = BTreeMap::<u32, BTreeMap<u32, Vec<slicer_ir::ExPolygon>>>::new();
     for layer in &input.planning_layers {
         let context = location(&input.object_id, layer.global_layer_index, None);
         let graph = GraphLayer {
@@ -189,7 +194,6 @@ pub fn plan_lightning(input: &KernelInput) -> Result<KernelPlan, KernelError> {
                 reason: format!("duplicate planning layer {}", layer.global_layer_index),
             });
         }
-        let mut ordinals = BTreeMap::<u32, usize>::new();
         for (domain_index, domain) in layer.internal_domains.iter().enumerate() {
             let mut identity = None;
             for source in &layer.source_catalog {
@@ -238,19 +242,19 @@ pub fn plan_lightning(input: &KernelInput) -> Result<KernelPlan, KernelError> {
                     reason: "canonical region index exceeds u32".to_owned(),
                 }
             })?;
-            let ordinal = ordinals.entry(origin_region_index).or_default();
             groups
-                .entry((origin_region_index, *ordinal))
+                .entry(origin_region_index)
                 .or_default()
-                .insert(layer.global_layer_index, domain.contour.points.clone());
-            *ordinal += 1;
+                .entry(layer.global_layer_index)
+                .or_default()
+                .push(domain.clone());
         }
     }
 
-    for ((origin_region_index, _), domains) in groups {
+    for (origin_region_index, domains) in groups {
         let mut outlines = vec![Vec::new(); max_global as usize + 1];
-        for (global_layer_index, outline) in domains {
-            outlines[global_layer_index as usize] = outline;
+        for (global_layer_index, expolygons) in domains {
+            outlines[global_layer_index as usize] = flatten_expolygons(&expolygons);
         }
         let context = location(
             &input.object_id,
@@ -435,7 +439,7 @@ mod tests {
         GraphNode, LayerInput, RegionInput, SourceCheckpoint, SourceSegmentRef, SourceSurface,
         SourceSurfaceId,
     };
-    use slicer_ir::{ExPolygon, Polygon};
+    use slicer_ir::{ExPolygon, Point2, Polygon};
 
     fn identity(region_id: u64) -> RegionIdentity {
         RegionIdentity {

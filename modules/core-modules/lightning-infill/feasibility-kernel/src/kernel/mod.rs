@@ -14,10 +14,13 @@ use crate::model::{EvidenceLocation, KernelError, LightningParameters};
 use generator::Generator;
 use slicer_ir::{mm_to_units, Point2};
 
+/// Flat ring set for one layer; must match the included kernel's parent alias.
+pub type Polygons = Vec<Vec<Point2>>;
+
 /// Construct the module kernel from recorded parameters without substituting scalars.
 #[allow(clippy::result_large_err)]
 pub fn generator_from_parameters(
-    outlines: Vec<Vec<Point2>>,
+    outlines: Vec<Polygons>,
     parameters: &LightningParameters,
 ) -> Result<Generator, KernelError> {
     if parameters.supporting_radius_mm.is_none() != (parameters.density_fraction == 0.0) {
@@ -33,6 +36,11 @@ pub fn generator_from_parameters(
                 .to_owned(),
         });
     }
+    let spacing_mm = slicer_core::flow::line_width_to_spacing(
+        parameters.extrusion_width_mm as f32,
+        parameters.layer_height_mm as f32,
+    )
+    .map_or(0.0, |spacing| spacing);
     Ok(Generator::new(
         outlines,
         parameters.density_fraction,
@@ -42,6 +50,7 @@ pub fn generator_from_parameters(
         parameters.overhang_angle_deg,
         parameters.prune_angle_deg,
         parameters.straightening_angle_deg,
+        mm_to_units(spacing_mm * 0.5),
     ))
 }
 

@@ -11,6 +11,8 @@
 
 use slicer_ir::{slice_ir::BoundingBox2, Point2};
 
+use super::Polygons;
+
 // Orca ref: DistanceField::DistanceField and radius_per_cell_size (DistanceField.cpp).
 const RADIUS_PER_CELL_SIZE: u32 = 6;
 
@@ -33,15 +35,18 @@ impl DistanceField {
     /// Construct a field using the supplied supporting radius and polygons.
     pub fn new(
         supporting_radius: i64,
-        outline: &[Point2],
+        outline: &Polygons,
         outline_bbox: BoundingBox2,
-        overhang: &[Point2],
+        overhang: &Polygons,
     ) -> Self {
         let cell_size = supporting_radius / i64::from(RADIUS_PER_CELL_SIZE);
         let mut unsupported_points = Vec::new();
 
-        if cell_size > 0 && outline.len() >= 3 && overhang.len() >= 3 {
-            if let Some((overhang_min, overhang_max)) = polygon_bounds(overhang) {
+        if cell_size > 0
+            && outline.iter().any(|ring| ring.len() >= 3)
+            && overhang.iter().any(|ring| ring.len() >= 3)
+        {
+            if let Some((overhang_min, overhang_max)) = polygons_bounds(overhang) {
                 let half_cell_size = cell_size / 2;
                 let mut y = overhang_min.y.checked_add(half_cell_size);
                 while let Some(sample_y) = y.filter(|sample_y| *sample_y < overhang_max.y) {
@@ -51,11 +56,12 @@ impl DistanceField {
                             x: sample_x,
                             y: sample_y,
                         };
-                        if outline_bbox.contains_point(sample) && point_in_polygon(sample, overhang)
+                        if outline_bbox.contains_point(sample)
+                            && point_in_polygons(sample, overhang)
                         {
                             unsupported_points.push(UnsupportedCell {
                                 loc: sample,
-                                dist_to_boundary: distance_to_polygon(sample, outline),
+                                dist_to_boundary: distance_to_polygons(sample, outline),
                             });
                         }
                         x = sample_x.checked_add(cell_size);
@@ -207,11 +213,11 @@ impl DistanceField {
     }
 }
 
-fn polygon_bounds(polygon: &[Point2]) -> Option<(Point2, Point2)> {
-    let first = *polygon.first()?;
+fn polygons_bounds(polygons: &Polygons) -> Option<(Point2, Point2)> {
+    let first = *polygons.iter().flatten().next()?;
     let mut min = first;
     let mut max = first;
-    for point in polygon.iter().skip(1) {
+    for point in polygons.iter().flatten().skip(1) {
         min.x = min.x.min(point.x);
         min.y = min.y.min(point.y);
         max.x = max.x.max(point.x);
@@ -220,11 +226,15 @@ fn polygon_bounds(polygon: &[Point2]) -> Option<(Point2, Point2)> {
     Some((min, max))
 }
 
-fn distance_to_polygon(point: Point2, polygon: &[Point2]) -> i64 {
-    polygon
+fn distance_to_polygons(point: Point2, polygons: &Polygons) -> i64 {
+    polygons
         .iter()
-        .zip(polygon.iter().cycle().skip(1))
-        .take(polygon.len())
+        .filter(|ring| ring.len() >= 2)
+        .flat_map(|ring| {
+            ring.iter()
+                .zip(ring.iter().cycle().skip(1))
+                .take(ring.len())
+        })
         .map(|(start, end)| distance_to_segment(point, *start, *end))
         .fold(f64::INFINITY, f64::min) as i64
 }
@@ -247,27 +257,35 @@ fn distance_to_segment(point: Point2, start: Point2, end: Point2) -> f64 {
     (point.x as f64 - nearest_x).hypot(point.y as f64 - nearest_y)
 }
 
-/// Even-odd point-in-ring test with an on-boundary point reported as inside.
+/// Even-odd point-in-polygon-set test with an on-boundary point inside.
 ///
-/// This matches canonical `inside` (`libslic3r/Fill/Lightning/TreeNode.cpp`),
-/// which is `Slic3r::Polygon::contains` style even-odd across the polygon set
-/// with `on_boundary_is_inside = true`. Shared with `tree_node::Node::realign`.
-pub(super) fn point_in_polygon(point: Point2, polygon: &[Point2]) -> bool {
+/// This matches canonical `inside` (`libslic3r/Fill/Lightning/TreeNode.cpp`):
+/// `ClipperLib::PointInPolygon` per flat ring, boundary (`-1`) forced to true,
+/// and the ring results parity-combined. Orientation is ignored, so a hole ring
+/// toggles the count and a ring inside it is outside again. Shared with
+/// `tree_node::Node::realign`.
+pub(super) fn point_in_polygons(point: Point2, polygons: &Polygons) -> bool {
     let mut inside = false;
-    for (start, end) in polygon
-        .iter()
-        .zip(polygon.iter().cycle().skip(1))
-        .take(polygon.len())
-    {
-        if point_on_segment(point, *start, *end) {
-            return true;
+    for polygon in polygons {
+        if polygon.len() < 3 {
+            continue;
         }
+        for (start, end) in polygon
+            .iter()
+            .zip(polygon.iter().cycle().skip(1))
+            .take(polygon.len())
+        {
+            if point_on_segment(point, *start, *end) {
+                return true;
+            }
 
-        if (start.y > point.y) != (end.y > point.y) {
-            let intersection_x = start.x as f64
-                + (point.y - start.y) as f64 * (end.x - start.x) as f64 / (end.y - start.y) as f64;
-            if (point.x as f64) < intersection_x {
-                inside = !inside;
+            if (start.y > point.y) != (end.y > point.y) {
+                let intersection_x = start.x as f64
+                    + (point.y - start.y) as f64 * (end.x - start.x) as f64
+                        / (end.y - start.y) as f64;
+                if (point.x as f64) < intersection_x {
+                    inside = !inside;
+                }
             }
         }
     }
@@ -307,7 +325,7 @@ fn squared_distance(first: Point2, second: Point2) -> i128 {
 /// despite being constant: `DistanceField`'s tie-break takes the hash `% 191`,
 /// and adding a constant *before* the modulus shifts where the wrap falls, which
 /// permutes the seeding order. Dropping it silently diverges from canonical.
-fn point_hash(point: Point2) -> u64 {
+pub(super) fn point_hash(point: Point2) -> u64 {
     (89i64 * 31)
         .wrapping_add(point.x)
         .wrapping_mul(31)

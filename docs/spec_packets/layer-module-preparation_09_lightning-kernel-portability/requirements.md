@@ -39,9 +39,10 @@ non-comparison into a pass.
   the included files; declare the module from `lib.rs` and amend its crate comment to name the
   `slicer-core` exception; add `slicer-core` (default features) to the crate.
 - Implement `plan_lightning(input: &KernelInput) -> Result<KernelPlan, KernelError>` in
-  `planner.rs`: group canonical planning domains by resolved region and polygon ordinal, build the
-  per-layer outline vector, construct the included `Generator` from the recorded parameters, and map
-  each generated layer.
+  `planner.rs`: group canonical planning domains by resolved region, flatten each layer's internal
+  domains (contours and holes) into the per-layer outline vector, construct the included `Generator`
+  from the recorded parameters, and map each generated layer. (Amended 2026-10-25: the original
+  polygon-ordinal grouping was not canonical; see `design.md`.)
 - Implement the graph extraction in `tree.rs`: traverse `Layer::tree_roots`/`Node`, assign stable
   local ids, resolve parent/root relations, resolve each grounding point into the layer's
   `BoundaryAddress`, and carry the input `GraphProvenance` unchanged.

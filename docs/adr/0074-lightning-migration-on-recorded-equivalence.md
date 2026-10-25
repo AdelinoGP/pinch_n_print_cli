@@ -164,6 +164,32 @@ strategy, and only the second is what a canonical-input proof can establish.
   query package disappears because the query disappears, and identity continues
   to travel in the prepared plan entries.
 
+## Amendment — 2026-10-25 (canonical fidelity pass)
+
+The recorded-equivalence premise governed a **relocation**, not the current
+kernel. Four fidelity reviews compared the port against OrcaSlicer and the
+kernel was corrected where it was not canonical: the seeding model is now
+top-down (erode the current fill surface, subtract the un-eroded layer above),
+the planner consumes `stInternal`/`stInternalVoid` fill surfaces with holes as
+sibling rings, grounding and reconnection follow `getBestGroundingLocation` /
+`reconnectRoots`, and `convertToPolylines` chooses its continuation child from
+the root-seeded `mt19937_64` draw.
+
+Consequences:
+
+- The pre-migration baseline in
+  `crates/slicer-runtime/tests/fixtures/lightning_baseline/` no longer matches.
+  `crates/slicer-runtime/tests/e2e/lightning_migration_tdd.rs` is red on the
+  baseline-comparison tests; the baseline **must not** be regenerated to make
+  them pass. Its recorder was retired with the host producer.
+- The equivalence claim in this ADR describes the pre-fidelity kernel and is
+  historical. It does not authorize reverting the canonical behaviour.
+- Canonical parity remains the governing goal; Gate B's measured counts and
+  remaining divergence are recorded in
+  `docs/specs/layer-module-preparation-plan.md`.
+- This amendment is a **strategy change**, not a relocation. The relocation
+  decision itself (module ownership, no host fallback, no shim) is unchanged.
+
 ## References
 
 - [ADR-0066](./0066-private-layer-preparation-capability.md) — private

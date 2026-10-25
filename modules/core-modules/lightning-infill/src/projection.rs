@@ -11,7 +11,8 @@
 //!
 //! * `planning_domain` — the exact committed `ExPolygon`s the planner ran on,
 //!   holes preserved;
-//! * `tree_branch` — one open polyline per committed edge;
+//! * `tree_branch` — one open polyline per recovered branch (contiguous
+//!   committed edges are rejoined by [`crate::chain_tree_segments`]);
 //! * `tree_root` — the root side of each directed run, i.e. a vertex whose
 //!   directed incidence imbalance (`out - in`) is positive;
 //! * `grounding` — that root's closest point on its planning domain, the wall
@@ -29,6 +30,7 @@ use slicer_sdk::preparation::{
     PreparationRegion, PreparedPlanOutput,
 };
 
+use crate::chain_tree_segments;
 use crate::kernel::{KernelPlan, PlanEntry};
 
 /// Declared diagnostic view this module serves.
@@ -109,7 +111,7 @@ fn derive_primitives(
 
     let mut primitives = Vec::new();
     for region in regions {
-        for (polygon_index, polygon) in region.polygons.iter().enumerate() {
+        for (polygon_index, polygon) in region.sparse_infill_area.iter().enumerate() {
             primitives.push(PreparationProjectionPrimitive {
                 id: format!("domain:{}:p{polygon_index}", region_identity(region)),
                 global_layer_index: region.global_layer_index,
@@ -133,13 +135,16 @@ fn derive_primitives(
         // out-of-schedule reference, which the host rejects by name.
         let layer = entry.global_layer_index as u32;
 
-        for (edge_index, [start, end]) in entry.tree_edge_segments.iter().enumerate() {
+        for (branch_index, polyline) in chain_tree_segments(&entry.tree_edge_segments)
+            .into_iter()
+            .enumerate()
+        {
             primitives.push(PreparationProjectionPrimitive {
-                id: format!("branch:{identity}:e{edge_index}"),
+                id: format!("branch:{identity}:b{branch_index}"),
                 global_layer_index: layer,
                 class: "tree_branch".to_string(),
                 label: Some(source.clone()),
-                geometry: PreparationProjectionGeometry::Polyline(vec![*start, *end]),
+                geometry: PreparationProjectionGeometry::Polyline(polyline),
             });
         }
 
@@ -152,8 +157,8 @@ fn derive_primitives(
                 label: Some(format!("{source} root")),
                 geometry: PreparationProjectionGeometry::Point(root),
             });
-            if let Some(closest) =
-                domain.and_then(|region| closest_point_on_polygons(root, &region.polygons))
+            if let Some(closest) = domain
+                .and_then(|region| closest_point_on_polygons(root, &region.sparse_infill_area))
             {
                 primitives.push(PreparationProjectionPrimitive {
                     id: format!("ground:{identity}:n{node_index}"),

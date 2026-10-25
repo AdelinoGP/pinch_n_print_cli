@@ -16,7 +16,8 @@ use std::rc::{Rc, Weak};
 
 use slicer_ir::{slice_ir::BoundingBox2, Point2};
 
-use super::distance_field::point_in_polygon;
+use super::distance_field::{point_hash, point_in_polygons};
+use super::Polygons;
 
 // Orca ref: Node::straighten and close_enough (TreeNode.cpp); PnP lengths divide by 100.
 const CLOSE_ENOUGH_PNP_UNITS: f64 = 0.1;
@@ -154,14 +155,21 @@ impl Node {
     }
 
     /// Append this tree's branch polylines in deterministic depth-first order.
+    ///
+    /// Port of canonical `Node::convertToPolylines` (`TreeNode.cpp`). Canonical
+    /// seeds one `std::mt19937_64` per tree from the **root's** `PointHash` and
+    /// draws `rng() % children.size()` once per non-leaf node to choose which
+    /// child continues the current polyline. The remaining children are visited
+    /// in rotated order, each starting a new polyline. The RNG is local to the
+    /// conversion, so conversion order across trees does not change a tree's
+    /// own output.
     pub fn convert_to_polylines(&self, out: &mut Vec<Vec<Point2>>, line_overlap: i64) {
         // Orca ref: Node::convertToPolylines and removeJunctionOverlap (TreeNode.cpp).
+        let mut rng = Mt19937_64::new(point_hash(self.location()));
         let mut result = vec![Vec::new()];
-        self.convert_to_polylines_recursive(0, &mut result);
-        for polyline in &mut result {
-            remove_junction_overlap(polyline, line_overlap);
-        }
-        out.extend(result.into_iter().filter(|polyline| polyline.len() > 1));
+        self.convert_to_polylines_recursive(0, &mut result, &mut rng);
+        remove_junction_overlap(&mut result, line_overlap);
+        out.extend(result);
     }
 
     /// Visit this node and all descendants in depth-first order.
@@ -181,24 +189,35 @@ impl Node {
         }
     }
 
-    fn convert_to_polylines_recursive(&self, long_line_idx: usize, output: &mut Vec<Vec<Point2>>) {
+    fn convert_to_polylines_recursive(
+        &self,
+        long_line_idx: usize,
+        output: &mut Vec<Vec<Point2>>,
+        rng: &mut Mt19937_64,
+    ) {
         let children = self.children();
         if children.is_empty() {
             output[long_line_idx].push(self.location());
             return;
         }
 
-        children[0]
+        // Canonical computes `rng() % m_children.size()` in `size_t`/`u64`
+        // arithmetic. Doing the modulo before narrowing keeps wasm32's 32-bit
+        // `usize` from truncating the engine output and choosing a different
+        // continuation branch than the native arm.
+        let first_child_idx = (rng.next_u64() % children.len() as u64) as usize;
+        children[first_child_idx]
             .borrow()
-            .convert_to_polylines_recursive(long_line_idx, output);
+            .convert_to_polylines_recursive(long_line_idx, output, rng);
         output[long_line_idx].push(self.location());
 
-        for child in children.into_iter().skip(1) {
+        for offset in 1..children.len() {
+            let child = &children[(first_child_idx + offset) % children.len()];
             output.push(Vec::new());
             let child_line_idx = output.len() - 1;
             child
                 .borrow()
-                .convert_to_polylines_recursive(child_line_idx, output);
+                .convert_to_polylines_recursive(child_line_idx, output, rng);
             output[child_line_idx].push(self.location());
         }
     }
@@ -245,7 +264,7 @@ impl Node {
     /// — the Lightning locator cell size, not the supporting radius.
     pub fn propagate_to_next_layer(
         &self,
-        next_outlines: &[Point2],
+        next_outlines: &Polygons,
         outline_locator_resolution: i64,
         prune_distance: i64,
         smooth_magnitude: i64,
@@ -289,11 +308,11 @@ impl Node {
     /// rather than restructured.
     fn realign(
         &self,
-        outlines: &[Point2],
+        outlines: &Polygons,
         outline_locator_resolution: i64,
         rerooted_parts: &mut Vec<NodeRef>,
     ) -> bool {
-        if outlines.is_empty() {
+        if outlines.iter().all(|ring| ring.len() < 3) {
             return false;
         }
 
@@ -302,7 +321,7 @@ impl Node {
         let crossing_max_dist = outline_locator_resolution.saturating_mul(2);
         let my_location = self.location();
 
-        if point_in_polygon(my_location, outlines) {
+        if point_in_polygons(my_location, outlines) {
             let mut reground_me = false;
             let mut retained: Vec<NodeRef> = Vec::new();
             for child in self.children() {
@@ -563,36 +582,49 @@ fn squared_distance(first: Point2, second: Point2) -> i128 {
     dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy))
 }
 
-fn remove_junction_overlap(polyline: &mut Vec<Point2>, line_overlap: i64) {
-    if line_overlap <= 0 || polyline.len() <= 1 {
-        return;
-    }
+fn remove_junction_overlap(polylines: &mut Vec<Vec<Point2>>, line_overlap: i64) {
+    let mut line_index = 0;
+    while line_index < polylines.len() {
+        if line_overlap > 0 && polylines[line_index].len() > 1 {
+            let mut to_be_reduced = line_overlap as f64;
+            let mut a = *polylines[line_index].last().expect("polyline has a point");
+            let mut point_index = polylines[line_index].len() as isize - 2;
+            while point_index >= 0 {
+                let b = polylines[line_index][point_index as usize];
+                let dx = (b.x - a.x) as f64;
+                let dy = (b.y - a.y) as f64;
+                let segment_length = dx.hypot(dy);
+                if segment_length >= to_be_reduced {
+                    let ratio = to_be_reduced / segment_length;
+                    let last_index = polylines[line_index].len() - 1;
+                    polylines[line_index][last_index] = Point2 {
+                        x: (a.x as f64 + dx * ratio) as i64,
+                        y: (a.y as f64 + dy * ratio) as i64,
+                    };
+                    break;
+                }
 
-    let mut to_be_reduced = line_overlap as f64;
-    let mut a = *polyline.last().expect("polyline has a point");
-    let mut point_index = polyline.len() - 2;
-    loop {
-        let b = polyline[point_index];
-        let dx = (b.x - a.x) as f64;
-        let dy = (b.y - a.y) as f64;
-        let segment_length = dx.hypot(dy);
-        if segment_length >= to_be_reduced {
-            let ratio = to_be_reduced / segment_length;
-            let last_index = polyline.len() - 1;
-            polyline[last_index] = Point2 {
-                x: (a.x as f64 + dx * ratio) as i64,
-                y: (a.y as f64 + dy * ratio) as i64,
-            };
-            return;
+                to_be_reduced -= segment_length;
+                polylines[line_index].pop();
+                if polylines[line_index].len() <= 1 {
+                    break;
+                }
+                a = b;
+                point_index -= 1;
+            }
         }
 
-        to_be_reduced -= segment_length;
-        polyline.pop();
-        if polyline.len() <= 1 {
-            return;
+        if polylines[line_index].len() <= 1 {
+            // Canonical move-back-and-pop, with the last element handled by a
+            // plain pop so the swap cannot index past the new length.
+            if line_index + 1 == polylines.len() {
+                polylines.pop();
+            } else {
+                polylines[line_index] = polylines.pop().expect("line exists");
+            }
+        } else {
+            line_index += 1;
         }
-        a = b;
-        point_index -= 1;
     }
 }
 
@@ -666,31 +698,36 @@ fn normalized_scaled_difference(start: Point2, end: Point2, magnitude: i64) -> P
 fn line_segment_polygons_intersection(
     a: Point2,
     b: Point2,
-    outlines: &[Point2],
+    outlines: &Polygons,
     within_max_dist: i64,
 ) -> bool {
-    if outlines.len() < 2 || within_max_dist <= 0 {
+    if within_max_dist <= 0 {
         return false;
     }
 
     let mut nearest2 = within_max_dist as f64 * within_max_dist as f64;
     let mut found = false;
 
-    for (start, end) in outlines
-        .iter()
-        .copied()
-        .zip(outlines.iter().copied().cycle().skip(1))
-        .take(outlines.len())
-    {
-        let Some((ix, iy)) = segment_segment_intersection(a, b, start, end) else {
+    for ring in outlines {
+        if ring.len() < 3 {
             continue;
-        };
-        let dx = ix - b.x as f64;
-        let dy = iy - b.y as f64;
-        let dist2 = dx * dx + dy * dy;
-        if dist2 < nearest2 {
-            nearest2 = dist2;
-            found = true;
+        }
+        for (start, end) in ring
+            .iter()
+            .copied()
+            .zip(ring.iter().copied().cycle().skip(1))
+            .take(ring.len())
+        {
+            let Some((ix, iy)) = segment_segment_intersection(a, b, start, end) else {
+                continue;
+            };
+            let dx = ix - b.x as f64;
+            let dy = iy - b.y as f64;
+            let dist2 = dx * dx + dy * dy;
+            if dist2 < nearest2 {
+                nearest2 = dist2;
+                found = true;
+            }
         }
     }
 
@@ -727,6 +764,61 @@ fn segment_segment_intersection(
     Some((a0.x as f64 + t * rx, a0.y as f64 + t * ry))
 }
 
+/// Minimal `std::mt19937_64` clone, matching libstdc++'s engine.
+///
+/// Canonical `Node::convertToPolylines` uses `std::mt19937_64` seeded from the
+/// root's `PointHash`, then `rng() % children.size()` once per non-leaf node.
+/// The modulus of the raw 64-bit output (rather than a bounded distribution) is
+/// load-bearing for which branch continues a polyline.
+struct Mt19937_64 {
+    state: [u64; 312],
+    index: usize,
+}
+
+impl Mt19937_64 {
+    const N: usize = 312;
+    const M: usize = 156;
+    const MATRIX_A: u64 = 0xB502_6F5A_A966_19E9;
+    const UPPER_MASK: u64 = 0xFFFF_FFFF_8000_0000;
+    const LOWER_MASK: u64 = 0x7FFF_FFFF;
+
+    fn new(seed: u64) -> Self {
+        let mut state = [0_u64; Self::N];
+        state[0] = seed;
+        for i in 1..Self::N {
+            state[i] = 6_364_136_223_846_793_005_u64
+                .wrapping_mul(state[i - 1] ^ (state[i - 1] >> 62))
+                .wrapping_add(i as u64);
+        }
+        Self {
+            state,
+            index: Self::N,
+        }
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        if self.index >= Self::N {
+            for i in 0..Self::N {
+                let x = (self.state[i] & Self::UPPER_MASK)
+                    | (self.state[(i + 1) % Self::N] & Self::LOWER_MASK);
+                let mut x_a = x >> 1;
+                if x & 1 != 0 {
+                    x_a ^= Self::MATRIX_A;
+                }
+                self.state[i] = self.state[(i + Self::M) % Self::N] ^ x_a;
+            }
+            self.index = 0;
+        }
+
+        let mut y = self.state[self.index];
+        self.index += 1;
+        y ^= (y >> 29) & 0x5555_5555_5555_5555;
+        y ^= (y << 17) & 0x71D6_7FFF_EDA6_0000;
+        y ^= (y << 37) & 0xFFF7_EEE0_0000_0000;
+        y ^ (y >> 43)
+    }
+}
+
 fn distance_to_segment_squared(point: Point2, start: Point2, end: Point2) -> f64 {
     let line_x = (end.x - start.x) as f64;
     let line_y = (end.y - start.y) as f64;
@@ -740,5 +832,19 @@ fn distance_to_segment_squared(point: Point2, start: Point2, end: Point2) -> f64
         let dx = point_x - projection * line_x;
         let dy = point_y - projection * line_y;
         dx * dx + dy * dy
+    }
+}
+
+#[cfg(test)]
+mod rng_tests {
+    use super::Mt19937_64;
+
+    #[test]
+    fn mt19937_64_matches_the_standard_seed_zero_vector() {
+        let mut rng = Mt19937_64::new(0);
+        // libstdc++ `std::mt19937_64(0)` output order (do not feed both calls
+        // into one `printf`: C++ argument evaluation is right-to-left).
+        assert_eq!(rng.next_u64(), 2_947_667_278_772_165_694);
+        assert_eq!(rng.next_u64(), 18_301_848_765_998_365_067);
     }
 }

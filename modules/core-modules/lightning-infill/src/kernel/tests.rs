@@ -12,6 +12,12 @@ use slicer_ir::{
     SliceIR, SlicedRegion,
 };
 
+use super::Polygons;
+
+fn ring_set(ring: Vec<Point2>) -> Polygons {
+    vec![ring]
+}
+
 #[test]
 fn adapter_constants_match_orca_lightning_scalars() {
     let generator = Generator::new(
@@ -23,6 +29,7 @@ fn adapter_constants_match_orca_lightning_scalars() {
         super::ORCA_LIGHTNING_OVERHANG_ANGLE_DEG,
         super::ORCA_LIGHTNING_PRUNE_ANGLE_DEG,
         super::ORCA_LIGHTNING_STRAIGHTENING_ANGLE_DEG,
+        2_250,
     );
 
     assert_eq!(generator.supporting_radius, 30_000);
@@ -68,7 +75,7 @@ fn square_bbox(size_mm: f32) -> BoundingBox2 {
 // Orca ref: DistanceField::update (OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/DistanceField.cpp)
 #[test]
 fn lightning_distance_field() {
-    let outline = square(4.0);
+    let outline = ring_set(square(4.0));
     let overhang = outline.clone();
     let mut field = DistanceField::new(mm_to_units(6.0), &outline, square_bbox(4.0), &overhang);
 
@@ -76,7 +83,7 @@ fn lightning_distance_field() {
     let next = field.try_get_next_point().expect("the overhang has cells");
     assert!(square_bbox(4.0).contains_point(next));
 
-    field.update(outline[0], Point2::from_mm(2.0, 2.0));
+    field.update(outline[0][0], Point2::from_mm(2.0, 2.0));
     assert_eq!(field.unsupported_count(), 0);
     assert_eq!(field.try_get_next_point(), None);
 }
@@ -84,7 +91,7 @@ fn lightning_distance_field() {
 // Orca ref: DistanceField::update (OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/DistanceField.cpp)
 #[test]
 fn lightning_distance_field_branch_does_not_consume_past_leaf_circle() {
-    let outline = square(1.0);
+    let outline = ring_set(square(1.0));
     let supporting_radius = mm_to_units(1.0);
     let overhang = outline.clone();
     let to_node = Point2::from_mm(0.0, 0.0);
@@ -115,21 +122,21 @@ fn lightning_distance_field_branch_does_not_consume_past_leaf_circle() {
 #[test]
 fn lightning_distance_field_keeps_branch_midpoint_outside_leaf_circle() {
     // Cell size is one: this one-cell overhang samples exactly (10, 0).
-    let outline = vec![
+    let outline = ring_set(vec![
         Point2 { x: 0, y: -10 },
         Point2 { x: 30, y: -10 },
         Point2 { x: 30, y: 10 },
         Point2 { x: 0, y: 10 },
-    ];
-    let overhang = vec![
+    ]);
+    let overhang = ring_set(vec![
         Point2 { x: 10, y: 0 },
         Point2 { x: 11, y: 0 },
         Point2 { x: 11, y: 1 },
         Point2 { x: 10, y: 1 },
-    ];
+    ]);
     let bbox = BoundingBox2 {
-        min: outline[0],
-        max: outline[2],
+        min: outline[0][0],
+        max: outline[0][2],
     };
     let mut field = DistanceField::new(6, &outline, bbox, &overhang);
     assert_eq!(field.try_get_next_point(), Some(Point2 { x: 10, y: 0 }));
@@ -148,7 +155,8 @@ fn lightning_distance_field_keeps_branch_midpoint_outside_leaf_circle() {
 // Orca ref: DistanceField::update and Node::propagateToNextLayer (OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/DistanceField.cpp; TreeNode.cpp)
 #[test]
 fn lightning_empty_inputs_no_panic() {
-    let mut field = DistanceField::new(mm_to_units(6.0), &[], square_bbox(4.0), &[]);
+    let mut field =
+        DistanceField::new(mm_to_units(6.0), &Vec::new(), square_bbox(4.0), &Vec::new());
 
     assert_eq!(field.unsupported_count(), 0);
     assert_eq!(field.try_get_next_point(), None);
@@ -164,15 +172,17 @@ fn lightning_empty_inputs_no_panic() {
     // outlines are empty, and `propagateToNextLayer` only emits the copy when
     // realign accepted it. So an empty outline set propagates nothing; the
     // intent under test is that this is a clean no-op rather than a panic.
-    let propagated = tree.borrow().propagate_to_next_layer(&[], 4, 0, 3, 0);
+    let propagated = tree
+        .borrow()
+        .propagate_to_next_layer(&Vec::new(), 4, 0, 3, 0);
     assert!(propagated.is_empty());
 }
 
 /// Canonical seeds the eroded top layer and subtracts the un-eroded layer above below it.
 #[test]
 fn lightning_generator_overhangs() {
-    let layer_zero = square(10.0);
-    let layer_one = square(20.0);
+    let layer_zero = ring_set(square(10.0));
+    let layer_one = ring_set(square(20.0));
     let wall_supporting_radius = mm_to_units(0.5);
 
     let overhangs = generate_initial_internal_overhangs(
@@ -183,7 +193,7 @@ fn lightning_generator_overhangs() {
     assert_eq!(overhangs.len(), 2);
     assert!(overhangs[0].is_empty());
     assert_eq!(
-        overhangs[1],
+        overhangs[1][0],
         vec![
             Point2 {
                 x: 195_000,
@@ -204,7 +214,7 @@ fn lightning_generator_overhangs() {
             },
         ]
     );
-    let bounds = overhangs[1]
+    let bounds = overhangs[1][0]
         .iter()
         .fold((i64::MAX, i64::MIN), |(min, max), p| {
             (min.min(p.x), max.max(p.x))
@@ -213,8 +223,53 @@ fn lightning_generator_overhangs() {
 }
 
 #[test]
+fn lightning_overhangs_preserve_hole_rings() {
+    let outer = square(20.0);
+    let mut hole: Vec<Point2> = square(6.0)
+        .into_iter()
+        .map(|point| Point2 {
+            x: point.x + mm_to_units(7.0),
+            y: point.y + mm_to_units(7.0),
+        })
+        .collect();
+    hole.reverse();
+    let layer = vec![outer, hole];
+    let overhangs = generate_initial_internal_overhangs(&[layer], mm_to_units(0.5));
+
+    assert_eq!(
+        overhangs[0].len(),
+        2,
+        "the eroded expolygon keeps its contour and hole as sibling rings"
+    );
+    let areas: Vec<i128> = overhangs[0]
+        .iter()
+        .map(|ring| {
+            ring.windows(2)
+                .map(|pair| {
+                    i128::from(pair[0].x) * i128::from(pair[1].y)
+                        - i128::from(pair[1].x) * i128::from(pair[0].y)
+                })
+                .sum()
+        })
+        .collect();
+    assert!(areas.iter().any(|area| *area > 0));
+    assert!(areas.iter().any(|area| *area < 0));
+    assert!(
+        !super::distance_field::point_in_polygons(Point2::from_mm(10.0, 10.0), &overhangs[0]),
+        "the hole interior is outside the even-odd ring set"
+    );
+    assert!(super::distance_field::point_in_polygons(
+        Point2::from_mm(2.0, 2.0),
+        &overhangs[0]
+    ));
+}
+
+#[test]
 fn lightning_overhangs_include_bottom_and_reset_above_after_empty_layer() {
-    let overhangs = generate_initial_internal_overhangs(&[square(20.0), square(10.0)], 5_000);
+    let overhangs = generate_initial_internal_overhangs(
+        &[ring_set(square(20.0)), ring_set(square(10.0))],
+        5_000,
+    );
     // Bottom's 19x19 eroded square minus the 10x10 square above has area
     // 19^2 - 9.5^2 = 270.75 mm² (their intersection is 9.5x9.5).
     let twice_area = |ring: &[Point2]| -> i128 {
@@ -225,9 +280,9 @@ fn lightning_overhangs_include_bottom_and_reset_above_after_empty_layer() {
             .sum::<i128>()
             .abs()
     };
-    assert_eq!(twice_area(&overhangs[0]), 54_150_000_000);
+    assert_eq!(twice_area(&overhangs[0][0]), 54_150_000_000);
     let separated = generate_initial_internal_overhangs(
-        &[square(10.0), vec![Point2::default()], square(10.0)],
+        &[ring_set(square(10.0)), Vec::new(), ring_set(square(10.0))],
         5_000,
     );
     assert_eq!(separated[0], separated[2]);
@@ -238,7 +293,7 @@ fn lightning_overhangs_include_bottom_and_reset_above_after_empty_layer() {
 // Orca ref: DistanceField::update and Node::straighten (OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/DistanceField.cpp; TreeNode.cpp)
 #[test]
 fn lightning_primitives_are_deterministic() {
-    let outline = square(2.0);
+    let outline = ring_set(square(2.0));
     let overhang = outline.clone();
     let mut field_one = DistanceField::new(mm_to_units(6.0), &outline, square_bbox(2.0), &overhang);
     let mut field_two = DistanceField::new(mm_to_units(6.0), &outline, square_bbox(2.0), &overhang);
@@ -354,13 +409,13 @@ fn lightning_tree_node_propagate() {
     // `Node::realign` drops any node that falls outside it. This box clears
     // every node by a wide margin, so realign keeps the tree intact and the
     // prune/straighten/structure behaviour is what the assertions below see.
-    let next_outline = vec![
+    let next_outline = ring_set(vec![
         Point2 { x: -1000, y: -1000 },
         Point2 { x: 1000, y: -1000 },
         Point2 { x: 1000, y: 1000 },
         Point2 { x: -1000, y: 1000 },
         Point2 { x: -1000, y: -1000 },
-    ];
+    ]);
     let mut propagated_roots = root
         .borrow()
         .propagate_to_next_layer(&next_outline, 4, 0, 4, 0);
@@ -390,13 +445,13 @@ fn lightning_tree_node_propagate() {
 // the *dead parent's* position as its grounding location.
 #[test]
 fn lightning_tree_node_propagate_reroots_descendants_of_an_outside_node() {
-    let outline = vec![
+    let outline = ring_set(vec![
         Point2 { x: 0, y: 0 },
         Point2 { x: 1000, y: 0 },
         Point2 { x: 1000, y: 1000 },
         Point2 { x: 0, y: 1000 },
         Point2 { x: 0, y: 0 },
-    ];
+    ]);
     let dead_root_location = Point2 { x: 2000, y: 2000 };
     let root = Node::new(dead_root_location);
     root.borrow().add_child(Point2 { x: 500, y: 500 });
@@ -428,7 +483,7 @@ fn lightning_tree_node_propagate_reroots_descendants_of_an_outside_node() {
 #[test]
 fn lightning_tree_node_propagate_detaches_a_child_across_a_notch() {
     // A "U": the notch spans x in [400, 600] above y = 200.
-    let outline = vec![
+    let outline = ring_set(vec![
         Point2 { x: 0, y: 0 },
         Point2 { x: 1000, y: 0 },
         Point2 { x: 1000, y: 1000 },
@@ -438,7 +493,7 @@ fn lightning_tree_node_propagate_detaches_a_child_across_a_notch() {
         Point2 { x: 400, y: 1000 },
         Point2 { x: 0, y: 1000 },
         Point2 { x: 0, y: 0 },
-    ];
+    ]);
     let root_location = Point2 { x: 200, y: 600 };
     let child_location = Point2 { x: 800, y: 600 };
     let root = Node::new_with_grounding_location(root_location, Some(Point2 { x: 0, y: 600 }));
@@ -657,8 +712,8 @@ fn lightning_tree_node_visit_nodes() {
 
 #[test]
 fn lightning_layer_seed_inside_overhang() {
-    let outline = square(20.0);
-    let overhang = square(10.0);
+    let outline = ring_set(square(20.0));
+    let overhang = ring_set(square(10.0));
     let mut layer = Layer::new(Vec::new());
 
     layer.generate_new_trees(
@@ -683,32 +738,36 @@ fn lightning_layer_seed_inside_overhang() {
 
 #[test]
 fn lightning_layer_wall_supporting_radius() {
-    let outline = vec![
+    let outline = ring_set(vec![
         Point2 { x: 0, y: 0 },
         Point2 { x: 100, y: 0 },
         Point2 { x: 100, y: 100 },
         Point2 { x: 0, y: 100 },
         Point2 { x: 0, y: 0 },
-    ];
+    ]);
     let tree = Node::new(Point2 { x: 5, y: 50 });
     let mut layer = Layer::new(vec![Rc::clone(&tree)]);
-    let overhang = vec![
+    let overhang = ring_set(vec![
         Point2 { x: 5, y: 49 },
         Point2 { x: 6, y: 49 },
         Point2 { x: 6, y: 50 },
         Point2 { x: 5, y: 50 },
         Point2 { x: 5, y: 49 },
-    ];
+    ]);
 
     layer.generate_new_trees(&overhang, &outline, 6, 1000, &|| {});
 
-    assert_eq!(layer.tree_roots.len(), 1);
+    // Canonical skips the tree search entirely when the nearest boundary is
+    // inside the wall-supporting radius and grounds the new seed on that
+    // boundary. The pre-existing tree is left untouched, so there are two
+    // roots; the old port instead rejected the boundary and reused the tree.
+    assert_eq!(layer.tree_roots.len(), 2);
     assert!(tree.borrow().children().is_empty());
 }
 
 #[test]
 fn lightning_layer_reconnect_to_outline() {
-    let outline = square(20.0);
+    let outline = ring_set(square(20.0));
     let root = Node::new(Point2::from_mm(10.0, 10.0));
     let mut layer = Layer::new(vec![Rc::clone(&root)]);
 
@@ -732,8 +791,64 @@ fn lightning_layer_reconnect_to_outline() {
 }
 
 #[test]
+fn lightning_reconnect_uses_the_bounded_last_grounding_intersection() {
+    let outline = ring_set(square(20.0));
+    let root = Node::new_with_grounding_location(
+        Point2::from_mm(5.0, 10.0),
+        Some(Point2::from_mm(25.0, 10.0)),
+    );
+    let mut layer = Layer::new(vec![Rc::clone(&root)]);
+
+    layer.reconnect_roots(
+        vec![Rc::clone(&root)],
+        &outline,
+        mm_to_units(6.0),
+        mm_to_units(0.2),
+    );
+
+    assert_eq!(layer.tree_roots.len(), 1);
+    let new_root = &layer.tree_roots[0];
+    assert_eq!(new_root.borrow().location(), Point2::from_mm(20.0, 10.0));
+    assert!(new_root
+        .borrow()
+        .children()
+        .iter()
+        .any(|child| Rc::ptr_eq(child, &root)));
+}
+
+#[test]
+fn lightning_convert_to_polylines_is_root_seeded_and_covers_every_branch() {
+    let root = Node::new(Point2 { x: 0, y: 0 });
+    let left = root.borrow().add_child(Point2 { x: -10, y: 0 });
+    left.borrow().add_child(Point2 { x: -20, y: 0 });
+    let middle = root.borrow().add_child(Point2 { x: 0, y: 10 });
+    middle.borrow().add_child(Point2 { x: 0, y: 20 });
+    let right = root.borrow().add_child(Point2 { x: 10, y: 0 });
+    right.borrow().add_child(Point2 { x: 20, y: 0 });
+
+    let mut first = Vec::new();
+    root.borrow().convert_to_polylines(&mut first, 0);
+    let mut second = Vec::new();
+    root.borrow().convert_to_polylines(&mut second, 0);
+    assert_eq!(first, second, "the root-seeded RNG is deterministic");
+
+    let leaf_ends: BTreeSet<(i64, i64)> = first
+        .iter()
+        .filter_map(|line| line.first().map(|point| (point.x, point.y)))
+        .collect();
+    assert_eq!(
+        leaf_ends,
+        BTreeSet::from([(-20, 0), (0, 20), (20, 0)]),
+        "each child branch contributes exactly one line"
+    );
+    assert!(first
+        .iter()
+        .all(|line| line.last() == Some(&Point2 { x: 0, y: 0 })));
+}
+
+#[test]
 fn lightning_layer_convert_to_lines() {
-    let outline = square(20.0);
+    let outline = ring_set(square(20.0));
     let root = Node::new(Point2::from_mm(10.0, 10.0));
     root.borrow().add_child(Point2::from_mm(12.0, 10.0));
     let layer = Layer::new(vec![root]);
@@ -744,11 +859,16 @@ fn lightning_layer_convert_to_lines() {
     assert_eq!(lines[0].len(), 2);
 }
 
-fn lightning_prism_outlines() -> Vec<Vec<Point2>> {
-    vec![square(10.0), square(10.0), square(10.0), square(12.0)]
+fn lightning_prism_outlines() -> Vec<Polygons> {
+    vec![
+        ring_set(square(10.0)),
+        ring_set(square(10.0)),
+        ring_set(square(10.0)),
+        ring_set(square(12.0)),
+    ]
 }
 
-fn lightning_generator(outlines: Vec<Vec<Point2>>) -> Generator {
+fn lightning_generator(outlines: Vec<Polygons>) -> Generator {
     Generator::new(
         outlines,
         0.2,
@@ -758,6 +878,7 @@ fn lightning_generator(outlines: Vec<Vec<Point2>>) -> Generator {
         45.0,
         5.0,
         0.0,
+        2_250,
     )
 }
 
@@ -783,12 +904,15 @@ fn tree_nodes(root: &Rc<std::cell::RefCell<super::tree_node::Node>>) -> Vec<Poin
     nodes
 }
 
-fn distance_to_outline(point: Point2, outline: &[Point2]) -> f64 {
+fn distance_to_outline(point: Point2, outline: &Polygons) -> f64 {
     outline
         .iter()
-        .copied()
-        .zip(outline.iter().copied().cycle().skip(1))
-        .take(outline.len())
+        .flat_map(|ring| {
+            ring.iter()
+                .copied()
+                .zip(ring.iter().copied().cycle().skip(1))
+                .take(ring.len())
+        })
         .map(|(start, end)| {
             let dx = (end.x - start.x) as f64;
             let dy = (end.y - start.y) as f64;
@@ -872,10 +996,10 @@ fn lightning_generator_tree_continuity() {
 fn lightning_generator_deterministic() {
     let first_region_outlines = lightning_prism_outlines();
     let second_region_outlines = vec![
-        translated_square(10.0, 30.0),
-        translated_square(10.0, 30.0),
-        translated_square(10.0, 30.0),
-        translated_square(12.0, 30.0),
+        ring_set(translated_square(10.0, 30.0)),
+        ring_set(translated_square(10.0, 30.0)),
+        ring_set(translated_square(10.0, 30.0)),
+        ring_set(translated_square(12.0, 30.0)),
     ];
     let slices: Vec<SliceIR> = first_region_outlines
         .into_iter()
@@ -888,13 +1012,13 @@ fn lightning_generator_deterministic() {
                     SlicedRegion {
                         object_id: String::from("cube"),
                         region_id: 1,
-                        polygons: vec![expolygon(first_outline)],
+                        sparse_infill_area: vec![expolygon(first_outline[0].clone())],
                         ..SlicedRegion::default()
                     },
                     SlicedRegion {
                         object_id: String::from("cube"),
                         region_id: 2,
-                        polygons: vec![expolygon(second_outline)],
+                        sparse_infill_area: vec![expolygon(second_outline[0].clone())],
                         ..SlicedRegion::default()
                     },
                 ],
@@ -969,7 +1093,7 @@ fn lightning_generator_no_overhang_no_trees() {
             regions: vec![SlicedRegion {
                 object_id: String::from("cube"),
                 region_id: 1,
-                polygons: vec![expolygon(outline)],
+                sparse_infill_area: vec![expolygon(outline)],
                 ..SlicedRegion::default()
             }],
             ..SliceIR::default()
@@ -1013,10 +1137,10 @@ fn source_ordered_chains_remain_distinct_in_generated_lightning() {
 
     let left_outlines = lightning_prism_outlines();
     let right_outlines = vec![
-        translated_square(10.0, 30.0),
-        translated_square(10.0, 30.0),
-        translated_square(10.0, 30.0),
-        translated_square(12.0, 30.0),
+        ring_set(translated_square(10.0, 30.0)),
+        ring_set(translated_square(10.0, 30.0)),
+        ring_set(translated_square(10.0, 30.0)),
+        ring_set(translated_square(12.0, 30.0)),
     ];
 
     let make_slices = |include_forward: bool, include_reversed: bool| -> Vec<SliceIR> {
@@ -1027,7 +1151,9 @@ fn source_ordered_chains_remain_distinct_in_generated_lightning() {
                     regions.push(SlicedRegion {
                         object_id: String::from("cube"),
                         region_id: 1,
-                        polygons: vec![expolygon(left_outlines[global_layer_index].clone())],
+                        sparse_infill_area: vec![expolygon(
+                            left_outlines[global_layer_index][0].clone(),
+                        )],
                         variant_chain: chain_forward.clone(),
                         ..SlicedRegion::default()
                     });
@@ -1036,7 +1162,9 @@ fn source_ordered_chains_remain_distinct_in_generated_lightning() {
                     regions.push(SlicedRegion {
                         object_id: String::from("cube"),
                         region_id: 1,
-                        polygons: vec![expolygon(right_outlines[global_layer_index].clone())],
+                        sparse_infill_area: vec![expolygon(
+                            right_outlines[global_layer_index][0].clone(),
+                        )],
                         variant_chain: chain_reversed.clone(),
                         ..SlicedRegion::default()
                     });

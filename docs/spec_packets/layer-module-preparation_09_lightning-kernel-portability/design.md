@@ -53,6 +53,12 @@ defect and the driver asserts the empty-`layers` case still produces the full gr
   zero or several is `KernelError::SourceProvenanceUnavailable` naming the layer and domain index.
   Domains are ordered by `canonical_region_order` then by recorded domain order, giving the polygon
   ordinal. One `Generator` is built per `(region, polygon ordinal)`.
+
+  **Superseded — 2026-10-25 fidelity pass.** Canonical `generateTrees` accumulates every eligible
+  expolygon of a layer into one flat `Polygons` set; it has no polygon-ordinal identity. The adapter
+  now builds one `Generator` per region only, flattening every internal domain of that region and
+  layer into contour-plus-hole rings. Positional island pairing across layers is gone. See the Gate B
+  fidelity re-run in `docs/specs/layer-module-preparation-plan.md`.
 - **Parameters.** `LightningParameters` is transcribed field-for-field from
   `reference.parameters`; every field is required (`deny_unknown_fields`). The constructor receives
   density, extrusion width, multiline, layer height, overhang angle, prune angle, and straightening
