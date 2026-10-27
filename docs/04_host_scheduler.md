@@ -1710,6 +1710,14 @@ The G-code emission machinery lives in the `slicer-gcode` crate
 pub trait GCodeEmitter {
     fn emit_gcode(&self, layers: &[LayerCollectionIR])
         -> Result<GCodeIR, GCodeEmitError>;
+
+    // Owning variant (perf-vs-orca t90). Behaviour is identical; an
+    // implementation may consume the vector instead of copying it, and the
+    // default implementation forwards to `emit_gcode`. `DefaultGCodeEmitter`
+    // overrides it so the postpass `Vec<LayerCollectionIR>` is the emitter's
+    // working copy and is dropped exactly once.
+    fn emit_gcode_owned(&self, layers: Vec<LayerCollectionIR>)
+        -> Result<GCodeIR, GCodeEmitError>;
 }
 
 pub trait GCodeSerializer {
@@ -1721,11 +1729,13 @@ pub trait GCodeSerializer {
 `PostPass::GCodeEmit` is implemented in
 `slicer-runtime/src/builtins/gcode_emit_producer.rs` as a metadata-only
 `BuiltinProducer` descriptor (~42 LOC). The actual call site lives in
-`crates/slicer-runtime/src/run.rs` / `crates/slicer-runtime/src/postpass.rs` and wraps `DefaultGCodeEmitter::emit_gcode`,
+`crates/slicer-runtime/src/run.rs` / `crates/slicer-runtime/src/postpass.rs` and wraps `DefaultGCodeEmitter::emit_gcode_owned`,
 converting `GCodeEmitError` → `PostpassError` at the boundary via a free
 function (not a `From` impl — orphan rule prevents that). This
 preserves ADR-0001's in-stage-commit pattern without introducing a
-`slicer-gcode` → `slicer-runtime` circular dependency.
+`slicer-gcode` → `slicer-runtime` circular dependency. The owning call is
+taken only when no visual-debug capture sink is attached; a capturing caller
+keeps the borrowed path and receives the collection in the sink.
 
 #### Overhang Classification (Normative — Packets 88 / 106 / 107, ADR-0008 / ADR-0031)
 

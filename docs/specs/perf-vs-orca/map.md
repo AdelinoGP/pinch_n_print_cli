@@ -100,7 +100,69 @@ Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
 
-**Current selection scope (2026-10-27, on the ticket 89 take):** the human's
+**Current selection scope (2026-10-27, on the ticket 90 take):** the human's
+"continue the perf vs orca map" named no ticket; the frontier re-derivation at
+claim time found [90](issues/90-postpass-layer-collection-ownership.md) and
+[91](issues/91-exact-z-object-geometry-memo.md) open, and the session took the
+first in order. Ticket 90 is **resolved (2026-10-27, human-approved KEEP,
+candidate committed `7b22fccc`)** — the standing paired gate **PASSED in all
+four pre-declared base supports-on cells**: wall **−5.54 / −7.56 / −6.54 /
+−7.64 %** (ordinary/accelerated × classic/arachne) with process CPU
+**−1.13 … −1.67 %** (flat or lower, not merely inside the +3.0 % ceiling),
+**24/24 pairs byte-identical**, one SHA per arm, zero starvation exclusions,
+every pair moving the right way (−1.56 … −13.20 %). One ownership pass: the
+finalization stage takes the caller's `Vec<LayerCollectionIR>`
+(`execute_layer_finalization_owned`) instead of cloning a rollback snapshot,
+`GCodeEmitter::emit_gcode_owned` lets the emitter rotate and walk the caller's
+own vector, and the postpass hands it over, so the collection is dropped once
+instead of cloned and dropped twice. Attribution (instrumented, attribution
+only): the **1,765 / 1,684 ms clone**, the **3,685 / 3,758 ms commit drop** and
+the **4,490 / 3,723 ms postpass teardown drop** are gone, the one remaining drop
+lives inside the `host:gcode_emit` bracket and costs **1.56 / 2.68 s less** than
+the old clone+drop pair, and the postpass phase falls **66.5 / 70.3 %** — which
+is why the measured wall deltas (**12.0 / 14.8 / 15.9 / 15.4 s**) beat the
+ticket's pre-declared net ceiling of **10.76 / 10.29 s**. Exactness: 16/16 proof
+cells byte-identical and equal to the derived post-t81 references, ordinary ≡
+accelerated **8/8**, both freshness gates exit 0, host-only candidate proven by
+`provenance.json` (byte-identical 24-module trees per mode, distinct binaries
+per arm). Both the abort-state change (a fatal finalization error now consumes
+the working collection) and the pre-existing post-t81 `resolution`-fixture reds
+(23 contract — measured identical with and without the candidate — plus 3
+executor and 50 integration diagnosed by signature) are disclosed. Frontier now:
+[91](issues/91-exact-z-object-geometry-memo.md) and the concurrent screening
+take's [92](issues/92-per-surface-bridge-boolean-locality.md), both open and
+unclaimed; the take order is the human's. Standing paired acceptance and
+KEEP/DROP rules unchanged. Evidence:
+[`evidence/t90-postpass-ownership/`](evidence/t90-postpass-ownership/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 11/11 negative controls
+rejected).
+
+**Previous selection scope (2026-10-27, PR screening take):** at the human's
+request, three merged OrcaSlicer performance PRs were screened against this
+map's measured shapes. [#16741 "Speed up slicing of finely detailed
+models"](https://github.com/OrcaSlicer/OrcaSlicer/pull/16741) has no PnP
+counterpart for either half: the emitter has no per-extrusion object-mass
+locator, and the dense-below bridge shortcut fires only when every fill surface
+of the lower layer prints at 100 % density, which the matched job's 20 % sparse
+infill never reaches. [#16733 "Speed up slicing of objects with many
+parts"](https://github.com/OrcaSlicer/OrcaSlicer/pull/16733) has no per-part
+contact test to accelerate: the loader merges normal 3MF parts into one mesh and
+`SkirtBrim::generate_brim_entities` builds one print-wide rectangular loop set.
+[#15985 "Faster slicing of layers cut into many
+pieces"](https://github.com/OrcaSlicer/OrcaSlicer/pull/15985) maps only its
+neighbourhood-restriction / fill-boundary-hoist mechanisms, and only to the
+per-surface bridge qualification: the t75-named clip+angles terms are 3.9 s
+accumulated ≈ 0.55 % of the current base classic-off cell, below the 0.80 %
+floor before the unmeasured per-surface count. One screening ticket graduated:
+[92](issues/92-per-surface-bridge-boolean-locality.md) — Phase 1 measures the
+per-surface share and closes measured-dead unless it clears the floor; Phase 2
+is conditional. Frontier now:
+[90](issues/90-postpass-layer-collection-ownership.md),
+[91](issues/91-exact-z-object-geometry-memo.md) and
+[92](issues/92-per-surface-bridge-boolean-locality.md); the take order is the
+human's. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-27, on the ticket 89 take):** the human's
 "continue the perf vs orca map" named no ticket; the frontier re-derivation
 found [89](issues/89-support-plan-exact-z-validation-parallel.md) and
 [90](issues/90-postpass-layer-collection-ownership.md) open, and the session
@@ -1277,6 +1339,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Single-ownership layer collection through finalization and G-code emission](issues/90-postpass-layer-collection-ownership.md): **resolved (2026-10-27; human-approved KEEP — gate met in all four pre-declared base supports-on cells, candidate committed `7b22fccc`)** — wall **−5.54 / −7.56 / −6.54 / −7.64 %** (ordinary/accelerated × classic/arachne) with process CPU **−1.13 … −1.67 %**, **24/24 pairs byte-identical**, one SHA per arm, zero starvation exclusions, every pair moving the right way (−1.56 … −13.20 %). One ownership pass: `execute_layer_finalization_owned` mutates the caller's `Vec<LayerCollectionIR>` and returns it instead of deep-cloning a rollback snapshot no production caller reads (a fatal abort now consumes the working collection, the ticket's pre-authorized delta), `GCodeEmitter::emit_gcode_owned` lets `DefaultGCodeEmitter` rotate and emit the caller's own vector (defaulted so every other emitter is untouched), and `execute_postpass_with_owned_capture` hands the collection over, so it is dropped **once** inside the `host:gcode_emit` bracket instead of being cloned there and dropped again at teardown; the visual-debug capture sinks keep the borrowed path and receive the collection by move. Attribution (instrumented, attribution only): clone **1,765 / 1,684 ms**, commit drop **3,685 / 3,758 ms** and teardown drop **4,490 / 3,723 ms** all gone, the single remaining drop **1.56 / 2.68 s cheaper** than the old clone+drop pair, postpass phase **−66.5 / −70.3 %** — hence measured wall deltas **12.0 / 14.8 / 15.9 / 15.4 s** beat the pre-declared net ceiling **10.76 / 10.29 s**. Exactness 16/16 byte-identical to the derived post-t81 references, ordinary ≡ accelerated **8/8**, both freshness gates exit 0, host-only candidate pinned by `provenance.json` (equal 24-module trees, distinct binaries). Evidence: [`evidence/t90-postpass-ownership/`](evidence/t90-postpass-ownership/FINDINGS.md) (`verify.py --self-test` exit 0 checkout-only, 11/11 negative controls rejected).
+
 - [Parallel exact-Z validation](issues/89-support-plan-exact-z-validation-parallel.md): **resolved (2026-10-27; human-approved DROP — measured GATE NOT MET on the CPU clause, candidate reverted)** — the order-preserving fold is **exact** (16/16 cells byte-identical, 8/8 cross-mode, 160/160 contract, new 64-entry three-way order test) but **not work-preserving**: a 3-pair pre-gate on ordinary base classic-on at 2 % load measured wall **−5.50 %** against process CPU **+6.78 %**, more than twice the pre-declared **+3.0 %** ceiling, so the four-cell campaign was not run. The probe rules out duplicated work (431 entries = 431 distinct `(object, z)` = 431 queries = 431 misses) and splits the tail into requested-Z cross-section **50.96 %**, constant top-Z cross-section **43.39 %**, mesh build **5.65 %** of **92.73 s** accumulated thread-time for a **7.99 s** wall versus t88's **15.24 s** serial — ≈6.1x thread-time per query at 12-way concurrency, i.e. memory/allocator-bound. The optional `(object, z)` cache is **measured worthless** (one entry per anchor Z). Graduated [91](issues/91-exact-z-object-geometry-memo.md): memoize the z-independent terms (**49.04 %** of the tail, ≈**7.5 / 6.8 s** ceiling = **4.1 / 3.6 %** of the cell), which removes work and should lower CPU. Two pre-existing fixture reds (t81 `resolution`, t20 consumer-live stamps) repaired to run the contract suite. Evidence: [`evidence/t89-exact-z-parallel/`](evidence/t89-exact-z-parallel/FINDINGS.md) (`verify.py --self-test` exit 0 checkout-only, 8/8 negative controls rejected).
 
 - [Supports-on increment attribution at post-resolution-port HEAD](issues/88-supports-on-increment-attribution.md): **resolved (2026-10-25; measurement-only — no candidate, no production edit)** — at HEAD `5c7fa03e`, four quiet (5 % load) instrumented base captures plus a loaded corroborating pass and a config-only `tree_support_branch_distance = 5.0` arm; all 1 mm outputs byte-identical to the post-t81 references. The increment is **106.8 s classic / 109.7 s arachne** and is **~69 % support geometry** (planner 55.5 s = 52.0 % of the classic increment, canonical contact detection 10.2 s, per-layer render 5.9 s wall) plus **~31 % host-side** — a **serial exact-Z validation loop** at **15.24 / 13.94 s** (99.3 % of the post-planner gap; every entry independent; cache keys on `region_id` although the computation is object-wide) and **one finalization clone + two whole-collection drops** (finalization 6.76 s, emission 6.26 s = a ~6.15 s drop after a ~5 ms clone, postpass teardown gap 4.58 s). Graduated [89](issues/89-support-plan-exact-z-validation-parallel.md) (parallelize the validation; **8.28 / 7.42 %** of the cell) and [90](issues/90-postpass-layer-collection-ownership.md) (one ownership path; **5.84 / 5.47 %** net, 9.18 / 8.60 % upper). Measured dead: the SupportAnalysis eligibility fold (2.24 s gross, no above-floor removable term), the contact kernel (10.2 s, parallel canonical), the planner (55.5 s, support geometry; t78 batching in place), the per-layer render (5.9 s wall, already parallel). The **`tree_support_branch_distance` 5 mm arm is −7.25 s (−3.94 %)** and **~6.8 s of the increment (6.4 %)** — a modest driver; the parity ruling returns to the human. Probe trap recorded: an `Instant` clock read disagreed with the event timestamps by the width of an earlier phase, so a 5 ms clone read as 4.09 s; all probe claims use the `SystemTime` marks and stage brackets. Evidence: [`evidence/t88-supports-increment/`](evidence/t88-supports-increment/FINDINGS.md) (`verify.py` exit 0 checkout-only, `--self-test` 8/8 negative controls rejected).
@@ -1436,6 +1500,35 @@ Standing decisions for this effort (2026-09-22):
 - [Config padding disclosure boundary and viewer-key gate](issues/34-config-padding-disclosure-boundary.md): **resolved (2026-10-07, disclosure/correctness only)** — premise corrected: `ORCA_CONFIG_PADDING` never fires on any production path (the registry projection reaches 233 pairs; the loop breaks at 96), so its values are unreachable there and only the test/legacy callers consume the table. The audit nonetheless found two **live** wire-format defects in the emitted block: booleans rendered as `true`/`false` where OrcaSlicer's wire literals are `1`/`0` (23 production lines; `ConfigBase::set_deserialize_raw`'s substitution branch — `enum_looks_like_true_value` is true only for `enabled`/`on` — loaded every rendered `true` as `false`, e.g. `detect_overhang_wall` and `support_remove_small_overhang`), and four enum values carrying PnP-internal spellings (`wall_sequence` `InnerOuter`, `wall_generator` `Classic`, `wall_direction` `counter_clockwise`, and the `seam_mode` alias rendering `rear`) that Orca's strict `enum_keys_map` lookup answers by replacing the option with its own default; two keys PnP models as `bool` but Orca declares `coEnum` (`dont_filter_internal_bridges`, `enable_extra_bridge_layer`) needed the same treatment. Fixed in one documented `translate_appendix_enum` table applied only at the appendix (module `ConfigView`s unchanged). Table audited row by row: 10 values were corrected (7 to the pinned upstream default, 3 more in enum domain), 3 rows named keys OrcaSlicer cannot load (`support_material`/`extra_perimeters` removed as non-Orca keys; `wipe_tower_width` kept — `handle_legacy` renames it), and 4 rows named keys absent from OrcaSlicer entirely, replaced with real cosmetic keys. A freshly generated production block now measures **0 strict wire violations**; the edited table compares **0 default mismatches** against the pinned `PrintConfig.cpp`. Residual: the padding-only fallback block still cannot satisfy Orca's `>= 80` loadable-pair gate because the remaining unloadable lines are PnP's own key names (registry-projected, not table rows) — recorded, not patched. No timing, geometry, adoption, default or guest change; all required gates pass.
 
 ## Not yet specified
+
+- **The one remaining whole-print drop (surfaced 2026-10-27 by
+  [ticket 90](issues/90-postpass-layer-collection-ownership.md)).** Ownership
+  removed the finalization clone, the commit drop and the teardown drop, but the
+  collection still has to be freed once. That drop now lives inside the
+  `host:gcode_emit` bracket, which measures **3,616 ms classic / 2,961 ms
+  arachne** after the change (baseline 5,179 / 5,642 ms). The bracket contains
+  the emission walk too, and t88 measured that walk at ~0.19 s, so most of the
+  candidate's bracket is very likely the drop — but **this take did not split
+  walk from drop in the candidate**, so the removable term is unmeasured. The
+  ticket's optional parallel drop did not fire because the *teardown* is now
+  2–3 ms; what remains is the drop of the collection the emitter walks. Two
+  shapes to price, in either order: consume the vector layer-by-layer as the
+  walk finishes each layer (overlap frees with emission work, no extra threads),
+  or drop independent layers with `par_drain` (wall up, process CPU risk against
+  the work-preserving ceiling). Re-enter only with its own measured split and a
+  pre-declared gate; the map does not assume either is worth a take.
+
+- **Ownership changes the cost of what it removes — do not price the survivor
+  from the old bracket (surfaced 2026-10-27 by
+  [ticket 90](issues/90-postpass-layer-collection-ownership.md)).** Ticket 90's
+  pre-declared net ceiling (10.76 / 10.29 s) assumed the one surviving
+  whole-print drop would still cost what the baseline's cloned drop cost. The
+  measured wall deltas were **12.0 / 14.8 / 15.9 / 15.4 s** and the surviving
+  drop was **1.56 / 2.68 s cheaper**, because no fresh whole-print copy exists
+  to free. Any future clone/drop-removal estimate that carries the old drop cost
+  forward inherits the same bias; measure the survivor in the candidate arm, or
+  state the ceiling as a range. Method note, not route work (same class as the
+  `map_batch` occupancy note below).
 
 - **`map_batch` occupancy must be measured per request set, not borrowed
   (surfaced 2026-10-25 by [ticket 85](issues/85-seam-inset-offset-batching.md)).**
@@ -1674,6 +1767,29 @@ Standing decisions for this effort (2026-09-22):
   model occupancy — the same class of aggregate mis-measurement, latent (zero
   occupancy rejections in the measured failure data). Becomes a ticket the day
   it fires on a matched cell.
+
+- **Dense-infill bridge shortcut and per-extrusion object mass (screened
+  2026-10-27, OrcaSlicer
+  [#16741](https://github.com/OrcaSlicer/OrcaSlicer/pull/16741)).** The PR's
+  dense-below path (`prints_dense` → `diff_expanded`) fires only when every fill
+  surface of the lower layer prints at 100 % density. The matched job resolves
+  `sparse_infill_density = 20 %`, so the path cannot fire on any map cell. PnP's
+  `gate_internal_bridge_sites` already pools dense `infill_areas` into
+  `lower_layer_solids` under its own `density >= 0.999` branch, but
+  `unsupported_span_areas` still pays the full four-op chain. Re-enter only with
+  a 100 %-infill model-class arm, which the map does not measure. The PR's other
+  half, the per-extrusion object-mass locator, has no PnP counterpart: the
+  emitter walks `ordered_entities` with no per-object lookup, and
+  `PostPass::GCodeEmit` is 0.17 s off / 7.13 s on, of which t88 attributes
+  ~6.15 s to the collection drop.
+- **Per-part brim contact grouping (screened 2026-10-27, OrcaSlicer
+  [#16733](https://github.com/OrcaSlicer/OrcaSlicer/pull/16733)).** PnP has no
+  per-part identity: `resolve_object` (`crates/slicer-model-io/src/loader.rs`)
+  merges normal 3MF parts into one solid mesh, and
+  `SkirtBrim::generate_brim_entities`
+  (`modules/core-modules/skirt-brim/src/lib.rs`) builds one print-wide
+  rectangular loop set from `compute_bbox`. There is no contact test to
+  accelerate. Re-enter only if brims ever become per-part.
 
 ## Out of scope
 

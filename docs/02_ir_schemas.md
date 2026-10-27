@@ -1700,13 +1700,21 @@ responsibility. 138/139 inherit this contract.
    exclusive mutable ownership of the `Vec` and is single-threaded — no
    `RwLock` or `Mutex` is needed. Finalization modules may append entities
    to existing layers or insert new synthetic layers (e.g. wipe tower
-   slices).
+   slices). The stage mutates that vector in place
+   (`execute_layer_finalization_owned`) instead of cloning a rollback
+   snapshot: a fatal module or validation error aborts the stage and the
+   working collection is dropped with the error, which is unobservable in
+   production because the slice aborts there.
 
 3. **After finalization — `PostPass::GCodeEmit` onward:**
-   The `Vec<LayerCollectionIR>` is passed as `&[LayerCollectionIR]`
-   (immutable slice) to `execute_postpass`. It is never re-entered into
-   the Blackboard. GCodeEmit reads it sequentially and the Vec is dropped
-   after emission completes.
+   The `Vec<LayerCollectionIR>` is **moved by value** into
+   `execute_postpass` (`execute_postpass_with_owned_capture`), reconciled in
+   place, and passed to `GCodeEmitter::emit_gcode_owned`, which consumes it.
+   GCodeEmit reads it sequentially and the collection is dropped exactly once
+   inside that bracket. The visual-debug capture sinks are the one path that
+   keeps the collection afterwards: they take the borrowed
+   `execute_postpass_with_capture` entry point, whose copy is moved into the
+   capture instead of being cloned again.
 
 **Consequence for module authors:**
 A module in `PostPass::LayerFinalization` receives a mutable view of the
