@@ -518,3 +518,221 @@ fn support_body_wider_than_the_deleted_routing_cell_is_retained() {
     assert_eq!(result.retained.len(), 1);
     assert!(!result.degraded);
 }
+
+/// Ticket 89: the aggregation publishes `retained` / `unmet` / `diagnostics`
+/// in entry order, and every future parallelization of the validation loop
+/// must reproduce that order exactly. (The parallel fold itself was dropped:
+/// it was byte-exact but raised process CPU 6.8 % for a 5.5 % wall win -- see
+/// the ticket. The order contract it had to satisfy outlives it, and this test
+/// pins it.)
+///
+/// The reference is the public aggregator applied one entry at a time, in the
+/// documented deterministic entry order (`global_layer_index`, `object_id`,
+/// `region_id`, -- region ids are unique here, so `compare_entries`' later
+/// tie-breakers cannot apply). The fixture mixes, at shared anchor Z values,
+/// accepted bodies, exact-Z occupancy rejections, max-body-extent rejections,
+/// planner declines and ownership refusals, so every diagnostic family is
+/// present and interleaved.
+#[test]
+fn support_plan_aggregation_preserves_serial_entry_and_diagnostic_order() {
+    let service = ExactZQueryService::new(Arc::new(mesh()));
+    let mut entries = Vec::new();
+    for index in 0..64i32 {
+        let body = format!("body-{index:02}");
+        let mut candidate = entry(&body, 20_000_000);
+        candidate.global_layer_index = index;
+        candidate.anchor_layer_index = index as u32;
+        candidate.region_id = 100 + index as u64;
+        // Two entries share every anchor Z, so an object-level `(object, z)`
+        // occupancy dedupe would serve both from one cross-section.
+        candidate.anchor_z = 10_000 + (i64::from(index) / 2) * 1_000;
+        candidate.demand_ids = vec![format!("demand-{index:02}")];
+        match index % 8 {
+            // Bodies inside the 10 mm mesh footprint: exact-Z occupancy.
+            0 => candidate.roles[0].regions = vec![square(0, 5_000, 1_000)],
+            // One unit wider than the plate bound: max-body-extent violation.
+            1 => {
+                candidate.roles[0].regions = vec![square(30_000_000, 5_000, (1 << 22) + 1)];
+            }
+            // Planner declines: diagnostics only, no query.
+            2 => candidate.decline_reason = Some(slicer_ir::SupportPlanDeclineReason::NoRoute),
+            // A family that does not own its region: refused before the query.
+            3 => candidate.family_id = "traditional".into(),
+            _ => {}
+        }
+        entries.push(candidate);
+    }
+    let expected_ownership_refusals = entries
+        .iter()
+        .filter(|candidate| candidate.family_id == "traditional")
+        .count();
+
+    let plans = vec![SupportPlanIR {
+        entries: entries.clone(),
+        ..Default::default()
+    }];
+    let mut owned = family_assignments_for(&entries);
+    // Every `traditional` entry writes a region the host assigned to `tree`,
+    // which is what makes it a trespass rather than an admitted writer.
+    for candidate in &entries {
+        if candidate.family_id == "traditional" {
+            owned.family_assignments.insert(
+                (candidate.object_id.clone(), candidate.region_id),
+                "tree".into(),
+            );
+        }
+    }
+
+    // Serial reference: one entry at a time, in documented order.
+    let mut order = entries.clone();
+    order.sort_by(|left, right| {
+        (left.global_layer_index, &left.object_id, left.region_id).cmp(&(
+            right.global_layer_index,
+            &right.object_id,
+            right.region_id,
+        ))
+    });
+    let mut expected_retained: Vec<String> = Vec::new();
+    let mut expected_unmet: Vec<(String, String)> = Vec::new();
+    let mut expected_diagnostics: Vec<(String, String, String, String)> = Vec::new();
+    for candidate in &order {
+        let single = vec![SupportPlanIR {
+            entries: vec![candidate.clone()],
+            ..Default::default()
+        }];
+        let result = aggregate_support_plans(SupportAggregationInput {
+            producers: producers_for(&single),
+            plans: single,
+            exact_z: &service,
+            territory: Some(&owned),
+        });
+        expected_retained.extend(
+            result
+                .retained
+                .iter()
+                .flat_map(|retained| retained.body_ids.clone()),
+        );
+        expected_unmet.extend(
+            result
+                .unmet
+                .iter()
+                .map(|demand| (demand.body_id.clone(), demand.reason.clone())),
+        );
+        expected_diagnostics.extend(result.diagnostics.iter().map(|diagnostic| {
+            (
+                diagnostic.family_id.clone(),
+                diagnostic.body_id.clone(),
+                diagnostic.demand_id.clone(),
+                diagnostic.reason.clone(),
+            )
+        }));
+    }
+
+    // Analytic cross-check: the fixture's verdict is a pure function of the
+    // entry index, so the serial expectation can be written down by hand. It
+    // must agree with the decomposed one-entry runs above -- three independent
+    // derivations of the same sequence (fixture table, per-entry aggregate,
+    // multi-entry aggregate).
+    let analytic_retained: Vec<String> = (0..64)
+        .filter(|index| !matches!(index % 8, 0..=3))
+        .map(|index| format!("body-{index:02}"))
+        .collect();
+    let analytic_rejections = (0..64).filter(|index| matches!(index % 8, 0 | 1)).count();
+    let analytic_declines = (0..64).filter(|index| index % 8 == 2).count();
+    assert_eq!(
+        expected_retained, analytic_retained,
+        "decomposed serial reference disagrees with the fixture's own verdict table"
+    );
+    assert_eq!(
+        expected_unmet.len(),
+        analytic_rejections,
+        "one unmet demand per rejected entry"
+    );
+    assert_eq!(
+        expected_diagnostics.len(),
+        analytic_rejections + analytic_declines,
+        "one diagnostic per rejection and per decline"
+    );
+
+    let result = aggregate_support_plans(SupportAggregationInput {
+        producers: producers_for(&plans),
+        plans,
+        exact_z: &service,
+        territory: Some(&owned),
+    });
+
+    // Non-vacuity: the fixture must exercise every path, so an implementation
+    // that dropped a whole class of entries could not pass by accident.
+    assert!(
+        expected_ownership_refusals >= 4,
+        "fixture needs trespassers"
+    );
+    assert!(expected_retained.len() >= 16, "fixture needs survivors");
+    assert!(
+        result
+            .unmet
+            .iter()
+            .any(|demand| demand.reason.contains("exact-Z occupancy")),
+        "fixture needs occupancy rejections"
+    );
+    assert!(
+        result
+            .unmet
+            .iter()
+            .any(|demand| demand.reason.contains("max-body-extent")),
+        "fixture needs extent rejections"
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.reason.starts_with("declined:")),
+        "fixture needs planner declines"
+    );
+    assert!(result.degraded);
+
+    let retained = result
+        .retained
+        .iter()
+        .flat_map(|retained| retained.body_ids.clone())
+        .collect::<Vec<_>>();
+    let unmet = result
+        .unmet
+        .iter()
+        .map(|demand| (demand.body_id.clone(), demand.reason.clone()))
+        .collect::<Vec<_>>();
+    let diagnostics = result
+        .diagnostics
+        .iter()
+        .map(|diagnostic| {
+            (
+                diagnostic.family_id.clone(),
+                diagnostic.body_id.clone(),
+                diagnostic.demand_id.clone(),
+                diagnostic.reason.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        retained, expected_retained,
+        "retained entries must replay the serial entry order"
+    );
+    assert_eq!(
+        unmet, expected_unmet,
+        "unmet demands must replay the serial entry order"
+    );
+    assert_eq!(
+        diagnostics, expected_diagnostics,
+        "diagnostics (declines and rejections) must replay the serial entry order"
+    );
+    assert_eq!(
+        result.ownership_violations.len(),
+        expected_ownership_refusals,
+        "every trespasser is reported once"
+    );
+    assert!(result.ownership_violations.iter().all(|violation| {
+        violation.family_id == "traditional"
+            && matches!(violation.reason, OwnershipReason::WrongFamily { .. })
+    }));
+}

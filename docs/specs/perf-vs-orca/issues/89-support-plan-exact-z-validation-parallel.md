@@ -2,8 +2,9 @@
 
 Type: task
 Label: wayfinder:task
-Status: open (graduated 2026-10-25 from the supports-on increment attribution; unclaimed)
-Assignee: none
+Status: resolved (2026-10-27; human-approved DROP — measured GATE NOT MET on the
+CPU clause, candidate reverted, re-appliable patch retained)
+Assignee: opencode session (perf-vs-orca map take, 2026-10-27)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [Supports-on increment attribution at post-resolution-port HEAD](88-supports-on-increment-attribution.md)
@@ -88,3 +89,81 @@ screens the shape, it does not predict the win.
    accepted/rejected entries.
 3. The paired campaign results and a measured recommendation to the human.
    No auto-commit.
+
+## Answer
+
+**The loop can run in parallel without changing a single byte of output — and
+the win does not pass the standing gate, because it buys wall with CPU.**
+
+Measured at HEAD `d25f1e34` on the user's Windows desktop, 12 rayon threads.
+Evidence: [`evidence/t89-exact-z-parallel/`](../evidence/t89-exact-z-parallel/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 8/8 negative controls rejected).
+
+### Exactness: pass
+
+- Order-preserving fold: admission (ownership + decline) stays serial in entry
+  order; the exact-Z geometry test runs through an indexed `rayon` map and a
+  serial fold replays `retained` / `unmet` / `diagnostics` in entry order.
+- New test `support_plan_aggregation_preserves_serial_entry_and_diagnostic_order`
+  (`crates/slicer-wasm-host/tests/contract/support_plan_validation.rs`): 64
+  entries, two per anchor Z, mixing accepted/rejected/declined/trespassing
+  entries; expectations derived three ways and asserted element for element.
+- **Qualification 16/16**: baseline ≡ candidate byte-identical in every cell,
+  ordinary cells equal to the derived post-t81 reference set, ordinary ≡
+  accelerated in 8/8 groups. `cargo test -p slicer-wasm-host --test contract`
+  160/160.
+
+### The gate: not met on CPU
+
+The four-cell standing campaign was **not run** — the stop discipline forbids
+it once a clause fails by more than a factor of two. Pre-gate,
+`ordinary-base-classic-on`, 3 alternating pairs on a 2 %-load machine:
+
+| metric | baseline median | candidate median | paired-median delta |
+| --- | ---: | ---: | ---: |
+| wall | 188.388 s | 174.309 s | **−5.50 %** |
+| process CPU | 1,067.938 s | 1,137.453 s | **+6.78 %** |
+
+Pre-declared work-preserving CPU ceiling: **+3.0 %**. Every retained pair was
+byte-identical; no starvation exclusions; median absolute wall win 10.14 s.
+
+### Why
+
+The probe found **no duplicated work** (`entries = admitted =
+distinct_object_z = queries = misses = 431` on base supports-on) and split the
+tail into accumulated thread-time: requested-Z cross-section 50.96 %, constant
+top-Z cross-section 43.39 %, world-mesh build 5.65 %. Those 92.73 s of
+thread-time buy only a 7.99 s wall, while t88 measured the same 431-query tail
+at **15.24 s serial** — a cross-run comparison, not a paired measurement. The
+cross-section kernel is memory/allocator-bound, so the parallel arm spends ≈6x
+more thread-time on the same queries. The CPU delta
+is contention, not extra queries.
+
+### Decisions this take carries out
+
+1. **DROP approved by the human on 2026-10-27.** The candidate source is
+   reverted to HEAD (`crates/slicer-wasm-host/src/support_aggregation.rs` has an
+   empty diff) and preserved as `candidate.patch`, which re-applies cleanly.
+   No commit carries the candidate. The order contract it had to satisfy is
+   kept and renamed: `support_plan_aggregation_preserves_serial_entry_and_diagnostic_order`.
+2. The ticket's optional `(object, z)` occupancy cache is **measured
+   worthless here**: one entry per anchor Z, so it would remove nothing. Not
+   implemented, not silently skipped.
+3. The split graduates a strictly better shape:
+   [Memoize z-independent exact-Z query terms](91-exact-z-object-geometry-memo.md)
+   — the constant top-Z cross-section plus the world-mesh build are 49.04 % of
+   the tail and are recomputed on every miss, so removing them is work-reducing
+   and CPU-negative.
+
+### Disclosures
+
+- The 16-cell proof matrix ran on a loaded desktop; it is identity evidence
+  only and none of its walls are quoted.
+- Two pre-existing reds in
+  `crates/slicer-wasm-host/tests/contract/slice_region_view_contract_tdd.rs`
+  were repaired to let the contract suite run: the hand-built config fixture
+  lacked `resolution` (mandatory since ticket 81) and declared no live overhang
+  consumer (ticket 20's conditional stamps). Neither touches the candidate
+  surface.
+- Probe preserved as `probe.patch`, reverted before the pre-gate; both timing
+  arms are uninstrumented.

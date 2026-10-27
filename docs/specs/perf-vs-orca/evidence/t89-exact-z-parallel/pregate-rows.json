@@ -1,0 +1,82 @@
+[
+ {
+  "arm": "baseline",
+  "pair": "0",
+  "warmup": "1",
+  "wall_seconds": "174.1520705",
+  "cpu_seconds": "1056.421875",
+  "cpu_wall_ratio": "6.066088516587576",
+  "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+  "bytes": "42507912"
+ },
+ {
+  "arm": "candidate",
+  "pair": "0",
+  "warmup": "1",
+  "wall_seconds": "168.8951743",
+  "cpu_seconds": "1131.109375",
+  "cpu_wall_ratio": "6.697108900168263",
+  "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+  "bytes": "42507912"
+ },
+ {
+  "arm": "baseline",
+  "pair": "1",
+  "warmup": "0",
+  "wall_seconds": "188.3878474",
+  "cpu_seconds": "1067.9375",
+  "cpu_wall_ratio": "5.668823731142649",
+  "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+  "bytes": "42507912"
+ },
+ {
+  "arm": "candidate",
+  "pair": "1",
+  "warmup": "0",
+  "wall_seconds": "172.8798943",
+  "cpu_seconds": "1137.453125",
+  "cpu_wall_ratio": "6.57944134918412",
+  "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+  "bytes": "42507912"
+ },
+ {
+  "arm": "candidate",
+  "pair": "2",
+  "warmup": "0",
+  "wall_seconds": "178.9251267",
+  "cpu_seconds": "1142.3125",
+  "cpu_wall_ratio": "6.384304547204772",
+  "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+  "bytes": "42507912"
+ },
+ {
+  "arm": "baseline",
+  "pair": "2",
+  "warmup": "0",
+  "wall_seconds": "188.6764434",
+  "cpu_seconds": "1068.640625",
+  "cpu_wall_ratio": "5.663879420996124",
+  "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+  "bytes": "42507912"
+ },
+ {
+  "arm": "baseline",
+  "pair": "3",
+  "warmup": "0",
+  "wall_seconds": "184.444062",
+  "cpu_seconds": "1062.9375",
+  "cpu_wall_ratio": "5.76292610601907",
+  "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+  "bytes": "42507912"
+ },
+ {
+  "arm": "candidate",
+  "pair": "3",
+  "warmup": "0",
+  "wall_seconds": "174.308684",
+  "cpu_seconds": "1134.953125",
+  "cpu_wall_ratio": "6.511167997803254",
+  "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+  "bytes": "42507912"
+ }
+]

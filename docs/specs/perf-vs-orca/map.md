@@ -100,7 +100,42 @@ Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
 
-**Current selection scope (2026-10-25, on the ticket 88 take):** the human's
+**Current selection scope (2026-10-27, on the ticket 89 take):** the human's
+"continue the perf vs orca map" named no ticket; the frontier re-derivation
+found [89](issues/89-support-plan-exact-z-validation-parallel.md) and
+[90](issues/90-postpass-layer-collection-ownership.md) open, and the session
+took the first in order. Ticket 89 is **resolved (2026-10-27) as a measured
+GATE NOT MET — human-approved DROP, candidate reverted**. Exactness passed
+in full: 16/16 cells byte-identical between arms, 8/8 ordinary ≡ accelerated,
+ordinary cells equal to the derived post-t81 references, contract suite
+160/160 (including a new 64-entry order test that derives its expectation three
+independent ways). The standing four-cell campaign was **not run by the stop
+discipline**: a 3-pair pre-gate on ordinary base classic-on at 2 % load
+measured wall **−5.50 %** against process CPU **+6.78 %**, more than twice the
+pre-declared **+3.0 %** work-preserving ceiling, every pair byte-identical. The
+probe shows the CPU is contention, not extra work — 431 entries = 431 distinct
+`(object, z)` = 431 queries = 431 misses — and splits the tail into
+requested-Z cross-section **50.96 %**, constant top-Z cross-section **43.39 %**,
+world-mesh build **5.65 %** of 92.73 s accumulated thread-time for a 7.99 s
+wall, against t88's **15.24 s serial** tail: ≈6x thread-time for the same
+queries at 12-way concurrency (cross-run), so the kernel is
+memory/allocator-bound. The ticket's
+optional `(object, z)` cache is **measured worthless here** (one entry per
+anchor Z) and was not implemented. One candidate graduated:
+[91](issues/91-exact-z-object-geometry-memo.md) — memoize the z-independent
+terms, **49.04 %** of the tail and ≈**7.5 s / 6.8 s** ceiling (**4.1 % / 3.6 %**
+of the cell), which removes work instead of spreading it and should lower CPU.
+Two pre-existing reds in `slice_region_view_contract_tdd` were repaired to make
+the contract suite runnable (t81's mandatory `resolution` key; t20's
+consumer-live stamp gate); neither touches the candidate. Evidence:
+[`evidence/t89-exact-z-parallel/`](evidence/t89-exact-z-parallel/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 8/8 negative controls
+rejected). Frontier now:
+[90](issues/90-postpass-layer-collection-ownership.md) and
+[91](issues/91-exact-z-object-geometry-memo.md), open and unclaimed; the take
+order is the human's. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-25, on the ticket 88 take):** the human's
 "continue the perf vs orca map" named no ticket; the frontier re-derivation
 found [88](issues/88-supports-on-increment-attribution.md) as the only open
 child, and the session took it in order. It is **resolved (2026-10-25) as a
@@ -922,6 +957,16 @@ Standing decisions for this effort (2026-09-22):
   is plausible but its cause was not isolated
   ([Tree-planner substage
   attribution](issues/22-tree-planner-substage-attribution.md), 2026-09-24).
+- **Recipe trap (new 2026-10-27, t89):** a memory-bound host kernel can make
+  parallelization *burn* CPU. Twelve-way concurrent exact-Z cross-sections ran
+  **92.73 s of accumulated thread-time for a 7.99 s wall**, while the same 431
+  queries cost **15.24 s serial** (t88) — a **−5.50 %** wall win for a
+  **+6.78 %** process-CPU rise, measured on a 2 %-load machine over three
+  alternating pairs. Price any future parallel candidate in thread-time
+  (wall × occupancy), not wall alone, and treat "work-preserving" as false the
+  moment process CPU rises. A work-reducing serial shape (memoize what does not
+  depend on the varying input) is the alternative to check first
+  ([ticket 91](issues/91-exact-z-object-geometry-memo.md)).
 - **Recipe trap (new 2026-10-25, t88):** a probe's `Instant` bracket can disagree
   with the event timestamps by the width of an earlier phase (clock-read
   hoisting or a non-monotonic QPC on this host), so a 5 ms clone can read as
@@ -1231,6 +1276,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [Parallel exact-Z validation](issues/89-support-plan-exact-z-validation-parallel.md): **resolved (2026-10-27; human-approved DROP — measured GATE NOT MET on the CPU clause, candidate reverted)** — the order-preserving fold is **exact** (16/16 cells byte-identical, 8/8 cross-mode, 160/160 contract, new 64-entry three-way order test) but **not work-preserving**: a 3-pair pre-gate on ordinary base classic-on at 2 % load measured wall **−5.50 %** against process CPU **+6.78 %**, more than twice the pre-declared **+3.0 %** ceiling, so the four-cell campaign was not run. The probe rules out duplicated work (431 entries = 431 distinct `(object, z)` = 431 queries = 431 misses) and splits the tail into requested-Z cross-section **50.96 %**, constant top-Z cross-section **43.39 %**, mesh build **5.65 %** of **92.73 s** accumulated thread-time for a **7.99 s** wall versus t88's **15.24 s** serial — ≈6.1x thread-time per query at 12-way concurrency, i.e. memory/allocator-bound. The optional `(object, z)` cache is **measured worthless** (one entry per anchor Z). Graduated [91](issues/91-exact-z-object-geometry-memo.md): memoize the z-independent terms (**49.04 %** of the tail, ≈**7.5 / 6.8 s** ceiling = **4.1 / 3.6 %** of the cell), which removes work and should lower CPU. Two pre-existing fixture reds (t81 `resolution`, t20 consumer-live stamps) repaired to run the contract suite. Evidence: [`evidence/t89-exact-z-parallel/`](evidence/t89-exact-z-parallel/FINDINGS.md) (`verify.py --self-test` exit 0 checkout-only, 8/8 negative controls rejected).
 
 - [Supports-on increment attribution at post-resolution-port HEAD](issues/88-supports-on-increment-attribution.md): **resolved (2026-10-25; measurement-only — no candidate, no production edit)** — at HEAD `5c7fa03e`, four quiet (5 % load) instrumented base captures plus a loaded corroborating pass and a config-only `tree_support_branch_distance = 5.0` arm; all 1 mm outputs byte-identical to the post-t81 references. The increment is **106.8 s classic / 109.7 s arachne** and is **~69 % support geometry** (planner 55.5 s = 52.0 % of the classic increment, canonical contact detection 10.2 s, per-layer render 5.9 s wall) plus **~31 % host-side** — a **serial exact-Z validation loop** at **15.24 / 13.94 s** (99.3 % of the post-planner gap; every entry independent; cache keys on `region_id` although the computation is object-wide) and **one finalization clone + two whole-collection drops** (finalization 6.76 s, emission 6.26 s = a ~6.15 s drop after a ~5 ms clone, postpass teardown gap 4.58 s). Graduated [89](issues/89-support-plan-exact-z-validation-parallel.md) (parallelize the validation; **8.28 / 7.42 %** of the cell) and [90](issues/90-postpass-layer-collection-ownership.md) (one ownership path; **5.84 / 5.47 %** net, 9.18 / 8.60 % upper). Measured dead: the SupportAnalysis eligibility fold (2.24 s gross, no above-floor removable term), the contact kernel (10.2 s, parallel canonical), the planner (55.5 s, support geometry; t78 batching in place), the per-layer render (5.9 s wall, already parallel). The **`tree_support_branch_distance` 5 mm arm is −7.25 s (−3.94 %)** and **~6.8 s of the increment (6.4 %)** — a modest driver; the parity ruling returns to the human. Probe trap recorded: an `Instant` clock read disagreed with the event timestamps by the width of an earlier phase, so a 5 ms clone read as 4.09 s; all probe claims use the `SystemTime` marks and stage brackets. Evidence: [`evidence/t88-supports-increment/`](evidence/t88-supports-increment/FINDINGS.md) (`verify.py` exit 0 checkout-only, `--self-test` 8/8 negative controls rejected).
 
