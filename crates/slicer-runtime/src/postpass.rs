@@ -207,10 +207,11 @@ pub fn execute_postpass_with_instrumentation(
 /// any `GCodePostProcess` module mutates it — tap `PostPass::GCodeEmit`).
 ///
 /// Populated only when a caller passes `Some(&mut PostPassCapture)` to
-/// [`execute_postpass_with_capture`]; both fields are cloned once,
-/// immediately, from the locals already computed for ordinary emission —
-/// capturing never alters what is emitted (ADR-0037 "never a live borrow
-/// retained past this call", mirrored here for the whole-print tier).
+/// [`execute_postpass_with_capture`]; the finalized layers are moved into the
+/// capture and the `GCodeIR` is cloned once, immediately, from the locals
+/// already computed for ordinary emission — capturing never alters what is
+/// emitted (ADR-0037 "never a live borrow retained past this call", mirrored
+/// here for the whole-print tier).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PostPassCapture {
     /// The finalized, travel-reconciled layers fed into `emit_gcode`.
@@ -224,9 +225,11 @@ pub struct PostPassCapture {
 /// capture sink (packet 161, Step 5). Ordinary callers (the production
 /// pipeline via [`execute_postpass_with_instrumentation`], and every
 /// existing test via [`execute_postpass`]) pass `None` and are byte-for-byte
-/// unaffected — the sink only clones two already-computed locals, it never
+/// unaffected — the sink only receives already-computed locals, it never
 /// alters emission. `pnp-cli`'s visual-debug PostPass taps are the only
-/// caller that passes `Some`.
+/// caller that passes `Some`; because they need the layers after emission,
+/// they take this borrowing entry point's copy and the owned-emission
+/// shortcut applies only when no capture is requested.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_postpass_with_capture(
     plan: &ExecutionPlan,
@@ -296,13 +299,31 @@ pub fn execute_postpass_with_owned_capture(
         slicer_gcode::reconcile_finalization_travel(layer, travel_f);
     }
 
-    // Step 1b: Emit initial GCodeIR from (reconciled) layers
+    // Step 1b: Emit initial GCodeIR from (reconciled) layers.
+    //
+    // Ownership: the production pipeline hands the collection over and never
+    // reads it again, so the emitter takes it (`emit_gcode_owned`) and the
+    // collection is dropped exactly once, inside this bracket, instead of being
+    // deep-cloned here and dropped a second time at postpass teardown (t90;
+    // supports-on collections make both operations seconds of host time).
+    // The visual-debug capture sinks are the one caller that still needs the
+    // layers afterwards: they take the borrowed path and move the collection
+    // into the capture, which is the same content an independent clone carried
+    // before.
     let emit_stage = "PostPass::GCodeEmit".to_string();
     let emit_module = "host:gcode_emit".to_string();
     instrumentation.on_stage_start(&emit_stage, None);
     instrumentation.on_module_start(&emit_stage, None, &emit_module);
-    let mut gcode_ir = emitter
-        .emit_gcode(&reconciled_layers)
+    let emit_result = if capture.is_some() {
+        emitter
+            .emit_gcode(&reconciled_layers)
+            .map(|ir| (ir, Some(reconciled_layers)))
+    } else {
+        emitter
+            .emit_gcode_owned(reconciled_layers)
+            .map(|ir| (ir, None))
+    };
+    let (mut gcode_ir, captured_layers) = emit_result
         .map_err(gcode_emit_error_to_postpass)
         .inspect_err(|_| {
             instrumentation.on_stage_end(&emit_stage, None);
@@ -314,9 +335,13 @@ pub fn execute_postpass_with_owned_capture(
     // layers (`PostPass::LayerFinalization`) and the just-emitted GCodeIR
     // (`PostPass::GCodeEmit`), taken before any GCodePostProcess module gets
     // a chance to mutate `gcode_ir.commands`. No-op for every ordinary
-    // caller (`capture` is `None`).
+    // caller (`capture` is `None`); the one caller that captures receives the
+    // layer collection itself (the emitter borrows it on that path), so the
+    // capture costs no whole-print copy.
     if let Some(cap) = capture {
-        cap.finalized_layers = reconciled_layers.clone();
+        if let Some(layers) = captured_layers {
+            cap.finalized_layers = layers;
+        }
         cap.gcode_ir = gcode_ir.clone();
     }
 

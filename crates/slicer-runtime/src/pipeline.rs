@@ -30,8 +30,7 @@ use crate::layer_executor::{
     SupportToolSelection,
 };
 use crate::{
-    compute_serial_edges_from_compiled, execute_layer_finalization,
-    execute_layer_finalization_with_instrumentation, execute_postpass,
+    compute_serial_edges_from_compiled, execute_postpass,
     prepass::{execute_prepass_with_builtins_configured, ConfigExpansionAuthority},
     Blackboard, ConfigBoundsIndex, ExecutionPlan, FinalizationError, FinalizationStageRunner,
     GCodeEmitter, GCodeSerializer, LayerExecutionError, LayerProgressSink, LayerStageRunner,
@@ -258,14 +257,17 @@ pub fn run_pipeline_with_events(
             support_tools,
             &anchored_entities,
         )?;
-    let mut layer_irs = crate::anchored_rows::synthesize_anchored_rows(committed_events)?;
+    let layer_irs = crate::anchored_rows::synthesize_anchored_rows(committed_events)?;
 
-    // Step 4: Execute layer finalization (if present)
-    execute_layer_finalization(
+    // Step 4: Execute layer finalization (if present). Ownership passes through:
+    // the stage mutates this collection instead of cloning a rollback snapshot
+    // no production caller reads (t90).
+    let layer_irs = crate::layer_finalization::execute_layer_finalization_owned(
         &plan,
         &blackboard,
         runners.finalization.as_ref(),
-        &mut layer_irs,
+        layer_irs,
+        &crate::instrumentation::NoopInstrumentation,
         &wasm_handles,
     )?;
 
@@ -471,7 +473,7 @@ fn run_pipeline_core(
     );
     instrumentation.on_phase_end(Phase::PerLayer);
     let (committed_events, layer_audits) = per_layer_result?;
-    let mut layer_irs = crate::anchored_rows::synthesize_anchored_rows(committed_events)?;
+    let layer_irs = crate::anchored_rows::synthesize_anchored_rows(committed_events)?;
 
     if cancel_flag
         .as_ref()
@@ -490,18 +492,21 @@ fn run_pipeline_core(
         if let Some(fin_stage) = plan.layer_finalization_stage.as_ref() {
             instrumentation.on_stage_start(&fin_stage.stage_id, None);
         }
-        let fin_result = execute_layer_finalization_with_instrumentation(
+        // Ownership passes through the stage: it mutates the committed
+        // collection in place instead of cloning a rollback snapshot no
+        // production caller reads (t90), and hands it to postpass.
+        let fin_result = crate::layer_finalization::execute_layer_finalization_owned(
             &plan,
             &blackboard,
             runners.finalization.as_ref(),
-            &mut layer_irs,
+            layer_irs,
             instrumentation,
             &wasm_handles,
         );
         if let Some(fin_stage) = plan.layer_finalization_stage.as_ref() {
             instrumentation.on_stage_end(&fin_stage.stage_id, None);
         }
-        fin_result?;
+        let layer_irs = fin_result?;
 
         run_postpass_with_thumbnail(
             &plan,
