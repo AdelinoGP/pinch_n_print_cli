@@ -100,7 +100,47 @@ Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
 
-**Current selection scope (2026-10-27, on the ticket 91 take):** the human's
+**Current selection scope (2026-10-28, on the ticket 92 take):** the human's
+"continue the perf vs orca map" named no ticket; the frontier re-derivation at
+claim time found [92](issues/92-per-surface-bridge-boolean-locality.md) as the
+only open child, and the session took it. Ticket 92 is **resolved
+(2026-10-28) as a Phase-1 screen — measured-dead, no candidate, no production
+edit, probe reverted.** One ordinary base classic supports-off slice, two probe
+runs, outputs byte-identical to the post-t81 reference `292df501…` and clean.
+The ticket's three Phase-2 shapes (per-surface bbox gate, hoistable `1.3 ×`
+anchor offset, many-piece tiling) have an **absolute upper-bound ceiling of
+0.341–0.371 % of the cell** against the **0.80 %** floor (2,429.6 / 2,303.2 ms
+accumulated = 271.1 / 249.7 ms wall-equivalent); deleting the whole
+`internal_bridge_angles` step as well still reaches only 0.40–0.44 %. Shape
+counts refute tiling outright — 130 calls carry **196 surfaces** (mean 1.51,
+**max 7**) against Orca's 128-piece threshold — and the per-surface
+`offset`/`intersection`/qualification is **0.25 s accumulated** against
+`internal_bridge_angles`' 2.58 s (t75's 1.5 s clip bracket does not transfer;
+its 2.4 s angles bracket does).
+
+The screen found a **different, larger term of a different shape**: the same
+function's two **whole-layer offsets on the unioned deep sparse-infill area** —
+`offset(deep_infill_area, +1.5 × spacing)` **12.5 / 11.4 s accumulated** over
+the 130 calls (median 81.6 ms, max 222.4 ms) and
+`offset(deep_infill_area, −4.5 × spacing)` **10.0 / 9.3 s** over the 14
+qualified calls (max 428.3 ms) — together **2.24–2.51 s wall-equivalent =
+3.06–3.43 % of the cell**, ~4x the floor and ~9x t92's own ceiling. Both are
+whole-layer operands (the clip area is also the angles operand; the erosion is
+the `retain` predicate), so consumer bbox-gating cannot remove them; they are
+out of t92's question rather than a reason to keep it open. Graduated
+[ticket 93](issues/93-whole-layer-deep-infill-offsets.md) to price the lazy
+dilation, windowed erosion, cheaper-predicate and duplicate-recompute shapes
+with its own Phase-1 screen. Disclosures: instrumented wall 79.0–83.0 s against
+the uninstrumented 73.17 s cell (probe + `--profile` overhead, never a wall
+claim), ~7–9 % inter-run drift on the bucket with the verdict unchanged.
+Evidence:
+[`evidence/t92-per-surface-bridge/`](evidence/t92-per-surface-bridge/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 15/15 negative controls
+rejected). Frontier now: [93](issues/93-whole-layer-deep-infill-offsets.md)
+only, open and unclaimed; the take order is the human's. Standing paired
+acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-27, on the ticket 91 take):** the human's
 "continue the perf vs orca map" named no ticket; the frontier re-derivation at
 claim time found [91](issues/91-exact-z-object-geometry-memo.md) and
 [92](issues/92-per-surface-bridge-boolean-locality.md) open, and the session took
@@ -1068,6 +1108,14 @@ Standing decisions for this effort (2026-09-22):
   **geometry-term build** counter (**431 → 1**) and in the query-time split
   (**22.6 → 8.9 s**). Price a memo by the term it builds, not by the hit rate
   ([ticket 91](issues/91-exact-z-object-geometry-memo.md)).
+- **Recipe trap (new 2026-10-28, t92):** a per-item / per-surface shape must be
+  priced against the per-layer operand build it rides on. The internal-bridge
+  qualification's per-surface offsets and intersections are **0.25 s**
+  accumulated, while the two whole-layer offsets that build their operands are
+  **20.7–22.5 s** — ~80x larger and invisible to a probe that starts after the
+  operands exist. Put the operand construction in the same bracket as the
+  consumer, or the screen prices the wrong order of magnitude
+  ([ticket 92](issues/92-per-surface-bridge-boolean-locality.md)).
 - **Recipe trap (new 2026-10-25, t88):** a probe's `Instant` bracket can disagree
   with the event timestamps by the width of an earlier phase (clock-read
   hoisting or a non-monotonic QPC on this host), so a 5 ms clone can read as
@@ -1377,6 +1425,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [Per-surface bridge boolean locality in ShellClassification](issues/92-per-surface-bridge-boolean-locality.md): **resolved (2026-10-28; Phase-1 screen — measured-dead, no candidate, probe reverted)** — the ticket's Phase-2 shapes (per-surface bbox gate, hoistable `1.3 ×` anchor offset, many-piece tiling) have an **absolute upper-bound ceiling of 0.341–0.371 %** of the base classic supports-off cell against the map's **0.80 %** floor (**2,429.6 / 2,303.2 ms accumulated = 271.1 / 249.7 ms wall-equivalent**, two probe runs, outputs byte-identical to `292df501…` and clean); deleting the entire `internal_bridge_angles` step as well reaches only 0.40–0.44 %. Shape counts: **130 calls, 196 surfaces (mean 1.51, max 7)**, `deep_infill_clip_area` 228 polygons (mean 1.75, max 7) — Orca's 128-piece tiling threshold never fires — and the per-surface `offset`/`intersection`/qualification is **0.25 s accumulated** against `internal_bridge_angles`' 2.58 s (t75's 2.4 s angles bracket transfers, its 1.5 s clip bracket does not: today 0.10 s). The screen surfaced a **larger term of a different shape**: two **whole-layer offsets on `deep_infill_area`** — `+1.5 × spacing` **12.5 / 11.4 s accumulated** (130 calls, median 81.6 ms) and `−4.5 × spacing` **10.0 / 9.3 s** (14 qualified calls, max 428.3 ms) — together **3.06–3.43 % of the cell**, ~4x the floor and ~9x this ticket's ceiling; whole-layer operands, so consumer bbox-gating cannot remove them. Graduated [93](issues/93-whole-layer-deep-infill-offsets.md). Disclosures: instrumented wall 79.0–83.0 s vs the uninstrumented 73.17 s cell; ~7–9 % inter-run bucket drift, verdict unchanged; both freshness gates exit 0 before and after. Evidence: [`evidence/t92-per-surface-bridge/`](evidence/t92-per-surface-bridge/FINDINGS.md) (`verify.py --self-test` exit 0 checkout-only, 15/15 negative controls rejected).
 
 - [Memoize z-independent exact-Z query terms per object](issues/91-exact-z-object-geometry-memo.md): **resolved (2026-10-27; human-approved KEEP — wall pass in all four pre-declared base supports-on cells, strict CPU clause missed by +0.08 pp in one, candidate committed `f10cef5a`)** — `ExactZQueryService` memoizes the world mesh, the bounds-derived plate and the constant top-Z cross-section **per object**, keeping the per-`(object, region, z)` cache contract unchanged; the plate is built once instead of on each of 431 misses. Wall **−5.52 / −3.84 / −2.68 / −4.95 %** and CPU **−1.22 / −0.66 / +0.08 / −0.32 %** (ordinary/accelerated × classic/arachne), **24/24 pairs byte-identical**, one SHA per arm, zero exclusions; 16/16 proof cells byte-identical, 8/8 ordinary cells equal to the derived post-t81 references, 8/8 cross-mode equal. The **+0.08 pp** miss is 0.8 s of ~1,053 s process CPU inside that cell's own repeat spread, disclosed and accepted; the ordinary counterpart of the same job measured **−1.22 %**. Probe (attribution only): **431 queries / 431 misses / 431 geometry builds → 1**, `query` **22,636.3 → 8,922.3 ms (−60.6 %)**, `validate_entry` **24,335.0 → 10,004.3 ms**; the request-Z cross-section is the only per-Z work left. `post_planner_gap_ms` falls 14.7→9.9 / 18.4→7.4 / 21.8→9.9 / 13.8→12.1 s. Retained memory: **42.25 MiB** per object on `tmp/base.stl` (recorded, not gated). Evidence: [`evidence/t91-exact-z-memo/`](evidence/t91-exact-z-memo/FINDINGS.md) (`verify.py --self-test` exit 0 checkout-only, 13/13 negative controls rejected).
 

@@ -1,0 +1,2 @@
+T92PROBE calls=130 qualified_calls=14 surfaces=196 deep_clip_polys=228 qualified_polys=18 deep_clip_offset_ms=12462.927 surface_offset_ms=20.067 surface_clip_ms=97.865 qualify_ms=134.109 unsupported_offset_ms=10042.147 retain_ms=16.618 expansion_ms=217.143 angles_ms=2584.383
+T92ANCHORS calls=36 total_fill_polys=61 limiting_polys=1322 total_fill_offset_ms=1049.445 limiting_offset_ms=423.401
