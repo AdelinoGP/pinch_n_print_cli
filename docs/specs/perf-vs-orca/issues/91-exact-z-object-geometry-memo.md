@@ -2,8 +2,11 @@
 
 Type: task
 Label: wayfinder:task
-Status: open (graduated 2026-10-27 from the parallel-validation take; unclaimed)
-Assignee: none
+Status: resolved (2026-10-27; human-approved KEEP — wall −5.52 / −3.84 / −2.68 /
+−4.95 % in the four base supports-on cells with CPU −1.22 / −0.66 / −0.32 % and
+one +0.08 % sub-noise miss of the strict `≤ 0` clause; exactness 16/16; candidate
+committed `f10cef5a`)
+Assignee: opencode session (perf-vs-orca map take, 2026-10-27)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [Parallelize support-plan exact-Z validation](89-support-plan-exact-z-validation-parallel.md)
@@ -86,3 +89,78 @@ paired campaign measures the actual win.
 2. The identity/ownership test for the memoized terms.
 3. The paired campaign results and a measured recommendation to the human.
    No auto-commit.
+
+## Answer
+
+**Resolved (2026-10-27) with a measured GATE NOT MET on one cell's CPU clause
+and a human-approved KEEP.** The candidate is committed `f10cef5a`; the evidence
+is [`evidence/t91-exact-z-memo/`](../evidence/t91-exact-z-memo/FINDINGS.md).
+
+### The candidate
+
+One host file plus its contract test. `ExactZQueryService`
+(`crates/slicer-wasm-host/src/exact_z_query.rs`) holds a per-object memo of the
+world mesh, the bounds-derived plate and the cross-section at the object's
+constant maximum Z; the public per-`(object, region, z)` cache is unchanged, so
+every distinct key still resolves its own entry. `geometry_build_count()` is
+the diagnostic surface, and
+`exact_z_memoizes_z_independent_terms_per_object`
+(`crates/slicer-wasm-host/tests/contract/exact_z_support_query.rs`) pins: two Z
+on one object build once and see identical terms; two objects never share them;
+a third Z builds nothing; occupancy still tracks the requested Z.
+
+### Exactness
+
+16/16 proof cells byte-identical between arms across
+`{benchy, base} x {classic, arachne} x {supports off, on}`; 8/8 ordinary cells
+equal the derived post-t81 references; 8/8 cross-mode comparisons equal; 24/24
+measured pairs byte-identical with one SHA per arm; every run clean and
+non-vacuous; both snapshots carry 24 byte-identical module trees and distinct
+host binaries; both guest freshness gates exit 0.
+
+### Paired campaign — the pre-declared four base supports-on cells
+
+| cell | baseline wall | candidate wall | paired wall | paired CPU | pairs |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| ordinary base classic-on | 175.128 s | 164.803 s | **−5.52 %** | **−1.22 %** | 6/6 |
+| ordinary base arachne-on | 172.881 s | 166.931 s | **−3.84 %** | **−0.66 %** | 6/6 |
+| accelerated base classic-on | 169.529 s | 163.258 s | **−2.68 %** | **+0.08 %** | 6/6 |
+| accelerated base arachne-on | 161.794 s | 154.282 s | **−4.95 %** | **−0.32 %** | 6/6 |
+
+Zero starvation exclusions. The strict clause was **CPU ≤ baseline** (the
+ticket's own wording, not the map's +3.0 % work-preserving ceiling):
+`accelerated-base-classic-on` misses it by **+0.08 pp** — 0.8 s of ~1,053 s
+process CPU, inside that cell's own repeat spread (baseline repeats span
+1,040.8–1,061.0 s). Per-pair wall spread is disclosed on the findings
+(−8.03…+0.94, −6.57…−2.69, −8.28…+5.11, −8.98…−0.90 %); two single outliers ran
+under transient load with both arms above their medians. The human accepted the
+sub-noise CPU miss on 2026-10-27 and kept the candidate.
+
+### Attribution
+
+Instrumented `post_planner_gap_ms` (the `PrePass::SupportGeometry` stage minus
+the planners' module walls) falls in all four cells: 14.7→9.9, 18.4→7.4,
+21.8→9.9, 13.8→12.1 s. The direct probe (both outputs equal to the reference
+SHA) is the sharp number: **431 queries, 431 misses, 431 geometry-term builds
+→ 1 build**, time inside `ExactZQueryService::query` **22,636.3 → 8,922.3 ms
+(−60.6 %)**, `validate_entry` loop **24,335.0 → 10,004.3 ms**. The remaining
+8.9 s is the requested-Z cross-section, the only per-Z term left. The probe is
+attribution only and is not part of the shipped candidate.
+
+Measured wall wins beat t89's arithmetic ceiling (7.5 / 6.8 s) in three cells
+and land at 6.27 s in `accelerated-base-classic-on`; every cell clears the
+0.80 % screening floor.
+
+### Memory (recorded, not gated)
+
+The memo retains one world-space `IndexedTriangleSet` per object for the
+service's life. Measured on `tmp/base.stl`: 1,230,602 vertices + 7,383,702
+indices = **44,302,032 bytes (42.25 MiB)** per object.
+
+### Verification
+
+`verify.py --self-test` exits 0 against the in-repo set alone and rejects 13/13
+negative controls; `derive_references.py` re-derives the eight ordinary
+references from the t81 campaign rows. Narrow gates: `cargo clippy --workspace
+--all-targets -- -D warnings`, `check-literals` 0, `check-test-quality
+--report` 0, both freshness gates exit 0.

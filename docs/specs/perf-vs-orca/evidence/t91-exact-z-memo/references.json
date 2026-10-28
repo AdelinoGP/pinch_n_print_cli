@@ -1,0 +1,54 @@
+{
+ "note": "Post-t81 output references for the ordinary-mode proof cells. Derived, never hand-pinned: re-run derive_references.py.",
+ "cells": {
+  "ordinary-base-arachne-off": {
+   "sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97",
+   "bytes": 20846160,
+   "source": "t81-resolution-port/campaign (candidate arm)",
+   "t81_baseline_sha256": "3ba164191a22f0f10f1cc62f038a07c632d3cea31b68aae11d7aeba820431326"
+  },
+  "ordinary-base-arachne-on": {
+   "sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c",
+   "bytes": 42330265,
+   "source": "t81-resolution-port/campaign (candidate arm)",
+   "t81_baseline_sha256": "a1bc81107fc5475a81324b54bda4275d5e963fca6cb155f09f9a227fadcff4f7"
+  },
+  "ordinary-base-classic-off": {
+   "sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+   "bytes": 21023739,
+   "source": "t81-resolution-port/campaign (candidate arm)",
+   "t81_baseline_sha256": "20e7204cfdbb813f642e7e1669d5ba1e30ed1d0ff7f90635af95d967196975ac"
+  },
+  "ordinary-base-classic-on": {
+   "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+   "bytes": 42507912,
+   "source": "t81-resolution-port/campaign (candidate arm)",
+   "t81_baseline_sha256": "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319"
+  },
+  "ordinary-benchy-arachne-off": {
+   "sha256": "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b",
+   "bytes": 4064270,
+   "source": "t81-resolution-port/campaign (candidate arm)",
+   "t81_baseline_sha256": "b76d846acdb13f3255c515878a43082da160c01a4155ae6904d2d473c30e1ba1"
+  },
+  "ordinary-benchy-arachne-on": {
+   "sha256": "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05",
+   "bytes": 8390168,
+   "source": "t81-resolution-port/campaign (candidate arm)",
+   "t81_baseline_sha256": "ae9d90612bf87ae9f76cb6faf341482e1abbaf5897bb2b981c3247d1646c3b9f"
+  },
+  "ordinary-benchy-classic-off": {
+   "sha256": "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d",
+   "bytes": 3925554,
+   "source": "t81-resolution-port/campaign (candidate arm)",
+   "t81_baseline_sha256": "34886ccb56b214d57c28aa58bdcc8d371a41f440200f5b49276b96b53e18cc40"
+  },
+  "ordinary-benchy-classic-on": {
+   "sha256": "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714",
+   "bytes": 8252412,
+   "source": "t81-resolution-port/campaign (candidate arm)",
+   "t81_baseline_sha256": "76eb4e1df3a47abf9a973be4ac99cd6bac41efa9fb65240786251ec0f7cdf6a8"
+  }
+ },
+ "problems": []
+}

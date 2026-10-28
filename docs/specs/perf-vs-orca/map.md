@@ -100,6 +100,38 @@ Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
 
+**Current selection scope (2026-10-27, on the ticket 91 take):** the human's
+"continue the perf vs orca map" named no ticket; the frontier re-derivation at
+claim time found [91](issues/91-exact-z-object-geometry-memo.md) and
+[92](issues/92-per-surface-bridge-boolean-locality.md) open, and the session took
+the first in order. Ticket 91 is **resolved (2026-10-27, human-approved KEEP,
+candidate committed `f10cef5a`)** as a measured **GATE NOT MET on one cell's
+strict CPU clause** plus a wall pass in all four: wall
+**−5.52 / −3.84 / −2.68 / −4.95 %** (ordinary/accelerated × classic/arachne)
+with process CPU **−1.22 / −0.66 / +0.08 / −0.32 %**, **24/24 pairs
+byte-identical**, one SHA per arm, zero starvation exclusions, 16/16 proof cells
+byte-identical and 8/8 ordinary cells equal to the derived post-t81 references.
+The **+0.08 pp** is `accelerated-base-classic-on` — 0.8 s of ~1,053 s process
+CPU, inside that cell's own repeat spread — and it is why the ticket's
+pre-declared `CPU ≤ baseline` clause is NOT MET; the human accepted the
+sub-noise miss and kept the candidate. One memo pass: the exact-Z service builds
+the world mesh, the plate and the constant top-Z cross-section **once per
+object** instead of on every miss, leaving the per-`(object, region, z)` cache
+contract unchanged. Direct probe (attribution only; both outputs equal the
+reference SHA): **431 queries, 431 misses, 431 geometry builds → 1**,
+`ExactZQueryService::query` **22,636.3 → 8,922.3 ms (−60.6 %)** and the
+`validate_entry` loop **24,335.0 → 10,004.3 ms**; the remaining 8.9 s is the
+requested-Z cross-section. The `post_planner_gap_ms` bracket falls in all four
+cells (14.7→9.9 / 18.4→7.4 / 21.8→9.9 / 13.8→12.1 s). The memo retains one
+world-space mesh per object — **42.25 MiB** measured for `tmp/base.stl`
+(1,230,602 vertices + 7,383,702 indices) — recorded, not gated. Both freshness
+gates exit 0, `verify.py --self-test` exits 0 checkout-only with 13/13 negative
+controls rejected. Frontier now:
+[92](issues/92-per-surface-bridge-boolean-locality.md) only, open and unclaimed;
+the take order is the human's. Standing paired acceptance and KEEP/DROP rules
+unchanged. Evidence:
+[`evidence/t91-exact-z-memo/`](evidence/t91-exact-z-memo/FINDINGS.md).
+
 **Current selection scope (2026-10-27, on the ticket 90 take):** the human's
 "continue the perf vs orca map" named no ticket; the frontier re-derivation at
 claim time found [90](issues/90-postpass-layer-collection-ownership.md) and
@@ -1029,6 +1061,13 @@ Standing decisions for this effort (2026-09-22):
   moment process CPU rises. A work-reducing serial shape (memoize what does not
   depend on the varying input) is the alternative to check first
   ([ticket 91](issues/91-exact-z-object-geometry-memo.md)).
+- **Recipe trap (new 2026-10-27, t91):** a per-object memo is invisible to the
+  per-key cache counters. After the z-independent terms were memoized the
+  exact-Z service still reported **431 queries / 431 misses** on the base job,
+  because the cache key carries the requested Z; the memo was visible only in a
+  **geometry-term build** counter (**431 → 1**) and in the query-time split
+  (**22.6 → 8.9 s**). Price a memo by the term it builds, not by the hit rate
+  ([ticket 91](issues/91-exact-z-object-geometry-memo.md)).
 - **Recipe trap (new 2026-10-25, t88):** a probe's `Instant` bracket can disagree
   with the event timestamps by the width of an earlier phase (clock-read
   hoisting or a non-monotonic QPC on this host), so a 5 ms clone can read as
@@ -1338,6 +1377,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [Memoize z-independent exact-Z query terms per object](issues/91-exact-z-object-geometry-memo.md): **resolved (2026-10-27; human-approved KEEP — wall pass in all four pre-declared base supports-on cells, strict CPU clause missed by +0.08 pp in one, candidate committed `f10cef5a`)** — `ExactZQueryService` memoizes the world mesh, the bounds-derived plate and the constant top-Z cross-section **per object**, keeping the per-`(object, region, z)` cache contract unchanged; the plate is built once instead of on each of 431 misses. Wall **−5.52 / −3.84 / −2.68 / −4.95 %** and CPU **−1.22 / −0.66 / +0.08 / −0.32 %** (ordinary/accelerated × classic/arachne), **24/24 pairs byte-identical**, one SHA per arm, zero exclusions; 16/16 proof cells byte-identical, 8/8 ordinary cells equal to the derived post-t81 references, 8/8 cross-mode equal. The **+0.08 pp** miss is 0.8 s of ~1,053 s process CPU inside that cell's own repeat spread, disclosed and accepted; the ordinary counterpart of the same job measured **−1.22 %**. Probe (attribution only): **431 queries / 431 misses / 431 geometry builds → 1**, `query` **22,636.3 → 8,922.3 ms (−60.6 %)**, `validate_entry` **24,335.0 → 10,004.3 ms**; the request-Z cross-section is the only per-Z work left. `post_planner_gap_ms` falls 14.7→9.9 / 18.4→7.4 / 21.8→9.9 / 13.8→12.1 s. Retained memory: **42.25 MiB** per object on `tmp/base.stl` (recorded, not gated). Evidence: [`evidence/t91-exact-z-memo/`](evidence/t91-exact-z-memo/FINDINGS.md) (`verify.py --self-test` exit 0 checkout-only, 13/13 negative controls rejected).
 
 - [Single-ownership layer collection through finalization and G-code emission](issues/90-postpass-layer-collection-ownership.md): **resolved (2026-10-27; human-approved KEEP — gate met in all four pre-declared base supports-on cells, candidate committed `7b22fccc`)** — wall **−5.54 / −7.56 / −6.54 / −7.64 %** (ordinary/accelerated × classic/arachne) with process CPU **−1.13 … −1.67 %**, **24/24 pairs byte-identical**, one SHA per arm, zero starvation exclusions, every pair moving the right way (−1.56 … −13.20 %). One ownership pass: `execute_layer_finalization_owned` mutates the caller's `Vec<LayerCollectionIR>` and returns it instead of deep-cloning a rollback snapshot no production caller reads (a fatal abort now consumes the working collection, the ticket's pre-authorized delta), `GCodeEmitter::emit_gcode_owned` lets `DefaultGCodeEmitter` rotate and emit the caller's own vector (defaulted so every other emitter is untouched), and `execute_postpass_with_owned_capture` hands the collection over, so it is dropped **once** inside the `host:gcode_emit` bracket instead of being cloned there and dropped again at teardown; the visual-debug capture sinks keep the borrowed path and receive the collection by move. Attribution (instrumented, attribution only): clone **1,765 / 1,684 ms**, commit drop **3,685 / 3,758 ms** and teardown drop **4,490 / 3,723 ms** all gone, the single remaining drop **1.56 / 2.68 s cheaper** than the old clone+drop pair, postpass phase **−66.5 / −70.3 %** — hence measured wall deltas **12.0 / 14.8 / 15.9 / 15.4 s** beat the pre-declared net ceiling **10.76 / 10.29 s**. Exactness 16/16 byte-identical to the derived post-t81 references, ordinary ≡ accelerated **8/8**, both freshness gates exit 0, host-only candidate pinned by `provenance.json` (equal 24-module trees, distinct binaries). Evidence: [`evidence/t90-postpass-ownership/`](evidence/t90-postpass-ownership/FINDINGS.md) (`verify.py --self-test` exit 0 checkout-only, 11/11 negative controls rejected).
 
