@@ -85,3 +85,51 @@ pub fn exact_z_support_query() {
         "identical inputs use immutable cache"
     );
 }
+
+#[test]
+pub fn exact_z_memoizes_z_independent_terms_per_object() {
+    let mut mesh = cube_mesh();
+    let mut neighbouring = mesh.objects[0].clone();
+    neighbouring.id = "object-b".into();
+    // Translate the second cube +20 mm in X so its plate differs from object-a's.
+    neighbouring.transform.matrix[12] = 20.0;
+    mesh.objects.push(neighbouring);
+    let service = ExactZQueryService::new(Arc::new(mesh));
+
+    let low = service.query("object-a", 7, 4.321).expect("query");
+    assert_eq!(
+        service.geometry_build_count(),
+        1,
+        "first query builds the object's z-independent terms"
+    );
+    let above = service.query("object-a", 7, 11.0).expect("second Z");
+    assert_eq!(
+        service.geometry_build_count(),
+        1,
+        "a new requested Z must not rebuild the object's terms"
+    );
+
+    // The z-independent terms are identical at both Z values; only occupancy
+    // (and its blocker copy) follows the requested Z.
+    assert_eq!(low.termination_surfaces, above.termination_surfaces);
+    assert_eq!(low.baseline_envelope, above.baseline_envelope);
+    assert_ne!(
+        low.occupancy, above.occupancy,
+        "requested-Z occupancy still tracks the requested Z"
+    );
+
+    let other = service.query("object-b", 7, 4.321).expect("other object");
+    assert_eq!(
+        service.geometry_build_count(),
+        2,
+        "each object builds its own terms"
+    );
+    assert_ne!(
+        low.baseline_envelope, other.baseline_envelope,
+        "one object's plate is never shared with another object"
+    );
+
+    let third = service.query("object-a", 7, 8.0).expect("third Z");
+    assert_eq!(service.geometry_build_count(), 2);
+    assert_eq!(third.termination_surfaces, low.termination_surfaces);
+}

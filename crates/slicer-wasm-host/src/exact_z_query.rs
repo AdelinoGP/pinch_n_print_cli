@@ -1,6 +1,8 @@
 //! Host-owned exact-Z geometry queries for support family planners.
 
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use slicer_core::algos::mesh_cross_section::cross_section_at_z;
@@ -23,10 +25,22 @@ pub struct ExactZSupportQuery {
 
 type QueryKey = (String, u64, i64);
 
+/// Geometry terms that depend on the object alone, never on the requested Z.
+struct ObjectGeometry {
+    /// World-space mesh; also the source of every per-Z cross-section.
+    world_mesh: slicer_ir::IndexedTriangleSet,
+    /// Build-plate termination rectangle derived from the world bounds.
+    plate: ExPolygon,
+    /// Cross-section at the object's constant maximum Z.
+    top: Vec<ExPolygon>,
+}
+
 /// Thread-safe, immutable-result cache for exact-Z support geometry.
 pub struct ExactZQueryService {
     mesh: Arc<MeshIR>,
     cache: Mutex<HashMap<QueryKey, Arc<ExactZSupportQuery>>>,
+    object_geometry: Mutex<HashMap<String, Arc<ObjectGeometry>>>,
+    geometry_builds: AtomicUsize,
 }
 
 impl ExactZQueryService {
@@ -35,7 +49,18 @@ impl ExactZQueryService {
         Self {
             mesh,
             cache: Mutex::new(HashMap::new()),
+            object_geometry: Mutex::new(HashMap::new()),
+            geometry_builds: AtomicUsize::new(0),
         }
+    }
+
+    /// Number of per-object geometry entries this service has built.
+    ///
+    /// Diagnostic surface for the memo's identity contract: the z-independent
+    /// terms (world mesh, bounds, plate rectangle, top-Z cross-section) are
+    /// built once per object, however many Z values that object is queried at.
+    pub fn geometry_build_count(&self) -> usize {
+        self.geometry_builds.load(Ordering::Relaxed)
     }
 
     /// Query one object and region at an exact physical Z in millimeters.
@@ -62,6 +87,43 @@ impl ExactZQueryService {
             return Ok(Arc::clone(result));
         }
 
+        let geometry = self.object_geometry(object_id)?;
+        let occupancy = cross_section_at_z(&geometry.world_mesh, physical_z_mm);
+        let result = Arc::new(ExactZSupportQuery {
+            z_units,
+            blockers: occupancy.clone(),
+            occupancy,
+            termination_surfaces: geometry
+                .top
+                .iter()
+                .cloned()
+                .chain(std::iter::once(geometry.plate.clone()))
+                .collect(),
+            baseline_envelope: vec![geometry.plate.clone()],
+        });
+        self.cache
+            .lock()
+            .map_err(|_| "exact-z-support-query: cache poisoned")?
+            .insert(key, Arc::clone(&result));
+        Ok(result)
+    }
+
+    /// Resolve (building once per object) the terms that do not depend on Z.
+    ///
+    /// The lookup, the world-space transform, the bounds-derived plate and the
+    /// constant top-Z cross-section all read the object alone, so a cache hit
+    /// here returns values identical to every earlier query on that object.
+    /// Concurrent first queries may build the same terms twice; only the first
+    /// inserted entry is retained, and the terms are equal either way.
+    fn object_geometry(&self, object_id: &str) -> Result<Arc<ObjectGeometry>, String> {
+        if let Some(geometry) = self
+            .object_geometry
+            .lock()
+            .map_err(|_| "exact-z-support-query: cache poisoned")?
+            .get(object_id)
+        {
+            return Ok(Arc::clone(geometry));
+        }
         let object = self
             .mesh
             .objects
@@ -69,26 +131,24 @@ impl ExactZQueryService {
             .find(|object| object.id == object_id)
             .ok_or_else(|| format!("exact-z-support-query: object '{object_id}' not found"))?;
         let world_mesh = world_mesh(object);
-        let occupancy = cross_section_at_z(&world_mesh, physical_z_mm);
         let bbox = world_bounds(&world_mesh)
             .ok_or_else(|| format!("exact-z-support-query: object '{object_id}' has empty mesh"))?;
-        let plate = rectangle(bbox.0, bbox.1, bbox.2, bbox.3);
-        let top = cross_section_at_z(&world_mesh, bbox.5);
-        let result = Arc::new(ExactZSupportQuery {
-            z_units,
-            blockers: occupancy.clone(),
-            occupancy,
-            termination_surfaces: top
-                .into_iter()
-                .chain(std::iter::once(plate.clone()))
-                .collect(),
-            baseline_envelope: vec![plate],
+        let geometry = Arc::new(ObjectGeometry {
+            plate: rectangle(bbox.0, bbox.1, bbox.2, bbox.3),
+            top: cross_section_at_z(&world_mesh, bbox.5),
+            world_mesh,
         });
-        self.cache
+        let mut guard = self
+            .object_geometry
             .lock()
-            .map_err(|_| "exact-z-support-query: cache poisoned")?
-            .insert(key, Arc::clone(&result));
-        Ok(result)
+            .map_err(|_| "exact-z-support-query: cache poisoned")?;
+        match guard.entry(object_id.to_owned()) {
+            Entry::Occupied(entry) => Ok(Arc::clone(entry.get())),
+            Entry::Vacant(entry) => {
+                self.geometry_builds.fetch_add(1, Ordering::Relaxed);
+                Ok(Arc::clone(entry.insert(geometry)))
+            }
+        }
     }
 }
 
