@@ -1559,6 +1559,19 @@ Standing decisions for this effort (2026-09-22):
   the work-preserving ceiling). Re-enter only with its own measured split and a
   pre-declared gate; the map does not assume either is worth a take.
 
+- **The requested-Z half of the exact-Z tail (surfaced 2026-10-27 by
+  [ticket 91](issues/91-exact-z-object-geometry-memo.md)).** The memo removed the
+  z-independent 49 %, so what remains of the 431-query validation loop is
+  **8.9 s of requested-Z cross-sections** (`cross_section_at_z` per distinct
+  anchor Z; the probe still reports 431 queries / 431 misses because the key
+  carries Z). [t89](issues/89-support-plan-exact-z-validation-parallel.md)
+  priced the parallel fold over that same work and rejected it (+6.78 % process
+  CPU against a −5.50 % wall win) and called the kernel
+  memory/allocator-bound. A *serial* shape that makes the kernel cheaper —
+  shared per-layer slab prep, batched cross-sections, or cheaper section
+  construction — is unmeasured and has no candidate premise yet. Not ticketed:
+  split it with its own probe before a take.
+
 - **Ownership changes the cost of what it removes — do not price the survivor
   from the old bracket (surfaced 2026-10-27 by
   [ticket 90](issues/90-postpass-layer-collection-ownership.md)).** Ticket 90's
