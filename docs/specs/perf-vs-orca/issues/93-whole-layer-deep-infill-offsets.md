@@ -2,8 +2,14 @@
 
 Type: task
 Label: wayfinder:task
-Status: open (graduated 2026-10-28 from the t92 Phase-1 screen; unclaimed)
-Assignee: none
+Status: resolved (2026-10-29; measured **GATE NOT MET** on the strict four-cell
+wall clause — **human-approved DROP**, candidate reverted. Phase 1 closed three
+of four shapes; windowed erosion cleared the floor and won the production
+ordinary mode, but the two accelerated cells were wall-neutral (+0.13 / +0.62
+pp). See ## Answer)
+Assignee: 2026-10-28 OpenCode wayfinder session — the human said "continue the
+perf vs orca map" (no ticket named); the frontier re-derivation found ticket 93
+as the only open child
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [Per-surface bridge boolean locality](92-per-surface-bridge-boolean-locality.md)
@@ -135,3 +141,90 @@ measures the actual win.
 2. If above the floor, the candidate plus its equivalence tests.
 3. The paired campaign results and a measured recommendation to the human. No
    auto-commit.
+
+## Answer
+
+**Measured GATE NOT MET on the strict four-cell wall clause — human-approved
+DROP (2026-10-29, HEAD `7b42afed`).** The candidate is reverted (the tree
+carries no production change); its re-appliable diff is
+[`candidate.patch`](../evidence/t93-deep-infill-offsets/candidate.patch), and
+the probe is
+[`probe.patch`](../evidence/t93-deep-infill-offsets/probe.patch). Both guest
+freshness gates exit 0 before and after the take.
+
+### Phase 1 — three of four shapes closed
+
+One ordinary base classic supports-off slice, two probe runs, outputs
+byte-identical to the post-t81 reference `292df501…` and clean. Accumulated
+over the layer axis; wall-equivalent = accumulated ÷ the run's own cpu/wall.
+
+| shape | verdict | measured |
+| --- | --- | --- |
+| lazy dilation (`+1.5 × spacing` clip area) | **dead** | **0 of 130** calls skippable; **130 of 130** have a surface reaching the deep area |
+| windowed erosion (`−4.5 × spacing` filter) | **above floor** | **9,244.1 / 9,311.3 ms** accumulated saving = **1,006.9 / 1,045.6 ms wall-eq = 1.38 / 1.43 %** of the cell vs the **585.4 ms (0.80 %)** floor |
+| cheaper erosion predicate | **rejected** | no representation-equivalence proof under Miter joins (not adjoint) |
+| duplicate recompute reuse | **dead** | **9** recomputes, **0** with an identical deep-area fingerprint; deleting all 9 reaches only **205.9 ms = 0.28 %** |
+
+The erosion runs on **42** of 130 calls; the windowed operand costs **80.1 ms
+clip + 891.3 ms offset** against **10,215.5 ms** for the full erosion (run 2).
+The two runs agree within **3.70 %**; run 2 measured the windowed path first, so
+the saving is not an order artifact.
+
+### Phase 2 — candidate and proof
+
+The candidate confines the erosion to the pre-retain qualified bbox grown by
+`14 × spacing` (Miter reach `9 × spacing` + the angles filter's `2 × spacing`
+candidate expansion + margin). Both consumers — the `retain` predicate and
+`internal_bridge_angles`' per-candidate filter — observe the same set. No
+geometry function changed; host-only.
+
+**Proof: 16/16 cells byte-identical between arms, 8/8 ordinary cells equal to
+the post-t81 reference set, 8/8 accelerated ≡ ordinary, 24 identical modules
+per mode, distinct binaries per arm, zero unclean runs.** The unit test
+`windowed_erosion_preserves_every_observable_qualified_neighbourhood_verdict`
+pins both consumer verdicts on a fixture with an in-area and a disjoint
+qualified polygon; `cargo test -p slicer-runtime --lib
+slice_postprocess_prepass` is 5/5 and both `calicat_internal_bridge_*` e2e
+tests pass.
+
+### Campaign — ordinary wins, accelerated neutral
+
+2 warmups + 6 alternating pairs per cell, 12 threads, zero starvation
+exclusions, every retained pair byte-identical, one SHA per arm.
+
+| cell | paired wall | paired CPU | wall clause |
+| --- | ---: | ---: | --- |
+| ordinary base classic-off | **−3.31 %** (−2.43 s) | −1.19 % (−9.7 s) | pass |
+| ordinary base classic-on | **−0.26 %** | −0.48 % (−7.3 s) | pass |
+| accelerated base classic-off | **+0.13 %** | −0.81 % (−6.5 s) | **fail** |
+| accelerated base classic-on | **+0.62 %** | −0.45 % (−3.2 s) | **fail** |
+
+The CPU fall matches the probe's 9.2–9.3 s accumulated saving on the screening
+cell; the wall transfer is larger than the work equivalent because the
+candidate raises the arm's cpu/wall ratio **9.65 → 9.84** (less stall, not
+merely less CPU). The strict clause was missed by **+0.13 / +0.62 pp** in the
+two accelerated cells, both inside their own repeat ranges — but it was
+pre-declared as wall below baseline in **all four** cells, so the letter is NOT
+MET. The human ruled **DROP**; no production change lands.
+
+### Disclosures
+
+- The opencode server restarted during `ordinary-base-classic-on`; that cell
+  had 7/14 rows and was **re-run whole**. The partial is preserved as
+  `measure-interrupted-20261029/` and is not ledger input.
+  `ordinary-base-classic-off` had completed before the restart; the other three
+  cells were measured in the resumed round on 2026-10-29. Ratios are paired
+  within each cell, never across rounds.
+- Load was 4.6 % before the campaign and 2.0 % before the resumed round; zero
+  starvation exclusions. Pair 4 of ordinary classic-on moved +6.08 % the wrong
+  way; pairs 4–6 of accelerated classic-on drive that cell's +0.62 %.
+- Instrumented walls (84.3 / 80.2 s) are never a wall claim against the
+  uninstrumented 73.17 s cell. The arm medians and the paired median disagree
+  in ordinary classic-on (arm medians +2.9 s, paired median −0.26 %); the
+  pre-declared metric is the paired median and the cell is a wash within its
+  own spread.
+
+Evidence:
+[`evidence/t93-deep-infill-offsets/`](../evidence/t93-deep-infill-offsets/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, **18/18** negative controls
+rejected).

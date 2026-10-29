@@ -38,6 +38,35 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
+**Current selection scope (2026-10-28 → 2026-10-29, on the ticket 93 take):**
+the human said "continue the perf vs orca map" (no ticket named); the frontier
+re-derivation found [93](issues/93-whole-layer-deep-infill-offsets.md) as the
+only open child, and the session took it. It is **resolved (2026-10-29) as
+measured GATE NOT MET — human-approved DROP, candidate reverted**, with the
+re-appliable `candidate.patch` preserved. Phase 1 closed three of four shapes:
+lazy dilation **0 of 130** calls skippable; cheaper predicate rejected (no
+Miter-join equivalence); duplicate recompute **9** calls, **0** identical
+operands, absolute ceiling **0.28 %**. The survivor, **windowed erosion**,
+measured **9,244.1 / 9,311.3 ms** accumulated saving = **1,006.9 / 1,045.6 ms
+wall-eq = 1.38 / 1.43 %** of the cell against the **0.585 s** floor, the two
+runs agreeing within **3.70 %**. The candidate (erosion operand clipped to the
+pre-retain qualified bbox grown by `14 × spacing`) passed **16/16** proof cells
+byte-identical, **8/8** ordinary cells equal to the post-t81 references, **8/8**
+cross-mode equal, 24 identical modules per mode. The paired campaign passed the
+wall clause in both ordinary cells (**−3.31 % / −0.26 %** wall, **−1.19 % /
+−0.48 %** CPU) and missed it in both accelerated cells (**+0.13 % / +0.62 %**
+wall, **−0.81 % / −0.45 %** CPU), so the pre-declared four-cell wall clause is
+**NOT MET** and the human dropped the candidate. The CPU fall matches the probe
+(9.7 s vs 9.2 s) and the wall transfer is lifted by cpu/wall 9.65 → 9.84. One
+campaign interruption is disclosed (server restart during ordinary classic-on;
+that cell re-run whole, partial preserved); the campaign timed only the four
+pre-declared base classic cells, so benchy/arachne gains are unmeasured.
+Frontier now: **no open child remains**; the fog and the next route are the
+human's. Standing paired acceptance and KEEP/DROP rules unchanged. Evidence:
+[`evidence/t93-deep-infill-offsets/`](evidence/t93-deep-infill-offsets/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 18/18 negative controls
+rejected).
+
 **Previous selection scope (2026-10-18, on the t73 take):** the frontier was
 re-derived on resume — the only open child was
 [consume-only-when-read annotations](issues/20-consume-only-when-read-annotations.md),
@@ -1426,6 +1455,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Whole-layer deep-infill offsets in internal-bridge qualification](issues/93-whole-layer-deep-infill-offsets.md): **resolved (2026-10-29; measured GATE NOT MET on the strict four-cell wall clause — human-approved DROP, candidate reverted; `candidate.patch` preserved)** — Phase 1 screened four shapes against the map's **0.80 %** floor: **lazy dilation dead** (0 of 130 calls skippable; 130 of 130 have a surface reaching the deep area), **cheaper predicate rejected** (Miter dilation/erosion are not adjoint), **duplicate recompute dead** (9 recomputes, 0 with an identical deep-area operand; deleting all 9 reaches only **0.28 %**), and **windowed erosion above floor** (**9,244.1 / 9,311.3 ms** accumulated saving = **1,006.9 / 1,045.6 ms wall-eq = 1.38 / 1.43 %** of the cell; two runs agree within 3.70 %). The candidate clipped the `−4.5 × spacing` erosion operand to the pre-retain qualified bbox grown by `14 × spacing`; **16/16** proof cells byte-identical between arms, **8/8** ordinary cells equal to the post-t81 references, **8/8** cross-mode equal, 24 identical modules per mode, unit + both calicat internal-bridge e2e tests pass. Campaign (6/6 pairs, zero exclusions, every pair byte-identical): ordinary classic-off **−3.31 % wall / −1.19 % CPU**, ordinary classic-on **−0.26 % / −0.48 %**, accelerated classic-off **+0.13 % / −0.81 %**, accelerated classic-on **+0.62 % / −0.45 %**. The CPU fall matches the probe's 9.2 s (9.7 s measured) and the wall transfer is lifted by cpu/wall 9.65 → 9.84; the accelerated wall misses are inside each cell's own repeat range but positive, so the pre-declared clause is NOT MET and the human ruled DROP. Disclosures: server restart during ordinary classic-on (cell re-run whole, partial preserved), campaign timed only the four base classic cells. Evidence: [`evidence/t93-deep-infill-offsets/`](evidence/t93-deep-infill-offsets/FINDINGS.md) (`verify.py --self-test` exit 0 checkout-only, 18/18 negative controls rejected).
+
 - [Per-surface bridge boolean locality in ShellClassification](issues/92-per-surface-bridge-boolean-locality.md): **resolved (2026-10-28; Phase-1 screen — measured-dead, no candidate, probe reverted)** — the ticket's Phase-2 shapes (per-surface bbox gate, hoistable `1.3 ×` anchor offset, many-piece tiling) have an **absolute upper-bound ceiling of 0.341–0.371 %** of the base classic supports-off cell against the map's **0.80 %** floor (**2,429.6 / 2,303.2 ms accumulated = 271.1 / 249.7 ms wall-equivalent**, two probe runs, outputs byte-identical to `292df501…` and clean); deleting the entire `internal_bridge_angles` step as well reaches only 0.40–0.44 %. Shape counts: **130 calls, 196 surfaces (mean 1.51, max 7)**, `deep_infill_clip_area` 228 polygons (mean 1.75, max 7) — Orca's 128-piece tiling threshold never fires — and the per-surface `offset`/`intersection`/qualification is **0.25 s accumulated** against `internal_bridge_angles`' 2.58 s (t75's 2.4 s angles bracket transfers, its 1.5 s clip bracket does not: today 0.10 s). The screen surfaced a **larger term of a different shape**: two **whole-layer offsets on `deep_infill_area`** — `+1.5 × spacing` **12.5 / 11.4 s accumulated** (130 calls, median 81.6 ms) and `−4.5 × spacing` **10.0 / 9.3 s** (14 qualified calls, max 428.3 ms) — together **3.06–3.43 % of the cell**, ~4x the floor and ~9x this ticket's ceiling; whole-layer operands, so consumer bbox-gating cannot remove them. Graduated [93](issues/93-whole-layer-deep-infill-offsets.md). Disclosures: instrumented wall 79.0–83.0 s vs the uninstrumented 73.17 s cell; ~7–9 % inter-run bucket drift, verdict unchanged; both freshness gates exit 0 before and after. Evidence: [`evidence/t92-per-surface-bridge/`](evidence/t92-per-surface-bridge/FINDINGS.md) (`verify.py --self-test` exit 0 checkout-only, 15/15 negative controls rejected).
 
 - [Memoize z-independent exact-Z query terms per object](issues/91-exact-z-object-geometry-memo.md): **resolved (2026-10-27; human-approved KEEP — wall pass in all four pre-declared base supports-on cells, strict CPU clause missed by +0.08 pp in one, candidate committed `f10cef5a`)** — `ExactZQueryService` memoizes the world mesh, the bounds-derived plate and the constant top-Z cross-section **per object**, keeping the per-`(object, region, z)` cache contract unchanged; the plate is built once instead of on each of 431 misses. Wall **−5.52 / −3.84 / −2.68 / −4.95 %** and CPU **−1.22 / −0.66 / +0.08 / −0.32 %** (ordinary/accelerated × classic/arachne), **24/24 pairs byte-identical**, one SHA per arm, zero exclusions; 16/16 proof cells byte-identical, 8/8 ordinary cells equal to the derived post-t81 references, 8/8 cross-mode equal. The **+0.08 pp** miss is 0.8 s of ~1,053 s process CPU inside that cell's own repeat spread, disclosed and accepted; the ordinary counterpart of the same job measured **−1.22 %**. Probe (attribution only): **431 queries / 431 misses / 431 geometry builds → 1**, `query` **22,636.3 → 8,922.3 ms (−60.6 %)**, `validate_entry` **24,335.0 → 10,004.3 ms**; the request-Z cross-section is the only per-Z work left. `post_planner_gap_ms` falls 14.7→9.9 / 18.4→7.4 / 21.8→9.9 / 13.8→12.1 s. Retained memory: **42.25 MiB** per object on `tmp/base.stl` (recorded, not gated). Evidence: [`evidence/t91-exact-z-memo/`](evidence/t91-exact-z-memo/FINDINGS.md) (`verify.py --self-test` exit 0 checkout-only, 13/13 negative controls rejected).
@@ -1591,6 +1622,28 @@ Standing decisions for this effort (2026-09-22):
 - [Config padding disclosure boundary and viewer-key gate](issues/34-config-padding-disclosure-boundary.md): **resolved (2026-10-07, disclosure/correctness only)** — premise corrected: `ORCA_CONFIG_PADDING` never fires on any production path (the registry projection reaches 233 pairs; the loop breaks at 96), so its values are unreachable there and only the test/legacy callers consume the table. The audit nonetheless found two **live** wire-format defects in the emitted block: booleans rendered as `true`/`false` where OrcaSlicer's wire literals are `1`/`0` (23 production lines; `ConfigBase::set_deserialize_raw`'s substitution branch — `enum_looks_like_true_value` is true only for `enabled`/`on` — loaded every rendered `true` as `false`, e.g. `detect_overhang_wall` and `support_remove_small_overhang`), and four enum values carrying PnP-internal spellings (`wall_sequence` `InnerOuter`, `wall_generator` `Classic`, `wall_direction` `counter_clockwise`, and the `seam_mode` alias rendering `rear`) that Orca's strict `enum_keys_map` lookup answers by replacing the option with its own default; two keys PnP models as `bool` but Orca declares `coEnum` (`dont_filter_internal_bridges`, `enable_extra_bridge_layer`) needed the same treatment. Fixed in one documented `translate_appendix_enum` table applied only at the appendix (module `ConfigView`s unchanged). Table audited row by row: 10 values were corrected (7 to the pinned upstream default, 3 more in enum domain), 3 rows named keys OrcaSlicer cannot load (`support_material`/`extra_perimeters` removed as non-Orca keys; `wipe_tower_width` kept — `handle_legacy` renames it), and 4 rows named keys absent from OrcaSlicer entirely, replaced with real cosmetic keys. A freshly generated production block now measures **0 strict wire violations**; the edited table compares **0 default mismatches** against the pinned `PrintConfig.cpp`. Residual: the padding-only fallback block still cannot satisfy Orca's `>= 80` loadable-pair gate because the remaining unloadable lines are PnP's own key names (registry-projected, not table rows) — recorded, not patched. No timing, geometry, adoption, default or guest change; all required gates pass.
 
 ## Not yet specified
+
+- **The whole-layer clip-area dilation is now the largest term in the function
+  (surfaced 2026-10-29 by
+  [ticket 93](issues/93-whole-layer-deep-infill-offsets.md)).**
+  `offset(deep_infill_area, +1.5 × spacing)` is **12.4–12.8 s accumulated**
+  (**1.85 %** of the base classic-off cell) and **lazy dilation is dead** — 0 of
+  130 calls can skip it because every call has a surface reaching the deep
+  area. The surviving shape is a *windowed or clustered* dilation keyed to the
+  surfaces/candidates that consume it, not a whole-call skip; it was outside
+  ticket 93's declared shapes and is unmeasured. The angles consumer also reads
+  the clip area through a whole-layer `expansion_area` intersection, so a
+  windowed dilation needs its own consumer analysis before a take.
+
+- **A host-side work removal can be wall-neutral in accelerated cells
+  (surfaced 2026-10-29 by
+  [ticket 93](issues/93-whole-layer-deep-infill-offsets.md)).** The windowed
+  erosion removed **6.5 / 3.2 s** of process CPU in the two accelerated base
+  classic cells while their paired wall moved **+0.13 / +0.62 pp** — inside
+  those cells' own 6–8 % repeat ranges, and with CPU falling in every cell. A
+  strict four-cell wall clause can therefore fail on a real work removal.
+  Price the gate per mode, and settle before the campaign whether a
+  CPU-corroborated wall-neutral cell is acceptable — not after it.
 
 - **The one remaining whole-print drop (surfaced 2026-10-27 by
   [ticket 90](issues/90-postpass-layer-collection-ownership.md)).** Ownership
