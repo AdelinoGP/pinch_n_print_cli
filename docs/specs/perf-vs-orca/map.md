@@ -38,7 +38,34 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-28 → 2026-10-29, on the ticket 93 take):**
+**Current selection scope (2026-10-29, on the ticket 94 take):** the human said
+"continue the perf vs orca map" (no ticket named). The frontier re-derivation
+at HEAD `57234b81` found **all 93 child tickets resolved — no open child, no
+claim** — so the session offered five measured above-floor leads from the fog.
+The human selected the **remaining whole-print collection drop** and settled the
+gate as **strict wall in all four cells** (not CPU-corroborated wall-neutral).
+The fog patch graduated as
+[94](issues/94-remaining-whole-print-drop.md) and is **resolved (2026-10-29) as
+a Phase-1 screen — measured-dead, no candidate, no campaign, probe reverted.**
+The split: the `host:gcode_emit` bracket is **93-94 % drop** — walk 176-253 ms,
+free **3,242-3,558 ms**, bracket 3,415-3,811 ms — and the post-emission tail a
+deferred free could hide inside is only **1,367-1,603 ms** (`machine-gcode-emit`
+0.53-0.60 s + `GCodeSerialize` 0.72-0.92 s). **Parallel free is a wash**
+(classic −0.321 s = +0.19 %, arachne +0.200 s = −0.12 %), so the free does not
+scale on Windows' process heap; **layer-by-layer consumption is a structural
+zero** (serial walk); and the **deferred-overlap absolute ceiling is the tail
+itself — 0.97 % classic / 0.82 % arachne of the cell, 1.22x / 1.02x the 0.80 %
+floor** — before any overlap loss, so no shape had margin for the strict
+four-cell campaign. The screen leaves a precise structural lead in the fog: the
+free is an **allocation-volume** cost (~5.3 GB peak working set, t79), not a
+drop-strategy cost; only fewer/larger allocations (arena or bulk-free layer
+collection) can move it. Evidence:
+[`evidence/t94-remaining-drop/`](evidence/t94-remaining-drop/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 8/8 negative controls rejected).
+Frontier now: **no open child remains**; the fog and the next route are the
+human's. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-28 → 2026-10-29, on the ticket 93 take):**
 the human said "continue the perf vs orca map" (no ticket named); the frontier
 re-derivation found [93](issues/93-whole-layer-deep-infill-offsets.md) as the
 only open child, and the session took it. It is **resolved (2026-10-29) as
@@ -1455,6 +1482,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Remaining whole-print collection drop inside G-code emission](issues/94-remaining-whole-print-drop.md): **resolved (2026-10-29; Phase-1 screen — measured-dead, no candidate, no campaign, probe reverted)** — the `host:gcode_emit` bracket is **93-94 % drop**: rotation 6-7 µs, walk **176-253 ms**, free **3,242-3,558 ms**, bracket 3,415-3,811 ms (ordinary base supports-on, 495 layers, both cells byte-identical to `22200671…` / `0b29e1bf…`). **Parallel free (`into_par_iter().for_each(drop)`) is a wash**: classic **−0.321 s (+0.19 %** of the cell), arachne **+0.200 s (−0.12 %)** — 12 threads buy 9 % in one cell and lose 6 % in the other, so Windows' process-heap serialisation, not thread count, sets the cost. **Layer-by-layer consumption is a structural zero**: the walk is serial and totals 176-253 ms, so interleaving the same serial frees with it overlaps nothing. **Deferred free overlapping the post-emission tail** has an absolute ceiling equal to the tail — **1,603 ms classic (0.97 %)** and **1,367 ms arachne (0.82 %)** against the **1,318 / 1,335 ms** floor (**1.22x / 1.02x**) — before any overlap loss, wake-up or contention with the concurrent 42 MB serialisation, so under the pre-declared **strict four-cell wall** gate the screen does not justify a campaign. What the screen leaves is structural, not strategic: the free is an **allocation-volume** cost (~5.3 GB peak working set, t79), and only fewer/larger allocations (arena or bulk-free collection) can move it. Disclosures: load 8 % at start (not a quiet campaign), one probe run per arm per cell, instrumented walls never a wall claim (arachne serial vs parallel walls differ 4.8 % in the *opposite* direction of the 0.20 s drop difference). Evidence: [`evidence/t94-remaining-drop/`](evidence/t94-remaining-drop/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 8/8 negative controls rejected).
+
 - [Whole-layer deep-infill offsets in internal-bridge qualification](issues/93-whole-layer-deep-infill-offsets.md): **resolved (2026-10-29; measured GATE NOT MET on the strict four-cell wall clause — human-approved DROP, candidate reverted; `candidate.patch` preserved)** — Phase 1 screened four shapes against the map's **0.80 %** floor: **lazy dilation dead** (0 of 130 calls skippable; 130 of 130 have a surface reaching the deep area), **cheaper predicate rejected** (Miter dilation/erosion are not adjoint), **duplicate recompute dead** (9 recomputes, 0 with an identical deep-area operand; deleting all 9 reaches only **0.28 %**), and **windowed erosion above floor** (**9,244.1 / 9,311.3 ms** accumulated saving = **1,006.9 / 1,045.6 ms wall-eq = 1.38 / 1.43 %** of the cell; two runs agree within 3.70 %). The candidate clipped the `−4.5 × spacing` erosion operand to the pre-retain qualified bbox grown by `14 × spacing`; **16/16** proof cells byte-identical between arms, **8/8** ordinary cells equal to the post-t81 references, **8/8** cross-mode equal, 24 identical modules per mode, unit + both calicat internal-bridge e2e tests pass. Campaign (6/6 pairs, zero exclusions, every pair byte-identical): ordinary classic-off **−3.31 % wall / −1.19 % CPU**, ordinary classic-on **−0.26 % / −0.48 %**, accelerated classic-off **+0.13 % / −0.81 %**, accelerated classic-on **+0.62 % / −0.45 %**. The CPU fall matches the probe's 9.2 s (9.7 s measured) and the wall transfer is lifted by cpu/wall 9.65 → 9.84; the accelerated wall misses are inside each cell's own repeat range but positive, so the pre-declared clause is NOT MET and the human ruled DROP. Disclosures: server restart during ordinary classic-on (cell re-run whole, partial preserved), campaign timed only the four base classic cells. Evidence: [`evidence/t93-deep-infill-offsets/`](evidence/t93-deep-infill-offsets/FINDINGS.md) (`verify.py --self-test` exit 0 checkout-only, 18/18 negative controls rejected).
 
 - [Per-surface bridge boolean locality in ShellClassification](issues/92-per-surface-bridge-boolean-locality.md): **resolved (2026-10-28; Phase-1 screen — measured-dead, no candidate, probe reverted)** — the ticket's Phase-2 shapes (per-surface bbox gate, hoistable `1.3 ×` anchor offset, many-piece tiling) have an **absolute upper-bound ceiling of 0.341–0.371 %** of the base classic supports-off cell against the map's **0.80 %** floor (**2,429.6 / 2,303.2 ms accumulated = 271.1 / 249.7 ms wall-equivalent**, two probe runs, outputs byte-identical to `292df501…` and clean); deleting the entire `internal_bridge_angles` step as well reaches only 0.40–0.44 %. Shape counts: **130 calls, 196 surfaces (mean 1.51, max 7)**, `deep_infill_clip_area` 228 polygons (mean 1.75, max 7) — Orca's 128-piece tiling threshold never fires — and the per-surface `offset`/`intersection`/qualification is **0.25 s accumulated** against `internal_bridge_angles`' 2.58 s (t75's 2.4 s angles bracket transfers, its 1.5 s clip bracket does not: today 0.10 s). The screen surfaced a **larger term of a different shape**: two **whole-layer offsets on `deep_infill_area`** — `+1.5 × spacing` **12.5 / 11.4 s accumulated** (130 calls, median 81.6 ms) and `−4.5 × spacing` **10.0 / 9.3 s** (14 qualified calls, max 428.3 ms) — together **3.06–3.43 % of the cell**, ~4x the floor and ~9x this ticket's ceiling; whole-layer operands, so consumer bbox-gating cannot remove them. Graduated [93](issues/93-whole-layer-deep-infill-offsets.md). Disclosures: instrumented wall 79.0–83.0 s vs the uninstrumented 73.17 s cell; ~7–9 % inter-run bucket drift, verdict unchanged; both freshness gates exit 0 before and after. Evidence: [`evidence/t92-per-surface-bridge/`](evidence/t92-per-surface-bridge/FINDINGS.md) (`verify.py --self-test` exit 0 checkout-only, 15/15 negative controls rejected).
@@ -1623,6 +1652,20 @@ Standing decisions for this effort (2026-09-22):
 
 ## Not yet specified
 
+- **The surviving whole-print free is allocation-volume-bound, not a
+  drop-strategy problem (surfaced 2026-10-29 by
+  [ticket 94](issues/94-remaining-whole-print-drop.md)).** The `host:gcode_emit`
+  free is **3,242-3,558 ms** for 495 layers on the base supports-on cells, at
+  ~5.3 GB peak working set (t79). The free does **not** parallelise (12 threads:
+  classic −0.32 s, arachne +0.20 s), layer-by-layer consumption overlaps
+  nothing (the walk is 176-253 ms serial), and the deferred-overlap ceiling is
+  the **1.37-1.60 s** post-emission tail — at the 0.80 % floor before overlap
+  loss. The lever is **fewer/larger allocations: an arena or bulk-free layer
+  collection** (one allocation per layer or per print), which is a structural
+  IR/allocator change, not a postpass or emitter tweak. Re-enter only with a
+  measured allocation count and bytes per layer and a representation-safe arena
+  design; the drop-strategy shapes are closed.
+
 - **The whole-layer clip-area dilation is now the largest term in the function
   (surfaced 2026-10-29 by
   [ticket 93](issues/93-whole-layer-deep-infill-offsets.md)).**
@@ -1644,23 +1687,6 @@ Standing decisions for this effort (2026-09-22):
   strict four-cell wall clause can therefore fail on a real work removal.
   Price the gate per mode, and settle before the campaign whether a
   CPU-corroborated wall-neutral cell is acceptable — not after it.
-
-- **The one remaining whole-print drop (surfaced 2026-10-27 by
-  [ticket 90](issues/90-postpass-layer-collection-ownership.md)).** Ownership
-  removed the finalization clone, the commit drop and the teardown drop, but the
-  collection still has to be freed once. That drop now lives inside the
-  `host:gcode_emit` bracket, which measures **3,616 ms classic / 2,961 ms
-  arachne** after the change (baseline 5,179 / 5,642 ms). The bracket contains
-  the emission walk too, and t88 measured that walk at ~0.19 s, so most of the
-  candidate's bracket is very likely the drop — but **this take did not split
-  walk from drop in the candidate**, so the removable term is unmeasured. The
-  ticket's optional parallel drop did not fire because the *teardown* is now
-  2–3 ms; what remains is the drop of the collection the emitter walks. Two
-  shapes to price, in either order: consume the vector layer-by-layer as the
-  walk finishes each layer (overlap frees with emission work, no extra threads),
-  or drop independent layers with `par_drain` (wall up, process CPU risk against
-  the work-preserving ceiling). Re-enter only with its own measured split and a
-  pre-declared gate; the map does not assume either is worth a take.
 
 - **The requested-Z half of the exact-Z tail (surfaced 2026-10-27 by
   [ticket 91](issues/91-exact-z-object-geometry-memo.md)).** The memo removed the
