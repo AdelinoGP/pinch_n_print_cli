@@ -133,3 +133,59 @@ pub fn exact_z_memoizes_z_independent_terms_per_object() {
     assert_eq!(service.geometry_build_count(), 2);
     assert_eq!(third.termination_surfaces, low.termination_surfaces);
 }
+
+/// The batched prefetch must serve exactly what the single-Z path computes.
+///
+/// `slice_mesh_ex` builds every requested plane independently, so batching the
+/// planes is a work-removal, not a geometry change — this pins that claim on the
+/// real API, including the two degenerate planes (exactly on the mesh bottom
+/// and top) and one outside the Z extent.
+#[test]
+pub fn prefetched_cross_sections_match_the_single_z_queries() {
+    let zs = [4.321_f32, 8.0, 0.0, 10.0, 11.0];
+    let single = ExactZQueryService::new(Arc::new(cube_mesh()));
+    let batched = ExactZQueryService::new(Arc::new(cube_mesh()));
+
+    let expected: Vec<_> = zs
+        .iter()
+        .map(|z| {
+            single
+                .query("object-a", 7, *z)
+                .expect("single-Z query")
+                .occupancy
+                .clone()
+        })
+        .collect();
+
+    batched.prefetch_cross_sections("object-a", &zs);
+    assert_eq!(
+        batched.geometry_build_count(),
+        1,
+        "the prefetch builds the object's z-independent terms exactly once"
+    );
+
+    for (z, want) in zs.iter().zip(&expected) {
+        let got = batched.query("object-a", 7, *z).expect("batched query");
+        assert_eq!(
+            &got.occupancy, want,
+            "prefetched cross-section at Z={z} must equal the single-Z result"
+        );
+    }
+}
+
+/// A prefetch that cannot resolve its object is inert: the per-query path keeps
+/// its own error contract, so entry validation still degrades per entry.
+#[test]
+pub fn prefetch_of_an_unknown_object_leaves_the_query_contract_untouched() {
+    let service = ExactZQueryService::new(Arc::new(cube_mesh()));
+    service.prefetch_cross_sections("object-missing", &[1.0, 2.0]);
+    assert_eq!(
+        service.geometry_build_count(),
+        0,
+        "an unknown object must not publish geometry terms"
+    );
+    assert!(
+        service.query("object-missing", 7, 1.0).is_err(),
+        "the query path still reports the unknown object"
+    );
+}

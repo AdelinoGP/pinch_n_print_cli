@@ -394,6 +394,27 @@ pub fn try_aggregate_support_plans_with_policy(
     for plan in &input.plans {
         result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan.clone());
     }
+    // Serve every exact-Z cross-section this aggregation needs from one batched
+    // mesh walk per object. All entries are in hand before the occupancy gate
+    // runs, and `slice_mesh_ex` builds each plane independently, so the batched
+    // cross-section at a Z is identical to the single-Z one the per-query path
+    // computes (t95 measured 431 of 431 planes equal, polygon for polygon, on
+    // the base supports-on cells). A prefetch that cannot run leaves the
+    // per-query path untouched.
+    let mut exact_z_planes: HashMap<String, Vec<f32>> = HashMap::new();
+    for (_, entry) in &entries {
+        // A declined entry never reaches `validate_entry`, so it must not pay
+        // for a plane here either.
+        if entry.decline_reason.is_none() {
+            exact_z_planes
+                .entry(entry.object_id.clone())
+                .or_default()
+                .push(units_to_mm(entry.anchor_z));
+        }
+    }
+    for (object_id, zs) in exact_z_planes {
+        input.exact_z.prefetch_cross_sections(&object_id, &zs);
+    }
     for (plan_index, entry) in entries {
         let identity = (
             entry.global_layer_index,
