@@ -1,0 +1,131 @@
+diff --git a/crates/slicer-runtime/src/slice_postprocess_prepass.rs b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+index 7edead57..a8bbc195 100644
+--- a/crates/slicer-runtime/src/slice_postprocess_prepass.rs
++++ b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+@@ -582,6 +582,67 @@ fn resolve_opening_radius(
+ // Internal helpers
+ // ============================================================================
+ 
++// ---------------------------------------------------------------------------
++// t99 probe — split-and-union counterfactuals for the whole-layer clip-area
++// dilation. Attribution only: the production clip area is computed first (or
++// last, under `PNP_T99_ORDER=split`) and the counterfactual never feeds it.
++// ---------------------------------------------------------------------------
++
++fn t99_probe_enabled() -> bool {
++    std::env::var_os("PNP_T99_PROBE").is_some()
++}
++
++fn t99_record(line: String) {
++    use std::io::Write as _;
++    let Some(path) = std::env::var_os("PNP_T99_ROWS") else {
++        return;
++    };
++    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
++    let _guard = LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
++    if let Ok(mut file) = std::fs::OpenOptions::new()
++        .create(true)
++        .append(true)
++        .open(path)
++    {
++        let _ = writeln!(file, "{line}");
++    }
++}
++
++/// Offset every operand polygon on its own, then union the pieces — the
++/// ticket's literal split-and-union shape. Returns `(offsets_ms, union_ms,
++/// result)`, so the caller can also read the union-free lower bound.
++fn t99_split_arm(operand: &[ExPolygon], delta_mm: f32) -> (f64, f64, Vec<ExPolygon>) {
++    let t_offsets = std::time::Instant::now();
++    let mut pieces: Vec<ExPolygon> = Vec::with_capacity(operand.len());
++    for polygon in operand {
++        pieces.extend(offset(
++            std::slice::from_ref(polygon),
++            delta_mm,
++            OffsetJoinType::Miter,
++            0.0,
++        ));
++    }
++    let offsets_ms = t_offsets.elapsed().as_secs_f64() * 1e3;
++    let t_union = std::time::Instant::now();
++    let merged = union(&pieces, &[]);
++    let union_ms = t_union.elapsed().as_secs_f64() * 1e3;
++    (offsets_ms, union_ms, merged)
++}
++
++fn t99_vertices(operand: &[ExPolygon]) -> usize {
++    operand
++        .iter()
++        .map(|polygon| {
++            polygon.contour.points.len()
++                + polygon
++                    .holes
++                    .iter()
++                    .map(|hole| hole.points.len())
++                    .sum::<usize>()
++        })
++        .sum()
++}
++
+ /// Fully computed internal-bridge commit for one layer. The expensive
+ /// per-layer clipper work depends only on committed geometry and on this
+ /// layer's own fields, so it can run in the independent qualification phase;
+@@ -607,12 +668,58 @@ fn compute_internal_bridge_layer(
+     layer_index: u32,
+     print_z: f32,
+ ) -> Option<InternalBridgeLayerResult> {
++    let t99_probe = t99_probe_enabled();
++    // `PNP_T99_ORDER=split` prices the counterfactual cold and production warm;
++    // the default prices production cold. Two runs with opposite orders make the
++    // ratio an order-independent reading.
++    let t99_split_first = t99_probe
++        && std::env::var("PNP_T99_ORDER")
++            .map(|order| order == "split")
++            .unwrap_or(false);
++    let t99_delta = 1.5 * qualify_spacing_mm;
++    let t99_cold: Option<(f64, f64, Vec<ExPolygon>)> = if t99_split_first {
++        Some(t99_split_arm(&deep_infill_area, t99_delta))
++    } else {
++        None
++    };
++    let t99_prod_start = t99_probe.then(std::time::Instant::now);
+     let deep_infill_clip_area = offset(
+         &deep_infill_area,
+         1.5 * qualify_spacing_mm,
+         OffsetJoinType::Miter,
+         0.0,
+     );
++    let t99_prod_ms = t99_prod_start.map(|start| start.elapsed().as_secs_f64() * 1e3);
++    if t99_probe {
++        let (offsets_ms, union_ms, merged) =
++            t99_cold.unwrap_or_else(|| t99_split_arm(&deep_infill_area, t99_delta));
++        let exact = merged == deep_infill_clip_area;
++        let (set_equal, diff_polys) = if exact {
++            (true, 0usize)
++        } else {
++            let only_split = difference(&merged, &deep_infill_clip_area);
++            let only_prod = difference(&deep_infill_clip_area, &merged);
++            (
++                only_split.is_empty() && only_prod.is_empty(),
++                only_split.len() + only_prod.len(),
++            )
++        };
++        use std::sync::atomic::{AtomicUsize, Ordering};
++        static CALL: AtomicUsize = AtomicUsize::new(0);
++        let call = CALL.fetch_add(1, Ordering::Relaxed);
++        t99_record(format!(
++            "{call},{layer_index},{print_z:.4},{},{},{:.4},{:.4},{:.4},{},{},{},{},{diff_polys}",
++            deep_infill_area.len(),
++            t99_vertices(&deep_infill_area),
++            t99_prod_ms.unwrap_or(f64::NAN),
++            offsets_ms,
++            union_ms,
++            merged.len(),
++            deep_infill_clip_area.len(),
++            u8::from(exact),
++            u8::from(set_equal),
++        ));
++    }
+     let mut qualified: Vec<ExPolygon> = Vec::new();
+     for surface in &region.internal_solid_fill {
+         let expanded_candidate = offset(

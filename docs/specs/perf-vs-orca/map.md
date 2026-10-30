@@ -50,7 +50,34 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-30, third session — the ticket 98 take):** the human
+**Current selection scope (2026-10-30, fourth session — the ticket 99 take):**
+the human said "continue the perf vs orca map" (no ticket named). The frontier
+re-derivation at HEAD `6c1a2334` again found **98/98 child tickets resolved**
+(t98's resolution was still uncommitted; it was committed first as `1240999c`),
+so the session offered six measured fog routes and the human selected
+**split-and-union the clip dilation**, the last representation-safe shape t96
+left open. The fog patch graduated as
+[99](issues/99-clip-split-union-dilation.md) and is **resolved (2026-10-30) as
+REJECTED on price**: the most favourable split (offset every `deep_infill_area`
+polygon on its own, then union the pieces) is **0.8230x / 0.8252x** of the
+production call — order-independent within **0.27 %**, both arms byte-identical
+to `292df501…` — but that is **314.3 / 298.1 ms** wall-equivalent =
+**0.43 / 0.41 %** of the 73.17 s cell, **0.51–0.54x the 585.4 ms floor**. Even the
+union-free bound (offsets only, 0.8056x) is **0.47 %**. No candidate, no campaign,
+probe reverted. The reusable attribution: the call is **~80 % per-path Miter
+offset**, **~19 % batched internal union/cleanup**, **~2 %** an explicit union of
+the already-rounded pieces — splitting **partitions the cleanup** rather than
+skipping work. On top, the split arm is byte-identical on **1/130** calls and
+set-equal on **2/130** (`5,329` differing polygons, deterministic in both
+orders), so Clipper2's discretized dilation does not distribute over the union.
+The only surviving shape is t96's parity one (`determine_bridging_angle`), which
+is out of scope absent a human ruling. Evidence:
+[`evidence/t99-clip-split-union/`](evidence/t99-clip-split-union/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 6/6 negative controls rejected).
+Frontier now: **no open child remains**; the fog and the next route are the
+human's. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-30, third session — the ticket 98 take):** the human
 said "continue the perf vs orca map" (no ticket named). The frontier re-derivation at
 HEAD `6c1a2334` again found **all 97 child tickets resolved — no open child, no
 claim** — so the session offered six measured fog routes (allocation-volume arena;
@@ -1633,6 +1660,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Split and union the whole-layer clip-area dilation](issues/99-clip-split-union-dilation.md): **resolved (2026-10-30; measured REJECTED on price — the most favourable split is 0.41–0.43 % of the cell, about half the 0.80 % floor, and not representation-safe on top; no candidate, no campaign, probe reverted)** — offsetting every `deep_infill_area` polygon separately and unioning the pieces is genuinely cheaper per call (**0.8230x / 0.8252x**, two opposite pricing orders agreeing within **0.27 %**, both arms reproducing `292df501…` / 21,023,739 bytes) but the call's own share is too small for a 17.5 % cut to clear the floor: **2,434.2 / 2,464.8 ms accumulated** saving = **314.3 / 298.1 ms** wall-equivalent at each run's own cpu/wall = **0.43 / 0.41 %** of the 73.17 s cell, i.e. **0.51–0.54x the 585.4 ms floor**. The union-free lower bound (per-polygon offsets only, 0.8056 / 0.8069x) is **0.47 %** — still below — so no split shape in the family can clear it, because the offsets are **80.6 %** of production. The reusable decomposition: **~80 % per-path Miter offset, ~19 % batched internal union/cleanup, ~2 %** an explicit union of the already-rounded pieces — splitting partitions the cleanup instead of skipping work. Exactness is independently fatal: byte-identical on **1/130** calls, set-equal on **2/130**, **5,329** differing polygons, identical in both orders. Disclosures: instrumented walls only (the two probe walls are 27.0 / 17.9 s above the 73.17 s baseline and 9.1 s apart for the same work, so the production spans they denominate are inflated and only the ratio is read); the differing area was not quantified because the price already decides; probe reverted; both freshness gates exit 0. Evidence: [`evidence/t99-clip-split-union/`](evidence/t99-clip-split-union/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 6/6 negative controls rejected).
+
 - [Match Orca's tree-support branch distance in the matched job](issues/97-match-branch-distance-fairness.md): **resolved (2026-10-30; REJECTED on fairness — the premise is false, no profile edit, no campaign)** — `support_style = default` is not style-neutral. Canonical `SupportParameters` resolves it to `smsTreeOrganic` on a tree family (`// Orca: use organic as default`), `PrintObject::_generate_support_material` / `TreeSupport::generate` fork that style to `generate_tree_support_3D`, and the organic engine's config struct (`TreeSupportCommon.hpp`) reads **only** `tree_support_branch_distance_organic`. The matched job resolves it to **1 mm**; PnP's normal-key default is also **1 mm** (`tree-support-planner.toml`), and the supports-on profiles set neither key. So the effective distances are already matched, and t88's 5 mm arm (184,115 → 176,869 ms, −3.94 %, G-code −0.83 %, changed SHA) is a **5x PnP branch-spacing reduction in a different engine**, not a match. The real gap is the style substitution: `TreeSupportStyle::from_config` aliases every canonically-organic input (`default`/`organic`/`grid`/`snug` on a tree family) to the classic engine's **Strong** style because the organic engine is unimplemented (`DEV-156`; organic port queued in `docs/specs/support-generation-remediation-plan.md`). The deviations table's `tree_support_branch_distance` row (PnP 1.0 vs Orca 5.0) compares the **inert** normal key; the effective `_organic` key is 1.0 on both sides and is not registered by PnP. Disclosures: the 2026-10-27 Orca install (`2.5.0-beta`) rejects the rig's file-path `--load-settings` (`Preset was not found in the loaded bundle`) and no longer ships `resources/profiles/BBL/{machine,process}`, so Phase 0 rests on canonical source + `DEV-156`, not a fresh Orca run; that also blocks Orca-side scoreboard refreshes until the rig is updated or a stock Orca restored. Neither freshness gate applies (docs-only; no guest or code change). Evidence: [`evidence/t97-branch-distance/`](evidence/t97-branch-distance/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 5/5 negative controls rejected).
 
 - [Windowed clip area in internal-bridge qualification](issues/96-windowed-clip-area-dilation.md): **resolved (2026-10-30; Phase-1 screen — REJECTED on exactness, no candidate, no campaign, probe reverted)** — the whole-layer `+1.5 × spacing` dilation is **11,672.7–11,813.6 ms** accumulated over 130 calls; a candidate-box window (`8 × spacing`, operand `11 × spacing`, result clipped back) keeps **12.2 %** of the deep-area ring vertices and saves **10,653.5–10,780.5 ms = 1.17 s wall-eq = 1.57–1.60 %** of the ordinary base classic-off cell (**2.0x** the 0.80 % floor, two runs within **1.2 %**). It is **not representation-safe**: the windowed arm emits `5fc8fa72…` / 21,023,889 bytes against `292df501…` / 21,023,739, identically in two runs, with the first differing block an `Internal Bridge` at `;Z:21.4` (8 → 10 moves). At that layer the two clip areas are **set-equal inside the window** (`mismatch_polys = 0`), so qualification and per-candidate `area` are unchanged; the failure is `internal_bridge_angles`' `expansion_area ∩ clip_area` term → `boundary_anchor_polylines`: with qualification and `area` unchanged, the nearest anchor must have lain **beyond the window** (or the cut introduced a closer ring), so the anchor reach is not bounded by the planned `3.3 × spacing` and the window moves it. No finite candidate-driven window is safe (mirror of t93, where the same operand's erosion was safe because its consumers are bounded by `2 × spacing`). Secondary: **116/130** calls show a non-zero inside-window set difference (**1,071** slivers). The wall screen was not reached; the single uninstrumented window wall (76.557 s) is unpaired and not a claim. Disclosures: instrumented walls attribution only; margins not swept (failure is unbounded by construction); both freshness gates exit 0. Evidence: [`evidence/t96-windowed-clip-area/`](evidence/t96-windowed-clip-area/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 6/6 negative controls rejected).
@@ -1849,25 +1878,24 @@ Standing decisions for this effort (2026-09-22):
   measured allocation count and bytes per layer and a representation-safe arena
   design; the drop-strategy shapes are closed.
 
-- **The whole-layer clip-area dilation is still the largest term in the
-  function, but a windowed operand is ruled out (priced and rejected 2026-10-30
-  by [ticket 96](issues/96-windowed-clip-area-dilation.md)).**
-  `offset(deep_infill_area, +1.5 × spacing)` is **11.4–12.8 s accumulated**
-  across t92/t93/t96 (**1.57–1.85 %** of the base classic-off cell), and **lazy
-  dilation is dead** — 0 of 130 calls can skip it because every call has a
-  surface reaching the deep area. A candidate-box window (`8 × spacing`,
-  operand `11 × spacing`) removes **91 %** of the call cost but changes the
-  bridge direction: `internal_bridge_angles`' `expansion_area ∩ clip_area` term
-  feeds a *global* nearest-anchor choice, and with qualification/`area` unchanged
-  the nearest anchor must have lain beyond the window (or the cut introduced a
-  closer ring), so the anchor reach is not bounded by the planned
-  `3.3 × spacing`. **No finite candidate-driven window is representation-safe.** The surviving shapes keep the whole operand and reduce
-  the offset's own cost — split the disjoint deep polygons, offset each and
-  union (dilation distributes over a disjoint union; **unmeasured**, and the
-  union cost must be priced) — or change the angle consumer (parity work,
-  canonical `determine_bridging_angle`). Re-enter only with a measured
-  whole-operand reduction and a byte-identity argument that does not depend on
-  a window.
+- **The whole-layer clip-area dilation is priced, and its last
+  representation-safe shape is closed (t96 window rejected 2026-10-30;
+  [ticket 99](issues/99-clip-split-union-dilation.md) split rejected
+  2026-10-30).** `offset(deep_infill_area, +1.5 × spacing)` is
+  **11.4–12.8 s accumulated** across t92/t93/t96 (**1.57–1.85 %** of the base
+  classic-off cell). Its cost decomposes **~80 % per-path Miter offset,
+  ~19 % batched internal union/cleanup, ~2 %** an explicit union of the
+  already-rounded pieces (t99, 130 calls, two pricing orders). **Both named
+  shapes are closed:** a candidate-box window removes **91 %** of the call but
+  changes the bridge direction (t96 — `internal_bridge_angles`'
+  `expansion_area ∩ clip_area` term feeds a *global* nearest-anchor choice, so
+  no finite candidate-driven window is safe), and the split-and-union family
+  tops out at **0.41–0.43 %** of the cell — **0.51–0.54x the 0.80 % floor**, and
+  not even set-equal (2/130). **No in-scope shape remains on this call.** The
+  only standing shape is to change the angle consumer
+  (`determine_bridging_angle`) so the clip area need not be whole — OrcaSlicer
+  geometry-parity work, which the map holds out of scope unless the human makes
+  a t81-style exception. Re-enter only if that consumer changes.
 
 - **A host-side work removal can be wall-neutral in accelerated cells
   (surfaced 2026-10-29 by
