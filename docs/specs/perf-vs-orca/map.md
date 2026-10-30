@@ -38,7 +38,57 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-29, on the ticket 94 take):** the human said
+**Current selection scope (2026-10-29 → 2026-10-30, on the ticket 95 take):**
+the human said "continue the perf vs orca map" (no ticket named). The frontier
+re-derivation at HEAD `8f19a6a9` found **all 94 child tickets resolved — no open
+child, no claim** — so the session offered six measured fog routes (batch the
+exact-Z cross-sections; windowed clip-area dilation; arena layer-collection free;
+rule on the four-cell gate; port support branch distance; re-measure the engine
+gap) and the human selected **batch exact-Z cross-sections**. The fog patch
+graduated as [95](issues/95-exact-z-cross-section-batching.md) and is
+**resolved (2026-10-30, human-approved KEEP, candidate committed `afe9c361`)**.
+
+The premise, re-verified against source before the offer: `validate_entry`
+(`crates/slicer-wasm-host/src/support_aggregation.rs`) runs per entry in a
+**serial** loop; each `ExactZQueryService::query` miss called
+`cross_section_at_z`, which is `slice_mesh_ex(mesh, &[z])` — a **one-element**
+Z array over the **2,461,234** triangles of `tmp/base.stl`'s world mesh. t91
+measured **431 queries / 431 distinct `(object, region, z)` / 431 misses** — the
+cache never hit, so every entry paid a full walk.
+
+Phase 1 (probe, 3 slices, outputs byte-identical to the post-t81 references):
+**431/431 planes equal polygon-for-polygon**, **6.42 / 6.72 / 6.84 s** of
+single-Z walks collapsing to **0.99–1.05 s** in one batched `slice_mesh_ex` walk
+= **5.37 / 5.73 / 5.83 s** saved = **3.26 / 3.48 / 3.49 %** of the cell,
+**4.07–4.37x** the 0.80 % floor. The batch buys **6.4–6.9x**, not 431x, because
+the batched walk pays two binary searches over 431 sorted planes and a straddle
+test per triangle and is memory-latency-bound.
+
+Candidate: per-`(object, z_units)` cross-section memo plus
+`ExactZQueryService::prefetch_cross_sections`, called once per object from
+`try_aggregate_support_plans_with_policy` before the serial loop; the
+per-`(object, region, z)` result contract, the single-Z miss path and the
+per-entry degradation are unchanged; host-only, no IR/guest/geometry change.
+**Proof 16/16 PASS** (both arms byte-identical, 8/8 ordinary cells equal to the
+post-t81 references, 8/8 cross-mode equal, 24 identical modules per mode,
+four distinct host binaries). **Standing gate PASS in all four pre-declared base
+supports-on cells**, 6/6 pairs each, zero starvation exclusions, 24/24 pairs
+byte-identical: wall **−3.97 / −3.19 / −2.86 / −2.64 %** and CPU **−0.70 /
+−0.70 / −0.90 / −0.15 %** (ordinary/accelerated × classic/arachne), wall deltas
+**−6.17 / −5.68 / −5.43 / −5.49 s**, CPU sum **−27.2 s**. cpu/wall rises in every
+cell (6.57→6.76, 6.67→6.87, 6.46→6.63, 6.39→6.61) — serial work removal
+concentrating the same parallel work, the t93 artefact, not extra work. One
+**disclosed** non-negative pair (accelerated classic-on pair 4, **+2.35 %**,
+during a load event that slowed both arms ~10 s in that pair); the gated
+statistic is the paired median. Pre-commit: workspace clippy clean,
+`check-literals` 0, `check-test-quality --report` 0, contract 163/0, support
+integration 22/0, both freshness gates exit 0. Evidence:
+[`evidence/t95-exact-z-batch/`](evidence/t95-exact-z-batch/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 7/7 negative controls rejected).
+Frontier now: **no open child remains**; the fog and the next route are the
+human's. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-29, on the ticket 94 take):** the human said
 "continue the perf vs orca map" (no ticket named). The frontier re-derivation
 at HEAD `57234b81` found **all 93 child tickets resolved — no open child, no
 claim** — so the session offered five measured above-floor leads from the fog.
@@ -1482,6 +1532,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Batched exact-Z cross-sections in the support validation loop](issues/95-exact-z-cross-section-batching.md): **resolved (2026-10-30; human-approved KEEP, candidate committed `afe9c361`)** — the 431 anchor Z values were 431 distinct `(object, region, z)` keys, so the exact-Z cache never hit and every entry paid `slice_mesh_ex(mesh, &[z])`, a one-element Z array over `tmp/base.stl`'s **2,461,234** triangles. Phase 1 (probe, 3 slices, all outputs equal to the post-t81 references): **431/431** planes equal polygon-for-polygon; **6.42 / 6.72 / 6.84 s** of single-Z walks collapse to **0.99–1.05 s** in one batched walk at the object's sorted Z set = **5.37 / 5.73 / 5.83 s** saved = **3.26 / 3.48 / 3.49 %** of the cell, **4.07–4.37x** the 0.80 % floor; the batch buys **6.4–6.9x**, not 431x (two binary searches over 431 planes plus a straddle test per triangle, memory-latency-bound). Candidate: per-`(object, z_units)` cross-section memo + `ExactZQueryService::prefetch_cross_sections`, called once per object before the serial `validate_entry` loop; per-`(object, region, z)` contract, single-Z miss path and per-entry degradation unchanged; host-only. **Proof 16/16** (arms byte-identical, 8/8 ordinary equal to the post-t81 references, 8/8 cross-mode equal, 24 identical modules per mode). **Gate PASS in all four base supports-on cells**, 6/6 pairs, zero exclusions, **24/24 pairs byte-identical**: wall **−3.97 / −3.19 / −2.86 / −2.64 %**, CPU **−0.70 / −0.70 / −0.90 / −0.15 %**, wall deltas **−6.17 / −5.68 / −5.43 / −5.49 s**. One **disclosed** non-negative pair (accelerated classic-on #4, **+2.35 %**, during a load event that slowed both arms ~10 s). Evidence: [`evidence/t95-exact-z-batch/`](evidence/t95-exact-z-batch/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 7/7 negative controls rejected).
+
 - [Remaining whole-print collection drop inside G-code emission](issues/94-remaining-whole-print-drop.md): **resolved (2026-10-29; Phase-1 screen — measured-dead, no candidate, no campaign, probe reverted)** — the `host:gcode_emit` bracket is **93-94 % drop**: rotation 6-7 µs, walk **176-253 ms**, free **3,242-3,558 ms**, bracket 3,415-3,811 ms (ordinary base supports-on, 495 layers, both cells byte-identical to `22200671…` / `0b29e1bf…`). **Parallel free (`into_par_iter().for_each(drop)`) is a wash**: classic **−0.321 s (+0.19 %** of the cell), arachne **+0.200 s (−0.12 %)** — 12 threads buy 9 % in one cell and lose 6 % in the other, so Windows' process-heap serialisation, not thread count, sets the cost. **Layer-by-layer consumption is a structural zero**: the walk is serial and totals 176-253 ms, so interleaving the same serial frees with it overlaps nothing. **Deferred free overlapping the post-emission tail** has an absolute ceiling equal to the tail — **1,603 ms classic (0.97 %)** and **1,367 ms arachne (0.82 %)** against the **1,318 / 1,335 ms** floor (**1.22x / 1.02x**) — before any overlap loss, wake-up or contention with the concurrent 42 MB serialisation, so under the pre-declared **strict four-cell wall** gate the screen does not justify a campaign. What the screen leaves is structural, not strategic: the free is an **allocation-volume** cost (~5.3 GB peak working set, t79), and only fewer/larger allocations (arena or bulk-free collection) can move it. Disclosures: load 8 % at start (not a quiet campaign), one probe run per arm per cell, instrumented walls never a wall claim (arachne serial vs parallel walls differ 4.8 % in the *opposite* direction of the 0.20 s drop difference). Evidence: [`evidence/t94-remaining-drop/`](evidence/t94-remaining-drop/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 8/8 negative controls rejected).
 
 - [Whole-layer deep-infill offsets in internal-bridge qualification](issues/93-whole-layer-deep-infill-offsets.md): **resolved (2026-10-29; measured GATE NOT MET on the strict four-cell wall clause — human-approved DROP, candidate reverted; `candidate.patch` preserved)** — Phase 1 screened four shapes against the map's **0.80 %** floor: **lazy dilation dead** (0 of 130 calls skippable; 130 of 130 have a surface reaching the deep area), **cheaper predicate rejected** (Miter dilation/erosion are not adjoint), **duplicate recompute dead** (9 recomputes, 0 with an identical deep-area operand; deleting all 9 reaches only **0.28 %**), and **windowed erosion above floor** (**9,244.1 / 9,311.3 ms** accumulated saving = **1,006.9 / 1,045.6 ms wall-eq = 1.38 / 1.43 %** of the cell; two runs agree within 3.70 %). The candidate clipped the `−4.5 × spacing` erosion operand to the pre-retain qualified bbox grown by `14 × spacing`; **16/16** proof cells byte-identical between arms, **8/8** ordinary cells equal to the post-t81 references, **8/8** cross-mode equal, 24 identical modules per mode, unit + both calicat internal-bridge e2e tests pass. Campaign (6/6 pairs, zero exclusions, every pair byte-identical): ordinary classic-off **−3.31 % wall / −1.19 % CPU**, ordinary classic-on **−0.26 % / −0.48 %**, accelerated classic-off **+0.13 % / −0.81 %**, accelerated classic-on **+0.62 % / −0.45 %**. The CPU fall matches the probe's 9.2 s (9.7 s measured) and the wall transfer is lifted by cpu/wall 9.65 → 9.84; the accelerated wall misses are inside each cell's own repeat range but positive, so the pre-declared clause is NOT MET and the human ruled DROP. Disclosures: server restart during ordinary classic-on (cell re-run whole, partial preserved), campaign timed only the four base classic cells. Evidence: [`evidence/t93-deep-infill-offsets/`](evidence/t93-deep-infill-offsets/FINDINGS.md) (`verify.py --self-test` exit 0 checkout-only, 18/18 negative controls rejected).
@@ -1688,18 +1740,15 @@ Standing decisions for this effort (2026-09-22):
   Price the gate per mode, and settle before the campaign whether a
   CPU-corroborated wall-neutral cell is acceptable — not after it.
 
-- **The requested-Z half of the exact-Z tail (surfaced 2026-10-27 by
-  [ticket 91](issues/91-exact-z-object-geometry-memo.md)).** The memo removed the
-  z-independent 49 %, so what remains of the 431-query validation loop is
-  **8.9 s of requested-Z cross-sections** (`cross_section_at_z` per distinct
-  anchor Z; the probe still reports 431 queries / 431 misses because the key
-  carries Z). [t89](issues/89-support-plan-exact-z-validation-parallel.md)
-  priced the parallel fold over that same work and rejected it (+6.78 % process
-  CPU against a −5.50 % wall win) and called the kernel
-  memory/allocator-bound. A *serial* shape that makes the kernel cheaper —
-  shared per-layer slab prep, batched cross-sections, or cheaper section
-  construction — is unmeasured and has no candidate premise yet. Not ticketed:
-  split it with its own probe before a take.
+- **A batched whole-mesh walk scales with per-triangle cost, not with plane
+  count (surfaced 2026-10-30 by
+  [ticket 95](issues/95-exact-z-cross-section-batching.md)).** Folding 431
+  single-plane `slice_mesh_ex` walks into one sorted-Z walk bought
+  **6.4–6.9x**, not 431x: the batched walk pays two binary searches over the
+  plane array plus a straddle test per triangle, and it is memory-latency-bound
+  on the 1.23 M-vertex array (**0.99–1.05 s** for 2.46 M triangles). Any future
+  "batch N planes/queries into one walk" estimate must price the per-triangle
+  overhead at N rather than assume N-fold. Method note, not route work.
 
 - **Ownership changes the cost of what it removes — do not price the survivor
   from the old bracket (surfaced 2026-10-27 by

@@ -1,0 +1,2 @@
+T95 LOOP entries=431 total_ns=7596430900
+T95 BATCH object=78620494-ecb8-5aca-8142-5d15997bb6e6 vertices=1230602 triangles=2461234 queries=431 misses=431 object_misses=431 distinct_z=431 single_ns_total=6418267700 single_ns_min=7551300 single_ns_median=15345500 single_ns_max=25871400 batch_ns=1052619900 equal=431 mismatch=0 first_mismatch="" batch_polys=805 production_polys=805
