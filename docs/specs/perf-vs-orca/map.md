@@ -38,7 +38,40 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-29 → 2026-10-30, on the ticket 95 take):**
+**Current selection scope (2026-10-30, on the ticket 96 take):** the human said
+"continue the perf vs orca map" (no ticket named). The frontier re-derivation at
+HEAD `0b25a8b9` found **all 95 child tickets resolved — no open child, no
+claim** — so the session offered six measured fog routes (windowed clip-area
+dilation; match `tree_support_branch_distance` 5 mm; arena layer collection;
+planner residual vs canonical; scoreboard + increment refresh; apply-opening
+join parity) and the human selected **windowed clip-area dilation**. The fog
+patch graduated as [96](issues/96-windowed-clip-area-dilation.md) and is
+**resolved (2026-10-30) as a Phase-1 screen — REJECTED on exactness, no
+candidate, no campaign, probe reverted.** The price is real and above the floor:
+the whole-layer `+1.5 × spacing` dilation is 11.67–11.81 s accumulated over 130
+calls, and a candidate-box window (8 × spacing, operand 11 × spacing) removes
+**91 %** of it — **10.65–10.78 s saved = 1.57–1.60 %** of the ordinary base
+classic-off cell, 2.0x the floor, the two runs agreeing within 1.2 %. But the
+windowed arm deterministically changes the internal-bridge **direction**
+(`5fc8fa72…` / 21,023,889 bytes against `292df501…` / 21,023,739; first differing
+block is an `Internal Bridge` at `;Z:21.4`, 8 → 10 moves), and at that layer the
+production and windowed clip areas are set-equal **inside the window**
+(`mismatch_polys = 0`). The failure is the anchor consumer:
+`internal_bridge_angles`' `expansion_area ∩ clip_area` term feeds
+`boundary_anchor_polylines`; with qualification and `area` unchanged, the nearest
+anchor must have lain beyond the window (or the cut introduced a closer ring), so
+the anchor reach is not bounded by the planned 3.3 × spacing and no finite
+candidate-driven window is safe. This is the
+mirror of t93, where the same operand's **erosion** was safe because its
+consumers are bounded by `2 × spacing`. The wall screen was never reached (the
+single uninstrumented window-arm wall, 76.557 s, is unpaired and not a claim).
+Fog now carries the surviving shapes: keep the whole operand and make the offset
+itself cheaper (split-and-union over disjoint polygons, unmeasured), or change
+the angle consumer (parity work). Evidence:
+[`evidence/t96-windowed-clip-area/`](evidence/t96-windowed-clip-area/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 6/6 negative controls rejected).
+
+**Previous selection scope (2026-10-29 → 2026-10-30, on the ticket 95 take):**
 the human said "continue the perf vs orca map" (no ticket named). The frontier
 re-derivation at HEAD `8f19a6a9` found **all 94 child tickets resolved — no open
 child, no claim** — so the session offered six measured fog routes (batch the
@@ -1532,6 +1565,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Windowed clip area in internal-bridge qualification](issues/96-windowed-clip-area-dilation.md): **resolved (2026-10-30; Phase-1 screen — REJECTED on exactness, no candidate, no campaign, probe reverted)** — the whole-layer `+1.5 × spacing` dilation is **11,672.7–11,813.6 ms** accumulated over 130 calls; a candidate-box window (`8 × spacing`, operand `11 × spacing`, result clipped back) keeps **12.2 %** of the deep-area ring vertices and saves **10,653.5–10,780.5 ms = 1.17 s wall-eq = 1.57–1.60 %** of the ordinary base classic-off cell (**2.0x** the 0.80 % floor, two runs within **1.2 %**). It is **not representation-safe**: the windowed arm emits `5fc8fa72…` / 21,023,889 bytes against `292df501…` / 21,023,739, identically in two runs, with the first differing block an `Internal Bridge` at `;Z:21.4` (8 → 10 moves). At that layer the two clip areas are **set-equal inside the window** (`mismatch_polys = 0`), so qualification and per-candidate `area` are unchanged; the failure is `internal_bridge_angles`' `expansion_area ∩ clip_area` term → `boundary_anchor_polylines`: with qualification and `area` unchanged, the nearest anchor must have lain **beyond the window** (or the cut introduced a closer ring), so the anchor reach is not bounded by the planned `3.3 × spacing` and the window moves it. No finite candidate-driven window is safe (mirror of t93, where the same operand's erosion was safe because its consumers are bounded by `2 × spacing`). Secondary: **116/130** calls show a non-zero inside-window set difference (**1,071** slivers). The wall screen was not reached; the single uninstrumented window wall (76.557 s) is unpaired and not a claim. Disclosures: instrumented walls attribution only; margins not swept (failure is unbounded by construction); both freshness gates exit 0. Evidence: [`evidence/t96-windowed-clip-area/`](evidence/t96-windowed-clip-area/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 6/6 negative controls rejected).
+
 - [Batched exact-Z cross-sections in the support validation loop](issues/95-exact-z-cross-section-batching.md): **resolved (2026-10-30; human-approved KEEP, candidate committed `afe9c361`)** — the 431 anchor Z values were 431 distinct `(object, region, z)` keys, so the exact-Z cache never hit and every entry paid `slice_mesh_ex(mesh, &[z])`, a one-element Z array over `tmp/base.stl`'s **2,461,234** triangles. Phase 1 (probe, 3 slices, all outputs equal to the post-t81 references): **431/431** planes equal polygon-for-polygon; **6.42 / 6.72 / 6.84 s** of single-Z walks collapse to **0.99–1.05 s** in one batched walk at the object's sorted Z set = **5.37 / 5.73 / 5.83 s** saved = **3.26 / 3.48 / 3.49 %** of the cell, **4.07–4.37x** the 0.80 % floor; the batch buys **6.4–6.9x**, not 431x (two binary searches over 431 planes plus a straddle test per triangle, memory-latency-bound). Candidate: per-`(object, z_units)` cross-section memo + `ExactZQueryService::prefetch_cross_sections`, called once per object before the serial `validate_entry` loop; per-`(object, region, z)` contract, single-Z miss path and per-entry degradation unchanged; host-only. **Proof 16/16** (arms byte-identical, 8/8 ordinary equal to the post-t81 references, 8/8 cross-mode equal, 24 identical modules per mode). **Gate PASS in all four base supports-on cells**, 6/6 pairs, zero exclusions, **24/24 pairs byte-identical**: wall **−3.97 / −3.19 / −2.86 / −2.64 %**, CPU **−0.70 / −0.70 / −0.90 / −0.15 %**, wall deltas **−6.17 / −5.68 / −5.43 / −5.49 s**. One **disclosed** non-negative pair (accelerated classic-on #4, **+2.35 %**, during a load event that slowed both arms ~10 s). Evidence: [`evidence/t95-exact-z-batch/`](evidence/t95-exact-z-batch/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 7/7 negative controls rejected).
 
 - [Remaining whole-print collection drop inside G-code emission](issues/94-remaining-whole-print-drop.md): **resolved (2026-10-29; Phase-1 screen — measured-dead, no candidate, no campaign, probe reverted)** — the `host:gcode_emit` bracket is **93-94 % drop**: rotation 6-7 µs, walk **176-253 ms**, free **3,242-3,558 ms**, bracket 3,415-3,811 ms (ordinary base supports-on, 495 layers, both cells byte-identical to `22200671…` / `0b29e1bf…`). **Parallel free (`into_par_iter().for_each(drop)`) is a wash**: classic **−0.321 s (+0.19 %** of the cell), arachne **+0.200 s (−0.12 %)** — 12 threads buy 9 % in one cell and lose 6 % in the other, so Windows' process-heap serialisation, not thread count, sets the cost. **Layer-by-layer consumption is a structural zero**: the walk is serial and totals 176-253 ms, so interleaving the same serial frees with it overlaps nothing. **Deferred free overlapping the post-emission tail** has an absolute ceiling equal to the tail — **1,603 ms classic (0.97 %)** and **1,367 ms arachne (0.82 %)** against the **1,318 / 1,335 ms** floor (**1.22x / 1.02x**) — before any overlap loss, wake-up or contention with the concurrent 42 MB serialisation, so under the pre-declared **strict four-cell wall** gate the screen does not justify a campaign. What the screen leaves is structural, not strategic: the free is an **allocation-volume** cost (~5.3 GB peak working set, t79), and only fewer/larger allocations (arena or bulk-free collection) can move it. Disclosures: load 8 % at start (not a quiet campaign), one probe run per arm per cell, instrumented walls never a wall claim (arachne serial vs parallel walls differ 4.8 % in the *opposite* direction of the 0.20 s drop difference). Evidence: [`evidence/t94-remaining-drop/`](evidence/t94-remaining-drop/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 8/8 negative controls rejected).
@@ -1718,17 +1753,25 @@ Standing decisions for this effort (2026-09-22):
   measured allocation count and bytes per layer and a representation-safe arena
   design; the drop-strategy shapes are closed.
 
-- **The whole-layer clip-area dilation is now the largest term in the function
-  (surfaced 2026-10-29 by
-  [ticket 93](issues/93-whole-layer-deep-infill-offsets.md)).**
-  `offset(deep_infill_area, +1.5 × spacing)` is **12.4–12.8 s accumulated**
-  (**1.85 %** of the base classic-off cell) and **lazy dilation is dead** — 0 of
-  130 calls can skip it because every call has a surface reaching the deep
-  area. The surviving shape is a *windowed or clustered* dilation keyed to the
-  surfaces/candidates that consume it, not a whole-call skip; it was outside
-  ticket 93's declared shapes and is unmeasured. The angles consumer also reads
-  the clip area through a whole-layer `expansion_area` intersection, so a
-  windowed dilation needs its own consumer analysis before a take.
+- **The whole-layer clip-area dilation is still the largest term in the
+  function, but a windowed operand is ruled out (priced and rejected 2026-10-30
+  by [ticket 96](issues/96-windowed-clip-area-dilation.md)).**
+  `offset(deep_infill_area, +1.5 × spacing)` is **11.4–12.8 s accumulated**
+  across t92/t93/t96 (**1.57–1.85 %** of the base classic-off cell), and **lazy
+  dilation is dead** — 0 of 130 calls can skip it because every call has a
+  surface reaching the deep area. A candidate-box window (`8 × spacing`,
+  operand `11 × spacing`) removes **91 %** of the call cost but changes the
+  bridge direction: `internal_bridge_angles`' `expansion_area ∩ clip_area` term
+  feeds a *global* nearest-anchor choice, and with qualification/`area` unchanged
+  the nearest anchor must have lain beyond the window (or the cut introduced a
+  closer ring), so the anchor reach is not bounded by the planned
+  `3.3 × spacing`. **No finite candidate-driven window is representation-safe.** The surviving shapes keep the whole operand and reduce
+  the offset's own cost — split the disjoint deep polygons, offset each and
+  union (dilation distributes over a disjoint union; **unmeasured**, and the
+  union cost must be priced) — or change the angle consumer (parity work,
+  canonical `determine_bridging_angle`). Re-enter only with a measured
+  whole-operand reduction and a byte-identity argument that does not depend on
+  a window.
 
 - **A host-side work removal can be wall-neutral in accelerated cells
   (surfaced 2026-10-29 by
@@ -1739,6 +1782,15 @@ Standing decisions for this effort (2026-09-22):
   strict four-cell wall clause can therefore fail on a real work removal.
   Price the gate per mode, and settle before the campaign whether a
   CPU-corroborated wall-neutral cell is acceptable — not after it.
+
+- **An inside-the-window set check is not a consumer-equality proof when a
+  consumer is a global nearest-neighbour choice (t96, 2026-10-30).** Ticket 96's
+  production and windowed clip areas were **set-equal inside the window** on the
+  layer whose bridge direction changed (`mismatch_polys = 0`), because the
+  consumer (`determine_bridging_angle`) samples candidate edges but scans every
+  anchor ring globally. A window proof must bound each consumer's **reach**;
+  comparing the windowed set to the production set bounds the operand, not the
+  consumer.
 
 - **A batched whole-mesh walk scales with per-triangle cost, not with plane
   count (surfaced 2026-10-30 by
