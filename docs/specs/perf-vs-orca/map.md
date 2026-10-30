@@ -33,12 +33,44 @@ Every number in this tracker is a ledger fact — re-derive at the point of use.
   references allowed are the heavy model fixtures `tmp/3dbenchy.stl` and
   `tmp/base.stl` — user-supplied and licence-encumbered, they must never be
   committed.
+- **Orca baseline tooling is currently blocked (surfaced 2026-10-30 by
+  [ticket 97](issues/97-match-branch-distance-fairness.md)).** The 2026-10-27
+  Orca install (`2.5.0-beta`) at `C:\Program Files\OrcaSlicer` rejects the
+  rig's file-path
+  `--load-settings` form (`can not resolve preset <path>: Preset was not found
+  in the loaded bundle`) and no longer ships
+  `resources/profiles/BBL/{machine,process}` (it ships `BBL.opc`). No Orca-side
+  scoreboard refresh can run until `run_scoreboard.ps1` learns the new preset
+  loading or a runnable stock Orca is restored. The map's existing Orca numbers
+  are unaffected as measurements; only fresh Orca runs are blocked.
 
 Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-30, on the ticket 96 take):** the human said
+**Current selection scope (2026-10-30, second session — the ticket 97 take):** the
+human said "continue the perf vs orca map" (no ticket named). The frontier
+re-derivation at HEAD `f48a0488` again found **all 96 child tickets resolved — no
+open child, no claim** — so the session offered six measured fog routes (match
+the 5 mm branch distance; base + benchy bottleneck refresh; `region_partition`
+dedup; split-and-union clip dilation; allocation-volume arena; host-removal gate
+ruling) and the human selected **match 5 mm branch distance**. The fog patch
+graduated as [97](issues/97-match-branch-distance-fairness.md) and is **resolved
+(2026-10-30) as REJECTED on fairness — the premise is false, no profile edit, no
+campaign.** Orca's `support_style = default` on a tree family resolves to
+**organic**, and the organic engine reads only
+`tree_support_branch_distance_organic`, resolved to **1 mm**. The normal
+`tree_support_branch_distance = 5 mm` that the deviations table compares is inert
+on that path. PnP is already at 1 mm, so the t88 arm was a 5x work reduction, not
+a match. The ticket surfaced the real supports-on fairness gap — Orca organic vs
+PnP's **Strong** substitution (`DEV-156`) — and the infrastructure blocker that
+the 2026-10-27 Orca install no longer accepts the rig's file-path
+`--load-settings`. Evidence: [`evidence/t97-branch-distance/`](evidence/t97-branch-distance/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 5/5 negative controls rejected).
+Frontier now: **no open child remains**; the fog and the next route are the
+human's. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-30, on the ticket 96 take):** the human said
 "continue the perf vs orca map" (no ticket named). The frontier re-derivation at
 HEAD `0b25a8b9` found **all 95 child tickets resolved — no open child, no
 claim** — so the session offered six measured fog routes (windowed clip-area
@@ -1112,6 +1144,16 @@ Standing decisions for this effort (2026-09-22):
   benchy 3.25/2.50/3.55/3.23, base 8.35/6.75/12.63/11.96 (ordinary, raw ÷ (1+Δ)).
   No verdict flips and the best cell moves **3.30x → 2.50x**, so the ~1.5x park
   condition stays binding. Raw ratios remain the headline.
+  **Supports-on engine-style disclosure (2026-10-30, ticket 97):** the four
+  supports-on cells compare **Orca's organic engine** (`support_style =
+  default` on a tree family → `smsTreeOrganic` → `generate_tree_support_3D`)
+  against **PnP's Strong substitution** for the same canonical styles
+  (`DEV-156`; the organic engine is unimplemented). The **effective branch
+  distance is 1 mm on both sides** (`tree_support_branch_distance_organic`
+  on the Orca side, the normal-key default on the PnP side); the deviations
+  table's 5 mm normal-key row is inert under the matched style. Every
+  supports-on ratio carries this engine-style mismatch, on top of the
+  resolution correction above.
 - **Win matrix**: all 8 cells decide, so support-correctness defects are route
   work — a degraded slice is not Orca's job.
 - **Measurement mode**: paired ordinary + accelerated runs are the default
@@ -1565,6 +1607,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Match Orca's tree-support branch distance in the matched job](issues/97-match-branch-distance-fairness.md): **resolved (2026-10-30; REJECTED on fairness — the premise is false, no profile edit, no campaign)** — `support_style = default` is not style-neutral. Canonical `SupportParameters` resolves it to `smsTreeOrganic` on a tree family (`// Orca: use organic as default`), `PrintObject::_generate_support_material` / `TreeSupport::generate` fork that style to `generate_tree_support_3D`, and the organic engine's config struct (`TreeSupportCommon.hpp`) reads **only** `tree_support_branch_distance_organic`. The matched job resolves it to **1 mm**; PnP's normal-key default is also **1 mm** (`tree-support-planner.toml`), and the supports-on profiles set neither key. So the effective distances are already matched, and t88's 5 mm arm (184,115 → 176,869 ms, −3.94 %, G-code −0.83 %, changed SHA) is a **5x PnP branch-spacing reduction in a different engine**, not a match. The real gap is the style substitution: `TreeSupportStyle::from_config` aliases every canonically-organic input (`default`/`organic`/`grid`/`snug` on a tree family) to the classic engine's **Strong** style because the organic engine is unimplemented (`DEV-156`; organic port queued in `docs/specs/support-generation-remediation-plan.md`). The deviations table's `tree_support_branch_distance` row (PnP 1.0 vs Orca 5.0) compares the **inert** normal key; the effective `_organic` key is 1.0 on both sides and is not registered by PnP. Disclosures: the 2026-10-27 Orca install (`2.5.0-beta`) rejects the rig's file-path `--load-settings` (`Preset was not found in the loaded bundle`) and no longer ships `resources/profiles/BBL/{machine,process}`, so Phase 0 rests on canonical source + `DEV-156`, not a fresh Orca run; that also blocks Orca-side scoreboard refreshes until the rig is updated or a stock Orca restored. Neither freshness gate applies (docs-only; no guest or code change). Evidence: [`evidence/t97-branch-distance/`](evidence/t97-branch-distance/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 5/5 negative controls rejected).
+
 - [Windowed clip area in internal-bridge qualification](issues/96-windowed-clip-area-dilation.md): **resolved (2026-10-30; Phase-1 screen — REJECTED on exactness, no candidate, no campaign, probe reverted)** — the whole-layer `+1.5 × spacing` dilation is **11,672.7–11,813.6 ms** accumulated over 130 calls; a candidate-box window (`8 × spacing`, operand `11 × spacing`, result clipped back) keeps **12.2 %** of the deep-area ring vertices and saves **10,653.5–10,780.5 ms = 1.17 s wall-eq = 1.57–1.60 %** of the ordinary base classic-off cell (**2.0x** the 0.80 % floor, two runs within **1.2 %**). It is **not representation-safe**: the windowed arm emits `5fc8fa72…` / 21,023,889 bytes against `292df501…` / 21,023,739, identically in two runs, with the first differing block an `Internal Bridge` at `;Z:21.4` (8 → 10 moves). At that layer the two clip areas are **set-equal inside the window** (`mismatch_polys = 0`), so qualification and per-candidate `area` are unchanged; the failure is `internal_bridge_angles`' `expansion_area ∩ clip_area` term → `boundary_anchor_polylines`: with qualification and `area` unchanged, the nearest anchor must have lain **beyond the window** (or the cut introduced a closer ring), so the anchor reach is not bounded by the planned `3.3 × spacing` and the window moves it. No finite candidate-driven window is safe (mirror of t93, where the same operand's erosion was safe because its consumers are bounded by `2 × spacing`). Secondary: **116/130** calls show a non-zero inside-window set difference (**1,071** slivers). The wall screen was not reached; the single uninstrumented window wall (76.557 s) is unpaired and not a claim. Disclosures: instrumented walls attribution only; margins not swept (failure is unbounded by construction); both freshness gates exit 0. Evidence: [`evidence/t96-windowed-clip-area/`](evidence/t96-windowed-clip-area/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 6/6 negative controls rejected).
 
 - [Batched exact-Z cross-sections in the support validation loop](issues/95-exact-z-cross-section-batching.md): **resolved (2026-10-30; human-approved KEEP, candidate committed `afe9c361`)** — the 431 anchor Z values were 431 distinct `(object, region, z)` keys, so the exact-Z cache never hit and every entry paid `slice_mesh_ex(mesh, &[z])`, a one-element Z array over `tmp/base.stl`'s **2,461,234** triangles. Phase 1 (probe, 3 slices, all outputs equal to the post-t81 references): **431/431** planes equal polygon-for-polygon; **6.42 / 6.72 / 6.84 s** of single-Z walks collapse to **0.99–1.05 s** in one batched walk at the object's sorted Z set = **5.37 / 5.73 / 5.83 s** saved = **3.26 / 3.48 / 3.49 %** of the cell, **4.07–4.37x** the 0.80 % floor; the batch buys **6.4–6.9x**, not 431x (two binary searches over 431 planes plus a straddle test per triangle, memory-latency-bound). Candidate: per-`(object, z_units)` cross-section memo + `ExactZQueryService::prefetch_cross_sections`, called once per object before the serial `validate_entry` loop; per-`(object, region, z)` contract, single-Z miss path and per-entry degradation unchanged; host-only. **Proof 16/16** (arms byte-identical, 8/8 ordinary equal to the post-t81 references, 8/8 cross-mode equal, 24 identical modules per mode). **Gate PASS in all four base supports-on cells**, 6/6 pairs, zero exclusions, **24/24 pairs byte-identical**: wall **−3.97 / −3.19 / −2.86 / −2.64 %**, CPU **−0.70 / −0.70 / −0.90 / −0.15 %**, wall deltas **−6.17 / −5.68 / −5.43 / −5.49 s**. One **disclosed** non-negative pair (accelerated classic-on #4, **+2.35 %**, during a load event that slowed both arms ~10 s). Evidence: [`evidence/t95-exact-z-batch/`](evidence/t95-exact-z-batch/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 7/7 negative controls rejected).
@@ -1844,17 +1888,25 @@ Standing decisions for this effort (2026-09-22):
   ([ticket 81](issues/81-resolution-slicing-time-contour-simplification.md)'s
   disclosures). No action while it stays 0.
 
-- **`tree_support_branch_distance` is the other t82 "PnP does more work" key
-  (surfaced 2026-10-23 by [ticket 83](issues/83-arachne-wall-simplification-tolerance-pricing.md)'s
-  resolution).** Orca resolves 5 mm, PnP 1 mm — PnP places branches 5x denser on
-  supports-on cells. **Measured 2026-10-25 by
-  [ticket 88](issues/88-supports-on-increment-attribution.md)**: a config-only
-  5 mm arm is **−7.25 s slice wall (−3.94 %)** and **−6.8 s of the 106.8 s
-  support increment (6.4 %)**, with G-code bytes −0.83 % and a changed SHA —
-  a modest driver, not the reason PnP pays the increment. It remains
-  parity-scoped geometry work (changing it changes support placement), so it
-  still needs a separate human ruling on parity grounds; the performance case
-  for changing it is weak.
+- **The supports-on job is style-unmatched: Orca organic vs PnP Strong
+  (corrected 2026-10-30 by
+  [ticket 97](issues/97-match-branch-distance-fairness.md)).** The
+  `tree_support_branch_distance` 5 mm lead is **dead**: `support_style =
+  default` on a tree family resolves to `smsTreeOrganic` (`SupportParameters`),
+  `PrintObject::_generate_support_material` / `TreeSupport::generate` fork it to
+  `generate_tree_support_3D`, and the organic engine reads only
+  `tree_support_branch_distance_organic` — resolved to **1 mm**, the same as
+  PnP's normal-key default. The normal 5 mm key is inert on that path; t88's arm
+  was a 5x PnP branch-spacing reduction, not a match. PnP substitutes **Strong**
+  for every canonically-organic input (`DEV-156`; organic port queued in
+  `docs/specs/support-generation-remediation-plan.md`), so the four supports-on
+  cells compare two different engines. Closing that is a human decision:
+  port the organic engine (parity work; the wall case is unestablished and
+  organic is the more expensive canonical engine), or force the Orca matched
+  profile to `support_style = tree_strong` so both sides run the class PnP
+  implements (a protocol change; its effect on Orca's wall is unmeasured).
+  Until then every supports-on ratio carries the engine-style mismatch
+  disclosure in the fairness contract above.
 
 - **Tree-support planner non-clip residual (surfaced 2026-10-25 by
   [ticket 88](issues/88-supports-on-increment-attribution.md)).** The planner
