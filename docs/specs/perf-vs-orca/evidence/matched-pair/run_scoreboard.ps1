@@ -6,9 +6,25 @@
 .DESCRIPTION
     Three-tool interleaved measurement schedule over the {benchy, base} x
     {classic, arachne} x {supports off, on} matrix: OrcaSlicer (vendor profile
-    triple + generated string-typed override profile), PNP ordinary
+    triple + matched-job CLI overrides), PNP ordinary
     (target/release + modules/core-modules) and PNP accelerated
     (target/dist-accelerated/developer snapshot).
+
+    Orca invocation (perf-vs-orca ticket 98): OrcaSlicer 2.5 resolves
+    `--load-settings` through the vendor preset bundle, not through bare JSON
+    paths — a `"from": "system"` preset is flattened by walking up to the
+    vendor directory and reading the sibling `<Vendor>.json` manifest. The
+    shipped install carries only `resources/profiles/BBL.opc`, so the rig reads
+    a vendor tree materialized by
+    `evidence/orca-rig-repair/prepare_orca_vendor.ps1` (pinned tag,
+    version-asserted against the installed cache) and applies the matched-job
+    keys as CLI overrides, which the CLI ranks above loaded settings. Overrides
+    are not a convenience: an override-free load of the raw vendor process
+    preset is the matched job's process preset, and the four per-cell keys
+    (generator, supports, and the fixed layer/infill values) must come last.
+    Loading vendor JSONs as bare paths under 2.5 fails loudly rather than
+    silently using hardcoded defaults (upstream #14718), so a misconfigured
+    tree cannot pass validation.
 
     Measurement core extends the alloc-bench/run_bench.ps1 lineage: process
     creation-to-exit wall clock and kernel+user CPU via GetProcessTimes, peak
@@ -45,6 +61,7 @@ param(
     [string]$BatchId = (Get-Date -Format 'yyyyMMdd-HHmmss'),
     [ValidateSet('All', 'Last', 'None')][string]$KeepGcode = 'Last',
     [switch]$SkipFreshness,
+    [switch]$OrcaDebugLog,
     [string]$RepoRoot = (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))))
 )
 
@@ -64,10 +81,16 @@ $Job = @{
 $ConfigDir   = Join-Path $PSScriptRoot 'configs'
 $Validator   = Join-Path $RepoRoot 'resources\perimeter-acceptance\validate_measurement.ps1'
 $OrcaExe     = 'C:\Program Files\OrcaSlicer\orca-slicer.exe'
-$OrcaProfile = 'C:\Program Files\OrcaSlicer\resources\profiles\BBL'
-$OrcaMachine = Join-Path $OrcaProfile 'machine\Bambu Lab X1 Carbon 0.4 nozzle.json'
-$OrcaVendorProcess = Join-Path $OrcaProfile 'process\0.20mm Standard @BBL X1C.json'
-$OrcaFilament = Join-Path $OrcaProfile 'filament\Generic PLA.json'
+# perf-vs-orca ticket 98: the 2.5 install ships the vendor as a binary preset
+# cache alone (resources/profiles/BBL.opc) and no preset JSON tree, so the rig
+# loads a prepared source-manifest tree instead. Materialize it with
+# evidence/orca-rig-repair/prepare_orca_vendor.ps1 (pinned tag, version-asserted
+# against the installed cache); the preflight below fails closed if it is absent.
+$OrcaVendorRoot     = Join-Path $RepoRoot 'target\orca-vendor'
+$OrcaVendorManifest = Join-Path $OrcaVendorRoot 'BBL.json'
+$OrcaMachine        = Join-Path $OrcaVendorRoot 'BBL\machine\Bambu Lab X1 Carbon 0.4 nozzle.json'
+$OrcaVendorProcess  = Join-Path $OrcaVendorRoot 'BBL\process\0.20mm Standard @BBL X1C.json'
+$OrcaFilament       = Join-Path $OrcaVendorRoot 'BBL\filament\Generic PLA.json'
 
 $FixturePaths = @{
     calicat = Join-Path $RepoRoot 'resources\calicat.stl'
@@ -260,33 +283,31 @@ function Test-PnpGyroidDispatch {
     }
 }
 
-# --- Orca config generation (string-typed overrides; numbers are ignored) ----
-function New-OrcaDerivedConfig {
+# --- Orca config: matched-job CLI overrides over the vendor preset triple ---
+function New-OrcaOverrideArgs {
+    # Matched-job keys, ranked above the loaded vendor presets by the CLI. The
+    # process/machine/filament presets themselves are the vendor ones, resolved
+    # through the source manifest so their `inherits` chain is flattened.
     param(
         [Parameter(Mandatory = $true)][string]$Generator,
         [Parameter(Mandatory = $true)][string]$SupportFlag
     )
-    $derivedDir = Join-Path $RunDir 'orca-configs'
-    New-Item -ItemType Directory -Path $derivedDir -Force | Out-Null
-    $path = Join-Path $derivedDir ('derived-' + $Generator + '-support' + $SupportFlag + '.json')
-    if (Test-Path -LiteralPath $path) { return $path }
-    $j = Get-Content -LiteralPath $OrcaVendorProcess -Raw | ConvertFrom-Json
-    $sets = [ordered]@{
-        name = 'pnp-matched-' + $Generator + '-support' + $SupportFlag
-        wall_generator = $Generator
-        wall_loops = $Job.WallLoops
-        sparse_infill_density = $Job.SparseInfillDensity
-        sparse_infill_pattern = $Job.SparseInfillPattern
-        enable_support = $SupportFlag
-        support_type = $Job.SupportType
-        layer_height = $Job.LayerHeight
-        initial_layer_print_height = $Job.FirstLayerHeight
-    }
-    foreach ($k in $sets.Keys) {
-        $j | Add-Member -NotePropertyName $k -NotePropertyValue ([string]$sets[$k]) -Force
-    }
-    $j | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $path
-    return $path
+    return @(
+        ('--wall-generator=' + $Generator),
+        ('--wall-loops=' + $Job.WallLoops),
+        ('--sparse-infill-density=' + $Job.SparseInfillDensity),
+        ('--sparse-infill-pattern=' + $Job.SparseInfillPattern),
+        ('--enable-support=' + $SupportFlag),
+        ('--layer-height=' + $Job.LayerHeight),
+        ('--initial-layer-print-height=' + $Job.FirstLayerHeight),
+        # The map's fairness contract records enable_arc_fitting = 0 in every
+        # matched cell (ticket 82) and treats the key as inert on that basis.
+        # OrcaSlicer 2.5 flipped the *default* to enabled; no vendor preset in
+        # the matched chain sets it either way, so without this pin the repaired
+        # rig would silently start emitting arcs — a feature PnP does not have.
+        # Pin it to the contract's value rather than inherit a version default.
+        '--enable-arc-fitting=0'
+    )
 }
 
 # --- Preflight (fail-closed) -------------------------------------------------
@@ -301,6 +322,10 @@ function Assert-Preflight {
         if (-not (Test-Path -LiteralPath $spec.Exe)) { throw "missing-artifact: $($spec.Exe)" }
     }
     if ($Tools -contains 'orca') {
+        if (-not (Test-Path -LiteralPath $OrcaVendorManifest)) {
+            throw ("missing-artifact: $OrcaVendorManifest. OrcaSlicer 2.5 needs a source-manifest vendor tree; " +
+                   "run: pwsh -NoProfile -File docs/specs/perf-vs-orca/evidence/orca-rig-repair/prepare_orca_vendor.ps1")
+        }
         foreach ($p in @($OrcaMachine, $OrcaVendorProcess, $OrcaFilament)) {
             if (-not (Test-Path -LiteralPath $p)) { throw "missing-artifact: $p" }
         }
@@ -386,14 +411,23 @@ function Invoke-ScoreRun {
     $appendixExcerpt = @{}
 
     if ($Tool -eq 'orca') {
-        $derived = New-OrcaDerivedConfig -Generator $Generator -SupportFlag $supportFlag
+        $overrideArgs = New-OrcaOverrideArgs -Generator $Generator -SupportFlag $supportFlag
         $outDir = Join-Path $OrcaOutRoot $runId
         New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-        $loadSettings = $OrcaMachine + ';' + $derived
+        $loadSettings = $OrcaMachine + ';' + $OrcaVendorProcess
+        # The CLI always writes its log, and without --logfile it lands in the
+        # process working directory — i.e. one 1.1 MB 00000.log per run in the
+        # repo root. Pin it beside the run instead; -OrcaDebugLog only raises the
+        # level on the same file. The 2.5 fatal messages ("can not resolve
+        # preset ...", "can not install <preset> ... : <reason>") appear here and
+        # nowhere else, stderr included.
+        $cliLogArgs = @('--logfile', ('"' + (Join-Path $outDir 'orca-cli.log') + '"'))
+        if ($OrcaDebugLog) { $cliLogArgs = @('--debug', '5') + $cliLogArgs }
         $argList = @(
             '--slice', '0',
             '--load-settings', ('"' + $loadSettings + '"'),
-            '--load-filaments', ('"' + $OrcaFilament + '"'),
+            '--load-filaments', ('"' + $OrcaFilament + '"')
+        ) + $overrideArgs + $cliLogArgs + @(
             '--outputdir', ('"' + $outDir + '"'),
             ('"' + $modelPath + '"')
         )
@@ -460,7 +494,7 @@ function Invoke-ScoreRun {
         generator = $Generator; supports = $Supports; tool = $Tool
         run_index = $RunIndex; warmup = $(if ($Warmup) { 1 } else { 0 }); threads = $Threads
         expected_generator = $Generator; validated_generator = $validatedGenerator
-        config_path = $(if ($Tool -eq 'orca') { $derived } else { $configPath })
+        config_path = $(if ($Tool -eq 'orca') { $loadSettings + ' | ' + ($overrideArgs -join ' ') } else { $configPath })
         exe_path = $ToolSpecs[$Tool].Exe; module_dir = $(if ($Tool -eq 'orca') { '' } else { $spec.ModuleDir })
         model_path = $modelPath; output_path = $gcodePath; stderr_path = $stderrPath
         wall_seconds = $wall; cpu_seconds = $cpu; cpu_wall_ratio = $(if ($wall -gt 0) { $cpu / $wall } else { 0 })

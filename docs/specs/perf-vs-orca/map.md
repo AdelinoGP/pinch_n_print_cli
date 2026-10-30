@@ -33,22 +33,48 @@ Every number in this tracker is a ledger fact — re-derive at the point of use.
   references allowed are the heavy model fixtures `tmp/3dbenchy.stl` and
   `tmp/base.stl` — user-supplied and licence-encumbered, they must never be
   committed.
-- **Orca baseline tooling is currently blocked (surfaced 2026-10-30 by
-  [ticket 97](issues/97-match-branch-distance-fairness.md)).** The 2026-10-27
-  Orca install (`2.5.0-beta`) at `C:\Program Files\OrcaSlicer` rejects the
-  rig's file-path
-  `--load-settings` form (`can not resolve preset <path>: Preset was not found
-  in the loaded bundle`) and no longer ships
-  `resources/profiles/BBL/{machine,process}` (it ships `BBL.opc`). No Orca-side
-  scoreboard refresh can run until `run_scoreboard.ps1` learns the new preset
-  loading or a runnable stock Orca is restored. The map's existing Orca numbers
-  are unaffected as measurements; only fresh Orca runs are blocked.
+- **Orca baseline tooling was blocked 2026-10-30 and is REPAIRED (ticket 98).** The
+  2026-10-27 OrcaSlicer **2.5.0** install (`v2.5.0-beta`) ships the vendor as one
+  binary preset cache (`resources/profiles/BBL.opc`) and resolves `--load-settings`
+  against the loaded preset bundle, so the rig's file-path form failed. The rig now
+  loads a version-gated source-manifest vendor tree
+  (`evidence/orca-rig-repair/prepare_orca_vendor.ps1` → `target/orca-vendor/`) and
+  applies the matched keys as CLI overrides. **The repair falsified the archived Orca
+  side:** those runs carried Orca's hardcoded filament defaults (density 0,
+  max volumetric speed 2, first-layer temp 200) and so understated Orca by ~29 % on
+  the benchy classic-off cell (1.978 s now vs 2.787 s archived). Every archived Orca
+  median needs re-derivation on the repaired rig before any ratio is quoted; see
+  Decisions (t98) and the fog entry below. Fresh Orca measurement is available again.
 
 Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-30, second session — the ticket 97 take):** the
+**Current selection scope (2026-10-30, third session — the ticket 98 take):** the human
+said "continue the perf vs orca map" (no ticket named). The frontier re-derivation at
+HEAD `6c1a2334` again found **all 97 child tickets resolved — no open child, no
+claim** — so the session offered six measured fog routes (allocation-volume arena;
+split-and-union clip-area dilation; `region_partition` 3x-per-layer dedup; repair the
+Orca rig; supports-on engine fairness ruling) and the human selected **repair the Orca
+rig**. The fog patch graduated as [98](issues/98-orca-rig-repair.md) and is **resolved
+(2026-10-30)** as a repair that also falsified the archived Orca side. The 2.5 install
+resolves `--load-settings` through a vendor preset bundle, so the rig now loads a
+version-gated source-manifest tree (pinned to the tag whose `BBL.json` version equals
+the installed `BBL.opc` stamp, `02.08.00.16` == `2.8.0.16`) plus CLI overrides, and
+pins `enable_arc_fitting = 0` because 2.5 flipped that default to enabled.
+Measured on the screening cell (benchy classic-off, median of three): **1.978 s** wall
+/ 6.50 s CPU / 4,000,709 bytes against the archive's 2.787 s / 9.27 s / 3,890,392 —
+because the archived Orca applied its **hardcoded filament defaults** (density 0,
+max volumetric speed 2, first-layer temp 200) while the repaired rig resolves the
+vendor chain (1.24 / 12 / 220). The archived Orca side was therefore doing less work
+than the matched job asks: **every archived Orca median needs re-derivation before a
+ratio is quoted**, and PnP's recorded multiples are optimistic for PnP. No ratio was
+requoted. Evidence: [`evidence/orca-rig-repair/`](evidence/orca-rig-repair/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 4 claims, 7/7 negative controls
+rejected). Frontier now: **no open child remains**; the fog and the next route are the
+human's. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-30, second session — the ticket 97 take):** the
 human said "continue the perf vs orca map" (no ticket named). The frontier
 re-derivation at HEAD `f48a0488` again found **all 96 child tickets resolved — no
 open child, no claim** — so the session offered six measured fog routes (match
@@ -1781,7 +1807,33 @@ Standing decisions for this effort (2026-09-22):
 
 - [Config padding disclosure boundary and viewer-key gate](issues/34-config-padding-disclosure-boundary.md): **resolved (2026-10-07, disclosure/correctness only)** — premise corrected: `ORCA_CONFIG_PADDING` never fires on any production path (the registry projection reaches 233 pairs; the loop breaks at 96), so its values are unreachable there and only the test/legacy callers consume the table. The audit nonetheless found two **live** wire-format defects in the emitted block: booleans rendered as `true`/`false` where OrcaSlicer's wire literals are `1`/`0` (23 production lines; `ConfigBase::set_deserialize_raw`'s substitution branch — `enum_looks_like_true_value` is true only for `enabled`/`on` — loaded every rendered `true` as `false`, e.g. `detect_overhang_wall` and `support_remove_small_overhang`), and four enum values carrying PnP-internal spellings (`wall_sequence` `InnerOuter`, `wall_generator` `Classic`, `wall_direction` `counter_clockwise`, and the `seam_mode` alias rendering `rear`) that Orca's strict `enum_keys_map` lookup answers by replacing the option with its own default; two keys PnP models as `bool` but Orca declares `coEnum` (`dont_filter_internal_bridges`, `enable_extra_bridge_layer`) needed the same treatment. Fixed in one documented `translate_appendix_enum` table applied only at the appendix (module `ConfigView`s unchanged). Table audited row by row: 10 values were corrected (7 to the pinned upstream default, 3 more in enum domain), 3 rows named keys OrcaSlicer cannot load (`support_material`/`extra_perimeters` removed as non-Orca keys; `wipe_tower_width` kept — `handle_legacy` renames it), and 4 rows named keys absent from OrcaSlicer entirely, replaced with real cosmetic keys. A freshly generated production block now measures **0 strict wire violations**; the edited table compares **0 default mismatches** against the pinned `PrintConfig.cpp`. Residual: the padding-only fallback block still cannot satisfy Orca's `>= 80` loadable-pair gate because the remaining unloadable lines are PnP's own key names (registry-projected, not table rows) — recorded, not patched. No timing, geometry, adoption, default or guest change; all required gates pass.
 
+- [Repair the Orca rig](issues/98-orca-rig-repair.md): **rig measures Orca again on the 2.5.0 install, and the repair falsified the archived Orca side.** OrcaSlicer 2.5 resolves `--load-settings` through a vendor preset bundle (`PresetBundle::resolve_preset_config`: file-identity match, else a `"from": "system"` manifest walk that flattens `inherits`/`include`), and the install ships only `BBL.opc` with no preset JSON tree. The rig now stages a version-gated source-manifest tree from the tag whose `BBL.json` version equals the installed cache stamp (`02.08.00.16` == `2.8.0.16`, fail-closed) and applies the matched keys as CLI overrides, with `enable_arc_fitting` pinned to 0 because 2.5 flipped that default to enabled. Three measured runs of benchy classic-off: **1.978 s** wall / 6.50 s CPU / 4,000,709 bytes, against the archive's 2.787 s / 9.27 s / 3,890,392 — the archived Orca applied its hardcoded **filament** defaults (density 0, max volumetric speed 2, first-layer temp 200) while the process chain resolved in both eras (300 mm/s walls). So the archived Orca under-measured Orca's own work: PnP's recorded multiples are optimistic for PnP and every archived Orca median needs re-derivation (fog). No ratio requoted. Evidence: `evidence/orca-rig-repair/` (`verify.py --self-test` exit 0, 4 claims, 7/7 negative controls rejected).
+
 ## Not yet specified
+
+- **The archived Orca side must be re-baselined before any ratio is quoted (surfaced
+  2026-10-30 by [ticket 98](issues/98-orca-rig-repair.md)).** The repaired rig measures
+  OrcaSlicer 2.5.0 on the benchy classic-off cell at **1.978 s** median wall against the
+  archive's 2.787 s, because the archived runs applied Orca's **hardcoded filament
+  defaults** (`filament_density` 0, `filament_max_volumetric_speed` 2,
+  `first_layer_temperature` 200 — the documented defaults) where the repaired rig
+  resolves the vendor chain (`Generic PLA` → `fdm_filament_pla` → `fdm_filament_common`
+  → 1.24 / 12 / 220). The process chain resolved in both eras (`inner_wall_speed` 300),
+  so this is specifically the filament leg. Direction of the defect is known and
+  unfavourable to PnP: the archived Orca did *less* work, so every recorded multiple is
+  optimistic for PnP. The route is a fresh Orca measurement of all eight cells on the
+  repaired rig, plus a re-derived scoreboard and park bound; it also needs a ruling on
+  whether 2.5's changed defaults beyond the filament leg (e.g. `elefant_foot_compensation`
+  0 → 0.15, `brim_width` 0 → 5) are accepted as the new matched job or pinned back.
+  Until that runs, **no archived Orca median is comparable to a fresh PnP run**.
+
+- **A first-touch vendor tree makes the warmup load-bearing (t98 method note).** The
+  first Orca run against a freshly staged vendor tree costs ~10 s more wall than the
+  steady state with process CPU flat (10.084 s / 11.684 s vs 1.97–2.04 s measured
+  after), and a warm tree with no cache beside the manifest still runs at 2.0 s. So the
+  premium is one-time, but a `-Warmups 0` batch against a fresh tree would be
+  contaminated by roughly the whole steady-state cell time. Any campaign on this rig
+  must keep `-Warmups 1` or greater.
 
 - **The surviving whole-print free is allocation-volume-bound, not a
   drop-strategy problem (surfaced 2026-10-29 by
