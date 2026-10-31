@@ -50,7 +50,39 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-30, fifth session — the ticket 100 take):**
+**Current selection scope (2026-10-31, sixth session — the ticket 102 take):**
+the human ruled the allocator lever in scope after ticket 100 ("the map is a
+speed study… feel free to test it"), so
+[102](issues/102-global-allocator-substitution.md) was graduated, claimed and is
+**resolved (2026-10-31, human-approved KEEP — candidate committed)**: `pnp_cli`
+installs `AccountingAllocator<mimalloc::MiMalloc>`, the packager slot
+`docs/16_slicer_report.md` already prescribes. Proof **16/16** (both arms
+byte-identical, 8/8 ordinary cells equal to the t91 references, 8/8 cross-mode,
+distinct binaries, identical 24-module trees), and the standing four-cell gate
+**PASSED**: wall **−6.19 / −5.64 / −5.54 / −4.80 %** (−10.19 / −9.42 / −9.04 /
+−7.41 s) with process CPU **−1.74 / −2.18 / −1.54 / −1.88 %**,
+**24/24 pairs byte-identical**, 6/6 pairs per cell, zero starvation exclusions,
+23/24 pairs wall-negative (accelerated arachne-on #6 is **+0.18 %**; that cell's
+median is −4.80 %). Pre-gate **−7.74 % / CPU −2.25 %** on 3/3 pairs. The effect
+is **~5–6 %** — far larger than the free-only price (**1.35–1.66 %**, t100) —
+because the allocator acts on every allocation in the process, but it removes
+**no allocations**: the census still shows the same 34,796,481 blocks, each
+freed more cheaply. The cause-level route stays
+[101](issues/101-support-identity-table-materialisation.md) (open, unclaimed).
+Disclosures: the pre-gate ran while a stray integration-test binary pinned ~8
+cores (walls 227–266 s); the campaign started at load median **1 %** after that
+process exited (`target/t102-load-precampaign.txt`); today's baseline walls are
+152–156 s against t91's 164.803 / 166.931 s, so ratios are today-vs-today and the
+floor (t91's larger walls) is conservative; the allocator is process-wide, so no
+stage attribution is claimed; memory is not gated; one transient `cl.exe`
+failure on the accelerated build passed on retry. Evidence:
+[`evidence/t102-allocator/`](evidence/t102-allocator/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 12/12 claims, 12/12 negative
+controls rejected). Frontier now: **ticket 101 only, open and unclaimed**; the
+take order is the human's. Standing paired acceptance and KEEP/DROP rules
+unchanged.
+
+**Previous selection scope (2026-10-30, fifth session — the ticket 100 take):**
 the human said "continue the perf vs orca map" (no ticket named). The frontier
 re-derivation at HEAD `cc2c54e6` found **99/99 child tickets resolved — no open
 child, no claim** — so the session offered six measured fog routes and the human
@@ -1693,6 +1725,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Global allocator substitution on the host binary](issues/102-global-allocator-substitution.md): **resolved (2026-10-31; human-approved KEEP — the standing four-cell gate PASSES, candidate committed)** — `pnp_cli` becomes `AccountingAllocator<mimalloc::MiMalloc>` (two host files plus the contract doc), the packager slot `docs/16_slicer_report.md` §"Global allocator contract" already prescribes, so `--report` accounting keeps its shape. Proof **16/16** (both arms byte-identical in every cell, both clean, non-vacuous roles; **8/8** ordinary cells equal to `evidence/t91-exact-z-memo/references.json`; **8/8** ordinary ≡ accelerated; identical 24-module trees, distinct host binaries `db153219…`/`1de06f27…` ordinary and `7f5ad486…`/`9986754e…` accelerated). Pre-gate on ordinary base classic-on: **−7.74 %** wall / **−2.25 %** CPU in 3/3 pairs. Campaign, 2 warmups + 6 alternating pairs per cell: wall **−6.19 / −5.64 / −5.54 / −4.80 %** (−10.19 / −9.42 / −9.04 / −7.41 s) and process CPU **−1.74 / −2.18 / −1.54 / −1.88 %** (ordinary classic-on / arachne-on, accelerated classic-on / arachne-on), **24/24 pairs byte-identical**, 6/6 retained per cell, zero starvation exclusions, **23/24 pairs wall-negative** (accelerated arachne-on #6 **+0.18 %**, cell median −4.80 %); floor multiples **7.73 / 7.05 / 6.92 / 6.00x** against 0.80 % of t91's walls. The **~5–6 %** effect is much larger than the free-only price (**3.527 → 1.302 s = 1.35–1.66 %**, t100) because the allocator acts on every allocation in the process, but it removes **no allocations** — the census still shows the same **34,796,481** blocks, each freed more cheaply, so the cause-level route stays [101](issues/101-support-identity-table-materialisation.md). Disclosures: the pre-gate ran under a stray integration-test binary pinning ~8 cores (walls 227–266 s) which exited before the campaign; the pre-campaign snapshot records load median **1 %**; today's baseline walls (152–156 s) differ from t91's 164.803 / 166.931 s, so ratios are today-vs-today and the floor is conservative; the change is process-wide (no stage attribution); memory is not gated; one transient `cl.exe` failure on the accelerated build passed on retry (no artifact). Evidence: [`evidence/t102-allocator/`](evidence/t102-allocator/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 12/12 claims, 12/12 negative controls rejected).
+
 - [Allocation volume of the whole-print layer collection](issues/100-allocation-volume-layer-collection.md): **resolved (2026-10-30; Phase-1 screen — the arena / bulk-free family as scoped is measured-dead: mis-aimed and construction-unreachable; no candidate, no campaign, probe reverted)** — the whole-print free inside `host:gcode_emit` is **34,796,481 blocks / 1,358,397,544 bytes / 3,526,544 µs** (**101.3 ns per block**, reproducing t94's 3.558 s) on ordinary base classic supports-on, and **34,662,668 blocks = 99.6 %** of them are **8–15-byte strings** sampled as `__skirt_…` support family/body ids and `demand-N` ids. That is the `support_entity_identities` side table that `assemble_ordered_entities_with_support_identities` (`crates/slicer-runtime/src/layer_executor.rs`) clones **per support path** — 23,751 rows, each carrying the body's whole `demand_ids` list (**~1,457 ids derived** from the histogram, 34,615,166 strings). Geometry is a rounding error of the shape: **32,673 blocks = 0.094 %** and **105.8 MB = 7.8 %** of the bytes; entities are 30,076 and points 2,782,098. **Bulk-free counterfactual** (same byte volume, pages touched, both pricing orders): **44.5–63.8 ms** for one block after the drop (189.7 ms before it, collection live) and **58.3 / 120.5 ms** for 495 blocks (one arena per layer), so the **ceiling is 3.468 s = 2.10 % of the cell = 2.63x** the 1,318 ms floor — **above** the floor. The family still dies twice: flattening a live collection costs a **73.3–115.1 ms** copy **plus the same 3.527 s storm** (3.60 s, **+73 ms worse**), and an at-creation arena aimed at the geometry would remove **0.094 %** of the blocks. **Allocator arm** (mimalloc): drop **3.527 → 1.302 s measured** (**2.225 s = 1.35 %**, 1.69x floor; **0.796 s / 2.731 s = 1.66 % / 2.07x** after subtracting the probe's measured **0.506 s** sampling overhead) — above the floor, but the shipped allocator is a **packager** decision under `docs/16_slicer_report.md` §"Global allocator contract" and it removes no work. Disclosures: instrumented walls (200.7–270.7 s) are not wall claims; the sampling instrumentation costs 0.506 s; the `before` bulk arms ran with the collection live (2–3x the `after` prices, conservative arm used); the copy arm was first **elided by the optimiser** (`copy_us = 0`) and re-measured with a `black_box`-ed checksum; only classic-on was censused; both freshness gates exit 0; probe reverted. Graduated [101](issues/101-support-identity-table-materialisation.md). Evidence: [`evidence/t100-allocation-arena/`](evidence/t100-allocation-arena/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 12/12 claims, 13/13 negative controls rejected).
 
 - [Split and union the whole-layer clip-area dilation](issues/99-clip-split-union-dilation.md): **resolved (2026-10-30; measured REJECTED on price — the most favourable split is 0.41–0.43 % of the cell, about half the 0.80 % floor, and not representation-safe on top; no candidate, no campaign, probe reverted)** — offsetting every `deep_infill_area` polygon separately and unioning the pieces is genuinely cheaper per call (**0.8230x / 0.8252x**, two opposite pricing orders agreeing within **0.27 %**, both arms reproducing `292df501…` / 21,023,739 bytes) but the call's own share is too small for a 17.5 % cut to clear the floor: **2,434.2 / 2,464.8 ms accumulated** saving = **314.3 / 298.1 ms** wall-equivalent at each run's own cpu/wall = **0.43 / 0.41 %** of the 73.17 s cell, i.e. **0.51–0.54x the 585.4 ms floor**. The union-free lower bound (per-polygon offsets only, 0.8056 / 0.8069x) is **0.47 %** — still below — so no split shape in the family can clear it, because the offsets are **80.6 %** of production. The reusable decomposition: **~80 % per-path Miter offset, ~19 % batched internal union/cleanup, ~2 %** an explicit union of the already-rounded pieces — splitting partitions the cleanup instead of skipping work. Exactness is independently fatal: byte-identical on **1/130** calls, set-equal on **2/130**, **5,329** differing polygons, identical in both orders. Disclosures: instrumented walls only (the two probe walls are 27.0 / 17.9 s above the 73.17 s baseline and 9.1 s apart for the same work, so the production spans they denominate are inflated and only the ratio is read); the differing area was not quantified because the price already decides; probe reverted; both freshness gates exit 0. Evidence: [`evidence/t99-clip-split-union/`](evidence/t99-clip-split-union/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 6/6 negative controls rejected).
@@ -1926,20 +1960,24 @@ Standing decisions for this effort (2026-09-22):
   per path at assembly. The drop-strategy shapes are closed; re-enter the
   *arena* question only if the table stops dominating the block count.
 
-- **The shipped allocator is a packager decision, and it is worth ~1.7x the
-  floor on the supports-on free (measured 2026-10-30 by
-  [ticket 100](issues/100-allocation-volume-layer-collection.md)).** Swapping
-  the probe binary's global allocator to **mimalloc** cut the same 34,796,481
-  block free from **3.527 s to 1.302 s measured** (saving **1.35 %** of the
-  cell, **1.69x** the 1,318 ms floor; **1.66 % / 2.07x** after subtracting the
-  probe's measured 0.506 s sampling overhead). It removes **no work** — every
-  block is still freed — and `docs/16_slicer_report.md` §"Global allocator
-  contract" deliberately installs `System` and leaves jemalloc/mimalloc to
-  downstream packagers, so this is recorded as a measured lever the human can
-  route as a product/packaging decision, **not** route work. It graduates only
-  with that ruling; the per-block cost also sets how much any block-count
-  reduction is worth (**~101 ns per block on the system heap**, ~37 ns under
-  mimalloc).
+- **The shipped allocator is now mimalloc, and the whole-process swap is worth
+  ~5–6 % of a supports-on cell (measured 2026-10-30/31 by
+  [ticket 100](issues/100-allocation-volume-layer-collection.md) and
+  [ticket 102](issues/102-global-allocator-substitution.md), **resolved KEEP**).**
+  The free alone fell **3.527 → 1.302 s measured** (**1.35 %** of the cell;
+  **1.66 %** after the probe correction) on the same 34,796,481-block collection,
+  and the process-wide swap passed the standing four-cell gate at wall
+  **−6.19 / −5.64 / −5.54 / −4.80 %** with process CPU **−1.74 / −2.18 / −1.54 /
+  −1.88 %**, **24/24 pairs byte-identical** and zero exclusions. The process-wide
+  effect is the larger number because **every** allocation in the pipeline gets
+  cheaper, not just the whole-print free. It removes **no allocations** — the
+  census is unchanged — so the per-block cost now sets what a block-count
+  reduction is worth (**~37 ns per block under mimalloc**, against ~101 ns on the
+  system heap) and the cause-level route stays
+  [101](issues/101-support-identity-table-materialisation.md). Any future
+  allocator experiment (snmalloc, jemalloc) must re-run the same four-cell gate;
+  `docs/16_slicer_report.md` §"Global allocator contract" now names mimalloc as
+  the shipped choice and keeps the accounting wrapper outside it.
 
 - **A free-strategy census must sample block contents, not just sizes
   (method note, 2026-10-30, [ticket 100](issues/100-allocation-volume-layer-collection.md)).**

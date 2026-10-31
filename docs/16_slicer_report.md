@@ -173,22 +173,24 @@ built-ins.
 
 ## Global allocator contract
 
-`pnp_cli` (via `slicer-runtime`) installs `AccountingAllocator<System>` as its
-`#[global_allocator]`:
+`pnp_cli` (via `slicer-runtime`) installs `AccountingAllocator<mimalloc::MiMalloc>`
+as its `#[global_allocator]`:
 
 ```rust
 #[global_allocator]
-static ALLOC: AccountingAllocator<std::alloc::System> =
-    AccountingAllocator::new(std::alloc::System);
+static ALLOC: AccountingAllocator<mimalloc::MiMalloc> =
+    AccountingAllocator::new(mimalloc::MiMalloc);
 ```
 
-Downstream packagers who want a different allocator (jemalloc, mimalloc)
-must wrap it the same way:
+The allocator choice is the packager slot: the accounting wrapper must stay
+outside it, so `--report` still attributes per-bracket bytes. Downstream
+packagers who want a different allocator (jemalloc, snmalloc) must wrap it the
+same way:
 
 ```rust
 #[global_allocator]
-static ALLOC: AccountingAllocator<MimallocOrWhatever> =
-    AccountingAllocator::new(MimallocOrWhatever);
+static ALLOC: AccountingAllocator<JemallocOrWhatever> =
+    AccountingAllocator::new(JemallocOrWhatever);
 ```
 
 Adding a second `#[global_allocator]` anywhere in the workspace will
