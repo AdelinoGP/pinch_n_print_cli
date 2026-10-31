@@ -2293,7 +2293,10 @@ package slicer:support-queries@1.0.0 {{
         );
         // Embedded mirrors canonical except `support-query-view` omits the
         // `raft-plan` method: shared subset direction must not flag it.
-        let emb_text = format!("{ir_handles_pkg}{}{infill_pkg}", support_pkg(support_entries));
+        let emb_text = format!(
+            "{ir_handles_pkg}{}{infill_pkg}",
+            support_pkg(support_entries)
+        );
         // Falsifiability control: an EXTRA method on the shared specialist
         // resource IS drift (subset direction tolerates omissions, not
         // extras) — same shape as the slice-region-view control in

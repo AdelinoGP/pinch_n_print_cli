@@ -65,12 +65,13 @@ use std::collections::BTreeMap;
 use slicer_ir::ExPolygon;
 
 use crate::model::{
-    BoundaryAddress, BoundaryContribution, BoundaryProvenance, ContributionRelation, DerivedRegionPolicy,
-    DomainKind, EarlierLayerInput, EarlierOriginRecord, EarlierRegionInput, EarlierSurface,
-    EarlierSurfaceKind, EvidenceLocation, FillPolicyInput, GateAConstruction, GateASourceInput,
-    GeometryOpKind, GeometryOperand, GeometryOperation, InternalBridgeFilterPolicy, KernelError,
-    LightningParameters, OperandRole, PlanningLayer, RawObjectConfig, RawRegionConfig, RawWidthSetting,
-    RegionIdentity, SourceCheckpoint, SourceSegmentRef, SourceSurface, SourceSurfaceId,
+    BoundaryAddress, BoundaryContribution, BoundaryProvenance, ContributionRelation,
+    DerivedRegionPolicy, DomainKind, EarlierLayerInput, EarlierOriginRecord, EarlierRegionInput,
+    EarlierSurface, EarlierSurfaceKind, EvidenceLocation, FillPolicyInput, GateAConstruction,
+    GateASourceInput, GeometryOpKind, GeometryOperand, GeometryOperation,
+    InternalBridgeFilterPolicy, KernelError, LightningParameters, OperandRole, PlanningLayer,
+    RawObjectConfig, RawRegionConfig, RawWidthSetting, RegionIdentity, SourceCheckpoint,
+    SourceSegmentRef, SourceSurface, SourceSurfaceId,
 };
 use crate::polygon;
 
@@ -135,7 +136,15 @@ pub fn build_planning_domain_with_policy(
         .canonical_region_order
         .first()
         .cloned()
-        .ok_or_else(|| missing(source, 0, None, "canonical_region_order", "the canonical region order is empty"))?;
+        .ok_or_else(|| {
+            missing(
+                source,
+                0,
+                None,
+                "canonical_region_order",
+                "the canonical region order is empty",
+            )
+        })?;
     let scalar_config = scalar_region_config(source, &scalar_source_region)?;
 
     if parameters.layer_height_mm <= 0.0 {
@@ -167,7 +176,9 @@ pub fn build_planning_domain_with_policy(
         // implicit: this kernel is only ever invoked for Lightning objects, and
         // evaluating the string here would be a reconstruction-behaviour change
         // outside this step's scope.
-        let expand = lower.map(|lower| lower.has_internal_surface()).unwrap_or(false);
+        let expand = lower
+            .map(|lower| lower.has_internal_surface())
+            .unwrap_or(false);
 
         let spacing_units = solid_spacing_units(
             solid_width_mm(&source.object_config, parameters.nozzle_diameter_mm),
@@ -192,7 +203,11 @@ pub fn build_planning_domain_with_policy(
             void_domains: outcome.void,
             temporary_anchors: outcome.anchors,
             source_regions: layer.regions.iter().map(|r| r.identity.clone()).collect(),
-            source_catalog: layer.surfaces.iter().map(|s| s.to_source_surface()).collect(),
+            source_catalog: layer
+                .surfaces
+                .iter()
+                .map(|s| s.to_source_surface())
+                .collect(),
             boundary_provenance,
             operations: outcome.operations,
         });
@@ -209,7 +224,11 @@ pub fn build_planning_domain_with_policy(
         {
             if &region.input.config != scalar_config {
                 return Err(KernelError::RequiredSourceInputMismatch {
-                    context: location(source, layer.layer.global_layer_index, Some(&scalar_source_region)),
+                    context: location(
+                        source,
+                        layer.layer.global_layer_index,
+                        Some(&scalar_source_region),
+                    ),
                     field: "region_config".to_string(),
                     expected: format!("{scalar_config:?}"),
                     actual: format!("{:?}", region.input.config),
@@ -299,7 +318,8 @@ impl<'a> LayerCtx<'a> {
             ));
         }
 
-        let mut regions: Vec<RegionCtx<'a>> = Vec::with_capacity(source.canonical_region_order.len());
+        let mut regions: Vec<RegionCtx<'a>> =
+            Vec::with_capacity(source.canonical_region_order.len());
         for identity in &source.canonical_region_order {
             let input = layer
                 .regions
@@ -329,7 +349,10 @@ impl<'a> LayerCtx<'a> {
                     context: location(source, layer.global_layer_index, Some(&region.identity)),
                     field: "canonical_region_order".to_string(),
                     expected: "every layer region appears in canonical_region_order".to_string(),
-                    actual: format!("unlisted region {} on layer {}", region.identity.region_id, layer.global_layer_index),
+                    actual: format!(
+                        "unlisted region {} on layer {}",
+                        region.identity.region_id, layer.global_layer_index
+                    ),
                 });
             }
         }
@@ -437,7 +460,10 @@ fn index_provenance(
         if index.insert(record.provenance_id, record).is_some() {
             return Err(KernelError::SourceProvenanceMismatch {
                 context: location(source, 0, None),
-                expected: format!("one origin record per provenance_id (duplicate {})", record.provenance_id),
+                expected: format!(
+                    "one origin record per provenance_id (duplicate {})",
+                    record.provenance_id
+                ),
                 actual: format!("{} records", source.provenance.len()),
             });
         }
@@ -464,8 +490,13 @@ impl LayerOutcome {
         let mut internal = Vec::new();
         let mut void = Vec::new();
         for region_index in 0..layer.regions.len() {
-            internal.extend(layer.geometries(&layer.indices_of_kind(region_index, EarlierSurfaceKind::Internal)));
-            void.extend(layer.geometries(&layer.indices_of_kind(region_index, EarlierSurfaceKind::Void)));
+            internal
+                .extend(layer.geometries(
+                    &layer.indices_of_kind(region_index, EarlierSurfaceKind::Internal),
+                ));
+            void.extend(
+                layer.geometries(&layer.indices_of_kind(region_index, EarlierSurfaceKind::Void)),
+            );
         }
         Self {
             internal,
@@ -509,7 +540,10 @@ fn plan_layer_with_anchors(
         if stopped {
             // `bridge_over_infill` breaks out of the region loop once a region
             // has no sparse infill left to expand.
-            internal.extend(layer.geometries(&layer.indices_of_kind(region_index, EarlierSurfaceKind::Internal)));
+            internal
+                .extend(layer.geometries(
+                    &layer.indices_of_kind(region_index, EarlierSurfaceKind::Internal),
+                ));
             continue;
         }
         let sparse_indices = layer.indices_of_kind(region_index, EarlierSurfaceKind::Internal);
@@ -567,7 +601,9 @@ fn plan_layer_with_anchors(
 
     let mut void: Vec<ExPolygon> = Vec::new();
     for region_index in 0..layer.regions.len() {
-        void.extend(layer.geometries(&layer.indices_of_kind(region_index, EarlierSurfaceKind::Void)));
+        void.extend(
+            layer.geometries(&layer.indices_of_kind(region_index, EarlierSurfaceKind::Void)),
+        );
     }
 
     let mut outcome = LayerOutcome {
@@ -620,7 +656,9 @@ fn build_operations(
         anchor_cursor += body.anchors.len();
         let anchor_addresses: Vec<BoundaryAddress> = (0..anchors.len())
             .filter(|index| *index >= body_start && *index < body_start + body.anchors.len())
-            .flat_map(|index| domain_boundary_addresses(DomainKind::TemporaryAnchor, index, &anchors[index]))
+            .flat_map(|index| {
+                domain_boundary_addresses(DomainKind::TemporaryAnchor, index, &anchors[index])
+            })
             .collect();
 
         operations.push(GeometryOperation {
@@ -701,9 +739,16 @@ fn build_operations(
     operations
 }
 
-fn domain_boundary_addresses(kind: DomainKind, surface_id: usize, poly: &ExPolygon) -> Vec<BoundaryAddress> {
+fn domain_boundary_addresses(
+    kind: DomainKind,
+    surface_id: usize,
+    poly: &ExPolygon,
+) -> Vec<BoundaryAddress> {
     let mut addresses = Vec::new();
-    for (ring_id, ring) in std::iter::once(&poly.contour).chain(poly.holes.iter()).enumerate() {
+    for (ring_id, ring) in std::iter::once(&poly.contour)
+        .chain(poly.holes.iter())
+        .enumerate()
+    {
         for segment_id in 0..ring.points.len() {
             addresses.push(BoundaryAddress {
                 domain: kind,
@@ -764,7 +809,8 @@ fn gather_candidates(
     unsupported_area = polygon::closing(&unsupported_area, polygon::SCALED_EPSILON_UNITS);
 
     lower_layer_solids = polygon::shrink(&lower_layer_solids, spacing);
-    lower_layer_solids = polygon::expand(&lower_layer_solids, (1.0 + expansion_multiplier) * spacing);
+    lower_layer_solids =
+        polygon::expand(&lower_layer_solids, (1.0 + expansion_multiplier) * spacing);
     unsupported_area = polygon::shrink(&unsupported_area, expansion_multiplier * spacing);
     unsupported_area = polygon::difference(&unsupported_area, &lower_layer_solids);
 
@@ -772,10 +818,8 @@ fn gather_candidates(
     for region_index in 0..layer.regions.len() {
         for index in layer.indices_of_kind(region_index, EarlierSurfaceKind::InternalSolid) {
             let surface = &layer.surfaces[index];
-            let unsupported = polygon::intersection(
-                std::slice::from_ref(&surface.geometry),
-                &unsupported_area,
-            );
+            let unsupported =
+                polygon::intersection(std::slice::from_ref(&surface.geometry), &unsupported_area);
             if unsupported.is_empty() {
                 continue;
             }
@@ -833,7 +877,10 @@ fn gather_candidates(
 // Boundary provenance
 // -----------------------------------------------------------------------------
 
-fn build_boundary_provenance(layer: &LayerCtx<'_>, outcome: &LayerOutcome) -> Vec<BoundaryProvenance> {
+fn build_boundary_provenance(
+    layer: &LayerCtx<'_>,
+    outcome: &LayerOutcome,
+) -> Vec<BoundaryProvenance> {
     let mut provenance = Vec::new();
     // Inherited domains: every boundary edge is attributed to each source segment
     // it coincides with, preserving multiplicity (a seam edge belongs to both
@@ -852,7 +899,10 @@ fn build_boundary_provenance(layer: &LayerCtx<'_>, outcome: &LayerOutcome) -> Ve
         let Some((operation_id, inputs)) = outcome.anchor_provenance.get(surface_id) else {
             continue;
         };
-        for (ring_id, ring) in std::iter::once(&poly.contour).chain(poly.holes.iter()).enumerate() {
+        for (ring_id, ring) in std::iter::once(&poly.contour)
+            .chain(poly.holes.iter())
+            .enumerate()
+        {
             for segment_id in 0..ring.points.len() {
                 let start = ring.points[segment_id];
                 let end = ring.points[(segment_id + 1) % ring.points.len()];
@@ -890,7 +940,10 @@ fn push_inherited_provenance(
     surface_id: usize,
     poly: &ExPolygon,
 ) {
-    for (ring_id, ring) in std::iter::once(&poly.contour).chain(poly.holes.iter()).enumerate() {
+    for (ring_id, ring) in std::iter::once(&poly.contour)
+        .chain(poly.holes.iter())
+        .enumerate()
+    {
         for segment_id in 0..ring.points.len() {
             let start = ring.points[segment_id];
             let end = ring.points[(segment_id + 1) % ring.points.len()];
@@ -974,7 +1027,15 @@ fn resolve_parameters(source: &GateASourceInput) -> Result<LightningParameters, 
             Some(current) if current >= value => Some(current),
             _ => Some(value),
         })
-        .ok_or_else(|| missing(source, 0, None, "object_config.nozzle_diameters_mm", "no nozzle diameter was recorded"))?;
+        .ok_or_else(|| {
+            missing(
+                source,
+                0,
+                None,
+                "object_config.nozzle_diameters_mm",
+                "no nozzle diameter was recorded",
+            )
+        })?;
     if nozzle_diameter_mm <= 0.0 {
         return Err(invalid(
             source,
@@ -984,9 +1045,18 @@ fn resolve_parameters(source: &GateASourceInput) -> Result<LightningParameters, 
         ));
     }
 
-    let region = scalar_region_config(source, source.canonical_region_order.first().ok_or_else(|| {
-        missing(source, 0, None, "canonical_region_order", "the canonical region order is empty")
-    })?)?;
+    let region = scalar_region_config(
+        source,
+        source.canonical_region_order.first().ok_or_else(|| {
+            missing(
+                source,
+                0,
+                None,
+                "canonical_region_order",
+                "the canonical region order is empty",
+            )
+        })?,
+    )?;
     if !(0.0..=100.0).contains(&region.density_percent) {
         return Err(invalid(
             source,
@@ -1041,7 +1111,11 @@ fn scalar_region_config<'a>(
     // `FillLightning::Generator` reads `shared_regions()->all_regions.front()`,
     // i.e. one shared region config for the whole object.
     for layer in &source.layers {
-        if let Some(region) = layer.regions.iter().find(|region| &region.identity == identity) {
+        if let Some(region) = layer
+            .regions
+            .iter()
+            .find(|region| &region.identity == identity)
+        {
             return Ok(&region.config);
         }
     }
@@ -1115,7 +1189,11 @@ fn derive_policies(
         } else {
             0.0
         };
-        let context = location(source, layer.layer.global_layer_index, Some(&region.identity));
+        let context = location(
+            source,
+            layer.layer.global_layer_index,
+            Some(&region.identity),
+        );
 
         let resolved_sparse_angle_rad = rotation_angle(
             config.infill_direction_deg,
@@ -1156,9 +1234,7 @@ fn derive_policies(
         let is_bridge = !bridge_angles.is_empty();
         let bridge_angle_rad = if is_bridge
             && bridge_angles.iter().all(|angle| angle.is_some())
-            && bridge_angles
-                .iter()
-                .all(|angle| angle == &bridge_angles[0])
+            && bridge_angles.iter().all(|angle| angle == &bridge_angles[0])
         {
             bridge_angles[0]
         } else {
@@ -1306,7 +1382,7 @@ mod tests {
         RegionIdentity {
             object_id: "object-a".to_string(),
             region_id,
-            variant_chain: Vec::< (String, PaintValue) >::new(),
+            variant_chain: Vec::<(String, PaintValue)>::new(),
         }
     }
 
@@ -1474,7 +1550,9 @@ mod tests {
             },
         ]];
         let source = source_with_layers(vec![lower, upper]);
-        let construction = build_planning_domain_with_policy(&source, InternalBridgeFilterPolicy::NoFilter).unwrap();
+        let construction =
+            build_planning_domain_with_policy(&source, InternalBridgeFilterPolicy::NoFilter)
+                .unwrap();
         let planning = &construction.planning_layers[1];
         assert!(
             !planning.temporary_anchors.is_empty(),
@@ -1514,7 +1592,9 @@ mod tests {
             },
         ]];
         let source = source_with_layers(vec![lower, upper]);
-        let construction = build_planning_domain_with_policy(&source, InternalBridgeFilterPolicy::NoFilter).unwrap();
+        let construction =
+            build_planning_domain_with_policy(&source, InternalBridgeFilterPolicy::NoFilter)
+                .unwrap();
         let planning = &construction.planning_layers[1];
         let anchor_edges: Vec<&BoundaryProvenance> = planning
             .boundary_provenance
@@ -1523,7 +1603,11 @@ mod tests {
             .collect();
         assert!(!anchor_edges.is_empty());
         for edge in anchor_edges {
-            assert_eq!(edge.contributors.len(), 2, "one contributor per operation input");
+            assert_eq!(
+                edge.contributors.len(),
+                2,
+                "one contributor per operation input"
+            );
             for contribution in &edge.contributors {
                 match &contribution.relation {
                     ContributionRelation::Generated { operation_id } => {
@@ -1533,7 +1617,11 @@ mod tests {
                 }
             }
         }
-        assert_eq!(planning.operations.len(), 3, "AnchorExpansion -> Union -> Difference");
+        assert_eq!(
+            planning.operations.len(),
+            3,
+            "AnchorExpansion -> Union -> Difference"
+        );
         assert_eq!(
             planning.operations[0].offset_units,
             Some(PHASE2_ANCHOR_EXPANSION_UNITS as i64)
@@ -1559,7 +1647,9 @@ mod tests {
             },
         ]];
         let source = source_with_layers(vec![lower, upper]);
-        let construction = build_planning_domain_with_policy(&source, InternalBridgeFilterPolicy::NoFilter).unwrap();
+        let construction =
+            build_planning_domain_with_policy(&source, InternalBridgeFilterPolicy::NoFilter)
+                .unwrap();
         let planning = &construction.planning_layers[1];
         let seam = planning
             .boundary_provenance
@@ -1614,7 +1704,9 @@ mod tests {
             geometry: rect(0, 0, 10_000, 10_000),
         }]]]);
         source.layers[0].regions[0].config.top_layer_direction_deg = -1.0;
-        source.layers[0].regions[0].config.bottom_layer_direction_deg = -1.0;
+        source.layers[0].regions[0]
+            .config
+            .bottom_layer_direction_deg = -1.0;
         source.layers[0].regions[0].config.align_to_model = true;
         source.object_config.model_alignment_offset_rad = 0.1;
         let construction = build_planning_domain(&source).unwrap();
@@ -1661,7 +1753,10 @@ mod tests {
         source.provenance.clear();
         match build_planning_domain(&source).unwrap_err() {
             KernelError::SourceProvenanceUnavailable { reason, .. } => {
-                assert!(reason.contains("provenance_id"), "unexpected reason: {reason}")
+                assert!(
+                    reason.contains("provenance_id"),
+                    "unexpected reason: {reason}"
+                )
             }
             other => panic!("expected SourceProvenanceUnavailable, got {other:?}"),
         }
@@ -1712,7 +1807,9 @@ mod tests {
             },
         ]];
         let source = source_with_layers(vec![lower, upper]);
-        let construction = build_planning_domain_with_policy(&source, InternalBridgeFilterPolicy::NoFilter).unwrap();
+        let construction =
+            build_planning_domain_with_policy(&source, InternalBridgeFilterPolicy::NoFilter)
+                .unwrap();
         let planning = &construction.planning_layers[1];
         assert_eq!(planning.void_domains.len(), 1);
         assert_eq!(polygon::area(&planning.void_domains), 30_000.0 * 30_000.0);
@@ -1751,7 +1848,8 @@ mod tests {
             Some(InternalBridgeFilterPolicy::NoFilter);
         let from_source = build_planning_domain(&source).unwrap();
         let explicit =
-            build_planning_domain_with_policy(&source, InternalBridgeFilterPolicy::NoFilter).unwrap();
+            build_planning_domain_with_policy(&source, InternalBridgeFilterPolicy::NoFilter)
+                .unwrap();
         assert_eq!(
             from_source.planning_layers[1].temporary_anchors,
             explicit.planning_layers[1].temporary_anchors
@@ -1775,10 +1873,9 @@ mod tests {
         // An unrecorded branch is a named unavailability, never a silent default.
         source.object_config.dont_filter_internal_bridges = None;
         match build_planning_domain(&source).unwrap_err() {
-            KernelError::RequiredSourceInputUnavailable { field, .. } => assert_eq!(
-                field,
-                "object_config.dont_filter_internal_bridges"
-            ),
+            KernelError::RequiredSourceInputUnavailable { field, .. } => {
+                assert_eq!(field, "object_config.dont_filter_internal_bridges")
+            }
             other => panic!("expected a named unavailable field, got {other:?}"),
         }
     }
@@ -1801,13 +1898,15 @@ mod tests {
         let mut denser = source.clone();
         denser.layers[0].regions[0].config.density_percent = 30.0;
         assert!(
-            resolve_parameters(&denser).unwrap().supporting_radius_mm.unwrap() < parameters.supporting_radius_mm.unwrap()
+            resolve_parameters(&denser)
+                .unwrap()
+                .supporting_radius_mm
+                .unwrap()
+                < parameters.supporting_radius_mm.unwrap()
         );
         let mut steeper = source.clone();
         steeper.layers[0].regions[0].config.prune_angle_deg = 10.0;
-        assert!(
-            resolve_parameters(&steeper).unwrap().prune_length_mm > parameters.prune_length_mm
-        );
+        assert!(resolve_parameters(&steeper).unwrap().prune_length_mm > parameters.prune_length_mm);
     }
 
     #[test]
@@ -1842,7 +1941,8 @@ mod tests {
         ]];
         let source = source_with_layers(vec![lower, upper]);
         let construction =
-            build_planning_domain_with_policy(&source, InternalBridgeFilterPolicy::NoFilter).unwrap();
+            build_planning_domain_with_policy(&source, InternalBridgeFilterPolicy::NoFilter)
+                .unwrap();
         let planning = &construction.planning_layers[1];
 
         let generated: Vec<&SourceSegmentRef> = planning
@@ -1903,7 +2003,8 @@ mod tests {
         ]];
         let source = source_with_layers(vec![lower, upper]);
         let construction =
-            build_planning_domain_with_policy(&source, InternalBridgeFilterPolicy::NoFilter).unwrap();
+            build_planning_domain_with_policy(&source, InternalBridgeFilterPolicy::NoFilter)
+                .unwrap();
         let operations = &construction.planning_layers[1].operations;
         assert_eq!(operations.len(), 3);
         assert!(operations

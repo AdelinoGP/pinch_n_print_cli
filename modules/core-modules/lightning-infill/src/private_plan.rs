@@ -409,7 +409,13 @@ mod tests {
                     region_id: 5,
                     tree_edge_segments: vec![
                         [Point2 { x: -1, y: 2 }, Point2 { x: -3, y: 4 }],
-                        [Point2 { x: 0, y: -9_000_000 }, Point2 { x: 12, y: 13 }],
+                        [
+                            Point2 {
+                                x: 0,
+                                y: -9_000_000,
+                            },
+                            Point2 { x: 12, y: 13 },
+                        ],
                     ],
                     variant_chain: vec![
                         ("material".to_string(), PaintValue::ToolIndex(2)),

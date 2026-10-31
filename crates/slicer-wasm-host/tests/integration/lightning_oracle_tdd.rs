@@ -63,7 +63,10 @@ fn fixture_provenance() {
         input_view
             .as_object_mut()
             .expect("input case is an object")
-            .insert("unexpected_envelope_key".to_string(), serde_json::json!(true));
+            .insert(
+                "unexpected_envelope_key".to_string(),
+                serde_json::json!(true),
+            );
         assert!(
             support::GateInputCase::from_value(&input_view, 0).is_err(),
             "inputs case `{case_id}` accepted an unknown envelope key"
@@ -72,7 +75,10 @@ fn fixture_provenance() {
         oracle_view
             .as_object_mut()
             .expect("oracle case is an object")
-            .insert("unexpected_envelope_key".to_string(), serde_json::json!(true));
+            .insert(
+                "unexpected_envelope_key".to_string(),
+                serde_json::json!(true),
+            );
         assert!(
             support::GateOracleCase::from_value(&oracle_view, 0).is_err(),
             "oracle case `{case_id}` accepted an unknown envelope key"
@@ -82,7 +88,10 @@ fn fixture_provenance() {
         // the recorder published every subtree for this capture.
         for (slot, recorded) in [
             ("a_source_sha256", manifest_case.a_source_sha256.as_str()),
-            ("a_raw_config_sha256", manifest_case.a_raw_config_sha256.as_str()),
+            (
+                "a_raw_config_sha256",
+                manifest_case.a_raw_config_sha256.as_str(),
+            ),
             (
                 "a_earlier_provenance_sha256",
                 manifest_case.a_earlier_provenance_sha256.as_str(),
@@ -97,8 +106,10 @@ fn fixture_provenance() {
         }
 
         // Every present hash matches the canonical JSON of its own subtree.
-        let recomputed = support::recompute_hashes_for(&fixtures, case_id)
-            .unwrap_or_else(|error| panic!("case `{case_id}` hashes cannot be recomputed: {error}"));
+        let recomputed =
+            support::recompute_hashes_for(&fixtures, case_id).unwrap_or_else(|error| {
+                panic!("case `{case_id}` hashes cannot be recomputed: {error}")
+            });
         let verification = support::verify_case_hashes(manifest_case, &recomputed);
         assert!(
             verification.mismatches.is_empty(),
@@ -127,7 +138,11 @@ fn fixture_provenance() {
         // the verification above is not a success-only assertion.
         let mut tampered = manifest_case.clone();
         let mut tampered_digest = tampered.a_source_sha256.clone().into_bytes();
-        tampered_digest[0] = if tampered_digest[0] == b'0' { b'1' } else { b'0' };
+        tampered_digest[0] = if tampered_digest[0] == b'0' {
+            b'1'
+        } else {
+            b'0'
+        };
         tampered.a_source_sha256 =
             String::from_utf8(tampered_digest).expect("a hex digest is ASCII");
         let tampered_verification = support::verify_case_hashes(&tampered, &recomputed);
@@ -140,9 +155,7 @@ fn fixture_provenance() {
             tampered_verification.mismatches
         );
         assert!(
-            !tampered_verification
-                .verified
-                .contains(&"a_source_sha256"),
+            !tampered_verification.verified.contains(&"a_source_sha256"),
             "case `{case_id}` reported a tampered `a_source_sha256` as verified"
         );
 
@@ -164,7 +177,10 @@ fn fixture_provenance() {
     assert!(!fixtures.manifest.status.is_empty());
     assert!(
         capture.canonical_revision.len() == 40
-            && capture.canonical_revision.bytes().all(|b| b.is_ascii_hexdigit()),
+            && capture
+                .canonical_revision
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit()),
         "canonical_revision is not a 40-hex commit: {:?}",
         capture.canonical_revision
     );
@@ -202,7 +218,8 @@ fn fixture_provenance() {
     let dropped = EXPECTED_CASE_IDS[2];
     let mut reduced = fixtures.inputs.clone();
     reduced.cases.retain(|case| case.case_id != dropped);
-    let population = support::validate_population_values(&reduced, &fixtures.oracle, &fixtures.manifest);
+    let population =
+        support::validate_population_values(&reduced, &fixtures.oracle, &fixtures.manifest);
     let error = population.expect_err("a missing inputs case must be a named population error");
     assert!(
         error.contains(dropped),
@@ -236,8 +253,9 @@ fn fixture_provenance() {
 fn gate_a_decision() {
     let fixtures = support::load_fixtures()
         .unwrap_or_else(|error| panic!("checked-in lightning_gate fixtures do not load: {error}"));
-    support::validate_population(&fixtures)
-        .unwrap_or_else(|error| panic!("fixture population is not the manifest population: {error}"));
+    support::validate_population(&fixtures).unwrap_or_else(|error| {
+        panic!("fixture population is not the manifest population: {error}")
+    });
 
     let mut attempted = BTreeSet::new();
     let mut decisions = Vec::new();
@@ -277,7 +295,8 @@ fn gate_a_decision() {
             projected_keys, expected_keys,
             "case `{case_id}` projection carried a non-A key"
         );
-        let projected_text = String::from_utf8(execution.projected.clone()).expect("bytes are UTF-8");
+        let projected_text =
+            String::from_utf8(execution.projected.clone()).expect("bytes are UTF-8");
         assert!(!projected_text.contains("\"b_input\""));
         assert!(!projected_text.contains("\"reference\""));
 
@@ -376,10 +395,7 @@ fn gate_a_decision() {
                 );
                 for group in &independent {
                     let comparator_group = decision.group(group.group).unwrap_or_else(|| {
-                        panic!(
-                            "case `{case_id}` comparator has no `{}` group",
-                            group.group
-                        )
+                        panic!("case `{case_id}` comparator has no `{}` group", group.group)
                     });
                     assert_eq!(
                         independent_verdict_label(group.verdict),
@@ -399,10 +415,9 @@ fn gate_a_decision() {
                 // A case that produced no construction is classified from the
                 // observed error alone: a measured input mismatch is `fail`,
                 // missing source evidence is `inconclusive`.
-                let error = execution
-                    .error
-                    .as_ref()
-                    .unwrap_or_else(|| panic!("case `{case_id}` produced neither construction nor error"));
+                let error = execution.error.as_ref().unwrap_or_else(|| {
+                    panic!("case `{case_id}` produced neither construction nor error")
+                });
                 let measured = matches!(
                     error,
                     KernelError::SourceProvenanceMismatch { .. }
@@ -494,12 +509,17 @@ fn gate_a_decision() {
             .iter()
             .find(|group| group.group == "planning_layers.population")
             .is_some_and(|group| group.verdict == IndependentVerdict::Inconclusive
-                && group.unavailable.iter().any(|reason| reason.contains("no planning layer"))),
+                && group
+                    .unavailable
+                    .iter()
+                    .any(|reason| reason.contains("no planning layer"))),
         "the independent derivation must name the emptied planning population: {emptied_groups:?}"
     );
     assert!(
         !anchor_oracle.reference.planning_layers.is_empty()
-            && !anchor_oracle.reference.planning_layers[0].internal_domains.is_empty(),
+            && !anchor_oracle.reference.planning_layers[0]
+                .internal_domains
+                .is_empty(),
         "the anchor reference must carry an internal domain for the perturbation control"
     );
     let mut perturbed = anchor_oracle.clone();
@@ -522,12 +542,9 @@ fn gate_a_decision() {
         .keys()
         .copied()
         .find(|index| {
-            anchor_construction
-                .planning_layers
-                .iter()
-                .any(|layer| {
-                    layer.global_layer_index == *index && !layer.boundary_provenance.is_empty()
-                })
+            anchor_construction.planning_layers.iter().any(|layer| {
+                layer.global_layer_index == *index && !layer.boundary_provenance.is_empty()
+            })
         })
         .expect("anchor_bridge_classic records a planned layer with boundary provenance");
     let forged_position = anchor_construction
@@ -565,7 +582,10 @@ fn gate_a_decision() {
         forged_boundary.mismatches
     );
     assert_eq!(
-        independent_status(&independently_derive_case(&forged, &anchor_oracle.reference)),
+        independent_status(&independently_derive_case(
+            &forged,
+            &anchor_oracle.reference
+        )),
         CaseStatus::Fail,
         "the independent derivation must also reject an unrecorded derived boundary edge"
     );
@@ -623,15 +643,35 @@ fn wrong_domain_is_rejected() {
         ("production", &replay.production),
         ("wrong", &replay.wrong),
     ] {
-        let nodes: u64 = graph.graph.iter().map(|layer| layer.nodes.len() as u64).sum();
-        let edges: u64 = graph.graph.iter().map(|layer| layer.edges.len() as u64).sum();
+        let nodes: u64 = graph
+            .graph
+            .iter()
+            .map(|layer| layer.nodes.len() as u64)
+            .sum();
+        let edges: u64 = graph
+            .graph
+            .iter()
+            .map(|layer| layer.edges.len() as u64)
+            .sum();
         let roots: u64 = graph.graph.iter().map(|layer| layer.root_count).sum();
-        assert_eq!(graph.node_count, nodes, "{label} node_count is not its graph");
-        assert_eq!(graph.edge_count, edges, "{label} edge_count is not its graph");
-        assert_eq!(graph.root_count, roots, "{label} root_count is not its graph");
+        assert_eq!(
+            graph.node_count, nodes,
+            "{label} node_count is not its graph"
+        );
+        assert_eq!(
+            graph.edge_count, edges,
+            "{label} edge_count is not its graph"
+        );
+        assert_eq!(
+            graph.root_count, roots,
+            "{label} root_count is not its graph"
+        );
         for layer in &graph.graph {
             for node in &layer.nodes {
-                let expected = [node.point[0] as f64 / 1_000_000.0, node.point[1] as f64 / 1_000_000.0];
+                let expected = [
+                    node.point[0] as f64 / 1_000_000.0,
+                    node.point[1] as f64 / 1_000_000.0,
+                ];
                 assert!(
                     (node.point_mm[0] - expected[0]).abs() <= 1e-9
                         && (node.point_mm[1] - expected[1]).abs() <= 1e-9,
@@ -691,8 +731,14 @@ fn wrong_domain_is_rejected() {
         replay.faithful_domain_polygon_count, replay.wrong_domain_polygon_count,
         "the faithful and wrong domain populations did not differ"
     );
-    assert!(replay.wrong_nonempty, "the wrong-domain replay populated no polygons");
-    assert!(replay.scalars_resolved, "the replay did not resolve its scalar inputs");
+    assert!(
+        replay.wrong_nonempty,
+        "the wrong-domain replay populated no polygons"
+    );
+    assert!(
+        replay.scalars_resolved,
+        "the replay did not resolve its scalar inputs"
+    );
     assert!(
         replay.snapshot_unchanged && replay.snapshot_before == replay.snapshot_after,
         "the replay mutated its pre-anchor snapshot: {} -> {}",
@@ -737,7 +783,10 @@ fn source_only_projection_is_isolated() {
     let baseline_hashes = support::source_hashes(&baseline_source);
     let recorded_hashes = support::recompute_hashes_for(&fixtures, "anchor_bridge_classic")
         .expect("recorded hashes recompute");
-    assert_eq!(recorded_hashes.a_source_sha256, manifest_case.a_source_sha256);
+    assert_eq!(
+        recorded_hashes.a_source_sha256,
+        manifest_case.a_source_sha256
+    );
     assert_eq!(
         recorded_hashes.a_raw_config_sha256,
         manifest_case.a_raw_config_sha256
@@ -785,7 +834,10 @@ fn source_only_projection_is_isolated() {
 
     let mut replaced_reference = view.clone();
     replaced_reference["reference"] = support::reference_to_value(&oracle.reference);
-    variants.push(("reference replaced with the recorded reference", replaced_reference));
+    variants.push((
+        "reference replaced with the recorded reference",
+        replaced_reference,
+    ));
 
     for (label, variant) in &variants {
         let execution = support::execute_case(variant);
@@ -1101,8 +1153,9 @@ fn source_only_projection_is_isolated() {
 fn outcome_records_gate_a() {
     let fixtures = support::load_fixtures()
         .unwrap_or_else(|error| panic!("checked-in lightning_gate fixtures do not load: {error}"));
-    support::validate_population(&fixtures)
-        .unwrap_or_else(|error| panic!("fixture population is not the manifest population: {error}"));
+    support::validate_population(&fixtures).unwrap_or_else(|error| {
+        panic!("fixture population is not the manifest population: {error}")
+    });
 
     // Recompute the decision independently of any written record.
     let mut decisions = Vec::new();
@@ -1125,8 +1178,9 @@ fn outcome_records_gate_a() {
         );
         hashes.insert(
             case_id.to_string(),
-            support::recompute_hashes_for(&fixtures, case_id)
-                .unwrap_or_else(|error| panic!("case `{case_id}` hashes cannot be recomputed: {error}")),
+            support::recompute_hashes_for(&fixtures, case_id).unwrap_or_else(|error| {
+                panic!("case `{case_id}` hashes cannot be recomputed: {error}")
+            }),
         );
         decisions.push(decision);
     }
@@ -1143,7 +1197,9 @@ fn outcome_records_gate_a() {
         .iter()
         .map(|filter| support::run_sibling_test(filter))
         .collect();
-    commands.push(support::self_command_record("lightning_oracle_tdd::outcome_records_gate_a"));
+    commands.push(support::self_command_record(
+        "lightning_oracle_tdd::outcome_records_gate_a",
+    ));
 
     let outcome = support::build_outcome(&fixtures, &decisions, &hashes, commands.clone())
         .unwrap_or_else(|error| panic!("outcome cannot be built: {error}"));
@@ -1170,7 +1226,10 @@ fn outcome_records_gate_a() {
             .unwrap_or_else(|| panic!("outcome.{name} is missing or not a boolean: {recorded}"))
     };
     assert_eq!(outcome_str("gate"), "A");
-    assert!(outcome_bool("executed"), "the outcome must record that A executed");
+    assert!(
+        outcome_bool("executed"),
+        "the outcome must record that A executed"
+    );
     assert_eq!(outcome_str("task_id"), "TASK-576");
     assert_eq!(
         outcome_str("packet"),
@@ -1195,12 +1254,18 @@ fn outcome_records_gate_a() {
                 .unwrap_or_else(|| panic!("outcome case has no case_id: {case}"))
         })
         .collect();
-    let recomputed_ids: BTreeSet<&str> = decisions.iter().map(|case| case.case_id.as_str()).collect();
-    assert_eq!(recorded_ids, recomputed_ids, "outcome cases are not the decision population");
+    let recomputed_ids: BTreeSet<&str> =
+        decisions.iter().map(|case| case.case_id.as_str()).collect();
+    assert_eq!(
+        recorded_ids, recomputed_ids,
+        "outcome cases are not the decision population"
+    );
     for decision in &decisions {
         let case = recorded_cases
             .iter()
-            .find(|case| case.get("case_id").and_then(Value::as_str) == Some(decision.case_id.as_str()))
+            .find(|case| {
+                case.get("case_id").and_then(Value::as_str) == Some(decision.case_id.as_str())
+            })
             .unwrap_or_else(|| panic!("outcome has no case `{}`", decision.case_id));
         let status = support::parse_case_status(&case["status"], "outcome case status")
             .unwrap_or_else(|error| panic!("case `{}`: {error}", decision.case_id));
@@ -1237,7 +1302,11 @@ fn outcome_records_gate_a() {
             let recorded_hash = case[field]
                 .as_str()
                 .unwrap_or_else(|| panic!("case `{}` has no `{field}`", decision.case_id));
-            assert_eq!(&recorded_hash, expected, "case `{}` `{field}`", decision.case_id);
+            assert_eq!(
+                &recorded_hash, expected,
+                "case `{}` `{field}`",
+                decision.case_id
+            );
             assert!(support::is_sha256_hex(recorded_hash));
         }
     }
@@ -1251,7 +1320,10 @@ fn outcome_records_gate_a() {
     let manifest_sha256 =
         support::sha256_file(&fixture_dir.join(support::MANIFEST_FILE)).expect("manifest hash");
     let out_fixtures = &recorded["fixtures"];
-    assert_eq!(out_fixtures["inputs_sha256"].as_str(), Some(inputs_sha256.as_str()));
+    assert_eq!(
+        out_fixtures["inputs_sha256"].as_str(),
+        Some(inputs_sha256.as_str())
+    );
     assert_eq!(
         out_fixtures["canonical_sha256"].as_str(),
         Some(canonical_sha256.as_str())
@@ -1286,12 +1358,17 @@ fn outcome_records_gate_a() {
     let recorded_commands = recorded["commands"]
         .as_array()
         .unwrap_or_else(|| panic!("outcome.commands is not an array: {recorded}"));
-    assert!(!recorded_commands.is_empty(), "the outcome records no command");
+    assert!(
+        !recorded_commands.is_empty(),
+        "the outcome records no command"
+    );
     for filter in sibling_filters {
         let command = recorded_commands
             .iter()
             .find(|command| {
-                command["command"].as_str().is_some_and(|text| text.contains(filter))
+                command["command"]
+                    .as_str()
+                    .is_some_and(|text| text.contains(filter))
                     && command["observed_by"]
                         .as_str()
                         .is_some_and(|text| text.contains("child"))
@@ -1337,7 +1414,9 @@ fn outcome_records_gate_a() {
         .expect("the outcome records its own invocation");
     assert!(
         self_command["exit"].is_null()
-            && self_command["exit_reason"].as_str().is_some_and(|reason| !reason.is_empty()),
+            && self_command["exit_reason"]
+                .as_str()
+                .is_some_and(|reason| !reason.is_empty()),
         "the still-running invocation must name why its exit is unobserved"
     );
 
@@ -1349,9 +1428,8 @@ fn outcome_records_gate_a() {
     );
     let mut failed_sibling = commands.clone();
     failed_sibling[0].exit = Some(1);
-    let failed_outcome =
-        support::build_outcome(&fixtures, &decisions, &hashes, failed_sibling)
-            .unwrap_or_else(|error| panic!("outcome cannot be built for a failed sibling: {error}"));
+    let failed_outcome = support::build_outcome(&fixtures, &decisions, &hashes, failed_sibling)
+        .unwrap_or_else(|error| panic!("outcome cannot be built for a failed sibling: {error}"));
     assert_eq!(
         failed_outcome["executed"].as_bool(),
         Some(false),
@@ -1361,8 +1439,9 @@ fn outcome_records_gate_a() {
     unobserved_sibling[0].exit = None;
     unobserved_sibling[0].exit_reason = Some("the child exit could not be observed".to_string());
     let unobserved_outcome =
-        support::build_outcome(&fixtures, &decisions, &hashes, unobserved_sibling)
-            .unwrap_or_else(|error| panic!("outcome cannot be built for an unobserved sibling: {error}"));
+        support::build_outcome(&fixtures, &decisions, &hashes, unobserved_sibling).unwrap_or_else(
+            |error| panic!("outcome cannot be built for an unobserved sibling: {error}"),
+        );
     assert_eq!(
         unobserved_outcome["executed"].as_bool(),
         Some(false),
@@ -1660,8 +1739,16 @@ fn independent_domain_geometry(
             continue;
         };
         for (label, derived_set, recorded_set) in [
-            ("internal", &derived_layer.internal_domains, &recorded_layer.internal_domains),
-            ("void", &derived_layer.void_domains, &recorded_layer.void_domains),
+            (
+                "internal",
+                &derived_layer.internal_domains,
+                &recorded_layer.internal_domains,
+            ),
+            (
+                "void",
+                &derived_layer.void_domains,
+                &recorded_layer.void_domains,
+            ),
             (
                 "temporary_anchor",
                 &derived_layer.temporary_anchors,
@@ -1802,7 +1889,9 @@ fn independent_contributor_multiset(
 ) -> BTreeMap<IndependentContributor, usize> {
     let mut multiset = BTreeMap::new();
     for contributor in contributors {
-        *multiset.entry(independent_contributor(contributor)).or_insert(0) += 1;
+        *multiset
+            .entry(independent_contributor(contributor))
+            .or_insert(0) += 1;
     }
     multiset
 }
@@ -1823,10 +1912,9 @@ fn independent_contributor_summary(contributors: &[BoundaryContribution]) -> Vec
                     end.numerator,
                     end.denominator
                 ),
-                ContributionRelation::Generated { operation_id } => format!(
-                    "generated({} op {operation_id})",
-                    key.surface_token
-                ),
+                ContributionRelation::Generated { operation_id } => {
+                    format!("generated({} op {operation_id})", key.surface_token)
+                }
             }
         })
         .collect()
@@ -1860,8 +1948,7 @@ fn independent_compare_boundary_layer(
     for recorded_entry in &recorded.boundary_provenance {
         let recorded_start = independent_point(recorded_entry.endpoints[0]);
         let recorded_end = independent_point(recorded_entry.endpoints[1]);
-        let recorded_contributors =
-            independent_contributor_multiset(&recorded_entry.contributors);
+        let recorded_contributors = independent_contributor_multiset(&recorded_entry.contributors);
         let candidates: Vec<usize> = derived
             .boundary_provenance
             .iter()
@@ -2008,10 +2095,16 @@ fn independent_compare_operation(
             recorded.offset_units, derived.offset_units
         ));
     }
-    let derived_outputs: BTreeSet<(u8, u32, u32, u32)> =
-        derived.outputs.iter().map(independent_address_key).collect();
-    let recorded_outputs: BTreeSet<(u8, u32, u32, u32)> =
-        recorded.outputs.iter().map(independent_address_key).collect();
+    let derived_outputs: BTreeSet<(u8, u32, u32, u32)> = derived
+        .outputs
+        .iter()
+        .map(independent_address_key)
+        .collect();
+    let recorded_outputs: BTreeSet<(u8, u32, u32, u32)> = recorded
+        .outputs
+        .iter()
+        .map(independent_address_key)
+        .collect();
     if derived_outputs != recorded_outputs {
         group.mismatch(format!(
             "{label} outputs: recorded {} addresses, derived {} addresses",
@@ -2033,7 +2126,12 @@ fn independent_address_key(address: &BoundaryAddress) -> (u8, u32, u32, u32) {
         DomainKind::Void => 1,
         DomainKind::TemporaryAnchor => 2,
     };
-    (domain, address.surface_id, address.ring_id, address.segment_id)
+    (
+        domain,
+        address.surface_id,
+        address.ring_id,
+        address.segment_id,
+    )
 }
 
 fn independent_parameters(
@@ -2205,7 +2303,11 @@ fn independent_compare_fill_policy(
         }
     }
     for (field, derived_value, recorded_value) in [
-        ("align_to_model", derived.align_to_model, recorded.align_to_model),
+        (
+            "align_to_model",
+            derived.align_to_model,
+            recorded.align_to_model,
+        ),
         ("fixed_angle", derived.fixed_angle, recorded.fixed_angle),
         ("is_bridge", derived.is_bridge, recorded.is_bridge),
     ] {
@@ -2362,7 +2464,8 @@ fn independent_compare_polygon_multiset(
     let mut unmatched_recorded = Vec::new();
     for recorded_index in order {
         let found = derived.iter().enumerate().find(|(index, candidate)| {
-            !used[*index] && independent_polygons_equal(candidate, &recorded_geometry[recorded_index])
+            !used[*index]
+                && independent_polygons_equal(candidate, &recorded_geometry[recorded_index])
         });
         match found {
             Some((index, _)) => {
@@ -2388,7 +2491,6 @@ fn independent_compare_polygon_multiset(
         ));
     }
 }
-
 
 fn independent_parameter_mismatches(
     construction: &LightningParameters,
@@ -2450,7 +2552,10 @@ fn independent_parameter_mismatches(
         reference.straightening_angle_deg,
         SCALAR_TOLERANCE_MM,
     );
-    match (construction.supporting_radius_mm, reference.supporting_radius_mm) {
+    match (
+        construction.supporting_radius_mm,
+        reference.supporting_radius_mm,
+    ) {
         (Some(a), Some(b)) if (a - b).abs() <= SCALAR_TOLERANCE_MM => {}
         (None, None) => {}
         _ => mismatches.push(format!(

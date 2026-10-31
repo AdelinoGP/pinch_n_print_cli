@@ -186,10 +186,7 @@ fn plan_with_segments(segments: Vec<[Point2; 2]>) -> MemoryPlan {
                 region_id: 1,
                 layer: 0,
                 chain: Vec::new(),
-                segments: vec![[
-                    Point2::from_mm(90.0, 90.0),
-                    Point2::from_mm(91.0, 91.0),
-                ]],
+                segments: vec![[Point2::from_mm(90.0, 90.0), Point2::from_mm(91.0, 91.0)]],
             },
         ],
     )
@@ -285,13 +282,7 @@ fn square_region_produces_paths() {
     let plan = plan_with_segments(sample_segments());
 
     let result = run_with_plan(&plan, || {
-        module.run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &config,
-        )
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
     });
     result.unwrap();
 
@@ -308,13 +299,7 @@ fn paths_have_sparse_infill_role() {
     let plan = plan_with_segments(sample_segments());
 
     let result = run_with_plan(&plan, || {
-        module.run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &config,
-        )
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
     });
     result.unwrap();
 
@@ -341,13 +326,7 @@ fn empty_regions_no_output() {
     // A layer with no trees still publishes its (header-only) piece.
     let plan = MemoryPlan::with_layer(0, &[]);
     let result = run_with_plan(&plan, || {
-        module.run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &config,
-        )
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
     });
     result.unwrap();
 
@@ -365,13 +344,7 @@ fn paths_at_correct_z() {
     let plan = plan_with_segments(sample_segments());
 
     let result = run_with_plan(&plan, || {
-        module.run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &config,
-        )
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
     });
     result.unwrap();
 
@@ -392,13 +365,7 @@ fn width_matches_config() {
     let plan = plan_with_segments(sample_segments());
 
     let result = run_with_plan(&plan, || {
-        module.run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &config,
-        )
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
     });
     result.unwrap();
 
@@ -422,13 +389,7 @@ fn samples_prepared_piece_raw_emit() {
     let mut output = InfillOutputBuilder::new();
 
     let result = run_with_plan(&plan, || {
-        module.run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &config,
-        )
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
     });
     result.unwrap();
 
@@ -457,13 +418,7 @@ fn empty_piece_emits_nothing() {
     let mut output = InfillOutputBuilder::new();
 
     let result = run_with_plan(&plan, || {
-        module.run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &config,
-        )
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
     });
 
     assert!(result.is_ok());
@@ -481,13 +436,7 @@ fn missing_piece_is_fatal_57401() {
     let mut output = InfillOutputBuilder::new();
 
     let error = run_with_plan(&plan, || {
-        module.run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &config,
-        )
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
     })
     .expect_err("a missing piece must fail the layer");
 

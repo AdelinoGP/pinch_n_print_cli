@@ -219,7 +219,9 @@ impl GateInputCase {
         let case_id = field_str(&fields, "case_id", &label)?;
         let wall_strategy = WallStrategy::parse(fields["wall_strategy"], &label)?;
         let a_source: GateASourceInput = serde_json::from_value(fields["a_source"].clone())
-            .map_err(|error| format!("{label}.a_source is not a strict GateASourceInput: {error}"))?;
+            .map_err(|error| {
+                format!("{label}.a_source is not a strict GateASourceInput: {error}")
+            })?;
         Ok(Self {
             case_id,
             wall_strategy,
@@ -267,7 +269,8 @@ impl GateOracleCase {
         let fields = strict_fields(value, &["case_id", "wall_strategy", "reference"], &label)?;
         let case_id = field_str(&fields, "case_id", &label)?;
         let wall_strategy = WallStrategy::parse(fields["wall_strategy"], &label)?;
-        let reference = GateReference::from_value(&fields["reference"], &format!("{label}.reference"))?;
+        let reference =
+            GateReference::from_value(&fields["reference"], &format!("{label}.reference"))?;
         Ok(Self {
             case_id,
             wall_strategy,
@@ -304,10 +307,11 @@ impl GateReference {
             ],
             label,
         )?;
-        let planning_layers = serde_json::from_value::<Vec<PlanningLayer>>(
-            fields["planning_layers"].clone(),
-        )
-        .map_err(|error| format!("{label}.planning_layers is not a strict layer list: {error}"))?;
+        let planning_layers =
+            serde_json::from_value::<Vec<PlanningLayer>>(fields["planning_layers"].clone())
+                .map_err(|error| {
+                    format!("{label}.planning_layers is not a strict layer list: {error}")
+                })?;
         let policies = if fields["policies"].is_null() {
             None
         } else {
@@ -318,8 +322,9 @@ impl GateReference {
                     })?,
             )
         };
-        let parameters = serde_json::from_value::<LightningParameters>(fields["parameters"].clone())
-            .map_err(|error| format!("{label}.parameters is not strict: {error}"))?;
+        let parameters =
+            serde_json::from_value::<LightningParameters>(fields["parameters"].clone())
+                .map_err(|error| format!("{label}.parameters is not strict: {error}"))?;
         let scalar_source_region =
             serde_json::from_value::<RegionIdentity>(fields["scalar_source_region"].clone())
                 .map_err(|error| format!("{label}.scalar_source_region is not strict: {error}"))?;
@@ -406,11 +411,7 @@ impl GateReplay {
                 "faithful_domain_polygon_count",
                 label,
             )?,
-            faithful_matches_production: field_bool(
-                &fields,
-                "faithful_matches_production",
-                label,
-            )?,
+            faithful_matches_production: field_bool(&fields, "faithful_matches_production", label)?,
             production: ReplayGraph::from_value(
                 fields["production"],
                 &format!("{label}.production"),
@@ -458,11 +459,17 @@ pub struct ReplayGraph {
 
 impl ReplayGraph {
     fn from_value(value: &Value, label: &str) -> Result<Self, String> {
-        let fields = strict_fields(value, &["graph", "node_count", "edge_count", "root_count"], label)?;
+        let fields = strict_fields(
+            value,
+            &["graph", "node_count", "edge_count", "root_count"],
+            label,
+        )?;
         let graph = field_array(&fields, "graph", label)?
             .iter()
             .enumerate()
-            .map(|(index, layer)| ReplayLayer::from_value(layer, &format!("{label}.graph[{index}]")))
+            .map(|(index, layer)| {
+                ReplayLayer::from_value(layer, &format!("{label}.graph[{index}]"))
+            })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
             graph,
@@ -492,7 +499,11 @@ pub struct ReplayLayer {
 
 impl ReplayLayer {
     fn from_value(value: &Value, label: &str) -> Result<Self, String> {
-        let fields = strict_fields(value, &["layer_index", "nodes", "edges", "root_count"], label)?;
+        let fields = strict_fields(
+            value,
+            &["layer_index", "nodes", "edges", "root_count"],
+            label,
+        )?;
         let nodes = field_array(&fields, "nodes", label)?
             .iter()
             .enumerate()
@@ -551,7 +562,10 @@ impl ReplayNode {
         let last_grounding = if fields["last_grounding"].is_null() {
             None
         } else {
-            Some(point_array(fields["last_grounding"], &format!("{label}.last_grounding"))?)
+            Some(point_array(
+                fields["last_grounding"],
+                &format!("{label}.last_grounding"),
+            )?)
         };
         let point = point_array(fields["point"], &format!("{label}.point"))?;
         let point_mm = f64_pair_array(fields["point_mm"], &format!("{label}.point_mm"))?;
@@ -956,8 +970,16 @@ pub fn validate_population_values(
     manifest: &GateManifest,
 ) -> Result<(), String> {
     let mut problems = Vec::new();
-    let input_ids: BTreeSet<&str> = inputs.cases.iter().map(|case| case.case_id.as_str()).collect();
-    let oracle_ids: BTreeSet<&str> = oracle.cases.iter().map(|case| case.case_id.as_str()).collect();
+    let input_ids: BTreeSet<&str> = inputs
+        .cases
+        .iter()
+        .map(|case| case.case_id.as_str())
+        .collect();
+    let oracle_ids: BTreeSet<&str> = oracle
+        .cases
+        .iter()
+        .map(|case| case.case_id.as_str())
+        .collect();
     let manifest_ids: BTreeSet<&str> = manifest.case_ids.iter().map(String::as_str).collect();
 
     if input_ids.len() != inputs.cases.len() {
@@ -973,10 +995,14 @@ pub fn validate_population_values(
         problems.push(format!("inputs.json carries unmanifested case `{extra}`"));
     }
     for missing in manifest_ids.difference(&oracle_ids) {
-        problems.push(format!("canonical.json is missing manifest case `{missing}`"));
+        problems.push(format!(
+            "canonical.json is missing manifest case `{missing}`"
+        ));
     }
     for extra in oracle_ids.difference(&manifest_ids) {
-        problems.push(format!("canonical.json carries unmanifested case `{extra}`"));
+        problems.push(format!(
+            "canonical.json carries unmanifested case `{extra}`"
+        ));
     }
     for id in &manifest_ids {
         if !manifest.cases.contains_key(*id) {
@@ -1004,7 +1030,10 @@ pub fn input_case<'a>(fixtures: &'a Fixtures, case_id: &str) -> Result<&'a GateI
         .ok_or_else(|| format!("inputs.json has no case `{case_id}`"))
 }
 
-pub fn oracle_case<'a>(fixtures: &'a Fixtures, case_id: &str) -> Result<&'a GateOracleCase, String> {
+pub fn oracle_case<'a>(
+    fixtures: &'a Fixtures,
+    case_id: &str,
+) -> Result<&'a GateOracleCase, String> {
     fixtures
         .oracle
         .cases
@@ -1013,7 +1042,10 @@ pub fn oracle_case<'a>(fixtures: &'a Fixtures, case_id: &str) -> Result<&'a Gate
         .ok_or_else(|| format!("canonical.json has no case `{case_id}`"))
 }
 
-pub fn manifest_case<'a>(fixtures: &'a Fixtures, case_id: &str) -> Result<&'a ManifestCase, String> {
+pub fn manifest_case<'a>(
+    fixtures: &'a Fixtures,
+    case_id: &str,
+) -> Result<&'a ManifestCase, String> {
     fixtures
         .manifest
         .cases
@@ -1054,7 +1086,9 @@ pub fn project_gate_a_bytes(view: &Value) -> Result<Vec<u8>, KernelError> {
 pub fn extract_gate_a_source(source_bytes: &[u8]) -> Result<GateASourceInput, KernelError> {
     serde_json::from_slice(source_bytes).map_err(|error| KernelError::InvalidInput {
         context: empty_location(),
-        reason: format!("the restricted `a_source` subtree is not a strict GateASourceInput: {error}"),
+        reason: format!(
+            "the restricted `a_source` subtree is not a strict GateASourceInput: {error}"
+        ),
     })
 }
 
@@ -1254,7 +1288,10 @@ pub fn source_hashes(source: &GateASourceInput) -> TypedSourceHashes {
 /// published bytes. Both files are written as canonical compact JSON, so the
 /// value text is byte-identical to the recorder's canonical encoding. The typed
 /// decode is asserted separately (strict envelope decode and the comparator).
-pub fn recompute_hashes_for(fixtures: &Fixtures, case_id: &str) -> Result<CaseEvidenceHashes, String> {
+pub fn recompute_hashes_for(
+    fixtures: &Fixtures,
+    case_id: &str,
+) -> Result<CaseEvidenceHashes, String> {
     let input_index = fixtures
         .inputs
         .cases
@@ -1290,7 +1327,11 @@ pub fn recompute_hashes_for(fixtures: &Fixtures, case_id: &str) -> Result<CaseEv
 /// Return the exact source text of the `occurrence`-th value of `key`. The
 /// fixture files are canonical compact JSON, so this is the recorder's hash
 /// preimage for that subtree.
-fn value_text_after<'a>(document: &'a str, key: &str, occurrence: usize) -> Result<&'a str, String> {
+fn value_text_after<'a>(
+    document: &'a str,
+    key: &str,
+    occurrence: usize,
+) -> Result<&'a str, String> {
     let needle = format!("\"{key}\":");
     let start = document
         .match_indices(&needle)
@@ -1302,7 +1343,9 @@ fn value_text_after<'a>(document: &'a str, key: &str, occurrence: usize) -> Resu
 
 fn scan_json_value(text: &str) -> Result<&str, String> {
     let bytes = text.as_bytes();
-    let first = *bytes.first().ok_or_else(|| "empty JSON value".to_string())?;
+    let first = *bytes
+        .first()
+        .ok_or_else(|| "empty JSON value".to_string())?;
     match first {
         b'{' | b'[' => {
             let mut depth = 0usize;
@@ -1365,10 +1408,17 @@ pub struct HashVerification {
     pub mismatches: Vec<String>,
 }
 
-pub fn verify_case_hashes(recorded: &ManifestCase, recomputed: &CaseEvidenceHashes) -> HashVerification {
+pub fn verify_case_hashes(
+    recorded: &ManifestCase,
+    recomputed: &CaseEvidenceHashes,
+) -> HashVerification {
     let mut verification = HashVerification::default();
     let slots: [(&'static str, &str, &str); 5] = [
-        ("a_source_sha256", &recorded.a_source_sha256, &recomputed.a_source_sha256),
+        (
+            "a_source_sha256",
+            &recorded.a_source_sha256,
+            &recomputed.a_source_sha256,
+        ),
         (
             "a_raw_config_sha256",
             &recorded.a_raw_config_sha256,
@@ -1379,8 +1429,16 @@ pub fn verify_case_hashes(recorded: &ManifestCase, recomputed: &CaseEvidenceHash
             &recorded.a_earlier_provenance_sha256,
             &recomputed.a_earlier_provenance_sha256,
         ),
-        ("b_input_sha256", &recorded.b_input_sha256, &recomputed.b_input_sha256),
-        ("reference_sha256", &recorded.reference_sha256, &recomputed.reference_sha256),
+        (
+            "b_input_sha256",
+            &recorded.b_input_sha256,
+            &recomputed.b_input_sha256,
+        ),
+        (
+            "reference_sha256",
+            &recorded.reference_sha256,
+            &recomputed.reference_sha256,
+        ),
     ];
     for (name, recorded_value, recomputed_value) in slots {
         if !is_hash_or_absent(recorded_value) {
@@ -1498,7 +1556,10 @@ impl CaseDecision {
 /// Precedence: a measured difference is `fail`; otherwise missing evidence is
 /// `inconclusive`; only a fully compared case is `pass`.
 pub fn recompute_status(groups: &[GroupOutcome]) -> CaseStatus {
-    if groups.iter().any(|group| group.verdict == GroupVerdict::Fail) {
+    if groups
+        .iter()
+        .any(|group| group.verdict == GroupVerdict::Fail)
+    {
         CaseStatus::Fail
     } else if groups
         .iter()
@@ -1638,7 +1699,10 @@ fn constructed_layers(construction: &GateAConstruction) -> BTreeMap<u32, &Planni
     layers
 }
 
-fn compare_layer_identity(construction: &GateAConstruction, reference: &GateReference) -> GroupOutcome {
+fn compare_layer_identity(
+    construction: &GateAConstruction,
+    reference: &GateReference,
+) -> GroupOutcome {
     let mut group = GroupOutcome::pass("planning_layers.identity");
     let constructed = constructed_layers(construction);
     for (index, recorded) in recorded_layers(reference) {
@@ -1671,7 +1735,10 @@ fn compare_layer_identity(construction: &GateAConstruction, reference: &GateRefe
 /// layers outside it are not comparable layer-for-layer, but they must carry no
 /// planning activity; a planned layer the reference never recorded is a named
 /// population mismatch, never a silent skip.
-fn compare_layer_population(construction: &GateAConstruction, reference: &GateReference) -> GroupOutcome {
+fn compare_layer_population(
+    construction: &GateAConstruction,
+    reference: &GateReference,
+) -> GroupOutcome {
     let mut group = GroupOutcome::pass("planning_layers.population");
     let recorded = recorded_layers(reference);
     let constructed = constructed_layers(construction);
@@ -1774,9 +1841,10 @@ fn compare_domain_set(
     let (matched, unmatched_recorded, unmatched_derived) =
         match_polygon_multiset(derived, recorded, GEOMETRY_TOLERANCE_PNP_UNITS);
     if unmatched_recorded.is_empty() && unmatched_derived.is_empty() {
-        group
-            .detail
-            .push(format!("{label}: {matched}/{} polygons matched", recorded.len()));
+        group.detail.push(format!(
+            "{label}: {matched}/{} polygons matched",
+            recorded.len()
+        ));
         return;
     }
     group.mismatches.push(format!(
@@ -1794,7 +1862,10 @@ fn compare_domain_set(
     ));
 }
 
-fn compare_source_regions(construction: &GateAConstruction, reference: &GateReference) -> GroupOutcome {
+fn compare_source_regions(
+    construction: &GateAConstruction,
+    reference: &GateReference,
+) -> GroupOutcome {
     let mut group = GroupOutcome::pass("planning_layers.source_regions");
     let recorded = recorded_layers(reference);
     let constructed = constructed_layers(construction);
@@ -1812,7 +1883,10 @@ fn compare_source_regions(construction: &GateAConstruction, reference: &GateRefe
     group.finish()
 }
 
-fn compare_source_catalog(construction: &GateAConstruction, reference: &GateReference) -> GroupOutcome {
+fn compare_source_catalog(
+    construction: &GateAConstruction,
+    reference: &GateReference,
+) -> GroupOutcome {
     let mut group = GroupOutcome::pass("planning_layers.source_catalog");
     let recorded = recorded_layers(reference);
     let constructed = constructed_layers(construction);
@@ -1878,14 +1952,24 @@ fn compare_surface(
     );
     let geometry_derived = vec![derived.geometry.clone()];
     let geometry_recorded = vec![recorded.geometry.clone()];
-    let (matched, unmatched_recorded, unmatched_derived) =
-        match_polygon_multiset(&geometry_derived, &geometry_recorded, GEOMETRY_TOLERANCE_PNP_UNITS);
+    let (matched, unmatched_recorded, unmatched_derived) = match_polygon_multiset(
+        &geometry_derived,
+        &geometry_recorded,
+        GEOMETRY_TOLERANCE_PNP_UNITS,
+    );
     if matched != 1 || !unmatched_recorded.is_empty() || !unmatched_derived.is_empty() {
-        mismatches.push(format!("{label} geometry does not match the recorded surface"));
+        mismatches.push(format!(
+            "{label} geometry does not match the recorded surface"
+        ));
     }
 }
 
-fn compare_option_angle(mismatches: &mut Vec<String>, label: &str, derived: Option<f64>, recorded: Option<f64>) {
+fn compare_option_angle(
+    mismatches: &mut Vec<String>,
+    label: &str,
+    derived: Option<f64>,
+    recorded: Option<f64>,
+) {
     match (derived, recorded) {
         (None, None) => {}
         (Some(a), Some(b)) if (a - b).abs() <= ANGLE_TOLERANCE_RAD => {}
@@ -2031,7 +2115,9 @@ fn boundary_by_address(
 ) -> BTreeMap<(u8, u32, u32, u32), Vec<&BoundaryProvenance>> {
     let mut map: BTreeMap<(u8, u32, u32, u32), Vec<&BoundaryProvenance>> = BTreeMap::new();
     for entry in provenance {
-        map.entry(address_key(&entry.address)).or_default().push(entry);
+        map.entry(address_key(&entry.address))
+            .or_default()
+            .push(entry);
     }
     map
 }
@@ -2164,7 +2250,9 @@ fn compare_operation(
         ));
     }
     if derived.inputs != recorded.inputs {
-        group.mismatches.push(format!("{label} inputs differ from the recorded source segments"));
+        group.mismatches.push(format!(
+            "{label} inputs differ from the recorded source segments"
+        ));
     }
     if derived.parent_operations != recorded.parent_operations {
         group.mismatches.push(format!(
@@ -2173,7 +2261,9 @@ fn compare_operation(
         ));
     }
     if derived.operands != recorded.operands {
-        group.mismatches.push(format!("{label} operands differ from the recorded lineage"));
+        group
+            .mismatches
+            .push(format!("{label} operands differ from the recorded lineage"));
     }
     if derived.join != recorded.join {
         group.mismatches.push(format!(
@@ -2190,7 +2280,8 @@ fn compare_operation(
     }
     let recorded_outputs: BTreeSet<(u8, u32, u32, u32)> =
         recorded.outputs.iter().map(address_key).collect();
-    let derived_outputs: BTreeSet<(u8, u32, u32, u32)> = derived.outputs.iter().map(address_key).collect();
+    let derived_outputs: BTreeSet<(u8, u32, u32, u32)> =
+        derived.outputs.iter().map(address_key).collect();
     if derived_outputs != recorded_outputs {
         group.mismatches.push(format!(
             "{label} outputs: recorded {} addresses, derived {} addresses",
@@ -2305,7 +2396,13 @@ fn compare_parameters(construction: &GateAConstruction, reference: &GateReferenc
     group.finish()
 }
 
-fn compare_scalar(group: &mut GroupOutcome, field: &str, derived: f64, recorded: f64, tolerance: f64) {
+fn compare_scalar(
+    group: &mut GroupOutcome,
+    field: &str,
+    derived: f64,
+    recorded: f64,
+    tolerance: f64,
+) {
     if !(derived - recorded).abs().is_finite() || (derived - recorded).abs() > tolerance {
         group.mismatches.push(format!(
             "{field}: recorded {recorded}, derived {derived} (tol {tolerance})"
@@ -2313,7 +2410,10 @@ fn compare_scalar(group: &mut GroupOutcome, field: &str, derived: f64, recorded:
     }
 }
 
-fn compare_scalar_source(construction: &GateAConstruction, reference: &GateReference) -> GroupOutcome {
+fn compare_scalar_source(
+    construction: &GateAConstruction,
+    reference: &GateReference,
+) -> GroupOutcome {
     let mut group = GroupOutcome::pass("scalar_source_region");
     if construction.scalar_source_region != reference.scalar_source_region {
         group.mismatches.push(format!(
@@ -2348,10 +2448,17 @@ fn compare_policies(
     let recorded_by_key = policy_by_key(recorded_policies);
     for (key, recorded_policy) in &recorded_by_key {
         let Some(derived_policy) = derived_by_key.get(key) else {
-            group.mismatches.push(format!("recorded policy {key} has no derived occurrence"));
+            group
+                .mismatches
+                .push(format!("recorded policy {key} has no derived occurrence"));
             continue;
         };
-        compare_fill_policy(&mut group, key, &derived_policy.policy, &recorded_policy.policy);
+        compare_fill_policy(
+            &mut group,
+            key,
+            &derived_policy.policy,
+            &recorded_policy.policy,
+        );
     }
     for key in derived_by_key.keys() {
         if !recorded_by_key.contains_key(key) {
@@ -2366,8 +2473,12 @@ fn compare_policies(
 fn policy_by_key(policies: &[DerivedRegionPolicy]) -> BTreeMap<String, &DerivedRegionPolicy> {
     let mut map = BTreeMap::new();
     for policy in policies {
-        let identity = canonical_json(&serde_json::to_value(&policy.identity).expect("identity serializes"));
-        map.insert(format!("{}@g{}", identity, policy.global_layer_index), policy);
+        let identity =
+            canonical_json(&serde_json::to_value(&policy.identity).expect("identity serializes"));
+        map.insert(
+            format!("{}@g{}", identity, policy.global_layer_index),
+            policy,
+        );
     }
     map
 }
@@ -2499,7 +2610,13 @@ fn convert_point(point: Point2) -> Point2 {
 fn convert_expolygon(polygon: &ExPolygon) -> ExPolygon {
     ExPolygon {
         contour: slicer_ir::Polygon {
-            points: polygon.contour.points.iter().copied().map(convert_point).collect(),
+            points: polygon
+                .contour
+                .points
+                .iter()
+                .copied()
+                .map(convert_point)
+                .collect(),
         },
         holes: polygon
             .holes
@@ -2533,7 +2650,10 @@ pub fn convert_reference_layer(layer: &PlanningLayer) -> PlanningLayer {
             .iter()
             .map(|entry| BoundaryProvenance {
                 address: entry.address.clone(),
-                endpoints: [convert_point(entry.endpoints[0]), convert_point(entry.endpoints[1])],
+                endpoints: [
+                    convert_point(entry.endpoints[0]),
+                    convert_point(entry.endpoints[1]),
+                ],
                 contributors: entry.contributors.clone(),
             })
             .collect(),
@@ -2608,9 +2728,14 @@ fn ex_polygon_matches(derived: &ExPolygon, recorded: &ExPolygon, tolerance: i64)
     }
     let mut used = vec![false; recorded.holes.len()];
     for hole in &derived.holes {
-        let Some(position) = recorded.holes.iter().enumerate().position(|(index, candidate)| {
-            !used[index] && ring_matches(&hole.points, &candidate.points, tolerance)
-        }) else {
+        let Some(position) = recorded
+            .holes
+            .iter()
+            .enumerate()
+            .position(|(index, candidate)| {
+                !used[index] && ring_matches(&hole.points, &candidate.points, tolerance)
+            })
+        else {
             return false;
         };
         used[position] = true;
@@ -2845,8 +2970,9 @@ pub fn read_outcome() -> Result<Value, String> {
 /// the recorded `command` is the argv that actually ran and the Cargo line is
 /// recorded separately as `equivalent`.
 pub fn run_sibling_test(filter: &str) -> CommandRecord {
-    let equivalent =
-        format!("cargo test -p slicer-wasm-host --test integration {filter} -- --exact --nocapture");
+    let equivalent = format!(
+        "cargo test -p slicer-wasm-host --test integration {filter} -- --exact --nocapture"
+    );
     let exe = std::env::current_exe();
     let command = match &exe {
         Ok(exe) => format!("{} {filter} --exact --nocapture", exe.display()),
@@ -2884,8 +3010,9 @@ pub fn run_sibling_test(filter: &str) -> CommandRecord {
 }
 
 pub fn self_command_record(filter: &str) -> CommandRecord {
-    let equivalent =
-        format!("cargo test -p slicer-wasm-host --test integration {filter} -- --exact --nocapture");
+    let equivalent = format!(
+        "cargo test -p slicer-wasm-host --test integration {filter} -- --exact --nocapture"
+    );
     let command = match std::env::current_exe() {
         Ok(exe) => format!("{} {filter} --exact --nocapture", exe.display()),
         Err(error) => format!("<unresolved test binary: {error}> {filter} --exact --nocapture"),
@@ -2909,4 +3036,3 @@ pub fn status_label(status: CaseStatus) -> &'static str {
         CaseStatus::Inconclusive => "inconclusive",
     }
 }
-

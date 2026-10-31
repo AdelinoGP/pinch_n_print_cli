@@ -60,7 +60,9 @@ impl BoundaryDistanceField {
     pub fn new(polys: &[ExPolygon]) -> Self {
         let mut segments = Vec::new();
         for (polygon_index, poly) in polys.iter().enumerate() {
-            for (ring_id, ring) in std::iter::once(&poly.contour).chain(poly.holes.iter()).enumerate()
+            for (ring_id, ring) in std::iter::once(&poly.contour)
+                .chain(poly.holes.iter())
+                .enumerate()
             {
                 let points = &ring.points;
                 if points.len() < 2 {
@@ -135,7 +137,11 @@ impl BoundaryDistanceField {
     /// of one expolygon but inside another is still reported as inside.
     pub fn signed_distance(&self, pt: Point2) -> Option<f64> {
         let distance = self.distance(pt)?;
-        Some(if self.contains(pt) { -distance } else { distance })
+        Some(if self.contains(pt) {
+            -distance
+        } else {
+            distance
+        })
     }
 }
 
@@ -199,8 +205,14 @@ mod tests {
         assert_eq!(hit.distance, 5000.0);
         assert_eq!(hit.segment.ring_id, 0);
         // Signed distance is negative inside, positive outside.
-        assert_eq!(field.signed_distance(Point2 { x: 5000, y: 5000 }), Some(-5000.0));
-        assert_eq!(field.signed_distance(Point2 { x: 15_000, y: 5000 }), Some(5000.0));
+        assert_eq!(
+            field.signed_distance(Point2 { x: 5000, y: 5000 }),
+            Some(-5000.0)
+        );
+        assert_eq!(
+            field.signed_distance(Point2 { x: 15_000, y: 5000 }),
+            Some(5000.0)
+        );
     }
 
     #[test]
