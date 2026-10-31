@@ -228,7 +228,7 @@ fn run_native(fx: &Fixture) -> Vec<(OriginId, ConfigView)> {
     DELIVERED_CONFIGS.with(|records| records.borrow().clone())
 }
 
-fn assert_native_configs(records: &[(OriginId, ConfigView)], check_private: bool) {
+fn assert_native_configs(records: &[(OriginId, ConfigView)]) {
     assert_eq!(
         records.len(),
         2,
@@ -245,13 +245,11 @@ fn assert_native_configs(records: &[(OriginId, ConfigView)], check_private: bool
             "postprocess must preserve raw identity"
         );
         assert_eq!(config.get_float("line_width"), Some(width));
-        if check_private {
-            assert_eq!(
-                config.get("private_probe"),
-                None,
-                "native: undeclared extension leaked"
-            );
-        }
+        assert_eq!(
+            config.get("private_probe"),
+            None,
+            "native: undeclared extension leaked"
+        );
     }
 }
 
@@ -283,7 +281,7 @@ fn boundary_context() -> HostExecutionContext {
     ctx
 }
 
-fn assert_public_accessors(fx: &Fixture, ctx: &mut HostExecutionContext, check_private: bool) {
+fn assert_public_accessors(fx: &Fixture, ctx: &mut HostExecutionContext) {
     assert_eq!(fx.slice.regions.len(), 2);
     assert_eq!(fx.perimeter.regions.len(), 2);
     for (tool, width) in [(1, 0.4), (2, 0.6)] {
@@ -315,14 +313,12 @@ fn assert_public_accessors(fx: &Fixture, ctx: &mut HostExecutionContext, check_p
                 Some(width),
                 "{kind}: material variant {tool} must not borrow sibling/default width"
             );
-            if check_private {
-                assert!(
-                    HostConfigView::get(ctx, own(config.rep()), "private_probe".into())
-                        .unwrap()
-                        .is_none(),
-                    "{kind}: undeclared extension leaked"
-                );
-            }
+            assert!(
+                HostConfigView::get(ctx, own(config.rep()), "private_probe".into())
+                    .unwrap()
+                    .is_none(),
+                "{kind}: undeclared extension leaked"
+            );
             HostConfigView::drop(ctx, own(config.rep())).unwrap();
         }
         HostSliceRegionView::drop(ctx, own(slice_handle.rep())).unwrap();
@@ -331,18 +327,11 @@ fn assert_public_accessors(fx: &Fixture, ctx: &mut HostExecutionContext, check_p
 }
 
 #[test]
-fn slice_and_perimeter_accessors_preserve_variant_identity() {
-    let fx = fixture();
-    assert_native_configs(&run_native(&fx), false);
-    assert_public_accessors(&fx, &mut boundary_context(), false);
-}
-
-#[test]
 fn declared_keys_and_canonical_ids_are_enforced() {
     let fx = fixture();
-    assert_native_configs(&run_native(&fx), true);
+    assert_native_configs(&run_native(&fx));
     let mut ctx = boundary_context();
-    assert_public_accessors(&fx, &mut ctx, true);
+    assert_public_accessors(&fx, &mut ctx);
 
     let mut slice = sliced_region_to_data(&fx.slice.regions[0], 0.2, vec![], None, 0);
     slice.region_id = "01".into();
