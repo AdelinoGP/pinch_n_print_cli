@@ -453,7 +453,6 @@ impl PreparedOwnerStore {
             completed: false,
         })
     }
-    /// Obtain the currently published plan authority.
     /// Snapshot the first typed rejection without geometry or payloads.
     pub fn projection_failure(
         &self,

@@ -928,7 +928,6 @@ impl OwnerPreparationInput {
 
     /// Read-only committed schedule snapshot for host-side visual capture.
     /// Does not count as a consumer read.
-    #[allow(dead_code)]
     pub fn schedule_snapshot(&self) -> InputResult<Vec<PreparationLayer>> {
         Ok(self.project_layers(0..self.inputs.layers.global_layers.len()))
     }

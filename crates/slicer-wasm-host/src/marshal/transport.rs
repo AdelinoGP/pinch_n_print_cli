@@ -1,10 +1,8 @@
 //! Call-local current geometry under already-indexed source authority.
 //!
-//! This module neither selects targets nor resolves configuration. The adapters
-//! will consume these private records in the next implementation step.
-
-// Construction is connected before the split; adapter consumption follows in Step 5.
-#![allow(dead_code)]
+//! This module neither selects targets nor resolves configuration; it assembles
+//! the current geometry that the dispatch adapters consume from the committed
+//! selection.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
