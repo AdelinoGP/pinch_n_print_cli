@@ -166,6 +166,7 @@ pub struct Generator {
     pub lightning_overhang_angle: f64,
     m_overhang_per_layer: Vec<Polygons>,
     m_layers: Vec<Layer>,
+    committed_segments: Vec<[Point2; 2]>,
     committed_segments_by_layer: Vec<Vec<[Point2; 2]>>,
 }
 
@@ -215,6 +216,7 @@ impl Generator {
             lightning_overhang_angle,
             m_overhang_per_layer,
             m_layers,
+            committed_segments: Vec::new(),
             committed_segments_by_layer: Vec::new(),
         }
     }
@@ -226,6 +228,7 @@ impl Generator {
             .iter()
             .map(|_| Layer::default())
             .collect();
+        self.committed_segments.clear();
         self.committed_segments_by_layer =
             self.per_layer_outlines.iter().map(|_| Vec::new()).collect();
 
@@ -278,6 +281,7 @@ impl Generator {
             {
                 for segment in polyline.windows(2) {
                     let segment = [segment[0], segment[1]];
+                    self.committed_segments.push(segment);
                     self.committed_segments_by_layer[layer_id].push(segment);
                 }
             }
@@ -292,6 +296,11 @@ impl Generator {
     /// Return committed segments for one layer without changing ownership.
     pub fn committed_segments_for_layer(&self, layer_id: usize) -> &[[Point2; 2]] {
         &self.committed_segments_by_layer[layer_id]
+    }
+
+    /// Remove the committed segments in deterministic layer and creation order.
+    pub fn take_committed_segments(&mut self) -> Vec<[Point2; 2]> {
+        std::mem::take(&mut self.committed_segments)
     }
 }
 

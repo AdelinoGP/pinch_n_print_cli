@@ -30,11 +30,12 @@ use crate::private_plan::{decode_layer_piece, piece_name};
 
 // The relocated bodies keep the host copy's surface, including helpers reached
 // only by the kernel's own tests and by the isolated feasibility kernel
-// (`Generator::get_trees_for_layer`, `DistanceField::unsupported_count`,
-// `Layer::new`) and the never-constructed `KernelError::Unimplemented`. Inside
-// this private module those members are unreachable from the ordinary entry
-// point, so dead-code detection stays scoped here. The original migration
-// freeze no longer applies; later fixes may change these bodies.
+// (`Generator::{get_trees_for_layer, take_committed_segments}`,
+// `DistanceField::unsupported_count`, `Layer::new`) and the never-constructed
+// `KernelError::Unimplemented`. Inside this private module those members are
+// unreachable from the ordinary entry point, so dead-code detection stays
+// scoped here. The original migration freeze no longer applies; later fixes
+// may change these bodies.
 #[allow(dead_code)]
 mod kernel;
 mod planning_input;
