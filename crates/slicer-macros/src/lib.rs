@@ -1467,7 +1467,6 @@ fn preparation_input_glue() -> TokenStream2 {
     }
 }
 
-/// Add preparation and lazy call-local plan access to the same component that
 /// Convert only the optional public diagnostic DTO into canonical imported types.
 fn preparation_projection_glue() -> TokenStream2 {
     quote! {
