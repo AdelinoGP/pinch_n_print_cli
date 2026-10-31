@@ -50,7 +50,40 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-30, fourth session — the ticket 99 take):**
+**Current selection scope (2026-10-30, fifth session — the ticket 100 take):**
+the human said "continue the perf vs orca map" (no ticket named). The frontier
+re-derivation at HEAD `cc2c54e6` found **99/99 child tickets resolved — no open
+child, no claim** — so the session offered six measured fog routes and the human
+selected **allocation-volume arena / bulk-free**. The fog patch graduated as
+[100](issues/100-allocation-volume-layer-collection.md) and is **resolved
+(2026-10-30) as a Phase-1 screen — measured-dead as scoped, no candidate, no
+campaign, probe reverted**. The census: the whole-print free on ordinary base
+classic supports-on is **34,796,481 blocks / 1,358,397,544 bytes / 3,526,544 µs**
+(**101.3 ns per block**), of which **34,662,668 = 99.6 %** are 8–15-byte strings
+sampled as `__skirt_…` / `demand-N` — the `support_entity_identities` side table
+that `assemble_ordered_entities_with_support_identities` clones **per support
+path** (23,751 rows × ~1,457 demand ids). Geometry is **0.094 %** of the blocks
+and **7.8 %** of the bytes. A bulk free of the same bytes costs
+**44.5–63.8 ms**, so the ceiling is **3.468 s = 2.10 %** of the cell =
+**2.63x** the 1,318 ms floor — but flattening a live collection costs
+**73.3–115.1 ms** of copy **plus the same storm** (**+73 ms worse**), and an
+at-creation arena aimed at the geometry would remove 0.094 % of the blocks, so
+the family dies on **aim and reachability**, not on price. The allocator arm
+(mimalloc) cuts the drop **3.527 → 1.302 s measured** (**1.35 %**, 1.69x the
+floor; 1.66 % / 2.07x corrected for the probe's 0.506 s sampling overhead), but
+the shipped allocator is a **packager** decision
+(`docs/16_slicer_report.md` §"Global allocator contract") and it removes no
+work. The census graduates
+[101](issues/101-support-identity-table-materialisation.md) (open, unclaimed):
+price the table's allocation side, audit its consumers, and rule between
+share-per-body, prune/gate (the t20 pattern) and keep. Evidence:
+[`evidence/t100-allocation-arena/`](evidence/t100-allocation-arena/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 12/12 claims, 13/13 negative
+controls rejected). Frontier now: **ticket 101 only, open and unclaimed**; the
+take order is the human's. Standing paired acceptance and KEEP/DROP rules
+unchanged.
+
+**Previous selection scope (2026-10-30, fourth session — the ticket 99 take):**
 the human said "continue the perf vs orca map" (no ticket named). The frontier
 re-derivation at HEAD `6c1a2334` again found **98/98 child tickets resolved**
 (t98's resolution was still uncommitted; it was committed first as `1240999c`),
@@ -1660,6 +1693,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Allocation volume of the whole-print layer collection](issues/100-allocation-volume-layer-collection.md): **resolved (2026-10-30; Phase-1 screen — the arena / bulk-free family as scoped is measured-dead: mis-aimed and construction-unreachable; no candidate, no campaign, probe reverted)** — the whole-print free inside `host:gcode_emit` is **34,796,481 blocks / 1,358,397,544 bytes / 3,526,544 µs** (**101.3 ns per block**, reproducing t94's 3.558 s) on ordinary base classic supports-on, and **34,662,668 blocks = 99.6 %** of them are **8–15-byte strings** sampled as `__skirt_…` support family/body ids and `demand-N` ids. That is the `support_entity_identities` side table that `assemble_ordered_entities_with_support_identities` (`crates/slicer-runtime/src/layer_executor.rs`) clones **per support path** — 23,751 rows, each carrying the body's whole `demand_ids` list (**~1,457 ids derived** from the histogram, 34,615,166 strings). Geometry is a rounding error of the shape: **32,673 blocks = 0.094 %** and **105.8 MB = 7.8 %** of the bytes; entities are 30,076 and points 2,782,098. **Bulk-free counterfactual** (same byte volume, pages touched, both pricing orders): **44.5–63.8 ms** for one block after the drop (189.7 ms before it, collection live) and **58.3 / 120.5 ms** for 495 blocks (one arena per layer), so the **ceiling is 3.468 s = 2.10 % of the cell = 2.63x** the 1,318 ms floor — **above** the floor. The family still dies twice: flattening a live collection costs a **73.3–115.1 ms** copy **plus the same 3.527 s storm** (3.60 s, **+73 ms worse**), and an at-creation arena aimed at the geometry would remove **0.094 %** of the blocks. **Allocator arm** (mimalloc): drop **3.527 → 1.302 s measured** (**2.225 s = 1.35 %**, 1.69x floor; **0.796 s / 2.731 s = 1.66 % / 2.07x** after subtracting the probe's measured **0.506 s** sampling overhead) — above the floor, but the shipped allocator is a **packager** decision under `docs/16_slicer_report.md` §"Global allocator contract" and it removes no work. Disclosures: instrumented walls (200.7–270.7 s) are not wall claims; the sampling instrumentation costs 0.506 s; the `before` bulk arms ran with the collection live (2–3x the `after` prices, conservative arm used); the copy arm was first **elided by the optimiser** (`copy_us = 0`) and re-measured with a `black_box`-ed checksum; only classic-on was censused; both freshness gates exit 0; probe reverted. Graduated [101](issues/101-support-identity-table-materialisation.md). Evidence: [`evidence/t100-allocation-arena/`](evidence/t100-allocation-arena/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 12/12 claims, 13/13 negative controls rejected).
+
 - [Split and union the whole-layer clip-area dilation](issues/99-clip-split-union-dilation.md): **resolved (2026-10-30; measured REJECTED on price — the most favourable split is 0.41–0.43 % of the cell, about half the 0.80 % floor, and not representation-safe on top; no candidate, no campaign, probe reverted)** — offsetting every `deep_infill_area` polygon separately and unioning the pieces is genuinely cheaper per call (**0.8230x / 0.8252x**, two opposite pricing orders agreeing within **0.27 %**, both arms reproducing `292df501…` / 21,023,739 bytes) but the call's own share is too small for a 17.5 % cut to clear the floor: **2,434.2 / 2,464.8 ms accumulated** saving = **314.3 / 298.1 ms** wall-equivalent at each run's own cpu/wall = **0.43 / 0.41 %** of the 73.17 s cell, i.e. **0.51–0.54x the 585.4 ms floor**. The union-free lower bound (per-polygon offsets only, 0.8056 / 0.8069x) is **0.47 %** — still below — so no split shape in the family can clear it, because the offsets are **80.6 %** of production. The reusable decomposition: **~80 % per-path Miter offset, ~19 % batched internal union/cleanup, ~2 %** an explicit union of the already-rounded pieces — splitting partitions the cleanup instead of skipping work. Exactness is independently fatal: byte-identical on **1/130** calls, set-equal on **2/130**, **5,329** differing polygons, identical in both orders. Disclosures: instrumented walls only (the two probe walls are 27.0 / 17.9 s above the 73.17 s baseline and 9.1 s apart for the same work, so the production spans they denominate are inflated and only the ratio is read); the differing area was not quantified because the price already decides; probe reverted; both freshness gates exit 0. Evidence: [`evidence/t99-clip-split-union/`](evidence/t99-clip-split-union/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 6/6 negative controls rejected).
 
 - [Match Orca's tree-support branch distance in the matched job](issues/97-match-branch-distance-fairness.md): **resolved (2026-10-30; REJECTED on fairness — the premise is false, no profile edit, no campaign)** — `support_style = default` is not style-neutral. Canonical `SupportParameters` resolves it to `smsTreeOrganic` on a tree family (`// Orca: use organic as default`), `PrintObject::_generate_support_material` / `TreeSupport::generate` fork that style to `generate_tree_support_3D`, and the organic engine's config struct (`TreeSupportCommon.hpp`) reads **only** `tree_support_branch_distance_organic`. The matched job resolves it to **1 mm**; PnP's normal-key default is also **1 mm** (`tree-support-planner.toml`), and the supports-on profiles set neither key. So the effective distances are already matched, and t88's 5 mm arm (184,115 → 176,869 ms, −3.94 %, G-code −0.83 %, changed SHA) is a **5x PnP branch-spacing reduction in a different engine**, not a match. The real gap is the style substitution: `TreeSupportStyle::from_config` aliases every canonically-organic input (`default`/`organic`/`grid`/`snug` on a tree family) to the classic engine's **Strong** style because the organic engine is unimplemented (`DEV-156`; organic port queued in `docs/specs/support-generation-remediation-plan.md`). The deviations table's `tree_support_branch_distance` row (PnP 1.0 vs Orca 5.0) compares the **inert** normal key; the effective `_organic` key is 1.0 on both sides and is not registered by PnP. Disclosures: the 2026-10-27 Orca install (`2.5.0-beta`) rejects the rig's file-path `--load-settings` (`Preset was not found in the loaded bundle`) and no longer ships `resources/profiles/BBL/{machine,process}`, so Phase 0 rests on canonical source + `DEV-156`, not a fresh Orca run; that also blocks Orca-side scoreboard refreshes until the rig is updated or a stock Orca restored. Neither freshness gate applies (docs-only; no guest or code change). Evidence: [`evidence/t97-branch-distance/`](evidence/t97-branch-distance/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 5/5 negative controls rejected).
@@ -1866,17 +1901,56 @@ Standing decisions for this effort (2026-09-22):
 
 - **The surviving whole-print free is allocation-volume-bound, not a
   drop-strategy problem (surfaced 2026-10-29 by
-  [ticket 94](issues/94-remaining-whole-print-drop.md)).** The `host:gcode_emit`
+  [ticket 94](issues/94-remaining-whole-print-drop.md); graduated as
+  [ticket 100](issues/100-allocation-volume-layer-collection.md) on
+  2026-10-30 — the human selected this route from six measured fog routes).** The `host:gcode_emit`
   free is **3,242-3,558 ms** for 495 layers on the base supports-on cells, at
   ~5.3 GB peak working set (t79). The free does **not** parallelise (12 threads:
   classic −0.32 s, arachne +0.20 s), layer-by-layer consumption overlaps
   nothing (the walk is 176-253 ms serial), and the deferred-overlap ceiling is
   the **1.37-1.60 s** post-emission tail — at the 0.80 % floor before overlap
-  loss. The lever is **fewer/larger allocations: an arena or bulk-free layer
-  collection** (one allocation per layer or per print), which is a structural
-  IR/allocator change, not a postpass or emitter tweak. Re-enter only with a
-  measured allocation count and bytes per layer and a representation-safe arena
-  design; the drop-strategy shapes are closed.
+  loss. The lever was thought to be **fewer/larger allocations: an arena or
+  bulk-free layer collection** (one allocation per layer or per print).
+  **[Ticket 100](issues/100-allocation-volume-layer-collection.md) priced that
+  family on 2026-10-30 and it is dead as scoped:** the census is
+  **34,796,481 blocks / 1.358 GB / 3.53 s (101.3 ns per block)**, but **99.6 %**
+  of the blocks are **8–15-byte strings** — the `support_entity_identities` side
+  table cloned per support path — while geometry is **0.094 %** of the blocks /
+  **7.8 %** of the bytes. A bulk free of the same bytes costs **44.5–63.8 ms**
+  (ceiling **3.468 s = 2.10 % = 2.63x** the floor), yet flattening a live
+  collection pays a **73.3–115.1 ms** copy **plus the same storm** (**+73 ms
+  worse**), so only arena-at-creation is reachable and it would aim at 0.094 %
+  of the blocks. **The surviving shape is the table itself**
+  ([ticket 101](issues/101-support-identity-table-materialisation.md), open):
+  23,751 rows × **~1,457 demand ids** (derived), no production reader, written
+  per path at assembly. The drop-strategy shapes are closed; re-enter the
+  *arena* question only if the table stops dominating the block count.
+
+- **The shipped allocator is a packager decision, and it is worth ~1.7x the
+  floor on the supports-on free (measured 2026-10-30 by
+  [ticket 100](issues/100-allocation-volume-layer-collection.md)).** Swapping
+  the probe binary's global allocator to **mimalloc** cut the same 34,796,481
+  block free from **3.527 s to 1.302 s measured** (saving **1.35 %** of the
+  cell, **1.69x** the 1,318 ms floor; **1.66 % / 2.07x** after subtracting the
+  probe's measured 0.506 s sampling overhead). It removes **no work** — every
+  block is still freed — and `docs/16_slicer_report.md` §"Global allocator
+  contract" deliberately installs `System` and leaves jemalloc/mimalloc to
+  downstream packagers, so this is recorded as a measured lever the human can
+  route as a product/packaging decision, **not** route work. It graduates only
+  with that ruling; the per-block cost also sets how much any block-count
+  reduction is worth (**~101 ns per block on the system heap**, ~37 ns under
+  mimalloc).
+
+- **A free-strategy census must sample block contents, not just sizes
+  (method note, 2026-10-30, [ticket 100](issues/100-allocation-volume-layer-collection.md)).**
+  The whole-print free presented as a generic "allocation-volume" problem for
+  two takes (t94, t79) until the allocator probe copied the first bytes of the
+  dominant size class out of each block: **99.6 %** of the blocks were 8–15-byte
+  `String`s, not geometry, which inverted the target. A histogram alone cannot
+  distinguish a million tiny geometry buffers from a million duplicated
+  attribution strings, and the two want opposite fixes. Any future
+  "N blocks are too many" screen should sample contents and attribute the
+  dominant class to a producer before pricing a representation change.
 
 - **The whole-layer clip-area dilation is priced, and its last
   representation-safe shape is closed (t96 window rejected 2026-10-30;
