@@ -13,8 +13,8 @@ crate-type = ["rlib"]
 # create a second workspace root inside the `lightning-infill` member directory.
 # Guest discovery (xtask build_guests) is non-recursive and requires a
 # `wit-guest/Cargo.toml` child, so this crate is never discovered or built as a
-# guest module. The `slicer-wasm-host` dev-dependency still makes Cargo treat this
-# crate as a root-workspace member, so it resolves against the root lock.
+# guest module. It resolves against the root lock because `slicer-wasm-host`
+# dev-depends on it and the portability test guest depends on it.
 
 [dependencies]
 slicer-ir = { path = "../../../../crates/slicer-ir" }

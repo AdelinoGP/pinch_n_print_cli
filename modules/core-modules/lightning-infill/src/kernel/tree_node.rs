@@ -89,8 +89,6 @@ impl Node {
         self.children.borrow().clone()
     }
 
-    // 139 DEVIATION: extends 138 surface for per-layer Layer operations; tests co-updated in 139 Step 2.
-
     /// Return the most recent location at which this root was grounded.
     pub fn get_last_grounding_location(&self) -> Option<Point2> {
         self.m_last_grounding_location.get()

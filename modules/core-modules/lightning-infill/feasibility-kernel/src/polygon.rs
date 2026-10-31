@@ -10,10 +10,7 @@
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-// `KernelError` is defined by the read-only packet model and carries an
-// `EvidenceLocation` plus named fields; it is deliberately not boxed here
-// because `model.rs` is out of this step's write scope.
-#![allow(clippy::result_large_err)]
+
 //! Portable polygon primitives for the isolated Lightning feasibility kernel.
 //!
 //! Unit discipline: every length is an IR integer unit where **1 unit = 100 nm**
@@ -41,7 +38,6 @@ use clipper2_rust::{
 use slicer_ir::{ExPolygon, Point2, Polygon};
 
 use crate::model::Rational;
-
 
 /// IR units per millimetre (`1 unit = 100 nm`).
 pub const UNITS_PER_MM: f64 = 10_000.0;
@@ -170,7 +166,8 @@ pub fn normalize_expolygons(polys: &[ExPolygon]) -> Vec<ExPolygon> {
 }
 
 fn expolygon_order_key(poly: &ExPolygon) -> (i64, i64, i64, i64, usize, Vec<Point2>) {
-    let bbox = ring_bbox(&poly.contour.points).unwrap_or((Point2 { x: 0, y: 0 }, Point2 { x: 0, y: 0 }));
+    let bbox =
+        ring_bbox(&poly.contour.points).unwrap_or((Point2 { x: 0, y: 0 }, Point2 { x: 0, y: 0 }));
     (
         bbox.0.x,
         bbox.0.y,
@@ -350,11 +347,7 @@ fn to_paths(polys: &[ExPolygon]) -> Paths64 {
             if ring.points.len() < 3 {
                 continue;
             }
-            let path: Path64 = ring
-                .points
-                .iter()
-                .map(|p| Point64::new(p.x, p.y))
-                .collect();
+            let path: Path64 = ring.points.iter().map(|p| Point64::new(p.x, p.y)).collect();
             paths.push(path);
         }
     }
@@ -596,7 +589,10 @@ mod tests {
         // Eroding by more than the hole's half-width removes the hole.
         let sealed = expand(std::slice::from_ref(&poly), 5000.0);
         assert_eq!(sealed.len(), 1);
-        assert!(sealed[0].holes.is_empty(), "dilation past the hole closes it");
+        assert!(
+            sealed[0].holes.is_empty(),
+            "dilation past the hole closes it"
+        );
     }
 
     #[test]
@@ -619,7 +615,10 @@ mod tests {
         let c = square(20_000, 20_000, 25_000, 25_000);
         let merged = union(&[a, b, c]);
         assert_eq!(merged.len(), 2);
-        assert_eq!(area(&merged), 25_000_000.0 + 25_000_000.0 - 1_000_000.0 + 25_000_000.0);
+        assert_eq!(
+            area(&merged),
+            25_000_000.0 + 25_000_000.0 - 1_000_000.0 + 25_000_000.0
+        );
     }
 
     #[test]
@@ -630,19 +629,14 @@ mod tests {
         assert_eq!((start.numerator, start.denominator), (0, 1));
         assert_eq!((end.numerator, end.denominator), (1, 1));
         // Half of it.
-        let (start, end) = segment_overlap(
-            [Point2 { x: 2000, y: 0 }, Point2 { x: 4000, y: 0 }],
-            source,
-        )
-        .unwrap();
+        let (start, end) =
+            segment_overlap([Point2 { x: 2000, y: 0 }, Point2 { x: 4000, y: 0 }], source).unwrap();
         assert_eq!((start.numerator, start.denominator), (1, 2));
         assert_eq!((end.numerator, end.denominator), (1, 1));
         // Not collinear / not overlapping.
-        assert!(segment_overlap(
-            [Point2 { x: 0, y: 1 }, Point2 { x: 4000, y: 1 }],
-            source
-        )
-        .is_none());
+        assert!(
+            segment_overlap([Point2 { x: 0, y: 1 }, Point2 { x: 4000, y: 1 }], source).is_none()
+        );
         assert!(segment_overlap(
             [Point2 { x: 9000, y: 0 }, Point2 { x: 12_000, y: 0 }],
             source

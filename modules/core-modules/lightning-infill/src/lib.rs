@@ -28,15 +28,13 @@ use slicer_sdk::views::SliceRegionView;
 use crate::kernel::KernelPlan;
 use crate::private_plan::{decode_layer_piece, piece_name};
 
-// The relocated bodies keep the host copy's surface verbatim — planning logic is
-// frozen — including members the entry point does not call: the two
-// written-only `Generator` fields, `Generator::{get_trees_for_layer,
-// take_committed_segments}`, `DistanceField::unsupported_count`, `Layer::new`
-// and `KernelError::Unimplemented`. In `crates/slicer-core/src/algos/lightning/`
-// those were `pub` items of a public crate, so they were never dead; inside this
-// private module the same items are unreachable. Deleting them would be a change
-// to the moved code that this migration step may not make, so the allowance is
-// scoped here and the residue is recorded in the packet ledger.
+// The relocated bodies keep the host copy's surface, including helpers reached
+// only by the kernel's own tests and by the isolated feasibility kernel
+// (`Generator::get_trees_for_layer`, `DistanceField::unsupported_count`,
+// `Layer::new`) and the never-constructed `KernelError::Unimplemented`. Inside
+// this private module those members are unreachable from the ordinary entry
+// point, so dead-code detection stays scoped here. The original migration
+// freeze no longer applies; later fixes may change these bodies.
 #[allow(dead_code)]
 mod kernel;
 mod planning_input;
