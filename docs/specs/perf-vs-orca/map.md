@@ -50,7 +50,63 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-31, sixth session — the ticket 102 take):**
+**Current selection scope (2026-10-31, seventh session — the ticket 101 take):**
+the human said "continue the perf vs orca map" (no ticket named). The frontier
+re-derivation at HEAD `681c0daa` found exactly one open child,
+[101](issues/101-support-identity-table-materialisation.md), which was claimed
+and is **resolved (2026-10-31) as a Phase-1 screen: both exact families are below
+the 0.80 % floor, so the ticket's own stop rule fires; no candidate, no campaign,
+no production edit, recommended family 3 (keep)**. The shape census is one
+deterministic census on all three table arms: **23,751 rows over 431 bodies**
+(mean **55.1** paths per body), **34,662,046** demand ids, per-row list length p50
+**1,322** / max **2,847**, **`mixed_bodies = 0`** (every row of a body carries a
+byte-identical list), **418 distinct list contents**, and **428,726 retained ids =
+1.24 %** of the blocks if one identity is shared per body — so the table is **one
+body's demand list cloned once per emitted support path**, and the 1.2486 GB it
+holds is 92 % of the collection's bytes. Both sides are measured **in situ**: the
+allocation side by a per-layer `Instant` window around
+`assemble_ordered_entities_with_support_identities`
+(`crates/slicer-runtime/src/layer_executor.rs`) — table **413.3 / 433.8 /
+452.7 ms** vs skip **21.1 / 17.3 ms** — and the free side by a **sampling-free**
+`drop(layer_irs)` timing — table **432.4 / 494.1 / 434.4 ms** vs skip **2.614 /
+2.890 ms**, with the census reproducing t100's **34,796,481 blocks /
+1,358,397,544 bytes** exactly. **Ceiling 821.6 ms uncontended / 926.8 ms most
+generous = 0.50–0.56 % of the cell = 0.62–0.70x the 1,318 ms floor**, and that
+charges 100 % of the *parallel* assembly time to the critical path. The headline
+is a **ledger correction to t100**: its 3.468 s free-side ceiling was a
+**system-heap** artifact, and t102's mimalloc KEEP cut the same free
+**3.526 s → 0.432–0.494 s (7.1–8.2x)** — the cause-level route had already been
+banked by the allocator swap. The wall is **not claimed**: five runs on one
+binary spread **150.195–154.793 s (3.0 %)**, 5.0x the whole ceiling, on a machine
+the owner's browser was loading at 15–56 % of 12 cores. Consumers re-derived:
+written only by the assembly, **read by no production path** (only
+`structured_support_identity.rs` and `raft_geometry.rs` under
+`crates/slicer-runtime/tests/integration/`), set empty by
+`crates/slicer-macros/src/lib.rs` and `crates/slicer-runtime/src/anchored_rows.rs`,
+absent from `crates/slicer-schema/wit/`, and proven unread end-to-end by **5/5
+runs byte-identical to the post-t81 reference** with the table absent. Evidence:
+[`evidence/t101-side-table/`](evidence/t101-side-table/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 12/12 claims, 15/15 negative
+controls rejected). The resolution empties the frontier of children, so the
+long-standing Orca re-baseline fog was graduated as
+[103](issues/103-orca-rebaseline-repaired-rig.md) — **the only open child, and it
+blocks any honest answer to "which cells are still lost"**. Its blocking ruling
+was given the same day — **"pinned back"**: OrcaSlicer 2.5's version-flipped
+defaults (`enable_arc_fitting`, `elefant_foot_compensation` 0 → 0.15,
+`brim_width` 0 → 5) are pinned to the 2.4-era values, so the pins land in
+`New-OrcaOverrideArgs` (`docs/specs/perf-vs-orca/evidence/matched-pair/run_scoreboard.ps1`)
+and are asserted per run — so 103 is **unblocked and unclaimed**. The ruling
+surfaced one **standing adhesion asymmetry** that every future scoreboard must
+disclose: PnP's matched cell prints an **8 mm brim** (its skirt-brim module
+default; layer 1 opens with 26 concentric rectangles, 12,040 mm of first-layer
+extrusion against 2,167 mm on layer 2) while pinned-back Orca prints none. Its
+slice-time price is small (`com.core.skirt-brim` reports **235 ms** for the whole
+print) but the job is not identical, and closing it means changing the PnP side
+of every cell and re-deriving the reference byte set — a separate take with its
+own human decision. The take order is the
+human's. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-31, sixth session — the ticket 102 take):**
 the human ruled the allocator lever in scope after ticket 100 ("the map is a
 speed study… feel free to test it"), so
 [102](issues/102-global-allocator-substitution.md) was graduated, claimed and is
@@ -1725,7 +1781,9 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
-- [Global allocator substitution on the host binary](issues/102-global-allocator-substitution.md): **resolved (2026-10-31; human-approved KEEP — the standing four-cell gate PASSES, candidate committed)** — `pnp_cli` becomes `AccountingAllocator<mimalloc::MiMalloc>` (two host files plus the contract doc), the packager slot `docs/16_slicer_report.md` §"Global allocator contract" already prescribes, so `--report` accounting keeps its shape. Proof **16/16** (both arms byte-identical in every cell, both clean, non-vacuous roles; **8/8** ordinary cells equal to `evidence/t91-exact-z-memo/references.json`; **8/8** ordinary ≡ accelerated; identical 24-module trees, distinct host binaries `db153219…`/`1de06f27…` ordinary and `7f5ad486…`/`9986754e…` accelerated). Pre-gate on ordinary base classic-on: **−7.74 %** wall / **−2.25 %** CPU in 3/3 pairs. Campaign, 2 warmups + 6 alternating pairs per cell: wall **−6.19 / −5.64 / −5.54 / −4.80 %** (−10.19 / −9.42 / −9.04 / −7.41 s) and process CPU **−1.74 / −2.18 / −1.54 / −1.88 %** (ordinary classic-on / arachne-on, accelerated classic-on / arachne-on), **24/24 pairs byte-identical**, 6/6 retained per cell, zero starvation exclusions, **23/24 pairs wall-negative** (accelerated arachne-on #6 **+0.18 %**, cell median −4.80 %); floor multiples **7.73 / 7.05 / 6.92 / 6.00x** against 0.80 % of t91's walls. The **~5–6 %** effect is much larger than the free-only price (**3.527 → 1.302 s = 1.35–1.66 %**, t100) because the allocator acts on every allocation in the process, but it removes **no allocations** — the census still shows the same **34,796,481** blocks, each freed more cheaply, so the cause-level route stays [101](issues/101-support-identity-table-materialisation.md). Disclosures: the pre-gate ran under a stray integration-test binary pinning ~8 cores (walls 227–266 s) which exited before the campaign; the pre-campaign snapshot records load median **1 %**; today's baseline walls (152–156 s) differ from t91's 164.803 / 166.931 s, so ratios are today-vs-today and the floor is conservative; the change is process-wide (no stage attribution); memory is not gated; one transient `cl.exe` failure on the accelerated build passed on retry (no artifact). Evidence: [`evidence/t102-allocator/`](evidence/t102-allocator/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 12/12 claims, 12/12 negative controls rejected).
+- [Support-attribution side table materialisation](issues/101-support-identity-table-materialisation.md): **resolved (2026-10-31; Phase-1 screen — both exact families are BELOW the floor, so the ticket's own stop rule fires; no candidate, no campaign, no production edit, recommended family 3 "keep")** — the shape census (one deterministic census, identical on all three table arms) is **23,751 rows over 431 bodies** (`rows/body` p50 **50**, mean **55.1**), **34,662,046** demand ids, per-row list length p50 **1,322** / max **2,847**, **`mixed_bodies = 0`** (every row of a body carries a byte-identical list), only **418 distinct list contents** and **428,726 retained ids = 1.24 %** of the blocks — i.e. the table is **one body's demand list cloned once per emitted support path**, and sharing per body would be content-exact and keep **1.24 %** of the blocks and of the **1.2486 GB** heap. Both sides are measured in situ: the allocation side by a per-layer `Instant` window around `assemble_ordered_entities_with_support_identities` (`crates/slicer-runtime/src/layer_executor.rs`) (**412.6 ms** median, table **413.3 / 433.8 / 452.7 ms** vs skip **21.1 / 17.3 ms**), the free side by a sampling-free `drop(layer_irs)` timing (**491.2 ms** median, table **432.4 / 494.1 / 434.4 ms** vs skip **2.614 / 2.890 ms**; 34,796,481 blocks / 1,358,397,544 bytes reproduced, skip arm 62,751 / 107,020,175). **Combined ceiling 821.6 ms uncontended / 926.8 ms most generous = 0.50–0.56 % of the cell = 0.62–0.70x the 1,318 ms floor**, charging 100 % of the parallel assembly time to the critical path. **The headline is a ledger correction to t100**: its 3.468 s free-side ceiling was a **system-heap** artifact, and t102's mimalloc KEEP cut the same free **3.526 s → 0.432–0.494 s (7.1–8.2x)**; the cause-level route had already been banked by the allocator swap. The wall is **not claimed**: five runs on one binary spread **150.195–154.793 s (3.0 %)**, 5.0x the whole ceiling. Consumer audit re-derived: written only by the assembly, **read by no production path** (only `structured_support_identity.rs` and `raft_geometry.rs` under `crates/slicer-runtime/tests/integration/`, both fixture-level), set empty by `crates/slicer-macros/src/lib.rs` and `crates/slicer-runtime/src/anchored_rows.rs`, absent from `crates/slicer-schema/wit/` — and proven unread end-to-end by **5/5 runs byte-identical to the post-t81 reference** (`22200671…` / 42,507,912 bytes) with the table absent. Disclosures: the machine was **not quiet** (owner's browser at 15–56 % of 12 cores; wall drifted 151.3 → 154.6 s), so the ceiling is instrumented and the wall is not claimed; the table arm's drops spread 14 % and the ceiling uses the `min`/`max` envelope, over-charging the lever; the allocation side is summed, not critical-path, so the true wall contribution is smaller; only classic-on was screened; the 1.2486 GB heap figure is derived and agrees with the census to 0.2 %; memory is out of scope (DEV-026) so it is recorded and not priced; probe reverted, both freshness gates exit 0. Evidence: [`evidence/t101-side-table/`](evidence/t101-side-table/FINDINGS.md) (`probe.patch`, `summary.json`, `extract.py`, `verify.py`; `verify.py --self-test` exits 0 checkout-only, 12/12 claims, 15/15 negative controls rejected).
+
+- [Global allocator substitution on the host binary](issues/102-global-allocator-substitution.md): **resolved (2026-10-31; human-approved KEEP — the standing four-cell gate PASSES, candidate committed)** — `pnp_cli` becomes `AccountingAllocator<mimalloc::MiMalloc>` (two host files plus the contract doc), the packager slot `docs/16_slicer_report.md` §"Global allocator contract" already prescribes, so `--report` accounting keeps its shape. Proof **16/16** (both arms byte-identical in every cell, both clean, non-vacuous roles; **8/8** ordinary cells equal to `evidence/t91-exact-z-memo/references.json`; **8/8** ordinary ≡ accelerated; identical 24-module trees, distinct host binaries `db153219…`/`1de06f27…` ordinary and `7f5ad486…`/`9986754e…` accelerated). Pre-gate on ordinary base classic-on: **−7.74 %** wall / **−2.25 %** CPU in 3/3 pairs. Campaign, 2 warmups + 6 alternating pairs per cell: wall **−6.19 / −5.64 / −5.54 / −4.80 %** (−10.19 / −9.42 / −9.04 / −7.41 s) and process CPU **−1.74 / −2.18 / −1.54 / −1.88 %** (ordinary classic-on / arachne-on, accelerated classic-on / arachne-on), **24/24 pairs byte-identical**, 6/6 retained per cell, zero starvation exclusions, **23/24 pairs wall-negative** (accelerated arachne-on #6 **+0.18 %**, cell median −4.80 %); floor multiples **7.73 / 7.05 / 6.92 / 6.00x** against 0.80 % of t91's walls. The **~5–6 %** effect is much larger than the free-only price (**3.527 → 1.302 s = 1.35–1.66 %**, t100) because the allocator acts on every allocation in the process, but it removes **no allocations** — the census still shows the same **34,796,481** blocks, each freed more cheaply, so the cause-level route stayed [101](issues/101-support-identity-table-materialisation.md) (now resolved: below the floor; see that row). Disclosures: the pre-gate ran under a stray integration-test binary pinning ~8 cores (walls 227–266 s) which exited before the campaign; the pre-campaign snapshot records load median **1 %**; today's baseline walls (152–156 s) differ from t91's 164.803 / 166.931 s, so ratios are today-vs-today and the floor is conservative; the change is process-wide (no stage attribution); memory is not gated; one transient `cl.exe` failure on the accelerated build passed on retry (no artifact). Evidence: [`evidence/t102-allocator/`](evidence/t102-allocator/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 12/12 claims, 12/12 negative controls rejected).
 
 - [Allocation volume of the whole-print layer collection](issues/100-allocation-volume-layer-collection.md): **resolved (2026-10-30; Phase-1 screen — the arena / bulk-free family as scoped is measured-dead: mis-aimed and construction-unreachable; no candidate, no campaign, probe reverted)** — the whole-print free inside `host:gcode_emit` is **34,796,481 blocks / 1,358,397,544 bytes / 3,526,544 µs** (**101.3 ns per block**, reproducing t94's 3.558 s) on ordinary base classic supports-on, and **34,662,668 blocks = 99.6 %** of them are **8–15-byte strings** sampled as `__skirt_…` support family/body ids and `demand-N` ids. That is the `support_entity_identities` side table that `assemble_ordered_entities_with_support_identities` (`crates/slicer-runtime/src/layer_executor.rs`) clones **per support path** — 23,751 rows, each carrying the body's whole `demand_ids` list (**~1,457 ids derived** from the histogram, 34,615,166 strings). Geometry is a rounding error of the shape: **32,673 blocks = 0.094 %** and **105.8 MB = 7.8 %** of the bytes; entities are 30,076 and points 2,782,098. **Bulk-free counterfactual** (same byte volume, pages touched, both pricing orders): **44.5–63.8 ms** for one block after the drop (189.7 ms before it, collection live) and **58.3 / 120.5 ms** for 495 blocks (one arena per layer), so the **ceiling is 3.468 s = 2.10 % of the cell = 2.63x** the 1,318 ms floor — **above** the floor. The family still dies twice: flattening a live collection costs a **73.3–115.1 ms** copy **plus the same 3.527 s storm** (3.60 s, **+73 ms worse**), and an at-creation arena aimed at the geometry would remove **0.094 %** of the blocks. **Allocator arm** (mimalloc): drop **3.527 → 1.302 s measured** (**2.225 s = 1.35 %**, 1.69x floor; **0.796 s / 2.731 s = 1.66 % / 2.07x** after subtracting the probe's measured **0.506 s** sampling overhead) — above the floor, but the shipped allocator is a **packager** decision under `docs/16_slicer_report.md` §"Global allocator contract" and it removes no work. Disclosures: instrumented walls (200.7–270.7 s) are not wall claims; the sampling instrumentation costs 0.506 s; the `before` bulk arms ran with the collection live (2–3x the `after` prices, conservative arm used); the copy arm was first **elided by the optimiser** (`copy_us = 0`) and re-measured with a `black_box`-ed checksum; only classic-on was censused; both freshness gates exit 0; probe reverted. Graduated [101](issues/101-support-identity-table-materialisation.md). Evidence: [`evidence/t100-allocation-arena/`](evidence/t100-allocation-arena/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 12/12 claims, 13/13 negative controls rejected).
 
@@ -1910,7 +1968,9 @@ Standing decisions for this effort (2026-09-22):
 ## Not yet specified
 
 - **The archived Orca side must be re-baselined before any ratio is quoted (surfaced
-  2026-10-30 by [ticket 98](issues/98-orca-rig-repair.md)).** The repaired rig measures
+  2026-10-30 by [ticket 98](issues/98-orca-rig-repair.md); graduated 2026-10-31 as
+  [ticket 103](issues/103-orca-rebaseline-repaired-rig.md), the only open child —
+  this fog patch is now the ticket's body).** The repaired rig measures
   OrcaSlicer 2.5.0 on the benchy classic-off cell at **1.978 s** median wall against the
   archive's 2.787 s, because the archived runs applied Orca's **hardcoded filament
   defaults** (`filament_density` 0, `filament_max_volumetric_speed` 2,
@@ -1923,7 +1983,12 @@ Standing decisions for this effort (2026-09-22):
   repaired rig, plus a re-derived scoreboard and park bound; it also needs a ruling on
   whether 2.5's changed defaults beyond the filament leg (e.g. `elefant_foot_compensation`
   0 → 0.15, `brim_width` 0 → 5) are accepted as the new matched job or pinned back.
-  Until that runs, **no archived Orca median is comparable to a fresh PnP run**.
+  **That ruling was given 2026-10-31 — "pinned back"** (`elefant_foot_compensation`,
+  `brim_width` and `enable_arc_fitting` all 0), and the pins, the file they land
+  in, and the adhesion asymmetry they leave behind are specified in
+  [ticket 103](issues/103-orca-rebaseline-repaired-rig.md) ## Ruling.
+  Until that measurement runs, **no archived Orca median is comparable to a
+  fresh PnP run**.
 
 - **A first-touch vendor tree makes the warmup load-bearing (t98 method note).** The
   first Orca run against a freshly staged vendor tree costs ~10 s more wall than the
@@ -1954,11 +2019,18 @@ Standing decisions for this effort (2026-09-22):
   (ceiling **3.468 s = 2.10 % = 2.63x** the floor), yet flattening a live
   collection pays a **73.3–115.1 ms** copy **plus the same storm** (**+73 ms
   worse**), so only arena-at-creation is reachable and it would aim at 0.094 %
-  of the blocks. **The surviving shape is the table itself**
-  ([ticket 101](issues/101-support-identity-table-materialisation.md), open):
-  23,751 rows × **~1,457 demand ids** (derived), no production reader, written
-  per path at assembly. The drop-strategy shapes are closed; re-enter the
-  *arena* question only if the table stops dominating the block count.
+  of the blocks. **The surviving shape was the table itself, and
+  [ticket 101](issues/101-support-identity-table-materialisation.md) priced it on
+  2026-10-31: below the floor (combined ceiling 821.6–926.8 ms = 0.50–0.56 % =
+  0.62–0.70x), so the family is closed too.** Its shape is worth keeping: 23,751
+  rows over 431 bodies (55.1 paths per body), each row carrying the body's whole
+  ~1,459-id list, `mixed_bodies = 0`, 418 distinct contents, 1.2486 GB of heap —
+  **one body's list cloned once per emitted support path**. The arithmetic that
+  matters now: under mimalloc a block costs **~12.6 ns to free** (t101) and the
+  whole table **~0.8 s**, so **re-enter the arena / block-count question only if
+  the block count stops being dominated by a structure with no production
+  reader**, and re-derive any per-block price before quoting it — t100's
+  101.3 ns was the system heap.
 
 - **The shipped allocator is now mimalloc, and the whole-process swap is worth
   ~5–6 % of a supports-on cell (measured 2026-10-30/31 by
@@ -1972,10 +2044,13 @@ Standing decisions for this effort (2026-09-22):
   effect is the larger number because **every** allocation in the pipeline gets
   cheaper, not just the whole-print free. It removes **no allocations** — the
   census is unchanged — so the per-block cost now sets what a block-count
-  reduction is worth (**~37 ns per block under mimalloc**, against ~101 ns on the
-  system heap) and the cause-level route stays
-  [101](issues/101-support-identity-table-materialisation.md). Any future
-  allocator experiment (snmalloc, jemalloc) must re-run the same four-cell gate;
+  reduction is worth. Two prices, don't conflate them: the **free alone** is
+  **~12.6 ns per block** measured directly (t101: 432.4–494.1 ms over
+  34,796,481 blocks), while t102's **~37 ns per block** is the *process-wide*
+  effect implied by its wall delta, not a free-side price. The cause-level route
+  [101](issues/101-support-identity-table-materialisation.md) is **resolved
+  below the floor** on that cheaper price. Any future allocator experiment
+  (snmalloc, jemalloc) must re-run the same four-cell gate;
   `docs/16_slicer_report.md` §"Global allocator contract" now names mimalloc as
   the shipped choice and keeps the accounting wrapper outside it.
 
@@ -2321,6 +2396,16 @@ Standing decisions for this effort (2026-09-22):
 
 ## Out of scope
 
+- **Pruning the support-attribution table as a memory or hygiene change.**
+  [Ticket 101](issues/101-support-identity-table-materialisation.md) measured the
+  table at **1.2486 GB** of heap with **no production reader** and priced its
+  removal at **822–927 ms = 0.62–0.70x the floor** — below the floor on the map's
+  own currency, so it is not route work. Deleting the field would still reclaim a
+  quarter of the process's peak working set and retire a dead `pub` IR surface,
+  but **memory is not judged here** (DEV-026, first bullet below) and a contract
+  deletion is not a speed lever. Returns only if the destination is redrawn to
+  include memory, or if a production consumer appears and makes the table work
+  rather than dead weight.
 - **Memory instrumentation / peak-RSS bounds (DEV-026).** The destination's
   verdict is speed (wall, CPU corroborating); memory is not judged
   (2026-09-22 scoping decision). Returns only if the destination is redrawn.
