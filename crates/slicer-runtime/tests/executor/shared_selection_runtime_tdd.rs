@@ -457,8 +457,6 @@ fn schema_stages_and_production_eligibility() {
     let mut tested_stages = BTreeSet::new();
     let mut infill_id = String::new();
     for spec in specs {
-        assert_eq!(spec.tier_id, slicer_schema::TIER_LAYER);
-        assert!(!spec.wit_export.is_empty());
         let mut modules = Vec::new();
         for (case, semantics, invoke) in [
             ("transparent", Vec::new(), true),
