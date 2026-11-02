@@ -54,7 +54,47 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-31 → 2026-11-01, eighth session — the ticket
+**Current selection scope (2026-11-02, ninth session — the t104 take):** the
+human said "continue the perf vs orca map" (no ticket named). The frontier
+re-derivation at HEAD `e61c5655` found **103/103 children resolved — no open
+child, no claim** — so six fog routes were offered (prepass-vs-per-layer
+attribution; supports-on fairness re-run; Orca-side attribution; `apply_opening`
+round-join parity; `region_partition` dedup; re-aim the destination; adhesion
+asymmetry) and the human selected **prepass-vs-per-layer attribution**, graduated
+as [104](issues/104-prepass-vs-per-layer-attribution.md), claimed, and
+**resolved the same day as measurement-only**. Headline: **the wall is the
+prepass** — **68.5–89.5 %** of every classic cell, against **7.9–20.1 %** for the
+per-layer pipeline — so the park's 57–82 % cut maps onto removing **77.8–93.9 %
+of the prepass**; deleting the *entire* per-layer phase never reaches the park
+(**3.02x / 4.51x / 4.66x / 7.60x** remain, benchy-off / base-off / benchy-on /
+base-on) while deleting the entire prepass would (**0.52x / 0.87x / 1.19x /
+1.25x**), and the **two biggest prepass stages together still leave 1.55x–3.34x**
+(closest: base classic-off at **1.55x**, 3 % short). `PrePass::Slice` is the
+single largest measured term — **41,472 ms = 51.2 %** of base classic-off
+(28.4 / 18.1 / 19.5 % of the other three) — and on the supports-on cells
+`PrePass::SupportGeometry` dominates (**40.1 %** of base classic-on, 26.2 % of
+benchy classic-on; with `SupportAnalysis` ~50 % of that cell), the `DEV-156`
+style-substitution site. **Ledger corrections:** t73's 2026-10-18 base-off split
+(prepass 115.0 s / per-layer **94.3 s** of a 214.5 s instrumented wall) is
+superseded — the per-layer phase is now **8.7 %** (7,016 ms of 80,924 ms), and
+the change happened between t73 and t91 with **no per-KEEP decomposition
+claimed** — while t91's 2026-10-27 base-on prepass share (149,723 / 168,319 =
+**89.0 %**) re-measures at **89.4 %**, so the split's semantics are unchanged.
+Every per-layer fog entry is now bounded by that 6.5–12.7 s phase. **Walls are
+not claimed**: all four uninstrumented sets ran under external load (a sibling
+checkout's integration-test binary, then `clippy-driver` + two browser
+processes), inflation **1.32x–1.80x**, load falling 95.6 % → 16.8 % mid-batch; the
+human ruled "proceed with noise disclosed"; ratios of record are t103's paired
+quiet medians and shares are one instrumented pass per cell, clean and
+byte-identical to the t87 references, with a benchy repeat moving no share by
+more than **5.92 pp**. Arachne unmeasured. No candidate, no campaign, no
+production edit; `verify.py --self-test` exits 0 checkout-only (70/70 claims,
+9/9 negative controls). Frontier now: **no open child**; the destination has
+become an explicit **prepass-rewrite decision** whose two named shapes (the slice
+closing's consumer, and the support-engine style question) are the human's to
+rule on. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-31 → 2026-11-01, eighth session — the ticket
 103 take):** the human said "continue the perf vs orca map" (no ticket named). The
 frontier re-derivation at HEAD `c135e3e7` found exactly one open child,
 [103](issues/103-orca-rebaseline-repaired-rig.md), which was claimed and is
@@ -1833,6 +1873,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Prepass versus per-layer: what a cell's wall is made of](issues/104-prepass-vs-per-layer-attribution.md): **resolved (2026-11-02; measurement-only — no candidate, no campaign, no production edit)** — the wall is the **prepass**: **68.5–89.5 %** of every classic cell (base-off 89.5 %, base-on 89.4 %, benchy-on 77.0 %, benchy-off 68.5 %) against **7.9–20.1 %** for the per-layer pipeline, so the park's 57–82 % cut maps onto removing **77.8–93.9 % of the prepass**; deleting the whole per-layer phase leaves **3.02x / 4.51x / 4.66x / 7.60x** (never the park), deleting the whole prepass reaches **0.52x / 0.87x / 1.19x / 1.25x**, and the two biggest prepass stages together leave **1.55x–3.34x** (closest: base classic-off **1.55x**, 3 % short). `PrePass::Slice` is the map's largest measured term (**41,472 ms = 51.2 %** of base classic-off; 28.4 / 18.1 / 19.5 % elsewhere) and is bounded by t59's representation-safety verdict on the closing; `PrePass::SupportGeometry` is **40.1 %** of base classic-on and 26.2 % of benchy classic-on (with `SupportAnalysis` ~50 % of that cell) at the `DEV-156` style-substitution site. Ledger: t73's 2026-10-18 base-off split (prepass 115.0 s / per-layer **94.3 s** of a 214.5 s wall) is superseded — per-layer is now **8.7 %** — while t91's 2026-10-27 base-on prepass share **89.0 %** re-measures at **89.4 %** (same semantics); every per-layer fog entry is bounded by a **6.5–12.7 s** phase. **Walls not claimed** (external load, inflation **1.32x–1.80x**, human-approved disclosure, load fell 95.6 % → 16.8 % mid-batch); ratios of record are t103's paired quiet medians; instrumented passes clean and byte-identical to the t87 references (`3672dc7e…`, `eb4817b4…`, `292df501…`, `22200671…`); benchy repeat moves no share by more than **5.92 pp**; Arachne unmeasured; `verify.py --self-test` exits 0 checkout-only (70/70 claims, 9/9 negative controls). Evidence: [`evidence/t104-phase-split/`](evidence/t104-phase-split/FINDINGS.md).
+
 - [Orca re-baseline on the repaired rig](issues/103-orca-rebaseline-repaired-rig.md): **resolved (2026-10-31 campaign, 2026-11-01 disposal; measurement-only — the archived Orca table is superseded, no production edit)** — the rig carries the ruling's three pins and asserts them per run, and **Orca still wins all 8 cells at 3.52x–8.25x** today-vs-today (benchy classic-off 3.78/3.78, arachne-off 3.52/3.59, classic-on 5.43/5.50, arachne-on 4.78/4.85; base classic-off 4.93/4.96, arachne-off 4.72/4.58, classic-on 8.25/8.21, arachne-on 7.00/7.53, ordinary/accelerated). Fresh Orca: **−27.2 / −24.0 / −35.2 / −30.0 %** on the four benchy cells but **+10.2 / +18.3 / +6.1 / +15.6 %** on the four base cells, so **t98's "every archived multiple is optimistic for PnP" is falsified for the base cells** (base classic-on 9.31x → 8.25x, base arachne-on 9.36x → 7.00x) — the archive's error ran both ways and its gaps (2.71x–9.36x) are not comparable. Park re-derived and **still binding**: every cell needs **57–82 %** of its wall removed to reach ~1.5x = **72–102x** the whole 0.80 % floor; release bound **3.52x** (2026-10-25: 2.71x), moved by Orca on benchy, not by PnP (benchy −2.9…+1.9 %; base supports-on −6…−14 % from t102). Supports-on stays the concentration (+36…+67 % over its off sibling). Proof: 16/16 PnP groups `degraded=false`/`non_fatal=0`, ordinary ≡ accelerated bytes in 8/8, PnP output **exactly the t87 post-t81 reference set** in 8/8, both freshness gates exit 0, 32/32 Orca runs resolved the three pins and the filament leg. Two named starvation exclusions (`base-arachne-on-orca-m3`, `base-arachne-on-pnp-ordinary-m3`), three whole-cell re-runs attempted and all spoiled by external load (competing integration-test binary, then 78–96 % browser load); the human approved proceeding with the noise disclosed, all CSVs preserved, and that cell's band (6.95–7.05x / 7.23–7.53x) does not change its verdict. The brim asymmetry (PnP 8 mm vs pinned Orca 0) is disclosed beside the numbers and remains its own human decision. Evidence: [`evidence/t103-orca-rebaseline/`](evidence/t103-orca-rebaseline/SCOREBOARD.md) (`verify.py --self-test` exits 0 checkout-only, 13/13 negative controls detected).
 
 - [Support-attribution side table materialisation](issues/101-support-identity-table-materialisation.md): **resolved (2026-10-31; Phase-1 screen — both exact families are BELOW the floor, so the ticket's own stop rule fires; no candidate, no campaign, no production edit, recommended family 3 "keep")** — the shape census (one deterministic census, identical on all three table arms) is **23,751 rows over 431 bodies** (`rows/body` p50 **50**, mean **55.1**), **34,662,046** demand ids, per-row list length p50 **1,322** / max **2,847**, **`mixed_bodies = 0`** (every row of a body carries a byte-identical list), only **418 distinct list contents** and **428,726 retained ids = 1.24 %** of the blocks — i.e. the table is **one body's demand list cloned once per emitted support path**, and sharing per body would be content-exact and keep **1.24 %** of the blocks and of the **1.2486 GB** heap. Both sides are measured in situ: the allocation side by a per-layer `Instant` window around `assemble_ordered_entities_with_support_identities` (`crates/slicer-runtime/src/layer_executor.rs`) (**412.6 ms** median, table **413.3 / 433.8 / 452.7 ms** vs skip **21.1 / 17.3 ms**), the free side by a sampling-free `drop(layer_irs)` timing (**491.2 ms** median, table **432.4 / 494.1 / 434.4 ms** vs skip **2.614 / 2.890 ms**; 34,796,481 blocks / 1,358,397,544 bytes reproduced, skip arm 62,751 / 107,020,175). **Combined ceiling 821.6 ms uncontended / 926.8 ms most generous = 0.50–0.56 % of the cell = 0.62–0.70x the 1,318 ms floor**, charging 100 % of the parallel assembly time to the critical path. **The headline is a ledger correction to t100**: its 3.468 s free-side ceiling was a **system-heap** artifact, and t102's mimalloc KEEP cut the same free **3.526 s → 0.432–0.494 s (7.1–8.2x)**; the cause-level route had already been banked by the allocator swap. The wall is **not claimed**: five runs on one binary spread **150.195–154.793 s (3.0 %)**, 5.0x the whole ceiling. Consumer audit re-derived: written only by the assembly, **read by no production path** (only `structured_support_identity.rs` and `raft_geometry.rs` under `crates/slicer-runtime/tests/integration/`, both fixture-level), set empty by `crates/slicer-macros/src/lib.rs` and `crates/slicer-runtime/src/anchored_rows.rs`, absent from `crates/slicer-schema/wit/` — and proven unread end-to-end by **5/5 runs byte-identical to the post-t81 reference** (`22200671…` / 42,507,912 bytes) with the table absent. Disclosures: the machine was **not quiet** (owner's browser at 15–56 % of 12 cores; wall drifted 151.3 → 154.6 s), so the ceiling is instrumented and the wall is not claimed; the table arm's drops spread 14 % and the ceiling uses the `min`/`max` envelope, over-charging the lever; the allocation side is summed, not critical-path, so the true wall contribution is smaller; only classic-on was screened; the 1.2486 GB heap figure is derived and agrees with the census to 0.2 %; memory is out of scope (DEV-026) so it is recorded and not priced; probe reverted, both freshness gates exit 0. Evidence: [`evidence/t101-side-table/`](evidence/t101-side-table/FINDINGS.md) (`probe.patch`, `summary.json`, `extract.py`, `verify.py`; `verify.py --self-test` exits 0 checkout-only, 12/12 claims, 15/15 negative controls rejected).
@@ -2020,6 +2062,20 @@ Standing decisions for this effort (2026-09-22):
 - [Repair the Orca rig](issues/98-orca-rig-repair.md): **rig measures Orca again on the 2.5.0 install, and the repair falsified the archived Orca side.** OrcaSlicer 2.5 resolves `--load-settings` through a vendor preset bundle (`PresetBundle::resolve_preset_config`: file-identity match, else a `"from": "system"` manifest walk that flattens `inherits`/`include`), and the install ships only `BBL.opc` with no preset JSON tree. The rig now stages a version-gated source-manifest tree from the tag whose `BBL.json` version equals the installed cache stamp (`02.08.00.16` == `2.8.0.16`, fail-closed) and applies the matched keys as CLI overrides, with `enable_arc_fitting` pinned to 0 because 2.5 flipped that default to enabled. Three measured runs of benchy classic-off: **1.978 s** wall / 6.50 s CPU / 4,000,709 bytes, against the archive's 2.787 s / 9.27 s / 3,890,392 — the archived Orca applied its hardcoded **filament** defaults (density 0, max volumetric speed 2, first-layer temp 200) while the process chain resolved in both eras (300 mm/s walls). So the archived Orca under-measured Orca's own work: PnP's recorded multiples are optimistic for PnP and every archived Orca median needs re-derivation (fog). No ratio requoted. Evidence: `evidence/orca-rig-repair/` (`verify.py --self-test` exit 0, 4 claims, 7/7 negative controls rejected).
 
 ## Not yet specified
+
+- **The destination is a prepass-rewrite decision, and its two carrying shapes
+  are human rulings first (t104, 2026-11-02).** Any future candidate must be
+  priced as a fraction of the **prepass**, because the park needs **77.8–93.9 %**
+  of a phase worth **68.5–89.5 %** of the wall while all per-layer work is
+  bounded by **7.9–20.1 %** of the cell. The two shapes with the arithmetic:
+  **`PrePass::Slice`** (**41,472 ms = 51.2 %** of base classic-off) needs a change
+  to what the closing feeds — the per-component ≥10 % flat-bridge gate that
+  [ticket 59](issues/59-prep-slice-flat-bridge-closing-reduction.md) closed as
+  representation-bound — which is canonical-parity work, out of scope absent a
+  t81-style human exception; and **`PrePass::SupportGeometry`** (**40.1 %** of
+  base classic-on) needs the engine-style question settled first (port the
+  organic engine, or pin the Orca matched profile to `tree_strong`). Neither is
+  ticketable until the human rules on scope.
 
 - **A first-touch vendor tree makes the warmup load-bearing (t98 method note).** The
   first Orca run against a freshly staged vendor tree costs ~10 s more wall than the
@@ -2366,7 +2422,10 @@ Standing decisions for this effort (2026-09-22):
   depth gather, the angles step and the 9/121 affected-layer recompute; the
   stage's Pass 1 `apply_opening` round-join arc-tolerance-0 anomaly (t27
   candidate (a)) remains the largest measured, un-ticketed term in the stage
-  and stays in the fog pending its own representation/parity check.
+  and stays in the fog pending its own representation/parity check — **bounded
+  by t104: `PrePass::ShellClassification` is 14.0 s of the base classic-off cell
+  and 22.0 s of base classic-on, so no shape inside it can supply the park's
+  77.8–93.9 % prepass cut.**
 - **Named leads from the t60 host:native attribution (2026-10-14).**
   [host:native attribution](issues/60-host-native-attribution.md)
   names two reducible shapes beyond the now-resolved (KEEP 2026-10-16)
@@ -2381,7 +2440,10 @@ Standing decisions for this effort (2026-09-22):
   [`evidence/t68-host-roundtrips/`](evidence/t68-host-roundtrips/FINDINGS.md));
   the **`region_partition` 3×-per-layer re-run** (10.04 s accumulated base-off;
   dedup needs semantic analysis of what the post-process commit can change)
-  remains un-graduated, awaiting the human's route decision. The standing
+  remains un-graduated, awaiting the human's route decision — **bounded by
+  t104: the whole per-layer phase is 6.54 s implied wall of the 75.38 s
+  base-off cell (12.70 s of base-on), so no per-layer shape can reach the
+  park.** The standing
   paired A/B governs any candidate.
 - **Gap-candidate pipeline cost (t68 observation, 2026-10-16).** 46.8 %
   (base-off) / 49.5 % (benchy-off) of the classic-perimeters round-trip
