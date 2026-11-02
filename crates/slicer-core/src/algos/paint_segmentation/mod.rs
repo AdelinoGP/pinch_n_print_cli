@@ -1472,6 +1472,14 @@ pub fn execute_paint_segmentation(
                 })
                 .collect();
 
+            // Which painted chains actually project onto a top or bottom face on
+            // each layer. Pre-Phase-6 distributes the shell solid fill to every
+            // painted region so the projection can harvest it; after the harvest,
+            // a painted region with no projection on that layer owns no shell fill.
+            let mut face_values_by_layer: Vec<
+                std::collections::BTreeSet<Vec<(String, slicer_ir::PaintValue)>>,
+            > = vec![std::collections::BTreeSet::new(); working.len()];
+
             // Run Phase 6 for each (object, semantic, value) and merge into working.
             for ((object_id, sname, value), (semantic, painted_mesh, source_objects)) in
                 &painted_subsets
@@ -1498,6 +1506,7 @@ pub fn execute_paint_segmentation(
                     if polys.is_empty() || l >= working.len() {
                         continue;
                     }
+                    face_values_by_layer[l].insert(chain_key.clone());
                     // Phase 7 merge:
                     //  (1) The top/bottom-face projection wins WITHIN its area over
                     //      every other region. Remove `polys` from each region that
@@ -1593,6 +1602,18 @@ pub fn execute_paint_segmentation(
                             }
                         }
                     }
+                }
+            }
+
+            for (l, layer) in working.iter_mut().enumerate() {
+                for region in &mut layer.regions {
+                    if region.variant_chain.is_empty()
+                        || face_values_by_layer[l].contains(&region.variant_chain)
+                    {
+                        continue;
+                    }
+                    region.top_solid_fill.clear();
+                    region.bottom_solid_fill.clear();
                 }
             }
         }
