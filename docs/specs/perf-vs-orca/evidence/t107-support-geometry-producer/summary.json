@@ -1,0 +1,245 @@
+{
+ "take": "t107-support-geometry-producer",
+ "head": "9a1921ac",
+ "binary_sha256": "4cb969421ca1193be9501b8147324e2fcf86fbf6dcd42bd5903315cf5844a1e9",
+ "source_streams": "target/t104-instrumented/<cell>.jsonl (gitignored, produced by evidence/t104-phase-split/run-instrumented.py)",
+ "floor_definition": "0.80 % of the cell: base classic-on uses t102's committed floor (0.80 % of the t91 wall); the other cells use 0.80 % of their t103 PnP ordinary wall (identical to t106's recorded value).",
+ "preview_counts_benchy_on": {
+  "note": "Counts from `pnp_cli support-preview` on benchy classic-on at HEAD 9a1921ac with target/release/pnp_cli.exe = sha256 4cb96942...; the 77,252,577-byte preview JSON is regenerated per REPRODUCE.md and never committed. `geometry_support_*` counts the non-sentinel SupportGeometryIR entries the preview renders into `layers[].support`; `plan_support_body_*` is the SupportPlanIR body geometry it renders beside them.",
+  "cell": "benchy-classic-on",
+  "layer_count": 240,
+  "layers_with_geometry": 240,
+  "geometry_support_polygons": 577,
+  "geometry_support_points": 444259,
+  "skipped_intermediate_entries": 1,
+  "plan_support_body_polygons": 798,
+  "plan_support_body_points": 354208,
+  "preview_json_bytes": 77252577
+ },
+ "cells": {
+  "benchy-classic-off": {
+   "instrumented_cell_ms": 8096,
+   "layer_count": null,
+   "degraded": false,
+   "non_fatal_error_count": 0,
+   "stage_brackets": [
+    {
+     "role": "host_producer",
+     "elapsed_ms": 0,
+     "modules": [
+      "host:support_geometry"
+     ],
+     "module_ms": {
+      "host:support_geometry": 0
+     }
+    },
+    {
+     "role": "planner_module_stage",
+     "elapsed_ms": 43,
+     "modules": [
+      "com.core.traditional-support-planner",
+      "com.core.tree-support-planner"
+     ],
+     "module_ms": {
+      "com.core.traditional-support-planner": 20,
+      "com.core.tree-support-planner": 22
+     }
+    }
+   ],
+   "duplicated_prepass_stage_ids": [
+    "PrePass::SupportGeometry"
+   ],
+   "stage_sum_ms": 43,
+   "t104_committed_stage_ms": 43,
+   "reconciles": true,
+   "producer_ms": 0,
+   "planner_ms": 43,
+   "planner_module_ms": {
+    "com.core.traditional-support-planner": 20,
+    "com.core.tree-support-planner": 22
+   },
+   "share_of_cell_pct": {
+    "producer": 0.0,
+    "planner": 0.5311
+   },
+   "implied_wall_s": {
+    "producer": 0.0,
+    "planner": 0.0408,
+    "cell": 7.6778
+   },
+   "floor_s": 0.061422,
+   "floor_multiple": {
+    "producer": 0.0,
+    "planner": 0.7
+   }
+  },
+  "benchy-classic-on": {
+   "instrumented_cell_ms": 12458,
+   "layer_count": null,
+   "degraded": false,
+   "non_fatal_error_count": 0,
+   "stage_brackets": [
+    {
+     "role": "host_producer",
+     "elapsed_ms": 0,
+     "modules": [
+      "host:support_geometry"
+     ],
+     "module_ms": {
+      "host:support_geometry": 0
+     }
+    },
+    {
+     "role": "planner_module_stage",
+     "elapsed_ms": 3260,
+     "modules": [
+      "com.core.traditional-support-planner",
+      "com.core.tree-support-planner"
+     ],
+     "module_ms": {
+      "com.core.traditional-support-planner": 30,
+      "com.core.tree-support-planner": 2943
+     }
+    }
+   ],
+   "duplicated_prepass_stage_ids": [
+    "PrePass::SupportGeometry"
+   ],
+   "stage_sum_ms": 3260,
+   "t104_committed_stage_ms": 3260,
+   "reconciles": true,
+   "producer_ms": 0,
+   "planner_ms": 3260,
+   "planner_module_ms": {
+    "com.core.traditional-support-planner": 30,
+    "com.core.tree-support-planner": 2943
+   },
+   "share_of_cell_pct": {
+    "producer": 0.0,
+    "planner": 26.1679
+   },
+   "implied_wall_s": {
+    "producer": 0.0,
+    "planner": 3.2457,
+    "cell": 12.4034
+   },
+   "floor_s": 0.099227,
+   "floor_multiple": {
+    "producer": 0.0,
+    "planner": 32.85
+   }
+  },
+  "base-classic-off": {
+   "instrumented_cell_ms": 80924,
+   "layer_count": null,
+   "degraded": false,
+   "non_fatal_error_count": 0,
+   "stage_brackets": [
+    {
+     "role": "host_producer",
+     "elapsed_ms": 4,
+     "modules": [
+      "host:support_geometry"
+     ],
+     "module_ms": {
+      "host:support_geometry": 4
+     }
+    },
+    {
+     "role": "planner_module_stage",
+     "elapsed_ms": 227,
+     "modules": [
+      "com.core.traditional-support-planner",
+      "com.core.tree-support-planner"
+     ],
+     "module_ms": {
+      "com.core.traditional-support-planner": 112,
+      "com.core.tree-support-planner": 115
+     }
+    }
+   ],
+   "duplicated_prepass_stage_ids": [
+    "PrePass::SupportGeometry"
+   ],
+   "stage_sum_ms": 231,
+   "t104_committed_stage_ms": 231,
+   "reconciles": true,
+   "producer_ms": 4,
+   "planner_ms": 227,
+   "planner_module_ms": {
+    "com.core.traditional-support-planner": 112,
+    "com.core.tree-support-planner": 115
+   },
+   "share_of_cell_pct": {
+    "producer": 0.0049,
+    "planner": 0.2805
+   },
+   "implied_wall_s": {
+    "producer": 0.0037,
+    "planner": 0.2114,
+    "cell": 75.3794
+   },
+   "floor_s": 0.603035,
+   "floor_multiple": {
+    "producer": 0.0066,
+    "planner": 0.38
+   }
+  },
+  "base-classic-on": {
+   "instrumented_cell_ms": 228997,
+   "layer_count": null,
+   "degraded": false,
+   "non_fatal_error_count": 0,
+   "stage_brackets": [
+    {
+     "role": "host_producer",
+     "elapsed_ms": 9,
+     "modules": [
+      "host:support_geometry"
+     ],
+     "module_ms": {
+      "host:support_geometry": 9
+     }
+    },
+    {
+     "role": "planner_module_stage",
+     "elapsed_ms": 91893,
+     "modules": [
+      "com.core.traditional-support-planner",
+      "com.core.tree-support-planner"
+     ],
+     "module_ms": {
+      "com.core.traditional-support-planner": 300,
+      "com.core.tree-support-planner": 87824
+     }
+    }
+   ],
+   "duplicated_prepass_stage_ids": [
+    "PrePass::SupportGeometry"
+   ],
+   "stage_sum_ms": 91902,
+   "t104_committed_stage_ms": 91902,
+   "reconciles": true,
+   "producer_ms": 9,
+   "planner_ms": 91893,
+   "planner_module_ms": {
+    "com.core.traditional-support-planner": 300,
+    "com.core.tree-support-planner": 87824
+   },
+   "share_of_cell_pct": {
+    "producer": 0.0039,
+    "planner": 40.1285
+   },
+   "implied_wall_s": {
+    "producer": 0.0063,
+    "planner": 64.5495,
+    "cell": 160.857
+   },
+   "floor_s": 1.318424,
+   "floor_multiple": {
+    "producer": 0.0068,
+    "planner": 69.7
+   }
+  }
+ }
+}

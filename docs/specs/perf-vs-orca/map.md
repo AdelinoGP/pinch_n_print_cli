@@ -54,7 +54,38 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-02, eleventh session — the t106 take):** the
+**Current selection scope (2026-11-02, twelfth session — the t107 take):** the
+human said "continue the perf vs orca map" (no ticket named). The frontier
+re-derivation at HEAD `9a1921ac` found **106/106 children resolved — no open
+child, no claim** — so five fog routes were offered and the human selected
+**screen `PrePass::SupportGeometry`**, graduated as
+[107](issues/107-support-geometry-producer-decomposition.md), claimed, and
+**resolved the same day as measured-dead — the premise named the wrong stage.**
+Headline: `PrePass::SupportGeometry` is **two stages sharing one id**, and
+ticket 104's reducer summed them. Re-pairing t104's own committed raw streams
+gives a **host producer of 9 ms on base classic-on and 0 ms on benchy classic-on**
+(**0.0068x** and **0.00x** the 0.80 % floor) against a **planner module stage of
+91,893 ms = 40.13 %** and **3,260 ms = 26.17 %** of their cells — the tree
+planner **87,824 ms (95.6 %)** + the traditional planner 300 ms on base, and
+2,943 + 30 ms on benchy. The producer's whole job is a coarse outline set —
+**577 polygons / 444,259 points over 240 layers (~7.1 MB)** on benchy-on, per
+`support-preview` — so its sub-millisecond-to-9-ms bracket is real work, and the
+sentinel intermediate entries sit inside the same 0–9 ms. **No shape on the
+producer can clear the floor**, so the ticket's stop rule fired before any
+candidate pricing: no candidate, no campaign, no production edit, no probe build
+(a probe patch was authored and reverted unbuilt once the bracket split
+answered the question). The take's real output is a **ledger correction**:
+t104's 91,902 / 3,260 ms is essentially the **planner**, i.e. t88's 55.5 s term
+(implied **64.5 s / 3.25 s** today) that the map already carries as fog — the
+supports-on lever is unchanged and the producer was never part of it. Evidence:
+[`evidence/t107-support-geometry-producer/`](evidence/t107-support-geometry-producer/FINDINGS.md)
+(`verify.py` exits 0 checkout-only, 71/71 claims, 9/9 negative controls). Frontier
+now: **no open child**; the destination's prepass-rewrite decision is unchanged
+and still the human's to rule on, with the supports-on carrying shape now
+correctly named as the planner. Standing paired acceptance and KEEP/DROP rules
+unchanged.
+
+**Previous selection scope (2026-11-02, eleventh session — the t106 take):** the
 human said "continue the perf vs orca map" (no ticket named). The frontier
 re-derivation at HEAD `e2294453` found **105 of 106 children resolved** — ticket
 106 open and unclaimed, exactly as the tenth-session note predicted — so it was
@@ -114,7 +145,10 @@ single largest measured term — **41,472 ms = 51.2 %** of base classic-off
 (28.4 / 18.1 / 19.5 % of the other three) — and on the supports-on cells
 `PrePass::SupportGeometry` dominates (**40.1 %** of base classic-on, 26.2 % of
 benchy classic-on; with `SupportAnalysis` ~50 % of that cell), the `DEV-156`
-style-substitution site. **Ledger corrections:** t73's 2026-10-18 base-off split
+style-substitution site — **corrected 2026-11-02 by
+[ticket 107](issues/107-support-geometry-producer-decomposition.md): that 40.1 %
+is the planner module stage that shares the stage id, not the host producer
+(9 ms); read this row as producer + planner.** **Ledger corrections:** t73's 2026-10-18 base-off split
 (prepass 115.0 s / per-layer **94.3 s** of a 214.5 s instrumented wall) is
 superseded — the per-layer phase is now **8.7 %** (7,016 ms of 80,924 ms), and
 the change happened between t73 and t91 with **no per-KEEP decomposition
@@ -1930,6 +1964,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Support-geometry producer decomposition](issues/107-support-geometry-producer-decomposition.md): **resolved (2026-11-02; measurement-only Phase-1 screen — measured-dead, the premise named the wrong stage; no candidate, no campaign, no production edit)** — `PrePass::SupportGeometry` is **two stages sharing one stage id**, and ticket 104's reducer summed them. Re-pairing t104's committed raw streams: the **host producer is 9 ms (0.0039 % of the cell, 0.0068x the 1.318424 s floor) on base classic-on and 0 ms on benchy classic-on**; the **planner module stage is 91,893 ms (40.13 %, 69.70x floor)** and **3,260 ms (26.17 %, 32.85x floor)** — `com.core.tree-support-planner` **87,824 / 2,943 ms (95.6 / 90.3 %)** plus `com.core.traditional-support-planner` 300 / 30 ms. The supports-off brackets (231 / 43 ms) are the planner merely declining with the producer at 4 / 0 ms. The producer's whole job is a **coarse outline set — 577 polygons / 444,259 points over 240 layers (~7.1 MB)** on benchy-on per `support-preview` — which is why a deep copy costs sub-millisecond to 9 ms and why the sentinel intermediate entries (exactly 1 on benchy-on) are inside the same bracket; **the entire producer is two orders of magnitude below the floor, so no shape on it can be a route** and the stop rule fired before candidate pricing. The real output is the **ledger correction**: t104's 91,902 / 3,260 ms is essentially the **planner**, i.e. [ticket 88](issues/88-supports-on-increment-attribution.md)'s 55.5 s term refreshed to an implied **64.5 s** of the 160.857 s base-on cell and **3.25 s** of the 12.403 s benchy-on cell, and the supports-on carrying shape of the destination's prepass-rewrite decision is the planner, not the geometry producer. Disclosures: no new slice pass, no wall claim (the split is a bracket property of t104's 2026-11-02 instrumented streams), no probe build (patch authored and reverted unbuilt — `target/release/pnp_cli.exe` remains `4cb96942…` on a clean tree), Arachne unmeasured, preview used for counts only. Evidence: [`evidence/t107-support-geometry-producer/`](evidence/t107-support-geometry-producer/FINDINGS.md) (`verify.py` exits 0 checkout-only, 71/71 claims, 9/9 negative controls rejected).
+
 - [Post-pin supports-on scoreboard re-derivation](issues/106-post-pin-supports-on-scoreboard.md): **resolved (2026-11-02; measurement-only — no PnP run, no config change, no production edit)** — with Orca pinned to `tree_strong` the four supports-on ratios are **6.02x / 6.11x** (base classic / arachne) and **4.77x / 4.53x** (benchy classic / arachne); the park still needs **66.9–75.5 %** cuts. Every post-pin Orca median is slower than ticket 103's pre-pin one (**+37.04 / +14.49 / +13.74 / +5.69 %**), so all four ratios fall from the archive (8.25x → 6.02x, 7.00x → 6.11x, 5.43x → 4.77x, 4.78x → 4.53x). The t105 transfer **agreed on two cells and missed two**: base arachne-on measured **26.365 s** against a predicted **32.135 s** (**−17.95 %**, tolerance 4.670 s), benchy classic-on **2.600 s** against **2.503 s** (**+3.89 %**, 0.004 s past a 0.093 s tolerance). The misses are **vintage, not the pin**: the pinned job is **byte-identical to t105's `tree_strong` arm on all four cells** (44,803,778 / 43,802,018 / 9,481,130 / 10,331,360 B, **+23.46–35.34 %** over t103's pre-pin volumes; support-interface sections 423 / 426 / 57 / 58) yet runs **1.9–9.6 % faster today**, while t103's base arachne-on baseline sits **+12.25 %** above t105's organic arm on **2** retained samples with a 4.67 s spread. Orca g-code **SHA changes every run** (the appendix embeds timing), so SHA is never a job-identity signal on the Orca side; output volume is. Take ran quiet (load 16.4 % → 3.3 %, 12/12 measured samples retained, no starvation exclusions) after a game process and a **sibling checkout's** `cargo test` e2e binary exited; `build-guests --check` exit 0. Evidence: [`evidence/t106-post-pin-scoreboard/`](evidence/t106-post-pin-scoreboard/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 75/75 claims, 9/9 negative controls rejected).
 
 - [Supports-on engine-style fairness](issues/105-supports-on-engine-style-fairness.md): **resolved (2026-11-02; measurement + human ruling — PIN Orca to `tree_strong`)** — the pin costs Orca **+39.6 / +44.4 %** wall on the two base cells (20.449 → 29.532 s; 20.514 → 28.627 s) and **+7.6 / +9.5 %** on the two benchy cells (2.422 → 2.651 s; 2.655 → 2.857 s), over 1 warmup + 4 measured per arm per cell with the arms interleaved. The job changes materially: **+23.5–35.3 %** G-code bytes and support-interface sections **230 → 423** (base classic-on) / **7 → 57** (benchy classic-on); PnP's byte volume on the base cells sits **within 3.4–5.1 %** of the `tree_strong` arm and **27.4–30.8 %** above organic, the output-level corroboration of `DEV-156`. The four supports-on ratios move by **−7.1…−30.8 %** (within-take 7.87x → 5.45x and 7.86x → 5.63x base; 5.12x → 4.68x and 4.60x → 4.28x benchy; derived transfer to the record 8.25x → 5.71x, 7.00x → 5.01x, 5.43x → 4.96x, 4.78x → 4.45x) — the best supported-on cell is still ~4.3x away and the park needs **65–73 %** cuts, so this is a fairness fix, not a route step. Implemented as the standing rig's default (`-OrcaSupportStyle tree_strong`, supports-on only, with a per-run appendix assertion; `vendor` restores the organic escape hatch); **ticket 103's supports-on Orca medians are pre-pin** and [ticket 106](issues/106-post-pin-supports-on-scoreboard.md) re-derives them. Disclosures: load peaked at 55.6 % in round 3; two benchy arachne-on organic samples were starved and excluded from pairing (4/4 base pairs positive, +5.39…+9.75 s); benchy classic-on is 3/4 positive with one load-inflated organic round; absolute ratios are mixed-vintage (today's organic differs from t103's Orca by −10.9…+5.9 %). Evidence: [`evidence/t105-tree-strong/`](evidence/t105-tree-strong/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 74/74 claims, 6/6 negative controls rejected).
@@ -2133,9 +2169,13 @@ Standing decisions for this effort (2026-09-22):
   to what the closing feeds — the per-component ≥10 % flat-bridge gate that
   [ticket 59](issues/59-prep-slice-flat-bridge-closing-reduction.md) closed as
   representation-bound — which is canonical-parity work, out of scope absent a
-  t81-style human exception; and **`PrePass::SupportGeometry`** (**40.1 %** of
-  base classic-on) needs the engine-style question settled first (port the
-  organic engine, or pin the Orca matched profile to `tree_strong`). Neither is
+  t81-style human exception; and **the support planner** (**87,824 ms = 38.4 %**
+  of base classic-on, inside the 91,893 ms planner stage that shares
+  `PrePass::SupportGeometry`'s id — the host producer is **9 ms**, t107), whose
+  engine-style precondition is now spent: t105 pinned the **Orca** side to
+  `tree_strong`, so PnP's own Strong planner work is matched-engine work rather
+  than a parity gap, and t88's 55.5 s attribution (refreshed to **64.5 s**
+  implied) is the term that remains. Neither is
   ticketable until the human rules on scope.
 
 - **A first-touch vendor tree makes the warmup load-bearing (t98 method note).** The
@@ -2323,7 +2363,16 @@ Standing decisions for this effort (2026-09-22):
 - **Tree-support planner non-clip residual (surfaced 2026-10-25 by
   [ticket 88](issues/88-supports-on-increment-attribution.md)).** The planner
   is still 55.5 s classic / 55.3 s arachne (52.0 / 50.4 % of the increment)
-  after t78's clip batching. The batched clip core is in place; the remaining
+  after t78's clip batching. **Re-derived 2026-11-02 by
+  [ticket 107](issues/107-support-geometry-producer-decomposition.md):** the
+  term is the `com.core.tree-support-planner` module inside the
+  `PrePass::SupportGeometry` stage bracket — **87,824 ms instrumented = 95.6 %**
+  of that bracket and **38.4 % of the base classic-on cell** (**2,943 ms =
+  90.3 %** and **23.6 %** on benchy-on), implied **64.5 s / 3.25 s**
+  uninstrumented — while the host producer that shares the stage id is **9 ms /
+  0 ms**. The 55.5 s is that planner at the 2026-10-25 vintage; the fog entry
+  stands, and no producer-side shape exists (t107 priced the whole producer at
+  **0.0068x the floor**). The batched clip core is in place; the remaining
   non-clip work is the serial avoidance ladder, offsets, MST and node moves —
   support geometry, not a host batch shape. No representation-safe reduction
   was found in this take; re-enter only with a canonical-parity shape and its
