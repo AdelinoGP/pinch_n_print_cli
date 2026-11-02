@@ -1106,14 +1106,12 @@ mod preparation_projection_tests {
         tx.put("probe", &[3, 5, 11, 17]).unwrap();
         tx
     }
-    fn rejected(result: Result<PreparedPlanHandle, PreparationFailure>, variant: &str) {
+    fn rejected(result: Result<PreparedPlanHandle, PreparationFailure>, expected: ProjectionError) {
         match result {
-            Err(PreparationFailure::PublicationRejected { detail }) => assert!(
-                detail.starts_with(&format!(
-                    "preparation projection: {variant}: owner=test.module view=view"
-                )),
-                "{detail}"
-            ),
+            Err(PreparationFailure::ProjectionRejected { view, error, .. }) => {
+                assert_eq!(error, expected);
+                assert_eq!(view, "view");
+            }
             other => panic!("wrong projection finalization: {other:?}"),
         }
     }
@@ -1137,7 +1135,7 @@ mod preparation_projection_tests {
             tx.finish(Ok(()), |_| {
                 panic!("missing precedes cancellation validator")
             }),
-            "MissingScene",
+            ProjectionError::MissingScene,
         );
         unready(&store, &owner);
         assert_eq!(
@@ -1216,8 +1214,8 @@ mod preparation_projection_tests {
             match tx.finish(Ok(()), |_| {
                 panic!("caught diagnostic failure cannot clear poison")
             }) {
-                Err(PreparationFailure::PublicationRejected { detail }) => {
-                    assert!(detail.starts_with(&format!("preparation projection: {expected:?}:")))
+                Err(PreparationFailure::ProjectionRejected { error, .. }) => {
+                    assert_eq!(error, expected)
                 }
                 other => panic!("{other:?}"),
             }
@@ -1306,7 +1304,7 @@ mod preparation_projection_tests {
             }
             rejected(
                 tx.finish(Ok(()), |_| panic!("overflow precedes validator")),
-                "ArithmeticOverflow",
+                ProjectionError::ArithmeticOverflow,
             );
             assert_eq!(
                 store.projection_failure(&owner).unwrap(),

@@ -171,14 +171,7 @@ fn assert_unpublished(store: &PreparedOwnerStore, owner: &PreparationOwner) {
 
 fn assert_rejected(error: PreparationFailure, expected: Error) {
     match error {
-        PreparationFailure::PublicationRejected { detail } => {
-            assert!(
-                detail.starts_with(&format!(
-                    "preparation projection: {expected:?}: owner=test.preparation-visual view="
-                )),
-                "{detail}"
-            );
-        }
+        PreparationFailure::ProjectionRejected { error, .. } => assert_eq!(error, expected),
         other => panic!("wrong projection failure, expected {expected:?}: {other:?}"),
     }
 }
