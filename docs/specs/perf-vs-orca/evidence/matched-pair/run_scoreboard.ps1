@@ -62,6 +62,18 @@ param(
     [ValidateSet('All', 'Last', 'None')][string]$KeepGcode = 'Last',
     [switch]$SkipFreshness,
     [switch]$OrcaDebugLog,
+    # perf-vs-orca ticket 105 (human ruling, 2026-11-02): the supports-on
+    # matched job pins Orca's tree style to `tree_strong` so both sides run the
+    # classic engine class PnP implements (`DEV-156` substituted Strong for
+    # every canonically-organic input). Orca's canonical default on a tree
+    # family is organic; the pin is a protocol choice and is disclosed beside
+    # every supports-on ratio. The measured price (ticket 105, 4 paired
+    # rounds): Orca +39.6–44.4 % wall on the two base cells and +7.6–9.5 % on
+    # the two benchy cells, with +23.5–35.3 % G-code bytes.
+    # Empty is the escape hatch for an organic/vendor-default arm (the t105
+    # baseline arm uses it); the assertion follows the chosen value.
+    [ValidateSet('', 'vendor', 'default', 'grid', 'snug', 'organic', 'tree_slim', 'tree_strong', 'tree_hybrid')]
+    [string]$OrcaSupportStyle = 'tree_strong',
     [string]$RepoRoot = (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))))
 )
 
@@ -76,6 +88,13 @@ $Job = @{
     SparseInfillPattern = 'gyroid'
     SupportType       = 'tree(auto)'
 }
+
+# perf-vs-orca ticket 105 ruling (2026-11-02): the style a supports-on run must
+# resolve to. The pin is `tree_strong`; `-OrcaSupportStyle vendor` (or an empty
+# value) restores the vendor default (`default` -> organic on a tree family) for
+# a disclosed organic arm. Supports-off runs always resolve the vendor default.
+$OrcaExpectedSupportStyle =
+    if (-not $OrcaSupportStyle -or $OrcaSupportStyle -eq 'vendor') { 'default' } else { $OrcaSupportStyle }
 
 # --- Paths -------------------------------------------------------------------
 $ConfigDir   = Join-Path $PSScriptRoot 'configs'
@@ -244,7 +263,8 @@ function Test-OrcaEvidence {
         [Parameter(Mandatory = $true)][string]$ExpectedGenerator,
         [Parameter(Mandatory = $true)][string]$ExpectedSupportFlag,
         [Parameter(Mandatory = $true)][int]$ExitCode,
-        [Parameter(Mandatory = $true)][string]$RunId
+        [Parameter(Mandatory = $true)][string]$RunId,
+        [string]$ExpectedSupportStyle = 'default'
     )
     if ($ExitCode -ne 0) { throw "measurement rejected ($RunId): Orca exit code was $ExitCode" }
     if (-not (Test-Path -LiteralPath $OutputPath) -or (Get-Item -LiteralPath $OutputPath).Length -eq 0) {
@@ -258,6 +278,7 @@ function Test-OrcaEvidence {
     Assert-EqualValue 'sparse_infill_pattern' $cfg['sparse_infill_pattern'] $Job.SparseInfillPattern $RunId
     Assert-EqualValue 'enable_support' $cfg['enable_support'] $ExpectedSupportFlag $RunId
     Assert-EqualValue 'support_type' $cfg['support_type'] $Job.SupportType $RunId
+    Assert-EqualValue 'support_style' $cfg['support_style'] $ExpectedSupportStyle $RunId
     Assert-EqualValue 'layer_height' $cfg['layer_height'] $Job.LayerHeight $RunId
 
     # --- perf-vs-orca ticket 103 ruling: the three pins fail closed ----------
@@ -320,7 +341,7 @@ function New-OrcaOverrideArgs {
         [Parameter(Mandatory = $true)][string]$Generator,
         [Parameter(Mandatory = $true)][string]$SupportFlag
     )
-    return @(
+    $args = @(
         ('--wall-generator=' + $Generator),
         ('--wall-loops=' + $Job.WallLoops),
         ('--sparse-infill-density=' + $Job.SparseInfillDensity),
@@ -348,6 +369,14 @@ function New-OrcaOverrideArgs {
         '--elefant-foot-compensation=0',
         '--brim-width=0'
     )
+    if ($OrcaSupportStyle -and $OrcaSupportStyle -ne 'vendor' -and $SupportFlag -eq '1') {
+        # Ticket 105 ruling: appended last so it ranks above every loaded preset
+        # and above the matched-job keys (none of which set this key). Inert and
+        # omitted on supports-off runs, where the appendix must keep resolving
+        # the vendor default.
+        $args += ('--support-style=' + $OrcaSupportStyle)
+    }
+    return $args
 }
 
 # --- Preflight (fail-closed) -------------------------------------------------
@@ -477,9 +506,10 @@ function Invoke-ScoreRun {
         $measured = Invoke-MeasuredProcess -FilePath $OrcaExe -ArgumentList $argList -StdoutPath (Join-Path $outDir 'orca.log') -StderrPath $stderrPath
         $gcodePath = Join-Path $GcodeDir ($runId + '.gcode')
         Move-Item -LiteralPath (Join-Path $outDir 'plate_1.gcode') -Destination $gcodePath -Force
-        $cfg = Test-OrcaEvidence -OutputPath $gcodePath -ExpectedGenerator $Generator -ExpectedSupportFlag $supportFlag -ExitCode $measured.ExitCode -RunId $runId
+        $expectedStyle = if ($supportFlag -eq '1') { $OrcaExpectedSupportStyle } else { 'default' }
+        $cfg = Test-OrcaEvidence -OutputPath $gcodePath -ExpectedGenerator $Generator -ExpectedSupportFlag $supportFlag -ExitCode $measured.ExitCode -RunId $runId -ExpectedSupportStyle $expectedStyle
         $validatedGenerator = $Generator
-        foreach ($k in @('wall_generator', 'wall_loops', 'sparse_infill_density', 'sparse_infill_pattern', 'enable_support', 'support_type', 'layer_height',
+        foreach ($k in @('wall_generator', 'wall_loops', 'sparse_infill_density', 'sparse_infill_pattern', 'enable_support', 'support_type', 'support_style', 'layer_height',
                          'enable_arc_fitting', 'elefant_foot_compensation', 'brim_width',
                          'filament_density', 'filament_max_volumetric_speed', 'first_layer_temperature')) {
             $appendixExcerpt[$k] = $cfg[$k]

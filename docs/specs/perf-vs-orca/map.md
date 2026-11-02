@@ -54,7 +54,28 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-02, ninth session — the t104 take):** the
+**Current selection scope (2026-11-02, tenth session — the t105 take):** the
+human said "continue the perf vs orca map" (no ticket named). The frontier
+re-derivation at HEAD `81219a66` found **104/104 children resolved — no open
+child, no claim** — so five routes were offered from t104's post-resolution
+state (closing-chain rewrite shape; supports-on engine fairness; redraw the
+destination; park the map; lift the park and harvest per-layer leads) and the
+human selected **supports-on engine fairness**, graduated as
+[105](issues/105-supports-on-engine-style-fairness.md). The take measured
+Orca's organic vs `tree_strong` arm on the four supports-on cells (1 warmup + 4
+interleaved paired rounds; the campaign was paused at the human's request and
+resumed) and the human ruled **pin to `tree_strong`**. Headline: the pin costs
+Orca **+39.6 / +44.4 %** wall on the two base cells and **+7.6 / +9.5 %** on the
+two benchy cells, moves the four supports-on ratios by **−7.1…−30.8 %** (best
+supported-on cell still ~4.3x, park still needs 65–73 % cuts), and changes the
+job (**+23.5–35.3 %** bytes). The pin is implemented as the standing rig's
+default (supports-on only, per-run appendix assertion); **t103's supports-on
+Orca medians are pre-pin**, and the re-derivation is graduated as
+[106](issues/106-post-pin-supports-on-scoreboard.md). Frontier now: **ticket 106
+only, open and unclaimed**. Standing paired acceptance and KEEP/DROP rules
+unchanged.
+
+**Previous selection scope (2026-11-02, ninth session — the t104 take):** the
 human said "continue the perf vs orca map" (no ticket named). The frontier
 re-derivation at HEAD `e61c5655` found **103/103 children resolved — no open
 child, no claim** — so six fog routes were offered (prepass-vs-per-layer
@@ -1410,16 +1431,24 @@ Standing decisions for this effort (2026-09-22):
   benchy 3.25/2.50/3.55/3.23, base 8.35/6.75/12.63/11.96 (ordinary, raw ÷ (1+Δ)).
   No verdict flips and the best cell moves **3.30x → 2.50x**, so the ~1.5x park
   condition stays binding. Raw ratios remain the headline.
-  **Supports-on engine-style disclosure (2026-10-30, ticket 97):** the four
-  supports-on cells compare **Orca's organic engine** (`support_style =
-  default` on a tree family → `smsTreeOrganic` → `generate_tree_support_3D`)
-  against **PnP's Strong substitution** for the same canonical styles
-  (`DEV-156`; the organic engine is unimplemented). The **effective branch
-  distance is 1 mm on both sides** (`tree_support_branch_distance_organic`
-  on the Orca side, the normal-key default on the PnP side); the deviations
-  table's 5 mm normal-key row is inert under the matched style. Every
-  supports-on ratio carries this engine-style mismatch, on top of the
-  resolution correction above.
+  **Supports-on engine-style pin (2026-11-02, human ruling on
+  [ticket 105](issues/105-supports-on-engine-style-fairness.md); supersedes
+  ticket 97's mismatch disclosure):** the matched job now pins Orca's tree
+  style to **`tree_strong`**, so both sides run the classic engine class PnP
+  implements. Orca's canonical default on a tree family is `smsTreeOrganic`
+  (`SupportParameters` → `generate_tree_support_3D`); PnP substitutes **Strong**
+  for every canonically-organic input (`DEV-156`). The pin is a **protocol
+  choice, not Orca's default job**, and it is disclosed beside every
+  supports-on ratio: measured on 2026-11-02 over 4 interleaved paired rounds,
+  it costs Orca **+39.6 / +44.4 %** wall on the two base cells and
+  **+7.6 / +9.5 %** on the two benchy cells, and changes output
+  (**+23.5–35.3 %** bytes; support-interface sections 230 → 423 base
+  classic-on, 7 → 57 benchy classic-on). The **effective branch distance is
+  1 mm on both sides** (`tree_support_branch_distance_organic` on the Orca side,
+  the normal-key default on the PnP side); the deviations table's 5 mm
+  normal-key row is inert. Ticket 103's supports-on Orca medians are **pre-pin**;
+  no supports-on scoreboard row may be quoted as post-pin until
+  [ticket 106](issues/106-post-pin-supports-on-scoreboard.md) re-derives them.
 - **Win matrix**: all 8 cells decide, so support-correctness defects are route
   work — a degraded slice is not Orca's job.
 - **Measurement mode**: paired ordinary + accelerated runs are the default
@@ -1873,6 +1902,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Supports-on engine-style fairness](issues/105-supports-on-engine-style-fairness.md): **resolved (2026-11-02; measurement + human ruling — PIN Orca to `tree_strong`)** — the pin costs Orca **+39.6 / +44.4 %** wall on the two base cells (20.449 → 29.532 s; 20.514 → 28.627 s) and **+7.6 / +9.5 %** on the two benchy cells (2.422 → 2.651 s; 2.655 → 2.857 s), over 1 warmup + 4 measured per arm per cell with the arms interleaved. The job changes materially: **+23.5–35.3 %** G-code bytes and support-interface sections **230 → 423** (base classic-on) / **7 → 57** (benchy classic-on); PnP's byte volume on the base cells sits **within 3.4–5.1 %** of the `tree_strong` arm and **27.4–30.8 %** above organic, the output-level corroboration of `DEV-156`. The four supports-on ratios move by **−7.1…−30.8 %** (within-take 7.87x → 5.45x and 7.86x → 5.63x base; 5.12x → 4.68x and 4.60x → 4.28x benchy; derived transfer to the record 8.25x → 5.71x, 7.00x → 5.01x, 5.43x → 4.96x, 4.78x → 4.45x) — the best supported-on cell is still ~4.3x away and the park needs **65–73 %** cuts, so this is a fairness fix, not a route step. Implemented as the standing rig's default (`-OrcaSupportStyle tree_strong`, supports-on only, with a per-run appendix assertion; `vendor` restores the organic escape hatch); **ticket 103's supports-on Orca medians are pre-pin** and [ticket 106](issues/106-post-pin-supports-on-scoreboard.md) re-derives them. Disclosures: load peaked at 55.6 % in round 3; two benchy arachne-on organic samples were starved and excluded from pairing (4/4 base pairs positive, +5.39…+9.75 s); benchy classic-on is 3/4 positive with one load-inflated organic round; absolute ratios are mixed-vintage (today's organic differs from t103's Orca by −10.9…+5.9 %). Evidence: [`evidence/t105-tree-strong/`](evidence/t105-tree-strong/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 74/74 claims, 6/6 negative controls rejected).
+
 - [Prepass versus per-layer: what a cell's wall is made of](issues/104-prepass-vs-per-layer-attribution.md): **resolved (2026-11-02; measurement-only — no candidate, no campaign, no production edit)** — the wall is the **prepass**: **68.5–89.5 %** of every classic cell (base-off 89.5 %, base-on 89.4 %, benchy-on 77.0 %, benchy-off 68.5 %) against **7.9–20.1 %** for the per-layer pipeline, so the park's 57–82 % cut maps onto removing **77.8–93.9 % of the prepass**; deleting the whole per-layer phase leaves **3.02x / 4.51x / 4.66x / 7.60x** (never the park), deleting the whole prepass reaches **0.52x / 0.87x / 1.19x / 1.25x**, and the two biggest prepass stages together leave **1.55x–3.34x** (closest: base classic-off **1.55x**, 3 % short). `PrePass::Slice` is the map's largest measured term (**41,472 ms = 51.2 %** of base classic-off; 28.4 / 18.1 / 19.5 % elsewhere) and is bounded by t59's representation-safety verdict on the closing; `PrePass::SupportGeometry` is **40.1 %** of base classic-on and 26.2 % of benchy classic-on (with `SupportAnalysis` ~50 % of that cell) at the `DEV-156` style-substitution site. Ledger: t73's 2026-10-18 base-off split (prepass 115.0 s / per-layer **94.3 s** of a 214.5 s wall) is superseded — per-layer is now **8.7 %** — while t91's 2026-10-27 base-on prepass share **89.0 %** re-measures at **89.4 %** (same semantics); every per-layer fog entry is bounded by a **6.5–12.7 s** phase. **Walls not claimed** (external load, inflation **1.32x–1.80x**, human-approved disclosure, load fell 95.6 % → 16.8 % mid-batch); ratios of record are t103's paired quiet medians; instrumented passes clean and byte-identical to the t87 references (`3672dc7e…`, `eb4817b4…`, `292df501…`, `22200671…`); benchy repeat moves no share by more than **5.92 pp**; Arachne unmeasured; `verify.py --self-test` exits 0 checkout-only (70/70 claims, 9/9 negative controls). Evidence: [`evidence/t104-phase-split/`](evidence/t104-phase-split/FINDINGS.md).
 
 - [Orca re-baseline on the repaired rig](issues/103-orca-rebaseline-repaired-rig.md): **resolved (2026-10-31 campaign, 2026-11-01 disposal; measurement-only — the archived Orca table is superseded, no production edit)** — the rig carries the ruling's three pins and asserts them per run, and **Orca still wins all 8 cells at 3.52x–8.25x** today-vs-today (benchy classic-off 3.78/3.78, arachne-off 3.52/3.59, classic-on 5.43/5.50, arachne-on 4.78/4.85; base classic-off 4.93/4.96, arachne-off 4.72/4.58, classic-on 8.25/8.21, arachne-on 7.00/7.53, ordinary/accelerated). Fresh Orca: **−27.2 / −24.0 / −35.2 / −30.0 %** on the four benchy cells but **+10.2 / +18.3 / +6.1 / +15.6 %** on the four base cells, so **t98's "every archived multiple is optimistic for PnP" is falsified for the base cells** (base classic-on 9.31x → 8.25x, base arachne-on 9.36x → 7.00x) — the archive's error ran both ways and its gaps (2.71x–9.36x) are not comparable. Park re-derived and **still binding**: every cell needs **57–82 %** of its wall removed to reach ~1.5x = **72–102x** the whole 0.80 % floor; release bound **3.52x** (2026-10-25: 2.71x), moved by Orca on benchy, not by PnP (benchy −2.9…+1.9 %; base supports-on −6…−14 % from t102). Supports-on stays the concentration (+36…+67 % over its off sibling). Proof: 16/16 PnP groups `degraded=false`/`non_fatal=0`, ordinary ≡ accelerated bytes in 8/8, PnP output **exactly the t87 post-t81 reference set** in 8/8, both freshness gates exit 0, 32/32 Orca runs resolved the three pins and the filament leg. Two named starvation exclusions (`base-arachne-on-orca-m3`, `base-arachne-on-pnp-ordinary-m3`), three whole-cell re-runs attempted and all spoiled by external load (competing integration-test binary, then 78–96 % browser load); the human approved proceeding with the noise disclosed, all CSVs preserved, and that cell's band (6.95–7.05x / 7.23–7.53x) does not change its verdict. The brim asymmetry (PnP 8 mm vs pinned Orca 0) is disclosed beside the numbers and remains its own human decision. Evidence: [`evidence/t103-orca-rebaseline/`](evidence/t103-orca-rebaseline/SCOREBOARD.md) (`verify.py --self-test` exits 0 checkout-only, 13/13 negative controls detected).
@@ -2242,25 +2273,21 @@ Standing decisions for this effort (2026-09-22):
   ([ticket 81](issues/81-resolution-slicing-time-contour-simplification.md)'s
   disclosures). No action while it stays 0.
 
-- **The supports-on job is style-unmatched: Orca organic vs PnP Strong
-  (corrected 2026-10-30 by
-  [ticket 97](issues/97-match-branch-distance-fairness.md)).** The
-  `tree_support_branch_distance` 5 mm lead is **dead**: `support_style =
-  default` on a tree family resolves to `smsTreeOrganic` (`SupportParameters`),
-  `PrintObject::_generate_support_material` / `TreeSupport::generate` fork it to
+- **The supports-on branch-distance lead is dead, and the style mismatch is now
+  a human ruling (resolved 2026-10-30 → 2026-11-02; see
+  [ticket 97](issues/97-match-branch-distance-fairness.md) and
+  [ticket 105](issues/105-supports-on-engine-style-fairness.md)).**
+  `support_style = default` on a tree family resolves to `smsTreeOrganic`
+  (`SupportParameters`), `TreeSupport::generate` forks it to
   `generate_tree_support_3D`, and the organic engine reads only
   `tree_support_branch_distance_organic` — resolved to **1 mm**, the same as
   PnP's normal-key default. The normal 5 mm key is inert on that path; t88's arm
   was a 5x PnP branch-spacing reduction, not a match. PnP substitutes **Strong**
   for every canonically-organic input (`DEV-156`; organic port queued in
-  `docs/specs/support-generation-remediation-plan.md`), so the four supports-on
-  cells compare two different engines. Closing that is a human decision:
-  port the organic engine (parity work; the wall case is unestablished and
-  organic is the more expensive canonical engine), or force the Orca matched
-  profile to `support_style = tree_strong` so both sides run the class PnP
-  implements (a protocol change; its effect on Orca's wall is unmeasured).
-  Until then every supports-on ratio carries the engine-style mismatch
-  disclosure in the fairness contract above.
+  `docs/specs/support-generation-remediation-plan.md`). The human ruled **pin
+  Orca to `tree_strong`**; the measured price and the protocol disclosure live in
+  the fairness contract above, and the post-pin scoreboard re-derivation is
+  [ticket 106](issues/106-post-pin-supports-on-scoreboard.md).
 
 - **Tree-support planner non-clip residual (surfaced 2026-10-25 by
   [ticket 88](issues/88-supports-on-increment-attribution.md)).** The planner
