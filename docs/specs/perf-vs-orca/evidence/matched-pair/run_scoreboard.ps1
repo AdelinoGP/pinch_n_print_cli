@@ -259,6 +259,34 @@ function Test-OrcaEvidence {
     Assert-EqualValue 'enable_support' $cfg['enable_support'] $ExpectedSupportFlag $RunId
     Assert-EqualValue 'support_type' $cfg['support_type'] $Job.SupportType $RunId
     Assert-EqualValue 'layer_height' $cfg['layer_height'] $Job.LayerHeight $RunId
+
+    # --- perf-vs-orca ticket 103 ruling: the three pins fail closed ----------
+    # `enable_arc_fitting` is emitted as disabled/enabled, not 0/1.
+    $arc = $cfg['enable_arc_fitting']
+    if (-not (@('0', 'disabled') -contains $arc)) {
+        throw "measurement rejected ($RunId): enable_arc_fitting is '$arc', expected 'disabled' (2.5 flipped this default; the pin must win)"
+    }
+    Assert-EqualValue 'elefant_foot_compensation' $cfg['elefant_foot_compensation'] '0' $RunId
+    Assert-EqualValue 'brim_width' $cfg['brim_width'] '0' $RunId
+
+    # --- perf-vs-orca ticket 98 defect: the filament chain must resolve -------
+    # Every run records the resolved filament leg, and the archived 2026-10-25
+    # defect signature (density 0, max volumetric speed 2, first-layer 200) is
+    # rejected outright so a future install cannot silently re-run the wrong job.
+    $filament = @{
+        filament_density                = '0'
+        filament_max_volumetric_speed   = '2'
+        first_layer_temperature         = '200'
+    }
+    foreach ($k in $filament.Keys) {
+        $v = $cfg[$k]
+        if ([string]::IsNullOrWhiteSpace($v)) {
+            throw "measurement rejected ($RunId): $k missing from the resolved appendix"
+        }
+        if ($v -eq $filament[$k]) {
+            throw "measurement rejected ($RunId): $k is '$v', Orca's hardcoded default — the vendor filament chain did not resolve (the t98 defect)"
+        }
+    }
     return $cfg
 }
 
@@ -266,7 +294,7 @@ function Get-PnpAppendixExcerpt {
     param([Parameter(Mandatory = $true)][string]$OutputPath)
     $cfg = Get-AppendixMap -Path $OutputPath
     $excerpt = @{}
-    foreach ($k in @('wall_generator', 'sparse_infill_pattern', 'sparse_infill_density', 'support_type', 'enable_support', 'layer_height', 'nozzle_diameter')) {
+    foreach ($k in @('wall_generator', 'sparse_infill_pattern', 'sparse_infill_density', 'support_type', 'enable_support', 'layer_height', 'nozzle_diameter', 'brim_width')) {
         if ($cfg.ContainsKey($k)) { $excerpt[$k] = $cfg[$k] }
     }
     return $excerpt
@@ -306,7 +334,19 @@ function New-OrcaOverrideArgs {
         # the matched chain sets it either way, so without this pin the repaired
         # rig would silently start emitting arcs — a feature PnP does not have.
         # Pin it to the contract's value rather than inherit a version default.
-        '--enable-arc-fitting=0'
+        '--enable-arc-fitting=0',
+        # perf-vs-orca ticket 103 ruling ("pinned back", 2026-10-31): OrcaSlicer
+        # 2.5 also flipped `elefant_foot_compensation` (0 -> 0.15) and
+        # `brim_width` (0 -> 5). Both are pinned to the 2.4-era value for the
+        # same reason as arc fitting: the re-baselined job must differ from the
+        # archive only by the filament leg t98 repaired. PnP has no
+        # elephant-foot feature, and the PnP side of the matched job prints its
+        # own 8 mm skirt-brim default, so leaving 2.5's 5 mm brim would compare
+        # two different adhesion jobs. Test-OrcaEvidence asserts all three
+        # resolved values from each run's appendix (fail closed on a version
+        # bump instead of drifting silently).
+        '--elefant-foot-compensation=0',
+        '--brim-width=0'
     )
 }
 
@@ -358,7 +398,7 @@ function Assert-Preflight {
 }
 
 # --- CSV ---------------------------------------------------------------------
-$CsvHeader = 'run_id,batch_id,cell,fixture,generator,supports,tool,run_index,warmup,threads,expected_generator,validated_generator,config_path,exe_path,module_dir,model_path,output_path,stderr_path,wall_seconds,cpu_seconds,cpu_wall_ratio,peak_workingset_bytes,gcode_bytes,sha256_of_gcode,type_counts_json,completion_status,fatal_error_count,non_fatal_error_count,degraded,exit_code,timestamp_utc'
+$CsvHeader = 'run_id,batch_id,cell,fixture,generator,supports,tool,run_index,warmup,threads,expected_generator,validated_generator,config_path,exe_path,module_dir,model_path,output_path,stderr_path,wall_seconds,cpu_seconds,cpu_wall_ratio,peak_workingset_bytes,gcode_bytes,sha256_of_gcode,type_counts_json,completion_status,fatal_error_count,non_fatal_error_count,degraded,exit_code,timestamp_utc,resolved_brim_width,resolved_enable_arc_fitting,resolved_elefant_foot_compensation,resolved_filament_density,resolved_filament_max_volumetric_speed,resolved_first_layer_temperature'
 if (-not (Test-Path $CsvPath)) {
     Set-Content -Path $CsvPath -Value $CsvHeader -Encoding utf8
 } else {
@@ -377,7 +417,10 @@ function Add-ScoreRow {
         ([math]::Round($Row.wall_seconds, 4)), ([math]::Round($Row.cpu_seconds, 4)), ([math]::Round($Row.cpu_wall_ratio, 4)),
         $Row.peak_workingset_bytes, $Row.gcode_bytes, (ConvertTo-CsvField $Row.sha256_of_gcode),
         (ConvertTo-CsvField $Row.type_counts_json), (ConvertTo-CsvField $Row.completion_status),
-        $Row.fatal_error_count, $Row.non_fatal_error_count, $Row.degraded, $Row.exit_code, $Row.timestamp_utc
+        $Row.fatal_error_count, $Row.non_fatal_error_count, $Row.degraded, $Row.exit_code, $Row.timestamp_utc,
+        (ConvertTo-CsvField $Row.resolved_brim_width), (ConvertTo-CsvField $Row.resolved_enable_arc_fitting),
+        (ConvertTo-CsvField $Row.resolved_elefant_foot_compensation), (ConvertTo-CsvField $Row.resolved_filament_density),
+        (ConvertTo-CsvField $Row.resolved_filament_max_volumetric_speed), (ConvertTo-CsvField $Row.resolved_first_layer_temperature)
     ) -join ','
     Add-Content -Path $CsvPath -Value $line -Encoding utf8
 }
@@ -436,7 +479,9 @@ function Invoke-ScoreRun {
         Move-Item -LiteralPath (Join-Path $outDir 'plate_1.gcode') -Destination $gcodePath -Force
         $cfg = Test-OrcaEvidence -OutputPath $gcodePath -ExpectedGenerator $Generator -ExpectedSupportFlag $supportFlag -ExitCode $measured.ExitCode -RunId $runId
         $validatedGenerator = $Generator
-        foreach ($k in @('wall_generator', 'wall_loops', 'sparse_infill_density', 'sparse_infill_pattern', 'enable_support', 'support_type', 'layer_height')) {
+        foreach ($k in @('wall_generator', 'wall_loops', 'sparse_infill_density', 'sparse_infill_pattern', 'enable_support', 'support_type', 'layer_height',
+                         'enable_arc_fitting', 'elefant_foot_compensation', 'brim_width',
+                         'filament_density', 'filament_max_volumetric_speed', 'first_layer_temperature')) {
             $appendixExcerpt[$k] = $cfg[$k]
         }
         $completionStatus = 'n/a'
@@ -489,6 +534,7 @@ function Invoke-ScoreRun {
 
     $wall = $measured.WallSeconds
     $cpu = $measured.CpuSeconds
+    $resolved = { param($k) if ($appendixExcerpt.ContainsKey($k)) { [string]$appendixExcerpt[$k] } else { '' } }
     Add-ScoreRow @{
         run_id = $runId; batch_id = $BatchId; cell = $cell; fixture = $Fixture
         generator = $Generator; supports = $Supports; tool = $Tool
@@ -504,6 +550,12 @@ function Invoke-ScoreRun {
         non_fatal_error_count = $nonFatalCount; degraded = $degraded
         exit_code = $measured.ExitCode
         timestamp_utc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+        resolved_brim_width = (& $resolved 'brim_width')
+        resolved_enable_arc_fitting = (& $resolved 'enable_arc_fitting')
+        resolved_elefant_foot_compensation = (& $resolved 'elefant_foot_compensation')
+        resolved_filament_density = (& $resolved 'filament_density')
+        resolved_filament_max_volumetric_speed = (& $resolved 'filament_max_volumetric_speed')
+        resolved_first_layer_temperature = (& $resolved 'first_layer_temperature')
     }
     Write-Host ("[scoreboard] " + (Get-Date).ToString('HH:mm:ss') + " DONE  " + $runId + (" wall={0:N1}s cpu={1:N1}s ratio={2:N2}" -f $wall, $cpu, $(if ($wall -gt 0) { $cpu / $wall } else { 0 })))
     return $gcodePath

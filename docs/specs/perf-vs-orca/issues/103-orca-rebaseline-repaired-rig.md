@@ -2,7 +2,7 @@
 
 Type: task
 Label: wayfinder:task
-Status: claimed
+Status: resolved
 Assignee: 2026-10-31 OpenCode wayfinder session — the human said "continue the
 perf vs orca map" (no ticket named), and this was the only open child
 Parent: [Slice performance vs OrcaSlicer](../map.md)
@@ -127,3 +127,77 @@ the falsified one.
    route options that follow from it.
 4. No production edit, no auto-commit. This ticket moves no PnP code; it decides
    where the remaining route work goes.
+
+## Answer (resolved 2026-10-31 campaign, 2026-11-01 noise disclosure)
+
+**Measured on both sides today-vs-today: Orca still wins all 8 cells, at
+3.52x–8.25x.** Both standing trees were rebuilt from HEAD `c135e3e7` (ordinary
+`4cb96942…`, accelerated `80897e62…`, 24/24 external modules each, both guest
+freshness gates exit 0); Orca is the 2.5.0 install served from the
+version-gated vendor tree (installed `2.8.0.16` == upstream `02.08.00.16`).
+
+| Cell | Orca | PnP ordinary | PnP accelerated | gap ord | gap acc | reduction needed to park | floor multiples |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| benchy classic-off | 2.03 | 7.68 | 7.67 | **3.78x** | **3.78x** | 60.3 % | 75x |
+| benchy arachne-off | 2.19 | 7.69 | 7.84 | **3.52x** | **3.59x** | 57.4 % | 72x |
+| benchy classic-on | 2.29 | 12.40 | 12.57 | **5.43x** | **5.50x** | 72.4 % | 90x |
+| benchy arachne-on | 2.55 | 12.22 | 12.40 | **4.78x** | **4.85x** | 68.7 % | 86x |
+| base classic-off | 15.28 | 75.38 | 75.74 | **4.93x** | **4.96x** | 69.6 % | 87x |
+| base arachne-off | 16.72 | 78.89 | 76.51 | **4.72x** | **4.58x** | 68.2 % | 85x |
+| base classic-on | 19.49 | 160.86 | 160.09 | **8.25x** | **8.21x** | 81.8 % | 102x |
+| base arachne-on | 23.03 | 161.14 | 173.47 | **7.00x** | **7.53x** | 78.6 % | 98x |
+
+**The archived table is superseded and its error was not one-directional.**
+Fresh Orca is **−24…−35 %** on the four benchy cells (the t98 filament-leg
+repair, as expected: PnP's benchy multiples worsen, best cell 2.71x → 3.52x)
+but **+6…+18 %** on the four base cells, where PnP's multiples *improve* as a
+ratio (base classic-on 9.31x → 8.25x, base arachne-on 9.36x → 7.00x). Ticket
+98's one-cell extrapolation "every recorded multiple is optimistic for PnP" is
+therefore **falsified for the four base cells**; only measurement could settle
+it, and no mechanism for the base slowdown is asserted. The PnP side also
+carries t102's mimalloc KEEP, which is why base supports-on PnP walls fall
+6–14 % while benchy is flat (−3 %…+0.1 %).
+
+**Deliverable 1 (the ruling) is enforced, not remembered.** The three pins land
+in `New-OrcaOverrideArgs` beside the arc pin, and `Test-OrcaEvidence` asserts
+the resolved `enable_arc_fitting = disabled`, `elefant_foot_compensation = 0`
+and `brim_width = 0` in **every** Orca run's own appendix, plus the resolved
+filament leg (`1.24 / 12 / 220`) and outright rejection of the archived
+hardcoded-default signature (`0 / 2 / 200`). All 32 Orca runs resolved the six
+values; a future install or preset bump fails the batch. Ticket 98's
+`verify.py` was extended to pin the two 2.5 defaults its archived appendix
+carries (`brim_width = 5`, `elefant_foot_compensation = 0.15`) as the pre-pin
+record the ruling supersedes (5 claims, 9/9 negative controls).
+
+**Deliverable 3 (the park bound) is re-derived and still binding.** The
+nearest cell is benchy arachne-off at 3.52x / 3.59x; every cell needs a
+**57–82 %** wall cut to reach ~1.5x, i.e. **72–102x** the map's whole 0.80 %
+floor. The release bound is 3.52x versus 2026-10-25's 2.71x, and the cause is
+the Orca side moving fast on benchy, not a PnP regression. Supports-on remains
+the concentration (+36…+67 % over its supports-off sibling). The route options
+that follow (supports-on geometry, the organic support engine `DEV-156`, the
+brim job-definition decision) are recorded in the scoreboard and the map, not
+graduated as tickets — the take order is the human's.
+
+**The adhesion asymmetry is measured and disclosed beside the numbers.** PnP
+resolves `brim_width = 8` in all 16 PnP groups; pinned-back Orca resolves `0` in
+all 32 runs. Its slice-time price (~235 ms) is far below any floor, but the
+job is not identical, and closing it changes the PnP side of every cell and
+re-derives the reference byte set — a separate take with its own human
+decision, as the ruling requires.
+
+**Proof gate.** PnP 16/16 groups `degraded=false` / `non_fatal=0`; ordinary ≡
+accelerated byte for byte in all 8 cells; the PnP output is **exactly** the t87
+post-t81 reference set in all eight cells (so the PnP job is unchanged and only
+Orca moved); both freshness gates exit 0. **Two starvation exclusions are
+named** (`base-arachne-on-orca-m3`, `base-arachne-on-pnp-ordinary-m3`) and three
+whole-cell re-runs were attempted; all three were spoiled by external load (a
+competing integration-test binary in another checkout, then sustained browser
+CPU at 78–96 %). The human was asked and instructed the take to proceed with
+the noise disclosed; all three spoiled CSVs are preserved. That cell's
+two-clean-round band is 6.95–7.05x ordinary / 7.23–7.53x accelerated and its
+verdict is unaffected.
+
+Evidence: [`evidence/t103-orca-rebaseline/`](../../evidence/t103-orca-rebaseline/SCOREBOARD.md)
+(`verify.py` exits 0 checkout-only, 13/13 negative controls detected; no
+production edit, no auto-commit).

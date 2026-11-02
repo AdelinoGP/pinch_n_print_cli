@@ -14,6 +14,10 @@ Claims re-derived here:
       pinned off, while the process chain resolved in both eras (inner_wall_speed 300)
   C4  the archived 2026-10-23 appendix of the same cell carries Orca's *defaults* for
       the filament keys (0 / 2 / 200) -- the divergence C3 exposes
+  C5  the repaired-but-unpinned run (same appendix as C3) still carried OrcaSlicer
+      2.5's *other* flipped defaults -- elefant_foot_compensation 0.15 and
+      brim_width 5 -- which ticket 103's "pinned back" ruling now pins in the rig;
+      the arc pin was the only one asserted at this ticket's close
 """
 
 import sys
@@ -172,7 +176,26 @@ def claim_c4(paths):
     return c
 
 
-CLAIMS = (claim_c1, claim_c2, claim_c3, claim_c4)
+def claim_c5(paths):
+    c = Claim("C5 repaired-but-unpinned run carried the other two 2.5 default flips")
+    app = read_appendix(paths["appendix"])
+    c.check(
+        app.get("elefant_foot_compensation") == "0.15",
+        f"elefant_foot_compensation = {app.get('elefant_foot_compensation')!r} "
+        "(expected the unpinned 2.5 default 0.15)",
+    )
+    c.check(
+        app.get("brim_width") == "5",
+        f"brim_width = {app.get('brim_width')!r} (expected the unpinned 2.5 default 5)",
+    )
+    c.check(
+        app.get("enable_arc_fitting") in ("disabled", "0"),
+        "arc fitting was already pinned in this run, so it is not evidence of a flip",
+    )
+    return c
+
+
+CLAIMS = (claim_c1, claim_c2, claim_c3, claim_c4, claim_c5)
 
 
 def default_paths():
@@ -261,6 +284,19 @@ def self_test():
                 lambda t: t.replace(
                     "filament_max_volumetric_speed = 2\n",
                     "filament_max_volumetric_speed = 12\n",
+                ),
+            ),
+            (
+                "C5 brim default pinned early",
+                "appendix",
+                lambda t: t.replace("brim_width = 5\n", "brim_width = 0\n"),
+            ),
+            (
+                "C5 elefant-foot default pinned early",
+                "appendix",
+                lambda t: t.replace(
+                    "elefant_foot_compensation = 0.15\n",
+                    "elefant_foot_compensation = 0\n",
                 ),
             ),
         ]

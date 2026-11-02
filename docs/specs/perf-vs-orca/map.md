@@ -33,24 +33,76 @@ Every number in this tracker is a ledger fact — re-derive at the point of use.
   references allowed are the heavy model fixtures `tmp/3dbenchy.stl` and
   `tmp/base.stl` — user-supplied and licence-encumbered, they must never be
   committed.
-- **Orca baseline tooling was blocked 2026-10-30 and is REPAIRED (ticket 98).** The
+- **The Orca baseline is RE-DERIVED (ticket 103, 2026-10-31 campaign).** The
   2026-10-27 OrcaSlicer **2.5.0** install (`v2.5.0-beta`) ships the vendor as one
   binary preset cache (`resources/profiles/BBL.opc`) and resolves `--load-settings`
   against the loaded preset bundle, so the rig's file-path form failed. The rig now
   loads a version-gated source-manifest vendor tree
   (`evidence/orca-rig-repair/prepare_orca_vendor.ps1` → `target/orca-vendor/`) and
-  applies the matched keys as CLI overrides. **The repair falsified the archived Orca
-  side:** those runs carried Orca's hardcoded filament defaults (density 0,
-  max volumetric speed 2, first-layer temp 200) and so understated Orca by ~29 % on
-  the benchy classic-off cell (1.978 s now vs 2.787 s archived). Every archived Orca
-  median needs re-derivation on the repaired rig before any ratio is quoted; see
-  Decisions (t98) and the fog entry below. Fresh Orca measurement is available again.
+  applies the matched keys as CLI overrides. The repair falsified the archived Orca
+  side (its runs carried Orca's hardcoded filament defaults — density 0, max
+  volumetric speed 2, first-layer temp 200), and [ticket 103](issues/103-orca-rebaseline-repaired-rig.md)
+  has now re-measured **all eight cells on both arms today-vs-today**: **Orca wins
+  all 8 at 3.52x–8.25x**, fresh Orca is **−24…−35 %** on benchy but **+6…+18 %** on
+  base, and the t98 inference "every archived multiple is optimistic for PnP" is
+  **falsified for the four base cells**. The 2.5 default flips (`enable_arc_fitting`,
+  `elefant_foot_compensation` 0 → 0.15, `brim_width` 0 → 5) are **pinned back** in
+  `New-OrcaOverrideArgs` and asserted per run, so no ratio may be quoted from before
+  this take. Fresh Orca measurement is available again.
 
 Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-31, seventh session — the ticket 101 take):**
+**Current selection scope (2026-10-31 → 2026-11-01, eighth session — the ticket
+103 take):** the human said "continue the perf vs orca map" (no ticket named). The
+frontier re-derivation at HEAD `c135e3e7` found exactly one open child,
+[103](issues/103-orca-rebaseline-repaired-rig.md), which was claimed and is
+**resolved (2026-10-31 campaign / 2026-11-01 disposal)**. The rig now carries the
+ruling's three pins in `New-OrcaOverrideArgs`
+(`evidence/matched-pair/run_scoreboard.ps1`) and `Test-OrcaEvidence` asserts each
+resolved value per run (`enable_arc_fitting = disabled`,
+`elefant_foot_compensation = 0`, `brim_width = 0`) plus the filament leg
+(`1.24 / 12 / 220`), rejecting the archived hardcoded-default signature
+(`0 / 2 / 200`) outright — all **32 Orca runs** resolved the six values, so a
+future install fails closed instead of drifting. **Both arms were rebuilt from
+HEAD and measured today-vs-today** (ordinary `4cb96942…`, accelerated
+`80897e62…`, 24/24 external modules, both freshness gates exit 0; vendor stamp
+installed `2.8.0.16` == upstream `02.08.00.16`).
+
+**Headline: Orca still wins all 8 cells at 3.52x–8.25x** — benchy classic-off
+**3.78x/3.78x**, benchy arachne-off **3.52x/3.59x**, benchy classic-on
+**5.43x/5.50x**, benchy arachne-on **4.78x/4.85x**, base classic-off
+**4.93x/4.96x**, base arachne-off **4.72x/4.58x**, base classic-on
+**8.25x/8.21x**, base arachne-on **7.00x/7.53x** (ordinary/accelerated). The
+**park stays binding**: every cell needs a **57–82 %** wall cut to reach ~1.5x,
+i.e. **72–102x** the map's whole 0.80 % floor; the release bound is **3.52x**
+versus 2026-10-25's 2.71x, and the cause is the **Orca side** moving fast on
+benchy (−24…−35 %), not a PnP regression (PnP benchy −2.9…+1.9 %; base
+supports-on −6…−14 % from t102). **The archive's error was not
+one-directional:** fresh Orca is +6…+18 % on base, so t98's one-cell inference
+"every recorded multiple is optimistic for PnP" is **falsified for the four base
+cells** (base classic-on 9.31x → 8.25x, base arachne-on 9.36x → 7.00x). No
+mechanism is asserted for the base slowdown. The **adhesion asymmetry** is
+measured beside the numbers: PnP resolves `brim_width = 8` in all 16 groups,
+pinned-back Orca `0` in all 32 runs; its price is ~235 ms, but the job is not
+identical and closing it is its own take with its own human decision.
+
+Proof gate: PnP 16/16 `degraded=false`/`non_fatal=0`, ordinary ≡ accelerated
+byte-for-byte in all 8 cells, and the PnP output is **exactly the t87 post-t81
+reference set** in all eight cells (only Orca moved). Two starvation exclusions
+are **named** (`base-arachne-on-orca-m3`, `base-arachne-on-pnp-ordinary-m3`);
+three whole-cell re-runs were attempted and all were spoiled by external load (a
+competing integration-test binary in another checkout, then sustained browser
+CPU at 78–96 %); the human was asked and instructed the take to proceed with the
+noise disclosed, and all three spoiled CSVs are preserved. That cell's
+two-clean-round band is 6.95–7.05x / 7.23–7.53x and its verdict is unaffected.
+Evidence: [`evidence/t103-orca-rebaseline/`](evidence/t103-orca-rebaseline/SCOREBOARD.md)
+(`verify.py --self-test` exits 0 checkout-only, 13/13 negative controls
+detected). Frontier now: **no open child remains**; the fog and the next route
+are the human's. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-31, seventh session — the ticket 101 take):**
 the human said "continue the perf vs orca map" (no ticket named). The frontier
 re-derivation at HEAD `681c0daa` found exactly one open child,
 [101](issues/101-support-identity-table-materialisation.md), which was claimed
@@ -1781,6 +1833,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Orca re-baseline on the repaired rig](issues/103-orca-rebaseline-repaired-rig.md): **resolved (2026-10-31 campaign, 2026-11-01 disposal; measurement-only — the archived Orca table is superseded, no production edit)** — the rig carries the ruling's three pins and asserts them per run, and **Orca still wins all 8 cells at 3.52x–8.25x** today-vs-today (benchy classic-off 3.78/3.78, arachne-off 3.52/3.59, classic-on 5.43/5.50, arachne-on 4.78/4.85; base classic-off 4.93/4.96, arachne-off 4.72/4.58, classic-on 8.25/8.21, arachne-on 7.00/7.53, ordinary/accelerated). Fresh Orca: **−27.2 / −24.0 / −35.2 / −30.0 %** on the four benchy cells but **+10.2 / +18.3 / +6.1 / +15.6 %** on the four base cells, so **t98's "every archived multiple is optimistic for PnP" is falsified for the base cells** (base classic-on 9.31x → 8.25x, base arachne-on 9.36x → 7.00x) — the archive's error ran both ways and its gaps (2.71x–9.36x) are not comparable. Park re-derived and **still binding**: every cell needs **57–82 %** of its wall removed to reach ~1.5x = **72–102x** the whole 0.80 % floor; release bound **3.52x** (2026-10-25: 2.71x), moved by Orca on benchy, not by PnP (benchy −2.9…+1.9 %; base supports-on −6…−14 % from t102). Supports-on stays the concentration (+36…+67 % over its off sibling). Proof: 16/16 PnP groups `degraded=false`/`non_fatal=0`, ordinary ≡ accelerated bytes in 8/8, PnP output **exactly the t87 post-t81 reference set** in 8/8, both freshness gates exit 0, 32/32 Orca runs resolved the three pins and the filament leg. Two named starvation exclusions (`base-arachne-on-orca-m3`, `base-arachne-on-pnp-ordinary-m3`), three whole-cell re-runs attempted and all spoiled by external load (competing integration-test binary, then 78–96 % browser load); the human approved proceeding with the noise disclosed, all CSVs preserved, and that cell's band (6.95–7.05x / 7.23–7.53x) does not change its verdict. The brim asymmetry (PnP 8 mm vs pinned Orca 0) is disclosed beside the numbers and remains its own human decision. Evidence: [`evidence/t103-orca-rebaseline/`](evidence/t103-orca-rebaseline/SCOREBOARD.md) (`verify.py --self-test` exits 0 checkout-only, 13/13 negative controls detected).
+
 - [Support-attribution side table materialisation](issues/101-support-identity-table-materialisation.md): **resolved (2026-10-31; Phase-1 screen — both exact families are BELOW the floor, so the ticket's own stop rule fires; no candidate, no campaign, no production edit, recommended family 3 "keep")** — the shape census (one deterministic census, identical on all three table arms) is **23,751 rows over 431 bodies** (`rows/body` p50 **50**, mean **55.1**), **34,662,046** demand ids, per-row list length p50 **1,322** / max **2,847**, **`mixed_bodies = 0`** (every row of a body carries a byte-identical list), only **418 distinct list contents** and **428,726 retained ids = 1.24 %** of the blocks — i.e. the table is **one body's demand list cloned once per emitted support path**, and sharing per body would be content-exact and keep **1.24 %** of the blocks and of the **1.2486 GB** heap. Both sides are measured in situ: the allocation side by a per-layer `Instant` window around `assemble_ordered_entities_with_support_identities` (`crates/slicer-runtime/src/layer_executor.rs`) (**412.6 ms** median, table **413.3 / 433.8 / 452.7 ms** vs skip **21.1 / 17.3 ms**), the free side by a sampling-free `drop(layer_irs)` timing (**491.2 ms** median, table **432.4 / 494.1 / 434.4 ms** vs skip **2.614 / 2.890 ms**; 34,796,481 blocks / 1,358,397,544 bytes reproduced, skip arm 62,751 / 107,020,175). **Combined ceiling 821.6 ms uncontended / 926.8 ms most generous = 0.50–0.56 % of the cell = 0.62–0.70x the 1,318 ms floor**, charging 100 % of the parallel assembly time to the critical path. **The headline is a ledger correction to t100**: its 3.468 s free-side ceiling was a **system-heap** artifact, and t102's mimalloc KEEP cut the same free **3.526 s → 0.432–0.494 s (7.1–8.2x)**; the cause-level route had already been banked by the allocator swap. The wall is **not claimed**: five runs on one binary spread **150.195–154.793 s (3.0 %)**, 5.0x the whole ceiling. Consumer audit re-derived: written only by the assembly, **read by no production path** (only `structured_support_identity.rs` and `raft_geometry.rs` under `crates/slicer-runtime/tests/integration/`, both fixture-level), set empty by `crates/slicer-macros/src/lib.rs` and `crates/slicer-runtime/src/anchored_rows.rs`, absent from `crates/slicer-schema/wit/` — and proven unread end-to-end by **5/5 runs byte-identical to the post-t81 reference** (`22200671…` / 42,507,912 bytes) with the table absent. Disclosures: the machine was **not quiet** (owner's browser at 15–56 % of 12 cores; wall drifted 151.3 → 154.6 s), so the ceiling is instrumented and the wall is not claimed; the table arm's drops spread 14 % and the ceiling uses the `min`/`max` envelope, over-charging the lever; the allocation side is summed, not critical-path, so the true wall contribution is smaller; only classic-on was screened; the 1.2486 GB heap figure is derived and agrees with the census to 0.2 %; memory is out of scope (DEV-026) so it is recorded and not priced; probe reverted, both freshness gates exit 0. Evidence: [`evidence/t101-side-table/`](evidence/t101-side-table/FINDINGS.md) (`probe.patch`, `summary.json`, `extract.py`, `verify.py`; `verify.py --self-test` exits 0 checkout-only, 12/12 claims, 15/15 negative controls rejected).
 
 - [Global allocator substitution on the host binary](issues/102-global-allocator-substitution.md): **resolved (2026-10-31; human-approved KEEP — the standing four-cell gate PASSES, candidate committed)** — `pnp_cli` becomes `AccountingAllocator<mimalloc::MiMalloc>` (two host files plus the contract doc), the packager slot `docs/16_slicer_report.md` §"Global allocator contract" already prescribes, so `--report` accounting keeps its shape. Proof **16/16** (both arms byte-identical in every cell, both clean, non-vacuous roles; **8/8** ordinary cells equal to `evidence/t91-exact-z-memo/references.json`; **8/8** ordinary ≡ accelerated; identical 24-module trees, distinct host binaries `db153219…`/`1de06f27…` ordinary and `7f5ad486…`/`9986754e…` accelerated). Pre-gate on ordinary base classic-on: **−7.74 %** wall / **−2.25 %** CPU in 3/3 pairs. Campaign, 2 warmups + 6 alternating pairs per cell: wall **−6.19 / −5.64 / −5.54 / −4.80 %** (−10.19 / −9.42 / −9.04 / −7.41 s) and process CPU **−1.74 / −2.18 / −1.54 / −1.88 %** (ordinary classic-on / arachne-on, accelerated classic-on / arachne-on), **24/24 pairs byte-identical**, 6/6 retained per cell, zero starvation exclusions, **23/24 pairs wall-negative** (accelerated arachne-on #6 **+0.18 %**, cell median −4.80 %); floor multiples **7.73 / 7.05 / 6.92 / 6.00x** against 0.80 % of t91's walls. The **~5–6 %** effect is much larger than the free-only price (**3.527 → 1.302 s = 1.35–1.66 %**, t100) because the allocator acts on every allocation in the process, but it removes **no allocations** — the census still shows the same **34,796,481** blocks, each freed more cheaply, so the cause-level route stayed [101](issues/101-support-identity-table-materialisation.md) (now resolved: below the floor; see that row). Disclosures: the pre-gate ran under a stray integration-test binary pinning ~8 cores (walls 227–266 s) which exited before the campaign; the pre-campaign snapshot records load median **1 %**; today's baseline walls (152–156 s) differ from t91's 164.803 / 166.931 s, so ratios are today-vs-today and the floor is conservative; the change is process-wide (no stage attribution); memory is not gated; one transient `cl.exe` failure on the accelerated build passed on retry (no artifact). Evidence: [`evidence/t102-allocator/`](evidence/t102-allocator/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 12/12 claims, 12/12 negative controls rejected).
@@ -1966,29 +2020,6 @@ Standing decisions for this effort (2026-09-22):
 - [Repair the Orca rig](issues/98-orca-rig-repair.md): **rig measures Orca again on the 2.5.0 install, and the repair falsified the archived Orca side.** OrcaSlicer 2.5 resolves `--load-settings` through a vendor preset bundle (`PresetBundle::resolve_preset_config`: file-identity match, else a `"from": "system"` manifest walk that flattens `inherits`/`include`), and the install ships only `BBL.opc` with no preset JSON tree. The rig now stages a version-gated source-manifest tree from the tag whose `BBL.json` version equals the installed cache stamp (`02.08.00.16` == `2.8.0.16`, fail-closed) and applies the matched keys as CLI overrides, with `enable_arc_fitting` pinned to 0 because 2.5 flipped that default to enabled. Three measured runs of benchy classic-off: **1.978 s** wall / 6.50 s CPU / 4,000,709 bytes, against the archive's 2.787 s / 9.27 s / 3,890,392 — the archived Orca applied its hardcoded **filament** defaults (density 0, max volumetric speed 2, first-layer temp 200) while the process chain resolved in both eras (300 mm/s walls). So the archived Orca under-measured Orca's own work: PnP's recorded multiples are optimistic for PnP and every archived Orca median needs re-derivation (fog). No ratio requoted. Evidence: `evidence/orca-rig-repair/` (`verify.py --self-test` exit 0, 4 claims, 7/7 negative controls rejected).
 
 ## Not yet specified
-
-- **The archived Orca side must be re-baselined before any ratio is quoted (surfaced
-  2026-10-30 by [ticket 98](issues/98-orca-rig-repair.md); graduated 2026-10-31 as
-  [ticket 103](issues/103-orca-rebaseline-repaired-rig.md), the only open child —
-  this fog patch is now the ticket's body).** The repaired rig measures
-  OrcaSlicer 2.5.0 on the benchy classic-off cell at **1.978 s** median wall against the
-  archive's 2.787 s, because the archived runs applied Orca's **hardcoded filament
-  defaults** (`filament_density` 0, `filament_max_volumetric_speed` 2,
-  `first_layer_temperature` 200 — the documented defaults) where the repaired rig
-  resolves the vendor chain (`Generic PLA` → `fdm_filament_pla` → `fdm_filament_common`
-  → 1.24 / 12 / 220). The process chain resolved in both eras (`inner_wall_speed` 300),
-  so this is specifically the filament leg. Direction of the defect is known and
-  unfavourable to PnP: the archived Orca did *less* work, so every recorded multiple is
-  optimistic for PnP. The route is a fresh Orca measurement of all eight cells on the
-  repaired rig, plus a re-derived scoreboard and park bound; it also needs a ruling on
-  whether 2.5's changed defaults beyond the filament leg (e.g. `elefant_foot_compensation`
-  0 → 0.15, `brim_width` 0 → 5) are accepted as the new matched job or pinned back.
-  **That ruling was given 2026-10-31 — "pinned back"** (`elefant_foot_compensation`,
-  `brim_width` and `enable_arc_fitting` all 0), and the pins, the file they land
-  in, and the adhesion asymmetry they leave behind are specified in
-  [ticket 103](issues/103-orca-rebaseline-repaired-rig.md) ## Ruling.
-  Until that measurement runs, **no archived Orca median is comparable to a
-  fresh PnP run**.
 
 - **A first-touch vendor tree makes the warmup load-bearing (t98 method note).** The
   first Orca run against a freshly staged vendor tree costs ~10 s more wall than the

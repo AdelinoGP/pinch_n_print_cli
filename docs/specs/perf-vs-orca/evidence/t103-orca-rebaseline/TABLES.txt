@@ -1,0 +1,60 @@
+# t103 Orca re-baseline: median uninstrumented wall (s)
+
+| Cell | Orca | PnP ordinary | PnP accelerated | gap ord | gap acc | park: reduction needed | floor multiples |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| base arachne-off | 16.72 | 78.89 | 76.51 | **4.72x** | **4.58x** | 68.2 % | 85x |
+| base arachne-on | 23.03 | 161.14 | 173.47 | **7.00x** | **7.53x** | 78.6 % | 98x |
+| base classic-off | 15.28 | 75.38 | 75.74 | **4.93x** | **4.96x** | 69.6 % | 87x |
+| base classic-on | 19.49 | 160.86 | 160.09 | **8.25x** | **8.21x** | 81.8 % | 102x |
+| benchy arachne-off | 2.19 | 7.69 | 7.84 | **3.52x** | **3.59x** | 57.4 % | 72x |
+| benchy arachne-on | 2.55 | 12.22 | 12.40 | **4.78x** | **4.85x** | 68.7 % | 86x |
+| benchy classic-off | 2.03 | 7.68 | 7.67 | **3.78x** | **3.78x** | 60.3 % | 75x |
+| benchy classic-on | 2.29 | 12.40 | 12.57 | **5.43x** | **5.50x** | 72.4 % | 90x |
+
+## Pins and filament leg (every retained Orca row)
+- base/arachne-off: arc=['disabled'] elefant=['0'] brim=['0'] filament=['1.24']/['12']/['220']
+- base/arachne-on: arc=['disabled'] elefant=['0'] brim=['0'] filament=['1.24']/['12']/['220']
+- base/classic-off: arc=['disabled'] elefant=['0'] brim=['0'] filament=['1.24']/['12']/['220']
+- base/classic-on: arc=['disabled'] elefant=['0'] brim=['0'] filament=['1.24']/['12']/['220']
+- benchy/arachne-off: arc=['disabled'] elefant=['0'] brim=['0'] filament=['1.24']/['12']/['220']
+- benchy/arachne-on: arc=['disabled'] elefant=['0'] brim=['0'] filament=['1.24']/['12']/['220']
+- benchy/classic-off: arc=['disabled'] elefant=['0'] brim=['0'] filament=['1.24']/['12']/['220']
+- benchy/classic-on: arc=['disabled'] elefant=['0'] brim=['0'] filament=['1.24']/['12']/['220']
+
+## Brim asymmetry (PnP prints what pinned-back Orca does not)
+- base/arachne-off: PnP brim=['8'] vs Orca brim=['0']
+- base/arachne-on: PnP brim=['8'] vs Orca brim=['0']
+- base/classic-off: PnP brim=['8'] vs Orca brim=['0']
+- base/classic-on: PnP brim=['8'] vs Orca brim=['0']
+- benchy/arachne-off: PnP brim=['8'] vs Orca brim=['0']
+- benchy/arachne-on: PnP brim=['8'] vs Orca brim=['0']
+- benchy/classic-off: PnP brim=['8'] vs Orca brim=['0']
+- benchy/classic-on: PnP brim=['8'] vs Orca brim=['0']
+
+## Starvation and output flags
+- base/arachne-off/orca: warmups=1 measured=3 retained=3 starved=[] degraded=['n/a'] non_fatal=['n/a']
+- base/arachne-off/pnp-ordinary: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+- base/arachne-off/pnp-accelerated: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+- base/arachne-on/orca: warmups=1 measured=3 retained=2 starved=['base-arachne-on-orca-m3'] degraded=['n/a'] non_fatal=['n/a']
+- base/arachne-on/pnp-ordinary: warmups=1 measured=3 retained=2 starved=['base-arachne-on-pnp-ordinary-m3'] degraded=['false'] non_fatal=['0']
+- base/arachne-on/pnp-accelerated: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+- base/classic-off/orca: warmups=1 measured=3 retained=3 starved=[] degraded=['n/a'] non_fatal=['n/a']
+- base/classic-off/pnp-ordinary: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+- base/classic-off/pnp-accelerated: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+- base/classic-on/orca: warmups=1 measured=3 retained=3 starved=[] degraded=['n/a'] non_fatal=['n/a']
+- base/classic-on/pnp-ordinary: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+- base/classic-on/pnp-accelerated: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+- benchy/arachne-off/orca: warmups=1 measured=3 retained=3 starved=[] degraded=['n/a'] non_fatal=['n/a']
+- benchy/arachne-off/pnp-ordinary: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+- benchy/arachne-off/pnp-accelerated: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+- benchy/arachne-on/orca: warmups=1 measured=3 retained=3 starved=[] degraded=['n/a'] non_fatal=['n/a']
+- benchy/arachne-on/pnp-ordinary: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+- benchy/arachne-on/pnp-accelerated: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+- benchy/classic-off/orca: warmups=1 measured=3 retained=3 starved=[] degraded=['n/a'] non_fatal=['n/a']
+- benchy/classic-off/pnp-ordinary: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+- benchy/classic-off/pnp-accelerated: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+- benchy/classic-on/orca: warmups=1 measured=3 retained=3 starved=[] degraded=['n/a'] non_fatal=['n/a']
+- benchy/classic-on/pnp-ordinary: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+- benchy/classic-on/pnp-accelerated: warmups=1 measured=3 retained=3 starved=[] degraded=['false'] non_fatal=['0']
+
+wrote summary.json
