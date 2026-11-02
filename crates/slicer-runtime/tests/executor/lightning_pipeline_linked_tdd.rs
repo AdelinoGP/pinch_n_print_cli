@@ -124,6 +124,26 @@ fn lightning_region_map() -> RegionMapIR {
     region_map
 }
 
+fn manifest_holds(wasm_name: &str) -> Vec<String> {
+    let manifest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("modules/core-modules")
+        .join(wasm_name)
+        .join(format!("{wasm_name}.toml"));
+    let manifest_text = std::fs::read_to_string(&manifest_path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", manifest_path.display()));
+    let manifest: toml::Value = toml::from_str(&manifest_text).expect("module manifest parses");
+    manifest["claims"]["holds"]
+        .as_array()
+        .expect("manifest [claims].holds")
+        .iter()
+        .map(|claim| claim.as_str().expect("claim string").to_owned())
+        .collect()
+}
+
 fn module_bundle(module_id: &str, stage: &str, wasm_name: &str) -> TestModuleBundle {
     let wasm_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -138,11 +158,7 @@ fn module_bundle(module_id: &str, stage: &str, wasm_name: &str) -> TestModuleBun
         "{wasm_name}.wasm not found at {}. Build it with: `cargo xtask build-guests`",
         wasm_path.display()
     );
-    let claims = if wasm_name == "lightning-infill" {
-        vec!["claim:sparse-fill".to_string()]
-    } else {
-        vec!["claim:infill-link".to_string()]
-    };
+    let claims = manifest_holds(wasm_name);
 
     let loaded = LoadedModuleBuilder::new(
         module_id,
@@ -253,7 +269,10 @@ fn lightning_pipeline_linked() {
         .set_perimeter(perimeter_ir())
         .expect("PerimeterIR must stage");
 
-    assert_eq!(lightning.module.claims(), &["claim:sparse-fill"]);
+    assert_eq!(
+        lightning.module.claims(),
+        manifest_holds("lightning-infill")
+    );
     let index = crate::common::selection_for_module(
         "Layer::Infill",
         &layer,

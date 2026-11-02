@@ -339,13 +339,16 @@ fn projection_owner_and_lifetime() {
     );
     RETAINED_SINK.with(|slot| slot.borrow_mut().take());
     store.dispose().unwrap();
-
-    assert_live_foreign_sink_denied();
 }
 
 thread_local! {
     static RETAINED_SINK: RefCell<Option<PreparationProjectionOutput>> = const { RefCell::new(None) };
     static FOREIGN_WRITE_RESULT: RefCell<Option<Result<(), Error>>> = const { RefCell::new(None) };
+}
+
+#[test]
+fn live_foreign_sink_is_denied_by_owner_grant() {
+    assert_live_foreign_sink_denied();
 }
 
 /// Native production-adapter level: both owners are in active preparation,
@@ -686,8 +689,6 @@ fn projection_rejections_are_atomic() {
         );
         assert_unpublished(&store, &owner);
     }
-
-    assert_live_foreign_sink_denied();
 
     // ArithmeticOverflow remains blocked at this integration-test boundary:
     // PreparationOwner::diagnostic_accounting returns a Copy, not a mutable

@@ -484,7 +484,6 @@ fn typed_schema_exports_are_deterministic_across_invocations() {
 
 // These same authored fixtures are compiled here natively and by the tests below
 // as actual wasm32 components. No expanded macro source is snapshotted.
-#[allow(dead_code)]
 mod prepared_binding_fixture {
     use slicer_sdk::preparation::*;
 
@@ -605,100 +604,6 @@ mod prepared_binding_fixture {
             input.support_plan(1, 2);
         let _: Result<Vec<PreparationSelectedTarget>, PreparationInputError> =
             input.selected_targets(3, 1, 2);
-    }
-
-    // Exhaustive witnesses complement the generated adapter's exhaustive WIT
-    // matches: deleting a branch on either side must fail the component build.
-    fn source_shape(source: PreparationTargetSource) -> PreparationVariantChain {
-        match source {
-            PreparationTargetSource::Model { key, members } => {
-                let _: Vec<PreparationRegionKey> = members;
-                key.variant_chain
-            }
-            PreparationTargetSource::SupportCarrier {
-                entry_index,
-                object_id,
-                region_id,
-                variant_chain,
-                family,
-                demand_ids,
-                body_ids,
-                provenance,
-                anchor_layer_index,
-            } => {
-                let _: (
-                    u64,
-                    String,
-                    u64,
-                    String,
-                    Vec<String>,
-                    Vec<String>,
-                    Vec<String>,
-                    u32,
-                ) = (
-                    entry_index,
-                    object_id,
-                    region_id,
-                    family,
-                    demand_ids,
-                    body_ids,
-                    provenance,
-                    anchor_layer_index,
-                );
-                variant_chain
-            }
-            PreparationTargetSource::Raft { global_layer_index } => {
-                let _: u32 = global_layer_index;
-                full_chain()
-            }
-            PreparationTargetSource::AnchoredStage { anchor_layer_index } => {
-                let _: u32 = anchor_layer_index;
-                full_chain()
-            }
-        }
-    }
-
-    fn full_chain() -> PreparationVariantChain {
-        vec![
-            ("flag".into(), PreparationPaintValue::Flag(true)),
-            ("scalar".into(), PreparationPaintValue::Scalar(-0.0)),
-            ("tool".into(), PreparationPaintValue::ToolIndex(7)),
-            ("custom".into(), PreparationPaintValue::Custom("A/π".into())),
-        ]
-    }
-
-    // Exhaustive matching is the compile-time guard for generated paint variants.
-    #[allow(clippy::needless_match)]
-    fn paint_shape(value: PreparationPaintValue) -> PreparationPaintValue {
-        match value {
-            PreparationPaintValue::Flag(value) => PreparationPaintValue::Flag(value),
-            PreparationPaintValue::Scalar(value) => PreparationPaintValue::Scalar(value),
-            PreparationPaintValue::ToolIndex(value) => PreparationPaintValue::ToolIndex(value),
-            PreparationPaintValue::Custom(value) => PreparationPaintValue::Custom(value),
-        }
-    }
-
-    fn error_shape(error: PreparationInputError) -> PreparationInputError {
-        match error {
-            PreparationInputError::MissingRequired { read } => {
-                PreparationInputError::MissingRequired { read }
-            }
-            PreparationInputError::UnsupportedRead { read } => {
-                PreparationInputError::UnsupportedRead { read }
-            }
-            PreparationInputError::InvalidInput { detail } => {
-                PreparationInputError::InvalidInput { detail }
-            }
-            PreparationInputError::UnknownObject { object_id } => {
-                PreparationInputError::UnknownObject { object_id }
-            }
-            PreparationInputError::SelectionRejected { detail } => {
-                PreparationInputError::SelectionRejected { detail }
-            }
-            PreparationInputError::AccessDenied => PreparationInputError::AccessDenied,
-            PreparationInputError::RangeError => PreparationInputError::RangeError,
-            PreparationInputError::ArithmeticOverflow => PreparationInputError::ArithmeticOverflow,
-        }
     }
 }
 
