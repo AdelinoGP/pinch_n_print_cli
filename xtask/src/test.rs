@@ -141,22 +141,45 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         test_args.extend(libtest_args);
     }
 
-    // Step 1: check-literals preflight, then the test-quality gate (report
-    // mode until the remediation program's final wave flips enforce —
-    // ADR-0065; `TEST_QUALITY_ENFORCED` is the single promotion point), then
-    // freshness check.
-    let literals_code = check_literals_preflight(ws_root);
+    // Step 1: three independent read-only preflights — check-literals, the
+    // test-quality gate (report mode until the remediation program's final wave
+    // flips enforce — ADR-0065; `TEST_QUALITY_ENFORCED` is the single promotion
+    // point), and the guest-freshness check — run concurrently. They share no
+    // state, so the gate's fixed cost is the slowest of the three rather than
+    // their sum. Failure reporting keeps the original order: the source scans
+    // are reported before the freshness outcome is consumed, so a literals or
+    // test-quality failure still aborts without a guest rebuild.
+    //
+    // ONE invocation context for both halves of the gate: `xtask test` probes
+    // the toolchain and parses the canonical WIT set once, not once per phase.
+    let inv = build_guests::Invocation::new(ws_root);
+    let (literals_code, test_quality_code, freshness) = run_preflights_with(
+        || check_literals_preflight(ws_root),
+        || {
+            crate::check_test_quality::run(
+                ws_root,
+                !crate::check_test_quality::TEST_QUALITY_ENFORCED,
+                &[],
+            )
+        },
+        || {
+            if accelerated {
+                build_guests::CheckOutcome {
+                    stale: Vec::new(),
+                    code: build_guests::EXIT_FRESH,
+                }
+            } else {
+                build_guests::check_command_in(ws_root, &inv)
+            }
+        },
+    );
+
     if literals_code != 0 {
         eprintln!(
             "xtask test: check-literals preflight failed; fix violations or add reasoned waivers (docs/21_data_defaults_and_fixtures.md), then re-run."
         );
         return 1;
     }
-    let test_quality_code = crate::check_test_quality::run(
-        ws_root,
-        !crate::check_test_quality::TEST_QUALITY_ENFORCED,
-        &[],
-    );
     if test_quality_code != 0 {
         eprintln!(
             "xtask test: check-test-quality preflight failed; fix findings or add reasoned waivers (docs/22_test_quality.md), then re-run."
@@ -164,9 +187,6 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         return 1;
     }
 
-    // ONE invocation context for both halves of the gate: `xtask test` probes
-    // the toolchain and parses the canonical WIT set once, not once per phase.
-    let inv = build_guests::Invocation::new(ws_root);
     if accelerated {
         let code = build_guests::accelerated_build_command(ws_root, false);
         if code != 0 {
@@ -175,7 +195,7 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         }
     } else if let Some(code) = handle_guest_freshness_with(
         ws_root,
-        || build_guests::check_command_in(ws_root, &inv),
+        || freshness,
         |stale| build_guests::build_stale_command(ws_root, stale, &inv),
     ) {
         return code;
@@ -346,6 +366,41 @@ fn configure_accelerated_host_command(
 
 fn check_literals_preflight(ws_root: &Path) -> i32 {
     check_literals::run(ws_root, false, &[])
+}
+
+/// Run the three preflights concurrently and join them in a fixed order.
+///
+/// The two source scans run on scoped threads; `freshness` runs on this thread
+/// so the caller-owned `Invocation` (which holds a non-`Send` canonical-WIT
+/// loader closure) stays put and can be reused for a stale rebuild. All three
+/// overlap, so the gate costs `max(latency)` instead of their sum.
+///
+/// The generic seam exists so a test can assert both properties this function
+/// promises: the outcomes are preserved one-for-one, and the three closures
+/// genuinely overlap in time.
+fn run_preflights_with<L, Q, F>(
+    literals: L,
+    test_quality: Q,
+    freshness: F,
+) -> (i32, i32, build_guests::CheckOutcome)
+where
+    L: FnOnce() -> i32 + Send,
+    Q: FnOnce() -> i32 + Send,
+    F: FnOnce() -> build_guests::CheckOutcome,
+{
+    std::thread::scope(|scope| {
+        let literals = scope.spawn(literals);
+        let test_quality = scope.spawn(test_quality);
+        // Overlaps both scanners; see the doc comment for why it is not spawned.
+        let freshness = freshness();
+        let literals = literals
+            .join()
+            .expect("check-literals preflight thread panicked");
+        let test_quality = test_quality
+            .join()
+            .expect("check-test-quality preflight thread panicked");
+        (literals, test_quality, freshness)
+    })
 }
 
 fn handle_guest_freshness_with(
@@ -763,6 +818,60 @@ mod tests {
         ];
 
         assert!(collect_process_failure_details(&lines).is_empty());
+    }
+
+    #[test]
+    fn preflights_overlap_and_preserve_every_outcome() {
+        use std::sync::{Arc, Mutex};
+        use std::time::{Duration, Instant};
+
+        // Each closure records the interval it was running in. If the three ran
+        // one after another the intervals could not overlap and the assertion
+        // below would fail — this tests the concurrency claim itself.
+        let spans: Arc<Mutex<Vec<(Instant, Instant)>>> = Arc::new(Mutex::new(Vec::new()));
+        let record = |spans: &Arc<Mutex<Vec<(Instant, Instant)>>>| {
+            let started = Instant::now();
+            std::thread::sleep(Duration::from_millis(250));
+            spans
+                .lock()
+                .expect("span log poisoned")
+                .push((started, Instant::now()));
+        };
+
+        let literals_spans = Arc::clone(&spans);
+        let quality_spans = Arc::clone(&spans);
+        let freshness_spans = Arc::clone(&spans);
+
+        let (literals, test_quality, freshness) = super::run_preflights_with(
+            move || {
+                record(&literals_spans);
+                11
+            },
+            move || {
+                record(&quality_spans);
+                22
+            },
+            move || {
+                record(&freshness_spans);
+                crate::build_guests::CheckOutcome {
+                    stale: Vec::new(),
+                    code: 33,
+                }
+            },
+        );
+
+        assert_eq!(literals, 11, "literals outcome must be preserved");
+        assert_eq!(test_quality, 22, "test-quality outcome must be preserved");
+        assert_eq!(freshness.code, 33, "freshness outcome must be preserved");
+
+        let spans = spans.lock().expect("span log poisoned");
+        assert_eq!(spans.len(), 3, "all three preflights must run");
+        let latest_start = spans.iter().map(|(start, _)| *start).max().unwrap();
+        let earliest_end = spans.iter().map(|(_, end)| *end).min().unwrap();
+        assert!(
+            latest_start < earliest_end,
+            "preflights must overlap; recorded spans were {spans:?}"
+        );
     }
 
     #[test]

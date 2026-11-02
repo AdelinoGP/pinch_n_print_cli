@@ -1,0 +1,118 @@
+{
+  "ticket": 108,
+  "title": "Dev-loop latency: concurrent xtask test preflights",
+  "date": "2026-11-02",
+  "head": "b6184e71",
+  "host": {
+    "os": "Windows (x86_64-pc-windows-msvc)",
+    "cpu_count": 12,
+    "rustc": "1.96.0 (ac68faa20 2026-05-25)",
+    "cargo": "1.96.0 (30a34c682)",
+    "load_percent_at_take_end": 56,
+    "note": "Load was not held at a fixed level. Both arms were measured with frozen harness binaries in interleaved rounds, so drift applies to both arms; the arm ranges do not overlap."
+  },
+  "lever": {
+    "name": "run the three `xtask test` preflights concurrently",
+    "files": ["xtask/src/test.rs"],
+    "command": "target/t108-xtask-<arm>.exe test -p slicer-runtime --test contract authored_tool_index_tdd --summary",
+    "payload": "4 tests, 0.00 s of test execution, no rebuild",
+    "harness": "two frozen `xtask` binaries built from the same HEAD, one with the preflights serial (`before`) and one with them concurrent (`after`); cargo is never invoked to rebuild the harness inside the timed window",
+    "sample_unit": "seconds",
+    "rounds": 4,
+    "interleaved": true,
+    "floor_s": 5.0,
+    "measured": {
+      "before": [18.438, 19.034, 23.374, 18.507],
+      "after": [12.179, 13.214, 9.424, 8.961]
+    }
+  },
+  "gate_components": {
+    "commands": {
+      "check_literals": "cargo xtask check-literals",
+      "check_test_quality": "cargo xtask check-test-quality --report",
+      "build_guests_check": "cargo xtask build-guests --check"
+    },
+    "rounds": [
+      {
+        "check_literals_s": 8.196,
+        "check_test_quality_s": 5.621,
+        "build_guests_check_s": 2.731,
+        "serial_sum_s": 16.548
+      },
+      {
+        "check_literals_s": 9.375,
+        "check_test_quality_s": 7.686,
+        "build_guests_check_s": 4.543,
+        "serial_sum_s": 21.604
+      }
+    ],
+    "note": "Run one after another in the order above. The concurrent gate costs the slowest of the three, i.e. max(latencies), not their sum."
+  },
+  "inventory": {
+    "warm_noop_check_workspace_all_targets_s": [0.81, 2.353, 1.885, 2.353],
+    "warm_noop_clippy_workspace_all_targets_s": [2.766, 2.082, 2.317],
+    "check_then_clippy_no_recheck_s": 2.407,
+    "clippy_then_check_no_recheck_s": [1.685, 2.353],
+    "broad_check_after_one_line_edit_slicer_ir_s": 65.3,
+    "broad_check_after_one_line_edit_slicer_core_s": 72.0,
+    "check_slicer_runtime_tests_after_bucket_root_edit_s": 314.0,
+    "first_codegen_of_contract_test_binary_after_metadata_only_builds_s": 994.0,
+    "incremental_contract_rebuild_default_profile_s": 17.26,
+    "incremental_contract_rebuild_debug_zero_override_s": 28.24,
+    "relink_only_contract_binary_s": 12.76,
+    "contract_bucket_execution_s": 99.8,
+    "contract_bucket_counts": {
+      "passed": 291,
+      "failed": 23,
+      "total": 314,
+      "note": "The 23 failures are the loud feature guard: CI passes `--features perimeter-spatial-test-support`. They are not a red tree."
+    },
+    "contract_binary_bytes": 89697792,
+    "contract_pdb_bytes": 770166784,
+    "xtask_test_requires_pnp_cli_build": true
+  },
+  "falsified": [
+    {
+      "premise": "`cargo check` and `cargo clippy` do not share artifacts, so alternating between them re-checks the workspace.",
+      "measurement": "After both were warm, an alternation in either direction took 1.7-2.4 s and reported 0 `Checking` lines. The earlier 129-138 s readings came from a dirty `slicer-runtime` test target left by a reverted probe edit, not from an artifact split.",
+      "verdict": "dead"
+    },
+    {
+      "premise": "Feature-set divergence (`slicer-core/host-algos` injected by `xtask test`, absent from the documented narrow command) forces a full rebuild when an agent switches commands.",
+      "measurement": "A plain `cargo test -p slicer-runtime --test contract ... --no-run` immediately after a host-algos `xtask test` run finished in 0.72 s with no rebuild.",
+      "verdict": "dead for `slicer-runtime` (it already enables the feature); the injected feature still breaks packages that do not depend on `slicer-core` — see adjacent_findings"
+    },
+    {
+      "premise": "The linker is a large share of the local loop, so lld/mold would buy a big win.",
+      "measurement": "A relink-only step (binary and PDB deleted, incremental objects warm) took 12.8 s; the dominant cost is codegen, not linking. Not measured on a cold full build.",
+      "verdict": "dead for incremental relinks; cold-build link share unmeasured"
+    },
+    {
+      "premise": "Dropping debug info speeds the rebuild an agent pays.",
+      "measurement": "The same incremental contract rebuild took 17.3 s at the default `debug = 2` and 28.2 s with `profile.test.package.slicer-runtime.debug = 0`.",
+      "verdict": "not a win on the incremental path; cold-build effect unmeasured"
+    }
+  ],
+  "adjacent_findings": [
+    {
+      "id": "A1",
+      "finding": "`cargo xtask test -p <package>` fails for any package that does not depend on `slicer-core`.",
+      "reproduction": "cargo xtask test -p xtask --summary -> error: the package 'xtask' does not contain this feature: slicer-core/host-algos",
+      "cause": "`test_command` appends `--features slicer-core/host-algos` unless the caller set features, without checking whether the selected package resolves that dependency feature.",
+      "impact": "the documented gated entry point cannot run `-p xtask`, `-p slicer-config`, `-p slicer-ir`, `-p slicer-scheduler`, `-p slicer-gcode`, or `-p slicer-helpers`"
+    },
+    {
+      "id": "A2",
+      "finding": "The documented narrow command's test filter matches no test.",
+      "reproduction": "cargo test -p slicer-runtime --test contract core_module_ir_access_contract_tdd -> 0 passed; 314 filtered out",
+      "cause": "AGENTS.md carries `core_module_ir_access_contract_tdd` as the example filter; the contract bucket no longer contains a test by that name.",
+      "impact": "the documented narrow command builds the bucket and runs nothing, which reads as green"
+    }
+  ],
+  "not_priced": [
+    "cold-workspace build effect of `debug = 1` / `debug = 0` (needs two clean target dirs)",
+    "linker substitution on a cold full build",
+    "cargo-nextest execution advantage on the five test buckets",
+    "sccache and CI-side caching / job-graph changes (no CI runner available locally)"
+  ]
+}

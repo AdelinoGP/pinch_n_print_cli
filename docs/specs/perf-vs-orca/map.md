@@ -54,7 +54,43 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-02, twelfth session — the t107 take):** the
+**Current selection scope (2026-11-02, thirteenth session — the t108 take):** the
+human said "continue the perf vs orca map, create and complete a ticket focused
+on improving Testing and Compilation speed", quoting a discussion of Rust
+iteration-speed practice (ra-jit/Blaze, mold/lld, sccache/rust-cache,
+cargo-nextest, selective `opt-level`, CI caching, agent-loop discipline). That is
+a **human-directed scope extension**: this map's destination is slice
+throughput, and the dev loop's compile/test latency is now an axis of the effort
+by explicit ruling. [108](issues/108-dev-loop-latency-preflight-concurrency.md)
+was graduated, claimed and **resolved the same day as KEEP**. Headline: the three
+`xtask test` preflights were strictly serial read-only scans; they now run
+concurrently, and a representative invocation falls from a **median 18.771 s to
+10.802 s** (**−7.969 s, −42.4 %**, four interleaved pairs with frozen harness
+binaries; the slowest after sample 13.214 s is faster than the fastest before
+sample 18.438 s; the pre-declared floor was **5 s**). Reporting order is
+preserved, so a literals or test-quality failure still aborts before a guest
+rebuild, and the freshness check keeps the single-toolchain-probe `Invocation`
+on the calling thread. The inventory is the rest of the output: warm no-op
+check/clippy 0.8–2.8 s, a one-line edit to `slicer-ir` / `slicer-core` 65.3 / 72.0 s,
+the first codegen of the `contract` bucket **994 s** against **17.26 s**
+incremental, relink-only 12.8 s, bucket execution 99.8 s, and a 89.7 MB contract
+binary beside a 770 MB PDB. **Four premises falsified:** check/clippy *do* share
+artifacts (1.7–2.4 s alternation, zero re-checks); feature sets do *not* thrash
+for `slicer-runtime` (0.72 s no-op); the linker is *not* the incremental
+bottleneck; and `debug = 0` is *slower* on the incremental path (28.24 vs
+17.26 s). **Two adjacent harness defects recorded, not fixed:** the injected
+`--features slicer-core/host-algos` makes `cargo xtask test -p <pkg>` fail for
+every package that does not depend on `slicer-core` (A1), and `AGENTS.md`'s
+narrow example filter `core_module_ir_access_contract_tdd` matches **no test**
+(A2). Not priced and left as fog: cold-build `debug` level, cold-build linker,
+`cargo-nextest`, `sccache`, and the CI job-graph/caching half. Evidence:
+[`evidence/t108-dev-loop-latency/`](evidence/t108-dev-loop-latency/FINDINGS.md)
+(`verify.py` exits 0 checkout-only, 26/26 claims, 10/10 negative controls).
+Frontier now: **no open child**; the destination's prepass-rewrite decision is
+unchanged and still the human's to rule on, and the dev-loop axis has its own
+unpriced fog. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-11-02, twelfth session — the t107 take):** the
 human said "continue the perf vs orca map" (no ticket named). The frontier
 re-derivation at HEAD `9a1921ac` found **106/106 children resolved — no open
 child, no claim** — so five fog routes were offered and the human selected
@@ -1964,6 +2000,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Dev-loop latency: the `xtask test` gate](issues/108-dev-loop-latency-preflight-concurrency.md): **resolved (2026-11-02; human-directed scope extension — KEEP, candidate committed)** — the three `xtask test` preflights (`check-literals`, `check-test-quality --report`, `build-guests --check`) were strictly serial read-only scans; they now run concurrently behind `run_preflights_with` (`xtask/src/test.rs`), with the guest-freshness check on the calling thread because `Invocation` owns a non-`Send` canonical-WIT loader closure. **Median invocation 18.771 s → 10.802 s (−7.969 s, −42.4 %)**, four interleaved pairs with frozen harness binaries, non-overlapping arms (slowest after 13.214 s < fastest before 18.438 s), pre-declared floor **5 s** cleared 1.6x; components measure 8.196/5.621/2.731 s and 9.375/7.686/4.543 s (serial sums 16.548/21.604 s), so the attainable saving is `sum − max` = 8.35/12.23 s and the end-to-end delta lands inside it. Reporting order is unchanged, so a source-gate failure still aborts before any guest rebuild. Inventory: warm no-op check/clippy 0.8–2.8 s, one-line edit to `slicer-ir`/`slicer-core` 65.3/72.0 s, **first codegen of the `contract` bucket 994 s vs 17.26 s incremental**, relink-only 12.8 s, bucket execution 99.8 s, contract binary 89,697,792 B beside a 770,166,784 B PDB. **Falsified:** check/clippy artifact split (1.7–2.4 s alternation, 0 re-checks — the earlier minutes-scale readings were a dirty test target), feature-set thrash for `slicer-runtime` (0.72 s no-op), linker share on incremental relinks, and `debug = 0` as a speedup on the incremental path (28.24 vs 17.26 s). **Adjacent defects recorded, not fixed:** A1, the unconditional `--features slicer-core/host-algos` injection breaks `cargo xtask test -p <pkg>` for packages that do not depend on `slicer-core` (`-p xtask`, `slicer-ir`, `slicer-config`, `slicer-scheduler`, `slicer-gcode`, `slicer-helpers`); A2, `AGENTS.md`'s narrow filter `core_module_ir_access_contract_tdd` matches **0 tests** (`314 filtered out`). Not priced → fog: cold-build `debug` level, cold-build linker, `cargo-nextest`, `sccache`, CI job graph/caching. Evidence: [`evidence/t108-dev-loop-latency/`](evidence/t108-dev-loop-latency/FINDINGS.md) (`verify.py` exits 0 checkout-only, 26/26 claims, 10/10 negative controls).
+
 - [Support-geometry producer decomposition](issues/107-support-geometry-producer-decomposition.md): **resolved (2026-11-02; measurement-only Phase-1 screen — measured-dead, the premise named the wrong stage; no candidate, no campaign, no production edit)** — `PrePass::SupportGeometry` is **two stages sharing one stage id**, and ticket 104's reducer summed them. Re-pairing t104's committed raw streams: the **host producer is 9 ms (0.0039 % of the cell, 0.0068x the 1.318424 s floor) on base classic-on and 0 ms on benchy classic-on**; the **planner module stage is 91,893 ms (40.13 %, 69.70x floor)** and **3,260 ms (26.17 %, 32.85x floor)** — `com.core.tree-support-planner` **87,824 / 2,943 ms (95.6 / 90.3 %)** plus `com.core.traditional-support-planner` 300 / 30 ms. The supports-off brackets (231 / 43 ms) are the planner merely declining with the producer at 4 / 0 ms. The producer's whole job is a **coarse outline set — 577 polygons / 444,259 points over 240 layers (~7.1 MB)** on benchy-on per `support-preview` — which is why a deep copy costs sub-millisecond to 9 ms and why the sentinel intermediate entries (exactly 1 on benchy-on) are inside the same bracket; **the entire producer is two orders of magnitude below the floor, so no shape on it can be a route** and the stop rule fired before candidate pricing. The real output is the **ledger correction**: t104's 91,902 / 3,260 ms is essentially the **planner**, i.e. [ticket 88](issues/88-supports-on-increment-attribution.md)'s 55.5 s term refreshed to an implied **64.5 s** of the 160.857 s base-on cell and **3.25 s** of the 12.403 s benchy-on cell, and the supports-on carrying shape of the destination's prepass-rewrite decision is the planner, not the geometry producer. Disclosures: no new slice pass, no wall claim (the split is a bracket property of t104's 2026-11-02 instrumented streams), no probe build (patch authored and reverted unbuilt — `target/release/pnp_cli.exe` remains `4cb96942…` on a clean tree), Arachne unmeasured, preview used for counts only. Evidence: [`evidence/t107-support-geometry-producer/`](evidence/t107-support-geometry-producer/FINDINGS.md) (`verify.py` exits 0 checkout-only, 71/71 claims, 9/9 negative controls rejected).
 
 - [Post-pin supports-on scoreboard re-derivation](issues/106-post-pin-supports-on-scoreboard.md): **resolved (2026-11-02; measurement-only — no PnP run, no config change, no production edit)** — with Orca pinned to `tree_strong` the four supports-on ratios are **6.02x / 6.11x** (base classic / arachne) and **4.77x / 4.53x** (benchy classic / arachne); the park still needs **66.9–75.5 %** cuts. Every post-pin Orca median is slower than ticket 103's pre-pin one (**+37.04 / +14.49 / +13.74 / +5.69 %**), so all four ratios fall from the archive (8.25x → 6.02x, 7.00x → 6.11x, 5.43x → 4.77x, 4.78x → 4.53x). The t105 transfer **agreed on two cells and missed two**: base arachne-on measured **26.365 s** against a predicted **32.135 s** (**−17.95 %**, tolerance 4.670 s), benchy classic-on **2.600 s** against **2.503 s** (**+3.89 %**, 0.004 s past a 0.093 s tolerance). The misses are **vintage, not the pin**: the pinned job is **byte-identical to t105's `tree_strong` arm on all four cells** (44,803,778 / 43,802,018 / 9,481,130 / 10,331,360 B, **+23.46–35.34 %** over t103's pre-pin volumes; support-interface sections 423 / 426 / 57 / 58) yet runs **1.9–9.6 % faster today**, while t103's base arachne-on baseline sits **+12.25 %** above t105's organic arm on **2** retained samples with a 4.67 s spread. Orca g-code **SHA changes every run** (the appendix embeds timing), so SHA is never a job-identity signal on the Orca side; output volume is. Take ran quiet (load 16.4 % → 3.3 %, 12/12 measured samples retained, no starvation exclusions) after a game process and a **sibling checkout's** `cargo test` e2e binary exited; `build-guests --check` exit 0. Evidence: [`evidence/t106-post-pin-scoreboard/`](evidence/t106-post-pin-scoreboard/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 75/75 claims, 9/9 negative controls rejected).
@@ -2593,6 +2631,23 @@ Standing decisions for this effort (2026-09-22):
   (`modules/core-modules/skirt-brim/src/lib.rs`) builds one print-wide
   rectangular loop set from `compute_bbox`. There is no contact test to
   accelerate. Re-enter only if brims ever become per-part.
+
+- **Dev-loop compile/test levers not yet priced (2026-11-02, from t108).** The
+  inventory in [ticket 108](issues/108-dev-loop-latency-preflight-concurrency.md)
+  leaves five levers unpriced rather than rejected: the **cold-workspace effect
+  of `debug = 1` / `debug = 0`** (needs two clean target dirs), **linker
+  substitution on a cold full build** (the incremental relink is only 12.8 s,
+  but cold full builds were not measured), **`cargo-nextest`** on the five test
+  buckets, **`sccache`**, and the **CI half** (cache keys, job parallelism, path
+  filters, `cancel-in-progress`). The measured weight sits in **first codegen of
+  a bucketed test target** (994 s once, 17.26 s incremental), so a lever that
+  only moves gate overhead is not the route. Any adoption must beat t108's
+  **5 s per invocation** floor on paired medians. Two harness-correctness
+  findings are also open and are **not** speed levers: **A1**, the unconditional
+  `--features slicer-core/host-algos` injection makes `cargo xtask test -p <pkg>`
+  fail for every package that does not depend on `slicer-core`; **A2**,
+  `AGENTS.md`'s narrow filter `core_module_ir_access_contract_tdd` matches no
+  test in the contract bucket.
 
 ## Out of scope
 
