@@ -14,8 +14,8 @@ use slicer_ir::{
     SupportPlanRoleRegion,
 };
 use slicer_runtime::layer_executor::{
-    execute_captured_stages_with_support_tools, module_invocation_allowed_on_layer,
-    CaptureExecutionError, CaptureRequest, CapturedIr, LayerExecutionError, SupportToolSelection,
+    execute_captured_stages_with_support_tools, CaptureExecutionError, CaptureRequest, CapturedIr,
+    LayerExecutionError, SupportToolSelection,
 };
 use slicer_runtime::{
     build_and_commit_layer_selection_index, build_wasm_instance_pool, execute_per_layer,
@@ -31,7 +31,7 @@ use slicer_sdk::native::{
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::views::SliceRegionView;
 use slicer_wasm_host::selection::{
-    build_layer_selection_index, LayerSelectionIndex, LayerSelectionIndexInput,
+    build_layer_selection_index, paint_allows_layer, LayerSelectionIndex, LayerSelectionIndexInput,
     LayerSelectionModuleInput, LayerTargetSource, OptionalProductPresence, SelectionError, STAGES,
 };
 
@@ -593,7 +593,7 @@ fn schema_stages_and_production_eligibility() {
                 "public decision for {stage}/{id}"
             );
             assert_eq!(
-                module_invocation_allowed_on_layer(
+                paint_allows_layer(
                     plan.per_layer_stages
                         .iter()
                         .find(|s| s.stage_id == *stage)

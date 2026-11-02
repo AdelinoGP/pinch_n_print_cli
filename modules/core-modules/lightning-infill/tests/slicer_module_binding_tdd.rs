@@ -30,11 +30,11 @@ fn binding_surface_matches_manifest() {
 fn paired_preparation_export_matches_manifest() {
     let schema = LightningInfill::__SLICER_PREPARATION_SCHEMA;
     assert_eq!(
-        schema.qualified_export(),
+        schema.qualified_export,
         slicer_schema::PREPARATION_QUALIFIED_EXPORT
     );
     assert_eq!(
-        schema.qualified_export(),
+        schema.qualified_export,
         "slicer:layer-preparation/prepare@1.0.0#prepare-print"
     );
     assert_eq!(schema.ordinary_world, "infill-module");

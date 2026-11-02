@@ -578,15 +578,11 @@ fn clear(entry: &mut OwnerState, phase: &'static str) {
     m.staged_name_bytes = 0;
 }
 
-fn projection_rejection(owner: &PreparationOwner, fault: &ProjectionFault) -> PreparationFailure {
-    PreparationFailure::PublicationRejected {
-        detail: format!(
-            "preparation projection: {:?}: owner={} view={} {}",
-            fault.error,
-            owner.metadata().module_id(),
-            fault.view,
-            fault.field,
-        ),
+fn projection_rejection(_owner: &PreparationOwner, fault: &ProjectionFault) -> PreparationFailure {
+    PreparationFailure::ProjectionRejected {
+        view: fault.view.clone(),
+        error: fault.error,
+        field: fault.field.clone(),
     }
 }
 

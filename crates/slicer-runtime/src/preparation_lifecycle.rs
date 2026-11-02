@@ -293,9 +293,9 @@ pub struct PrintPreparationScope {
     store: slicer_wasm_host::preparation::PreparedOwnerStore,
     preparation_views: Vec<PreparationViewRequest>,
     /// First typed projection validation failure observed during publication.
-    /// Populated only when the producer's publication rejection is the host's
-    /// own projection validator (`PublicationRejected` with the projection
-    /// detail prefix), so an original module error/trap keeps precedence.
+    /// Populated only when the producer's failure is the typed
+    /// `ProjectionRejected` variant, so an original module error/trap keeps
+    /// precedence. Never derived from formatted diagnostic text.
     first_projection_failure: Mutex<
         Option<(
             ModuleId,
@@ -706,19 +706,14 @@ impl PrintPreparationScope {
                 // Preserve the typed projection reason only when the host's
                 // own publication validator rejected the producer's scene. A
                 // module error/trap/cancellation is a different variant and
-                // keeps its precedence.
-                if matches!(
-                    &failure,
-                    PreparationFailure::PublicationRejected { detail }
-                        if detail.starts_with("preparation projection:")
-                ) {
-                    if let Ok(Some((view, reason))) = self.store.projection_failure(&owner) {
-                        *self
-                            .first_projection_failure
-                            .lock()
-                            .expect("print projection failure poisoned") =
-                            Some((frozen.module_id.clone(), view, reason));
-                    }
+                // A typed projection rejection carries its own view and reason;
+                // an original module error/trap keeps its precedence.
+                if let PreparationFailure::ProjectionRejected { view, error, .. } = &failure {
+                    *self
+                        .first_projection_failure
+                        .lock()
+                        .expect("print projection failure poisoned") =
+                        Some((frozen.module_id.clone(), view.clone(), *error));
                 }
                 let failure = Arc::new(failure);
                 self.observe_owner(
@@ -837,15 +832,11 @@ impl PrintPreparationScope {
             }
         }
         self.dispose()?;
-        for (_, owner) in owners {
-            let metadata = owner.metadata();
-            capture.retained_bytes = capture
-                .retained_bytes
-                .checked_add(metadata.retained_payload_bytes())
-                .ok_or_else(overflow)?
-                .checked_add(metadata.retained_name_bytes())
-                .ok_or_else(overflow)?;
-        }
+        // `PreparationCapture::retained_bytes` is "logical bytes retained after
+        // cleanup". Disposal zeroes every owner's accounting, so the value is
+        // zero by construction; the pre-disposal snapshot lives on each
+        // owner's `accounting_before_disposal`. Summing the zeroed metadata here
+        // would be an unreachable overflow check, not a measurement.
         capture.lifecycle = self.records.lock().expect("print records poisoned").clone();
         Ok(capture)
     }

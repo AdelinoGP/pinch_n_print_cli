@@ -18,6 +18,16 @@ use syn::{parse_macro_input, ItemFn, ItemImpl, ReturnType};
 // structurally impossible (docs/03, docs/05).
 use slicer_schema::{StageSpec, STAGES};
 
+/// The composed preparation world name for an ordinary Layer world.
+fn prepared_world_name(ordinary_world: &str) -> String {
+    format!("prepared-{ordinary_world}")
+}
+
+/// Whether a world name is a composed prepared world.
+fn is_prepared_world(world_name: &str) -> bool {
+    world_name.starts_with("prepared-")
+}
+
 /// The `#[slicer_module]` attribute macro.
 ///
 /// Applied to an `impl <Module>Trait for T` block, this macro:
@@ -206,12 +216,12 @@ fn generate_slicer_module_impl(
     let preparation_sidecar = if preparation {
         let stage = detected[0];
         let ordinary_world = stage.wit_world;
-        let prepared_world = format!("prepared-{ordinary_world}");
+        let prepared_world = prepared_world_name(ordinary_world);
         quote! {
             #[doc(hidden)]
             pub const __SLICER_PREPARATION_SCHEMA: ::slicer_schema::PreparationExportSchema =
                 ::slicer_schema::PreparationExportSchema {
-                    wit_package: "slicer:layer-preparation@1.0.0",
+                    wit_package: ::slicer_schema::PREPARATION_PACKAGE,
                     ordinary_world: #ordinary_world,
                     wit_world: #prepared_world,
                     qualified_export: ::slicer_schema::PREPARATION_QUALIFIED_EXPORT,
@@ -838,7 +848,7 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
         include_str!("../../slicer-schema/wit/deps/layer-anchored-events/layer-anchored-events.wit"),
         include_str!("../../slicer-schema/wit/deps/layer-path-optimization/layer-path-optimization.wit"),
     ];
-    let prepared = world_name.starts_with("prepared-");
+    let prepared = is_prepared_world(world_name);
     // Compose the canonical capability world with a private initialization
     // export using the ordinary imported config resource identity. Canonical
     // interfaces stay unchanged, and old pilot linkers acquire no new imports.
@@ -1035,11 +1045,7 @@ fn emit_layer_world_preamble(
             .iter()
             .find(|stage| stage.trait_name == "LayerModule" && stage.wit_world == world_name)
             .expect("Layer glue has a canonical stage");
-        emit_world_preamble(
-            &format!("prepared-{}", stage.wit_world),
-            namespace,
-            inline_wit,
-        )
+        emit_world_preamble(&prepared_world_name(stage.wit_world), namespace, inline_wit)
     } else {
         emit_world_preamble(world_name, namespace, inline_wit)
     }

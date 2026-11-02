@@ -85,6 +85,18 @@ pub enum PreparationFailure {
         /// Publication rejection detail.
         detail: String,
     },
+    /// The typed projection validator rejected a scene.
+    ///
+    /// Carried as a typed variant, not a detail prefix, so consumers never have
+    /// to parse a formatted string to recognize a projection fault.
+    ProjectionRejected {
+        /// The rejected view.
+        view: String,
+        /// The validator's typed reason.
+        error: PreparationProjectionError,
+        /// Host-side field path that failed validation.
+        field: String,
+    },
 }
 
 impl fmt::Display for PreparationFailure {
@@ -101,6 +113,12 @@ impl fmt::Display for PreparationFailure {
             Self::AlreadyStarted => f.write_str("preparation already started"),
             Self::PublicationRejected { detail } => {
                 write!(f, "preparation publication rejected: {detail}")
+            }
+            Self::ProjectionRejected { view, error, field } => {
+                write!(
+                    f,
+                    "preparation projection rejected: view={view} error={error:?} field={field}"
+                )
             }
         }
     }
@@ -167,7 +185,7 @@ pub(crate) fn test_binding() -> FrozenPreparationBinding {
         artifact_kind: "native".into(),
         artifact_identity: Arc::new(()),
         declaration: Some(PreparationDeclaration::new(
-            "slicer:layer-preparation/prepare@1.0.0",
+            slicer_schema::PREPARATION_INTERFACE,
             vec![],
             vec!["view".into()],
         )),
@@ -191,7 +209,7 @@ pub fn freeze_wasm(
         return Err(reject(D::IncompatibleExport(module_id)));
     }
     let exported = component
-        .get_export_index(None, "slicer:layer-preparation/prepare@1.0.0")
+        .get_export_index(None, slicer_schema::PREPARATION_INTERFACE)
         .is_some();
     match (&declaration, exported) {
         (Some(_), false) => return Err(reject(D::MissingExport(module_id))),

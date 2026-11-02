@@ -1036,10 +1036,8 @@ fn lightning_generator_deterministic() {
         line_width: 0.45,
         ..ResolvedConfig::default()
     };
-    let first_ir = super::generate_lightning_trees(&slices, &config)
-        .expect("first lightning IR must generate");
-    let second_ir = super::generate_lightning_trees(&slices, &config)
-        .expect("second lightning IR must generate");
+    let first_ir = super::generate_lightning_trees(&slices, &config);
+    let second_ir = super::generate_lightning_trees(&slices, &config);
     // The private plan has no `serde` implementation by design (D3); compare
     // its structured entries instead of serialized bytes. This is the same
     // two-run determinism contract over the same data.
@@ -1103,8 +1101,7 @@ fn lightning_generator_no_overhang_no_trees() {
         sparse_fill_holder: String::from("lightning-infill"),
         ..ResolvedConfig::default()
     };
-    let ir = super::generate_lightning_trees(&slices, &config)
-        .expect("uniform prism lightning IR must generate");
+    let ir = super::generate_lightning_trees(&slices, &config);
     // Retargeted with the public IR: the private plan has no `schema_version`
     // field, so there is nothing to assert. Compiling this test against
     // `KernelPlan` is the version contract; the retired assertion was about a
@@ -1186,12 +1183,9 @@ fn source_ordered_chains_remain_distinct_in_generated_lightning() {
         ..ResolvedConfig::default()
     };
 
-    let combined = super::generate_lightning_trees(&make_slices(true, true), &config)
-        .expect("combined sibling-source lightning IR must generate");
-    let forward_only = super::generate_lightning_trees(&make_slices(true, false), &config)
-        .expect("forward-chain-only lightning IR must generate");
-    let reversed_only = super::generate_lightning_trees(&make_slices(false, true), &config)
-        .expect("reversed-chain-only lightning IR must generate");
+    let combined = super::generate_lightning_trees(&make_slices(true, true), &config);
+    let forward_only = super::generate_lightning_trees(&make_slices(true, false), &config);
+    let reversed_only = super::generate_lightning_trees(&make_slices(false, true), &config);
 
     fn entries_for<'a>(
         ir: &'a super::KernelPlan,

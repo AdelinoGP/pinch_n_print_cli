@@ -4210,7 +4210,7 @@ fn selection_override_empty_and_foreign_owner() {
         .expect("the module's generated prepared pair must be exported");
     assert_eq!(module_id, MODULE_ID);
     let interface = schema
-        .qualified_export()
+        .qualified_export
         .strip_suffix("#prepare-print")
         .expect("the schema names the capability's qualified export");
     let declaration = PreparationDeclaration::new(

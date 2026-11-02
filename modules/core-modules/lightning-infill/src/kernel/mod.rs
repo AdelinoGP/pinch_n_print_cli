@@ -25,7 +25,6 @@ use self::generator::{flatten_expolygons, Generator};
 pub(crate) type Polygons = Vec<Vec<Point2>>;
 
 mod distance_field;
-mod error;
 mod generator;
 mod layer;
 mod plan;
@@ -34,7 +33,6 @@ mod tree_node;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use error::KernelError;
 pub(crate) use plan::{KernelPlan, PlanEntry};
 
 const DEFAULT_NOZZLE_DIAMETER_MM: f32 = 0.4;
@@ -53,13 +51,12 @@ const ORCA_LIGHTNING_STRAIGHTENING_ANGLE_DEG: f64 = 5.0;
 /// segments. Per-region holder selection is represented by the single
 /// resolved-config input at this seam; preparation only reaches this driver
 /// after the shared selection predicate passes.
-#[allow(clippy::missing_errors_doc)]
 pub(crate) fn generate_lightning_trees(
     slice_ir: &[SliceIR],
     config: &ResolvedConfig,
-) -> Result<Arc<KernelPlan>, KernelError> {
+) -> Arc<KernelPlan> {
     if config.sparse_fill_holder != "lightning-infill" {
-        return Ok(Arc::new(KernelPlan::default()));
+        return Arc::new(KernelPlan::default());
     }
 
     let layer_indices: Vec<u32> = slice_ir
@@ -186,5 +183,5 @@ pub(crate) fn generate_lightning_trees(
         )
         .collect();
 
-    Ok(Arc::new(KernelPlan { entries }))
+    Arc::new(KernelPlan { entries })
 }

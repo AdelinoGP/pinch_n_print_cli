@@ -407,7 +407,7 @@ pub fn freeze_native(
             let declared = declaration
                 .as_ref()
                 .ok_or_else(|| reject(D::UndeclaredExport(module_id.clone())))?;
-            if format!("{}#prepare-print", declared.interface()) != schema.qualified_export() {
+            if format!("{}#prepare-print", declared.interface()) != schema.qualified_export {
                 return Err(reject(D::IncompatibleExport(module_id)));
             }
             let stage = STAGES

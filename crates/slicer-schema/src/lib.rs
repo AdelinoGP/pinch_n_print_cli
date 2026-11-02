@@ -323,9 +323,36 @@ pub struct SlicerModuleSchema {
     pub exports: &'static [ExportBinding],
 }
 
+/// Preparation capability package with its pinned version.
+///
+/// One constant for the macros' `wit_package`, xtask's package-name checks and
+/// the host/scheduler interface checks.
+pub const PREPARATION_PACKAGE: &str = "slicer:layer-preparation@1.0.0";
+
+/// Preparation capability interface (package/interface with version).
+pub const PREPARATION_INTERFACE: &str = "slicer:layer-preparation/prepare@1.0.0";
+
 /// Qualified export for the opt-in private Layer preparation capability.
 pub const PREPARATION_QUALIFIED_EXPORT: &str =
     "slicer:layer-preparation/prepare@1.0.0#prepare-print";
+
+#[cfg(test)]
+mod preparation_identity_tests {
+    use super::{PREPARATION_INTERFACE, PREPARATION_PACKAGE, PREPARATION_QUALIFIED_EXPORT};
+
+    #[test]
+    fn preparation_package_interface_and_export_agree() {
+        assert_eq!(
+            PREPARATION_PACKAGE.split('@').next(),
+            PREPARATION_INTERFACE.split('/').next(),
+            "the package and interface must name the same package"
+        );
+        assert!(
+            PREPARATION_QUALIFIED_EXPORT.starts_with(PREPARATION_INTERFACE),
+            "the qualified export must be the interface plus an export name"
+        );
+    }
+}
 
 /// Compile-time sidecar for a module's opt-in preparation export surface.
 /// Preparation composes with an ordinary Layer world; it is not a stage.
@@ -340,14 +367,6 @@ pub struct PreparationExportSchema {
     pub wit_world: &'static str,
     /// Qualified preparation function export ([`PREPARATION_QUALIFIED_EXPORT`]).
     pub qualified_export: &'static str,
-}
-
-impl PreparationExportSchema {
-    /// Return the stored qualified capability export, not a world name.
-    #[must_use]
-    pub fn qualified_export(&self) -> &'static str {
-        self.qualified_export
-    }
 }
 
 // region: region-split priorities

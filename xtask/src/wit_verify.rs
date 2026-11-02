@@ -200,7 +200,7 @@ pub fn resolve_stage_from_world(
         if SHARED_PACKAGES.iter().any(|s| strip_version(s) == stripped) {
             continue;
         }
-        if stripped == PREPARATION_PACKAGE {
+        if stripped == strip_version(slicer_schema::PREPARATION_PACKAGE) {
             continue;
         }
         candidates.push(pkg_name.clone());
@@ -246,7 +246,6 @@ pub const SHARED_PACKAGES: [&str; 6] = [
     "slicer:support-queries",
 ];
 pub const ROOT_COMPONENT_PACKAGE: &str = "root:component";
-const PREPARATION_PACKAGE: &str = "slicer:layer-preparation";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DriftKind {
@@ -320,7 +319,7 @@ pub fn compare_worlds(
     if embedded
         .packages
         .keys()
-        .any(|name| strip_version(name) == PREPARATION_PACKAGE)
+        .any(|name| strip_version(name) == strip_version(slicer_schema::PREPARATION_PACKAGE))
     {
         required.push(slicer_schema::PREPARATION_QUALIFIED_EXPORT);
     }
@@ -350,7 +349,7 @@ pub fn compare_worlds(
     // Build allowed stripped set
     let mut allowed: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     allowed.insert(strip_version(ROOT_COMPONENT_PACKAGE).to_string());
-    allowed.insert(PREPARATION_PACKAGE.to_string());
+    allowed.insert(strip_version(slicer_schema::PREPARATION_PACKAGE).to_string());
     for s in SHARED_PACKAGES {
         allowed.insert(strip_version(s).to_string());
     }
@@ -396,7 +395,7 @@ pub fn compare_worlds(
 
     for (emb_pkg_name, emb_pkg) in &embedded.packages {
         let emb_stripped = strip_version(emb_pkg_name);
-        let is_preparation = emb_stripped == PREPARATION_PACKAGE;
+        let is_preparation = emb_stripped == strip_version(slicer_schema::PREPARATION_PACKAGE);
         // Unlike shared imports, this opt-in export has a pinned identity.
         let preparation_identity = slicer_schema::PREPARATION_QUALIFIED_EXPORT
             .split_once('/')
@@ -2534,7 +2533,7 @@ package root:component { world root {} }
         let mut embedded = canonical.clone();
         embedded.packages.retain(|name, _| {
             let name = strip_version(name);
-            name == PREPARATION_PACKAGE
+            name == strip_version(slicer_schema::PREPARATION_PACKAGE)
                 || name == strip_version(&expect.wit_package)
                 || SHARED_PACKAGES.contains(&name)
         });
@@ -2678,9 +2677,13 @@ package root:component { world root {} }
             .any(|d| d.kind == DriftKind::DeclarationBody && d.name == "prepared-piece"));
         let mut identity = world.clone();
         let package = identity.packages.remove(&capability).unwrap();
-        identity
-            .packages
-            .insert(format!("{PREPARATION_PACKAGE}@9.9.9"), package);
+        identity.packages.insert(
+            format!(
+                "{}@9.9.9",
+                strip_version(slicer_schema::PREPARATION_PACKAGE)
+            ),
+            package,
+        );
         assert!(compare_worlds(&identity, &canonical, Some(&expect))
             .iter()
             .any(|d| d.kind == DriftKind::UnexpectedPackage));

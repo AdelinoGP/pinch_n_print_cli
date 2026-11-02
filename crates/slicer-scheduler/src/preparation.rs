@@ -7,7 +7,7 @@ use toml::Value;
 
 use crate::LoadedModule;
 
-const PREPARATION_INTERFACE: &str = "slicer:layer-preparation/prepare@1.0.0";
+use slicer_schema::PREPARATION_INTERFACE;
 
 /// Parse only preparation metadata from the same text used for manifest ingestion.
 ///

@@ -4115,28 +4115,6 @@ fn merge_infill_ir(existing: &mut InfillIR, incoming: InfillIR) {
     existing.raft_regions.extend(incoming.raft_regions);
 }
 
-/// Per-layer host dispatch filter (packet 92; dispatch semantics redefined by
-/// ADR-0071).
-///
-/// `declared` is the compiled `paint_only` semantic set, non-empty only for
-/// modules whose manifest opts into `paint_only = true`. Returns `true` iff
-/// the module either:
-/// - carries NO paint-only semantics (paint-transparent default — this covers
-///   every module that merely *declares* `[[region_split]]` for aggregation,
-///   including the core perimeter and fuzzy-skin modules), OR
-/// - at least one region on the layer has a `variant_chain` entry whose
-///   semantic name is in `declared`.
-///
-/// Filter granularity is per-(module × layer); per-region filtering is
-/// module-internal. `slice` is `None` only when the layer executor bypasses
-/// the PrePass::Slice builtin (unusual; conservatively allows invocation).
-pub fn module_invocation_allowed_on_layer(
-    declared: &std::collections::HashSet<String>,
-    slice: Option<&SliceIR>,
-) -> bool {
-    slicer_wasm_host::selection::paint_allows_layer(declared, slice)
-}
-
 #[cfg(test)]
 mod tests {
     #[test]

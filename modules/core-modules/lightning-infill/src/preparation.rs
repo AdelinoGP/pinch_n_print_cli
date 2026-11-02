@@ -16,7 +16,7 @@ use slicer_sdk::preparation::{
     PreparedPlanOutput, PrintPreparationInput,
 };
 
-use crate::kernel::{generate_lightning_trees, KernelError, KernelPlan};
+use crate::kernel::{generate_lightning_trees, KernelPlan};
 use crate::planning_input::build_planner_inputs;
 use crate::private_plan::{encode_layer_piece, piece_name};
 use crate::projection::publish_projection;
@@ -49,10 +49,6 @@ fn input_error(error: PreparationInputError) -> ModuleError {
 }
 
 /// Map a kernel planning failure.
-fn kernel_error(error: KernelError) -> ModuleError {
-    ModuleError::fatal(1, format!("lightning preparation kernel: {error}"))
-}
-
 /// Module-owned diagnostic publication mode (design D6).
 ///
 /// The mode is a diagnostic contract, not an input: it is excluded from the
@@ -175,7 +171,7 @@ impl LayerPreparation for LightningInfill {
         let diagnostic = PreparedPlanDiagnostic::read(configs.first())?;
 
         let (slices, config) = build_planner_inputs(&regions, &configs)?;
-        let plan = generate_lightning_trees(&slices, &config).map_err(kernel_error)?;
+        let plan = generate_lightning_trees(&slices, &config);
 
         // The topmost layer that actually carries plan entries is the one the
         // ordinary consumer is guaranteed to ask for: an entry exists only for a
