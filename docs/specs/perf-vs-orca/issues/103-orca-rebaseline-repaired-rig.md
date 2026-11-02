@@ -9,7 +9,7 @@ Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [Repair the Orca rig](98-orca-rig-repair.md) ("The archived Orca
 side must be re-baselined before any ratio is quoted" — the map's Not yet
-specified entry, surfaced 2026-10-30 and still unmoved)
+specified entry, surfaced 2026-10-30; resolved by this ticket on 2026-10-31/11-01)
 
 ## Ruling — settled 2026-10-31
 
