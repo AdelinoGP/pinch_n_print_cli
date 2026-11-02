@@ -109,6 +109,15 @@
       "impact": "the documented narrow command builds the bucket and runs nothing, which reads as green"
     }
   ],
+  "ruled_out": [
+    {
+      "lever": "blaze (formerly ra-jit) — rust-analyzer + Cranelift incremental build daemon",
+      "verdict": "ineligible on this host",
+      "reason": "Upstream states it supports macOS on Apple silicon and Linux only: 'Windows has no installer, and v2 has not been run there.' This take's measured host is x86_64-pc-windows-msvc, so the tool cannot change any build or test wall reported here. It is not a priced-and-rejected lever.",
+      "source": "indexable-inc/blaze README, 'Good to know' (https://github.com/indexable-inc/blaze)",
+      "ci_note": "The repository's CI runs ubuntu-latest, where the tool exists, but it ships its own pinned Rust nightly and upstream itself says 'your toolchain and CI stay the final word'. It could not act as the gate compiler for a repo pinned to 1.96.0 with a controlled-perimeter accelerated build; that is reasoning from the vendor docs, not a measurement."
+    }
+  ],
   "not_priced": [
     "cold-workspace build effect of `debug = 1` / `debug = 0` (needs two clean target dirs)",
     "linker substitution on a cold full build",

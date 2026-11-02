@@ -189,6 +189,25 @@ def check(b: dict) -> list[tuple[str, bool, str]]:
         f"{len(b['not_priced'])}",
     )
 
+    # Blaze is the discussion's headline experimental option; it must be recorded
+    # as ineligible on this host, not left unmentioned or filed as "unpriced".
+    ruled_out = b.get("ruled_out", [])
+    add(
+        "blaze is recorded, and recorded as ineligible on this host rather than unpriced",
+        len(ruled_out) == 1
+        and "blaze" in ruled_out[0]["lever"].lower()
+        and ruled_out[0]["verdict"] == "ineligible on this host"
+        and "Windows has no installer" in ruled_out[0]["reason"],
+        f"{[(r['lever'], r['verdict']) for r in ruled_out]}",
+    )
+    add(
+        "the blaze entry keeps its upstream source and does not claim a measured speedup",
+        len(ruled_out) == 1
+        and "indexable-inc/blaze" in ruled_out[0]["source"]
+        and "cannot change" in ruled_out[0]["reason"],
+        ruled_out[0]["source"] if ruled_out else "",
+    )
+
     # Adjacent harness defects are part of the take's output.
     add(
         "two adjacent harness defects are recorded",
@@ -268,6 +287,10 @@ def main() -> int:
                 lambda b: b["inventory"].__setitem__("contract_pdb_bytes", 1_000_000),
             ),
             ("falsified list emptied", lambda b: b.__setitem__("falsified", [])),
+            (
+                "blaze refiled as unpriced instead of ineligible",
+                lambda b: b["ruled_out"][0].__setitem__("verdict", "unpriced"),
+            ),
             (
                 "adjacent findings emptied",
                 lambda b: b.__setitem__("adjacent_findings", []),

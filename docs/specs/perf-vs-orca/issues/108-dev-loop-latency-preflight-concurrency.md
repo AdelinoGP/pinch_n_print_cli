@@ -140,6 +140,19 @@ cost comes from, and no gate-level change touches it.
   bucket (`0 passed; 314 filtered out`) — the documented command builds the
   bucket and runs nothing, which reads as green.
 
+**Ruled out on platform: blaze (ra-jit).** The discussion's headline experimental
+option — rust-analyzer's query database plus a Cranelift code generator, holding
+the project compiled in memory — **cannot run on this host**. Upstream's README
+("Good to know") supports macOS on Apple silicon and Linux only: "Windows has no
+installer, and v2 has not been run there." The take's host is
+`x86_64-pc-windows-msvc`, so no build or test wall reported here can move because
+of it. This is an eligibility finding, not a price: no blaze speedup is measured
+or claimed. Its CI half also does not land here — the repo's CI is Ubuntu, where
+the tool exists, but blaze ships its own pinned Rust nightly against this repo's
+pinned 1.96.0 and controlled-perimeter accelerated build, and upstream itself says
+"your toolchain and CI stay the final word". That is a reading of the vendor
+docs, not a measurement.
+
 **Not priced, named as fog:** the cold-workspace effect of `debug = 1/0`, linker
 substitution on a cold full build, `cargo-nextest` on the five buckets,
 `sccache`, and the CI half of the discussion (cache keys, job parallelism, path
@@ -160,4 +173,4 @@ debug-override comparison is one sample per arm.
 
 Evidence: [`evidence/t108-dev-loop-latency/`](../evidence/t108-dev-loop-latency/FINDINGS.md)
 (`summary.json`, `verify.py`, `REPRODUCE.md`; checkout-only verify exits 0 with
-26/26 claims, `--self-test` detects 10/10 negative controls).
+28/28 claims, `--self-test` detects 11/11 negative controls).

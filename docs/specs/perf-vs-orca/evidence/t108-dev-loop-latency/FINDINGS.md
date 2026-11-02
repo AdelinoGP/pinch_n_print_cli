@@ -125,6 +125,27 @@ which reads as green. The filter name in `AGENTS.md` has drifted.
 
 Both are outside this ticket's question and are recorded for their own take.
 
+## Ruled out on platform: blaze (ra-jit)
+
+The discussion's headline experimental option is **blaze** — rust-analyzer's
+query database plus a Cranelift code generator, holding the project compiled in
+memory so an edit becomes a function-level splice instead of a rebuild. It is
+**not a lever on this host**. Upstream's README ("Good to know") says it supports
+macOS on Apple silicon and Linux only — "Windows has no installer, and v2 has not
+been run there" — and the take's measured host is `x86_64-pc-windows-msvc`. No
+build or test wall reported here can move because of it.
+
+This is an **eligibility** finding, not a price. Nothing in this take measures
+blaze's speed, and none of the upstream multiples (10x macOS arm64, 24x Linux
+aarch64, 11x Linux x86-64) are claimed or relied on.
+
+Its CI story is separate and also does not land here: the repository's CI runs
+`ubuntu-latest`, where the tool exists, but blaze ships its own pinned Rust
+nightly while this repo pins 1.96.0 and runs a controlled-perimeter accelerated
+build around exact artifact identity — and upstream itself says "your toolchain
+and CI stay the final word". That is reasoning from the vendor docs, not a
+measurement, and it is why blaze is not filed as an unpriced CI lever.
+
 ## Not priced (fog)
 
 - Cold-workspace build effect of `debug = 1` or `debug = 0` (needs two clean
@@ -156,5 +177,5 @@ Both are outside this ticket's question and are recorded for their own take.
   feature.
 
 Evidence: `summary.json`, `verify.py` and `REPRODUCE.md` in this directory
-(checkout-only verify exits 0 with 26/26 claims, `--self-test` detects 10/10
+(checkout-only verify exits 0 with 28/28 claims, `--self-test` detects 11/11
 negative controls).
