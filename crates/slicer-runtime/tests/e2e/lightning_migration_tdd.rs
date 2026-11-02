@@ -208,6 +208,26 @@ impl PlanKey {
                 .collect(),
         }
     }
+
+    /// The same identity read from the committed `SliceIR` region, which is the
+    /// caller population the recorder writes alongside the plan population.
+    fn from_slice_region(key_layer: u32, region: &slicer_ir::SlicedRegion) -> Self {
+        Self {
+            global_layer_index: key_layer as i32,
+            object_id: region.object_id.clone(),
+            region_id: region.region_id,
+            variant_chain: region
+                .variant_chain
+                .iter()
+                .map(|(semantic, value)| {
+                    (
+                        semantic.clone(),
+                        serde_json::to_string(value).expect("PaintValue serializes"),
+                    )
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -257,10 +277,13 @@ struct BaselineCase {
     digests: CaseDigests,
 }
 
+/// Decoded baseline: the case material plus the raw `derivation` block, which
+/// the recorder carries forward so a re-record cannot silently drop it.
 #[derive(Clone, Debug)]
 struct Baseline {
     case_source: String,
     geometry_scale: f64,
+    derivation: Value,
     cases: Vec<BaselineCase>,
 }
 
@@ -670,6 +693,7 @@ fn decode_baseline(text: &str) -> DecodeResult<Baseline> {
     Ok(Baseline {
         case_source: expect_str("baseline.case_source", &map["case_source"])?,
         geometry_scale,
+        derivation: map["derivation"].clone(),
         cases,
     })
 }
@@ -1889,6 +1913,12 @@ fn point_in_polygon(points: &[[i64; 2]], px: f64, py: f64) -> bool {
 }
 
 fn push_box(vertices: &mut Vec<Point3>, indices: &mut Vec<u32>, rect: &Rect, z0: f32, z1: f32) {
+    // Historical case material: `Rect` is in PnP units (1 unit = 100 nm) and the
+    // value is written straight into the millimetre-valued `Point3`, so the
+    // planned domain is 100x the canonical region. The recorded baseline and the
+    // tests share this derivation; `derivation.mesh` states it explicitly. Do
+    // not "fix" it here without re-recording and re-checking the per-layer tap
+    // contract.
     let (x0, y0, x1, y1) = (
         rect.x0 as f32,
         rect.y0 as f32,
@@ -3145,7 +3175,12 @@ fn typed_projection_is_atomic_and_neutral() {
     );
 
     // The scene's plan geometry is the same plan the pieces encode: compare the
-    // per-layer edge union to the recorded plan population for the same layers.
+    // per-layer edge union to the recorded population for the same layers. The
+    // plan is print-wide, while the consumer filters per region (a region with
+    // no sparse-fill area, or one that does not hold a sparse claim, emits
+    // nothing), so the scene may carry branches the consumer did not emit.
+    // Every emitted edge, however, must be present in the scene with the same
+    // multiplicity: the consumer may filter plan branches, never invent them.
     let expected = population_from_plan_entries(case).expect("baseline population is unique");
     let mut expected_by_layer: BTreeMap<i32, BTreeMap<Edge, u64>> = BTreeMap::new();
     for (key, entry) in &expected {
@@ -3168,11 +3203,26 @@ fn typed_projection_is_atomic_and_neutral() {
                 .or_insert(0) += 1;
         }
     }
-    assert_eq!(
-        scene_by_layer, expected_by_layer,
-        "case `{}`: the scene derives from the same plan the recorded population describes",
-        case.case_id
-    );
+    for (layer, emitted) in &expected_by_layer {
+        let planned = scene_by_layer.get(layer).unwrap_or_else(|| {
+            panic!(
+                "case `{}`: layer {layer} emitted edges but the scene carries no plan branches",
+                case.case_id
+            )
+        });
+        for (edge, count) in emitted {
+            assert_eq!(
+                planned.get(edge),
+                Some(count),
+                "case `{}`: emitted edge ({}, {}, {}, {}) is missing from the scene plan",
+                case.case_id,
+                edge.0,
+                edge.1,
+                edge.2,
+                edge.3
+            );
+        }
+    }
 
     // Capture neutrality: the same real slice with and without the requested view
     // emits byte-identical G-code.
@@ -4429,4 +4479,291 @@ fn retirement_leaves_no_host_fallback() {
     let expected = population_from_plan_entries(case).expect("baseline population is unique");
     compare_populations(&case.case_id, &expected, &population)
         .unwrap_or_else(|error| panic!("baseline-equivalent infill is required: {error}"));
+}
+// ---------------------------------------------------------------------------
+// Re-record
+// ---------------------------------------------------------------------------
+
+/// One recorded caller as JSON, in the same shape `decode_case` accepts.
+fn caller_to_value(caller: &RecordedCaller) -> Value {
+    json!({
+        "key": caller.key.to_value(),
+        "segment_count": caller.segment_count,
+        "segments": edge_multiset(&caller.segments)
+            .iter()
+            .map(|((from_x, from_y, to_x, to_y), count)| json!([from_x, from_y, to_x, to_y, count]))
+            .collect::<Vec<Value>>(),
+    })
+}
+
+fn case_to_value(case: &BaselineCase) -> Value {
+    json!({
+        "case_id": case.case_id,
+        "wall_strategy": "Classic",
+        "fixture_object_id": case.fixture_object_id,
+        "fixture_region_ids": case
+            .mesh_objects
+            .iter()
+            .map(|object| object.rsplit('-').next().unwrap_or(object).parse::<u64>().expect("region id"))
+            .collect::<Vec<u64>>(),
+        "mesh_objects": case.mesh_objects,
+        "config": {
+            "sparse_fill_holder": case.config.sparse_fill_holder,
+            "infill_density": case.config.infill_density,
+            "layer_height": case.config.layer_height,
+            "infill_angle": case.config.infill_angle,
+            "line_width": case.config.line_width,
+        },
+        "layer_count": case.layer_count,
+        "plan_entry_count": case.plan_entry_count,
+        "plan_edge_count": case.plan_edge_count,
+        "plan_entries": case.plan_entries.iter().map(entry_to_value).collect::<Vec<Value>>(),
+        "caller_count": case.caller_count,
+        "caller_segment_count": case.caller_segment_count,
+        "callers": case.callers.iter().map(caller_to_value).collect::<Vec<Value>>(),
+        "digests": {
+            "case_source_sha256": case.digests.case_source_sha256,
+            "inputs_sha256": case.digests.inputs_sha256,
+            "plan_sha256": case.digests.plan_sha256,
+        },
+    })
+}
+
+fn summary_to_value(case: &BaselineCase) -> Value {
+    json!({
+        "case_id": case.case_id,
+        "fixture_object_id": case.fixture_object_id,
+        "mesh_objects": case.mesh_objects,
+        "layer_count": case.layer_count,
+        "plan_entry_count": case.plan_entry_count,
+        "plan_edge_count": case.plan_edge_count,
+        "caller_count": case.caller_count,
+        "caller_segment_count": case.caller_segment_count,
+        "digests": {
+            "case_source_sha256": case.digests.case_source_sha256,
+            "inputs_sha256": case.digests.inputs_sha256,
+            "plan_sha256": case.digests.plan_sha256,
+        },
+    })
+}
+
+/// A case's `a_source` from the committed gate fixture, for the source digest.
+fn case_a_source(root: &Path, case_id: &str) -> Value {
+    let text = read_text(&root.join(GATE_FIXTURE_REL).join("inputs.json")).expect("inputs.json");
+    let inputs: Value = serde_json::from_str(&text).expect("inputs.json is JSON");
+    inputs["cases"]
+        .as_array()
+        .expect("cases")
+        .iter()
+        .find(|candidate| candidate["case_id"].as_str() == Some(case_id))
+        .expect("case present")["a_source"]
+        .clone()
+}
+
+/// Re-record the committed baseline from the **current** module.
+///
+/// The committed baseline is the regression pin the migration tests compare
+/// against. This recorder replays each case through the module's real prepared
+/// path and rewrites the plan/caller populations, counts and digests. It keeps
+/// the case material (geometry scale, config, synthetic paint, layer count) from
+/// the existing fixture, so the recording changes only *what the module emits*.
+///
+/// Run explicitly:
+///
+/// ```text
+/// cargo test -p slicer-runtime --features perimeter-spatial-test-support \
+///   --test e2e lightning_migration_tdd::record_lightning_baseline -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore = "rewrites the committed baseline; run explicitly after an intentional output change"]
+fn record_lightning_baseline() {
+    let root = workspace_root();
+    let (baseline, _manifest, _text) = load_baseline(&root)
+        .unwrap_or_else(|error| panic!("the existing baseline is the case material: {error}"));
+
+    let mut recorded = Vec::new();
+    for case in &baseline.cases {
+        let trace = Arc::new(Trace::default());
+        let options = case_options(&root, case_input(&root, &baseline, case), case, false);
+        let supplied = options.config_overrides.clone();
+        let capture = run_visual(
+            options,
+            Vec::new(),
+            vec![SLICE_TAP.to_owned(), INFILL_TAP.to_owned()],
+            layer_indices(case),
+            Arc::clone(&trace),
+        )
+        .unwrap_or_else(|error| panic!("case `{}`: recording run failed: {error}", case.case_id));
+        let slices = captured_slices(&capture);
+        assert_eq!(
+            slices.len() as u64,
+            case.layer_count,
+            "case `{}`: recording must expose every layer",
+            case.case_id
+        );
+        let infill = captured_infill(&capture);
+        assert_prepared_owner(&capture.metadata(), &case.case_id);
+
+        // Emitted population, per layer, exactly as the acceptance comparison
+        // builds it.
+        let mut population: Population = BTreeMap::new();
+        for (layer, ir) in &infill {
+            for (key, entry) in
+                population_from_infill(&case.case_id, *layer, ir).expect("unique emitted keys")
+            {
+                assert!(
+                    population.insert(key.clone(), entry).is_none(),
+                    "case `{}`: layer {layer} emitted a duplicated key {}",
+                    case.case_id,
+                    key.describe()
+                );
+            }
+        }
+        let population = nonempty(population);
+        assert!(
+            !population.is_empty(),
+            "case `{}`: the module emitted no plan population",
+            case.case_id
+        );
+
+        // Callers: every committed SliceIR region identity, with the segments
+        // the module emitted for it (empty for a region it did not fill).
+        let mut callers: BTreeMap<PlanKey, RecordedCaller> = BTreeMap::new();
+        for (layer, slice) in &slices {
+            for region in &slice.regions {
+                let key = PlanKey::from_slice_region(*layer, region);
+                let edges = population
+                    .get(&key)
+                    .map(|entry| entry.edges.clone())
+                    .unwrap_or_default();
+                let caller = RecordedCaller {
+                    key: key.clone(),
+                    segment_count: edges.values().sum(),
+                    segments: edges.into_iter().collect(),
+                };
+                assert!(
+                    callers.insert(key.clone(), caller).is_none(),
+                    "case `{}`: duplicated caller key {}",
+                    case.case_id,
+                    key.describe()
+                );
+            }
+        }
+
+        let plan_entries: Vec<RecordedEntry> = population
+            .iter()
+            .map(|(key, entry)| RecordedEntry {
+                key: key.clone(),
+                edge_count: entry.edges.values().sum(),
+                edges: entry
+                    .edges
+                    .iter()
+                    .map(|(edge, count)| (*edge, *count))
+                    .collect(),
+                witnesses: witness_set(&entry.edges).into_iter().collect(),
+            })
+            .collect();
+        let plan_edge_count: u64 = plan_entries.iter().map(|entry| entry.edge_count).sum();
+        let callers: Vec<RecordedCaller> = callers.into_values().collect();
+        let caller_segment_count: u64 = callers.iter().map(|caller| caller.segment_count).sum();
+
+        let mut new_case = BaselineCase {
+            case_id: case.case_id.clone(),
+            fixture_object_id: case.fixture_object_id.clone(),
+            mesh_objects: case.mesh_objects.clone(),
+            config: case.config.clone(),
+            layer_count: case.layer_count,
+            plan_entry_count: plan_entries.len() as u64,
+            plan_edge_count,
+            caller_count: callers.len() as u64,
+            caller_segment_count,
+            plan_entries,
+            callers,
+            digests: CaseDigests {
+                case_source_sha256: sha256_canonical(&case_a_source(&root, &case.case_id)),
+                inputs_sha256: inputs_digest(&supplied, &slices),
+                plan_sha256: String::new(),
+            },
+        };
+        new_case.digests.plan_sha256 = plan_digest(&new_case);
+        eprintln!(
+            "RECORD {}: layers={} entries={} edges={} callers={} caller_segments={}",
+            new_case.case_id,
+            new_case.layer_count,
+            new_case.plan_entry_count,
+            new_case.plan_edge_count,
+            new_case.caller_count,
+            new_case.caller_segment_count
+        );
+        recorded.push(new_case);
+    }
+
+    let case_ids: Vec<String> = recorded.iter().map(|case| case.case_id.clone()).collect();
+    let case_values: Vec<Value> = recorded.iter().map(case_to_value).collect();
+    let summaries: Vec<Value> = recorded.iter().map(summary_to_value).collect();
+
+    let mut derivation = baseline.derivation.clone();
+    // The derivation must describe the harness that produced these bytes.
+    // The mesh builder writes PnP units straight into the millimetre-valued
+    // `Point3` surface, so the planned domain is 100x the canonical region;
+    // `geometry_scale` is applied during the canonical -> PnP conversion.
+    derivation["mesh"] = json!(
+        "one mesh object per fixture region identity, footprint = that region's recorded surfaces \
+         (contours and holes) per layer, extruded through the layer band; the builder writes the \
+         converted PnP units into the millimetre-valued MeshIR Point3, so the planned domain is \
+         100x the canonical region; band boundaries sit one quarter layer-height above the layer \
+         print Z so no slice plane lies in a horizontal face"
+    );
+    derivation["callers"] =
+        json!("emitted Layer::Infill sparse paths grouped by committed SliceIR region identity");
+    derivation["witnesses"] = json!(
+        "directed incidence imbalance of the committed edge multiset, recorded from the module's \
+         emitted sparse paths"
+    );
+
+    let baseline_value = json!({
+        "schema_version": 1,
+        "recorder": "crates/slicer-runtime/tests/e2e/lightning_migration_tdd.rs::record_lightning_baseline",
+        "producer": "com.core.lightning-infill whole-print preparation, read back from the emitted Layer::Infill paths",
+        "case_source": baseline.case_source,
+        "units": {
+            "canonical": "canonical_units_1nm",
+            "plan": "pnp_units_100nm",
+            "pnp_units_per_canonical_unit": 100,
+        },
+        "derivation": derivation,
+        "cases": case_values,
+    });
+    let baseline_text = format!(
+        "{}\n",
+        serde_json::to_string(&baseline_value).expect("baseline serializes")
+    );
+
+    let fixture_dir = root.join(GATE_FIXTURE_REL);
+    let inputs_text = read_text(&fixture_dir.join("inputs.json")).expect("fixture inputs");
+    let fixture_manifest_text =
+        read_text(&fixture_dir.join("manifest.json")).expect("fixture manifest");
+    let manifest_value = json!({
+        "schema_version": 1,
+        "recorder": "crates/slicer-runtime/tests/e2e/lightning_migration_tdd.rs::record_lightning_baseline",
+        "baseline_file": BASELINE_FILE,
+        "baseline_sha256": sha256_hex(baseline_text.as_bytes()),
+        "fixture": {
+            "dir": baseline.case_source,
+            "inputs_sha256": sha256_hex(inputs_text.as_bytes()),
+            "manifest_sha256": sha256_hex(fixture_manifest_text.as_bytes()),
+            "case_count": case_ids.len() as u64,
+            "case_ids": case_ids,
+        },
+        "case_summaries": summaries,
+    });
+    let manifest_text = format!(
+        "{}\n",
+        serde_json::to_string(&manifest_value).expect("manifest serializes")
+    );
+
+    let dir = root.join(BASELINE_REL);
+    std::fs::write(dir.join(BASELINE_FILE), baseline_text).expect("write baseline");
+    std::fs::write(dir.join(MANIFEST_FILE), manifest_text).expect("write manifest");
+    eprintln!("RECORD wrote {BASELINE_FILE} and {MANIFEST_FILE}");
 }

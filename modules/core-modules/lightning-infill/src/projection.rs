@@ -23,7 +23,7 @@
 use std::collections::BTreeMap;
 
 use slicer_core::geometry::closest_point_on_polygons;
-use slicer_ir::{PaintValue, Point2};
+use slicer_ir::{ExPolygon, PaintValue, Point2};
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::preparation::{
     PreparationProjectionGeometry, PreparationProjectionPrimitive, PreparationProjectionScene,
@@ -100,20 +100,27 @@ fn derive_primitives(
     plan: &KernelPlan,
     regions: &[PreparationRegion],
 ) -> Vec<PreparationProjectionPrimitive> {
-    // Exact full identity -> committed geometry, so an entry's grounding is
-    // projected against the region the planner actually ran on. Domains are
-    // emitted for every committed region, including tree-less ones: they are
-    // planning input, not a claim about the plan.
-    let domains: BTreeMap<String, &PreparationRegion> = regions
+    // Exact full identity -> the committed region outline, so an entry's
+    // grounding is projected against the region the planner was invoked for.
+    // (`sparse_infill_area` is written by `region_partition` after whole-print
+    // preparation, so it is empty here; the outline is the committed region
+    // ExPolygon the row-08 contract names.) Domains are emitted for every
+    // committed region, including tree-less ones: they are planning input, not
+    // a claim about the plan.
+    let domains: BTreeMap<String, &Vec<ExPolygon>> = regions
         .iter()
-        .map(|region| (region_identity(region), region))
+        .map(|region| (region_identity(region), &region.polygons))
         .collect();
 
     let mut primitives = Vec::new();
     for region in regions {
-        for (polygon_index, polygon) in region.sparse_infill_area.iter().enumerate() {
+        let identity = region_identity(region);
+        let Some(area) = domains.get(&identity) else {
+            continue;
+        };
+        for (polygon_index, polygon) in area.iter().enumerate() {
             primitives.push(PreparationProjectionPrimitive {
-                id: format!("domain:{}:p{polygon_index}", region_identity(region)),
+                id: format!("domain:{identity}:p{polygon_index}"),
                 global_layer_index: region.global_layer_index,
                 class: "planning_domain".to_string(),
                 label: Some(source_label(&region.object_id, region.region_id)),
@@ -148,7 +155,7 @@ fn derive_primitives(
             });
         }
 
-        let domain = domains.get(&identity).copied();
+        let domain = domains.get(&identity);
         for (node_index, root) in root_points(entry).into_iter().enumerate() {
             primitives.push(PreparationProjectionPrimitive {
                 id: format!("root:{identity}:n{node_index}"),
@@ -157,9 +164,7 @@ fn derive_primitives(
                 label: Some(format!("{source} root")),
                 geometry: PreparationProjectionGeometry::Point(root),
             });
-            if let Some(closest) = domain
-                .and_then(|region| closest_point_on_polygons(root, &region.sparse_infill_area))
-            {
+            if let Some(closest) = domain.and_then(|area| closest_point_on_polygons(root, area)) {
                 primitives.push(PreparationProjectionPrimitive {
                     id: format!("ground:{identity}:n{node_index}"),
                     global_layer_index: layer,

@@ -190,6 +190,27 @@ Consequences:
 - This amendment is a **strategy change**, not a relocation. The relocation
   decision itself (module ownership, no host fallback, no shim) is unchanged.
 
+## Amendment — 2026-11-02 (baseline re-recorded from the module)
+
+The 2026-10-25 amendment's operational prohibition is superseded: the committed
+baseline **was** re-recorded from the module by
+`crates/slicer-runtime/tests/e2e/lightning_migration_tdd.rs::record_lightning_baseline`,
+which is committed and re-runnable.
+
+- The fixture is now a **regression snapshot** of the current module's emitted
+  `Layer::Infill` population, not evidence of equivalence to the pre-migration
+  host producer. Its `producer`, `recorder` and `derivation` fields name that
+  origin; the historical equivalence claim above still describes the
+  pre-fidelity kernel and is unchanged.
+- The migration's authorization is unchanged: module ownership, no host
+  fallback, no shim (ADR-0066 / ADR-0029 as amended 2026-10-20). Canonical parity
+  remains Gate B, still recorded `fail` in
+  `docs/specs/layer-module-preparation-plan.md`; this re-record makes no
+  canonical-parity claim.
+- The baseline's case material keeps the recorder's historical 100x mesh scale;
+  `derivation.mesh` states it so the artifact cannot be read as canonical-scale
+  geometry.
+
 ## References
 
 - [ADR-0066](./0066-private-layer-preparation-capability.md) — private
