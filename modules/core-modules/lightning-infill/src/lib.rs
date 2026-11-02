@@ -128,10 +128,12 @@ impl LayerModule for LightningInfill {
     ) -> Result<(), ModuleError> {
         let speed_factor = self.infill_speed / BASE_SPEED;
         // The plan arrives as this layer's private piece (D3). No paint-view
-        // segment read remains: the piece is the only plan source, so a print
-        // without a bound plan fails loudly instead of degrading to an empty
-        // layer through a host fallback.
-        let plan = read_layer_plan(layer_index)?;
+        // segment read remains: the piece is the only plan source. The read is
+        // lazy so a module that holds no sparse-fill region on this layer emits
+        // nothing without demanding a plan it would not use; a holding region
+        // still fails loudly instead of degrading to an empty layer through a
+        // host fallback.
+        let mut plan: Option<KernelPlan> = None;
 
         for region in regions {
             output.begin_region(
@@ -139,9 +141,15 @@ impl LayerModule for LightningInfill {
                 *region.region_id(),
                 region.variant_chain(),
             );
-            if !region.should_emit(ExtrusionRole::SparseInfill) {
+            if !region.should_emit(ExtrusionRole::SparseInfill)
+                || region.sparse_infill_area().is_empty()
+            {
                 continue;
             }
+            if plan.is_none() {
+                plan = Some(read_layer_plan(layer_index)?);
+            }
+            let plan = plan.as_ref().expect("plan read for a holding region");
 
             let z = region.z();
             // Exact source query: the full `(object_id, region_id, ordered
