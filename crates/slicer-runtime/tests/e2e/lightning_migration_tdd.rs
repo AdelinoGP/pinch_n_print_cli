@@ -2585,12 +2585,14 @@ fn assert_arm_matches_baseline(
 /// digests that its own bytes and entries reproduce. Mutation controls prove
 /// every rejection is real.
 ///
-/// What this does *not* prove: the recorder's two-run byte-identity. That run
-/// happened against the pre-migration producer and is not reproducible from
-/// this tree — the recorder was deleted with the producer (implementation-plan
-/// Step 14f, recorded limitation). The evidence for pre-deletion determinism is
-/// the committed fixture plus its `derivation`/digests, not a re-runnable
-/// capture.
+/// What this does *not* prove: the **pre-migration** recorder's two-run
+/// byte-identity. That run happened against the producer packet 08 retired, and
+/// its capture is not reproducible from this tree (implementation-plan Step 14f,
+/// recorded limitation). The fixture committed here was re-recorded from the
+/// module by [`record_lightning_baseline`], so *its* determinism is
+/// re-verifiable: run that ignored test and confirm it leaves the committed
+/// files unchanged. The artifact checks below are still what AC-1 itself
+/// asserts.
 #[test]
 fn baseline_is_deterministic_and_strict() {
     let root = workspace_root();
