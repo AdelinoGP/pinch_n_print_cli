@@ -54,7 +54,26 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-02, tenth session — the t105 take):** the
+**Current selection scope (2026-11-02, eleventh session — the t106 take):** the
+human said "continue the perf vs orca map" (no ticket named). The frontier
+re-derivation at HEAD `e2294453` found **105 of 106 children resolved** — ticket
+106 open and unclaimed, exactly as the tenth-session note predicted — so it was
+claimed and worked. Headline: **post-pin PnP ratios are 6.02x / 6.11x (base classic /
+arachne) and 4.77x / 4.53x (benchy classic / arachne)**, every post-pin Orca
+median is slower than ticket 103's pre-pin one (**+37.0 / +14.5 / +13.7 / +5.7 %**),
+and the park still needs **66.9–75.5 %** of each cell removed. The t105 transfer
+**agreed on two cells and missed on two** (base arachne-on **−17.95 %**, benchy
+classic-on **+3.89 %** against a **0.093 s** tolerance); the pinned job is
+**byte-identical to t105's `tree_strong` arm** on all four cells yet **1.9–9.6 %
+faster today**, so the transfer's error is two cross-day drifts rather than the
+pin, and it is retired as an absolute predictor. The take ran quiet (load
+16.4 % → 3.3 %, no starvation exclusions) after an unrelated game process and a
+**sibling checkout's** `cargo test` e2e binary had exited. Frontier now: **no
+open child**; the destination's prepass-rewrite decision is unchanged and still
+the human's to rule on. Standing paired acceptance and KEEP/DROP rules
+unchanged.
+
+**Previous selection scope (2026-11-02, tenth session — the t105 take):** the
 human said "continue the perf vs orca map" (no ticket named). The frontier
 re-derivation at HEAD `81219a66` found **104/104 children resolved — no open
 child, no claim** — so five routes were offered from t104's post-resolution
@@ -1446,9 +1465,18 @@ Standing decisions for this effort (2026-09-22):
   classic-on, 7 → 57 benchy classic-on). The **effective branch distance is
   1 mm on both sides** (`tree_support_branch_distance_organic` on the Orca side,
   the normal-key default on the PnP side); the deviations table's 5 mm
-  normal-key row is inert. Ticket 103's supports-on Orca medians are **pre-pin**;
-  no supports-on scoreboard row may be quoted as post-pin until
-  [ticket 106](issues/106-post-pin-supports-on-scoreboard.md) re-derives them.
+  normal-key row is inert. **Post-pin scoreboard, re-derived by
+  [ticket 106](issues/106-post-pin-supports-on-scoreboard.md) (2026-11-02, 1
+  warmup + 3 measured per cell, load 16.4 % → 3.3 %, no starvation
+  exclusions):** Orca **6.02x / 6.11x** (base classic / arachne) and
+  **4.77x / 4.53x** (benchy classic / arachne), so the park still needs
+  **66.9–75.5 %** of each cell removed. Ticket 103's supports-on Orca medians are
+  **superseded (pre-pin)** and may be quoted only with that label. The pinned job
+  is **byte-identical to ticket 105's `tree_strong` arm** on all four cells while
+  running **1.9–9.6 % faster today**, so t105's derived transfer is **retired as
+  an absolute predictor** — it agreed on two cells and missed base arachne-on by
+  **−17.95 %** — and any style price must be paired same-session, with the day
+  named beside any absolute median.
 - **Win matrix**: all 8 cells decide, so support-correctness defects are route
   work — a degraded slice is not Orca's job.
 - **Measurement mode**: paired ordinary + accelerated runs are the default
@@ -1902,6 +1930,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Post-pin supports-on scoreboard re-derivation](issues/106-post-pin-supports-on-scoreboard.md): **resolved (2026-11-02; measurement-only — no PnP run, no config change, no production edit)** — with Orca pinned to `tree_strong` the four supports-on ratios are **6.02x / 6.11x** (base classic / arachne) and **4.77x / 4.53x** (benchy classic / arachne); the park still needs **66.9–75.5 %** cuts. Every post-pin Orca median is slower than ticket 103's pre-pin one (**+37.04 / +14.49 / +13.74 / +5.69 %**), so all four ratios fall from the archive (8.25x → 6.02x, 7.00x → 6.11x, 5.43x → 4.77x, 4.78x → 4.53x). The t105 transfer **agreed on two cells and missed two**: base arachne-on measured **26.365 s** against a predicted **32.135 s** (**−17.95 %**, tolerance 4.670 s), benchy classic-on **2.600 s** against **2.503 s** (**+3.89 %**, 0.004 s past a 0.093 s tolerance). The misses are **vintage, not the pin**: the pinned job is **byte-identical to t105's `tree_strong` arm on all four cells** (44,803,778 / 43,802,018 / 9,481,130 / 10,331,360 B, **+23.46–35.34 %** over t103's pre-pin volumes; support-interface sections 423 / 426 / 57 / 58) yet runs **1.9–9.6 % faster today**, while t103's base arachne-on baseline sits **+12.25 %** above t105's organic arm on **2** retained samples with a 4.67 s spread. Orca g-code **SHA changes every run** (the appendix embeds timing), so SHA is never a job-identity signal on the Orca side; output volume is. Take ran quiet (load 16.4 % → 3.3 %, 12/12 measured samples retained, no starvation exclusions) after a game process and a **sibling checkout's** `cargo test` e2e binary exited; `build-guests --check` exit 0. Evidence: [`evidence/t106-post-pin-scoreboard/`](evidence/t106-post-pin-scoreboard/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 75/75 claims, 9/9 negative controls rejected).
+
 - [Supports-on engine-style fairness](issues/105-supports-on-engine-style-fairness.md): **resolved (2026-11-02; measurement + human ruling — PIN Orca to `tree_strong`)** — the pin costs Orca **+39.6 / +44.4 %** wall on the two base cells (20.449 → 29.532 s; 20.514 → 28.627 s) and **+7.6 / +9.5 %** on the two benchy cells (2.422 → 2.651 s; 2.655 → 2.857 s), over 1 warmup + 4 measured per arm per cell with the arms interleaved. The job changes materially: **+23.5–35.3 %** G-code bytes and support-interface sections **230 → 423** (base classic-on) / **7 → 57** (benchy classic-on); PnP's byte volume on the base cells sits **within 3.4–5.1 %** of the `tree_strong` arm and **27.4–30.8 %** above organic, the output-level corroboration of `DEV-156`. The four supports-on ratios move by **−7.1…−30.8 %** (within-take 7.87x → 5.45x and 7.86x → 5.63x base; 5.12x → 4.68x and 4.60x → 4.28x benchy; derived transfer to the record 8.25x → 5.71x, 7.00x → 5.01x, 5.43x → 4.96x, 4.78x → 4.45x) — the best supported-on cell is still ~4.3x away and the park needs **65–73 %** cuts, so this is a fairness fix, not a route step. Implemented as the standing rig's default (`-OrcaSupportStyle tree_strong`, supports-on only, with a per-run appendix assertion; `vendor` restores the organic escape hatch); **ticket 103's supports-on Orca medians are pre-pin** and [ticket 106](issues/106-post-pin-supports-on-scoreboard.md) re-derives them. Disclosures: load peaked at 55.6 % in round 3; two benchy arachne-on organic samples were starved and excluded from pairing (4/4 base pairs positive, +5.39…+9.75 s); benchy classic-on is 3/4 positive with one load-inflated organic round; absolute ratios are mixed-vintage (today's organic differs from t103's Orca by −10.9…+5.9 %). Evidence: [`evidence/t105-tree-strong/`](evidence/t105-tree-strong/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 74/74 claims, 6/6 negative controls rejected).
 
 - [Prepass versus per-layer: what a cell's wall is made of](issues/104-prepass-vs-per-layer-attribution.md): **resolved (2026-11-02; measurement-only — no candidate, no campaign, no production edit)** — the wall is the **prepass**: **68.5–89.5 %** of every classic cell (base-off 89.5 %, base-on 89.4 %, benchy-on 77.0 %, benchy-off 68.5 %) against **7.9–20.1 %** for the per-layer pipeline, so the park's 57–82 % cut maps onto removing **77.8–93.9 % of the prepass**; deleting the whole per-layer phase leaves **3.02x / 4.51x / 4.66x / 7.60x** (never the park), deleting the whole prepass reaches **0.52x / 0.87x / 1.19x / 1.25x**, and the two biggest prepass stages together leave **1.55x–3.34x** (closest: base classic-off **1.55x**, 3 % short). `PrePass::Slice` is the map's largest measured term (**41,472 ms = 51.2 %** of base classic-off; 28.4 / 18.1 / 19.5 % elsewhere) and is bounded by t59's representation-safety verdict on the closing; `PrePass::SupportGeometry` is **40.1 %** of base classic-on and 26.2 % of benchy classic-on (with `SupportAnalysis` ~50 % of that cell) at the `DEV-156` style-substitution site. Ledger: t73's 2026-10-18 base-off split (prepass 115.0 s / per-layer **94.3 s** of a 214.5 s wall) is superseded — per-layer is now **8.7 %** — while t91's 2026-10-27 base-on prepass share **89.0 %** re-measures at **89.4 %** (same semantics); every per-layer fog entry is bounded by a **6.5–12.7 s** phase. **Walls not claimed** (external load, inflation **1.32x–1.80x**, human-approved disclosure, load fell 95.6 % → 16.8 % mid-batch); ratios of record are t103's paired quiet medians; instrumented passes clean and byte-identical to the t87 references (`3672dc7e…`, `eb4817b4…`, `292df501…`, `22200671…`); benchy repeat moves no share by more than **5.92 pp**; Arachne unmeasured; `verify.py --self-test` exits 0 checkout-only (70/70 claims, 9/9 negative controls). Evidence: [`evidence/t104-phase-split/`](evidence/t104-phase-split/FINDINGS.md).
@@ -2285,9 +2315,10 @@ Standing decisions for this effort (2026-09-22):
   was a 5x PnP branch-spacing reduction, not a match. PnP substitutes **Strong**
   for every canonically-organic input (`DEV-156`; organic port queued in
   `docs/specs/support-generation-remediation-plan.md`). The human ruled **pin
-  Orca to `tree_strong`**; the measured price and the protocol disclosure live in
-  the fairness contract above, and the post-pin scoreboard re-derivation is
-  [ticket 106](issues/106-post-pin-supports-on-scoreboard.md).
+  Orca to `tree_strong`**; the measured price, the protocol disclosure and the
+  post-pin scoreboard now live in the fairness contract above, re-derived by
+  [ticket 106](issues/106-post-pin-supports-on-scoreboard.md) to **6.02x / 6.11x
+  / 4.77x / 4.53x**.
 
 - **Tree-support planner non-clip residual (surfaced 2026-10-25 by
   [ticket 88](issues/88-supports-on-increment-attribution.md)).** The planner

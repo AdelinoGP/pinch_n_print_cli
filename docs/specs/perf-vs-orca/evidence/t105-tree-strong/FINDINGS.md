@@ -108,6 +108,20 @@ style multiplier; disclosed as derived, not measured):
 base classic-on **8.25x → 5.71x**, base arachne-on **7.00x → 5.01x**,
 benchy classic-on **5.43x → 4.96x**, benchy arachne-on **4.78x → 4.45x**.
 
+> **Superseded by measurement (2026-11-02).** [ticket 106](../../issues/106-post-pin-supports-on-scoreboard.md)
+> re-measured the pinned rig on a quiet machine and gives **6.02x / 6.11x /
+> 4.77x / 4.53x** (base classic / base arachne / benchy classic / benchy
+> arachne). The derived transfer **agreed on two cells and missed two** — base
+> arachne-on by **−17.95 %** (measured 26.365 s vs predicted 32.135 s) and benchy
+> classic-on by **+3.89 %** (2.600 s vs 2.503 s, 0.004 s past a 0.093 s
+> tolerance). Cause: the pinned job is **byte-identical to this take's
+> `tree_strong` arm on all four cells** yet ran **1.9–9.6 % faster** in the t106
+> session, and this take's own organic baseline for base arachne-on sits
+> **−10.9 %** from ticket 103's. This transfer is **retired as an absolute
+> predictor**; price a style paired same-session and name the day of any
+> absolute median. See
+> [`../t106-post-pin-scoreboard/FINDINGS.md`](../t106-post-pin-scoreboard/FINDINGS.md).
+
 ## Findings
 
 1. **The style price is real and asymmetric.** Base supports-on pays ~40–44 %

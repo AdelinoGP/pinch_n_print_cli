@@ -1,5 +1,16 @@
 # Orca re-baseline scoreboard — 2026-10-31 (both sides today-vs-today)
 
+> **Superseded for the four supports-on cells (2026-11-02).** Since the
+> [ticket 105](../../issues/105-supports-on-engine-style-fairness.md) ruling the
+> standing rig pins Orca's `support_style` to `tree_strong` on supports-on runs,
+> so this scoreboard's supports-on **Orca** arm is **pre-pin** (vendor default,
+> i.e. organic on a tree family). The post-pin medians — and the four post-pin
+> ratios — are re-derived by
+> [ticket 106](../../issues/106-post-pin-supports-on-scoreboard.md) and live in
+> [`../t106-post-pin-scoreboard/FINDINGS.md`](../t106-post-pin-scoreboard/FINDINGS.md).
+> The supports-**off** arm here is unaffected by the pin; the PnP side of both
+> arms is unchanged. Quote a supports-on row from this file only as **pre-pin**.
+
 Route: [ticket 103](../../issues/103-orca-rebaseline-repaired-rig.md). Measured
 at HEAD `c135e3e7` (the tree carries only this take's rig + evidence edits),
 with **both** standing trees rebuilt from that HEAD after the ticket-102
