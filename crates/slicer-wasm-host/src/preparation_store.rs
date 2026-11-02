@@ -152,6 +152,8 @@ pub struct PreparationOwner {
     input_reads: Vec<String>,
     metadata: Arc<Mutex<PreparedPlanMetadata>>,
     diagnostics: Arc<Mutex<PreparationDiagnosticAccounting>>,
+    /// Fuel burned by this owner's last whole-print preparation call.
+    prepare_fuel: Arc<std::sync::atomic::AtomicU64>,
 }
 impl PreparationOwner {
     /// Count an actual adapter invocation, including calls returning failure.
@@ -159,6 +161,20 @@ impl PreparationOwner {
         let mut metadata = lock(&self.metadata);
         metadata.prepare_invocations = add(metadata.prepare_invocations, 1).map_err(transport)?;
         Ok(())
+    }
+
+    /// Record the fuel this owner's preparation call consumed.
+    ///
+    /// A store without metering reports `0`, which is also the truthful answer
+    /// for a native (unmetered) preparation entry.
+    pub(crate) fn record_prepare_fuel(&self, fuel: u64) {
+        self.prepare_fuel
+            .store(fuel, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Fuel consumed by this owner's last preparation call (`0` when unmetered).
+    pub fn prepare_fuel_consumed(&self) -> u64 {
+        self.prepare_fuel.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Recover the print authority without keeping a dead store alive.
@@ -410,6 +426,7 @@ impl PreparedOwnerStore {
                 .map_or_else(Vec::new, |d| d.input_reads().to_vec()),
             metadata: Arc::clone(&metadata),
             diagnostics: Arc::clone(&diagnostics),
+            prepare_fuel: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         };
         state.owners.insert(
             id,

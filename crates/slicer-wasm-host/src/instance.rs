@@ -172,23 +172,49 @@ pub trait FuelSampleSink: 'static {
 pub fn new_store<T: FuelSampleSink>(engine: &WasmEngine, data: T) -> wasmtime::Store<T> {
     let mut store = wasmtime::Store::new(&engine.inner, data);
     if engine.profiling_enabled() {
-        store
-            .set_fuel(FUEL_BUDGET)
-            .expect("consume_fuel is enabled whenever profiling is");
-        store.call_hook(|mut cx, hook| {
-            if matches!(hook, wasmtime::CallHook::CallingHost) {
-                // Sample here rather than inside the host method: this is the
-                // last point at which the store is reachable. A mark is a host
-                // call, so this fires immediately before `profile_mark` runs and
-                // the reading it stashes is the one that mark reports.
-                let remaining = cx.get_fuel().unwrap_or(FUEL_BUDGET);
-                cx.data_mut()
-                    .record_host_entry_fuel(FUEL_BUDGET.saturating_sub(remaining));
-            }
-            Ok(())
-        });
+        install_fuel_budget(&mut store);
     }
     store
+}
+
+/// Builds a store from a raw [`wasmtime::Engine`] that may or may not meter.
+///
+/// Preparation freezes a bare engine (the component owns its `Engine`, not the
+/// [`WasmEngine`] wrapper), so it cannot consult `profiling_enabled`. wasmtime
+/// rejects `set_fuel` exactly when the engine did not enable `consume_fuel`,
+/// which is the one case that needs no budget; every metered engine gets the
+/// same budget and host-entry hook as [`new_store`].
+pub fn new_store_for_engine<T: FuelSampleSink>(
+    engine: &wasmtime::Engine,
+    data: T,
+) -> wasmtime::Store<T> {
+    let mut store = wasmtime::Store::new(engine, data);
+    if store.set_fuel(FUEL_BUDGET).is_ok() {
+        install_fuel_hook(&mut store);
+    }
+    store
+}
+
+fn install_fuel_budget<T: FuelSampleSink>(store: &mut wasmtime::Store<T>) {
+    store
+        .set_fuel(FUEL_BUDGET)
+        .expect("consume_fuel is enabled whenever profiling is");
+    install_fuel_hook(store);
+}
+
+fn install_fuel_hook<T: FuelSampleSink>(store: &mut wasmtime::Store<T>) {
+    store.call_hook(|mut cx, hook| {
+        if matches!(hook, wasmtime::CallHook::CallingHost) {
+            // Sample here rather than inside the host method: this is the
+            // last point at which the store is reachable. A mark is a host
+            // call, so this fires immediately before `profile_mark` runs and
+            // the reading it stashes is the one that mark reports.
+            let remaining = cx.get_fuel().unwrap_or(FUEL_BUDGET);
+            cx.data_mut()
+                .record_host_entry_fuel(FUEL_BUDGET.saturating_sub(remaining));
+        }
+        Ok(())
+    });
 }
 
 /// Wrapper around a [`wasmtime::Engine`] with the component model enabled.

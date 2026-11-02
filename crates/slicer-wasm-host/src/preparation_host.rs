@@ -431,7 +431,7 @@ impl super::FrozenPreparationBinding {
         // Preserve input/output resource identities. This ordinary config
         // resource is call-local and is never retained beyond the fresh store.
         let config = state.ordinary.push_config_view(config).map_err(trap)?;
-        let mut store = wasmtime::Store::new(&artifact.engine, state);
+        let mut store = crate::instance::new_store_for_engine(&artifact.engine, state);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let linker =
                 PreparedHostState::preparation_linker(&artifact.engine, &artifact.stage_id, reader)
@@ -489,6 +489,7 @@ impl super::FrozenPreparationBinding {
                 .delete(Resource::<PreparationOutputData>::new_own(output_rep))
                 .map_err(|error| trap(error.into()))?,
         };
+        owner.record_prepare_fuel(crate::dispatch::call_fuel_consumed(&store));
         drop(store);
         if matches!(
             &result,
@@ -517,6 +518,12 @@ fn boundary(error: slicer_schema::preparation::PreparationTransportError) -> cap
         E::RangeError => cap::PreparationError::RangeError,
         E::ArithmeticOverflow => cap::PreparationError::ArithmeticOverflow,
         E::PoisonedOutput => cap::PreparationError::PoisonedOutput,
+    }
+}
+
+impl crate::instance::FuelSampleSink for PreparedHostState {
+    fn record_host_entry_fuel(&mut self, consumed: u64) {
+        crate::instance::FuelSampleSink::record_host_entry_fuel(&mut self.ordinary, consumed);
     }
 }
 

@@ -387,14 +387,6 @@ impl PrintPreparationScope {
             if frozen.binding.declaration().is_none() {
                 continue;
             }
-            let participates = plan.global_layers.iter().any(|layer| {
-                index
-                    .selection_for(layer.index, &frozen.module_id)
-                    .is_some_and(|selection| selection.invoke && !selection.targets.is_empty())
-            });
-            if !participates {
-                continue;
-            }
             let module = plan
                 .per_layer_stages
                 .iter()
@@ -406,6 +398,35 @@ impl PrintPreparationScope {
                         .find(|module| module.module_id() == &frozen.module_id)
                 })
                 .ok_or_else(|| format!("selected module {} missing from plan", frozen.module_id))?;
+            // A fill-role module emits only where its claim survives the
+            // per-region holder resolution. Preparing one that holds nothing
+            // would be whole-print work with no consumer, contradicting the
+            // zero-cost intent (ADR-0074). Non-fill preparation modules keep the
+            // selection-only rule.
+            let fill_role_module = module.claims().iter().any(|claim| {
+                slicer_scheduler::validation::FILL_CLAIM_IDS.contains(&claim.as_str())
+            }) && module.claims().iter().all(|claim| {
+                claim == "claim:raft-fill"
+                    || slicer_scheduler::validation::FILL_CLAIM_IDS.contains(&claim.as_str())
+            });
+            let participates = plan.global_layers.iter().any(|layer| {
+                index
+                    .selection_for(layer.index, &frozen.module_id)
+                    .is_some_and(|selection| {
+                        selection.invoke
+                            && !selection.targets.is_empty()
+                            && (!fill_role_module
+                                || selection.targets.iter().any(|target| {
+                                    target.held_claims.iter().any(|claim| {
+                                        slicer_scheduler::validation::FILL_CLAIM_IDS
+                                            .contains(&claim.as_str())
+                                    })
+                                }))
+                    })
+            });
+            if !participates {
+                continue;
+            }
             eligible.push((
                 position,
                 Some(PreparationSelectionContext::new(
@@ -541,6 +562,7 @@ impl PrintPreparationScope {
     pub(crate) fn prepare_committed(
         &self,
         cancel_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+        instrumentation: &(dyn crate::instrumentation::PipelineInstrumentation + Sync),
     ) -> Result<(), crate::pipeline::PipelineError> {
         use slicer_wasm_host::preparation::{
             PreparationFailure, PreparationInputData, PreparationProjectionRequest,
@@ -664,6 +686,10 @@ impl PrintPreparationScope {
                     }
                 })
                 .and_then(|()| self.store.current(&owner).map(|_| ()));
+            let prepare_fuel = owner.prepare_fuel_consumed();
+            if prepare_fuel > 0 {
+                instrumentation.on_preparation_profile(&frozen.module_id, prepare_fuel);
+            }
             let elapsed = started.map(|started| started.elapsed());
             if cancelled_at_publication {
                 self.observe_owner(
@@ -1111,14 +1137,6 @@ impl LayerStageRunner for PreparedLayerStageRunner {
         if !crate::layer_executor::prepared_call_has_available_work(layer.index, &input) {
             return Ok(None);
         }
-        self.lifecycle
-            .ensure_consumers_ready()
-            .map_err(|error| LayerStageError::FatalModule {
-                stage_id: stage_id.clone(),
-                module_id: module.module_id.clone(),
-                message: error.to_string(),
-            })?;
-        self.set_last_prepared_call(true);
         let owner = self
             .lifecycle
             .owners
@@ -1127,6 +1145,21 @@ impl LayerStageRunner for PreparedLayerStageRunner {
             .iter()
             .find(|(index, _)| *index == position)
             .map(|(_, owner)| owner.clone());
+        let Some(owner) = owner else {
+            // The module declares preparation but has no committed eligible
+            // owner: the eligibility gate excludes fill-role modules whose
+            // claims resolve empty on this print. Its plain export is the
+            // correct path and emits nothing.
+            return self.plain.run_stage(stage_id, layer, module, input);
+        };
+        self.lifecycle
+            .ensure_consumers_ready()
+            .map_err(|error| LayerStageError::FatalModule {
+                stage_id: stage_id.clone(),
+                module_id: module.module_id.clone(),
+                message: error.to_string(),
+            })?;
+        self.set_last_prepared_call(true);
         let observer = self.lifecycle._observer.as_deref();
         let mut observation = ConsumptionObservation {
             observer,
@@ -1152,15 +1185,13 @@ impl LayerStageRunner for PreparedLayerStageRunner {
             module_id: module.module_id.clone(),
             message,
         };
-        if let Some(owner) = &owner {
-            let metadata = owner.metadata();
-            observation.record.pieces = metadata.pieces().to_vec();
-            observation.record.retained_bytes = metadata
-                .retained_payload_bytes()
-                .checked_add(metadata.retained_name_bytes())
-                .ok_or_else(|| fail("prepared retention accounting overflow".into()))?;
-            observation.record.transferred_bytes = metadata.returned_read_bytes();
-        }
+        let metadata = owner.metadata();
+        observation.record.pieces = metadata.pieces().to_vec();
+        observation.record.retained_bytes = metadata
+            .retained_payload_bytes()
+            .checked_add(metadata.retained_name_bytes())
+            .ok_or_else(|| fail("prepared retention accounting overflow".into()))?;
+        observation.record.transferred_bytes = metadata.returned_read_bytes();
         if let Some(observer) = observer {
             observer.on_preparation_lifecycle(&observation.record);
         }
@@ -1168,23 +1199,6 @@ impl LayerStageRunner for PreparedLayerStageRunner {
             observation.record.status = PreparationLifecycleStatus::Cancelled;
             return Ok(None);
         }
-        let committed = self
-            .lifecycle
-            .committed
-            .lock()
-            .expect("print inputs poisoned");
-        if !committed.as_ref().is_some_and(|committed| {
-            committed
-                .eligible
-                .iter()
-                .any(|(index, _)| *index == position)
-        }) {
-            return Err(fail(
-                "prepared consumer has no committed eligible owner".into(),
-            ));
-        }
-        drop(committed);
-        let owner = owner.ok_or_else(|| fail("prepared consumer owner is not Ready".into()))?;
         // A readiness probe retains no plan handle across calls. The frozen
         // adapter owns the checked active read guard for the actual invocation.
         self.lifecycle.store.current(&owner).map_err(|error| {

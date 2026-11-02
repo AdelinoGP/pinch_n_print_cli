@@ -635,7 +635,7 @@ pub(crate) fn run_pipeline_until_preparation(
                     ));
                 }
             }
-            lifecycle.prepare_committed(cancel_flag.clone())?;
+            lifecycle.prepare_committed(cancel_flag.clone(), instrumentation)?;
         }
         Ok(())
     })();

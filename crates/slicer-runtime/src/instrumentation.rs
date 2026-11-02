@@ -203,6 +203,15 @@ pub trait PipelineInstrumentation: Send + Sync {
     ) {
     }
 
+    /// Called with the fuel a whole-print preparation call consumed.
+    ///
+    /// Preparation is a print-level call with no layer and no guest profile
+    /// marks, so it has its own callback rather than a synthetic
+    /// `on_module_profile`/`on_module_end` pair. Implementors that aggregate
+    /// should publish it under a preparation-specific row. Default impl is a
+    /// no-op, matching the non-profiling path.
+    fn on_preparation_profile(&self, _module: &ModuleId, _call_fuel: u64) {}
+
     /// Called before a layer's stage loop begins. `z_mm` is the layer's
     /// nominal Z height in millimetres (matches `GlobalLayer.z: f32`).
     fn on_layer_start(&self, layer: u32, z_mm: f32);

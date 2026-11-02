@@ -78,6 +78,13 @@ fn unprofiled_options() -> SliceRunOptions {
 fn profile_on_reports_host_builtins_in_wall_clock_units() {
     let mut opts = unprofiled_options();
     opts.profile = true;
+    // Hold sparse fill with lightning so this run actually executes whole-print
+    // preparation; the default holder is rectilinear and would (correctly) skip
+    // preparation as work with no consumer.
+    opts.config_overrides.insert(
+        "sparse_fill_holder".into(),
+        slicer_ir::ConfigValue::String("lightning-infill".into()),
+    );
 
     let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
     let outcome = run_slice_with_collector(opts, Some(Arc::clone(&collector)))
@@ -160,6 +167,12 @@ fn profile_on_reports_host_builtins_in_wall_clock_units() {
         assert!(row.total_fuel > 0, "a fuel row with no fuel is not a row");
         assert!(row.calls > 0);
     }
+    assert!(
+        fuel_rows
+            .iter()
+            .any(|row| row.module_id.starts_with("preparation:")),
+        "whole-print preparation fuel must be attributed under its own row: {summary:?}"
+    );
 
     // The two denominators must stay disjoint: a wall row must never inflate
     // the fuel base, and vice versa. That is the whole reason rows are tagged.

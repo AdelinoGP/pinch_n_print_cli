@@ -317,6 +317,16 @@ impl PipelineInstrumentation for ProgressPipelineInstrumentation {
         }
     }
 
+    fn on_preparation_profile(&self, module: &ModuleId, call_fuel: u64) {
+        let Some(aggregator) = self.profile.as_ref() else {
+            return;
+        };
+        if call_fuel == 0 {
+            return;
+        }
+        aggregator.record_call(&format!("preparation:{module}"), &[], call_fuel);
+    }
+
     fn on_module_log(
         &self,
         stage: &StageId,
