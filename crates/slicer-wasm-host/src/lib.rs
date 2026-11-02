@@ -17,6 +17,7 @@ pub mod instance;
 pub mod marshal;
 pub mod pool;
 pub mod preparation;
+mod preparation_denied;
 mod preparation_store;
 /// Host-side fuel/scope profiling: mark records, the scope-stack fold, and the
 /// process-global scope-name registry (ADR-0055).

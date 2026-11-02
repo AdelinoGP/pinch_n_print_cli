@@ -44,6 +44,13 @@ pub use preparation_host::{PreparationOutputData, PreparedPieceData, PreparedPla
 pub use preparation_input::{CommittedPreparationInputs, PreparationSelectionContext};
 pub use preparation_native::{freeze_native, NativePreparationArtifact, PreparationInputData};
 
+// The ordinary-dispatch stub registers these two interfaces on
+// `Linker<HostExecutionContext>` and implements their host traits there.
+pub(crate) use preparation_bindings::perimeters::slicer::layer_preparation::{
+    plan_access, preparation_types,
+};
+pub(crate) use preparation_host::PreparationProjectionOutputData;
+
 pub use crate::preparation_store::{
     PreparationOwner, PreparationTransaction, PreparedOwnerStore, PreparedPieceHandle,
     PreparedPlanHandle, PreparedPlanMetadata, StagedPreparation,

@@ -114,6 +114,20 @@ impl LayerCallState for HostExecutionContext {
     ) -> wasmtime::Result<wasmtime::component::Linker<Self>> {
         let mut linker = wasmtime::component::Linker::new(engine);
         add_wasi_to_linker(&mut linker);
+        // A preparation-capable module's single artifact imports these two
+        // interfaces even when the call is an ordinary stage export, and
+        // wasmtime resolves every import at instantiation. Ordinary dispatch has
+        // no preparation owner or grants, so the stub in `preparation_denied`
+        // denies every call; a successful slice proves the ordinary export never
+        // reaches it.
+        crate::preparation::preparation_types::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+            &mut linker,
+            |ctx| ctx,
+        )?;
+        crate::preparation::plan_access::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+            &mut linker,
+            |ctx| ctx,
+        )?;
         macro_rules! register {
             ($world:ident) => {
                 host::$world::LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
@@ -3963,7 +3977,7 @@ pub fn last_batch_calls_for_test() -> Vec<(String, u32)> {
 /// Returns `0` when the store's engine does not meter fuel — `get_fuel` errors
 /// in that case, and "no sample" is the honest answer, matching how
 /// `LAST_WASM_MEM_SAMPLE` reports `(0, 0)` for a component with no memory.
-fn call_fuel_consumed<T>(store: &wasmtime::Store<T>) -> u64 {
+pub(crate) fn call_fuel_consumed<T>(store: &wasmtime::Store<T>) -> u64 {
     let remaining = store.get_fuel().unwrap_or(crate::instance::FUEL_BUDGET);
     crate::instance::FUEL_BUDGET.saturating_sub(remaining)
 }
