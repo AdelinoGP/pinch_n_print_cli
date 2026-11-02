@@ -251,6 +251,18 @@ fn build_region_map(object_id: &str, layer_count: u32) -> Arc<RegionMapIR> {
             },
             RegionPlan::default(),
         );
+        // Declare the material paint axis this fixture asserts. The capability
+        // gate reads only the semantic names; the plan resolves to the default
+        // config, so the value is an axis marker, not a tool selection.
+        entries.insert(
+            RegionKey {
+                global_layer_index: i,
+                object_id: object_id.to_string(),
+                region_id: 0,
+                variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(0))],
+            },
+            RegionPlan::default(),
+        );
     }
     Arc::new(RegionMapIR {
         schema_version: CURRENT_REGION_MAP_IR_SCHEMA_VERSION,

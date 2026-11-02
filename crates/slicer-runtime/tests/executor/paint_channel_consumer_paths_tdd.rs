@@ -167,6 +167,25 @@ fn build_region_map(object_id: &str, layer_count: u32) -> Arc<RegionMapIR> {
             },
             RegionPlan::default(),
         );
+        // This file asserts both channels; declare both paint axes (names only).
+        entries.insert(
+            RegionKey {
+                global_layer_index: i,
+                object_id: object_id.to_string(),
+                region_id: 0,
+                variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(0))],
+            },
+            RegionPlan::default(),
+        );
+        entries.insert(
+            RegionKey {
+                global_layer_index: i,
+                object_id: object_id.to_string(),
+                region_id: 0,
+                variant_chain: vec![("fuzzy_skin".to_string(), PaintValue::Flag(true))],
+            },
+            RegionPlan::default(),
+        );
     }
     Arc::new(RegionMapIR {
         schema_version: CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
