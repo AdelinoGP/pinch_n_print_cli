@@ -539,8 +539,18 @@ fn external_override_dual_leg() {
         }
         assert_disposed(&events, PATH_ID);
     }
-    let native_identity = &arbitration_records[0][0].artifact_identity;
-    let wasm_identity = &arbitration_records[1][0].artifact_identity;
+    let native_identity = arbitration_records[0]
+        .iter()
+        .find(|r| r.module_id.as_str() == PATH_ID)
+        .expect("native path lifecycle")
+        .artifact_identity
+        .clone();
+    let wasm_identity = arbitration_records[1]
+        .iter()
+        .find(|r| r.module_id.as_str() == PATH_ID)
+        .expect("wasm path lifecycle")
+        .artifact_identity
+        .clone();
     assert!(native_identity.starts_with("native:"));
     assert!(wasm_identity.starts_with("wasm:"));
     assert_ne!(native_identity, wasm_identity);
@@ -548,7 +558,7 @@ fn external_override_dual_leg() {
         (&arbitration_records[0], wasm_identity),
         (&arbitration_records[1], native_identity),
     ] {
-        assert!(!winning.iter().any(|record| &record.artifact_identity == losing), "losing artifact must have no lifecycle, preparation or ordinary-consumption evidence: {losing}");
+        assert!(!winning.iter().any(|record| record.artifact_identity == losing), "losing artifact must have no lifecycle, preparation or ordinary-consumption evidence: {losing}");
         assert!(
             winning
                 .iter()
@@ -1155,7 +1165,11 @@ fn corpus_stage_drivers(external: bool) -> std::collections::BTreeSet<String> {
             let text = std::fs::read_to_string(path.join(name).with_extension("toml"))
                 .expect("core manifest");
             let value: toml::Value = text.parse().expect("core manifest syntax");
-            value["stage"]["id"].as_str() != Some(stage)
+            // This fixture registers only its own prepared native entries. A
+            // core module that declares `[prepiration]` would be frozen at
+            // startup and rejected as a plain artifact, so drop those from the
+            // directory set as well as the corpus stage's own modules.
+            value["stage"]["id"].as_str() != Some(stage) && value.get("preparation").is_none()
         });
         Arc::make_mut(&mut options.mesh).objects[0].id = "step9-source".into();
         if stage == "Layer::Perimeters" {
@@ -1203,6 +1217,16 @@ fn corpus_stage_drivers(external: bool) -> std::collections::BTreeSet<String> {
                 .insert("interface_raft_layers".into(), ConfigValue::Int(0));
         }
         let extensions = || {
+            // Integrated modules that declare preparation need their generated
+            // prepared pair at freeze time; start from the production registry
+            // (lightning) and add this fixture's own prepared entries.
+            let mut prepared_native = slicer_integrated_modules::prepared_native_entries();
+            prepared_native.push((
+                PATH_ID.into(),
+                PreparationLifecycleGuest::__slicer_prepared_native_entry(),
+                PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+            ));
+            prepared_native.push((id.into(), entry, schema));
             SliceRuntimeExtensions::new(
                 vec![
                     IntegratedModuleRegistration {
@@ -1214,14 +1238,7 @@ fn corpus_stage_drivers(external: bool) -> std::collections::BTreeSet<String> {
                         origin_label: "step9-corpus",
                     },
                 ],
-                vec![
-                    (
-                        PATH_ID.into(),
-                        PreparationLifecycleGuest::__slicer_prepared_native_entry(),
-                        PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
-                    ),
-                    (id.into(), entry, schema),
-                ],
+                prepared_native,
                 vec![],
                 Some(fixture.trace.clone()),
             )
@@ -2577,7 +2594,11 @@ fn truthful_lifecycle_metadata() {
         let capture = run_slice_preparation_capture(opts, fixture.extensions(vec![]))
             .expect("observed capture");
         assert!(!capture.lifecycle.is_empty());
-        for record in &capture.lifecycle {
+        for record in capture
+            .lifecycle
+            .iter()
+            .filter(|record| record.module_id.as_str() == PATH_ID)
+        {
             assert_eq!(record.module_version, "0.1.0");
             assert!(!record.artifact_identity.is_empty());
             assert_eq!(record.consumer_stage.to_string(), "Layer::PathOptimization");
