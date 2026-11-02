@@ -646,10 +646,11 @@ implicit consequence of this design decision.
 Late PrePass contains useful shell, bridge, paint, and region information. Actual
 wall-inset `sparse_infill_area` is established later by
 `sync_perimeter_infill_areas_into_slice`
-(`crates/slicer-runtime/src/region_partition.rs`). The current
-`generate_lightning_trees` (`crates/slicer-core/src/algos/lightning/mod.rs`) uses
-region polygons and print-wide configuration; that is an implementation
-limitation, not a complete definition of available PrePass information.
+(`crates/slicer-runtime/src/region_partition.rs`). The current module-owned
+`generate_lightning_trees`
+(`modules/core-modules/lightning-infill/src/kernel/mod.rs`) uses region polygons
+and print-wide configuration; that is an implementation limitation, not a
+complete definition of available PrePass information.
 
 Planning from PrePass geometry and subsequently applying/clipping against the
 current fill area is a candidate design. Its correctness has not been established
@@ -675,9 +676,9 @@ location, not a portable fixture dependency; implementation must establish a
 reproducible oracle with canonical file/function provenance rather than requiring
 that machine-specific path.
 
-The pre-migration driver grouped by `(object_id, region_id)` and paired islands
-across layers by polygon-vector position in `generate_lightning_trees`
-(`crates/slicer-core/src/algos/lightning/mod.rs`, retired by packet 08).
+The pre-migration host driver (since deleted by packet 08) grouped by
+`(object_id, region_id)` and paired islands across layers by polygon-vector
+position.
 Canonical `generateTrees` collects all eligible outlines for a layer instead.
 The 2026-10-25 fidelity pass removed the positional pairing: the module-owned
 `generate_lightning_trees` now groups by region identity only and flattens every
@@ -685,7 +686,7 @@ The 2026-10-25 fidelity pass removed the positional pairing: the module-owned
 layer. Cross-region grouping remains a PnP ownership choice (the plan is
 per-region), not a canonical claim.
 
-The lightning module is currently hidden behind `host-algos` in
+The pre-migration host lightning module was hidden behind `host-algos` in
 `crates/slicer-core/src/algos/mod.rs`; that feature enables `rayon` and
 `boostvoronoi` in `crates/slicer-core/Cargo.toml`. The lightning files directly use
 polygon operations, geometry helpers, and IR types. A module-owned portable

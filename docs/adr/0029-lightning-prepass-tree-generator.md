@@ -140,14 +140,18 @@ on infill sources. The standing identity contract is full-source variant-chain
 identity with versioned specialist query packages —
 [ADR-0073](./0073-full-source-variant-chain-identity-and-versioned-specialist-queries.md).
 
-**Query-location fact, as of that packet.** Specialist lightning access now
-serves from the versioned package `slicer:lightning-queries@1.0.0` (interface
-`lightning-queries`, resource `lightning-query-view`, canonical WIT at
-`crates/slicer-schema/wit/deps/lightning-queries/lightning-queries.wit`), where
-`lightning-tree-segments` is keyed by the full origin
-`(object-id, region-id, variant-chain)`; the shared view carries core accessors
-only (ADR-0073). This records where the standing contract lives; it changes no
-lightning algorithm or contract.
+**Query-location fact, superseded 2026-10-20.** The
+`slicer:lightning-queries@1.0.0` package named here was removed with the host
+producer by packet `layer-module-preparation_08_lightning-migration`
+([ADR-0074](./0074-lightning-migration-on-recorded-equivalence.md)). Lightning
+plan access is now module-owned: the prepared plan travels as the module's own
+`lightning-layer-*` pieces and is decoded by
+`modules/core-modules/lightning-infill/src/private_plan.rs`; diagnostic scene
+access is `modules/core-modules/lightning-infill/src/projection.rs`.
+`slicer:support-queries`
+(`crates/slicer-schema/wit/deps/support-queries/support-queries.wit`) is the
+surviving specialist query package. This records where the standing contract
+lives; it changes no lightning algorithm.
 
 **Producer placement unchanged.** This clarification moves nothing: tree
 generation remains the host-side `PrePass::LightningTreeGen` producer over the
