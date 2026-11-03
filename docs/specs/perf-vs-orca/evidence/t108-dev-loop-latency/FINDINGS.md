@@ -165,11 +165,38 @@ They were tried, not read. On this machine (`x86_64-pc-windows-msvc`, MSVC
   the engine crate. A tool whose own build costs more than the loop it
   accelerates is not a lever for this repository.
 
-**No blaze build or test of this repository was achieved, and no blaze speedup is
-claimed.** This is an availability finding with measurements behind it, not a
-price. It returns only if #1591 lands f16/f128 codegen and proc-macro support, or
-if the loop moves to a supported host — and then as its own eligibility and price
-take.
+**No blaze build or test of this repository was achieved on Windows, and the
+Linux build is slower than cargo on it. This is not a price and no blaze speedup
+is claimed.**
+
+### WSL2: it runs, and it loses to cargo on this repository
+
+The released Linux build (`v0.20261030.1`, toolchain downloaded in 35 s) was run
+in **Ubuntu 24.04 on WSL2** (12 logical CPUs, 15 GiB) against `cargo 1.96.0` in
+the same distro. A bare WSL image needs `build-essential` first — blaze's
+build-script link shells out to `cc` and stops with "No such file or directory"
+without it.
+
+| crate | path | cargo | blaze |
+| --- | --- | ---: | ---: |
+| `hello` (serde + serde_json) | cold build | 18,622 ms | 69,728 ms |
+| `hello` | edit → build | 248–779 ms | **23–33 ms** |
+| `slicer-helpers` (this repo) | cold build | **54,123 ms** | 193,077 ms |
+| `slicer-helpers` | edit → build (crate root) | **949–1,132 ms** | 12,410–12,787 ms |
+| `slicer-helpers` | edit → build (module file) | **1,429–3,344 ms** | 11,885–103,953 ms |
+| `slicer-helpers` | edit → build (function body) | **2,443–3,452 ms** | 15,763–24,748 ms |
+| `slicer-helpers` | build + run tests | **49,265 ms** | 312,197 ms |
+
+Blaze's 23 ms edit is real — on a twenty-crate toy. On this workspace the same
+warm path costs **5–12x cargo's** even for a function-body edit, cold build is
+**3.6x** slower, and `blaze test` is **6.3x** slower. All 18 `slicer-helpers`
+tests pass under both tools, so this is a speed verdict, not a correctness one.
+
+The reason is visible in blaze's own summary of the cold build: "build scripts
+2m16s (8.1/12 cores), workspace 33.3s (1.6/12), check 29 crates 22.7s (2.0/12)".
+The daemon re-checks the workspace per edit and parallelises poorly, so the win
+inverts as the dependency graph grows. That is the same shape the map sees in
+every other route: the fixed cost dominates.
 
 ## Not priced (fog)
 
@@ -202,5 +229,5 @@ take.
   feature.
 
 Evidence: `summary.json`, `verify.py` and `REPRODUCE.md` in this directory
-(checkout-only verify exits 0 with 28/28 claims, `--self-test` detects 11/11
+(checkout-only verify exits 0 with 33/33 claims, `--self-test` detects 12/12
 negative controls).

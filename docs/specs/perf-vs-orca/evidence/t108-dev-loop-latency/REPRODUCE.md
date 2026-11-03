@@ -70,3 +70,29 @@ cargo test -p xtask preflights_overlap -- --nocapture
 The test records each closure's run interval and asserts the three intervals
 overlap while each closure's own exit code survives the join. A sequential
 implementation fails the overlap assertion rather than passing slowly.
+
+## 5. Re-run the blaze comparison (WSL2)
+
+```bash
+# inside Ubuntu 24.04 on WSL2, with 12 CPUs and ~15 GiB
+sudo apt-get install -y build-essential          # blaze links build scripts with `cc`
+mkdir -p ~/blaze && cd ~/blaze
+curl -fsSL -O https://github.com/indexable-inc/blaze/releases/download/v0.20261030.1/blaze-v0.20261030.1-x86_64-unknown-linux-gnu.tar.gz
+tar xzf blaze-v0.20261030.1-x86_64-unknown-linux-gnu.tar.gz
+export PATH=$HOME/blaze/blaze-v0.20261030.1-x86_64-unknown-linux-gnu:$PATH
+blaze toolchain                                   # 35 s, 153 MB
+
+# baseline
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.96.0
+
+# two checkouts of this repository, one per tool
+git clone <repo> ~/pnp        && cd ~/pnp        && cargo build -p slicer-helpers
+git clone <repo> ~/pnp-blaze  && cd ~/pnp-blaze  && blaze build -p slicer-helpers
+```
+
+Then apply the same edit to both trees and rebuild: a comment at the crate root,
+a comment in `crates/slicer-helpers/src/decimate.rs`, and the body-only edit
+`// Check for empty mesh.` → `// Check for an empty mesh.` inside `decimate`.
+The committed samples are those three shapes, two or three iterations each,
+plus one `cargo test -p slicer-helpers` / `blaze test -p slicer-helpers` pair.
+

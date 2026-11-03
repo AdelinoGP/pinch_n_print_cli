@@ -134,7 +134,34 @@
         "serde_crate_build_second_attempt_outcome": "refused: 241 std instances need the LLVM backend",
         "llvm_rebuild_abandoned_after_s": 5520
       },
-      "speedup_claim": "none — no blaze build or test of this repository was achieved",
+      "speedup_claim": "none on this repository — no Windows build of it was achieved, and the Linux build is slower than cargo on it (see wsl2)",
+      "wsl2": {
+        "distro": "Ubuntu 24.04 on WSL2, 12 logical CPUs, 15 GiB",
+        "blaze": "released v0.20261030.1 x86_64-unknown-linux-gnu, toolchain nightly-2026-10-27 (downloaded in 35 s)",
+        "baseline": "cargo 1.96.0 (rustup, same distro)",
+        "prerequisite": "build-essential (gcc/cc); a bare Ubuntu WSL image fails blaze's build-script link with 'cc: No such file or directory'",
+        "hello_crate": {
+          "cargo_cold_ms": 18622,
+          "cargo_edits_ms": [779, 653, 248],
+          "blaze_cold_ms": 69728,
+          "blaze_edits_ms": [2897, 33, 23]
+        },
+        "repo_slicer_helpers": {
+          "cargo_fetch_ms": 27650,
+          "cargo_cold_ms": 54123,
+          "cargo_edits_lib_ms": [1132, 1028, 949],
+          "blaze_cold_ms": 193077,
+          "blaze_edits_lib_ms": [12410, 12787, 12455],
+          "cargo_edits_module_ms": [3344, 1429],
+          "blaze_edits_module_ms": [103953, 11885],
+          "cargo_edits_body_ms": [3452, 2443],
+          "blaze_edits_body_ms": [24748, 15763],
+          "cargo_test_ms": 49265,
+          "blaze_test_ms": 312197,
+          "tests": "all 18 tests pass under both tools"
+        },
+        "verdict": "blaze works on Linux but is slower than cargo on this repository in all three measured paths: cold build 3.6x, warm edit 5-12x, test 6.3x. Its win is real only on the tiny crate (23-33 ms edits vs cargo's 248-779 ms)."
+      },
       "ci_note": "The repository's CI runs ubuntu-latest, where blaze is supported, but it ships its own pinned Rust nightly while this repo pins 1.96.0 and runs a controlled-perimeter accelerated build around exact artifact identity; upstream itself says 'your toolchain and CI stay the final word'. That is reasoning from the docs, not a measurement."
     }
   ],

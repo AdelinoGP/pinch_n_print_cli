@@ -151,8 +151,21 @@ with `os error 4390`), and `blaze build` of a `serde` + `serde_json` binary is
 refused: **241 std instances "Std is compiled at opt-level O3, which needs LLVM"**,
 and the author's LLVM build stops at `f16`/`f128` build-script codegen on Windows
 x64. The LLVM-enabled rebuild was abandoned after **92 minutes**. No blaze build
-or test of this repository was achieved and **no blaze speedup is claimed**; this
-is an availability finding with measurements behind it.
+or test of this repository was achieved on Windows.
+
+**On WSL2 it runs — and loses to cargo on this repository.** The released Linux
+build worked on Ubuntu 24.04 under WSL2 (once `build-essential` was installed;
+without `cc` its build-script link fails). Against `cargo 1.96.0` in the same
+distro, on a toy `serde` + `serde_json` crate blaze's warm edit is **23–33 ms**
+against cargo's 248–779 ms — the headline is real. On `slicer-helpers` in this
+workspace the same paths invert: cold build **193 s vs 54 s**, warm edit
+**12.4 s vs 0.95–1.13 s** (crate root), **11.9 s vs 1.4–3.3 s** (module file),
+**15.8 s vs 2.4–3.5 s** (function body), and `blaze test` **312 s vs 49 s**. All
+18 tests pass under both, so this is speed, not correctness. Blaze's own cold-build
+summary shows why: "build scripts 2m16s (8.1/12 cores), workspace 33.3 s (1.6/12),
+check 29 crates 22.7 s (2.0/12)" — the daemon re-checks the workspace per edit and
+parallelises poorly. **No blaze speedup is claimed for this repository**; this is
+a measured "not a lever" result.
 
 **Not priced, named as fog:** the cold-workspace effect of `debug = 1/0`, linker
 substitution on a cold full build, `cargo-nextest` on the five buckets,
@@ -174,4 +187,4 @@ debug-override comparison is one sample per arm.
 
 Evidence: [`evidence/t108-dev-loop-latency/`](../evidence/t108-dev-loop-latency/FINDINGS.md)
 (`summary.json`, `verify.py`, `REPRODUCE.md`; checkout-only verify exits 0 with
-28/28 claims, `--self-test` detects 11/11 negative controls).
+33/33 claims, `--self-test` detects 12/12 negative controls).

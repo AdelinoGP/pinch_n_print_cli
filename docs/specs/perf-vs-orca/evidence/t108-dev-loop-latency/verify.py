@@ -209,6 +209,44 @@ def check(b: dict) -> list[tuple[str, bool, str]]:
         and "indexable-inc/blaze/pull/1591" in ruled_out[0]["source"],
         f"{ruled_out[0]['measured']['build_without_llvm_s'] if ruled_out else ''}",
     )
+    # The WSL2 arm is where blaze actually ran on this repository, and it lost
+    # every path; the verifier recomputes each comparison from the samples.
+    wsl = ruled_out[0].get("wsl2", {}) if ruled_out else {}
+    repo = wsl.get("repo_slicer_helpers", {})
+    hello = wsl.get("hello_crate", {})
+    add(
+        "the WSL2 arm is recorded with both tools and both crates",
+        bool(wsl)
+        and bool(repo)
+        and bool(hello)
+        and "Ubuntu 24.04 on WSL2" in wsl["distro"],
+        wsl.get("distro", ""),
+    )
+    if repo and hello:
+        add(
+            "WSL2: blaze is slower than cargo on this repository's cold build",
+            repo["blaze_cold_ms"] > repo["cargo_cold_ms"] * 2,
+            f"{repo['blaze_cold_ms']} vs {repo['cargo_cold_ms']} ms",
+        )
+        add(
+            "WSL2: blaze is slower than cargo on every warm-edit sample of this repository",
+            min(repo["blaze_edits_lib_ms"]) > max(repo["cargo_edits_lib_ms"])
+            and min(repo["blaze_edits_module_ms"]) > max(repo["cargo_edits_module_ms"])
+            and min(repo["blaze_edits_body_ms"]) > max(repo["cargo_edits_body_ms"]),
+            f"lib {min(repo['blaze_edits_lib_ms'])} vs {max(repo['cargo_edits_lib_ms'])}, "
+            f"module {min(repo['blaze_edits_module_ms'])} vs {max(repo['cargo_edits_module_ms'])}, "
+            f"body {min(repo['blaze_edits_body_ms'])} vs {max(repo['cargo_edits_body_ms'])} ms",
+        )
+        add(
+            "WSL2: blaze is slower than cargo on the package's tests",
+            repo["blaze_test_ms"] > repo["cargo_test_ms"] * 2,
+            f"{repo['blaze_test_ms']} vs {repo['cargo_test_ms']} ms",
+        )
+        add(
+            "WSL2: blaze's edit win is recorded only for the tiny crate",
+            min(hello["blaze_edits_ms"]) < min(hello["cargo_edits_ms"]),
+            f"{min(hello['blaze_edits_ms'])} vs {min(hello['cargo_edits_ms'])} ms",
+        )
 
     # Adjacent harness defects are part of the take's output.
     add(
@@ -292,6 +330,16 @@ def main() -> int:
             (
                 "blaze refiled as unpriced instead of ineligible",
                 lambda b: b["ruled_out"][0].__setitem__("verdict", "unpriced"),
+            ),
+            (
+                "blaze recorded as faster than cargo on this repository",
+                lambda b: b["ruled_out"][0]["wsl2"]["repo_slicer_helpers"].update(
+                    blaze_cold_ms=1,
+                    blaze_test_ms=1,
+                    blaze_edits_lib_ms=[1, 1, 1],
+                    blaze_edits_module_ms=[1, 1],
+                    blaze_edits_body_ms=[1, 1],
+                ),
             ),
             (
                 "adjacent findings emptied",
