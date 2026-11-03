@@ -125,26 +125,51 @@ which reads as green. The filter name in `AGENTS.md` has drifted.
 
 Both are outside this ticket's question and are recorded for their own take.
 
-## Ruled out on platform: blaze (ra-jit)
+## blaze (ra-jit): the Windows spike, and where it stops
 
 The discussion's headline experimental option is **blaze** — rust-analyzer's
-query database plus a Cranelift code generator, holding the project compiled in
-memory so an edit becomes a function-level splice instead of a rebuild. It is
-**not a lever on this host**. Upstream's README ("Good to know") says it supports
-macOS on Apple silicon and Linux only — "Windows has no installer, and v2 has not
-been run there" — and the take's measured host is `x86_64-pc-windows-msvc`. No
-build or test wall reported here can move because of it.
+query database plus a code generator, holding the project compiled in memory so
+an edit becomes a function-level splice. Upstream's released binaries are
+macOS-arm64 and Linux only. Two open PRs claim Windows: **#1527** (a Windows
+x86-64 MSVC release archive) and **#1591** (a v2 bring-up: builds, daemon loads a
+workspace, compiles std, stops at build scripts).
 
-This is an **eligibility** finding, not a price. Nothing in this take measures
-blaze's speed, and none of the upstream multiples (10x macOS arm64, 24x Linux
-aarch64, 11x Linux x86-64) are claimed or relied on.
+They were tried, not read. On this machine (`x86_64-pc-windows-msvc`, MSVC
+14.51, 12 logical CPUs):
 
-Its CI story is separate and also does not land here: the repository's CI runs
-`ubuntu-latest`, where the tool exists, but blaze ships its own pinned Rust
-nightly while this repo pins 1.96.0 and runs a controlled-perimeter accelerated
-build around exact artifact identity — and upstream itself says "your toolchain
-and CI stay the final word". That is reasoning from the vendor docs, not a
-measurement, and it is why blaze is not filed as an unpriced CI lever.
+- **#1527 has nothing to install.** It changes `build_release.py`, `release.yaml`
+  and a promote job; its own description calls `install.ps1` "the next change",
+  it says the workflow itself was never run, and no Windows `blaze` archive
+  exists in either repository's releases or Actions artifacts. `crates.io`'s
+  `cargo-blaze` 0.0.1 is a 52-line launcher shim.
+- **#1591 builds here.** `cargo +nightly-2026-10-27 build -p blaze-engine --bin
+  blaze --release` against the pinned LLVM 23.1.4 Windows archive
+  (`…-6f971a56baedd598`) finished in **57m34s**, and `blaze 0.0.0-dev (29382ec)`
+  runs and starts a daemon. The MSVC 14.5x-vs-14.4x concern (upstream #1387) did
+  not block the build.
+- **Two port bugs sit between "builds" and "usable".** The first daemon start
+  was refused by the store's `Access::Alone` check: the default
+  `%USERPROFILE%\.cache` ACL on this machine carries an inherited package-SID
+  ACE (`S-1-15-3-…`) with Full control. After tightening the ACL with `icacls`,
+  every *subsequent* start failed with `tools\rustc.exe: The file or directory is
+  not a reparse point. (os error 4390)` — `stand_ins` recognises its stand-ins
+  with `read_link` but creates them with `hard_link` on Windows. Deleting the two
+  stand-ins lets the next start through.
+- **It cannot compile a crate with a build script.** `blaze build` of a trivial
+  `serde` + `serde_json` binary stalled once (watchdog: 60 s with no span
+  closed, inside "std library"), then refused in 25.3 s with **241 std instances
+  "Std is compiled at opt-level O3, which needs LLVM, and this blaze was built
+  without it (`--features llvm`)"**. The PR author's own LLVM build then stops at
+  `unsupported: f16, f16b, f128 and ppcf128` for Windows x64 build-script codegen.
+- **The LLVM-enabled rebuild was abandoned after 92 minutes**, still compiling
+  the engine crate. A tool whose own build costs more than the loop it
+  accelerates is not a lever for this repository.
+
+**No blaze build or test of this repository was achieved, and no blaze speedup is
+claimed.** This is an availability finding with measurements behind it, not a
+price. It returns only if #1591 lands f16/f128 codegen and proc-macro support, or
+if the loop moves to a supported host — and then as its own eligibility and price
+take.
 
 ## Not priced (fog)
 

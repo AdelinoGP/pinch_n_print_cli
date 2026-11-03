@@ -193,19 +193,21 @@ def check(b: dict) -> list[tuple[str, bool, str]]:
     # as ineligible on this host, not left unmentioned or filed as "unpriced".
     ruled_out = b.get("ruled_out", [])
     add(
-        "blaze is recorded, and recorded as ineligible on this host rather than unpriced",
+        "blaze is recorded, and recorded as a spike result rather than an unpriced lever",
         len(ruled_out) == 1
         and "blaze" in ruled_out[0]["lever"].lower()
-        and ruled_out[0]["verdict"] == "ineligible on this host"
-        and "Windows has no installer" in ruled_out[0]["reason"],
-        f"{[(r['lever'], r['verdict']) for r in ruled_out]}",
+        and ruled_out[0]["verdict"].startswith("not usable on this host")
+        and len(ruled_out[0]["why_not"]) >= 4,
+        f"{[(r['lever'][:20], r['verdict']) for r in ruled_out]}",
     )
     add(
-        "the blaze entry keeps its upstream source and does not claim a measured speedup",
+        "the blaze spike keeps its measurements, its two port bugs and claims no speedup",
         len(ruled_out) == 1
-        and "indexable-inc/blaze" in ruled_out[0]["source"]
-        and "cannot change" in ruled_out[0]["reason"],
-        ruled_out[0]["source"] if ruled_out else "",
+        and ruled_out[0]["measured"]["build_without_llvm_s"] == 3454
+        and len(ruled_out[0]["port_bugs_hit"]) == 2
+        and ruled_out[0]["speedup_claim"].startswith("none")
+        and "indexable-inc/blaze/pull/1591" in ruled_out[0]["source"],
+        f"{ruled_out[0]['measured']['build_without_llvm_s'] if ruled_out else ''}",
     )
 
     # Adjacent harness defects are part of the take's output.

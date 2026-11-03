@@ -111,11 +111,31 @@
   ],
   "ruled_out": [
     {
-      "lever": "blaze (formerly ra-jit) — rust-analyzer + Cranelift incremental build daemon",
-      "verdict": "ineligible on this host",
-      "reason": "Upstream states it supports macOS on Apple silicon and Linux only: 'Windows has no installer, and v2 has not been run there.' This take's measured host is x86_64-pc-windows-msvc, so the tool cannot change any build or test wall reported here. It is not a priced-and-rejected lever.",
-      "source": "indexable-inc/blaze README, 'Good to know' (https://github.com/indexable-inc/blaze)",
-      "ci_note": "The repository's CI runs ubuntu-latest, where the tool exists, but it ships its own pinned Rust nightly and upstream itself says 'your toolchain and CI stay the final word'. It could not act as the gate compiler for a repo pinned to 1.96.0 with a controlled-perimeter accelerated build; that is reasoning from the vendor docs, not a measurement."
+      "lever": "blaze (formerly ra-jit) — rust-analyzer + Cranelift incremental build daemon, Windows bring-up",
+      "verdict": "not usable on this host today (spike run 2026-11-02)",
+      "source": "https://github.com/indexable-inc/blaze, https://github.com/indexable-inc/blaze/pull/1527, https://github.com/indexable-inc/blaze/pull/1591",
+      "why_not": [
+        "No released Windows binary. The 2026-10-30 upstream release ships darwin-aarch64 and linux x86_64/aarch64 only; PR #1527 is release packaging with no published artifact and its installer is a separate unlanded change; crates.io `cargo-blaze` 0.0.1 is a 52-line launcher shim.",
+        "PR #1591 does build from source on this machine — 57m34s of cargo with MSVC 14.51 against the pinned LLVM 23.1.4 archive (…-6f971a56baedd598) — and its daemon starts and listens, so the Windows port is real work, not a stub.",
+        "But `blaze build` of a two-dependency crate (serde + serde_json) cannot compile the dependency's build script: 241 instances are refused with 'Std is compiled at opt-level O3, which needs LLVM, and this blaze was built without it (--features llvm)'. The PR author's LLVM build then stops at 'unsupported: f16, f16b, f128 and ppcf128' for Windows x64 build-script codegen.",
+        "The LLVM-enabled rebuild (--features llvm) was abandoned after 92 minutes on this 12-core machine, still on the engine crate. A tool whose own build costs more than the loop it accelerates is not a lever for this repository."
+      ],
+      "port_bugs_hit": [
+        "`stand_ins` recognises its own stand-ins with `std::fs::read_link`, but on Windows it creates them with `std::fs::hard_link`; every daemon start after the first fails with `tools\\rustc.exe: The file or directory is not a reparse point. (os error 4390)`. Deleting `tools/rustc.exe` and `tools/rustdoc.exe` lets the next start through.",
+        "The store's `Access::Alone` check refuses the default `%USERPROFILE%\\.cache` ACL on this machine — an inherited package-SID ACE (S-1-15-3-…) with Full control — so the daemon fails closed; the client reports only that the daemon did not answer. `icacls` on the cache root with inherited ACEs removed and only the user, SYSTEM and Administrators granted makes it start."
+      ],
+      "measured": {
+        "build_without_llvm_s": 3454,
+        "daemon_first_start": "refused: store ACL",
+        "daemon_after_icacls": "listening on /C:/Users/agpen/.cache/blaze/v2.sock",
+        "serde_crate_build_first_attempt_s": 60.1,
+        "serde_crate_build_first_attempt_outcome": "watchdog: no span closed for 60 s, in 'std library'",
+        "serde_crate_build_second_attempt_s": 25.3,
+        "serde_crate_build_second_attempt_outcome": "refused: 241 std instances need the LLVM backend",
+        "llvm_rebuild_abandoned_after_s": 5520
+      },
+      "speedup_claim": "none — no blaze build or test of this repository was achieved",
+      "ci_note": "The repository's CI runs ubuntu-latest, where blaze is supported, but it ships its own pinned Rust nightly while this repo pins 1.96.0 and runs a controlled-perimeter accelerated build around exact artifact identity; upstream itself says 'your toolchain and CI stay the final word'. That is reasoning from the docs, not a measurement."
     }
   ],
   "not_priced": [

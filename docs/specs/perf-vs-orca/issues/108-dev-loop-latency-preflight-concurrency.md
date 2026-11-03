@@ -140,18 +140,19 @@ cost comes from, and no gate-level change touches it.
   bucket (`0 passed; 314 filtered out`) — the documented command builds the
   bucket and runs nothing, which reads as green.
 
-**Ruled out on platform: blaze (ra-jit).** The discussion's headline experimental
-option — rust-analyzer's query database plus a Cranelift code generator, holding
-the project compiled in memory — **cannot run on this host**. Upstream's README
-("Good to know") supports macOS on Apple silicon and Linux only: "Windows has no
-installer, and v2 has not been run there." The take's host is
-`x86_64-pc-windows-msvc`, so no build or test wall reported here can move because
-of it. This is an eligibility finding, not a price: no blaze speedup is measured
-or claimed. Its CI half also does not land here — the repo's CI is Ubuntu, where
-the tool exists, but blaze ships its own pinned Rust nightly against this repo's
-pinned 1.96.0 and controlled-perimeter accelerated build, and upstream itself says
-"your toolchain and CI stay the final word". That is a reading of the vendor
-docs, not a measurement.
+**Ruled out by a spike, not by a datasheet: blaze (ra-jit).** The discussion's
+headline experimental option has two open Windows PRs. They were built and run,
+not read. **#1527** is release packaging only — no published Windows archive, and
+its installer is a separate unlanded change. **#1591** does build here (**57m34s**
+of cargo, MSVC 14.51, pinned LLVM 23.1.4) and its daemon starts, but it needs two
+manual workarounds (the store's ACL check refuses a default profile ACL; its
+`hard_link` stand-ins are then read with `read_link`, so every later start fails
+with `os error 4390`), and `blaze build` of a `serde` + `serde_json` binary is
+refused: **241 std instances "Std is compiled at opt-level O3, which needs LLVM"**,
+and the author's LLVM build stops at `f16`/`f128` build-script codegen on Windows
+x64. The LLVM-enabled rebuild was abandoned after **92 minutes**. No blaze build
+or test of this repository was achieved and **no blaze speedup is claimed**; this
+is an availability finding with measurements behind it.
 
 **Not priced, named as fog:** the cold-workspace effect of `debug = 1/0`, linker
 substitution on a cold full build, `cargo-nextest` on the five buckets,
