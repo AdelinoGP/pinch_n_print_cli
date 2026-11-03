@@ -54,7 +54,41 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-02, thirteenth session — the t108 take):** the
+**Current selection scope (2026-11-02, fourteenth session — the t109 take):** the
+human said "continue the perf vs orca map" (no ticket named). The frontier
+re-derivation at HEAD `59b1b21f` found **108/108 children resolved — no open
+child, no claim** — so six fog routes were offered and the human selected **fix
+the two harness defects** recorded by t108, graduated as
+[109](issues/109-xtask-host-algos-injection-and-narrow-run-example.md), claimed
+and **resolved the same day**. Headline: `xtask test`'s `--features
+slicer-core/host-algos` injection is now conditional on cargo's selection
+including `slicer-core`, so `cargo xtask test -p xtask --summary` exits **0**
+with **193 passed** where it previously exited **101** with
+`the package 'xtask' does not contain this feature: slicer-core/host-algos`;
+the same error had blocked `slicer-config`, `slicer-ir`, `slicer-scheduler`,
+`slicer-gcode` and `slicer-helpers`. The injection still fires for `-p
+slicer-core`, for the workspace and for a `--manifest-path` naming
+`slicer-core` (proof: the `slicer-core` arm compiles with the feature; a
+`slicer-config` arm now reaches its tests). `AGENTS.md`'s narrow example now
+names the module's real home — `cargo test -p slicer-scheduler --test
+scheduler_contract core_module_ir_access_contract_tdd` — and runs **9 tests, 9
+passed**, where the old command ran **0 passed; 314 filtered out**. The fix is
+a pure `build_test_arguments` plus a selector parser covering
+`-p`/`--package`, `--workspace`/`--all`, `--exclude`, `--manifest-path`,
+attached forms and `name@version`, with five unit tests. **Two adjacent
+findings recorded, not fixed:** `slicer-config`'s
+`real_toml_manifest_census_rederives_expected_scope` is red **before and after**
+(**293 vs 281**, reproduced with plain cargo; the fix only makes it reachable),
+and `--no-run --summary` prints a build-may-have-failed line beside `VERDICT:
+PASS`. Evidence: [`evidence/t109-harness-defects/`](evidence/t109-harness-defects/FINDINGS.md)
+(`verify.py` exits 0 checkout-only, with cargo and `--full`; 5/5 negative
+controls rejected). Frontier now: **no open child**; the destination's
+prepass-rewrite decision is unchanged and still the human's to rule on, and the
+dev-loop axis still has its five unpriced levers (cold-build `debug`,
+cold-build linker, `cargo-nextest`, `sccache`, CI). Standing paired acceptance
+and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-11-02, thirteenth session — the t108 take):** the
 human said "continue the perf vs orca map, create and complete a ticket focused
 on improving Testing and Compilation speed", quoting a discussion of Rust
 iteration-speed practice (ra-jit/Blaze, mold/lld, sccache/rust-cache,
@@ -2008,6 +2042,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Harness defects A1/A2: conditional `host-algos` and the narrow-run example](issues/109-xtask-host-algos-injection-and-narrow-run-example.md): **resolved (2026-11-02; both fixed — harness/doc take, no floor applies)** — `xtask test` injected `--features slicer-core/host-algos` on every selection, so `cargo xtask test -p <pkg>` exited 101 for the six packages that do not depend on `slicer-core`; `build_test_arguments` now injects only when the selection includes `slicer-core` (parsing `-p`/`--package`, `--workspace`/`--all`, `--exclude`, `--manifest-path`, attached forms and `name@version`), and the pure predicate carries five unit tests. `cargo xtask test -p xtask --summary` goes from exit 101 to **exit 0 / 193 passed**, `-p slicer-config` reaches its tests, and `-p slicer-core` still compiles with the feature. `AGENTS.md`'s narrow example pointed at `slicer-runtime`'s `contract` bucket, which matched **0 tests (314 filtered)**; it now names `slicer-scheduler`'s real `scheduler_contract` target and runs **9 passed, 0 failed**. Adjacent, not fixed: `slicer-config`'s census is red before and after (**293 vs 281**, plain cargo reproduces), and `--no-run --summary` prints a false build-failure line beside `VERDICT: PASS`. Evidence: [`evidence/t109-harness-defects/`](evidence/t109-harness-defects/FINDINGS.md) (`verify.py` exit 0; 5/5 negative controls rejected).
+
 - [Dev-loop latency: the `xtask test` gate](issues/108-dev-loop-latency-preflight-concurrency.md): **resolved (2026-11-02; human-directed scope extension — KEEP, candidate committed)** — the three `xtask test` preflights (`check-literals`, `check-test-quality --report`, `build-guests --check`) were strictly serial read-only scans; they now run concurrently behind `run_preflights_with` (`xtask/src/test.rs`), with the guest-freshness check on the calling thread because `Invocation` owns a non-`Send` canonical-WIT loader closure. **Median invocation 18.771 s → 10.802 s (−7.969 s, −42.4 %)**, four interleaved pairs with frozen harness binaries, non-overlapping arms (slowest after 13.214 s < fastest before 18.438 s), pre-declared floor **5 s** cleared 1.6x; components measure 8.196/5.621/2.731 s and 9.375/7.686/4.543 s (serial sums 16.548/21.604 s), so the attainable saving is `sum − max` = 8.35/12.23 s and the end-to-end delta lands inside it. Reporting order is unchanged, so a source-gate failure still aborts before any guest rebuild. Inventory: warm no-op check/clippy 0.8–2.8 s, one-line edit to `slicer-ir`/`slicer-core` 65.3/72.0 s, **first codegen of the `contract` bucket 994 s vs 17.26 s incremental**, relink-only 12.8 s, bucket execution 99.8 s, contract binary 89,697,792 B beside a 770,166,784 B PDB. **Falsified:** check/clippy artifact split (1.7–2.4 s alternation, 0 re-checks — the earlier minutes-scale readings were a dirty test target), feature-set thrash for `slicer-runtime` (0.72 s no-op), linker share on incremental relinks, and `debug = 0` as a speedup on the incremental path (28.24 vs 17.26 s). **Adjacent defects recorded, not fixed:** A1, the unconditional `--features slicer-core/host-algos` injection breaks `cargo xtask test -p <pkg>` for packages that do not depend on `slicer-core` (`-p xtask`, `slicer-ir`, `slicer-config`, `slicer-scheduler`, `slicer-gcode`, `slicer-helpers`); A2, `AGENTS.md`'s narrow filter `core_module_ir_access_contract_tdd` matches **0 tests** (`314 filtered out`). Not priced → fog: cold-build `debug` level, cold-build linker, `cargo-nextest`, `sccache`, CI job graph/caching. **Blaze (ra-jit) was tried, not datasheeted:** #1527 has no installable Windows archive (packaging only, installer unlanded); #1591 builds here in **57m34s** and starts a daemon but needs manual ACL and `hard_link`/`read_link` workarounds, then refuses a `serde` + `serde_json` binary at **241 std instances that need the LLVM backend** (the author's LLVM build stops at the `f16`/`f128` build-script codegen); its LLVM rebuild was abandoned after **92 minutes**. **On WSL2 it runs and loses to cargo on this repository:** against cargo 1.96.0 in Ubuntu 24.04 (12 CPUs), blaze's warm edit is **23-33 ms vs 248-779 ms** on a toy crate, but on `slicer-helpers` cold build is **193 s vs 54 s**, warm edit **12.4 s vs 0.95-1.13 s** (crate root), **11.9 s vs 1.4-3.3 s** (module) and **15.8 s vs 2.4-3.5 s** (function body), and `blaze test` is **312 s vs 49 s** (all 18 tests pass under both). **No blaze speedup is claimed for this repo.** Evidence: [`evidence/t108-dev-loop-latency/`](evidence/t108-dev-loop-latency/FINDINGS.md) (`verify.py` exits 0 checkout-only, 33/33 claims, 12/12 negative controls).
 
 - [Support-geometry producer decomposition](issues/107-support-geometry-producer-decomposition.md): **resolved (2026-11-02; measurement-only Phase-1 screen — measured-dead, the premise named the wrong stage; no candidate, no campaign, no production edit)** — `PrePass::SupportGeometry` is **two stages sharing one stage id**, and ticket 104's reducer summed them. Re-pairing t104's committed raw streams: the **host producer is 9 ms (0.0039 % of the cell, 0.0068x the 1.318424 s floor) on base classic-on and 0 ms on benchy classic-on**; the **planner module stage is 91,893 ms (40.13 %, 69.70x floor)** and **3,260 ms (26.17 %, 32.85x floor)** — `com.core.tree-support-planner` **87,824 / 2,943 ms (95.6 / 90.3 %)** plus `com.core.traditional-support-planner` 300 / 30 ms. The supports-off brackets (231 / 43 ms) are the planner merely declining with the producer at 4 / 0 ms. The producer's whole job is a **coarse outline set — 577 polygons / 444,259 points over 240 layers (~7.1 MB)** on benchy-on per `support-preview` — which is why a deep copy costs sub-millisecond to 9 ms and why the sentinel intermediate entries (exactly 1 on benchy-on) are inside the same bracket; **the entire producer is two orders of magnitude below the floor, so no shape on it can be a route** and the stop rule fired before candidate pricing. The real output is the **ledger correction**: t104's 91,902 / 3,260 ms is essentially the **planner**, i.e. [ticket 88](issues/88-supports-on-increment-attribution.md)'s 55.5 s term refreshed to an implied **64.5 s** of the 160.857 s base-on cell and **3.25 s** of the 12.403 s benchy-on cell, and the supports-on carrying shape of the destination's prepass-rewrite decision is the planner, not the geometry producer. Disclosures: no new slice pass, no wall claim (the split is a bracket property of t104's 2026-11-02 instrumented streams), no probe build (patch authored and reverted unbuilt — `target/release/pnp_cli.exe` remains `4cb96942…` on a clean tree), Arachne unmeasured, preview used for counts only. Evidence: [`evidence/t107-support-geometry-producer/`](evidence/t107-support-geometry-producer/FINDINGS.md) (`verify.py` exits 0 checkout-only, 71/71 claims, 9/9 negative controls rejected).
@@ -2667,12 +2703,11 @@ Standing decisions for this effort (2026-09-22):
   The measured weight sits in **first codegen of a bucketed test target**
   (994 s once, 17.26 s incremental), so a lever that only moves gate overhead is
   not the route. Any adoption must beat t108's **5 s per invocation** floor on
-  paired medians. Two harness-correctness
-  findings are also open and are **not** speed levers: **A1**, the unconditional
-  `--features slicer-core/host-algos` injection makes `cargo xtask test -p <pkg>`
-  fail for every package that does not depend on `slicer-core`; **A2**,
-  `AGENTS.md`'s narrow filter `core_module_ir_access_contract_tdd` matches no
-  test in the contract bucket.
+  paired medians. Both harness-correctness findings recorded by this take are now
+  fixed by [ticket 109](issues/109-xtask-host-algos-injection-and-narrow-run-example.md):
+  the `--features slicer-core/host-algos` injection is conditional on a
+  `slicer-core` selection, and the `AGENTS.md` narrow example runs its 9 tests
+  instead of zero.
 
 ## Out of scope
 

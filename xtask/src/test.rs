@@ -101,45 +101,19 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
     // module crates' wasm32 guest builds, which don't compile). Instead we enforce
     // the feature at the `cargo test` invocation here.
     //
-    // We also quarantine deliberate RED parity anchors / out-of-scope tests via the
-    // libtest `--skip` filter so a green gate stays meaningful (only NEW breakage
-    // fails). These are tracked in docs/specs/arachne-parity-recovery.md. We skip
-    // them at the runner rather than `#[ignore]`-ing them: sibling RED-anchor files
-    // (arachne_parity_gaps.rs, arachne_parity_round2.rs) carry a checked-in policy
-    // forbidding `#[ignore]` on this test family, and the roster stays diffable here.
-    const QUARANTINED_TESTS: &[&str] = &[
-        // Concentric-infill-through-Arachne — out of scope (D-104f; user decision
-        // 2026-07-15: not on the roadmap, may never be Arachne).
-        "arachne_parity_pipeline_concentric_infill_uses_arachne",
-    ];
+    // The feature is injected only when the selection includes slicer-core
+    // itself: a qualified `slicer-core/host-algos` name is invalid on any other
+    // `-p <package>` (t108 finding A1). See `selection_includes_slicer_core`.
 
     // Split caller args at the first `--` into cargo-level and libtest-level args so
     // `--features` lands on the cargo side and `--skip` on the libtest side.
-    let (mut cargo_args, mut libtest_args): (Vec<String>, Vec<String>) =
+    let (cargo_args, libtest_args): (Vec<String>, Vec<String>) =
         match test_args.iter().position(|a| a == "--") {
             Some(i) => (test_args[..i].to_vec(), test_args[i + 1..].to_vec()),
             None => (test_args.clone(), Vec::new()),
         };
 
-    // Enforce host-algos unless the caller already chose features explicitly.
-    let caller_set_features = cargo_args
-        .iter()
-        .any(|a| a == "--features" || a.starts_with("--features=") || a == "--all-features");
-    if !caller_set_features {
-        cargo_args.push("--features".to_string());
-        cargo_args.push("slicer-core/host-algos".to_string());
-    }
-
-    for name in QUARANTINED_TESTS {
-        libtest_args.push("--skip".to_string());
-        libtest_args.push((*name).to_string());
-    }
-
-    let mut test_args = cargo_args;
-    if !libtest_args.is_empty() {
-        test_args.push("--".to_string());
-        test_args.extend(libtest_args);
-    }
+    let test_args = build_test_arguments(ws_root, cargo_args, libtest_args);
 
     // Step 1: three independent read-only preflights — check-literals, the
     // test-quality gate (report mode until the remediation program's final wave
@@ -286,6 +260,158 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
     }
 
     exit_code
+}
+
+/// Deliberate RED parity anchors / out-of-scope tests quarantined from the gate.
+///
+/// Skipped via the libtest `--skip` filter so a green gate stays meaningful
+/// (only NEW breakage fails). These are tracked in
+/// docs/specs/arachne-parity-recovery.md. We skip them at the runner rather
+/// than `#[ignore]`-ing them: sibling RED-anchor files (arachne_parity_gaps.rs,
+/// arachne_parity_round2.rs) carry a checked-in policy forbidding `#[ignore]`
+/// on this test family, and the roster stays diffable here.
+const QUARANTINED_TESTS: &[&str] = &[
+    // Concentric-infill-through-Arachne — out of scope (D-104f; user decision
+    // 2026-07-15: not on the roadmap, may never be Arachne).
+    "arachne_parity_pipeline_concentric_infill_uses_arachne",
+];
+
+/// Build the final `cargo test` argument vector.
+///
+/// Two policies live here, both testable without spawning cargo:
+/// - `slicer-core/host-algos` is injected only when the caller set no features
+///   and the selection includes `slicer-core` itself (see
+///   `selection_includes_slicer_core`);
+/// - the quarantined parity tests are skipped on the libtest side.
+fn build_test_arguments(
+    ws_root: &Path,
+    mut cargo_args: Vec<String>,
+    mut libtest_args: Vec<String>,
+) -> Vec<String> {
+    let caller_set_features = cargo_args.iter().any(|arg| {
+        arg == "--features" || arg.starts_with("--features=") || arg == "--all-features"
+    });
+    if !caller_set_features && selection_includes_slicer_core(ws_root, &cargo_args) {
+        cargo_args.push("--features".to_string());
+        cargo_args.push("slicer-core/host-algos".to_string());
+    }
+
+    for name in QUARANTINED_TESTS {
+        libtest_args.push("--skip".to_string());
+        libtest_args.push((*name).to_string());
+    }
+
+    let mut test_args = cargo_args;
+    if !libtest_args.is_empty() {
+        test_args.push("--".to_string());
+        test_args.extend(libtest_args);
+    }
+    test_args
+}
+
+/// True when a `-p` / `--exclude` spec names `slicer-core`, including cargo's
+/// `name@version` pkgid form.
+fn names_slicer_core(package: &str) -> bool {
+    package == "slicer-core" || package.starts_with("slicer-core@")
+}
+
+/// True when cargo's package selection includes `slicer-core` itself.
+///
+/// The Arachne parity suite is gated by `#![cfg(feature = "host-algos")]`, and
+/// `host-algos` is not a default feature, so the gated entry point forces it
+/// on. A qualified `package/feature` name is valid only when that package is
+/// part of the selection: `cargo test -p xtask --features
+/// slicer-core/host-algos` fails with "the package 'xtask' does not contain
+/// this feature" (t108 finding A1). Every in-repo package that depends on
+/// `slicer-core` and needs the feature enables it in its own manifest, so the
+/// injection only has to cover `slicer-core` itself.
+fn selection_includes_slicer_core(ws_root: &Path, cargo_args: &[String]) -> bool {
+    let mut packages: Vec<&str> = Vec::new();
+    let mut excludes: Vec<&str> = Vec::new();
+    let mut workspace = false;
+    let mut manifest_path: Option<&str> = None;
+
+    let mut index = 0;
+    while index < cargo_args.len() {
+        let arg = cargo_args[index].as_str();
+        if arg == "--" {
+            break;
+        }
+        match arg {
+            "-p" | "--package" => {
+                if let Some(value) = cargo_args.get(index + 1) {
+                    packages.push(value.as_str());
+                    index += 1;
+                }
+            }
+            "--exclude" => {
+                if let Some(value) = cargo_args.get(index + 1) {
+                    excludes.push(value.as_str());
+                    index += 1;
+                }
+            }
+            "--manifest-path" => {
+                if let Some(value) = cargo_args.get(index + 1) {
+                    manifest_path = Some(value.as_str());
+                    index += 1;
+                }
+            }
+            "--workspace" | "--all" => workspace = true,
+            _ => {
+                if let Some(value) = arg.strip_prefix("--package=") {
+                    packages.push(value);
+                } else if let Some(value) = arg.strip_prefix("--exclude=") {
+                    excludes.push(value);
+                } else if let Some(value) = arg.strip_prefix("--manifest-path=") {
+                    manifest_path = Some(value);
+                } else if let Some(value) = arg.strip_prefix("-p") {
+                    // cargo accepts the attached short form: `-pfoo`.
+                    if !value.is_empty() {
+                        packages.push(value);
+                    }
+                }
+            }
+        }
+        index += 1;
+    }
+
+    if !packages.is_empty() {
+        return packages.iter().copied().any(names_slicer_core);
+    }
+    if workspace {
+        return !excludes.iter().copied().any(names_slicer_core);
+    }
+    if let Some(path) = manifest_path {
+        return manifest_declares_package(ws_root, path, "slicer-core");
+    }
+    // No selector at a virtual workspace root selects every member, slicer-core
+    // included.
+    true
+}
+
+/// Read a Cargo manifest and report whether its `[package]` name matches.
+///
+/// A missing or unreadable manifest returns `false`: cargo reports the real
+/// error, and skipping the injection avoids turning an unrelated failure into
+/// a feature-resolution failure.
+fn manifest_declares_package(ws_root: &Path, manifest: &str, expected: &str) -> bool {
+    let candidate = Path::new(manifest);
+    let path = if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        ws_root.join(candidate)
+    };
+    let Ok(text) = fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(parsed) = text.parse::<toml::Value>() else {
+        return false;
+    };
+    parsed
+        .get("package")
+        .and_then(|package| package.get("name"))
+        .and_then(toml::Value::as_str)
+        == Some(expected)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -714,6 +840,129 @@ mod tests {
 
     fn strings(args: &[&str]) -> Vec<String> {
         args.iter().map(|arg| (*arg).to_string()).collect()
+    }
+
+    #[test]
+    fn host_algos_selection_follows_the_package_selector() {
+        let ws = std::path::Path::new("unused-for-package-selections");
+        let cases: &[(&[&str], bool)] = &[
+            (&["-p", "slicer-core"], true),
+            (&["-p", "xtask"], false),
+            (&["--package", "slicer-scheduler"], false),
+            (&["--package=slicer-core"], true),
+            (&["-pslicer-core"], true),
+            (&["-p", "slicer-core@0.1.0"], true),
+            (&["-p", "slicer-config", "-p", "slicer-core"], true),
+            (&["--workspace"], true),
+            (&["--workspace", "--exclude", "slicer-core"], false),
+            (&["--workspace", "--exclude=slicer-core"], false),
+            (&["--workspace", "--exclude", "slicer-core@0.1.0"], false),
+            (&["--all"], true),
+            (&[], true),
+        ];
+        for (args, expected) in cases {
+            assert_eq!(
+                super::selection_includes_slicer_core(ws, &strings(args)),
+                *expected,
+                "selection {args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn foreign_package_selection_does_not_activate_slicer_core_features() {
+        let args = super::build_test_arguments(
+            std::path::Path::new("unused"),
+            strings(&["-p", "xtask"]),
+            Vec::new(),
+        );
+        assert_eq!(
+            args,
+            strings(&[
+                "-p",
+                "xtask",
+                "--",
+                "--skip",
+                "arachne_parity_pipeline_concentric_infill_uses_arachne",
+            ]),
+            "a feature of a package outside the selection must not be requested"
+        );
+    }
+
+    #[test]
+    fn slicer_core_selection_activates_host_algos() {
+        let args = super::build_test_arguments(
+            std::path::Path::new("unused"),
+            strings(&["-p", "slicer-core"]),
+            Vec::new(),
+        );
+        assert_eq!(
+            args,
+            strings(&[
+                "-p",
+                "slicer-core",
+                "--features",
+                "slicer-core/host-algos",
+                "--",
+                "--skip",
+                "arachne_parity_pipeline_concentric_infill_uses_arachne",
+            ])
+        );
+    }
+
+    #[test]
+    fn caller_feature_choice_is_not_overridden() {
+        for feature_args in [
+            strings(&["-p", "slicer-core", "--features", "foo"]),
+            strings(&["-p", "slicer-core", "--features=foo"]),
+            strings(&["-p", "slicer-core", "--all-features"]),
+        ] {
+            let args = super::build_test_arguments(
+                std::path::Path::new("unused"),
+                feature_args,
+                Vec::new(),
+            );
+            assert!(
+                !args.iter().any(|arg| arg == "slicer-core/host-algos"),
+                "{args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn manifest_path_selection_reads_the_package_name() {
+        let ws = std::env::temp_dir().join(format!("xtask-t109-manifest-{}", std::process::id()));
+        std::fs::create_dir_all(ws.join("core")).expect("create core dir");
+        std::fs::write(
+            ws.join("core/Cargo.toml"),
+            "[package]\nname = \"slicer-core\"\n",
+        )
+        .expect("write core manifest");
+        std::fs::create_dir_all(ws.join("tool")).expect("create tool dir");
+        std::fs::write(ws.join("tool/Cargo.toml"), "[package]\nname = \"xtask\"\n")
+            .expect("write tool manifest");
+
+        assert!(super::selection_includes_slicer_core(
+            &ws,
+            &strings(&["--manifest-path", "core/Cargo.toml"])
+        ));
+        assert!(super::selection_includes_slicer_core(
+            &ws,
+            &strings(&["--manifest-path=core/Cargo.toml"])
+        ));
+        assert!(!super::selection_includes_slicer_core(
+            &ws,
+            &strings(&["--manifest-path", "tool/Cargo.toml"])
+        ));
+        assert!(
+            !super::selection_includes_slicer_core(
+                &ws,
+                &strings(&["--manifest-path", "missing/Cargo.toml"])
+            ),
+            "an unreadable manifest must not claim slicer-core"
+        );
+
+        std::fs::remove_dir_all(&ws).ok();
     }
 
     #[test]
