@@ -5,8 +5,8 @@ Label: wayfinder:task
 Status: resolved (2026-11-03; measurement-only — **no per-stage timing channel
 works on this install**, and at the finest observable boundary Orca's wall is
 **import-dominated on base (42–73 %)** while its whole slicing phase is
-**9.2x–21.8x cheaper than PnP's**; the prepass is 11.6–34x cheaper and the
-supports-on planner increment is ~11x. See ## Answer)
+**9.2x–21.8x cheaper than PnP's**; the prepass is 17.5x–34.4x cheaper and the
+pinned supports-on support-stage increment is ~13.7x. See ## Answer)
 Assignee: 2026-11-03 OpenCode wayfinder session — the human said "continue the perf
 vs orca map" (no ticket named), the frontier re-derivation at HEAD `1e72d9e3` found
 **109/109 children resolved — no open child, no claim**, and the human selected
@@ -160,9 +160,10 @@ Evidence: [`evidence/t110-orca-phases/`](../evidence/t110-orca-phases/FINDINGS.m
 3. **The prepass is the carrying phase on both engines** (Orca 57.1 % / 74.6 % of its
    base slicing; PnP 89.5 % / 89.4 %), so the destination's prepass-rewrite ruling is
    not an artefact of PnP's phase mix — the difference is absolute seconds.
-4. **On the t105-pinned supports-on job the planner gap is ~11x:** Orca's prepass
-   grows **2,103.0 → 10,444.8 ms (+8.34 s)**; PnP's support stages add **~91.7 s**
-   (`SupportGeometry` 231 → 91,902 ms + `SupportAnalysis` 0 → 22,254 ms). PnP's
+4. **On the t105-pinned supports-on job the support-stage gap is ~13.7x:** Orca's prepass
+   grows **2,103.0 → 10,444.8 ms (+8.34 s)**; PnP's support stages add **~113.9 s**
+   (`SupportGeometry` 231 → 91,902 ms = +91.67 s, `SupportAnalysis` 0 → 22,254 ms
+   = +22.25 s), a **13.7x** gap on the increment. PnP's
    planner alone is **8.4x** Orca's entire supports-on prepass.
 5. **Emit is a 4.4x–7.3x gap**, not a rounding error: PnP's per-layer + postpass is
    1,816 / 2,187 / 7,781 / 23,482 ms against Orca's 365.8 / 497.5 / 1,349.1 /

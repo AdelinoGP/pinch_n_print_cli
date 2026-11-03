@@ -13,8 +13,8 @@ all.** On the base cells **42 %–73 %** of Orca's process wall is model import 
 startup; its whole slicing phase is **3.68 s / 14.01 s** against PnP's **80.2 s /
 228.3 s** for the same cells. The prepass is the concentration on both sides
 (PnP 89.5 % of slicing; Orca 57.1 % / 74.6 %), and on the pinned supports-on job
-Orca's prepass grows by **8.34 s** where PnP's support stages add **~91.7 s** — an
-**11x** engine gap on matched engine style.
+Orca's prepass grows by **8.34 s** where PnP's support stages add **~113.9 s** — a
+**13.7x** engine gap on matched engine style.
 
 **No per-stage timing channel works on this install**, measured three ways (below),
 so the finest boundary is the phase split this take measures.
@@ -97,10 +97,10 @@ slower at the same 123 MB file; on benchy it is **1,229.8 ms** vs **≤ 731 ms**
    prepass-rewrite ruling is not an artefact of PnP's phase mix.** Orca's prepass is
    57.1 % of its base-off slicing and 74.6 % of its base-on slicing (PnP: 89.5 % /
    89.4 %). The difference is absolute: 2.10 s / 10.44 s against 72.43 s / 204.83 s.
-4. **On the pinned supports-on job the support planner gap is ~11x.** Orca's prepass
+4. **On the pinned supports-on job the support-stage gap is ~13.7x.** Orca's prepass
    grows **2,103.0 → 10,444.8 ms (+8,341.8 ms, +397 %)** when supports go on with
-   `tree_strong`; PnP's support stages add **~91.7 s** (`SupportGeometry` 231 →
-   91,902 ms, `SupportAnalysis` 0 → 22,254 ms). This is a matched-engine-style
+   `tree_strong`; PnP's support stages add **~113.9 s** (`SupportGeometry` 231 → 91,902 ms
+   = +91.67 s, `SupportAnalysis` 0 → 22,254 ms = +22.25 s). This is a matched-engine-style
    comparison (t105's pin), and it is the sharpest supports-on number the map has:
    PnP's planner is **10.5x** Orca's entire supports-on prepass increment and
    **8.4x** Orca's whole supports-on prepass.
