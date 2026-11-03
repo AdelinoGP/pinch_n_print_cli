@@ -194,3 +194,17 @@ wall spread 1.8–6.5 % per cell. The abandoned STL-prefix linearity control (a
 truncated mesh is non-manifold; `--info`'s repair path never returned) and the failed
 `--pipe` attempts are recorded in `capabilities.json` / `controls.json`, not dropped.
 
+### Ledger caveat (added 2026-11-03 by [ticket 111](111-prepass-rewrite-scope-ruling.md))
+
+The **base-on** multiples in this answer — the 9.49x "end-to-end today", 16.3x
+slicing, 19.6x prepass and 13.7x support-stage increment — divide an
+**instrumented** PnP span by Orca's **quiet** process wall. t104's own disclosure
+puts that instrumented pass at **+43.6 %** over its t103 median and says
+instrumented walls are never denominated as wall claims, so those figures are
+**upper bounds**, not ratios of record. The uninstrumented paired record is
+**160.857 s** ([ticket 106](106-post-pin-supports-on-scoreboard.md)) -> **6.02x**
+for the base classic-on cell. The qualitative finding (the engine gap exceeds the
+wall ratio) survives; the base-on numbers need re-deriving from t104's implied
+walls before they are quoted as scoreboard anchors. Tracked in the map's **Not yet
+specified**.
+

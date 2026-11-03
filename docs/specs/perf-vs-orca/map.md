@@ -54,7 +54,34 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-03, fifteenth session — the t110 take):** the
+**Current selection scope (2026-11-03, sixteenth session — the prepass-rewrite
+ruling):** the human said "continue the perf vs orca map" (no ticket named). The
+frontier re-derivation at HEAD `f4a73892` found **110/110 children resolved — no
+open child, no claim** — so the fog routes were offered and the human selected
+**rule on the prepass rewrite**, graduated as
+[111](issues/111-prepass-rewrite-scope-ruling.md), claimed and **resolved the
+same day**. The ruling **authorizes a scoped canonical-parity exception for the
+prepass**: both carrying shapes are covered, **`PrePass::Slice` is the first
+campaign** (41,472 / 44,558 ms; 51.2 % of base classic-off, 19.5 % of base
+classic-on) and the Strong planner is second (87,824 ms; 38.4 % of base
+classic-on), graduated as [113](issues/113-strong-planner-phase1.md) and blocked
+by 112. Candidate acceptance needs a fresh **16-cell** reference set, arms
+byte-identical within themselves, the baseline reproducing the post-t81 set, the
+candidate-vs-old-reference G-code delta audited before timing, and the standing
+paired wall/CPU gate at the **0.80 %** floor in **all 8 cells**. The first step
+is a **Phase-1 parity analysis**, graduated as
+[112](issues/112-prep-slice-parity-phase1.md) (open, unclaimed); no production
+edit happens before it clears the floor with a bounded delta. The rewrite is
+**stage 1** of a multi-stage engine program — deleting both largest prepass
+stages still leaves base at **2.86x–4.00x** inside t104's instrumented
+arithmetic, so the per-layer/emit program is the next stage's fog. One ledger
+caveat is carried into the ticket and remains a fog note: t110's base-on
+**9.49x / 16.3x / 19.6x / 13.7x** figures divide an **instrumented** PnP span by
+Orca's quiet wall; t104 discloses that pass at **+43.6 %** over its t103 median
+and the uninstrumented paired record is **6.02x** (t106), so those base-on
+multiples are upper bounds until corrected.
+
+**Previous selection scope (2026-11-03, fifteenth session — the t110 take):** the
 human said "continue the perf vs orca map" (no ticket named). The frontier
 re-derivation at HEAD `1e72d9e3` found **109/109 children resolved — no open child,
 no claim** — so six fog routes were offered and the human selected **Orca-side
@@ -1632,6 +1659,18 @@ Standing decisions for this effort (2026-09-22):
   work — a degraded slice is not Orca's job.
 - **Measurement mode**: paired ordinary + accelerated runs are the default
   keep/drop gate; the human may accept a one-sided win case by case.
+- **Output-changing prepass candidates (2026-11-03, [ticket
+  111](issues/111-prepass-rewrite-scope-ruling.md)):** for the **prepass only**,
+  the byte-identity proof is replaced by a fresh **16-cell** reference set
+  (8 cells x ordinary / accelerated), candidate and baseline arms byte-identical
+  **within themselves**, the baseline reproducing the post-t81 set, the
+  candidate-vs-old-reference G-code delta audited (feature / TYPE /
+  support-interface counts, byte volume, confinement to prepass-derived geometry)
+  **before** timing, and the standing paired wall/CPU gate at the **0.80 %**
+  floor in **all 8 cells**. The exception is scoped to `PrePass::Slice` (first,
+  [ticket 112](issues/112-prep-slice-parity-phase1.md)) and the Strong planner
+  (second, [ticket 113](issues/113-strong-planner-phase1.md)); no other parity
+  work is authorized, and the next parity question goes back to the human.
 - **Timing discipline**: timing/acceptance tickets chain in the take order set
   by [Gap budget per cell](issues/12-gap-budget-per-cell.md) (number order
   superseded 2026-09-23; chain: 15 ✅ → 17 ✅ → 27's candidate → **22 ✅
@@ -2081,7 +2120,9 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
-- [Orca-side attribution: what its matched-job wall is made of](issues/110-orca-side-attribution.md): **resolved (2026-11-03; measurement-only — no per-stage timing channel works on this install, and the phase split that is observable reverses the map's reading of its own ratios)** — the CLI log buffers (27 stage markers in **3 bursts**, 18 of 27 together, no timestamps at `--debug` 3/4/5), ETW is refused without elevation (`wpr` policy failure / `xperf` invalid flags), and `--pipe` accepted the flag but never connected in two attempts, so the boundary is a **~15 ms directory tap** on `plate_1.gcode.tmp`. Orca's cells are **import-dominated**: startup + model import is **1,229.8 ms (65.9 %) / 1,229.8 (49.0 %) / 10,130.0 (73.3 %) / 10,130.0 (42.0 %)** of the benchy-off / benchy-on / base-off / base-on wall (1,867.5 / 2,509.8 / 13,814.5 / 24,140.3 ms), and Orca's import on the same 123 MB `base.stl` is **≥ 14.3x** PnP's (≤ 0.708 s outside-phase time). Orca's **whole slicing** phase is **637.8 / 1,280.1 / 3,684.5 / 14,010.3 ms** against PnP's **7,365 / 11,784 / 80,216 / 228,317 ms** = **11.6x / 9.2x / 21.8x / 16.3x**, so the end-to-end ratios of record (5.86x / 9.49x / 4.34x / 4.96x today) **understate the engine gap by 1.7x–3.7x** — PnP's fast import was offsetting part of a much larger slicing deficit. Prepass multiples **≥ 40x (bound) / 17.5x / 34.4x / 19.6x**, emit multiples **5.0x / 4.4x / 5.8x / 7.3x**; the prepass is the carrying phase on **both** engines (Orca 57.1 % / 74.6 % of base slicing, PnP 89.5 % / 89.4 %), and on the t105-pinned supports-on job Orca's prepass grows **+8.34 s** where PnP's support stages add **~113.9 s** (**13.7x**; the planner alone is **8.4x** Orca's whole supports-on prepass). The feature stack is nearly free for Orca: 1 wall loop, 1 shell, 0 % infill, no support = **13,639.6 ms** against 13,814.5 ms (**+0.1 s**), which kills "Orca does less prepass work". **Ledger correction to t104:** its Table 3's "Orca's whole slice (2.03 / 2.29 / 15.28 / 19.49 s)" are *process* walls, 66–73 % import on base; its shares and counterfactuals are unaffected. Disclosures: `--info` is an upper bound on import, so Orca prepass/slicing are lower bounds and the multiples upper bounds; 1.8–6.5 % repeat spread; load 0.25–0.43 system CPU; mixed vintage (PnP t104, Orca today, ~9 % faster than t103); the abandoned STL-prefix control (non-manifold truncation → `--info` repair never returned) and the failed `--pipe` attempts are recorded. Evidence: [`evidence/t110-orca-phases/`](evidence/t110-orca-phases/FINDINGS.md) (`verify.py` exits 0 checkout-only; 7/7 negative controls rejected).
+- [Prepass rewrite: scope, output contract and acceptance](issues/111-prepass-rewrite-scope-ruling.md): **resolved (2026-11-03; human ruling — authorized, scoped and staged)** — a **canonical-parity exception scoped to the prepass** (the second recorded exception after ticket 81's `resolution` port; the rest of the parity program stays out of scope, and the next parity question returns to the human). Both carrying shapes are covered, but **`PrePass::Slice` is the first campaign** (**41,472 ms = 51.2 %** of base classic-off, **44,558 ms = 19.5 %** of base classic-on, present in all 8 cells) and the **Strong planner** is second (**87,824 ms = 38.4 %** of base classic-on, **2,943 ms = 23.6 %** of benchy-on; graduated as [ticket 113](issues/113-strong-planner-phase1.md), blocked by 112; it may still turn out representation-safe and need no exception). Acceptance: a fresh **16-cell** reference set, candidate and baseline arms byte-identical **within themselves**, the baseline reproducing the post-t81 set, the candidate-vs-old-reference G-code delta audited (feature / TYPE / support-interface counts, byte volume, confinement to prepass-derived geometry) **before** timing, and the standing paired wall/CPU gate at the **0.80 %** floor in **all 8 cells** — no four-cell subset. First step is a **Phase-1 parity and consumer analysis**, graduated as [ticket 112](issues/112-prep-slice-parity-phase1.md); no production edit before it clears the floor with a bounded delta, and a shape that only clears base classic-off is not enough. **Staging:** the rewrite is **stage 1** of a multi-stage engine program; the 8/8 destination stays, and the per-layer/emit program is the next stage's fog (deleting both largest prepass stages still leaves base at **2.86x–4.00x** inside t104's instrumented arithmetic against Orca's quiet walls). **Ledger caveat:** t110's base-on **9.49x / 16.3x / 19.6x / 13.7x** multiples divide instrumented PnP spans by quiet Orca walls (t104: that pass ran **+43.6 %** over its t103 median; the uninstrumented paired record is **6.02x**, t106), so they are treated as upper bounds until corrected.
+
+- [Orca-side attribution: what its matched-job wall is made of](issues/110-orca-side-attribution.md): **resolved (2026-11-03; measurement-only — no per-stage timing channel works on this install, and the phase split that is observable reverses the map's reading of its own ratios)** — the CLI log buffers (27 stage markers in **3 bursts**, 18 of 27 together, no timestamps at `--debug` 3/4/5), ETW is refused without elevation (`wpr` policy failure / `xperf` invalid flags), and `--pipe` accepted the flag but never connected in two attempts, so the boundary is a **~15 ms directory tap** on `plate_1.gcode.tmp`. Orca's cells are **import-dominated**: startup + model import is **1,229.8 ms (65.9 %) / 1,229.8 (49.0 %) / 10,130.0 (73.3 %) / 10,130.0 (42.0 %)** of the benchy-off / benchy-on / base-off / base-on wall (1,867.5 / 2,509.8 / 13,814.5 / 24,140.3 ms), and Orca's import on the same 123 MB `base.stl` is **≥ 14.3x** PnP's (≤ 0.708 s outside-phase time). Orca's **whole slicing** phase is **637.8 / 1,280.1 / 3,684.5 / 14,010.3 ms** against PnP's **7,365 / 11,784 / 80,216 / 228,317 ms** = **11.6x / 9.2x / 21.8x / 16.3x**, so the end-to-end ratios of record (5.86x / 9.49x / 4.34x / 4.96x today) **understate the engine gap by 1.7x–3.7x** — PnP's fast import was offsetting part of a much larger slicing deficit. Prepass multiples **≥ 40x (bound) / 17.5x / 34.4x / 19.6x**, emit multiples **5.0x / 4.4x / 5.8x / 7.3x**; the prepass is the carrying phase on **both** engines (Orca 57.1 % / 74.6 % of base slicing, PnP 89.5 % / 89.4 %), and on the t105-pinned supports-on job Orca's prepass grows **+8.34 s** where PnP's support stages add **~113.9 s** (**13.7x**; the planner alone is **8.4x** Orca's whole supports-on prepass). The feature stack is nearly free for Orca: 1 wall loop, 1 shell, 0 % infill, no support = **13,639.6 ms** against 13,814.5 ms (**+0.1 s**), which kills "Orca does less prepass work". **Ledger correction to t104:** its Table 3's "Orca's whole slice (2.03 / 2.29 / 15.28 / 19.49 s)" are *process* walls, 66–73 % import on base; its shares and counterfactuals are unaffected. Disclosures: `--info` is an upper bound on import, so Orca prepass/slicing are lower bounds and the multiples upper bounds; 1.8–6.5 % repeat spread; load 0.25–0.43 system CPU; mixed vintage (PnP t104, Orca today, ~9 % faster than t103); the abandoned STL-prefix control (non-manifold truncation → `--info` repair never returned) and the failed `--pipe` attempts are recorded. Evidence: [`evidence/t110-orca-phases/`](evidence/t110-orca-phases/FINDINGS.md) (`verify.py` exits 0 checkout-only; 7/7 negative controls rejected). **Ledger caveat (2026-11-03, t111):** the base-on **9.49x / 16.3x / 19.6x / 13.7x** figures divide instrumented PnP spans by Orca's quiet walls; the uninstrumented paired record is **6.02x** (t106), so they are upper bounds until corrected.
 
 - [Harness defects A1/A2: conditional `host-algos` and the narrow-run example](issues/109-xtask-host-algos-injection-and-narrow-run-example.md): **resolved (2026-11-02; both fixed — harness/doc take, no floor applies)** — `xtask test` injected `--features slicer-core/host-algos` on every selection, so `cargo xtask test -p <pkg>` exited 101 for the six packages that do not depend on `slicer-core`; `build_test_arguments` now injects only when the selection includes `slicer-core` (parsing `-p`/`--package`, `--workspace`/`--all`, `--exclude`, `--manifest-path`, attached forms and `name@version`), and the pure predicate carries five unit tests. `cargo xtask test -p xtask --summary` goes from exit 101 to **exit 0 / 193 passed**, `-p slicer-config` reaches its tests, and `-p slicer-core` still compiles with the feature. `AGENTS.md`'s narrow example pointed at `slicer-runtime`'s `contract` bucket, which matched **0 tests (314 filtered)**; it now names `slicer-scheduler`'s real `scheduler_contract` target and runs **9 passed, 0 failed**. Adjacent, not fixed: `slicer-config`'s census is red before and after (**293 vs 281**, plain cargo reproduces), and `--no-run --summary` prints a false build-failure line beside `VERDICT: PASS`. Evidence: [`evidence/t109-harness-defects/`](evidence/t109-harness-defects/FINDINGS.md) (`verify.py` exit 0; 5/5 negative controls rejected).
 
@@ -2283,30 +2324,31 @@ Standing decisions for this effort (2026-09-22):
 
 ## Not yet specified
 
-- **The destination is a prepass-rewrite decision, and its two carrying shapes
-  are human rulings first (t104, 2026-11-02).** Any future candidate must be
-  priced as a fraction of the **prepass**, because the park needs **77.8–93.9 %**
-  of a phase worth **68.5–89.5 %** of the wall while all per-layer work is
-  bounded by **7.9–20.1 %** of the cell. [t110](issues/110-orca-side-attribution.md)
-  measured what that phase is worth on the other engine, and it is the same story:
-  Orca's whole slicing runs **0.64–14.01 s** and its prepass **0.05–10.44 s**, against
-  PnP's **7.37–228.32 s** and **5.55–204.83 s** — a **9.2x–21.8x slicing multiple**
-  and, on the base cells, **34.4x / 19.6x on the prepass** — so the rewrite's target
-  is **engine cost per phase**, not phase share. The same take measured that **42–73 % of Orca's base wall
-  is model import** (10.13 s on the 123 MB `base.stl`), so any future cell-level
-  comparison must say whether it is comparing whole processes or engines. The two shapes with the arithmetic:
-  **`PrePass::Slice`** (**41,472 ms = 51.2 %** of base classic-off) needs a change
-  to what the closing feeds — the per-component ≥10 % flat-bridge gate that
-  [ticket 59](issues/59-prep-slice-flat-bridge-closing-reduction.md) closed as
-  representation-bound — which is canonical-parity work, out of scope absent a
-  t81-style human exception; and **the support planner** (**87,824 ms = 38.4 %**
-  of base classic-on, inside the 91,893 ms planner stage that shares
-  `PrePass::SupportGeometry`'s id — the host producer is **9 ms**, t107), whose
-  engine-style precondition is now spent: t105 pinned the **Orca** side to
-  `tree_strong`, so PnP's own Strong planner work is matched-engine work rather
-  than a parity gap, and t88's 55.5 s attribution (refreshed to **64.5 s**
-  implied) is the term that remains. Neither is
-  ticketable until the human rules on scope.
+- **The per-layer/emit program is the next stage after the prepass rewrite
+  (t111, 2026-11-03).** The destination stays 8/8, but even deleting both largest
+  prepass stages leaves base classic-off at **2.86x** and base classic-on at
+  **4.00x** inside t104's instrumented arithmetic against Orca's quiet walls — an
+  upper bound on the improvement — so no future prepass ticket may claim the
+  destination closes alone. [t110](issues/110-orca-side-attribution.md) measured
+  Orca's per-layer + emit phases **4.4x–7.3x** cheaper than PnP's (again with an
+  instrumented PnP side), and t104's counterfactual says deleting the entire
+  per-layer phase still leaves **3.02x / 4.51x / 4.66x / 7.60x** (benchy-off /
+  base-off / benchy-on / base-on). The shapes that could move those phases are
+  unmeasured; this patch graduates only after the prepass stage lands or the human
+  opens it.
+- **t110's base-on multiples need a ledger correction (surfaced 2026-11-03 by the
+  t111 re-derivation).** The t110 answer's "end-to-end today" **9.49x** divides
+  PnP's **instrumented** base-on slice span (**228,997 ms**) by Orca's quiet
+  process wall (**24,140.3 ms**); t104's own disclosure says that instrumented
+  pass ran **+43.6 %** over its t103 median and that instrumented walls are never
+  wall claims. The uninstrumented paired record is **160.857 s** (t106) ->
+  **6.02x**, or 6.66x against today's Orca. The derived **16.3x** slicing,
+  **19.6x** prepass and **13.7x** support-increment multiples inherit the same
+  inflation, so they are **upper bounds**, not ratios of record. The qualitative
+  finding (the engine gap exceeds the wall ratio) survives; the numbers need
+  re-deriving from t104's implied walls (share x the wall of record) before any
+  of them is quoted as a scoreboard anchor. This is a bounded measurement-only
+  task, not a route; it graduates when the human picks it.
 
 - **A first-touch vendor tree makes the warmup load-bearing (t98 method note).** The
   first Orca run against a freshly staged vendor tree costs ~10 s more wall than the
@@ -2786,11 +2828,17 @@ Standing decisions for this effort (2026-09-22):
 - **OrcaSlicer geometry-parity work.** The repo's parity program runs as spec
   packets; this map treats output as disclosed evidence only (the fairness
   contract), not as a parity target.
-  **One recorded exception (2026-10-23):** the human ruled that ticket 81's
-  `resolution` port be carried in-map end to end, because the fairness contract
-  needed the key implemented rather than merely disclosed. That exception is
-  scoped to that key; it is not a standing licence for other parity work, and
-  the next such question goes back to the human.
+  **Two recorded exceptions.** (1) **2026-10-23:** the human ruled that ticket
+  81's `resolution` port be carried in-map end to end, because the fairness
+  contract needed the key implemented rather than merely disclosed. That
+  exception is scoped to that key. (2) **2026-11-03:** [ticket
+  111](issues/111-prepass-rewrite-scope-ruling.md) authorizes a **scoped
+  canonical-parity exception for the prepass** — `PrePass::Slice` first, the
+  Strong planner second — under the fresh-16-cell-reference, all-8-cell paired
+  gate; no production edit happens before the Phase-1 analysis
+  ([ticket 112](issues/112-prep-slice-parity-phase1.md)). This exception is
+  scoped to the prepass and its shapes, is not a standing licence for the rest of
+  the parity program, and the next such question still goes back to the human.
 - **Making the resolved-config-less fallback block satisfy Orca's viewer gate.**
   Ticket 34's residual — the test/legacy path's `CONFIG_BLOCK` cannot reach 80
   *loadable* pairs because the remainder are PnP's own key names — is past this
