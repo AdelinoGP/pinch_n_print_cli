@@ -54,7 +54,43 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-02, fourteenth session — the t109 take):** the
+**Current selection scope (2026-11-03, fifteenth session — the t110 take):** the
+human said "continue the perf vs orca map" (no ticket named). The frontier
+re-derivation at HEAD `1e72d9e3` found **109/109 children resolved — no open child,
+no claim** — so six fog routes were offered and the human selected **Orca-side
+attribution**, graduated as [110](issues/110-orca-side-attribution.md), claimed and
+**resolved the same day as measurement-only**. Headline: **no per-stage timing
+channel works on this install** (the `--logfile` CLI log buffers — 27 stage markers
+arrive in **3 bursts**, 18 of 27 together, and carries no timestamps at `--debug`
+3/4/5; ETW is refused without elevation — "Failed to enable the policy to profile
+system performance" / "NT Kernel Logger: Invalid flags (0x3ec)"; `--pipe` accepted
+the flag (`Will use pipe …`) but never connected to a listening server in two
+attempts), so the finest observable boundary is a **~15 ms directory tap** on
+`plate_1.gcode.tmp`. What it measures reframes the map's headline: **Orca's base
+cells are import-dominated — 73.3 % / 42.0 % of wall is startup + model import
+(10.13 s on the 123 MB `base.stl` against PnP's ≤ 0.708 s, ≥ 14.3x)** — and its whole
+slicing phase is only **0.64 / 1.28 / 3.68 / 14.01 s** (benchy-off / benchy-on /
+base-off / base-on) against PnP's **7.37 / 11.78 / 80.22 / 228.32 s**, i.e.
+**11.6x / 9.2x / 21.8x / 16.3x**. The ratios of record (5.86x / 9.49x / 4.34x / 4.96x
+today) therefore **understate the engine gap by 1.7x–3.7x**: PnP's fast import has been
+offsetting part of a much larger slicing deficit. The prepass is the carrying phase
+on **both** engines (Orca 57.1 % / 74.6 % of its base slicing; PnP 89.5 % / 89.4 %),
+so the destination's prepass-rewrite ruling is not a PnP phase-mix artefact; on the
+t105-pinned supports-on job Orca's prepass grows **+8.34 s** where PnP's support
+stages add **~91.7 s** (**8.4x** for the planner alone). The feature stack is nearly
+free on Orca's side — 1 wall loop, 1 shell, 0 % infill and no support still costs
+**13,639.6 ms** against the full cell's 13,814.5 ms — which kills the "Orca does less
+prepass work" explanation. **Ledger correction:** t104's Table 3 compares against
+"Orca's whole slice (2.03 / 2.29 / 15.28 / 19.49 s)", which are *process* walls that
+are 66–73 % import on base; t104's shares and counterfactuals stand, only that
+reading changes. Evidence:
+[`evidence/t110-orca-phases/`](evidence/t110-orca-phases/FINDINGS.md) (`verify.py`
+exits 0 checkout-only, 7/7 negative controls rejected). Frontier now: **no open
+child**; the destination's prepass-rewrite decision is unchanged and still the
+human's to rule on, now with the engine multiple measured. Standing paired
+acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-11-02, fourteenth session — the t109 take):** the
 human said "continue the perf vs orca map" (no ticket named). The frontier
 re-derivation at HEAD `59b1b21f` found **108/108 children resolved — no open
 child, no claim** — so six fog routes were offered and the human selected **fix
@@ -2042,6 +2078,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Orca-side attribution: what its matched-job wall is made of](issues/110-orca-side-attribution.md): **resolved (2026-11-03; measurement-only — no per-stage timing channel works on this install, and the phase split that is observable reverses the map's reading of its own ratios)** — the CLI log buffers (27 stage markers in **3 bursts**, 18 of 27 together, no timestamps at `--debug` 3/4/5), ETW is refused without elevation (`wpr` policy failure / `xperf` invalid flags), and `--pipe` accepted the flag but never connected in two attempts, so the boundary is a **~15 ms directory tap** on `plate_1.gcode.tmp`. Orca's cells are **import-dominated**: startup + model import is **1,229.8 ms (65.9 %) / 1,229.8 (49.0 %) / 10,130.0 (73.3 %) / 10,130.0 (42.0 %)** of the benchy-off / benchy-on / base-off / base-on wall (1,867.5 / 2,509.8 / 13,814.5 / 24,140.3 ms), and Orca's import on the same 123 MB `base.stl` is **≥ 14.3x** PnP's (≤ 0.708 s outside-phase time). Orca's **whole slicing** phase is **637.8 / 1,280.1 / 3,684.5 / 14,010.3 ms** against PnP's **7,365 / 11,784 / 80,216 / 228,317 ms** = **11.6x / 9.2x / 21.8x / 16.3x**, so the end-to-end ratios of record (5.86x / 9.49x / 4.34x / 4.96x today) **understate the engine gap by 1.7x–3.7x** — PnP's fast import was offsetting part of a much larger slicing deficit. Prepass multiples **≥ 40x (bound) / 17.5x / 34.4x / 19.6x**, emit multiples **5.0x / 4.4x / 5.8x / 7.3x**; the prepass is the carrying phase on **both** engines (Orca 57.1 % / 74.6 % of base slicing, PnP 89.5 % / 89.4 %), and on the t105-pinned supports-on job Orca's prepass grows **+8.34 s** where PnP's support stages add **~91.7 s** (**8.4x** for the planner alone). The feature stack is nearly free for Orca: 1 wall loop, 1 shell, 0 % infill, no support = **13,639.6 ms** against 13,814.5 ms (**+0.1 s**), which kills "Orca does less prepass work". **Ledger correction to t104:** its Table 3's "Orca's whole slice (2.03 / 2.29 / 15.28 / 19.49 s)" are *process* walls, 66–73 % import on base; its shares and counterfactuals are unaffected. Disclosures: `--info` is an upper bound on import, so Orca prepass/slicing are lower bounds and the multiples upper bounds; 1.8–6.5 % repeat spread; load 0.25–0.43 system CPU; mixed vintage (PnP t104, Orca today, ~9 % faster than t103); the abandoned STL-prefix control (non-manifold truncation → `--info` repair never returned) and the failed `--pipe` attempts are recorded. Evidence: [`evidence/t110-orca-phases/`](evidence/t110-orca-phases/FINDINGS.md) (`verify.py` exits 0 checkout-only; 7/7 negative controls rejected).
+
 - [Harness defects A1/A2: conditional `host-algos` and the narrow-run example](issues/109-xtask-host-algos-injection-and-narrow-run-example.md): **resolved (2026-11-02; both fixed — harness/doc take, no floor applies)** — `xtask test` injected `--features slicer-core/host-algos` on every selection, so `cargo xtask test -p <pkg>` exited 101 for the six packages that do not depend on `slicer-core`; `build_test_arguments` now injects only when the selection includes `slicer-core` (parsing `-p`/`--package`, `--workspace`/`--all`, `--exclude`, `--manifest-path`, attached forms and `name@version`), and the pure predicate carries five unit tests. `cargo xtask test -p xtask --summary` goes from exit 101 to **exit 0 / 193 passed**, `-p slicer-config` reaches its tests, and `-p slicer-core` still compiles with the feature. `AGENTS.md`'s narrow example pointed at `slicer-runtime`'s `contract` bucket, which matched **0 tests (314 filtered)**; it now names `slicer-scheduler`'s real `scheduler_contract` target and runs **9 passed, 0 failed**. Adjacent, not fixed: `slicer-config`'s census is red before and after (**293 vs 281**, plain cargo reproduces), and `--no-run --summary` prints a false build-failure line beside `VERDICT: PASS`. Evidence: [`evidence/t109-harness-defects/`](evidence/t109-harness-defects/FINDINGS.md) (`verify.py` exit 0; 5/5 negative controls rejected).
 
 - [Dev-loop latency: the `xtask test` gate](issues/108-dev-loop-latency-preflight-concurrency.md): **resolved (2026-11-02; human-directed scope extension — KEEP, candidate committed)** — the three `xtask test` preflights (`check-literals`, `check-test-quality --report`, `build-guests --check`) were strictly serial read-only scans; they now run concurrently behind `run_preflights_with` (`xtask/src/test.rs`), with the guest-freshness check on the calling thread because `Invocation` owns a non-`Send` canonical-WIT loader closure. **Median invocation 18.771 s → 10.802 s (−7.969 s, −42.4 %)**, four interleaved pairs with frozen harness binaries, non-overlapping arms (slowest after 13.214 s < fastest before 18.438 s), pre-declared floor **5 s** cleared 1.6x; components measure 8.196/5.621/2.731 s and 9.375/7.686/4.543 s (serial sums 16.548/21.604 s), so the attainable saving is `sum − max` = 8.35/12.23 s and the end-to-end delta lands inside it. Reporting order is unchanged, so a source-gate failure still aborts before any guest rebuild. Inventory: warm no-op check/clippy 0.8–2.8 s, one-line edit to `slicer-ir`/`slicer-core` 65.3/72.0 s, **first codegen of the `contract` bucket 994 s vs 17.26 s incremental**, relink-only 12.8 s, bucket execution 99.8 s, contract binary 89,697,792 B beside a 770,166,784 B PDB. **Falsified:** check/clippy artifact split (1.7–2.4 s alternation, 0 re-checks — the earlier minutes-scale readings were a dirty test target), feature-set thrash for `slicer-runtime` (0.72 s no-op), linker share on incremental relinks, and `debug = 0` as a speedup on the incremental path (28.24 vs 17.26 s). **Adjacent defects recorded, not fixed:** A1, the unconditional `--features slicer-core/host-algos` injection breaks `cargo xtask test -p <pkg>` for packages that do not depend on `slicer-core` (`-p xtask`, `slicer-ir`, `slicer-config`, `slicer-scheduler`, `slicer-gcode`, `slicer-helpers`); A2, `AGENTS.md`'s narrow filter `core_module_ir_access_contract_tdd` matches **0 tests** (`314 filtered out`). Not priced → fog: cold-build `debug` level, cold-build linker, `cargo-nextest`, `sccache`, CI job graph/caching. **Blaze (ra-jit) was tried, not datasheeted:** #1527 has no installable Windows archive (packaging only, installer unlanded); #1591 builds here in **57m34s** and starts a daemon but needs manual ACL and `hard_link`/`read_link` workarounds, then refuses a `serde` + `serde_json` binary at **241 std instances that need the LLVM backend** (the author's LLVM build stops at the `f16`/`f128` build-script codegen); its LLVM rebuild was abandoned after **92 minutes**. **On WSL2 it runs and loses to cargo on this repository:** against cargo 1.96.0 in Ubuntu 24.04 (12 CPUs), blaze's warm edit is **23-33 ms vs 248-779 ms** on a toy crate, but on `slicer-helpers` cold build is **193 s vs 54 s**, warm edit **12.4 s vs 0.95-1.13 s** (crate root), **11.9 s vs 1.4-3.3 s** (module) and **15.8 s vs 2.4-3.5 s** (function body), and `blaze test` is **312 s vs 49 s** (all 18 tests pass under both). **No blaze speedup is claimed for this repo.** Evidence: [`evidence/t108-dev-loop-latency/`](evidence/t108-dev-loop-latency/FINDINGS.md) (`verify.py` exits 0 checkout-only, 33/33 claims, 12/12 negative controls).
@@ -2246,7 +2284,14 @@ Standing decisions for this effort (2026-09-22):
   are human rulings first (t104, 2026-11-02).** Any future candidate must be
   priced as a fraction of the **prepass**, because the park needs **77.8–93.9 %**
   of a phase worth **68.5–89.5 %** of the wall while all per-layer work is
-  bounded by **7.9–20.1 %** of the cell. The two shapes with the arithmetic:
+  bounded by **7.9–20.1 %** of the cell. [t110](issues/110-orca-side-attribution.md)
+  measured what that phase is worth on the other engine, and it is the same story:
+  Orca's whole slicing runs **0.64–14.01 s** and its prepass **0.05–10.44 s**, against
+  PnP's **7.37–228.32 s** and **5.55–204.83 s** — a **9.2x–21.8x slicing multiple**
+  and, on the base cells, **34.4x / 19.6x on the prepass** — so the rewrite's target
+  is **engine cost per phase**, not phase share. The same take measured that **42–73 % of Orca's base wall
+  is model import** (10.13 s on the 123 MB `base.stl`), so any future cell-level
+  comparison must say whether it is comparing whole processes or engines. The two shapes with the arithmetic:
   **`PrePass::Slice`** (**41,472 ms = 51.2 %** of base classic-off) needs a change
   to what the closing feeds — the per-component ≥10 % flat-bridge gate that
   [ticket 59](issues/59-prep-slice-flat-bridge-closing-reduction.md) closed as
@@ -2641,10 +2686,21 @@ Standing decisions for this effort (2026-09-22):
   verts/call → 105 verts/call into the filter; gap fill emitted on 162/495
   base layers). Re-enter only if the parity program ever re-derives the
   gap-fill algebra in a representation-identical form.
-- **Orca-side attribution.** What OrcaSlicer spends its time on per cell is
-  unknown (GUI-subsystem binary, little introspection). Worth scoping only if
-  the gap narrows to specific stages where "why is Orca faster here" becomes the
-  blocking question.
+- **Orca-side attribution is now measured, and the remaining depth is
+  elevation-gated (resolved 2026-11-03 by
+  [ticket 110](issues/110-orca-side-attribution.md)).** The map carried "little
+  introspection" as an assumption; t110 measured it: the CLI log buffers (27 stage
+  markers in **3 bursts**, no timestamps at any `--debug` level), ETW kernel sampling
+  is refused without elevation, and `--pipe` never connected in two attempts. The
+  observable split has Orca's base wall **42–73 %** model import + startup and its
+  whole slicing phase at **0.64 / 1.28 / 3.68 / 14.01 s** against PnP's
+  **7.37 / 11.78 / 80.22 / 228.32 s** (**11.6x / 9.2x / 21.8x / 16.3x**), with the
+  prepass carrying both engines and the pinned supports-on prepass increment at
+  **8.34 s** against PnP's **~91.7 s**. The only deeper route left needs something
+  this rig does not have: an elevated ETW session, a working `--pipe` connection
+  (re-test before pricing it), or an instrumented Orca build. Re-enter only with one
+  of those in hand — otherwise the phase split is the floor of what this rig can see,
+  and no substage estimate should be quoted.
 - **Occupancy gate still measures the identity aggregate.**
   [Support-correctness repair](issues/14-support-correctness-repair.md)
   un-widened only the extent bound; `validate_entry`'s exact-Z occupancy check
