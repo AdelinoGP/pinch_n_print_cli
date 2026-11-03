@@ -90,7 +90,9 @@ slower at the same 123 MB file; on benchy it is **1,229.8 ms** vs **≤ 731 ms**
    the base cell and has been masking the engine deficit in every scoreboard the map
    has quoted. The destination's currency is wall, so the ratios of record stand —
    but "we are ~5x behind" is an import-offset artefact; **the slicing engine is
-   ~10–22x behind**.
+   ~10–22x behind**. A corollary that corrects t104's finding 1: PnP's per-layer
+   phase alone (1.54 / 1.74 / 6.54 / 12.70 s) is **larger than Orca's entire slicing**
+   (0.64 / 1.28 / 3.68 / 14.01 s) in three of the four cells.
 3. **The prepass is the carrying phase on both engines, so the destination's
    prepass-rewrite ruling is not an artefact of PnP's phase mix.** Orca's prepass is
    57.1 % of its base-off slicing and 74.6 % of its base-on slicing (PnP: 89.5 % /

@@ -100,6 +100,18 @@ Orca's whole slice (2.03 / 2.29 / 15.28 / 19.49 s): prepass **5.26 / 9.55 /
 67.47 / 143.88 s**, per-layer **1.54 / 1.74 / 6.54 / 12.70 s**, postpass
 0.18 / 0.43 / 0.71 / 3.80 s.
 
+**Correction (ticket 110, 2026-11-03):** the "Orca's whole slice" figures above are
+**process walls, not slicing time**. t110 measured that **65.9 % / 49.0 % / 73.3 % /
+42.0 %** of them is startup + model import (10.13 s on the 123 MB `base.stl`), so
+Orca's actual slicing is **0.64 / 1.28 / 3.68 / 14.01 s** and reading these phases
+against the process-wall column **understates the engine gap by 1.7x–3.7x**. The
+phase shares and the counterfactual arithmetic in this table are unaffected; see
+[`../t110-orca-phases/FINDINGS.md`](../t110-orca-phases/FINDINGS.md).
+Consequently finding 1's "the whole per-layer pipeline costs less than Orca's entire
+slice" holds against process walls but **not against slicing**: PnP's per-layer phase
+alone (**1.54 / 1.74 / 6.54 / 12.70 s**) exceeds Orca's entire slicing
+(**0.64 / 1.28 / 3.68 / 14.01 s**) in three of the four cells.
+
 ## Findings
 
 1. **The per-layer pipeline is no longer where the wall is.** It is 7.9–20.1 %

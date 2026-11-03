@@ -73,7 +73,9 @@ slicing phase is only **0.64 / 1.28 / 3.68 / 14.01 s** (benchy-off / benchy-on /
 base-off / base-on) against PnP's **7.37 / 11.78 / 80.22 / 228.32 s**, i.e.
 **11.6x / 9.2x / 21.8x / 16.3x**. The ratios of record (5.86x / 9.49x / 4.34x / 4.96x
 today) therefore **understate the engine gap by 1.7x–3.7x**: PnP's fast import has been
-offsetting part of a much larger slicing deficit. The prepass is the carrying phase
+offsetting part of a much larger slicing deficit, and PnP's **per-layer phase alone**
+(1.54 / 1.74 / 6.54 / 12.70 s) is larger than Orca's **entire slicing**
+(0.64 / 1.28 / 3.68 / 14.01 s) in three of the four cells. The prepass is the carrying phase
 on **both** engines (Orca 57.1 % / 74.6 % of its base slicing; PnP 89.5 % / 89.4 %),
 so the destination's prepass-rewrite ruling is not a PnP phase-mix artefact; on the
 t105-pinned supports-on job Orca's prepass grows **+8.34 s** where PnP's support

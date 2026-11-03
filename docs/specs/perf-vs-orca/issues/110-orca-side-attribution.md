@@ -154,6 +154,9 @@ Evidence: [`evidence/t110-orca-phases/`](../evidence/t110-orca-phases/FINDINGS.m
    5.86x / 9.49x (base off/on) and 4.34x / 4.96x (benchy off/on), but the
    *slicing* ratio is **21.8x / 16.3x** and **11.6x / 9.2x**. PnP's fast import was
    masking most of the slicing deficit in every scoreboard the map has quoted.
+   Corollary: PnP's per-layer phase alone (1.54 / 1.74 / 6.54 / 12.70 s) is larger
+   than Orca's entire slicing (0.64 / 1.28 / 3.68 / 14.01 s) in three of four cells —
+   t104's finding 1 holds against process walls, not against slicing.
 3. **The prepass is the carrying phase on both engines** (Orca 57.1 % / 74.6 % of its
    base slicing; PnP 89.5 % / 89.4 %), so the destination's prepass-rewrite ruling is
    not an artefact of PnP's phase mix — the difference is absolute seconds.
