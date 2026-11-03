@@ -240,7 +240,7 @@ impl LayerModule for ClassicPerimeters {
             .map(|n| n as u32)
             .unwrap_or(self.wall_loops);
         // extra_perimeters (T-070/T-071, P108): per-region bonus wall count.
-        // OrcaSlicer PerimeterGenerator.cpp:1569 —
+        // OrcaSlicer PerimeterGenerator.cpp —
         // `int loop_number = this->config->wall_loops + surface.extra_perimeters - 1;`
         // (0-indexed loops). Translated to an actual wall count, this is simply
         // `wall_loops + extra_perimeters`.

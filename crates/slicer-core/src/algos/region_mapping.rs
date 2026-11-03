@@ -22,7 +22,9 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use slicer_config::resolution::{resolve_scope_stack, ResolutionError, ResolutionTarget};
+use slicer_config::resolution::{
+    resolve_scope_stack, resolved_target_key, ResolutionError, ResolutionTarget,
+};
 use slicer_config::{ConfigSchemaRegistry, ExpansionContext, ScopedConfig};
 use slicer_ir::slice_ir::AggregatedRegionSplitEntry;
 use slicer_ir::{
@@ -234,42 +236,6 @@ fn cap_exceeded(
         top_contributors,
         remediation: "reduce region granularity, raise cap, or split job".to_string(),
     }
-}
-
-const RESOLVED_TARGET_PREFIX: &str = "\0resolved-target:";
-
-fn append_key_part(key: &mut String, value: &str) {
-    use std::fmt::Write as _;
-    let _ = write!(key, "{}:{value}", value.len());
-}
-
-fn resolved_target_key(
-    object_id: &str,
-    modifier_ids: &[String],
-    paint_semantics: &[String],
-    tool_index: Option<u32>,
-) -> String {
-    if modifier_ids.is_empty() && paint_semantics.is_empty() && tool_index.is_none() {
-        return object_id.to_owned();
-    }
-    let mut key = RESOLVED_TARGET_PREFIX.to_owned();
-    append_key_part(&mut key, object_id);
-    key.push('|');
-    for modifier_id in modifier_ids {
-        append_key_part(&mut key, modifier_id);
-        key.push(',');
-    }
-    key.push('|');
-    for semantic in paint_semantics {
-        append_key_part(&mut key, semantic);
-        key.push(',');
-    }
-    key.push('|');
-    if let Some(tool_index) = tool_index {
-        use std::fmt::Write as _;
-        let _ = write!(key, "{tool_index}");
-    }
-    key
 }
 
 fn ordered_modifier_ids(modifier_volumes: &[ModifierVolume]) -> Vec<String> {

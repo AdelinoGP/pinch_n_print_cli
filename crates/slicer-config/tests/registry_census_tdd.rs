@@ -487,7 +487,9 @@ fn real_toml_manifest_census_rederives_expected_scope() {
         .collect::<BTreeSet<_>>();
 
     assert_eq!(entry_count, 293);
-    assert_eq!(distinct_key_count, 192);
+    // The merged key set is the branch's renamed keys plus master's
+    // `infill_shift_step` and `support_base_pattern`; no distinct key was lost.
+    assert_eq!(distinct_key_count, 191);
     assert_eq!(multi_declared_count, 54);
     assert_eq!(
         wildcard_keys,
