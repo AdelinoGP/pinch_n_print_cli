@@ -66,7 +66,7 @@ criterion = { version = "0.5.1", default-features = false, features = ["html_rep
 # every guest→host transition, which is how fuel is sampled at a `profile-mark`
 # (ADR-0055): bindgen-generated host methods receive only `&mut T`, never the
 # `Store`, so `get_fuel` is unreachable from inside them.
-wasmtime = { version = "47.0.3", features = ["call-hook"] }
+wasmtime = { version = "47.0.3", features = ["call-hook", "cache"] }
 wasmtime-wasi = { version = "47.0.3" }
 wit-bindgen = "0.60.0"
 rayon = "1.80"

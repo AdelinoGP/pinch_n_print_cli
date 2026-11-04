@@ -349,15 +349,18 @@ def check(b: dict, tree: dict) -> list[tuple[str, bool, str]]:
     # --- structural claims against the checkout --------------------------
     loader = tree["loader"]
     add(
-        "the live loader compiles each module inside the binding loop",
-        "for module in report.modules {" in loader
-        and "compile_module_component(engine.as_ref(), &module)?" in loader,
+        "the live loader still owns the binding loop",
+        "for module in report.modules {" in loader,
         "loader loop",
     )
+    # t114 was a Phase-1 screen: its root-cause finding was "no cache on the
+    # path". Ticket 118 has since executed that fix, so the tree now carries
+    # the cache; the historical claim lives in FINDINGS.md, not in this check.
     add(
-        "the live loader has no component cache on the path",
-        "COMPONENT_CACHE" not in loader and "component_cache" not in loader,
-        "no cache global",
+        "the graduated cache is the one ticket 118 landed",
+        "component_cache::shared_engine(profile)" in loader
+        and "compile_module_component(profile, &module)" in loader,
+        "loader uses the shared component cache",
     )
     add(
         "the 24-thread probe is not in the committed tree",
@@ -435,12 +438,6 @@ def main() -> int:
         mutate_summary(
             "the cache ceiling grows past the gate",
             lambda m: m["cache_ceiling"].__setitem__("slice_calls_estimate", 400),
-        )
-        mutate_tree(
-            "a component cache appears in the loader",
-            lambda t: t.__setitem__(
-                "loader", t["loader"] + "\nstatic COMPONENT_CACHE: () = ();\n"
-            ),
         )
         mutate_tree(
             "the probe is left in the loader",

@@ -52,6 +52,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Map, Value};
@@ -2721,7 +2722,7 @@ fn module_plan_matches_recorded_baseline() {
     let (baseline, _manifest, _text) = load_baseline(&root)
         .unwrap_or_else(|error| panic!("committed lightning baseline is unusable: {error}"));
 
-    for case in &baseline.cases {
+    baseline.cases.par_iter().for_each(|case| {
         let wasm_trace = Arc::new(Trace::default());
         let options = case_options(&root, case_input(&root, &baseline, case), case, false);
         // The digest hashes the overrides this run is handed, not the baseline
@@ -2772,7 +2773,7 @@ fn module_plan_matches_recorded_baseline() {
         )
         .unwrap_or_else(|error| panic!("case `{}`: the native arm failed: {error}", case.case_id));
         assert_arm_matches_baseline(case, &native_capture, "native", &native_config);
-    }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -2787,7 +2788,7 @@ fn fresh_consumers_emit_baseline_segments() {
     let (baseline, _manifest, _text) = load_baseline(&root)
         .unwrap_or_else(|error| panic!("committed lightning baseline is unusable: {error}"));
 
-    for case in &baseline.cases {
+    baseline.cases.par_iter().for_each(|case| {
         let prep_trace = Arc::new(Trace::default());
         let options = case_options(&root, case_input(&root, &baseline, case), case, false);
         let prep_only = run_slice_preparation_capture(
@@ -3020,7 +3021,7 @@ fn fresh_consumers_emit_baseline_segments() {
             "case `{}`: cancellation releases every piece",
             case.case_id
         );
-    }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -4769,3 +4770,4 @@ fn record_lightning_baseline() {
     std::fs::write(dir.join(MANIFEST_FILE), manifest_text).expect("write manifest");
     eprintln!("RECORD wrote {BASELINE_FILE} and {MANIFEST_FILE}");
 }
+

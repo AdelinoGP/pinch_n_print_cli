@@ -273,3 +273,14 @@ recorded in the audit for the next e2e take. One audit proposal was
 **falsified on inspection**: `preparation_only_uses_production_prefix` cannot
 merge into `capture_is_semantically_neutral`, because the latter's captures are
 full slices and the preparation-only boundary would be lost.
+
+**Postscript 2 — the milestone was met the same day.** After this audit the human
+set a steep gate: the whole e2e bucket at most 15 minutes on this PC. [Ticket
+118](118-compiled-component-cache.md) was executed instead of deferred: the
+process-global compiled-component cache, wasmtime's validated disk cache,
+per-layer capture parallelism and corpus-case parallelism bring the full bucket
+to **755.12 s (12.59 min), 172 passed / 1 ignored**, under the gate with 2.41 min
+of headroom. The measured module walls are in
+[`evidence/t118-component-cache/`](../evidence/t118-component-cache/FINDINGS.md).
+The remaining corpus consolidation ([ticket 119](119-lightning-corpus-consolidation.md))
+is now claim hygiene, not latency.

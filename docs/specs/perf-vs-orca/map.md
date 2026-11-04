@@ -103,17 +103,21 @@ sharing). **Ledger correction:** the 40-minute baseline was **under-counted** �
 nine `pnp_cli`-backed e2e tests fail in 0.1 s on the stale-binary gate under plain
 `cargo test` (which does not build `pnp_cli`), so their 12–29 s each were absent
 from the 93-passed observation; `cargo xtask test` owns that preflight
-(`ensure_pnp_cli_fresh`). The carry decision is graduated as
-[118](issues/118-compiled-component-cache.md) (open, unclaimed, unblocked; task):
-a compiled-component cache keyed by engine profile + canonical path + mtime, gate
-**under 10 minutes with all 178 tests unchanged and byte-identical output**, t114's
-model ceiling **≈ 4.5 min** (`10 s + ~145 slices × 1.8 s`). Evidence:
+(`ensure_pnp_cli_fresh`). The carry decision was graduated as
+[118](issues/118-compiled-component-cache.md) and **executed the same session**
+after the human set a steep milestone: the process-global component cache,
+wasmtime's validated disk cache, per-layer capture parallelism and corpus-case
+parallelism bring the full bucket to **755.12 s (12.59 min), 172 passed / 1
+ignored — under the 15-minute gate** (t114's ≈4.5 min model was optimistic; the
+lightning captures do 38–52 s of real pipeline work each). Evidence:
 [`evidence/t114-e2e-latency/`](evidence/t114-e2e-latency/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, 29/29 checks; `--self-test` rejects 11/11
-negative controls). Frontier now: **115, 116, 118, 119** open and unclaimed, **117**
+negative controls). Frontier now: **115, 116, 119** open and unclaimed, **117**
 is the human's grilling; [119](issues/119-lightning-corpus-consolidation.md) owns
-the lightning corpus consolidation (**41 → 32** active invocations, all
-assertions preserved). Standing paired acceptance and KEEP/DROP rules unchanged.
+the remaining lightning corpus consolidation (**41 → 32** active invocations, all
+assertions preserved) — the bucket already clears its gate without it, so it is
+claim hygiene rather than latency. Standing paired acceptance and KEEP/DROP rules
+unchanged.
 
 **Previous selection scope (2026-11-04, eighteenth session — the t113 take):** the
 human said "continue the perf vs orca map" (no ticket named). The frontier at HEAD
@@ -2285,6 +2289,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Compiled-component cache in the live load path (e2e dev loop)](issues/118-compiled-component-cache.md): **resolved (2026-11-04; milestone met — full e2e bucket 755.12 s / 12.59 min < 900 s, 172 passed / 1 ignored)** — a process-global `(profile, canonical path, mtime, length)` component cache plus one shared engine per profile cuts a debug calicat slice from **11.732 s to 2.813 s warm** (15.424 s cold; byte-identical G-code `d12cdfd1…`); wasmtime's validated 15 MB disk cache makes separate `pnp_cli` processes hit; the per-layer capture loop now uses the same rayon parallelism as the ordinary path, and the lightning corpus tests run their five independent cases in parallel. Module walls: prep **~1,800 → 267.60 s**, `slice_end_to_end` **200.86 → 49.96 s**, precision **86.66 → 11.37 s**, visual capture **96.22 → 22.67 s**. Full bucket **1,282.18 s → 755.12 s** after case parallelism (21.37 → 12.59 min). Evidence: [`evidence/t118-component-cache/`](evidence/t118-component-cache/FINDINGS.md) (`verify.py` 22/22 checks, 11/11 negative controls).
+
 
 - [E2E bucket latency: the full runtime e2e suite is the dev-loop bottleneck](issues/114-e2e-bucket-latency.md): **resolved (2026-11-04; Phase-1 screen — the bucket is 85 % per-slice module load, no deletion or lane split recovers it, and the carrying shape is graduated as [ticket 118](issues/118-compiled-component-cache.md))** — one debug slice of `resources/calicat.stl` through the 24 core modules is **11.732 s** median, split **1.833 s** pipeline (validation 4 / prepass 425 / per-layer 1,174 / postpass 230 ms) and **10.011 s** module load + startup + emit; `load_live_modules_for_plan_manifest_first` builds a fresh `WasmEngine` and compiles every on-disk component **serially in the binding loop** with no cache. Serial inventory of 178 tests: the non-whale modules sum to **854 s**, `lightning_migration_tdd` measured **1,411 s for 6 of 10 tests** (~39 min extrapolated) and `preparation_runtime_lifecycle_tdd` is the ticket's recorded **14-of-16-in-30-min** module (~34 min) — the two whales are **83.8 %** of the **5,263 s (≈88 min)** extrapolated suite, whose measured/cited floor is **4,065 s (≈68 min)**. `slice_end_to_end_tdd` is the counter-example: 42 tests in **201 s** because ~10 `pnp_cli` runs back them (23 cached call sites over 3 keys + 7 uncached determinism runs). A reverted 24-thread compile probe (byte-identical G-code `d12cdfd1…`) removed only **2.431 s (−20.7 %)**, so parallelising the loop is **not** the lever; a compiled-component cache is (modelled ceiling **≈ 4.5 min**, `10 s + ~145 slices × 1.8 s`). **Pruning: the first pass's "no deletion justified" was corrected by an adversarial audit** — eight claim fixes/merges adopted (a never-running disk support-blocker test revived; both test-local `scenario_2` fakes deleted and the one real `PaintSemantic` order claim moved to `slicer-ir`; a lying override test renamed; an empty-tolerant pipeline test tightened; `modifier_infill` merged into its identical sibling, **38.76 s → 26.78 s / −11.98 s**; the precision merge landed inside noise, 86.66 → 86.71 s, not claimed). The audit also estimated **~11 min** of duplicate work; the largest piece is graduated as [ticket 119](issues/119-lightning-corpus-consolidation.md) (**41 → 32** active invocations, all assertions preserved). **Lane split: not viable** (a fast lane would be ≈ 22 s of unit/model-IO tests). **The ~237 pipeline starts** are the real bloat: 10.0 s of load each ≈ **39.5 min**, so even perfect deduplication leaves ~77 min; the cache is the carrying fix. **Ledger correction:** the 40-minute baseline was **under-counted** — nine `pnp_cli`-backed tests fail in 0.1 s on the stale-binary gate under plain `cargo test`, which does not build `pnp_cli`; `cargo xtask test` owns that preflight. Evidence: [`evidence/t114-e2e-latency/`](evidence/t114-e2e-latency/FINDINGS.md) (`verify.py` exits 0 checkout-only, 30/30 checks, 12/12 negative controls rejected).
 
