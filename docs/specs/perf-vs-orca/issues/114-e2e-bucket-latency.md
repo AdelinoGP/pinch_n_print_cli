@@ -219,7 +219,7 @@ cache-appears-in-loader mutations.
 **The "no test is safely deletable" claim in the Answer was too strong.** A
 five-agent adversarial audit of all 28 e2e modules (three reviewers, two
 explorers; `docs/22_test_quality.md` taxonomy) found tests that did not test
-their names, a test that had never run, and ~15 minutes of repeated
+their names, a test that had never run, and ~11 minutes of repeated
 observations. The full per-test tables and coverage maps are in
 [`evidence/t114-e2e-latency/AUDIT.md`](../evidence/t114-e2e-latency/AUDIT.md).
 
@@ -256,7 +256,7 @@ observations. The full per-test tables and coverage maps are in
 **Why the 88 minutes survive deletion.** The bucket performs **~237 pipeline
 starts** for 168 tests; at the measured **10.0 s** fixed module load that is
 **~39.5 min of pure loading**, plus ~1.8 s of pipeline per start, plus the
-tapped captures. Perfect deduplication (~15 min) leaves ~73 min. The carrying
+tapped captures. Perfect deduplication (~11 min) leaves ~77 min. The carrying
 fix is still the compiled-component cache
 ([ticket 118](118-compiled-component-cache.md)).
 

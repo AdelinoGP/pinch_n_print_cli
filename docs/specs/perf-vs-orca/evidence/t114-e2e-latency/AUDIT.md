@@ -18,7 +18,7 @@ measured, and what is left.
   G-code" test passed on an empty file; one disk fixture test had **never run**
   (stale candidate roster, silent `SKIP`).
 - **The wall is duplicate *work*, not duplicate *claims*.** The audits found
-  **~15 minutes** of repeated observations (9 in `lightning_migration_tdd`, 11
+  **~11 minutes** of repeated observations (estimate: 423 s lightning + 120 s prep + ~95 s small-module merges + 12 s precision) (9 in `lightning_migration_tdd`, 11
   in `preparation_runtime_lifecycle_tdd`, 8 in the small slice modules). The
   remaining ~70 minutes is distinct claims, each paying the measured
   **10.0 s** fixed module load.
@@ -60,8 +60,8 @@ The e2e bucket performs **~237 pipeline starts** (66 full + 45 preparation in
 rest) for 178 tests. At the measured **10.0 s** fixed module load, that is
 **~39.5 minutes of pure module loading** before any slicing; the pipeline work
 (~1.8 s per start) adds ~7 minutes, and the tapped captures add the rest. The
-audit's ~15 minutes of duplicate work is **real but second-order** next to the
-237 loads: even perfect deduplication leaves ~73 minutes. That is why the
+audit's ~11 minutes of duplicate work is **real but second-order** next to the
+237 loads: even perfect deduplication leaves ~77 minutes. That is why the
 compiled-component cache, not test deletion, is the carrying shape.
 
 ## Verification

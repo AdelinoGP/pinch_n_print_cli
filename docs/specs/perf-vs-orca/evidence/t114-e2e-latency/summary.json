@@ -257,6 +257,6 @@
     },
     "pipeline_starts_estimate": 237,
     "pipeline_start_load_s": 10.011,
-    "duplicate_work_estimate_s": 900
+    "duplicate_work_estimate_s": 650
   }
 }

@@ -293,7 +293,7 @@ def check(b: dict, tree: dict) -> list[tuple[str, bool, str]]:
         f"{starts * load_s / 60.0:.1f} min",
     )
     add(
-        "the audit's ~15 min duplicate work is second-order next to the load floor",
+        "the audit's ~11 min duplicate work is second-order next to the load floor",
         pa["duplicate_work_estimate_s"] < starts * load_s,
         f"{pa['duplicate_work_estimate_s']} s duplicate vs {starts * load_s:.0f} s loading",
     )

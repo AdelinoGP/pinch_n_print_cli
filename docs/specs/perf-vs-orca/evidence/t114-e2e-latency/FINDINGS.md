@@ -147,7 +147,7 @@ That pass was nevertheless **too strong**, because it did not ask whether a test
 actually tests its name, or whether the same expensive observation is re-taken
 by several tests. The adversarial audit in
 [`AUDIT.md`](AUDIT.md) found decorative, fake, success-only and never-running
-tests, plus **~15 minutes** of duplicate work.
+tests, plus **~11 minutes** of duplicate work.
 
 **Adopted:** a never-running disk support-blocker test revived, both test-local
 `scenario_2` fakes deleted (the one real `PaintSemantic` order claim moved to
