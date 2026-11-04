@@ -54,6 +54,13 @@ Every number in this tracker is a ledger fact — re-derive at the point of use.
 the 755 s bucket's critical path (`module_plan` 373 s, `typed_projection`
 345 s), ranked next moves, measurement protocol and traps.
 
+**Lightning test-leg screen:** [ticket 120](issues/120-lightning-test-leg-concurrency.md)
+parallelizes independent test legs with the existing Rayon pool. One warm,
+shared-machine pair measured **798.61 s → 700.16 s** with the same 172 passed
+and one ignored; active browser load means this is not an idle-box benchmark.
+See its [evidence](evidence/t120-lightning-parallel-legs/FINDINGS.md) for the
+conditions, correctness gates and limits. Ticket 119 remains open.
+
 Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.

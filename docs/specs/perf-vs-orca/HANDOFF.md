@@ -1,5 +1,14 @@
 # Handoff — pipeline runtime speed (e2e dev loop)
 
+**Subsequent screen:** [ticket 120](issues/120-lightning-test-leg-concurrency.md)
+implemented the independent-leg concurrency proposed below. Its single warm
+shared-machine pair measured **798.61 s → 700.16 s**, with 172 passed / 1
+ignored and matching calicat hashes. Browser load was active, so these are not
+idle-box benchmark results; the 6–8 minute projection below was not reached.
+See the [evidence](evidence/t120-lightning-parallel-legs/FINDINGS.md) for the
+conditions and verifier. Ticket 119 and the Phase-1 preparation-reuse screen
+remain possible next moves. The rest of this handoff records the earlier state.
+
 Written 2026-11-04, after [ticket 118](issues/118-compiled-component-cache.md)
 met the 15-minute milestone. Scope: the **`slicer-runtime` e2e bucket**
 (`cargo test -p slicer-runtime --test e2e`). The slice-throughput work is a

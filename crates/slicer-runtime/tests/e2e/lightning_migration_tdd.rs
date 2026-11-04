@@ -50,9 +50,9 @@
 
 #![allow(clippy::too_many_lines)]
 
+use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Map, Value};
@@ -2722,57 +2722,68 @@ fn module_plan_matches_recorded_baseline() {
     let (baseline, _manifest, _text) = load_baseline(&root)
         .unwrap_or_else(|error| panic!("committed lightning baseline is unusable: {error}"));
 
+    // Each arm constructs its own runtime and observer. Join them on Rayon's
+    // existing pool, which also runs the case and layer work.
     baseline.cases.par_iter().for_each(|case| {
-        let wasm_trace = Arc::new(Trace::default());
-        let options = case_options(&root, case_input(&root, &baseline, case), case, false);
-        // The digest hashes the overrides this run is handed, not the baseline
-        // record: a plumbing defect has to move it.
-        let wasm_config = options.config_overrides.clone();
-        let wasm_capture = run_visual(
-            options,
-            Vec::new(),
-            vec![SLICE_TAP.to_owned(), INFILL_TAP.to_owned()],
-            layer_indices(case),
-            Arc::clone(&wasm_trace),
-        )
-        .unwrap_or_else(|error| panic!("case `{}`: the WASM arm failed: {error}", case.case_id));
-        assert_arm_matches_baseline(case, &wasm_capture, "wasm", &wasm_config);
+        rayon::join(
+            || {
+                let wasm_trace = Arc::new(Trace::default());
+                let options = case_options(&root, case_input(&root, &baseline, case), case, false);
+                // The digest hashes the overrides this run is handed, not the baseline
+                // record: a plumbing defect has to move it.
+                let wasm_config = options.config_overrides.clone();
+                let wasm_capture = run_visual(
+                    options,
+                    Vec::new(),
+                    vec![SLICE_TAP.to_owned(), INFILL_TAP.to_owned()],
+                    layer_indices(case),
+                    Arc::clone(&wasm_trace),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("case `{}`: the WASM arm failed: {error}", case.case_id)
+                });
+                assert_arm_matches_baseline(case, &wasm_capture, "wasm", &wasm_config);
 
-        // Control: a changed supplied scalar must move the digest. Deriving the
-        // digest from `case.config` instead would leave this unchanged, which is
-        // the self-referential-oracle failure AC-2 exists to prevent.
-        let mut perturbed = wasm_config.clone();
-        perturbed.insert(
-            "infill_density".to_owned(),
-            ConfigValue::Float(case.config.infill_density + 0.01),
+                // Control: a changed supplied scalar must move the digest. Deriving the
+                // digest from `case.config` instead would leave this unchanged, which is
+                // the self-referential-oracle failure AC-2 exists to prevent.
+                let mut perturbed = wasm_config.clone();
+                perturbed.insert(
+                    "infill_density".to_owned(),
+                    ConfigValue::Float(case.config.infill_density + 0.01),
+                );
+                assert_ne!(
+                    inputs_digest(&perturbed, &captured_slices(&wasm_capture)),
+                    case.digests.inputs_sha256,
+                    "case `{}`: the input digest ignored a changed supplied scalar",
+                    case.case_id
+                );
+            },
+            || {
+                // Native arm: the module's real prepared pair. The lightning guest is
+                // absent from the search roots so the integrated registration (and its
+                // pair) is the only provider for this module id.
+                let native_options = case_options_with_dirs(
+                    &root,
+                    case_input(&root, &baseline, case),
+                    case,
+                    true,
+                    native_module_dirs(&root),
+                );
+                let native_config = native_options.config_overrides.clone();
+                let native_trace = Arc::new(Trace::default());
+                let native_capture = run_visual_native(
+                    native_options,
+                    vec![SLICE_TAP.to_owned(), INFILL_TAP.to_owned()],
+                    layer_indices(case),
+                    Arc::clone(&native_trace),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("case `{}`: the native arm failed: {error}", case.case_id)
+                });
+                assert_arm_matches_baseline(case, &native_capture, "native", &native_config);
+            },
         );
-        assert_ne!(
-            inputs_digest(&perturbed, &captured_slices(&wasm_capture)),
-            case.digests.inputs_sha256,
-            "case `{}`: the input digest ignored a changed supplied scalar",
-            case.case_id
-        );
-
-        // Native arm: the module's real prepared pair. The lightning guest is
-        // absent from the search roots so the integrated registration (and its
-        // pair) is the only provider for this module id.
-        let native_options = case_options_with_dirs(
-            &root,
-            case_input(&root, &baseline, case),
-            case,
-            true,
-            native_module_dirs(&root),
-        );
-        let native_config = native_options.config_overrides.clone();
-        let native_trace = Arc::new(Trace::default());
-        let native_capture = run_visual_native(
-            native_options,
-            vec![SLICE_TAP.to_owned(), INFILL_TAP.to_owned()],
-            layer_indices(case),
-            Arc::clone(&native_trace),
-        )
-        .unwrap_or_else(|error| panic!("case `{}`: the native arm failed: {error}", case.case_id));
-        assert_arm_matches_baseline(case, &native_capture, "native", &native_config);
     });
 }
 
@@ -2788,239 +2799,246 @@ fn fresh_consumers_emit_baseline_segments() {
     let (baseline, _manifest, _text) = load_baseline(&root)
         .unwrap_or_else(|error| panic!("committed lightning baseline is unusable: {error}"));
 
+    // Each leg has its own runtime, trace, and (for cancellation) flag.
     baseline.cases.par_iter().for_each(|case| {
-        let prep_trace = Arc::new(Trace::default());
-        let options = case_options(&root, case_input(&root, &baseline, case), case, false);
-        let prep_only = run_slice_preparation_capture(
-            options,
-            extensions(Vec::new(), Vec::new(), Arc::clone(&prep_trace)),
-        )
-        .unwrap_or_else(|error| {
-            panic!(
-                "case `{}`: the preparation-only path failed: {error}",
-                case.case_id
-            )
-        });
-        assert_prepared_owner(&prep_only, &case.case_id);
-        assert_eq!(
-            prep_trace.count(
-                MODULE_ID,
-                PreparationLifecyclePhase::Consumption,
-                PreparationLifecycleStatus::Start
-            ),
-            0,
-            "case `{}`: the preparation-only path constructs no consumer",
-            case.case_id
-        );
-        assert_eq!(
-            prep_only.transferred_bytes, 0,
-            "case `{}`: the preparation-only path transfers no piece bytes",
-            case.case_id
-        );
-
-        let trace = Arc::new(Trace::default());
-        let options = case_options(&root, case_input(&root, &baseline, case), case, false);
-        let capture = run_visual(
-            options,
-            Vec::new(),
-            vec![INFILL_TAP.to_owned()],
-            layer_indices(case),
-            Arc::clone(&trace),
-        )
-        .unwrap_or_else(|error| {
-            panic!("case `{}`: the consumer path failed: {error}", case.case_id)
-        });
-        assert_prepared_owner(&capture.metadata(), &case.case_id);
-        let consumption_starts = trace.count(
-            MODULE_ID,
-            PreparationLifecyclePhase::Consumption,
-            PreparationLifecycleStatus::Start,
-        );
-        assert!(
-            consumption_starts > 0,
-            "case `{}`: ordinary consumers must actually start",
-            case.case_id
-        );
-
-        let infill = captured_infill(&capture);
-        assert_eq!(
-            infill.len() as u64,
-            case.layer_count,
-            "case `{}`: every committed layer must produce a Layer::Infill capture",
-            case.case_id
-        );
-        let mut population = Population::new();
-        let width = case.config.line_width;
-        for (layer, ir) in &infill {
-            let layer_population = population_from_infill(&case.case_id, *layer, ir)
-                .expect("the module's emitted region keys are unique");
-            for (key, entry) in layer_population {
-                assert!(
-                    population.insert(key.clone(), entry).is_none(),
-                    "case `{}`: duplicated emitted key {}",
-                    case.case_id,
-                    key.describe()
+        rayon::scope(|scope| {
+            scope.spawn(|_| {
+                let prep_trace = Arc::new(Trace::default());
+                let options = case_options(&root, case_input(&root, &baseline, case), case, false);
+                let prep_only = run_slice_preparation_capture(
+                    options,
+                    extensions(Vec::new(), Vec::new(), Arc::clone(&prep_trace)),
+                )
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "case `{}`: the preparation-only path failed: {error}",
+                        case.case_id
+                    )
+                });
+                assert_prepared_owner(&prep_only, &case.case_id);
+                assert_eq!(
+                    prep_trace.count(
+                        MODULE_ID,
+                        PreparationLifecyclePhase::Consumption,
+                        PreparationLifecycleStatus::Start
+                    ),
+                    0,
+                    "case `{}`: the preparation-only path constructs no consumer",
+                    case.case_id
                 );
-            }
-            for region in &ir.regions {
-                for path in &region.sparse_infill {
-                    assert_eq!(
-                        path.role,
-                        ExtrusionRole::SparseInfill,
-                        "case `{}`: emitted sparse paths keep the SparseInfill role",
-                        case.case_id
-                    );
-                    assert!(
-                        path.points.len() >= 2,
-                        "case `{}`: an emitted sparse path carries a segment",
-                        case.case_id
-                    );
-                    for point in &path.points {
+                assert_eq!(
+                    prep_only.transferred_bytes, 0,
+                    "case `{}`: the preparation-only path transfers no piece bytes",
+                    case.case_id
+                );
+            });
+            scope.spawn(|_| {
+                let trace = Arc::new(Trace::default());
+                let options = case_options(&root, case_input(&root, &baseline, case), case, false);
+                let capture = run_visual(
+                    options,
+                    Vec::new(),
+                    vec![INFILL_TAP.to_owned()],
+                    layer_indices(case),
+                    Arc::clone(&trace),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("case `{}`: the consumer path failed: {error}", case.case_id)
+                });
+                assert_prepared_owner(&capture.metadata(), &case.case_id);
+                let consumption_starts = trace.count(
+                    MODULE_ID,
+                    PreparationLifecyclePhase::Consumption,
+                    PreparationLifecycleStatus::Start,
+                );
+                assert!(
+                    consumption_starts > 0,
+                    "case `{}`: ordinary consumers must actually start",
+                    case.case_id
+                );
+
+                let infill = captured_infill(&capture);
+                assert_eq!(
+                    infill.len() as u64,
+                    case.layer_count,
+                    "case `{}`: every committed layer must produce a Layer::Infill capture",
+                    case.case_id
+                );
+                let mut population = Population::new();
+                let width = case.config.line_width;
+                for (layer, ir) in &infill {
+                    let layer_population = population_from_infill(&case.case_id, *layer, ir)
+                        .expect("the module's emitted region keys are unique");
+                    for (key, entry) in layer_population {
                         assert!(
-                            (f64::from(point.width) - width).abs() < 1.0e-6,
-                            "case `{}`: emitted width {} does not match the recorded {}",
+                            population.insert(key.clone(), entry).is_none(),
+                            "case `{}`: duplicated emitted key {}",
                             case.case_id,
-                            point.width,
-                            width
+                            key.describe()
                         );
                     }
+                    for region in &ir.regions {
+                        for path in &region.sparse_infill {
+                            assert_eq!(
+                                path.role,
+                                ExtrusionRole::SparseInfill,
+                                "case `{}`: emitted sparse paths keep the SparseInfill role",
+                                case.case_id
+                            );
+                            assert!(
+                                path.points.len() >= 2,
+                                "case `{}`: an emitted sparse path carries a segment",
+                                case.case_id
+                            );
+                            for point in &path.points {
+                                assert!(
+                                    (f64::from(point.width) - width).abs() < 1.0e-6,
+                                    "case `{}`: emitted width {} does not match the recorded {}",
+                                    case.case_id,
+                                    point.width,
+                                    width
+                                );
+                            }
+                        }
+                        // Full identity, including the ordered chain: the painted case has
+                        // two callers sharing `(layer, object, region)`, so a three-field
+                        // lookup would silently compare the painted region to the
+                        // chain-less sibling — the exact identity collapse Step 1a extended
+                        // the baseline to catch.
+                        let emitted_chain: Vec<(String, String)> = region
+                            .variant_chain
+                            .iter()
+                            .map(|(semantic, value)| {
+                                (
+                                    semantic.clone(),
+                                    serde_json::to_string(value).expect("PaintValue serializes"),
+                                )
+                            })
+                            .collect();
+                        let _recorded_caller = case
+                            .callers
+                            .iter()
+                            .find(|caller| {
+                                caller.key.global_layer_index == ir.global_layer_index as i32
+                                    && caller.key.object_id == region.object_id
+                                    && caller.key.region_id == region.region_id
+                                    && caller.key.variant_chain == emitted_chain
+                            })
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "case `{}`: emitted region {}:{} with chain {emitted_chain:?} has no recorded caller",
+                                    case.case_id, region.object_id, region.region_id
+                                )
+                            });
+                    }
                 }
-                // Full identity, including the ordered chain: the painted case has
-                // two callers sharing `(layer, object, region)`, so a three-field
-                // lookup would silently compare the painted region to the
-                // chain-less sibling — the exact identity collapse Step 1a extended
-                // the baseline to catch.
-                let emitted_chain: Vec<(String, String)> = region
-                    .variant_chain
-                    .iter()
-                    .map(|(semantic, value)| {
-                        (
-                            semantic.clone(),
-                            serde_json::to_string(value).expect("PaintValue serializes"),
-                        )
-                    })
-                    .collect();
-                let _recorded_caller = case
-                    .callers
-                    .iter()
-                    .find(|caller| {
-                        caller.key.global_layer_index == ir.global_layer_index as i32
-                            && caller.key.object_id == region.object_id
-                            && caller.key.region_id == region.region_id
-                            && caller.key.variant_chain == emitted_chain
+
+                // A caller with zero segments is recorded — the baseline enumerates every
+                // committed slice region — but carries no segment identity, and whether
+                // such a region reaches the stage depends on the host's region partition.
+                // Compare the nonempty subsets on both sides: a key that should emit
+                // nothing but emits something is still an unexpected entry, and a key that
+                // should emit something but emits nothing is still a missing entry.
+                let expected =
+                    nonempty(population_from_callers(case).expect("caller population is unique"));
+                let actual = nonempty(population);
+                compare_populations(&case.case_id, &expected, &actual).unwrap_or_else(|error| {
+                    panic!(
+                        "case `{}`: emitted segments diverged from the recorded caller multiset: {error}",
+                        case.case_id
+                    )
+                });
+                assert_eq!(
+                    capture.metadata().retained_bytes,
+                    0,
+                    "case `{}`: no piece bytes survive disposal",
+                    case.case_id
+                );
+                assert!(
+                    capture.metadata().transferred_bytes > 0,
+                    "case `{}`: full consumption returns nonzero piece bytes",
+                    case.case_id
+                );
+                assert_eq!(
+                    trace.max_retained_after_disposal(),
+                    0,
+                    "case `{}`: every disposal reports zero retained bytes",
+                    case.case_id
+                );
+            });
+            scope.spawn(|_| {
+                // Cancellation after allocation: the flag is raised only once the module
+                // reports a Ready preparation that holds pieces, so this leg exercises
+                // disposal of an already-committed plan. A pre-set flag would cancel
+                // before anything was allocated and prove nothing about cleanup.
+                let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let mut cancel_options =
+                    case_options(&root, case_input(&root, &baseline, case), case, false);
+                cancel_options.cancel_flag = Some(Arc::clone(&cancel));
+                let cancel_trace = Arc::new(Trace::default());
+                let cancel_observer = Arc::new(CancelAfterPublication {
+                    trace: Arc::clone(&cancel_trace),
+                    flag: Arc::clone(&cancel),
+                });
+                let error = run_slice_with_runtime_extensions(
+                    cancel_options,
+                    SliceRuntimeExtensions::new(Vec::new(), Vec::new(), Vec::new(), Some(cancel_observer)),
+                )
+                .expect_err("cancellation after publication must abort the print");
+                assert!(
+                    cancel.load(std::sync::atomic::Ordering::SeqCst),
+                    "case `{}`: the cancellation trigger never fired, so this leg would be vacuous",
+                    case.case_id
+                );
+                assert!(
+                    format!("{error}").to_lowercase().contains("cancel"),
+                    "case `{}`: cancellation must be reported as cancellation: {error}",
+                    case.case_id
+                );
+                let allocation = cancel_trace
+                    .records()
+                    .into_iter()
+                    .find(|record| {
+                        record.module_id.as_str() == MODULE_ID
+                            && record.lifecycle_phase == PreparationLifecyclePhase::Preparation
+                            && record.status == PreparationLifecycleStatus::Ready
+                            && !record.pieces.is_empty()
                     })
                     .unwrap_or_else(|| {
                         panic!(
-                            "case `{}`: emitted region {}:{} with chain {emitted_chain:?} has no recorded caller",
-                            case.case_id, region.object_id, region.region_id
+                            "case `{}`: no Ready preparation holding pieces was observed, so cancellation \
+                             was never exercised against an allocated plan",
+                            case.case_id
                         )
                     });
-            }
-        }
-
-        // A caller with zero segments is recorded — the baseline enumerates every
-        // committed slice region — but carries no segment identity, and whether
-        // such a region reaches the stage depends on the host's region partition.
-        // Compare the nonempty subsets on both sides: a key that should emit
-        // nothing but emits something is still an unexpected entry, and a key that
-        // should emit something but emits nothing is still a missing entry.
-        let expected =
-            nonempty(population_from_callers(case).expect("caller population is unique"));
-        let actual = nonempty(population);
-        compare_populations(&case.case_id, &expected, &actual).unwrap_or_else(|error| {
-            panic!(
-                "case `{}`: emitted segments diverged from the recorded caller multiset: {error}",
-                case.case_id
-            )
-        });
-        assert_eq!(
-            capture.metadata().retained_bytes,
-            0,
-            "case `{}`: no piece bytes survive disposal",
-            case.case_id
-        );
-        assert!(
-            capture.metadata().transferred_bytes > 0,
-            "case `{}`: full consumption returns nonzero piece bytes",
-            case.case_id
-        );
-        assert_eq!(
-            trace.max_retained_after_disposal(),
-            0,
-            "case `{}`: every disposal reports zero retained bytes",
-            case.case_id
-        );
-
-        // Cancellation after allocation: the flag is raised only once the module
-        // reports a Ready preparation that holds pieces, so this leg exercises
-        // disposal of an already-committed plan. A pre-set flag would cancel
-        // before anything was allocated and prove nothing about cleanup.
-        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let mut cancel_options =
-            case_options(&root, case_input(&root, &baseline, case), case, false);
-        cancel_options.cancel_flag = Some(Arc::clone(&cancel));
-        let cancel_trace = Arc::new(Trace::default());
-        let cancel_observer = Arc::new(CancelAfterPublication {
-            trace: Arc::clone(&cancel_trace),
-            flag: Arc::clone(&cancel),
-        });
-        let error = run_slice_with_runtime_extensions(
-            cancel_options,
-            SliceRuntimeExtensions::new(Vec::new(), Vec::new(), Vec::new(), Some(cancel_observer)),
-        )
-        .expect_err("cancellation after publication must abort the print");
-        assert!(
-            cancel.load(std::sync::atomic::Ordering::SeqCst),
-            "case `{}`: the cancellation trigger never fired, so this leg would be vacuous",
-            case.case_id
-        );
-        assert!(
-            format!("{error}").to_lowercase().contains("cancel"),
-            "case `{}`: cancellation must be reported as cancellation: {error}",
-            case.case_id
-        );
-        let allocation = cancel_trace
-            .records()
-            .into_iter()
-            .find(|record| {
-                record.module_id.as_str() == MODULE_ID
-                    && record.lifecycle_phase == PreparationLifecyclePhase::Preparation
-                    && record.status == PreparationLifecycleStatus::Ready
-                    && !record.pieces.is_empty()
-            })
-            .unwrap_or_else(|| {
-                panic!(
-                    "case `{}`: no Ready preparation holding pieces was observed, so cancellation \
-                     was never exercised against an allocated plan",
+                assert!(
+                    allocation.retained_bytes > 0,
+                    "case `{}`: the cancelled preparation must have held bytes",
                     case.case_id
-                )
+                );
+                let disposals: Vec<_> = cancel_trace
+                    .records()
+                    .into_iter()
+                    .filter(|record| record.status == PreparationLifecycleStatus::Disposed)
+                    .collect();
+                assert!(
+                    !disposals.is_empty(),
+                    "case `{}`: cancellation must record actual disposal, not merely an absent one",
+                    case.case_id
+                );
+                assert!(
+                    disposals.iter().all(|record| record.retained_bytes == 0),
+                    "case `{}`: cancellation releases every piece",
+                    case.case_id
+                );
+                assert_eq!(
+                    cancel_trace.max_retained_after_disposal(),
+                    0,
+                    "case `{}`: cancellation releases every piece",
+                    case.case_id
+                );
             });
-        assert!(
-            allocation.retained_bytes > 0,
-            "case `{}`: the cancelled preparation must have held bytes",
-            case.case_id
-        );
-        let disposals: Vec<_> = cancel_trace
-            .records()
-            .into_iter()
-            .filter(|record| record.status == PreparationLifecycleStatus::Disposed)
-            .collect();
-        assert!(
-            !disposals.is_empty(),
-            "case `{}`: cancellation must record actual disposal, not merely an absent one",
-            case.case_id
-        );
-        assert!(
-            disposals.iter().all(|record| record.retained_bytes == 0),
-            "case `{}`: cancellation releases every piece",
-            case.case_id
-        );
-        assert_eq!(
-            cancel_trace.max_retained_after_disposal(),
-            0,
-            "case `{}`: cancellation releases every piece",
-            case.case_id
-        );
+        });
     });
 }
 
@@ -3042,358 +3060,380 @@ fn typed_projection_is_atomic_and_neutral() {
         .find(|case| case.case_id == "hole_void_classic")
         .expect("the committed baseline must carry the hole_void_classic case");
 
-    let trace = Arc::new(Trace::default());
-    let options = case_options(&root, case_input(&root, &baseline, case), case, false);
-    let capture = run_visual(
-        options,
-        vec![PreparationViewRequest {
-            module_id: MODULE_ID.into(),
-            view: VIEW.into(),
-        }],
-        Vec::new(),
-        vec![0],
-        Arc::clone(&trace),
-    )
-    .unwrap_or_else(|error| {
-        panic!(
-            "case `{}`: the declared planning_geometry view is not served: {error}",
-            case.case_id
-        )
-    });
-
-    assert_prepared_owner(&capture.metadata(), &case.case_id);
-    assert!(
-        !capture.captures().is_empty(),
-        "case `{}`: the requested view must publish at least one typed capture",
-        case.case_id
-    );
-    let mut scenes = Vec::new();
-    for stage in capture.captures() {
-        let CapturedIr::PreparationProjection(snapshot) = &stage.ir else {
-            panic!(
-                "case `{}`: planning_geometry must publish typed projections, got {:?}",
-                case.case_id, stage.ir
-            );
-        };
-        scenes.push(Arc::clone(snapshot));
-    }
-    assert!(
-        scenes
-            .windows(2)
-            .all(|pair| Arc::ptr_eq(&pair[0], &pair[1])),
-        "case `{}`: all rendered layers share one committed whole-print scene",
-        case.case_id
-    );
-    let snapshot = &scenes[0];
-    assert_eq!(snapshot.owner_module_id(), MODULE_ID);
-    assert_eq!(snapshot.view(), VIEW);
-    let scene = snapshot.scene();
-    assert_eq!(scene.scene_id, "lightning-plan");
-    assert_eq!(scene.view, VIEW);
-    let classes: BTreeSet<&str> = scene.classes.iter().map(String::as_str).collect();
-    assert_eq!(
-        classes,
-        ["grounding", "planning_domain", "tree_branch", "tree_root"]
-            .into_iter()
-            .collect::<BTreeSet<&str>>(),
-        "case `{}`: the scene declares exactly the four planning classes",
-        case.case_id
-    );
-    assert!(
-        !scene.primitives.is_empty(),
-        "case `{}`: the scene must carry primitives",
-        case.case_id
-    );
-    let schedule: BTreeSet<u32> = capture.schedule().iter().map(|layer| layer.index).collect();
-    assert!(
-        !schedule.is_empty(),
-        "case `{}`: the capture must carry the committed schedule",
-        case.case_id
-    );
-    let mut ids = BTreeSet::new();
-    let (mut domains, mut branches, mut roots, mut groundings, mut holes, mut labelled) =
-        (0, 0, 0, 0, 0, 0);
-    for primitive in &scene.primitives {
-        assert!(
-            !primitive.id.is_empty(),
-            "case `{}`: primitive ids are nonempty and scene-local",
-            case.case_id
-        );
-        assert!(
-            ids.insert(primitive.id.clone()),
-            "case `{}`: primitive ids are unique: {}",
-            case.case_id,
-            primitive.id
-        );
-        assert!(
-            schedule.contains(&primitive.global_layer_index),
-            "case `{}`: primitive {} names a real schedule layer",
-            case.case_id,
-            primitive.global_layer_index
-        );
-        if primitive.label.is_some() {
-            labelled += 1;
-        }
-        match (&primitive.class[..], &primitive.geometry) {
-            ("planning_domain", PreparationProjectionGeometry::Polygon { polygon, .. }) => {
-                domains += 1;
-                assert!(
-                    polygon.contour.points.len() >= 3,
-                    "case `{}`: a planning domain is a real polygon",
-                    case.case_id
-                );
-                holes += polygon.holes.len();
-            }
-            ("tree_branch", PreparationProjectionGeometry::Polyline(points)) => {
-                branches += 1;
-                assert!(
-                    points.len() >= 2,
-                    "case `{}`: a tree branch is an open polyline with a segment",
-                    case.case_id
-                );
-            }
-            ("tree_root", PreparationProjectionGeometry::Point(_)) => roots += 1,
-            ("grounding", PreparationProjectionGeometry::Point(_)) => groundings += 1,
-            (class, geometry) => panic!(
-                "case `{}`: class '{class}' carries the wrong geometry {geometry:?}",
-                case.case_id
-            ),
-        }
-    }
-    assert!(
-        domains > 0 && branches > 0 && roots > 0 && groundings > 0,
-        "case `{}`: all four classes must carry a nonempty population (domains {domains}, \
-         branches {branches}, roots {roots}, groundings {groundings})",
-        case.case_id
-    );
-    assert!(
-        labelled > 0,
-        "case `{}`: source/checkpoint identity is carried in primitive labels",
-        case.case_id
-    );
-    assert!(
-        holes > 0,
-        "case `{}`: the hole_void_classic domain preserves its hole (Polygon holes preserved)",
-        case.case_id
-    );
-
-    // The scene's plan geometry is the same plan the pieces encode: compare the
-    // per-layer edge union to the recorded population for the same layers. The
-    // plan is print-wide, while the consumer filters per region (a region with
-    // no sparse-fill area, or one that does not hold a sparse claim, emits
-    // nothing), so the scene may carry branches the consumer did not emit.
-    // Every emitted edge, however, must be present in the scene with the same
-    // multiplicity: the consumer may filter plan branches, never invent them.
-    let expected = population_from_plan_entries(case).expect("baseline population is unique");
-    let mut expected_by_layer: BTreeMap<i32, BTreeMap<Edge, u64>> = BTreeMap::new();
-    for (key, entry) in &expected {
-        let layer = expected_by_layer.entry(key.global_layer_index).or_default();
-        for (edge, count) in &entry.edges {
-            *layer.entry(*edge).or_insert(0) += count;
-        }
-    }
-    let mut scene_by_layer: BTreeMap<i32, BTreeMap<Edge, u64>> = BTreeMap::new();
-    for primitive in &scene.primitives {
-        let PreparationProjectionGeometry::Polyline(points) = &primitive.geometry else {
-            continue;
-        };
-        let layer = scene_by_layer
-            .entry(primitive.global_layer_index as i32)
-            .or_default();
-        for pair in points.windows(2) {
-            *layer
-                .entry((pair[0].x, pair[0].y, pair[1].x, pair[1].y))
-                .or_insert(0) += 1;
-        }
-    }
-    for (layer, emitted) in &expected_by_layer {
-        let planned = scene_by_layer.get(layer).unwrap_or_else(|| {
-            panic!(
-                "case `{}`: layer {layer} emitted edges but the scene carries no plan branches",
-                case.case_id
+    // These runs have separate per-run state and observers; the two G-code
+    // results are joined before their byte-for-byte comparison.
+    rayon::scope(|scope| {
+        scope.spawn(|_| {
+            let trace = Arc::new(Trace::default());
+            let options = case_options(&root, case_input(&root, &baseline, case), case, false);
+            let capture = run_visual(
+                options,
+                vec![PreparationViewRequest {
+                    module_id: MODULE_ID.into(),
+                    view: VIEW.into(),
+                }],
+                Vec::new(),
+                vec![0],
+                Arc::clone(&trace),
             )
-        });
-        for (edge, count) in emitted {
-            assert_eq!(
-                planned.get(edge),
-                Some(count),
-                "case `{}`: emitted edge ({}, {}, {}, {}) is missing from the scene plan",
-                case.case_id,
-                edge.0,
-                edge.1,
-                edge.2,
-                edge.3
-            );
-        }
-    }
+            .unwrap_or_else(|error| {
+                panic!(
+                    "case `{}`: the declared planning_geometry view is not served: {error}",
+                    case.case_id
+                )
+            });
 
-    // Capture neutrality: the same real slice with and without the requested view
-    // emits byte-identical G-code.
-    let options = case_options(&root, case_input(&root, &baseline, case), case, false);
-    let without = run_slice_with_runtime_extensions(
-        options,
-        extensions(Vec::new(), Vec::new(), Arc::new(Trace::default())),
-    )
-    .unwrap_or_else(|error| panic!("case `{}`: plain slice failed: {error}", case.case_id));
-    let options = case_options(&root, case_input(&root, &baseline, case), case, false);
-    let with = run_slice_with_runtime_extensions(
-        options,
-        extensions(
-            vec![PreparationViewRequest {
-                module_id: MODULE_ID.into(),
-                view: VIEW.into(),
-            }],
-            Vec::new(),
-            Arc::new(Trace::default()),
-        ),
-    )
-    .unwrap_or_else(|error| panic!("case `{}`: captured slice failed: {error}", case.case_id));
-    assert_eq!(
-        with.gcode_text, without.gcode_text,
-        "case `{}`: requesting the typed projection must not perturb emitted G-code",
-        case.case_id
-    );
-    assert!(with.layer_count > 0, "the captured slice must emit layers");
-
-    // A requested-but-undeclared view is a named row-06 failure, never a silent
-    // empty scene. This is the undeclared half; the declared-but-unpublished
-    // half is the `MissingScene` leg below.
-    let options = case_options(&root, case_input(&root, &baseline, case), case, false);
-    let error = run_visual(
-        options,
-        vec![PreparationViewRequest {
-            module_id: MODULE_ID.into(),
-            view: "lightning_plan_absent".into(),
-        }],
-        Vec::new(),
-        vec![0],
-        Arc::new(Trace::default()),
-    )
-    .expect_err("a requested-but-undeclared view must fail closed");
-    assert!(
-        matches!(
-            error,
-            PreparationVisualCaptureError::UnknownView { ref module_id, ref view }
-                if module_id.as_str() == MODULE_ID && view == "lightning_plan_absent"
-        ),
-        "a requested-but-undeclared view must be the named row-06 view error: {error:?}"
-    );
-
-    // A declared-but-unpublished scene is `MissingScene`, not `UnknownView`:
-    // `missing_scene` keeps the manifest declaration and the plan pieces and
-    // skips only the projection publication, so the request reaches a completed
-    // owner with nothing published. Without this leg the AC's "requested-but-
-    // missing scene" claim is exercised only by the undeclared case, which the
-    // host rejects before it ever looks for a scene.
-    // test-quality: the diagnostic key is the only real-adapter trigger for the
-    // module-owned missing-scene publication path named by AC-4; it is inert at
-    // its default and never reaches the kernel.
-    let options = diagnostic_options(&root, &baseline, case, "missing_scene");
-    let error = run_visual(
-        options,
-        vec![PreparationViewRequest {
-            module_id: MODULE_ID.into(),
-            view: VIEW.into(),
-        }],
-        Vec::new(),
-        vec![0],
-        Arc::new(Trace::default()),
-    )
-    .expect_err("a declared view with no published scene must fail closed");
-    assert!(
-        matches!(
-            error,
-            PreparationVisualCaptureError::ProjectionRejected {
-                ref module_id,
-                ref view,
-                reason: PreparationProjectionError::MissingScene,
-            } if module_id.as_str() == MODULE_ID && view == VIEW
-        ),
-        "a declared-but-unpublished scene must be the named MissingScene rejection: {error:?}"
-    );
-
-    // Explicit empty scene (D6 `empty_plan`): the module publishes one empty
-    // plan per layer and an empty `lightning-plan` scene, so a selected owner is
-    // Ready/no-work rather than missing a prerequisite.
-    // test-quality: the diagnostic key is the only real-adapter trigger for the
-    // module-owned empty-plan publication path named by AC-4/AC-N3; it is inert
-    // at its default and never reaches the kernel.
-    let trace = Arc::new(Trace::default());
-    let options = diagnostic_options(&root, &baseline, case, "empty_plan");
-    let empty = run_visual(
-        options,
-        vec![PreparationViewRequest {
-            module_id: MODULE_ID.into(),
-            view: VIEW.into(),
-        }],
-        vec![INFILL_TAP.to_owned()],
-        layer_indices(case),
-        Arc::clone(&trace),
-    )
-    .unwrap_or_else(|error| {
-        panic!(
-            "case `{}`: `empty_plan` must succeed as Ready/no-work: {error}",
-            case.case_id
-        )
-    });
-    assert_prepared_owner(&empty.metadata(), &case.case_id);
-    assert!(
-        trace.count(
-            MODULE_ID,
-            PreparationLifecyclePhase::Preparation,
-            PreparationLifecycleStatus::Ready
-        ) > 0,
-        "case `{}`: the empty preparation is Ready, not a missing prerequisite",
-        case.case_id
-    );
-    assert!(
-        trace.failures(MODULE_ID).is_empty(),
-        "case `{}`: a successful empty preparation is not a failure",
-        case.case_id
-    );
-    let empty_scene = empty
-        .captures()
-        .iter()
-        .find_map(|stage| match &stage.ir {
-            CapturedIr::PreparationProjection(snapshot) => Some(Arc::clone(snapshot)),
-            _ => None,
-        })
-        .unwrap_or_else(|| {
-            panic!(
-                "case `{}`: `empty_plan` must publish the requested scene",
-                case.case_id
-            )
-        });
-    assert_eq!(empty_scene.scene().scene_id, "lightning-plan");
-    assert_eq!(empty_scene.scene().view, VIEW);
-    assert_eq!(
-        empty_scene
-            .scene()
-            .classes
-            .iter()
-            .map(String::as_str)
-            .collect::<BTreeSet<_>>(),
-        ["grounding", "planning_domain", "tree_branch", "tree_root"]
-            .into_iter()
-            .collect::<BTreeSet<_>>(),
-        "case `{}`: the empty scene declares the four planning classes",
-        case.case_id
-    );
-    assert!(
-        empty_scene.scene().primitives.is_empty(),
-        "case `{}`: the explicit empty scene publishes no primitives",
-        case.case_id
-    );
-    for (layer, infill) in captured_infill(&empty) {
-        for region in &infill.regions {
+            assert_prepared_owner(&capture.metadata(), &case.case_id);
             assert!(
-                region.sparse_infill.is_empty(),
-                "case `{}`: layer {layer} region {}: the empty plan emits no sparse paths",
-                case.case_id,
-                region.region_id
+                !capture.captures().is_empty(),
+                "case `{}`: the requested view must publish at least one typed capture",
+                case.case_id
             );
-        }
-    }
+            let mut scenes = Vec::new();
+            for stage in capture.captures() {
+                let CapturedIr::PreparationProjection(snapshot) = &stage.ir else {
+                    panic!(
+                        "case `{}`: planning_geometry must publish typed projections, got {:?}",
+                        case.case_id, stage.ir
+                    );
+                };
+                scenes.push(Arc::clone(snapshot));
+            }
+            assert!(
+                scenes
+                    .windows(2)
+                    .all(|pair| Arc::ptr_eq(&pair[0], &pair[1])),
+                "case `{}`: all rendered layers share one committed whole-print scene",
+                case.case_id
+            );
+            let snapshot = &scenes[0];
+            assert_eq!(snapshot.owner_module_id(), MODULE_ID);
+            assert_eq!(snapshot.view(), VIEW);
+            let scene = snapshot.scene();
+            assert_eq!(scene.scene_id, "lightning-plan");
+            assert_eq!(scene.view, VIEW);
+            let classes: BTreeSet<&str> = scene.classes.iter().map(String::as_str).collect();
+            assert_eq!(
+                classes,
+                ["grounding", "planning_domain", "tree_branch", "tree_root"]
+                    .into_iter()
+                    .collect::<BTreeSet<&str>>(),
+                "case `{}`: the scene declares exactly the four planning classes",
+                case.case_id
+            );
+            assert!(
+                !scene.primitives.is_empty(),
+                "case `{}`: the scene must carry primitives",
+                case.case_id
+            );
+            let schedule: BTreeSet<u32> = capture.schedule().iter().map(|layer| layer.index).collect();
+            assert!(
+                !schedule.is_empty(),
+                "case `{}`: the capture must carry the committed schedule",
+                case.case_id
+            );
+            let mut ids = BTreeSet::new();
+            let (mut domains, mut branches, mut roots, mut groundings, mut holes, mut labelled) =
+                (0, 0, 0, 0, 0, 0);
+            for primitive in &scene.primitives {
+                assert!(
+                    !primitive.id.is_empty(),
+                    "case `{}`: primitive ids are nonempty and scene-local",
+                    case.case_id
+                );
+                assert!(
+                    ids.insert(primitive.id.clone()),
+                    "case `{}`: primitive ids are unique: {}",
+                    case.case_id,
+                    primitive.id
+                );
+                assert!(
+                    schedule.contains(&primitive.global_layer_index),
+                    "case `{}`: primitive {} names a real schedule layer",
+                    case.case_id,
+                    primitive.global_layer_index
+                );
+                if primitive.label.is_some() {
+                    labelled += 1;
+                }
+                match (&primitive.class[..], &primitive.geometry) {
+                    ("planning_domain", PreparationProjectionGeometry::Polygon { polygon, .. }) => {
+                        domains += 1;
+                        assert!(
+                            polygon.contour.points.len() >= 3,
+                            "case `{}`: a planning domain is a real polygon",
+                            case.case_id
+                        );
+                        holes += polygon.holes.len();
+                    }
+                    ("tree_branch", PreparationProjectionGeometry::Polyline(points)) => {
+                        branches += 1;
+                        assert!(
+                            points.len() >= 2,
+                            "case `{}`: a tree branch is an open polyline with a segment",
+                            case.case_id
+                        );
+                    }
+                    ("tree_root", PreparationProjectionGeometry::Point(_)) => roots += 1,
+                    ("grounding", PreparationProjectionGeometry::Point(_)) => groundings += 1,
+                    (class, geometry) => panic!(
+                        "case `{}`: class '{class}' carries the wrong geometry {geometry:?}",
+                        case.case_id
+                    ),
+                }
+            }
+            assert!(
+                domains > 0 && branches > 0 && roots > 0 && groundings > 0,
+                "case `{}`: all four classes must carry a nonempty population (domains {domains}, \
+                 branches {branches}, roots {roots}, groundings {groundings})",
+                case.case_id
+            );
+            assert!(
+                labelled > 0,
+                "case `{}`: source/checkpoint identity is carried in primitive labels",
+                case.case_id
+            );
+            assert!(
+                holes > 0,
+                "case `{}`: the hole_void_classic domain preserves its hole (Polygon holes preserved)",
+                case.case_id
+            );
+
+            // The scene's plan geometry is the same plan the pieces encode: compare the
+            // per-layer edge union to the recorded population for the same layers. The
+            // plan is print-wide, while the consumer filters per region (a region with
+            // no sparse-fill area, or one that does not hold a sparse claim, emits
+            // nothing), so the scene may carry branches the consumer did not emit.
+            // Every emitted edge, however, must be present in the scene with the same
+            // multiplicity: the consumer may filter plan branches, never invent them.
+            let expected = population_from_plan_entries(case).expect("baseline population is unique");
+            let mut expected_by_layer: BTreeMap<i32, BTreeMap<Edge, u64>> = BTreeMap::new();
+            for (key, entry) in &expected {
+                let layer = expected_by_layer.entry(key.global_layer_index).or_default();
+                for (edge, count) in &entry.edges {
+                    *layer.entry(*edge).or_insert(0) += count;
+                }
+            }
+            let mut scene_by_layer: BTreeMap<i32, BTreeMap<Edge, u64>> = BTreeMap::new();
+            for primitive in &scene.primitives {
+                let PreparationProjectionGeometry::Polyline(points) = &primitive.geometry else {
+                    continue;
+                };
+                let layer = scene_by_layer
+                    .entry(primitive.global_layer_index as i32)
+                    .or_default();
+                for pair in points.windows(2) {
+                    *layer
+                        .entry((pair[0].x, pair[0].y, pair[1].x, pair[1].y))
+                        .or_insert(0) += 1;
+                }
+            }
+            for (layer, emitted) in &expected_by_layer {
+                let planned = scene_by_layer.get(layer).unwrap_or_else(|| {
+                    panic!(
+                        "case `{}`: layer {layer} emitted edges but the scene carries no plan branches",
+                        case.case_id
+                    )
+                });
+                for (edge, count) in emitted {
+                    assert_eq!(
+                        planned.get(edge),
+                        Some(count),
+                        "case `{}`: emitted edge ({}, {}, {}, {}) is missing from the scene plan",
+                        case.case_id,
+                        edge.0,
+                        edge.1,
+                        edge.2,
+                        edge.3
+                    );
+                }
+            }
+        });
+        scope.spawn(|_| {
+            // Capture neutrality: the same real slice with and without the requested view
+            // emits byte-identical G-code.
+            let (without, with) = rayon::join(
+                || {
+                    let options =
+                        case_options(&root, case_input(&root, &baseline, case), case, false);
+                    run_slice_with_runtime_extensions(
+                        options,
+                        extensions(Vec::new(), Vec::new(), Arc::new(Trace::default())),
+                    )
+                    .unwrap_or_else(|error| {
+                        panic!("case `{}`: plain slice failed: {error}", case.case_id)
+                    })
+                },
+                || {
+                    let options =
+                        case_options(&root, case_input(&root, &baseline, case), case, false);
+                    run_slice_with_runtime_extensions(
+                        options,
+                        extensions(
+                            vec![PreparationViewRequest {
+                                module_id: MODULE_ID.into(),
+                                view: VIEW.into(),
+                            }],
+                            Vec::new(),
+                            Arc::new(Trace::default()),
+                        ),
+                    )
+                    .unwrap_or_else(|error| {
+                        panic!("case `{}`: captured slice failed: {error}", case.case_id)
+                    })
+                },
+            );
+            assert_eq!(
+                with.gcode_text, without.gcode_text,
+                "case `{}`: requesting the typed projection must not perturb emitted G-code",
+                case.case_id
+            );
+            assert!(with.layer_count > 0, "the captured slice must emit layers");
+        });
+        scope.spawn(|_| {
+            // A requested-but-undeclared view is a named row-06 failure, never a silent
+            // empty scene. This is the undeclared half; the declared-but-unpublished
+            // half is the `MissingScene` leg below.
+            let options = case_options(&root, case_input(&root, &baseline, case), case, false);
+            let error = run_visual(
+                options,
+                vec![PreparationViewRequest {
+                    module_id: MODULE_ID.into(),
+                    view: "lightning_plan_absent".into(),
+                }],
+                Vec::new(),
+                vec![0],
+                Arc::new(Trace::default()),
+            )
+            .expect_err("a requested-but-undeclared view must fail closed");
+            assert!(
+                matches!(
+                    error,
+                    PreparationVisualCaptureError::UnknownView { ref module_id, ref view }
+                        if module_id.as_str() == MODULE_ID && view == "lightning_plan_absent"
+                ),
+                "a requested-but-undeclared view must be the named row-06 view error: {error:?}"
+            );
+        });
+        scope.spawn(|_| {
+            // A declared-but-unpublished scene is `MissingScene`, not `UnknownView`:
+            // `missing_scene` keeps the manifest declaration and the plan pieces and
+            // skips only the projection publication, so the request reaches a completed
+            // owner with nothing published. Without this leg the AC's "requested-but-
+            // missing scene" claim is exercised only by the undeclared case, which the
+            // host rejects before it ever looks for a scene.
+            // test-quality: the diagnostic key is the only real-adapter trigger for the
+            // module-owned missing-scene publication path named by AC-4; it is inert at
+            // its default and never reaches the kernel.
+            let options = diagnostic_options(&root, &baseline, case, "missing_scene");
+            let error = run_visual(
+                options,
+                vec![PreparationViewRequest {
+                    module_id: MODULE_ID.into(),
+                    view: VIEW.into(),
+                }],
+                Vec::new(),
+                vec![0],
+                Arc::new(Trace::default()),
+            )
+            .expect_err("a declared view with no published scene must fail closed");
+            assert!(
+                matches!(
+                    error,
+                    PreparationVisualCaptureError::ProjectionRejected {
+                        ref module_id,
+                        ref view,
+                        reason: PreparationProjectionError::MissingScene,
+                    } if module_id.as_str() == MODULE_ID && view == VIEW
+                ),
+                "a declared-but-unpublished scene must be the named MissingScene rejection: {error:?}"
+            );
+        });
+        scope.spawn(|_| {
+            // Explicit empty scene (D6 `empty_plan`): the module publishes one empty
+            // plan per layer and an empty `lightning-plan` scene, so a selected owner is
+            // Ready/no-work rather than missing a prerequisite.
+            // test-quality: the diagnostic key is the only real-adapter trigger for the
+            // module-owned empty-plan publication path named by AC-4/AC-N3; it is inert
+            // at its default and never reaches the kernel.
+            let trace = Arc::new(Trace::default());
+            let options = diagnostic_options(&root, &baseline, case, "empty_plan");
+            let empty = run_visual(
+                options,
+                vec![PreparationViewRequest {
+                    module_id: MODULE_ID.into(),
+                    view: VIEW.into(),
+                }],
+                vec![INFILL_TAP.to_owned()],
+                layer_indices(case),
+                Arc::clone(&trace),
+            )
+            .unwrap_or_else(|error| {
+                panic!(
+                    "case `{}`: `empty_plan` must succeed as Ready/no-work: {error}",
+                    case.case_id
+                )
+            });
+            assert_prepared_owner(&empty.metadata(), &case.case_id);
+            assert!(
+                trace.count(
+                    MODULE_ID,
+                    PreparationLifecyclePhase::Preparation,
+                    PreparationLifecycleStatus::Ready
+                ) > 0,
+                "case `{}`: the empty preparation is Ready, not a missing prerequisite",
+                case.case_id
+            );
+            assert!(
+                trace.failures(MODULE_ID).is_empty(),
+                "case `{}`: a successful empty preparation is not a failure",
+                case.case_id
+            );
+            let empty_scene = empty
+                .captures()
+                .iter()
+                .find_map(|stage| match &stage.ir {
+                    CapturedIr::PreparationProjection(snapshot) => Some(Arc::clone(snapshot)),
+                    _ => None,
+                })
+                .unwrap_or_else(|| {
+                    panic!(
+                        "case `{}`: `empty_plan` must publish the requested scene",
+                        case.case_id
+                    )
+                });
+            assert_eq!(empty_scene.scene().scene_id, "lightning-plan");
+            assert_eq!(empty_scene.scene().view, VIEW);
+            assert_eq!(
+                empty_scene
+                    .scene()
+                    .classes
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<BTreeSet<_>>(),
+                ["grounding", "planning_domain", "tree_branch", "tree_root"]
+                    .into_iter()
+                    .collect::<BTreeSet<_>>(),
+                "case `{}`: the empty scene declares the four planning classes",
+                case.case_id
+            );
+            assert!(
+                empty_scene.scene().primitives.is_empty(),
+                "case `{}`: the explicit empty scene publishes no primitives",
+                case.case_id
+            );
+            for (layer, infill) in captured_infill(&empty) {
+                for region in &infill.regions {
+                    assert!(
+                        region.sparse_infill.is_empty(),
+                        "case `{}`: layer {layer} region {}: the empty plan emits no sparse paths",
+                        case.case_id,
+                        region.region_id
+                    );
+                }
+            }
+        });
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -4770,4 +4810,3 @@ fn record_lightning_baseline() {
     std::fs::write(dir.join(MANIFEST_FILE), manifest_text).expect("write manifest");
     eprintln!("RECORD wrote {BASELINE_FILE} and {MANIFEST_FILE}");
 }
-
