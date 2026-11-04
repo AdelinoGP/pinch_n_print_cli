@@ -50,6 +50,10 @@ Every number in this tracker is a ledger fact — re-derive at the point of use.
   `New-OrcaOverrideArgs` and asserted per run, so no ratio may be quoted from before
   this take. Fresh Orca measurement is available again.
 
+**Next-session handoff (e2e dev loop):** `docs/specs/perf-vs-orca/HANDOFF.md` —
+the 755 s bucket's critical path (`module_plan` 373 s, `typed_projection`
+345 s), ranked next moves, measurement protocol and traps.
+
 Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
