@@ -81,6 +81,21 @@ Orca's quiet wall; t104 discloses that pass at **+43.6 %** over its t103 median
 and the uninstrumented paired record is **6.02x** (t106), so those base-on
 multiples are upper bounds until corrected.
 
+**Post-merge directive (2026-11-03, after master merge `a5e9a403`):** the human
+directed that the two archive-dependent `preparation_capability_pilot_tdd` tests
+be deleted — done in `69ef50f3`, because the gitignored pre-edit archive
+`target/preparation-pilot/plain-before.component.wasm` cannot exist on a fresh
+checkout and the current guest cannot reproduce its recorded SHA; the remaining
+nine pilot tests pass — and that two tickets be opened from the merge
+validation. [114](issues/114-e2e-bucket-latency.md) owns the **e2e-bucket
+execution latency**: the full `slicer-runtime` e2e suite exceeds **40 minutes**
+and is the dev-loop long pole, so this continues t108/t109's work on the
+**execution** side rather than the compile side. [115](issues/115-post-merge-reconciliation.md)
+owns **post-merge reconciliation**: re-baseline the perf keeps, audit master's
+semantic drift, the classic paint-attribution output change, and the
+config/disclosure deltas before the map quotes another ratio. Both are open and
+unclaimed; the 16th session does not claim either.
+
 **Previous selection scope (2026-11-03, fifteenth session — the t110 take):** the
 human said "continue the perf vs orca map" (no ticket named). The frontier
 re-derivation at HEAD `1e72d9e3` found **109/109 children resolved — no open child,
