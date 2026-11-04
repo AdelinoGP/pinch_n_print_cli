@@ -54,7 +54,47 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-03, sixteenth session — the prepass-rewrite
+**Current selection scope (2026-11-03, seventeenth session — the t112 take):** the
+human said "continue the perf vs orca map" (no ticket named). The frontier at HEAD
+`2dade816` held four open children — [112](issues/112-prep-slice-parity-phase1.md),
+[113](issues/113-strong-planner-phase1.md) (blocked by 112),
+[114](issues/114-e2e-bucket-latency.md), [115](issues/115-post-merge-reconciliation.md)
+— so the first frontier ticket in order, **112**, was claimed and **resolved the
+same day as build-P1**. Headline: **canonical OrcaSlicer has no enclosure closing.**
+`PrintObject::detect_surfaces_type` labels *every* bottom area the layer below does
+not cover as `stBottomBridge` — `opening_ex(diff_ex(slices,
+safety_offset(lower_slices), Yes), external_perimeter_width / 10)` — and the only
+canonical bridge closing is `merge_bridges`' `closing_ex` at **≈0.15–0.17 mm**
+(0.55 × 0.65 × 1.05 × solid-infill spacing) on the *bridge ∪ wave-anchor* surface,
+a hole filler. PnP's 12 mm `closing_ex(support)` + **≥ 10 %** refill gate is a
+PnP-local discriminator with **no canonical counterpart and no `DEV` row**
+(**~70–80×** canonical's radius, different operand, different consumer), so no
+shape can preserve its verdicts *and* claim parity: the parity move is to **replace**
+the gate. Measured at HEAD: the closing is **86.8 %** (benchy) / **70.8 %** (base) of
+`PrePass::Slice`'s accumulated thread-time, and shape **P1** (canonical opening on
+PnP's flat family, every surviving component kept) has a net ceiling of
+**1,893 / 37,682 ms** = **15.3–24.7 % / 23.4–50.0 %** of the cell = **19.1x–62.5x**
+the **0.80 %** floor in **all eight** cells, with the replacement opening
+**146x / 853x** cheaper than the closing. Delta, measured on both fixtures and
+audited per layer: **182 / 239** benchy and **437 / 469** base committed layers
+change; net **+8.86 mm² (+2.0 %)** / **+115.90 mm² (+35.9 %)** of flat bridge area —
+the gate rejected **68.4 / 187.2 mm²** that canonical calls bridges while the
+0.04 mm opening removed **59.58 / 71.27 mm²** of sub-0.08 mm features. The first
+layer also pays a 12 mm closing whose result `gate_bridge_areas_by_unsupported_span`
+clears (**595.8 ms** benchy, 1.1 ms base). **P2** (full canonical classification,
+retiring the facet-derived `assemble_bridge_areas`) is **deferred**: its delta is
+unbounded until canonical's wave expansion (`propagate_waves_ex`) is ported, and
+PnP's fixed 1.0 mm `expansion_margin_mm` is not it. **P3** (radius swap on the
+existing gate) is **rejected** on correctness. The candidate is graduated as
+[116](issues/116-prep-slice-canonical-bridge-classification.md) (open, unclaimed,
+unblocked) under t111's 16-cell contract. Evidence:
+[`evidence/t112-prep-slice-parity/`](evidence/t112-prep-slice-parity/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 9/9 negative controls rejected).
+Frontier now: **113, 114, 115, 116** open and unclaimed — 113's blocker (112) is
+resolved, so it is takeable. Standing paired acceptance and KEEP/DROP rules
+unchanged.
+
+**Previous selection scope (2026-11-03, sixteenth session — the prepass-rewrite
 ruling):** the human said "continue the perf vs orca map" (no ticket named). The
 frontier re-derivation at HEAD `f4a73892` found **110/110 children resolved — no
 open child, no claim** — so the fog routes were offered and the human selected
@@ -2138,6 +2178,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [`PrePass::Slice` parity Phase 1: canonical closing vs the artefact-bound gate](issues/112-prep-slice-parity-phase1.md): **resolved (2026-11-03; Phase-1 recommendation — build P1, no production edit)** — canonical has **no enclosure closing**: `PrintObject::detect_surfaces_type` marks every unsupported bottom `stBottomBridge` after `opening_ex(diff_ex(slices, safety_offset(lower_slices), Yes), external_perimeter_width / 10)`, and `merge_bridges`' `closing_ex` is a **≈0.15–0.17 mm** hole filler on the bridge ∪ wave-anchor surface. PnP's 12 mm `closing_ex(support)` + **≥ 10 %** refill gate is a PnP-local discriminator with **no canonical counterpart and no `DEV` row**, so the parity move is to **replace** it, not to compute it cheaper. Shape **P1** = canonical opening over PnP's flat family, every surviving component kept, plus canonical's `ApplySafetyOffset` (1-unit lower inflate) and the width resolved as `resolve_contact_params` does. **Ceiling:** closings are **86.8 %** (benchy) / **70.8 %** (base) of `PrePass::Slice`'s thread-time; net ceiling **1,893 / 37,682 ms** = **15.3–24.7 % / 23.4–50.0 %** of the cell = **19.1x–62.5x** the 0.80 % floor in **all 8** cells, replacement opening **146x / 853x** cheaper. **Delta:** **182 / 239** benchy and **437 / 469** base committed layers change; net **+8.86 mm² (+2.0 %)** / **+115.90 mm² (+35.9 %)** (gate rejected **68.4 / 187.2 mm²**; 0.04 mm opening removed **59.58 / 71.27 mm²** of sub-0.08 mm features); layer 0 pays a **595.8 ms** benchy closing whose result the next stage clears. **P2** (full classification + `assemble_bridge_areas` retirement) **deferred** — canonical's wave expansion (`propagate_waves_ex`) has no PnP counterpart, so its delta is unbounded; **P3** (radius swap) **rejected** on correctness. Consumer map at HEAD adds `arachne-perimeters`, `infill-linker`, `rectilinear-infill`, packet 234a's angle inputs and paint splits to t59's list. Candidate graduated as [ticket 116](issues/116-prep-slice-canonical-bridge-classification.md). Evidence: [`evidence/t112-prep-slice-parity/`](evidence/t112-prep-slice-parity/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 9/9 negative controls rejected).
+
 - [Prepass rewrite: scope, output contract and acceptance](issues/111-prepass-rewrite-scope-ruling.md): **resolved (2026-11-03; human ruling — authorized, scoped and staged)** — a **canonical-parity exception scoped to the prepass** (the second recorded exception after ticket 81's `resolution` port; the rest of the parity program stays out of scope, and the next parity question returns to the human). Both carrying shapes are covered, but **`PrePass::Slice` is the first campaign** (**41,472 ms = 51.2 %** of base classic-off, **44,558 ms = 19.5 %** of base classic-on, present in all 8 cells) and the **Strong planner** is second (**87,824 ms = 38.4 %** of base classic-on, **2,943 ms = 23.6 %** of benchy-on; graduated as [ticket 113](issues/113-strong-planner-phase1.md), blocked by 112; it may still turn out representation-safe and need no exception). Acceptance: a fresh **16-cell** reference set, candidate and baseline arms byte-identical **within themselves**, the baseline reproducing the post-t81 set, the candidate-vs-old-reference G-code delta audited (feature / TYPE / support-interface counts, byte volume, confinement to prepass-derived geometry) **before** timing, and the standing paired wall/CPU gate at the **0.80 %** floor in **all 8 cells** — no four-cell subset. First step is a **Phase-1 parity and consumer analysis**, graduated as [ticket 112](issues/112-prep-slice-parity-phase1.md); no production edit before it clears the floor with a bounded delta, and a shape that only clears base classic-off is not enough. **Staging:** the rewrite is **stage 1** of a multi-stage engine program; the 8/8 destination stays, and the per-layer/emit program is the next stage's fog (deleting both largest prepass stages still leaves base at **2.86x–4.00x** inside t104's instrumented arithmetic against Orca's quiet walls). **Ledger caveat:** t110's base-on **9.49x / 16.3x / 19.6x / 13.7x** multiples divide instrumented PnP spans by quiet Orca walls (t104: that pass ran **+43.6 %** over its t103 median; the uninstrumented paired record is **6.02x**, t106), so they are treated as upper bounds until corrected.
 
 - [Orca-side attribution: what its matched-job wall is made of](issues/110-orca-side-attribution.md): **resolved (2026-11-03; measurement-only — no per-stage timing channel works on this install, and the phase split that is observable reverses the map's reading of its own ratios)** — the CLI log buffers (27 stage markers in **3 bursts**, 18 of 27 together, no timestamps at `--debug` 3/4/5), ETW is refused without elevation (`wpr` policy failure / `xperf` invalid flags), and `--pipe` accepted the flag but never connected in two attempts, so the boundary is a **~15 ms directory tap** on `plate_1.gcode.tmp`. Orca's cells are **import-dominated**: startup + model import is **1,229.8 ms (65.9 %) / 1,229.8 (49.0 %) / 10,130.0 (73.3 %) / 10,130.0 (42.0 %)** of the benchy-off / benchy-on / base-off / base-on wall (1,867.5 / 2,509.8 / 13,814.5 / 24,140.3 ms), and Orca's import on the same 123 MB `base.stl` is **≥ 14.3x** PnP's (≤ 0.708 s outside-phase time). Orca's **whole slicing** phase is **637.8 / 1,280.1 / 3,684.5 / 14,010.3 ms** against PnP's **7,365 / 11,784 / 80,216 / 228,317 ms** = **11.6x / 9.2x / 21.8x / 16.3x**, so the end-to-end ratios of record (5.86x / 9.49x / 4.34x / 4.96x today) **understate the engine gap by 1.7x–3.7x** — PnP's fast import was offsetting part of a much larger slicing deficit. Prepass multiples **≥ 40x (bound) / 17.5x / 34.4x / 19.6x**, emit multiples **5.0x / 4.4x / 5.8x / 7.3x**; the prepass is the carrying phase on **both** engines (Orca 57.1 % / 74.6 % of base slicing, PnP 89.5 % / 89.4 %), and on the t105-pinned supports-on job Orca's prepass grows **+8.34 s** where PnP's support stages add **~113.9 s** (**13.7x**; the planner alone is **8.4x** Orca's whole supports-on prepass). The feature stack is nearly free for Orca: 1 wall loop, 1 shell, 0 % infill, no support = **13,639.6 ms** against 13,814.5 ms (**+0.1 s**), which kills "Orca does less prepass work". **Ledger correction to t104:** its Table 3's "Orca's whole slice (2.03 / 2.29 / 15.28 / 19.49 s)" are *process* walls, 66–73 % import on base; its shares and counterfactuals are unaffected. Disclosures: `--info` is an upper bound on import, so Orca prepass/slicing are lower bounds and the multiples upper bounds; 1.8–6.5 % repeat spread; load 0.25–0.43 system CPU; mixed vintage (PnP t104, Orca today, ~9 % faster than t103); the abandoned STL-prefix control (non-manifold truncation → `--info` repair never returned) and the failed `--pipe` attempts are recorded. Evidence: [`evidence/t110-orca-phases/`](evidence/t110-orca-phases/FINDINGS.md) (`verify.py` exits 0 checkout-only; 7/7 negative controls rejected). **Ledger caveat (2026-11-03, t111):** the base-on **9.49x / 16.3x / 19.6x / 13.7x** figures divide instrumented PnP spans by Orca's quiet walls; the uninstrumented paired record is **6.02x** (t106), so they are upper bounds until corrected.
@@ -2341,6 +2383,20 @@ Standing decisions for this effort (2026-09-22):
 - [Repair the Orca rig](issues/98-orca-rig-repair.md): **rig measures Orca again on the 2.5.0 install, and the repair falsified the archived Orca side.** OrcaSlicer 2.5 resolves `--load-settings` through a vendor preset bundle (`PresetBundle::resolve_preset_config`: file-identity match, else a `"from": "system"` manifest walk that flattens `inherits`/`include`), and the install ships only `BBL.opc` with no preset JSON tree. The rig now stages a version-gated source-manifest tree from the tag whose `BBL.json` version equals the installed cache stamp (`02.08.00.16` == `2.8.0.16`, fail-closed) and applies the matched keys as CLI overrides, with `enable_arc_fitting` pinned to 0 because 2.5 flipped that default to enabled. Three measured runs of benchy classic-off: **1.978 s** wall / 6.50 s CPU / 4,000,709 bytes, against the archive's 2.787 s / 9.27 s / 3,890,392 — the archived Orca applied its hardcoded **filament** defaults (density 0, max volumetric speed 2, first-layer temp 200) while the process chain resolved in both eras (300 mm/s walls). So the archived Orca under-measured Orca's own work: PnP's recorded multiples are optimistic for PnP and every archived Orca median needs re-derivation (fog). No ratio requoted. Evidence: `evidence/orca-rig-repair/` (`verify.py --self-test` exit 0, 4 claims, 7/7 negative controls rejected).
 
 ## Not yet specified
+
+- **The canonical bridge pipeline's second half: wave expansion and the facet-path
+  retirement (surfaced 2026-11-03 by [t112](issues/112-prep-slice-parity-phase1.md)).**
+  Shape **P2** would retire `assemble_bridge_areas`' mesh-facet classification and
+  derive `bridge_areas` from `diff(slices, lower)` alone, matching
+  `PrintObject::detect_surfaces_type`. It is **not** a drop-in: canonical follows
+  classification with `expand_expolygons` → `propagate_waves_ex` into the shell,
+  sparse and top expansion zones and **trims** those zones by the expanded bridges,
+  while PnP offsets a facet footprint by a fixed `expansion_margin_mm` (1.0 mm) and
+  trims nothing. t112 measured the classification-level set at **1,307 mm² / 4,655
+  mm²** on benchy / base (**2.58x / 9.12x** the flat family), so the output delta is
+  material, not cosmetic — but it cannot be bounded until the wave expansion exists.
+  This graduates only after [ticket 116](issues/116-prep-slice-canonical-bridge-classification.md)
+  lands or is dropped; it is the next prepass take, not part of this campaign.
 
 - **The per-layer/emit program is the next stage after the prepass rewrite
   (t111, 2026-11-03).** The destination stays 8/8, but even deleting both largest
