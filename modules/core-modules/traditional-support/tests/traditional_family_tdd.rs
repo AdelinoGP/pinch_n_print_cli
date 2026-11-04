@@ -75,6 +75,8 @@ fn fixture_with_config(
         capabilities: vec![],
         provenance: vec!["traditional-planner".into()],
         decline_reason: None,
+        // Chain-less fixture region: empty chain is the exact query identity.
+        variant_chain: vec![],
     };
     let region = SliceRegionViewBuilder::new()
         .object_id("obj1")

@@ -12,8 +12,9 @@ use slicer_ir::{
 };
 use slicer_sdk::prelude::{
     host, ClipOperation, DiagnosticSeverity, LayerPlanView, LayerPlanViewEntry, MeshObjectView,
-    OffsetJoinType, RegionSegmentationView, SupportAnalysisCandidate, SupportAnalysisGeometryEntry,
-    SupportAnalysisView, SupportFamilyAssignment, SupportGeometryOutput, SupportGeometryView,
+    OffsetJoinType, PaintValue, RegionSegmentationView, SupportAnalysisCandidate,
+    SupportAnalysisGeometryEntry, SupportAnalysisView, SupportFamilyAssignment,
+    SupportGeometryOutput, SupportGeometryView,
 };
 use slicer_sdk::traits::PrepassModule;
 use traditional_support_planner::agg_raster::{
@@ -831,12 +832,14 @@ fn analysis_fixture(geometry: Vec<ExPolygon>, occupancy: Vec<ExPolygon>) -> Supp
                 object_id: "obj-1".into(),
                 region_id: "region-0".into(),
                 polygons: occupancy.clone(),
+                ..Default::default()
             })
             .collect(),
         family_assignments: vec![SupportFamilyAssignment {
             object_id: "obj-1".into(),
             region_id: "region-0".into(),
             family_id: "traditional".into(),
+            variant_chain: vec![],
         }],
         ..Default::default()
     }
@@ -1105,11 +1108,13 @@ fn analysis_fixture_single_blocker(
             object_id: "obj-1".into(),
             region_id: "region-0".into(),
             polygons: occupancy,
+            ..Default::default()
         }],
         family_assignments: vec![SupportFamilyAssignment {
             object_id: "obj-1".into(),
             region_id: "region-0".into(),
             family_id: "traditional".into(),
+            variant_chain: vec![],
         }],
         ..Default::default()
     }
@@ -1349,12 +1354,14 @@ fn analysis_fixture_two_candidates(
                 object_id: "obj-1".into(),
                 region_id: "region-0".into(),
                 polygons: occupancy.clone(),
+                ..Default::default()
             })
             .collect(),
         family_assignments: vec![SupportFamilyAssignment {
             object_id: "obj-1".into(),
             region_id: "region-0".into(),
             family_id: "traditional".into(),
+            variant_chain: vec![],
         }],
         ..Default::default()
     }
@@ -1463,4 +1470,47 @@ fn two_candidates_in_one_region_are_published_as_one_entry_per_layer() {
             );
         }
     }
+}
+
+/// AC-R8: a non-empty ordered chain threaded through the analysis fixture is
+/// resolved by the exact full-source queries and reaches every emitted plan
+/// entry unchanged. This is the raster file's source-identity witness; both
+/// rasterizer modes share this emission path, so it runs on the default path.
+#[test]
+fn chained_source_chain_reaches_emitted_plan_entries() {
+    let chain = vec![("region".to_string(), PaintValue::Flag(true))];
+    let contact = vec![ExPolygon {
+        contour: rect_mm(2.0, 2.0, 8.0, 8.0),
+        holes: vec![],
+    }];
+    let occupancy = vec![ExPolygon {
+        contour: rect_mm(0.0, 3.0, 3.0, 5.0),
+        holes: vec![],
+    }];
+    let mut analysis = analysis_fixture(contact, occupancy);
+    // The fixture is chain-less; thread one exact chain through every row of
+    // the same source so occupancy/family/geometry all describe one origin.
+    analysis.candidates[0].variant_chain = chain.clone();
+    analysis.family_assignments[0].variant_chain = chain.clone();
+    for row in &mut analysis.model_occupancy {
+        row.variant_chain = chain.clone();
+    }
+
+    let output = plan_with(Some("legacy_semantic"), &analysis);
+    assert!(
+        !output.entries().is_empty(),
+        "the chained candidate must be planned"
+    );
+    assert!(
+        output
+            .entries()
+            .iter()
+            .all(|entry| entry.variant_chain == chain),
+        "every emitted entry must carry the exact ordered source chain, got {:?}",
+        output
+            .entries()
+            .iter()
+            .map(|entry| entry.variant_chain.clone())
+            .collect::<Vec<_>>()
+    );
 }

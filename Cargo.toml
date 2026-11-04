@@ -43,10 +43,12 @@ members = [
     "crates/slicer-wasm-host/test-guests/sdk-layer-pathopt-guest",
     "crates/slicer-wasm-host/test-guests/sdk-infill-postprocess-view-guest",
     "crates/slicer-wasm-host/test-guests/sdk-layer-infill-guest",
+    "crates/slicer-wasm-host/test-guests/lightning-portability-guest",
     "crates/slicer-wasm-host/test-guests/sdk-postpass-text-guest",
     "crates/slicer-wasm-host/test-guests/sdk-prepass-guest",
     "xtask",
 ]
+exclude = ["modules/core-modules/lightning-infill/feasibility-kernel"]
 resolver = "2"
 
 [workspace.package]

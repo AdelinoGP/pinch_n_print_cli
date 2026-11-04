@@ -169,3 +169,26 @@ The builders live in the **unversioned** shared `slicer:ir-handles` package, so
 there is no WIT world version to bump; compatibility is enforced structurally by
 wasmtime typed instantiation at first dispatch, and every guest must be rebuilt
 (`cargo xtask build-guests`).
+
+## Amendment — 2026-10-11 (packet `layer-module-preparation_01_shared-selection-prerequisite`)
+
+Factual correction, not a decision change: the claim above that the builders
+live in the **unversioned** shared `slicer:ir-handles` package, with no WIT
+world version to bump, is stale. The shared core handle package is now
+**versioned** as `slicer:ir-handles@1.0.0`
+(`crates/slicer-schema/wit/deps/ir-types.wit`), so a shared record-shape
+change is a versioned breaking surface (MAJOR) — see
+[ADR-0073](./0073-full-source-variant-chain-identity-and-versioned-specialist-queries.md).
+This is a location fact only, and applies everywhere in this ADR that
+`slicer:ir-handles` is described as unversioned. The builders
+(`perimeter-output-builder`, `infill-output-builder`,
+`support-output-builder`) all remain **core** members of that package;
+`support-output-builder` is not a specialist resource. Specialists own only
+the read-side query resources `support-query-view` and `lightning-query-view`
+(`slicer:support-queries@1.0.0` / `slicer:lightning-queries@1.0.0`), with
+typed-instantiation compatibility unchanged. The full-origin principle of this
+ADR is **retained**, and is fuller now: chains carried everywhere — the
+specialist query views are keyed by the full
+`(object_id, region_id, variant_chain)` origin taken from the IR entries' own
+`variant_chain` fields, never guessed or derived
+([ADR-0073](./0073-full-source-variant-chain-identity-and-versioned-specialist-queries.md)).

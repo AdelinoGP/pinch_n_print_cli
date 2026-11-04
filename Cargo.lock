@@ -540,6 +540,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clipper2-rust"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fd663fe209e7030c956e3be4c051dcc20cdb73da794f31466762cff12ca11bf"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "cobs"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2054,10 +2063,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "lightning-feasibility-kernel"
+version = "0.1.0"
+dependencies = [
+ "clipper2-rust 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde",
+ "serde_json",
+ "slicer-core",
+ "slicer-ir",
+]
+
+[[package]]
 name = "lightning-infill"
 version = "0.1.0"
 dependencies = [
  "slicer-core",
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "lightning-portability-guest"
+version = "0.1.0"
+dependencies = [
+ "lightning-feasibility-kernel",
+ "serde_json",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -2734,6 +2766,66 @@ checksum = "d0de1b847b39c8131db0467e9df1ff60e6d0562ab8e9a16e568ad0fdb372e2f2"
 dependencies = [
  "predicates-core",
  "termtree",
+]
+
+[[package]]
+name = "preparation-lifecycle-anchored-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "preparation-lifecycle-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "preparation-pilot-infill"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "preparation-pilot-path"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "preparation-transport-path"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "preparation-visual-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
 ]
 
 [[package]]
@@ -3489,7 +3581,7 @@ name = "slicer-core"
 version = "0.1.0"
 dependencies = [
  "boostvoronoi",
- "clipper2-rust",
+ "clipper2-rust 1.1.0",
  "criterion",
  "log",
  "rayon",
@@ -3552,6 +3644,7 @@ dependencies = [
  "seam-planner-default",
  "skirt-brim",
  "slicer-scheduler",
+ "slicer-schema",
  "slicer-sdk",
  "support-surface-ironing",
  "top-surface-ironing",
@@ -3626,6 +3719,9 @@ dependencies = [
  "pnp-cli-locator",
  "postcard",
  "predicates",
+ "preparation-lifecycle-anchored-guest",
+ "preparation-lifecycle-guest",
+ "preparation-visual-guest",
  "raft-default",
  "rayon",
  "rectilinear-infill",
@@ -3638,6 +3734,7 @@ dependencies = [
  "seam-planner-default",
  "serde",
  "serde_json",
+ "sha2",
  "skirt-brim",
  "slicer-config",
  "slicer-core",
@@ -3656,11 +3753,17 @@ dependencies = [
  "toml 0.8.23",
  "top-surface-ironing",
  "traditional-support",
+ "traditional-support-planner",
  "tree-support",
  "tree-support-planner",
  "wasmtime",
  "wat",
  "wave-overhangs",
+ "whole-print-input-anchored",
+ "whole-print-input-infill",
+ "whole-print-input-path",
+ "whole-print-input-perimeters",
+ "whole-print-input-support",
  "wipe-tower",
  "wit-parser 0.247.0",
  "witness",
@@ -3704,11 +3807,19 @@ dependencies = [
 name = "slicer-wasm-host"
 version = "0.1.0"
 dependencies = [
+ "lightning-feasibility-kernel",
+ "lightning-portability-guest",
  "log",
+ "preparation-pilot-infill",
+ "preparation-pilot-path",
+ "preparation-transport-path",
+ "preparation-visual-guest",
  "rayon",
  "sdk-finalization-guest",
  "sdk-infill-postprocess-view-guest",
  "sdk-layer-pathopt-guest",
+ "serde_json",
+ "sha2",
  "slicer-config",
  "slicer-core",
  "slicer-ir",
@@ -3720,6 +3831,11 @@ dependencies = [
  "wasmtime",
  "wasmtime-wasi",
  "wat",
+ "whole-print-input-anchored",
+ "whole-print-input-infill",
+ "whole-print-input-path",
+ "whole-print-input-perimeters",
+ "whole-print-input-support",
  "wit-parser 0.247.0",
  "witness",
 ]
@@ -4937,6 +5053,56 @@ checksum = "cd70027e39b12f0849461e08ffc50b9cd7688d942c1c8e3c7b22273236b4dd0a"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "whole-print-input-anchored"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "whole-print-input-infill"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "whole-print-input-path"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "whole-print-input-perimeters"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "whole-print-input-support"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
 ]
 
 [[package]]

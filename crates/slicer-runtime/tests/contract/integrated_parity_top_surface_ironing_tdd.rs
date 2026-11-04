@@ -77,7 +77,7 @@ fn integrated_parity_top_surface_ironing() {
             slicer_ir::ConfigValue::String("rectilinear".into()),
         ),
     ])));
-    let bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    let mut bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
     let mut wasm_arena = LayerArena::new();
     let mut native_arena = LayerArena::new();
     wasm_arena
@@ -92,6 +92,56 @@ fn integrated_parity_top_surface_ironing() {
         ..Default::default()
     };
     let stage: StageId = "Layer::Infill".to_string();
+    let mut region_map = slicer_ir::RegionMapIR::default();
+    let mut resolved = slicer_ir::ResolvedConfig {
+        ..Default::default()
+    };
+    for (key, value) in config.iter_entries() {
+        if !resolved
+            .apply_cli_key(key, value)
+            .expect("resolve fixture config")
+        {
+            resolved.extensions.insert(key.into(), value.clone());
+        }
+    }
+    let config_id = region_map.intern_config(resolved);
+    for region in &wasm_arena.slice().expect("staged fixture slice").regions {
+        region_map.entries.insert(
+            slicer_ir::RegionKey {
+                global_layer_index: layer.index,
+                object_id: region.object_id.clone(),
+                region_id: if region.variant_chain.is_empty() {
+                    region.region_id
+                } else {
+                    region.region_id / 1_000_000
+                },
+                variant_chain: region.variant_chain.clone(),
+            },
+            slicer_ir::RegionPlan {
+                config: config_id,
+                ..Default::default()
+            },
+        );
+    }
+    bb.commit_region_map(Arc::new(region_map))
+        .expect("commit fixture region map");
+    let selection_module =
+        slicer_runtime::CompiledModuleBuilder::new("com.core.top-surface-ironing")
+            .claims(vec!["claim:ironing".into()])
+            .config_view(Arc::clone(&config))
+            .build();
+    let selection_index = crate::common::selection_for_module(
+        &stage,
+        &layer,
+        &selection_module,
+        &bb,
+        wasm_arena.slice(),
+        None,
+    )
+    .expect("build fixture selection index");
+    let selection = selection_index
+        .selection_for(layer.index, selection_module.module_id())
+        .expect("fixture layer selection");
     let (native, wasm) = run_integrated_parity(
         IntegratedParitySpec {
             module_id: "com.core.top-surface-ironing".into(),
@@ -118,9 +168,9 @@ fn integrated_parity_top_surface_ironing() {
             config,
             native_entry: TopSurfaceIroning::__slicer_native_entry(),
         },
-        |dispatcher, native_live, wasm_live| {
-            let mut wasm_input = crate::common::layer_input(&bb, &wasm_arena);
-            let mut native_input = crate::common::layer_input(&bb, &native_arena);
+        |dispatcher, native_live, wasm_live, _native_module, _wasm_module| {
+            let mut wasm_input = crate::common::layer_input(&bb, &wasm_arena, selection);
+            let mut native_input = crate::common::layer_input(&bb, &native_arena, selection);
             wasm_input.paint_regions = Some(());
             native_input.paint_regions = Some(());
             let wasm =

@@ -231,10 +231,16 @@ impl LayerModule for TraditionalSupport {
             let bottom_interface_line_spacing = slicer_ir::mm_to_units(bottom_interface_pitch_mm);
 
             // Structural support plans carry semantic regions, not printable
-            // paths. A missing entry means this demand was declined; do not
+            // paths. The lookup is the exact full source identity (object,
+            // source region and ordered variant chain), so a same-number
+            // different-chain sibling cannot lend this region its entries.
+            // A missing entry means this demand was declined; do not
             // resurrect it with a legacy filler.
-            let planned_entries =
-                paint.support_plan_entries_for(region.object_id().as_str(), *region.region_id());
+            let planned_entries = paint.support_plan_entries_for(
+                region.object_id().as_str(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
 
             if planned_entries.is_empty() {
                 continue;

@@ -348,6 +348,11 @@ fn perimeter_conversion_deterministic_across_repeated_calls() {
 fn real_perimeter_region_data_visible_through_wall_postprocess_dispatch() {
     // Guest encodes region_count as perimeter_index; wall count + infill count as x/y.
     let mut fx = dispatch_fixture::for_stage("Layer::PerimetersPostProcess")
+        .with_region_map(dispatch_fixture::region_map_for_slice(
+            &ir_builders::slice_ir::with_count(2).build(),
+            1,
+            slicer_ir::ResolvedConfig::default(),
+        ))
         .with_slice(
             ir_builders::slice_ir::with_count(2)
                 .at_layer(1)

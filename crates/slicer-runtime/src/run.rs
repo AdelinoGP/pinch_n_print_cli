@@ -18,6 +18,7 @@ use slicer_config::{
 };
 use slicer_ir::{
     ConfigKey, ConfigValue, MeshIR, ModifierKind, PaintSemantic, PaintValue, ResolvedConfig,
+    StageId,
 };
 use slicer_sdk::traits::LayerPlanningObject;
 
@@ -80,6 +81,7 @@ use crate::pipeline::{
     run_pipeline_with_instrumentation_authority, run_pipeline_with_raw_config_authority,
     PipelineConfig, PipelineStageRunners,
 };
+use crate::preparation_lifecycle::PreparationVisualCaptureError;
 use crate::prepass::ConfigExpansionAuthority;
 use crate::profiling_report::{ProfileAggregator, ProfileSummary};
 use crate::progress_events::{
@@ -881,6 +883,21 @@ impl From<&str> for SliceRunError {
     }
 }
 
+impl From<SliceRunError> for PreparationVisualCaptureError {
+    fn from(error: SliceRunError) -> Self {
+        Self::Slice(error)
+    }
+}
+
+/// Collapse a visual-capture failure back to the ordinary `SliceRunError`
+/// surface for callers that did not request a visual capture.
+fn into_slice_run_error(error: PreparationVisualCaptureError) -> SliceRunError {
+    match error {
+        PreparationVisualCaptureError::Slice(error) => error,
+        other => SliceRunError(other.to_string()),
+    }
+}
+
 fn num_cpus_guess() -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get())
@@ -956,6 +973,181 @@ fn build_progress_channel(
 /// This is the 4-way instrumentation fork originally in `main.rs`, now a
 /// private helper inside `run.rs`. Uses the slice-wide `ProgressChannel`
 /// built by [`run_slice`] before validation.
+fn freeze_selected_preparation_bindings(
+    lifecycle: &crate::preparation_lifecycle::PrintPreparationScope,
+    loaded: &slicer_wasm_host::execution_plan_live::LiveModuleLoadOutput,
+    registrations: &[slicer_scheduler::IntegratedModuleRegistration],
+    requested_views: &[crate::preparation_lifecycle::PreparationViewRequest],
+) -> Result<(), PreparationVisualCaptureError> {
+    use slicer_wasm_host::preparation::{freeze_native, freeze_wasm, NativePreparationArtifact};
+
+    // Request shape first: empty/duplicate owner or view names are malformed
+    // regardless of which modules happen to be selected.
+    let mut seen_requests = std::collections::HashSet::new();
+    for request in requested_views {
+        if request.module_id.is_empty() {
+            return Err(PreparationVisualCaptureError::InvalidRequest {
+                detail: "empty preparation view owner module id".into(),
+            });
+        }
+        if request.view.is_empty() {
+            return Err(PreparationVisualCaptureError::InvalidRequest {
+                detail: format!(
+                    "empty preparation view name for owner '{}'",
+                    request.module_id
+                ),
+            });
+        }
+        if !seen_requests.insert((request.module_id.clone(), request.view.clone())) {
+            return Err(PreparationVisualCaptureError::InvalidRequest {
+                detail: format!(
+                    "duplicate preparation view '{}' for owner '{}'",
+                    request.view, request.module_id
+                ),
+            });
+        }
+    }
+
+    // Stable opaque fingerprint, not a security digest. Native identity covers
+    // the actual linked executable, not ASLR-dependent function addresses.
+    fn fingerprint(bytes: &[u8]) -> String {
+        let hash = bytes.iter().fold(0xcbf29ce484222325_u64, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
+        });
+        format!("{hash:016x}")
+    }
+    let mut native_identity = None;
+    let mut selected = Vec::new();
+    for live in &loaded.bindings {
+        let module = &live.module;
+        if !slicer_schema::STAGES.iter().any(|stage| {
+            stage.stage_id == module.stage() && stage.tier_id == slicer_schema::TIER_LAYER
+        }) {
+            continue;
+        }
+        let native = module.provenance() == slicer_scheduler::ModuleProvenance::Integrated;
+        let manifest = if native {
+            registrations
+                .iter()
+                .find_map(|registration| {
+                    let value: toml::Value = registration.manifest_toml.parse().ok()?;
+                    (value.get("module")?.get("id")?.as_str()? == module.id())
+                        .then(|| registration.manifest_toml.to_owned())
+                })
+                .ok_or_else(|| {
+                    SliceRunError(format!("selected native manifest missing: {}", module.id()))
+                })?
+        } else {
+            std::fs::read_to_string(module.wasm_path().with_extension("toml")).map_err(|error| {
+                SliceRunError(format!("selected manifest {}: {error}", module.id()))
+            })?
+        };
+        let declaration = slicer_scheduler::preparation::parse_preparation_declaration(&manifest)
+            .map_err(|error| {
+            SliceRunError(format!(
+                "selected preparation declaration {}: {error}",
+                module.id()
+            ))
+        })?;
+        let (binding, artifact_identity) = if native {
+            let entry = live.native_entry.ok_or_else(|| {
+                SliceRunError(format!("selected native entry missing: {}", module.id()))
+            })?;
+            let artifact = match lifecycle
+                .prepared_native
+                .iter()
+                .find(|(id, _, _)| id == module.id())
+            {
+                Some((_, paired, schema)) => NativePreparationArtifact::Prepared {
+                    entry: *paired,
+                    schema: *schema,
+                },
+                None => NativePreparationArtifact::Plain(entry),
+            };
+            if native_identity.is_none() {
+                let executable =
+                    std::env::current_exe()
+                        .and_then(std::fs::read)
+                        .map_err(|error| {
+                            SliceRunError(format!("selected native artifact identity: {error}"))
+                        })?;
+                native_identity = Some(fingerprint(&executable));
+            }
+            (
+                freeze_native(module.id().into(), declaration, artifact),
+                format!(
+                    "native:{}:{}",
+                    native_identity.as_ref().expect("native identity"),
+                    fingerprint(manifest.as_bytes())
+                ),
+            )
+        } else {
+            let component = live.wasm_component.as_ref().ok_or_else(|| {
+                SliceRunError(format!("selected component missing: {}", module.id()))
+            })?;
+            let compiled = component
+                .wasmtime_component()
+                .serialize()
+                .map_err(|error| {
+                    SliceRunError(format!(
+                        "selected component identity {}: {error}",
+                        module.id()
+                    ))
+                })?;
+            (
+                freeze_wasm(
+                    module.id().into(),
+                    declaration,
+                    loaded.engine.wasmtime_engine().clone(),
+                    component.wasmtime_component().clone(),
+                    module.stage().into(),
+                ),
+                format!("wasm:{}", fingerprint(&compiled)),
+            )
+        };
+        selected.push(crate::preparation_lifecycle::SelectedPreparationBinding {
+            module_id: module.id().into(),
+            module_version: module.version().to_string(),
+            artifact_identity,
+            consumer_stage: module.stage().into(),
+            binding: binding.map_err(|error| {
+                SliceRunError(format!("freeze selected module {}: {error}", module.id()))
+            })?,
+        });
+    }
+
+    // Owner/view declaration resolution happens here, before `set_selected`
+    // publishes the print selection and before any module invocation: the
+    // frozen declarations are only reachable through these private bindings.
+    for request in requested_views {
+        let frozen = selected
+            .iter()
+            .find(|binding| binding.module_id == request.module_id)
+            .ok_or_else(|| PreparationVisualCaptureError::UnknownOwner {
+                module_id: request.module_id.clone(),
+            })?;
+        let declaration = frozen.binding.declaration().ok_or_else(|| {
+            PreparationVisualCaptureError::UnsupportedOwner {
+                module_id: request.module_id.clone(),
+            }
+        })?;
+        if declaration.views().is_empty() {
+            return Err(PreparationVisualCaptureError::UnsupportedOwner {
+                module_id: request.module_id.clone(),
+            });
+        }
+        if !declaration.views().iter().any(|view| view == &request.view) {
+            return Err(PreparationVisualCaptureError::UnknownView {
+                module_id: request.module_id.clone(),
+                view: request.view.clone(),
+            });
+        }
+    }
+
+    lifecycle.set_selected(selected);
+    Ok(())
+}
+
 fn run_pipeline_fork(
     opts: &SliceRunOptions,
     channel: &ProgressChannel,
@@ -965,6 +1157,7 @@ fn run_pipeline_fork(
     scoped_config: &slicer_config::ScopedConfig,
     expansion_context: &ExpansionContext,
     profile: Option<&Arc<ProfileAggregator>>,
+    lifecycle: &crate::preparation_lifecycle::PrintPreparationScope,
     #[cfg(feature = "report")] dag_snapshot: Option<crate::report::ReportDagSnapshot>,
 ) -> Result<crate::pipeline::PipelineOutput, SliceRunError> {
     let sink_arc = Arc::clone(&channel.sink);
@@ -1045,6 +1238,7 @@ fn run_pipeline_fork(
                     &composite,
                     expansion_authority,
                     Some(&config_block),
+                    Some(lifecycle),
                 )
             } else {
                 run_pipeline_with_instrumentation_authority(
@@ -1054,6 +1248,7 @@ fn run_pipeline_fork(
                     report_collector.as_ref(),
                     expansion_authority,
                     Some(&config_block),
+                    Some(lifecycle),
                 )
             };
             report_alloc::disable();
@@ -1076,6 +1271,7 @@ fn run_pipeline_fork(
             progress_pi,
             expansion_authority,
             Some(&config_block),
+            Some(lifecycle),
         ),
         (None, None) => run_pipeline_with_raw_config_authority(
             config,
@@ -1083,6 +1279,7 @@ fn run_pipeline_fork(
             sink_arc.as_ref(),
             expansion_authority,
             Some(&config_block),
+            Some(lifecycle),
         ),
     };
 
@@ -1174,12 +1371,168 @@ pub fn emit_end_of_slice_events(
     ));
 }
 
+/// Extensions for the ordinary entry points.
+///
+/// An integrated module that declares `[preparation]` cannot be frozen from a
+/// plain artifact: `freeze_native` rejects it with `MissingExport`. The
+/// generated prepared pairs therefore have to travel with every run that may
+/// select such a module, not only with runs that explicitly ask for views. The
+/// registry accessor returns an empty vector when the integrated
+/// `lightning-infill` feature is off, so this stays inert in builds without
+/// prepared integrated modules.
+fn default_runtime_extensions() -> crate::preparation_lifecycle::SliceRuntimeExtensions {
+    crate::preparation_lifecycle::SliceRuntimeExtensions::default()
+        .with_prepared_native(slicer_integrated_modules::prepared_native_entries())
+}
+
 /// One-shot slice. Drives the pipeline end-to-end and returns the produced G-code.
 ///
 /// Composes the 4-way instrumentation fork (report, progress, both, none)
 /// internally based on `opts.report` and `opts.instrument_stderr`.
 pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
-    run_slice_with_collector(opts, None)
+    run_slice_with_runtime_extensions(opts, default_runtime_extensions())
+}
+
+/// Run the ordinary slice with print-private artifact registrations and hooks.
+pub fn run_slice_with_runtime_extensions(
+    opts: SliceRunOptions,
+    extensions: crate::preparation_lifecycle::SliceRuntimeExtensions,
+) -> Result<SliceOutcome, SliceRunError> {
+    match run_slice_shared(opts, None, extensions, SliceCompletion::FullSlice)
+        .map_err(into_slice_run_error)?
+    {
+        SliceRunResult::FullSlice(outcome) => Ok(*outcome),
+        SliceRunResult::PreparationOnly(_) | SliceRunResult::PreparationVisual(_) => {
+            unreachable!("full slice requested")
+        }
+    }
+}
+
+/// Run the full validated startup and committed preparation prefix, snapshot
+/// metadata, then dispose without entering any Layer or synthetic consumer.
+pub fn run_slice_preparation_capture(
+    opts: SliceRunOptions,
+    extensions: crate::preparation_lifecycle::SliceRuntimeExtensions,
+) -> Result<crate::preparation_lifecycle::PreparationCapture, SliceRunError> {
+    match run_slice_shared(opts, None, extensions, SliceCompletion::PreparationOnly)
+        .map_err(into_slice_run_error)?
+    {
+        SliceRunResult::PreparationOnly(capture) => Ok(capture),
+        SliceRunResult::FullSlice(_) | SliceRunResult::PreparationVisual(_) => {
+            unreachable!("preparation capture requested")
+        }
+    }
+}
+
+/// Run one real prepared print and capture requested typed preparation views
+/// plus selected-layer stage taps, through the shared startup prefix.
+///
+/// The requested views live on `extensions` (see
+/// [`SliceRuntimeExtensions::with_preparation_views`]); `layers` and
+/// `stage_taps` select the render/execution evidence. Preparation runs exactly
+/// once: this facade never starts an independent preparation-only slice and a
+/// second slice to compare output.
+///
+/// Request shape, owner/view declarations and layer/eligibility resolution all
+/// fail closed before module invocation. Postpass taps are rejected explicitly
+/// until the whole-print capture closure is forwarded (Step 13).
+///
+/// [`SliceRuntimeExtensions::with_preparation_views`]:
+///     crate::preparation_lifecycle::SliceRuntimeExtensions::with_preparation_views
+pub fn run_slice_preparation_visual_capture(
+    opts: SliceRunOptions,
+    extensions: crate::preparation_lifecycle::SliceRuntimeExtensions,
+    layers: Vec<u32>,
+    stage_taps: Vec<StageId>,
+) -> Result<
+    crate::preparation_lifecycle::PreparationVisualCapture,
+    crate::preparation_lifecycle::PreparationVisualCaptureError,
+> {
+    validate_preparation_visual_request(&layers, &stage_taps)?;
+    match run_slice_shared(
+        opts,
+        None,
+        extensions,
+        SliceCompletion::PreparationVisual { layers, stage_taps },
+    )? {
+        SliceRunResult::PreparationVisual(capture) => Ok(capture),
+        SliceRunResult::FullSlice(_) | SliceRunResult::PreparationOnly(_) => {
+            unreachable!("preparation visual capture requested")
+        }
+    }
+}
+
+/// Reject malformed visual requests before the slice starts.
+///
+/// Owner/view declaration and owner support are validated at freeze time
+/// (`freeze_selected_preparation_bindings`), layer and eligibility resolution
+/// after the committed selection. This function owns only request-shape and
+/// tap-class checks, which need no scheduler state.
+fn validate_preparation_visual_request(
+    layers: &[u32],
+    stage_taps: &[StageId],
+) -> Result<(), PreparationVisualCaptureError> {
+    use crate::preparation_lifecycle::PreparationVisualCaptureError as VisualError;
+
+    if layers.is_empty() {
+        return Err(VisualError::InvalidRequest {
+            detail: "no global layer indices requested".into(),
+        });
+    }
+    let mut seen_layers = std::collections::HashSet::new();
+    for &global_layer_index in layers {
+        if !seen_layers.insert(global_layer_index) {
+            return Err(VisualError::InvalidRequest {
+                detail: format!("duplicate global layer index {global_layer_index}"),
+            });
+        }
+    }
+
+    let mut seen_taps = std::collections::HashSet::new();
+    for tap in stage_taps {
+        if tap.is_empty() {
+            return Err(VisualError::InvalidRequest {
+                detail: "empty stage tap".into(),
+            });
+        }
+        if !seen_taps.insert(tap.as_str()) {
+            return Err(VisualError::InvalidRequest {
+                detail: format!("duplicate stage tap '{tap}'"),
+            });
+        }
+        if crate::layer_executor::POSTPASS_TAP_STAGE_IDS.contains(&tap.as_str()) {
+            return Err(VisualError::Slice(SliceRunError(format!(
+                "preparation visual capture: whole-print postpass tap '{tap}' is not forwarded by \
+                 the Step 12 truncated capture path; Step 13 must route it through the existing \
+                 whole-print closure (seam: crates/slicer-runtime/src/pipeline.rs::\
+                 run_pipeline_until_preparation's postpass branch over \
+                 crates/slicer-runtime/src/layer_executor.rs::execute_postpass_with_capture)"
+            ))));
+        }
+        let known = crate::layer_executor::SUPPORTED_TAP_STAGE_IDS.contains(&tap.as_str())
+            || crate::layer_executor::BLACKBOARD_TAP_STAGE_IDS.contains(&tap.as_str());
+        if !known {
+            return Err(VisualError::InvalidRequest {
+                detail: format!("unsupported stage tap '{tap}'"),
+            });
+        }
+    }
+    Ok(())
+}
+
+enum SliceCompletion {
+    FullSlice,
+    PreparationOnly,
+    PreparationVisual {
+        layers: Vec<u32>,
+        stage_taps: Vec<StageId>,
+    },
+}
+
+enum SliceRunResult {
+    FullSlice(Box<SliceOutcome>),
+    PreparationOnly(crate::preparation_lifecycle::PreparationCapture),
+    PreparationVisual(crate::preparation_lifecycle::PreparationVisualCapture),
 }
 
 /// Test-support entry point that lets callers inspect the same collector used
@@ -1189,8 +1542,47 @@ pub fn run_slice_with_collector(
     opts: SliceRunOptions,
     collector: Option<Arc<Mutex<SliceEventCollector>>>,
 ) -> Result<SliceOutcome, SliceRunError> {
+    match run_slice_shared(
+        opts,
+        collector,
+        default_runtime_extensions(),
+        SliceCompletion::FullSlice,
+    )
+    .map_err(into_slice_run_error)?
+    {
+        SliceRunResult::FullSlice(outcome) => Ok(*outcome),
+        SliceRunResult::PreparationOnly(_) | SliceRunResult::PreparationVisual(_) => {
+            unreachable!("full slice requested")
+        }
+    }
+}
+
+fn run_slice_shared(
+    opts: SliceRunOptions,
+    collector: Option<Arc<Mutex<SliceEventCollector>>>,
+    extensions: crate::preparation_lifecycle::SliceRuntimeExtensions,
+    completion: SliceCompletion,
+) -> Result<SliceRunResult, PreparationVisualCaptureError> {
     let t0 = Instant::now();
     let channel = build_progress_channel(opts.progress_events, collector);
+    let (extension_registrations, anchored_entities, lifecycle) = extensions.into_run_parts(
+        opts.instrument_stderr || opts.report.is_some() || opts.profile,
+        matches!(
+            &completion,
+            SliceCompletion::PreparationOnly | SliceCompletion::PreparationVisual { .. }
+        ),
+    );
+    let mut visual_completion = match &completion {
+        SliceCompletion::PreparationVisual { layers, stage_taps } => {
+            Some(crate::pipeline::PreparationVisualCompletion {
+                layers: layers.clone(),
+                stage_taps: stage_taps.clone(),
+                parts: None,
+                error: None,
+            })
+        }
+        SliceCompletion::FullSlice | SliceCompletion::PreparationOnly => None,
+    };
 
     // Fuel-based profiling (ADR-0055). The aggregator's existence is the single
     // switch: nothing downstream records anything without it. The native sink
@@ -1288,7 +1680,7 @@ pub fn run_slice_with_collector(
     // doc comment for the production defect this closes).
     // `opts.profile` reaches every guest through this one engine: it turns on
     // `consume_fuel` *and* is what `profile-enabled` answers with.
-    let (integrated_regs, native_entries) = if opts.no_integrated_modules {
+    let (mut integrated_regs, mut native_entries) = if opts.no_integrated_modules {
         (Vec::new(), Vec::new())
     } else {
         (
@@ -1296,6 +1688,54 @@ pub fn run_slice_with_collector(
             slicer_integrated_modules::native_entries(),
         )
     };
+    // Suppress only the selected extension's same-ID built-in pair. Claim
+    // overlap belongs to the scheduler's config-aware arbitration below.
+    let extension_modules =
+        slicer_scheduler::load_modules_from_roots_with_integrated(&[], &extension_registrations)
+            .map_err(|error| SliceRunError(format!("invalid extension registration: {error:?}")))?;
+    let builtins = slicer_scheduler::load_modules_from_roots_with_integrated(&[], &integrated_regs)
+        .map_err(|error| SliceRunError(format!("invalid integrated registration: {error:?}")))?;
+    let extension_winners = slicer_scheduler::load_modules_from_roots_with_integrated(
+        &search_roots,
+        &extension_registrations,
+    )
+    .map_err(|error| SliceRunError(format!("extension provenance discovery: {error:?}")))?;
+    let suppressed: std::collections::HashSet<_> = builtins
+        .modules
+        .iter()
+        .filter(|builtin| {
+            extension_winners
+                .modules
+                .iter()
+                .filter(|winner| {
+                    extension_modules
+                        .modules
+                        .iter()
+                        .any(|candidate| candidate.id() == winner.id())
+                })
+                .any(|extension| builtin.id() == extension.id())
+        })
+        .map(|module| module.id().to_owned())
+        .collect();
+    integrated_regs.retain(|registration| {
+        let manifest: toml::Value = registration
+            .manifest_toml
+            .parse()
+            .expect("validated manifest");
+        !suppressed.contains(
+            manifest["module"]["id"]
+                .as_str()
+                .expect("validated module id"),
+        )
+    });
+    native_entries.retain(|(id, _)| !suppressed.contains(id));
+    integrated_regs.extend(extension_registrations);
+    native_entries.extend(
+        lifecycle
+            .prepared_native
+            .iter()
+            .map(|(id, entry, _)| (id.clone(), entry.stage)),
+    );
     let manifest_first = load_live_modules_for_plan_manifest_first(
         &search_roots,
         num_cpus_guess(),
@@ -1410,7 +1850,7 @@ pub fn run_slice_with_collector(
                         crate::progress_events::VALIDATION_DAG_CONSTRUCTION_CODE,
                         &msg,
                     );
-                    return Err(SliceRunError(msg));
+                    return Err(PreparationVisualCaptureError::Slice(SliceRunError(msg)));
                 }
             }
         }
@@ -1467,7 +1907,7 @@ pub fn run_slice_with_collector(
                 .join("; ");
             let msg = format!("startup DAG version-compatibility validation failed: {detail}");
             emit_validation_failure(crate::progress_events::VALIDATION_VERSION_COMPAT_CODE, &msg);
-            return Err(SliceRunError(msg));
+            return Err(PreparationVisualCaptureError::Slice(SliceRunError(msg)));
         }
 
         for diag in &report.errors {
@@ -1514,6 +1954,13 @@ pub fn run_slice_with_collector(
     let expanded_global_source =
         overlay_expanded_global(&module_config_source, &default_resolved_config);
     let layer_planning_objects = layer_planning_objects(&object_layer_configs);
+
+    freeze_selected_preparation_bindings(
+        &lifecycle,
+        &loaded,
+        &integrated_regs,
+        lifecycle.preparation_views(),
+    )?;
 
     // Build wasm_handles side-table before consuming bindings.
     let wasm_handles: std::collections::HashMap<
@@ -1577,7 +2024,11 @@ pub fn run_slice_with_collector(
                 WasmRuntimeDispatcher::new(Arc::clone(&engine))
                     .with_layer_planning_objects(layer_planning_objects),
             ),
-            layer: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+            layer: Box::new(crate::preparation_lifecycle::PreparedLayerStageRunner::new(
+                Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+                WasmRuntimeDispatcher::new(Arc::clone(&engine)),
+                Arc::clone(&lifecycle),
+            )),
             finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             emitter: Box::new(
@@ -1604,22 +2055,62 @@ pub fn run_slice_with_collector(
         default_resolved_config: Arc::new(default_resolved_config),
         bounds: Arc::new(config_bounds),
         wasm_handles,
-        anchored_entities: Vec::new(),
+        anchored_entities,
     };
 
     // Run the pipeline through the 4-way instrumentation fork.
-    let pipeline_result = run_pipeline_fork(
-        &opts,
-        &channel,
-        pipeline_config,
-        &expanded_global_source,
-        &registry,
-        &scoped_config,
-        &expansion_context,
-        profile.as_ref(),
-        #[cfg(feature = "report")]
-        dag_snapshot,
-    );
+    let pipeline_result = if matches!(completion, SliceCompletion::PreparationOnly) {
+        crate::pipeline::run_pipeline_until_preparation(
+            pipeline_config,
+            &expanded_global_source,
+            channel.sink.as_ref(),
+            &crate::instrumentation::NoopInstrumentation,
+            Some(ConfigExpansionAuthority {
+                registry: &registry,
+                scoped: &scoped_config,
+                expansion: &expansion_context,
+            }),
+            None,
+            Some(lifecycle.as_ref()),
+            true,
+            true,
+            None,
+        )
+        .map_err(|error| SliceRunError(error.to_string()))
+    } else if matches!(completion, SliceCompletion::PreparationVisual { .. }) {
+        crate::pipeline::run_pipeline_until_preparation(
+            pipeline_config,
+            &expanded_global_source,
+            channel.sink.as_ref(),
+            &crate::instrumentation::NoopInstrumentation,
+            Some(ConfigExpansionAuthority {
+                registry: &registry,
+                scoped: &scoped_config,
+                expansion: &expansion_context,
+            }),
+            None,
+            Some(lifecycle.as_ref()),
+            true,
+            false,
+            visual_completion.as_mut(),
+        )
+        .map_err(|error| SliceRunError(error.to_string()))
+    } else {
+        run_pipeline_fork(
+            &opts,
+            &channel,
+            pipeline_config,
+            &expanded_global_source,
+            &registry,
+            &scoped_config,
+            &expansion_context,
+            profile.as_ref(),
+            lifecycle.as_ref(),
+            #[cfg(feature = "report")]
+            dag_snapshot,
+        )
+        .map(Some)
+    };
 
     // Fold the host built-ins' native marks in and stop recording, on both the
     // success and the failure path: leaving the sink recording would let a
@@ -1637,7 +2128,76 @@ pub fn run_slice_with_collector(
     // it carries every occurrence.
     slicer_wasm_host::dispatch::emit_module_log_repeat_summary();
 
-    let pipeline_output = pipeline_result?;
+    if matches!(completion, SliceCompletion::FullSlice) {
+        // The pipeline joins module calls and synthetic host work before return.
+        // Cleanup belongs to the run, not the lifetime of an outlet-held Arc.
+        let cleanup = lifecycle.dispose_after_run();
+        if pipeline_result.is_ok() {
+            cleanup.map_err(|error| SliceRunError(error.to_string()))?;
+        }
+        // Preserve an original failed/cancelled pipeline outcome even if cleanup
+        // reports an invariant violation.
+    }
+
+    let pipeline_output = if let Some(visual) = visual_completion.as_mut() {
+        match pipeline_result {
+            Ok(Some(_)) => {
+                let _ = lifecycle.dispose_after_run();
+                return Err(PreparationVisualCaptureError::Slice(SliceRunError(
+                    "preparation visual capture: pipeline completed a non-visual output".into(),
+                )));
+            }
+            Ok(None) => {
+                if let Some(error) = visual.error.take() {
+                    let _ = lifecycle.dispose_after_run();
+                    return Err(error);
+                }
+                let parts = visual.parts.take().unwrap_or_default();
+                let capture = lifecycle.capture_visual_and_dispose(
+                    &visual.layers,
+                    parts.executed_stage_ids,
+                    parts.executed_layer_indices,
+                    parts.captures,
+                );
+                match capture {
+                    Ok(capture) => return Ok(SliceRunResult::PreparationVisual(capture)),
+                    Err(error) => {
+                        let _ = lifecycle.dispose_after_run();
+                        return Err(error);
+                    }
+                }
+            }
+            Err(error) => {
+                let typed = visual.error.take();
+                // The projection sidecar is populated only by the host's own
+                // projection validator, so a module error/trap/cancellation
+                // never reaches it; the original typed/pipeline outcome wins.
+                let projection =
+                    lifecycle
+                        .take_first_projection_failure()
+                        .map(|(module_id, view, reason)| {
+                            PreparationVisualCaptureError::ProjectionRejected {
+                                module_id,
+                                view,
+                                reason,
+                            }
+                        });
+                // Best-effort cleanup; the original typed/projection outcome wins.
+                let _ = lifecycle.dispose_after_run();
+                return Err(typed
+                    .or(projection)
+                    .unwrap_or(PreparationVisualCaptureError::Slice(error)));
+            }
+        }
+    } else {
+        let Some(pipeline_output) = pipeline_result? else {
+            let capture = lifecycle
+                .snapshot_and_dispose()
+                .map_err(|error| SliceRunError(error.to_string()))?;
+            return Ok(SliceRunResult::PreparationOnly(capture));
+        };
+        pipeline_output
+    };
 
     // Host support aggregation diagnostics are collected with the prepass
     // audit, but must also enter the slice event channel so a successful run
@@ -1712,14 +2272,14 @@ pub fn run_slice_with_collector(
     }
     emit_end_of_slice_events(&channel.sink, &channel.slice_id, wallclock_ms, stats);
 
-    Ok(SliceOutcome {
+    Ok(SliceRunResult::FullSlice(Box::new(SliceOutcome {
         gcode_text: pipeline_output.gcode_text,
         layer_count,
         wallclock_ms,
         profile: profile_summary,
         ingestion_warnings,
         region_map: pipeline_output.region_map,
-    })
+    })))
 }
 
 /// Assembled scheduler/runtime context after prepass execution, ready for a
@@ -1921,6 +2481,8 @@ pub fn prepare_prepass_context(
     .map_err(|e| SliceRunError(format!("prepass failed: {e}")))?;
 
     crate::layer_executor::promote_global_layers(&mut plan, &blackboard);
+    crate::layer_executor::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .map_err(|e| SliceRunError(format!("layer selection construction failed: {e}")))?;
 
     let layer_runner = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 

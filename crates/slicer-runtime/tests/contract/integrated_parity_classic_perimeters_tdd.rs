@@ -90,7 +90,7 @@ fn integrated_parity_classic_perimeters_native_matches_wasm() {
             .float("line_width", 0.4)
             .build(),
     );
-    let bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    let mut bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
     let slice = holed_slice();
     let mut wasm_arena = LayerArena::new();
     let mut native_arena = LayerArena::new();
@@ -102,6 +102,41 @@ fn integrated_parity_classic_perimeters_native_matches_wasm() {
         ..Default::default()
     };
     let stage: StageId = "Layer::Perimeters".to_string();
+    let mut region_map = slicer_ir::RegionMapIR::default();
+    let mut resolved = slicer_ir::ResolvedConfig {
+        line_width: 0.4,
+        wall_count: 3,
+        ..Default::default()
+    };
+    for (key, value) in config.iter_entries() {
+        if !resolved
+            .apply_cli_key(key, value)
+            .expect("resolve fixture config")
+        {
+            resolved.extensions.insert(key.into(), value.clone());
+        }
+    }
+    let config_id = region_map.intern_config(resolved);
+    for region in &wasm_arena.slice().expect("staged fixture slice").regions {
+        region_map.entries.insert(
+            slicer_ir::RegionKey {
+                global_layer_index: layer.index,
+                object_id: region.object_id.clone(),
+                region_id: if region.variant_chain.is_empty() {
+                    region.region_id
+                } else {
+                    region.region_id / 1_000_000
+                },
+                variant_chain: region.variant_chain.clone(),
+            },
+            slicer_ir::RegionPlan {
+                config: config_id,
+                ..Default::default()
+            },
+        );
+    }
+    bb.commit_region_map(Arc::new(region_map))
+        .expect("commit fixture region map");
     let (native_commit, wasm_commit): (LayerStageCommit, LayerStageCommit) = run_integrated_parity(
         IntegratedParitySpec {
             module_id: module_id(),
@@ -128,13 +163,37 @@ fn integrated_parity_classic_perimeters_native_matches_wasm() {
             config: Arc::clone(&config),
             native_entry: ClassicPerimeters::__slicer_native_entry(),
         },
-        |dispatcher, native_live, wasm_live| {
+        |dispatcher, native_live, wasm_live, native_module, wasm_module| {
+            let wasm_index = crate::common::selection_for_module(
+                &stage,
+                &layer,
+                wasm_module,
+                &bb,
+                wasm_arena.slice(),
+                None,
+            )
+            .expect("build wasm selection index");
+            let native_index = crate::common::selection_for_module(
+                &stage,
+                &layer,
+                native_module,
+                &bb,
+                native_arena.slice(),
+                None,
+            )
+            .expect("build native selection index");
             let wasm = LayerStageRunner::run_stage(
                 dispatcher,
                 &stage,
                 &layer,
                 wasm_live,
-                crate::common::layer_input(&bb, &wasm_arena),
+                crate::common::layer_input(
+                    &bb,
+                    &wasm_arena,
+                    wasm_index
+                        .selection_for(layer.index, wasm_module.module_id())
+                        .expect("bound wasm selection"),
+                ),
             )
             .expect("wasm dispatch")
             .expect("wasm commit");
@@ -143,7 +202,13 @@ fn integrated_parity_classic_perimeters_native_matches_wasm() {
                 &stage,
                 &layer,
                 native_live,
-                crate::common::layer_input(&bb, &native_arena),
+                crate::common::layer_input(
+                    &bb,
+                    &native_arena,
+                    native_index
+                        .selection_for(layer.index, native_module.module_id())
+                        .expect("bound native selection"),
+                ),
             )
             .expect("native dispatch")
             .expect("native commit");

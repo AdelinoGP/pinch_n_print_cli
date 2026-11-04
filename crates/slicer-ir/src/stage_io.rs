@@ -280,11 +280,6 @@ pub enum BlackboardPrepassSlot {
     SupportGeometry,
     /// Strategy-neutral host support analysis.
     SupportAnalysis,
-    /// Lightning tree-edge segments produced by `PrePass::LightningTreeGen`.
-    /// Packet 137 lands the seam; the algorithm ships in 138/139. Skipped
-    /// (slot stays `None`) when no region's `sparse_fill_holder` is
-    /// `lightning-infill` — see ADR-0029.
-    LightningTreeIR,
 }
 
 impl fmt::Display for BlackboardPrepassSlot {
@@ -298,7 +293,6 @@ impl fmt::Display for BlackboardPrepassSlot {
             Self::SliceIR => "slice-ir",
             Self::SupportGeometry => "support-geometry",
             Self::SupportAnalysis => "support-analysis",
-            Self::LightningTreeIR => "lightning-tree-ir",
         };
 
         f.write_str(name)
@@ -308,11 +302,6 @@ impl fmt::Display for BlackboardPrepassSlot {
 /// Structured blackboard contract failures.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BlackboardError {
-    /// Lightning tree generation failed before its output could be committed.
-    LightningTreeGeneration {
-        /// Human-readable generation failure detail.
-        message: String,
-    },
     /// A prepass output was committed more than once.
     DuplicatePrepassCommit {
         /// The duplicated prepass slot.
@@ -326,9 +315,10 @@ pub enum BlackboardError {
         /// The first duplicate `RegionKey` encountered, in entry order.
         region_key: crate::slice_ir::RegionKey,
     },
-    /// A merged `SupportPlanIR` contains two entries sharing the same
-    /// `(global_layer_index, object_id, region_id)` identity. Family
-    /// provenance does not make two entries distinct at this seam.
+    /// A merged `SupportPlanIR` contains two entries sharing the same full
+    /// source origin `(global_layer_index, object_id, region_id,
+    /// variant_chain)`. Family provenance does not make two entries distinct
+    /// at this seam; the ordered chain does.
     DuplicateSupportPlanEntry {
         /// Global layer index of the duplicate support region.
         global_layer_index: i32,
@@ -336,6 +326,10 @@ pub enum BlackboardError {
         object_id: crate::slice_ir::ObjectId,
         /// Region ID of the duplicate support region.
         region_id: crate::slice_ir::RegionId,
+        /// Ordered `(paint_semantic_name, value)` chain of the duplicate
+        /// source region. Empty is the exact identity of a genuinely
+        /// chain-less source, never a wildcard.
+        variant_chain: Vec<(String, crate::slice_ir::PaintValue)>,
     },
     /// A requested prepass output has not been committed yet.
     MissingRequiredPrepass {
@@ -366,9 +360,6 @@ pub enum BlackboardError {
 impl fmt::Display for BlackboardError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::LightningTreeGeneration { message } => {
-                write!(f, "lightning tree generation failed: {message}")
-            }
             Self::DuplicatePrepassCommit { slot } => {
                 write!(f, "prepass output already committed for {slot}")
             }
@@ -383,10 +374,11 @@ impl fmt::Display for BlackboardError {
                 global_layer_index,
                 object_id,
                 region_id,
+                variant_chain,
             } => write!(
                 f,
-                "SupportPlanIR contains duplicate entries for support region (layer={}, object='{}', region={})",
-                global_layer_index, object_id, region_id
+                "SupportPlanIR contains duplicate entries for support region (layer={}, object='{}', region={}, variant_chain={:?})",
+                global_layer_index, object_id, region_id, variant_chain
             ),
             Self::MissingRequiredPrepass { slot } => {
                 write!(f, "required prepass output missing for {slot}")

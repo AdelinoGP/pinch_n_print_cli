@@ -33,7 +33,9 @@ to describe what a module imports and exports.
 The canonical source lives under `crates/slicer-schema/wit/` in an umbrella layout where
 `root.wit` is the anchor package and `deps/` holds the shared dependency packages plus one
 directory for each versioned stage package. The delivered surface has 16 versioned stage
-packages: 9 layer, 4 prepass, 2 postpass, and 1 finalization. `PrePass::PaintSegmentation`
+packages: 9 layer, 4 prepass, 2 postpass, and 1 finalization — plus the versioned
+**specialist query package** `slicer:support-queries@1.0.0` (see
+`### Shared core and specialist query ownership` below). `PrePass::PaintSegmentation`
 is host-built-in and has no WIT package. The shared prepass view records live in the flat,
 unversioned `slicer:prepass-types` dependency:
 
@@ -43,22 +45,23 @@ crates/slicer-schema/wit/
   deps/
     types.wit          # package slicer:types       — interface geometry
     config.wit         # package slicer:config      — interface config-types
-    ir-types.wit       # package slicer:ir-handles  — interface ir-handles
+    ir-types.wit       # package slicer:ir-handles@1.0.0 — interface ir-handles (core handles, versioned)
     common.wit         # package slicer:common      — interfaces module-errors, host-services, profiling
     prepass-types.wit                     # package slicer:prepass-types (unversioned)
+    support-queries/support-queries.wit                      # package slicer:support-queries@1.0.0 (specialist)
     layer-slice-postprocess/layer-slice-postprocess.wit                    # package slicer:layer-slice-postprocess@1.0.0
     layer-perimeters/layer-perimeters.wit                                  # package slicer:layer-perimeters@1.0.0
     layer-perimeters-postprocess/layer-perimeters-postprocess.wit           # package slicer:layer-perimeters-postprocess@1.0.0
-    layer-infill/layer-infill.wit                                            # package slicer:layer-infill@1.0.0
+    layer-infill/layer-infill.wit                                            # package slicer:layer-infill@2.0.0
     layer-infill-postprocess/layer-infill-postprocess.wit                    # package slicer:layer-infill-postprocess@1.0.0
-    layer-support/layer-support.wit                                          # package slicer:layer-support@1.0.0
+    layer-support/layer-support.wit                                          # package slicer:layer-support@2.0.0
     layer-support-postprocess/layer-support-postprocess.wit                  # package slicer:layer-support-postprocess@1.0.0
     layer-path-optimization/layer-path-optimization.wit                      # package slicer:layer-path-optimization@1.0.0
     layer-anchored-events/layer-anchored-events.wit                            # package slicer:layer-anchored-events@1.0.0
     prepass-mesh-analysis/prepass-mesh-analysis.wit                          # package slicer:prepass-mesh-analysis@1.0.0
     prepass-layer-planning/prepass-layer-planning.wit                        # package slicer:prepass-layer-planning@3.0.0
     prepass-seam-planning/prepass-seam-planning.wit                          # package slicer:prepass-seam-planning@1.0.0
-    prepass-support-geometry/prepass-support-geometry.wit                    # package slicer:prepass-support-geometry@1.0.0
+    prepass-support-geometry/prepass-support-geometry.wit                    # package slicer:prepass-support-geometry@2.0.0
     postpass-gcode-postprocess/postpass-gcode-postprocess.wit          # package slicer:postpass-gcode-postprocess@1.0.0
     postpass-text-postprocess/postpass-text-postprocess.wit             # package slicer:postpass-text-postprocess@1.0.0
     finalization-layer-finalization/finalization-layer-finalization.wit  # package slicer:finalization-layer-finalization@1.1.0
@@ -96,6 +99,81 @@ Three rules govern all WIT design decisions:
 1. The host never trusts module declarations at runtime. Access control is enforced per-call.
 2. Modules never receive more data than declared in their manifest `ir-access.reads`.
 3. WIT versions are independent from IR schema versions.
+
+### Shared core and specialist query ownership
+
+Following the lightning retirement, the handle surface splits between core
+and the support specialist (building on ADR-0073):
+
+- **Core** — versioned `slicer:ir-handles@1.0.0`
+  (`crates/slicer-schema/wit/deps/ir-types.wit`). The core package RETAINS the
+  builders and core views: the read-view resources (`slice-region-view`,
+  `perimeter-region-view`) together with the anchored-cluster records, the
+  output-builder resources (`infill-output-builder`,
+  `perimeter-output-builder`, `slice-postprocess-builder`,
+  `gcode-output-builder`, `support-output-builder`,
+  `layer-collection-builder`), the core paint/identity aliases (`object-id`,
+  `region-id`, `paint-value`, `layer-idx`), the wall and Arachne types, and
+  `paint-region-layer-view` with ONLY its core accessors (`get-regions`,
+  `get-custom-regions`, `layer-index`, `is-raft`). The support accessors
+  that previously hung off `paint-region-layer-view` (`support-plan-segments`,
+  `raft-plan`) and the support view records moved to the support specialist;
+  `lightning-tree-segments` is deleted. Core MUST NOT import any specialist.
+- **Support specialist** — versioned `slicer:support-queries@1.0.0`, interface
+  `support-queries` (`crates/slicer-schema/wit/deps/support-queries/support-queries.wit`).
+  The `support-query-view` resource owns every support plan read:
+  `support-plan-segments` (the legacy segment carrier — retained, currently
+  always empty; structural plans read through entries), `support-plan-entries`
+  (full `support-plan-entry-view` records), and the print-wide
+  `raft-plan: func() -> option<raft-plan-view>` (layer-independent, projected
+  from `SupportPlanIR.raft_plan`; `none` when no raft was planned). The
+  segment/entry queries take the exact full-origin three-key form
+  `(object-id, region-id, variant-chain: list<tuple<string, paint-value>>)`;
+  an empty chain is the exact identity of a genuinely chain-less source, never
+  a wildcard, and same-number different ordered chains never collapse. The
+  view records (`support-plan-entry-view`, `raft-plan-view`, the role /
+  skeleton / decline records) are declared locally in this package rather
+  than imported back from the prepass package, because the prepass package
+  already imports the core — importing back would risk a world-satisfaction
+  cycle — so the specialist mirrors those record shapes instead.
+Import discipline is one-way. The support specialist imports version-qualified core
+identity types (`use slicer:ir-handles/ir-handles@1.0.0.{object-id, region-id,
+paint-value}`) plus the unversioned `slicer:types/geometry` shapes; consuming
+stage worlds import the specialist behind their core import —
+`slicer:layer-support@2.0.0` imports `support-queries`, and
+`slicer:layer-infill@2.0.0` imports `support-queries` — and no other stage consumes it. On consuming stages
+the specialist appears exactly as an `own<support-query-view>` parameter of the exported `run` function, after
+the paint view and before the output builder; SDK stage method parameter lists
+(`crates/slicer-sdk/src/traits.rs`) are unchanged — the query handles ride on
+the existing paint-view trait surface, and exact three-key source identity is
+carried in the accessor arguments.
+
+Nominal resource identity is pinned end to end: the host `bindgen!` selectors
+name the same versioned resource
+(`slicer:support-queries/support-queries@1.0.0.support-query-view` in
+`crates/slicer-wasm-host/src/host.rs`) that every importing world imports, so
+`support-query-view` is one resource across
+host, guest macro and SDK — never two type-compatible copies.
+
+The WIT dialect requires a reference to a versioned package to be
+version-qualified: `use slicer:ir-handles.{...}` against the now-versioned
+`slicer:ir-handles@1.0.0` declaration is rejected when the WIT resolves, so
+every shared-package reference — each stage world import, the specialists'
+`use` lines, and `slicer:common`'s `use` of `ir-handles` — spells the full
+`@1.0.0`. Host projections allocate the query resources per layer keyed by
+full origin: the `SupportQueryViewData` maps
+(`crates/slicer-wasm-host/src/host.rs`) are keyed
+`(object_id, region_id, ordered variant_chain)` with chains taken from the IR
+entries' own `variant_chain` fields, never guessed or derived — see
+`build_paint_layer_data_with_plan` (`crates/slicer-wasm-host/src/dispatch.rs`),
+which returns the paint data plus the support query-view dataset. The unversioned
+`slicer:common`, `slicer:config`, `slicer:types` and `slicer:prepass-types`
+packages keep no versions of their own.
+
+This split carries no experimental-isolation claim: incompatible old
+components are rejected at typed instantiation (see "WIT Package ↔ IR
+Compatibility Matrix" below); the frozen pre-split fixture is test evidence,
+not a dual-version runtime adapter.
 
 ## Host-Boundary Access Enforcement (Normative)
 
@@ -148,8 +226,8 @@ only when the canonical stage lookup and the IR compatibility check both pass.
 
 | Canonical stage package | Module declaration | Host IR schema | Module IR range | Load result |
 |-------------------------|--------------------|----------------|-----------------|-------------|
-| `slicer:layer-perimeters@1.0.0` | `[stage] id = "Layer::Perimeters"` | `4.7.0` | `>=1.0.0, <5.0.0` | Typed package instantiation, then allowed |
-| `slicer:prepass-mesh-analysis@1.0.0` | `[stage] id = "PrePass::MeshAnalysis"` | `4.7.0` | `>=1.0.0, <5.0.0` | Typed package instantiation, then allowed |
+| `slicer:layer-perimeters@1.0.0` | `[stage] id = "Layer::Perimeters"` | `4.10.0` (global `SliceIR`) | `>=1.0.0, <5.0.0` | Typed package instantiation, then allowed |
+| `slicer:prepass-mesh-analysis@1.0.0` | `[stage] id = "PrePass::MeshAnalysis"` | `4.10.0` (global `SliceIR`) | `>=1.0.0, <5.0.0` | Typed package instantiation, then allowed |
 
 Startup checks:
 
@@ -158,6 +236,16 @@ Startup checks:
    signatures; a missing or incompatible stage export is fatal.
 3. Validate host IR schema is within the module-declared IR range and emit explicit
    diagnostics with expected/actual versions and blocking symbol names when incompatible.
+
+**Bounds scope (normative — packet `layer-module-preparation_01`).** The
+`[compatibility]` `min-ir-schema` / `max-ir-schema` range is checked against
+the ONE global host `SliceIR` schema version, never against an individual
+sub-IR version (`InfillIR`, `SupportIR`, `SupportPlanIR`,
+`SupportGeometryIR`, `SupportAnalysisIR`, …). A sub-IR
+owner bumping its own schema therefore requires no manifest-bound edits while
+the global `SliceIR` is unchanged, and no per-subIR compatibility enforcement
+exists or is implied by those bumps — the only IR gate at load is the
+single global range check.
 
 ### Why `wit-world` is now legacy
 
@@ -189,6 +277,289 @@ component export matching. That reasoning is recorded in
 restructure is `docs/adr/0045-per-stage-versioned-interfaces-over-monolithic-tier-worlds.md`.
 
 ---
+
+## Preparation capability pilot composition
+
+**PILOT evidence only — not production availability.** Packet
+`layer-module-preparation_02_preparation-capability-pilot` proves composition
+with controlled fixtures; it does not activate production preparation.
+
+The canonical `slicer:layer-preparation@1.0.0` package lives in
+`crates/slicer-schema/wit/deps/layer-preparation/layer-preparation.wit`.
+Its imported `preparation-types` interface owns the host resources:
+
+| Resource | Pilot surface |
+|---|---|
+| `print-preparation-input` | `read-fixture` (pilot-only transport) |
+| `prepared-plan-output` | `put` (one complete, unique named piece) |
+| `prepared-plan-view` | `open` |
+| `prepared-piece` | `len`, bounded `read` |
+
+The defining interface is imported, never exported: resource identity remains
+host-owned. `plan-access.current()` reuses that same `prepared-plan-view`,
+without redeclaring it. The `preparation-error` variants are `not-ready`,
+`invalid-name`, `duplicate-name`, `poisoned-output`, `range-error`,
+`arithmetic-overflow`, and `access-denied`.
+
+The exported `prepare.prepare-print(input: print-preparation-input, output:
+prepared-plan-output) -> result<_, slicer:common/module-errors.module-error>`
+reuses the existing `module-error` identity. Its qualified export is
+`slicer:layer-preparation/prepare@1.0.0#prepare-print`, recorded by
+`PREPARATION_QUALIFIED_EXPORT` (`crates/slicer-schema/src/lib.rs`).
+
+Nine `prepared-<ordinary-world>` worlds compose the ordinary world through
+`include slicer:<pkg>/<world>@<version>;`, then `import preparation-types;`,
+`import plan-access;`, and `export prepare;`. The observed set exactly matches
+`STAGES` rows with `tier_id == TIER_LAYER` and nonempty `wit_package`
+(`crates/slicer-schema/src/lib.rs`). Plain worlds, ordinary stage signatures,
+and shared imported interfaces remain unchanged. Preparation is a capability,
+not a scheduled stage: metadata belongs to the `PreparationExportSchema`
+sidecar, not a `StageSpec` row (`crates/slicer-schema/src/lib.rs`).
+`resolve_stage_from_world` (`xtask/src/wit_verify.rs`) excludes only the
+recognized capability and retains exactly one scheduled-stage candidate;
+`compare_worlds` (`xtask/src/wit_verify.rs`) pins the exported preparation
+surface in both directions.
+
+Executed pilot evidence: `wasm-tools component wit crates/slicer-schema/wit`
+exited 0 and resolved all nine composed worlds. The contract command
+`cargo test -p slicer-wasm-host --test contract preparation_pilot_` passed
+9 tests, including stage-surface and export-mismatch checks. Its compile matrix
+covered 18 plain/prepared scratch crates across native and componentized WASM
+(36 configurations), derived from the 9 Layer rows; missing `prepare_print`
+on opt-in failed compilation as required. `cargo xtask build-guests --check`
+and `cargo build --workspace --tests` both exited 0.
+
+The pre-edit `classic-perimeters.wasm` archive at
+`target/preparation-pilot/plain-before.component.wasm` (SHA-256
+`6499a7d809a1812bc581adab2bc394ca660f209b0f38b9ce459e9c47c43e5c5c`)
+loads through the typed ordinary path with preparation imports registered
+alongside the ordinary linker, without a preparation export or parameter.
+This archive is a pre-edit snapshot, never a freshly rebuilt replacement.
+
+**Scope boundary:** controlled-fixture evidence only. Row 03 still owns
+production declaration parsing/validation and normalized host storage;
+test-local staging and `read-fixture` are not that production API. Row 04 owns
+typed whole-print input projections; row 05 owns scheduling, selection,
+override, and cancellation lifecycle activation; row 06 owns diagnostic/visual
+projections. None is marked complete here. No lightning algorithm, migration,
+or parity claim is made. Allocator/process overhead and process peak memory
+are **UNMEASURED**; no latency acceptance threshold is claimed.
+
+## Preparation declaration and frozen capability validation
+
+`parse_preparation_declaration` (`crates/slicer-scheduler/src/preparation.rs`)
+reads optional `[preparation]` metadata. `interface` must equal
+`slicer:layer-preparation/prepare@1.0.0` exactly: a package, world, unqualified
+name, or another version is not accepted. `input_reads` is required, even if
+empty; `views` is optional and defaults to empty. Both arrays preserve exact,
+nonempty string names and reject duplicates. No other keys are accepted.
+`PreparationDeclaration` (`crates/slicer-schema/src/preparation.rs`) has private
+fields exposed through `interface()`, `input_reads()`, and `views()`.
+
+Parser failures are `InvalidTable`, `MissingInterface`, `UnsupportedInterface`,
+`MissingInputReads`, `InvalidInputRead`, `DuplicateInputRead`, `InvalidViewName`,
+`DuplicateViewName`, and `UnknownKey`. Artifact validation is bidirectional:
+a declaration without its capability is `MissingExport`; a capability without
+a declaration is `UndeclaredExport`. Incompatible compiled metadata, signatures,
+or resource identity produce `IncompatibleExport`; non-Layer capability bindings
+produce `UnsupportedStage`. These are `PreparationDeclarationError` variants,
+wrapped by the host's `PreparationFailure::Declaration`.
+
+Native freezing accepts one paired `NativePreparationArtifact`: `Plain` or
+`Prepared`, not a separately selected preparation provider. The ordinary entry
+and preparation metadata therefore belong to the same selected artifact.
+`freeze_wasm` (`crates/slicer-wasm-host/src/preparation.rs`) also validates the
+ordinary Layer stage and the typed composed component indices before a binding
+can invoke preparation. Export-name presence alone is insufficient: the composed
+typed world must match its ordinary signatures and host-owned resource identities.
+Ordinary artifacts without a preparation declaration retain ordinary binding;
+their worlds do not acquire mandatory preparation parameters or exports.
+
+## Typed whole-print preparation input permissions
+
+Production `[preparation].input_reads` accepts exactly these snake_case tokens:
+`layer_plan`, `slices`, `region_map`, `mesh`, `selected_targets`,
+`surface_classification`, `surface_classification_optional`, `seam_plan`,
+`seam_plan_optional`, `support_analysis`, `support_analysis_optional`,
+`support_geometry`, `support_geometry_optional`, `support_plan`, `support_plan_optional`.
+Required/optional alternatives for one product are mutually exclusive:
+`InvalidInput { detail }` names both conflicting tokens; unknown strings yield
+`UnsupportedRead { read }`. Row 03's recognized pilot token `fixture` remains
+syntactically accepted, with no production prerequisite or grant effect; fixture
+reads enable only in row 03's feature-gated controlled input mode.
+
+| Operations | Required declaration / committed input |
+|---|---|
+| `layer_count`, `layers` | `layer_plan` |
+| `regions` | `slices` |
+| `region_configs` | `region_map`; exact authoritative map/config |
+| `mesh_objects`, `mesh_vertices`, `mesh_triangles`, `mesh_queries` | `mesh` |
+| `selected_targets` | `selected_targets`; shared selection projection and matching frozen owner |
+| `surface_objects`, `surface_layers` | `surface_classification` or `surface_classification_optional` |
+| `seams` | `seam_plan` or `seam_plan_optional` |
+| `support_analysis` | `support_analysis` or `support_analysis_optional` |
+| `support_geometry` | `support_geometry` or `support_geometry_optional` |
+| `support_plan` | `support_plan` or `support_plan_optional` |
+
+Required products must exist: absence yields `MissingRequired { read }` at
+`from_committed` (`crates/slicer-wasm-host/src/preparation_input.rs`), before
+any invocation or transaction. Constructor/`from_committed` rejection has zero
+invocation markers and no transaction. Handler rejection (undeclared, foreign,
+or disposed resource; bad range; unknown query object; checked overflow) occurs
+inside an already-entered invocation: markers are nonzero and the exact error is recorded.
+
+`slicer_schema::preparation::PreparationInputError` maps one-to-one to the new
+WIT `preparation-input-error`: `AccessDenied` → `access-denied`, `RangeError` →
+`range-error`, `ArithmeticOverflow` → `arithmetic-overflow`, `MissingRequired { read }` →
+`missing-required(string)`, `UnsupportedRead { read }` → `unsupported-read(string)`,
+`InvalidInput { detail }` → `invalid-input(string)`, `UnknownObject { object_id }` →
+`unknown-object(string)`, `SelectionRejected { detail }` → `selection-rejected(string)`.
+Payload text is preserved, including the original stage or full missing key.
+A read error never poisons output: `PoisonedOutput` remains exclusively row 03's
+output-writer fault contract. Preparation-call ordinary host-services mesh adapters
+gate `mesh` identically; ordinary-call behavior is unchanged. Grants are checked
+before existence/range lookup. Granted optional absence is `None`; present-empty
+is `Some(empty)`, never flattened. No method exposes `PerimeterIR`, `InfillIR`,
+`SupportIR`, `LayerCollectionIR`, or provider plan ids.
+
+### Preparation diagnostic projection transport (Normative)
+
+The `slicer:layer-preparation@1.0.0` package gains typed diagnostic projection
+transport only through growth of its imported `preparation-types` interface.
+The canonical source is
+`crates/slicer-schema/wit/deps/layer-preparation/layer-preparation.wit`:
+
+```wit
+record preparation-projection-polygon {
+    polygon: ex-polygon,
+    filled: bool,
+}
+
+variant preparation-projection-geometry {
+    point(point2),
+    polyline(list<point2>),
+    polygon(preparation-projection-polygon),
+}
+
+record preparation-projection-primitive {
+    id: string,
+    global-layer-index: u32,
+    class: string,
+    label: option<string>,
+    geometry: preparation-projection-geometry,
+}
+
+record preparation-projection-scene {
+    scene-id: string,
+    view: string,
+    classes: list<string>,
+    primitives: list<preparation-projection-primitive>,
+}
+
+resource preparation-projection-output {
+    requested-views: func() -> result<list<string>, preparation-projection-error>;
+    publish: func(scene: preparation-projection-scene) -> result<_, preparation-projection-error>;
+}
+
+resource prepared-plan-output {
+    /// Publish one complete, unique named piece into staging.
+    put: func(name: string, bytes: list<u8>) -> result<_, preparation-error>;
+    projection: func() -> result<option<preparation-projection-output>, preparation-projection-error>;
+}
+```
+
+`point2` is the canonical `slicer:types/geometry.point2`; `ex-polygon` is the
+single `slicer:ir-handles/ir-handles@1.0.0` re-export already in scope in
+`preparation-types`. All projection coordinates are exact integer units
+(1 unit = 100 nm); no float millimetre value crosses this boundary.
+
+`preparation-projection-error` is the diagnostic error domain and has variants
+`access-denied`, `not-requested`, `undeclared-view`, `duplicate-scene`,
+`missing-scene`, `invalid-reference`, `invalid-shape`, `invalid-coordinate`,
+`arithmetic-overflow`, and `poisoned-output`. It maps one-to-one to
+`PreparationProjectionError` (`crates/slicer-schema/src/preparation.rs`) through
+`wit_variant`. Opaque-plan failures continue to use `preparation-error`;
+diagnostic failures never use that domain.
+
+`prepared-plan-output.projection()` acquires the optional, host-provided
+`preparation-projection-output` for the active preparation invocation. The
+resource is imported, never exported: the guest has no resource declaration for
+it, and the SDK retains no raw resource index. `requested-views()` returns the
+exact declared view names requested for this invocation; `publish(scene)` stages
+one complete scene for a requested view.
+
+**Package version.** The package declaration stays
+`package slicer:layer-preparation@1.0.0;`. Only the imported `preparation-types`
+interface grows: new records, one geometry variant, one imported resource, and
+one method on the existing host-provided `prepared-plan-output`. The exported
+`prepare` interface, `plan-access`, and the
+`prepare-print(input: print-preparation-input, output: prepared-plan-output) ->
+result<_, slicer:common/module-errors.module-error>` signature are unchanged.
+Every committed guest manifest keeps
+`[preparation] interface = "slicer:layer-preparation/prepare@1.0.0"` valid;
+there is no new `[preparation]` key, and the exact-version rule in
+"Preparation declaration and frozen capability validation" plus the existing
+`views` declaration are unchanged. The composed gate is the proof: every
+`prepared-<ordinary-world>` world resolves through
+`wasm-tools component wit crates/slicer-schema/wit`, and `compare_worlds`
+(`xtask/src/wit_verify.rs`) pins the exported preparation surface in both
+directions while existing guests link against a superset of host-provided
+imports. A hypothetical `slicer:layer-preparation@1.1.0` package with a
+manifest compatibility rule is a rejected out-of-scope alternative, never
+current behavior; it would be required only if that composed gate failed.
+
+**Metadata-only opaque-plan boundary.** The host never parses, decodes, or
+infers geometry from `prepared-plan-output.put` payloads, and the projection
+path reads only typed metadata supplied by the module. A projection is a typed
+diagnostic sidecar, not a view of private plan state: it grants no read or write
+access to another module's plan, and a whole-print scene may legitimately
+reference context layers where its owner is not selected. Accepted scenes are
+validated into immutable `CommittedPreparationProjection` values
+(`crates/slicer-wasm-host/src/preparation_projection.rs`: typed scene DTO, owner
+module id, logical diagnostic bytes, host-attached committed schedule Z) and
+staged in the same preparation transaction as the opaque pieces. At finish, one
+atomic commit publishes pieces, metadata, and diagnostics together; a typed
+diagnostic rejection or a missing scene rejects the whole publication.
+
+**Validation and identity.** One scene is allowed per requested declared view
+per owner. An empty or duplicate scene id, class id, or primitive id, a class
+not listed in `classes`, or a `global-layer-index` absent from the committed
+schedule is `invalid-reference`; publishing a second scene for the same view is
+`duplicate-scene` regardless of scene id. The host attaches finite, nonnegative
+schedule Z and never accepts module-authored Z. Geometry is validated without
+repair or normalization: a polyline is open with at least two distinct
+consecutive vertices; a polygon has a simple CCW contour and simple, strictly
+contained, non-intersecting CW holes, each with at least three distinct vertices
+and nonzero signed area; touching, crossing, self-crossing, and degenerate rings
+are `invalid-shape`. Checked `i128` predicates report `invalid-coordinate` on
+overflow; diagnostic byte/count overflow is `arithmetic-overflow`. No arbitrary
+coordinate or scene-size quota exists, and an explicitly completed scene with an
+empty `primitives` list is valid. A requested view with no scene is
+`missing-scene` at finish, including when `projection()` was never called. An
+original module error or trap wins over a diagnosed sink poison.
+
+The projection resource is bound to the same host-table `PreparationOwner` as
+its `prepared-plan-output` and to the active call's identity. `projection()`
+rechecks owner, liveness, and active call identity; `requested-views()` and
+`publish()` additionally require the staging phase. A foreign owner, a disposed
+store, a sink used outside its invocation, or any access after finish/abort
+returns the WIT `access-denied` (`PreparationProjectionError::AccessDenied`)
+without mutating or poisoning the foreign owner's transaction. A rejected
+`requested-views()` or `publish()` call is sticky: the transaction records the
+first `preparation-projection-error`, later calls on that sink return
+`poisoned-output`, and the transaction cannot reach Ready even if the module
+catches the error.
+
+Diagnostic accounting is a separate sidecar,
+`PreparationDiagnosticAccounting { staged_bytes, retained_bytes,
+published_scenes }` (`crates/slicer-wasm-host/src/preparation_projection.rs`).
+It counts logical diagnostic bytes only: UTF-8 scene/view/class/id/label bytes,
+16 bytes per `point2`, 4 bytes per `global-layer-index`, and 1 byte per geometry
+tag or `filled` flag, each counted once per stored occurrence. It excludes
+`Vec`/`Arc`/allocator overhead, prepared-piece payload bytes, prepared-piece
+names, and ordinary transferred-byte totals. Success moves staged bytes to
+retained bytes; abort or disposal clears staged and retained bytes, while
+`published_scenes` remains the cumulative count of accepted publications.
 
 ## `deps/types.wit`
 
@@ -255,7 +626,8 @@ Two items:
 ## `deps/ir-types.wit`
 
 **Source of truth:** `crates/slicer-schema/wit/deps/ir-types.wit` (package
-`slicer:ir-handles`, interface `ir-handles`). This is the largest interface in
+`slicer:ir-handles@1.0.0`, interface `ir-handles` — the versioned shared core
+per `### Shared core and specialist query ownership` above). This is the largest interface in
 the contract — the read-view resources (`slice-region-view`,
 `perimeter-region-view`, `paint-region-layer-view`), the output-builder
 resources (`infill-output-builder`, `perimeter-output-builder`,
@@ -296,9 +668,12 @@ Notable records/methods worth surfacing (not obvious from the resource names):
    the paint variant chain — so buffered per-region pushes are
    attributed correctly (packet 127, ADR-0022; see the `begin_region` SDK
    method). Widened from the original two-field form by the seam-identity
-   change; the builders live in the **unversioned** shared `slicer:ir-handles`
-   package, so there is no world version to bump — compatibility is enforced
-   structurally by wasmtime typed instantiation at first dispatch, and every
+   change; the builders live in the versioned shared `slicer:ir-handles@1.0.0`
+   package (versioned as part of the full-source-variant-chain migration). The
+   builder methods above were landed when the package was still unversioned and
+   broke the unversioned world in place, a migration now expressed as the
+   package's `1.0.0` identity: compatibility is enforced structurally by
+   wasmtime typed instantiation at first dispatch, and every
    guest must be rebuilt (`cargo xtask build-guests`).
 - `support-output-builder` also carries
   `set-current-origin: func(object-id: string, region-id: string, variant-chain: list<tuple<string, paint-value>>) -> result<_, string>`,
@@ -315,13 +690,19 @@ Notable records/methods worth surfacing (not obvious from the resource names):
   `infill-output-builder::push-raft-fill`; the host commits them to
   `SlicedRegion.raft_fill`, and these accessors return the committed polygons on
   applicable raft layers. Layers without committed raft fill return an empty list.
-- `paint-region-layer-view` exposes `is-raft: func() -> bool` and
-  `raft-plan: func() -> option<raft-plan-view>` (packet 240a).
-  `raft-plan-view` is declared **locally** in `ir-types.wit` — there is no
-  cross-world import — and mirrors `RaftPlan`'s four fields: `raft-layers: u32`,
-  `raft-first-layer-density: f32`, `base-raft-layers: u32`,
-  `interface-raft-layers: u32`. Both accessors are threaded through the host,
-  the macro guest shim, and the SDK on both the wasm and the native leg.
+- `paint-region-layer-view` exposes `is-raft: func() -> bool`
+  (packet 240a; retained on the core view — a guest's only way to tell a raft
+  layer from a model layer). The print-wide `raft-plan` read MOVED to the
+  support specialist with the full-source-variant-chain migration:
+  `support-query-view.raft-plan: func() -> option<raft-plan-view>`
+  (`crates/slicer-schema/wit/deps/support-queries/support-queries.wit`), where
+  `raft-plan-view` is declared **locally** in that specialist package — there
+  is no cross-world import — and mirrors `RaftPlan`'s four fields:
+  `raft-layers: u32`, `raft-first-layer-density: f32`, `base-raft-layers: u32`,
+  `interface-raft-layers: u32`. `is-raft` remains threaded through the host,
+  the macro guest shim, and the SDK on both the wasm and the native leg; the
+  raft-plan read is threaded to consuming stages through the
+  `support-query-view` resource instead.
 
 ### Infill output builder raft fill (Normative — packet 240b)
 
@@ -419,16 +800,30 @@ The nine layer stages each have one versioned package, one world, and one export
 | `Layer::SlicePostProcess` | `deps/layer-slice-postprocess/layer-slice-postprocess.wit` | `slicer:layer-slice-postprocess@1.0.0` |
 | `Layer::Perimeters` | `deps/layer-perimeters/layer-perimeters.wit` | `slicer:layer-perimeters@1.0.0` |
 | `Layer::PerimetersPostProcess` | `deps/layer-perimeters-postprocess/layer-perimeters-postprocess.wit` | `slicer:layer-perimeters-postprocess@1.0.0` |
-| `Layer::Infill` | `deps/layer-infill/layer-infill.wit` | `slicer:layer-infill@1.0.0` |
+| `Layer::Infill` | `deps/layer-infill/layer-infill.wit` | `slicer:layer-infill@2.0.0` |
 | `Layer::InfillPostProcess` | `deps/layer-infill-postprocess/layer-infill-postprocess.wit` | `slicer:layer-infill-postprocess@1.0.0` |
-| `Layer::Support` | `deps/layer-support/layer-support.wit` | `slicer:layer-support@1.0.0` |
+| `Layer::Support` | `deps/layer-support/layer-support.wit` | `slicer:layer-support@2.0.0` |
 | `Layer::SupportPostProcess` | `deps/layer-support-postprocess/layer-support-postprocess.wit` | `slicer:layer-support-postprocess@1.0.0` |
 | `Layer::PathOptimization` | `deps/layer-path-optimization/layer-path-optimization.wit` | `slicer:layer-path-optimization@1.0.0` |
 | `Layer::AnchoredEvents` | `deps/layer-anchored-events/layer-anchored-events.wit` | `slicer:layer-anchored-events@1.0.0` |
 
+The `layer-infill` and `layer-support` identities moved from `1.0.0` to
+`2.0.0` with the full-source-variant-chain migration (the stages gained
+specialist query imports/`run` parameters; incompatible old components reject
+at typed instantiation with no runtime adapter).
+
 Read the on-disk package for each stage's exact parameter list and return type. The
-`layer-infill` package includes the paint view required for committed lightning tree
-segments. The `layer-infill-postprocess` package retains the read-only `prior-infill`
+`layer-infill@2.0.0` `run` signature is
+`run(layer-index, regions: list<slice-region-view>, paint: paint-region-layer-view, support-queries: own<support-query-view>, output: infill-output-builder, config: config-view) -> result<_, module-error>`
+(`deps/layer-infill/layer-infill.wit`): the core paint view plus the
+specialist own-handle from `slicer:support-queries@1.0.0`, which delivers
+committed support-plan reads keyed by full source origin. The handle sits between
+the paint view and the `infill-output-builder`. `slicer:layer-support@2.0.0` also takes
+`own<support-query-view>` and the handle sits
+between its paint view and the `support-output-builder`.
+Only these two stage packages import specialist
+packages; all other stages import the core `slicer:ir-handles@1.0.0` alone.
+The `layer-infill-postprocess` package retains the read-only `prior-infill`
 view of the committed `InfillIR`, and its commit is REPLACE — the module must re-emit
 every path it wants kept.
 
@@ -473,47 +868,21 @@ proposal rejects the dispatch without committing the first; no proposal yields
 no commit and leaves the arena unchanged. The wasm and native dispatch legs
 must produce equal `LayerStageCommit::AnchoredEvents` values.
 
-### `lightning-tree-segments` read-view (packet 137)
+### Lightning accessor retirement
 
-Available to `Layer::Infill` modules on the `paint-region-layer-view` resource.
-Mirrors the `support-plan-segments` read-view shape (same
-`list<list<point3-with-width>>` return type, same `object-id`/`region-id`
-parameters) so a `Layer::Infill` module reaches the committed
-`LightningTreeIR` for the dispatching `(object, region, layer)` triple via
-the same idiom it would use for `SupportPlanIR` lookup in `Layer::Support`.
-
-**Per-region dispatch keying:** The host dispatch stores `lightning_tree_segments`
-in a `HashMap` keyed by `(object_id, region_id)`, not `(object_id, "*")`. This
-follows the per-region keying precedent established by the `support-plan-segments`
-read-view.
-
-**Source of truth:** `crates/slicer-schema/wit/deps/ir-types.wit` (the
-`paint-region-layer-view` resource method) and
-`crates/slicer-schema/wit/deps/layer-infill/layer-infill.wit` (package
-`slicer:layer-infill@1.0.0`). Packet 140 extends `run` with the paint
-view required by the lightning module; read the WIT source for the exact
-signature.
-any change to the signature in 138/139 is a WIT version bump, not a
-silent change.
-
-The `paint-region-layer-view` resource adds the per-`(object-id, region-id)`
-`lightning-tree-segments` read alongside its existing semantic-region and
-support-plan reads.
-
-**Skip promise (ADR-0029):** The host commits a `LightningTreeIR` only when
-the print's `sparse_fill_holder` is `lightning-infill`. Otherwise the slot
-stays `None` and the method returns an empty `Vec<list<point3-with-width>>`
-— the per-layer `Layer::Infill` module (packet 140) emits no paths for that
-layer; there is no stub fallback (matches `docs/02_ir_schemas.md`, and the
-packet-140 deletion of the old single-layer stub). Non-lightning prints
-therefore see a zero-cost, no-op view; the wedge structural canary
-(`wedge_per_region_config_delivery_structural_canary`) pins the default-config
-slice through the new stage.
-
-**SDK accessor:** `PaintRegionLayerView::lightning_tree_segments_for(object_id, region_id)`
-in `crates/slicer-sdk/src/traits.rs` returns the same
-`Vec<[slicer_ir::Point2; 2]>` shape as the IR's `tree_edge_segments` field
-(2-point integer-unit compact storage per ADR-0029's memory note).
+The legacy path is retired.
+The selected `com.core.lightning-infill` artifact plans during `prepare_print` from typed committed
+regions, region configs, and layer plan, publishing one private `lightning-layer-{global_layer_index}` piece per schedule layer.
+Ordinary `Layer::Infill` consumers require and decode their own layer's piece through the module's decoder.
+Deleted surfaces are `commit_lightning_tree_ir_builtin`, `PrePass::LightningTreeGen` and its `STAGE_ORDER` entry,
+`BlackboardPrepassSlot::LightningTreeIR`, `BlackboardError::LightningTreeGeneration`,
+public `LightningTreeIR`/`LightningTreeEntry`/`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION`,
+the `lightning-tree-segments` WIT method and whole `slicer:lightning-queries` package,
+and SDK `lightning_tree_segments_for`/`with_lightning_tree_ir` accessors.
+Plan types live only as module-private `KernelPlan`/`PlanEntry`, never public IR.
+`docs/feasibility-probes/` is a stale historical mirror outside the live contract and is not regenerated.
+This records behavioural equivalence to the pre-migration producer: ownership moves with no intended output change,
+not a canonical-parity claim; the recorded Gate A/B outcomes remain unchanged.
 
 ---
 
@@ -528,7 +897,21 @@ interface contains the single `run` function:
 | `PrePass::MeshAnalysis` | `deps/prepass-mesh-analysis/prepass-mesh-analysis.wit` | `slicer:prepass-mesh-analysis@1.0.0` |
 | `PrePass::LayerPlanning` | `deps/prepass-layer-planning/prepass-layer-planning.wit` | `slicer:prepass-layer-planning@3.0.0` |
 | `PrePass::SeamPlanning` | `deps/prepass-seam-planning/prepass-seam-planning.wit` | `slicer:prepass-seam-planning@1.0.0` |
-| `PrePass::SupportGeometry` | `deps/prepass-support-geometry/prepass-support-geometry.wit` | `slicer:prepass-support-geometry@1.0.0` |
+| `PrePass::SupportGeometry` | `deps/prepass-support-geometry/prepass-support-geometry.wit` | `slicer:prepass-support-geometry@2.0.0` |
+
+The `prepass-support-geometry` identity moved from `1.0.0` to `2.0.0` with the
+full-source-variant-chain migration: six view records carry the ordered
+`variant-chain` field (`support-plan-entry`, `region-support-config`,
+`support-geometry-view-entry`, `support-analysis-candidate`,
+`support-analysis-geometry-entry`, `support-family-assignment`), the
+`region-segmentation-view-entry` gains the
+`region-source-origin { region-id, variant-chain }` record and replaces
+`region_ids` with the `region-origins: list<region-source-origin>` list (one
+full SOURCE origin per row, mirrored SDK-side by `RegionSourceOrigin` /
+`region_origins` in `crates/slicer-sdk/src/prepass_types.rs`), and the
+`exact-z-support-query.query` seam takes the exact-z four-argument form
+`(object-id, region-id, variant-chain, physical-z-mm)`. Incompatible old
+components reject at typed instantiation with no runtime adapter.
 
 The shared view records (`mesh-object-view`, `paint-value-view`, `paint-stroke-view`, and
 `paint-layer-view`) are defined once in the unversioned flat package

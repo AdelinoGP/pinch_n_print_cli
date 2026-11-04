@@ -1,0 +1,3506 @@
+//! Real-slice lifecycle regression driver. Registration supplies adapters, not plans.
+//!
+//! The preparation-only entry point is deliberately exercised separately from
+//! ordinary decoding: metadata capture must never become an opaque-payload reader.
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Barrier, Mutex};
+
+use preparation_lifecycle_anchored_guest::PreparationLifecycleAnchored;
+use preparation_lifecycle_guest::PreparationLifecycleGuest;
+use slicer_ir::{
+    AnchoredEntity, AnchoredEntityProvenance, AnchoredGeometryContract, ConfigValue, ExtrusionRole,
+    Point3WithWidth,
+};
+use slicer_runtime::preparation_lifecycle::{
+    AnchoredHostClosureStatus, LayerArenaLifecycleStatus, PreparationCapture,
+    PreparationLifecycleObserver, PreparationLifecyclePhase, PreparationLifecycleRecord,
+    PreparationLifecycleStatus, SliceRuntimeExtensions,
+};
+use slicer_runtime::{
+    run_slice, run_slice_preparation_capture, run_slice_with_runtime_extensions, SliceRunOptions,
+};
+use slicer_scheduler::IntegratedModuleRegistration;
+use slicer_sdk::preparation::PreparationTargetSource;
+use slicer_wasm_host::preparation::PreparationFailure;
+use tempfile::TempDir;
+
+const PATH_ID: &str = "com.core.path-optimization-default";
+const ANCHORED_ID: &str = "com.test.preparation-lifecycle-anchored-guest";
+const SOURCE_PATH_MANIFEST: &str =
+    include_str!("../../../slicer-wasm-host/test-guests/preparation-lifecycle-guest/module.toml");
+fn path_manifest() -> &'static str {
+    static MANIFEST: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    MANIFEST.get_or_init(|| {
+        let mut manifest: toml::Value = SOURCE_PATH_MANIFEST.parse().unwrap();
+        manifest["module"]["id"] = PATH_ID.into();
+        toml::to_string(&manifest).unwrap()
+    })
+}
+const ANCHORED_MANIFEST: &str = include_str!(
+    "../../../slicer-wasm-host/test-guests/preparation-lifecycle-anchored-guest/module.toml"
+);
+const NATIVE_MARKER: &str = "PREPARATION-LIFECYCLE-NATIVE";
+const WASM_MARKER: &str = "PREPARATION-LIFECYCLE-WASM";
+
+// Compile witnesses only: these four stages deliberately do not claim driver
+// coverage. Each expansion is a distinct, single-stage module.
+mod compile_shapes {
+    use slicer_ir::{ConfigView, InfillRegion};
+    use slicer_sdk::builders::SlicePostprocessBuilder;
+    use slicer_sdk::builders::{InfillOutputBuilder, PerimeterOutputBuilder, SupportOutputBuilder};
+    use slicer_sdk::error::ModuleError;
+    use slicer_sdk::preparation::{LayerPreparation, PreparedPlanOutput, PrintPreparationInput};
+    use slicer_sdk::traits::LayerModule;
+    use slicer_sdk::views::{PerimeterRegionView, SliceRegionView};
+    use slicer_sdk::PaintRegionLayerView;
+
+    macro_rules! pair {
+        ($prepared:ident, $plain:ident, $method:ident, $($arg:ident: $ty:ty),*) => {
+            pub struct $prepared;
+            pub struct $plain;
+            impl LayerPreparation for $prepared {
+                fn prepare_print(_: &PrintPreparationInput, _: &mut PreparedPlanOutput) -> Result<(), ModuleError> { Ok(()) }
+            }
+            #[slicer_sdk::slicer_module(preparation)]
+            impl LayerModule for $prepared {
+                fn from_config(_: &ConfigView) -> Result<Self, ModuleError> { Ok(Self) }
+                fn $method(&self, $($arg: $ty),*) -> Result<(), ModuleError> { Ok(()) }
+            }
+            #[slicer_sdk::slicer_module]
+            impl LayerModule for $plain {
+                fn from_config(_: &ConfigView) -> Result<Self, ModuleError> { Ok(Self) }
+                fn $method(&self, $($arg: $ty),*) -> Result<(), ModuleError> { Ok(()) }
+            }
+        };
+    }
+    pair!(SlicePrepared, SlicePlain, run_slice_postprocess,
+        _index: u32, _regions: &[SliceRegionView], _paint: &PaintRegionLayerView,
+        _out: &mut SlicePostprocessBuilder, _config: &ConfigView);
+    pair!(WallPrepared, WallPlain, run_wall_postprocess,
+        _index: u32, _regions: &[PerimeterRegionView],
+        _out: &mut PerimeterOutputBuilder, _config: &ConfigView);
+    pair!(InfillPrepared, InfillPlain, run_infill_postprocess,
+        _index: u32, _regions: &[PerimeterRegionView], _prior: &[InfillRegion],
+        _out: &mut InfillOutputBuilder, _config: &ConfigView);
+    pair!(SupportPrepared, SupportPlain, run_support_postprocess,
+        _index: u32, _regions: &[SliceRegionView],
+        _out: &mut SupportOutputBuilder, _config: &ConfigView);
+
+    pub fn stages() -> std::collections::BTreeSet<&'static str> {
+        let prepared = [
+            SlicePrepared::__slicer_stage_name(),
+            WallPrepared::__slicer_stage_name(),
+            InfillPrepared::__slicer_stage_name(),
+            SupportPrepared::__slicer_stage_name(),
+        ];
+        let plain = [
+            SlicePlain::__slicer_stage_name(),
+            WallPlain::__slicer_stage_name(),
+            InfillPlain::__slicer_stage_name(),
+            SupportPlain::__slicer_stage_name(),
+        ];
+        // These typed values force the prepared native sidecars to compile too.
+        let entries = [
+            SlicePrepared::__slicer_prepared_native_entry(),
+            WallPrepared::__slicer_prepared_native_entry(),
+            InfillPrepared::__slicer_prepared_native_entry(),
+            SupportPrepared::__slicer_prepared_native_entry(),
+        ];
+        assert_eq!(entries.len(), prepared.len());
+        assert_eq!(prepared, plain);
+        prepared.into_iter().collect()
+    }
+}
+
+#[derive(Debug)]
+enum Event {
+    Lifecycle(PreparationLifecycleRecord),
+    Arena(u32, LayerArenaLifecycleStatus),
+    Host(AnchoredHostClosureStatus),
+    CallReturned(u32, &'static str),
+}
+
+#[derive(Default)]
+struct Trace {
+    events: Mutex<Vec<Event>>,
+    // Cooperative checkpoints can be triggered by a real observation, without
+    // injecting Ready or substituting a dispatcher/producer backing.
+    cancel: Option<(Arc<AtomicBool>, PreparationLifecyclePhase)>,
+    cancel_on_ready: bool,
+}
+
+impl PreparationLifecycleObserver for Trace {
+    fn on_preparation_lifecycle(&self, record: &PreparationLifecycleRecord) {
+        if let Some((flag, phase)) = &self.cancel {
+            if std::mem::discriminant(&record.lifecycle_phase) == std::mem::discriminant(phase)
+                && record.status
+                    == if self.cancel_on_ready {
+                        PreparationLifecycleStatus::Ready
+                    } else {
+                        PreparationLifecycleStatus::Start
+                    }
+            {
+                flag.store(true, Ordering::SeqCst);
+            }
+        }
+        self.events
+            .lock()
+            .unwrap()
+            .push(Event::Lifecycle(record.clone()));
+    }
+
+    fn on_layer_arena(&self, index: u32, status: LayerArenaLifecycleStatus) {
+        self.events
+            .lock()
+            .unwrap()
+            .push(Event::Arena(index, status));
+    }
+
+    fn on_anchored_host_closure(&self, status: AnchoredHostClosureStatus) {
+        self.events.lock().unwrap().push(Event::Host(status));
+    }
+}
+
+fn workspace_root() -> PathBuf {
+    let manifest_dir =
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set by cargo test");
+    PathBuf::from(manifest_dir)
+        .join("..")
+        .join("..")
+        .canonicalize()
+        .expect("workspace root must be resolvable")
+}
+
+struct Fixture {
+    staging: TempDir,
+    external: bool,
+    anchored: bool,
+    trace: Arc<Trace>,
+}
+
+impl Fixture {
+    fn new(external: bool, anchored: bool) -> Self {
+        let fixture = Self {
+            staging: TempDir::new().expect("external fixture staging"),
+            external,
+            anchored,
+            trace: Arc::new(Trace::default()),
+        };
+        if external {
+            fixture.stage_component("preparation-lifecycle-guest", path_manifest());
+            if anchored {
+                fixture.stage_component("preparation-lifecycle-anchored-guest", ANCHORED_MANIFEST);
+            }
+        }
+        fixture
+    }
+
+    fn stage_component(&self, stem: &str, manifest: &str) {
+        let component = workspace_root()
+            .join("crates/slicer-wasm-host/test-guests")
+            .join(format!("{stem}.component.wasm"));
+        assert!(
+            component.is_file(),
+            "required staged component absent: {}",
+            component.display()
+        );
+        std::fs::write(self.staging.path().join(format!("{stem}.toml")), manifest)
+            .expect("write real external manifest");
+        std::fs::copy(&component, self.staging.path().join(format!("{stem}.wasm")))
+            .expect("stage real external component");
+    }
+
+    fn options(&self) -> SliceRunOptions {
+        let root = workspace_root();
+        let model = root.join("resources").join("regression_wedge.stl");
+        let module_dir = root.join("modules").join("core-modules");
+        assert!(model.exists(), "wedge missing at {}", model.display());
+        assert!(
+            module_dir.exists(),
+            "core modules missing at {}",
+            module_dir.display()
+        );
+        // Selection is manifest-first: do not discover the core implementation
+        // of a stage owned by a lifecycle fixture. Keep every other wedge
+        // module (including all fill holders) available unchanged.
+        let mut module_dirs = vec![self.staging.path().to_owned()];
+        for entry in std::fs::read_dir(&module_dir).expect("read wedge module roots") {
+            let path = entry.expect("core module directory").path();
+            if !path.is_dir() {
+                continue;
+            }
+            let stem = path.file_name().expect("core module name");
+            let manifest_path = path.join(stem).with_extension("toml");
+            let manifest: toml::Value = std::fs::read_to_string(&manifest_path)
+                .unwrap_or_else(|error| panic!("read {}: {error}", manifest_path.display()))
+                .parse()
+                .expect("parse core module manifest");
+            let stage = manifest["stage"]["id"].as_str().expect("core stage");
+            if stage != "Layer::PathOptimization"
+                && !(self.anchored && stage == "Layer::AnchoredEvents")
+            {
+                module_dirs.push(path);
+            }
+        }
+        module_dirs.sort();
+        let mesh = Arc::new(slicer_model_io::load_model(&model).expect("model load must succeed"));
+        let mut opts = SliceRunOptions {
+            mesh,
+            model_label: model.to_string_lossy().into_owned(),
+            module_dirs,
+            no_default_module_paths: true,
+            ..Default::default()
+        };
+        opts.config_overrides.extend([
+            (
+                "preparation_probe_mode".into(),
+                ConfigValue::String("ready".into()),
+            ),
+            (
+                "preparation_probe_token".into(),
+                ConfigValue::String("probe".into()),
+            ),
+            ("preparation_probe_length".into(), ConfigValue::Int(4)),
+            (
+                "probe_start_mm".into(),
+                ConfigValue::Int(if self.external { 5 } else { 3 }),
+            ),
+            (
+                "probe_end_mm".into(),
+                ConfigValue::Int(if self.external { 6 } else { 4 }),
+            ),
+            ("probe_mode".into(), ConfigValue::String("standard".into())),
+        ]);
+        opts
+    }
+
+    fn extensions(&self, host_entities: Vec<AnchoredEntity>) -> SliceRuntimeExtensions {
+        let mut integrated = vec![IntegratedModuleRegistration {
+            manifest_toml: path_manifest(),
+            origin_label: "lifecycle-native-path",
+        }];
+        let mut prepared = vec![(
+            PATH_ID.into(),
+            PreparationLifecycleGuest::__slicer_prepared_native_entry(),
+            PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+        )];
+        if self.anchored {
+            integrated.push(IntegratedModuleRegistration {
+                manifest_toml: ANCHORED_MANIFEST,
+                origin_label: "lifecycle-native-anchored",
+            });
+            prepared.push((
+                ANCHORED_ID.into(),
+                PreparationLifecycleAnchored::__slicer_prepared_native_entry(),
+                PreparationLifecycleAnchored::__SLICER_PREPARATION_SCHEMA,
+            ));
+        }
+        SliceRuntimeExtensions::new(
+            integrated,
+            prepared,
+            host_entities,
+            Some(self.trace.clone()),
+        )
+    }
+
+    fn capture(&self, length: i64, token: &str) -> PreparationCapture {
+        let mut opts = self.options();
+        opts.config_overrides
+            .insert("preparation_probe_length".into(), ConfigValue::Int(length));
+        opts.config_overrides.insert(
+            "preparation_probe_token".into(),
+            ConfigValue::String(token.into()),
+        );
+        run_slice_preparation_capture(opts, self.extensions(vec![]))
+            .expect("real production capture prefix")
+    }
+
+    fn run(&self) -> String {
+        run_slice_with_runtime_extensions(self.options(), self.extensions(vec![]))
+            .expect("real prepared wedge slice")
+            .gcode_text
+    }
+
+    fn marker(&self) -> &'static str {
+        if self.external {
+            WASM_MARKER
+        } else {
+            NATIVE_MARKER
+        }
+    }
+}
+
+fn records(events: &[Event]) -> Vec<&PreparationLifecycleRecord> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Lifecycle(record) => Some(record),
+            _ => None,
+        })
+        .collect()
+}
+
+fn assert_disposed(events: &[Event], id: &str) {
+    let disposed = records(events)
+        .into_iter()
+        .filter(|record| {
+            record.module_id.as_str() == id
+                && matches!(record.status, PreparationLifecycleStatus::Disposed)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        disposed.len(),
+        1,
+        "owner must be disposed exactly once: {id}"
+    );
+    assert_eq!(disposed[0].retained_bytes, 0);
+    assert!(matches!(
+        disposed[0].lifecycle_phase,
+        PreparationLifecyclePhase::Disposal
+    ));
+}
+
+fn assert_no_consumer(events: &[Event]) {
+    assert!(!records(events).iter().any(|record| matches!(
+        record.lifecycle_phase,
+        PreparationLifecyclePhase::Consumption
+    )));
+    assert!(!events
+        .iter()
+        .any(|event| matches!(event, Event::Arena(_, _) | Event::Host(_))));
+}
+
+#[test]
+fn activation_order_and_final_inputs() {
+    for external in [false, true] {
+        let fixture = Fixture::new(external, true);
+        let mut manifest: toml::Value = path_manifest().parse().unwrap();
+        manifest.as_table_mut().unwrap().insert(
+            "region_split".into(),
+            toml::Value::Array(vec![toml::Value::Table(toml::map::Map::from_iter([
+                ("semantic".into(), "fuzzy_skin".into()),
+                ("priority".into(), 200.into()),
+                ("value_type".into(), "flag".into()),
+            ]))]),
+        );
+        let manifest: &'static str =
+            Box::leak(toml::to_string(&manifest).unwrap().into_boxed_str());
+        if external {
+            fixture.stage_component("preparation-lifecycle-guest", manifest);
+        }
+        let mut options = fixture.options();
+        let object = &mut Arc::make_mut(&mut options.mesh).objects[0];
+        object.paint_data = Some(slicer_ir::FacetPaintData {
+            layers: vec![slicer_ir::PaintLayer {
+                semantic: slicer_ir::PaintSemantic::FuzzySkin,
+                facet_values: vec![
+                    Some(slicer_ir::PaintValue::Flag(true));
+                    object.mesh.indices.len() / 3
+                ],
+                strokes: vec![],
+            }],
+        });
+        options.config_overrides.insert(
+            "preparation_probe_mode".into(),
+            ConfigValue::String("final_inputs".into()),
+        );
+        let output = run_slice_with_runtime_extensions(
+            options,
+            SliceRuntimeExtensions::new(
+                vec![
+                    IntegratedModuleRegistration {
+                        manifest_toml: manifest,
+                        origin_label: "final-inputs-path",
+                    },
+                    IntegratedModuleRegistration {
+                        manifest_toml: ANCHORED_MANIFEST,
+                        origin_label: "final-inputs-anchored",
+                    },
+                ],
+                vec![
+                    (
+                        PATH_ID.into(),
+                        PreparationLifecycleGuest::__slicer_prepared_native_entry(),
+                        PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+                    ),
+                    (
+                        ANCHORED_ID.into(),
+                        PreparationLifecycleAnchored::__slicer_prepared_native_entry(),
+                        PreparationLifecycleAnchored::__SLICER_PREPARATION_SCHEMA,
+                    ),
+                ],
+                vec![],
+                Some(fixture.trace.clone()),
+            ),
+        )
+        .expect("committed painted/shell inputs reach preparation")
+        .gcode_text;
+        // Early unsplit slices have neither a fuzzy_skin variant chain nor a
+        // classified bottom-shell index/solid-fill product: they emit 0/0.
+        // The ordinary consumer decodes bytes derived by prepare_print, so this
+        // checks actual content through both adapters, not just event ordering.
+        assert!(output.contains("PREPARATION-FINAL-INPUTS:paint=1;shell=1"));
+        assert!(!output.contains("PREPARATION-FINAL-INPUTS:paint=0;shell=0"));
+        assert!(output.contains(fixture.marker()));
+        let events = fixture.trace.events.lock().unwrap();
+        let starts: Vec<_> = records(&events)
+            .into_iter()
+            .filter(|record| {
+                matches!(
+                    record.lifecycle_phase,
+                    PreparationLifecyclePhase::Preparation
+                ) && matches!(record.status, PreparationLifecycleStatus::Start)
+            })
+            .collect();
+        assert_eq!(
+            starts
+                .iter()
+                .map(|r| r.module_id.to_string())
+                .collect::<Vec<_>>(),
+            [PATH_ID, ANCHORED_ID]
+        );
+        let first_arena = events
+            .iter()
+            .position(|e| matches!(e, Event::Arena(_, LayerArenaLifecycleStatus::Created)))
+            .expect("real layer arena creation");
+        let first_consumer = events.iter().position(|e| matches!(e, Event::Lifecycle(r) if matches!(r.lifecycle_phase, PreparationLifecyclePhase::Consumption)))
+            .expect("real ordinary prepared consumption");
+        for id in [ANCHORED_ID, PATH_ID] {
+            let ready: Vec<_> = events.iter().enumerate().filter(|(_, event)| {
+                matches!(event, Event::Lifecycle(r) if r.module_id.as_str() == id && matches!(r.status, PreparationLifecycleStatus::Ready))
+            }).collect();
+            assert_eq!(ready.len(), 1);
+            assert!(ready[0].0 < first_arena && ready[0].0 < first_consumer);
+            assert_disposed(&events, id);
+        }
+    }
+}
+
+#[test]
+fn external_override_dual_leg() {
+    let mut arbitration_records = Vec::new();
+    for external in [false, true] {
+        let fixture = Fixture::new(external, false);
+        override_controls::PREPARES.store(0, Ordering::SeqCst);
+        override_controls::CALLS.store(0, Ordering::SeqCst);
+        let mut entry = PreparationLifecycleGuest::__slicer_prepared_native_entry();
+        entry.prepare = override_controls::prepare;
+        entry.stage = slicer_sdk::native::NativeStageEntry::Layer(override_controls::consume);
+        let output = run_slice_with_runtime_extensions(
+            fixture.options(),
+            SliceRuntimeExtensions::new(
+                vec![IntegratedModuleRegistration {
+                    manifest_toml: path_manifest(),
+                    origin_label: "override-counter-native",
+                }],
+                vec![(
+                    PATH_ID.into(),
+                    entry,
+                    PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+                )],
+                vec![],
+                Some(fixture.trace.clone()),
+            ),
+        )
+        .expect("real override arbitration")
+        .gcode_text;
+        assert!(output.contains(fixture.marker()));
+        assert!(!output.contains(if external { NATIVE_MARKER } else { WASM_MARKER }));
+        let events = fixture.trace.events.lock().unwrap();
+        let owner_records: Vec<_> = records(&events)
+            .into_iter()
+            .filter(|r| r.module_id.as_str() == PATH_ID)
+            .collect();
+        assert!(!owner_records.is_empty());
+        let identity = &owner_records[0].artifact_identity;
+        assert!(!identity.is_empty());
+        for record in owner_records {
+            assert_eq!(record.module_version, "0.1.0");
+            assert_eq!(&record.artifact_identity, identity);
+            assert_eq!(record.consumer_stage.to_string(), "Layer::PathOptimization");
+        }
+        arbitration_records.push(records(&events).into_iter().cloned().collect::<Vec<_>>());
+        assert_eq!(
+            override_controls::PREPARES.load(Ordering::SeqCst),
+            usize::from(!external),
+            "losing native pair must never prepare"
+        );
+        if external {
+            assert_eq!(
+                override_controls::CALLS.load(Ordering::SeqCst),
+                0,
+                "losing native pair must never receive an ordinary call"
+            );
+        } else {
+            assert!(override_controls::CALLS.load(Ordering::SeqCst) > 0);
+        }
+        assert_disposed(&events, PATH_ID);
+    }
+    let native_identity = arbitration_records[0]
+        .iter()
+        .find(|r| r.module_id.as_str() == PATH_ID)
+        .expect("native path lifecycle")
+        .artifact_identity
+        .clone();
+    let wasm_identity = arbitration_records[1]
+        .iter()
+        .find(|r| r.module_id.as_str() == PATH_ID)
+        .expect("wasm path lifecycle")
+        .artifact_identity
+        .clone();
+    assert!(native_identity.starts_with("native:"));
+    assert!(wasm_identity.starts_with("wasm:"));
+    assert_ne!(native_identity, wasm_identity);
+    for (winning, losing) in [
+        (&arbitration_records[0], wasm_identity),
+        (&arbitration_records[1], native_identity),
+    ] {
+        assert!(!winning.iter().any(|record| record.artifact_identity == losing), "losing artifact must have no lifecycle, preparation or ordinary-consumption evidence: {losing}");
+        assert!(
+            winning
+                .iter()
+                .any(|record| record.lifecycle_phase == PreparationLifecyclePhase::Consumption),
+            "winning artifact really consumes"
+        );
+    }
+
+    // A different-ID extension cannot displace the scheduler's alphabetically
+    // preferred core claimant merely by being registered as an extension.
+    let fixture = Fixture::new(false, false);
+    let manifest = selection_controls::manifest("com.test.overlapping-path", true, "");
+    let mut perimeter: toml::Value =
+        include_str!("../../../../modules/core-modules/classic-perimeters/classic-perimeters.toml")
+            .parse()
+            .unwrap();
+    perimeter["module"]["id"] = "com.aaa.overlapping-perimeter".into();
+    let perimeter: &'static str = Box::leak(toml::to_string(&perimeter).unwrap().into_boxed_str());
+    let options = || {
+        let mut options = fixture.options();
+        options.profile = true;
+        // Dropped candidates still declare config defaults during ingestion;
+        // keep this independent of the selected claimant in both controls.
+        options
+            .config_overrides
+            .insert("line_width".into(), ConfigValue::Float(0.8));
+        options.config_overrides.insert(
+            "wall_generator".into(),
+            ConfigValue::String("classic".into()),
+        );
+        // Arachne and classic declare opposite defaults for this key. The
+        // renamed classic claimant sorts before both core manifests in the
+        // extended registry, so pin the effective value in both legs.
+        options
+            .config_overrides
+            .insert("detect_thin_wall".into(), ConfigValue::Bool(false));
+        options
+    };
+    let baseline = run_slice(options()).expect("ordinary arbitration control");
+    let extended = run_slice_with_runtime_extensions(
+        options(),
+        SliceRuntimeExtensions::new(
+            vec![
+                IntegratedModuleRegistration {
+                    manifest_toml: manifest,
+                    origin_label: "different-id-claim-control",
+                },
+                IntegratedModuleRegistration {
+                    manifest_toml: perimeter,
+                    origin_label: "configured-perimeter-claim-control",
+                },
+            ],
+            vec![(
+                "com.test.overlapping-path".into(),
+                PreparationLifecycleGuest::__slicer_prepared_native_entry(),
+                PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+            )],
+            vec![],
+            Some(fixture.trace.clone()),
+        ),
+    )
+    .expect("different-ID extension keeps ordinary arbitration");
+    let calls = |output: &slicer_runtime::SliceOutcome| {
+        output
+            .profile
+            .as_ref()
+            .unwrap()
+            .modules
+            .iter()
+            .filter(|row| {
+                row.module_id == PATH_ID
+                    || row.module_id.contains("-infill")
+                    || row.module_id.contains("perimeter")
+            })
+            .map(|row| (row.module_id.clone(), row.calls))
+            .collect::<BTreeMap<_, _>>()
+    };
+    assert!(!baseline.gcode_text.is_empty());
+    // Extension manifests contribute config schema even when claim dedup drops
+    // their modules. Their defaults appear in the serialized CONFIG_BLOCK, not
+    // in the toolpath; compare the toolpath and assert the merged-set winners
+    // rather than requiring the extension-free config footer to be identical.
+    let baseline_toolpath = baseline
+        .gcode_text
+        .split_once("; CONFIG_BLOCK_START")
+        .expect("baseline serialized G-code config block")
+        .0;
+    let extended_toolpath = extended
+        .gcode_text
+        .split_once("; CONFIG_BLOCK_START")
+        .expect("extended serialized G-code config block")
+        .0;
+    assert_eq!(
+        extended_toolpath,
+        baseline_toolpath,
+        "different-ID extensions must preserve the toolpath before the manifest-dependent CONFIG_BLOCK"
+    );
+    let extended_calls = calls(&extended);
+    assert_eq!(
+        extended_calls,
+        calls(&baseline),
+        "different-ID claims must preserve the scheduler's configured winners"
+    );
+    assert!(
+        extended_calls.contains_key("com.core.classic-perimeters"),
+        "wall_generator=classic must select the canonical classic perimeter claimant"
+    );
+    assert!(
+        !extended_calls.contains_key("com.aaa.overlapping-perimeter"),
+        "the configured classic winner must defeat the alphabetically earlier perimeter claimant"
+    );
+    for holder in [
+        "com.core.gyroid-infill",
+        "com.core.lightning-infill",
+        "com.core.rectilinear-infill",
+    ] {
+        assert!(
+            extended_calls.contains_key(holder),
+            "merged arbitration must retain the region-selected fill holder {holder}"
+        );
+    }
+    assert!(!extended.gcode_text.contains(NATIVE_MARKER));
+    let lifecycle_events = fixture.trace.events.lock().unwrap();
+    let losing_extension_records: Vec<_> = records(&lifecycle_events)
+        .into_iter()
+        .filter(|record| record.module_id.as_str() == "com.test.overlapping-path")
+        .collect();
+    assert!(
+        losing_extension_records.is_empty(),
+        "claim-losing extension must not enter preparation: {losing_extension_records:#?}"
+    );
+}
+
+mod override_controls {
+    use super::*;
+    use std::sync::atomic::AtomicUsize;
+    pub static PREPARES: AtomicUsize = AtomicUsize::new(0);
+    pub static CALLS: AtomicUsize = AtomicUsize::new(0);
+    pub fn prepare(
+        input: &slicer_sdk::preparation::PrintPreparationInput,
+        output: &mut slicer_sdk::preparation::PreparedPlanOutput,
+    ) -> Result<(), slicer_sdk::error::ModuleError> {
+        PREPARES.fetch_add(1, Ordering::SeqCst);
+        (PreparationLifecycleGuest::__slicer_prepared_native_entry().prepare)(input, output)
+    }
+    pub fn consume(
+        input: &slicer_sdk::native::NativeLayerRequest,
+    ) -> Result<slicer_sdk::native::NativeLayerResponse, slicer_sdk::error::ModuleError> {
+        CALLS.fetch_add(1, Ordering::SeqCst);
+        let slicer_sdk::native::NativeStageEntry::Layer(call) =
+            PreparationLifecycleGuest::__slicer_prepared_native_entry().stage
+        else {
+            unreachable!()
+        };
+        call(input)
+    }
+}
+
+#[test]
+fn unused_nondefault_and_plain_empty() {
+    // Baseline plain execution is an independent control, not a fabricated Ready
+    // observation. The separated-solid control below tests ordinary no-work calls.
+    let fixture = Fixture::new(false, false);
+    let mut plain_options = fixture.options();
+    plain_options.module_dirs = vec![workspace_root().join("modules/core-modules")];
+    let plain = run_slice(plain_options).expect("ordinary wedge control");
+    assert!(!plain.gcode_text.is_empty());
+    assert!(!plain.gcode_text.contains(NATIVE_MARKER));
+    assert!(fixture.trace.events.lock().unwrap().is_empty());
+    assert!(fixture.run().contains(NATIVE_MARKER));
+
+    use selection_controls::{CALLS, PREPARES};
+    use slicer_sdk::native::{NativePreparedStageEntry, NativeStageEntry};
+    for counter in CALLS.iter().chain(PREPARES.iter()) {
+        counter.store(0, Ordering::SeqCst);
+    }
+    let manifests = [
+        selection_controls::manifest("com.test.selection-plain", false, "traditional"),
+        selection_controls::manifest("com.test.selection-region", true, "tree"),
+        selection_controls::manifest("com.test.selection-unused", true, "unused"),
+    ];
+    fixture.stage_component("sdk-layer-pathopt-guest", manifests[0]);
+    let extensions = || {
+        SliceRuntimeExtensions::new(
+            manifests
+                .iter()
+                .skip(1)
+                .map(|manifest| IntegratedModuleRegistration {
+                    manifest_toml: manifest,
+                    origin_label: "selection-control",
+                })
+                .collect(),
+            [selection_controls::region, selection_controls::unused]
+                .into_iter()
+                .enumerate()
+                .map(|(index, stage)| {
+                    (
+                        ["com.test.selection-region", "com.test.selection-unused"][index].into(),
+                        NativePreparedStageEntry {
+                            stage: NativeStageEntry::Layer(stage),
+                            prepare: [
+                                selection_controls::prepare_region,
+                                selection_controls::prepare_unused,
+                            ][index],
+                        },
+                        PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+                    )
+                })
+                .collect(),
+            vec![],
+            None,
+        )
+    };
+    let mut options = fixture.options();
+    options.config_overrides.insert(
+        "support_type".into(),
+        ConfigValue::String("normal(auto)".into()),
+    );
+    let object = &mut Arc::make_mut(&mut options.mesh).objects[0];
+    object.id = "selection-region-object".into();
+    object.config.data.insert(
+        "support_type".into(),
+        ConfigValue::String("tree(auto)".into()),
+    );
+    object
+        .config
+        .data
+        .insert("line_width".into(), ConfigValue::Float(0.9));
+    let capture = run_slice_preparation_capture(options.clone(), extensions())
+        .expect("nondefault region capture");
+    assert_eq!(PREPARES[0].load(Ordering::SeqCst), 1);
+    assert_eq!(
+        PREPARES[1].load(Ordering::SeqCst),
+        0,
+        "owned but unselected"
+    );
+    assert!(CALLS
+        .iter()
+        .all(|counter| counter.load(Ordering::SeqCst) == 0));
+    assert_eq!(capture.owners.len(), 1);
+    let owner = &capture.owners[0];
+    assert_eq!(owner.module_id.as_str(), "com.test.selection-region");
+    assert!(!owner.selected_targets.is_empty());
+    for target in &owner.selected_targets {
+        assert_eq!(
+            target.source,
+            PreparationTargetSource::Model {
+                key: slicer_sdk::preparation::PreparationRegionKey {
+                    global_layer_index: target.global_layer_index,
+                    object_id: "selection-region-object".into(),
+                    region_id: 0,
+                    variant_chain: vec![],
+                },
+                members: vec![slicer_sdk::preparation::PreparationRegionKey {
+                    global_layer_index: target.global_layer_index,
+                    object_id: "selection-region-object".into(),
+                    region_id: 0,
+                    variant_chain: vec![],
+                }],
+            }
+        );
+        assert_eq!(target.config.get_float("line_width"), Some(0.9));
+        assert_eq!(target.held_claims, Vec::<String>::new());
+    }
+    PREPARES[0].store(0, Ordering::SeqCst);
+    run_slice_with_runtime_extensions(options, extensions()).expect("nondefault ordinary dispatch");
+    assert_eq!(PREPARES[0].load(Ordering::SeqCst), 1);
+    assert!(CALLS[0].load(Ordering::SeqCst) > 0);
+    assert_eq!(PREPARES[1].load(Ordering::SeqCst), 0);
+    assert_eq!(CALLS[1].load(Ordering::SeqCst), 0);
+
+    // Both paint-transparent artifacts have invoke=true on every scheduled layer.
+    // The lower source is a zero-volume sheet; the upper solid supplies real
+    // work to the same print-wide owner. Empty ordinary calls alone must skip.
+    for prepared in [false, true] {
+        let fixture = Fixture::new(false, false);
+        let id = "com.test.selection-empty";
+        let manifest = selection_controls::manifest(id, prepared, "");
+        if !prepared {
+            fixture.stage_component("sdk-layer-pathopt-guest", manifest);
+        }
+        let mut options = fixture.options();
+        options.no_integrated_modules = true;
+        options.profile = true;
+        options.mesh = Arc::new(elevated_support_mesh());
+        options
+            .config_overrides
+            .insert("layer_height".into(), ConfigValue::Float(0.25));
+        options
+            .config_overrides
+            .insert("first_layer_height".into(), ConfigValue::Float(0.25));
+        options
+            .config_overrides
+            .insert("enable_support".into(), ConfigValue::Bool(false));
+        options
+            .module_dirs
+            .retain(|path| path.file_name().is_none_or(|name| name != "seam-placer"));
+        let object = &mut Arc::make_mut(&mut options.mesh).objects[0];
+        object.modifier_volumes.clear();
+        // Binary-exact heights give eleven scheduled entries, with real upper
+        // solid geometry only on layers 8..=10.
+        for point in &mut object.mesh.vertices {
+            if point.z == 0.8 {
+                point.z = 0.75;
+            } else if point.z == 2.8 {
+                point.z = 2.75;
+            }
+        }
+        for point in &mut object.mesh.vertices[..8] {
+            point.x = 0.0;
+        }
+        object.world_z_extent = Some((0.0, 2.75));
+        PREPARES[0].store(0, Ordering::SeqCst);
+        CALLS[0].store(0, Ordering::SeqCst);
+        selection_controls::CALL_LAYERS.lock().unwrap().clear();
+        let extensions = SliceRuntimeExtensions::new(
+            if prepared {
+                vec![IntegratedModuleRegistration {
+                    manifest_toml: manifest,
+                    origin_label: "empty-prepared",
+                }]
+            } else {
+                vec![]
+            },
+            if prepared {
+                vec![(
+                    id.into(),
+                    NativePreparedStageEntry {
+                        stage: NativeStageEntry::Layer(selection_controls::region),
+                        prepare: selection_controls::prepare_region,
+                    },
+                    PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+                )]
+            } else {
+                vec![]
+            },
+            vec![],
+            Some(fixture.trace.clone()),
+        );
+        let output = run_slice_with_runtime_extensions(options, extensions)
+            .expect("empty-target production slice");
+        if prepared {
+            assert_eq!(
+                PREPARES[0].load(Ordering::SeqCst),
+                1,
+                "print-wide eligible owner prepares once"
+            );
+            let mut call_layers = selection_controls::CALL_LAYERS.lock().unwrap().clone();
+            call_layers.sort_unstable();
+            assert_eq!(
+                call_layers,
+                vec![8, 9, 10],
+                "only real-work upper layers invoke the prepared export; empty entries skip"
+            );
+            assert_eq!(CALLS[0].load(Ordering::SeqCst), 3);
+            let events = fixture.trace.events.lock().unwrap();
+            let gap_consumers = records(&events)
+                .into_iter()
+                .filter(|record| {
+                    record.module_id.as_str() == id
+                        && record.lifecycle_phase == PreparationLifecyclePhase::Consumption
+                        && record.global_layer_index.is_some_and(|layer| layer < 8)
+                })
+                .count();
+            assert_eq!(gap_consumers, 0, "no prepared read on any empty entry");
+            assert!(
+                output.gcode_text.contains(NATIVE_MARKER),
+                "real-work layers still consume the plan"
+            );
+        } else {
+            assert_eq!(PREPARES[0].load(Ordering::SeqCst), 0);
+            assert_eq!(
+                CALLS[0].load(Ordering::SeqCst),
+                0,
+                "plain component does not use the native prepared adapter"
+            );
+            let profile = output.profile.as_ref().expect("ordinary dispatch profile");
+            let row = profile
+                .modules
+                .iter()
+                .find(|row| row.module_id == id)
+                .expect("plain module profile row");
+            assert_eq!(
+                row.calls, 11,
+                "plain invoke=true export executes on all layers, including the eight empty entries"
+            );
+        }
+    }
+}
+
+mod selection_controls {
+    use super::*;
+    use slicer_sdk::error::ModuleError;
+    use slicer_sdk::native::{NativeLayerRequest, NativeLayerResponse, NativeStageEntry};
+    use slicer_sdk::preparation::{PreparedPlanOutput, PrintPreparationInput};
+    use std::sync::atomic::AtomicUsize;
+
+    pub static CALLS: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
+    pub static PREPARES: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
+    pub static CALL_LAYERS: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+
+    macro_rules! control {
+        ($call:ident, $prepare:ident, $index:expr) => {
+            pub fn $call(request: &NativeLayerRequest) -> Result<NativeLayerResponse, ModuleError> {
+                CALLS[$index].fetch_add(1, Ordering::SeqCst);
+                if $index == 0 {
+                    CALL_LAYERS.lock().unwrap().push(request.layer_index);
+                }
+                let NativeStageEntry::Layer(entry) =
+                    PreparationLifecycleGuest::__slicer_prepared_native_entry().stage
+                else {
+                    unreachable!()
+                };
+                entry(request)
+            }
+            pub fn $prepare(
+                input: &PrintPreparationInput,
+                output: &mut PreparedPlanOutput,
+            ) -> Result<(), ModuleError> {
+                PREPARES[$index].fetch_add(1, Ordering::SeqCst);
+                (PreparationLifecycleGuest::__slicer_prepared_native_entry().prepare)(input, output)
+            }
+        };
+    }
+    control!(region, prepare_region, 0);
+    control!(unused, prepare_unused, 1);
+
+    pub fn manifest(id: &str, prepared: bool, family: &str) -> &'static str {
+        let mut manifest: toml::Value = path_manifest().parse().expect("control manifest");
+        manifest["module"]["id"] = id.into();
+        manifest["claims"]["holds"] = toml::Value::Array(if family.is_empty() {
+            vec!["path-optimizer".into()]
+        } else {
+            vec![format!("support-family:{family}").into()]
+        });
+        if !prepared {
+            manifest.as_table_mut().unwrap().remove("preparation");
+        }
+        manifest["config"]["schema"].as_table_mut().unwrap().insert(
+            "line_width".into(),
+            toml::Value::Table(toml::map::Map::from_iter([
+                ("type".into(), "float".into()),
+                ("default".into(), 0.8.into()),
+            ])),
+        );
+        Box::leak(toml::to_string(&manifest).unwrap().into_boxed_str())
+    }
+}
+
+mod constant_plan {
+    use slicer_sdk::error::ModuleError;
+    use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
+    use slicer_sdk::postpass_builders::GcodeOutputBuilder;
+    use slicer_sdk::preparation::{LayerPreparation, PreparedPlanOutput, PrintPreparationInput};
+    use slicer_sdk::traits::LayerModule;
+    use slicer_sdk::views::PerimeterRegionView;
+
+    pub struct ConstantPlan;
+    impl LayerPreparation for ConstantPlan {
+        fn prepare_print(
+            _input: &PrintPreparationInput,
+            output: &mut PreparedPlanOutput,
+        ) -> Result<(), ModuleError> {
+            output.put("constant", b"constant")?;
+            Ok(())
+        }
+    }
+    #[slicer_sdk::slicer_module(preparation)]
+    impl LayerModule for ConstantPlan {
+        fn from_config(_: &slicer_ir::ConfigView) -> Result<Self, ModuleError> {
+            Ok(Self)
+        }
+        fn run_path_optimization(
+            &self,
+            _index: u32,
+            _regions: &[PerimeterRegionView],
+            out: &mut GcodeOutputBuilder,
+            _collection: &mut LayerCollectionBuilder,
+            _config: &slicer_ir::ConfigView,
+        ) -> Result<(), ModuleError> {
+            let piece =
+                slicer_sdk::preparation::PreparedPlanView::current()?.require("constant")?;
+            assert_eq!(piece.read(0, 8)?, b"constant");
+            out.push_comment("CONSTANT-PLAN-CONSUMED".into())
+                .map_err(|message| ModuleError::fatal(57404, message))
+        }
+    }
+}
+
+// Closed solids, unlike the prepass-only open plate in
+// crates/slicer-runtime/tests/executor/prepass_support_geometry_tdd.rs::overhang_plate_mesh.
+// The roof's source is absent below Z=2, leaving real support-only carriers.
+fn elevated_support_mesh() -> slicer_ir::MeshIR {
+    fn cuboid(id: &str, xy: f32, bottom: f32, top: f32) -> slicer_ir::ObjectMesh {
+        slicer_ir::ObjectMesh {
+            id: id.into(),
+            world_z_extent: Some((bottom, top)),
+            mesh: slicer_ir::IndexedTriangleSet {
+                vertices: [bottom, top]
+                    .into_iter()
+                    .flat_map(|z| {
+                        [(0.0, 0.0), (xy, 0.0), (xy, xy), (0.0, xy)]
+                            .into_iter()
+                            .map(move |(x, y)| slicer_ir::Point3 { x, y, z })
+                    })
+                    .collect(),
+                indices: vec![
+                    0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3,
+                    7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
+                ],
+            },
+            transform: slicer_ir::Transform3d {
+                matrix: [
+                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                ],
+            },
+            ..Default::default()
+        }
+    }
+    let mut object = cuboid("step9-source", 2.0, 0.0, 0.8);
+    let roof = cuboid("roof", 8.0, 2.0, 2.8);
+    let offset = object.mesh.vertices.len() as u32;
+    object
+        .mesh
+        .vertices
+        .extend(roof.mesh.vertices.iter().copied());
+    object
+        .mesh
+        .indices
+        .extend(roof.mesh.indices.iter().map(|i| i + offset));
+    object.world_z_extent = Some((0.0, 2.8));
+    object.modifier_volumes.push(slicer_ir::ModifierVolume::new(
+        "step9-roof".into(),
+        roof.mesh,
+        slicer_ir::ConfigDelta {
+            fields: std::collections::HashMap::from([(
+                "support_type".into(),
+                ConfigValue::String("normal(auto)".into()),
+            )]),
+        },
+        0,
+        slicer_ir::ModifierKind::ParameterModifier,
+    ));
+    slicer_ir::MeshIR {
+        objects: vec![object],
+        ..Default::default()
+    }
+}
+
+fn corpus_stage_drivers(external: bool) -> std::collections::BTreeSet<String> {
+    use whole_print_input_infill::WholePrintInputInfill;
+    use whole_print_input_perimeters::WholePrintInputPerimeters;
+    use whole_print_input_support::WholePrintInputSupport;
+    let cases = [
+        (
+            "whole-print-input-perimeters",
+            "com.test.whole-print-input-perimeters",
+            include_str!(
+                "../../../slicer-wasm-host/test-guests/whole-print-input-perimeters/module.toml"
+            ),
+            WholePrintInputPerimeters::__slicer_prepared_native_entry(),
+            WholePrintInputPerimeters::__SLICER_PREPARATION_SCHEMA,
+        ),
+        (
+            "whole-print-input-infill",
+            "com.test.whole-print-input-infill",
+            include_str!(
+                "../../../slicer-wasm-host/test-guests/whole-print-input-infill/module.toml"
+            ),
+            WholePrintInputInfill::__slicer_prepared_native_entry(),
+            WholePrintInputInfill::__SLICER_PREPARATION_SCHEMA,
+        ),
+        (
+            "whole-print-input-support",
+            "com.test.whole-print-input-support",
+            include_str!(
+                "../../../slicer-wasm-host/test-guests/whole-print-input-support/module.toml"
+            ),
+            WholePrintInputSupport::__slicer_prepared_native_entry(),
+            WholePrintInputSupport::__SLICER_PREPARATION_SCHEMA,
+        ),
+    ];
+    let mut called = std::collections::BTreeSet::new();
+    for (stem, id, manifest, entry, schema) in cases {
+        let fixture = Fixture::new(external, false);
+        // Own the whole Infill stage, not just its original top/sparse subset.
+        let manifest: &'static str = if stem == "whole-print-input-infill" {
+            Box::leak(manifest.replace("\"claim:top-fill\", \"claim:sparse-fill\"",
+                "\"claim:top-fill\", \"claim:bottom-fill\", \"claim:solid-fill\", \"claim:sparse-fill\"").into_boxed_str())
+        } else {
+            manifest
+        };
+        let parsed: toml::Value = manifest.parse().expect("corpus manifest");
+        let stage = parsed["stage"]["id"].as_str().expect("fixture stage");
+        if external {
+            fixture.stage_component(stem, manifest);
+        }
+        let mut options = fixture.options();
+        options.module_dirs.retain(|path| {
+            if path == fixture.staging.path() {
+                return true;
+            }
+            let name = path.file_name().expect("core stem");
+            let text = std::fs::read_to_string(path.join(name).with_extension("toml"))
+                .expect("core manifest");
+            let value: toml::Value = text.parse().expect("core manifest syntax");
+            // This fixture registers only its own prepared native entries. A
+            // core module that declares `[prepiration]` would be frozen at
+            // startup and rejected as a plain artifact, so drop those from the
+            // directory set as well as the corpus stage's own modules.
+            value["stage"]["id"].as_str() != Some(stage) && value.get("preparation").is_none()
+        });
+        Arc::make_mut(&mut options.mesh).objects[0].id = "step9-source".into();
+        if stage == "Layer::Perimeters" {
+            let object = &mut Arc::make_mut(&mut options.mesh).objects[0];
+            object.modifier_volumes.push(slicer_ir::ModifierVolume::new(
+                "perimeter-member".into(),
+                object.mesh.clone(),
+                slicer_ir::ConfigDelta {
+                    fields: std::collections::HashMap::from([(
+                        "line_width".into(),
+                        ConfigValue::Float(0.4),
+                    )]),
+                },
+                0,
+                slicer_ir::ModifierKind::ParameterModifier,
+            ));
+        }
+        options
+            .config_overrides
+            .insert("line_width".into(), ConfigValue::Float(0.8));
+        if stage == "Layer::Support" {
+            options.mesh = Arc::new(elevated_support_mesh());
+            options.model_label = "step9-elevated-support".into();
+            options.no_integrated_modules = true;
+            // Seam placement is unrelated to Support delivery; this disconnected
+            // fixture has empty source slices in the gap and needs no wall seam.
+            options
+                .module_dirs
+                .retain(|path| path.file_name().is_none_or(|name| name != "seam-placer"));
+            options.config_overrides.insert(
+                "support_type".into(),
+                ConfigValue::String("normal(auto)".into()),
+            );
+            options
+                .config_overrides
+                .insert("enable_support".into(), ConfigValue::Bool(true));
+            options
+                .config_overrides
+                .insert("support_raft_layers".into(), ConfigValue::Int(1));
+            options
+                .config_overrides
+                .insert("base_raft_layers".into(), ConfigValue::Int(0));
+            options
+                .config_overrides
+                .insert("interface_raft_layers".into(), ConfigValue::Int(0));
+        }
+        let extensions = || {
+            // Integrated modules that declare preparation need their generated
+            // prepared pair at freeze time; start from the production registry
+            // (lightning) and add this fixture's own prepared entries.
+            let mut prepared_native = slicer_integrated_modules::prepared_native_entries();
+            prepared_native.push((
+                PATH_ID.into(),
+                PreparationLifecycleGuest::__slicer_prepared_native_entry(),
+                PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+            ));
+            prepared_native.push((id.into(), entry, schema));
+            SliceRuntimeExtensions::new(
+                vec![
+                    IntegratedModuleRegistration {
+                        manifest_toml: path_manifest(),
+                        origin_label: "step9-path",
+                    },
+                    IntegratedModuleRegistration {
+                        manifest_toml: manifest,
+                        origin_label: "step9-corpus",
+                    },
+                ],
+                prepared_native,
+                vec![],
+                Some(fixture.trace.clone()),
+            )
+        };
+        let capture =
+            run_slice_preparation_capture(options.clone(), extensions()).expect("corpus capture");
+        let owner = capture
+            .owners
+            .iter()
+            .find(|owner| owner.module_id.as_str() == id)
+            .expect("corpus owner");
+        assert!(
+            !owner.selected_targets.is_empty(),
+            "{stage} needs a nonempty selected control"
+        );
+        assert!(owner
+            .selected_targets
+            .iter()
+            .all(|target| target.stage_id == stage && target.invoke));
+        assert!(owner
+            .selected_targets
+            .iter()
+            .all(|target| target.config.get_float("line_width") == Some(0.8)));
+        if stage == "Layer::Support" {
+            assert!(
+                owner.selected_targets.iter().any(|target| matches!(
+                    target.source,
+                    PreparationTargetSource::Raft {
+                        global_layer_index: 0
+                    }
+                )),
+                "one authored raft layer must be selected"
+            );
+            assert!(
+                owner.selected_targets.iter().any(|target| matches!(
+                    target.source,
+                    PreparationTargetSource::SupportCarrier { .. }
+                )),
+                "elevated roof must supply a real carrier below its model range"
+            );
+        }
+        if stage == "Layer::Support" {
+            let carrier = owner
+                .selected_targets
+                .iter()
+                .find(|t| matches!(t.source, PreparationTargetSource::SupportCarrier { .. }))
+                .expect("real support carrier");
+            assert_eq!(carrier.global_layer_index, 4);
+            assert_eq!(
+                carrier.source,
+                PreparationTargetSource::SupportCarrier {
+                    entry_index: 0,
+                    object_id: "step9-source".into(),
+                    region_id: 9_223_372_036_854_989_969,
+                    variant_chain: vec![],
+                    family: "traditional".into(),
+                    demand_ids: vec!["demand-0".into()],
+                    body_ids: vec!["traditional-body-step9-source-0".into()],
+                    provenance: vec!["traditional-support-planner".into()],
+                    anchor_layer_index: 4,
+                }
+            );
+            assert_eq!(
+                carrier.held_claims,
+                ["support", "support-family:traditional"]
+            );
+            assert_eq!(carrier.config.get_float("line_width"), Some(0.8));
+            assert_eq!(
+                carrier.config.get_string("support_type"),
+                Some("normal(auto)")
+            );
+            assert!(!carrier.authored_coloring);
+            assert_eq!(carrier.resolved_role_tool, None);
+        }
+        for target in &owner.selected_targets {
+            if let PreparationTargetSource::Model { key, members } = &target.source {
+                if stage == "Layer::Perimeters" && target.global_layer_index == 0 {
+                    use slicer_sdk::preparation::PreparationRegionKey;
+                    // The authored whole-wedge modifier is merged with its base;
+                    // pin the complete ordered membership, not just object names.
+                    assert_eq!(
+                        members,
+                        &vec![
+                            PreparationRegionKey {
+                                global_layer_index: 0,
+                                object_id: "step9-source".into(),
+                                region_id: 0,
+                                variant_chain: vec![],
+                            },
+                            PreparationRegionKey {
+                                global_layer_index: 0,
+                                object_id: "step9-source".into(),
+                                region_id: 9_223_372_036_855_191_781,
+                                variant_chain: vec![],
+                            },
+                        ]
+                    );
+                }
+                assert!(
+                    key.object_id == "step9-source"
+                        || (stage == "Layer::Support" && key.object_id == "step9-base")
+                );
+                assert!(key.variant_chain.is_empty());
+                assert!(!members.is_empty());
+                assert!(members
+                    .iter()
+                    .all(|member| member.object_id == key.object_id
+                        && member.variant_chain.is_empty()));
+            }
+        }
+        fixture.trace.events.lock().unwrap().clear();
+        run_slice_with_runtime_extensions(options, extensions())
+            .expect("actual corpus stage dispatch");
+        let events = fixture.trace.events.lock().unwrap();
+        let observed = records(&events);
+        assert_eq!(
+            observed
+                .iter()
+                .filter(
+                    |r| r.module_id.as_str() == id && r.status == PreparationLifecycleStatus::Ready
+                )
+                .count(),
+            1,
+            "{stage} prepares once"
+        );
+        let consumers: Vec<_> = observed
+            .iter()
+            .filter(|r| {
+                r.module_id.as_str() == id
+                    && r.lifecycle_phase == PreparationLifecyclePhase::Consumption
+                    && r.status == PreparationLifecycleStatus::Start
+            })
+            .collect();
+        assert!(
+            !consumers.is_empty(),
+            "{stage} must actually dispatch, not just capture"
+        );
+        called.insert(stage.to_owned());
+        assert_disposed(&events, id);
+    }
+    called
+}
+
+mod committed_fresh_plan {
+    use super::*;
+    use slicer_sdk::error::ModuleError;
+    use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
+    use slicer_sdk::postpass_builders::GcodeOutputBuilder;
+    use slicer_sdk::preparation::{
+        LayerPreparation, PreparedPlanOutput, PreparedPlanView, PrintPreparationInput,
+    };
+    use slicer_sdk::traits::LayerModule;
+    use slicer_sdk::views::PerimeterRegionView;
+    use std::sync::atomic::AtomicUsize;
+
+    static CONSTRUCTED: AtomicUsize = AtomicUsize::new(0);
+    static CALLS: Mutex<Vec<(usize, u32)>> = Mutex::new(Vec::new());
+    pub struct CommittedFreshPlan {
+        token: usize,
+    }
+
+    impl LayerPreparation for CommittedFreshPlan {
+        fn prepare_print(
+            input: &PrintPreparationInput,
+            output: &mut PreparedPlanOutput,
+        ) -> Result<(), ModuleError> {
+            assert_eq!(
+                CONSTRUCTED.load(Ordering::SeqCst),
+                0,
+                "preparation cannot construct an ordinary wrapper"
+            );
+            let layers = input
+                .layers(0, u64::MAX)
+                .map_err(|e| ModuleError::fatal(57402, format!("{e:?}")))?;
+            let targets = input
+                .selected_targets(layers[0].index, 0, u64::MAX)
+                .map_err(|e| ModuleError::fatal(57402, format!("{e:?}")))?;
+            let PreparationTargetSource::Model { key, .. } = &targets[0].source else {
+                panic!("model target required")
+            };
+            let content = format!(
+                "COMMITTED:{}:{}:{}:{}:{:.2}",
+                layers[0].index,
+                targets.len(),
+                key.object_id,
+                key.region_id,
+                targets[0]
+                    .config
+                    .get_float("line_width")
+                    .expect("declared regional width")
+            );
+            output.put("committed", content.as_bytes())?;
+            Ok(())
+        }
+    }
+
+    #[slicer_sdk::slicer_module(preparation)]
+    impl LayerModule for CommittedFreshPlan {
+        fn from_config(_: &slicer_ir::ConfigView) -> Result<Self, ModuleError> {
+            Ok(Self {
+                token: CONSTRUCTED.fetch_add(1, Ordering::SeqCst),
+            })
+        }
+        fn run_path_optimization(
+            &self,
+            index: u32,
+            _regions: &[PerimeterRegionView],
+            out: &mut GcodeOutputBuilder,
+            _collection: &mut LayerCollectionBuilder,
+            _config: &slicer_ir::ConfigView,
+        ) -> Result<(), ModuleError> {
+            CALLS.lock().unwrap().push((self.token, index));
+            let piece = PreparedPlanView::current()?.require("committed")?;
+            let content =
+                String::from_utf8(piece.read(0, piece.len()?)?).expect("module-owned UTF-8 codec");
+            out.push_comment(content)
+                .map_err(|e| ModuleError::fatal(57403, e))
+        }
+    }
+
+    pub fn assert_driver() {
+        CONSTRUCTED.store(0, Ordering::SeqCst);
+        CALLS.lock().unwrap().clear();
+        let fixture = Fixture::new(false, false);
+        let mut options = fixture.options();
+        Arc::make_mut(&mut options.mesh).objects[0].id = "committed-source".into();
+        options
+            .config_overrides
+            .insert("line_width".into(), ConfigValue::Float(0.73));
+        let mut manifest: toml::Value = path_manifest().parse().unwrap();
+        manifest["config"]["schema"].as_table_mut().unwrap().insert(
+            "line_width".into(),
+            toml::Value::Table(toml::map::Map::from_iter([
+                ("type".into(), "float".into()),
+                ("default".into(), 0.8.into()),
+            ])),
+        );
+        let manifest = Box::leak(toml::to_string(&manifest).unwrap().into_boxed_str());
+        let output = run_slice_with_runtime_extensions(
+            options,
+            SliceRuntimeExtensions::new(
+                vec![IntegratedModuleRegistration {
+                    manifest_toml: manifest,
+                    origin_label: "committed-fresh",
+                }],
+                vec![(
+                    PATH_ID.into(),
+                    CommittedFreshPlan::__slicer_prepared_native_entry(),
+                    CommittedFreshPlan::__SLICER_PREPARATION_SCHEMA,
+                )],
+                vec![],
+                Some(fixture.trace.clone()),
+            ),
+        )
+        .expect("ordinary fresh-wrapper slice");
+        let calls = CALLS.lock().unwrap();
+        assert!(calls.len() > 1);
+        assert_eq!(
+            CONSTRUCTED.load(Ordering::SeqCst),
+            calls.len(),
+            "from_config exactly once per ordinary call"
+        );
+        let identities: std::collections::BTreeSet<_> =
+            calls.iter().map(|(token, _)| *token).collect();
+        assert_eq!(
+            identities.len(),
+            calls.len(),
+            "no constructed wrapper reused across calls"
+        );
+        assert_eq!(
+            output
+                .gcode_text
+                .matches("COMMITTED:0:1:committed-source:0:0.73")
+                .count(),
+            calls.len(),
+            "ordinary output decodes the module's final committed typed-input witness"
+        );
+    }
+}
+
+// Author ordinary mesh paint, not committed slice/map products. The real prepass
+// must create the ordered chain and apply its regional config authority.
+fn painted_selection_corpus(external: bool) {
+    use slicer_ir::{FacetPaintData, PaintLayer, PaintSemantic, PaintValue};
+    let fixture = Fixture::new(external, false);
+    let mut manifest: toml::Value = path_manifest().parse().unwrap();
+    manifest.as_table_mut().unwrap().insert(
+        "region_split".into(),
+        toml::Value::Array(
+            [
+                ("fuzzy_skin", "flag"),
+                ("material", "tool_index"),
+                ("route", "custom_string"),
+            ]
+            .into_iter()
+            .map(|(semantic, value_type)| {
+                toml::Value::Table(toml::map::Map::from_iter([
+                    ("semantic".into(), semantic.into()),
+                    (
+                        "priority".into(),
+                        if semantic == "fuzzy_skin" {
+                            200.into()
+                        } else if semantic == "material" {
+                            100.into()
+                        } else {
+                            1000.into()
+                        },
+                    ),
+                    ("value_type".into(), value_type.into()),
+                ]))
+            })
+            .collect(),
+        ),
+    );
+    manifest["config"]["schema"].as_table_mut().unwrap().insert(
+        "line_width".into(),
+        toml::Value::Table(toml::map::Map::from_iter([
+            ("type".into(), "float".into()),
+            ("default".into(), 0.8.into()),
+        ])),
+    );
+    let manifest: &'static str = Box::leak(toml::to_string(&manifest).unwrap().into_boxed_str());
+    if external {
+        fixture.stage_component("preparation-lifecycle-guest", manifest);
+    }
+    for (semantic, value, semantic_name, expected_chain) in [
+        (
+            PaintSemantic::FuzzySkin,
+            PaintValue::Flag(true),
+            "fuzzy_skin",
+            vec![(
+                "fuzzy_skin".to_owned(),
+                slicer_sdk::preparation::PreparationPaintValue::Flag(true),
+            )],
+        ),
+        (
+            PaintSemantic::Material,
+            PaintValue::ToolIndex(1),
+            "material",
+            vec![(
+                "material".to_owned(),
+                slicer_sdk::preparation::PreparationPaintValue::ToolIndex(1),
+            )],
+        ),
+        (
+            PaintSemantic::Custom("route".into()),
+            PaintValue::Custom("A/π".into()),
+            "route",
+            vec![(
+                "route".to_owned(),
+                slicer_sdk::preparation::PreparationPaintValue::Custom("A/π".into()),
+            )],
+        ),
+    ] {
+        for regional_width in [Some(0.4), Some(0.6), None] {
+            let mut options = fixture.options();
+            let object = &mut Arc::make_mut(&mut options.mesh).objects[0];
+            object.id = "ordered-paint".into();
+            let facets = object.mesh.indices.len() / 3;
+            object.paint_data = Some(FacetPaintData {
+                layers: [(semantic.clone(), value.clone())]
+                    .into_iter()
+                    .map(|(semantic, value)| PaintLayer {
+                        semantic,
+                        facet_values: vec![Some(value); facets],
+                        strokes: vec![],
+                    })
+                    .collect(),
+            });
+            options
+                .config_overrides
+                .insert("line_width".into(), ConfigValue::Float(0.8));
+            if let Some(width) = regional_width {
+                options.config_overrides.insert(
+                    format!("paint_config:{semantic_name}:line_width"),
+                    ConfigValue::Float(width),
+                );
+            }
+            let extensions = || {
+                SliceRuntimeExtensions::new(
+                    vec![IntegratedModuleRegistration {
+                        manifest_toml: manifest,
+                        origin_label: "ordered-paint",
+                    }],
+                    vec![(
+                        PATH_ID.into(),
+                        PreparationLifecycleGuest::__slicer_prepared_native_entry(),
+                        PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+                    )],
+                    vec![],
+                    Some(fixture.trace.clone()),
+                )
+            };
+            let capture = run_slice_preparation_capture(options, extensions())
+                .expect("painted production prepass");
+            let owner = capture
+                .owners
+                .iter()
+                .find(|o| o.module_id.as_str() == PATH_ID)
+                .expect("paint owner");
+            assert!(!owner.selected_targets.is_empty());
+            let mut painted = 0;
+            for target in &owner.selected_targets {
+                let PreparationTargetSource::Model { key, members } = &target.source else {
+                    panic!("paint model target")
+                };
+                assert_eq!(key.object_id, "ordered-paint");
+                assert_eq!(members, &vec![key.clone()]);
+                if key.variant_chain.is_empty() {
+                    assert_eq!(target.config.get_float("line_width"), Some(0.8));
+                } else {
+                    painted += 1;
+                    assert_eq!(key.variant_chain, expected_chain);
+                    assert_eq!(
+                        target.config.get_float("line_width"),
+                        Some(regional_width.unwrap_or(0.8))
+                    );
+                }
+            }
+            assert!(
+                painted > 0,
+                "authored paint must survive final committed selection"
+            );
+        }
+    }
+
+    // Both semantics paint the cube's right wall. Its opposite wall stays BASE;
+    // identical coverage admits only the composed chain, never a singleton.
+    for scalar_only in [true, false] {
+        let mut options = fixture.options();
+        options.mesh = Arc::new(elevated_support_mesh());
+        let object = &mut Arc::make_mut(&mut options.mesh).objects[0];
+        object.id = "composed-paint".into();
+        object.mesh.vertices.truncate(8);
+        object.mesh.indices.truncate(36);
+        object.modifier_volumes.clear();
+        object.world_z_extent = Some((0.0, 0.8));
+        let paints = if scalar_only {
+            vec![(
+                PaintSemantic::Custom("density_probe".into()),
+                PaintValue::Scalar(0.375),
+            )]
+        } else {
+            vec![
+                (PaintSemantic::FuzzySkin, PaintValue::Flag(true)),
+                (PaintSemantic::Material, PaintValue::ToolIndex(1)),
+            ]
+        };
+        object.paint_data = Some(FacetPaintData {
+            layers: paints
+                .into_iter()
+                .map(|(semantic, value)| {
+                    let mut facet_values = vec![None; 12];
+                    facet_values[6] = Some(value.clone());
+                    facet_values[7] = Some(value);
+                    PaintLayer {
+                        semantic,
+                        facet_values,
+                        strokes: vec![],
+                    }
+                })
+                .collect(),
+        });
+        let extensions = || {
+            SliceRuntimeExtensions::new(
+                vec![IntegratedModuleRegistration {
+                    manifest_toml: manifest,
+                    origin_label: "composed-paint",
+                }],
+                vec![(
+                    PATH_ID.into(),
+                    PreparationLifecycleGuest::__slicer_prepared_native_entry(),
+                    PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+                )],
+                vec![],
+                Some(fixture.trace.clone()),
+            )
+        };
+        let capture = run_slice_preparation_capture(options.clone(), extensions())
+            .expect("composed or non-opted-in scalar production prepass");
+        let owner = capture
+            .owners
+            .iter()
+            .find(|o| o.module_id.as_str() == PATH_ID)
+            .unwrap();
+        assert!(!owner.selected_targets.is_empty());
+        let expected_chain = vec![
+            (
+                "fuzzy_skin".to_owned(),
+                slicer_sdk::preparation::PreparationPaintValue::Flag(true),
+            ),
+            (
+                "material".to_owned(),
+                slicer_sdk::preparation::PreparationPaintValue::ToolIndex(1),
+            ),
+        ];
+        let mut base = 0;
+        let mut composed = 0;
+        for target in &owner.selected_targets {
+            let PreparationTargetSource::Model { key, members } = &target.source else {
+                panic!("paint model target")
+            };
+            assert_eq!(key.object_id, "composed-paint");
+            assert_eq!(members, &vec![key.clone()]);
+            let semantics: std::collections::BTreeSet<_> =
+                key.variant_chain.iter().map(|(s, _)| s).collect();
+            assert_eq!(
+                semantics.len(),
+                key.variant_chain.len(),
+                "one value per semantic"
+            );
+            assert!(!semantics.iter().any(|s| s.as_str() == "density_probe"));
+            if key.variant_chain.is_empty() {
+                base += 1;
+            } else {
+                assert!(
+                    !scalar_only,
+                    "undeclared scalar must not fabricate a selected region"
+                );
+                assert_eq!(key.variant_chain, expected_chain);
+                composed += 1;
+            }
+        }
+        assert!(base > 0, "unpainted BASE residual must survive");
+        if scalar_only {
+            assert_eq!(composed, 0);
+            let mut layers = std::collections::BTreeSet::new();
+            for target in &owner.selected_targets {
+                assert!(
+                    layers.insert(target.global_layer_index),
+                    "scalar must not fabricate extra targets"
+                );
+            }
+            run_slice_with_runtime_extensions(options, extensions())
+                .expect("non-opted-in scalar slice completes");
+        } else {
+            assert!(
+                composed > 0,
+                "overlapping paint must select the composed chain"
+            );
+        }
+    }
+}
+
+#[test]
+fn shared_selection_all_target_kinds() {
+    let compiled = compile_shapes::stages();
+    let derived: std::collections::BTreeSet<_> = slicer_schema::STAGES
+        .iter()
+        .filter(|stage| stage.tier_id == slicer_schema::TIER_LAYER && !stage.wit_package.is_empty())
+        .map(|stage| stage.stage_id)
+        .collect();
+    // This first real capture pins the two lifecycle fixtures' target kinds.
+    // Painted/member/support/raft fixtures must extend this driver, not infer
+    // their coverage from this unpainted wedge or the pilot compile roster.
+    for external in [false, true] {
+        painted_selection_corpus(external);
+        let mut delivered = corpus_stage_drivers(external);
+        let fixture = Fixture::new(external, true);
+        let capture = fixture.capture(4, "probe");
+        let path = capture
+            .owners
+            .iter()
+            .find(|o| o.module_id.as_str() == PATH_ID)
+            .expect("selected path owner");
+        assert!(!path.selected_targets.is_empty());
+        for target in &path.selected_targets {
+            assert_eq!(target.stage_id, "Layer::PathOptimization");
+            assert!(target.invoke);
+            assert!(target.held_claims.is_empty());
+            assert!(matches!(
+                target.source,
+                PreparationTargetSource::Model { .. }
+            ));
+            assert!(!target.authored_coloring);
+        }
+        let anchored = capture
+            .owners
+            .iter()
+            .find(|o| o.module_id.as_str() == ANCHORED_ID)
+            .expect("selected anchored owner");
+        assert!(!anchored.selected_targets.is_empty());
+        assert!(anchored.selected_targets.iter().any(|target| {
+            matches!(target.source, PreparationTargetSource::AnchoredStage { anchor_layer_index } if anchor_layer_index == target.global_layer_index)
+        }), "non-region anchored delivery must be nonempty");
+        for target in &anchored.selected_targets {
+            match &target.source {
+                PreparationTargetSource::AnchoredStage { anchor_layer_index } => {
+                    assert_eq!(*anchor_layer_index, target.global_layer_index)
+                }
+                PreparationTargetSource::Model { key, members } => {
+                    assert_eq!(key.global_layer_index, target.global_layer_index);
+                    assert!(!members.is_empty());
+                    assert!(key.variant_chain.is_empty());
+                }
+                other => panic!("unexpected anchored fixture provenance: {other:?}"),
+            }
+        }
+        fixture.trace.events.lock().unwrap().clear();
+        assert!(fixture.run().contains(fixture.marker()));
+        let events = fixture.trace.events.lock().unwrap();
+        for id in [PATH_ID, ANCHORED_ID] {
+            let calls: Vec<_> = records(&events)
+                .into_iter()
+                .filter(|r| {
+                    r.module_id.as_str() == id
+                        && r.lifecycle_phase == PreparationLifecyclePhase::Consumption
+                        && r.status == PreparationLifecycleStatus::Start
+                })
+                .collect();
+            assert!(
+                !calls.is_empty(),
+                "selected module {id} must actually execute"
+            );
+            delivered.insert(calls[0].consumer_stage.to_string());
+        }
+        let delivered: std::collections::BTreeSet<_> =
+            delivered.iter().map(String::as_str).collect();
+        assert!(compiled.is_disjoint(&delivered));
+        assert_eq!(
+            compiled
+                .union(&delivered)
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>(),
+            derived
+        );
+    }
+}
+
+#[test]
+fn non_infill_fresh_concurrent_reads() {
+    committed_fresh_plan::assert_driver();
+    for external in [false, true] {
+        let fixture = Fixture::new(external, false);
+        let output = fixture.run();
+        assert!(
+            output.matches(fixture.marker()).count() > 1,
+            "multiple ordinary consumers must decode independently"
+        );
+        let events = fixture.trace.events.lock().unwrap();
+        let observed = records(&events);
+        assert_eq!(
+            observed
+                .iter()
+                .filter(|r| matches!(r.status, PreparationLifecycleStatus::Ready))
+                .count(),
+            1
+        );
+        let consumers: Vec<_> = observed
+            .iter()
+            .filter(|r| {
+                matches!(r.lifecycle_phase, PreparationLifecyclePhase::Consumption)
+                    && matches!(r.status, PreparationLifecycleStatus::Start)
+            })
+            .collect();
+        assert!(consumers.len() > 1);
+        assert!(consumers.iter().all(|r| r.global_layer_index.is_some()));
+        assert_eq!(output.matches(fixture.marker()).count(), consumers.len());
+        assert_eq!(
+            output
+                .matches("PREPARATION-LIFECYCLE-OPTIONAL-NONE")
+                .count(),
+            consumers.len()
+        );
+        let disposed = observed
+            .iter()
+            .find(|r| r.status == PreparationLifecycleStatus::Disposed)
+            .expect("quiescent read accounting");
+        assert_eq!(
+            disposed.transferred_bytes,
+            8 * consumers.len() as u64,
+            "each fresh consumer reads the four-byte probe and independent three/one-byte offsets"
+        );
+        assert_disposed(&events, PATH_ID);
+    }
+}
+
+#[test]
+fn ready_empty_optional_required_decoder() {
+    for external in [false, true] {
+        let fixture = Fixture::new(external, false);
+        let mut empty = fixture.options();
+        empty.config_overrides.insert(
+            "preparation_probe_mode".into(),
+            ConfigValue::String("ready_empty".into()),
+        );
+        let result = run_slice_with_runtime_extensions(empty, fixture.extensions(vec![]))
+            .expect("Ready-empty is not unready");
+        assert!(result
+            .gcode_text
+            .contains("PREPARATION-LIFECYCLE-READY-EMPTY"));
+        assert!(result
+            .gcode_text
+            .contains("PREPARATION-LIFECYCLE-OPTIONAL-NONE"));
+        let events = fixture.trace.events.lock().unwrap();
+        let ready = records(&events)
+            .into_iter()
+            .find(|r| matches!(r.status, PreparationLifecycleStatus::Ready))
+            .expect("empty publication is Ready");
+        assert!(ready.pieces.is_empty());
+        drop(events);
+        for (token, length, code, detail) in [
+            ("changed_probe", 4, "57401", "probe"),
+            ("probe", 2, "57403", "lifecycle fixture malformed payload"),
+        ] {
+            let fixture = Fixture::new(external, false);
+            let mut opts = fixture.options();
+            opts.config_overrides.insert(
+                "preparation_probe_token".into(),
+                ConfigValue::String(token.into()),
+            );
+            opts.config_overrides
+                .insert("preparation_probe_length".into(), ConfigValue::Int(length));
+            let error = run_slice_with_runtime_extensions(opts, fixture.extensions(vec![]))
+                .expect_err("required/decoder control must fail");
+            let text = format!("{error:?}");
+            assert!(
+                text.contains(code) && text.contains(detail),
+                "original decoder error: {text}"
+            );
+            let events = fixture.trace.events.lock().unwrap();
+            let failures: Vec<_> = records(&events)
+                .into_iter()
+                .filter(|r| {
+                    r.lifecycle_phase == PreparationLifecyclePhase::Consumption
+                        && r.status == PreparationLifecycleStatus::Failure
+                })
+                .collect();
+            assert!(
+                !failures.is_empty(),
+                "decoder failure must originate in an actual consumer"
+            );
+            if code == "57403" {
+                for failure in failures {
+                    match failure.failure.as_deref() {
+                        Some(PreparationFailure::Module(error)) => {
+                            assert_eq!(error.code, 57403);
+                            assert_eq!(error.message, "lifecycle fixture malformed payload");
+                            assert!(error.fatal);
+                        }
+                        other => panic!("missing typed consumer decoder error: {other:?}"),
+                    }
+                }
+            }
+            assert_disposed(&events, PATH_ID);
+        }
+    }
+}
+
+#[test]
+fn concurrent_print_isolation_and_cleanup() {
+    let controls: Vec<_> = ["print_alpha", "print_beta"]
+        .into_iter()
+        .map(|token| {
+            let control = Arc::new(concurrent_plan::Control {
+                entered: Barrier::new(2),
+                release: Barrier::new(2),
+                claimed: AtomicBool::new(false),
+                trace: Arc::new(Trace::default()),
+            });
+            concurrent_plan::CONTROLS
+                .lock()
+                .unwrap()
+                .insert(token.into(), control.clone());
+            (token, control)
+        })
+        .collect();
+    let results = std::thread::scope(|scope| {
+        let workers: Vec<_> = controls
+            .iter()
+            .map(|(token, control)| {
+                scope.spawn(move || {
+                    let fixture = Fixture::new(false, false);
+                    let mut opts = fixture.options();
+                    opts.config_overrides.insert(
+                        "preparation_probe_token".into(),
+                        ConfigValue::String((*token).into()),
+                    );
+                    let extensions = SliceRuntimeExtensions::new(
+                        vec![IntegratedModuleRegistration {
+                            manifest_toml: path_manifest(),
+                            origin_label: "concurrent-token-native",
+                        }],
+                        vec![(
+                            PATH_ID.into(),
+                            concurrent_plan::TokenPlan::__slicer_prepared_native_entry(),
+                            concurrent_plan::TokenPlan::__SLICER_PREPARATION_SCHEMA,
+                        )],
+                        vec![],
+                        Some(control.trace.clone()),
+                    );
+                    // Each print owns execution capacity while its consumer blocks;
+                    // a shared single-worker Rayon pool would serialize the witness.
+                    rayon::ThreadPoolBuilder::new()
+                        .num_threads(2)
+                        .build()
+                        .unwrap()
+                        .install(|| run_slice_with_runtime_extensions(opts, extensions))
+                        .expect("concurrent full slice returns normally")
+                })
+            })
+            .collect();
+        for (_, control) in &controls {
+            control.entered.wait();
+            let events = control.trace.events.lock().unwrap();
+            assert!(!records(&events)
+                .iter()
+                .any(|r| r.status == PreparationLifecycleStatus::Disposed));
+            assert!(records(&events)
+                .iter()
+                .any(|r| r.status == PreparationLifecycleStatus::Ready && r.retained_bytes > 0));
+        }
+        for (_, control) in &controls {
+            control.release.wait();
+        }
+        workers
+            .into_iter()
+            .map(|worker| worker.join().expect("slice worker"))
+            .collect::<Vec<_>>()
+    });
+    let mut identities = Vec::new();
+    for ((token, control), output) in controls.iter().zip(results) {
+        let other = if *token == "print_alpha" {
+            "print_beta"
+        } else {
+            "print_alpha"
+        };
+        let toolpath = output
+            .gcode_text
+            .split("; CONFIG_BLOCK_START")
+            .next()
+            .unwrap();
+        assert!(toolpath.contains(&format!("TOKEN-CONSUMED:{token}")));
+        assert!(!toolpath.contains(&format!("TOKEN-CONSUMED:{other}")));
+        let events = control.trace.events.lock().unwrap();
+        let returned = events
+            .iter()
+            .position(|e| matches!(e, Event::CallReturned(_, PATH_ID)))
+            .expect("blocked call completed normally");
+        let disposed = events.iter().position(|e| matches!(e, Event::Lifecycle(r) if r.status == PreparationLifecycleStatus::Disposed)).expect("disposed after joins");
+        assert!(
+            returned < disposed,
+            "active call completion must precede disposal"
+        );
+        let ready = records(&events)
+            .into_iter()
+            .find(|r| r.status == PreparationLifecycleStatus::Ready)
+            .unwrap();
+        assert_eq!(ready.pieces, [(String::from(*token), token.len() as u64)]);
+        identities.push(ready.artifact_identity.clone());
+        assert_disposed(&events, PATH_ID);
+    }
+    assert_eq!(
+        identities[0], identities[1],
+        "same module and artifact, distinct print stores"
+    );
+    concurrent_plan::CONTROLS.lock().unwrap().clear();
+}
+
+#[test]
+fn outlet_retained_scope_cleanup_is_print_scoped() {
+    use slicer_sdk::preparation::dispose_prepared_plan;
+
+    // The cancellation leg reuses the in-flight fixture, which has one global
+    // controller. Serialize only tests installing that controller.
+    let _controller = IN_FLIGHT_TEST.lock().unwrap();
+    for outcome in ["success", "failure", "cancelled"] {
+        let fixture = Fixture::new(false, false);
+        let mut options = fixture.options();
+        let (send, receive) = std::sync::mpsc::channel();
+        let outlet = Arc::new(
+            move |scope: &Arc<slicer_runtime::preparation_lifecycle::PrintPreparationScope>| {
+                send.send(scope.clone()).unwrap();
+            },
+        );
+        let (result, scope) = if outcome == "cancelled" {
+            let flag = Arc::new(AtomicBool::new(false));
+            let block = Arc::new(InFlightCall {
+                entered: Barrier::new(2),
+                release: Barrier::new(2),
+                returned: AtomicBool::new(false),
+                claimed: AtomicBool::new(false),
+            });
+            *IN_FLIGHT_CALL.lock().unwrap() = Some(block.clone());
+            let mut entry = PreparationLifecycleGuest::__slicer_prepared_native_entry();
+            entry.stage = slicer_sdk::native::NativeStageEntry::Layer(blocking_consume);
+            let extensions = SliceRuntimeExtensions::new(
+                vec![IntegratedModuleRegistration {
+                    manifest_toml: path_manifest(),
+                    origin_label: "retained-outlet-cancel",
+                }],
+                vec![(
+                    PATH_ID.into(),
+                    entry,
+                    PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+                )],
+                vec![],
+                Some(fixture.trace.clone()),
+            )
+            .with_scope_outlet(Some(outlet));
+            options.cancel_flag = Some(flag.clone());
+            let worker =
+                std::thread::spawn(move || run_slice_with_runtime_extensions(options, extensions));
+            let scope = receive.recv().expect("real retained outlet scope");
+            block.entered.wait();
+            flag.store(true, Ordering::Release);
+            let disposed_while_active = records(&fixture.trace.events.lock().unwrap())
+                .iter()
+                .any(|record| record.status == PreparationLifecycleStatus::Disposed);
+            block.release.wait();
+            let result = worker
+                .join()
+                .expect("cancelled worker returns without panic");
+            *IN_FLIGHT_CALL.lock().unwrap() = None;
+            assert!(
+                !disposed_while_active,
+                "cleanup must wait for the active call"
+            );
+            assert!(block.returned.load(Ordering::Acquire));
+            (result, scope)
+        } else {
+            if outcome == "failure" {
+                options.config_overrides.insert(
+                    "preparation_probe_mode".into(),
+                    ConfigValue::String("module_error".into()),
+                );
+            }
+            let extensions = fixture.extensions(vec![]).with_scope_outlet(Some(outlet));
+            let result = run_slice_with_runtime_extensions(options, extensions);
+            (result, receive.recv().expect("real retained outlet scope"))
+        };
+
+        match outcome {
+            "success" => assert!(result
+                .expect("successful slice")
+                .gcode_text
+                .contains(NATIVE_MARKER)),
+            "failure" => {
+                let error = result.expect_err("required preparation failure aborts slice");
+                let events = fixture.trace.events.lock().unwrap();
+                assert_no_consumer(&events);
+                let failure = records(&events)
+                    .into_iter()
+                    .find(|record| record.status == PreparationLifecycleStatus::Failure)
+                    .expect("original typed failure observation");
+                let Some(PreparationFailure::Module(module)) = failure.failure.as_deref() else {
+                    panic!("module failure rewritten: {:?}", failure.failure);
+                };
+                assert_eq!(module.code, 57451);
+                assert_eq!(module.message, "prepare rejected");
+                assert!(!module.fatal);
+                assert!(
+                    error
+                        .0
+                        .contains(&failure.failure.as_ref().unwrap().to_string()),
+                    "{error:?}"
+                );
+            }
+            "cancelled" => {
+                let error = result.expect_err("in-flight cancellation remains cancellation");
+                assert!(error.0.contains("layer execution cancelled"), "{error:?}");
+            }
+            _ => unreachable!(),
+        }
+
+        // Crucially, the outlet Arc remains alive at this first assertion. Drop-
+        // only cleanup would leave no Disposed record and fail every leg here.
+        assert_disposed(&fixture.trace.events.lock().unwrap(), PATH_ID);
+        let disposed: Result<(), PreparationFailure> = dispose_prepared_plan(|| scope.dispose());
+        assert!(
+            disposed.is_ok(),
+            "later SDK disposal is idempotent: {disposed:?}"
+        );
+        assert_disposed(&fixture.trace.events.lock().unwrap(), PATH_ID);
+        drop(scope);
+        assert_disposed(&fixture.trace.events.lock().unwrap(), PATH_ID);
+    }
+}
+
+#[test]
+fn sdk_dispose_reports_busy_during_active_calls() {
+    use slicer_sdk::preparation::dispose_prepared_plan;
+    let control = Arc::new(concurrent_plan::Control {
+        entered: Barrier::new(2),
+        release: Barrier::new(2),
+        claimed: AtomicBool::new(false),
+        trace: Arc::new(Trace::default()),
+    });
+    *busy_plan::CONTROL.lock().unwrap() = Some(control.clone());
+    let (send, receive) = std::sync::mpsc::channel();
+    let fixture = Fixture::new(false, false);
+    let mut options = fixture.options();
+    options.mesh = Arc::new(elevated_support_mesh());
+    let object = &mut Arc::make_mut(&mut options.mesh).objects[0];
+    object.mesh.vertices.truncate(8);
+    object.mesh.indices.truncate(36);
+    object.modifier_volumes.clear();
+    for point in &mut object.mesh.vertices {
+        if point.z > 0.0 {
+            point.z = 0.2;
+        }
+    }
+    object.world_z_extent = Some((0.0, 0.2));
+    options
+        .config_overrides
+        .insert("layer_height".into(), ConfigValue::Float(0.2));
+    options
+        .config_overrides
+        .insert("first_layer_height".into(), ConfigValue::Float(0.2));
+    let extensions = SliceRuntimeExtensions::new(
+        vec![IntegratedModuleRegistration {
+            manifest_toml: path_manifest(),
+            origin_label: "sdk-busy",
+        }],
+        vec![(
+            PATH_ID.into(),
+            busy_plan::BusyPlan::__slicer_prepared_native_entry(),
+            busy_plan::BusyPlan::__SLICER_PREPARATION_SCHEMA,
+        )],
+        vec![],
+        Some(control.trace.clone()),
+    )
+    .with_scope_outlet(Some(Arc::new(move |scope| {
+        send.send(scope.clone()).unwrap();
+    })));
+    let worker = std::thread::spawn(move || run_slice_with_runtime_extensions(options, extensions));
+    let scope = receive.recv().expect("real print scope outlet");
+    control.entered.wait();
+    let busy: Result<(), PreparationFailure> = dispose_prepared_plan(|| scope.dispose());
+    let no_disposed = !records(&control.trace.events.lock().unwrap())
+        .iter()
+        .any(|r| r.status == PreparationLifecycleStatus::Disposed);
+    // Always release before assertions, so a failed check cannot strand the worker.
+    control.release.wait();
+    let output = worker
+        .join()
+        .expect("slice worker")
+        .expect("single prepared call completes");
+    assert!(matches!(busy, Err(PreparationFailure::Busy)));
+    assert!(no_disposed, "busy must leave retained plans undisposed");
+    assert!(output.gcode_text.contains("SDK-BUSY-CONSUMED"));
+    let disposed: Result<(), PreparationFailure> = dispose_prepared_plan(|| scope.dispose());
+    assert!(disposed.is_ok(), "quiescent SDK dispose: {disposed:?}");
+    drop(scope); // Last Arc repeats disposal without panicking or duplicating records.
+    let events = control.trace.events.lock().unwrap();
+    let observed = records(&events);
+    assert_eq!(
+        observed
+            .iter()
+            .filter(|r| r.status == PreparationLifecycleStatus::Ready)
+            .count(),
+        1
+    );
+    assert_eq!(
+        observed
+            .iter()
+            .filter(
+                |r| r.lifecycle_phase == PreparationLifecyclePhase::Consumption
+                    && r.status == PreparationLifecycleStatus::Start
+            )
+            .count(),
+        1
+    );
+    assert_disposed(&events, PATH_ID);
+    *busy_plan::CONTROL.lock().unwrap() = None;
+}
+
+mod busy_plan {
+    use super::*;
+    use slicer_sdk::error::ModuleError;
+    use slicer_sdk::preparation::{
+        LayerPreparation, PreparedPlanOutput, PreparedPlanView, PrintPreparationInput,
+    };
+    use slicer_sdk::traits::LayerModule;
+
+    pub static CONTROL: Mutex<Option<Arc<concurrent_plan::Control>>> = Mutex::new(None);
+    pub struct BusyPlan;
+    impl LayerPreparation for BusyPlan {
+        fn prepare_print(
+            _: &PrintPreparationInput,
+            output: &mut PreparedPlanOutput,
+        ) -> Result<(), ModuleError> {
+            output.put("busy", b"retained")?;
+            Ok(())
+        }
+    }
+    #[slicer_sdk::slicer_module(preparation)]
+    impl LayerModule for BusyPlan {
+        fn from_config(_: &slicer_ir::ConfigView) -> Result<Self, ModuleError> {
+            Ok(Self)
+        }
+        fn run_path_optimization(
+            &self,
+            _: u32,
+            _: &[slicer_sdk::views::PerimeterRegionView],
+            out: &mut slicer_sdk::postpass_builders::GcodeOutputBuilder,
+            _: &mut slicer_sdk::layer_collection_builder::LayerCollectionBuilder,
+            _: &slicer_ir::ConfigView,
+        ) -> Result<(), ModuleError> {
+            let control = CONTROL.lock().unwrap().as_ref().unwrap().clone();
+            control.entered.wait();
+            control.release.wait();
+            assert_eq!(
+                PreparedPlanView::current()?.require("busy")?.read(0, 8)?,
+                b"retained"
+            );
+            out.push_comment("SDK-BUSY-CONSUMED".into())
+                .map_err(|message| ModuleError::fatal(57404, message))
+        }
+    }
+}
+
+mod concurrent_plan {
+    use super::*;
+    use slicer_sdk::error::ModuleError;
+    use slicer_sdk::preparation::{
+        LayerPreparation, PreparedPlanOutput, PreparedPlanView, PrintPreparationInput,
+    };
+    use slicer_sdk::traits::LayerModule;
+
+    pub struct Control {
+        pub entered: Barrier,
+        pub release: Barrier,
+        pub claimed: AtomicBool,
+        pub trace: Arc<Trace>,
+    }
+    pub static CONTROLS: Mutex<BTreeMap<String, Arc<Control>>> = Mutex::new(BTreeMap::new());
+    pub struct TokenPlan {
+        token: String,
+    }
+    impl LayerPreparation for TokenPlan {
+        fn prepare_print(
+            input: &PrintPreparationInput,
+            output: &mut PreparedPlanOutput,
+        ) -> Result<(), ModuleError> {
+            let layers = input.layers(0, u64::MAX).unwrap();
+            let target = layers
+                .iter()
+                .flat_map(|layer| input.selected_targets(layer.index, 0, u64::MAX).unwrap())
+                .next()
+                .expect("selected committed target");
+            let token = target.config.get_string("preparation_probe_token").unwrap();
+            output.put(token, token.as_bytes())?;
+            Ok(())
+        }
+    }
+    #[slicer_sdk::slicer_module(preparation)]
+    impl LayerModule for TokenPlan {
+        fn from_config(config: &slicer_ir::ConfigView) -> Result<Self, ModuleError> {
+            Ok(Self {
+                token: config.get_string("preparation_probe_token").unwrap().into(),
+            })
+        }
+        fn run_path_optimization(
+            &self,
+            index: u32,
+            _regions: &[slicer_sdk::views::PerimeterRegionView],
+            out: &mut slicer_sdk::postpass_builders::GcodeOutputBuilder,
+            _collection: &mut slicer_sdk::layer_collection_builder::LayerCollectionBuilder,
+            _config: &slicer_ir::ConfigView,
+        ) -> Result<(), ModuleError> {
+            let view = PreparedPlanView::current()?;
+            let other = if self.token == "print_alpha" {
+                "print_beta"
+            } else {
+                "print_alpha"
+            };
+            assert!(view.open(other)?.is_none(), "other print's token leaked");
+            assert_eq!(
+                view.require(&self.token)?.read(0, 64)?,
+                self.token.as_bytes()
+            );
+            let control = CONTROLS.lock().unwrap().get(&self.token).unwrap().clone();
+            let blocked = !control.claimed.swap(true, Ordering::AcqRel);
+            if blocked {
+                control.entered.wait();
+                control.release.wait();
+                assert_eq!(
+                    PreparedPlanView::current()?
+                        .require(&self.token)?
+                        .read(0, 64)?,
+                    self.token.as_bytes(),
+                    "the blocked active call must retain a readable, unrevoked plan"
+                );
+            }
+            out.push_comment(format!("TOKEN-CONSUMED:{}", self.token))
+                .map_err(|message| ModuleError::fatal(57404, message))?;
+            if blocked {
+                // Name the completion of the actual barrier-held call, not an
+                // unrelated parallel call that happened to return earlier.
+                control
+                    .trace
+                    .events
+                    .lock()
+                    .unwrap()
+                    .push(Event::CallReturned(index, PATH_ID));
+            }
+            Ok(())
+        }
+    }
+}
+
+#[test]
+fn preparation_only_capture_shared_prefix() {
+    // A constant plan needs no module read grants, including selected_targets.
+    let fixture = Fixture::new(false, false);
+    let mut manifest: toml::Value = path_manifest().parse().unwrap();
+    manifest["preparation"]["input_reads"] = toml::Value::Array(vec![]);
+    let manifest: &'static str = Box::leak(toml::to_string(&manifest).unwrap().into_boxed_str());
+    let extensions = || {
+        SliceRuntimeExtensions::new(
+            vec![IntegratedModuleRegistration {
+                manifest_toml: manifest,
+                origin_label: "constant-no-grants",
+            }],
+            vec![(
+                PATH_ID.into(),
+                constant_plan::ConstantPlan::__slicer_prepared_native_entry(),
+                constant_plan::ConstantPlan::__SLICER_PREPARATION_SCHEMA,
+            )],
+            vec![],
+            None,
+        )
+    };
+    let full = run_slice_with_runtime_extensions(fixture.options(), extensions())
+        .expect("constant plan slice without read grants");
+    assert!(full.gcode_text.contains("CONSTANT-PLAN-CONSUMED"));
+    let capture = run_slice_preparation_capture(fixture.options(), extensions())
+        .expect("constant plan capture without read grants");
+    assert_eq!(capture.owners.len(), 1);
+    assert_eq!(capture.owners[0].pieces[0].name, "constant");
+    assert!(
+        !capture.owners[0].selected_targets.is_empty(),
+        "real wedge selection is host metadata, not a fabricated empty list"
+    );
+
+    for external in [false, true] {
+        for (length, token) in [(4, "probe"), (2, "probe"), (4, "changed_probe")] {
+            let fixture = Fixture::new(external, false);
+            let capture = fixture.capture(length, token);
+            let owner = capture
+                .owners
+                .iter()
+                .find(|o| o.module_id.as_str() == PATH_ID)
+                .expect("captured selected owner");
+            assert_eq!(owner.pieces.len(), 1);
+            assert_eq!(owner.pieces[0].name, token);
+            assert_eq!(owner.pieces[0].length, length as u64);
+            assert_eq!(
+                owner.accounting_before_disposal.retained_payload_bytes,
+                length as u64
+            );
+            assert_eq!(owner.accounting_before_disposal.returned_read_bytes, 0);
+            assert_eq!(capture.retained_bytes, 0);
+            assert_eq!(capture.transferred_bytes, 0);
+            assert!(!capture.lifecycle.is_empty());
+            assert_no_consumer(&fixture.trace.events.lock().unwrap());
+            assert_disposed(&fixture.trace.events.lock().unwrap(), PATH_ID);
+        }
+        // Independently authored model provenance, not expectations copied from
+        // the resolver/captured DTOs. Change both the source identity and the
+        // module-declared per-leg config; no old source may survive the change.
+        for (source, absent, mode) in [
+            ("capture-source-a", "capture-source-b", "ready"),
+            ("capture-source-b", "capture-source-a", "required_decoder"),
+        ] {
+            let fixture = Fixture::new(external, false);
+            let options = || {
+                let mut opts = fixture.options();
+                assert_eq!(opts.mesh.objects.len(), 1, "single authored model source");
+                Arc::make_mut(&mut opts.mesh).objects[0].id = source.into();
+                opts.config_overrides.insert(
+                    "preparation_probe_mode".into(),
+                    ConfigValue::String(mode.into()),
+                );
+                opts
+            };
+            let capture =
+                run_slice_preparation_capture(options(), fixture.extensions(vec![host_entity()]))
+                    .expect("capture authored source provenance");
+            let owner = capture
+                .owners
+                .iter()
+                .find(|owner| owner.module_id.as_str() == PATH_ID)
+                .expect("selected source owner survives store disposal");
+            assert!(
+                !owner.selected_targets.is_empty(),
+                "typed targets must exist"
+            );
+            assert!(
+                owner
+                    .selected_targets
+                    .iter()
+                    .any(|target| target.global_layer_index == 0),
+                "literal first-layer target"
+            );
+            for target in &owner.selected_targets {
+                assert_eq!(target.stage_id, "Layer::PathOptimization");
+                assert!(target.invoke);
+                // resolve_held_claims (crates/slicer-scheduler/src/validation.rs)
+                // retains fill-role claims, not the path-optimizer capability.
+                assert_eq!(target.held_claims, Vec::<String>::new());
+                assert!(!target.authored_coloring);
+                assert_eq!(
+                    target.config.get_string("preparation_probe_mode"),
+                    Some(mode)
+                );
+                let PreparationTargetSource::Model { key, members } = &target.source else {
+                    panic!("expected literal model provenance, got {:?}", target.source);
+                };
+                assert_eq!(key.object_id, source);
+                assert_ne!(key.object_id, absent, "old source must be absent");
+                assert_eq!(key.global_layer_index, target.global_layer_index);
+                assert!(key.variant_chain.is_empty(), "unpainted literal variant");
+                assert!(
+                    !members.is_empty(),
+                    "full model members must survive capture"
+                );
+                for member in members {
+                    assert_eq!(member.object_id, source);
+                    assert_ne!(member.object_id, absent, "no stale member provenance");
+                    assert!(member.variant_chain.is_empty());
+                }
+            }
+            assert_eq!(owner.pieces.len(), 1);
+            assert_eq!(owner.pieces[0].name, "probe");
+            assert_eq!(owner.pieces[0].length, 4);
+            assert_eq!(owner.accounting_before_disposal.retained_payload_bytes, 4);
+            assert_eq!(owner.accounting_before_disposal.retained_name_bytes, 5);
+            assert_eq!(owner.accounting_before_disposal.returned_read_bytes, 0);
+            assert_eq!(capture.retained_bytes, 0);
+            assert_eq!(capture.transferred_bytes, 0);
+            assert_no_consumer(&fixture.trace.events.lock().unwrap());
+            assert_disposed(&fixture.trace.events.lock().unwrap(), PATH_ID);
+
+            // The same authored leg separately runs ordinary module-owned
+            // decoding. Capture itself never obtains the opaque probe bytes.
+            let full = run_slice_with_runtime_extensions(options(), fixture.extensions(vec![]))
+                .expect("ordinary module decodes the same prepared leg");
+            assert!(full.gcode_text.contains(fixture.marker()));
+        }
+        let full = Fixture::new(external, false);
+        assert!(full.run().contains(full.marker()));
+    }
+}
+
+#[test]
+fn truthful_lifecycle_metadata() {
+    for instrumented in [false, true] {
+        let fixture = Fixture::new(false, false);
+        let mut opts = fixture.options();
+        opts.instrument_stderr = instrumented;
+        let capture = run_slice_preparation_capture(opts, fixture.extensions(vec![]))
+            .expect("observed capture");
+        assert!(!capture.lifecycle.is_empty());
+        for record in capture
+            .lifecycle
+            .iter()
+            .filter(|record| record.module_id.as_str() == PATH_ID)
+        {
+            assert_eq!(record.module_version, "0.1.0");
+            assert!(!record.artifact_identity.is_empty());
+            assert_eq!(record.consumer_stage.to_string(), "Layer::PathOptimization");
+            assert!(record.global_layer_index.is_none());
+            if !instrumented {
+                assert!(record.elapsed.is_none());
+            }
+            if matches!(record.status, PreparationLifecycleStatus::Ready) {
+                assert_eq!(record.pieces, [("probe".into(), 4)]);
+                if instrumented {
+                    assert!(record.elapsed.is_some());
+                }
+            }
+            assert_eq!(record.transferred_bytes, 0);
+        }
+    }
+
+    // The selected tree-style artifact has zero eligible targets over a print
+    // authored entirely with traditional support, not merely one empty layer.
+    let fixture = Fixture::new(false, false);
+    let mut opts = fixture.options();
+    opts.config_overrides.insert(
+        "support_type".into(),
+        ConfigValue::String("normal(auto)".into()),
+    );
+    let no_work_manifest = selection_controls::manifest(PATH_ID, true, "tree");
+    let unused_id = "com.test.metadata-unselected";
+    let unused = selection_controls::manifest(unused_id, true, "unused");
+    metadata_controls::PREPARES.store(0, Ordering::SeqCst);
+    let mut entry = PreparationLifecycleGuest::__slicer_prepared_native_entry();
+    entry.prepare = metadata_controls::prepare;
+    let capture = run_slice_preparation_capture(
+        opts,
+        SliceRuntimeExtensions::new(
+            vec![
+                IntegratedModuleRegistration {
+                    manifest_toml: no_work_manifest,
+                    origin_label: "metadata-no-work",
+                },
+                IntegratedModuleRegistration {
+                    manifest_toml: unused,
+                    origin_label: "metadata-declared-unselected",
+                },
+            ],
+            vec![
+                (
+                    PATH_ID.into(),
+                    entry,
+                    PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+                ),
+                (
+                    unused_id.into(),
+                    entry,
+                    PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+                ),
+            ],
+            vec![],
+            Some(fixture.trace.clone()),
+        ),
+    )
+    .expect("selected declaration with zero print-wide targets");
+    assert!(capture.owners.is_empty());
+    assert_eq!(metadata_controls::PREPARES.load(Ordering::SeqCst), 0);
+    let no_work: Vec<_> = capture
+        .lifecycle
+        .iter()
+        .filter(|r| r.module_id.as_str() == PATH_ID)
+        .collect();
+    assert_eq!(no_work.len(), 1);
+    assert_eq!(no_work[0].status, PreparationLifecycleStatus::NoWork);
+    assert!(no_work[0].pieces.is_empty());
+    assert_eq!(no_work[0].retained_bytes, 0);
+    assert!(
+        !capture
+            .lifecycle
+            .iter()
+            .any(|r| r.module_id.as_str() == unused_id
+                && matches!(
+                    r.status,
+                    PreparationLifecycleStatus::Start | PreparationLifecycleStatus::Ready
+                )),
+        "roster declarations never fabricate execution"
+    );
+
+    let fixture = Fixture::new(false, false);
+    let mut opts = fixture.options();
+    opts.config_overrides.insert(
+        "preparation_probe_mode".into(),
+        ConfigValue::String("module_error".into()),
+    );
+    let error = run_slice_with_runtime_extensions(opts, fixture.extensions(vec![]))
+        .expect_err("native preparation rejects");
+    assert!(format!("{error:?}").contains("57451"));
+    let events = fixture.trace.events.lock().unwrap();
+    let failures: Vec<_> = records(&events)
+        .into_iter()
+        .filter(|r| {
+            r.module_id.as_str() == PATH_ID && r.status == PreparationLifecycleStatus::Failure
+        })
+        .collect();
+    assert_eq!(failures.len(), 1);
+    assert_eq!(
+        failures[0].lifecycle_phase,
+        PreparationLifecyclePhase::Preparation
+    );
+    match failures[0].failure.as_deref() {
+        Some(PreparationFailure::Module(error)) => {
+            assert_eq!(error.code, 57451);
+            assert_eq!(error.message, "prepare rejected");
+            assert!(!error.fatal);
+        }
+        other => panic!("original typed module error required: {other:?}"),
+    }
+}
+
+mod metadata_controls {
+    use super::*;
+    pub static PREPARES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    pub fn prepare(
+        input: &slicer_sdk::preparation::PrintPreparationInput,
+        output: &mut slicer_sdk::preparation::PreparedPlanOutput,
+    ) -> Result<(), slicer_sdk::error::ModuleError> {
+        PREPARES.fetch_add(1, Ordering::SeqCst);
+        (PreparationLifecycleGuest::__slicer_prepared_native_entry().prepare)(input, output)
+    }
+}
+
+fn host_entity() -> AnchoredEntity {
+    // exhaustive: synthetic-host control has independent identity and endpoints
+    AnchoredEntity {
+        local_id: 574,
+        anchor_global_layer_index: 0,
+        geometry: AnchoredGeometryContract::Planar { z: 0 },
+        input_capabilities: vec![],
+        output_capabilities: vec![],
+        provenance: AnchoredEntityProvenance {
+            requesting_feature: "lifecycle_host_control".into(),
+            source_plan_entry: "synthetic_not_a_probe_reader".into(),
+        },
+        path_points: [7.0, 8.0]
+            .into_iter()
+            .map(|x| Point3WithWidth {
+                x,
+                y: 0.0,
+                z: 0.0,
+                width: 0.4,
+                flow_factor: 1.0,
+                ..Default::default()
+            })
+            .collect(),
+        role: ExtrusionRole::SupportMaterial,
+    }
+}
+
+fn has_x(gcode: &str, x: f64) -> bool {
+    gcode
+        .lines()
+        .filter(|line| line.starts_with("G1 "))
+        .any(|line| {
+            line.split_whitespace()
+                .filter_map(|word| word.strip_prefix('X'))
+                .filter_map(|word| word.parse::<f64>().ok())
+                .any(|value| value == x)
+        })
+}
+
+#[test]
+fn prepared_anchored_module_reads_and_host_closure_lifetime() {
+    for external in [false, true] {
+        for (start, end) in if external {
+            [(5, 6), (9, 10)]
+        } else {
+            [(3, 4), (9, 10)]
+        } {
+            let fixture = Fixture::new(external, true);
+            let mut opts = fixture.options();
+            opts.config_overrides
+                .insert("probe_start_mm".into(), ConfigValue::Int(start));
+            opts.config_overrides
+                .insert("probe_end_mm".into(), ConfigValue::Int(end));
+            let output = run_slice_with_runtime_extensions(opts, fixture.extensions(vec![]))
+                .expect("actual anchored-module reader");
+            assert!(has_x(&output.gcode_text, start as f64));
+            assert!(has_x(&output.gcode_text, end as f64));
+            let events = fixture.trace.events.lock().unwrap();
+            let reads: Vec<_> = records(&events)
+                .into_iter()
+                .filter(|r| {
+                    r.module_id.as_str() == ANCHORED_ID
+                        && matches!(r.lifecycle_phase, PreparationLifecyclePhase::Consumption)
+                })
+                .collect();
+            assert!(
+                !reads.is_empty(),
+                "synthetic-host activity cannot stand in for a module read"
+            );
+            assert!(reads.iter().any(|r| r.transferred_bytes >= 4));
+            assert_disposed(&events, ANCHORED_ID);
+        }
+        // Separate host-only control: do not register the anchored fixture.
+        let fixture = Fixture::new(external, false);
+        let output = run_slice_with_runtime_extensions(
+            fixture.options(),
+            fixture.extensions(vec![host_entity()]),
+        )
+        .expect("synthetic host closure");
+        assert!(has_x(&output.gcode_text, 7.0) && has_x(&output.gcode_text, 8.0));
+        let events = fixture.trace.events.lock().unwrap();
+        let start = events
+            .iter()
+            .position(|e| matches!(e, Event::Host(AnchoredHostClosureStatus::Start)))
+            .expect("host start");
+        let finish = events
+            .iter()
+            .position(|e| matches!(e, Event::Host(AnchoredHostClosureStatus::Finished)))
+            .expect("host finished");
+        let dispose = events.iter().position(|e| matches!(e, Event::Lifecycle(r) if matches!(r.status, PreparationLifecycleStatus::Disposed))).expect("owner disposed");
+        assert!(start < finish && finish < dispose);
+        assert!(!records(&events)
+            .iter()
+            .any(|r| r.module_id.as_str() == ANCHORED_ID));
+        assert!(!events[start..=finish].iter().any(|e| matches!(e, Event::Lifecycle(r) if matches!(r.lifecycle_phase, PreparationLifecyclePhase::Consumption))));
+        assert_disposed(&events, PATH_ID);
+    }
+}
+
+#[test]
+fn required_module_error_preserves_fields() {
+    for external in [false, true] {
+        let fixture = Fixture::new(external, false);
+        let mut opts = fixture.options();
+        opts.config_overrides.insert(
+            "preparation_probe_mode".into(),
+            ConfigValue::String("module_error".into()),
+        );
+        let _error = run_slice_with_runtime_extensions(opts, fixture.extensions(vec![]))
+            .expect_err("required preparation must abort despite fatal=false");
+        let events = fixture.trace.events.lock().unwrap();
+        assert_no_consumer(&events);
+        let observed = records(&events);
+        let failure = observed
+            .iter()
+            .find(|r| matches!(r.status, PreparationLifecycleStatus::Failure))
+            .expect("typed failure observation");
+        match failure
+            .failure
+            .as_deref()
+            .expect("preserved original failure")
+        {
+            PreparationFailure::Module(error) => {
+                assert_eq!(error.code, 57451);
+                assert_eq!(error.message, "prepare rejected");
+                assert!(!error.fatal);
+            }
+            other => panic!("module failure rewritten: {other:?}"),
+        }
+        assert!(!observed
+            .iter()
+            .any(|r| matches!(r.status, PreparationLifecycleStatus::Ready)));
+        assert_disposed(&events, PATH_ID);
+    }
+}
+
+#[test]
+fn trap_poison_and_failure_cleanup() {
+    {
+        // Consumer traps exercise the WASM dispatch error boundary specifically;
+        // native ordinary panics unwind rather than returning a Wasmtime error.
+        let fixture = Fixture::new(true, false);
+        let mut options = fixture.options();
+        options.config_overrides.insert(
+            "preparation_probe_mode".into(),
+            ConfigValue::String("consumer_trap".into()),
+        );
+        let error = run_slice_with_runtime_extensions(options, fixture.extensions(vec![]))
+            .expect_err("ordinary prepared consumer trap aborts");
+        let events = fixture.trace.events.lock().unwrap();
+        let observed = records(&events);
+        assert!(observed
+            .iter()
+            .any(|record| record.status == PreparationLifecycleStatus::Ready));
+        let failed = observed
+            .iter()
+            .find(|record| {
+                record.lifecycle_phase == PreparationLifecyclePhase::Consumption
+                    && record.status == PreparationLifecycleStatus::Failure
+            })
+            .expect("consumer failure observation");
+        let Some(PreparationFailure::Trap { detail }) = failed.failure.as_deref() else {
+            panic!("consumer trap lost its typed detail: {:?}", failed.failure);
+        };
+        assert!(detail.contains("wasm backtrace"), "{detail}");
+        assert!(
+            error.0.contains(detail),
+            "slice lost consumer trap: {error:?}"
+        );
+        assert_disposed(&events, PATH_ID);
+    }
+    for external in [false, true] {
+        for mode in [if external { "trap" } else { "panic" }, "duplicate_put"] {
+            let fixture = Fixture::new(external, false);
+            let mut opts = fixture.options();
+            opts.config_overrides.insert(
+                "preparation_probe_mode".into(),
+                ConfigValue::String(mode.into()),
+            );
+            let error = run_slice_with_runtime_extensions(opts, fixture.extensions(vec![]))
+                .expect_err("trap or poisoned output cannot publish");
+            let events = fixture.trace.events.lock().unwrap();
+            assert_no_consumer(&events);
+            let observed = records(&events);
+            let failure = observed
+                .iter()
+                .find(|r| matches!(r.status, PreparationLifecycleStatus::Failure))
+                .expect("failure event");
+            if mode != "duplicate_put" {
+                let Some(PreparationFailure::Trap { detail }) = failure.failure.as_deref() else {
+                    panic!("original trap rewritten: {:?}", failure.failure);
+                };
+                // Wasmtime's original trap is its execution backtrace; the
+                // guest panic text is logged separately, not the trap payload.
+                if external {
+                    assert!(detail.contains("wasm backtrace"), "{detail}");
+                } else {
+                    assert_eq!(detail, "lifecycle fixture preparation trap");
+                }
+                assert!(
+                    error.0.contains(detail),
+                    "slice lost original trap: {error:?}"
+                );
+            } else {
+                assert!(
+                    matches!(
+                        failure.failure.as_deref(),
+                        Some(PreparationFailure::Transport(
+                            slicer_schema::preparation::PreparationTransportError::PoisonedOutput
+                        ))
+                    ),
+                    "caught duplicate-put must reject publication: {:?}",
+                    failure.failure
+                );
+            }
+            assert!(!observed
+                .iter()
+                .any(|r| matches!(r.status, PreparationLifecycleStatus::Ready)));
+            assert_disposed(&events, PATH_ID);
+        }
+    }
+
+    // Call the real module producer first, then exercise poison completion
+    // choices inside the same native adapter and active transaction.
+    for (prepare, expected) in [
+        (caught_poison as FixturePrepare, 0),
+        (module_after_poison, 1),
+        (panic_after_poison, 2),
+    ] {
+        let fixture = Fixture::new(false, false);
+        let mut entry = PreparationLifecycleGuest::__slicer_prepared_native_entry();
+        entry.prepare = prepare;
+        let extensions = SliceRuntimeExtensions::new(
+            vec![IntegratedModuleRegistration {
+                manifest_toml: path_manifest(),
+                origin_label: "lifecycle-poison-native",
+            }],
+            vec![(
+                PATH_ID.into(),
+                entry,
+                PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+            )],
+            vec![],
+            Some(fixture.trace.clone()),
+        );
+        run_slice_with_runtime_extensions(fixture.options(), extensions)
+            .expect_err("poison cannot publish");
+        let events = fixture.trace.events.lock().unwrap();
+        assert_no_consumer(&events);
+        let observed = records(&events);
+        let failure = observed
+            .iter()
+            .find(|r| r.status == PreparationLifecycleStatus::Failure)
+            .expect("typed poison completion")
+            .failure
+            .as_deref()
+            .expect("failure payload");
+        match (expected, failure) {
+            (
+                0,
+                PreparationFailure::Transport(
+                    slicer_schema::preparation::PreparationTransportError::PoisonedOutput,
+                ),
+            ) => {}
+            (1, PreparationFailure::Module(error)) => {
+                assert_eq!(error.code, 57451);
+                assert_eq!(error.message, "prepare rejected");
+                assert!(!error.fatal);
+            }
+            (2, PreparationFailure::Trap { detail }) => {
+                assert_eq!(detail, "lifecycle fixture preparation trap after poison")
+            }
+            _ => panic!("original error/poison precedence changed: {failure:?}"),
+        }
+        assert!(!observed
+            .iter()
+            .any(|r| r.status == PreparationLifecycleStatus::Ready));
+        assert_disposed(&events, PATH_ID);
+    }
+}
+
+type FixturePrepare = fn(
+    &slicer_sdk::preparation::PrintPreparationInput,
+    &mut slicer_sdk::preparation::PreparedPlanOutput,
+) -> Result<(), slicer_sdk::error::ModuleError>;
+
+fn caught_poison(
+    input: &slicer_sdk::preparation::PrintPreparationInput,
+    output: &mut slicer_sdk::preparation::PreparedPlanOutput,
+) -> Result<(), slicer_sdk::error::ModuleError> {
+    (PreparationLifecycleGuest::__slicer_prepared_native_entry().prepare)(input, output)?;
+    assert!(
+        output.put("probe", b"again").is_err(),
+        "duplicate must poison writer"
+    );
+    Ok(())
+}
+
+fn module_after_poison(
+    input: &slicer_sdk::preparation::PrintPreparationInput,
+    output: &mut slicer_sdk::preparation::PreparedPlanOutput,
+) -> Result<(), slicer_sdk::error::ModuleError> {
+    caught_poison(input, output)?;
+    Err(slicer_sdk::error::ModuleError {
+        code: 57451,
+        message: "prepare rejected".into(),
+        fatal: false,
+    })
+}
+
+fn panic_after_poison(
+    input: &slicer_sdk::preparation::PrintPreparationInput,
+    output: &mut slicer_sdk::preparation::PreparedPlanOutput,
+) -> Result<(), slicer_sdk::error::ModuleError> {
+    caught_poison(input, output)?;
+    panic!("lifecycle fixture preparation trap after poison")
+}
+
+#[test]
+fn cancellation_waits_for_inflight_cleanup() {
+    let _controller = IN_FLIGHT_TEST.lock().unwrap();
+    // Before preparation (the ordinary pre-set cancellation boundary).
+    let fixture = Fixture::new(false, false);
+    let mut opts = fixture.options();
+    opts.cancel_flag = Some(Arc::new(AtomicBool::new(true)));
+    let error = run_slice_with_runtime_extensions(opts, fixture.extensions(vec![]))
+        .expect_err("pre-set cancellation");
+    assert!(error.0.contains("cancelled"), "{error:?}");
+    assert!(fixture.trace.events.lock().unwrap().is_empty());
+
+    // Between identity-sorted owners: path is Ready, anchored must not start.
+    let flag = Arc::new(AtomicBool::new(false));
+    let mut fixture = Fixture::new(false, true);
+    fixture.trace = Arc::new(Trace {
+        cancel: Some((flag.clone(), PreparationLifecyclePhase::Preparation)),
+        cancel_on_ready: true,
+        ..Default::default()
+    });
+    let mut opts = fixture.options();
+    opts.cancel_flag = Some(flag);
+    let error = run_slice_with_runtime_extensions(opts, fixture.extensions(vec![]))
+        .expect_err("between-owner cancellation");
+    assert!(error.0.contains("cancelled"), "{error:?}");
+    let events = fixture.trace.events.lock().unwrap();
+    assert_no_consumer(&events);
+    assert!(records(&events)
+        .iter()
+        .any(|r| r.module_id.as_str() == PATH_ID && r.status == PreparationLifecycleStatus::Ready));
+    assert!(!records(&events)
+        .iter()
+        .any(|r| r.module_id.as_str() == ANCHORED_ID
+            && r.status == PreparationLifecycleStatus::Start));
+    assert_disposed(&events, PATH_ID);
+    drop(events);
+
+    // The real adapter holds its active guard while this native entry blocks.
+    // Both preparation staging and ordinary reads must be allowed to return.
+    for (phase, anchored) in [
+        (PreparationLifecyclePhase::Preparation, false),
+        (PreparationLifecyclePhase::Consumption, false),
+        (PreparationLifecyclePhase::Consumption, true),
+    ] {
+        let flag = Arc::new(AtomicBool::new(false));
+        let fixture = Fixture::new(false, anchored);
+        let block = Arc::new(InFlightCall {
+            entered: Barrier::new(2),
+            release: Barrier::new(2),
+            returned: AtomicBool::new(false),
+            claimed: AtomicBool::new(false),
+        });
+        *IN_FLIGHT_CALL.lock().unwrap() = Some(block.clone());
+        let mut entry = PreparationLifecycleGuest::__slicer_prepared_native_entry();
+        if phase == PreparationLifecyclePhase::Preparation {
+            entry.prepare = blocking_prepare;
+        } else {
+            entry.stage = slicer_sdk::native::NativeStageEntry::Layer(blocking_consume);
+        }
+        let mut integrated = vec![IntegratedModuleRegistration {
+            manifest_toml: path_manifest(),
+            origin_label: "lifecycle-blocking-native",
+        }];
+        let mut prepared = vec![(
+            PATH_ID.into(),
+            entry,
+            PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+        )];
+        if anchored {
+            integrated.push(IntegratedModuleRegistration {
+                manifest_toml: ANCHORED_MANIFEST,
+                origin_label: "lifecycle-blocking-anchored",
+            });
+            prepared[0].1 = PreparationLifecycleGuest::__slicer_prepared_native_entry();
+            let mut entry = PreparationLifecycleAnchored::__slicer_prepared_native_entry();
+            entry.stage = slicer_sdk::native::NativeStageEntry::Layer(blocking_anchored_consume);
+            prepared.push((
+                ANCHORED_ID.into(),
+                entry,
+                PreparationLifecycleAnchored::__SLICER_PREPARATION_SCHEMA,
+            ));
+        }
+        let extensions =
+            SliceRuntimeExtensions::new(integrated, prepared, vec![], Some(fixture.trace.clone()));
+        let mut opts = fixture.options();
+        opts.cancel_flag = Some(flag.clone());
+        let result = std::thread::scope(|scope| {
+            let worker = scope.spawn(move || run_slice_with_runtime_extensions(opts, extensions));
+            block.entered.wait();
+            flag.store(true, Ordering::Release);
+            let events = fixture.trace.events.lock().unwrap();
+            assert!(!block.returned.load(Ordering::Acquire));
+            assert!(!records(&events)
+                .iter()
+                .any(|r| r.status == PreparationLifecycleStatus::Disposed));
+            if phase == PreparationLifecyclePhase::Preparation {
+                assert_no_consumer(&events);
+                assert!(!records(&events)
+                    .iter()
+                    .any(|r| r.status == PreparationLifecycleStatus::Ready));
+            }
+            drop(events);
+            block.release.wait();
+            worker.join().expect("slice thread must return, not panic")
+        });
+        *IN_FLIGHT_CALL.lock().unwrap() = None;
+        assert!(
+            block.returned.load(Ordering::Acquire),
+            "active call was interrupted"
+        );
+        let error = result.expect_err("cancelled slice must not succeed");
+        assert!(error.0.contains("layer execution cancelled"), "{error:?}");
+        let events = fixture.trace.events.lock().unwrap();
+        if phase == PreparationLifecyclePhase::Preparation {
+            assert_no_consumer(&events);
+            assert!(records(&events)
+                .iter()
+                .any(|r| r.status == PreparationLifecycleStatus::Cancelled));
+            assert!(!records(&events)
+                .iter()
+                .any(|r| r.status == PreparationLifecycleStatus::Ready));
+        }
+        assert_disposed(&events, PATH_ID);
+        if anchored {
+            assert_disposed(&events, ANCHORED_ID);
+        }
+    }
+}
+
+struct InFlightCall {
+    entered: Barrier,
+    release: Barrier,
+    returned: AtomicBool,
+    claimed: AtomicBool,
+}
+
+static IN_FLIGHT_CALL: Mutex<Option<Arc<InFlightCall>>> = Mutex::new(None);
+static IN_FLIGHT_TEST: Mutex<()> = Mutex::new(());
+
+fn block_active_call() {
+    let block = IN_FLIGHT_CALL
+        .lock()
+        .unwrap()
+        .as_ref()
+        .expect("blocking fixture installed")
+        .clone();
+    // A parallel-safe ordinary fixture can have other calls already in flight.
+    // Only one participates in the controller handshake; none is interrupted.
+    if !block.claimed.swap(true, Ordering::AcqRel) {
+        block.entered.wait();
+        block.release.wait();
+        block.returned.store(true, Ordering::Release);
+    }
+}
+
+fn blocking_prepare(
+    input: &slicer_sdk::preparation::PrintPreparationInput,
+    output: &mut slicer_sdk::preparation::PreparedPlanOutput,
+) -> Result<(), slicer_sdk::error::ModuleError> {
+    (PreparationLifecycleGuest::__slicer_prepared_native_entry().prepare)(input, output)?;
+    block_active_call();
+    Ok(())
+}
+
+fn blocking_consume(
+    input: &slicer_sdk::native::NativeLayerRequest,
+) -> Result<slicer_sdk::native::NativeLayerResponse, slicer_sdk::error::ModuleError> {
+    let slicer_sdk::native::NativeStageEntry::Layer(call) =
+        PreparationLifecycleGuest::__slicer_prepared_native_entry().stage
+    else {
+        panic!("fixture must expose Layer entry")
+    };
+    let result = call(input);
+    block_active_call();
+    result
+}
+
+fn blocking_anchored_consume(
+    input: &slicer_sdk::native::NativeLayerRequest,
+) -> Result<slicer_sdk::native::NativeLayerResponse, slicer_sdk::error::ModuleError> {
+    let slicer_sdk::native::NativeStageEntry::Layer(call) =
+        PreparationLifecycleAnchored::__slicer_prepared_native_entry().stage
+    else {
+        panic!("anchored fixture must expose Layer entry")
+    };
+    let result = call(input);
+    block_active_call();
+    result
+}
+
+#[test]
+fn arena_run_to_completion_on_failure() {
+    let fixture = Fixture::new(false, true);
+    let mut opts = fixture.options();
+    // A closed solid gives real selected work on multiple layers, unlike the
+    // default thin wedge. Keep this input switch local to the failure witness.
+    let mut mesh = elevated_support_mesh();
+    let object = &mut mesh.objects[0];
+    object.mesh.vertices.truncate(8);
+    object.mesh.indices.truncate(36);
+    object.modifier_volumes.clear();
+    object.world_z_extent = Some((0.0, 0.8));
+    opts.mesh = Arc::new(mesh);
+    opts.config_overrides
+        .insert("layer_height".into(), ConfigValue::Float(0.2));
+    opts.config_overrides
+        .insert("first_layer_height".into(), ConfigValue::Float(0.2));
+    let control = Arc::new(FailureRunControl {
+        trace: fixture.trace.clone(),
+        ..Default::default()
+    });
+    *FAILURE_RUN.lock().unwrap() = Some(control.clone());
+    let mut path = PreparationLifecycleGuest::__slicer_prepared_native_entry();
+    path.stage = slicer_sdk::native::NativeStageEntry::Layer(failing_late_consume);
+    let mut anchored = PreparationLifecycleAnchored::__slicer_prepared_native_entry();
+    anchored.stage = slicer_sdk::native::NativeStageEntry::Layer(inflight_failure_anchored_consume);
+    let extensions = SliceRuntimeExtensions::new(
+        vec![
+            IntegratedModuleRegistration {
+                manifest_toml: path_manifest(),
+                origin_label: "late-failure-path",
+            },
+            IntegratedModuleRegistration {
+                manifest_toml: ANCHORED_MANIFEST,
+                origin_label: "inflight-failure-anchored",
+            },
+        ],
+        vec![
+            (
+                PATH_ID.into(),
+                path,
+                PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+            ),
+            (
+                ANCHORED_ID.into(),
+                anchored,
+                PreparationLifecycleAnchored::__SLICER_PREPARATION_SCHEMA,
+            ),
+        ],
+        vec![],
+        Some(Arc::new(FailureRunObserver {
+            trace: fixture.trace.clone(),
+            control: control.clone(),
+        })),
+    );
+    let error = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap()
+        .install(|| run_slice_with_runtime_extensions(opts, extensions))
+        .expect_err("later selected prepared stage returns module_error after other layers start");
+    *FAILURE_RUN.lock().unwrap() = None;
+    assert!(format!("{error:?}").contains("57403"));
+    assert!(control.anchored_returned.load(Ordering::Acquire));
+    let events = fixture.trace.events.lock().unwrap();
+    let mut arena_states: BTreeMap<u32, (usize, usize, usize)> = BTreeMap::new();
+    for event in events.iter() {
+        if let Event::Arena(index, status) = event {
+            let state = arena_states.entry(*index).or_default();
+            match status {
+                LayerArenaLifecycleStatus::Created => {
+                    assert_eq!(state.0, 0);
+                    state.0 += 1;
+                }
+                LayerArenaLifecycleStatus::Committed => {
+                    assert_eq!(state.0, 1);
+                    assert_eq!(state.2, 0);
+                    state.1 += 1;
+                }
+                LayerArenaLifecycleStatus::Dropped => {
+                    assert_eq!(state.0, 1);
+                    state.2 += 1;
+                }
+            }
+        }
+    }
+    assert!(
+        arena_states.len() > 1,
+        "must exercise a real multilayer failure"
+    );
+    assert!(arena_states
+        .values()
+        .all(|(created, committed, dropped)| *created == 1 && *committed <= 1 && *dropped == 1));
+    let consumption = records(&events);
+    let failure = consumption
+        .iter()
+        .find(|r| {
+            r.module_id.as_str() == PATH_ID && r.status == PreparationLifecycleStatus::Failure
+        })
+        .expect("explicit late-stage failure");
+    let failed_layer = failure.global_layer_index.unwrap();
+    assert_eq!(arena_states[&failed_layer].1, 0);
+    assert!(
+        arena_states
+            .values()
+            .any(|(_, committed, _)| *committed == 1),
+        "an already started layer must complete after the other layer fails"
+    );
+    for index in arena_states.keys() {
+        let stages: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                Event::Lifecycle(r)
+                    if r.global_layer_index == Some(*index)
+                        && r.lifecycle_phase == PreparationLifecyclePhase::Consumption =>
+                {
+                    Some((
+                        r.module_id.as_str(),
+                        r.status == PreparationLifecycleStatus::Start,
+                    ))
+                }
+                Event::CallReturned(layer, module) if layer == index => Some((*module, false)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            stages,
+            vec![
+                (ANCHORED_ID, true),
+                (ANCHORED_ID, false),
+                (PATH_ID, true),
+                (PATH_ID, false),
+            ],
+            "each started layer must complete its own sequence or explicit error"
+        );
+    }
+    let failed_at = events
+        .iter()
+        .position(|e| {
+            matches!(e, Event::Lifecycle(r)
+        if r.module_id.as_str() == PATH_ID && r.status == PreparationLifecycleStatus::Failure)
+        })
+        .unwrap();
+    assert!(events[failed_at + 1..].iter().any(|e| matches!(e, Event::CallReturned(_, ANCHORED_ID))),
+        "later stage must fail while another layer's earlier anchored call is still in flight; no between-stage barrier");
+    let disposal = events.iter().position(|e| matches!(e, Event::Lifecycle(r) if matches!(r.status, PreparationLifecycleStatus::Disposed))).expect("cleanup observed");
+    assert!(!events[disposal + 1..]
+        .iter()
+        .any(|e| matches!(e, Event::Arena(_, _))));
+    assert_disposed(&events, PATH_ID);
+    assert_disposed(&events, ANCHORED_ID);
+}
+
+#[derive(Default)]
+struct FailureRunControl {
+    trace: Arc<Trace>,
+    claimed_anchor: AtomicBool,
+    claimed_failure: AtomicBool,
+    // First flag: anchored call entered. Second: actual later-stage failure observed.
+    state: Mutex<(bool, bool)>,
+    changed: std::sync::Condvar,
+    anchored_returned: AtomicBool,
+}
+
+static FAILURE_RUN: Mutex<Option<Arc<FailureRunControl>>> = Mutex::new(None);
+
+fn failure_run_control() -> Arc<FailureRunControl> {
+    FAILURE_RUN
+        .lock()
+        .unwrap()
+        .as_ref()
+        .expect("failure run installed")
+        .clone()
+}
+
+fn inflight_failure_anchored_consume(
+    input: &slicer_sdk::native::NativeLayerRequest,
+) -> Result<slicer_sdk::native::NativeLayerResponse, slicer_sdk::error::ModuleError> {
+    let slicer_sdk::native::NativeStageEntry::Layer(call) =
+        PreparationLifecycleAnchored::__slicer_prepared_native_entry().stage
+    else {
+        unreachable!()
+    };
+    let result = call(input);
+    let control = failure_run_control();
+    if !control.claimed_anchor.swap(true, Ordering::AcqRel) {
+        let mut state = control.state.lock().unwrap();
+        state.0 = true;
+        control.changed.notify_all();
+        let (state, timeout) = control
+            .changed
+            .wait_timeout_while(state, std::time::Duration::from_secs(60), |state| !state.1)
+            .unwrap();
+        assert!(
+            !timeout.timed_out() && state.1,
+            "another layer must reach its later-stage failure before this anchored call returns"
+        );
+        control.anchored_returned.store(true, Ordering::Release);
+    }
+    control
+        .trace
+        .events
+        .lock()
+        .unwrap()
+        .push(Event::CallReturned(input.layer_index, ANCHORED_ID));
+    result
+}
+
+fn failing_late_consume(
+    input: &slicer_sdk::native::NativeLayerRequest,
+) -> Result<slicer_sdk::native::NativeLayerResponse, slicer_sdk::error::ModuleError> {
+    let slicer_sdk::native::NativeStageEntry::Layer(call) =
+        PreparationLifecycleGuest::__slicer_prepared_native_entry().stage
+    else {
+        unreachable!()
+    };
+    let result = call(input)?;
+    let control = failure_run_control();
+    if !control.claimed_failure.swap(true, Ordering::AcqRel) {
+        let (state, timeout) = control
+            .changed
+            .wait_timeout_while(
+                control.state.lock().unwrap(),
+                std::time::Duration::from_secs(60),
+                |state| !state.0,
+            )
+            .unwrap();
+        assert!(
+            !timeout.timed_out() && state.0,
+            "earlier anchored call must be in flight"
+        );
+        return Err(slicer_sdk::error::ModuleError::fatal(
+            57403,
+            "late consumer module_error",
+        ));
+    }
+    control
+        .trace
+        .events
+        .lock()
+        .unwrap()
+        .push(Event::CallReturned(input.layer_index, PATH_ID));
+    Ok(result)
+}
+
+struct FailureRunObserver {
+    trace: Arc<Trace>,
+    control: Arc<FailureRunControl>,
+}
+
+impl PreparationLifecycleObserver for FailureRunObserver {
+    fn on_preparation_lifecycle(&self, record: &PreparationLifecycleRecord) {
+        self.trace.on_preparation_lifecycle(record);
+        if record.module_id.as_str() == PATH_ID
+            && record.lifecycle_phase == PreparationLifecyclePhase::Consumption
+            && record.status == PreparationLifecycleStatus::Failure
+        {
+            self.control.state.lock().unwrap().1 = true;
+            self.control.changed.notify_all();
+        }
+    }
+
+    fn on_layer_arena(&self, index: u32, status: LayerArenaLifecycleStatus) {
+        self.trace.on_layer_arena(index, status);
+    }
+
+    fn on_anchored_host_closure(&self, status: AnchoredHostClosureStatus) {
+        self.trace.on_anchored_host_closure(status);
+    }
+}

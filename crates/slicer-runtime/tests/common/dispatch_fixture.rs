@@ -7,7 +7,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use slicer_ir::{ConfigView, GCodeIR, GlobalLayer, LayerCollectionIR, PerimeterIR, SliceIR};
+use slicer_ir::{
+    ConfigView, GCodeIR, GlobalLayer, LayerCollectionIR, PerimeterIR, RegionMapIR, SliceIR,
+};
 use slicer_runtime::{
     build_wasm_instance_pool, Blackboard, CompiledModuleBuilder, LayerArena, WasmArtifactMetadata,
     WasmEngine,
@@ -96,6 +98,7 @@ pub struct DispatchFixtureBuilder {
     stage_id: String,
     slice: Option<SliceIR>,
     perimeter: Option<PerimeterIR>,
+    region_map: Option<RegionMapIR>,
     config: ConfigView,
     wat: Option<String>,
     no_wasm: bool,
@@ -111,6 +114,15 @@ impl DispatchFixtureBuilder {
     /// Set the `PerimeterIR` to stage into the arena before dispatch.
     pub fn with_perimeter(mut self, ir: PerimeterIR) -> Self {
         self.perimeter = Some(ir);
+        self
+    }
+
+    /// Commit caller-authored exact model/perimeter config authority at build time.
+    /// Keys must use the base region id and ordered variant chain. No entries are
+    /// inferred from arena products or module config. Without this opt-in, the
+    /// map slot stays uncommitted so callers can install their own map after build.
+    pub fn with_region_map(mut self, ir: RegionMapIR) -> Self {
+        self.region_map = Some(ir);
         self
     }
 
@@ -145,7 +157,7 @@ impl DispatchFixtureBuilder {
             make_default_bundle(&engine, &self.stage_id, self.config)
         };
 
-        let blackboard = Blackboard::new(
+        let mut blackboard = Blackboard::new(
             Arc::new(slicer_ir::MeshIR::default()),
             if self.stage_id.starts_with("Layer::") {
                 1
@@ -155,6 +167,9 @@ impl DispatchFixtureBuilder {
         );
         let mut arena = LayerArena::new();
 
+        if let Some(region_map) = self.region_map {
+            blackboard.commit_region_map(Arc::new(region_map)).unwrap();
+        }
         if let Some(slice) = self.slice {
             arena.set_slice(slice).unwrap();
         }
@@ -178,6 +193,7 @@ pub fn for_stage(stage_id: &str) -> DispatchFixtureBuilder {
         stage_id: stage_id.to_string(),
         slice: None,
         perimeter: None,
+        region_map: None,
         config: ConfigView::from_map(HashMap::new()),
         wat: None,
         no_wasm: false,
@@ -185,6 +201,36 @@ pub fn for_stage(stage_id: &str) -> DispatchFixtureBuilder {
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
+
+/// Author exact selection authority for explicitly supplied slice candidates.
+/// This is opt-in: the builder never infers a map from its staged products.
+pub fn region_map_for_slice(
+    slice: &SliceIR,
+    layer_index: u32,
+    config: slicer_ir::ResolvedConfig,
+) -> RegionMapIR {
+    let mut map = RegionMapIR::default();
+    let config = map.intern_config(config);
+    for region in &slice.regions {
+        map.entries.insert(
+            slicer_ir::RegionKey {
+                global_layer_index: layer_index,
+                object_id: region.object_id.clone(),
+                region_id: if region.variant_chain.is_empty() {
+                    region.region_id
+                } else {
+                    region.region_id / 1_000_000
+                },
+                variant_chain: region.variant_chain.clone(),
+            },
+            slicer_ir::RegionPlan {
+                config,
+                ..Default::default()
+            },
+        );
+    }
+    map
+}
 
 fn make_default_bundle(
     _engine: &Arc<WasmEngine>,

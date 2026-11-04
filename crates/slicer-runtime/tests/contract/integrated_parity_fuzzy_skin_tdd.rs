@@ -78,7 +78,33 @@ fn integrated_parity_fuzzy_skin() {
         ("point_distance".into(), slicer_ir::ConfigValue::Float(0.5)),
         ("apply_to_all".into(), slicer_ir::ConfigValue::Bool(true)),
     ])));
-    let bb = Blackboard::new(Arc::new(MeshIR::default()), 1);
+    let mut bb = Blackboard::new(Arc::new(MeshIR::default()), 1);
+    let mut region_map = slicer_ir::RegionMapIR::default();
+    let config_id = region_map.intern_config(slicer_ir::ResolvedConfig {
+        extensions: config
+            .keys()
+            .into_iter()
+            .map(|key| {
+                let value = config.get(&key).expect("fixture config key").clone();
+                (key, value)
+            })
+            .collect(),
+        ..Default::default()
+    });
+    region_map.entries.insert(
+        slicer_ir::RegionKey {
+            global_layer_index: 0,
+            object_id: "parity-object".into(),
+            region_id: 0,
+            variant_chain: Vec::new(),
+        },
+        slicer_ir::RegionPlan {
+            config: config_id,
+            ..Default::default()
+        },
+    );
+    bb.commit_region_map(Arc::new(region_map))
+        .expect("commit fixture region map");
     let mut wasm_arena = LayerArena::new();
     let mut native_arena = LayerArena::new();
     wasm_arena
@@ -119,13 +145,37 @@ fn integrated_parity_fuzzy_skin() {
             config: Arc::clone(&config),
             native_entry: FuzzySkinModule::__slicer_native_entry(),
         },
-        |dispatcher, native_live, wasm_live| {
+        |dispatcher, native_live, wasm_live, native_module, wasm_module| {
+            let wasm_index = crate::common::selection_for_module(
+                &stage,
+                &layer,
+                wasm_module,
+                &bb,
+                None,
+                wasm_arena.perimeter(),
+            )
+            .expect("build wasm selection index");
+            let native_index = crate::common::selection_for_module(
+                &stage,
+                &layer,
+                native_module,
+                &bb,
+                None,
+                native_arena.perimeter(),
+            )
+            .expect("build native selection index");
             let wasm = LayerStageRunner::run_stage(
                 dispatcher,
                 &stage,
                 &layer,
                 wasm_live,
-                crate::common::layer_input(&bb, &wasm_arena),
+                crate::common::layer_input(
+                    &bb,
+                    &wasm_arena,
+                    wasm_index
+                        .selection_for(layer.index, wasm_module.module_id())
+                        .expect("bound wasm selection"),
+                ),
             )
             .expect("wasm dispatch")
             .expect("wasm commit");
@@ -134,7 +184,13 @@ fn integrated_parity_fuzzy_skin() {
                 &stage,
                 &layer,
                 native_live,
-                crate::common::layer_input(&bb, &native_arena),
+                crate::common::layer_input(
+                    &bb,
+                    &native_arena,
+                    native_index
+                        .selection_for(layer.index, native_module.module_id())
+                        .expect("bound native selection"),
+                ),
             )
             .expect("native dispatch")
             .expect("native commit");
@@ -184,12 +240,24 @@ fn native_fuzzy_skin_without_committed_perimeter_does_not_fatal() {
         ..Default::default()
     };
     let stage: StageId = "Layer::PerimetersPostProcess".into();
+    let index = crate::common::selection_for_module(
+        &stage,
+        &layer,
+        &native_module,
+        &bb,
+        None,
+        native_arena.perimeter(),
+    )
+    .expect("build native selection index");
+    let selection = index
+        .selection_for(layer.index, native_module.module_id())
+        .expect("bound native selection");
     let commit = LayerStageRunner::run_stage(
         &dispatcher,
         &stage,
         &layer,
         &native_live,
-        crate::common::layer_input(&bb, &native_arena),
+        crate::common::layer_input(&bb, &native_arena, selection),
     )
     .expect("native dispatch must not fatal on a missing committed perimeter");
     match commit {

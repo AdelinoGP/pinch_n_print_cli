@@ -156,6 +156,7 @@ fn classic_wall_count(config: &ConfigView, layer_index: u32) -> usize {
 fn arachne_config(extra_perimeters: i64) -> ConfigView {
     crate::common::classic_perimeters_baseline()
         .float("line_width", 0.45)
+        .float("resolution", 0.01)
         .float("inner_wall_line_width", BEAD_WIDTH_MM)
         .float("outer_wall_line_width", BEAD_WIDTH_MM)
         .int("wall_count", 2)
@@ -242,6 +243,7 @@ fn arachne_explicit_max_bead_count_override_ignores_extra_perimeters() {
         .float("layer_height", 0.2)
         .float("nozzle_diameter", 0.4)
         .float("line_width", 0.45)
+        .float("resolution", 0.01)
         .float("bridge_line_width", 0.0)
         .float("initial_layer_line_width", 0.0)
         .bool("precise_outer_wall", false)
@@ -289,6 +291,7 @@ fn arachne_extra_perimeters_composes_with_alternate_extra_wall() {
         .float("layer_height", 0.2)
         .float("nozzle_diameter", 0.4)
         .float("line_width", 0.45)
+        .float("resolution", 0.01)
         .float("bridge_line_width", 0.0)
         .float("initial_layer_line_width", 0.0)
         .bool("precise_outer_wall", false)

@@ -2,7 +2,7 @@
 
 ## Execution Rules
 
-Draft only. Do not execute until prerequisites and independent preflight pass. Work in the listed order; each step maps to TASK-575. Use tests first where a production-driver home exists, then the narrowest falsifying check. Intermediate WIT/binding tranche steps may compile only their owned crate; do not claim workspace readiness until the composed adapter gate passes. Do not commit an incomplete tranche. Every test command below uses combined-output tee, pipefail and a nonzero-test assertion; read the saved log rather than rerunning for output.
+Implemented. The packet's activation gate preceded execution; prerequisites #03/#04/#05 are `implemented` and were reconciled against the tree on 2026-10-17. Work proceeded in the listed order; each step maps to TASK-575. Use tests first where a production-driver home exists, then the narrowest falsifying check. Intermediate WIT/binding tranche steps may compile only their owned crate; do not claim workspace readiness until the composed adapter gate passes. Do not commit an incomplete tranche. Every test command below uses combined-output tee, pipefail and a nonzero-test assertion; read the saved log rather than rerunning for output.
 
 ## Steps
 
@@ -30,14 +30,14 @@ Draft only. Do not execute until prerequisites and independent preflight pass. W
 
 ### Step 3 — canonical typed projection WIT
 - Task IDs: TASK-575. Objective: define imported sink/resource/records and optional resource presence in the preparation capability.
-- Precondition: existing accepted #03/#04 preparation WIT composition. Postcondition: design's exact kebab-case shapes use canonical point2/ex-polygon identity.
+- Precondition: existing accepted #03/#04 preparation WIT composition (shipped; satisfied). Postcondition: design's exact kebab-case shapes use canonical geometry identity; only the imported `preparation-types` interface changes, the package version stays `@1.0.0`, and `ex-polygon` is not re-imported.
 - Allowed reads: `crates/slicer-schema/wit/deps/types.wit` geometry interface, preparation-types resource section and #02 compiled composition result.
 - Allowed edits (1): `crates/slicer-schema/wit/deps/layer-preparation/layer-preparation.wit`.
 - Out of bounds: all ordinary WIT deps/worlds, stage package versions and shared IR.
-- Blast radius: only unreleased preparation draft extends; generated host/SDK handlers are reconciled in Steps4–7 before whole binding tranche gate; no unrelated version assertions change. Dispatch: typed resource identity review, SNIPPETS <=3 x30 lines.
+- Blast radius: only the imported `preparation-types` interface of the shipped `@1.0.0` package extends; the exported `prepare` interface, ordinary WIT worlds and stage package versions are unchanged; generated host/SDK handlers are reconciled in Steps4–7 before the whole binding tranche gate. Dispatch: typed resource identity review, SNIPPETS <=3 x30 lines.
 - Context S. Authorities: docs03 canonical WIT source, approved plan optional sink and ADR-0066; no Orca refs.
 - Verification: `cargo check -p slicer-schema --all-targets`; composed compile/instantiate exit remains Step9, not falsely claimed here.
-- Exit: canonical records are exact and no ordinary dependency changed; malformed typed shape is rejected by WIT parsing/build in the tranche gate, not tolerated as opaque bytes.
+- Exit: canonical records are exact and no ordinary dependency changed; `point2` is added to the existing `slicer:types/geometry` use list, `ex-polygon` remains the single `ir-handles` re-export, and the exported `prepare` signature is untouched; malformed typed shape is rejected by WIT parsing/build in the tranche gate, not tolerated as opaque bytes. Existing preparation guests are expected to link unchanged because only a host-provided imported interface grew; Step 9's composed gate is the proof, and a link failure there means the version decision was wrong and must be revisited as a `@1.1.0` package plus a manifest compatibility rule.
 
 ### Step 4 — actual atomic store attachment
 - Task IDs: TASK-575. Objective: implement owner-bound typed staging, checked validation, snapshot Arc/accounting and publication wrapper.
@@ -195,7 +195,7 @@ Draft only. Do not execute until prerequisites and independent preflight pass. W
 
 ### Step 17a — normative typed transport and authoring docs
 - Task IDs: TASK-575. Objective: document accepted sink, resource identities and atomicity.
-- Precondition: gateA/gateB behavior passed. Postcondition: exact transport and SDK headings from AC-8 reflect actual types.
+- Precondition: gateA/gateB behavior passed. Postcondition: exact transport and SDK headings from AC-8 reflect actual types and the imported-interface-only `@1.0.0` version policy.
 - Allowed reads: docs03 canonical types/manifest sections, docs05 preparation authoring/lifecycle windows, implemented sink signatures.
 - Allowed edits (2): `docs/03_wit_and_manifest.md`, `docs/05_module_sdk.md`.
 - Out of bounds: ADRs/source plan/backlog/producer packet docs and unrelated normative sections.
@@ -226,4 +226,4 @@ Aggregate M working set, largest step M; bounded sequential tranches avoid retai
 
 ## Packet Completion Gate and Acceptance Ceremony
 
-Both internal gates pass, all AC exact commands run nonzero tests, docs match actual APIs, guest freshness is exit0, cargo build --tests/check/clippy and literal/test-quality matrix complete. Re-dispatch every AC/gate with FACT pass/fail and bounded failures; review the full saved result summaries for multi-target runs. Record gaps/unintended effects and stop if any remains unresolved. No workspace test command is authorized here. No backlog/queue/status edit occurs in this authoring session; orchestrator owns subsequent generation state and activation/closure authority.
+Both internal gates pass, all AC exact commands run nonzero tests, docs match actual APIs, guest freshness is exit0, cargo build --tests/check/clippy and literal/test-quality matrix complete. Re-dispatch every AC/gate with FACT pass/fail and bounded failures; review the full saved result summaries for multi-target runs. Record gaps/unintended effects and stop if any remains unresolved. No workspace test command is authorized here. This authoring session made no backlog/queue/status edit; closure updated only the TASK-575 backlog row and this packet's status/deviations.

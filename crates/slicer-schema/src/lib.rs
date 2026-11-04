@@ -10,6 +10,9 @@
 
 #![warn(missing_docs)]
 
+/// Declaration and transport contracts for the opt-in preparation capability.
+pub mod preparation;
+
 // ── WIT world package names ────────────────────────────────────────────
 //
 // These are the sole source of the world identifiers used across the
@@ -125,7 +128,7 @@ pub const STAGES: &[StageSpec] = &[
         tier_id: TIER_LAYER,
         trait_name: "LayerModule",
         wit_dir: "layer-infill",
-        wit_package: "slicer:layer-infill@1.0.0",
+        wit_package: "slicer:layer-infill@2.0.0",
         wit_interface: "infill",
         wit_world: "infill-module",
     },
@@ -147,7 +150,7 @@ pub const STAGES: &[StageSpec] = &[
         tier_id: TIER_LAYER,
         trait_name: "LayerModule",
         wit_dir: "layer-support",
-        wit_package: "slicer:layer-support@1.0.0",
+        wit_package: "slicer:layer-support@2.0.0",
         wit_interface: "support",
         wit_world: "support-module",
     },
@@ -237,7 +240,7 @@ pub const STAGES: &[StageSpec] = &[
         tier_id: TIER_PREPASS,
         trait_name: "PrepassModule",
         wit_dir: "prepass-support-geometry",
-        wit_package: "slicer:prepass-support-geometry@1.0.0",
+        wit_package: "slicer:prepass-support-geometry@2.0.0",
         wit_interface: "support-geometry",
         wit_world: "support-geometry-module",
     },
@@ -318,6 +321,52 @@ pub struct SlicerModuleSchema {
     /// Complete ordered export surface: the detected stage export, if any
     /// (0 or 1 entries).
     pub exports: &'static [ExportBinding],
+}
+
+/// Preparation capability package with its pinned version.
+///
+/// One constant for the macros' `wit_package`, xtask's package-name checks and
+/// the host/scheduler interface checks.
+pub const PREPARATION_PACKAGE: &str = "slicer:layer-preparation@1.0.0";
+
+/// Preparation capability interface (package/interface with version).
+pub const PREPARATION_INTERFACE: &str = "slicer:layer-preparation/prepare@1.0.0";
+
+/// Qualified export for the opt-in private Layer preparation capability.
+pub const PREPARATION_QUALIFIED_EXPORT: &str =
+    "slicer:layer-preparation/prepare@1.0.0#prepare-print";
+
+#[cfg(test)]
+mod preparation_identity_tests {
+    use super::{PREPARATION_INTERFACE, PREPARATION_PACKAGE, PREPARATION_QUALIFIED_EXPORT};
+
+    #[test]
+    fn preparation_package_interface_and_export_agree() {
+        assert_eq!(
+            PREPARATION_PACKAGE.split('@').next(),
+            PREPARATION_INTERFACE.split('/').next(),
+            "the package and interface must name the same package"
+        );
+        assert!(
+            PREPARATION_QUALIFIED_EXPORT.starts_with(PREPARATION_INTERFACE),
+            "the qualified export must be the interface plus an export name"
+        );
+    }
+}
+
+/// Compile-time sidecar for a module's opt-in preparation export surface.
+/// Preparation composes with an ordinary Layer world; it is not a stage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PreparationExportSchema {
+    /// Separately versioned capability package, e.g.
+    /// `"slicer:layer-preparation@1.0.0"`.
+    pub wit_package: &'static str,
+    /// Ordinary stage world being composed, e.g. `"perimeters-module"`.
+    pub ordinary_world: &'static str,
+    /// Composed capability world, e.g. `"prepared-perimeters-module"`.
+    pub wit_world: &'static str,
+    /// Qualified preparation function export ([`PREPARATION_QUALIFIED_EXPORT`]).
+    pub qualified_export: &'static str,
 }
 
 // region: region-split priorities

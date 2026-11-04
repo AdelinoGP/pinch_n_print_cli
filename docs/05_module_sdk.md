@@ -961,11 +961,357 @@ the active region (packet 179); they must not assume a fixed 0.4 mm width.
 No state is retained across calls. Per-print state lives in the prepass tier +
 Blackboard (ADR-0029).
 
+The SDK retains neither module values nor prepared plans between calls; prepared-plan storage is host-owned.
+
+## Prepared-plan transport and native facade
+
+Row 03 adds opaque prepared-plan transport without retaining module instances
+or changing ordinary per-call reconstruction. In `crates/slicer-sdk/src/preparation.rs`,
+the additive non-WASM constructors adapt native host capabilities:
+
+- `PrintPreparationInput::from_host_reader` accepts an `Arc` reader callback
+  taking `(offset, max_bytes)` and returning bytes or `PreparationTransportError`.
+- `PreparedPlanOutput::from_host_writer` accepts an `Arc` writer callback
+  taking a name and complete byte slice, returning success or a transport error.
+- `PreparedPlanView::from_host_view` wraps an
+  `Arc<dyn PreparedPlanRead + Send + Sync>`; resource validity remains the
+  host's responsibility.
+
+The read traits in the same SDK file are `PreparedPlanRead`, with
+`check_ready` and `open`, and `PreparedPieceRead`, with `len`, `is_empty`, and
+bounded `read(offset, max_bytes)`. `open` returns an optional
+`Arc<dyn PreparedPieceRead + Send + Sync>` without interpreting the bytes.
+`PreparedPlanView::require(name)` converts optional absence to fatal
+`ModuleError` code `57401`, with message
+`required preparation piece missing: <name>`. It does not decode payloads;
+module-owned decoders retain their own errors (for example, the transport
+fixture's malformed-payload code `57403`).
+
+`with_prepared_plan_view(view, call)` binds a native host read facade for one
+synchronous call. It delegates to the existing scope guard, restoring any
+previous thread-local binding on both return and unwind, including nested
+calls; call-scoped wrappers cannot keep the expired scope alive. The
+pre-existing `with_prepared_plan` signature is unchanged:
+`with_prepared_plan<R>(current: impl Fn() -> Result<PreparedPlanCallbacks, PreparationError> + 'static, body: impl FnOnce() -> R) -> R`.
+
+Host adapters freeze the selected artifact and its declaration rather than a
+live module: `freeze_native` (`crates/slicer-wasm-host/src/preparation_native.rs`)
+keeps the prepared/ordinary native entry pairing, while `freeze_wasm`
+(`crates/slicer-wasm-host/src/preparation.rs`) validates the selected
+component's capability and ordinary stage. `FrozenPreparationBinding::with_native_plan`
+(`crates/slicer-wasm-host/src/preparation_native.rs`) supplies the paired ordinary
+entry under a fresh owner-bound read scope; `FrozenPreparationBinding::with_wasm_plan`
+(`crates/slicer-wasm-host/src/preparation.rs`) supplies the frozen component
+and a fresh call-local store. Both check owner authority and hold active-call
+guards. These are explicit mechanisms only, not scheduling or module selection.
+
+Transport errors map one-to-one between schema `PreparationTransportError`,
+SDK `PreparationError` (`crates/slicer-sdk/src/preparation.rs`), and the WIT
+variants via `boundary` (`crates/slicer-wasm-host/src/preparation_host.rs`):
+
+| Rust variant | WIT variant |
+|---|---|
+| `NotReady` | `not-ready` |
+| `InvalidName` | `invalid-name` |
+| `DuplicateName` | `duplicate-name` |
+| `PoisonedOutput` | `poisoned-output` |
+| `RangeError` | `range-error` |
+| `ArithmeticOverflow` | `arithmetic-overflow` |
+| `AccessDenied` | `access-denied` |
+
+Row 03 does not supply row-04 typed input projections, row-05 scheduling,
+cancellation or release orchestration, or row-06 diagnostic geometry.
+
+### Prepared plan lifetime (Normative — TASK-574 row 5)
+
+Ordinary `from_config` reconstruction remains per call: preparation does not
+retain a module value between Layer invocations. Each ordinary native or
+component call receives fresh owner-bound view/resource adapters over the
+same immutable print-private plan. Call scopes expire on return or unwind;
+the host retains storage until all active calls and the applicable anchored
+host closure finish, then disposes it.
+The public SDK `dispose_prepared_plan` entry delegates through a callback bound to the runtime's `PrintPreparationScope::dispose`, returning typed `PreparationFailure::Busy` during an active call without waiting, retrying, or forcing revocation, then succeeding after the runtime caller joins.
+
+Reads are cursorless: each request supplies its own offset and bound.
+Concurrent immutable reads do not share cursor state and remain subject to
+the module's existing parallel-safety limits; preparation grants no new
+permission for parallel execution.
+
+Ready-empty is ready, not an unready plan. `PreparedPlanView::open` may return
+`None` for an optional missing piece; `PreparedPlanView::require` converts a
+missing required piece to the module's fatal `ModuleError` code `57401`.
+A present malformed piece is not absence: its module-owned decoder returns
+its own error. Modules own all plan-payload decoding; the host transports
+opaque bytes and never decodes their format.
+
+### Preparation capability pilot authoring
+
+**PILOT evidence only — not production availability.** This controlled-fixture
+opt-in preserves the single-stage-per-impl constraint and ordinary per-Layer
+`from_config` reconstruction; it does not retain a live module between calls
+or activate production preparation.
+
+Implement the required
+`LayerPreparation::prepare_print(input: &PrintPreparationInput, output: &mut PreparedPlanOutput) -> Result<(), ModuleError>`
+(`crates/slicer-sdk/src/preparation.rs`), which has no default body and no
+print-wide constructor configuration. Apply `#[slicer_module(preparation)]`
+to the single ordinary `impl LayerModule for T`; plain `#[slicer_module]`
+is unchanged. Omitting `prepare_print` while opting in fails compilation,
+as proved by the pilot compile matrix's negative case.
+
+The `PrintPreparationInput`, `PreparedPlanOutput`, `PreparedPlanView`, and
+`PreparedPiece` wrappers (`crates/slicer-sdk/src/preparation.rs`) expose the
+pilot transport. `PreparedPlanView::current()` yields a fresh call-local read
+facade; `with_prepared_plan` (`crates/slicer-sdk/src/preparation.rs`) provides
+an unwind-safe, thread-local scoped binding restored on return and unwind.
+The macro generates `T::__slicer_prepared_native_entry() -> NativePreparedStageEntry`
+on non-WASM targets and `T::__SLICER_PREPARATION_SCHEMA: PreparationExportSchema`
+(`crates/slicer-macros/src/lib.rs`), while preserving ordinary reconstruction
+per Layer call.
+
+Two real authoring fixtures are registered for guest discovery:
+
+- `crates/slicer-wasm-host/test-guests/preparation-pilot-infill`: module-owned
+  numeric codec, publishing `numbers` and an empty `π`, then emitting
+  two-point sparse-infill paths.
+- `crates/slicer-wasm-host/test-guests/preparation-pilot-path`: module-owned
+  text codec, interpreting `alpha|beta` as comments `alpha` and `beta`.
+
+These guest crates are native dev-dependencies of `slicer-wasm-host` and root
+workspace members: they **must not** declare a `[workspace]` sentinel. A
+sentinel combined with a member path dependency causes the "multiple workspace
+roots" manifest error. Non-dev-dependency guests keep their sentinel.
+
+Executed evidence: `cargo test -p slicer-wasm-host --test contract preparation_pilot_`
+passed 9 tests in `preparation_capability_pilot_tdd`
+(`crates/slicer-wasm-host/tests/contract/preparation_capability_pilot_tdd.rs`).
+Within that module's `preparation_pilot_stage_surface`, the observed stage
+set exactly equalled the 9 runtime-derived Layer rows; 18 plain/prepared
+scratch crates compiled across native and componentized WASM, covering
+36 configurations, with the missing-method opt-in rejected. Fresh-instance
+WASM and native consumers, isolation, publication failures, bounded ranges,
+and ordinary-guest compatibility were also covered. The scoped store's
+release after consumer unwinding was proved with weak references.
+
+**Scope boundary:** this is controlled-fixture evidence only. Row 03 still
+owns production declaration parsing/validation and normalized host storage
+(test-local staging and `read-fixture` are not its production API). Row 04
+owns typed whole-print input projections; row 05 owns scheduling, selection,
+override, and cancellation lifecycle activation; row 06 owns diagnostic/visual
+projections. None is marked complete here. No lightning algorithm, migration,
+or parity claim is made. Allocator/process overhead and process peak memory
+are **UNMEASURED**; observed durations are evidence, not a bound, and no
+latency acceptance threshold is claimed.
+
+### Optional preparation projection sink (Normative)
+
+`PreparedPlanOutput::projection()` is the only acquisition point for the
+optional diagnostic sink:
+
+```rust
+pub fn projection(
+    &self,
+) -> Result<Option<PreparationProjectionOutput>, PreparationProjectionError>
+```
+
+Sink presence is ordinary data returned by the existing host-provided
+`prepared-plan-output` resource, never an optional WIT export: no guest exports
+a projection interface, no manifest key enables one, and the `prepare` export
+signature is unchanged. When the invocation requested no diagnostic views, the
+method returns `Ok(None)`; it allocates no diagnostic collections, creates no
+staging, and leaves `PreparationDiagnosticAccounting` at zero. A module may call
+`projection()` unconditionally and still publish only opaque pieces.
+
+The SDK types live in `crates/slicer-sdk/src/preparation_visual.rs` and are
+re-exported from `slicer_sdk::preparation`:
+
+- `PreparationProjectionScene { scene_id: String, view: String, classes:
+  Vec<String>, primitives: Vec<PreparationProjectionPrimitive> }` is one
+  completed whole-print diagnostic view.
+- `PreparationProjectionPrimitive { id: String, global_layer_index: u32,
+  class: String, label: Option<String>, geometry:
+  PreparationProjectionGeometry }` is one labeled primitive on a committed
+  global schedule layer.
+- `PreparationProjectionGeometry::{Point(Point2), Polyline(Vec<Point2>),
+  Polygon { polygon: ExPolygon, filled: bool }}` is typed XY geometry in exact
+  integer units (1 unit = 100 nm); `Point2`/`ExPolygon` are `slicer_ir`
+  geometry, never private algorithm plan types.
+- `PreparationProjectionWrite: Send + Sync` is the host-owned writer trait:
+  `requested_views(&self) -> Result<Vec<String>, PreparationProjectionError>`
+  and `publish(&self, scene: &PreparationProjectionScene) ->
+  Result<(), PreparationProjectionError>`.
+- `PreparationProjectionOutput` is the private-field, call-local facade with the
+  same two methods. Native hosts adapt a writer through
+  `PreparationProjectionOutput::from_host_writer(Arc<dyn
+  PreparationProjectionWrite + Send + Sync>)`; the WASM path uses
+  `from_callbacks`, which retains no raw resource index.
+- `PreparationProjectionError` is re-exported from `slicer_sdk::preparation`; it
+  is defined in `crates/slicer-schema/src/preparation.rs` with variants
+  `AccessDenied`, `NotRequested`, `UndeclaredView`, `DuplicateScene`,
+  `MissingScene`, `InvalidReference`, `InvalidShape`, `InvalidCoordinate`,
+  `ArithmeticOverflow`, and `PoisonedOutput`.
+
+`requested_views()` returns the exact requested view names, preserving UTF-8
+identities and order; it never substitutes an empty-success fallback. It returns
+`NotRequested` when no projection was requested for the invocation,
+`AccessDenied` when the sink is foreign, disposed, or used outside its owning
+call, and `PoisonedOutput` after an earlier rejection. `publish()` returns
+`UndeclaredView` for a view not declared by the owner, `NotRequested` for a
+declared view not requested this run, `DuplicateScene` for a second scene for
+the same view, `InvalidReference` for empty/duplicate identities or unknown
+class/layer references, `InvalidShape`/`InvalidCoordinate` for invalid geometry,
+and `ArithmeticOverflow` for checked staging overflow. `MissingScene` is raised
+by the host at transaction finish, not by `publish()`: a requested view with no
+scene still fails publication, including when the module never called
+`projection()`. None of these errors use the opaque-plan `PreparationError`
+transport domain.
+
+A rejected `publish()` or `requested_views()` is sticky. The host records the
+first `PreparationProjectionError` in the preparation transaction and poisons
+the output; catching the typed error cannot clear it. Later calls through the
+same sink return `PoisonedOutput`, and `finish` rejects the invocation even if
+the module later publishes a valid scene. `AccessDenied` for a foreign owner is
+checked before the transaction is touched and does not poison that owner's
+output. An original module `ModuleError` or trap remains the reported failure
+when it occurs alongside a caught sink poison.
+
+The host validates and commits the typed DTO. It never decodes the private plan
+payload: `PreparedPlanOutput::put` transports opaque module-owned bytes, and
+`requested_views()`/`publish()` carry only diagnostic identity and geometry.
+Module-owned payload codecs remain module-owned; see "Prepared plan lifetime".
+
+A minimal authoring shape:
+
+```rust
+use slicer_ir::{ExPolygon, Point2, Polygon};
+use slicer_sdk::error::ModuleError;
+use slicer_sdk::preparation::{
+    LayerPreparation, PreparationProjectionError, PreparationProjectionGeometry,
+    PreparationProjectionPrimitive, PreparationProjectionScene, PreparedPlanOutput,
+    PrintPreparationInput,
+};
+
+fn projection_error(error: PreparationProjectionError) -> ModuleError {
+    ModuleError::fatal(57504, format!("preparation projection: {error:?}"))
+}
+
+impl LayerPreparation for MyModule {
+    fn prepare_print(
+        _input: &PrintPreparationInput,
+        output: &mut PreparedPlanOutput,
+    ) -> Result<(), ModuleError> {
+        output.put("plan", b"module-owned-plan-bytes")?;
+
+        if let Some(sink) = output.projection().map_err(projection_error)? {
+            let requested = sink.requested_views().map_err(projection_error)?;
+            if requested.iter().any(|view| view == "xy") {
+                let scene = PreparationProjectionScene {
+                    scene_id: "final".into(),
+                    view: "xy".into(),
+                    classes: vec!["domains".into()],
+                    primitives: vec![PreparationProjectionPrimitive {
+                        id: "domain_a".into(),
+                        // Must name an index in the committed layer schedule.
+                        global_layer_index: 0,
+                        class: "domains".into(),
+                        label: Some("domain".into()),
+                        geometry: PreparationProjectionGeometry::Polygon {
+                            polygon: ExPolygon {
+                                contour: Polygon {
+                                    points: vec![
+                                        Point2 { x: 0, y: 0 },
+                                        Point2 { x: 40_000, y: 0 },
+                                        Point2 { x: 40_000, y: 40_000 },
+                                        Point2 { x: 0, y: 40_000 },
+                                    ],
+                                },
+                                holes: vec![],
+                            },
+                            filled: true,
+                        },
+                    }],
+                };
+                sink.publish(&scene).map_err(projection_error)?;
+            }
+        }
+        Ok(())
+    }
+}
+```
+
 ### Stable Entity IDs (packet 39)
 
 Each `PrintEntity` and `TravelMove` carries a `u64 entity_id` populated at construction by a per-layer `LayerEntityIdGen`. Module producers (perimeter, infill, support modules) receive the generator via the per-layer context and call `id_gen.next()` once per entity. Finalization receives fresh IDs from the host at insert time. Travel anchors reference entities by `entity_id`, not positional index, so finalization mutations cannot invalidate them. See `docs/02_ir_schemas.md` IR 10 "Stable entity IDs" for the full contract.
 
 ---
+
+### Lightning prepared module consumption
+
+The legacy path is retired.
+The selected `com.core.lightning-infill` artifact plans during `prepare_print` from typed committed
+regions, region configs, and layer plan, publishing one module-private `lightning-layer-{global_layer_index}` piece per schedule layer.
+Ordinary `Layer::Infill` consumers require and decode their own layer's piece through the module's own decoder;
+they no longer use the deleted `lightning_tree_segments_for`/`with_lightning_tree_ir` SDK accessors.
+`slicer_integrated_modules::prepared_native_entries()` returns the module's generated
+`NativePreparedStageEntry`/`PreparationExportSchema` pair for AC-2's native arm.
+The advanced, default-`none` `prepared_plan_diagnostic` key accepts `none`, `missing_piece`,
+`malformed_piece`, `unsupported_version`, and `empty_plan`.
+It is a diagnostic publication mode applied only after planning and never reaches the kernel.
+The plan remains module-private `KernelPlan`/`PlanEntry`, never public IR.
+This records behavioural equivalence to the pre-migration producer: ownership moves with no intended output change,
+not a canonical-parity claim; the recorded Gate A/B outcomes remain unchanged.
+
+## Preparation read context and selected sources
+
+`slicer_sdk::preparation::PreparationTargetSource` preserves these source tags:
+- `Model { key, members }`, using `PreparationRegionKey` identities.
+- `SupportCarrier { entry_index, object_id, region_id, variant_chain, family, demand_ids, body_ids, provenance, anchor_layer_index }`.
+- `Raft { global_layer_index }`.
+- `AnchoredStage { anchor_layer_index }`.
+
+`PreparationSelectedTarget` carries `global_layer_index`, `stage_id`, `invoke`,
+the source, filtered `config`, `held_claims`, `authored_coloring`, and
+`resolved_role_tool: Option<u32>`. Sources describe eligible input contexts, never
+predicted Layer, perimeter, or support output. Whole-print read context remains
+separate from selected-target context; carrier `entry_index` is never renumbered.
+`PreparationPaintValue`, `PreparationVariantChain`, and `PreparationRegionKey`
+(`crates/slicer-sdk/src/preparation_input.rs`) preserve lossless identities.
+The four bidirectional `From<&…>` implementations convert `PreparationPaintValue`
+and `PreparationRegionKey` to/from their `slicer_ir` counterparts, including
+variant chains: `Custom` strings remain byte-exact and scalar signed-zero bits
+retain their identity. Ordinary shared WIT is unchanged.
+Support-plan entry `variant_chain` is projected losslessly from native
+`SupportPlanEntry::variant_chain`.
+
+The 15 `PrintPreparationInput` reads (`crates/slicer-sdk/src/preparation.rs`)
+all take `&self`; signatures below abbreviate only `PreparationInputError` as `E`:
+
+| Method and arguments | Return type |
+|---|---|
+| `layer_count()` | `Result<u64, E>` |
+| `layers(offset: u64, max_items: u64)` | `Result<Vec<PreparationLayer>, E>` |
+| `regions(layer_index: u32, offset: u64, max_items: u64)` | `Result<Vec<PreparationRegion>, E>` |
+| `region_configs(layer_index: u32, offset: u64, max_items: u64)` | `Result<Vec<PreparationRegionConfig>, E>` |
+| `surface_objects(offset: u64, max_items: u64)` | `Result<Option<Vec<PreparationSurfaceObject>>, E>` |
+| `surface_layers(layer_index: u32, offset: u64, max_items: u64)` | `Result<Option<Vec<PreparationSurfaceLayer>>, E>` |
+| `mesh_objects(offset: u64, max_items: u64)` | `Result<Vec<PreparationMeshObject>, E>` |
+| `mesh_vertices(object_id: &str, offset: u64, max_items: u64)` | `Result<Vec<slicer_ir::Point3>, E>` |
+| `mesh_triangles(object_id: &str, offset: u64, max_items: u64)` | `Result<Vec<(u32, u32, u32)>, E>` |
+| `mesh_queries(requests: &[PreparationMeshQuery])` | `Result<Vec<PreparationMeshQueryResult>, E>` |
+| `seams(layer_index: u32, offset: u64, max_items: u64)` | `Result<Option<Vec<PreparationSeam>>, E>` |
+| `support_analysis(offset: u64, max_items: u64)` | `Result<Option<PreparationSupportAnalysisBatch>, E>` |
+| `support_geometry(offset: u64, max_items: u64)` | `Result<Option<PreparationSupportGeometryBatch>, E>` |
+| `support_plan(offset: u64, max_items: u64)` | `Result<Option<PreparationSupportPlanBatch>, E>` |
+| `selected_targets(layer_index: u32, offset: u64, max_items: u64)` | `Result<Vec<PreparationSelectedTarget>, E>` |
+
+Offsets are ordinals, not cursors; batches clip to remaining length, while an
+offset beyond length yields `RangeError`. Optional absence stays `None`, distinct
+from present-empty `Some(empty)`. `PrintPreparationRead: Send + Sync` supplies
+the backing through `from_host_input`; WASM glue uses combined
+`from_host_input_with_fixture`, retaining the unchanged row-03 fixture delegate.
+Host `from_committed` (`crates/slicer-wasm-host/src/preparation_input.rs`)
+prevalidates the frozen owner and guard before any invocation. These reads expose
+no Layer-output access and perform no owner payload decoding anywhere.
 
 ## Test Support (slicer-sdk feature)
 

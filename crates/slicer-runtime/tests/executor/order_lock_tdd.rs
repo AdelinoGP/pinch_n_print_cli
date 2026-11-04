@@ -4,7 +4,7 @@
 
 use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, InfillIR, InfillRegion, LayerStageCommit, Point3WithWidth,
-    SemVer,
+    CURRENT_INFILL_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::{apply_for_test, LayerArena, StageApplyContext};
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
@@ -30,11 +30,8 @@ fn path(lock: Option<u64>) -> ExtrusionPath3D {
 
 fn infill(paths: Vec<ExtrusionPath3D>) -> InfillIR {
     InfillIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
+        // Current-behavior output fixture: sources the owning InfillIR constant (V1).
+        schema_version: CURRENT_INFILL_IR_SCHEMA_VERSION,
         global_layer_index: 4,
         regions: vec![InfillRegion {
             sparse_infill: paths,

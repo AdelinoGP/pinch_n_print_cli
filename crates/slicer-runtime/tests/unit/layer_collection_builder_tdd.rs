@@ -691,6 +691,8 @@ fn macro_drain_invokes_host_get_ordered_entities_exactly_once() {
     };
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
     let runner = PerimeterSeedingRunner {
         inner: &dispatcher,
         perimeter: std::sync::Mutex::new(Some(seeded_perimeter)),

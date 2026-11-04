@@ -1,0 +1,10 @@
+# The root .gitignore excludes *.wasm because every core-module / test-guest
+# artifact is normally rebuilt locally by `cargo xtask build-guests`. This file
+# is the deliberate exception: a genuinely pre-built PRE-SPLIT-era component
+# carrying the old pre-@2.0.0 WIT world, used as the immutable negative control
+# by
+# `source_identity_repair_tdd::versioned_query_resources_load_and_old_components_reject`
+# (and witnessed by its committed receipt). Its receipt forbids rebuilding it
+# into compatibility — a clean checkout must run the rejection witness from
+# committed inputs, so re-include it.
+!pre-split-layer-infill.component.wasm

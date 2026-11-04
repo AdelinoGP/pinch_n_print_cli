@@ -115,7 +115,6 @@ fn integrated_parity_traditional_support() {
         support_wedge::square_expolygon(10.0),
     ))
     .expect("commit_support_plan must succeed");
-    let bb = bb;
     let mut wasm_arena = LayerArena::new();
     let mut native_arena = LayerArena::new();
     wasm_arena
@@ -130,6 +129,58 @@ fn integrated_parity_traditional_support() {
         ..Default::default()
     };
     let stage: StageId = "Layer::Support".to_string();
+    let mut region_map = slicer_ir::RegionMapIR::default();
+    let mut resolved = slicer_ir::ResolvedConfig {
+        line_width: 0.4,
+        layer_height: 0.2,
+        ..Default::default()
+    };
+    for (key, value) in config.iter_entries() {
+        if !resolved
+            .apply_cli_key(key, value)
+            .expect("resolve fixture config")
+        {
+            resolved.extensions.insert(key.into(), value.clone());
+        }
+    }
+    let config_id = region_map.intern_config(resolved);
+    for region in &wasm_arena.slice().expect("staged fixture slice").regions {
+        region_map.entries.insert(
+            slicer_ir::RegionKey {
+                global_layer_index: layer.index,
+                object_id: region.object_id.clone(),
+                region_id: if region.variant_chain.is_empty() {
+                    region.region_id
+                } else {
+                    region.region_id / 1_000_000
+                },
+                variant_chain: region.variant_chain.clone(),
+            },
+            slicer_ir::RegionPlan {
+                config: config_id,
+                ..Default::default()
+            },
+        );
+    }
+    bb.commit_region_map(Arc::new(region_map))
+        .expect("commit fixture region map");
+    let selection_module =
+        slicer_runtime::CompiledModuleBuilder::new("com.core.traditional-support")
+            .claims(vec!["support-generator".into()])
+            .config_view(Arc::clone(&config))
+            .build();
+    let selection_index = crate::common::selection_for_module(
+        &stage,
+        &layer,
+        &selection_module,
+        &bb,
+        wasm_arena.slice(),
+        None,
+    )
+    .expect("build fixture selection index");
+    let selection = selection_index
+        .selection_for(layer.index, selection_module.module_id())
+        .expect("fixture layer selection");
     let (native, wasm) = run_integrated_parity(
         IntegratedParitySpec {
             module_id: "com.core.traditional-support".into(),
@@ -156,13 +207,13 @@ fn integrated_parity_traditional_support() {
             config: Arc::clone(&config),
             native_entry: TraditionalSupport::__slicer_native_entry(),
         },
-        |dispatcher, native_live, wasm_live| {
+        |dispatcher, native_live, wasm_live, _native_module, _wasm_module| {
             let wasm = LayerStageRunner::run_stage(
                 dispatcher,
                 &stage,
                 &layer,
                 wasm_live,
-                crate::common::layer_input(&bb, &wasm_arena),
+                crate::common::layer_input(&bb, &wasm_arena, selection),
             )
             .expect("wasm dispatch")
             .expect("wasm commit");
@@ -171,7 +222,7 @@ fn integrated_parity_traditional_support() {
                 &stage,
                 &layer,
                 native_live,
-                crate::common::layer_input(&bb, &native_arena),
+                crate::common::layer_input(&bb, &native_arena, selection),
             )
             .expect("native dispatch")
             .expect("native commit");

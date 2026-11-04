@@ -342,25 +342,26 @@ impl LayerModule for TreeSupport {
             ) = self.pitches_mm(layer_height)?;
 
             // Structural support plans carry semantic regions, not printable
-            // paths. A missing entry means this demand was declined; do not
+            // paths. The lookup is the exact full source identity (object,
+            // source region and ordered variant chain), so a same-number
+            // different-chain sibling cannot lend this region its entries.
+            // A missing entry means this demand was declined; do not
             // resurrect it with the legacy grid-MST filler.
             let planned_entries: Vec<&slicer_ir::SupportPlanEntry> = paint
-                .support_plan()
-                .map(|plan| {
-                    plan.entries
-                        .iter()
-                        .filter(|entry| {
-                            entry.object_id == region.object_id().as_str()
-                                && entry.region_id == *region.region_id()
-                                && (entry.global_layer_index == layer_index as i32
-                                    || (entry.anchor_layer_index == layer_index
-                                        && entry.anchor_z.abs_diff(slicer_ir::mm_to_units(z))
-                                            > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
-                                                as u64))
-                        })
-                        .collect()
+                .support_plan_entries_for(
+                    region.object_id().as_str(),
+                    *region.region_id(),
+                    region.variant_chain(),
+                )
+                .into_iter()
+                .filter(|entry| {
+                    entry.global_layer_index == layer_index as i32
+                        || (entry.anchor_layer_index == layer_index
+                            && entry.anchor_z.abs_diff(slicer_ir::mm_to_units(z))
+                                > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
+                                    as u64)
                 })
-                .unwrap_or_default();
+                .collect();
 
             if planned_entries.is_empty() {
                 continue;

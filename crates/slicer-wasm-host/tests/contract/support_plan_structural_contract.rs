@@ -13,6 +13,8 @@ fn structural_entry() -> SupportPlanEntry {
         global_layer_index: 3,
         object_id: "object-a".into(),
         region_id: "7".into(),
+        // empty is exact, never a wildcard
+        variant_chain: Vec::new(),
         family_id: "tree".into(),
         demand_ids: vec!["demand-1".into()],
         body_ids: vec!["body-1".into()],

@@ -3,7 +3,7 @@
 ## Packet Metadata
 
 - Task: `TASK-574`, partial queue-row-03 coverage; source `docs/07_implementation_status.md`.
-- Status: **draft; no implementation, execution gates, activation or commit**.
+- Status: **active**. Row 02's executable pilot gate was re-derived green on 2026-10-14 (freshness exit 0; 11/11 pilot tests executed and passed; archived pre-edit artifact hash matches ADR-0066), which resolves this packet's former FORWARD-DEP blocker and authorizes implementation. Re-derive that gate via `packet.spec.md` "Prerequisites and Blockers" rather than trusting this line.
 - Approved anchor: `docs/specs/layer-module-preparation-plan.md`, eight-row queue, row 03, dependent on row 02.
 - Aggregate/largest-step context cost: M/M.
 
@@ -92,7 +92,7 @@ Metadata was actually summarized during authoring: `slicer-wasm-host` has no exi
 
 ## Step Completion Expectations
 
-No implementation step begins until row 02's executable pilot and independent preflight permit activation. The production store/resources must exist before transport tests are adopted; the test driver may construct fixtures/calls but must never provide an equivalent staging store, native facade or imported Host implementation. Rows 04–06 extend only published seams. Closure of row 03 does not close the shared backlog TASK-574.
+Row 02's executable pilot gate was re-derived green and this packet is activated (see `packet.spec.md` "Prerequisites and Blockers"). The production store/resources must exist before transport tests are adopted; the test driver may construct fixtures/calls but must never provide an equivalent staging store, native facade or imported Host implementation. Rows 04–06 extend only published seams. Closure of row 03 does not close the shared backlog TASK-574.
 
 ## Context Discipline Notes
 

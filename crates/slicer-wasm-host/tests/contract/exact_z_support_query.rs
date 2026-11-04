@@ -2,7 +2,9 @@
 
 use std::sync::Arc;
 
-use slicer_ir::{IndexedTriangleSet, MeshIR, ObjectMesh, Point3, Transform3d};
+use slicer_ir::{
+    IndexedTriangleSet, MeshIR, ObjectMesh, PaintValue, Point3, SliceIR, SlicedRegion, Transform3d,
+};
 use slicer_wasm_host::exact_z_query::ExactZQueryService;
 
 fn cube_mesh() -> MeshIR {
@@ -71,7 +73,30 @@ fn cube_mesh() -> MeshIR {
 #[test]
 pub fn exact_z_support_query() {
     let service = ExactZQueryService::new(Arc::new(cube_mesh()));
-    let first = service.query("object-a", 7, 4.321).expect("query");
+    // Authoritative committed SOURCE row: the query identity (object id, region
+    // id, ordered variant chain, physical Z) is derived from the committed
+    // `SliceIR` region instead of fabricated literals.
+    let source = SliceIR {
+        global_layer_index: 7,
+        z: 4.321,
+        regions: vec![SlicedRegion {
+            object_id: "object-a".to_string(),
+            region_id: 7,
+            variant_chain: vec![("wall".to_string(), PaintValue::ToolIndex(1))],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let region = &source.regions[0];
+
+    let first = service
+        .query(
+            &region.object_id,
+            region.region_id,
+            &region.variant_chain,
+            source.z,
+        )
+        .expect("query");
 
     assert_eq!(first.z_units, 43_210);
     assert!(!first.occupancy.is_empty(), "occupancy at intermediate Z");
@@ -79,7 +104,14 @@ pub fn exact_z_support_query() {
     assert!(!first.termination_surfaces.is_empty(), "plate termination");
     assert!(!first.baseline_envelope.is_empty(), "baseline envelope");
 
-    let second = service.query("object-a", 7, 4.321).expect("cached query");
+    let second = service
+        .query(
+            &region.object_id,
+            region.region_id,
+            &region.variant_chain,
+            source.z,
+        )
+        .expect("cached query");
     assert!(
         Arc::ptr_eq(&first, &second),
         "identical inputs use immutable cache"
@@ -96,13 +128,13 @@ pub fn exact_z_memoizes_z_independent_terms_per_object() {
     mesh.objects.push(neighbouring);
     let service = ExactZQueryService::new(Arc::new(mesh));
 
-    let low = service.query("object-a", 7, 4.321).expect("query");
+    let low = service.query("object-a", 7, &[], 4.321).expect("query");
     assert_eq!(
         service.geometry_build_count(),
         1,
         "first query builds the object's z-independent terms"
     );
-    let above = service.query("object-a", 7, 11.0).expect("second Z");
+    let above = service.query("object-a", 7, &[], 11.0).expect("second Z");
     assert_eq!(
         service.geometry_build_count(),
         1,
@@ -118,7 +150,9 @@ pub fn exact_z_memoizes_z_independent_terms_per_object() {
         "requested-Z occupancy still tracks the requested Z"
     );
 
-    let other = service.query("object-b", 7, 4.321).expect("other object");
+    let other = service
+        .query("object-b", 7, &[], 4.321)
+        .expect("other object");
     assert_eq!(
         service.geometry_build_count(),
         2,
@@ -129,7 +163,7 @@ pub fn exact_z_memoizes_z_independent_terms_per_object() {
         "one object's plate is never shared with another object"
     );
 
-    let third = service.query("object-a", 7, 8.0).expect("third Z");
+    let third = service.query("object-a", 7, &[], 8.0).expect("third Z");
     assert_eq!(service.geometry_build_count(), 2);
     assert_eq!(third.termination_surfaces, low.termination_surfaces);
 }
@@ -150,7 +184,7 @@ pub fn prefetched_cross_sections_match_the_single_z_queries() {
         .iter()
         .map(|z| {
             single
-                .query("object-a", 7, *z)
+                .query("object-a", 7, &[], *z)
                 .expect("single-Z query")
                 .occupancy
                 .clone()
@@ -165,7 +199,9 @@ pub fn prefetched_cross_sections_match_the_single_z_queries() {
     );
 
     for (z, want) in zs.iter().zip(&expected) {
-        let got = batched.query("object-a", 7, *z).expect("batched query");
+        let got = batched
+            .query("object-a", 7, &[], *z)
+            .expect("batched query");
         assert_eq!(
             &got.occupancy, want,
             "prefetched cross-section at Z={z} must equal the single-Z result"
@@ -185,7 +221,7 @@ pub fn prefetch_of_an_unknown_object_leaves_the_query_contract_untouched() {
         "an unknown object must not publish geometry terms"
     );
     assert!(
-        service.query("object-missing", 7, 1.0).is_err(),
+        service.query("object-missing", 7, &[], 1.0).is_err(),
         "the query path still reports the unknown object"
     );
 }

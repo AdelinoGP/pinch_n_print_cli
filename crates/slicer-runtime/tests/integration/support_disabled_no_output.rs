@@ -66,6 +66,8 @@ pub fn support_disabled_no_output() {
         }],
         ..Default::default()
     };
+    slicer_runtime::build_and_commit_layer_selection_index(&layer_plan, &mut blackboard)
+        .expect("commit layer selection index for disabled support");
     let support_commit = Arc::new(Mutex::new(None));
     let (layers, _audits, anchored) = execute_per_layer_with_anchored_events(
         &layer_plan,

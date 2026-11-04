@@ -1,4 +1,4 @@
-package slicer:ir-handles;
+package slicer:ir-handles@1.0.0;
 
 interface ir-handles {
     use slicer:types/geometry.{ex-polygon, extrusion-path3d, point3, point3-with-width, extrusion-role, point2-with-width, thick-polyline};
@@ -12,46 +12,6 @@ interface ir-handles {
     // not raft layers. Host conversion sites use `as u32` /
     // `as i32` at the boundary to round-trip into u32-keyed IR types.
     type layer-idx = s32;
-
-    // One-way host projection of structural support plans into the paint
-    // boundary. These VIEW records are owned here to avoid importing the
-    // prepass package (which already imports ir-handles).
-    enum support-plan-view-role { support-body, top-interface, base-interface, bottom-interface, raft-related }
-    record support-plan-view-role-region {
-        role: support-plan-view-role,
-        regions: list<ex-polygon>,
-    }
-    record support-plan-view-skeleton {
-        points: list<point3>,
-        wall-counts: list<u32>,
-    }
-    enum support-plan-view-decline-reason { declined-policy, no-route, blocked, unsupported-mode }
-    record support-plan-entry-view {
-        global-layer-index: s32,
-        object-id: object-id,
-        region-id: region-id,
-        family-id: string,
-        demand-ids: list<string>,
-        body-ids: list<string>,
-        anchor-layer-index: u32,
-        anchor-z: s64,
-        roles: list<support-plan-view-role-region>,
-        skeleton: option<support-plan-view-skeleton>,
-        capabilities: list<string>,
-        provenance: list<string>,
-        decline-reason: option<support-plan-view-decline-reason>,
-    }
-
-    // Local mirror of the prepass `RaftPlan` config record. Declared here
-    // rather than imported across worlds: `ir-handles` is imported by the
-    // prepass package, so importing back would risk a world-satisfaction
-    // failure. Mirrors `support-plan-entry-view` above, same reason.
-    record raft-plan-view {
-        raft-layers: u32,
-        raft-first-layer-density: f32,
-        base-raft-layers: u32,
-        interface-raft-layers: u32,
-    }
 
     /// The declared Z extent of anchored work, in canonical 100 nm units.
     variant anchored-geometry-contract {
@@ -337,16 +297,6 @@ interface ir-handles {
         get-regions: func(semantic: paint-semantic) -> list<semantic-region>;
         get-custom-regions: func(module-id: string) -> list<semantic-region>;
         layer-index: func() -> layer-idx;
-        support-plan-segments: func(object-id: object-id, region-id: region-id)
-            -> list<list<point3-with-width>>;
-        support-plan-entries: func(object-id: object-id, region-id: region-id)
-            -> list<support-plan-entry-view>;
-        lightning-tree-segments: func(object-id: object-id, region-id: region-id)
-            -> list<list<point3-with-width>>;
-        /// Configuration-only raft plan for this print, projected from
-        /// `SupportPlanIR.raft_plan`. Layer-independent: the same value is
-        /// returned on every layer. `none` when no raft was planned.
-        raft-plan: func() -> option<raft-plan-view>;
         /// True when this layer belongs to the positive-offset raft band
         /// (`GlobalLayer.is_raft`). A `Layer::Infill` guest has no other way
         /// to tell a raft layer from a model layer.

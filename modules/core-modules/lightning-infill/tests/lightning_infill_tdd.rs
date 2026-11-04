@@ -1,25 +1,31 @@
 //! TDD tests for the lightning-infill module.
 //!
-// Step 3 (packet 140) - classification:
-// KEEP:   from_config_defaults - default config values are stable.
-// KEEP:   from_config_custom - configured module values are read.
-// KEEP:   paths_have_sparse_infill_role - emitted paths retain SparseInfill role tagging.
-// KEEP:   empty_regions_no_output - an empty region emits no paths.
-// KEEP:   paths_at_correct_z - emitted points retain the region's layer height.
-// KEEP:   width_matches_config - emitted points retain the configured line width.
-// ADAPT:  square_region_produces_paths - assert committed tree-segment emission.
-// DELETE: zero_density_no_paths - encoded the deleted stub's density gate.
-// DELETE: branching_pattern_present - encoded deleted branch construction.
-// DELETE: density_affects_coverage - encoded deleted grid sampling.
-// DELETE: interior_first_growth - encoded deleted interior sampling.
+//! Step 3 (packet 140) - classification:
+//! KEEP:   from_config_defaults - default config values are stable.
+//! KEEP:   from_config_custom - configured module values are read.
+//! KEEP:   paths_have_sparse_infill_role - emitted paths retain SparseInfill role tagging.
+//! KEEP:   empty_regions_no_output - an empty region emits no paths.
+//! KEEP:   paths_at_correct_z - emitted points retain the region's layer height.
+//! KEEP:   width_matches_config - emitted points retain the configured line width.
+//! ADAPT:  square_region_produces_paths - assert emission from a prepared piece.
+//! DELETE: zero_density_no_paths - encoded the deleted stub's density gate.
+//! DELETE: branching_pattern_present - encoded deleted branch construction.
+//! DELETE: density_affects_coverage - encoded deleted grid sampling.
+//! DELETE: interior_first_growth - encoded deleted interior sampling.
+//!
+//! Step 8a: the ordinary stage reads its own layer's private piece, so every test
+//! installs a plan scope through `with_prepared_plan_view`. The encoder below is a
+//! **second implementation** of the D3 wire layout, written against the design's
+//! table rather than against the module's codec (which is `pub(crate)`): the two
+//! implementations agreeing is part of what these tests prove.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionRole, LightningTreeEntry, LightningTreeIR, Point2,
-};
+use slicer_ir::{ConfigValue, ConfigView, ExtrusionRole, PaintValue, Point2};
+use slicer_schema::preparation::PreparationTransportError;
 use slicer_sdk::builders::InfillOutputBuilder;
+use slicer_sdk::preparation::{with_prepared_plan_view, PreparedPieceRead, PreparedPlanRead};
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
@@ -30,17 +36,160 @@ fn empty_paint_view() -> PaintRegionLayerView {
     PaintRegionLayerView::new(0)
 }
 
-fn paint_view_with_segments(segments: Vec<[Point2; 2]>) -> PaintRegionLayerView {
-    let ir = LightningTreeIR {
-        entries: vec![LightningTreeEntry {
-            object_id: "obj1".to_string(),
-            global_layer_index: 0,
-            region_id: 1,
-            tree_edge_segments: segments,
-        }],
-        ..LightningTreeIR::default()
-    };
-    PaintRegionLayerView::new(0).with_lightning_tree_ir(Arc::new(ir))
+/// Exact ordered source chain shared by the square region fixture
+/// (`make_square_region`) and its matching plan entry. The chainless sibling in
+/// `plan_with_segments` carries the same `(object_id, region_id, layer)` numbers
+/// with different segments, so the count and coordinate assertions below also
+/// falsify any pair-only lookup in the consumer.
+fn fixture_variant_chain() -> Vec<(String, PaintValue)> {
+    vec![("fuzzy_skin".to_string(), PaintValue::Flag(true))]
+}
+
+// ---------------------------------------------------------------------------
+// Independent D3 wire encoder (test-owned)
+// ---------------------------------------------------------------------------
+
+/// One plan entry the test encodes itself.
+struct TestEntry {
+    object_id: &'static str,
+    region_id: u64,
+    layer: i32,
+    chain: Vec<(&'static str, PaintValue)>,
+    segments: Vec<[Point2; 2]>,
+}
+
+fn push_u32(out: &mut Vec<u8>, value: u32) {
+    out.extend_from_slice(&value.to_le_bytes());
+}
+
+fn push_string(out: &mut Vec<u8>, text: &str) {
+    push_u32(out, text.len() as u32);
+    out.extend_from_slice(text.as_bytes());
+}
+
+fn push_paint(out: &mut Vec<u8>, value: &PaintValue) {
+    match value {
+        PaintValue::Flag(flag) => {
+            out.push(0);
+            out.push(u8::from(*flag));
+        }
+        PaintValue::Scalar(scalar) => {
+            out.push(1);
+            push_u32(out, scalar.to_bits());
+        }
+        PaintValue::ToolIndex(index) => {
+            out.push(2);
+            push_u32(out, *index);
+        }
+        PaintValue::Custom(text) => {
+            out.push(3);
+            push_string(out, text);
+        }
+    }
+}
+
+/// Encode one layer's piece exactly as D3 specifies, from the design's table.
+fn encode_piece(entries: &[TestEntry]) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(b"LTPL");
+    out.extend_from_slice(&1_u16.to_le_bytes());
+    push_u32(&mut out, entries.len() as u32);
+    for entry in entries {
+        push_string(&mut out, entry.object_id);
+        out.extend_from_slice(&entry.region_id.to_le_bytes());
+        push_u32(&mut out, entry.layer as u32);
+        push_u32(&mut out, entry.chain.len() as u32);
+        for (key, value) in &entry.chain {
+            push_string(&mut out, key);
+            push_paint(&mut out, value);
+        }
+        push_u32(&mut out, entry.segments.len() as u32);
+        for [start, end] in &entry.segments {
+            for point in [start, end] {
+                out.extend_from_slice(&point.x.to_le_bytes());
+                out.extend_from_slice(&point.y.to_le_bytes());
+            }
+        }
+    }
+    out
+}
+
+/// In-memory prepared plan: piece name -> bytes.
+#[derive(Clone, Default)]
+struct MemoryPlan {
+    pieces: BTreeMap<String, Vec<u8>>,
+}
+
+impl MemoryPlan {
+    /// One layer's piece, named with the module's own `lightning-layer-{index}`
+    /// spelling written as a literal here (the module's name helper is private).
+    fn with_layer(layer: i32, entries: &[TestEntry]) -> Self {
+        let mut pieces = BTreeMap::new();
+        pieces.insert(format!("lightning-layer-{layer}"), encode_piece(entries));
+        Self { pieces }
+    }
+}
+
+struct MemoryPiece {
+    bytes: Vec<u8>,
+}
+
+impl PreparedPieceRead for MemoryPiece {
+    fn len(&self) -> u64 {
+        self.bytes.len() as u64
+    }
+
+    fn read(&self, offset: u64, max_bytes: u64) -> Result<Vec<u8>, PreparationTransportError> {
+        let start = usize::try_from(offset).map_err(|_| PreparationTransportError::RangeError)?;
+        if start > self.bytes.len() {
+            return Err(PreparationTransportError::RangeError);
+        }
+        let take = usize::try_from(max_bytes.min((self.bytes.len() - start) as u64))
+            .map_err(|_| PreparationTransportError::RangeError)?;
+        Ok(self.bytes[start..start + take].to_vec())
+    }
+}
+
+impl PreparedPlanRead for MemoryPlan {
+    fn open(
+        &self,
+        name: &str,
+    ) -> Result<Option<Arc<dyn PreparedPieceRead + Send + Sync>>, PreparationTransportError> {
+        Ok(self.pieces.get(name).map(|bytes| {
+            Arc::new(MemoryPiece {
+                bytes: bytes.clone(),
+            }) as Arc<dyn PreparedPieceRead + Send + Sync>
+        }))
+    }
+}
+
+/// Run one ordinary-stage call under a call-local plan scope.
+fn run_with_plan<T>(plan: &MemoryPlan, body: impl FnOnce() -> T) -> T {
+    with_prepared_plan_view(Arc::new(plan.clone()), body)
+}
+
+/// The fixture's plan: one chain-bearing entry with `segments`, plus a chainless
+/// sibling with the same source numbers and different segments.
+fn plan_with_segments(segments: Vec<[Point2; 2]>) -> MemoryPlan {
+    MemoryPlan::with_layer(
+        0,
+        &[
+            TestEntry {
+                object_id: "obj1",
+                region_id: 1,
+                layer: 0,
+                chain: vec![("fuzzy_skin", PaintValue::Flag(true))],
+                segments,
+            },
+            TestEntry {
+                object_id: "obj1",
+                region_id: 1,
+                layer: 0,
+                chain: Vec::new(),
+                segments: vec![[Point2::from_mm(90.0, 90.0), Point2::from_mm(91.0, 91.0)]],
+            },
+        ],
+    )
 }
 
 fn make_config(density: f64, speed: f64, line_width: f64) -> ConfigView {
@@ -72,6 +221,10 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
     // Lightning manifest declares only `claim:sparse-fill`; set held_claims
     // so should_emit gates correctly (empty held_claims = emit nothing).
     region.set_held_claims(vec!["claim:sparse-fill".into()]);
+    // Arm the region with the same exact ordered chain as the fixture's
+    // chain-bearing plan entry, so the exact source lookup selects that entry
+    // and not the same-number chainless sibling.
+    region.set_variant_chain(fixture_variant_chain());
     region
 }
 
@@ -119,23 +272,19 @@ fn from_config_custom() {
     assert!((module.line_width() - 0.5).abs() < 0.001);
 }
 
-/// Test 3: committed tree segments become sparse paths.
+/// Test 3: prepared piece segments become sparse paths.
 #[test]
 fn square_region_produces_paths() {
     let config = make_config(0.2, 50.0, 0.4);
     let module = LightningInfill::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
+    let plan = plan_with_segments(sample_segments());
 
-    module
-        .run_infill(
-            0,
-            &[region],
-            &paint_view_with_segments(sample_segments()),
-            &mut output,
-            &config,
-        )
-        .unwrap();
+    let result = run_with_plan(&plan, || {
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
+    });
+    result.unwrap();
 
     assert_eq!(output.sparse_paths().len(), 1);
 }
@@ -147,22 +296,18 @@ fn paths_have_sparse_infill_role() {
     let module = LightningInfill::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
+    let plan = plan_with_segments(sample_segments());
 
-    module
-        .run_infill(
-            0,
-            &[region],
-            &paint_view_with_segments(sample_segments()),
-            &mut output,
-            &config,
-        )
-        .unwrap();
+    let result = run_with_plan(&plan, || {
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
+    });
+    result.unwrap();
 
     assert_eq!(output.sparse_paths().len(), 1);
     assert_eq!(output.sparse_paths()[0].role, ExtrusionRole::SparseInfill);
 }
 
-/// Test 5: Empty regions produce no output.
+/// Test 5: Empty regions produce no output (but the layer's piece is still required).
 #[test]
 fn empty_regions_no_output() {
     let config = make_config(0.2, 50.0, 0.4);
@@ -178,9 +323,12 @@ fn empty_regions_no_output() {
     region.set_has_nonplanar(false);
 
     let mut output = InfillOutputBuilder::new();
-    module
-        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
-        .unwrap();
+    // A layer with no trees still publishes its (header-only) piece.
+    let plan = MemoryPlan::with_layer(0, &[]);
+    let result = run_with_plan(&plan, || {
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
+    });
+    result.unwrap();
 
     assert_eq!(output.sparse_paths().len(), 0);
 }
@@ -193,16 +341,12 @@ fn paths_at_correct_z() {
     let z = 1.5;
     let region = make_square_region(10.0, z);
     let mut output = InfillOutputBuilder::new();
+    let plan = plan_with_segments(sample_segments());
 
-    module
-        .run_infill(
-            0,
-            &[region],
-            &paint_view_with_segments(sample_segments()),
-            &mut output,
-            &config,
-        )
-        .unwrap();
+    let result = run_with_plan(&plan, || {
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
+    });
+    result.unwrap();
 
     assert_eq!(output.sparse_paths().len(), 1);
     for point in &output.sparse_paths()[0].points {
@@ -218,16 +362,12 @@ fn width_matches_config() {
     let module = LightningInfill::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
+    let plan = plan_with_segments(sample_segments());
 
-    module
-        .run_infill(
-            0,
-            &[region],
-            &paint_view_with_segments(sample_segments()),
-            &mut output,
-            &config,
-        )
-        .unwrap();
+    let result = run_with_plan(&plan, || {
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
+    });
+    result.unwrap();
 
     assert_eq!(output.sparse_paths().len(), 1);
     for point in &output.sparse_paths()[0].points {
@@ -235,9 +375,9 @@ fn width_matches_config() {
     }
 }
 
-/// AC-1: emit each committed lightning tree segment as one raw SparseInfill path.
+/// AC-1: emit each prepared piece segment as one raw SparseInfill path.
 #[test]
-fn samples_tree_ir_raw_emit() {
+fn samples_prepared_piece_raw_emit() {
     let config = make_config(0.2, 80.0, 0.4);
     let module = LightningInfill::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
@@ -245,12 +385,13 @@ fn samples_tree_ir_raw_emit() {
         [Point2::from_mm(1.0, 2.0), Point2::from_mm(3.0, 4.0)],
         [Point2::from_mm(-2.0, 1.5), Point2::from_mm(0.0, 5.0)],
     ];
-    let paint = paint_view_with_segments(expected.clone());
+    let plan = plan_with_segments(expected.clone());
     let mut output = InfillOutputBuilder::new();
 
-    module
-        .run_infill(0, &[region], &paint, &mut output, &config)
-        .unwrap();
+    let result = run_with_plan(&plan, || {
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
+    });
+    result.unwrap();
 
     let paths = output.sparse_paths();
     assert_eq!(paths.len(), expected.len());
@@ -267,17 +408,43 @@ fn samples_tree_ir_raw_emit() {
     }
 }
 
-/// AC-N2: an empty tree entry is a successful no-op.
+/// AC-N2: a piece with no entries is a successful no-op.
 #[test]
-fn empty_trees_emit_nothing() {
+fn empty_piece_emits_nothing() {
     let config = make_config(0.2, 80.0, 0.4);
     let module = LightningInfill::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
-    let paint = paint_view_with_segments(Vec::new());
+    let plan = plan_with_segments(Vec::new());
     let mut output = InfillOutputBuilder::new();
 
-    let result = module.run_infill(0, &[region], &paint, &mut output, &config);
+    let result = run_with_plan(&plan, || {
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
+    });
 
     assert!(result.is_ok());
+    assert_eq!(output.sparse_paths().len(), 0);
+}
+
+/// A layer with no published piece is the inherited `57401`, not a silent empty
+/// layer: the consumer must not degrade when its plan is absent.
+#[test]
+fn missing_piece_is_fatal_57401() {
+    let config = make_config(0.2, 80.0, 0.4);
+    let module = LightningInfill::from_config(&config).unwrap();
+    let region = make_square_region(10.0, 0.3);
+    let plan = MemoryPlan::default();
+    let mut output = InfillOutputBuilder::new();
+
+    let error = run_with_plan(&plan, || {
+        module.run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
+    })
+    .expect_err("a missing piece must fail the layer");
+
+    assert_eq!(error.code, 57401);
+    assert!(error.fatal);
+    assert_eq!(
+        error.message,
+        "required preparation piece missing: lightning-layer-0"
+    );
     assert_eq!(output.sparse_paths().len(), 0);
 }

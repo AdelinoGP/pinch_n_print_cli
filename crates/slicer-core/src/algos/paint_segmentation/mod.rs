@@ -274,6 +274,31 @@ fn is_seam_paint_semantic(semantic: &slicer_ir::PaintSemantic) -> bool {
     )
 }
 
+/// Support paint (`SupportEnforcer` / `SupportBlocker` brush strokes and facet
+/// values) is a support-planner hint, not a region-splitting axis.
+///
+/// `region_mapping` keeps support semantics out of `aggregated_region_split`
+/// (only region-split semantics declared by loaded modules are registered;
+/// material/fuzzy_skin), so no `RegionMapIR` entry can exist for a
+/// `("support_enforcer" | "support_blocker", _)` variant chain. Minting one
+/// therefore cannot resolve configuration and only produces a
+/// `MissingModelConfig` fatal under the strict late-bind
+/// (`selection.rs::config_for`). The live support signal flows through paint
+/// layers (read by the support planner on the WIT side) and through modifier
+/// volumes (D14 → `segment_annotations`), never through `variant_chain`.
+///
+/// This predicate governs *region splitting only* (like `is_seam_paint_semantic`)
+/// and must be applied BEFORE the MMU cell decomposition: the AC-12 rebuild is
+/// keyed by paint value alone, so a raw support `Flag(true)` cell is
+/// indistinguishable from a fuzzy-skin one there. Excluding support lines
+/// pre-decomposition keeps the painted support area in its base region.
+fn is_support_paint_semantic(semantic: &slicer_ir::PaintSemantic) -> bool {
+    matches!(
+        semantic,
+        slicer_ir::PaintSemantic::SupportEnforcer | slicer_ir::PaintSemantic::SupportBlocker
+    )
+}
+
 fn mesh_has_any_paint(mesh: &slicer_ir::MeshIR) -> bool {
     for obj in &mesh.objects {
         if let Some(pd) = &obj.paint_data {
@@ -283,17 +308,22 @@ fn mesh_has_any_paint(mesh: &slicer_ir::MeshIR) -> bool {
                 // `resources/cube_cilindrical_modifier.3mf` the lowest painted
                 // seam facet sits at z in (0.4, 0.5], so the kernel ran on every
                 // layer and the layers below it were emitted geometry-less.
-                if is_seam_paint_semantic(&layer.semantic) {
+                // Support paint is excluded from admission for the same reason:
+                // it never partitions regions, so admitting a support-only mesh
+                // would only risk carving the painted area out of its base
+                // region (the D14 modifier-volume branch below still admits a
+                // mesh whose support comes from modifier volumes).
+                if is_seam_paint_semantic(&layer.semantic)
+                    || is_support_paint_semantic(&layer.semantic)
+                {
                     continue;
                 }
                 if layer.facet_values.iter().any(|v| v.is_some()) {
                     return true;
                 }
-                if layer
-                    .strokes
-                    .iter()
-                    .any(|s| !is_seam_paint_semantic(&s.semantic))
-                {
+                if layer.strokes.iter().any(|s| {
+                    !is_seam_paint_semantic(&s.semantic) && !is_support_paint_semantic(&s.semantic)
+                }) {
                     return true;
                 }
             }
@@ -614,6 +644,38 @@ pub fn execute_paint_segmentation(
         return Ok(seam_only_passthrough());
     }
 
+    // RegionMapping has already applied the loaded modules' region-split
+    // declarations. Its chains, not a semantic-name exclusion list, authorize
+    // which paint layers may partition each object.
+    let mut declared_by_object: std::collections::BTreeMap<
+        String,
+        std::collections::BTreeSet<String>,
+    > = std::collections::BTreeMap::new();
+    for key in region_map.entries.keys() {
+        if !slicer_ir::is_modifier_namespace_id(key.region_id) {
+            declared_by_object
+                .entry(key.object_id.clone())
+                .or_default()
+                .extend(key.variant_chain.iter().map(|(name, _)| name.clone()));
+        }
+    }
+    let mut region_split_mesh = mesh.as_ref().clone();
+    let mut semantic_axes = std::collections::BTreeMap::new();
+    for object in &mut region_split_mesh.objects {
+        if let Some(paint) = &mut object.paint_data {
+            paint.layers.retain(|layer| {
+                let name = compose_variants::semantic_name(&layer.semantic);
+                let declared = declared_by_object
+                    .get(&object.id)
+                    .is_some_and(|names| names.contains(&name));
+                if declared {
+                    semantic_axes.insert(name, layer.semantic.clone());
+                }
+                declared
+            });
+        }
+    }
+
     // ---- Working copy --------------------------------------------------------
     let mut working: Vec<slicer_ir::SliceIR> = Vec::from_iter(slice_ir.iter().cloned());
     let mut seen_variant_ids: std::collections::HashMap<
@@ -625,6 +687,113 @@ pub fn execute_paint_segmentation(
     // Produces per-layer per-semantic polygon lists; routed onto BASE chains only.
     let layer_zs: Vec<f32> = working.iter().map(|s| s.z).collect();
     let modifier_vol_per_layer = modifier_volumes::slice_modifier_volumes(&mesh, &layer_zs);
+
+    if semantic_axes.len() > 1 {
+        // Complete each semantic's existing Voronoi/width/shell pipeline in
+        // isolation before composing. In particular, a later top/bottom merge
+        // must not replace an overlap chain with that face's singleton chain.
+        let mut semantic_runs = Vec::new();
+        for (name, semantic) in &semantic_axes {
+            let mut semantic_mesh = region_split_mesh.clone();
+            for object in &mut semantic_mesh.objects {
+                if let Some(paint) = &mut object.paint_data {
+                    paint.layers.retain(|layer| &layer.semantic == semantic);
+                }
+            }
+            let mut semantic_map = region_map.as_ref().clone();
+            semantic_map.entries.retain(|key, _| {
+                key.variant_chain.len() <= 1
+                    && key.variant_chain.iter().all(|(axis, _)| axis == name)
+            });
+            let output = execute_paint_segmentation(
+                Arc::new(semantic_mesh),
+                slice_ir.clone(),
+                Arc::new(semantic_map),
+            )?;
+            semantic_runs.push((semantic.clone(), output));
+        }
+
+        for (i, layer) in working.iter_mut().enumerate() {
+            let mut regions = Vec::new();
+            for original in &layer.regions {
+                let mut inputs = Vec::new();
+                for (semantic, output) in &semantic_runs {
+                    let name = compose_variants::semantic_name(semantic);
+                    let mut by_value: std::collections::BTreeMap<_, Vec<_>> =
+                        std::collections::BTreeMap::new();
+                    for region in &output[i].regions {
+                        if region.object_id != original.object_id {
+                            continue;
+                        }
+                        if let [(axis, value)] = region.variant_chain.as_slice() {
+                            if *axis == name {
+                                by_value.entry(value.clone()).or_default().extend(
+                                    crate::polygon_ops::intersection_ex(
+                                        &region.polygons,
+                                        &original.polygons,
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                    for (value, polygons) in by_value {
+                        inputs.push(compose_variants::SemanticOutput {
+                            semantic: semantic.clone(),
+                            value,
+                            per_layer: vec![polygons],
+                        });
+                    }
+                }
+                let composed = compose_variants::compose_variants(
+                    std::slice::from_ref(&original.polygons),
+                    &inputs,
+                );
+                for (chain, polygons) in &composed[0] {
+                    if !chain.is_empty() && polygons.is_empty() {
+                        continue;
+                    }
+                    let mut region = original.clone();
+                    region.variant_chain = chain.clone();
+                    region.polygons = polygons.clone();
+                    region.segment_annotations.clear();
+                    if chain.is_empty() {
+                        region.segment_annotations = build_modifier_segment_annotations(
+                            i,
+                            polygons,
+                            &modifier_vol_per_layer,
+                        );
+                    } else {
+                        region.region_id = paint_variant_region_id(original.region_id, chain);
+                        register_paint_variant_region_id(
+                            &mut seen_variant_ids,
+                            &region.object_id,
+                            region.region_id,
+                            chain,
+                        )?;
+                    }
+                    region.top_solid_fill =
+                        crate::polygon_ops::intersection_ex(&original.top_solid_fill, polygons);
+                    region.bottom_solid_fill =
+                        crate::polygon_ops::intersection_ex(&original.bottom_solid_fill, polygons);
+                    region.bridge_areas =
+                        crate::polygon_ops::intersection_ex(&original.bridge_areas, polygons);
+                    regions.push(region);
+                }
+            }
+            layer.regions = regions;
+        }
+        if seam_annotations::mesh_has_seam_paint(&mesh) {
+            seam_annotations::stamp_seam_paint_annotations(&mesh, &mut working);
+        }
+        return Ok(Arc::new(working));
+    }
+
+    // The remaining path has at most one declared semantic, so every painted
+    // value retains the existing singleton geometry without compositor rewrites.
+    let single_semantic = semantic_axes
+        .into_values()
+        .next()
+        .unwrap_or(slicer_ir::PaintSemantic::Material);
 
     for i in 0..working.len() {
         let layer_slice = &working[i];
@@ -684,28 +853,6 @@ pub fn execute_paint_segmentation(
             max_tool.max(2)
         };
 
-        // Determine the dominant PaintSemantic for this object (first painted layer's semantic).
-        // Used to label the SemanticOutput entries with the correct semantic family.
-        let dominant_semantic: slicer_ir::PaintSemantic = {
-            let mut sem = slicer_ir::PaintSemantic::Material; // default
-            'outer: for obj in &mesh.objects {
-                let Some(pd) = &obj.paint_data else { continue };
-                for layer in &pd.layers {
-                    // A seam-painted layer must not become the dominant
-                    // semantic — on a seam-only mesh that labelled the entire
-                    // cell decomposition `seam_enforcer`.
-                    if is_seam_paint_semantic(&layer.semantic) {
-                        continue;
-                    }
-                    if layer.facet_values.iter().any(|v| v.is_some()) || !layer.strokes.is_empty() {
-                        sem = layer.semantic.clone();
-                        break 'outer;
-                    }
-                }
-            }
-            sem
-        };
-
         // Run kernel (feature-gated).
         #[cfg(feature = "host-algos")]
         let polys_by_color = {
@@ -740,8 +887,11 @@ pub fn execute_paint_segmentation(
             if contours.is_empty() {
                 std::collections::BTreeMap::new()
             } else {
-                let painted_lines =
-                    painted_line_collection::collect_painted_lines(&working[i], &mesh, &contours);
+                let painted_lines = painted_line_collection::collect_painted_lines(
+                    &working[i],
+                    &region_split_mesh,
+                    &contours,
+                );
                 if painted_lines.is_empty() {
                     std::collections::BTreeMap::new()
                 } else {
@@ -786,15 +936,14 @@ pub fn execute_paint_segmentation(
         // For multi-value same-semantic paint (the common case for MMU: multiple
         // ToolIndex values of the Material semantic), each color is independent —
         // there is no cross-product intersection to compute. We therefore bypass
-        // compose_variants (which is designed for multi-SEMANTIC fan-out, e.g.
-        // Material × SupportEnforcer) and emit one SlicedRegion per (color, polys)
-        // pair directly.
+        // compose_variants (used above for declared multi-semantic fan-out) and
+        // emit one SlicedRegion per (color, polys) pair directly.
         //
         // The BASE chain (variant_chain = []) uses the full layer contours and
         // carries modifier-volume annotations (D14 invariant).
         {
             // Helper: produce a chain key `[(semantic_name, value)]` for one color.
-            let sem_name: String = match &dominant_semantic {
+            let sem_name: String = match &single_semantic {
                 slicer_ir::PaintSemantic::Material => "material".to_owned(),
                 slicer_ir::PaintSemantic::FuzzySkin => "fuzzy_skin".to_owned(),
                 slicer_ir::PaintSemantic::SupportEnforcer => "support_enforcer".to_owned(),
@@ -1218,7 +1367,7 @@ pub fn execute_paint_segmentation(
         // the world-space layer contours and sliced against world `layer_zs`), so
         // each subset stores world-transformed triangle vertices. The mesh and the
         // stroke geometry are in object-LOCAL space, so apply the object transform.
-        for obj in &mesh.objects {
+        for obj in &region_split_mesh.objects {
             let Some(pd) = &obj.paint_data else { continue };
             let m = &obj.transform.matrix;
             let push_tri = |entry: &mut slicer_ir::IndexedTriangleSet,
@@ -1237,52 +1386,13 @@ pub fn execute_paint_segmentation(
                 vertices: Vec::new(),
                 indices: Vec::new(),
             };
-            // AC-G7: resolve the object's base extruder to a 0-indexed tool number.
-            // The loader stores the already-rebased 0-indexed value under key "extruder".
-            // Missing key → extruder 1 (0-indexed: 0), preserving existing behaviour.
-            let base_extruder_tool: u32 = match obj.config.data.get("extruder") {
-                Some(slicer_ir::ConfigValue::Int(n)) => *n as u32,
-                _ => 0u32,
-            };
             for layer in &pd.layers {
-                // AC-G8: build a set of vertex positions that appear in this layer's
-                // stroke triangles. A None facet whose own vertices appear in this set
-                // was subdivided by the brush and its colour is supplied by the strokes —
-                // skip it from the default-fill projection so we don't flood it with the
-                // base-extruder colour.  Only needed for Material layers (others already
-                // `continue` in the None arm below).
-                let stroke_vertex_bits: std::collections::HashSet<(u32, u32, u32)> =
-                    if layer.semantic == slicer_ir::PaintSemantic::Material
-                        && !layer.strokes.is_empty()
-                    {
-                        layer
-                            .strokes
-                            .iter()
-                            .flat_map(|s| s.triangles.iter())
-                            .flat_map(|tri| tri.iter())
-                            .map(|p| (p.x.to_bits(), p.y.to_bits(), p.z.to_bits()))
-                            .collect()
-                    } else {
-                        std::collections::HashSet::new()
-                    };
                 // Facet paint: emit each painted facet's three world vertices.
                 for (facet_idx, fv) in layer.facet_values.iter().enumerate() {
-                    // A facet with an explicit Material value uses it; a facet with
-                    // NO value (genuinely unpainted) defaults to the object's base
-                    // extruder so its top/bottom HORIZONTAL faces feed the
-                    // default-colour top/bottom projection. Non-Material layers have
-                    // no default-fill semantics → skip their None facets.
-                    // Stroke-subdivided None facets are skipped below (AC-G8).
-                    let value = match fv {
-                        Some(v) => v.clone(),
-                        None => {
-                            if layer.semantic != slicer_ir::PaintSemantic::Material {
-                                continue;
-                            }
-                            // AC-G7: use the object base extruder, not a hardcoded 0.
-                            slicer_ir::PaintValue::ToolIndex(base_extruder_tool)
-                        }
-                    };
+                    // None contributes no painted value for any semantic. Its
+                    // unpainted area keeps BASE identity and object/base config;
+                    // stroke-covered area is supplied by the strokes below.
+                    let Some(value) = fv else { continue };
                     let base = facet_idx * 3;
                     if base + 2 >= obj.mesh.indices.len() {
                         continue;
@@ -1296,35 +1406,6 @@ pub fn execute_paint_segmentation(
                         || i1 >= obj.mesh.vertices.len()
                         || i2 >= obj.mesh.vertices.len()
                     {
-                        continue;
-                    }
-                    // AC-G8: None facets whose vertices appear in stroke triangles are
-                    // stroke-subdivided; their colour is supplied by the strokes loop
-                    // below. Skip the default-fill projection for them.
-                    //
-                    // Use `all` (not `any`): a stroke-subdivided facet's TriangleSelector
-                    // tree always includes the three ORIGINAL CORNERS in its sub-triangle
-                    // vertex set, so ALL three corners are in stroke_vertex_bits.  An
-                    // adjacent but genuinely-unpainted facet that merely shares one or two
-                    // corner vertices with a subdivided neighbour must NOT be skipped — the
-                    // `any` check incorrectly fired on shared corners and excluded bottom-face
-                    // triangles adjacent to stroke-subdivided side faces (AC-G3 regression).
-                    if fv.is_none() && !stroke_vertex_bits.is_empty() {
-                        let v0 = obj.mesh.vertices[i0];
-                        let v1 = obj.mesh.vertices[i1];
-                        let v2 = obj.mesh.vertices[i2];
-                        if [v0, v1, v2].iter().all(|v| {
-                            stroke_vertex_bits.contains(&(
-                                v.x.to_bits(),
-                                v.y.to_bits(),
-                                v.z.to_bits(),
-                            ))
-                        }) {
-                            continue;
-                        }
-                    }
-                    // Seam paint never partitions regions.
-                    if is_seam_paint_semantic(&layer.semantic) {
                         continue;
                     }
                     let key = (obj.id.clone(), sem_name(&layer.semantic), value.clone());
@@ -1343,8 +1424,10 @@ pub fn execute_paint_segmentation(
                 // their own semantic/value (overriding the layer semantic when they
                 // differ, matching `extract_stroke_data` in painted_line_collection prep).
                 for stroke in &layer.strokes {
-                    // Seam paint never partitions regions.
-                    if is_seam_paint_semantic(&stroke.semantic) {
+                    // Seam and support paint never partition regions.
+                    if is_seam_paint_semantic(&stroke.semantic)
+                        || is_support_paint_semantic(&stroke.semantic)
+                    {
                         continue;
                     }
                     let key = (
@@ -1389,6 +1472,14 @@ pub fn execute_paint_segmentation(
                 })
                 .collect();
 
+            // Which painted chains actually project onto a top or bottom face on
+            // each layer. Pre-Phase-6 distributes the shell solid fill to every
+            // painted region so the projection can harvest it; after the harvest,
+            // a painted region with no projection on that layer owns no shell fill.
+            let mut face_values_by_layer: Vec<
+                std::collections::BTreeSet<Vec<(String, slicer_ir::PaintValue)>>,
+            > = vec![std::collections::BTreeSet::new(); working.len()];
+
             // Run Phase 6 for each (object, semantic, value) and merge into working.
             for ((object_id, sname, value), (semantic, painted_mesh, source_objects)) in
                 &painted_subsets
@@ -1415,6 +1506,7 @@ pub fn execute_paint_segmentation(
                     if polys.is_empty() || l >= working.len() {
                         continue;
                     }
+                    face_values_by_layer[l].insert(chain_key.clone());
                     // Phase 7 merge:
                     //  (1) The top/bottom-face projection wins WITHIN its area over
                     //      every other region. Remove `polys` from each region that
@@ -1510,6 +1602,18 @@ pub fn execute_paint_segmentation(
                             }
                         }
                     }
+                }
+            }
+
+            for (l, layer) in working.iter_mut().enumerate() {
+                for region in &mut layer.regions {
+                    if region.variant_chain.is_empty()
+                        || face_values_by_layer[l].contains(&region.variant_chain)
+                    {
+                        continue;
+                    }
+                    region.top_solid_fill.clear();
+                    region.bottom_solid_fill.clear();
                 }
             }
         }
@@ -2189,6 +2293,271 @@ mod driver_v2_tests {
         assert_eq!(result[0].regions[0].polygons, slice[0].regions[0].polygons);
     }
 
+    /// AC-11: five disjoint squares make the intersection/subtraction oracle
+    /// literal: A=M1+F, B=M1, C=M2+F, D=F, E=BASE. No compositor is used here.
+    #[test]
+    #[cfg(feature = "host-algos")]
+    fn declared_region_split_composition_preserves_ordered_chains() {
+        use std::collections::BTreeMap;
+
+        let square = |x: f32| ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(x, 0.0),
+                    Point2::from_mm(x + 2.0, 0.0),
+                    Point2::from_mm(x + 2.0, 2.0),
+                    Point2::from_mm(x, 2.0),
+                ],
+            },
+            holes: vec![],
+        };
+        let squares: Vec<_> = [0.0, 4.0, 8.0, 12.0, 16.0]
+            .into_iter()
+            .map(square)
+            .collect();
+        let material = |tool| vec![("material".to_owned(), PaintValue::ToolIndex(tool))];
+        let fuzzy = vec![("fuzzy_skin".to_owned(), PaintValue::Flag(true))];
+        let overlap = |tool| {
+            vec![
+                ("fuzzy_skin".to_owned(), PaintValue::Flag(true)),
+                ("material".to_owned(), PaintValue::ToolIndex(tool)),
+            ]
+        };
+        let expected_mixed = BTreeMap::from([
+            (vec![], vec![squares[4].clone()]),
+            (fuzzy.clone(), vec![squares[3].clone()]),
+            (material(1), vec![squares[1].clone()]),
+            (overlap(1), vec![squares[0].clone()]),
+            (overlap(2), vec![squares[2].clone()]),
+        ]);
+        let expected_material = BTreeMap::from([
+            (vec![], vec![squares[3].clone(), squares[4].clone()]),
+            (material(1), vec![squares[0].clone(), squares[1].clone()]),
+            (material(2), vec![squares[2].clone()]),
+        ]);
+        let expected_fuzzy = BTreeMap::from([
+            (vec![], vec![squares[1].clone(), squares[4].clone()]),
+            (
+                fuzzy.clone(),
+                vec![squares[0].clone(), squares[2].clone(), squares[3].clone()],
+            ),
+        ]);
+
+        // Open vertical walls avoid top/bottom default-tool projection. Every
+        // wall of a square has the same value, so its Voronoi output is square.
+        let mut walls = IndexedTriangleSet::default();
+        for x in [0.0_f32, 4.0, 8.0, 12.0, 16.0] {
+            let base = walls.vertices.len() as u32;
+            for z in [0.0, 1.0] {
+                for (dx, y) in [(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0)] {
+                    walls.vertices.push(Point3 { x: x + dx, y, z });
+                }
+            }
+            for k in 0..4 {
+                let a = base + k;
+                let b = base + (k + 1) % 4;
+                walls.indices.extend([a, b, b + 4, a, b + 4, a + 4]);
+            }
+        }
+        let layer = |semantic, values: [Option<PaintValue>; 5]| PaintLayer {
+            semantic,
+            facet_values: values
+                .into_iter()
+                .flat_map(|value| std::iter::repeat_n(value, 8))
+                .collect(),
+            strokes: vec![],
+        };
+        let material_layer = layer(
+            PaintSemantic::Material,
+            [
+                Some(PaintValue::ToolIndex(1)),
+                Some(PaintValue::ToolIndex(1)),
+                Some(PaintValue::ToolIndex(2)),
+                None,
+                None,
+            ],
+        );
+        let fuzzy_layer = layer(
+            PaintSemantic::FuzzySkin,
+            [
+                Some(PaintValue::Flag(true)),
+                None,
+                Some(PaintValue::Flag(true)),
+                Some(PaintValue::Flag(true)),
+                None,
+            ],
+        );
+        let annotation_values = [None, None, None, None, Some(PaintValue::Flag(true))];
+        let support_layer = layer(PaintSemantic::SupportEnforcer, annotation_values.clone());
+        let seam_semantic = PaintSemantic::Custom("seam_enforcer".to_owned());
+        let seam_layer = layer(seam_semantic.clone(), annotation_values);
+        let undeclared_layer = layer(
+            PaintSemantic::Custom("undeclared_axis".to_owned()),
+            std::array::from_fn(|_| Some(PaintValue::ToolIndex(9))),
+        );
+        let mut modifier_mesh = IndexedTriangleSet {
+            vertices: walls.vertices[32..40].to_vec(),
+            indices: walls.indices[96..120].iter().map(|i| i - 32).collect(),
+        };
+        modifier_mesh
+            .indices
+            .extend([0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7]);
+
+        let slice = Arc::new(vec![SliceIR {
+            regions: vec![SlicedRegion {
+                object_id: "obj1".to_owned(),
+                polygons: squares.clone(),
+                ..Default::default()
+            }],
+            ..one_layer_slice_ir().remove(0)
+        }]);
+        // Ignore only vertex starting index and redundant collinear points;
+        // polygon coordinates, components, winding, and holes remain observable.
+        let canonical_ring = |polygon: &Polygon| {
+            let points = &polygon.points;
+            let mut ring: Vec<_> = (0..points.len())
+                .filter_map(|i| {
+                    let a = points[(i + points.len() - 1) % points.len()];
+                    let b = points[i];
+                    let c = points[(i + 1) % points.len()];
+                    let cross = (b.x - a.x) as i128 * (c.y - b.y) as i128
+                        - (b.y - a.y) as i128 * (c.x - b.x) as i128;
+                    (cross != 0).then_some((b.x, b.y))
+                })
+                .collect();
+            if let Some((start, _)) = ring.iter().enumerate().min_by_key(|(_, p)| **p) {
+                ring.rotate_left(start);
+            }
+            ring
+        };
+        let canonical_polys = |polys: &[ExPolygon]| {
+            let mut result: Vec<_> = polys
+                .iter()
+                .map(|poly| {
+                    let mut holes: Vec<_> = poly.holes.iter().map(&canonical_ring).collect();
+                    holes.sort();
+                    (canonical_ring(&poly.contour), holes)
+                })
+                .collect();
+            result.sort();
+            result
+        };
+
+        for (paint_layers, expected, annotations) in [
+            (vec![material_layer.clone()], expected_material, false),
+            (vec![fuzzy_layer.clone()], expected_fuzzy, false),
+            (
+                vec![material_layer.clone(), fuzzy_layer.clone()],
+                expected_mixed.clone(),
+                false,
+            ),
+            (
+                vec![
+                    undeclared_layer,
+                    support_layer,
+                    seam_layer,
+                    material_layer,
+                    fuzzy_layer,
+                ],
+                expected_mixed,
+                true,
+            ),
+        ] {
+            let mut mesh = mesh_with_no_paint();
+            let object = &mut mesh.objects[0];
+            object.mesh = walls.clone();
+            object.paint_data = Some(FacetPaintData {
+                layers: paint_layers,
+            });
+            if annotations {
+                object.modifier_volumes.push(ModifierVolume::new(
+                    "support-on-residual".to_owned(),
+                    modifier_mesh.clone(),
+                    ConfigDelta {
+                        fields: Default::default(),
+                    },
+                    0,
+                    slicer_ir::ModifierKind::SupportEnforcer,
+                ));
+            }
+            let mut rmap = empty_region_map();
+            rmap.configs.push(slicer_ir::ResolvedConfig::default());
+            // These literal RegionMapping outputs are the declaration authority;
+            // annotation-only and undeclared paint have deliberately no keys.
+            for chain in [
+                vec![],
+                fuzzy.clone(),
+                material(1),
+                material(2),
+                overlap(1),
+                overlap(2),
+            ] {
+                rmap.entries.insert(
+                    RegionKey {
+                        object_id: "obj1".to_owned(),
+                        variant_chain: chain,
+                        ..Default::default()
+                    },
+                    RegionPlan::default(),
+                );
+            }
+            let result = execute_paint_segmentation(Arc::new(mesh), slice.clone(), Arc::new(rmap))
+                .expect("declared paint segmentation");
+            assert_eq!(result.len(), 1);
+            let actual: BTreeMap<_, _> = result[0]
+                .regions
+                .iter()
+                .map(|region| {
+                    (
+                        region.variant_chain.clone(),
+                        canonical_polys(&region.polygons),
+                    )
+                })
+                .collect();
+            let expected: BTreeMap<_, _> = expected
+                .iter()
+                .map(|(chain, polys)| (chain.clone(), canonical_polys(polys)))
+                .collect();
+            assert_eq!(
+                actual, expected,
+                "literal partition; annotations={annotations}"
+            );
+            assert_eq!(
+                result[0].regions.len(),
+                expected.len(),
+                "no duplicate chains"
+            );
+            for region in &result[0].regions {
+                assert!(region
+                    .variant_chain
+                    .windows(2)
+                    .all(|pair| pair[0].0 < pair[1].0));
+                if annotations && region.variant_chain.is_empty() {
+                    for semantic in [PaintSemantic::SupportEnforcer, seam_semantic.clone()] {
+                        assert_eq!(
+                            region.segment_annotations.get(&semantic),
+                            Some(&vec![vec![Some(PaintValue::Flag(true)); 4]]),
+                            "annotation stays on BASE: {semantic:?}"
+                        );
+                    }
+                } else if annotations {
+                    // Seam routing records unpainted edges explicitly; only E
+                    // carries seam paint. Support remains BASE-only.
+                    assert_eq!(
+                        region.segment_annotations,
+                        std::collections::HashMap::from([(
+                            seam_semantic.clone(),
+                            vec![vec![None; 4]],
+                        )]),
+                        "painted squares have no support or seam-painted edges"
+                    );
+                } else {
+                    assert!(region.segment_annotations.is_empty());
+                }
+            }
+        }
+    }
+
     // ---- Full-pipeline tests (require kernel; #[ignore] for AC-12 stubs) ---
 
     /// AC-12 (b)(d): synthetic 1-layer SliceIR + 1-object MeshIR with 1 painted facet.
@@ -2588,25 +2957,26 @@ mod driver_v2_tests {
         );
     }
 
-    // ---- AC-G7: default face colour reads object base extruder ----------------
+    // ---- None facets retain BASE identity with a nondefault extruder ---------
 
-    /// AC-G7: A genuinely-unpainted facet (facet_values=None) in a Material layer
-    /// resolves to `ToolIndex(base_extruder - 1)`, NOT the hardcoded `ToolIndex(0)`.
+    /// docs/01_system_architecture.md's Variant-Chain Region Splitting contract:
+    /// a genuinely-unpainted facet contributes no painted value, even when the
+    /// object's base extruder is nonzero. The former AC-G7 synthetic tool-chain
+    /// expectation predated Step 14 and contradicted this BASE identity contract.
     ///
     /// Geometry: two horizontal triangles at opposite ends of the Z axis so that
     /// both are captured in the single slab built around layer z=0.5 mm.
     ///  - Triangle 0 (indices 0–2): top face at z=1 mm, explicitly painted ToolIndex(1).
     ///    Ensures `mesh_has_any_paint` does NOT short-circuit.
     ///  - Triangle 1 (indices 3–5): bottom face at z=0 mm, facet_values=None.
-    ///    Should resolve to ToolIndex(2) once AC-G7 is applied (base extruder 3 stored
-    ///    as 0-indexed 2 in obj.config.data["extruder"]).
+    ///    Remains BASE despite extruder 3 (stored as 0-indexed 2 in object config).
     ///
     /// After execute_paint_segmentation + Phase 6 slab projection the output must
-    /// contain a region with variant_chain=[(material, ToolIndex(2))] and must NOT
-    /// contain one with ToolIndex(0).
+    /// contain BASE residual geometry and the explicitly painted ToolIndex(1),
+    /// with neither a synthetic ToolIndex(2) nor a hardcoded ToolIndex(0) chain.
     #[test]
     #[cfg(feature = "host-algos")]
-    fn default_face_colour_uses_object_base_extruder() {
+    fn unpainted_facets_keep_base_identity_with_nondefault_extruder() {
         // --- mesh ----------------------------------------------------------------
         // Top face (z=1 mm): CCW from above → normal.z > 0 (top-facing).
         // nz = (v1.x-v0.x)*(v2.y-v0.y) - (v1.y-v0.y)*(v2.x-v0.x)
@@ -2664,7 +3034,7 @@ mod driver_v2_tests {
                     layers: vec![PaintLayer {
                         semantic: PaintSemantic::Material,
                         // Triangle 0 explicitly painted as tool 1 (avoids short-circuit).
-                        // Triangle 1 unpainted (None) → must resolve to base extruder = ToolIndex(2).
+                        // Triangle 1 unpainted (None) → BASE, not a ToolIndex(2) chain.
                         facet_values: vec![Some(PaintValue::ToolIndex(1)), None],
                         strokes: Vec::new(),
                     }],
@@ -2683,23 +3053,26 @@ mod driver_v2_tests {
         let chains: Vec<&Vec<(String, PaintValue)>> =
             result[0].regions.iter().map(|r| &r.variant_chain).collect();
 
-        // AC-G7: genuinely-unpainted facet must resolve to object base extruder (ToolIndex(2)).
-        assert!(
+        let expected = std::collections::BTreeSet::from([
+            vec![],
+            vec![("material".to_string(), PaintValue::ToolIndex(1))],
+        ]);
+        assert_eq!(
             chains
-                .iter()
-                .any(|c| *c == &vec![("material".to_string(), PaintValue::ToolIndex(2))]),
-            "AC-G7 FAIL: expected region with ToolIndex(2) (base extruder 3) not found; \
-             chains = {:?}",
-            chains
+                .into_iter()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            expected,
+            "None facets must not synthesize painted chains from the object extruder"
         );
-        // Regression guard: the old hardcoded ToolIndex(0) must NOT appear.
+        let base = result[0]
+            .regions
+            .iter()
+            .find(|r| r.variant_chain.is_empty())
+            .expect("unpainted geometry must retain BASE identity");
         assert!(
-            !chains
-                .iter()
-                .any(|c| *c == &vec![("material".to_string(), PaintValue::ToolIndex(0))]),
-            "AC-G7 FAIL: found hardcoded ToolIndex(0) region; base extruder 3 should give \
-             ToolIndex(2); chains = {:?}",
-            chains
+            !base.polygons.is_empty(),
+            "BASE must retain residual geometry"
         );
     }
 
@@ -2738,9 +3111,8 @@ mod driver_v2_tests {
             z: 0.0,
         };
 
-        // Stroke triangle exactly covering the facet.  The AC-G8 condition detects
-        // stroke-coverage via vertex-position membership in stroke_vertex_bits:
-        // since f32 values {0.0, 1.0} are exact in IEEE-754, the to_bits() keys match.
+        // Stroke triangle exactly covering the facet. The None facet contributes
+        // no painted value; this stroke alone supplies the painted projection.
         let stroke_tri = [v0, v1, v2];
 
         let mesh = Arc::new(slicer_ir::MeshIR {
@@ -2807,14 +3179,14 @@ mod driver_v2_tests {
     /// AC-Ironing (packet 128): when `PrePass::PaintSegmentation` runs, its
     /// Phase 6/7 top/bottom merge sometimes needs to create a NEW
     /// `SlicedRegion` for a colour that did not exist on this layer yet
-    /// (the `None` arm of the Phase 6/7 merge at
-    /// `crates/slicer-core/src/algos/paint_segmentation/mod.rs:1266`). The
+    /// (the missing-region arm of `execute_paint_segmentation` in
+    /// `crates/slicer-core/src/algos/paint_segmentation/mod.rs`). The
     /// fresh region receives a harvested `top_solid_fill` from the
     /// existing BASE region (correct: that is the projected top face
     /// area) but `..Default::default()` would leave its
     /// `top_shell_index = None` (wrong: it IS an exposed top surface).
     /// Downstream surface-treatment stages — the ironing module's gate
-    /// at `modules/core-modules/top-surface-ironing/src/lib.rs:316-327`
+    /// in `TopSurfaceIroning` (`modules/core-modules/top-surface-ironing/src/lib.rs`)
     /// requires `top_shell_index() == Some(0)` — silently skip the
     /// region. On `resources/cube_4color.3mf` (a 25mm cube with orange
     /// and red on the top face) the symptom was that only the red
@@ -2823,21 +3195,19 @@ mod driver_v2_tests {
     /// This test pins the fix: build a minimal two-layer slice where the
     /// top layer's BASE region has `top_solid_fill` non-empty and
     /// `top_shell_index = Some(0)` (simulating the post-prepass state the
-    /// production pipeline produces); paint a single material on the top
-    /// face whose colour resolves to `ToolIndex(0)` via the base-extruder
-    /// fallback (AC-G7); run `execute_paint_segmentation`; and assert
-    /// that the newly-created T0 region on the top layer has BOTH
-    /// `top_solid_fill` non-empty (the harvested projection) AND
-    /// `top_shell_index = Some(0)` (the borrowed shell index).
+    /// production pipeline produces); explicitly paint ToolIndex(1) on half
+    /// the top face; run `execute_paint_segmentation`; and assert that both
+    /// the new painted region and unpainted BASE retain non-empty solid fill
+    /// and `top_shell_index = Some(0)`. The former synthetic T0 expectation
+    /// predated Step 14 and is now BASE under docs/01's empty-chain contract.
     #[test]
     #[cfg(feature = "host-algos")]
     fn phase6_7_none_arm_stamps_shell_index_on_new_region() {
         // Geometry: a 2x2x2 cube. The TOP face is split into TWO triangles
         // (the standard triangulation of a 2-triangle quad face). The
         // FIRST top-face triangle is explicitly painted ToolIndex(1); the
-        // SECOND top-face triangle is unpainted and resolves via the
-        // AC-G7 base-extruder fallback to ToolIndex(0). The 5 other
-        // faces are unpainted and resolve to ToolIndex(0). This mirrors
+        // SECOND top-face triangle and the 5 other faces are unpainted
+        // and remain BASE (with the object/base config). This mirrors
         // the cube_4color.3mf pattern where the top face is split between
         // a painted colour and the unpainted base colour.
         //
@@ -2852,7 +3222,7 @@ mod driver_v2_tests {
         //   Left   (x=0, normal -x):  0,4,7 and 0,7,3
         //   Right  (x=2, normal +x):  1,2,6 and 1,6,5
         // The painted T1 is triangle index 2 (top, first half). The
-        // unpainted fallback-to-T0 includes triangle 3 (top, second half).
+        // unpainted BASE includes triangle 3 (top, second half).
         let vertices = vec![
             Point3 {
                 x: 0.0,
@@ -2905,13 +3275,10 @@ mod driver_v2_tests {
         ];
         let mut facet_values: Vec<Option<PaintValue>> = (0..12).map(|_| None).collect();
         facet_values[2] = Some(PaintValue::ToolIndex(1)); // First top-face triangle
-                                                          // Triangles 3 (top second half) + 0,1,4..11 (other 5 faces) stay
-                                                          // `None` → base-extruder fallback → ToolIndex(0).
+                                                          // Triangles 3 (top second half) + 0,1,4..11 (other 5 faces) stay None → BASE.
         let u = |mm: f64| -> i64 { (mm * 10_000.0).round() as i64 };
         let mut config_data = std::collections::HashMap::new();
-        // Base extruder = 1 → 0-indexed ToolIndex(0). Unpainted facets
-        // must resolve to ToolIndex(0); matches the cube_4color.3mf
-        // fixture where the unpainted half's colour is T0.
+        // Base extruder = 1 → tool 0 in object/base config, not a painted chain.
         config_data.insert("extruder".to_string(), ConfigValue::Int(0));
         let mesh = Arc::new(slicer_ir::MeshIR {
             schema_version: CURRENT_MESH_IR_SCHEMA_VERSION,
@@ -2994,31 +3361,32 @@ mod driver_v2_tests {
         let result = execute_paint_segmentation(mesh, slice, rmap).expect("paint segmentation");
         assert_eq!(result.len(), 2);
 
-        // The top layer must contain a ToolIndex(0) region (created by
-        // Phase 6/7 in the `None` arm because ToolIndex(0) had no region
-        // on this layer before). Pre-fix this region's
-        // `top_shell_index = None` (default), causing the ironing
-        // module's gate at `top_shell_index() != Some(0)` to skip it —
-        // and on resources/cube_4color.3mf only one of the two painted
-        // top colors was ironed. The fix borrows `top_shell_index`
-        // from any existing region on the layer, so the new T0 region
-        // has `top_shell_index = Some(0)` (matching the BASE's stamp
-        // from the propagation block).
+        // Horizontal-only paint creates T1 in Phase 6/7's missing-region arm.
+        // It must inherit the shell index and fill, while the unpainted half
+        // keeps BASE identity rather than synthesizing a painted T0 region.
         let top_layer = &result[1];
-        let t0_region = top_layer
+        let base_region = top_layer
             .regions
             .iter()
-            .find(|r| r.variant_chain == vec![("material".to_string(), PaintValue::ToolIndex(0))])
-            .expect("paint segmentation must create a ToolIndex(0) region on the top layer");
+            .find(|r| r.variant_chain.is_empty())
+            .expect("unpainted top-face area must retain BASE identity");
+        let painted_region = top_layer
+            .regions
+            .iter()
+            .find(|r| r.variant_chain == vec![("material".to_string(), PaintValue::ToolIndex(1))])
+            .expect("Phase 6/7 must create the explicitly painted T1 region");
+        assert!(!base_region.polygons.is_empty());
+        assert!(!base_region.top_solid_fill.is_empty());
+        assert_eq!(base_region.top_shell_index, Some(0));
+        assert!(!painted_region.top_solid_fill.is_empty());
         assert_eq!(
-            t0_region.top_shell_index,
+            painted_region.top_shell_index,
             Some(0),
-            "ToolIndex(0) region must inherit top_shell_index from the per-layer shell \
-             index harmonised by the propagation block. Pre-fix this was None (default), \
-             causing the ironing module's gate at top_shell_index() != Some(0) to skip \
-             the region and the user-visible symptom of one of two painted top colors \
-             not being ironed on resources/cube_4color.3mf."
+            "a newly-created painted region must inherit its object's exposed-top \
+             shell index so ironing does not skip it"
         );
+        assert!(top_layer.regions.iter().all(|r| r.variant_chain.is_empty()
+            || r.variant_chain == vec![("material".to_string(), PaintValue::ToolIndex(1))]));
     }
 
     // ---- AC-Ironing packet 128 Step 2: per-object shell index invariant ----

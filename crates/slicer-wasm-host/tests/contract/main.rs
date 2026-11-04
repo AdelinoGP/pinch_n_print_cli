@@ -20,9 +20,18 @@ mod infill_postprocess_view_identity_tdd;
 mod layer_collection_builder_contract_tdd;
 mod layer_height_transport_tdd;
 mod lightning_dispatch_per_region_keying_tdd;
+// Historical filename retained; coverage now exercises prepared region queries.
 mod lightning_infill_guest_calls_lightning_tree_segments_tdd;
 mod order_lock_marshal_round_trip_tdd;
 mod perimeter_infill_per_origin_route_tdd;
+mod preparation_capability_pilot_tdd;
+mod preparation_pilot_host;
+#[cfg(feature = "preparation-test-fixtures")]
+mod preparation_projection_driver;
+#[cfg(feature = "preparation-test-fixtures")]
+mod preparation_projection_tdd;
+mod preparation_transport_driver;
+mod preparation_transport_tdd;
 mod prepass_layer_planning_v2_tdd;
 mod prepass_output_builder_validation_tdd;
 mod production_guest_smoke_tdd;
@@ -30,7 +39,9 @@ mod region_eligibility_tdd;
 mod sdk_view_transport_parity_tdd;
 mod seam_plan_harvest_custom_paint_value_tdd;
 mod set_current_origin_routes_to_correct_bucket_tdd;
+mod shared_selection_dispatch_tdd;
 mod slice_region_view_contract_tdd;
+mod source_identity_repair_tdd;
 mod support_decline_contract;
 mod support_identity_layer_dispatch_tdd;
 mod support_plan_off_grid_view_tdd;
@@ -38,7 +49,13 @@ mod support_plan_structural_contract;
 mod support_plan_validation;
 mod surface_group_resolution_tdd;
 mod typed_config_boundary_tdd;
+mod variant_identity_accessors_tdd;
+mod variant_identity_delivery_tdd;
 mod view_seam_identity_tdd;
+#[cfg(feature = "preparation-test-fixtures")]
+mod whole_print_input_driver;
+#[cfg(feature = "preparation-test-fixtures")]
+mod whole_print_input_tdd;
 mod wit_boundary_tdd;
 mod z_envelope_contract_tdd;
 

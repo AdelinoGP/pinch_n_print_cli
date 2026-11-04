@@ -108,13 +108,42 @@ fn slice_with_sparse_region() -> SliceIR {
 fn native_sparse_count(module_id: &str, claims: Vec<String>) -> usize {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let blackboard = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    let mut blackboard = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
     let mut arena = LayerArena::new();
     arena
         .set_slice(slice_with_sparse_region())
         .expect("set slice");
 
     let cfg = config();
+    let slice = arena.slice().expect("staged slice");
+    let mut map = slicer_ir::RegionMapIR::default();
+    let config = map.intern_config(slicer_ir::ResolvedConfig {
+        sparse_fill_holder: "rectilinear-infill".into(),
+        extensions: cfg
+            .iter_entries()
+            .map(|(k, v)| (k.to_owned(), v.clone()))
+            .collect(),
+        ..Default::default()
+    });
+    let region = &slice.regions[0];
+    map.entries.insert(
+        slicer_ir::RegionKey {
+            global_layer_index: slice.global_layer_index,
+            object_id: region.object_id.clone(),
+            region_id: region.region_id,
+            variant_chain: region.variant_chain.clone(),
+        },
+        slicer_ir::RegionPlan {
+            config,
+            ..Default::default()
+        },
+    );
+    blackboard
+        .commit_region_map(Arc::new(map))
+        .expect("commit exact sparse holder config");
+    blackboard
+        .commit_slice_ir(Arc::new(vec![slice.clone()]))
+        .expect("commit selection slice");
     let module = CompiledModuleBuilder::new(module_id)
         .claims(claims)
         .config_view(Arc::clone(&cfg))
@@ -138,7 +167,13 @@ fn native_sparse_count(module_id: &str, claims: Vec<String>) -> usize {
         ..Default::default()
     };
     let stage: StageId = "Layer::Infill".into();
-    let input = crate::common::layer_input(&blackboard, &arena);
+    let index =
+        crate::common::selection_for_module(&stage, &layer, &module, &blackboard, None, None)
+            .expect("build fixture selection");
+    let selection = index
+        .selection_for(layer.index, module.module_id())
+        .expect("fixture selection");
+    let input = crate::common::layer_input(&blackboard, &arena, selection);
     let result = LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &live, input)
         .expect("native dispatch");
     match result {

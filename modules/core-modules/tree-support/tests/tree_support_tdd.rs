@@ -82,6 +82,8 @@ fn paint_with_plan_at_z(
         capabilities: vec![],
         provenance: vec!["test".into()],
         decline_reason: None,
+        // Chain-less fixture region: empty chain is the exact query identity.
+        variant_chain: vec![],
     };
     PaintRegionLayerView::new(layer_index as u32).with_support_plan(Arc::new(SupportPlanIR {
         entries: vec![entry],
@@ -111,6 +113,8 @@ fn paint_with_plan_at(family_id: &str, layer_index: i32) -> PaintRegionLayerView
         capabilities: vec![],
         provenance: vec!["test".into()],
         decline_reason: None,
+        // Chain-less fixture region: empty chain is the exact query identity.
+        variant_chain: vec![],
     };
     PaintRegionLayerView::new(layer_index as u32).with_support_plan(Arc::new(SupportPlanIR {
         entries: vec![entry],
@@ -140,6 +144,8 @@ fn paint_with_interface_plan() -> PaintRegionLayerView {
         capabilities: vec![],
         provenance: vec!["test".into()],
         decline_reason: None,
+        // Chain-less fixture region: empty chain is the exact query identity.
+        variant_chain: vec![],
     };
     PaintRegionLayerView::new(0).with_support_plan(Arc::new(SupportPlanIR {
         entries: vec![entry],
@@ -564,6 +570,8 @@ fn extra_wall_count_printed_from_skeleton() {
         capabilities: vec![],
         provenance: vec!["test".into()],
         decline_reason: None,
+        // Chain-less fixture region: empty chain is the exact query identity.
+        variant_chain: vec![],
     };
     let paint = PaintRegionLayerView::new(0).with_support_plan(Arc::new(SupportPlanIR {
         entries: vec![entry],

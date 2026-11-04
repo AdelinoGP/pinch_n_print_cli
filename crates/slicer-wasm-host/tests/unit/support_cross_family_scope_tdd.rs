@@ -9,6 +9,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
+use slicer_ir::slice_ir::SupportSourceKey;
 use slicer_ir::{
     ExPolygon, IndexedTriangleSet, MeshIR, ObjectMesh, Point2, Point3, Polygon, SupportAnalysisIR,
     SupportGeometryKey, SupportPlanEntry, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
@@ -91,6 +92,7 @@ fn entry(
         capabilities: Vec::new(),
         provenance: vec![family_id.into()],
         decline_reason: None,
+        variant_chain: Vec::new(),
     }
 }
 
@@ -103,18 +105,24 @@ fn plan(entry: SupportPlanEntry) -> SupportPlanIR {
 
 /// Ownership at the merge point is default-deny: a region with no
 /// `family_assignments` row has no owner, so a fixture that expects its entries
-/// to be RETAINED must state who owns what. This grants every entry's
-/// `(object_id, region_id)` to that entry's own family -- the "no contested
-/// region" baseline these overlap fixtures implicitly assumed before ownership
-/// was declared. It publishes no `support_territory`, so the territory clipper
-/// stays disarmed and the legacy overlap guard is exercised unchanged.
+/// to be RETAINED must state who owns what. This grants every entry's exact
+/// `(object_id, region_id, variant_chain)` source key to that entry's own
+/// family, cloning the entry's own chain so the key stays coherent with the
+/// identity aggregation looks up -- the "no contested region" baseline these
+/// overlap fixtures implicitly assumed before ownership was declared. It
+/// publishes no `support_territory`, so the territory clipper stays disarmed
+/// and the legacy overlap guard is exercised unchanged.
 fn family_assignments_for(entries: &[SupportPlanEntry]) -> SupportAnalysisIR {
     SupportAnalysisIR {
         family_assignments: entries
             .iter()
             .map(|entry| {
                 (
-                    (entry.object_id.clone(), entry.region_id),
+                    SupportSourceKey {
+                        object_id: entry.object_id.clone(),
+                        region_id: entry.region_id,
+                        variant_chain: entry.variant_chain.clone(),
+                    },
                     entry.family_id.clone(),
                 )
             })
@@ -245,8 +253,9 @@ fn different_layers_of_one_object_both_survive_xy_overlap() {
         7,
         polygon(200, 200, 400, 400),
     );
-    // `family_assignments` is keyed `(object_id, region_id)` and is
-    // layer-independent, so two families on one object must name two regions.
+    // `family_assignments` is keyed `(object_id, region_id, variant_chain)`
+    // and is layer-independent, so two families on one object must name two
+    // regions.
     // The overlap guard this test exercises is scoped to
     // `(global_layer_index, object_id)` and ignores `region_id`, so splitting
     // the regions leaves the property under test untouched.
@@ -387,14 +396,29 @@ fn same_object_same_layer_cross_family_overlap_with_territory_is_clipped() {
     let footprint = polygon(200, 200, 400, 400);
     let analysis = SupportAnalysisIR {
         family_assignments: BTreeMap::from([
-            (("object".to_string(), 0), "tree".to_string()),
-            (("object".to_string(), 1), "traditional".to_string()),
+            (
+                SupportSourceKey {
+                    object_id: "object".to_string(),
+                    region_id: 0,
+                    variant_chain: Vec::new(),
+                },
+                "tree".to_string(),
+            ),
+            (
+                SupportSourceKey {
+                    object_id: "object".to_string(),
+                    region_id: 1,
+                    variant_chain: Vec::new(),
+                },
+                "traditional".to_string(),
+            ),
         ]),
         support_territory: HashMap::from([(
             SupportGeometryKey {
                 global_support_layer_index: 0,
                 object_id: "object".into(),
                 region_id: 1,
+                variant_chain: Vec::new(),
             },
             vec![footprint.clone()],
         )]),
@@ -491,14 +515,29 @@ fn territory_on_another_layer_does_not_disarm_the_guard() {
     traditional.region_id = 1;
     let analysis = SupportAnalysisIR {
         family_assignments: BTreeMap::from([
-            (("object".to_string(), 0), "tree".to_string()),
-            (("object".to_string(), 1), "traditional".to_string()),
+            (
+                SupportSourceKey {
+                    object_id: "object".to_string(),
+                    region_id: 0,
+                    variant_chain: Vec::new(),
+                },
+                "tree".to_string(),
+            ),
+            (
+                SupportSourceKey {
+                    object_id: "object".to_string(),
+                    region_id: 1,
+                    variant_chain: Vec::new(),
+                },
+                "traditional".to_string(),
+            ),
         ]),
         support_territory: HashMap::from([(
             SupportGeometryKey {
                 global_support_layer_index: 5,
                 object_id: "object".into(),
                 region_id: 1,
+                variant_chain: Vec::new(),
             },
             vec![polygon(200, 200, 400, 400)],
         )]),

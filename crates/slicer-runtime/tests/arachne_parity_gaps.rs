@@ -113,6 +113,7 @@ fn base_config(wall_count: i64) -> ConfigViewBuilder {
         .float("layer_height", 0.2)
         .float("nozzle_diameter", 0.4)
         .float("line_width", 0.45)
+        .float("resolution", 0.01)
         .float("bridge_line_width", 0.0)
         .float("initial_layer_line_width", 0.0)
         .int("extra_perimeters", 0)

@@ -5,7 +5,7 @@
 //!   declarations; no core semantics are seeded implicitly.
 //! - `CompiledModuleStatic.region_split_semantics` is empty unless the
 //!   manifest set `paint_only = true`; the per-layer dispatch filter
-//!   (`module_invocation_allowed_on_layer` in `crates/slicer-runtime`) therefore
+//!   (`selection::paint_allows_layer` in `crates/slicer-wasm-host`) therefore
 //!   allows any non-paint-only module on unpainted layers.
 //! - A `paint_only = true` module with a declaration carries exactly its
 //!   declared semantics and IS filtered on unpainted layers.
@@ -106,7 +106,7 @@ fn plan_for(modules: Vec<LoadedModule>) -> slicer_scheduler::ExecutionPlan {
 /// The runtime dispatch predicate, replicated over compiled semantics:
 /// empty ⇒ allowed; otherwise allowed iff some region carries a matching
 /// `variant_chain` semantic. Mirrors
-/// `module_invocation_allowed_on_layer` in `crates/slicer-runtime/src/layer_executor.rs`.
+/// `selection::paint_allows_layer` in `crates/slicer-wasm-host/src/selection.rs`.
 fn dispatch_allowed(declared: &HashSet<String>, regions: &[SlicedRegion]) -> bool {
     if declared.is_empty() {
         return true;

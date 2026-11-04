@@ -125,7 +125,7 @@ fn integrated_parity_overhang_classifier() {
     let stage: StageId = "PostPass::LayerFinalization".into();
     let mut native_layers = layers();
     let mut wasm_layers = native_layers.clone();
-    run_integrated_parity(IntegratedParitySpec { module_id: "com.core.overhang-classifier-default".into(), wasm_path: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../modules/core-modules/overhang-classifier-default/overhang-classifier-default.wasm"), stage: stage.clone(), version: semver(), min_ir_schema: semver(), max_ir_schema: SemVer { major: 5, minor: 0, patch: 0 }, tier: slicer_schema::TIER_FINALIZATION.into(), claims: Vec::new(), config, native_entry: OverhangClassifierDefault::__slicer_native_entry() }, |dispatcher, native_live, wasm_live| {
+    run_integrated_parity(IntegratedParitySpec { module_id: "com.core.overhang-classifier-default".into(), wasm_path: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../modules/core-modules/overhang-classifier-default/overhang-classifier-default.wasm"), stage: stage.clone(), version: semver(), min_ir_schema: semver(), max_ir_schema: SemVer { major: 5, minor: 0, patch: 0 }, tier: slicer_schema::TIER_FINALIZATION.into(), claims: Vec::new(), config, native_entry: OverhangClassifierDefault::__slicer_native_entry() }, |dispatcher, native_live, wasm_live, _native_module, _wasm_module| {
         FinalizationStageRunner::run_stage(dispatcher, &stage, native_live, finalization_input(&blackboard), &mut native_layers).expect("native finalization dispatch");
         FinalizationStageRunner::run_stage(dispatcher, &stage, wasm_live, finalization_input(&blackboard), &mut wasm_layers).expect("wasm finalization dispatch");
     });

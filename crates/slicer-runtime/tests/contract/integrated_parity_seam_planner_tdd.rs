@@ -104,7 +104,7 @@ fn integrated_parity_seam_planner() {
             config,
             native_entry: SeamPlannerDefault::__slicer_native_entry(),
         },
-        |dispatcher, native_live, wasm_live| {
+        |dispatcher, native_live, wasm_live, _native_module, _wasm_module| {
             let native = PrepassStageRunner::run_stage(
                 dispatcher,
                 &stage,

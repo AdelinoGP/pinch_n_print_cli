@@ -1,6 +1,6 @@
 use slicer_ir::{
-    ExtrusionPath3D, ExtrusionRole, LayerStageCommit, Point3WithWidth, SupportEntry, SupportIR,
-    SupportRole,
+    ExtrusionPath3D, ExtrusionRole, LayerStageCommit, PaintValue, Point3WithWidth, SupportEntry,
+    SupportIR, SupportRole,
 };
 use slicer_runtime::layer_executor::{
     apply_entity_order_proposal, assemble_ordered_entities_with_support_identities,
@@ -8,6 +8,14 @@ use slicer_runtime::layer_executor::{
 };
 use slicer_runtime::layer_executor::{apply_for_test, StageApplyContext};
 use slicer_runtime::LayerArena;
+
+/// The exact ordered source chain this fixture installs. Written once as the
+/// contract value against which the committed entry and the assembled
+/// `PrintEntity` are both checked, so the observations are compared against an
+/// independent expectation rather than against each other.
+fn expected_support_chain() -> Vec<(String, PaintValue)> {
+    vec![("material".to_string(), PaintValue::ToolIndex(1))]
+}
 
 /// The support commit boundary must retain family/body/demand attribution while
 /// carrying the actual path into the layer arena used by downstream stages.
@@ -34,7 +42,7 @@ pub fn structured_support_identity() {
         order_lock: None,
     };
     let support = SupportIR {
-        // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
+        // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/source-chain tuple
         entries: vec![SupportEntry {
             family_id: "family-anchored".into(),
             body_id: "body-anchored".into(),
@@ -43,6 +51,7 @@ pub fn structured_support_identity() {
             region_id: 7,
             role: SupportRole::SupportBody,
             paths: vec![path.clone()],
+            variant_chain: expected_support_chain(),
         }],
         ..Default::default()
     };
@@ -72,6 +81,11 @@ pub fn structured_support_identity() {
     assert_eq!(entry.region_id, 7);
     assert_eq!(entry.role, SupportRole::SupportBody);
     assert_eq!(entry.paths, [path]);
+    assert_eq!(
+        entry.variant_chain,
+        expected_support_chain(),
+        "the support commit boundary must retain the ordered source chain"
+    );
 
     let (entities, identities) = assemble_ordered_entities_with_support_identities(
         3,
@@ -89,6 +103,15 @@ pub fn structured_support_identity() {
     assert_eq!(identities[0].family_id, "family-anchored");
     assert_eq!(identities[0].body_id, "body-anchored");
     assert_eq!(identities[0].demand_ids, ["demand-anchored"]);
+    // The actual assembled `PrintEntity` must carry the source region's ordered
+    // chain on its region key: empty is an exact identity for a chain-less
+    // source, never a wildcard that erases a nonempty one. This pins the
+    // separately-owned ordered support `PrintEntity.region_key` repair (Step 9).
+    assert_eq!(
+        entities[0].region_key.variant_chain,
+        expected_support_chain(),
+        "assembled support PrintEntity must carry the source region's ordered chain"
+    );
 
     let mut ordered_arena = LayerArena::new();
     ordered_arena.set_layer_collection(slicer_ir::LayerCollectionIR {

@@ -425,7 +425,7 @@ impl LayerModule for ClassicPerimeters {
             } else {
                 layer_wall_count
             };
-            let polygons = region.polygons();
+            let original_polygons = region.polygons();
             // OrcaSlicer `resolution` (site 1): canonical simplifies each
             // *surface* at the top of the wall pass
             // (`union_ex(surface.expolygon.simplify_p(surface_simplify_resolution))`).
@@ -435,8 +435,10 @@ impl LayerModule for ClassicPerimeters {
             // insets, narrow-island classification, the overhang sub-area
             // split, the infill boundary) therefore consumes simplified
             // geometry, exactly as canonical's wall pass does.
-            let simplified =
-                slicer_sdk::contour_resolution::simplify_p(polygons, self.resolution_units);
+            let simplified = slicer_sdk::contour_resolution::simplify_p(
+                original_polygons,
+                self.resolution_units,
+            );
             let polygons: &[ExPolygon] = &simplified;
             let z = region.z();
             if wall_count == 0 {
@@ -475,6 +477,7 @@ impl LayerModule for ClassicPerimeters {
                 if !split.top_portion.is_empty() {
                     self.emit_walls(
                         &split.top_portion,
+                        original_polygons,
                         z,
                         region.segment_annotations(),
                         region_fuzzy,
@@ -506,6 +509,7 @@ impl LayerModule for ClassicPerimeters {
                 if !split.non_top_portion.is_empty() {
                     self.emit_walls(
                         &split.non_top_portion,
+                        original_polygons,
                         z,
                         region.segment_annotations(),
                         region_fuzzy,
@@ -571,6 +575,7 @@ impl LayerModule for ClassicPerimeters {
                 if !split.top_portion.is_empty() {
                     self.emit_walls(
                         &split.top_portion,
+                        original_polygons,
                         z,
                         region.segment_annotations(),
                         region_fuzzy,
@@ -602,6 +607,7 @@ impl LayerModule for ClassicPerimeters {
                 if !split.non_top_portion.is_empty() {
                     self.emit_walls(
                         &split.non_top_portion,
+                        original_polygons,
                         z,
                         region.segment_annotations(),
                         region_fuzzy,
@@ -633,6 +639,7 @@ impl LayerModule for ClassicPerimeters {
             } else {
                 self.emit_walls(
                     polygons,
+                    original_polygons,
                     z,
                     region.segment_annotations(),
                     region_fuzzy,
@@ -703,6 +710,11 @@ impl ClassicPerimeters {
     fn emit_walls(
         &self,
         polygons: &[ExPolygon],
+        // Original, un-simplified region polygons. Paint annotations are
+        // indexed by this contour's vertex order; `resolution` simplification
+        // re-unions rings and may reorder their start vertex, so attribution
+        // must not read the simplified set.
+        original_polygons: &[ExPolygon],
         z: f32,
         segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
         variant_fuzzy: bool,
@@ -923,10 +935,16 @@ impl ClassicPerimeters {
                 let num_points = points.len();
 
                 let (mut feature_flags, boundary_type) = if is_contour {
-                    let ring_pts: Option<&[slicer_ir::Point2]> =
-                        if is_outer { None } else { Some(&ring.points) };
-                    let orig_polys: Option<&[ExPolygon]> =
-                        if is_outer { None } else { Some(polygons) };
+                    // Paint annotations are indexed by the *original* region
+                    // contour's vertex order. `resolution` simplification
+                    // re-unions the ring through clipper, which can change the
+                    // start vertex, so attribute against `original_polygons`
+                    // rather than the simplified geometry the wall is built
+                    // from. The offset ring's order no longer matches the
+                    // original 1:1, so use the reprojection path for both the
+                    // outer and inner walls.
+                    let ring_pts: Option<&[slicer_ir::Point2]> = Some(&ring.points);
+                    let orig_polys: Option<&[ExPolygon]> = Some(original_polygons);
                     build_wall_flags(
                         num_points,
                         poly_idx,

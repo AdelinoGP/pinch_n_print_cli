@@ -65,10 +65,13 @@ stages beyond infill and by external as well as integrated modules.
   pieces on failure. Module authors partition large data into additional pieces
   rather than relying on an append/open/close writer lifecycle.
 - **Independent framework completion (Q13):** the generic framework may complete
-  on its own contract acceptance. Lightning migration and host-path retirement
-  remain blocked until a canonical-correct late-PrePass input strategy is
-  demonstrated and migration acceptance passes. A failed geometry proof returns
-  the migration for a design decision; approximate geometry is not a fallback.
+  on its own contract acceptance. A lightning *strategy* change and the host-path
+  retirement that would carry it remain blocked until a canonical-correct
+  late-PrePass input strategy is demonstrated. By the 2026-10-20 ADR-0066/0029
+  amendments, an *ownership move* — relocating the existing planner unchanged —
+  is authorized instead by recorded behavioural equivalence to the live producer.
+  A failed geometry proof returns a strategy migration for a design decision;
+  approximate geometry is not a fallback.
 - **Separate routing prerequisite (Q14):** the full-identity routing/configuration
   repair is separate blocking work. Preparation integration cannot complete until
   that prerequisite is implemented and verified; its defects must not be copied
@@ -643,10 +646,11 @@ implicit consequence of this design decision.
 Late PrePass contains useful shell, bridge, paint, and region information. Actual
 wall-inset `sparse_infill_area` is established later by
 `sync_perimeter_infill_areas_into_slice`
-(`crates/slicer-runtime/src/region_partition.rs`). The current
-`generate_lightning_trees` (`crates/slicer-core/src/algos/lightning/mod.rs`) uses
-region polygons and print-wide configuration; that is an implementation
-limitation, not a complete definition of available PrePass information.
+(`crates/slicer-runtime/src/region_partition.rs`). The current module-owned
+`generate_lightning_trees`
+(`modules/core-modules/lightning-infill/src/kernel/mod.rs`) uses region polygons
+and print-wide configuration; that is an implementation limitation, not a
+complete definition of available PrePass information.
 
 Planning from PrePass geometry and subsequently applying/clipping against the
 current fill area is a candidate design. Its correctness has not been established
@@ -672,13 +676,17 @@ location, not a portable fixture dependency; implementation must establish a
 reproducible oracle with canonical file/function provenance rather than requiring
 that machine-specific path.
 
-The current driver also groups by `(object_id, region_id)` and pairs islands
-across layers by polygon-vector position in `generate_lightning_trees`
-(`crates/slicer-core/src/algos/lightning/mod.rs`). Canonical `generateTrees`
-collects all eligible outlines for a layer instead. Migration must audit these
-differences; relocation alone is not proof of algorithm correctness.
+The pre-migration host driver (since deleted by packet 08) grouped by
+`(object_id, region_id)` and paired islands across layers by polygon-vector
+position.
+Canonical `generateTrees` collects all eligible outlines for a layer instead.
+The 2026-10-25 fidelity pass removed the positional pairing: the module-owned
+`generate_lightning_trees` now groups by region identity only and flattens every
+`stInternal`/`stInternalVoid` expolygon's contour and holes into one ring set per
+layer. Cross-region grouping remains a PnP ownership choice (the plan is
+per-region), not a canonical claim.
 
-The lightning module is currently hidden behind `host-algos` in
+The pre-migration host lightning module was hidden behind `host-algos` in
 `crates/slicer-core/src/algos/mod.rs`; that feature enables `rayon` and
 `boostvoronoi` in `crates/slicer-core/Cargo.toml`. The lightning files directly use
 polygon operations, geometry helpers, and IR types. A module-owned portable
@@ -730,10 +738,33 @@ of the Q23 approval:
 | 02 | preparation-capability-pilot | Prove the same-artifact preparation capability end to end: combined exports, resource/import composition, fresh-instance named-piece reads, native parity, ordinary-guest compatibility, and measured retention/transfer costs. | TASK-573 | - | generated | docs/spec_packets/layer-module-preparation_02_preparation-capability-pilot/ |
 | 03 | preparation-contract-transport | Add and validate preparation declarations and matching SDK, macro, native, and WASM adapters; implement owner-private immutable named-piece transport with bounded reads, atomic publication, explicit ready/no-work state, and print-scoped storage. | TASK-574 | #2 | generated | docs/spec_packets/layer-module-preparation_03_preparation-contract-transport/ |
 | 04 | whole-print-input-views | Expose declaration-gated typed whole-print PrePass read views and selected-target/configuration data through the shared projection. | TASK-574 | #1, #3 | generated | docs/spec_packets/layer-module-preparation_04_whole-print-input-views/ |
-| 05 | preparation-runtime-lifecycle | Integrate eligibility, late-PrePass execution before Layer calls, failure/cancellation handling, storage release, and truthful runtime lifecycle diagnostics. | TASK-574 | #3, #4 | generated | docs/spec_packets/layer-module-preparation_05_preparation-runtime-lifecycle/ |
+| 05 | preparation-runtime-lifecycle | Integrate eligibility, late-PrePass execution before Layer calls, failure/cancellation handling, storage release, and truthful runtime lifecycle diagnostics. | TASK-574 | #3, #4 | implemented | docs/spec_packets/layer-module-preparation_05_preparation-runtime-lifecycle/ |
 | 06 | preparation-plan-visuals | Publish validated optional XY diagnostic projections atomically with prepared plans, then capture and render them through the existing visual-debug request and bundle path with truthful execution metadata. | TASK-575 | #5 | generated | docs/spec_packets/layer-module-preparation_06_preparation-plan-visuals/ |
-| 07 | lightning-geometry-portability-gate | Establish the reproducible canonical planning-domain/input oracle and verify the module-owned kernel through native and WASM adapters; record both outcomes in this source plan. | TASK-576 | - | generated | docs/spec_packets/layer-module-preparation_07_lightning-geometry-portability-gate/ |
-| 08 | lightning-migration | Migrate lightning to module-owned preparation and directly retire the host producer, `LightningTreeIR`, and `lightning-tree-segments` accessor. | TASK-577 | #5, #6, #7; complete generic framework acceptance and both verified outcomes recorded in this plan | generated | docs/spec_packets/layer-module-preparation_08_lightning-migration/ |
+| 07 | lightning-geometry-portability-gate | Establish the reproducible canonical planning-domain/input oracle and verify the module-owned kernel through native and WASM adapters; record both outcomes in this source plan. | TASK-576 | - | implemented | docs/spec_packets/layer-module-preparation_07_lightning-geometry-portability-gate/ (Gate A); docs/spec_packets/layer-module-preparation_09_lightning-kernel-portability/ (Gate B) |
+| 08 | lightning-migration | Migrate lightning to module-owned preparation and directly retire the host producer, `LightningTreeIR`, and `lightning-tree-segments` accessor. | TASK-577 | #5, #6 | implemented (re-scoped 2026-10-20; closed 2026-10-23) | docs/spec_packets/layer-module-preparation_08_lightning-migration/ |
+
+**Row 08 re-scope (2026-10-20).** Row 08 previously required "complete generic
+framework acceptance and both verified outcomes recorded in this plan" before any
+production edit. That conjunction is withdrawn because it was unsatisfiable and
+because it tested a property row 08 does not claim: rows 07 and 09 decide whether
+a *reconstructed* planning domain reproduces canonical geometry, while row 08
+moves existing planning ownership into the consuming artifact without changing
+what it computes. Row 08's correctness criterion is therefore **recorded
+behavioural equivalence**: a baseline of the live host producer's plan and final
+segments is captured and committed before deletion, and native plus fresh-WASM
+preparations must reproduce it exactly (full key identity including ordered
+`variant_chain`, edge multiplicity, per-caller segment multisets). Deletion of the
+legacy contract is gated on that comparison passing. Equivalence preserves current
+behaviour — including any existing deviation from canonical — so it is not a
+parity result and does not change the recorded Gate A `fail` or the unexecuted
+Gate B. Prerequisite rows 01–06 are `implemented` in the tree: each packet's own
+`packet.spec.md` carries `status: implemented`, which is the authority for an
+implementation status; the queue's `status` column above records *generation*
+status (row 05 carries a mixed value) and is not the implementation ledger. The
+governing decision record is
+[ADR-0074](../adr/0074-lightning-migration-on-recorded-equivalence.md), whose
+registered deviations are `D-LMP08-ADR-0066-RETIREMENT-PRECONDITION` and
+`D-LMP08-ADR-0029-HOST-OWNERSHIP`; re-derive both at use.
 
 The merged rows retain their internal acceptance sub-gates: row 01 covers both
 variant-chain delivery and the shared projection, retaining the routing witnesses
@@ -741,20 +772,336 @@ for painted variants, modifier children, merged perimeter sources, carriers, raf
 and anchored invocations; row 03 keeps declaration/adapter proofs distinct from
 storage/transport proofs; row 06 retains projection-publication and visual-debug
 request, capture, rendering, bundle, and truthful-metadata witnesses; and row 07
-separately verifies canonical input fidelity and native/WASM portability. Merging
+separately verifies canonical input fidelity and native/WASM portability. By explicit
+approval, row 07 is split into packet 07 (canonical input fidelity, Gate A) and packet
+09 (native/WASM portability, Gate B); the split does not waive either sub-gate. Merging
 rows does not waive these sub-gates. Generic framework acceptance is realized
-through rows 01–06 and may complete independently of lightning migration. Row 07
-is the feasibility gate. By explicit authoring approval, row 08 may be authored
-now as a blocked draft so the full packet set exists before implementation starts.
-This exception does not make it implementation-ready: activation and implementation
-remain blocked until complete generic framework acceptance and both verified gate
-outcomes, including the concrete migration design evidence required above, are
-recorded in this source plan. Failed or inconclusive evidence returns migration
-for a design decision; approximate geometry is not a fallback. The queue above
-records generation status; a blocked authored draft may list its directory, but
-only PREFLIGHT PASS permits `generated`. Generated packets remain drafts, and
-their preflight passes are not evidence of implemented acceptance or feasibility.
-Row 08's generated status covers blocked-draft authoring only: its B1–B5 design
-holds and the framework/feasibility evidence gates still prohibit activation and
-every production migration edit.
-No implementation is underway.
+through rows 01–06 and may complete independently of lightning migration.
+
+Row 08 is therefore **not** held behind those sub-gates. Its own criterion is
+recorded behavioural equivalence to the live producer, captured before removal;
+the feasibility gates are row 07's and row 09's outcomes, they remain recorded
+exactly as they stand (Gate A `fail`, Gate B unexecuted), and they neither gate
+nor are improved by row 08. The delivered ownership move reproduces the recorded
+pre-migration producer through native and fresh-WASM preparation; AC-2/AC-3 passed
+before deletion, and the nine migration acceptance criteria are green. This is
+recorded equivalence, not canonical parity or resolution of Gate A/B. Failed
+equivalence still returns the migration for a design decision; approximate
+geometry is not a fallback. The queue above records generation status, not
+implementation acceptance. The row-08 packet remains `draft` pending explicit
+finalization approval.
+**Status correction (2026-10-25):** the row-08 packet is `implemented` and was closed 2026-10-23; the preceding sentence is superseded.
+
+## Lightning geometry/portability gate outcomes
+
+Gate A executed against the five Classic families recorded in
+`crates/slicer-wasm-host/tests/fixtures/lightning_gate/manifest.json`. Its aggregate
+verdict is **fail**. The validated record is `target/lightning-oracle/outcome.json`,
+written and re-read strictly by `lightning_oracle_tdd::outcome_records_gate_a`
+(`crates/slicer-wasm-host/tests/integration/lightning_oracle_tdd.rs`); it carries
+`gate: "A"`, `executed: true`, the per-case statuses, the fixture/provenance hashes,
+the observed command exits, and the named blockers. `migration_eligible` is `false`.
+
+### Gate A record — five Classic families
+
+| case_id | status | named finding |
+| --- | --- | --- |
+| `anchor_bridge_classic` | inconclusive | `policies` unavailable; 0 mismatches |
+| `pooled_regions_classic` | fail | 2 mismatches, both `planning_layers.boundary_provenance` on the `g1` Internal seam edge at x=0 |
+| `hole_void_classic` | inconclusive | `policies` unavailable; 0 mismatches |
+| `island_split_merge_classic` | inconclusive | `policies` unavailable; 0 mismatches; the `bottom_bridge` surface and its geometry/provenance match |
+| `paint_modifier_config_classic` | fail | 4 named mismatches: the same seam-contributor multiplicity on three `g1` Internal edges (the x=80000 edge plus two region-1 ring-0 edges), plus a truncated boundary summary of 10 contributor differences / 0 unmatched recorded edges |
+
+No case has a domain, parameter, scalar-source, source-catalog, operation-lineage,
+population, or identity mismatch. `fail` therefore means the boundary provenance
+disagrees and nothing else.
+
+**Headline finding — cross-region seam-contributor multiplicity.** On the
+`pooled_regions_classic` `g1` Internal seam edge from `(0, -82125)` to `(0, 82125)`
+the recording carries exactly one contributor, `overlap(o0_l1_r0_s0 ring 0 seg 1)`,
+while the construction derives two — it adds `overlap(o0_l1_r1_s0 ring 0 seg 3)`.
+The reverse-directed edge at x=0 shows the same asymmetry (recorded
+`o0_l1_r1_s0 ring 0 seg 3`, derived both that and `o0_l1_r0_s0 ring 0 seg 1`). The
+construction attributes a seam edge to the ring geometry on both sides of the
+boundary; the canonical capture attributes it to one. `paint_modifier_config_classic`
+reproduces the pattern on three `g1` Internal edges: the x=80000 edge (recorded
+`o0_l1_r0_s0 ring 0 seg 1`, derived additionally `o0_l1_r2_s0 ring 0 seg 3`) and the
+two region-1 ring-0 edges at x=±40000, each gaining one contributor. This is a
+provenance-multiplicity defect, not a geometry defect: no coordinate, domain, or
+operation-lineage value mismatched in any case.
+
+### `policies` unavailability
+
+`reference.policies` is `null` in every case because a complete `FillPolicyInput`
+per region occurrence is not transcribable from the capture:
+
+- `bridge_angle_rad` is recorded by none of the seven capture artifacts.
+- `is_bridge` is not recorded for an occurrence; `callers.jsonl` records only the
+  dispatch `surface_type`, with one `internal_bridge` dispatch per case.
+- `fixed_angle` exists only per dispatch and can disagree inside a single
+  occurrence (true for top/bottom dispatches, false for internal/solid).
+
+Per-case occurrence counts and recorded coverage:
+
+| case_id | occurrences | `internal_bridge` dispatches | `fixed_angle` disagrees inside |
+| --- | --- | --- | --- |
+| `anchor_bridge_classic` | 8 | 1 | 1 |
+| `pooled_regions_classic` | 14 | 1 | 0 |
+| `hole_void_classic` | 7 | 1 | 0 |
+| `island_split_merge_classic` | 7 | 1 | 1 |
+| `paint_modifier_config_classic` | 21 | 1 | 0 |
+
+Recorded per-dispatch resolved angles exist for 2/8, 1/14, 1/7, 1/7 and 3/21
+occurrences (sparse lightning), 8/8, 6/14, 6/7, 6/7 and 6/21 (solid surfaces), and
+3/8, 2/14, 2/7, 2/7 and 2/21 (top/bottom). `bridge_angle_rad`, `is_bridge` and
+`fixed_angle` are therefore not comparable from recorded evidence, and no default or
+approximation repairs the case.
+
+### Discriminator evidence (`anchor_bridge` classic)
+
+The faithful snapshot replay matches the independently recorded production graph
+exactly: 27 nodes / 16 edges / 11 roots for both, `faithful_matches_production = true`,
+`snapshot_unchanged = true`. The wrong `final_domain_only` replay produces 67 nodes /
+43 edges / 24 roots, `topology_differs = true`, and an aligned per-layer
+symmetric-difference area of 142.55912927276 mm² (canonical mm², pinned in
+`lightning_oracle_support::ANCHOR_BRIDGE_SYMMETRIC_DIFFERENCE_MM2`). The area is the
+sum of per-layer aligned differences; a cross-layer flat union measured 0.0 and is
+not the metric the recorder writes.
+
+### Fixture identity
+
+Read from `crates/slicer-wasm-host/tests/fixtures/lightning_gate/manifest.json` and
+`target/lightning-oracle/outcome.json`:
+
+- `canonical_revision`: `3e1daccd7c567a0a3d2b5721841d30845f21307e`, with
+  `canonical_build_dirty: true` recorded at capture time.
+- `recorder_patch_sha256`: `bb3e5b81eb80893cb6b26204ac610daf9e71c49ecae9ade05db15c1b3ab6dcfb`
+  (`recorder_patch_applied: true`).
+- `manifest_recorded_sha256`: `235ca8773652e787087698194c8b7cd70ca074ce4db5bd911b8b0ec203a33312`;
+  `manifest_sha256`: `6b945314f5a13814844ab5e84f9f9ee959d373e4d21c1273370ed605a53f01cb`;
+  `inputs_sha256`: `4d9d78c2c368fe24a6cfac7b61c8ba53f3bfa14816f935c4ad770a198579d021`;
+  `canonical_sha256`: `0da75841d30b42ec0b69a1753c62c48ad5831c8aca786b8cc9da03dc88612a17`.
+- `a_source_sha256` per case:
+  - `anchor_bridge_classic`: `bc8bb51c984db4e29e16dd3e135a1ade5588c765ca2076a1014e78850bc0afcf`
+  - `pooled_regions_classic`: `328c4e4cdd8aba954114f60b1022735ccf7a72915d7b1090926095ba87952e73`
+  - `hole_void_classic`: `a0f3b2bd2cd0765cf4ac8e1db64cb6eac5d48a253a630d0ecfb5f7cff534d6f3`
+  - `island_split_merge_classic`: `0c6a11855d020ce76a7e947581e5fcd2dd4fa880142478103574e81dbb9a2867`
+  - `paint_modifier_config_classic`: `6a80a3554fce3cb6411a15b7912fe29b3d09c2e3f4de766dee1e22e2ea57bf17`
+
+### Observed commands
+
+Recorded in `target/lightning-oracle/outcome.json` under `commands` (the four
+siblings ran as child processes with observed exits; this test cannot observe its own
+exit in-process and records `exit_reason` instead):
+
+| command filter | exit | observed by |
+| --- | --- | --- |
+| `lightning_oracle_tdd::fixture_provenance` | 0 | child process of the integration test binary |
+| `lightning_oracle_tdd::gate_a_decision` | 0 | child process of the integration test binary |
+| `lightning_oracle_tdd::wrong_domain_is_rejected` | 0 | child process of the integration test binary |
+| `lightning_oracle_tdd::source_only_projection_is_isolated` | 0 | child process of the integration test binary |
+| `lightning_oracle_tdd::outcome_records_gate_a` | null | in-process (own exit unobservable) |
+
+Each row's `command` is the argv actually spawned —
+`<test-binary> <filter> --exact --nocapture` — not a Cargo invocation; the equivalent
+`cargo test` reproduction line is recorded separately in `equivalent` and was never
+spawned. `executed: true` is derived from these observations (every observed child
+exited `0`; the still-running self-invocation keeps `exit: null` with its named
+`exit_reason`), not asserted.
+
+### Migration status
+
+Migration remains blocked: `migration_eligible` is `false`, and the A record names
+`MIGRATION_BLOCKED_GATE_A` (the non-pass statuses above), `MIGRATION_BLOCKED_GATE_B`
+(Gate B — the same owned kernel through native and WASM adapters — has not executed;
+`layer-module-preparation_09_lightning-kernel-portability`), and
+`MIGRATION_BLOCKED_FRAMEWORK` (ADR-0066: no layer-preparation migration before the
+canonical strategy and portability proof complete). Gate A alone never permits
+a strategy migration, so `migration_eligible` remains `false` for that question.
+The 2026-10-20 ADR-0066/0029 amendments separate it from an ownership move:
+relocating the existing planner unchanged is authorized by recorded behavioural
+equivalence to the live producer, which is what row 08 now does. The gate outcomes
+above are unchanged by that amendment and are neither re-run nor re-interpreted
+here.
+
+### Evidence durability and gate coverage
+
+The recorder capture the fixtures were published from is a disposable build artefact
+under `target/`. A minimal provenance snapshot is therefore kept outside it, at
+`.local-artifacts/lightning-gate-gate-a/` (gitignored): the capture manifest, the
+filament/machine settings, and the five families' `source`/`planning`/`domains`/
+`provenance`/`replay`/`callers`/`clips`/`grounding`/`operations` records. Re-publish
+with `python -B tools/lightning_gate/record.py --publish-fixtures --capture
+.local-artifacts/lightning-gate-gate-a --outputdir <dir>`; the output is byte-identical
+to the checked-in fixtures. This does not replace the recorder patch, which remains the
+authority for how the capture was produced.
+
+Two coverage limits are recorded rather than waived. First, `cargo xtask
+check-literals` and `cargo xtask check-test-quality` walk `crates/*/{src,tests,benches}`
+and `modules/core-modules/<module>/tests`, so they do not reach the excluded kernel's
+inline `src/` tests; that crate is covered instead by `cargo clippy --workspace
+--all-targets -- -D warnings` and by the explicit `cargo test --manifest-path
+modules/core-modules/lightning-infill/feasibility-kernel/Cargo.toml` gate in
+`packet.spec.md`. Second, `reference.policies` is `null` in all five cases, so the
+independent comparator's policy *population* branch is exercised but its field-by-field
+branch is exercised only by the synthetic single-field mutation control inside AC-4.
+Packet `layer-module-preparation_09_lightning-kernel-portability` must re-exercise both
+before it relies on this derivation.
+
+### Gate B record — five Classic families
+
+Gate B's aggregate verdict is **fail**, with `executed: true` and
+`build_guests_check_exit: 0`. This is a measured comparison result, not a skip.
+`target/lightning-portability/outcome.json`, written by
+`lightning_portability_support::write_outcome`
+(`crates/slicer-wasm-host/tests/integration/lightning_portability_support.rs`),
+records the four included kernel paths and their per-file SHA-256 hashes, the guest
+artifact hash, native/WASM counts, per-case planned and clipped statuses, observed
+commands/exits and log hashes, non-comparable populations, and migration blockers.
+
+Counts below are nodes / edges / roots; native and WASM match each other, but every
+case's planned comparison fails against the canonical replay:
+
+AC-1 transports and validates every recorded planning layer, including
+`anchor_bridge_classic`'s empty layer 2 (zero internal domains, two temporary
+anchors), with unchanged provenance; the per-case node/edge/root counts are
+aggregates over those layers.
+
+Contract correction: the outline horizon is the highest recorded planning layer,
+justified by the checked canonical-node layer invariant in
+`planned_graph_native_and_wasm`
+(`crates/slicer-wasm-host/tests/integration/lightning_portability_tdd.rs`), which
+requires every canonical node to occupy a recorded planning layer and none above
+that horizon; the design's replay-horizon wording cannot be satisfied by the
+declared `plan_lightning(&KernelInput)` signature with an empty `layers` arm.
+
+| case_id | planned status | native | WASM | canonical | recorded clipped fill count |
+| --- | --- | --- | --- | --- | --- |
+| `anchor_bridge_classic` | fail | 34 / 17 / 17 | 34 / 17 / 17 | 27 / 16 / 11 | 13 |
+| `pooled_regions_classic` | fail | 52 / 26 / 26 | 52 / 26 / 26 | 46 / 32 / 14 | 2 |
+| `hole_void_classic` | fail | 54 / 27 / 27 | 54 / 27 / 27 | 41 / 27 / 14 | 2 |
+| `island_split_merge_classic` | fail | 44 / 22 / 22 | 44 / 22 / 22 | 41 / 25 / 16 | 4 |
+| `paint_modifier_config_classic` | fail | 72 / 36 / 36 | 72 / 36 / 36 | 48 / 30 / 18 | 6 |
+
+These are the counts recorded by the packet-09 run, before the 2026-10-25
+fidelity pass. That run's first difference for every case and both arms was
+`missing/reversed/disconnected node (point,parent point,root point,is_root) entry 0`,
+and its kernel graphs were structurally shallower: every non-root node was a
+single-level child of a root, whereas the canonical replay has multi-level chains.
+Those observations are historical; the current measurements are recorded below.
+
+### Gate B fidelity re-run — 2026-10-25
+
+The seeding model was corrected (`Generator::generateInitialInternalOverhangs`
+now walks top-down and `generateTrees` seeds before propagating), and the
+following canonical behaviours replaced earlier approximations:
+
+- the Gate B adapter consumes the recorded `stInternal`/`stInternalVoid` fill
+  surfaces, and every expolygon's contour and holes are flattened into one flat
+  ring set per region and layer. Production preparation cannot see
+  `region_partition`'s committed `sparse_infill_area` because preparation runs
+  before per-layer execution; it derives a planning domain from prepass
+  `infill_areas` minus the already-classified bridge/top/bottom/internal-solid
+  areas, and uses a committed `sparse_infill_area` verbatim when one is present.
+  Wall-inset geometry is still unavailable at the preparation seam;
+- islands are no longer paired positionally across layers;
+- `Layer::getBestGroundingLocation` uses the canonical boundary-distance gate,
+  square search box, inclusion test and cell tie-break, and
+  `reconnectRoots` has the bounded-last-grounding branch;
+- `Node::convertToPolylines` selects the continuation child with the
+  root-seeded `mt19937_64` draw.
+
+All five cases still measure **fail**, and the first mismatch remains
+`entry 0`. The measured counts are now:
+
+| case_id | planned status | native | WASM | canonical |
+| --- | --- | --- | --- | --- |
+| `anchor_bridge_classic` | fail | 28 / 17 / 11 | 28 / 17 / 11 | 27 / 16 / 11 |
+| `pooled_regions_classic` | fail | 46 / 31 / 15 | 46 / 31 / 15 | 46 / 32 / 14 |
+| `hole_void_classic` | fail | 37 / 24 / 13 | 37 / 24 / 13 | 41 / 27 / 14 |
+| `island_split_merge_classic` | fail | 37 / 23 / 14 | 37 / 23 / 14 | 41 / 25 / 16 |
+| `paint_modifier_config_classic` | fail | 58 / 35 / 23 | 58 / 35 / 23 | 48 / 30 / 18 |
+
+Native/WASM agreement is unchanged. The remaining structural divergence is the
+`DistanceField` seeding order: canonical feeds a non-transitive pairwise
+comparator to `std::stable_sort` (undefined behaviour, but deterministic for a
+given libstdc++), while the port uses the total-order band repair documented in
+`DistanceField::new`. That repair changes which overhang cell is seeded first and
+therefore the whole tree multiset. Exact Gate B parity would require reproducing
+the C++ unstable ordering, not a parameter change.
+
+Emission moved partway toward canonical in the same pass. `Layer::convertToLines`
+now receives the derived half-spacing overlap, the fill driver clips against the
+`0.5 * spacing` inset expolygon with holes preserved, and the consumer rejoins
+contiguous tree-edge segments into one extrusion path per branch. Still not
+ported: `smooth_polylines_corners` (canonical's default smooth factor is 0, so
+this is inert on the recorded profile), `multiline_fill` for `fill_multiline > 1`,
+and canonical `connect_infill` anchor hooks/contour routing. The per-region
+`lightning_*_angle` / `fill_multiline` config keys and the nozzle-diameter source
+are also still fixed constants rather than a resolved config surface.
+
+The clipped comparison is **inconclusive** for each case. The exact
+`reference.final_fills` absence reason in
+`crates/slicer-wasm-host/tests/fixtures/lightning_gate/manifest.json` is
+`FinalFillInput.policy needs per-region resolved angles the capture does not record`.
+The recorded fill counts are **13 / 2 / 2 / 4 / 6**, in the table's case order;
+these are recorded populations, not successful canonical clip comparisons.
+Constructed-fill clipping checks do not establish canonical final-fill parity.
+Final-fill contributor attribution remains limited: grouped/unioned fills cannot
+be assigned complete canonical per-contributor provenance from this capture;
+`combine_infill`/grouped-union provenance repair is not established by Gate B.
+
+The seven named non-comparable populations are `origin_region_index`,
+`per_node_provenance`, `sampled_segments`, `grounding.kind`,
+`reference.final_fills`, `reference.policies`, and
+`final_fill_contributor_attribution`. They remain explicitly
+non-comparable rather than silently defaulted or counted as passes.
+The contributor evidence records unavailable contributor-dispatch counts of
+**21 / 1 / 2 / 2 / 1**, in the table's case order, all with the recorded reason
+`unresolved contributor: surface created after the pre-anchor snapshot`.
+
+Implementation notes:
+
+- Canonical fixture geometry uses 1 nm units and is converted to PnP 100 nm units
+  using `round-half-away-from-zero(v/100)` before planning; the two coordinate
+  scales are not interchangeable.
+- The test guest at
+  `crates/slicer-wasm-host/test-guests/lightning-portability-guest/` is a root
+  workspace member, not a `[workspace]`-sentinel guest. Its vestigial lockfile is
+  excluded from guest-lock divergence analysis. The feasibility kernel's exact
+  `clipper2-rust = "=1.1.0"` pin matches the root lock, so it cannot conflict with
+  the 30 other guest lockfiles through that excluded vestigial lockfile.
+
+The four integration acceptance filters in
+`crates/slicer-wasm-host/tests/integration/lightning_portability_tdd.rs` are:
+
+- `lightning_portability_tdd::planned_graph_native_and_wasm`
+- `lightning_portability_tdd::gate_b_decision_is_truthful`
+- `lightning_portability_tdd::rejects_canned_echo_and_fallback`
+- `lightning_portability_tdd::outcome_records_gate_b`
+
+AC-4's negative controls are validated against a known-good synthetic baseline,
+and each corruption is rejected with its own named failure, including a well-formed
+canned payload for a different case, an echoed input, and a region-isolated payload.
+
+The outcome also records the observed child execution of
+`planner::tests::clip_lightning_semantics_tdd`
+(`modules/core-modules/lightning-infill/feasibility-kernel/src/planner.rs`).
+Child commands have observed exit 0; the outcome writer cannot observe its own
+still-running invocation's exit and records `null` with that explicit reason.
+The enclosing test harness supplies the completion result.
+
+`migration_eligible` is **false**: eligibility requires the conjunction of Gate A
+pass, Gate B pass, independently recorded framework acceptance, and executed
+artifacts. The named
+blockers are `MIGRATION_BLOCKED_GATE_A` (A recorded **fail**),
+`MIGRATION_BLOCKED_GATE_B` (B measured **fail**), and
+`MIGRATION_BLOCKED_FRAMEWORK` (framework acceptance **not independently verified**
+by this packet). The preceding A record is preserved as historical evidence;
+this B record supersedes its statement that B had not executed, without changing
+the A verdict or asserting canonical-parity migration acceptance.
+The `(Gate A, Gate B, framework acceptance, executed)` conjunction computing
+`migration_eligible` is exercised as a full truth table, with framework acceptance
+recorded `Unverified` and named `MIGRATION_BLOCKED_FRAMEWORK`; an inconclusive
+gate blocks eligibility just as a failed gate does, and unexecuted artifacts add
+`MIGRATION_BLOCKED_UNEXECUTED`.

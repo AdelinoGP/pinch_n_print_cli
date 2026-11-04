@@ -54,7 +54,6 @@ fn native_and_wasm_layer_views_are_field_identical() {
         paint_regions: None,
         seam_plan: None,
         support_plan: None,
-        lightning_tree_ir: None,
         region_map: None,
         slice: Some(&slice),
         perimeter: None,
@@ -63,6 +62,7 @@ fn native_and_wasm_layer_views_are_field_identical() {
         prepared_regions: None,
         prepared_perimeter_source_regions: None,
         infill: None,
+        selection: None,
     };
     let native = slicer_wasm_host::marshal::native::build_native_layer_request(
         "Layer::Infill",
@@ -207,14 +207,6 @@ fn native_and_wasm_layer_views_are_field_identical() {
             .and_then(PaintRegionLayerView::support_plan),
         wasm_paint.support_plan(),
         "paint.support_plan"
-    );
-    assert_eq!(
-        native
-            .paint
-            .as_ref()
-            .and_then(PaintRegionLayerView::lightning_tree_ir),
-        wasm_paint.lightning_tree_ir(),
-        "paint.lightning_tree_ir"
     );
     assert_eq!(native.prior_infill, None, "prior_infill");
     assert_eq!(native.config, *module.config_view, "config");
@@ -364,7 +356,6 @@ fn native_projection_filters_and_resolves_configured_regions() {
         paint_regions: None,
         seam_plan: None,
         support_plan: None,
-        lightning_tree_ir: None,
         region_map: Some(Arc::new(map)),
         slice: Some(&slice),
         perimeter: Some(&perimeter),
@@ -373,6 +364,7 @@ fn native_projection_filters_and_resolves_configured_regions() {
         prepared_regions: None,
         prepared_perimeter_source_regions: None,
         infill: None,
+        selection: None,
     };
     let native = slicer_wasm_host::marshal::native::build_native_layer_request_for_layer(
         "Layer::Infill",

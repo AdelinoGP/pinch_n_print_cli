@@ -20,9 +20,28 @@
 use slicer_ir::{ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, Point3WithWidth};
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::preparation::PreparedPlanView;
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
+
+use crate::kernel::KernelPlan;
+use crate::private_plan::{decode_layer_piece, piece_name};
+
+// The relocated bodies keep the host copy's surface, including helpers reached
+// only by the kernel's own tests and by the isolated feasibility kernel
+// (`Generator::{get_trees_for_layer, take_committed_segments}`,
+// `DistanceField::unsupported_count`, `Layer::new`) and the never-constructed
+// `KernelError::Unimplemented`. Inside this private module those members are
+// unreachable from the ordinary entry point, so dead-code detection stays
+// scoped here. The original migration freeze no longer applies; later fixes
+// may change these bodies.
+#[allow(dead_code)]
+mod kernel;
+mod planning_input;
+mod preparation;
+mod private_plan;
+mod projection;
 
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
@@ -49,7 +68,7 @@ impl LightningInfill {
     }
 }
 
-#[slicer_module]
+#[slicer_module(preparation)]
 impl LayerModule for LightningInfill {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         // Required reads: the registry seeds every declared key's default into
@@ -101,13 +120,20 @@ impl LayerModule for LightningInfill {
 
     fn run_infill(
         &self,
-        _layer_index: u32,
+        layer_index: u32,
         regions: &[SliceRegionView],
         _paint: &PaintRegionLayerView,
         output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         let speed_factor = self.infill_speed / BASE_SPEED;
+        // The plan arrives as this layer's private piece (D3). No paint-view
+        // segment read remains: the piece is the only plan source. The read is
+        // lazy so a module that holds no sparse-fill region on this layer emits
+        // nothing without demanding a plan it would not use; a holding region
+        // still fails loudly instead of degrading to an empty layer through a
+        // host fallback.
+        let mut plan: Option<KernelPlan> = None;
 
         for region in regions {
             output.begin_region(
@@ -115,16 +141,36 @@ impl LayerModule for LightningInfill {
                 *region.region_id(),
                 region.variant_chain(),
             );
-            if !region.should_emit(ExtrusionRole::SparseInfill) {
+            if !region.should_emit(ExtrusionRole::SparseInfill)
+                || region.sparse_infill_area().is_empty()
+            {
                 continue;
             }
+            if plan.is_none() {
+                plan = Some(read_layer_plan(layer_index)?);
+            }
+            let plan = plan.as_ref().expect("plan read for a holding region");
 
             let z = region.z();
-            for segment in
-                _paint.lightning_tree_segments_for(region.object_id(), *region.region_id())
-            {
-                let points = segment
-                    .into_iter()
+            // Exact source query: the full `(object_id, region_id, ordered
+            // variant_chain)` must match the committed plan entry. A pair-only
+            // lookup is never a fallback; an empty chain is the exact identity
+            // for a genuinely chain-less source, never a wildcard.
+            let segments: Vec<[slicer_ir::Point2; 2]> = plan
+                .entries
+                .iter()
+                .filter(|entry| {
+                    entry.global_layer_index == layer_index as i32
+                        && entry.object_id == *region.object_id()
+                        && entry.region_id == *region.region_id()
+                        && entry.variant_chain.as_slice() == region.variant_chain()
+                })
+                .flat_map(|entry| entry.tree_edge_segments.iter().copied())
+                .collect();
+
+            for polyline in chain_tree_segments(&segments) {
+                let points = polyline
+                    .iter()
                     .map(|point| Point3WithWidth {
                         x: slicer_ir::units_to_mm(point.x),
                         y: slicer_ir::units_to_mm(point.y),
@@ -137,13 +183,20 @@ impl LayerModule for LightningInfill {
                     })
                     .collect();
 
-                let _ = output.push_sparse_path(ExtrusionPath3D {
-                    points,
-                    role: ExtrusionRole::SparseInfill,
-                    speed_factor,
-                    tool_index: None,
-                    order_lock: None,
-                });
+                output
+                    .push_sparse_path(ExtrusionPath3D {
+                        points,
+                        role: ExtrusionRole::SparseInfill,
+                        speed_factor,
+                        tool_index: None,
+                        order_lock: None,
+                    })
+                    .map_err(|error| {
+                        ModuleError::fatal(
+                            57413,
+                            format!("lightning sparse path emission: {error}"),
+                        )
+                    })?;
             }
         }
 
@@ -151,9 +204,73 @@ impl LayerModule for LightningInfill {
     }
 }
 
+/// Recover the generator's polylines from the ordered tree-edge segments.
+///
+/// The plan carries directed two-point segments because the prepared-piece wire
+/// format pins four i64 coordinates per edge. The planner appends each
+/// `Node::convertToPolylines` result contiguously, so a run of segments whose
+/// end matches the next start is one branch polyline. Emitting that run as one
+/// extrusion path restores canonical's line-per-branch shape instead of one
+/// travel-separated path per edge.
+pub(crate) fn chain_tree_segments(
+    segments: &[[slicer_ir::Point2; 2]],
+) -> Vec<Vec<slicer_ir::Point2>> {
+    let mut lines = Vec::new();
+    let mut current: Vec<slicer_ir::Point2> = Vec::new();
+    for [start, end] in segments {
+        match current.last() {
+            Some(last) if last == start => current.push(*end),
+            _ => {
+                if current.len() > 1 {
+                    lines.push(std::mem::take(&mut current));
+                } else {
+                    current.clear();
+                }
+                current.extend([*start, *end]);
+            }
+        }
+    }
+    if current.len() > 1 {
+        lines.push(current);
+    }
+    lines
+}
+
+/// Read and decode the prepared piece for one layer.
+///
+/// `PreparedPlanView::current()` is the call-local view the ordinary stage runs
+/// under; the piece name is the module's own `lightning-layer-{index}` spelling,
+/// and the decoder is this module's, so neither the host nor the SDK interprets
+/// the bytes.
+fn read_layer_plan(layer_index: u32) -> Result<KernelPlan, ModuleError> {
+    let name = piece_name(layer_index as i32);
+    let view = PreparedPlanView::current().map_err(ModuleError::from)?;
+    let piece = view.require(&name)?;
+    let len = piece.len().map_err(ModuleError::from)?;
+    let bytes = piece.read(0, len).map_err(ModuleError::from)?;
+    decode_layer_piece(&name, &bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chained_segments_recover_branch_polylines() {
+        let point = |x| slicer_ir::Point2 { x, y: 0 };
+        let lines = chain_tree_segments(&[
+            [point(0), point(1)],
+            [point(1), point(2)],
+            [point(10), point(11)],
+        ]);
+        assert_eq!(
+            lines,
+            vec![
+                vec![point(0), point(1), point(2)],
+                vec![point(10), point(11)],
+            ]
+        );
+    }
 
     #[test]
     fn from_config_defaults() {

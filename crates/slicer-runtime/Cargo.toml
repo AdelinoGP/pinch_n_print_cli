@@ -12,6 +12,7 @@ perimeter-spatial-test-support = ["slicer-core/perimeter-spatial-test-support"]
 [dependencies]
 slicer-config = { path = "../slicer-config" }
 slicer-ir = { path = "../slicer-ir" }
+slicer-schema = { path = "../slicer-schema" }
 slicer-core = { path = "../slicer-core", features = ["host-algos"] }
 slicer-sdk = { path = "../slicer-sdk" }
 slicer-helpers = { path = "../slicer-helpers" }
@@ -62,8 +63,16 @@ wit-parser = "0.247"
 tempfile = "3"
 serde_json = "1.0"
 base64 = "0.22"
+sha2 = "0.10"
 slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk", features = ["test"] }
-slicer-schema = { path = "../slicer-schema" }
+preparation-lifecycle-guest = { path = "../slicer-wasm-host/test-guests/preparation-lifecycle-guest" }
+preparation-visual-guest = { path = "../slicer-wasm-host/test-guests/preparation-visual-guest" }
+preparation-lifecycle-anchored-guest = { path = "../slicer-wasm-host/test-guests/preparation-lifecycle-anchored-guest" }
+whole-print-input-path = { path = "../slicer-wasm-host/test-guests/whole-print-input-path" }
+whole-print-input-perimeters = { path = "../slicer-wasm-host/test-guests/whole-print-input-perimeters" }
+whole-print-input-infill = { path = "../slicer-wasm-host/test-guests/whole-print-input-infill" }
+whole-print-input-support = { path = "../slicer-wasm-host/test-guests/whole-print-input-support" }
+whole-print-input-anchored = { path = "../slicer-wasm-host/test-guests/whole-print-input-anchored" }
 sdk-layer-infill-guest = { path = "../slicer-wasm-host/test-guests/sdk-layer-infill-guest" }
 sdk-finalization-guest = { path = "../slicer-wasm-host/test-guests/sdk-finalization-guest" }
 sdk-postpass-text-guest = { path = "../slicer-wasm-host/test-guests/sdk-postpass-text-guest" }
@@ -110,6 +119,10 @@ path = "../../modules/core-modules/classic-perimeters"
 # packet 204 (AC-5): integrated_parity_support_planner_tdd drives SupportPlanner
 [dev-dependencies.tree-support-planner]
 path = "../../modules/core-modules/tree-support-planner"
+
+# AC-R8: exercise the real macro-generated native prepass entry alongside WASM.
+[dev-dependencies.traditional-support-planner]
+path = "../../modules/core-modules/traditional-support-planner"
 
 # packet 148 (AC-9): arachne_parity.rs drives ArachnePerimeters::run_perimeters
 # natively (mirroring the module's own canonical tdd tests) instead of
@@ -160,6 +173,10 @@ path = "../../modules/core-modules/path-optimization-default"
 
 [dev-dependencies.machine-gcode-emit]
 path = "../../modules/core-modules/machine-gcode-emit"
+
+[[test]]
+name = "e2e"
+path = "tests/e2e/main.rs"
 
 [[test]]
 name = "integration"

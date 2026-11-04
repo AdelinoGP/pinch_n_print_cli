@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use slicer_ir::slice_ir::SupportSourceKey;
 use slicer_ir::{
     ExPolygon, GlobalLayer, LayerPlanIR, MeshIR, ObjectSurfaceData, OverhangRegion, Point2,
     Polygon, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SliceIR, SlicedRegion,
@@ -129,9 +130,11 @@ fn needs_support_false_region_yields_no_auto_candidates() {
         "an ineligible region must not produce an auto-detected candidate"
     );
     assert_eq!(
-        analysis
-            .family_assignments
-            .get(&(String::from("object"), region_id)),
+        analysis.family_assignments.get(&SupportSourceKey {
+            object_id: String::from("object"),
+            region_id,
+            variant_chain: Vec::new(),
+        }),
         Some(&String::from("traditional")),
         "suppression must preserve the structured family assignment for downstream decline"
     );

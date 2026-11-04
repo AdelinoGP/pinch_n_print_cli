@@ -18,6 +18,16 @@ use syn::{parse_macro_input, ItemFn, ItemImpl, ReturnType};
 // structurally impossible (docs/03, docs/05).
 use slicer_schema::{StageSpec, STAGES};
 
+/// The composed preparation world name for an ordinary Layer world.
+fn prepared_world_name(ordinary_world: &str) -> String {
+    format!("prepared-{ordinary_world}")
+}
+
+/// Whether a world name is a composed prepared world.
+fn is_prepared_world(world_name: &str) -> bool {
+    world_name.starts_with("prepared-")
+}
+
 /// The `#[slicer_module]` attribute macro.
 ///
 /// Applied to an `impl <Module>Trait for T` block, this macro:
@@ -33,8 +43,28 @@ use slicer_schema::{StageSpec, STAGES};
 ///    describing the full WIT export surface for this module, plus a
 ///    thin dispatcher `__slicer_wit_run(...)` that delegates through
 ///    the implemented trait.
+///
+/// `#[slicer_module(preparation)]` additionally composes a Layer stage with
+/// the private preparation capability. The type must separately implement
+/// `slicer_sdk::preparation::LayerPreparation`; ordinary construction and
+/// stage metadata are unchanged. No other attribute argument is accepted.
 #[proc_macro_attribute]
-pub fn slicer_module(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn slicer_module(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let preparation = if attr.is_empty() {
+        false
+    } else {
+        match syn::parse::<syn::Ident>(attr.clone()) {
+            Ok(ident) if ident == "preparation" => true,
+            _ => {
+                return syn::Error::new_spanned(
+                    TokenStream2::from(attr),
+                    "slicer_module: the only accepted argument is `preparation`",
+                )
+                .to_compile_error()
+                .into();
+            }
+        }
+    };
     let input = parse_macro_input!(item as ItemImpl);
     let self_ty = input.self_ty.clone();
 
@@ -78,8 +108,27 @@ pub fn slicer_module(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
-    let expanded =
-        generate_slicer_module_impl(&input, &self_ty, &detected_stages, trait_ident.as_deref());
+    if preparation
+        && (trait_ident.as_deref() != Some("LayerModule")
+            || !detected_stages
+                .first()
+                .is_some_and(|stage| stage.trait_name == "LayerModule"))
+    {
+        return syn::Error::new_spanned(
+            &input.self_ty,
+            "slicer_module(preparation): requires a LayerModule impl with exactly one Layer stage method",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let expanded = generate_slicer_module_impl(
+        &input,
+        &self_ty,
+        &detected_stages,
+        trait_ident.as_deref(),
+        preparation,
+    );
     TokenStream::from(expanded)
 }
 
@@ -122,6 +171,7 @@ fn generate_slicer_module_impl(
     self_ty: &syn::Type,
     detected: &[&StageSpec],
     trait_ident: Option<&str>,
+    preparation: bool,
 ) -> TokenStream2 {
     let type_name_str = quote!(#self_ty).to_string();
     let original_impl = quote! { #input };
@@ -162,6 +212,36 @@ fn generate_slicer_module_impl(
         vec![stage_export_literal.clone()]
     };
     let wit_exports_tokens = wit_exports.iter().map(|e| quote! { #e });
+
+    let preparation_sidecar = if preparation {
+        let stage = detected[0];
+        let ordinary_world = stage.wit_world;
+        let prepared_world = prepared_world_name(ordinary_world);
+        quote! {
+            #[doc(hidden)]
+            pub const __SLICER_PREPARATION_SCHEMA: ::slicer_schema::PreparationExportSchema =
+                ::slicer_schema::PreparationExportSchema {
+                    wit_package: ::slicer_schema::PREPARATION_PACKAGE,
+                    ordinary_world: #ordinary_world,
+                    wit_world: #prepared_world,
+                    qualified_export: ::slicer_schema::PREPARATION_QUALIFIED_EXPORT,
+                };
+
+            #[doc(hidden)]
+            #[cfg(not(target_arch = "wasm32"))]
+            pub fn __slicer_prepared_native_entry() -> ::slicer_sdk::native::NativePreparedStageEntry {
+                ::slicer_sdk::native::NativePreparedStageEntry {
+                    stage: Self::__slicer_native_entry(),
+                    prepare: |input, output| {
+                        let result = <#self_ty as ::slicer_sdk::preparation::LayerPreparation>::prepare_print(input, output);
+                        output.complete(result)
+                    },
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
 
     let native_entry_tokens = if stage_id_literal.starts_with("Layer::") {
         let body = match stage_method_literal {
@@ -264,7 +344,7 @@ fn generate_slicer_module_impl(
             },
             "run_anchored_events" => quote! {
                 let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
-                let regions = req.perimeter_regions.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing perimeter regions".to_string()))?;
+                let regions = &req.regions;
                 let mut collection = ::slicer_sdk::layer_collection_builder::LayerCollectionBuilder::new();
                 // Ticket 47: same snapshot the WASM leg's builder carries.
                 collection.set_ordered_entities(req.ordered_entities.clone());
@@ -278,14 +358,21 @@ fn generate_slicer_module_impl(
             },
             _ => quote! { unreachable!() },
         };
+        // Prepared native sidecars also call the ordinary entry in lib-test
+        // builds. Preserve the historical test exclusion for plain modules.
+        let native_layer_cfg = if preparation {
+            quote! { #[cfg(not(target_arch = "wasm32"))] }
+        } else {
+            quote! { #[cfg(all(not(target_arch = "wasm32"), not(test)))] }
+        };
         quote! {
-            #[cfg(all(not(target_arch = "wasm32"), not(test)))]
+            #native_layer_cfg
             #[doc(hidden)]
             pub fn __slicer_native_entry() -> ::slicer_sdk::native::NativeStageEntry {
                 ::slicer_sdk::native::NativeStageEntry::Layer(Self::__slicer_native_layer_entry)
             }
 
-            #[cfg(all(not(target_arch = "wasm32"), not(test)))]
+            #native_layer_cfg
             fn __slicer_native_layer_entry(
                 req: &::slicer_sdk::native::NativeLayerRequest,
             ) -> ::std::result::Result<::slicer_sdk::native::NativeLayerResponse, ::slicer_sdk::error::ModuleError> {
@@ -519,6 +606,7 @@ fn generate_slicer_module_impl(
             }
 
             #native_entry_tokens
+            #preparation_sidecar
 
         }
     };
@@ -602,19 +690,27 @@ fn generate_slicer_module_impl(
             }
         }
         Some(StageGlueKind::Finalization) => build_finalization_world_glue(self_ty),
-        Some(StageGlueKind::LayerSlicePostprocess) => build_layer_slice_postprocess_glue(self_ty),
-        Some(StageGlueKind::LayerPerimeters) => build_layer_perimeters_glue(self_ty),
+        Some(StageGlueKind::LayerSlicePostprocess) => {
+            build_layer_slice_postprocess_glue(self_ty, preparation)
+        }
+        Some(StageGlueKind::LayerPerimeters) => build_layer_perimeters_glue(self_ty, preparation),
         Some(StageGlueKind::LayerPerimetersPostprocess) => {
-            build_layer_perimeters_postprocess_glue(self_ty)
+            build_layer_perimeters_postprocess_glue(self_ty, preparation)
         }
-        Some(StageGlueKind::LayerInfill) => build_layer_infill_glue(self_ty),
-        Some(StageGlueKind::LayerInfillPostprocess) => build_layer_infill_postprocess_glue(self_ty),
-        Some(StageGlueKind::LayerSupport) => build_layer_support_glue(self_ty),
+        Some(StageGlueKind::LayerInfill) => build_layer_infill_glue(self_ty, preparation),
+        Some(StageGlueKind::LayerInfillPostprocess) => {
+            build_layer_infill_postprocess_glue(self_ty, preparation)
+        }
+        Some(StageGlueKind::LayerSupport) => build_layer_support_glue(self_ty, preparation),
         Some(StageGlueKind::LayerSupportPostprocess) => {
-            build_layer_support_postprocess_glue(self_ty)
+            build_layer_support_postprocess_glue(self_ty, preparation)
         }
-        Some(StageGlueKind::LayerPathOptimization) => build_layer_path_optimization_glue(self_ty),
-        Some(StageGlueKind::LayerAnchoredEvents) => build_layer_anchored_events_glue(self_ty),
+        Some(StageGlueKind::LayerPathOptimization) => {
+            build_layer_path_optimization_glue(self_ty, preparation)
+        }
+        Some(StageGlueKind::LayerAnchoredEvents) => {
+            build_layer_anchored_events_glue(self_ty, preparation)
+        }
         Some(StageGlueKind::PrepassMeshAnalysis) => build_prepass_mesh_analysis_glue(self_ty),
         Some(StageGlueKind::PrepassLayerPlanning) => build_prepass_layer_planning_glue(self_ty),
         Some(StageGlueKind::PrepassSeamPlanning) => build_prepass_seam_planning_glue(self_ty),
@@ -737,6 +833,41 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
     const IR_TYPES_WIT: &str = include_str!("../../slicer-schema/wit/deps/ir-types.wit");
     const COMMON_WIT: &str = include_str!("../../slicer-schema/wit/deps/common.wit");
     const PREPASS_TYPES_WIT: &str = include_str!("../../slicer-schema/wit/deps/prepass-types.wit");
+    const SUPPORT_QUERIES_WIT: &str =
+        include_str!("../../slicer-schema/wit/deps/support-queries/support-queries.wit");
+    const PREPARATION_WIT: &str =
+        include_str!("../../slicer-schema/wit/deps/layer-preparation/layer-preparation.wit");
+    const LAYER_WITS: &[&str] = &[
+        include_str!("../../slicer-schema/wit/deps/layer-slice-postprocess/layer-slice-postprocess.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-perimeters/layer-perimeters.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-perimeters-postprocess/layer-perimeters-postprocess.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-infill/layer-infill.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-infill-postprocess/layer-infill-postprocess.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-support/layer-support.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-support-postprocess/layer-support-postprocess.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-anchored-events/layer-anchored-events.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-path-optimization/layer-path-optimization.wit"),
+    ];
+    let prepared = is_prepared_world(world_name);
+    // Compose the canonical capability world with a private initialization
+    // export using the ordinary imported config resource identity. Canonical
+    // interfaces stay unchanged, and old pilot linkers acquire no new imports.
+    let selected_world;
+    let world_name = if prepared {
+        selected_world = format!(
+            "world preparation-ingestion {{\n\
+             include slicer:layer-preparation/{world_name}@1.0.0;\n\
+             use slicer:config/config-types.{{config-view as invocation-config-view}};\n\
+             use slicer:common/module-errors.{{module-error as initialization-error}};\n\
+             export configure-preparation: func(config: invocation-config-view) -> result<_, initialization-error>;\n\
+             }}"
+        );
+        // The declaration is placed in the generated root package below.
+        "preparation-ingestion"
+    } else {
+        selected_world = String::new();
+        world_name
+    };
 
     // Strip the statement-form `package <X>;` header from a dep WIT file,
     // returning the body for brace-wrapping into a nested package block.
@@ -755,8 +886,9 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
         dep_wit
     }
 
-    // Extract package name (without version) for brace-wrapping: e.g.
-    // "package slicer:types;" → "slicer:types".
+    // Extract the package name for brace-wrapping, keeping any declared
+    // version suffix: e.g. "package slicer:types;" → "slicer:types", and
+    // "package slicer:ir-handles@1.0.0;" → "slicer:ir-handles@1.0.0".
     fn extract_dep_pkg_name(dep_wit: &str) -> &str {
         for (i, c) in dep_wit.char_indices() {
             if c == '\n' {
@@ -787,7 +919,10 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
 
     // Assemble nested-package inline blob (Option A):
     // - World file is the top-level statement (begins with "package slicer:world-X@<version>;")
-    // - Dep packages are nested `package slicer:X { ... }` blocks (UNVERSIONED)
+    // - Dep packages are nested `package slicer:X { ... }` blocks, keeping
+    //   their version suffix where declared: the core `slicer:ir-handles`
+    //   package is versioned `@1.0.0`, and the specialist query package
+    //   (`slicer:support-queries`) is `@1.0.0` too
     // - Cross-package `use slicer:...` in the world file resolve over the whole group
     // - ir-handles is nested unconditionally for every world: `COMMON_WIT`'s
     //   `host-services` interface (nested below, also unconditionally, into
@@ -801,15 +936,37 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
     //   Step 9B fix).
     let ir_block = format!("\n\n{}", nest_dep(IR_TYPES_WIT));
 
-    let expanded_inline_wit = format!(
+    let mut expanded_inline_wit = format!(
         "{}\n\n{}\n\n{}{}\n\n{}\n\n{}",
-        inline_wit,
+        if prepared {
+            "package slicer:prepared-bindings;"
+        } else {
+            inline_wit
+        },
         nest_dep(TYPES_WIT),
         nest_dep(CONFIG_WIT),
         ir_block,
         nest_dep(COMMON_WIT),
         nest_dep(PREPASS_TYPES_WIT),
     );
+
+    // Specialist query package (layer-module-preparation packet, W7b).
+    // `layer-infill@2.0.0` and `layer-support@2.0.0` import
+    // support-queries into their worlds; every other world keeps its exact
+    // current closure. Prepared bindings must resolve every world included
+    // by the capability package, so their parsing closure includes the
+    // query package even when the selected stage does not consume the
+    // import.
+    if prepared || world_name == "infill-module" || world_name == "support-module" {
+        expanded_inline_wit.push_str(&format!("\n\n{}", nest_dep(SUPPORT_QUERIES_WIT)));
+    }
+    if prepared {
+        expanded_inline_wit.push_str(&format!("\n\n{selected_world}"));
+        expanded_inline_wit.push_str(&format!("\n\n{}", nest_dep(PREPARATION_WIT)));
+        for wit in LAYER_WITS {
+            expanded_inline_wit.push_str(&format!("\n\n{}", nest_dep(wit)));
+        }
+    }
 
     // With Option A, ConfigValue lives in the slicer:config package, not the world package.
     // Path: self::slicer::config::config_types::ConfigValue
@@ -872,6 +1029,621 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
         fn __slicer_error_out(e: ::slicer_sdk::error::ModuleError) -> ModuleError {
             ModuleError { code: e.code, message: e.message, fatal: e.fatal }
         }
+    }
+}
+
+/// Keep the plain world selection byte-for-byte unchanged; derive composed
+/// Layer worlds from the canonical stage table only for the opt-in path.
+fn emit_layer_world_preamble(
+    world_name: &str,
+    namespace: &str,
+    inline_wit: &str,
+    preparation: bool,
+) -> TokenStream2 {
+    if preparation {
+        let stage = STAGES
+            .iter()
+            .find(|stage| stage.trait_name == "LayerModule" && stage.wit_world == world_name)
+            .expect("Layer glue has a canonical stage");
+        emit_world_preamble(&prepared_world_name(stage.wit_world), namespace, inline_wit)
+    } else {
+        emit_world_preamble(world_name, namespace, inline_wit)
+    }
+}
+
+/// Owned typed projections of the imported, host-owned preparation resource.
+fn preparation_input_glue() -> TokenStream2 {
+    quote! {
+        mod __slicer_preparation_input {
+            use super::slicer::layer_preparation::preparation_types as wit;
+            use super::slicer::ir_handles::ir_handles as ir_wit;
+            use super::slicer::types::geometry as geo;
+            use ::slicer_sdk::preparation as sdk;
+            use sdk::PreparationInputError as Error;
+
+            pub(super) struct Reader(pub wit::PrintPreparationInput);
+
+            fn input_error(error: wit::PreparationInputError) -> Error {
+                match error {
+                    wit::PreparationInputError::AccessDenied => Error::AccessDenied,
+                    wit::PreparationInputError::RangeError => Error::RangeError,
+                    wit::PreparationInputError::ArithmeticOverflow => Error::ArithmeticOverflow,
+                    wit::PreparationInputError::MissingRequired(read) => Error::MissingRequired { read },
+                    wit::PreparationInputError::UnsupportedRead(read) => Error::UnsupportedRead { read },
+                    wit::PreparationInputError::InvalidInput(detail) => Error::InvalidInput { detail },
+                    wit::PreparationInputError::UnknownObject(object_id) => Error::UnknownObject { object_id },
+                    wit::PreparationInputError::SelectionRejected(detail) => Error::SelectionRejected { detail },
+                }
+            }
+
+            fn region_id(value: String) -> Result<u64, Error> {
+                match value.parse::<u64>() {
+                    Ok(id) if id.to_string() == value => Ok(id),
+                    _ => Err(Error::InvalidInput {
+                        detail: format!("noncanonical preparation region ID: {value}"),
+                    }),
+                }
+            }
+
+            fn paint(value: wit::PreparationPaintValue) -> sdk::PreparationPaintValue {
+                match value {
+                    wit::PreparationPaintValue::Flag(value) => sdk::PreparationPaintValue::Flag(value),
+                    wit::PreparationPaintValue::Scalar(value) => sdk::PreparationPaintValue::Scalar(value),
+                    wit::PreparationPaintValue::ToolIndex(value) => sdk::PreparationPaintValue::ToolIndex(value),
+                    wit::PreparationPaintValue::Custom(value) => sdk::PreparationPaintValue::Custom(value),
+                }
+            }
+
+            fn chain(value: wit::PreparationVariantChain) -> sdk::PreparationVariantChain {
+                value.into_iter().map(|(name, value)| (name, paint(value))).collect()
+            }
+
+            fn key(value: wit::PreparationRegionKey) -> Result<sdk::PreparationRegionKey, Error> {
+                Ok(sdk::PreparationRegionKey {
+                    global_layer_index: value.global_layer_index,
+                    object_id: value.object_id,
+                    region_id: region_id(value.region_id)?,
+                    variant_chain: chain(value.variant_chain),
+                })
+            }
+
+            fn point(value: geo::Point3) -> ::slicer_ir::Point3 {
+                ::slicer_ir::Point3 { x: value.x, y: value.y, z: value.z }
+            }
+
+            fn point_with_width(value: geo::Point3WithWidth) -> ::slicer_ir::Point3WithWidth {
+                ::slicer_ir::Point3WithWidth {
+                    x: value.x, y: value.y, z: value.z,
+                    width: value.width, flow_factor: value.flow_factor,
+                    overhang_quartile: value.overhang_quartile,
+                    dist_to_top_mm: value.dist_to_top_mm,
+                    overhang_distance_mm: value.overhang_distance_mm,
+                }
+            }
+
+            fn bounds(value: geo::BoundingBox3) -> ::slicer_ir::BoundingBox3 {
+                ::slicer_ir::BoundingBox3 { min: point(value.min), max: point(value.max) }
+            }
+
+            fn polygon(value: geo::Polygon) -> ::slicer_ir::Polygon {
+                ::slicer_ir::Polygon {
+                    points: value.points.into_iter().map(|p| ::slicer_ir::Point2 { x: p.x, y: p.y }).collect(),
+                }
+            }
+
+            fn polygons(values: Vec<geo::ExPolygon>) -> Vec<::slicer_ir::ExPolygon> {
+                values.into_iter().map(|value| ::slicer_ir::ExPolygon {
+                    contour: polygon(value.contour),
+                    holes: value.holes.into_iter().map(polygon).collect(),
+                }).collect()
+            }
+
+            fn semantic(value: ir_wit::PaintSemantic) -> ::slicer_ir::PaintSemantic {
+                match value {
+                    ir_wit::PaintSemantic::Material => ::slicer_ir::PaintSemantic::Material,
+                    ir_wit::PaintSemantic::FuzzySkin => ::slicer_ir::PaintSemantic::FuzzySkin,
+                    ir_wit::PaintSemantic::SupportEnforcer => ::slicer_ir::PaintSemantic::SupportEnforcer,
+                    ir_wit::PaintSemantic::SupportBlocker => ::slicer_ir::PaintSemantic::SupportBlocker,
+                    ir_wit::PaintSemantic::Custom(value) => ::slicer_ir::PaintSemantic::Custom(value),
+                }
+            }
+
+            fn layer(value: wit::PreparationLayer) -> Result<sdk::PreparationLayer, Error> {
+                Ok(sdk::PreparationLayer {
+                    index: value.index, z: value.z, has_nonplanar: value.has_nonplanar,
+                    is_sync_layer: value.is_sync_layer, is_raft: value.is_raft,
+                    active_regions: value.active_regions.into_iter().map(|region| {
+                        Ok(sdk::PreparationActiveRegion {
+                            object_id: region.object_id,
+                            region_id: region_id(region.region_id)?,
+                            config: super::__slicer_adapt_config(&region.config),
+                            effective_layer_height: region.effective_layer_height,
+                            nonplanar_shell: region.nonplanar_shell.map(|shell| sdk::PreparationNonplanarShell {
+                                surface_group_id: shell.surface_group_id, shell_index: shell.shell_index,
+                            }),
+                            is_catchup_layer: region.is_catchup_layer,
+                            catchup_z_bottom: region.catchup_z_bottom,
+                            tool_index: region.tool_index,
+                        })
+                    }).collect::<Result<_, Error>>()?,
+                })
+            }
+
+            fn region(value: wit::PreparationRegion) -> Result<sdk::PreparationRegion, Error> {
+                Ok(sdk::PreparationRegion {
+                    global_layer_index: value.global_layer_index, z: value.z,
+                    object_id: value.object_id, region_id: region_id(value.region_id)?,
+                    variant_chain: chain(value.variant_chain),
+                    polygons: polygons(value.polygons), infill_areas: polygons(value.infill_areas),
+                    nonplanar_surface: value.nonplanar_surface,
+                    effective_layer_height: value.effective_layer_height,
+                    segment_annotations: value.segment_annotations.into_iter().map(|entry| {
+                        (semantic(entry.semantic), entry.polygons.into_iter().map(|polygon| {
+                            polygon.values.into_iter().map(|value| value.map(paint)).collect()
+                        }).collect())
+                    }).collect(),
+                    top_shell_index: value.top_shell_index, bottom_shell_index: value.bottom_shell_index,
+                    top_solid_fill: polygons(value.top_solid_fill), bottom_solid_fill: polygons(value.bottom_solid_fill),
+                    is_bridge: value.is_bridge, bridge_areas: polygons(value.bridge_areas),
+                    bridge_orientation_deg: value.bridge_orientation_deg,
+                    sparse_infill_area: polygons(value.sparse_infill_area),
+                    internal_solid_fill: polygons(value.internal_solid_fill),
+                    internal_bridge_areas: polygons(value.internal_bridge_areas),
+                    internal_bridge_angles_deg: value.internal_bridge_angles_deg,
+                    raft_fill: polygons(value.raft_fill),
+                    phase: match value.phase {
+                        wit::PreparationInputPhase::CommittedPrepass => sdk::PreparationInputPhase::CommittedPrepass,
+                    },
+                })
+            }
+
+            fn surface_object(value: wit::PreparationSurfaceObject) -> sdk::PreparationSurfaceObject {
+                sdk::PreparationSurfaceObject {
+                    object_id: value.object_id,
+                    facet_classes: value.facet_classes.into_iter().map(|class| match class {
+                        wit::PreparationFacetClass::Normal => sdk::PreparationFacetClass::Normal,
+                        wit::PreparationFacetClass::NearHorizontal(value) => sdk::PreparationFacetClass::NearHorizontal {
+                            slope_angle_deg: value.slope_angle_deg,
+                        },
+                        wit::PreparationFacetClass::Overhang(value) => sdk::PreparationFacetClass::Overhang {
+                            angle_deg: value.angle_deg,
+                        },
+                        wit::PreparationFacetClass::Bridge => sdk::PreparationFacetClass::Bridge,
+                        wit::PreparationFacetClass::TopSurface => sdk::PreparationFacetClass::TopSurface,
+                        wit::PreparationFacetClass::BottomSurface => sdk::PreparationFacetClass::BottomSurface,
+                    }).collect(),
+                    surface_groups: value.surface_groups.into_iter().map(|group| ::slicer_ir::SurfaceGroup {
+                        id: group.id, facet_indices: group.facet_indices, z_min: group.z_min, z_max: group.z_max,
+                        area_mm2: group.area_mm2, printable: group.printable, shell_count: group.shell_count,
+                    }).collect(),
+                    bridge_regions: value.bridge_regions.into_iter().map(|bridge| sdk::PreparationBridgeRegion {
+                        id: bridge.id, facet_indices: bridge.facet_indices, bridge_direction_deg: bridge.bridge_direction_deg,
+                        anchor_width_mm: bridge.anchor_width_mm, bridge_length_mm: bridge.bridge_length_mm,
+                        expansion_margin_mm: bridge.expansion_margin_mm, is_valid: bridge.is_valid,
+                        xy_footprint: polygons(bridge.xy_footprint),
+                    }).collect(),
+                    overhang_regions: value.overhang_regions.into_iter().map(|overhang| sdk::PreparationOverhangRegion {
+                        id: overhang.id, facet_indices: overhang.facet_indices, max_angle_deg: overhang.max_angle_deg,
+                        needs_support: overhang.needs_support, xy_footprint: polygons(overhang.xy_footprint),
+                    }).collect(),
+                }
+            }
+
+            fn surface_layer(value: wit::PreparationSurfaceLayer) -> sdk::PreparationSurfaceLayer {
+                sdk::PreparationSurfaceLayer {
+                    object_id: value.object_id, global_layer_index: value.global_layer_index,
+                    overhang_quartile_polygons: value.overhang_quartile_polygons.into_iter().map(|band| {
+                        ::slicer_ir::slice_ir::QuartileBand { quartile: band.quartile, polygons: polygons(band.polygons) }
+                    }).collect(),
+                    prev_layer_boundaries: polygons(value.prev_layer_boundaries),
+                }
+            }
+
+            fn mesh_object(value: wit::PreparationMeshObject) -> sdk::PreparationMeshObject {
+                sdk::PreparationMeshObject {
+                    object_id: value.object_id, bounds: value.bounds.map(bounds),
+                    vertex_count: value.vertex_count, triangle_count: value.triangle_count,
+                    paint_layers: value.paint_layers.into_iter().map(|layer| sdk::PreparationPaintLayer {
+                        semantic: layer.semantic,
+                        facet_values: layer.facet_values.into_iter().map(|value| value.map(paint)).collect(),
+                        strokes: layer.strokes.into_iter().map(|stroke| sdk::PreparationPaintStroke {
+                            triangles: stroke.triangles.into_iter().map(point).collect(),
+                            semantic: stroke.semantic, value: paint(stroke.value),
+                        }).collect(),
+                    }).collect(),
+                }
+            }
+
+            fn mesh_query(value: &sdk::PreparationMeshQuery) -> wit::PreparationMeshQuery {
+                match value {
+                    sdk::PreparationMeshQuery::RaycastZDown { object_id, x, y, start_z } => {
+                        wit::PreparationMeshQuery::RaycastZDown(wit::PreparationRaycastZDownQuery {
+                            object_id: object_id.clone(), x: *x, y: *y, start_z: *start_z,
+                        })
+                    }
+                    sdk::PreparationMeshQuery::SurfaceNormalAt { object_id, x, y, z } => {
+                        wit::PreparationMeshQuery::SurfaceNormalAt(wit::PreparationSurfaceNormalAtQuery {
+                            object_id: object_id.clone(), x: *x, y: *y, z: *z,
+                        })
+                    }
+                    sdk::PreparationMeshQuery::ObjectBounds { object_id } => {
+                        wit::PreparationMeshQuery::ObjectBounds(wit::PreparationObjectBoundsQuery { object_id: object_id.clone() })
+                    }
+                }
+            }
+
+            fn mesh_query_result(value: wit::PreparationMeshQueryResult) -> sdk::PreparationMeshQueryResult {
+                match value {
+                    wit::PreparationMeshQueryResult::RaycastZDown(value) => sdk::PreparationMeshQueryResult::RaycastZDown(value),
+                    wit::PreparationMeshQueryResult::SurfaceNormalAt(value) => sdk::PreparationMeshQueryResult::SurfaceNormalAt(value.map(point)),
+                    wit::PreparationMeshQueryResult::ObjectBounds(value) => sdk::PreparationMeshQueryResult::ObjectBounds(bounds(value)),
+                }
+            }
+
+            fn seam(value: wit::PreparationSeam) -> Result<sdk::PreparationSeam, Error> {
+                Ok(sdk::PreparationSeam {
+                    region_key: key(value.region_key)?,
+                    chosen_candidate: ::slicer_ir::SeamPosition {
+                        point: point_with_width(value.chosen_candidate.point),
+                        wall_index: value.chosen_candidate.wall_index,
+                    },
+                    scored_candidates: value.scored_candidates.into_iter().map(|candidate| sdk::PreparationScoredSeamCandidate {
+                        position: point_with_width(candidate.position), score: candidate.score,
+                        reason: match candidate.reason {
+                            wit::PreparationSeamReason::Concave => sdk::PreparationSeamReason::Concave,
+                            wit::PreparationSeamReason::Aligned => sdk::PreparationSeamReason::Aligned,
+                            wit::PreparationSeamReason::UserForced => sdk::PreparationSeamReason::UserForced,
+                            wit::PreparationSeamReason::Sharp => sdk::PreparationSeamReason::Sharp,
+                        },
+                    }).collect(),
+                })
+            }
+
+            fn support_entry(value: wit::PreparationSupportGeometryEntry) -> Result<sdk::PreparationSupportGeometryEntry, Error> {
+                Ok(sdk::PreparationSupportGeometryEntry {
+                    key: sdk::PreparationSupportGeometryKey {
+                        global_support_layer_index: value.key.global_support_layer_index,
+                        object_id: value.key.object_id, region_id: region_id(value.key.region_id)?,
+                        variant_chain: chain(value.key.variant_chain),
+                    },
+                    polygons: polygons(value.polygons),
+                })
+            }
+
+            fn support_analysis(value: wit::PreparationSupportAnalysisBatch) -> Result<sdk::PreparationSupportAnalysisBatch, Error> {
+                Ok(sdk::PreparationSupportAnalysisBatch {
+                    candidates: value.candidates.into_iter().map(|candidate| {
+                        Ok(sdk::PreparationSupportCandidate {
+                            id: candidate.id, geometry: polygons(candidate.geometry),
+                            source: sdk::PreparationSupportCandidateSource {
+                                object_id: candidate.source.object_id, region_id: region_id(candidate.source.region_id)?,
+                                global_layer_index: candidate.source.global_layer_index, z_units: candidate.source.z_units,
+                                variant_chain: chain(candidate.source.variant_chain),
+                            },
+                            enforced: candidate.enforced, blocked: candidate.blocked,
+                        })
+                    }).collect::<Result<_, Error>>()?,
+                    model_occupancy: value.model_occupancy.into_iter().map(support_entry).collect::<Result<_, _>>()?,
+                    cantilever_surfaces: value.cantilever_surfaces.into_iter().map(support_entry).collect::<Result<_, _>>()?,
+                    termination_surfaces: value.termination_surfaces.into_iter().map(support_entry).collect::<Result<_, _>>()?,
+                    support_territory: value.support_territory.into_iter().map(support_entry).collect::<Result<_, _>>()?,
+                    shared_settings: value.shared_settings,
+                    baseline_feasible_envelope: polygons(value.baseline_feasible_envelope),
+                    family_assignments: value.family_assignments.into_iter().map(|assignment| {
+                        Ok(sdk::PreparationSupportFamilyAssignment {
+                            key: sdk::PreparationSupportSourceKey {
+                                object_id: assignment.key.object_id, region_id: region_id(assignment.key.region_id)?,
+                                variant_chain: chain(assignment.key.variant_chain),
+                            },
+                            family_id: assignment.family_id,
+                        })
+                    }).collect::<Result<_, Error>>()?,
+                })
+            }
+
+            fn support_geometry(value: wit::PreparationSupportGeometryBatch) -> Result<sdk::PreparationSupportGeometryBatch, Error> {
+                Ok(sdk::PreparationSupportGeometryBatch {
+                    support_layer_height_mm: value.support_layer_height_mm,
+                    support_top_z_distance_mm: value.support_top_z_distance_mm,
+                    entries: value.entries.into_iter().map(support_entry).collect::<Result<_, _>>()?,
+                })
+            }
+
+            fn support_plan(value: wit::PreparationSupportPlanBatch) -> Result<sdk::PreparationSupportPlanBatch, Error> {
+                Ok(sdk::PreparationSupportPlanBatch {
+                    entries: value.entries.into_iter().map(|entry| {
+                        Ok(sdk::PreparationSupportPlanEntry {
+                            global_layer_index: entry.global_layer_index, object_id: entry.object_id,
+                            region_id: region_id(entry.region_id)?, family_id: entry.family_id,
+                            demand_ids: entry.demand_ids, body_ids: entry.body_ids,
+                            anchor_layer_index: entry.anchor_layer_index, anchor_z: entry.anchor_z,
+                            roles: entry.roles.into_iter().map(|role| sdk::PreparationSupportPlanRoleRegion {
+                                role: match role.role {
+                                    wit::PreparationSupportPlanRole::SupportBody => sdk::PreparationSupportPlanRole::SupportBody,
+                                    wit::PreparationSupportPlanRole::TopInterface => sdk::PreparationSupportPlanRole::TopInterface,
+                                    wit::PreparationSupportPlanRole::BaseInterface => sdk::PreparationSupportPlanRole::BaseInterface,
+                                    wit::PreparationSupportPlanRole::BottomInterface => sdk::PreparationSupportPlanRole::BottomInterface,
+                                    wit::PreparationSupportPlanRole::RaftRelated => sdk::PreparationSupportPlanRole::RaftRelated,
+                                },
+                                regions: polygons(role.regions),
+                            }).collect(),
+                            skeleton: entry.skeleton.map(|skeleton| sdk::PreparationSupportPlanSkeleton {
+                                points: skeleton.points.into_iter().map(point).collect(), wall_counts: skeleton.wall_counts,
+                            }),
+                            capabilities: entry.capabilities, provenance: entry.provenance,
+                            decline_reason: entry.decline_reason.map(|reason| match reason {
+                                wit::PreparationSupportPlanDeclineReason::DeclinedPolicy => sdk::PreparationSupportPlanDeclineReason::DeclinedPolicy,
+                                wit::PreparationSupportPlanDeclineReason::NoRoute => sdk::PreparationSupportPlanDeclineReason::NoRoute,
+                                wit::PreparationSupportPlanDeclineReason::Blocked => sdk::PreparationSupportPlanDeclineReason::Blocked,
+                                wit::PreparationSupportPlanDeclineReason::UnsupportedMode => sdk::PreparationSupportPlanDeclineReason::UnsupportedMode,
+                            }),
+                            variant_chain: chain(entry.variant_chain),
+                        })
+                    }).collect::<Result<_, Error>>()?,
+                    raft_plan: value.raft_plan.map(|raft| sdk::PreparationRaftPlan {
+                        raft_layers: raft.raft_layers, raft_first_layer_density: raft.raft_first_layer_density,
+                        base_raft_layers: raft.base_raft_layers, interface_raft_layers: raft.interface_raft_layers,
+                    }),
+                })
+            }
+
+            fn target_source(value: wit::PreparationTargetSource) -> Result<sdk::PreparationTargetSource, Error> {
+                Ok(match value {
+                    wit::PreparationTargetSource::Model(value) => sdk::PreparationTargetSource::Model {
+                        key: key(value.key)?, members: value.members.into_iter().map(key).collect::<Result<_, _>>()?,
+                    },
+                    wit::PreparationTargetSource::SupportCarrier(value) => sdk::PreparationTargetSource::SupportCarrier {
+                        entry_index: value.entry_index, object_id: value.object_id, region_id: region_id(value.region_id)?,
+                        variant_chain: chain(value.variant_chain), family: value.family,
+                        demand_ids: value.demand_ids, body_ids: value.body_ids, provenance: value.provenance,
+                        anchor_layer_index: value.anchor_layer_index,
+                    },
+                    wit::PreparationTargetSource::Raft(value) => sdk::PreparationTargetSource::Raft {
+                        global_layer_index: value.global_layer_index,
+                    },
+                    wit::PreparationTargetSource::AnchoredStage(value) => sdk::PreparationTargetSource::AnchoredStage {
+                        anchor_layer_index: value.anchor_layer_index,
+                    },
+                })
+            }
+
+            fn selected_target(value: wit::PreparationSelectedTarget) -> Result<sdk::PreparationSelectedTarget, Error> {
+                Ok(sdk::PreparationSelectedTarget {
+                    global_layer_index: value.global_layer_index, stage_id: value.stage_id, invoke: value.invoke,
+                    source: target_source(value.source)?, config: super::__slicer_adapt_config(&value.config),
+                    held_claims: value.held_claims, authored_coloring: value.authored_coloring,
+                    resolved_role_tool: value.resolved_role_tool,
+                })
+            }
+
+            impl sdk::PrintPreparationRead for Reader {
+                fn layer_count(&self) -> Result<u64, Error> {
+                    self.0.layer_count().map_err(input_error)
+                }
+                fn layers(&self, offset: u64, max_items: u64) -> Result<Vec<sdk::PreparationLayer>, Error> {
+                    self.0.layers(offset, max_items).map_err(input_error)?.into_iter().map(layer).collect()
+                }
+                fn regions(&self, layer_index: u32, offset: u64, max_items: u64) -> Result<Vec<sdk::PreparationRegion>, Error> {
+                    self.0.regions(layer_index, offset, max_items).map_err(input_error)?.into_iter().map(region).collect()
+                }
+                fn region_configs(&self, layer_index: u32, offset: u64, max_items: u64) -> Result<Vec<sdk::PreparationRegionConfig>, Error> {
+                    self.0.region_configs(layer_index, offset, max_items).map_err(input_error)?.into_iter().map(|value| {
+                        Ok(sdk::PreparationRegionConfig { key: key(value.key)?, config: super::__slicer_adapt_config(&value.config) })
+                    }).collect()
+                }
+                fn surface_objects(&self, offset: u64, max_items: u64) -> Result<Option<Vec<sdk::PreparationSurfaceObject>>, Error> {
+                    Ok(self.0.surface_objects(offset, max_items).map_err(input_error)?
+                        .map(|values| values.into_iter().map(surface_object).collect()))
+                }
+                fn surface_layers(&self, layer_index: u32, offset: u64, max_items: u64) -> Result<Option<Vec<sdk::PreparationSurfaceLayer>>, Error> {
+                    Ok(self.0.surface_layers(layer_index, offset, max_items).map_err(input_error)?
+                        .map(|values| values.into_iter().map(surface_layer).collect()))
+                }
+                fn mesh_objects(&self, offset: u64, max_items: u64) -> Result<Vec<sdk::PreparationMeshObject>, Error> {
+                    Ok(self.0.mesh_objects(offset, max_items).map_err(input_error)?.into_iter().map(mesh_object).collect())
+                }
+                fn mesh_vertices(&self, object_id: &str, offset: u64, max_items: u64) -> Result<Vec<::slicer_ir::Point3>, Error> {
+                    Ok(self.0.mesh_vertices(object_id, offset, max_items).map_err(input_error)?.into_iter().map(point).collect())
+                }
+                fn mesh_triangles(&self, object_id: &str, offset: u64, max_items: u64) -> Result<Vec<(u32, u32, u32)>, Error> {
+                    self.0.mesh_triangles(object_id, offset, max_items).map_err(input_error)
+                }
+                fn mesh_queries(&self, requests: &[sdk::PreparationMeshQuery]) -> Result<Vec<sdk::PreparationMeshQueryResult>, Error> {
+                    let requests: Vec<_> = requests.iter().map(mesh_query).collect();
+                    Ok(self.0.mesh_queries(&requests).map_err(input_error)?.into_iter().map(mesh_query_result).collect())
+                }
+                fn seams(&self, layer_index: u32, offset: u64, max_items: u64) -> Result<Option<Vec<sdk::PreparationSeam>>, Error> {
+                    self.0.seams(layer_index, offset, max_items).map_err(input_error)?
+                        .map(|values| values.into_iter().map(seam).collect()).transpose()
+                }
+                fn support_analysis(&self, offset: u64, max_items: u64) -> Result<Option<sdk::PreparationSupportAnalysisBatch>, Error> {
+                    self.0.support_analysis(offset, max_items).map_err(input_error)?.map(support_analysis).transpose()
+                }
+                fn support_geometry(&self, offset: u64, max_items: u64) -> Result<Option<sdk::PreparationSupportGeometryBatch>, Error> {
+                    self.0.support_geometry(offset, max_items).map_err(input_error)?.map(support_geometry).transpose()
+                }
+                fn support_plan(&self, offset: u64, max_items: u64) -> Result<Option<sdk::PreparationSupportPlanBatch>, Error> {
+                    self.0.support_plan(offset, max_items).map_err(input_error)?.map(support_plan).transpose()
+                }
+                fn selected_targets(&self, layer_index: u32, offset: u64, max_items: u64) -> Result<Vec<sdk::PreparationSelectedTarget>, Error> {
+                    self.0.selected_targets(layer_index, offset, max_items).map_err(input_error)?.into_iter().map(selected_target).collect()
+                }
+            }
+        }
+    }
+}
+
+/// Convert only the optional public diagnostic DTO into canonical imported types.
+fn preparation_projection_glue() -> TokenStream2 {
+    quote! {
+        mod __slicer_preparation_projection {
+            use super::slicer::layer_preparation::preparation_types as wit;
+            use super::slicer::types::geometry as geo;
+            use ::slicer_sdk::preparation as sdk;
+
+            pub(super) fn error(error: wit::PreparationProjectionError) -> sdk::PreparationProjectionError {
+                use wit::PreparationProjectionError as W;
+                use sdk::PreparationProjectionError as S;
+                match error {
+                    W::AccessDenied => S::AccessDenied,
+                    W::NotRequested => S::NotRequested,
+                    W::UndeclaredView => S::UndeclaredView,
+                    W::DuplicateScene => S::DuplicateScene,
+                    W::MissingScene => S::MissingScene,
+                    W::InvalidReference => S::InvalidReference,
+                    W::InvalidShape => S::InvalidShape,
+                    W::InvalidCoordinate => S::InvalidCoordinate,
+                    W::ArithmeticOverflow => S::ArithmeticOverflow,
+                    W::PoisonedOutput => S::PoisonedOutput,
+                }
+            }
+
+            fn point(p: &::slicer_ir::Point2) -> geo::Point2 { geo::Point2 { x: p.x, y: p.y } }
+            fn polygon(p: &::slicer_ir::Polygon) -> geo::Polygon {
+                geo::Polygon { points: p.points.iter().map(point).collect() }
+            }
+            pub(super) fn scene(scene: &sdk::PreparationProjectionScene) -> wit::PreparationProjectionScene {
+                use sdk::PreparationProjectionGeometry as S;
+                use wit::PreparationProjectionGeometry as W;
+                wit::PreparationProjectionScene {
+                    scene_id: scene.scene_id.clone(), view: scene.view.clone(), classes: scene.classes.clone(),
+                    primitives: scene.primitives.iter().map(|p| wit::PreparationProjectionPrimitive {
+                        id: p.id.clone(), global_layer_index: p.global_layer_index, class: p.class.clone(), label: p.label.clone(),
+                        geometry: match &p.geometry {
+                            S::Point(p) => W::Point(point(p)),
+                            S::Polyline(p) => W::Polyline(p.iter().map(point).collect()),
+                            S::Polygon { polygon: p, filled } => W::Polygon(wit::PreparationProjectionPolygon {
+                                polygon: geo::ExPolygon { contour: polygon(&p.contour), holes: p.holes.iter().map(polygon).collect() },
+                                filled: *filled,
+                            }),
+                        },
+                    }).collect(),
+                }
+            }
+
+            pub(super) fn output(sink: wit::PreparationProjectionOutput) -> sdk::PreparationProjectionOutput {
+                let sink = ::std::rc::Rc::new(sink);
+                let views = sink.clone();
+                sdk::PreparationProjectionOutput::from_callbacks(
+                    move || views.requested_views().map_err(error),
+                    move |value| sink.publish(&scene(value)).map_err(error),
+                )
+            }
+        }
+    }
+}
+
+/// Add preparation and lazy call-local plan access to the same component that
+/// implements the unchanged ordinary stage interface.
+fn build_preparation_glue(self_ty: &syn::Type, component: &str, preparation: bool) -> TokenStream2 {
+    if !preparation {
+        return quote! {};
+    }
+    let component = syn::Ident::new(component, proc_macro2::Span::call_site());
+    let profile_install = profile_install_stmt();
+    let input_glue = preparation_input_glue();
+    let projection_glue = preparation_projection_glue();
+    quote! {
+        #input_glue
+        #projection_glue
+
+        static __SLICER_PREPARATION_CONFIGURED: ::std::sync::OnceLock<
+            Result<(), ::slicer_sdk::error::ModuleError>,
+        > = ::std::sync::OnceLock::new();
+
+        impl Guest for #component {
+            fn configure_preparation(config: ConfigView) -> Result<(), ModuleError> {
+                #profile_install
+                __SLICER_PREPARATION_CONFIGURED.get_or_init(|| {
+                    let config = __slicer_adapt_config(&config);
+                    <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&config)
+                        .map(|_| ())
+                }).clone().map_err(__slicer_error_out)
+            }
+        }
+
+        fn __slicer_preparation_error(
+            error: slicer::layer_preparation::preparation_types::PreparationError,
+        ) -> ::slicer_sdk::preparation::PreparationError {
+            use slicer::layer_preparation::preparation_types::PreparationError as Wit;
+            use ::slicer_sdk::preparation::PreparationError as Sdk;
+            match error {
+                Wit::NotReady => Sdk::NotReady,
+                Wit::InvalidName => Sdk::InvalidName,
+                Wit::DuplicateName => Sdk::DuplicateName,
+                Wit::PoisonedOutput => Sdk::PoisonedOutput,
+                Wit::RangeError => Sdk::RangeError,
+                Wit::ArithmeticOverflow => Sdk::ArithmeticOverflow,
+                Wit::AccessDenied => Sdk::AccessDenied,
+            }
+        }
+
+        fn __slicer_with_prepared_plan<R>(body: impl FnOnce() -> R) -> R {
+            ::slicer_sdk::preparation::with_prepared_plan(
+                || {
+                    let view = slicer::layer_preparation::plan_access::current()
+                        .map_err(__slicer_preparation_error)?;
+                    Ok(::slicer_sdk::preparation::PreparedPlanCallbacks::new(move |name| {
+                        view.open(name).map_err(__slicer_preparation_error).map(|piece| {
+                            piece.map(|piece| {
+                                let piece = ::std::rc::Rc::new(piece);
+                                let len_piece = piece.clone();
+                                ::slicer_sdk::preparation::PreparedPieceCallbacks::new(
+                                    move || len_piece.len(),
+                                    move |offset, max_bytes| piece.read(offset, max_bytes)
+                                        .map_err(__slicer_preparation_error),
+                                )
+                            })
+                        })
+                    }))
+                },
+                body,
+            )
+        }
+
+        impl exports::slicer::layer_preparation::prepare::Guest for #component {
+            fn prepare_print(
+                input: slicer::layer_preparation::preparation_types::PrintPreparationInput,
+                output: slicer::layer_preparation::preparation_types::PreparedPlanOutput,
+            ) -> Result<(), ModuleError> {
+                #profile_install
+                // Older pilot drivers do not call the private initialization
+                // export. They retain their empty-config behavior; production
+                // ingestion has already initialized this instance's hook.
+                __SLICER_PREPARATION_CONFIGURED.get_or_init(|| {
+                    <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(
+                        &::slicer_ir::ConfigView::default(),
+                    ).map(|_| ())
+                }).clone().map_err(__slicer_error_out)?;
+                let reader = ::std::sync::Arc::new(__slicer_preparation_input::Reader(input));
+                let fixture_reader = reader.clone();
+                let input = ::slicer_sdk::preparation::PrintPreparationInput::from_host_input_with_fixture(
+                    reader,
+                    move |offset, max_bytes| fixture_reader.0.read_fixture(offset, max_bytes)
+                        .map_err(__slicer_preparation_error),
+                );
+                let output = ::std::rc::Rc::new(output);
+                let projection = output.clone();
+                let mut output = ::slicer_sdk::preparation::PreparedPlanOutput::from_callbacks(
+                    move |name, bytes| output.put(name, bytes).map_err(__slicer_preparation_error),
+                    move || projection.projection()
+                        .map(|sink| sink.map(__slicer_preparation_projection::output))
+                        .map_err(__slicer_preparation_projection::error),
+                );
+                let result = <#self_ty as ::slicer_sdk::preparation::LayerPreparation>::prepare_print(
+                    &input, &mut output,
+                );
+                output.complete(result).map_err(__slicer_error_out)
+            }
+        }
+    }
+}
+
+fn prepared_stage_arm(arm: TokenStream2, preparation: bool) -> TokenStream2 {
+    if preparation {
+        quote! { __slicer_with_prepared_plan(|| { #arm }) }
+    } else {
+        arm
     }
 }
 
@@ -1462,6 +2234,18 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                                     global_layer_index: entity.region_key.layer_index,
                                     object_id: entity.region_key.object_id,
                                     region_id,
+                                    // The finalization world deliberately keeps a
+                                    // local `region-key` record
+                                    // (`layer-finalization-types` in
+                                    // finalization-layer-finalization.wit) with no
+                                    // `variant-chain` field: the byte-identity
+                                    // contract that lets this mod alias the
+                                    // record without importing the
+                                    // `ir-handles` package forbids adding one,
+                                    // so the chain is genuinely out of scope
+                                    // at this boundary. The explicit empty
+                                    // chain is the exact identity of this
+                                    // chain-less source — never fabricate one.
                                     variant_chain: Vec::new(),
                                 },
                                 topo_order: entity.topo_order,
@@ -2105,10 +2889,55 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
     );
     let preamble = emit_world_preamble("support-geometry-module", "support_geometry", &wit_inline);
     let profile_install = profile_install_stmt();
+    let chain_converters = quote! {
+        // WIT→IR chain conversion for the now-chain-bearing prepass
+        // records (layer-module-preparation packet, W7b). Mirrors the
+        // light-stage `__slicer_wit_paintvalue_to_ir` primitive;
+        // `PaintValue` is the WIT ir-handles enum imported by this mod
+        // (seam-planning precedent).
+        fn __slicer_wit_paintvalue_to_ir(v: &PaintValue) -> ::slicer_ir::PaintValue {
+            match v {
+                PaintValue::Flag(b) => ::slicer_ir::PaintValue::Flag(*b),
+                PaintValue::Scalar(f) => ::slicer_ir::PaintValue::Scalar(*f),
+                PaintValue::ToolIndex(i) => ::slicer_ir::PaintValue::ToolIndex(*i),
+            }
+        }
+
+        fn __slicer_wit_variant_chain_to_ir(
+            chain: &[(::std::string::String, PaintValue)],
+        ) -> ::std::vec::Vec<(::std::string::String, ::slicer_ir::PaintValue)> {
+            chain
+                .iter()
+                .map(|(semantic, value)| (semantic.clone(), __slicer_wit_paintvalue_to_ir(value)))
+                .collect()
+        }
+
+        // IR→WIT chain for the output drain: the WIT `support-plan-entry`
+        // now REQUIRES variant-chain. Same degrade convention as the
+        // established `__slicer_ir_variant_chain_to_wit`:
+        // `PaintValue::Custom` has no WIT counterpart and degrades to
+        // `ToolIndex(0)`.
+        fn __slicer_ir_variant_chain_to_wit(
+            chain: &[(::std::string::String, ::slicer_ir::PaintValue)],
+        ) -> ::std::vec::Vec<(::std::string::String, PaintValue)> {
+            chain
+                .iter()
+                .map(|(semantic, value)| {
+                    let value = match value {
+                        ::slicer_ir::PaintValue::Flag(v) => PaintValue::Flag(*v),
+                        ::slicer_ir::PaintValue::Scalar(v) => PaintValue::Scalar(*v),
+                        ::slicer_ir::PaintValue::ToolIndex(v) => PaintValue::ToolIndex(*v),
+                        ::slicer_ir::PaintValue::Custom(_) => PaintValue::ToolIndex(0),
+                    };
+                    (semantic.clone(), value)
+                })
+                .collect()
+        }
+    };
     let helpers = {
         let mesh = prepass_mesh_helpers();
         let geometry = prepass_geometry_helpers();
-        quote! { #mesh #geometry }
+        quote! { #mesh #geometry #chain_converters }
     };
     let arm = quote! {
         let ir_config = __slicer_adapt_config(&config);
@@ -2131,12 +2960,20 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
             entries: region_segmentation.entries.iter().map(|e| ::slicer_sdk::prepass_types::RegionSegmentationViewEntry {
                 object_id: e.object_id.clone(),
                 layer_index: e.layer_index,
-                region_ids: e.region_ids.clone(),
+                // Real chain propagation (W7b): the WIT record carries
+                // `region-origins: list<region-source-origin>` — each
+                // origin is the exact (region-id, variant-chain)
+                // identity of its source region.
+                region_origins: e.region_origins.iter().map(|o| ::slicer_sdk::prepass_types::RegionSourceOrigin {
+                    region_id: o.region_id.clone(),
+                    variant_chain: __slicer_wit_variant_chain_to_ir(&o.variant_chain),
+                }).collect(),
             }).collect(),
             region_support_configs: region_segmentation.region_support_configs.iter().map(|e| ::slicer_sdk::prepass_types::RegionSupportConfig {
                 object_id: e.object_id.clone(),
                 layer_index: e.layer_index,
                 region_id: e.region_id.clone(),
+                variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
                 support_family: e.support_family.clone(),
                 support_type: e.support_type.clone(),
             }).collect(),
@@ -2146,6 +2983,7 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                 global_support_layer_index: e.global_support_layer_index,
                 object_id: e.object_id.clone(),
                 region_id: e.region_id.clone(),
+                variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
                 outlines: e.outlines.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
             }).collect(),
         };
@@ -2154,22 +2992,28 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                 id: e.id, geometry: e.geometry.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
                 object_id: e.object_id.clone(), region_id: e.region_id.clone(), global_layer_index: e.global_layer_index,
                 z_units: e.z_units, enforced: e.enforced, blocked: e.blocked,
+                variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
             }).collect(),
             model_occupancy: support_analysis.model_occupancy.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
                 global_support_layer_index: e.global_support_layer_index, object_id: e.object_id.clone(), region_id: e.region_id.clone(),
+                variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
                 polygons: e.polygons.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
             }).collect(),
             termination_surfaces: support_analysis.termination_surfaces.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
                 global_support_layer_index: e.global_support_layer_index, object_id: e.object_id.clone(), region_id: e.region_id.clone(),
+                variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
                 polygons: e.polygons.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
             }).collect(),
             shared_settings: support_analysis.shared_settings.clone(),
             baseline_feasible_envelope: support_analysis.baseline_feasible_envelope.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
             family_assignments: support_analysis.family_assignments.iter().map(|e| ::slicer_sdk::prepass_types::SupportFamilyAssignment {
-                object_id: e.object_id.clone(), region_id: e.region_id.clone(), family_id: e.family_id.clone(),
+                object_id: e.object_id.clone(), region_id: e.region_id.clone(),
+                variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
+                family_id: e.family_id.clone(),
             }).collect(),
             support_territory: support_analysis.support_territory.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
                 global_support_layer_index: e.global_support_layer_index, object_id: e.object_id.clone(), region_id: e.region_id.clone(),
+                variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
                 polygons: e.polygons.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
             }).collect(),
         };
@@ -2182,6 +3026,7 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                 global_layer_index: __slicer_entry.global_layer_index,
                 object_id: __slicer_entry.object_id.clone(),
                 region_id: __slicer_entry.region_id.clone(),
+                variant_chain: __slicer_ir_variant_chain_to_wit(&__slicer_entry.variant_chain),
                 family_id: __slicer_entry.family_id.clone(),
                 demand_ids: __slicer_entry.demand_ids.clone(),
                 body_ids: __slicer_entry.body_ids.clone(),
@@ -2259,6 +3104,7 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
             use super::#self_ty;
             use slicer::common::module_errors::ModuleError;
             use slicer::config::config_types::ConfigView;
+            use slicer::ir_handles::ir_handles::PaintValue;
             // `layer-plan-view` is shared: it lives once in the unversioned
             // `slicer:prepass-types` package, alongside the mesh/paint views.
             use slicer::prepass_types::prepass_types::{
@@ -2374,18 +3220,70 @@ fn layer_per_stage_aliases(stage: &str) -> TokenStream2 {
                 Point3WithWidth as WitPoint3WithWidth, Polygon as WitPolygon,
             };
         },
-        // 5 lighter mods (slice_postprocess, perimeters, infill, support,
-        // support_postprocess) use only the WIT types their own WIT
-        // references. The full ir-handles set is NOT imported here because
-        // those types are not in this mod's per-stage WIT.
-        _ => quote! {
+        // `layer_infill` consumes the support-queries interface: its
+        // per-stage WIT imports support-queries, so the five support-plan
+        // view records resolve from the support-queries package namespace.
+        // The core ir-handles paint view no longer carries plan/raft query
+        // methods — the query handle does.
+        "layer_infill" => quote! {
             use self::slicer::ir_handles::ir_handles::{
                 InfillOutputBuilder, LayerIdx, PaintRegionLayerView,
+                PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
+                PerimeterOutputBuilder, PerimeterRegionView,
+                QuartileBand as WitQuartileBand,
+                SegmentAnnotationsEntry as WitSegmentAnnotationsEntry,
+                SegmentAnnotationsPolygon as WitSegmentAnnotationsPolygon,
+                SlicePostprocessBuilder, SliceRegionView,
+                SurfaceGroup as WitSurfaceGroup, SupportOutputBuilder,
+            };
+            use self::slicer::support_queries::support_queries::{
                 SupportPlanEntryView as WitSupportPlanEntryView,
                 SupportPlanViewRole as WitSupportPlanViewRole,
                 SupportPlanViewRoleRegion as WitSupportPlanViewRoleRegion,
                 SupportPlanViewSkeleton as WitSupportPlanViewSkeleton,
                 SupportPlanViewDeclineReason as WitSupportPlanViewDeclineReason,
+                SupportQueryView,
+            };
+            use self::slicer::types::geometry::{
+                ExPolygon as WitExPolygon, Point2 as WitPoint2, Point3, Polygon as WitPolygon,
+            };
+        },
+        // `layer_support` consumes support-queries only; lightning-queries
+        // is NOT imported here — this world does not reference it, and a
+        // non-consuming specialist import would be a defect.
+        "layer_support" => quote! {
+            use self::slicer::ir_handles::ir_handles::{
+                InfillOutputBuilder, LayerIdx, PaintRegionLayerView,
+                PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
+                PerimeterOutputBuilder, PerimeterRegionView,
+                QuartileBand as WitQuartileBand,
+                SegmentAnnotationsEntry as WitSegmentAnnotationsEntry,
+                SegmentAnnotationsPolygon as WitSegmentAnnotationsPolygon,
+                SlicePostprocessBuilder, SliceRegionView,
+                SurfaceGroup as WitSurfaceGroup, SupportOutputBuilder,
+            };
+            use self::slicer::support_queries::support_queries::{
+                SupportPlanEntryView as WitSupportPlanEntryView,
+                SupportPlanViewRole as WitSupportPlanViewRole,
+                SupportPlanViewRoleRegion as WitSupportPlanViewRoleRegion,
+                SupportPlanViewSkeleton as WitSupportPlanViewSkeleton,
+                SupportPlanViewDeclineReason as WitSupportPlanViewDeclineReason,
+                SupportQueryView,
+            };
+            use self::slicer::types::geometry::{
+                ExPolygon as WitExPolygon, Point2 as WitPoint2, Point3, Polygon as WitPolygon,
+            };
+        },
+        // Non-consuming light mods (slice_postprocess, perimeters,
+        // support_postprocess, anchored_events) use only the WIT types
+        // their own WIT references. The full ir-handles set is NOT
+        // imported here because those types are not in this mod's
+        // per-stage WIT, and the five support-plan view records have
+        // moved to the `slicer:support-queries` package —
+        // non-consuming stages must not acquire specialist imports.
+        _ => quote! {
+            use self::slicer::ir_handles::ir_handles::{
+                InfillOutputBuilder, LayerIdx, PaintRegionLayerView,
                 PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
                 PerimeterOutputBuilder, PerimeterRegionView,
                 QuartileBand as WitQuartileBand,
@@ -2402,19 +3300,29 @@ fn layer_per_stage_aliases(stage: &str) -> TokenStream2 {
     quote! { #ir_handles }
 }
 
-/// Light helpers for the 5 lighter layer mods (slice_postprocess,
-/// perimeters, infill, support, support_postprocess). The 3 heavy
-/// mods (perimeters_postprocess, infill_postprocess,
-/// path_optimization) use `layer_glue_helpers()` instead, which
-/// includes the rich WIT↔IR conversion code for perimeter records and
-/// post-processing inputs. The light helpers keep their conversion surface
-/// limited to the shared slice and paint records exposed by those stages.
+/// Light helpers for the 6 lighter layer mods (slice_postprocess,
+/// perimeters, infill, support, support_postprocess,
+/// anchored_events). The 3 heavy mods (perimeters_postprocess,
+/// infill_postprocess, path_optimization) use `layer_glue_helpers()`
+/// instead, which includes the rich WIT↔IR conversion code for
+/// perimeter records and post-processing inputs. The light helpers
+/// keep their conversion surface limited to the shared slice and
+/// paint records exposed by those stages.
 ///
-/// The light helpers provide only the adapters used by the five lighter layer
-/// body sites. Stage-specific drain bodies and their WIT conversion helpers
-/// are emitted by `layer_stage_helpers`.
-fn layer_light_helpers() -> TokenStream2 {
-    quote! {
+/// The shared converters below are emitted for every light stage. The
+/// paint-layer adapter and the specialist query adapters are
+/// stage-scoped (layer-module-preparation packet, W7b): `layer_infill`
+/// gets the support-plan-bearing adapter (support-queries handle from
+/// its Guest::run params), `layer_support` the support-queries-only
+/// adapter, and every other light stage the core-only adapter — the
+/// ir-handles paint view now exposes get-regions/get-custom-regions/
+/// layer-index/is-raft only, so non-consuming stages never reference
+/// the specialist query types.
+///
+/// Stage-specific drain bodies and their WIT conversion helpers are
+/// emitted by `layer_stage_helpers`.
+fn layer_light_helpers(stage: &str) -> TokenStream2 {
+    let shared_converters = quote! {
         fn __slicer_wit_point2_to_ir(p: &WitPoint2) -> ::slicer_ir::Point2 {
             ::slicer_ir::Point2 { x: p.x, y: p.y }
         }
@@ -2590,6 +3498,7 @@ fn layer_light_helpers() -> TokenStream2 {
                     .collect();
                 sdk_view.set_raft_fill(raft_fill);
                 sdk_view.set_held_claims(r.held_claims());
+                sdk_view.set_config(__slicer_adapt_config(&r.config()));
                 let overhang_areas: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
                     .overhang_areas()
                     .iter()
@@ -2622,75 +3531,29 @@ fn layer_light_helpers() -> TokenStream2 {
             out
         }
 
-        fn __slicer_adapt_paint_layer(
-            paint: &PaintRegionLayerView,
-            keys: &[(::std::string::String, ::slicer_ir::RegionId)],
-        ) -> ::slicer_sdk::traits::PaintRegionLayerView {
-            let layer_idx = paint.layer_index() as u32;
-            let sdk_paint = ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx)
-                .with_support_plan(__slicer_support_plan_from_view(paint, layer_idx, keys))
-                .with_is_raft(paint.is_raft());
-            match __slicer_lightning_tree_from_view(paint, layer_idx, keys) {
-                Some(ir) => sdk_paint.with_lightning_tree_ir(ir),
-                None => sdk_paint,
-            }
-        }
+    };
 
-        fn __slicer_lightning_tree_from_view(
-            wit_paint: &PaintRegionLayerView,
-            layer_idx: u32,
-            keys: &[(::std::string::String, ::slicer_ir::RegionId)],
-        ) -> ::std::option::Option<::std::sync::Arc<::slicer_ir::LightningTreeIR>> {
-            let mut entries = ::std::vec::Vec::new();
-            for (object_id, region_id) in keys.iter() {
-                let region_id_str = region_id.to_string();
-                let segments = wit_paint.lightning_tree_segments(object_id, &region_id_str);
-                let tree_edge_segments: ::std::vec::Vec<[::slicer_ir::Point2; 2]> = segments
-                    .into_iter()
-                    .filter_map(|segment| {
-                        let start = segment.first()?;
-                        let end = segment.get(1)?;
-                        Some([
-                            ::slicer_ir::Point2 {
-                                x: ::slicer_ir::mm_to_units(start.x),
-                                y: ::slicer_ir::mm_to_units(start.y),
-                            },
-                            ::slicer_ir::Point2 {
-                                x: ::slicer_ir::mm_to_units(end.x),
-                                y: ::slicer_ir::mm_to_units(end.y),
-                            },
-                        ])
-                    })
-                    .collect();
-                if tree_edge_segments.is_empty() {
-                    continue;
-                }
-                entries.push(::slicer_ir::LightningTreeEntry {
-                    object_id: object_id.clone(),
-                    global_layer_index: layer_idx as i32,
-                    region_id: *region_id,
-                    tree_edge_segments,
-                });
-            }
-            if entries.is_empty() {
-                None
-            } else {
-                Some(::std::sync::Arc::new(::slicer_ir::LightningTreeIR {
-                    entries,
-                    ..::core::default::Default::default()
-                }))
-            }
-        }
+    // Stage-scoped paint-layer and specialist query adapters
+    // (layer-module-preparation packet, W7b). The consumer variants
+    // take the specialist query handles straight from Guest::run and
+    // keep compositing the SDK facade behind them; the non-consumer
+    // variant composes core-only (layer index + is-raft), because the
+    // core ir-handles paint view no longer carries support-plan /
+    // raft / lightning query methods.
+    let support_query_adapters = quote! {
+        // NOTE: `__slicer_ir_variant_chain_to_wit` is defined once in
+        // `layer_stage_helpers`'s shared helper quote (all layer stages);
+        // the specialist adapters below call it.
 
         fn __slicer_support_plan_from_view(
-            wit_paint: &PaintRegionLayerView,
-            layer_idx: u32,
-            keys: &[(::std::string::String, ::slicer_ir::RegionId)],
+            support_queries: &SupportQueryView,
+            keys: &[(::std::string::String, ::slicer_ir::RegionId, ::std::vec::Vec<(::std::string::String, ::slicer_ir::PaintValue)>)],
         ) -> ::std::sync::Arc<::slicer_ir::SupportPlanIR> {
             let mut entries = ::std::vec::Vec::new();
-            for (object_id, region_id) in keys.iter() {
+            for (object_id, region_id, chain) in keys.iter() {
                 let region_id_str = region_id.to_string();
-                for entry in wit_paint.support_plan_entries(object_id, &region_id_str) {
+                let wit_chain = __slicer_ir_variant_chain_to_wit(chain);
+                for entry in support_queries.support_plan_entries(object_id, &region_id_str, &wit_chain) {
                     entries.push(::slicer_ir::SupportPlanEntry {
                         global_layer_index: entry.global_layer_index,
                         object_id: entry.object_id,
@@ -2722,12 +3585,19 @@ fn layer_light_helpers() -> TokenStream2 {
                             WitSupportPlanViewDeclineReason::Blocked => ::slicer_ir::SupportPlanDeclineReason::Blocked,
                             WitSupportPlanViewDeclineReason::UnsupportedMode => ::slicer_ir::SupportPlanDeclineReason::UnsupportedMode,
                         }),
+                        // Chain provenance = the query key:
+                        // `support-plan-entry-view` carries no chain of its
+                        // own, so the (object, region, chain) triple of the
+                        // query IS the entry's chain identity. Never erase it
+                        // and never re-derive it from a sibling or request id.
+                        variant_chain: chain.clone(),
                     });
                 }
             }
             // Raft is print-wide configuration, not per-(layer, region) work:
-            // reconstruct it once, outside the key loop, with no layer filter.
-            let raft_plan = wit_paint.raft_plan().map(|raft| ::slicer_ir::RaftPlan {
+            // reconstruct it once, outside the key loop, from the query
+            // view's print-wide raft-plan(), with no layer filter.
+            let raft_plan = support_queries.raft_plan().map(|raft| ::slicer_ir::RaftPlan {
                 raft_layers: raft.raft_layers,
                 raft_first_layer_density: raft.raft_first_layer_density,
                 base_raft_layers: raft.base_raft_layers,
@@ -2735,8 +3605,54 @@ fn layer_light_helpers() -> TokenStream2 {
             });
             ::std::sync::Arc::new(::slicer_ir::SupportPlanIR { entries, raft_plan, ..::core::default::Default::default() })
         }
+    };
 
-    }
+    let paint_adapters = match stage {
+        "layer_infill" => quote! {
+            #support_query_adapters
+
+            fn __slicer_adapt_paint_layer(
+                paint: &PaintRegionLayerView,
+                keys: &[(::std::string::String, ::slicer_ir::RegionId, ::std::vec::Vec<(::std::string::String, ::slicer_ir::PaintValue)>)],
+                support_queries: &SupportQueryView,
+            ) -> ::slicer_sdk::traits::PaintRegionLayerView {
+                let layer_idx = paint.layer_index() as u32;
+                ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx)
+                    .with_support_plan(__slicer_support_plan_from_view(support_queries, keys))
+                    .with_is_raft(paint.is_raft())
+            }
+        },
+        "layer_support" => quote! {
+            #support_query_adapters
+
+            fn __slicer_adapt_paint_layer(
+                paint: &PaintRegionLayerView,
+                keys: &[(::std::string::String, ::slicer_ir::RegionId, ::std::vec::Vec<(::std::string::String, ::slicer_ir::PaintValue)>)],
+                support_queries: &SupportQueryView,
+            ) -> ::slicer_sdk::traits::PaintRegionLayerView {
+                let layer_idx = paint.layer_index() as u32;
+                ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx)
+                    .with_support_plan(__slicer_support_plan_from_view(support_queries, keys))
+                    .with_is_raft(paint.is_raft())
+            }
+        },
+        // Non-consuming light stages (slice_postprocess, perimeters,
+        // support_postprocess, anchored_events) never see the specialist
+        // query handles; the core ir-handles paint view now supplies
+        // layer-index and is-raft only, so the facade composes exactly
+        // that.
+        _ => quote! {
+            fn __slicer_adapt_paint_layer(
+                paint: &PaintRegionLayerView,
+            ) -> ::slicer_sdk::traits::PaintRegionLayerView {
+                let layer_idx = paint.layer_index() as u32;
+                ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx)
+                    .with_is_raft(paint.is_raft())
+            }
+        },
+    };
+
+    quote! { #shared_converters #paint_adapters }
 }
 
 fn layer_glue_helpers() -> TokenStream2 {
@@ -3495,7 +4411,12 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                         global_layer_index: e.region_key.layer_index as u32,
                         object_id: e.region_key.object_id,
                         region_id: e.region_key.region_id.parse().unwrap_or(0),
-                        variant_chain: Vec::new(),
+                        // The in-scope WIT `region-key` variant chain is
+                        // threaded through (paint-value converted, order
+                        // preserved).
+                        variant_chain: e.region_key.variant_chain.iter().map(|(semantic, value)| {
+                            (semantic.clone(), __slicer_wit_paintvalue_to_ir(value))
+                        }).collect(),
                     },
                     role: __slicer_wit_role_to_ir(&e.role),
                     start_point: __slicer_wit_point3w_to_ir(&e.start_point),
@@ -3509,14 +4430,24 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
     }
 }
 
-fn build_layer_slice_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_slice_postprocess_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!(
         "../../slicer-schema/wit/deps/layer-slice-postprocess/layer-slice-postprocess.wit"
     );
-    let preamble = emit_world_preamble("slice-postprocess-module", "slice_postprocess", wit_inline);
+    let preamble = emit_layer_world_preamble(
+        "slice-postprocess-module",
+        "slice_postprocess",
+        wit_inline,
+        preparation,
+    );
+    let preparation_glue = build_preparation_glue(
+        self_ty,
+        "__SlicerLayerSlicePostprocessComponent",
+        preparation,
+    );
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_slice_postprocess");
-    let helpers = layer_light_helpers();
+    let helpers = layer_light_helpers("layer_slice_postprocess");
     let stage_helpers = layer_stage_helpers("layer_slice_postprocess");
     let arm = quote! {
         let layer_index = layer_index as u32;
@@ -3525,11 +4456,7 @@ fn build_layer_slice_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
             Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
         };
         let sdk_regions = __slicer_adapt_slice_regions(&regions);
-        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)> = sdk_regions
-            .iter()
-            .map(|r| (r.object_id().clone(), *r.region_id()))
-            .collect();
-        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys);
+        let sdk_paint = __slicer_adapt_paint_layer(&paint);
         let mut sdk_output = ::slicer_sdk::builders::SlicePostprocessBuilder::new();
         let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_slice_postprocess(
             &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &ir_config,
@@ -3537,6 +4464,7 @@ fn build_layer_slice_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
         __slicer_drain_slice_postprocess(&sdk_output, &output);
         match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -3554,18 +4482,22 @@ fn build_layer_slice_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerSlicePostprocessComponent);
         }
     }
 }
 
-fn build_layer_perimeters_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_perimeters_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline =
         include_str!("../../slicer-schema/wit/deps/layer-perimeters/layer-perimeters.wit");
-    let preamble = emit_world_preamble("perimeters-module", "perimeters", wit_inline);
+    let preamble =
+        emit_layer_world_preamble("perimeters-module", "perimeters", wit_inline, preparation);
+    let preparation_glue =
+        build_preparation_glue(self_ty, "__SlicerLayerPerimetersComponent", preparation);
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_perimeters");
-    let helpers = layer_light_helpers();
+    let helpers = layer_light_helpers("layer_perimeters");
     let stage_helpers = layer_stage_helpers("layer_perimeters");
     let arm = quote! {
         let layer_index = layer_index as u32;
@@ -3574,11 +4506,7 @@ fn build_layer_perimeters_glue(self_ty: &syn::Type) -> TokenStream2 {
             Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
         };
         let sdk_regions = __slicer_adapt_slice_regions(&regions);
-        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)> = sdk_regions
-            .iter()
-            .map(|r| (r.object_id().clone(), *r.region_id()))
-            .collect();
-        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys);
+        let sdk_paint = __slicer_adapt_paint_layer(&paint);
         let mut sdk_output = ::slicer_sdk::builders::PerimeterOutputBuilder::new();
         let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_perimeters(
             &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &ir_config,
@@ -3586,6 +4514,7 @@ fn build_layer_perimeters_glue(self_ty: &syn::Type) -> TokenStream2 {
         __slicer_drain_perimeter(&sdk_output, &output);
         match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -3601,17 +4530,24 @@ fn build_layer_perimeters_glue(self_ty: &syn::Type) -> TokenStream2 {
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerPerimetersComponent);
         }
     }
 }
 
-fn build_layer_perimeters_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_perimeters_postprocess_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!("../../slicer-schema/wit/deps/layer-perimeters-postprocess/layer-perimeters-postprocess.wit");
-    let preamble = emit_world_preamble(
+    let preamble = emit_layer_world_preamble(
         "perimeters-postprocess-module",
         "perimeters_postprocess",
         wit_inline,
+        preparation,
+    );
+    let preparation_glue = build_preparation_glue(
+        self_ty,
+        "__SlicerLayerPerimetersPostprocessComponent",
+        preparation,
     );
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_perimeters_postprocess");
@@ -3631,6 +4567,7 @@ fn build_layer_perimeters_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 
         __slicer_drain_perimeter(&sdk_output, &output);
         match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -3646,17 +4583,20 @@ fn build_layer_perimeters_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerPerimetersPostprocessComponent);
         }
     }
 }
 
-fn build_layer_infill_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_infill_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!("../../slicer-schema/wit/deps/layer-infill/layer-infill.wit");
-    let preamble = emit_world_preamble("infill-module", "infill", wit_inline);
+    let preamble = emit_layer_world_preamble("infill-module", "infill", wit_inline, preparation);
+    let preparation_glue =
+        build_preparation_glue(self_ty, "__SlicerLayerInfillComponent", preparation);
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_infill");
-    let helpers = layer_light_helpers();
+    let helpers = layer_light_helpers("layer_infill");
     let stage_helpers = layer_stage_helpers("layer_infill");
     let arm = quote! {
         let layer_index = layer_index as u32;
@@ -3665,11 +4605,13 @@ fn build_layer_infill_glue(self_ty: &syn::Type) -> TokenStream2 {
             Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
         };
         let sdk_regions = __slicer_adapt_slice_regions(&regions);
-        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)> = sdk_regions
+        // Chain-bearing keys: (object-id, region-id, ordered variant
+        // chain) — the exact identity each specialist query is keyed on.
+        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId, ::std::vec::Vec<(::std::string::String, ::slicer_ir::PaintValue)>)> = sdk_regions
             .iter()
-            .map(|r| (r.object_id().clone(), *r.region_id()))
+            .map(|r| (r.object_id().clone(), *r.region_id(), r.variant_chain().to_vec()))
             .collect();
-        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys);
+        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys, &support_queries);
         let mut sdk_output = ::slicer_sdk::builders::InfillOutputBuilder::new();
         let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_infill(
             &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &ir_config,
@@ -3677,6 +4619,7 @@ fn build_layer_infill_glue(self_ty: &syn::Type) -> TokenStream2 {
         __slicer_drain_infill(&sdk_output, &output);
         match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -3687,24 +4630,31 @@ fn build_layer_infill_glue(self_ty: &syn::Type) -> TokenStream2 {
             #preamble #aliases #helpers #stage_helpers
             struct __SlicerLayerInfillComponent;
             impl exports::slicer::layer_infill::infill::Guest for __SlicerLayerInfillComponent {
-                fn run(layer_index: i32, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, output: InfillOutputBuilder, config: ConfigView) -> Result<(), ModuleError> {
+                fn run(layer_index: i32, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, support_queries: SupportQueryView, output: InfillOutputBuilder, config: ConfigView) -> Result<(), ModuleError> {
                     #profile_install
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerInfillComponent);
         }
     }
 }
 
-fn build_layer_infill_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_infill_postprocess_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!(
         "../../slicer-schema/wit/deps/layer-infill-postprocess/layer-infill-postprocess.wit"
     );
-    let preamble = emit_world_preamble(
+    let preamble = emit_layer_world_preamble(
         "infill-postprocess-module",
         "infill_postprocess",
         wit_inline,
+        preparation,
+    );
+    let preparation_glue = build_preparation_glue(
+        self_ty,
+        "__SlicerLayerInfillPostprocessComponent",
+        preparation,
     );
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_infill_postprocess");
@@ -3734,6 +4684,7 @@ fn build_layer_infill_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
         __slicer_drain_infill(&sdk_output, &output);
         match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -3749,17 +4700,20 @@ fn build_layer_infill_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerInfillPostprocessComponent);
         }
     }
 }
 
-fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_support_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!("../../slicer-schema/wit/deps/layer-support/layer-support.wit");
-    let preamble = emit_world_preamble("support-module", "support", wit_inline);
+    let preamble = emit_layer_world_preamble("support-module", "support", wit_inline, preparation);
+    let preparation_glue =
+        build_preparation_glue(self_ty, "__SlicerLayerSupportComponent", preparation);
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_support");
-    let helpers = layer_light_helpers();
+    let helpers = layer_light_helpers("layer_support");
     let stage_helpers = layer_stage_helpers("layer_support");
     let arm = quote! {
         let layer_index = layer_index as u32;
@@ -3768,11 +4722,13 @@ fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
             Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
         };
         let sdk_regions = __slicer_adapt_slice_regions(&regions);
-        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)> = sdk_regions
+        // Chain-bearing keys: (object-id, region-id, ordered variant
+        // chain) — the exact identity the support query is keyed on.
+        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId, ::std::vec::Vec<(::std::string::String, ::slicer_ir::PaintValue)>)> = sdk_regions
             .iter()
-            .map(|r| (r.object_id().clone(), *r.region_id()))
+            .map(|r| (r.object_id().clone(), *r.region_id(), r.variant_chain().to_vec()))
             .collect();
-        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys);
+        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys, &support_queries);
         let sdk_paint = sdk_paint.with_slice_ir(::std::sync::Arc::new(::slicer_ir::SliceIR {
             schema_version: ::slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
             global_layer_index: layer_index,
@@ -3799,6 +4755,7 @@ fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
             Err(e) => Err(__slicer_error_out(e)),
         }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -3810,28 +4767,36 @@ fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
             use exports::slicer::layer_support::support::LayerCollectionBuilder;
             struct __SlicerLayerSupportComponent;
             impl exports::slicer::layer_support::support::Guest for __SlicerLayerSupportComponent {
-                fn run(layer_index: i32, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, output: SupportOutputBuilder, collection: LayerCollectionBuilder, config: ConfigView) -> Result<(), ModuleError> {
+                fn run(layer_index: i32, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, support_queries: SupportQueryView, output: SupportOutputBuilder, collection: LayerCollectionBuilder, config: ConfigView) -> Result<(), ModuleError> {
                     #profile_install
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerSupportComponent);
         }
     }
 }
 
-fn anchored_events_wit_preamble() -> TokenStream2 {
+fn anchored_events_wit_preamble(preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!(
         "../../slicer-schema/wit/deps/layer-anchored-events/layer-anchored-events.wit"
     );
-    emit_world_preamble("anchored-events-module", "anchored_events", wit_inline)
+    emit_layer_world_preamble(
+        "anchored-events-module",
+        "anchored_events",
+        wit_inline,
+        preparation,
+    )
 }
 
-fn build_layer_anchored_events_glue(self_ty: &syn::Type) -> TokenStream2 {
-    let preamble = anchored_events_wit_preamble();
+fn build_layer_anchored_events_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
+    let preamble = anchored_events_wit_preamble(preparation);
+    let preparation_glue =
+        build_preparation_glue(self_ty, "__SlicerLayerAnchoredEventsComponent", preparation);
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_anchored_events");
-    let helpers = layer_light_helpers();
+    let helpers = layer_light_helpers("layer_anchored_events");
     let stage_helpers = layer_stage_helpers("layer_anchored_events");
     let arm = quote! {
         let layer_index = layer_index as u32;
@@ -3854,6 +4819,7 @@ fn build_layer_anchored_events_glue(self_ty: &syn::Type) -> TokenStream2 {
             Err(e) => Err(__slicer_error_out(e)),
         }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -3870,23 +4836,30 @@ fn build_layer_anchored_events_glue(self_ty: &syn::Type) -> TokenStream2 {
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerAnchoredEventsComponent);
         }
     }
 }
 
-fn build_layer_support_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_support_postprocess_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!(
         "../../slicer-schema/wit/deps/layer-support-postprocess/layer-support-postprocess.wit"
     );
-    let preamble = emit_world_preamble(
+    let preamble = emit_layer_world_preamble(
         "support-postprocess-module",
         "support_postprocess",
         wit_inline,
+        preparation,
+    );
+    let preparation_glue = build_preparation_glue(
+        self_ty,
+        "__SlicerLayerSupportPostprocessComponent",
+        preparation,
     );
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_support_postprocess");
-    let helpers = layer_light_helpers();
+    let helpers = layer_light_helpers("layer_support_postprocess");
     let stage_helpers = layer_stage_helpers("layer_support_postprocess");
     let arm = quote! {
         let layer_index = layer_index as u32;
@@ -3902,6 +4875,7 @@ fn build_layer_support_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
         __slicer_drain_support(&sdk_output, &output);
         match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -3917,16 +4891,27 @@ fn build_layer_support_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerSupportPostprocessComponent);
         }
     }
 }
 
-fn build_layer_path_optimization_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_path_optimization_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!(
         "../../slicer-schema/wit/deps/layer-path-optimization/layer-path-optimization.wit"
     );
-    let preamble = emit_world_preamble("path-optimization-module", "path_optimization", wit_inline);
+    let preamble = emit_layer_world_preamble(
+        "path-optimization-module",
+        "path_optimization",
+        wit_inline,
+        preparation,
+    );
+    let preparation_glue = build_preparation_glue(
+        self_ty,
+        "__SlicerLayerPathOptimizationComponent",
+        preparation,
+    );
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_path_optimization");
     let helpers = layer_glue_helpers();
@@ -3948,6 +4933,7 @@ fn build_layer_path_optimization_glue(self_ty: &syn::Type) -> TokenStream2 {
         __slicer_drain_layer_collection(&sdk_collection, &collection);
         match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -3963,6 +4949,7 @@ fn build_layer_path_optimization_glue(self_ty: &syn::Type) -> TokenStream2 {
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerPathOptimizationComponent);
         }
     }

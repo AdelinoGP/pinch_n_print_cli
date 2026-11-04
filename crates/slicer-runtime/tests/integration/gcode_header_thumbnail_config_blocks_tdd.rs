@@ -579,8 +579,21 @@ fn config_block_uses_resolved_wall_count_and_precision_over_raw_orca_aliases() {
         .lines()
         .filter(|line| line.starts_with("; resolution = "))
         .collect();
+    let gcode_resolution_lines: Vec<_> = block
+        .lines()
+        .filter(|line| line.starts_with("; gcode_resolution = "))
+        .collect();
     assert_eq!(wall_lines, ["; wall_loops = 3"], "{block}");
-    assert_eq!(resolution_lines, ["; resolution = 0.025"], "{block}");
+    // t81's adjudication: `resolution` is the slicing-time contour tolerance
+    // and owns its own key; `gcode_resolution` is the emission-time tolerance.
+    // The legacy overlay lets the caller's raw `resolution` value win, but it
+    // must never overwrite the typed `gcode_resolution`.
+    assert_eq!(resolution_lines, ["; resolution = 0.5"], "{block}");
+    assert_eq!(
+        gcode_resolution_lines,
+        ["; gcode_resolution = 0.025"],
+        "{block}"
+    );
 }
 
 /// AC-9: CONFIG_BLOCK is non-empty and has no duplicate keys.

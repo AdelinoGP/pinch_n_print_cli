@@ -155,16 +155,21 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
     .expect("commit_region_map must succeed");
     // The support-plan merge point is default-deny: an entry survives only when
     // a `family_assignments` row names its family as the owner of
-    // `(object_id, region_id)` AND the producing module holds the matching
-    // `support-family:<family_id>` claim (`check_ownership`,
+    // `(object_id, region_id, ordered variant_chain)` AND the producing module
+    // holds the matching `support-family:<family_id>` claim (`check_ownership`,
     // `crates/slicer-wasm-host/src/support_aggregation.rs`). The diagnostic
-    // guest writes one entry for ("cube", region 0) with the default (empty)
-    // family id, so the fixture grants that exact region to that exact family;
-    // otherwise the entry is refused and an extra code-1206 diagnostic joins the
-    // guest's own code-99 one, which is not what this test is about.
+    // guest writes one entry for ("cube", region 0) leaving `family_id` and
+    // `variant_chain` at their defaults (empty), so the fixture grants that
+    // exact source identity to that exact family; otherwise the entry is
+    // refused and an extra code-1206 diagnostic joins the guest's own code-99
+    // one, which is not what this test is about.
     bb.commit_support_analysis(Arc::new(slicer_ir::SupportAnalysisIR {
         family_assignments: std::collections::BTreeMap::from([(
-            ("cube".to_string(), DIAGNOSTIC_GUEST_REGION_ID),
+            slicer_ir::slice_ir::SupportSourceKey {
+                object_id: "cube".to_string(),
+                region_id: DIAGNOSTIC_GUEST_REGION_ID,
+                variant_chain: Vec::new(),
+            },
             DIAGNOSTIC_GUEST_FAMILY_ID.to_string(),
         )]),
         ..Default::default()

@@ -19,8 +19,9 @@ use slicer_ir::{ConfigKey, ConfigValue, ConfigView, ExPolygon, Point2, Polygon};
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::{
     LayerPlanView, LayerPlanViewEntry, MeshObjectView, RegionSegmentationView,
-    RegionSegmentationViewEntry, SupportAnalysisCandidate, SupportAnalysisGeometryEntry,
-    SupportAnalysisView, SupportGeometryView, SupportGeometryViewEntry,
+    RegionSegmentationViewEntry, RegionSourceOrigin, SupportAnalysisCandidate,
+    SupportAnalysisGeometryEntry, SupportAnalysisView, SupportGeometryView,
+    SupportGeometryViewEntry,
 };
 use slicer_sdk::traits::PrepassModule;
 use tree_support_planner::{carve_emitted_regions, point_inside_collision_volume};
@@ -82,7 +83,10 @@ fn regions() -> RegionSegmentationView {
             .map(|layer_index| RegionSegmentationViewEntry {
                 object_id: OBJECT_ID.into(),
                 layer_index,
-                region_ids: vec![REGION_ID.into()],
+                region_origins: vec![RegionSourceOrigin {
+                    region_id: REGION_ID.into(),
+                    variant_chain: Vec::new(),
+                }],
             })
             .collect(),
         region_support_configs: vec![],
@@ -142,11 +146,13 @@ fn analysis() -> SupportAnalysisView {
                 object_id: OBJECT_ID.into(),
                 region_id: REGION_ID.into(),
                 polygons: vec![wall()],
+                ..Default::default()
             })
             .collect(),
         family_assignments: vec![slicer_sdk::prepass_types::SupportFamilyAssignment {
             object_id: OBJECT_ID.into(),
             region_id: REGION_ID.into(),
+            variant_chain: Vec::new(),
             family_id: "tree".into(),
         }],
         ..Default::default()
@@ -308,6 +314,7 @@ fn ladder_wall(x0: f32) -> SupportGeometryView {
                 object_id: OBJECT_ID.into(),
                 region_id: REGION_ID.into(),
                 outlines: vec![rect(x0, -3.0, 9.0, 7.0)],
+                ..Default::default()
             })
             .collect(),
     }

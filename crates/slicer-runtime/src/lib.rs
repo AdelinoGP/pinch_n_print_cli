@@ -16,6 +16,7 @@ pub mod negative_part_subtract;
 pub mod order_lock;
 pub mod pipeline;
 pub mod postpass;
+pub mod preparation_lifecycle;
 pub mod prepass;
 /// Run-wide aggregation, native-sink installation, and ranked rendering for
 /// fuel-based module profiling (ADR-0055).
@@ -66,12 +67,6 @@ pub use slicer_ir::{
 /// These producers represent built-in (non-WASM) pipeline steps that are
 /// always present regardless of which WASM modules are loaded. They are used
 /// by the DAG validator, `dag_cli`, and the startup validation request.
-///
-/// Note: `LIGHTNING_TREE_PRODUCER`
-/// (`crates/slicer-runtime/src/builtins/lightning_tree_producer.rs`) is
-/// defined but not registered here; the `PrePass::LightningTreeGen` stage
-/// runs via direct wiring in `crates/slicer-runtime/src/prepass.rs`, which
-/// calls `commit_lightning_tree_ir_builtin` without going through this list.
 pub fn runtime_builtins() -> Vec<&'static dyn Producer> {
     use crate::builtins::gcode_emit_producer::GCODE_EMIT_PRODUCER;
     use crate::builtins::mesh_analysis_producer::{MESH_ANALYSIS_PRODUCER, MESH_PRODUCER};
@@ -113,7 +108,6 @@ pub use slicer_wasm_host::pool as instance_pool;
 // HostExecutionContext and HostExecutionContextBuilder are internal to slicer-wasm-host
 // (not part of the public API surface); they are NOT re-exported here.
 
-pub use builtins::lightning_tree_producer::commit_lightning_tree_ir_builtin;
 pub use builtins::overhang_annotation_producer::{
     commit_overhang_annotation_builtin, OverhangAnnotationBuiltinError,
 };
@@ -154,7 +148,8 @@ pub use layer_executor::{
     StageApplyContext,
 };
 pub use layer_executor::{
-    execute_per_layer, execute_per_layer_with_anchored_events, execute_per_layer_with_events,
+    build_and_commit_layer_selection_index, execute_per_layer,
+    execute_per_layer_with_anchored_events, execute_per_layer_with_events,
     execute_per_layer_with_instrumentation, ir_path_for_layer_stage, LayerExecutionError,
     LayerProgressSink, NoopLayerProgressSink,
 };
@@ -162,7 +157,7 @@ pub use layer_executor::{
 // the executor boundary, consumed by `pnp-cli`'s visual-debug command.
 pub use layer_executor::{
     execute_captured_stages, CaptureExecutionError, CaptureOutput, CaptureRequest, CapturedIr,
-    LayerExpansion, StageCapture, SUPPORTED_TAP_STAGE_IDS,
+    LayerExpansion, StageCapture, PREPARATION_PROJECTION_SCHEMA_VERSION, SUPPORTED_TAP_STAGE_IDS,
 };
 pub use layer_finalization::{
     execute_layer_finalization, execute_layer_finalization_owned,
@@ -184,14 +179,22 @@ pub use prepass::{
 };
 // Re-exported so consumers of the profiling surface (pnp-cli, tests) can name
 // a mark without taking a direct slicer-wasm-host dependency.
+pub use preparation_lifecycle::{
+    AnchoredHostClosureStatus, LayerArenaLifecycleStatus, PreparationAccountingSnapshot,
+    PreparationCapture, PreparationLifecycleObserver, PreparationLifecyclePhase,
+    PreparationLifecycleRecord, PreparationLifecycleStatus, PreparationOwnerCapture,
+    PreparationPieceMetadata, PreparationViewRequest, PreparationVisualCapture,
+    PreparationVisualCaptureError, SliceRuntimeExtensions,
+};
 pub use profiling_report::{
     format_profile_summary, ProfileAggregator, ProfileCallDetail, ProfileModuleRow,
     ProfileScopeRow, ProfileSummary, ProfileUnit,
 };
 pub use progress_instrumentation::ProgressPipelineInstrumentation;
 pub use run::{
-    prepare_prepass_context, run_slice, PrepassContext, SliceOutcome, SliceRunError,
-    SliceRunOptions,
+    prepare_prepass_context, run_slice, run_slice_preparation_capture,
+    run_slice_preparation_visual_capture, run_slice_with_runtime_extensions, PrepassContext,
+    SliceOutcome, SliceRunError, SliceRunOptions,
 };
 pub use slice_postprocess::{
     execute_slice_postprocess_paint_annotation, paint_annotation_warning_to_progress_event,

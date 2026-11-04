@@ -8,6 +8,7 @@ use std::sync::Arc;
 use slicer_ir::{
     BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer,
     SupportGeometryIR, SupportPlanEntry, SupportPlanIR, Transform3d,
+    CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::{Blackboard, BlackboardError};
 
@@ -90,7 +91,7 @@ fn support_geometry_slot_roundtrip() {
     );
 
     let ir = Arc::new(SupportGeometryIR {
-        schema_version: semver(1, 0, 0),
+        schema_version: CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
         support_layer_height_mm: 0.2,
         support_top_z_distance_mm: 0.1,
         entries: HashMap::new(),
@@ -139,6 +140,8 @@ fn support_entry(family_id: &str, layer: i32) -> SupportPlanEntry {
         capabilities: vec!["structural".into()],
         provenance: vec![family_id.into()],
         decline_reason: None,
+        // chain-empty fixture source: unpainted region
+        variant_chain: Vec::new(),
     }
 }
 
@@ -146,6 +149,11 @@ fn support_entry(family_id: &str, layer: i32) -> SupportPlanEntry {
 fn support_plan_family_commits_merge_entries_and_metadata() {
     let mesh = minimal_mesh();
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 0);
+    // In-memory metadata preservation: both owners deliberately pin the same
+    // `semver(2, 0, 0)`, so `Blackboard::commit_support_plan`'s version-equality
+    // check passes and the merge starts from a clone of the first owner
+    // (`raft_plan` preserved). The matching fixed versions are fixture metadata,
+    // NOT a persisted old-owner codec/decoding-compatibility claim.
     let first = Arc::new(SupportPlanIR {
         schema_version: semver(2, 0, 0),
         entries: vec![support_entry("tree", 0)],
@@ -183,6 +191,10 @@ fn support_plan_family_commits_merge_entries_and_metadata() {
 fn support_plan_merge_rejects_duplicate_region_identity() {
     let mesh = minimal_mesh();
     let mut blackboard = Blackboard::new(mesh, 0);
+    // In-memory merge seam: both owners pin the same `semver(2, 0, 0)` so the
+    // version-equality gate passes and the duplicate-identity rejection is what
+    // is exercised. The matching fixed versions are fixture metadata, NOT an
+    // old-codec compatibility witness.
     let first = Arc::new(SupportPlanIR {
         schema_version: semver(2, 0, 0),
         entries: vec![support_entry("tree", 0)],
@@ -205,6 +217,10 @@ fn support_plan_merge_rejects_duplicate_region_identity() {
             global_layer_index: 0,
             object_id: "object".into(),
             region_id: 0,
+            // Both `support_entry` fixtures are chain-less (unpainted region):
+            // the duplicate identity is chain-exact, so the reported chain is
+            // the exact empty one.
+            variant_chain: Vec::new(),
         }
     );
     assert_eq!(blackboard.support_plan().unwrap().entries.len(), 1);

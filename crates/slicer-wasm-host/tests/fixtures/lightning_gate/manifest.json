@@ -1,0 +1,163 @@
+{
+  "capture": {
+    "canonical_build_dirty": true,
+    "canonical_build_revision": "3e1daccd7c567a0a3d2b5721841d30845f21307e",
+    "canonical_revision": "3e1daccd7c567a0a3d2b5721841d30845f21307e",
+    "manifest_sha256": "235ca8773652e787087698194c8b7cd70ca074ce4db5bd911b8b0ec203a33312",
+    "recorder_patch_applied": true,
+    "recorder_patch_sha256": "bb3e5b81eb80893cb6b26204ac610daf9e71c49ecae9ade05db15c1b3ab6dcfb",
+    "tools": {
+      "platform": "Windows-11-10.0.26300-SP0",
+      "python": "3.14.4",
+      "slicer_sha256": "4e64931568df5581f3161946ea2ae9f4ed12abd750b0feb67e23631918b614c2"
+    }
+  },
+  "case_ids": [
+    "anchor_bridge_classic",
+    "pooled_regions_classic",
+    "hole_void_classic",
+    "island_split_merge_classic",
+    "paint_modifier_config_classic"
+  ],
+  "cases": {
+    "anchor_bridge_classic": {
+      "a_earlier_provenance_sha256": "bed77aa4818e0633ddc7374b4a72930c9292b2b824aa91a2c87a458d03c766fb",
+      "a_raw_config_sha256": "4978b497fb3b2617d8805beead93f350f975e893166b5062b56d0e8ece25801e",
+      "a_source_sha256": "bc8bb51c984db4e29e16dd3e135a1ade5588c765ca2076a1014e78850bc0afcf",
+      "absent": {
+        "b_input.input": "RegionInput.outlines and per-region shell/classified surfaces are not recorded",
+        "reference.final_fills": "FinalFillInput.policy needs per-region resolved angles the capture does not record",
+        "reference.graph": "planning.json graph nodes record no origin_region_index and no sampled_segments",
+        "reference.policies": "a complete FillPolicyInput per region occurrence is not transcribable: `bridge_angle_rad` is recorded by none of the seven capture artifacts, and `is_bridge` is not recorded for an occurrence (`callers.jsonl` records only the dispatch `surface_type`, with 1 of 8 occurrences carrying an `internal_bridge` dispatch). `fixed_angle` exists only per dispatch and disagrees inside 1 of 8 occurrences (true for top/bottom dispatches, false for internal/solid). Recorded per-dispatch resolved angles exist for 2 of 8 occurrences (sparse lightning), 8 of 8 (solid surfaces) and 3 of 8 (top/bottom)"
+      },
+      "b_input_sha256": "337862e6278b6cfc140e1fa731bf9f49bfb98d1f5889229a33c027a7c1948d7a",
+      "contributor_evidence": {
+        "complete": 28,
+        "unavailable": 21,
+        "unavailable_dispatches": [
+          "o0_l1_r0_d11",
+          "o0_l1_r0_d33",
+          "o0_l1_r0_d35",
+          "o0_l1_r0_d37",
+          "o0_l1_r0_d39",
+          "o0_l1_r0_d42",
+          "o0_l1_r0_d44",
+          "o0_l1_r0_d45",
+          "o0_l1_r0_d47",
+          "o0_l1_r0_d48",
+          "o0_l2_r0_d15",
+          "o0_l2_r0_d20",
+          "o0_l2_r0_d26",
+          "o0_l2_r0_d32",
+          "o0_l2_r0_d36",
+          "o0_l2_r0_d38",
+          "o0_l2_r0_d40",
+          "o0_l2_r0_d41",
+          "o0_l2_r0_d43",
+          "o0_l2_r0_d46",
+          "o0_l2_r0_d8"
+        ]
+      },
+      "reference_sha256": "1326798b28694bbd2e274cde91caa9961ea777cf12dd311fae8d1b523894fd4a"
+    },
+    "hole_void_classic": {
+      "a_earlier_provenance_sha256": "01be1311e2412919e3789bd58bd755b4ffdb5ed5c6ef85c4d0f26cf3c479b05f",
+      "a_raw_config_sha256": "590f6f1057e0d850dd0d9860a00e6ee7cf8277a72b6b3712fa07d641b3d1a9ab",
+      "a_source_sha256": "a0f3b2bd2cd0765cf4ac8e1db64cb6eac5d48a253a630d0ecfb5f7cff534d6f3",
+      "absent": {
+        "b_input.input": "RegionInput.outlines and per-region shell/classified surfaces are not recorded",
+        "reference.final_fills": "FinalFillInput.policy needs per-region resolved angles the capture does not record",
+        "reference.graph": "planning.json graph nodes record no origin_region_index and no sampled_segments",
+        "reference.policies": "a complete FillPolicyInput per region occurrence is not transcribable: `bridge_angle_rad` is recorded by none of the seven capture artifacts, and `is_bridge` is not recorded for an occurrence (`callers.jsonl` records only the dispatch `surface_type`, with 1 of 7 occurrences carrying an `internal_bridge` dispatch). `fixed_angle` exists only per dispatch and disagrees inside 0 of 7 occurrences (true for top/bottom dispatches, false for internal/solid). Recorded per-dispatch resolved angles exist for 1 of 7 occurrences (sparse lightning), 6 of 7 (solid surfaces) and 2 of 7 (top/bottom)"
+      },
+      "b_input_sha256": "95dae00511151acbb1ed2a4b043c24a27da9cc1e6802e80c3a3a1a365c30ebde",
+      "contributor_evidence": {
+        "complete": 14,
+        "unavailable": 2,
+        "unavailable_dispatches": [
+          "o15_l1_r0_d10",
+          "o15_l1_r0_d3"
+        ]
+      },
+      "reference_sha256": "5e6362a80acc95ca497239952852e94edf65bd8fd7371c22f83f42c0c735e0ed"
+    },
+    "island_split_merge_classic": {
+      "a_earlier_provenance_sha256": "85f5dc237f8d0fcc21d033302023ee41ef5f4d8e0efd885f0c4219646351db85",
+      "a_raw_config_sha256": "590f6f1057e0d850dd0d9860a00e6ee7cf8277a72b6b3712fa07d641b3d1a9ab",
+      "a_source_sha256": "0c6a11855d020ce76a7e947581e5fcd2dd4fa880142478103574e81dbb9a2867",
+      "absent": {
+        "b_input.input": "RegionInput.outlines and per-region shell/classified surfaces are not recorded",
+        "reference.final_fills": "FinalFillInput.policy needs per-region resolved angles the capture does not record",
+        "reference.graph": "planning.json graph nodes record no origin_region_index and no sampled_segments",
+        "reference.policies": "a complete FillPolicyInput per region occurrence is not transcribable: `bridge_angle_rad` is recorded by none of the seven capture artifacts, and `is_bridge` is not recorded for an occurrence (`callers.jsonl` records only the dispatch `surface_type`, with 1 of 7 occurrences carrying an `internal_bridge` dispatch). `fixed_angle` exists only per dispatch and disagrees inside 1 of 7 occurrences (true for top/bottom dispatches, false for internal/solid). Recorded per-dispatch resolved angles exist for 1 of 7 occurrences (sparse lightning), 6 of 7 (solid surfaces) and 2 of 7 (top/bottom)"
+      },
+      "b_input_sha256": "82993393a8af4b0e4c5859b141568ce0c81da41f6c68c65fa22fda8285612edf",
+      "contributor_evidence": {
+        "complete": 28,
+        "unavailable": 2,
+        "unavailable_dispatches": [
+          "o0_l1_r0_d15",
+          "o0_l1_r0_d4"
+        ]
+      },
+      "reference_sha256": "5966bba17f25a706098172d3119d3a33e32b35dbbf2f2e8f78a8f692f4422772"
+    },
+    "paint_modifier_config_classic": {
+      "a_earlier_provenance_sha256": "bf58ba494d44df7e37817680e3770c3e5bc16abbb5cf0757687bd5b8b7bd015a",
+      "a_raw_config_sha256": "ff5f0bc5597c0ff47b3bd8f6ce1e326854c03c249db025b73fcecf78aadd4791",
+      "a_source_sha256": "6a80a3554fce3cb6411a15b7912fe29b3d09c2e3f4de766dee1e22e2ea57bf17",
+      "absent": {
+        "b_input.input": "RegionInput.outlines and per-region shell/classified surfaces are not recorded",
+        "reference.final_fills": "FinalFillInput.policy needs per-region resolved angles the capture does not record",
+        "reference.graph": "planning.json graph nodes record no origin_region_index and no sampled_segments",
+        "reference.policies": "a complete FillPolicyInput per region occurrence is not transcribable: `bridge_angle_rad` is recorded by none of the seven capture artifacts, and `is_bridge` is not recorded for an occurrence (`callers.jsonl` records only the dispatch `surface_type`, with 1 of 21 occurrences carrying an `internal_bridge` dispatch). `fixed_angle` exists only per dispatch and disagrees inside 0 of 21 occurrences (true for top/bottom dispatches, false for internal/solid). Recorded per-dispatch resolved angles exist for 3 of 21 occurrences (sparse lightning), 6 of 21 (solid surfaces) and 2 of 21 (top/bottom)"
+      },
+      "b_input_sha256": "15cdcf895eb230d792fa46e94db5d3df9c33cbc1ca709f8a110b229bc3962456",
+      "contributor_evidence": {
+        "complete": 18,
+        "unavailable": 1,
+        "unavailable_dispatches": [
+          "o0_l1_r0_d6"
+        ]
+      },
+      "reference_sha256": "4ff3d8defc227de1e1d9105ba19a39bfcc8c1d584ec01e4ee1d64332142c6bca"
+    },
+    "pooled_regions_classic": {
+      "a_earlier_provenance_sha256": "2397dc4be9f0be9e809adc08398c322462d82fc691162b1676aa65220e8f3932",
+      "a_raw_config_sha256": "195afda37484058ce51bfd08b187d7f2929ed4e5447db437d70f658050737061",
+      "a_source_sha256": "328c4e4cdd8aba954114f60b1022735ccf7a72915d7b1090926095ba87952e73",
+      "absent": {
+        "b_input.input": "RegionInput.outlines and per-region shell/classified surfaces are not recorded",
+        "reference.final_fills": "FinalFillInput.policy needs per-region resolved angles the capture does not record",
+        "reference.graph": "planning.json graph nodes record no origin_region_index and no sampled_segments",
+        "reference.policies": "a complete FillPolicyInput per region occurrence is not transcribable: `bridge_angle_rad` is recorded by none of the seven capture artifacts, and `is_bridge` is not recorded for an occurrence (`callers.jsonl` records only the dispatch `surface_type`, with 1 of 14 occurrences carrying an `internal_bridge` dispatch). `fixed_angle` exists only per dispatch and disagrees inside 0 of 14 occurrences (true for top/bottom dispatches, false for internal/solid). Recorded per-dispatch resolved angles exist for 1 of 14 occurrences (sparse lightning), 6 of 14 (solid surfaces) and 2 of 14 (top/bottom)"
+      },
+      "b_input_sha256": "39d4bdf0558b9298b9669b4c3ac78054c139199716d3d6b2429b9ffef1c018cc",
+      "contributor_evidence": {
+        "complete": 16,
+        "unavailable": 1,
+        "unavailable_dispatches": [
+          "o0_l1_r0_d4"
+        ]
+      },
+      "reference_sha256": "2428332d62cc19209b43b62178ef0e39aadc27039e56e73efb7518efd2540b71"
+    }
+  },
+  "gate": "A",
+  "schema_version": 1,
+  "status": "published",
+  "units": {
+    "canonical": "canonical_units_1nm",
+    "pnp": "pnp_units_100nm",
+    "pnp_units_per_canonical_unit": 100,
+    "reference": "canonical_units_1nm",
+    "transport": {
+      "applies_to": [
+        "a_source",
+        "b_input"
+      ],
+      "conversion": "round-half-away-from-zero(v / 100); absolute error <= 1 PnP unit",
+      "tolerance_pnp_units": 1
+    }
+  }
+}

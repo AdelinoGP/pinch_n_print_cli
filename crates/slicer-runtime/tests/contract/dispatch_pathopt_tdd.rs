@@ -10,11 +10,57 @@ use slicer_wasm_host::{CompiledModuleLive, LayerStageInput, WasmRuntimeDispatche
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
+fn perimeter_map(
+    perimeter: &slicer_ir::PerimeterIR,
+    config: slicer_ir::ResolvedConfig,
+) -> slicer_ir::RegionMapIR {
+    let mut map = slicer_ir::RegionMapIR::default();
+    let config = map.intern_config(config);
+    for region in &perimeter.regions {
+        map.entries.insert(
+            slicer_ir::RegionKey {
+                global_layer_index: perimeter.global_layer_index,
+                object_id: region.object_id.clone(),
+                region_id: if region.variant_chain.is_empty() {
+                    region.region_id
+                } else {
+                    region.region_id / 1_000_000
+                },
+                variant_chain: region.variant_chain.clone(),
+            },
+            slicer_ir::RegionPlan {
+                config,
+                ..Default::default()
+            },
+        );
+    }
+    map
+}
+
+fn map_for_count(count: usize) -> slicer_ir::RegionMapIR {
+    perimeter_map(
+        &ir_builders::perimeter_ir::with_count(count).build(),
+        slicer_ir::ResolvedConfig::default(),
+    )
+}
+
+fn seed_perimeter_sources(blackboard: &mut Blackboard, count: usize) {
+    blackboard
+        .commit_slice_ir(Arc::new(vec![ir_builders::slice_ir::with_count(count)
+            .at_z(0.2)
+            .build()]))
+        .expect("commit perimeter model sources");
+    blackboard
+        .commit_region_map(Arc::new(map_for_count(count)))
+        .expect("commit perimeter authority");
+}
+
 // ── L. PathOptimization: ordered_entities threading + GCode override commit ──
 
 #[test]
 fn path_optimization_commit_folds_tool_changes_into_deferred_queue() {
     let mut fx = dispatch_fixture::for_stage("Layer::PathOptimization")
+        .with_region_map(map_for_count(3))
         .with_perimeter(ir_builders::perimeter_ir::with_count(3).walls(1).build())
         .build();
     let layer = GlobalLayer {
@@ -63,7 +109,9 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
         ..Default::default()
     };
     let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
-    seed_slice_ir(&mut blackboard, &plan);
+    seed_perimeter_sources(&mut blackboard, 2);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
 
     struct SeedingRunner {
         inner: WasmRuntimeDispatcher,
@@ -146,6 +194,8 @@ fn path_optimization_empty_input_is_no_op() {
     };
     let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
     let layers = execute_per_layer(&plan, &blackboard, &dispatcher, &wasm_handles).expect("exec");
     assert!(layers[0].ordered_entities.is_empty());
     assert!(layers[0].tool_changes.is_empty());
@@ -209,7 +259,9 @@ fn path_optimization_deterministic_across_repeated_runs() {
     for _ in 0..3 {
         let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
         let plan = make_plan();
-        seed_slice_ir(&mut blackboard, &plan);
+        seed_perimeter_sources(&mut blackboard, 3);
+        slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+            .expect("commit layer selection index");
         let runner = SeedingRunner {
             inner: WasmRuntimeDispatcher::new(Arc::clone(&engine)),
             perim: Mutex::new(Some(
@@ -574,7 +626,9 @@ fn path_optimization_end_to_end_populates_z_hops() {
             )),
         };
         let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
-        seed_slice_ir(&mut blackboard, &plan);
+        seed_perimeter_sources(&mut blackboard, 2);
+        slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+            .expect("commit layer selection index");
         runs.push(execute_per_layer(&plan, &blackboard, &runner, &wasm_handles).expect("exec"));
     }
     let layers = &runs[0];
@@ -657,7 +711,9 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
         )),
     };
     let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
-    seed_slice_ir(&mut blackboard, &plan);
+    seed_perimeter_sources(&mut blackboard, 1);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
     let layers = execute_per_layer(&plan, &blackboard, &runner, &wasm_handles).expect("exec");
 
     let emitter = DefaultGCodeEmitter::new("test".into());
@@ -780,6 +836,7 @@ fn path_optimization_receives_real_perimeter_regions() {
     // consume perimeter-region data (this test proves no panic / error path
     // and is verified by the dispatch succeeding when perimeter IR is staged).
     let mut fx = dispatch_fixture::for_stage("Layer::PathOptimization")
+        .with_region_map(map_for_count(4))
         .with_perimeter(
             ir_builders::perimeter_ir::with_count(4)
                 .at_layer(0)
@@ -833,7 +890,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
     // Pre-seed the arena with a perimeter commit so the guest sees a
     // non-empty region list (region_count=1, entity_count=1 on the
     // guest side). A PerimeterRegion with one wall loop.
-    let blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
+    let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
     let mut arena = LayerArena::new();
     // exhaustive: this fixture specifies the exact wall geometry serialized to the guest.
     let wall = slicer_ir::WallLoop {
@@ -910,6 +967,14 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
         ],
         ..Default::default()
     };
+    let mut config = slicer_ir::ResolvedConfig::default();
+    config.extensions.insert(
+        "path_optimization_emit_layer_markers".into(),
+        slicer_ir::ConfigValue::Bool(true),
+    );
+    blackboard
+        .commit_region_map(Arc::new(perimeter_map(&perim, config)))
+        .expect("commit perimeter authority");
     arena.set_perimeter(perim).expect("seed perimeter");
 
     let layer = slicer_ir::GlobalLayer {

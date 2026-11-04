@@ -35,7 +35,7 @@ pub struct SemanticOutput {
 }
 
 /// Returns a stable string name for a `PaintSemantic`.
-fn semantic_name(s: &PaintSemantic) -> String {
+pub(super) fn semantic_name(s: &PaintSemantic) -> String {
     match s {
         PaintSemantic::Material => "material".to_owned(),
         PaintSemantic::FuzzySkin => "fuzzy_skin".to_owned(),
@@ -79,25 +79,30 @@ pub fn compose_variants(
         return Vec::new();
     }
 
-    let n_sem = semantic_outputs.len();
-
-    // Pre-compute all non-empty subsets of the semantic index set. Each
-    // subset's indices are sorted by semantic name for deterministic key
-    // emission. The full list is then sorted descending by length so that
-    // longer chains (higher specificity) are processed first.
-    let subsets: Vec<Vec<usize>> = if n_sem == 0 {
-        Vec::new()
-    } else {
-        let total = 1usize << n_sem;
-        let mut subs: Vec<Vec<usize>> = Vec::with_capacity(total - 1);
-        for mask in 1..total {
-            let mut indices: Vec<usize> = (0..n_sem).filter(|&i| mask & (1 << i) != 0).collect();
-            indices.sort_by_key(|&i| semantic_name(&semantic_outputs[i].semantic));
-            subs.push(indices);
+    // Match RegionMapping: each semantic contributes either no value or one
+    // value. Group first rather than enumerating a powerset of individual
+    // values (which also overflows a bit mask for sufficiently many colors).
+    let mut by_semantic: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for (index, output) in semantic_outputs.iter().enumerate() {
+        by_semantic
+            .entry(semantic_name(&output.semantic))
+            .or_default()
+            .push(index);
+    }
+    let mut subsets: Vec<Vec<usize>> = vec![Vec::new()];
+    for values in by_semantic.values() {
+        let previous_len = subsets.len();
+        for i in 0..previous_len {
+            for &index in values {
+                let mut chain = subsets[i].clone();
+                chain.push(index);
+                subsets.push(chain);
+            }
         }
-        subs.sort_by_key(|b| std::cmp::Reverse(b.len()));
-        subs
-    };
+    }
+    subsets.retain(|chain| !chain.is_empty());
+    // Longer chains claim their intersection before the exclusive singletons.
+    subsets.sort_by_key(|chain| std::cmp::Reverse(chain.len()));
 
     let mut result: Vec<BTreeMap<ChainKey, Vec<ExPolygon>>> = Vec::with_capacity(n_layers);
 

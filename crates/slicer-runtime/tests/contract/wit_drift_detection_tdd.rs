@@ -619,21 +619,26 @@ fn canonical_infill_postprocess_takes_prior_infill() {
 }
 
 /// Verifies that the infill package receives the same paint view shape as the
-/// other paint-aware layer stages.
+/// other paint-aware layer stages, and that its run signature carries the
+/// versioned specialist query handle (`support-queries`).
 #[test]
 fn canonical_infill_takes_paint_view() {
     let path = workspace_root().join("crates/slicer-schema/wit/deps/layer-infill/layer-infill.wit");
     let content = fs::read_to_string(&path).expect("read canonical layer-infill.wit");
     assert!(
-        content.contains("package slicer:layer-infill@1.0.0;"),
+        content.contains("package slicer:layer-infill@2.0.0;"),
         "layer-infill must use the canonical package version"
+    );
+    assert!(
+        content.contains("use slicer:support-queries/support-queries@1.0.0.{support-query-view};"),
+        "layer-infill must import support-query-view from the versioned support-queries specialist"
     );
     assert!(
         content
             .split_whitespace()
             .collect::<String>()
-            .contains("run:func(layer-index:layer-idx,regions:list<slice-region-view>,paint:paint-region-layer-view,output:infill-output-builder,config:config-view)->result<_,module-error>;"),
-        "run-infill must take the canonical paint-region-layer-view parameter"
+            .contains("run:func(layer-index:layer-idx,regions:list<slice-region-view>,paint:paint-region-layer-view,support-queries:own<support-query-view>,output:infill-output-builder,config:config-view)->result<_,module-error>;"),
+        "run-infill must take the canonical paint-region-layer-view parameter plus the specialist query handle"
     );
 }
 
@@ -825,45 +830,16 @@ fn host_wit_host_rs_content() -> String {
     fs::read_to_string(&path).expect("read host host.rs for inline WIT verification")
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Packet 137: `lightning-tree-segments` view (AC-N2)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Verifies the canonical `ir-types.wit` exposes the new
-/// `lightning-tree-segments` method on the `paint-region-layer-view` resource
-/// (packet 137, AC-N2). The host `HostPaintRegionLayerView` impl in
-/// `slicer-wasm-host/src/host.rs` would fail to compile if this drifted.
-#[test]
-fn paint_region_layer_view_has_lightning_tree_segments_method() {
-    let path = workspace_root().join("crates/slicer-schema/wit/deps/ir-types.wit");
-    let content = fs::read_to_string(&path).expect("read canonical ir-types.wit");
-    let view_block = content
-        .split("resource paint-region-layer-view")
-        .nth(1)
-        .expect("ir-types.wit declares resource paint-region-layer-view")
-        .split('}')
-        .next()
-        .expect("paint-region-layer-view resource block is closed");
-    assert!(
-        view_block
-            .contains("lightning-tree-segments: func(object-id: object-id, region-id: region-id)"),
-        "paint-region-layer-view must expose 'lightning-tree-segments' method (packet 137, AC-N2)"
-    );
-    assert!(
-        view_block.contains("-> list<list<point3-with-width>>"),
-        "lightning-tree-segments must return list<list<point3-with-width>> (mirrors support-plan-segments)"
-    );
-}
-
 /// Verifies the layer-infill stage package retains the load-bearing major
-/// version used by the per-stage bindgen contract.
+/// version used by the per-stage bindgen contract. The @1.0.0 → @2.0.0 bump
+/// is deliberate (layer-module-preparation W10: specialist query imports).
 #[test]
 fn layer_infill_package_version_is_load_bearing() {
     let path = workspace_root().join("crates/slicer-schema/wit/deps/layer-infill/layer-infill.wit");
     let content = fs::read_to_string(&path).expect("read canonical layer-infill.wit");
     assert!(
-        content.contains("package slicer:layer-infill@1.0.0;"),
-        "layer-infill must remain at package version 1.0.0"
+        content.contains("package slicer:layer-infill@2.0.0;"),
+        "layer-infill must remain at package version 2.0.0"
     );
 }
 

@@ -71,7 +71,6 @@ fn native_views(fx: &Fixture, stage: &'static str) -> Vec<PerimeterRegionView> {
         paint_regions: None,
         seam_plan: None,
         support_plan: None,
-        lightning_tree_ir: None,
         region_map: fx.region_map.as_ref().map(|rm| Arc::new(rm.clone())),
         slice: Some(&fx.slice),
         perimeter: Some(&fx.perimeter),
@@ -80,6 +79,7 @@ fn native_views(fx: &Fixture, stage: &'static str) -> Vec<PerimeterRegionView> {
         prepared_regions: None,
         prepared_perimeter_source_regions: None,
         infill: None,
+        selection: None,
     };
     let native = build_native_layer_request(stage, 0, &input, &module, &HashMap::new());
     native
@@ -345,7 +345,6 @@ fn native_postprocess_without_slice_falls_back_to_perimeter_views() {
         paint_regions: None,
         seam_plan: None,
         support_plan: None,
-        lightning_tree_ir: None,
         region_map: None,
         slice: None,
         perimeter: Some(&perimeter),
@@ -354,6 +353,7 @@ fn native_postprocess_without_slice_falls_back_to_perimeter_views() {
         prepared_regions: None,
         prepared_perimeter_source_regions: None,
         infill: None,
+        selection: None,
     };
     let native = build_native_layer_request(
         "Layer::InfillPostProcess",
@@ -447,7 +447,6 @@ fn native_ordered_entities_snapshot_matches_the_wasm_seam() {
         paint_regions: None,
         seam_plan: None,
         support_plan: None,
-        lightning_tree_ir: None,
         region_map: None,
         slice: Some(&slice),
         perimeter: None,
@@ -456,6 +455,7 @@ fn native_ordered_entities_snapshot_matches_the_wasm_seam() {
         prepared_regions: None,
         prepared_perimeter_source_regions: None,
         infill: None,
+        selection: None,
     };
 
     for (stage, expect_snapshot) in [
@@ -512,7 +512,6 @@ fn native_postprocess_without_perimeter_yields_empty_list() {
         paint_regions: None,
         seam_plan: None,
         support_plan: None,
-        lightning_tree_ir: None,
         region_map: None,
         slice: Some(&slice),
         perimeter: None,
@@ -521,6 +520,7 @@ fn native_postprocess_without_perimeter_yields_empty_list() {
         prepared_regions: None,
         prepared_perimeter_source_regions: None,
         infill: None,
+        selection: None,
     };
     let native = build_native_layer_request(
         "Layer::InfillPostProcess",

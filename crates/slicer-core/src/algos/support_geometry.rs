@@ -16,8 +16,8 @@
 use std::collections::{BTreeSet, HashMap};
 
 use slicer_ir::{
-    ExPolygon, LayerPlanIR, ObjectId, RegionId, ResolvedConfig, SliceIR, SupportGeometryIR,
-    SupportGeometryKey,
+    ExPolygon, LayerPlanIR, ObjectId, PaintValue, RegionId, ResolvedConfig, SliceIR,
+    SupportGeometryIR, SupportGeometryKey,
 };
 
 /// Structured support geometry computation failure.
@@ -127,13 +127,12 @@ pub fn execute_support_geometry(
                 .map_or(false, |s| s.contains(&global_layer.index));
 
             if should_emit {
-                let key = SupportGeometryKey {
-                    global_support_layer_index: global_layer.index,
-                    object_id: oid.clone(),
-                    region_id: region.region_id,
-                };
-
-                let polygons = collect_polygons_at_z(
+                // Group the committed source polygons by their exact ordered
+                // `variant_chain` so two sources that share
+                // `(layer, object_id, region_id)` but differ only by chain
+                // stay distinct. A plan region with no committed source slice
+                // carries the exact empty chain (never a wildcard/sentinel).
+                let source_geometry = collect_source_geometry_at_z(
                     slice_vec,
                     layer_plan,
                     oid,
@@ -141,7 +140,25 @@ pub fn execute_support_geometry(
                     global_layer.z,
                 );
 
-                entries.entry(key).or_default().extend(polygons);
+                if source_geometry.is_empty() {
+                    let key = SupportGeometryKey {
+                        global_support_layer_index: global_layer.index,
+                        object_id: oid.clone(),
+                        region_id: region.region_id,
+                        variant_chain: Vec::new(),
+                    };
+                    entries.entry(key).or_default();
+                } else {
+                    for (variant_chain, polygons) in source_geometry {
+                        let key = SupportGeometryKey {
+                            global_support_layer_index: global_layer.index,
+                            object_id: oid.clone(),
+                            region_id: region.region_id,
+                            variant_chain,
+                        };
+                        entries.entry(key).or_default().extend(polygons);
+                    }
+                }
             }
         }
     }
@@ -161,15 +178,21 @@ pub fn execute_support_geometry(
     })
 }
 
-/// Collect ExPolygons at a given Z from the prepass-committed `SliceIR` Vec
-/// for a specific `(object_id, region_id)`.
-fn collect_polygons_at_z(
+/// Group the committed source polygons at a given Z by the exact ordered
+/// `variant_chain` of the `SlicedRegion` each polygon came from, for a
+/// specific `(object_id, region_id)`.
+///
+/// Returns one `(variant_chain, polygons)` pair per distinct `variant_chain`
+/// present at `z`, in first-seen order. Chains are compared for exact ordered
+/// equality — never sorted, digested, or normalized. A genuinely chain-less
+/// source yields an empty chain, which is an exact identity, never a wildcard.
+fn collect_source_geometry_at_z(
     slice_vec: &[SliceIR],
     layer_plan: &LayerPlanIR,
     object_id: &ObjectId,
     region_id: RegionId,
     z: f32,
-) -> Vec<ExPolygon> {
+) -> Vec<(Vec<(String, PaintValue)>, Vec<ExPolygon>)> {
     if slice_vec.is_empty() || layer_plan.global_layers.is_empty() {
         return Vec::new();
     }
@@ -192,22 +215,32 @@ fn collect_polygons_at_z(
             i
         }
     };
-    extract_region_polys(&slice_vec[idx], object_id, region_id)
+    extract_region_source_geometry(&slice_vec[idx], object_id, region_id)
 }
 
 /// Pull the polygons for a specific `(object_id, region_id)` out of a single
-/// committed `SliceIR`.
-fn extract_region_polys(
+/// committed `SliceIR`, grouped by the exact ordered `variant_chain` of their
+/// source `SlicedRegion`.
+fn extract_region_source_geometry(
     slice: &SliceIR,
     object_id: &ObjectId,
     region_id: RegionId,
-) -> Vec<ExPolygon> {
-    slice
+) -> Vec<(Vec<(String, PaintValue)>, Vec<ExPolygon>)> {
+    let mut grouped: Vec<(Vec<(String, PaintValue)>, Vec<ExPolygon>)> = Vec::new();
+    for region in slice
         .regions
         .iter()
         .filter(|r| &r.object_id == object_id && r.region_id == region_id)
-        .flat_map(|r| r.polygons.clone())
-        .collect()
+    {
+        match grouped
+            .iter_mut()
+            .find(|(chain, _)| chain == &region.variant_chain)
+        {
+            Some((_, polygons)) => polygons.extend(region.polygons.iter().cloned()),
+            None => grouped.push((region.variant_chain.clone(), region.polygons.clone())),
+        }
+    }
+    grouped
 }
 
 /// Add intermediate model-resolution layers within `distance_mm` of column tops.
@@ -238,19 +271,35 @@ fn add_intermediate_model_layers(
                 .iter()
                 .filter(|r| &r.object_id == object_id)
             {
-                let polygons = collect_polygons_at_z(
+                // The intentional `u32::MAX` intermediate sentinel is
+                // preserved, and each source chain keeps its own sentinel
+                // entry so chain-distinct sources never fold together.
+                let source_geometry = collect_source_geometry_at_z(
                     slice_vec,
                     layer_plan,
                     object_id,
                     active.region_id,
                     layer.z,
                 );
-                let key = SupportGeometryKey {
-                    global_support_layer_index: sentinel,
-                    object_id: object_id.clone(),
-                    region_id: active.region_id,
-                };
-                entries.entry(key).or_default().extend(polygons);
+                if source_geometry.is_empty() {
+                    let key = SupportGeometryKey {
+                        global_support_layer_index: sentinel,
+                        object_id: object_id.clone(),
+                        region_id: active.region_id,
+                        variant_chain: Vec::new(),
+                    };
+                    entries.entry(key).or_default();
+                } else {
+                    for (variant_chain, polygons) in source_geometry {
+                        let key = SupportGeometryKey {
+                            global_support_layer_index: sentinel,
+                            object_id: object_id.clone(),
+                            region_id: active.region_id,
+                            variant_chain,
+                        };
+                        entries.entry(key).or_default().extend(polygons);
+                    }
+                }
             }
         }
     }

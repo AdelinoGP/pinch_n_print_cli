@@ -25,9 +25,9 @@
 //! containment is therefore a property of the module **+ linker pair**, not of
 //! the module alone — `ac7*` accordingly drive `FillModule::run` followed by
 //! `infill-linker`'s `run_infill_postprocess` and assert on the linked output.
-//! The remaining tests here are about emission *gating* (held claims, empty
-//! polygons), which is a module-only property, so they still call the module
-//! directly.
+//! Empty-polygon checks also use the module + linker pair: lightning plans
+//! from whole-print outlines and the linker owns the final sparse partition.
+//! Held-claim checks remain module-only.
 
 use gyroid_infill::GyroidInfill;
 use infill_linker::InfillLinker;
@@ -35,7 +35,7 @@ use lightning_infill::LightningInfill;
 use rectilinear_infill::RectilinearInfill;
 use slicer_ir::{
     point_in_polygon_winding, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
-    InfillRegion, LightningTreeEntry, LightningTreeIR, Point2, Polygon,
+    InfillRegion, Point2, Polygon,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::test_support::fixtures::{PerimeterRegionViewBuilder, SliceRegionViewBuilder};
@@ -94,6 +94,10 @@ fn min_density_config() -> ConfigView {
     map.insert("bridge_speed".into(), ConfigValue::Float(25.0));
     map.insert("line_width".into(), ConfigValue::Float(0.4));
     map.insert("layer_height".into(), ConfigValue::Float(0.2));
+    map.insert(
+        "prepared_plan_diagnostic".into(),
+        ConfigValue::String("none".into()),
+    );
     // infill-linker's `AnchorParams::from_config` reads this via
     // `require_abs_value` (packet 06); the manifest default is the absolute
     // 20.0 mm float-or-percent.
@@ -257,7 +261,95 @@ impl FillModule {
         let result = match self {
             Self::Rectilinear(m) => m.run_infill(layer_index, regions, paint, output, config),
             Self::Gyroid(m) => m.run_infill(layer_index, regions, paint, output, config),
-            Self::Lightning(m) => m.run_infill(layer_index, regions, paint, output, config),
+            Self::Lightning(m) => {
+                use slicer_ir::{
+                    RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SliceIR, SlicedRegion,
+                };
+                let mut map = RegionMapIR::default();
+                let id = map.intern_config(ResolvedConfig {
+                    sparse_fill_holder: "lightning-infill".into(),
+                    line_width: 0.4,
+                    infill_density: 0.5,
+                    infill_angle: 45.0,
+                    layer_height: 0.2,
+                    extensions: std::collections::BTreeMap::from([(
+                        "prepared_plan_diagnostic".into(),
+                        ConfigValue::String("none".into()),
+                    )]),
+                    ..Default::default()
+                });
+                let mut sources = Vec::new();
+                for region in regions {
+                    // Committed slices retain the full cross-section even when
+                    // every fill partition is empty. Planning over this outline
+                    // deliberately leaves role clipping to the linker.
+                    let region_id = *region.region_id();
+                    map.entries.insert(
+                        RegionKey {
+                            global_layer_index: layer_index + 1,
+                            object_id: region.object_id().clone(),
+                            region_id,
+                            variant_chain: region.variant_chain().to_vec(),
+                        },
+                        RegionPlan {
+                            config: id,
+                            ..Default::default()
+                        },
+                    );
+                    sources.push(SlicedRegion {
+                        object_id: region.object_id().clone(),
+                        region_id,
+                        variant_chain: region.variant_chain().to_vec(),
+                        polygons: region.polygons().to_vec(),
+                        effective_layer_height: 0.2,
+                        ..Default::default()
+                    });
+                }
+                let mut previous = sources.clone();
+                for region in &mut previous {
+                    region.polygons = vec![square(4.0, 4.0, 6.0, 6.0)];
+                    map.entries.insert(
+                        RegionKey {
+                            global_layer_index: layer_index,
+                            object_id: region.object_id.clone(),
+                            region_id: region.region_id,
+                            variant_chain: region.variant_chain.clone(),
+                        },
+                        RegionPlan {
+                            config: id,
+                            ..Default::default()
+                        },
+                    );
+                }
+                let slices = vec![
+                    SliceIR {
+                        global_layer_index: layer_index,
+                        z: 0.2,
+                        regions: previous,
+                        ..Default::default()
+                    },
+                    SliceIR {
+                        global_layer_index: layer_index + 1,
+                        z: 0.4,
+                        regions: sources,
+                        ..Default::default()
+                    },
+                ];
+                let (binding, _store, owner) = crate::common::prepare_lightning(
+                    slices,
+                    map,
+                    std::sync::Arc::new(config.clone()),
+                    true,
+                );
+                // The native call guard installs exactly the pieces produced by
+                // this module's prepare_print over the committed two-layer overhang.
+                binding
+                    .with_native_plan(&owner, |_| {
+                        m.run_infill(layer_index + 1, regions, paint, output, config)
+                    })
+                    .expect("real prepared lightning consumer");
+                Ok(())
+            }
         };
         result.unwrap_or_else(|e| panic!("[{}] run_infill failed: {e:?}", self.name()));
     }
@@ -290,41 +382,6 @@ impl FillModule {
             .map(|r| claim_for_role(r).to_string())
             .collect()
     }
-}
-
-/// A `PaintRegionLayerView` carrying lightning tree-edge segments for
-/// `(obj-1, region 0, layer 0)`.
-///
-/// `lightning-infill::run_infill` renders exclusively from
-/// `PaintRegionLayerView::lightning_tree_segments_for` — its geometry comes
-/// from the `PrePass::LightningTreeGen` product (ADR-0029), not from the region
-/// polygons. A tree-less paint view therefore makes lightning emit nothing, and
-/// a containment assertion over zero paths is vacuous. Supplying a tree is what
-/// makes the lightning arm of `ac7*` a real check.
-///
-/// The segments are given in mm and deliberately **overshoot** the role
-/// polygon: under ADR-0025 a `Layer::Infill` module emits raw geometry and
-/// confinement is the linker's job, so a fixture whose raw segments already fit
-/// would prove nothing about the re-clip.
-fn lightning_paint(segments: &[((f32, f32), (f32, f32))]) -> PaintRegionLayerView {
-    let ir = LightningTreeIR {
-        entries: vec![LightningTreeEntry {
-            object_id: "obj-1".to_string(),
-            global_layer_index: 0,
-            region_id: 0,
-            tree_edge_segments: segments
-                .iter()
-                .map(|(start, end)| {
-                    [
-                        Point2::from_mm(start.0, start.1),
-                        Point2::from_mm(end.0, end.1),
-                    ]
-                })
-                .collect(),
-        }],
-        ..Default::default()
-    };
-    PaintRegionLayerView::new(0).with_lightning_tree_ir(std::sync::Arc::new(ir))
 }
 
 /// The `Layer::InfillPostProcess` view of the same region: the host's four
@@ -396,13 +453,7 @@ fn all_three_modules() -> Vec<FillModule> {
 #[test]
 fn ac7_each_role_confined_to_its_own_canonical_polygon_for_all_three_modules() {
     let region = region_with_disjoint_quadrants();
-    // Sparse is the bottom-left 5×5 quadrant; two of these three branches run
-    // straight out of it into the bottom-right and top-left quadrants.
-    let paint = lightning_paint(&[
-        ((1.0, 1.0), (9.0, 1.0)),
-        ((1.0, 1.0), (1.0, 9.0)),
-        ((1.0, 4.0), (4.0, 1.0)),
-    ]);
+    let paint = PaintRegionLayerView::new(0);
 
     for module in all_three_modules() {
         let mut region_clone = region.clone();
@@ -533,13 +584,7 @@ fn ac7b_concave_sparse_area_confined_via_winding_not_just_aabb() {
         .build();
 
     let containers = [area];
-    // Each branch crosses the notch: the diagonal cuts the reflex corner at
-    // (4,4), the other two run along y=8 / x=8 out of the L's arms.
-    let paint = lightning_paint(&[
-        ((1.0, 1.0), (9.0, 9.0)),
-        ((1.0, 8.0), (8.0, 8.0)),
-        ((8.0, 1.0), (8.0, 8.0)),
-    ]);
+    let paint = PaintRegionLayerView::new(0);
     for module in all_three_modules() {
         let mut region_clone = region.clone();
         region_clone.set_held_claims(module.held_claims());
@@ -579,16 +624,9 @@ fn ac8_empty_sparse_infill_area_yields_zero_sparse_paths_even_with_top_flag_set(
         .build();
 
     for module in all_three_modules() {
-        let mut output = InfillOutputBuilder::new();
         let mut region_clone = region.clone();
         region_clone.set_held_claims(module.held_claims());
-        module.run(
-            0,
-            std::slice::from_ref(&region_clone),
-            &PaintRegionLayerView::new(0),
-            &mut output,
-            &min_density_config(),
-        );
+        let output = run_and_link(&module, &region_clone, &PaintRegionLayerView::new(0));
         let all = collect_all_paths(&output);
 
         let sparse = paths_with_role(&all, ExtrusionRole::SparseInfill);
@@ -631,16 +669,9 @@ fn ac9_all_four_polygons_empty_yields_zero_paths_no_panic() {
         .build();
 
     for module in all_three_modules() {
-        let mut output = InfillOutputBuilder::new();
         let mut region_clone = region.clone();
         region_clone.set_held_claims(module.held_claims());
-        module.run(
-            0,
-            std::slice::from_ref(&region_clone),
-            &PaintRegionLayerView::new(0),
-            &mut output,
-            &min_density_config(),
-        );
+        let output = run_and_link(&module, &region_clone, &PaintRegionLayerView::new(0));
         let all = collect_all_paths(&output);
         assert!(
             all.is_empty(),

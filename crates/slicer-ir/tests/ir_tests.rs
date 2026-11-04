@@ -902,6 +902,11 @@ fn chunk2_ir_schema_versions_are_default_sourced() {
         "SupportGeometryIR::default().schema_version must equal CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION"
     );
     assert_eq!(
+        slicer_ir::slice_ir::SupportAnalysisIR::default().schema_version,
+        slicer_ir::slice_ir::CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION,
+        "SupportAnalysisIR::default().schema_version must equal CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION"
+    );
+    assert_eq!(
         RegionMapIR::default().schema_version,
         slicer_ir::CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
         "RegionMapIR::default().schema_version must equal CURRENT_REGION_MAP_IR_SCHEMA_VERSION"

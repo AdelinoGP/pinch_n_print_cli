@@ -1,7 +1,8 @@
-package slicer:prepass-support-geometry@1.0.0;
+package slicer:prepass-support-geometry@2.0.0;
 
 interface support-geometry-types {
     use slicer:types/geometry.{ex-polygon, point3};
+    use slicer:ir-handles/ir-handles@1.0.0.{paint-value};
 
     type object-id = string;
     type region-id = string;
@@ -21,6 +22,7 @@ interface support-geometry-types {
         global-layer-index: s32,
         object-id: object-id,
         region-id: region-id,
+        variant-chain: list<tuple<string, paint-value>>,
         family-id: string,
         demand-ids: list<string>,
         body-ids: list<string>,
@@ -40,10 +42,14 @@ interface support-geometry-types {
         interface-raft-layers: u32,
     }
 
+    record region-source-origin {
+        region-id: region-id,
+        variant-chain: list<tuple<string, paint-value>>,
+    }
     record region-segmentation-view-entry {
         object-id: object-id,
         layer-index: u32,
-        region-ids: list<region-id>,
+        region-origins: list<region-source-origin>,
     }
     record region-segmentation-view {
         entries: list<region-segmentation-view-entry>,
@@ -53,6 +59,7 @@ interface support-geometry-types {
         object-id: object-id,
         layer-index: u32,
         region-id: region-id,
+        variant-chain: list<tuple<string, paint-value>>,
         support-family: option<string>,
         support-type: option<string>,
     }
@@ -61,6 +68,7 @@ interface support-geometry-types {
         global-support-layer-index: u32,
         object-id: object-id,
         region-id: region-id,
+        variant-chain: list<tuple<string, paint-value>>,
         outlines: list<ex-polygon>,
     }
     record support-geometry-view {
@@ -72,6 +80,7 @@ interface support-geometry-types {
         geometry: list<ex-polygon>,
         object-id: object-id,
         region-id: region-id,
+        variant-chain: list<tuple<string, paint-value>>,
         global-layer-index: u32,
         z-units: s64,
         enforced: bool,
@@ -81,11 +90,13 @@ interface support-geometry-types {
         global-support-layer-index: u32,
         object-id: object-id,
         region-id: region-id,
+        variant-chain: list<tuple<string, paint-value>>,
         polygons: list<ex-polygon>,
     }
     record support-family-assignment {
         object-id: object-id,
         region-id: region-id,
+        variant-chain: list<tuple<string, paint-value>>,
         family-id: string,
     }
     record support-analysis-view {
@@ -143,6 +154,7 @@ interface support-geometry {
 
 interface exact-z-support-query {
     use slicer:types/geometry.{ex-polygon};
+    use slicer:ir-handles/ir-handles@1.0.0.{paint-value};
     record query-result {
         z-units: s64,
         occupancy: list<ex-polygon>,
@@ -150,14 +162,14 @@ interface exact-z-support-query {
         termination-surfaces: list<ex-polygon>,
         baseline-envelope: list<ex-polygon>,
     }
-    query: func(object-id: string, region-id: u64, physical-z-mm: f32) -> result<query-result, string>;
+    query: func(object-id: string, region-id: u64, variant-chain: list<tuple<string, paint-value>>, physical-z-mm: f32) -> result<query-result, string>;
 }
 
 world support-geometry-module {
     import slicer:common/host-services;
     import slicer:common/profiling;
     import slicer:config/config-types;
-    import slicer:ir-handles/ir-handles;
+    import slicer:ir-handles/ir-handles@1.0.0;
     import slicer:prepass-types/prepass-types;
     import support-geometry-types;
     import exact-z-support-query;

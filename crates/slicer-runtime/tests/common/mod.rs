@@ -52,6 +52,7 @@ pub fn classic_perimeters_baseline() -> ConfigViewBuilder {
     ConfigViewBuilder::new()
         .float("nozzle_diameter", 0.4)
         .float("layer_height", 0.2)
+        .float("resolution", 0.01)
         .float("bridge_line_width", 0.0)
         .float("initial_layer_line_width", 0.0)
         .float("outer_wall_line_width", 0.0)
@@ -577,17 +578,117 @@ pub fn commit_hec_for_test(
 }
 
 // ── Stage input helpers ───────────────────────────────────────────────────────
+/// Prepare lightning's real paired artifact from committed geometry, never from
+/// a pre-encoded answer. Keep the store alive for the owner's ordinary calls.
+pub fn prepare_lightning(
+    slices: Vec<slicer_ir::SliceIR>,
+    region_map: slicer_ir::RegionMapIR,
+    config: Arc<slicer_ir::ConfigView>,
+    native: bool,
+) -> (
+    slicer_wasm_host::preparation::FrozenPreparationBinding,
+    slicer_wasm_host::preparation::PreparedOwnerStore,
+    slicer_wasm_host::preparation::PreparationOwner,
+) {
+    use slicer_wasm_host::preparation::{
+        freeze_native, freeze_wasm, CommittedPreparationInputs, NativePreparationArtifact,
+        PreparationInputData, PreparationProjectionRequest, PreparationSelectionContext,
+        PreparedOwnerStore,
+    };
+    let module_id = "com.core.lightning-infill";
+    let declaration = Some(slicer_schema::preparation::PreparationDeclaration::new(
+        "slicer:layer-preparation/prepare@1.0.0",
+        vec!["layer_plan".into(), "slices".into(), "region_map".into()],
+        vec!["planning_geometry".into()],
+    ));
+    let binding = if native {
+        freeze_native(
+            module_id.into(),
+            declaration,
+            NativePreparationArtifact::Prepared {
+                entry: lightning_infill::LightningInfill::__slicer_prepared_native_entry(),
+                schema: lightning_infill::LightningInfill::__SLICER_PREPARATION_SCHEMA,
+            },
+        )
+    } else {
+        let engine = wasm_cache::shared_engine().wasmtime_engine().clone();
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../modules/core-modules/lightning-infill/lightning-infill.wasm");
+        integrated_parity_harness::assert_guest_freshness(&path);
+        let component = wasmtime::component::Component::from_file(&engine, path)
+            .expect("load real lightning component");
+        freeze_wasm(
+            module_id.into(),
+            declaration,
+            engine,
+            component,
+            "Layer::Infill".into(),
+        )
+    }
+    .expect("freeze real lightning pair");
+    let store = PreparedOwnerStore::new();
+    let owner = store.create_owner(&binding).expect("lightning owner");
+    let layers = slices
+        .iter()
+        .map(|slice| slicer_ir::GlobalLayer {
+            index: slice.global_layer_index,
+            z: slice.z,
+            ..Default::default()
+        })
+        .collect();
+    let committed = CommittedPreparationInputs::new(
+        Arc::new(slicer_ir::MeshIR::default()),
+        Arc::new(slicer_ir::LayerPlanIR {
+            global_layers: layers,
+            ..Default::default()
+        }),
+        Arc::new(slices),
+        Arc::new(region_map),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .expect("commit lightning planning inputs");
+    let input = PreparationInputData::from_committed(
+        &owner,
+        Arc::new(committed),
+        PreparationSelectionContext::new(
+            "Layer::Infill".into(),
+            module_id.into(),
+            vec!["claim:sparse-fill".into()],
+            Default::default(),
+            config,
+        ),
+    )
+    .expect("bind lightning planning inputs");
+    binding
+        .prepare_with_diagnostics(
+            &owner,
+            input,
+            PreparationProjectionRequest::new(Vec::new()).unwrap(),
+            |_| Ok(()),
+        )
+        .expect("module prepare_print must publish Ready pieces");
+    (binding, store, owner)
+}
+
 // Construct *StageInput borrow structs from the legacy Blackboard/LayerArena
 // so existing test call sites can use the new trait boundary with minimal churn.
 
-pub fn layer_input<'a>(blackboard: &'a Blackboard, arena: &'a LayerArena) -> LayerStageInput<'a> {
+pub fn layer_input<'a>(
+    blackboard: &'a Blackboard,
+    arena: &'a LayerArena,
+    selection: &'a slicer_wasm_host::selection::LayerSelection,
+) -> LayerStageInput<'a> {
     // exhaustive: LayerStageInput is a boundary carrier with borrowed runtime state.
     LayerStageInput {
+        selection: Some(selection),
         mesh: blackboard.mesh().clone(),
         paint_regions: None,
         seam_plan: blackboard.seam_plan().cloned(),
         support_plan: blackboard.support_plan().cloned(),
-        lightning_tree_ir: blackboard.lightning_tree_ir().cloned(),
         region_map: blackboard.region_map().cloned(),
         slice: arena.slice(),
         perimeter: arena.perimeter(),
@@ -673,6 +774,53 @@ impl TestModuleBundle {
     }
 }
 
+/// Build the owned index for a direct dispatcher fixture from static metadata
+/// and committed products. Hold it across dispatch and borrow via `selection_for`.
+/// Executor-entry fixtures instead use production `build_and_commit_layer_selection_index`.
+#[allow(dead_code)]
+pub fn selection_for_module(
+    stage_id: &str,
+    layer: &slicer_ir::GlobalLayer,
+    module: &slicer_runtime::CompiledModule,
+    blackboard: &Blackboard,
+    staged_slice: Option<&slicer_ir::SliceIR>,
+    staged_perimeter: Option<&slicer_ir::PerimeterIR>,
+) -> Result<slicer_wasm_host::selection::LayerSelectionIndex, slicer_ir::LayerStageError> {
+    use slicer_wasm_host::selection::{
+        build_layer_selection_index, LayerSelectionIndexInput, LayerSelectionModuleInput, STAGES,
+    };
+    // exhaustive: static binding authority is taken directly from the compiled module.
+    let modules = [LayerSelectionModuleInput {
+        stage_id,
+        module_id: module.module_id(),
+        claims: module.claims(),
+        paint_semantics: Some(module.region_split_semantics()),
+        invocation_config: module.config_view().as_ref(),
+    }];
+    // exhaustive: the fixture snapshot preserves absent products without synthetic entries.
+    let input = LayerSelectionIndexInput {
+        stage_roster: STAGES,
+        global_layers: std::slice::from_ref(layer),
+        modules: &modules,
+        // Direct-dispatch fixtures carry the call-local staged slice; the
+        // committed whole-print product is only the fallback when no staged
+        // slice exists (executor-driven fixtures provision there instead).
+        slices: staged_slice
+            .map(std::slice::from_ref)
+            .or_else(|| blackboard.slice_ir().map(|v| v.as_slice()))
+            .unwrap_or(&[]),
+        region_map: blackboard.region_map().map(|a| a.as_ref()),
+        support_plan: blackboard.support_plan().map(|a| a.as_ref()),
+        // Blackboard exposes no whole-print perimeter product.
+        perimeters: staged_perimeter.map(std::slice::from_ref).unwrap_or(&[]),
+    };
+    build_layer_selection_index(input).map_err(|e| slicer_ir::LayerStageError::FatalModule {
+        stage_id: e.stage_id,
+        module_id: e.module_id,
+        message: format!("{:?}", e.error),
+    })
+}
+
 /// Real-wasm variant of `run_layer_and_commit` that uses the bundle's actual
 /// `pool` and `component` (not the placeholder). dispatch_tdd needs this to
 /// drive real guest execution.
@@ -688,7 +836,22 @@ pub fn run_layer_and_commit_with_bundle(
     use slicer_runtime::StageApplyContext;
     use slicer_wasm_host::LayerStageRunner;
     let live = bundle.as_live();
-    let input = layer_input(blackboard, arena);
+    let index = selection_for_module(
+        stage_id,
+        layer,
+        &bundle.module,
+        blackboard,
+        arena.slice(),
+        arena.perimeter(),
+    )?;
+    let selection = index
+        .selection_for(layer.index, bundle.module.module_id())
+        .ok_or_else(|| slicer_ir::LayerStageError::FatalModule {
+            stage_id: stage_id.to_string(),
+            module_id: bundle.module.module_id().to_owned(),
+            message: "fixture layer selection bound pair is missing".into(),
+        })?;
+    let input = layer_input(blackboard, arena, selection);
     let commit_opt =
         LayerStageRunner::run_stage(dispatcher, &stage_id.to_string(), layer, &live, input)?;
     let seam_plan_arc = blackboard.seam_plan().cloned();

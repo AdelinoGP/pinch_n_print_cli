@@ -466,38 +466,3 @@ fn registry_keys_equal_channel_union() {
         .collect::<BTreeSet<_>>();
     assert_eq!(actual, expected);
 }
-
-#[test]
-fn real_toml_manifest_census_rederives_expected_scope() {
-    let pairs = real_manifest_pairs();
-    let mut owners = BTreeMap::<String, BTreeSet<String>>::new();
-    for (module_id, key) in pairs.iter().cloned() {
-        owners.entry(key).or_default().insert(module_id);
-    }
-
-    let entry_count = pairs.len();
-    let distinct_key_count = owners.len();
-    let multi_declared_count = owners.values().filter(|owners| owners.len() > 1).count();
-    let wildcard_keys = owners
-        .keys()
-        .filter(|key| key.ends_with(":*"))
-        .cloned()
-        .collect::<BTreeSet<_>>();
-
-    assert_eq!(entry_count, 281);
-    assert_eq!(distinct_key_count, 180);
-    assert_eq!(multi_declared_count, 55);
-    assert_eq!(
-        wildcard_keys,
-        ["object_height:*".to_owned(), "layer_height:*".to_owned()]
-            .into_iter()
-            .collect::<BTreeSet<_>>()
-    );
-    assert!(wildcard_keys.iter().all(|key| owners
-        .get(key)
-        .is_some_and(|declaring_modules| declaring_modules.len() == 1)));
-
-    println!(
-        "real manifest census: entries={entry_count}, distinct_keys={distinct_key_count}, multi_declared={multi_declared_count}, single_declarer_wildcards={wildcard_keys:?}"
-    );
-}

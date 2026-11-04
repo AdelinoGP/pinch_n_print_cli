@@ -149,12 +149,43 @@ fn run_wasm(layer: u32) -> Vec<Vec<ExPolygon>> {
         is_raft: true,
         ..Default::default()
     };
+    // Direct-dispatch fixtures provision candidates from the staged slice and
+    // carry an exact map entry for every candidate the builder will see.
+    let mut region_map = slicer_ir::RegionMapIR::default();
+    let config = region_map.intern_config(slicer_ir::ResolvedConfig::default());
+    region_map.entries.insert(
+        slicer_ir::RegionKey {
+            global_layer_index: layer,
+            object_id: "fixture".into(),
+            region_id: 0,
+            variant_chain: Vec::new(),
+        },
+        slicer_ir::RegionPlan {
+            config,
+            ..Default::default()
+        },
+    );
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("commit exact raft region map");
+    let index = crate::common::selection_for_module(
+        "Layer::Infill",
+        &layer_ir,
+        &module,
+        &blackboard,
+        arena.slice(),
+        None,
+    )
+    .expect("build raft selection index");
+    let selection = index
+        .selection_for(layer_ir.index, module.module_id())
+        .expect("bound raft selection");
     let commit = <WasmRuntimeDispatcher as slicer_runtime::LayerStageRunner>::run_stage(
         &dispatcher,
         &"Layer::Infill".into(),
         &layer_ir,
         &live,
-        layer_input(&blackboard, &arena),
+        layer_input(&blackboard, &arena, selection),
     )
     .unwrap()
     .expect("raft guest must emit a commit");

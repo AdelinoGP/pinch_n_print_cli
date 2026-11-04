@@ -42,3 +42,59 @@ and the extent fixture in
 `crates/slicer-runtime/tests/integration/support_family_routing.rs`)
 recalibrate their cap-relative literals with the constant; their assertions
 are unchanged.
+
+Ruling 4: (2026-10-11, packet `layer-module-preparation_01_shared-selection-prerequisite`)
+the source-identity dimensions asserted by Rulings 2 and 3 are
+**EXPLICITLY SUPERSEDED** by
+[ADR-0073 — full-source variant-chain identity and versioned specialist query packages](./0073-full-source-variant-chain-identity-and-versioned-specialist-queries.md),
+which records the implemented full-chain contract. The carried clauses and
+their full-chain replacements, with every former dimension retained and the
+ordered `variant_chain` added:
+
+- Ruling 2's *"keys merges on declared identity
+  `(family_id, global_layer_index, object_id, region_id, anchor_z)`"*
+  is superseded by the merge key `(family_id, global_layer_index, object_id,
+  region_id, variant_chain, anchor_z)`
+  (`union_same_family_entries`, `crates/slicer-wasm-host/src/support_aggregation.rs`),
+  and `family_assignments[(object_id, region_id)]`
+  is superseded by `SupportAnalysisIR::family_assignments` keyed
+  `(object_id, region_id, variant_chain)` via `SupportSourceKey`
+  (`crates/slicer-ir/src/slice_ir.rs`).
+- Ruling 3's *"admits exactly one entry per
+  `(global_layer_index, object_id, region_id)`"* is superseded at the host
+  admission seam by the full-source identity
+  `(global_layer_index, object_id, region_id, variant_chain)`
+  (`try_aggregate_support_plans_with_policy`, same crate): entries for two
+  chain-differing regions of one object never collapse into one row. The
+  chain-independent whole-plan duplicate guard
+  (`SupportPlanIR::duplicate_region_identity` (`crates/slicer-ir/src/slice_ir.rs`),
+  checked by `Blackboard::commit_support_plan` (`crates/slicer-runtime/src/blackboard.rs`))
+  is unchanged as the prepass commit-seam invariant
+  ([ADR-0073](./0073-full-source-variant-chain-identity-and-versioned-specialist-queries.md)).
+
+**Amendment — 2026-10-13 (packet `layer-module-preparation_01_shared-selection-prerequisite`,
+final-review remediation F3).** The sentence above describing the whole-plan
+duplicate guard as "chain-independent … unchanged" is superseded by the
+packet's own IR mandate (`duplicate_region_identity` includes the ordered
+chain in the returned duplicate identity): `SupportPlanIR::duplicate_region_identity`
+(`crates/slicer-ir/src/slice_ir.rs`) now returns a chain-bearing identity and
+both `Blackboard::commit_support_plan` branches
+(`crates/slicer-runtime/src/blackboard.rs`) enforce it, surfacing the typed
+`BlackboardError::DuplicateSupportPlanEntry`. Genuine chain-empty sources keep
+the prior pair-keyed collision semantics — empty chain is the exact identity
+of a chain-less source, never a wildcard — so the guard gained the chain
+dimension without reinterpreting the prepass commit-seam invariant. Evidence:
+`support_plan_merge_rejects_duplicate_region_identity`
+(`crates/slicer-runtime/tests/unit/blackboard_support_geometry_slot_tdd.rs`)
+and the packet's AC-R8 chain-distinct witness. The unchanged-guard wording was
+authored before the packet's IR mandate; it is corrected here explicitly rather
+than silently rewritten.
+
+Everything else in these clauses is **retained, not superseded**: default-deny
+family ownership through `SupportAnalysisIR::family_assignments`
+(`SupportSourceKey` is now the addressable key — `check_ownership`
+(`crates/slicer-wasm-host/src/support_aggregation.rs`) admits an entry only
+for the assigned family AND a holding `support-family:<family_id>` manifest
+claim, warn code `1206` unchanged), the extent bound measured **per body
+cross-section**, `MAX_BODY_EXTENT_UNITS = 1 << 22`, and the size-contract
+fixtures listed in Ruling 3 with their assertions unchanged.

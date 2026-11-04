@@ -95,12 +95,24 @@ fn dispatch(
     };
     let arena = LayerArena::new();
     let before = format!("{arena:?}").into_bytes();
+    let index = crate::common::selection_for_module(
+        "Layer::AnchoredEvents",
+        &layer,
+        &module,
+        &blackboard,
+        None,
+        None,
+    )
+    .expect("build anchored-events fixture selection");
+    let selection = index
+        .selection_for(layer.index, module.module_id())
+        .expect("anchored-events fixture bound pair");
     let result = LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::AnchoredEvents".to_string(),
         &layer,
         &live,
-        crate::common::layer_input(&blackboard, &arena),
+        crate::common::layer_input(&blackboard, &arena, selection),
     );
     (result, arena, before)
 }

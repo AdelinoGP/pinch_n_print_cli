@@ -8,14 +8,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use slicer_ir::slice_ir::InfillRaftRegion;
 use slicer_ir::{
     ActiveRegion, ExPolygon, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GlobalLayer, InfillIR,
     InfillRegion, LayerCollectionIR, LayerPlanIR, LayerStageCommit, LoopType, ObjectLayerRef,
-    PathOptimizationCommit, PerimeterIR, PerimeterRegion, Point2, Point3, Point3WithWidth, Polygon,
-    PrintEntity, RegionKey, ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR, SeamPosition,
-    SeamReason, SupportEntry, SupportIR, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
-    SupportPlanRoleRegion, SupportPlanSkeleton, SupportRole, TravelMoveDest, WallBoundaryType,
-    WallFeatureFlags, WallLoop, WidthProfile,
+    PaintValue, PathOptimizationCommit, PerimeterIR, PerimeterRegion, Point2, Point3,
+    Point3WithWidth, Polygon, PrintEntity, RegionKey, ScoredSeamCandidate, SeamPlanEntry,
+    SeamPlanIR, SeamPosition, SeamReason, SupportEntry, SupportIR, SupportPlanEntry, SupportPlanIR,
+    SupportPlanRole, SupportPlanRoleRegion, SupportPlanSkeleton, SupportRole, TravelMoveDest,
+    WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
 };
 use slicer_runtime::PrepassStageOutput;
 
@@ -217,6 +218,23 @@ fn support_skeleton(point_count: usize, jitter: f32) -> SupportPlanSkeleton {
     }
 }
 
+/// Ordered two-member source chain `[material = tool, fuzzy_skin = true]`.
+/// The second member keeps a reversal observable (a one-member chain cannot
+/// express an order change).
+fn ordered_chain(tool: u32) -> Vec<(String, PaintValue)> {
+    vec![
+        ("material".into(), PaintValue::ToolIndex(tool)),
+        ("fuzzy_skin".into(), PaintValue::Flag(true)),
+    ]
+}
+
+/// The same two identity pairs with the ordered chain reversed.
+fn reversed_ordered_chain(tool: u32) -> Vec<(String, PaintValue)> {
+    let mut chain = ordered_chain(tool);
+    chain.reverse();
+    chain
+}
+
 fn support_entry(
     layer: i32,
     roles: Vec<SupportPlanRoleRegion>,
@@ -228,6 +246,7 @@ fn support_entry(
         global_layer_index: layer,
         object_id: "parity-object".to_string(),
         region_id: 0,
+        variant_chain: Vec::new(),
         family_id: "tree".into(),
         demand_ids: vec!["demand".into()],
         body_ids: vec!["body".into()],
@@ -400,6 +419,56 @@ fn parity_comparator_rejects_dropped_support_entry_dropped_point() {
     assert!(
         err.contains("skeleton presence"),
         "error must name the skeleton presence invariant: {err}"
+    );
+}
+
+#[test]
+fn parity_comparator_rejects_support_plan_chain_only_divergence() {
+    // Chain-only divergence in the plan family: both sides carry the SAME
+    // layer/object/region and byte-identical role/skeleton geometry; only the
+    // ordered source chain differs. A comparator that keys entries on the
+    // triple alone would accept this silently.
+    let mut native_entries = base_entries(0.0);
+    native_entries[0].variant_chain = ordered_chain(1);
+    let native = support_plan(native_entries);
+
+    // The accept direction for a nonempty chain: identical chains and geometry
+    // still pass, so the new check is not a blanket chain-presence assertion.
+    let mut twin_entries = base_entries(0.0);
+    twin_entries[0].variant_chain = ordered_chain(1);
+    assert_prepass_parity_structural(
+        &native,
+        &support_plan(twin_entries),
+        ParityTolerance::default(),
+    )
+    .expect("identical ordered chains must be accepted");
+
+    // Wrong value at the same chain position.
+    let mut wrong_entries = base_entries(0.0);
+    wrong_entries[0].variant_chain = ordered_chain(2);
+    let err = assert_prepass_parity_structural(
+        &native,
+        &support_plan(wrong_entries),
+        ParityTolerance::default(),
+    )
+    .expect_err("wrong source chain value must be rejected");
+    assert!(
+        err.contains("variant_chain mismatch"),
+        "error must name the variant_chain invariant: {err}"
+    );
+
+    // Same two pairs, reversed order.
+    let mut reversed_entries = base_entries(0.0);
+    reversed_entries[0].variant_chain = reversed_ordered_chain(1);
+    let err = assert_prepass_parity_structural(
+        &native,
+        &support_plan(reversed_entries),
+        ParityTolerance::default(),
+    )
+    .expect_err("reversed ordered chain must be rejected");
+    assert!(
+        err.contains("variant_chain mismatch"),
+        "error must name the variant_chain invariant: {err}"
     );
 }
 
@@ -851,6 +920,128 @@ fn parity_comparator_rejects_moved_infill_point() {
     );
 }
 
+#[test]
+fn parity_comparator_rejects_infill_region_chain_only_divergence() {
+    // Chain-only divergence in the infill family: identical `InfillRegion`
+    // path geometry, same object/region, only the ordered source chain differs.
+    let mut native_ir = infill_ir(0.0);
+    native_ir.regions[0].variant_chain = ordered_chain(1);
+    let native = LayerStageCommit::Infill(native_ir);
+
+    let mut twin_ir = infill_ir(0.0);
+    twin_ir.regions[0].variant_chain = ordered_chain(1);
+    assert_parity_structural(
+        &native,
+        &LayerStageCommit::Infill(twin_ir),
+        ParityTolerance::default(),
+        0.4,
+    )
+    .expect("identical infill source chains must be accepted");
+
+    let mut wrong_ir = infill_ir(0.0);
+    wrong_ir.regions[0].variant_chain = ordered_chain(2);
+    let err = assert_parity_structural(
+        &native,
+        &LayerStageCommit::Infill(wrong_ir),
+        ParityTolerance::default(),
+        0.4,
+    )
+    .expect_err("wrong infill source chain value must be rejected");
+    assert!(
+        err.contains("variant_chain"),
+        "error must name the source chain: {err}"
+    );
+
+    let mut reversed_ir = infill_ir(0.0);
+    reversed_ir.regions[0].variant_chain = reversed_ordered_chain(1);
+    let err = assert_parity_structural(
+        &native,
+        &LayerStageCommit::Infill(reversed_ir),
+        ParityTolerance::default(),
+        0.4,
+    )
+    .expect_err("reversed infill source chain must be rejected");
+    assert!(
+        err.contains("variant_chain"),
+        "error must name the source chain: {err}"
+    );
+}
+
+#[test]
+fn parity_comparator_rejects_raft_region_chain_only_divergence() {
+    // Raft-fill rows are compared explicitly: a chain-only divergence between
+    // otherwise geometry-identical raft rows must fail, and a changed raft
+    // polygon must fail too (proving the raft geometry check is not vacuous).
+    let raft_region = |chain: Vec<(String, PaintValue)>, polygon_index: usize| InfillRaftRegion {
+        object_id: "parity-object".to_string(),
+        region_id: 0,
+        polygons: vec![support_polygon(polygon_index)],
+        variant_chain: chain,
+    };
+    let infill_with_raft = |raft_regions: Vec<InfillRaftRegion>| {
+        let mut ir = infill_ir(0.0);
+        ir.raft_regions = raft_regions;
+        LayerStageCommit::Infill(ir)
+    };
+    let native = infill_with_raft(vec![raft_region(ordered_chain(1), 0)]);
+
+    assert_parity_structural(
+        &native,
+        &infill_with_raft(vec![raft_region(ordered_chain(1), 0)]),
+        ParityTolerance::default(),
+        0.4,
+    )
+    .expect("identical raft rows must be accepted");
+
+    let err = assert_parity_structural(
+        &native,
+        &infill_with_raft(vec![raft_region(ordered_chain(2), 0)]),
+        ParityTolerance::default(),
+        0.4,
+    )
+    .expect_err("wrong raft source chain value must be rejected");
+    assert!(
+        err.contains("raft region key set") && err.contains("variant_chain"),
+        "error must name the raft source chain: {err}"
+    );
+
+    let err = assert_parity_structural(
+        &native,
+        &infill_with_raft(vec![raft_region(reversed_ordered_chain(1), 0)]),
+        ParityTolerance::default(),
+        0.4,
+    )
+    .expect_err("reversed raft source chain must be rejected");
+    assert!(
+        err.contains("raft region key set") && err.contains("variant_chain"),
+        "error must name the raft source chain: {err}"
+    );
+
+    let err = assert_parity_structural(
+        &native,
+        &infill_with_raft(vec![raft_region(ordered_chain(1), 1)]),
+        ParityTolerance::default(),
+        0.4,
+    )
+    .expect_err("changed raft polygon geometry must be rejected");
+    assert!(
+        err.contains("raft row 0 polygon"),
+        "error must name the raft polygon geometry: {err}"
+    );
+
+    let err = assert_parity_structural(
+        &native,
+        &infill_with_raft(Vec::new()),
+        ParityTolerance::default(),
+        0.4,
+    )
+    .expect_err("dropped raft row must be rejected");
+    assert!(
+        err.contains("raft region count"),
+        "error must name the raft region count: {err}"
+    );
+}
+
 // ── Support layer family fixtures ───────────────────────────────────────────
 
 fn support_ir(jitter: f32) -> SupportIR {
@@ -859,23 +1050,25 @@ fn support_ir(jitter: f32) -> SupportIR {
         schema_version: semver(),
         global_layer_index: 0,
         entries: vec![
-            // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
+            // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple and source chain (empty here; mutated by the chain-only negative)
             SupportEntry {
                 family_id: "fixture-family".into(),
                 body_id: "fixture-body".into(),
                 demand_ids: vec!["fixture-demand".into()],
                 object_id: "obj".into(),
                 region_id: 0,
+                variant_chain: Vec::new(),
                 role: SupportRole::SupportBody,
                 paths: vec![support_segment(3, ExtrusionRole::SupportMaterial, jitter)],
             },
-            // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
+            // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple and source chain (empty here; mutated by the chain-only negative)
             SupportEntry {
                 family_id: "fixture-family".into(),
                 body_id: "fixture-body".into(),
                 demand_ids: vec!["fixture-demand".into()],
                 object_id: "obj".into(),
                 region_id: 0,
+                variant_chain: Vec::new(),
                 role: SupportRole::TopInterface,
                 paths: vec![
                     support_segment(2, ExtrusionRole::SupportInterface, jitter),
@@ -929,6 +1122,54 @@ fn parity_comparator_rejects_moved_support_point() {
     assert!(
         err.contains("point (x, y, z, width)"),
         "error must name the point coordinates invariant: {err}"
+    );
+}
+
+#[test]
+fn parity_comparator_rejects_support_ir_chain_only_divergence() {
+    // Chain-only divergence in the printable-support family: identical
+    // `SupportEntry` path geometry and role, same object/region, only the
+    // ordered source chain differs.
+    let mut native_ir = support_ir(0.0);
+    native_ir.entries[0].variant_chain = ordered_chain(1);
+    let native = LayerStageCommit::Support(native_ir);
+
+    let mut twin_ir = support_ir(0.0);
+    twin_ir.entries[0].variant_chain = ordered_chain(1);
+    assert_parity_structural(
+        &native,
+        &LayerStageCommit::Support(twin_ir),
+        ParityTolerance::default(),
+        0.4,
+    )
+    .expect("identical support source chains must be accepted");
+
+    let mut wrong_ir = support_ir(0.0);
+    wrong_ir.entries[0].variant_chain = ordered_chain(2);
+    let err = assert_parity_structural(
+        &native,
+        &LayerStageCommit::Support(wrong_ir),
+        ParityTolerance::default(),
+        0.4,
+    )
+    .expect_err("wrong support source chain value must be rejected");
+    assert!(
+        err.contains("variant_chain mismatch"),
+        "error must name the variant_chain invariant: {err}"
+    );
+
+    let mut reversed_ir = support_ir(0.0);
+    reversed_ir.entries[0].variant_chain = reversed_ordered_chain(1);
+    let err = assert_parity_structural(
+        &native,
+        &LayerStageCommit::Support(reversed_ir),
+        ParityTolerance::default(),
+        0.4,
+    )
+    .expect_err("reversed support source chain must be rejected");
+    assert!(
+        err.contains("variant_chain mismatch"),
+        "error must name the variant_chain invariant: {err}"
     );
 }
 

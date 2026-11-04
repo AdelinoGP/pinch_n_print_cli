@@ -242,6 +242,11 @@ fn assert_waves_engaged(commit: &slicer_ir::LayerStageCommit, leg: &str) {
 #[test]
 fn integrated_parity_wave_overhangs_native_matches_wasm() {
     let claims = vec!["claim:bridge-fill".to_string()];
+    let config = config();
+    let selection_module = slicer_runtime::CompiledModuleBuilder::new("com.core.wave-overhangs")
+        .claims(claims.clone())
+        .config_view(Arc::clone(&config))
+        .build();
 
     let mut bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
     let mut region_map = RegionMapIR::default();
@@ -279,8 +284,20 @@ fn integrated_parity_wave_overhangs_native_matches_wasm() {
         ..Default::default()
     };
     let stage: StageId = "Layer::Infill".into();
-    let mut wasm_input = crate::common::layer_input(&bb, &wasm_arena);
-    let mut native_input = crate::common::layer_input(&bb, &native_arena);
+    let selection_index = crate::common::selection_for_module(
+        &stage,
+        &layer,
+        &selection_module,
+        &bb,
+        wasm_arena.slice(),
+        None,
+    )
+    .expect("build fixture selection index");
+    let selection = selection_index
+        .selection_for(layer.index, selection_module.module_id())
+        .expect("bound fixture selection");
+    let mut wasm_input = crate::common::layer_input(&bb, &wasm_arena, selection);
+    let mut native_input = crate::common::layer_input(&bb, &native_arena, selection);
     wasm_input.paint_regions = Some(());
     native_input.paint_regions = Some(());
 
@@ -307,10 +324,10 @@ fn integrated_parity_wave_overhangs_native_matches_wasm() {
             },
             tier: String::new(),
             claims,
-            config: config(),
+            config,
             native_entry: WaveOverhangs::__slicer_native_entry(),
         },
-        |dispatcher, native_live, wasm_live| {
+        |dispatcher, native_live, wasm_live, _native_module, _wasm_module| {
             let wasm =
                 LayerStageRunner::run_stage(dispatcher, &stage, &layer, wasm_live, wasm_input)
                     .expect("wasm dispatch")

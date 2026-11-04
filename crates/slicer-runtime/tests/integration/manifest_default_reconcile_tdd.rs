@@ -226,6 +226,9 @@ use CodeFallback::*;
 /// Transcribed from `classic-perimeters/src/lib.rs` — `from_config` and
 /// the R2 per-invocation block at the top of `run_perimeters`.
 const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
+    // Slicing-time contour simplification (t81 port): the module requires the
+    // key, and the manifest declares the canonical 0.01 mm default.
+    ("resolution", Float(0.01)),
     ("wall_count", Int(3)),       // from_config `_ => 3`
     ("extra_perimeters", Int(0)), // unwrap_or(0)
     ("extra_perimeters_on_overhangs", Bool(false)),
@@ -310,6 +313,9 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
 /// `units_to_mm(v).unwrap_or(defaults.transition_filter_dist = 0.1mm)`, so its
 /// `unit = "units"` manifest default must be `mm_to_units(0.1) = 1000`.
 const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
+    // Slicing-time contour simplification (t81 port): the module requires the
+    // key, and the manifest declares the canonical 0.01 mm default.
+    ("resolution", Float(0.01)),
     ("layer_height", Float(0.2)),
     ("nozzle_diameter", Float(0.4)),
     // percent key resolved via get_abs_value against nozzle_diameter; code
@@ -378,7 +384,7 @@ const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("overhang_2_4_speed", Float(0.0)),
     ("overhang_3_4_speed", Float(0.0)),
     ("overhang_4_4_speed", Float(0.0)),
-    ("extra_perimeters_on_overhangs", Unread),  // declared; arachne never reads it
+    ("extra_perimeters_on_overhangs", Unread), // declared; arachne never reads it
     // float_or_percent; code fallback is 0.0 = "filter disabled"
     // (get_abs_value(..).unwrap_or(0.0)). Upstream's default is 300%, but the
     // manifest states the CODE fallback because manifest defaults are never

@@ -4,7 +4,7 @@
 
 #![allow(missing_docs)]
 
-use crate::common::seed::seed_slice_ir;
+use crate::common::seed::seed_slice_ir as seed_mesh_slice_ir;
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -136,6 +136,8 @@ fn mixed_tool_layer_emits_deterministic_tool_change_sequence() {
         1,
     );
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
 
     let engine = Arc::new(WasmEngine::new());
     let path_opt_component = load_path_optimization_module(&engine);
@@ -260,6 +262,8 @@ fn single_tool_layer_emits_no_synthetic_tool_changes() {
         1,
     );
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
 
     let engine = Arc::new(WasmEngine::new());
     let path_opt_component = load_path_optimization_module(&engine);
@@ -356,6 +360,8 @@ fn canonical_or_single_tool_sequences_emit_no_redundant_tool_changes() {
         1,
     );
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
 
     let engine = Arc::new(WasmEngine::new());
     let path_opt_component = load_path_optimization_module(&engine);
@@ -579,6 +585,31 @@ fn minimal_mesh(object_id: &str) -> Arc<MeshIR> {
     })
 }
 
+fn seed_slice_ir(blackboard: &mut Blackboard, plan: &ExecutionPlan) {
+    seed_mesh_slice_ir(blackboard, plan);
+    let mut region_map = slicer_ir::RegionMapIR::default();
+    for layer in plan.global_layers.iter() {
+        for region in &layer.active_regions {
+            let config = region_map.intern_config(region.resolved_config.clone());
+            region_map.entries.insert(
+                slicer_ir::RegionKey {
+                    global_layer_index: layer.index,
+                    object_id: region.object_id.clone(),
+                    region_id: region.region_id,
+                    variant_chain: Vec::new(),
+                },
+                slicer_ir::RegionPlan {
+                    config,
+                    ..Default::default()
+                },
+            );
+        }
+    }
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("commit exact fixture region map");
+}
+
 fn plan_with_stages(per_layer_stages: Vec<CompiledStage>, layer_count: usize) -> ExecutionPlan {
     // exhaustive: ExecutionPlan fixture explicitly defines all stage-ordering inputs.
     ExecutionPlan {
@@ -670,9 +701,18 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         )
         .expect("fixture pool"),
     );
+    // Selection indexing snapshots the plan config, not the runner's module config.
+    let config = if module_id == "com.core.path-optimization-default" {
+        HashMap::from([(
+            "path_optimization_emit_layer_markers".to_string(),
+            ConfigValue::Bool(true),
+        )])
+    } else {
+        HashMap::new()
+    };
     let binding = ExecutionModuleBinding {
         module: loaded,
-        config_view: Arc::new(ConfigView::from_map(HashMap::new())),
+        config_view: Arc::new(ConfigView::from_map(config)),
     };
     CompiledModuleBuilder::new(binding.module.id().to_string())
         .config_view(Arc::clone(&binding.config_view))

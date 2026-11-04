@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: layer-module-preparation_07_lightning-geometry-portability-gate
 task_ids:
   - TASK-576
@@ -7,59 +7,98 @@ backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 ---
 
-# Packet Contract: lightning-geometry-portability-gate
+# Packet Contract: lightning canonical input oracle (Gate A)
 
 ## Goal
 
-Execute two separately reported feasibility gates: an independent canonical planning-domain/grounding oracle for a concrete late-PrePass strategy, and the same module-owned lightning kernel compiled and executed through native and WASM adapters.
+Produce the independently recorded canonical input oracle for the five Classic lightning case
+families and decide Gate A: whether a restricted earlier-source reconstruction reproduces canonical
+planning domains, parameters, and resolved policy. Record a truthful `pass`/`fail`/`inconclusive`
+outcome. A failed or inconclusive reconstruction is a completed investigation, not an incomplete
+packet.
 
 ## Scope Boundaries
 
-This is isolated feasibility work, not lightning migration. It authors a reproducible canonical recorder, portable checked-in fixtures, an isolated module-owned kernel and executable adapters, and truthful outcome records. It neither introduces production preparation integration nor retires any existing lightning path; failure or inconclusive evidence keeps migration blocked without approximation.
+This packet owns **Gate A only**. It publishes the portable fixture set from the existing
+recorder captures, implements the source-only reconstruction in the isolated kernel, and records
+the A outcome. Gate B (the same owned kernel executed through native and WASM adapters) is packet
+`layer-module-preparation_09_lightning-kernel-portability` and consumes these fixtures. No
+production wiring, no migration, no recorder extension, no Arachne, translated, or density
+companions.
+
+Final-fill contributor provenance is explicitly out of scope. Gate A compares planning domains,
+planning-boundary provenance, parameters, and policy; it does not require grouped final-fill
+contributors. The fixture publisher emits B's structural branches so packet 09 finds the keys
+present, but the capture does **not** record the underlying evidence for three of them —
+`b_input.input`, `reference.graph`, and `reference.final_fills` are published as `null` with a
+named `absent` reason in the manifest — so packet 09 starts with those as named blockers, not with
+consumable data. A never parses or uses any B branch during construction.
 
 ## Prerequisites and Blockers
 
-- Queue dependency: `-`. No interface or acceptance from draft framework packets03–06 is required to execute these isolated gates.
-- Unblocks: only the feasibility portion of row08's entry gate. Row08 additionally requires implemented generic framework acceptance from rows01–06 and both verified outcomes recorded in the approved source plan.
-- Generation state: **draft only; neither gate has execution evidence or an outcome yet**. An independent preflight follows authoring and does not supply feasibility evidence.
-- Recorder prerequisites are established in Step1, not assumed installed. Missing canonical execution, missing fixtures, failed domain matching, failed execution, or unsupported required coverage are `inconclusive`/`fail`, never `pass`.
+- The recorder at `tools/lightning_gate/` already produces the required captures. A Classic-only
+  capture exists at `target/lightning-gate-current` (disposable). If it is absent, Step 1 re-runs
+  `record.py --capture --strategy classic`; a missing canonical build exits 3 with
+  `inconclusive`, never a synthesised oracle.
+- Gate A cannot claim `pass` for a case whose canonical planning record is absent or whose
+  restricted earlier-source evidence is unavailable. It records `inconclusive` with the named
+  field.
+- Completion requires execution and a truthful record, not `pass`. `fail`/`inconclusive` blocks
+  migration and returns the strategy for design review.
 
 ## Acceptance Criteria
 
-The named test module and fixtures below are NET-NEW, registered and implemented by this packet. Commands require non-interactive **Bash**, not PowerShell. `set -euo pipefail` rejects Cargo, tee and log-check failures; every command creates `target` before writing. Each exact filter must execute exactly one test; zero tests fails. Plain Cargo tees combined output with console output suppressed. Xtask internally captures full combined test output; its separate command log also preserves preflight failures without two writers to `target/test-output.log`. Read/archive both logs before overwrite; never rerun for truncated output. Direct scientific mismatch assertions stay red; failure-reporting tests cannot relabel them as successful feasibility.
+Commands are non-interactive Bash. `set -euo pipefail` rejects Cargo, tee, and log-check failures;
+every command creates `target` before writing. Each exact filter executes exactly one test; zero
+tests fails. Read/archive `target/test-output.log` before overwrite; never rerun for truncated
+output.
 
-- **AC-1. Given** the checked-in `crates/slicer-wasm-host/tests/fixtures/lightning_gate/manifest.json` and its `anchor_bridge`, `pooled_regions`, `hole_void`, `island_split_merge`, and `paint_modifier_config` cases, **when** the oracle loader validates them without the sibling checkout, **then** every case resolves nonempty canonical records, verifies SHA-256 input/config/recorder/output identities, and binds object, local/global layer mapping, Z, region, ordered variant chain, surface type, planning phase and final-fill phase to its expected geometry; `canonical_revision`, build command/toolchain and function provenance are present, and absent files are errors. | `set -euo pipefail; mkdir -p target; cargo test -p slicer-wasm-host --test integration lightning_gate_tdd::canonical_fixture_provenance -- --exact --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
-- **AC-2. Given** separate independently recorded earlier-source and canonical-reference branches for anchor_bridge, **when** the actual restricted build_planning_domain(&GateASourceInput) returns GateAConstruction before comparison, **then** domains/complete lineage and derived policy/constructor scalars depend only on audited earlier geometry/raw config/source provenance. No B input, canonical planning/final/graph fields or resolved-policy oracle can enter construction. A is pass only when the full supported matrix independently matches; mismatch is named fail or missing evidence inconclusive. Preserve object-layer pooling, holes and temporary anchors; final clipping alone cannot prove planning fidelity. | `set -euo pipefail; mkdir -p target; cargo test -p slicer-wasm-host --test integration lightning_gate_tdd::canonical_domain_gate_decision -- --exact --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
-- **AC-3. Given** all five case families/both wall strategies with independently recorded caller identity, shell/solid/bridge geometry and applicable angle/configuration evidence, **when** A constructs late-PrePass domains and their complete source-boundary mapping, **then** it independently matches canonical pooling, nonempty graph populations, holes, union/split/subtraction and temporary-anchor-generated boundary contributors—including full object/region/ordered variant/source-surface/ring/segment/checkpoint identities, exact intervals or causal lineage and multiplicities. Final source identity is captured in Fill.cpp::Layer::make_fills and propagated to FillLightning.cpp clipping without treating grouped region lists or representative surfaces as original provenance. Applicable shell/solid/bridge inputs/policy are explicit and correctly resolved, not presumed guest fields or zero defaults. Missing/ambiguous/unrepresentable evidence is named fail/inconclusive with migration blocked, never pass; available-exposure gaps are separately recorded migration requirements. | `set -euo pipefail; mkdir -p target; cargo test -p slicer-wasm-host --test integration lightning_gate_tdd::canonical_coverage_and_grounding -- --exact --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
-- **AC-4. Given** identical canonical-domain input bytes without expected graph/output data, **when** both real adapters execute `plan_lightning` and decode graph tags1/2 plus complete provenance tag3, **then** each independently matches all canonical directed node/parent/root/edge occurrences, multiplicities, isolated roots and grounding witnesses, as well as the complete normalized boundary/source/contributor/operation correspondence. Root origins/witnesses resolve from returned tables to full identities/checkpoints, not source-vector positions; all missing/extra/duplicate/reversed/disconnected or corrupted provenance records fail even if both adapters agree. Clipped outputs independently match the full caller-attributed region/variant segment multiset and final-domain containment. `gate_b.status = pass` requires actual native/wasm32 compilation, fresh typed instantiation/execution; owned-kernel/wasm32 closures exclude host-algos, legitimate native SDK dependencies remain allowed with no callable host lightning producer/fallback. | `set -euo pipefail; mkdir -p target; cargo xtask test --summary -p slicer-wasm-host --test integration lightning_gate_tdd::portable_kernel_native_wasm -- --exact --nocapture >target/lightning-gate-command.log 2>&1; rg -q '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
-- **AC-5. Given** actual separate Gate A/B evidence, **when** the writer validates `LightningGateOutcome` and future source-plan/TASK-576 recordings, **then** both records retain statuses, executed flags, commands/exits/log hashes, strategy/configuration, scalar/grouping policy and provenance; TASK-576's future `Gate A outcome:` and `Gate B outcome:` lines reflect actual results, never scientific-failure-as-success. The source-plan appendix preserves approved prose. `migration_eligible` is true only with both verified passes and rows01–06 implemented acceptance; otherwise it is false with named blockers. | `set -euo pipefail; mkdir -p target; cargo test -p slicer-wasm-host --test integration lightning_gate_tdd::outcome_recording_and_migration_block -- --exact --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
+- **AC-1. Given** the checked-in `crates/slicer-wasm-host/tests/fixtures/lightning_gate/{inputs.json,canonical.json,manifest.json}` and the `anchor_bridge`, `pooled_regions`, `hole_void`, `island_split_merge`, `paint_modifier_config` cases, **when** the oracle loader validates them without the sibling checkout, **then** every case resolves a strict `GateInputCase`/`GateOracleCase` envelope, `wall_strategy` is `Classic`, `a_source_sha256`, `a_raw_config_sha256`, `a_earlier_provenance_sha256`, `b_input_sha256`, and `reference_sha256` are present as a hash or explicit `"absent"` and match their subtrees when present, the manifest carries `canonical_revision` and recorder-patch identity, and absent files are errors. | `set -euo pipefail; mkdir -p target; cargo test -p slicer-wasm-host --test integration lightning_oracle_tdd::fixture_provenance -- --exact --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
+- **AC-2. Given** each case's `a_source` subtree, **when** `project_gate_a` → `extract_gate_a_source` → `build_planning_domain` runs, **then** all five cases are attempted and each yields either a `GateAConstruction` or a named `inconclusive`/`fail` error, using the restricted input only, and the recorded per-case status equals an independently recomputed comparison of planning layers, planning-boundary provenance, parameters, scalar source, and policies: `pass` has no mismatch, `fail` has named mismatches, `inconclusive` names the unavailable population. No `b_input` or `reference` value may reach construction. | `set -euo pipefail; mkdir -p target; cargo test -p slicer-wasm-host --test integration lightning_oracle_tdd::gate_a_decision -- --exact --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
+- **AC-3. Given** the `anchor_bridge` faithful and wrong final-domain replay records, **when** the direct replay comparison runs, **then** the faithful graph matches the independently recorded production graph, the wrong-domain graph differs, and the aligned per-layer symmetric-difference area is positive (`142.55912927276 mm²` on the current capture). | `set -euo pipefail; mkdir -p target; cargo test -p slicer-wasm-host --test integration lightning_oracle_tdd::wrong_domain_is_rejected -- --exact --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
+- **AC-4. Given** a supported case with permitted source bytes held fixed, **when** `b_input` and `reference` are independently removed, replaced, and poisoned, **then** the projected `a_source` bytes and the three source/config/provenance hashes are identical before and after every run, and the complete `GateAConstruction` is unchanged; a reference-only change alters only the comparator verdict. Unknown reference-like keys inside `a_source` fail the whitelist. | `set -euo pipefail; mkdir -p target; cargo test -p slicer-wasm-host --test integration lightning_oracle_tdd::source_only_projection_is_isolated -- --exact --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
+- **AC-5. Given** the executed A cases, **when** the outcome writer validates `target/lightning-oracle/outcome.json`, the source-plan outcome section, and the existing `TASK-576` item, **then** the record carries `gate: "A"`, the executed flag, per-case statuses, fixture/provenance hashes, commands and exits, and named blockers; the plan section exists; `TASK-576 Gate A outcome:` is one of `pass|fail|inconclusive`; and `migration_eligible` is false with the B/framework blocker. | `set -euo pipefail; mkdir -p target; cargo test -p slicer-wasm-host --test integration lightning_oracle_tdd::outcome_records_gate_a -- --exact --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
 
 ## Negative Test Cases
 
-- **AC-N1. Given** immutable independently recorded `anchor_bridge` snapshots, **when** NET-NEW direct canonical planner replay runs faithful and wrong final-fill-only domains with identical scalars/configuration, `seed_policy = root_point_hash`, fresh graphs/caches and the same faithful final clipping, without re-entering `PrintObject::bridge_over_infill` mutation, **then** input/config hashes remain unchanged, faithful replay matches the independently recorded production graph, domain symmetric-difference area is positive and both nonempty preclip graphs disagree in a recorded directed-topology/root-grounding predicate. Only the selected domain changes; external-state/cache/mutation differences invalidate the control. Root-derived streams may differ only as a consequence of changed root coordinates; diagnostic time-based SVG naming is excluded. No genuine discriminator means A is `inconclusive` and row08 stays blocked. | `set -euo pipefail; mkdir -p target; cargo test -p slicer-wasm-host --test integration lightning_gate_tdd::wrong_final_domain_is_rejected -- --exact --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
-- **AC-N2. Given** supported nonempty earlier-source cases with permitted source/config/provenance bytes held fixed, **when** the real input projection/extractor and candidate Gate A construction are rerun with canonical planning/B-domain, final-fill, resolved-policy/scalar and graph/grounding/output reference branches independently poisoned, removed or replaced, **then** projected source bytes/hashes remain identical before/after and the complete constructed domain/source-boundary/contributor/operation mappings AND derived policy/scalars remain identical. A also constructs the same result with B/reference branches absent; nested reference-field smuggling is rejected. Changing only oracle values may change comparator verdict, never A construction. A discriminating B-domain poison is actually executed natively/in WASM and changes B result/verdict or rejects bad B data while leaving A unchanged. In this same test retain every empty/echoed/cached/region-isolated, missing/extra/reversed/duplicated/disconnected graph, corrupt grounding, swapped/dropped/extra contributor/checkpoint, fabricated lineage, absent applicable shell/angle and tag3/serde corruption control, including identical corruption of both adapters. Complete multicontributor/translated/parameter-changed positives still match independent expectations. No skipped population, source-grep/digest-only self-assertion, committed tree or host fallback counts as proof. | `set -euo pipefail; mkdir -p target; cargo xtask test --summary -p slicer-wasm-host --test integration lightning_gate_tdd::portable_kernel_rejects_canned_echo_fallback -- --exact --nocapture >target/lightning-gate-command.log 2>&1; rg -q '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
-- **AC-N3. Given** missing/tampered provenance, ambiguous/unrepresentable source contributors or caller crosswalk, absent applicable shell/solid-angle evidence, missing fixtures, one failed gate, unexecuted artifacts or absent implemented framework acceptance, **when** the outcome validator evaluates row08 eligibility, **then** it returns `migration_eligible = false` with the named source/policy/evidence blocker; only independently verified `pass`/`pass` plus actual generic framework acceptance is eligible. No approximation, defaulted parameters, fabricated identity, compile-only witness, source inspection or preflight pass satisfies either gate. | `set -euo pipefail; mkdir -p target; cargo test -p slicer-wasm-host --test integration lightning_gate_tdd::missing_failed_inconclusive_blocks_migration -- --exact --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
+- **AC-N1. Given** a missing fixture case, a tampered `a_source` hash, an unknown `a_source` key, or an absent planning record, **when** the loader and builder run, **then** the result is `inconclusive` or `fail` with a named field/population, never `pass`; a missing case cannot be skipped silently.
+- **AC-N2. Given** the same permitted source bytes, **when** only the reference planning domains or policies are poisoned, **then** the comparator verdict may change but the A construction and source hashes do not. A discriminating reference change is actually executed.
+- **AC-N3. Given** a `fail` or `inconclusive` A record, **when** migration eligibility is evaluated, **then** `migration_eligible` is false with the A blocker named; no approximation or defaulted parameter repairs the result.
+
+## Completion Semantics
+
+This is a feasibility investigation. The packet is complete when every exact command above has
+executed and the outcome record truthfully reflects the measured comparison. The five tests assert
+execution, strict decoding, and that the recorded status equals the independently recomputed
+comparison; they do not assert that the comparison must be `pass`. A measured mismatch is recorded
+as a case-level `fail` (or a named `inconclusive`) and blocks migration; it is never converted into
+a pass or repaired from reference data. `TASK-576` is not `[x]` unless Gate A passes and Gate B
+later passes.
 
 ## Verification
 
 - `cargo check --workspace --all-targets`
+- `cargo test --manifest-path modules/core-modules/lightning-infill/feasibility-kernel/Cargo.toml`
 - `cargo clippy --workspace --all-targets -- -D warnings`
-- `set -euo pipefail; mkdir -p target; cargo xtask test --summary -p slicer-wasm-host --test integration lightning_gate_tdd:: -- --nocapture >target/lightning-gate-command.log 2>&1; rg -q '^test result: ok\. 8 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
-
-## Authoritative Docs
-
-- `docs/specs/layer-module-preparation-plan.md`: bounded reads of settled requirements, workstreams, lightning acceptance, correctness questions and queue; especially Q13, Q14 and the two row07 sub-gates.
-- `docs/adr/0066-private-layer-preparation-capability.md`: read accepted decision; no migration before canonical strategy and portability proof.
-- `docs/01_system_architecture.md`: PrePass Stage Order and committed enriched slices; validation order is not an execution trace.
-- `docs/02_ir_schemas.md`: SliceIR/SlicedRegion and post-perimeter fill invariants; final wall-inset geometry is not a late-PrePass product.
-- `docs/03_wit_and_manifest.md`: WIT file organization and boundary enforcement; isolated existing stage adapters do not claim preparation integration.
-- `docs/05_module_sdk.md`: generated native entry, per-call reconstruction and test feature; exact driver grounding in `design.md`.
-- `docs/08_coordinate_system.md`, `docs/ORCASLICER_ATTRIBUTION.md`, `docs/21_data_defaults_and_fixtures.md`, `docs/22_test_quality.md`: conversion, attribution, fixture/literal discipline and independent oracle/negative controls.
+- `set -euo pipefail; mkdir -p target; cargo test -p slicer-wasm-host --test integration lightning_oracle_tdd:: -- --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q '^test result: ok\. 5 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log`
+- `cargo xtask check-literals`
+- `cargo xtask check-test-quality --report`
+- `cargo xtask build-guests --check` (exit 0 required; the root workspace manifest is a guest
+  fingerprint input, so a manifest edit makes every guest stale until rebuilt)
 
 ## Doc Impact Statement (Required)
 
-- Future implementation appends `## Lightning geometry/portability gate outcomes` to `docs/specs/layer-module-preparation-plan.md`, recording verified strategy/provenance/grouping/configuration and separate pass/fail/inconclusive outcomes, without rewriting approved design prose. Check: `rg -q '^## Lightning geometry/portability gate outcomes$' docs/specs/layer-module-preparation-plan.md`. AC-5 owns the behavioral evidence validation; this heading grep proves only documentation placement. At generation time the section/outcomes do not exist and the source plan is not edited.
-- Future implementation updates only the existing `TASK-576` item under `## Perimeter Modules — OrcaSlicer Parity Roadmap` / `### M2 — Real Arachne` in `docs/07_implementation_status.md`, adding two subordinate lines `TASK-576 Gate A outcome:` and `TASK-576 Gate B outcome:` with actual status/evidence. `[x]` requires both verified passes and this packet's successful acceptance; failed/inconclusive/incomplete investigation retains `[~]` or `[ ]` as appropriate, never successful completion or row08 eligibility. Placement checks: `rg -q '^- \[[ x~]\] \*\*TASK-576\*\*' docs/07_implementation_status.md`; `rg -q '^  - TASK-576 Gate A outcome: (pass|fail|inconclusive)\b' docs/07_implementation_status.md`; `rg -q '^  - TASK-576 Gate B outcome: (pass|fail|inconclusive)\b' docs/07_implementation_status.md`. AC-5 validates the actual scoped task block/status and AC-N3 rejects false eligibility; greps prove placement only. **No backlog edit occurs during authoring.**
+- Future implementation appends `## Lightning geometry/portability gate outcomes` to `docs/specs/layer-module-preparation-plan.md` and records the A result only. If the heading already exists, append the A subsection; never rewrite approved prose. Check: `rg -q '^## Lightning geometry/portability gate outcomes$' docs/specs/layer-module-preparation-plan.md`.
+- Future implementation updates only the existing `TASK-576` item under `## Perimeter Modules — OrcaSlicer Parity Roadmap` / `### M2 — Real Arachne` in `docs/07_implementation_status.md`, adding `  - TASK-576 Gate A outcome: (pass|fail|inconclusive)`. The checkbox stays `[ ]` or `[~]` until both Gate A and Gate B pass and this packet is accepted; A alone never earns `[x]`. Placement checks: `rg -q '^- \[[ x~]\] \*\*TASK-576\*\*' docs/07_implementation_status.md`; `rg -q '^  - TASK-576 Gate A outcome: (pass|fail|inconclusive)\b' docs/07_implementation_status.md`.
+- No backlog or source-plan edit occurs during authoring.
+
+## Authoritative Docs
+
+- `docs/specs/layer-module-preparation-plan.md`: settled requirements, row 07 Gate A sub-gate, Q13/Q14, and the row-08 entry rule.
+- `docs/adr/0066-private-layer-preparation-capability.md`: no migration before canonical strategy and portability proof.
+- `docs/01_system_architecture.md`: PrePass stage order; validation order is not an execution trace.
+- `docs/02_ir_schemas.md`: SliceIR/SlicedRegion and post-perimeter fill invariants; final wall-inset geometry is not a late-PrePass product.
+- `docs/08_coordinate_system.md`, `docs/ORCASLICER_ATTRIBUTION.md`, `docs/21_data_defaults_and_fixtures.md`, `docs/22_test_quality.md`: conversion, attribution, fixture/literal discipline, and independent oracle/negative controls.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -68,13 +107,10 @@ All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDoc
 
 Files to inspect for this packet:
 
-- `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Generator.cpp` — `Generator::Generator`, `generateInitialInternalOverhangs`, `generateTrees`: scalar-source policy, object-layer pooling and top-down topology/grounding.
-- `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` — `PrintObject::bridge_over_infill`: unsupported internal-solid candidates, temporary anchor expansion, generator construction and surface restoration.
-- `OrcaSlicerDocumented/src/libslic3r/Fill/FillLightning.cpp` — `Filler::_fill_surface_single`: final expolygon clipping, distinct from planning.
-- `OrcaSlicerDocumented/src/libslic3r/Fill/Fill.cpp` — `Layer::make_fills`: caller-owned region/configuration/surface identity; opt-in explicit propagation to final clipping, not a callee region accessor.
-- `OrcaSlicerDocumented/src/libslic3r/Fill/FillBase.hpp` — `Fill::fixed_angle`: bool type authority distinct from numeric angle; delegated read-only, not an instrumented file.
-- `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Layer.cpp` — `Layer::getBestGroundingLocation` / `Layer::attach`: observe actual winning boundary/anchor and directed parent connection without changing selection.
-- `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/TreeNode.cpp` — `Node::convertToPolylines`: root-point-hash seed policy and sampled lines, not an external nondeterministic seed.
+- `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` — `PrintObject::bridge_over_infill`: pre-anchor surfaces, temporary anchor expansion, restoration seam.
+- `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Generator.cpp` — `Generator::Generator`, `generateInitialInternalOverhangs`: first-region scalar-source policy, pooling, overhangs.
+- `OrcaSlicerDocumented/src/libslic3r/Fill/Fill.cpp` — `Layer::make_fills` / `group_fills`: resolved caller policy, angles, `fixed_angle`, grouped geometry.
+- `OrcaSlicerDocumented/src/libslic3r/Fill/FillBase.hpp` — `Fill::fixed_angle`: bool type authority, read-only.
 
 The verified local source location is `D:/slicerProject/pinch_n_print_cli_2/OrcaSlicerDocumented/`; it is read-only source context, never an ordinary fixture dependency. Citations use file plus function, not canonical line numbers. Source inspection is not canonical recording/execution evidence.
 

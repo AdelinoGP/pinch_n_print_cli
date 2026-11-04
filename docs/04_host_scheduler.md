@@ -113,6 +113,19 @@ Manifest keys are kebab-case and table-scoped. `LoadedModule` stores normalized 
 | `[compatibility].incompatible-with`    | `incompatible_with`      |
 | `[compatibility].requires`             | `requires_modules`       |
 
+#### Preparation metadata naming exception (Normative)
+
+The new `[preparation]` table maps `[preparation].interface`,
+`[preparation].input_reads`, and `[preparation].views` to the companion's
+Rust `interface()`, `input_reads()`, and `views()` methods, respectively. A
+kebab-case `input-reads` alias is rejected as an unknown key.
+
+Only new [preparation] metadata keys use snake_case; legacy manifest/config naming remains unchanged.
+
+This exception applies only to the new `[preparation]` table; no existing
+manifest key is renamed, existing mapping rows remain unchanged, and the
+config naming policy is unchanged.
+
 Per-key scope eligibility is not a manifest-table list: each key's
 `denied_scopes` entries live on its own `[config.schema.<key>]` declaration and
 are parsed into the key's schema entry (`config_schema`), where the registry
@@ -226,7 +239,6 @@ pub const STAGE_ORDER: &[&str] = &[
     "PrePass::ShellClassification",  // host-built-in; annotates the committed SliceIR
     "PrePass::SupportAnalysis",      // host-built-in; derives support candidates from the colour-resolved SliceIR
     "PrePass::SupportGeometry",      // host built-in always runs; guest optional
-    "PrePass::LightningTreeGen",     // host-built-in; commits only for lightning sparse fill
     "Layer::PaintRegionAnnotation",  // host-built-in; a module claiming this stage runs instead of the host
     "Layer::SlicePostProcess",
     "Layer::Perimeters",
@@ -257,20 +269,12 @@ Two caveats a reader must know:
 - **Declared vs. executed order.** The list above is the declared order the
   scheduler validates against. The prepass host built-ins actually *execute* in
   a different sequence (`Slice` → `OverhangAnnotation` → `ShellClassification` →
-  `PaintSegmentation` → `SupportAnalysis` → `SupportGeometry` →
-  `LightningTreeGen`) — see
+  `PaintSegmentation` → `SupportAnalysis` → `SupportGeometry`) — see
   `01_system_architecture.md` §"PrePass Stage Order", which documents the
   executed chain and the known divergence between the two. `PrePass::SupportAnalysis`
   runs strictly after the Slice/paint stages (it derives support candidates from
   the committed, colour-resolved `SliceIR`) and before `PrePass::SupportGeometry`
   (which consumes that analysis), matching its declared `STAGE_ORDER` position.
-
-  `PrePass::LightningTreeGen` (packet 137, ADR-0029) executes **after** the
-  stages producing sparse-infill outlines and **before** `Layer::Infill`
-  dispatch. It consumes the committed sparse-infill outlines (via the committed
-  `SliceIR`) and is **skipped** (no commit — the blackboard `LightningTreeIR`
-  slot stays `None`) when no region's `sparse_fill_holder` resolves to
-  `lightning-infill`: the zero-cost promise from ADR-0029.
 
 `PrePass::OverhangAnnotation` — populates `SurfaceClassificationIR.overhang_quartile_polygons` by diffing consecutive-layer footprints, mirroring OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp`) which diffs consecutive `lslices`. It runs **strictly after `PrePass::Slice`** and reads the committed `SliceIR` (each object's final per-layer region polygons) rather than re-slicing the mesh — the object meshes are sliced exactly once, in `PrePass::Slice`. Host built-in (`host:overhang_annotation`). Since packet 193 the same host built-in additionally writes
 `SurfaceClassificationIR.prev_layer_boundaries` — a
@@ -361,6 +365,23 @@ dispatch decision; the `region_split_semantics` HashSet keeps the
 inner check at O(1).
 
 ---
+
+### Lightning selection-driven preparation
+
+The legacy path is retired.
+The committed selection index decides participation via `selection.invoke && !selection.targets.is_empty()`;
+the old `sparse_fill_holder` string gate is no longer the scheduler's predicate.
+The selected `com.core.lightning-infill` artifact plans during `prepare_print` from typed committed
+regions, region configs, and layer plan, publishing one private `lightning-layer-{global_layer_index}` piece per schedule layer.
+Ordinary `Layer::Infill` consumers require and decode their own layer's piece through the module's decoder.
+Deleted surfaces are `commit_lightning_tree_ir_builtin`, `PrePass::LightningTreeGen` and its `STAGE_ORDER` entry,
+`BlackboardPrepassSlot::LightningTreeIR`, `BlackboardError::LightningTreeGeneration`,
+public `LightningTreeIR`/`LightningTreeEntry`/`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION`,
+the `lightning-tree-segments` WIT method and whole `slicer:lightning-queries` package,
+and SDK `lightning_tree_segments_for`/`with_lightning_tree_ir` accessors.
+Only module-private `KernelPlan`/`PlanEntry` remain, never public IR.
+This records behavioural equivalence to the pre-migration producer, moving ownership with no intended output change;
+it is not a canonical-parity claim, and the recorded Gate A/B outcomes remain unchanged.
 
 ## Phase 3 — DAG Validation
 
@@ -1056,6 +1077,112 @@ the load-time view is registry-complete; and the per-region overlay rides on
 the same resolved base, so a region view also contains every declared key —
 authored or seeded default — with the region's overlay applied on top.
 
+### Ordinary full-identity delivery (Normative — TASK-572 row 1)
+
+`build_layer_selection_index(LayerSelectionIndexInput)` (`crates/slicer-wasm-host/src/selection.rs`)
+builds the whole-print `LayerSelectionIndex` once, after late PrePass and global-layer promotion,
+via the runtime late-bind seam `build_and_commit_layer_selection_index` (`crates/slicer-runtime/src/layer_executor.rs`).
+The index is committed as one immutable
+Blackboard product, with no partial publication. `selection_for(global_layer_index, module_id)`
+is O(1); a missing index or missing bound pair is an internal-consistency fatal, never a fallback resolver.
+The index contains selection metadata only: delivered geometry always comes from current call-local products associated by full `RegionKey`/`OriginId`.
+
+During construction, model authority requires `entries.get(&key)` before `config_for(&key)`
+(the Config Interner Contract in `docs/02_ir_schemas.md`). A missing exact key produces
+`SelectionError::MissingModelConfig`, wrapped by `LayerSelectionBuildError` and mapped by the runtime seam
+to `LayerStageError::FatalModule`, naming stage, module and exact key before any Layer invocation.
+Default, sibling and first-match config authority are forbidden.
+
+`variant_chain` is ordered and is never sorted or regenerated. `SelectedLayerTarget`'s
+`LayerTargetSource::Model { key, members }` retains the base plus matching merged modifier
+sources; config authority is the base's exact key. This section owns the painted-id encoding:
+`RegionMapIR.entries` keys painted variants by BASE region id plus ordered chain, whereas
+post-paint `SliceIR`/`PerimeterIR` ids are DERIVED by `paint_variant_region_id` (`crates/slicer-core/src/algos/paint_segmentation/mod.rs`)
+as `base * PAINT_VARIANT_REGION_ID_STRIDE + h`.
+Only inside config resolution, the builder derives a temporary map-space address by
+`id / PAINT_VARIANT_REGION_ID_STRIDE` for non-modifier nonempty-chain ids;
+modifier-namespace ids and empty-chain ids stay verbatim. This is exact config addressing, not fallback.
+Ordinary `Layer::Infill` delivery and commit preserve source-space object/region IDs and the complete ordered chain,
+exactly like perimeter and postprocess delivery and commit; stored source identities are never normalized.
+
+Non-region contexts use explicit `LayerTargetSource` provenance, never a fabricated model key.
+The selection describes EVERY role the module holds on the layer, each from its own
+`LayerTargetSource`: model targets (the perimeter/fill products selected by full
+`RegionKey`), `Layer::Support` carriers, the raft context (`LayerTargetSource::Raft`,
+`GlobalLayer.is_raft`) and the anchored stage (`LayerTargetSource::AnchoredStage`).
+Targets are ordered source outputs enumerated in deterministic source order — model
+regions in committed slice order, carriers in immutable plan-entry order
+(`LayerTargetSource::SupportCarrier.entry_index`) — never temporary config-map
+addresses: each target's config is resolved once at build time through exact-key
+identity addressing, and invoke-time delivery re-associates CURRENT call-local
+geometry by full `RegionKey`/`OriginId` on top of that ordered identity.
+Support carriers retain `SupportPlanEntry` provenance and use the resolved, declared-key-filtered
+`invocation_config` from `bind_module_config_view` — the frozen invocation/non-region
+config, never a per-region config-map read.
+Carrier layer eligibility is `global_layer_index == layer.index`;
+`anchor_layer_index` is provenance only.
+Carrier exclusions are complete and exact (`eligible_carrier_entries`,
+`crates/slicer-wasm-host/src/selection.rs`) — an entry failing any one of the
+following is not selected and not delivered as a carrier:
+
+- it belongs to a support family the module does not claim (the
+  `support-family:` claim prefix);
+- its `global_layer_index` differs from the physical layer;
+- it carries a decline reason;
+- every one of its roles is empty geometry;
+- the committed slice already contains a region of the SAME full origin
+  (object + source region + exact ordered chain) — presence exclusion is
+  full-origin, so a slice row differing only by chain never excludes a
+  carrier, and a present-but-EMPTY slice row excludes by identity presence
+  alone, polygon content being irrelevant (covered by
+  `model_identity_and_non_region_authority` in
+  `crates/slicer-wasm-host/src/selection.rs`).
+
+Eligible carriers are delivered even with `slice = None` (plan present, slice
+product absent). Carrier wire handles (`support_carrier_regions`, same file)
+are one `SlicedRegion` per full source origin, copied exactly from the plan
+entry (chain-differing carriers stay distinct handles) and sorted
+deterministically by `(object_id, region_id)`. Carriers hold NO model or
+coloring authority: they receive the non-fill claim set, never resolve the
+model config map, and are granted no authored coloring and no role-tool
+authority (`authored_coloring = false`, `resolved_role_tool = None` on the
+`SelectedLayerTarget`). Raft context derives from `GlobalLayer.is_raft` for
+`Layer::Infill`/`Layer::Support`.
+`AnchoredStage` records the physical layer index with invocation config as module execution context, not a synthetic anchored closure/entity.
+
+Extruder/tool authority is host-only. The host resolves the tool authority of
+each selected model target at build time from the target's resolved config
+(`extruder` extension → `SelectedLayerTarget.resolved_role_tool`,
+`crates/slicer-wasm-host/src/selection.rs`), and the marshal/commit boundary
+applies it to committed output; carriers, raft and anchored targets carry
+`None`, so a module can never mint, override or extend tool selection — it
+only reads what the host delivers.
+
+`OptionalProductPresence::{Absent, Present}` distinguishes absence from present-empty; `invoke`
+is not `!targets.is_empty()`: under `paint_allows_layer`, a paint-transparent
+non-support module on an empty present slice retains `invoke = true` with no targets. `Ok(None)` preserves no-output semantics.
+
+Both native and WASM legs consume the same call-local `LayerStageInput.selection` (`crates/slicer-wasm-host/src/binding.rs`).
+`WasmRuntimeDispatcher::run_stage` (`crates/slicer-wasm-host/src/dispatch.rs`) returns `LayerStageError::FatalModule`
+for a scheduled module with `selection = None`, invoking and committing nothing.
+With a selection and `invoke = false`, neither leg invokes. Native production uses
+`build_native_layer_request_from_selection` and `commit_native_layer_response_with_authored`
+(`crates/slicer-wasm-host/src/marshal/native.rs`); old direct builder/commit wrappers remain
+for legacy direct callers only and are deny-by-default for coloring.
+
+`AuthoredColoringContext` grants are full-origin `HashSet<OriginId>` values derived from selected model targets.
+`allows` checks the complete origin and tool range; a sibling variant is never authorized by another variant's grant.
+Enforcement remains at the marshal/commit boundary in `enforce_authored_coloring` (`crates/slicer-wasm-host/src/marshal/out.rs`),
+silently stripping unauthorized or out-of-range authored tool indices to `None`.
+
+This rule supersedes Packet 51 for module-backed Layer stages bound to the whole-print selection index:
+config authority is build-time exact-key resolution carried by `LayerSelection`
+(per-target `config` and `perimeter_configs`), not fresh per-invocation `RegionPlan.config`
+reconstruction inside `dispatch_layer_call`. Both rules must be read together. The Packet 51
+section is retained unchanged for stages outside this indexed contract: `is_indexed_module_stage` (`crates/slicer-runtime/src/layer_executor.rs`)
+distinguishes the roster slice the index is built from; host-built-in/non-roster stages keep the pre-index path.
+`bind_module_config_view`'s frozen view and explicit `invocation_config` remain authoritative only for invocation-wide/non-region reads.
+
 ### PrePass Config-View Plumbing (Normative — Packet 73)
 
 Every module-implementable PrePass export (`mesh-analysis`, `layer-planning`,
@@ -1243,7 +1370,7 @@ pub struct LayerStageInput<'a> {
     pub perimeter:                Option<&'a PerimeterIR>,
     pub surface_classification:   Option<&'a SurfaceClassificationIR>,
     // … further per-stage optional borrows (infill, layer_collection,
-    //     prepared regions, lightning tree); see `binding.rs`.
+    //     prepared regions); see `binding.rs`.
 }
 ```
 
@@ -1398,7 +1525,6 @@ must not run their own ad-hoc presence checks for these slots.
 | `PrePass::RegionMapping`           | `LayerPlan`                                                               |
 | `PrePass::SupportAnalysis`         | `SliceIR`                                                                 |
 | `PrePass::SupportGeometry`         | `SurfaceClassification`, `LayerPlan`, `RegionMap`, `SliceIR`, `SupportGeometry` (the last committed by the host built-in within this stage before the guest runs) |
-| `PrePass::LightningTreeGen`        | `SurfaceClassification`, `LayerPlan`, `RegionMap`, `SliceIR`              |
 
 A stage scheduled before its prerequisites are committed produces
 `PrepassExecutionError::MissingRequiredPrepass { stage_id, slot }` and aborts
@@ -1459,6 +1585,82 @@ multi-thread utilisation is exposed via report wall-clock timing
 error (`SlicePostProcessPaintAnnotationError::DeterministicConflict`). This is a
 correctness improvement over the pre-Packet-64 path where the same
    conflict failed per-layer at query time.
+
+### Automatic preparation lifecycle (Normative — TASK-574 row 5)
+
+The private pipeline core closes preparation after **all final committed
+PrePass products** (slices, region map, support plan and perimeter products)
+and global-layer promotion, before ending the PrePass bracket or admitting
+any `LayerArena`, Layer stage or anchored consumer. The row-01 whole-print
+selection index is built once per print from those final products. Eligible
+owners prepare exactly once in stable bytewise identity order: module,
+version, stage, artifact. An all-Ready guard precedes every dependent ordinary
+or `Layer::AnchoredEvents` consumer. Only row-03's atomic transaction finish
+and `current` establish Ready; successful empty output is Ready-empty.
+
+Participation requires `invoke && !targets.is_empty()` on `selection_for`
+entries. A declared owner with no selected targets emits `NoWork` without
+creating a plan owner or calling preparation. At the ordinary boundary,
+prepared calls resolve their selection against the **actual available slice
+views**: identity-only empty regions are not prepared work. Such no-work calls
+skip before readiness checks, reads or Consumption observations. Plain
+`invoke=true` empty-target calls remain unchanged; legacy plain modules never
+acquire prepared behavior.
+
+Required preparation failure aborts through `PipelineError::Preparation`,
+preserving the original typed `ModuleError` fields, including `fatal: false`.
+This is a required-dependency abort, not a rewrite of the general ordinary
+non-fatal policy or its documented host limitation. An original module error
+or trap takes precedence over writer poison. Poisoned staging publishes
+nothing, never Ready, and no selected consumer executes after that failure.
+
+Cancellation checkpoints occur before preparation, between owners and before
+consumers. An active call is allowed to return; unfinished staging is
+discarded. The recorded host cancellation decision maps to the existing
+Cancelled outcome, never by matching diagnostic text. The caller joins active
+calls before disposing staging and owners, after guards quiesce; row-03
+`Busy` is a producer return value, not something to wait on, spin on or force
+past. Disposal leaves zero retained logical bytes. Normal Layer arenas still
+run to completion or their explicit error, without a between-stage barrier.
+
+Actual selected `Layer::AnchoredEvents` runs as an ordinary Layer-module call
+through `PreparedLayerStageRunner`
+(`crates/slicer-runtime/src/preparation_lifecycle.rs`); its module-owned plan
+reads count as consumption. Synthetic `Anchored::Event` /
+`host:anchored-events` commits are builtin host work with no module dispatch
+and no plan reads. Their host-closure Finish observation denotes return or
+unwind separately from real module calls. The print scope remains alive
+through both: owners are disposed only after all real calls and the applicable
+synthetic host closure finish.
+
+### Preparation-only runtime capture (Normative — TASK-574 row 5)
+
+`run_slice_preparation_capture` (`crates/slicer-runtime/src/run.rs`) shares
+production's full validated startup, committed PrePass and preparation prefix.
+It stops before any `LayerArena`, ordinary Layer-module call or synthetic
+anchored-host closure; preparation calls themselves remain part of the prefix.
+It snapshots metadata only: piece names and lengths, typed selected targets,
+lifecycle records and `accounting_before_disposal` from row-03's actual
+production gauges, including `returned_read_bytes` observed before disposal.
+
+Capture `retained_bytes` is the checked post-cleanup retained total (zero).
+`transferred_bytes` is the checked sum of production `returned_read_bytes`,
+not stored lengths, metadata sizes or requested bytes; it is zero when no
+consumer reads. Retention and transfer are logical byte counts, not allocator
+or process peak-memory claims (see `docs/16_slicer_report.md`).
+
+Capture never opens, reads, copies or decodes opaque pieces. Neither capture,
+observer, CLI nor DAG exports raw payloads, and the host supplies no plan
+decoder. Row 06 alone adds opt-in atomic typed diagnostic snapshots through
+row-03's publication hook.
+
+Lifecycle records carry module/version/artifact identity, lifecycle phase
+separately from `consumer_stage`, piece names/lengths, retained/transferred
+counts and typed `PreparationFailure` on failure. Whole-print preparation and
+disposal have no global layer index; actual layer-scoped calls carry their
+real index. `elapsed` is `None` unless existing instrumentation is enabled.
+These typed observations add no `ProgressEvent` JSONL fields or schema/version
+change. Static capability or DAG metadata never fabricates Start or Ready.
 
 ### Per-Layer Execution (rayon parallel)
 
@@ -1922,7 +2124,6 @@ pub struct Blackboard {
     slice_ir:               Option<Arc<Vec<SliceIR>>>,
     support_geometry:       Option<Arc<SupportGeometryIR>>,
     support_analysis:       Option<Arc<SupportAnalysisIR>>,
-    lightning_tree_ir:      Option<Arc<LightningTreeIR>>,
 
     // Written by per-layer (one slot per layer, written once, read after join)
     layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
@@ -1962,7 +2163,6 @@ slice command
     │    ├─ PrePassPaintSegmentation     → SliceIR (per-variant regions)       → Blackboard
     │    ├─ PrePassSupportAnalysis       → SupportAnalysisIR                   → Blackboard
     │    ├─ PrePassSupportGeometry       → SupportGeometryIR+SupportPlanIR      → Blackboard  (guest optional)
-  │    └─ PrePassLightningTreeGen      → LightningTreeIR                      → Blackboard  (only when sparse_fill_holder = lightning-infill)
   ├─ execute_per_layer()  [rayon::par_iter]
   │    └─ per layer (parallel):
   │         ├─ LayerPaintRegionAnnotation  (host-built-in; WASM override)

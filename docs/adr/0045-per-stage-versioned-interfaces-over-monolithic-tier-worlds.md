@@ -386,3 +386,20 @@ not just read" and its two tables is retained as historical record — the
 deleted symbol was a mis-pin for `compute_shared_freshness`.
 WIT staleness no longer rebuilds all guests: only guests whose embedded world
 disagrees with canonical are stale.
+
+## Clarification — 2026-10-11 (packet `layer-module-preparation_01_shared-selection-prerequisite`, step G2)
+
+**Per-stage isolation remains in force.** Packet
+`layer-module-preparation_01_shared-selection-prerequisite` split the shared
+surface into a versioned core handles package plus two independent specialist
+query packages — core `slicer:ir-handles@1.0.0`, plus
+`slicer:support-queries@1.0.0` and `slicer:lightning-queries@1.0.0`
+([ADR-0073](./0073-full-source-variant-chain-identity-and-versioned-specialist-queries.md)) —
+which is itself per-stage-versioned, not a monolithic-tier world: each package
+carries its own version in its own `package` line, core does not import the
+specialists, and a breaking change majors only the package that changed (as with
+the majored stage packages `slicer:layer-infill@2.0.0`,
+`slicer:layer-support@2.0.0`, `slicer:prepass-support-geometry@2.0.0`). The unit
+is still the package; nothing here reintroduces all-or-nothing tier worlds, and
+the retired `wit-world` / `SUPPORTED_WIT_WORLDS` / allowlist mechanisms stay
+retired.

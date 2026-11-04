@@ -35,6 +35,12 @@ use slicer_runtime::{
     compute_viewport_bounds, render_stage_capture, CapturedIr, GeometryView, Projector, RenderView,
     StageCapture, ViewportBoundsMm, BASE_DIMENSION_PX,
 };
+use slicer_wasm_host::preparation::{
+    freeze_native, CommittedPreparationInputs, CommittedPreparationProjection,
+    NativePreparationArtifact, PreparationInputData, PreparationOwner,
+    PreparationProjectionRequest, PreparationSelectionContext, PreparedOwnerStore,
+};
+use std::sync::Arc;
 
 /// One populated `ExPolygon` triangle at arbitrary but deterministic
 /// millimeter coordinates. Mirrors `visual_debug_blackboard_tap_tdd.rs`'s
@@ -160,6 +166,7 @@ fn mixed_unit_shared_viewport() {
                     capabilities: vec![],
                     provenance: vec![],
                     decline_reason: None,
+                    variant_chain: Vec::new(), // genuinely chain-empty source: this fixture seeds no paint chain
                 }],
                 raft_plan: None,
             },
@@ -315,6 +322,7 @@ fn degenerate_support_branch_renders_as_visible_disk() {
                     capabilities: vec![],
                     provenance: vec![],
                     decline_reason: None,
+                    variant_chain: Vec::new(), // genuinely chain-empty source: this fixture seeds no paint chain
                 }],
                 raft_plan: None,
             },
@@ -385,6 +393,7 @@ fn degenerate_segment_at_path_end_renders_as_visible_disk() {
                     capabilities: vec![],
                     provenance: vec![],
                     decline_reason: None,
+                    variant_chain: Vec::new(), // genuinely chain-empty source: this fixture seeds no paint chain
                 }],
                 raft_plan: None,
             },
@@ -450,6 +459,7 @@ fn nearly_equal_path_endpoints_render_as_visible_disk() {
                     capabilities: vec![],
                     provenance: vec![],
                     decline_reason: None,
+                    variant_chain: Vec::new(), // genuinely chain-empty source: this fixture seeds no paint chain
                 }],
                 raft_plan: None,
             },
@@ -872,10 +882,486 @@ fn regionmapping_join_and_layerplanning_overlay() {
             | CapturedIr::RegionMapping { .. }
             | CapturedIr::LayerFinalization(_)
             | CapturedIr::GCodeEmit(_) => {}
+            CapturedIr::PreparationProjection(_) => {}
         }
     }
     assert_every_variant_handled_explicitly(&capture_a.ir);
     assert_every_variant_handled_explicitly(&slice_capture.ir);
     assert_every_variant_handled_explicitly(&gcode_capture.ir);
     assert_every_variant_handled_explicitly(&seam_capture.ir);
+}
+
+/// Execute the real native fixture against production committed-input,
+/// selection, transaction and publication adapters. No ready plan is injected.
+fn prepared_projection(
+    mode: &str,
+    two_layers: bool,
+) -> (
+    Arc<CommittedPreparationProjection>,
+    PreparedOwnerStore,
+    PreparationOwner,
+) {
+    use preparation_visual_guest::PreparationVisualGuest;
+    use slicer_ir::{ConfigValue, ConfigView, LayerPlanIR, MeshIR};
+    let binding = freeze_native(
+        "test.preparation-visual".into(),
+        Some(slicer_schema::preparation::PreparationDeclaration::new(
+            "slicer:layer-preparation/prepare@1.0.0",
+            vec!["layer_plan".into(), "selected_targets".into()],
+            vec!["probe_xy".into()],
+        )),
+        NativePreparationArtifact::Prepared {
+            entry: PreparationVisualGuest::__slicer_prepared_native_entry(),
+            schema: PreparationVisualGuest::__SLICER_PREPARATION_SCHEMA,
+        },
+    )
+    .expect("freeze production native fixture");
+    let store = PreparedOwnerStore::new();
+    let owner = store.create_owner(&binding).unwrap();
+    let mut resolved = ResolvedConfig::default();
+    resolved.extensions.insert(
+        "preparation_visual_mode".into(),
+        ConfigValue::String(mode.into()),
+    );
+    let mut regions = RegionMapIR::default();
+    let config = regions.intern_config(resolved);
+    let mut layers = Vec::new();
+    let mut slices = Vec::new();
+    for &(index, z) in if two_layers {
+        &[(0, 0.2), (1, 0.4)][..]
+    } else {
+        &[(0, 0.2)][..]
+    } {
+        let region = SlicedRegion {
+            object_id: "probe-object".into(),
+            region_id: 7,
+            effective_layer_height: 0.2,
+            ..Default::default()
+        };
+        regions.entries.insert(
+            slicer_wasm_host::selection::region_map_key_for_sliced_region(index, &region),
+            RegionPlan {
+                config,
+                ..Default::default()
+            },
+        );
+        layers.push(GlobalLayer {
+            index,
+            z,
+            ..Default::default()
+        });
+        slices.push(SliceIR {
+            global_layer_index: index,
+            z,
+            regions: vec![region],
+            ..Default::default()
+        });
+    }
+    let committed = CommittedPreparationInputs::new(
+        Arc::new(MeshIR::default()),
+        Arc::new(LayerPlanIR {
+            global_layers: layers,
+            ..Default::default()
+        }),
+        Arc::new(slices),
+        Arc::new(regions),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    let input = PreparationInputData::from_committed(
+        &owner,
+        Arc::new(committed),
+        PreparationSelectionContext::new(
+            "Layer::PathOptimization".into(),
+            "test.preparation-visual".into(),
+            vec!["path-optimizer".into()],
+            Default::default(),
+            Arc::new(ConfigView::from_map(
+                [(
+                    "preparation_visual_mode".into(),
+                    ConfigValue::String(mode.into()),
+                )]
+                .into_iter()
+                .collect(),
+            )),
+        ),
+    )
+    .unwrap();
+    let targets = input.host_selected_targets(&owner, 0, 0, u64::MAX).unwrap();
+    assert_eq!(targets.len(), 1);
+    assert!(targets[0].invoke);
+    assert_eq!(
+        targets[0].config.get_string("preparation_visual_mode"),
+        Some(mode)
+    );
+    binding
+        .prepare_with_diagnostics(
+            &owner,
+            input,
+            PreparationProjectionRequest::new(vec!["probe_xy".into()]).unwrap(),
+            |_| Ok(()),
+        )
+        .expect("real fixture must finish Ready");
+    let snapshot = store
+        .current(&owner)
+        .expect("Ready committed plan")
+        .projection("probe_xy")
+        .unwrap()
+        .expect("explicitly completed scene");
+    (snapshot, store, owner)
+}
+
+fn projection_capture(
+    snapshot: &Arc<CommittedPreparationProjection>,
+    layer_index: u32,
+) -> StageCapture {
+    // The fixture commits this exact schedule. Empty completed scenes have no
+    // primitive Z attachments; capture Z still comes from the committed schedule.
+    let layer_z = match layer_index {
+        0 => 0.2,
+        1 => 0.4,
+        _ => panic!("layer is absent from fixture schedule"),
+    };
+    if let Some(attached_z) = snapshot.layer_z(layer_index) {
+        assert_eq!(attached_z, layer_z);
+    }
+    StageCapture {
+        stage_id: "Layer::PathOptimization".into(),
+        layer_index,
+        layer_z,
+        ir: CapturedIr::PreparationProjection(Arc::clone(snapshot)),
+    }
+}
+
+#[test]
+fn preparation_projection_serializes_only_scene() {
+    let (snapshot, store, owner) = prepared_projection("valid", false);
+    let first = projection_capture(&snapshot, 0);
+    let second = first.clone();
+    let (CapturedIr::PreparationProjection(a), CapturedIr::PreparationProjection(b)) =
+        (&first.ir, &second.ir)
+    else {
+        panic!("captures must retain the shared typed snapshot");
+    };
+    assert!(Arc::ptr_eq(a, b));
+    assert_eq!(first.ir.schema_version_string(), "1.0.0");
+    // Independent AC-1 literal, not serialized from the fixture's scene. Exact
+    // equality rejects ANY private field, including future unanticipated ones.
+    let expected = serde_json::json!({
+        "kind": "PreparationProjection", "value": {
+            "scene_id": "final", "view": "probe_xy", "classes": ["anchors", "domains", "paths"],
+            "primitives": [
+                {"id":"anchor_a", "global_layer_index":0, "class":"anchors", "label":"anchor",
+                 "geometry":{"Point":{"x":10000,"y":20000}}},
+                {"id":"path_a", "global_layer_index":0, "class":"paths", "label":"route",
+                 "geometry":{"Polyline":[{"x":0,"y":0},{"x":20000,"y":0}]}},
+                {"id":"domain_a", "global_layer_index":0, "class":"domains", "label":"area",
+                 "geometry":{"Polygon":{"filled":true,"polygon":{
+                     "contour":{"points":[{"x":0,"y":0},{"x":40000,"y":0},{"x":40000,"y":40000},{"x":0,"y":40000}]},
+                     "holes":[{"points":[{"x":10000,"y":10000},{"x":10000,"y":30000},{"x":30000,"y":30000},{"x":30000,"y":10000}]}]
+                 }}}},
+                {"id":"outline_a", "global_layer_index":0, "class":"domains", "label":"outline",
+                 "geometry":{"Polygon":{"filled":false,"polygon":{
+                     "contour":{"points":[{"x":60000,"y":0},{"x":80000,"y":0},{"x":80000,"y":20000},{"x":60000,"y":20000}]},
+                     "holes":[]
+                 }}}}
+            ]
+        }
+    });
+    let actual = serde_json::to_value(&first.ir).unwrap();
+    assert_eq!(actual, expected);
+    assert_eq!(serde_json::to_value(&second.ir).unwrap(), expected);
+    // test-quality: pinned DTO wire-format keys, not a hand-maintained implementation roster.
+    assert_eq!(
+        actual["value"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["classes", "primitives", "scene_id", "view"]
+    );
+    store.dispose_owner(&owner).unwrap();
+    assert_eq!(
+        store.diagnostic_accounting(&owner).unwrap().retained_bytes,
+        0
+    );
+    assert_eq!(
+        serde_json::to_value(&first.ir).unwrap(),
+        expected,
+        "public diagnostics survive private-store disposal"
+    );
+    // The serialized public DTO itself is usable independently of the host.
+    let scene: slicer_sdk::preparation::PreparationProjectionScene =
+        serde_json::from_value(actual["value"].clone()).unwrap();
+    assert_eq!(
+        scene.primitives[0].geometry,
+        slicer_sdk::preparation::PreparationProjectionGeometry::Point(Point2 {
+            x: 10000,
+            y: 20000
+        })
+    );
+
+    let (empty, empty_store, empty_owner) = prepared_projection("empty", false);
+    empty_store.dispose_owner(&empty_owner).unwrap();
+    let empty_json = serde_json::to_value(CapturedIr::PreparationProjection(empty)).unwrap();
+    assert_eq!(
+        empty_json,
+        serde_json::json!({"kind":"PreparationProjection", "value":{
+            "scene_id":"final", "view":"probe_xy", "classes":["anchors","domains","paths"], "primitives":[]
+        }})
+    );
+    // test-quality: pinned DTO wire-format keys for explicit empty completion.
+    assert_eq!(
+        empty_json["value"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["classes", "primitives", "scene_id", "view"]
+    );
+}
+
+#[test]
+fn preparation_projection_renders_typed_geometry_and_refuses_ordinary_styles() {
+    use slicer_runtime::visual_debug_render::{
+        render_silhouette_composite, render_stage_capture_styled, RenderError, RenderStyle,
+        SilhouetteSlabSchedule, SilhouetteView,
+    };
+    use slicer_runtime::visual_debug_style::{ColorBy, OverlayKind};
+    let (snapshot, store, _) = prepared_projection("valid", false);
+    let capture = projection_capture(&snapshot, 0);
+    store.dispose().unwrap();
+    let bounds = compute_viewport_bounds(std::slice::from_ref(&capture));
+    assert_eq!(
+        bounds,
+        ViewportBoundsMm {
+            min_x: -2.0,
+            min_y: -2.0,
+            max_x: 10.0,
+            max_y: 6.0
+        }
+    );
+    let (image, events) = render_stage_capture_styled(
+        &capture,
+        RenderView::Geometry(GeometryView::FilledAreas),
+        1,
+        bounds,
+        None,
+        &RenderStyle::default(),
+    )
+    .unwrap();
+    assert!(
+        events.is_empty(),
+        "diagnostic geometry must not invent extrusion events"
+    );
+    let (width, height, rgb) = decode_rgb(&image.png_bytes);
+    assert_eq!((width, height), (1024, 1024));
+    // Independent mm/Projector literals: scale 1024/12 with vertical letterbox.
+    // Rank anchors/domains/paths selects literal blue/orange/green RGBs.
+    assert_eq!(
+        pixel_at(&rgb, width, 256, 512),
+        [31, 119, 180],
+        "point at (1,2), painted above fill"
+    );
+    assert_eq!(
+        pixel_at(&rgb, width, 259, 515),
+        BACKGROUND,
+        "circle corner is not a square glyph"
+    );
+    assert_eq!(
+        pixel_at(&rgb, width, 213, 512),
+        [255, 127, 14],
+        "filled shell (0.5,2)"
+    );
+    assert_eq!(pixel_at(&rgb, width, 341, 512), BACKGROUND, "hole (2,2)");
+    assert_eq!(
+        pixel_at(&rgb, width, 171, 683),
+        [44, 160, 44],
+        "open-line start (0,0)"
+    );
+    assert_eq!(
+        pixel_at(&rgb, width, 341, 683),
+        [44, 160, 44],
+        "open-line end (2,0)"
+    );
+    assert_eq!(
+        pixel_at(&rgb, width, 360, 683),
+        BACKGROUND,
+        "open line must not extend past endpoint"
+    );
+    assert_eq!(
+        pixel_at(&rgb, width, 683, 597),
+        [255, 127, 14],
+        "outline closing edge (6,1)"
+    );
+    assert_eq!(
+        pixel_at(&rgb, width, 768, 597),
+        BACKGROUND,
+        "outline interior (7,1) is unfilled"
+    );
+    assert_eq!(
+        pixel_at(&rgb, width, 265, 500),
+        [31, 119, 180],
+        "label A top row is painted last"
+    );
+    let alternate = render_stage_capture(
+        &capture,
+        RenderView::Geometry(GeometryView::FilamentLines),
+        1,
+        bounds,
+    )
+    .unwrap();
+    // test-quality: determinism/dispatch pin — GeometryView cannot reinterpret diagnostic shapes as extrusion.
+    assert_eq!(alternate.png_bytes, image.png_bytes);
+    let enlarged = render_stage_capture(
+        &capture,
+        RenderView::Geometry(GeometryView::FilledAreas),
+        2,
+        bounds,
+    )
+    .unwrap();
+    let (large_width, _, large_rgb) = decode_rgb(&enlarged.png_bytes);
+    assert_eq!(
+        pixel_at(&large_rgb, large_width, 519, 1024),
+        [31, 119, 180],
+        "point radius scales in screen pixels"
+    );
+    assert_eq!(
+        pixel_at(&large_rgb, large_width, 521, 1024),
+        BACKGROUND,
+        "scaled circle remains bounded"
+    );
+
+    let (empty, empty_store, _) = prepared_projection("empty", false);
+    empty_store.dispose().unwrap();
+    for capture in [&capture, &projection_capture(&empty, 0)] {
+        for view in [
+            RenderView::DiagnosticOverlay(GeometryView::FilledAreas),
+            RenderView::OverlayIsolated(GeometryView::FilamentLines, OverlayKind::Seams),
+        ] {
+            assert!(matches!(
+                render_stage_capture_styled(
+                    capture,
+                    view,
+                    1,
+                    bounds,
+                    None,
+                    &RenderStyle::default()
+                ),
+                Err(RenderError::UnsupportedPreparationOption {
+                    option: "ordinary overlays",
+                    ..
+                })
+            ));
+        }
+        let tool_style = RenderStyle {
+            color_by: ColorBy::Tool,
+            ..Default::default()
+        };
+        assert!(matches!(
+            render_stage_capture_styled(
+                capture,
+                RenderView::Geometry(GeometryView::FilledAreas),
+                1,
+                bounds,
+                None,
+                &tool_style
+            ),
+            Err(RenderError::UnsupportedPreparationOption {
+                option: "tool/extrusion styles",
+                ..
+            })
+        ));
+        for view in [SilhouetteView::Front, SilhouetteView::Side] {
+            assert!(
+                matches!(render_silhouette_composite(std::slice::from_ref(capture), view, 1, bounds,
+                &SilhouetteSlabSchedule::default()), Err(RenderError::UnsupportedPreparationOption { option, .. }) if option == view.name())
+            );
+        }
+    }
+    let empty_image = render_stage_capture(
+        &projection_capture(&empty, 0),
+        RenderView::Geometry(GeometryView::FilledAreas),
+        1,
+        bounds,
+    )
+    .unwrap();
+    let (_, _, empty_rgb) = decode_rgb(&empty_image.png_bytes);
+    assert!(empty_rgb
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .all(|pixel| *pixel == BACKGROUND));
+}
+
+#[test]
+fn preparation_projection_full_scene_bounds_and_class_ranks_survive_layer_subset() {
+    let (snapshot, store, _) = prepared_projection("valid", true);
+    let selected = projection_capture(&snapshot, 0);
+    let remote = projection_capture(&snapshot, 1);
+    store.dispose().unwrap();
+    let subset = compute_viewport_bounds(std::slice::from_ref(&selected));
+    let all = compute_viewport_bounds(&[selected.clone(), remote.clone()]);
+    assert_eq!(
+        subset,
+        ViewportBoundsMm {
+            min_x: -2.0,
+            min_y: -2.0,
+            max_x: 202.0,
+            max_y: 152.0
+        }
+    );
+    assert_eq!(all, subset);
+    // Explicit plate bounds are passed through without a scene-derived margin.
+    let plate = ViewportBoundsMm {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 256.0,
+        max_y: 256.0,
+    };
+    let remote_image = render_stage_capture(
+        &remote,
+        RenderView::Geometry(GeometryView::FilledAreas),
+        1,
+        plate,
+    )
+    .unwrap();
+    let (width, _, rgb) = decode_rgb(&remote_image.png_bytes);
+    assert_eq!(
+        pixel_at(&rgb, width, 800, 424),
+        [214, 39, 40],
+        "remote class is full-scene rank 3, not rendered-layer rank 0"
+    );
+    assert_eq!(
+        pixel_at(&rgb, width, 4, 1016),
+        BACKGROUND,
+        "unselected layer point must not leak into remote image"
+    );
+    let ordinary = StageCapture {
+        stage_id: "Layer::Slice".into(),
+        layer_index: 0,
+        layer_z: 0.2,
+        ir: CapturedIr::Slice(SliceIR {
+            regions: vec![SlicedRegion {
+                polygons: vec![triangle_mm(-10.0, -20.0, 0.0, 0.0, 10.0, 0.0)],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+    };
+    assert_eq!(
+        compute_viewport_bounds(&[selected, ordinary]),
+        ViewportBoundsMm {
+            min_x: -12.0,
+            min_y: -22.0,
+            max_x: 202.0,
+            max_y: 152.0
+        }
+    );
 }

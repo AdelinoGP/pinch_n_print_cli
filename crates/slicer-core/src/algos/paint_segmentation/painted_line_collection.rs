@@ -276,20 +276,21 @@ fn object_world_z_min(mesh: &slicer_ir::IndexedTriangleSet, matrix: &[f64; 16]) 
 /// Used by the first-layer suppression check: when the bottom face is unpainted for
 /// a given semantic, vertical-face paint of the same semantic does not bleed into
 /// the first-layer slab (matches OrcaSlicer Phase 6 bottom-face dominance).
-fn paint_layer_bottom_face_has_paint(
+fn bottom_face_values(
     paint_layer: &PaintLayer,
     mesh: &slicer_ir::IndexedTriangleSet,
     local_z_min: f32,
-) -> bool {
+) -> Vec<slicer_ir::PaintValue> {
     let facet_count = mesh.indices.len() / 3;
     let eps = BOTTOM_FACE_Z_EPS_MM;
+    let mut values = Vec::new();
     for (facet_idx, fv) in paint_layer.facet_values.iter().enumerate() {
         if facet_idx >= facet_count {
             break;
         }
-        if fv.is_none() {
+        let Some(value) = fv else {
             continue;
-        }
+        };
         let base = facet_idx * 3;
         let v0 = mesh.vertices[mesh.indices[base] as usize];
         let v1 = mesh.vertices[mesh.indices[base + 1] as usize];
@@ -298,7 +299,7 @@ fn paint_layer_bottom_face_has_paint(
             && (v1.z - local_z_min).abs() < eps
             && (v2.z - local_z_min).abs() < eps
         {
-            return true;
+            values.push(value.clone());
         }
     }
     for stroke in &paint_layer.strokes {
@@ -307,11 +308,11 @@ fn paint_layer_bottom_face_has_paint(
                 && (tri[1].z - local_z_min).abs() < eps
                 && (tri[2].z - local_z_min).abs() < eps
             {
-                return true;
+                values.push(stroke.value.clone());
             }
         }
     }
-    false
+    values
 }
 
 /// World-space test: are all three triangle vertices within `BOTTOM_FACE_Z_EPS_MM`
@@ -371,17 +372,25 @@ pub fn collect_painted_lines(
         let is_first_layer = (world_z - world_z_min) < FIRST_LAYER_Z_THRESHOLD_MM;
 
         for paint_layer in &paint_data.layers {
-            // Bottom-face-dominance check: only suppress this PaintLayer's vertical-face
-            // paint at the first layer if the bottom face is unpainted for THIS semantic.
-            let suppress_first_layer = is_first_layer
-                && !paint_layer_bottom_face_has_paint(paint_layer, &object.mesh, local_z_min);
+            // Bottom-face dominance at the first layer is per VALUE, not per
+            // semantic: the bottom face may be painted with one tool (blue) while
+            // another tool's paint (green/red) only covers vertical faces. Keeping
+            // every vertical paint because *some* bottom facet is painted colours
+            // the unpainted half of the bottom face with a side/top tool. Suppress a
+            // non-bottom triangle unless its own value is painted on the bottom
+            // face; an unpainted bottom face still suppresses every vertical paint.
+            let bottom_values =
+                is_first_layer.then(|| bottom_face_values(paint_layer, &object.mesh, local_z_min));
 
             // From facet_values (world-space vertices after transform)
             let facet_paints = extract_paint_layer_data(paint_layer, &object.mesh, transform);
             for tp in facet_paints {
-                if suppress_first_layer && !triangle_is_bottom_face_world(&tp.vertices, world_z_min)
-                {
-                    continue;
+                if let Some(values) = &bottom_values {
+                    if !triangle_is_bottom_face_world(&tp.vertices, world_z_min)
+                        && !values.iter().any(|value| value == &tp.value)
+                    {
+                        continue;
+                    }
                 }
                 if let Some(line) =
                     triangle_z_intersection(tp.vertices[0], tp.vertices[1], tp.vertices[2], world_z)
@@ -405,9 +414,12 @@ pub fn collect_painted_lines(
             // From strokes (world-space vertices after transform)
             let stroke_paints = extract_stroke_data(&paint_layer.strokes, transform);
             for tp in stroke_paints {
-                if suppress_first_layer && !triangle_is_bottom_face_world(&tp.vertices, world_z_min)
-                {
-                    continue;
+                if let Some(values) = &bottom_values {
+                    if !triangle_is_bottom_face_world(&tp.vertices, world_z_min)
+                        && !values.iter().any(|value| value == &tp.value)
+                    {
+                        continue;
+                    }
                 }
                 if let Some(line) =
                     triangle_z_intersection(tp.vertices[0], tp.vertices[1], tp.vertices[2], world_z)

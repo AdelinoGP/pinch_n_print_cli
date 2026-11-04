@@ -1,20 +1,21 @@
-# Task Map: lightning-geometry-portability-gate
+# Task Map: lightning canonical input oracle (Gate A)
 
-Canonical task crosswalk: `TASK-576` in `docs/07_implementation_status.md`, no prerequisite and blocking TASK-577. Status is mutable; re-derive it before execution/update. Source-plan queue row07 has dependency `-`; generation status of rows01–06 is never assumed implemented acceptance. This packet does not authorize row08 generation; its fail-closed entry gate applies until actual implemented acceptance and both verified outcomes are recorded.
+Canonical task crosswalk: `TASK-576` in `docs/07_implementation_status.md`, no prerequisite and
+blocking `TASK-577`. Status is mutable; re-derive it before execution and before updating it.
+Source-plan queue row 07 is split by explicit approval into this packet (Gate A: canonical input
+fidelity) and `layer-module-preparation_09_lightning-kernel-portability` (Gate B: native/WASM
+portability). The split does not waive either sub-gate. The row-08 packet was re-scoped on
+2026-10-20 to recorded behavioural equivalence, so it is not gated by these feasibility gates;
+`TASK-576` remains `[~]` until both gates pass. (corrected 2026-10-25 against the plan's
+2026-10-20 row-08 re-scope)
 
 | Task | Packet steps | Primary authority | Expected code surface | Canonical refs | Cost | Obligation |
 | --- | --- | --- | --- | --- | --- | --- |
-| TASK-576 | 1–2 | Approved plan: Lightning gate/geometry; ADR0066; docs08/attribution/22 | `tools/lightning_gate/` three recorder files; `crates/slicer-wasm-host/tests/fixtures/lightning_gate/` three fixture files | `PrintObject.cpp::PrintObject::bridge_over_infill`; `Generator.cpp::Generator::generateInitialInternalOverhangs`, `Generator::generateTrees`; `FillLightning.cpp::Filler::_fill_surface_single` | M | Execute independent oracle, not host capture; define wrong-domain discriminator |
-| TASK-576 | 3 | docs21/22; repository Test Discipline | `crates/slicer-wasm-host/tests/integration/{main,lightning_gate_tdd,lightning_gate_support}.rs` | Recorded file/function provenance | S | Author/register dependency-blocked provenance/fail-closed tests; defer compile/test exits until Step8 wiring |
-| TASK-576 | 4–6 | Approved geometry/portability gate; docs08/attribution/22 | `modules/core-modules/lightning-infill/feasibility-kernel/` explicitly named model/domain/math/graph source and manifest/lock | `Generator.cpp::Generator::Generator`, `Generator::generateTrees`; delegated subordinate graph functions | M | Own canonical-correct kernel without host-algos; separate A reconstruction from B canonical-domain input |
-| TASK-576 | 7–8 | docs03/05; guest discovery/freshness and all-target gates | `crates/slicer-wasm-host/test-guests/lightning-portability-guest/` manifest/source/lock; host dev dependency/root lock | Existing recorded scalar/graph provenance only | S | Existing adapters; legitimate native SDK host-algos permitted, kernel/wasm32 closures exclude it; Step8 now compiles/runs Step3 tests |
-| TASK-576 | 9 | Approved two sub-gates; docs22 | `crates/slicer-wasm-host/tests/integration/{lightning_gate_tdd,lightning_gate_support}.rs` | Independent recorded domains/grounding/clipped geometry | M | Complete directed multigraph/grounding and missing/extra/multiplicity assertions; owned driver literals/waivers; no host fallback |
-| TASK-576 | 10 | Source-plan recording and row08 entry rules; ADR0066 | Evidence writer; future append-only plan outcome section; existing TASK-576 item with separate task-qualified A/B outcome lines | Actual source revision derived at recording, file+function citations | S | Actual status/evidence, placement greps and truthful checkbox; fail/inconclusive not `[x]`; no row08 generation |
+| TASK-576 | 1–2 | Approved plan: lightning gate; docs08/21/22 | `tools/lightning_gate/record.py` + README; three fixture files | Recorded `replay.json`/`domains.json`/`planning.json`; `PrintObject::bridge_over_infill` | M | Publish the five Classic cases with strict A/B/reference separation and hashes; never synthesise an expectation |
+| TASK-576 | 3–3a | docs02/08/attribution/22 | Kernel `model.rs`, `domain.rs`, `polygon.rs`, `distance_field.rs` | `PrintObject::bridge_over_infill`; `Generator::generateInitialInternalOverhangs` | M | Source-only reconstruction; a mismatch is a recorded fail, not repaired |
+| TASK-576 | 4–5 | docs05/21/22, AGENTS test discipline | Host dev deps; `main.rs`, `lightning_oracle_tdd.rs`, `lightning_oracle_support.rs` | Independent recorded A reference | M | Five exact tests: provenance, decision, discriminator, isolation, outcome |
+| TASK-576 | 6 | Plan row-07 recording, ADR0066, docs22 | Outcome writer; append-only plan section; `TASK-576` A line | Recorded revision/patch identity | S | Truthful A status; `[x]` only after both gates pass; migration stays blocked |
 
-Acceptance criteria belong exclusively to `packet.spec.md`; this crosswalk does not duplicate them. Five files are draft authoring artifacts only. No implementation, executed oracle, portability outcome or generic-framework acceptance is asserted by this task map.
-
-Final oracle/provenance trace: Steps1–2 capture caller identity at `Layer::make_fills` (`OrcaSlicerDocumented/src/libslic3r/Fill/Fill.cpp`) and propagate it to clipping in FillLightning.cpp. External passB is exactly Lightning/Layer.cpp + Fill/Fill.cpp + Fill/FillLightning.cpp; passA retains its three named files. Steps4–6 own the typed source/boundary/operation mapping in the existing model/domain/polygon/planner surfaces. Step7 owns tag3 provenance encoding in its existing guest source; Step9 owns decoding/full serde/correspondence assertions and literal fallout in its two named test files. AC-3/AC-4/AC-N2/AC-N3 own the positive and negative obligations; no new target, ninth test or framework03–06 dependency is introduced.
-
-Step4 also owns strict required-presence serde, the structured KernelError/EvidenceLocation records, fixed-direction FillPolicyInput and grouped FinalFillInput/ClippedFill types in model.rs/lib.rs. Step9 validates complete maps and every final dispatch plus missing applicable angle/fixed-angle/serde evidence; unrepresentable/unknown contributors remain named fail/inconclusive blockers. FillBase.hpp is delegated read-only bool type authority, not an additional pass edit or prerequisite.
-
-Authorized isolation follow-up: Steps1–2 separate a_source/B/reference fixture branches and hash identities. Step3 owns host-only projection/extractor/envelope declarations in its existing support file. Steps4–5 own GateASourceInput/Earlier*/Raw* records and pure build_planning_domain → GateAConstruction in existing model/lib/domain surfaces; B's KernelInput and separate resolved-policy oracle stay inaccessible to A. Step9 owns dynamic reference-poison/reference-absence/whitelist trials and actual B perturbation within the unchanged AC-N2 exact test and its two-file cap. No framework03–06 dependency, extra target/fixture or execution proof is introduced by authoring.
+Acceptance criteria belong exclusively to `packet.spec.md`. Gate B evidence, clipped final-fill
+comparison, and the `TASK-576 Gate B outcome:` line belong to packet 09. This packet does not
+assert an A result; it authorizes the experiment and the truthful record.

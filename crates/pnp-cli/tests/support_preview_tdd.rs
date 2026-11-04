@@ -7,8 +7,9 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use slicer_ir::{
-    ConfigValue, ExPolygon, GlobalLayer, Point2, Polygon, SemVer, SupportGeometryIR,
-    SupportGeometryKey, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
+    ConfigValue, ExPolygon, GlobalLayer, Point2, Polygon, SupportGeometryIR, SupportGeometryKey,
+    SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
+    CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION, CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
 };
 use tempfile::TempDir;
 
@@ -435,16 +436,14 @@ fn build_preview_doc_merges_plan_body_regions_per_layer() {
                 global_support_layer_index: layer_index,
                 object_id: format!("obj-{layer_index}"),
                 region_id: 0,
+                // chain-empty fixture source: unpainted region
+                variant_chain: Vec::new(),
             },
             vec![unit_square()],
         );
     }
     let geometry = SupportGeometryIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
+        schema_version: CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
         support_layer_height_mm: 0.2,
         support_top_z_distance_mm: 0.1,
         entries,
@@ -469,11 +468,7 @@ fn build_preview_doc_merges_plan_body_regions_per_layer() {
         holes: Vec::new(),
     };
     let plan = SupportPlanIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
+        schema_version: CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
         entries: vec![
             // The fixture pins every plan-entry field, so the emitted document
             // shape is fully determined by this literal.
@@ -495,6 +490,8 @@ fn build_preview_doc_merges_plan_body_regions_per_layer() {
                 capabilities: Vec::new(),
                 provenance: Vec::new(),
                 decline_reason: None,
+                // chain-empty fixture source: unpainted region
+                variant_chain: Vec::new(),
             },
             // Raft prefix entries carry no geometry and must be skipped.
             // exhaustive: fixture pins every field (skipped sentinel entry)
@@ -515,6 +512,8 @@ fn build_preview_doc_merges_plan_body_regions_per_layer() {
                 capabilities: Vec::new(),
                 provenance: Vec::new(),
                 decline_reason: None,
+                // chain-empty fixture source: unpainted region
+                variant_chain: Vec::new(),
             },
         ],
         raft_plan: None,
@@ -551,15 +550,13 @@ fn interface_role_regions_land_in_support_interface() {
             global_support_layer_index: 0,
             object_id: "obj-0".to_owned(),
             region_id: 0,
+            // chain-empty fixture source: unpainted region
+            variant_chain: Vec::new(),
         },
         vec![unit_square()],
     );
     let geometry = SupportGeometryIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
+        schema_version: CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
         support_layer_height_mm: 0.2,
         support_top_z_distance_mm: 0.1,
         entries,
@@ -584,11 +581,7 @@ fn interface_role_regions_land_in_support_interface() {
         holes: Vec::new(),
     };
     let plan = SupportPlanIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
+        schema_version: CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
         entries: vec![
             // The fixture pins every plan-entry field, so the emitted document
             // shape is fully determined by this literal.
@@ -624,6 +617,8 @@ fn interface_role_regions_land_in_support_interface() {
                 capabilities: Vec::new(),
                 provenance: Vec::new(),
                 decline_reason: None,
+                // chain-empty fixture source: unpainted region
+                variant_chain: Vec::new(),
             },
             // Raft prefix entries carry no geometry and must be skipped.
             // exhaustive: fixture pins every field (skipped sentinel entry)
@@ -644,6 +639,8 @@ fn interface_role_regions_land_in_support_interface() {
                 capabilities: Vec::new(),
                 provenance: Vec::new(),
                 decline_reason: None,
+                // chain-empty fixture source: unpainted region
+                variant_chain: Vec::new(),
             },
         ],
         raft_plan: None,
@@ -721,6 +718,8 @@ fn intermediate_sentinel_entries_skipped_and_counted() {
                 global_support_layer_index: layer_index,
                 object_id: format!("real-{layer_index}"),
                 region_id: 0,
+                // chain-empty fixture source: unpainted region
+                variant_chain: Vec::new(),
             },
             vec![unit_square()],
         );
@@ -731,16 +730,14 @@ fn intermediate_sentinel_entries_skipped_and_counted() {
                 global_support_layer_index: u32::MAX,
                 object_id: format!("sentinel-{sentinel_index}"),
                 region_id: 0,
+                // chain-empty fixture source: unpainted region
+                variant_chain: Vec::new(),
             },
             vec![unit_square()],
         );
     }
     let geometry = SupportGeometryIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
+        schema_version: CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
         support_layer_height_mm: 0.2,
         support_top_z_distance_mm: 0.1,
         entries,

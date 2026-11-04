@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: layer-module-preparation_02_preparation-capability-pilot
 task_ids:
   - TASK-573

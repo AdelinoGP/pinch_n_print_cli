@@ -90,7 +90,7 @@ fn integrated_parity_support_planner_native_matches_wasm() {
             config,
             native_entry: SupportPlanner::__slicer_native_entry(),
         },
-        |dispatcher, native_live, wasm_live| {
+        |dispatcher, native_live, wasm_live, _native_module, _wasm_module| {
             let native_output =
                 PrepassStageRunner::run_stage(dispatcher, &stage, native_live, input(&ctx))
                     .expect("native dispatch");

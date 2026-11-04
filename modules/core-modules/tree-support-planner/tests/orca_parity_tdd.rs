@@ -554,6 +554,7 @@ fn plan_overhang_fixture(object_id: &str) -> (SupportGeometryOutput, SupportGeom
                 object_id: object_id.to_string(),
                 region_id: "0".to_string(),
                 outlines: vec![occupancy.clone()],
+                ..Default::default()
             })
             .collect(),
     };
@@ -1354,6 +1355,7 @@ fn node_rejected_when_model_occupies_every_destination() {
                 object_id: "blocked".to_string(),
                 region_id: "0".to_string(),
                 outlines: vec![big_box.clone()],
+                ..Default::default()
             })
             .collect(),
     };
@@ -1574,7 +1576,10 @@ fn make_region_segmentation(object_id: &str, n: u32) -> RegionSegmentationView {
             .map(|i| RegionSegmentationViewEntry {
                 object_id: object_id.to_string(),
                 layer_index: i,
-                region_ids: vec!["0".to_string()],
+                region_origins: vec![slicer_sdk::prepass_types::RegionSourceOrigin {
+                    region_id: "0".to_string(),
+                    variant_chain: Vec::new(),
+                }],
             })
             .collect(),
         region_support_configs: Vec::new(),
@@ -1646,6 +1651,7 @@ fn make_support_entry(layer_index: i32, z: f32, _width: f32) -> SupportPlanEntry
         capabilities: vec![],
         provenance: vec![],
         decline_reason: None,
+        variant_chain: Vec::new(),
     }
 }
 
@@ -1674,6 +1680,7 @@ fn make_entry_with_negative_index(index: i32) -> SupportPlanEntry {
         capabilities: vec![],
         provenance: vec![],
         decline_reason: None,
+        variant_chain: Vec::new(),
     }
 }
 
@@ -1694,6 +1701,7 @@ fn tree_analysis(object_id: &str) -> slicer_sdk::prepass_types::SupportAnalysisV
                 |region_id| slicer_sdk::prepass_types::SupportFamilyAssignment {
                     object_id: object_id.to_string(),
                     region_id: region_id.to_string(),
+                    variant_chain: Vec::new(),
                     family_id: "tree".to_string(),
                 },
             )

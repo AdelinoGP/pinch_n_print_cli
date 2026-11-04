@@ -2,7 +2,7 @@
 
 //! AC-9 integration test — per-layer host dispatch filter (packet 92).
 //!
-//! Verifies `module_invocation_allowed_on_layer`:
+//! Verifies `paint_allows_layer`:
 //! - Module with `[[region_split]] semantic = "material"` is filtered out on
 //!   layers where no region's `variant_chain` mentions "material".
 //! - Paint-transparent module (no region_split declarations) is always invoked.
@@ -14,7 +14,7 @@
 use std::collections::HashSet;
 
 use slicer_ir::{PaintValue, SliceIR, SlicedRegion, CURRENT_SLICE_IR_SCHEMA_VERSION};
-use slicer_runtime::layer_executor::module_invocation_allowed_on_layer;
+use slicer_wasm_host::selection::paint_allows_layer;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -83,13 +83,13 @@ fn region_split_dispatch_filter_layer1_both_modules_allowed() {
 
     // M_A: "material" declared, layer has a matching region → allowed.
     assert!(
-        module_invocation_allowed_on_layer(&declared_material(), Some(&layer1)),
+        paint_allows_layer(&declared_material(), Some(&layer1)),
         "M_A must be allowed on Layer_1 (region_X has variant_chain = material)"
     );
 
     // M_B: empty declared → always allowed.
     assert!(
-        module_invocation_allowed_on_layer(&declared_empty(), Some(&layer1)),
+        paint_allows_layer(&declared_empty(), Some(&layer1)),
         "M_B must be allowed on Layer_1 (paint-transparent)"
     );
 }
@@ -109,13 +109,13 @@ fn region_split_dispatch_filter_layer2_ma_filtered_mb_allowed() {
 
     // M_A: "material" declared but no region has variant_chain containing "material" → filtered.
     assert!(
-        !module_invocation_allowed_on_layer(&declared_material(), Some(&layer2)),
+        !paint_allows_layer(&declared_material(), Some(&layer2)),
         "M_A must be FILTERED on Layer_2 (no region has variant_chain = material)"
     );
 
     // M_B: empty declared → always allowed.
     assert!(
-        module_invocation_allowed_on_layer(&declared_empty(), Some(&layer2)),
+        paint_allows_layer(&declared_empty(), Some(&layer2)),
         "M_B must be allowed on Layer_2 (paint-transparent)"
     );
 }
@@ -130,10 +130,10 @@ fn region_split_dispatch_filter() {
     let layer2 = slice_ir(1, vec![region_no_chain()]);
 
     // Simulate the dispatch decision for each (module × layer) combination.
-    let ma_layer1 = module_invocation_allowed_on_layer(&declared_material(), Some(&layer1));
-    let ma_layer2 = module_invocation_allowed_on_layer(&declared_material(), Some(&layer2));
-    let mb_layer1 = module_invocation_allowed_on_layer(&declared_empty(), Some(&layer1));
-    let mb_layer2 = module_invocation_allowed_on_layer(&declared_empty(), Some(&layer2));
+    let ma_layer1 = paint_allows_layer(&declared_material(), Some(&layer1));
+    let ma_layer2 = paint_allows_layer(&declared_material(), Some(&layer2));
+    let mb_layer1 = paint_allows_layer(&declared_empty(), Some(&layer1));
+    let mb_layer2 = paint_allows_layer(&declared_empty(), Some(&layer2));
 
     // Build the invocation set.
     let mut invoked = Vec::new();
@@ -180,7 +180,7 @@ fn region_split_dispatch_filter() {
 #[test]
 fn region_split_dispatch_filter_no_slice_conservatively_allows() {
     assert!(
-        module_invocation_allowed_on_layer(&declared_material(), None),
+        paint_allows_layer(&declared_material(), None),
         "No SliceIR available: must conservatively allow invocation"
     );
 }
