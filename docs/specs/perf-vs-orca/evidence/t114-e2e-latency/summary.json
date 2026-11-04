@@ -1,0 +1,116 @@
+{
+  "take": "t114",
+  "date": "2026-11-04",
+  "head": "7eeff93e",
+  "fixture": "resources/calicat.stl",
+  "fixture_bytes": 43884,
+  "module_count": 24,
+  "profile": "debug",
+  "load_disclosure": {
+    "slice_arm": "quiet: total CPU 0-8 % of 12 logical cores across the three runs",
+    "concurrency_arm": "contaminated: a game process held ~6.6 cores and Opera ~1.2, total CPU 59-76 %",
+    "concurrency_factor_is_upper_bound": true
+  },
+  "slice": {
+    "plain_wall_s": [11.941, 11.732, 11.731],
+    "plain_instrumented": {
+      "wall_s": 11.894,
+      "slice_complete_ms": 11844,
+      "phases_ms": {
+        "validation": 4,
+        "prepass": 425,
+        "per_layer": 1174,
+        "postpass": 230
+      }
+    },
+    "parallel_wall_s": [8.806, 9.335, 9.301],
+    "parallel_instrumented": {
+      "wall_s": 9.04,
+      "slice_complete_ms": 8984,
+      "phases_ms": {
+        "validation": 4,
+        "prepass": 418,
+        "per_layer": 1170,
+        "postpass": 224
+      }
+    },
+    "gcode_sha256": "d12cdfd10dab66a0010a0b5d5fca53d9387f4e96227ad5e74d0ec18197c0e260",
+    "gcode_sha256_parallel": "d12cdfd10dab66a0010a0b5d5fca53d9387f4e96227ad5e74d0ec18197c0e260",
+    "delta_median_s": 2.431,
+    "delta_median_pct": 20.7
+  },
+  "modules": [
+    { "name": "acceptance_gate_gaps_tdd", "tests": 10, "wall_s": 0.05 },
+    { "name": "cube_4color_modifier_part_e2e_tdd", "tests": 7, "wall_s": 0.10 },
+    { "name": "typed_modifier_kind_tdd", "tests": 3, "wall_s": 1.13 },
+    { "name": "threemf_fixture_e2e_tdd", "tests": 22, "wall_s": 0.21 },
+    { "name": "threemf_subtypes_synthetic_e2e_tdd", "tests": 9, "wall_s": 0.00 },
+    { "name": "scenario_traces_tdd", "tests": 13, "wall_s": 0.00 },
+    { "name": "mixed_density_internal_bridge_rejection_e2e_tdd", "tests": 1, "wall_s": 0.01 },
+    { "name": "slicer_report_html_tdd", "tests": 7, "wall_s": 0.30 },
+    { "name": "modifier_support_type_family_e2e_tdd", "tests": 2, "wall_s": 10.28 },
+    { "name": "calicat_internal_bridge_arbiter_e2e_tdd", "tests": 1, "wall_s": 11.83 },
+    { "name": "wedge_linked_infill_report_tdd", "tests": 1, "wall_s": 16.06 },
+    { "name": "run_slice_api_tdd", "tests": 2, "wall_s": 16.33 },
+    { "name": "infill_overlap_changes_gcode_tdd", "tests": 1, "wall_s": 23.84 },
+    { "name": "calicat_internal_bridge_gating_e2e_tdd", "tests": 1, "wall_s": 24.61 },
+    { "name": "cube_painted_e2e_tdd", "tests": 2, "wall_s": 26.05 },
+    { "name": "wave_overhang_bridge_fill_e2e_tdd", "tests": 1, "wall_s": 26.15 },
+    { "name": "cube_painted_overrides_e2e_tdd", "tests": 1, "wall_s": 29.19 },
+    { "name": "slicing_promotion_e2e_dispatch_regression_tdd", "tests": 3, "wall_s": 29.54 },
+    { "name": "mm_real_fixture_gcode_tdd", "tests": 3, "wall_s": 34.08 },
+    { "name": "resolved_config_view_no_drop_tdd", "tests": 4, "wall_s": 35.21 },
+    { "name": "modifier_infill_tdd", "tests": 2, "wall_s": 38.76 },
+    { "name": "painted_fixture_parity_tdd", "tests": 2, "wall_s": 64.88 },
+    { "name": "modifier_support_territory_e2e_tdd", "tests": 4, "wall_s": 81.94 },
+    { "name": "slicing_precision_integration_tdd", "tests": 4, "wall_s": 86.66 },
+    { "name": "preparation_visual_capture_tdd", "tests": 4, "wall_s": 96.22 },
+    { "name": "slice_end_to_end_tdd", "tests": 42, "wall_s": 200.86 }
+  ],
+  "whales": {
+    "lightning_migration_tdd": {
+      "tests_total": 10,
+      "tests_completed": 5,
+      "tests_in_flight": 1,
+      "measured_wall_s": 1411,
+      "basis": "killed with 5 ok and module_plan_matches_recorded_baseline in flight"
+    },
+    "preparation_runtime_lifecycle_tdd": {
+      "tests_total": 16,
+      "recorded_test_count": 14,
+      "recorded_window_s": 1800,
+      "basis": "ticket 114's 2026-11-03 observation: 14 of 16 completed within 30 minutes"
+    }
+  },
+  "serial_total": {
+    "remainder_tests": 152,
+    "floor_s": 4065.3,
+    "extrapolated_s": 5263.1
+  },
+  "concurrency": {
+    "alone_test_s": 23.25,
+    "alone_process_s": 24.95,
+    "nextest_j12_test_s": 200.622,
+    "concurrent_processes_observed": 12,
+    "inflation_factor_upper_bound": 8.63,
+    "single_test_cores_observed": 6.8
+  },
+  "stale_pnp_cli": {
+    "failed_tests": 9,
+    "failure_time_s": 0.1,
+    "fresh_build_wall_s": 84.7,
+    "gated_entry_point": "cargo xtask test -> ensure_pnp_cli_fresh (xtask/src/test.rs)"
+  },
+  "tools": {
+    "nextest_version": "0.9.151",
+    "nextest_install_s": 6.8,
+    "adopted": false
+  },
+  "cache_ceiling": {
+    "slice_calls_estimate": 145,
+    "pipeline_s_per_cached_slice": 1.816,
+    "first_load_s": 10.011,
+    "modelled_suite_s": 273.3,
+    "modelled_suite_min": 4.56
+  }
+}

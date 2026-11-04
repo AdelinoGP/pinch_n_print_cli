@@ -54,7 +54,55 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-04, eighteenth session — the t113 take):** the
+**Current selection scope (2026-11-04, nineteenth session — the t114 take):** the
+human said "continue the perf vs orca map" (no ticket named). The frontier at HEAD
+`7eeff93e` held four open children — [114](issues/114-e2e-bucket-latency.md),
+[115](issues/115-post-merge-reconciliation.md),
+[116](issues/116-prep-slice-canonical-bridge-classification.md),
+[117](issues/117-strong-planner-carry-ruling.md) — so the first frontier ticket in
+order, **114**, was claimed and **resolved the same session as a Phase-1 screen**.
+Headline: **the e2e bucket is 85 % fixed per-slice module load.** One debug slice
+of `resources/calicat.stl` through the 24 core modules is **11.732 s** median; the
+instrumented run puts **1.833 s** in the four pipeline phases and **10.011 s** in
+module load + startup + emit. The loader builds a fresh `WasmEngine` and compiles
+every on-disk component **serially inside the binding loop** in
+`load_live_modules_for_plan_manifest_first`
+(`crates/slicer-wasm-host/src/execution_plan_live.rs`) with **no cache**. Inventory
+(serial, 178 tests covered): the non-whale modules sum to **854 s (14.2 min)**,
+`lightning_migration_tdd` measured **1,411 s for 6 of its 10 tests** (~39 min
+extrapolated) and `preparation_runtime_lifecycle_tdd` is the ticket's recorded
+**14-of-16-in-30-min** module (~34 min extrapolated) — the two whales are **83.8 %**
+of the **5,263 s (≈88 min)** extrapolated suite, whose measured/cited floor is
+**4,065 s (≈68 min)**. The counter-example is `slice_end_to_end_tdd`: 42 tests in
+**201 s** because **~10 `pnp_cli` runs** back all of them (23 `cached_run` call
+sites over 3 keys + 7 uncached determinism runs). A reverted 24-thread
+compile probe (same G-code, `d12cdfd1…`) removed only **2.431 s (−20.7 %)** — the
+compile already saturates the cores per component, so **parallelising the loop is
+not the lever**. **Pruning: none justified** — the slice-running modules assert
+distinct contracts and the cheap 42-test module is already the shared-work
+pattern; the human's deletion authorization has no non-empty coverage map to act
+on. **Lane split: not viable** — a fast lane would have to exclude every
+slice-running module, leaving ≈ 22 s of pure-unit/model-IO tests. **Concurrency:**
+`libtest`'s 12 threads oversubscribe a box each test already saturates (one
+`lightning` test process used **6.8 cores**); `mm_painted_fixture_t0_t1` measured
+**23.25 s alone vs 200.622 s** under 12 concurrent processes, an **upper bound**
+because a game held ~6.6 cores during that arm. `cargo nextest` 0.9.151 is **not
+adopted** (process-per-test discards the in-process `slicer_cache`/`wasm_cache`
+sharing). **Ledger correction:** the 40-minute baseline was **under-counted** —
+nine `pnp_cli`-backed e2e tests fail in 0.1 s on the stale-binary gate under plain
+`cargo test` (which does not build `pnp_cli`), so their 12–29 s each were absent
+from the 93-passed observation; `cargo xtask test` owns that preflight
+(`ensure_pnp_cli_fresh`). The carry decision is graduated as
+[118](issues/118-compiled-component-cache.md) (open, unclaimed, unblocked; task):
+a compiled-component cache keyed by engine profile + canonical path + mtime, gate
+**under 10 minutes with all 178 tests unchanged and byte-identical output**, t114's
+model ceiling **≈ 4.5 min** (`10 s + ~145 slices × 1.8 s`). Evidence:
+[`evidence/t114-e2e-latency/`](evidence/t114-e2e-latency/FINDINGS.md)
+(`verify.py` exits 0 checkout-only, 29/29 checks; `--self-test` rejects 11/11
+negative controls). Frontier now: **115, 116, 118** open and unclaimed, **117** is
+the human's grilling. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-11-04, eighteenth session — the t113 take):** the
 human said "continue the perf vs orca map" (no ticket named). The frontier at HEAD
 `19a5edfe` held four open children — [113](issues/113-strong-planner-phase1.md)
 (blocked by the already-resolved 112), [114](issues/114-e2e-bucket-latency.md),
@@ -2224,6 +2272,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [E2E bucket latency: the full runtime e2e suite is the dev-loop bottleneck](issues/114-e2e-bucket-latency.md): **resolved (2026-11-04; Phase-1 screen — the bucket is 85 % per-slice module load, no deletion or lane split recovers it, and the carrying shape is graduated as [ticket 118](issues/118-compiled-component-cache.md))** — one debug slice of `resources/calicat.stl` through the 24 core modules is **11.732 s** median, split **1.833 s** pipeline (validation 4 / prepass 425 / per-layer 1,174 / postpass 230 ms) and **10.011 s** module load + startup + emit; `load_live_modules_for_plan_manifest_first` builds a fresh `WasmEngine` and compiles every on-disk component **serially in the binding loop** with no cache. Serial inventory of 178 tests: the non-whale modules sum to **854 s**, `lightning_migration_tdd` measured **1,411 s for 6 of 10 tests** (~39 min extrapolated) and `preparation_runtime_lifecycle_tdd` is the ticket's recorded **14-of-16-in-30-min** module (~34 min) — the two whales are **83.8 %** of the **5,263 s (≈88 min)** extrapolated suite, whose measured/cited floor is **4,065 s (≈68 min)**. `slice_end_to_end_tdd` is the counter-example: 42 tests in **201 s** because ~10 `pnp_cli` runs back them (23 cached call sites over 3 keys + 7 uncached determinism runs). A reverted 24-thread compile probe (byte-identical G-code `d12cdfd1…`) removed only **2.431 s (−20.7 %)**, so parallelising the loop is **not** the lever; a compiled-component cache is (modelled ceiling **≈ 4.5 min**, `10 s + ~145 slices × 1.8 s`). **Pruning: no deletion justified** (distinct contracts, empty coverage map); **lane split: not viable** (a fast lane would be ≈ 22 s of unit/model-IO tests). **Ledger correction:** the 40-minute baseline was **under-counted** — nine `pnp_cli`-backed tests fail in 0.1 s on the stale-binary gate under plain `cargo test`, which does not build `pnp_cli`; `cargo xtask test` owns that preflight. Evidence: [`evidence/t114-e2e-latency/`](evidence/t114-e2e-latency/FINDINGS.md) (`verify.py` exits 0 checkout-only, 30/30 checks, 12/12 negative controls rejected).
 
 - [Strong planner Phase 1: sub-term decomposition and the occupancy-offset shape](issues/113-strong-planner-phase1.md): **resolved (2026-11-04; Phase-1 screen — stop under the all-8-cell contract, no candidate, no production edit)** — the planner's largest term is **model-occupancy inflation** (`inflate_model_occupancy`'s singular `host::offset_polygons`), **56.2 % / 46.0 % / 51.4 % / 41.4 %** of the planner on base classic-on / benchy classic-on / base arachne-on / benchy arachne-on, split almost evenly between the per-layer emit check and the per-origin role carve; the clip core is **31.0 % / 28.6 % / 35.9 % / 32.4 %**, the drop loop **6.2 % / 10.8 % / 6.0 % / 11.1 %**, contacts **2.4 % / 6.0 % / 2.2 % / 5.4 %**. Batching the offsets through `offset_polygons_batch` is exact by construction (same `slicer_core::polygon_ops::offset` per request, input-order results; t65/t78 precedent), needs **no canonical-parity exception**, and clears the **0.80 %** floor on all four supports-on cells at **12.58x / 7.44x / 7.97x / 4.76x** the floor under t78's measured **2.6x** clamp (18.73x / 11.08x / 11.87x / 7.09x ideal), with zero expected output delta (probe byte-identical to the HEAD baseline on base classic-on `4b6d2843…`, benchy classic-on `3b8fa86a…`, benchy arachne-on `d4644c14…`). **But the all-8-cell gate is structural:** the whole `PrePass::SupportGeometry` stage on the supports-off cells is **300 ms = 0.22 %** of base classic-off and **46 ms = 0.51 %** of benchy classic-off, below the floor even if deleted; the planner module alone is **141 / 23 ms = 0.13x / 0.32x**. No planner-only or support-stage shape can clear 0.80 % there, so the stop rule fired and the carry decision is graduated as [ticket 117](issues/117-strong-planner-carry-ruling.md). **Ledger correction:** t88/t107's "no host batch shape in the non-clip residual" is falsified — the ladders, offsets, MST and node moves are **6.2 % / 10.8 %** of the planner, while the occupancy offset batch is **56.2 % / 46.0 %**; the t104 `87,824 ms` is an instrumented bracket whose composition (≈49.3 s occupancy / ≈27.2 s clip / ≈5.5 s drop) is the transferable result. Evidence: [`evidence/t113-strong-planner-phase1/`](evidence/t113-strong-planner-phase1/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 6/6 negative controls rejected).
 

@@ -2,8 +2,15 @@
 
 Type: task
 Label: wayfinder:task
-Status: open
-Assignee: (unclaimed)
+Status: resolved (2026-11-04; Phase-1 screen — the bucket is 85 % per-slice
+module load, two modules own ~84 % of its wall, and **no deletion or lane split
+recovers the dev loop**; the carrying shape is a compiled-component cache in the
+live load path, graduated as [ticket 118](118-compiled-component-cache.md). See
+## Answer)
+Assignee: 2026-11-04 OpenCode wayfinder session — the human said "continue the
+perf vs orca map" (no ticket named); the frontier re-derivation at HEAD
+`7eeff93e` found 114/115/116/117 open and unclaimed, so the first frontier
+ticket in order, 114, was claimed.
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: the 2026-11-03 merge validation (human-directed dev-loop
@@ -101,3 +108,104 @@ the behavior that remains covered.
   [t109 harness defects](../evidence/t109-harness-defects/FINDINGS.md).
 - `crates/slicer-runtime/tests/e2e/main.rs` and the e2e module list.
 - `docs/22_test_quality.md` for what may be skipped/ignored and how to record it.
+
+## Answer
+
+**Verdict: Phase-1 screen — the bucket's wall is fixed per-slice module load,
+not test count, and no test-side change reaches a usable default window.** The
+carrying shape is a **compiled-component cache** in the live load path,
+graduated as [ticket 118](118-compiled-component-cache.md). No test was deleted,
+moved to an ignored lane, or had an assertion weakened in this take.
+
+### What the wall is made of
+
+One debug-mode slice of `resources/calicat.stl` through the 24 production core
+modules costs a median **11.732 s** wall. The instrumented run splits it:
+
+| component | measured |
+| --- | ---: |
+| validation phase | 4 ms |
+| prepass phase | 425 ms |
+| per-layer phase | 1,174 ms |
+| postpass phase | 230 ms |
+| **pipeline total** | **1,833 ms (15 %)** |
+| **module load + startup + emit** | **10,011 ms (85 %)** |
+
+The loader creates a fresh `WasmEngine` and compiles every on-disk `.wasm`
+component **serially inside the binding loop** in
+`load_live_modules_for_plan_manifest_first`
+(`crates/slicer-wasm-host/src/execution_plan_live.rs`), with no cache anywhere
+on the path. Every `run_slice` / `pnp_cli` call pays it again: a two-slice
+module costs 24–29 s, and `slice_end_to_end_tdd`'s 42 tests cost 201 s because
+they are backed by **~10 `pnp_cli` invocations** (23 `cached_run` call sites over
+3 keys + 7 uncached determinism runs) instead of 42 — the same work collapsed.
+
+A reverted 24-thread compile probe (byte-identical G-code) removed only
+**2.431 s (−20.7 %)**, so **parallelising the loop is not the lever**; reusing
+an already-compiled set is.
+
+### Which tests dominate
+
+Serial module inventory, 178 tests covered:
+
+- **`lightning_migration_tdd` — 1,411 s for 5 completed tests + 1 in flight**
+  (sweep stopped; ~39 min for its 10 tests). Its corpus tests each iterate
+  **5 cases × 2 arms** through `run_slice_preparation_visual_capture` with all
+  layers and two taps — 10 full captures per test, re-run by several tests.
+- **`preparation_runtime_lifecycle_tdd` — the ticket's own 14-of-16-in-30-min
+  observation** (~34 min extrapolated); 39 `run_slice` calls over 16 tests with
+  no in-process sharing.
+- Everything else sums to **854 s (14.2 min)**; the largest remainder is
+  `slice_end_to_end_tdd` at 201 s (already cached), then
+  `preparation_visual_capture_tdd` 96 s, `slicing_precision_integration_tdd`
+  87 s, `modifier_support_territory_e2e_tdd` 82 s,
+  `painted_fixture_parity_tdd` 65 s.
+
+The measured/cited floor is **4,065 s ≈ 68 min**; the linear extrapolations put
+the full serial suite at **≈ 5,263 s ≈ 88 min**. The two whales are **83.8 %**
+of it. That is the >40-minute observation.
+
+### Pruning audit — nothing is safely deletable
+
+The human authorized deletion conditional on a non-empty coverage map. The
+audit found **no test redundant with a narrower unit/contract/integration test
+or with another e2e test**: the slice-running modules assert distinct contracts
+(routing, determinism, label/direction, E-mode, capture lifecycle), and the
+cheap 42-test `slice_end_to_end` module is already the shared-work pattern. The
+two archive-dependent pilot tests were removed on 2026-11-03 for a
+fixture-cannot-exist reason, which does not generalise. Deleting distinct
+coverage to buy wall time is the trade the stop rule forbids.
+
+### Lane split — not a viable substitute
+
+A fast lane can only be built by excluding **every** slice-running module: the
+whales plus the 832 s remainder, leaving ≈ 22 s of pure-unit/model-IO tests.
+That hides coverage instead of making it cheaper, so it is recorded as the
+fallback, not adopted.
+
+### Concurrency and nextest
+
+`libtest` defaults to 12 threads and each test already saturates the box (one
+`lightning` test process used **6.8 cores** over 5 s), so the default
+oversubscribes. `mm_real_fixture_gcode_tdd::mm_painted_fixture_t0_t1` measured
+**23.25 s alone vs 200.622 s** under 12 concurrent processes — an **upper
+bound**, not a clean factor, because a game held ~6.6 cores during that arm.
+`cargo nextest` (0.9.151) is **not adopted**: it runs one process per test, so
+it discards the in-process `slicer_cache`/`wasm_cache` sharing `cargo test`
+gives the bucket for free.
+
+### Ledger correction — the 40-minute baseline was under-counted
+
+Nine `pnp_cli`-backed e2e tests fail in **0.1 s** on the stale-binary gate when
+`target/debug/pnp_cli.exe` predates `crates/*/src/**`; plain `cargo test` does
+not build it, while `cargo xtask test` does (`ensure_pnp_cli_fresh`,
+`xtask/src/test.rs`). The 2026-11-03 "93 passed in 40 minutes, no failures"
+observation therefore **excluded those nine tests' real cost** (each 12–29 s),
+so the true baseline is larger than 40 minutes.
+
+### Evidence
+
+[`evidence/t114-e2e-latency/`](../evidence/t114-e2e-latency/FINDINGS.md) —
+`verify.py` exits 0 checkout-only (29/29 checks) and `--self-test` rejects
+11/11 negative controls, including the probe-left-in-tree and
+cache-appears-in-loader mutations.
