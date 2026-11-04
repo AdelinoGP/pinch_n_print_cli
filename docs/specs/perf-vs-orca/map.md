@@ -54,7 +54,54 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-03, seventeenth session — the t112 take):** the
+**Current selection scope (2026-11-04, eighteenth session — the t113 take):** the
+human said "continue the perf vs orca map" (no ticket named). The frontier at HEAD
+`19a5edfe` held four open children — [113](issues/113-strong-planner-phase1.md)
+(blocked by the already-resolved 112), [114](issues/114-e2e-bucket-latency.md),
+[115](issues/115-post-merge-reconciliation.md),
+[116](issues/116-prep-slice-canonical-bridge-classification.md) — so the first
+frontier ticket in order, **113**, was claimed and **resolved in the same
+session as a Phase-1 stop**. Headline: the planner's largest term is **model-occupancy
+inflation**, not the clip core. At HEAD the `com.core.tree-support-planner`
+module is **58,498 ms** of a **200,099 ms** base classic-on cell (**3,279 ms** of
+**15,333 ms** benchy-on; **84,337 ms** of **416,375 ms** base arachne-on;
+**4,133 ms** of **27,122 ms** benchy arachne-on). Its split is **56.2 % / 46.0 %
+/ 51.4 % / 41.4 %** `inflate_model_occupancy`, **31.0 % / 28.6 % / 35.9 % /
+32.4 %** clip core, **6.2 % / 10.8 % / 6.0 % / 11.1 %** drop loop, **2.4 % /
+6.0 % / 2.2 % / 5.4 %** contacts (order: base classic, benchy classic, base
+arachne, benchy arachne). The occupancy inflation is **one singular
+`host::offset_polygons` per call**, split evenly between the per-layer and
+per-origin sites; batching it through `offset_polygons_batch` is exact by
+construction (same `slicer_core::polygon_ops::offset`, input-order results;
+t65/t78 precedent), needs **no canonical-parity exception**, and clears the
+**0.80 %** floor on all four supports-on cells at **12.58x / 7.44x / 7.97x /
+4.76x** the floor under t78's measured **2.6x** clamp (18.73x / 11.08x / 11.87x
+/ 7.09x ideal), with **zero** expected output delta (the probe is
+byte-identical to the HEAD baseline on base classic-on `4b6d2843…`, benchy
+classic-on `3b8fa86a…`, benchy arachne-on `d4644c14…`). **But the all-8-cell
+gate is structural:** the whole `PrePass::SupportGeometry` stage on the
+supports-off cells is **300 ms = 0.22 %** of base classic-off and **46 ms =
+0.51 %** of benchy classic-off, below the floor even if deleted, and the planner
+module alone is **141 / 23 ms = 0.13x / 0.32x**. No planner-only or
+support-stage shape can clear 0.80 % on those cells. The stop rule fired: no
+candidate ticket, no production edit. The carry decision — fold the batch into
+[116](issues/116-prep-slice-canonical-bridge-classification.md)'s Slice
+campaign, amend the planner gate to the four supports-on cells with a
+no-regression bound, or park it — is graduated as
+[117](issues/117-strong-planner-carry-ruling.md) (open, unclaimed, unblocked;
+HITL grilling). **Ledger correction:** t88/t107's "no host batch shape in the
+non-clip residual" is falsified — the avoidance ladder, offsets, MST and node
+moves are **6.2 % / 10.8 %** of the planner, while the occupancy offset batch is
+**56.2 % / 46.0 %**. The `87,824 ms` t104 figure is an instrumented bracket; its
+composition (≈49.3 s occupancy, ≈27.2 s clip, ≈5.5 s drop) is the transferable
+result, not its absolute. Evidence:
+[`evidence/t113-strong-planner-phase1/`](evidence/t113-strong-planner-phase1/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 6/6 negative controls rejected).
+Frontier now: **114, 115, 116, 117** open and unclaimed; 116 is takeable and 117
+is the human's grilling. Standing paired acceptance and KEEP/DROP rules
+unchanged.
+
+**Previous selection scope (2026-11-03, seventeenth session — the t112 take):** the
 human said "continue the perf vs orca map" (no ticket named). The frontier at HEAD
 `2dade816` held four open children — [112](issues/112-prep-slice-parity-phase1.md),
 [113](issues/113-strong-planner-phase1.md) (blocked by 112),
@@ -2178,6 +2225,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Strong planner Phase 1: sub-term decomposition and the occupancy-offset shape](issues/113-strong-planner-phase1.md): **resolved (2026-11-04; Phase-1 screen — stop under the all-8-cell contract, no candidate, no production edit)** — the planner's largest term is **model-occupancy inflation** (`inflate_model_occupancy`'s singular `host::offset_polygons`), **56.2 % / 46.0 % / 51.4 % / 41.4 %** of the planner on base classic-on / benchy classic-on / base arachne-on / benchy arachne-on, split almost evenly between the per-layer emit check and the per-origin role carve; the clip core is **31.0 % / 28.6 % / 35.9 % / 32.4 %**, the drop loop **6.2 % / 10.8 % / 6.0 % / 11.1 %**, contacts **2.4 % / 6.0 % / 2.2 % / 5.4 %**. Batching the offsets through `offset_polygons_batch` is exact by construction (same `slicer_core::polygon_ops::offset` per request, input-order results; t65/t78 precedent), needs **no canonical-parity exception**, and clears the **0.80 %** floor on all four supports-on cells at **12.58x / 7.44x / 7.97x / 4.76x** the floor under t78's measured **2.6x** clamp (18.73x / 11.08x / 11.87x / 7.09x ideal), with zero expected output delta (probe byte-identical to the HEAD baseline on base classic-on `4b6d2843…`, benchy classic-on `3b8fa86a…`, benchy arachne-on `d4644c14…`). **But the all-8-cell gate is structural:** the whole `PrePass::SupportGeometry` stage on the supports-off cells is **300 ms = 0.22 %** of base classic-off and **46 ms = 0.51 %** of benchy classic-off, below the floor even if deleted; the planner module alone is **141 / 23 ms = 0.13x / 0.32x**. No planner-only or support-stage shape can clear 0.80 % there, so the stop rule fired and the carry decision is graduated as [ticket 117](issues/117-strong-planner-carry-ruling.md). **Ledger correction:** t88/t107's "no host batch shape in the non-clip residual" is falsified — the ladders, offsets, MST and node moves are **6.2 % / 10.8 %** of the planner, while the occupancy offset batch is **56.2 % / 46.0 %**; the t104 `87,824 ms` is an instrumented bracket whose composition (≈49.3 s occupancy / ≈27.2 s clip / ≈5.5 s drop) is the transferable result. Evidence: [`evidence/t113-strong-planner-phase1/`](evidence/t113-strong-planner-phase1/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 6/6 negative controls rejected).
+
 - [`PrePass::Slice` parity Phase 1: canonical closing vs the artefact-bound gate](issues/112-prep-slice-parity-phase1.md): **resolved (2026-11-03; Phase-1 recommendation — build P1, no production edit)** — canonical has **no enclosure closing**: `PrintObject::detect_surfaces_type` marks every unsupported bottom `stBottomBridge` after `opening_ex(diff_ex(slices, safety_offset(lower_slices), Yes), external_perimeter_width / 10)`, and `merge_bridges`' `closing_ex` is a **≈0.15–0.17 mm** hole filler on the bridge ∪ wave-anchor surface. PnP's 12 mm `closing_ex(support)` + **≥ 10 %** refill gate is a PnP-local discriminator with **no canonical counterpart and no `DEV` row**, so the parity move is to **replace** it, not to compute it cheaper. Shape **P1** = canonical opening over PnP's flat family, every surviving component kept, plus canonical's `ApplySafetyOffset` (1-unit lower inflate) and the width resolved as `resolve_contact_params` does. **Ceiling:** closings are **86.8 %** (benchy) / **70.8 %** (base) of `PrePass::Slice`'s thread-time; net ceiling **1,893 / 37,682 ms** = **15.3–24.7 % / 23.4–50.0 %** of the cell = **19.1x–62.5x** the 0.80 % floor in **all 8** cells, replacement opening **146x / 853x** cheaper. **Delta:** **182 / 239** benchy and **437 / 469** base committed layers change; net **+8.86 mm² (+2.0 %)** / **+115.90 mm² (+35.9 %)** (gate rejected **68.4 / 187.2 mm²**; 0.04 mm opening removed **59.58 / 71.27 mm²** of sub-0.08 mm features); layer 0 pays a **595.8 ms** benchy closing whose result the next stage clears. **P2** (full classification + `assemble_bridge_areas` retirement) **deferred** — canonical's wave expansion (`propagate_waves_ex`) has no PnP counterpart, so its delta is unbounded; **P3** (radius swap) **rejected** on correctness. Consumer map at HEAD adds `arachne-perimeters`, `infill-linker`, `rectilinear-infill`, packet 234a's angle inputs and paint splits to t59's list. Candidate graduated as [ticket 116](issues/116-prep-slice-canonical-bridge-classification.md). Evidence: [`evidence/t112-prep-slice-parity/`](evidence/t112-prep-slice-parity/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 9/9 negative controls rejected).
 
 - [Prepass rewrite: scope, output contract and acceptance](issues/111-prepass-rewrite-scope-ruling.md): **resolved (2026-11-03; human ruling — authorized, scoped and staged)** — a **canonical-parity exception scoped to the prepass** (the second recorded exception after ticket 81's `resolution` port; the rest of the parity program stays out of scope, and the next parity question returns to the human). Both carrying shapes are covered, but **`PrePass::Slice` is the first campaign** (**41,472 ms = 51.2 %** of base classic-off, **44,558 ms = 19.5 %** of base classic-on, present in all 8 cells) and the **Strong planner** is second (**87,824 ms = 38.4 %** of base classic-on, **2,943 ms = 23.6 %** of benchy-on; graduated as [ticket 113](issues/113-strong-planner-phase1.md), blocked by 112; it may still turn out representation-safe and need no exception). Acceptance: a fresh **16-cell** reference set, candidate and baseline arms byte-identical **within themselves**, the baseline reproducing the post-t81 set, the candidate-vs-old-reference G-code delta audited (feature / TYPE / support-interface counts, byte volume, confinement to prepass-derived geometry) **before** timing, and the standing paired wall/CPU gate at the **0.80 %** floor in **all 8 cells** — no four-cell subset. First step is a **Phase-1 parity and consumer analysis**, graduated as [ticket 112](issues/112-prep-slice-parity-phase1.md); no production edit before it clears the floor with a bounded delta, and a shape that only clears base classic-off is not enough. **Staging:** the rewrite is **stage 1** of a multi-stage engine program; the 8/8 destination stays, and the per-layer/emit program is the next stage's fog (deleting both largest prepass stages still leaves base at **2.86x–4.00x** inside t104's instrumented arithmetic against Orca's quiet walls). **Ledger caveat:** t110's base-on **9.49x / 16.3x / 19.6x / 13.7x** multiples divide instrumented PnP spans by quiet Orca walls (t104: that pass ran **+43.6 %** over its t103 median; the uninstrumented paired record is **6.02x**, t106), so they are treated as upper bounds until corrected.
@@ -2605,24 +2654,6 @@ Standing decisions for this effort (2026-09-22):
   post-pin scoreboard now live in the fairness contract above, re-derived by
   [ticket 106](issues/106-post-pin-supports-on-scoreboard.md) to **6.02x / 6.11x
   / 4.77x / 4.53x**.
-
-- **Tree-support planner non-clip residual (surfaced 2026-10-25 by
-  [ticket 88](issues/88-supports-on-increment-attribution.md)).** The planner
-  is still 55.5 s classic / 55.3 s arachne (52.0 / 50.4 % of the increment)
-  after t78's clip batching. **Re-derived 2026-11-02 by
-  [ticket 107](issues/107-support-geometry-producer-decomposition.md):** the
-  term is the `com.core.tree-support-planner` module inside the
-  `PrePass::SupportGeometry` stage bracket — **87,824 ms instrumented = 95.6 %**
-  of that bracket and **38.4 % of the base classic-on cell** (**2,943 ms =
-  90.3 %** and **23.6 %** on benchy-on), implied **64.5 s / 3.25 s**
-  uninstrumented — while the host producer that shares the stage id is **9 ms /
-  0 ms**. The 55.5 s is that planner at the 2026-10-25 vintage; the fog entry
-  stands, and no producer-side shape exists (t107 priced the whole producer at
-  **0.0068x the floor**). The batched clip core is in place; the remaining
-  non-clip work is the serial avoidance ladder, offsets, MST and node moves —
-  support geometry, not a host batch shape. No representation-safe reduction
-  was found in this take; re-enter only with a canonical-parity shape and its
-  own measured reason.
 
 - **Fan-command reference boundary (graduated from ticket 47, 2026-10-03;
   boundary settled by ticket 46, 2026-10-05).**
