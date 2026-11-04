@@ -81,6 +81,7 @@ fn resolved(width: f64) -> ResolvedConfig {
     for (key, value) in [
         ("nozzle_diameter", 0.4),
         ("layer_height", 0.2),
+        ("resolution", 0.01),
         ("outer_wall_speed", 30.0),
         ("inner_wall_speed", 45.0),
         ("perimeter_arc_tolerance", 0.0125),
