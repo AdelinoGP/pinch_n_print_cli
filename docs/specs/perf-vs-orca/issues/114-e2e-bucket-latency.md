@@ -38,9 +38,16 @@ axis. t108 measured the compile side (first codegen of the `contract` bucket
   session because the e2e bucket alone is the long pole. This is **execution**
   time, not compile time.
 - The slow tests are real coverage (preparation lifecycle, full-slice e2e), so
-  the answer is not "delete them". The two archive-dependent pilot tests were
-  removed separately because their fixture cannot exist on a fresh checkout; that
-  is not the general case.
+  deletion must be evidence-led rather than a blanket cut. The two
+  archive-dependent pilot tests were removed separately because their fixture
+  cannot exist on a fresh checkout; that is the precedent, not the general case.
+
+**Human ruling (2026-11-03):** cutting/deleting e2e tests is **fully in scope**
+for this ticket. The earlier "no deletion without a ruling" constraint is
+lifted; pruning is an expected lever, not a last resort. Deletions still carry
+the coverage rationale below. The `preparation_runtime_lifecycle_tdd` module is
+the first inventory target: **16 tests, 14 completed in 30 minutes**, each over
+the 60-second notice.
 
 ## Scope and method
 
@@ -62,20 +69,29 @@ axis. t108 measured the compile side (first codegen of the `contract` bucket
    weakened assertions.
 4. **Separate the axes.** Keep this ticket on execution time; do not re-open
    t108's compile levers or the CI job graph here.
+5. **Prune.** Identify tests that are redundant with a narrower
+   unit/contract/integration test, environment-dependent (the removed pilot
+   archive tests are the precedent), duplicated across fixtures, or asserting
+   scaffolding rather than product behavior. For each deletion record: the test,
+   its measured cost, the behavior it covered, and the surviving test(s) that
+   cover the same behavior. Delete only where that coverage map is non-empty;
+   never delete the only coverage of a distinct path.
 
 ## Stop rule
 
-Phase-1 inventory and lever pricing only. **No test is deleted or `#[ignore]`d
-without the human's explicit ruling.** A lever that only moves gate overhead
-(not the top tests) is recorded, not adopted. No production edit. If a test is
-genuinely redundant or environment-dependent, list it for a human deletion
-ruling rather than deleting it here.
+Phase-1 inventory, lever pricing and pruning. **The human authorized e2e test
+deletion on 2026-11-03**, so pruning is an expected outcome, not a last resort.
+Every deletion must carry the coverage rationale and be recorded in the ticket.
+Do not weaken assertions on surviving tests to obtain a pass, and do not delete
+the only coverage of a distinct path. A lever that only moves gate overhead (not
+the top tests) is recorded, not adopted. No production edit.
 
 ## Deliverable
 
 A ranked inventory, a lever table with measured deltas (or honest bounds), a
-proposed lane/tier design, and a recommendation. If the recommendation is a
-`#[ignore]`/slow-lane split, each moved test is named with its measured cost.
+**pruning list with the coverage map**, a proposed lane/tier design, and a
+recommendation. Each deleted or moved test is named with its measured cost and
+the behavior that remains covered.
 
 ## Evidence starts
 

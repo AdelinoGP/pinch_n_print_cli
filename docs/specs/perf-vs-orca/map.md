@@ -90,7 +90,10 @@ nine pilot tests pass — and that two tickets be opened from the merge
 validation. [114](issues/114-e2e-bucket-latency.md) owns the **e2e-bucket
 execution latency**: the full `slicer-runtime` e2e suite exceeds **40 minutes**
 and is the dev-loop long pole, so this continues t108/t109's work on the
-**execution** side rather than the compile side. [115](issues/115-post-merge-reconciliation.md)
+**execution** side rather than the compile side. The human also ruled that
+**cutting/deleting e2e tests is fully in scope** on 114; the ticket now carries
+a pruning pass with a per-deletion coverage map rather than a no-deletion
+constraint. [115](issues/115-post-merge-reconciliation.md)
 owns **post-merge reconciliation**: re-baseline the perf keeps, audit master's
 semantic drift, the classic paint-attribution output change, and the
 config/disclosure deltas before the map quotes another ratio. Both are open and
