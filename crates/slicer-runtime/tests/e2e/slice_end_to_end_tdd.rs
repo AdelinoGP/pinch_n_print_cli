@@ -13,8 +13,8 @@
 //!    `load_live_modules_for_plan` â†’ `build_live_execution_plan` â†’
 //!    `run_pipeline_with_events` â†’ `DefaultGCodeEmitter` +
 //!    `DefaultGCodeSerializer` â†’ `.gcode` file) runs end-to-end and is
-//!    reproducible. They tolerate empty output (zero layers emitted),
-//!    so they only fail on structural regressions in the pipeline
+//!    reproducible. The content gate below now requires non-empty output,
+//!    so an empty file fails as a structural regression in the pipeline
 //!    wiring itself.
 //!
 //! 2. **MVP content gate** â€” `benchy_mvp_gcode_has_real_extrusion_content`
@@ -104,13 +104,15 @@ fn slice_e2e_real_pipeline_produces_gcode() {
         "--output file must be written to disk (stderr was: {stderr})"
     );
     let gcode = outcome.gcode.as_str();
-    if !gcode.is_empty() {
-        let first = gcode.lines().next().unwrap_or("");
-        assert!(
-            first.starts_with(';') || first.starts_with('G') || first.starts_with('M'),
-            "first G-code line should be a header comment or G/M command, got: {first:?}"
-        );
-    }
+    assert!(
+        !gcode.is_empty(),
+        "the real pipeline must emit G-code; an empty file is a structural regression"
+    );
+    let first = gcode.lines().next().unwrap_or("");
+    assert!(
+        first.starts_with(';') || first.starts_with('G') || first.starts_with('M'),
+        "first G-code line should be a header comment or G/M command, got: {first:?}"
+    );
 }
 
 /// Regression guard: the real production entry path must actually

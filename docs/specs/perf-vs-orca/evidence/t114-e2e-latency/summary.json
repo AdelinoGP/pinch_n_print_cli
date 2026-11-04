@@ -12,7 +12,11 @@
     "concurrency_factor_is_upper_bound": true
   },
   "slice": {
-    "plain_wall_s": [11.941, 11.732, 11.731],
+    "plain_wall_s": [
+      11.941,
+      11.732,
+      11.731
+    ],
     "plain_instrumented": {
       "wall_s": 11.894,
       "slice_complete_ms": 11844,
@@ -23,7 +27,11 @@
         "postpass": 230
       }
     },
-    "parallel_wall_s": [8.806, 9.335, 9.301],
+    "parallel_wall_s": [
+      8.806,
+      9.335,
+      9.301
+    ],
     "parallel_instrumented": {
       "wall_s": 9.04,
       "slice_complete_ms": 8984,
@@ -40,32 +48,136 @@
     "delta_median_pct": 20.7
   },
   "modules": [
-    { "name": "acceptance_gate_gaps_tdd", "tests": 10, "wall_s": 0.05 },
-    { "name": "cube_4color_modifier_part_e2e_tdd", "tests": 7, "wall_s": 0.10 },
-    { "name": "typed_modifier_kind_tdd", "tests": 3, "wall_s": 1.13 },
-    { "name": "threemf_fixture_e2e_tdd", "tests": 22, "wall_s": 0.21 },
-    { "name": "threemf_subtypes_synthetic_e2e_tdd", "tests": 9, "wall_s": 0.00 },
-    { "name": "scenario_traces_tdd", "tests": 13, "wall_s": 0.00 },
-    { "name": "mixed_density_internal_bridge_rejection_e2e_tdd", "tests": 1, "wall_s": 0.01 },
-    { "name": "slicer_report_html_tdd", "tests": 7, "wall_s": 0.30 },
-    { "name": "modifier_support_type_family_e2e_tdd", "tests": 2, "wall_s": 10.28 },
-    { "name": "calicat_internal_bridge_arbiter_e2e_tdd", "tests": 1, "wall_s": 11.83 },
-    { "name": "wedge_linked_infill_report_tdd", "tests": 1, "wall_s": 16.06 },
-    { "name": "run_slice_api_tdd", "tests": 2, "wall_s": 16.33 },
-    { "name": "infill_overlap_changes_gcode_tdd", "tests": 1, "wall_s": 23.84 },
-    { "name": "calicat_internal_bridge_gating_e2e_tdd", "tests": 1, "wall_s": 24.61 },
-    { "name": "cube_painted_e2e_tdd", "tests": 2, "wall_s": 26.05 },
-    { "name": "wave_overhang_bridge_fill_e2e_tdd", "tests": 1, "wall_s": 26.15 },
-    { "name": "cube_painted_overrides_e2e_tdd", "tests": 1, "wall_s": 29.19 },
-    { "name": "slicing_promotion_e2e_dispatch_regression_tdd", "tests": 3, "wall_s": 29.54 },
-    { "name": "mm_real_fixture_gcode_tdd", "tests": 3, "wall_s": 34.08 },
-    { "name": "resolved_config_view_no_drop_tdd", "tests": 4, "wall_s": 35.21 },
-    { "name": "modifier_infill_tdd", "tests": 2, "wall_s": 38.76 },
-    { "name": "painted_fixture_parity_tdd", "tests": 2, "wall_s": 64.88 },
-    { "name": "modifier_support_territory_e2e_tdd", "tests": 4, "wall_s": 81.94 },
-    { "name": "slicing_precision_integration_tdd", "tests": 4, "wall_s": 86.66 },
-    { "name": "preparation_visual_capture_tdd", "tests": 4, "wall_s": 96.22 },
-    { "name": "slice_end_to_end_tdd", "tests": 42, "wall_s": 200.86 }
+    {
+      "name": "acceptance_gate_gaps_tdd",
+      "tests": 10,
+      "wall_s": 0.05
+    },
+    {
+      "name": "cube_4color_modifier_part_e2e_tdd",
+      "tests": 7,
+      "wall_s": 0.1
+    },
+    {
+      "name": "typed_modifier_kind_tdd",
+      "tests": 3,
+      "wall_s": 1.13
+    },
+    {
+      "name": "threemf_fixture_e2e_tdd",
+      "tests": 22,
+      "wall_s": 0.21
+    },
+    {
+      "name": "threemf_subtypes_synthetic_e2e_tdd",
+      "tests": 9,
+      "wall_s": 0.0
+    },
+    {
+      "name": "scenario_traces_tdd",
+      "tests": 13,
+      "wall_s": 0.0
+    },
+    {
+      "name": "mixed_density_internal_bridge_rejection_e2e_tdd",
+      "tests": 1,
+      "wall_s": 0.01
+    },
+    {
+      "name": "slicer_report_html_tdd",
+      "tests": 7,
+      "wall_s": 0.3
+    },
+    {
+      "name": "modifier_support_type_family_e2e_tdd",
+      "tests": 2,
+      "wall_s": 10.28
+    },
+    {
+      "name": "calicat_internal_bridge_arbiter_e2e_tdd",
+      "tests": 1,
+      "wall_s": 11.83
+    },
+    {
+      "name": "wedge_linked_infill_report_tdd",
+      "tests": 1,
+      "wall_s": 16.06
+    },
+    {
+      "name": "run_slice_api_tdd",
+      "tests": 2,
+      "wall_s": 16.33
+    },
+    {
+      "name": "infill_overlap_changes_gcode_tdd",
+      "tests": 1,
+      "wall_s": 23.84
+    },
+    {
+      "name": "calicat_internal_bridge_gating_e2e_tdd",
+      "tests": 1,
+      "wall_s": 24.61
+    },
+    {
+      "name": "cube_painted_e2e_tdd",
+      "tests": 2,
+      "wall_s": 26.05
+    },
+    {
+      "name": "wave_overhang_bridge_fill_e2e_tdd",
+      "tests": 1,
+      "wall_s": 26.15
+    },
+    {
+      "name": "cube_painted_overrides_e2e_tdd",
+      "tests": 1,
+      "wall_s": 29.19
+    },
+    {
+      "name": "slicing_promotion_e2e_dispatch_regression_tdd",
+      "tests": 3,
+      "wall_s": 29.54
+    },
+    {
+      "name": "mm_real_fixture_gcode_tdd",
+      "tests": 3,
+      "wall_s": 34.08
+    },
+    {
+      "name": "resolved_config_view_no_drop_tdd",
+      "tests": 4,
+      "wall_s": 35.21
+    },
+    {
+      "name": "modifier_infill_tdd",
+      "tests": 2,
+      "wall_s": 38.76
+    },
+    {
+      "name": "painted_fixture_parity_tdd",
+      "tests": 2,
+      "wall_s": 64.88
+    },
+    {
+      "name": "modifier_support_territory_e2e_tdd",
+      "tests": 4,
+      "wall_s": 81.94
+    },
+    {
+      "name": "slicing_precision_integration_tdd",
+      "tests": 4,
+      "wall_s": 86.66
+    },
+    {
+      "name": "preparation_visual_capture_tdd",
+      "tests": 4,
+      "wall_s": 96.22
+    },
+    {
+      "name": "slice_end_to_end_tdd",
+      "tests": 42,
+      "wall_s": 200.86
+    }
   ],
   "whales": {
     "lightning_migration_tdd": {
@@ -112,5 +224,39 @@
     "first_load_s": 10.011,
     "modelled_suite_s": 273.3,
     "modelled_suite_min": 4.56
+  },
+  "post_audit": {
+    "e2e_list_count_after": 173,
+    "deleted_tests": [
+      "cube_painted_e2e_tdd::painted_3mf_fixture_is_committed",
+      "scenario_traces_tdd::scenario_2_higher_paint_order_wins_for_custom_overlap",
+      "scenario_traces_tdd::scenario_2_equal_paint_order_conflicting_values_are_fatal"
+    ],
+    "merged_tests": [
+      "modifier_infill_tdd::modifier_infill_boundary_anchoring -> modifier_infill_two_densities",
+      "slicing_precision_integration_tdd::legacy_slice_structural_invariants -> legacy_precision_run_is_deterministic"
+    ],
+    "renamed_tests": [
+      "cube_painted_overrides_e2e_tdd::paint_config_override_visibly_differs_gcode -> paint_config_override_parses_cleanly_on_the_live_path"
+    ],
+    "revived_tests": [
+      "threemf_fixture_e2e_tdd::support_blocker_emits_paint_regions_from_disk (candidate bridge_support_enforcers.3mf added)"
+    ],
+    "modifier_infill": {
+      "tests_before": 2,
+      "tests_after": 1,
+      "before_s": 38.76,
+      "after_s": 26.78
+    },
+    "slicing_precision": {
+      "tests_before": 4,
+      "tests_after": 3,
+      "before_s": 86.66,
+      "after_s": 86.71,
+      "claimed": false
+    },
+    "pipeline_starts_estimate": 237,
+    "pipeline_start_load_s": 10.011,
+    "duplicate_work_estimate_s": 900
   }
 }

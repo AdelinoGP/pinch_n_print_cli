@@ -56,6 +56,13 @@ def read_tree() -> dict:
         "loader": LOADER.read_text(encoding="utf-8"),
         "xtask_test": XTASK_TEST.read_text(encoding="utf-8"),
         "slice_e2e": SLICE_E2E.read_text(encoding="utf-8"),
+        "cube_painted": (REPO / "crates" / "slicer-runtime" / "tests" / "e2e" / "cube_painted_e2e_tdd.rs").read_text(encoding="utf-8"),
+        "cube_overrides": (REPO / "crates" / "slicer-runtime" / "tests" / "e2e" / "cube_painted_overrides_e2e_tdd.rs").read_text(encoding="utf-8"),
+        "scenario": (REPO / "crates" / "slicer-runtime" / "tests" / "e2e" / "scenario_traces_tdd.rs").read_text(encoding="utf-8"),
+        "threemf": (REPO / "crates" / "slicer-runtime" / "tests" / "e2e" / "threemf_fixture_e2e_tdd.rs").read_text(encoding="utf-8"),
+        "modifier_infill": (REPO / "crates" / "slicer-runtime" / "tests" / "e2e" / "modifier_infill_tdd.rs").read_text(encoding="utf-8"),
+        "precision": (REPO / "crates" / "slicer-runtime" / "tests" / "e2e" / "slicing_precision_integration_tdd.rs").read_text(encoding="utf-8"),
+        "ir_tests": (REPO / "crates" / "slicer-ir" / "tests" / "ir_tests.rs").read_text(encoding="utf-8"),
     }
 
 
@@ -258,6 +265,87 @@ def check(b: dict, tree: dict) -> list[tuple[str, bool, str]]:
         f"{modelled / 60.0:.2f} min",
     )
 
+    # --- adversarial audit (post-resolution) -----------------------------
+    pa = b["post_audit"]
+    add(
+        "the post-audit e2e suite lists 173 tests",
+        pa["e2e_list_count_after"] == 173,
+        f"{pa['e2e_list_count_after']}",
+    )
+    mi = pa["modifier_infill"]
+    mi_delta = mi["before_s"] - mi["after_s"]
+    add(
+        "the modifier_infill merge reproduces -11.98 s / -30.9 %",
+        abs(mi_delta - 11.98) <= 0.02 and abs(mi_delta / mi["before_s"] * 100.0 - 30.9) <= 0.2,
+        f"{mi_delta:.2f} s / {mi_delta / mi['before_s'] * 100.0:.1f} %",
+    )
+    prec = pa["slicing_precision"]
+    add(
+        "the precision merge is recorded as below-noise, not claimed",
+        prec["claimed"] is False and prec["after_s"] >= prec["before_s"] - 1.0,
+        f"{prec['before_s']} -> {prec['after_s']} s",
+    )
+    starts = pa["pipeline_starts_estimate"]
+    load_s = pa["pipeline_start_load_s"]
+    add(
+        "237 pipeline starts at 10.0 s reproduce ~39.5 min of pure loading",
+        abs(starts * load_s / 60.0 - 39.5) <= 0.5,
+        f"{starts * load_s / 60.0:.1f} min",
+    )
+    add(
+        "the audit's ~15 min duplicate work is second-order next to the load floor",
+        pa["duplicate_work_estimate_s"] < starts * load_s,
+        f"{pa['duplicate_work_estimate_s']} s duplicate vs {starts * load_s:.0f} s loading",
+    )
+
+    # --- audit edits present in the tree ---------------------------------
+    add(
+        "the decorative fixture test is gone",
+        "painted_3mf_fixture_is_committed" not in tree["cube_painted"],
+        "cube_painted",
+    )
+    add(
+        "both test-local scenario_2 fakes are gone",
+        "scenario_2_higher_paint_order_wins_for_custom_overlap" not in tree["scenario"]
+        and "scenario_2_equal_paint_order_conflicting_values_are_fatal" not in tree["scenario"],
+        "scenario_traces",
+    )
+    add(
+        "the real PaintSemantic order claim moved to slicer-ir",
+        "paint_semantic_derived_ordering_ranks_material_first" in tree["ir_tests"],
+        "ir_tests",
+    )
+    add(
+        "the lying override test name is replaced",
+        "paint_config_override_parses_cleanly_on_the_live_path" in tree["cube_overrides"]
+        and "paint_config_override_visibly_differs_gcode" not in tree["cube_overrides"],
+        "cube_painted_overrides",
+    )
+    add(
+        "the dead disk support-blocker test probes the real fixture",
+        "bridge_support_enforcers.3mf" in tree["threemf"],
+        "threemf_fixture",
+    )
+    add(
+        "the boundary-anchoring assertions share the two-densities slice",
+        "fn assert_boundary_anchoring(gcode: &str)" in tree["modifier_infill"]
+        and "assert_boundary_anchoring(&gcode);" in tree["modifier_infill"]
+        and "fn modifier_infill_boundary_anchoring" not in tree["modifier_infill"],
+        "modifier_infill",
+    )
+    add(
+        "the precision structural invariants run on the determinism output",
+        "fn assert_legacy_structural_invariants(legacy_bytes: &[u8])" in tree["precision"]
+        and "assert_legacy_structural_invariants(&a);" in tree["precision"]
+        and "fn legacy_slice_structural_invariants" not in tree["precision"],
+        "slicing_precision",
+    )
+    add(
+        "the real-pipeline test no longer tolerates empty G-code",
+        "!gcode.is_empty()" in tree["slice_e2e"],
+        "slice_end_to_end",
+    )
+
     # --- structural claims against the checkout --------------------------
     loader = tree["loader"]
     add(
@@ -368,6 +456,32 @@ def main() -> int:
             "a fourth module-dir key appears in slice_end_to_end",
             lambda t: t.__setitem__(
                 "slice_e2e", t["slice_e2e"] + "\n// ModuleDirKind::Empty\n"
+            ),
+        )
+        mutate_summary(
+            "the modifier_infill delta is inflated",
+            lambda m: m["post_audit"]["modifier_infill"].__setitem__("after_s", 18.0),
+        )
+        mutate_summary(
+            "the precision merge is claimed despite being below noise",
+            lambda m: m["post_audit"]["slicing_precision"].__setitem__("claimed", True),
+        )
+        mutate_summary(
+            "the post-audit suite count is wrong",
+            lambda m: m["post_audit"].__setitem__("e2e_list_count_after", 178),
+        )
+        mutate_tree(
+            "the revived support-blocker candidate is removed",
+            lambda t: t.__setitem__("threemf", t["threemf"].replace("bridge_support_enforcers.3mf", "removed.3mf")),
+        )
+        mutate_tree(
+            "a deleted scenario_2 fake is re-added",
+            lambda t: t.__setitem__(
+                "scenario",
+                t["scenario"]
+                + chr(10)
+                + "fn scenario_2_equal_paint_order_conflicting_values_are_fatal() {}"
+                + chr(10),
             ),
         )
 

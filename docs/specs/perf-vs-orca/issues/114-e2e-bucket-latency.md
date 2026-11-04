@@ -5,8 +5,12 @@ Label: wayfinder:task
 Status: resolved (2026-11-04; Phase-1 screen — the bucket is 85 % per-slice
 module load, two modules own ~84 % of its wall, and **no deletion or lane split
 recovers the dev loop**; the carrying shape is a compiled-component cache in the
-live load path, graduated as [ticket 118](118-compiled-component-cache.md). See
-## Answer)
+live load path, graduated as [ticket 118](118-compiled-component-cache.md). An
+**adversarial audit postscript** corrects the first pruning claim: eight
+claim-fix/merge changes were adopted, one measured **−11.98 s**, and the
+lightning corpus consolidation is graduated as
+[ticket 119](119-lightning-corpus-consolidation.md). See ## Answer and
+## Postscript — adversarial audit)
 Assignee: 2026-11-04 OpenCode wayfinder session — the human said "continue the
 perf vs orca map" (no ticket named); the frontier re-derivation at HEAD
 `7eeff93e` found 114/115/116/117 open and unclaimed, so the first frontier
@@ -209,3 +213,63 @@ so the true baseline is larger than 40 minutes.
 `verify.py` exits 0 checkout-only (29/29 checks) and `--self-test` rejects
 11/11 negative controls, including the probe-left-in-tree and
 cache-appears-in-loader mutations.
+
+## Postscript — adversarial audit (2026-11-04, same day)
+
+**The "no test is safely deletable" claim in the Answer was too strong.** A
+five-agent adversarial audit of all 28 e2e modules (three reviewers, two
+explorers; `docs/22_test_quality.md` taxonomy) found tests that did not test
+their names, a test that had never run, and ~15 minutes of repeated
+observations. The full per-test tables and coverage maps are in
+[`evidence/t114-e2e-latency/AUDIT.md`](../evidence/t114-e2e-latency/AUDIT.md).
+
+**Adopted and verified in this take (all assertions preserved):**
+
+1. Deleted `cube_painted_e2e_tdd::painted_3mf_fixture_is_committed` — a
+   decorative `path.exists()` test whose sibling re-asserts the same path.
+2. Deleted `scenario_traces_tdd::scenario_2_higher_paint_order_wins_for_custom_overlap`
+   and `::scenario_2_equal_paint_order_conflicting_values_are_fatal` — both
+   asserted on test-local vectors; `execute_region_mapping_with_cap` was never
+   called. Production ordering/duplicate-key coverage stays in
+   `crates/slicer-core/tests/algo_region_mapping_tdd.rs` and
+   `crates/slicer-runtime/tests/integration/region_mapping_tdd.rs`.
+3. Moved the one real `PaintSemantic` D6 order assertion to
+   `crates/slicer-ir/tests/ir_tests.rs::paint_semantic_derived_ordering_ranks_material_first`
+   (passes).
+4. Renamed `cube_painted_overrides_e2e_tdd::paint_config_override_visibly_differs_gcode`
+   to `::paint_config_override_parses_cleanly_on_the_live_path`; the body only
+   asserts clean parsing, and the module doc says the G-code diff is
+   intentionally not asserted.
+5. **Repaired a test that never ran:**
+   `threemf_fixture_e2e_tdd::support_blocker_emits_paint_regions_from_disk`
+   now probes `bridge_support_enforcers.3mf` (3 `support_blocker` parts), so the
+   disk-path segmentation claim is actually exercised (passes).
+6. Tightened `slice_end_to_end_tdd::slice_e2e_real_pipeline_produces_gcode`:
+   empty G-code now fails instead of skipping the first-line check.
+7. Merged `modifier_infill_boundary_anchoring` into
+   `modifier_infill_two_densities` (same fixture, same CLI args, identical
+   slice): **38.76 s → 26.78 s (−11.98 s, −30.9 %)**.
+8. Merged `slicing_precision_integration_tdd::legacy_slice_structural_invariants`
+   into `legacy_precision_run_is_deterministic` (one slice removed, every
+   assertion preserved): 86.66 s → 86.71 s, i.e. **below noise and not claimed**.
+
+**Why the 88 minutes survive deletion.** The bucket performs **~237 pipeline
+starts** for 168 tests; at the measured **10.0 s** fixed module load that is
+**~39.5 min of pure loading**, plus ~1.8 s of pipeline per start, plus the
+tapped captures. Perfect deduplication (~15 min) leaves ~73 min. The carrying
+fix is still the compiled-component cache
+([ticket 118](118-compiled-component-cache.md)).
+
+**Graduated, not executed here:**
+[ticket 119](119-lightning-corpus-consolidation.md) owns the largest module
+(`lightning_migration_tdd`, **41 → 32 active invocations**, ~423 s estimated,
+every assertion preserved), including five false-green fixes the audit found
+(vacuous `windows(2)` sharing, a local-Boolean "participation" assertion, an
+`unwrap_or(0)` cleanup check that passes without a disposal record, an
+own-owner "foreign owner" claim, and a zero-slice artifact test that belongs in
+contract scope). The remaining merges (42→9 in `slice_end_to_end` without wall
+change, painted/cube ~55 s, `infill_overlap` ~24 s, wedge report ~16 s) are
+recorded in the audit for the next e2e take. One audit proposal was
+**falsified on inspection**: `preparation_only_uses_production_prefix` cannot
+merge into `capture_is_semantically_neutral`, because the latter's captures are
+full slices and the preparation-only boundary would be lost.

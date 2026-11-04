@@ -306,6 +306,11 @@ fn modifier_infill_two_densities() {
     assert!(gcode_path.exists(), "gcode output not written");
     let gcode = std::fs::read_to_string(&gcode_path).expect("read gcode");
 
+    // (c1/c2) Boundary anchoring shares this slice: both claims are properties
+    // of the same M3 output, and a second identical invocation would only
+    // re-pay the fixed per-slice module-load cost.
+    assert_boundary_anchoring(&gcode);
+
     // (a) AC-1a: the modifier must not add wall loops at its boundary. A
     // modifier changes config, not wall count.
     //
@@ -424,21 +429,7 @@ fn modifier_infill_two_densities() {
 /// G1 moves (mean 19.27) to 3305 paths carrying 3305 moves (mean exactly
 /// 1.00), which fails the per-layer form on all 125 layers and the per-block
 /// form on all 128 multi-path blocks.
-#[test]
-fn modifier_infill_boundary_anchoring() {
-    let model = cube_cilindrical_modifier_3mf();
-    assert_path_exists(&model, "cube_cilindrical_modifier.3mf");
-
-    let gcode_path = slice_gcode_path("boundary_anchoring");
-    let _ = std::fs::remove_file(&gcode_path);
-    let proc = run_slice_with_full_modules(&model, &gcode_path);
-    let stderr = String::from_utf8_lossy(&proc.stderr);
-    assert!(
-        proc.status.success(),
-        "pnp_cli must succeed for the M3 boundary-anchoring check. Stderr:\n{stderr}"
-    );
-    assert!(gcode_path.exists(), "gcode output not written");
-    let gcode = std::fs::read_to_string(&gcode_path).expect("read gcode");
+fn assert_boundary_anchoring(gcode: &str) {
 
     let blocks = parse_sparse_blocks(&gcode);
     assert!(

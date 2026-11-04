@@ -138,28 +138,32 @@ it needs a fresh `pnp_cli` exactly like `cargo test` (9 tests failed on the
 stale-binary gate at 0.1 s in the first 12-way run). Its per-test durations are
 useful, its isolation is not.
 
-## Pruning audit — no deletion is justified
+## Pruning audit — first pass was too strong; see AUDIT.md
 
-The ticket authorized deletion on 2026-11-03, conditional on a non-empty
-coverage map. The audit found **no test that is redundant with a narrower
-unit/contract/integration test or with another e2e test**:
+The first pass concluded that no test was redundant with a narrower
+unit/contract/integration test or with another e2e test, and that is still true
+of the *behavioural claims*: the slice-running modules assert distinct contracts.
+That pass was nevertheless **too strong**, because it did not ask whether a test
+actually tests its name, or whether the same expensive observation is re-taken
+by several tests. The adversarial audit in
+[`AUDIT.md`](AUDIT.md) found decorative, fake, success-only and never-running
+tests, plus **~15 minutes** of duplicate work.
 
-- `slice_end_to_end_tdd`'s 42 tests are mostly cheap guards over **one** cached
-  `pnp_cli` run (`slicer_cache::cached_run`), so they are already the shared-work
-  pattern; deleting them saves almost nothing.
-- `calicat_internal_bridge_arbiter_e2e_tdd` (visual-debug bundle) and
-  `calicat_internal_bridge_gating_e2e_tdd` (determinism + label + direction) run
-  the same fixture but assert **different** contracts; neither covers the other.
-- `mm_real_fixture_gcode_tdd`'s three tests are one routing test, one support-
-  filament routing test, and one authored-string/E-mode test — distinct failure
-  modes.
-- The two archive-dependent `preparation_capability_pilot_tdd` tests were
-  already removed on 2026-11-03 for the fixture-cannot-exist reason; that is the
-  precedent, and it does not generalise to these.
+**Adopted:** a never-running disk support-blocker test revived, both test-local
+`scenario_2` fakes deleted (the one real `PaintSemantic` order claim moved to
+`slicer-ir`), a lying override test renamed, an empty-tolerant pipeline test
+tightened, the decorative fixture test removed, and
+`modifier_infill_boundary_anchoring` merged into its identical sibling
+(**38.76 s → 26.78 s, −11.98 s**). A precision merge removed a slice but landed
+inside noise (86.66 → 86.71 s, not claimed).
 
-The cost is **not** duplicate coverage; it is **repeated module loading per
-slice**. Deleting distinct coverage to buy wall time would trade the bucket's
-value for its runtime, which the ticket's stop rule forbids.
+**Not adopted:** the lightning corpus consolidation (**41 → 32** active
+invocations, ~423 s estimated, every assertion preserved) is
+[ticket 119](../../issues/119-lightning-corpus-consolidation.md); the prep
+111 → 100 consolidation and the claim-hygiene merges are recorded in
+`AUDIT.md`. The cost is not duplicate coverage but **~237 pipeline starts**, at
+10.0 s of module load each ≈ 39.5 min; that is why the cache remains the
+carrying fix.
 
 ## Lane/tier design — the honest version
 
