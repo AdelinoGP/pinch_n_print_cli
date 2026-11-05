@@ -169,14 +169,15 @@ is now claim hygiene and aggregate CPU, not a large wall lever.
 - `cargo xtask check-test-quality --report` — 0 findings.
 - `cargo xtask build-guests --check` — exit 0.
 - [`verify.py`](../evidence/t119-lightning-corpus/verify.py) exits 0
-  checkout-only; `--self-test` rejects 10/10 negative controls.
+  checkout-only; `--self-test` rejects 7/7 negative controls.
 - Execution trace: the acceptance run emitted exactly 32
   `lightning-invocation:` lines (`run_visual` 13, `run_visual_native` 5,
   preparation 6, full slice 8), matching the source inventory entry by entry.
 
 Evidence: [`evidence/t119-lightning-corpus/FINDINGS.md`](../evidence/t119-lightning-corpus/FINDINGS.md)
-and `summary.json` + `before.log` + `after.log` in the same directory. No
-production edit.
+with [`verify.py`](../evidence/t119-lightning-corpus/verify.py),
+`before.log` and `after.log`; the verifier exits 0 checkout-only and its
+`--self-test` rejects all seven negative controls. No production edit.
 
 ## Answer
 
@@ -278,7 +279,7 @@ No assertion or measured claim depends on the move.
 — `verify.py` re-derives the before inventory from `base-commit`
 `1e20f52e…` and the after inventory from the current source, checks the
 committed logs' walls and rosters, and cross-checks the execution trace.
-`verify.py --self-test` rejects 10/10 negative controls.
+`verify.py --self-test` rejects 7/7 negative controls.
 
 ### What is not claimed
 

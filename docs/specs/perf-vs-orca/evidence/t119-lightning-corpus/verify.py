@@ -175,7 +175,10 @@ def count_calls(body: str, callee: str) -> int:
 
 
 def inventory(
-    source: str, table: dict[tuple[str, str], tuple[int, object]], label: str
+    source: str,
+    table: dict[tuple[str, str], tuple[int, object]],
+    case_count: int,
+    label: str,
 ) -> tuple[int, Counter[str]]:
     functions = parse_functions(source)
     actual: dict[str, dict[str, int]] = {}
@@ -285,7 +288,7 @@ def check(
     def before_inventory() -> None:
         nonlocal before_total, before_per_entry
         before_total, before_per_entry = inventory(
-            before_source, BEFORE_TABLE, "before"
+            before_source, BEFORE_TABLE, case_count, "before"
         )
         if before_total != BEFORE_BUDGET:
             raise VerificationError(
@@ -294,7 +297,9 @@ def check(
 
     def after_inventory() -> None:
         nonlocal after_total, after_per_entry
-        after_total, after_per_entry = inventory(after_source, AFTER_TABLE, "after")
+        after_total, after_per_entry = inventory(
+            after_source, AFTER_TABLE, case_count, "after"
+        )
         if after_total != AFTER_BUDGET:
             raise VerificationError(
                 f"after budget is {after_total}, expected {AFTER_BUDGET}"
@@ -510,6 +515,8 @@ def main() -> int:
             root = Path(args.pop(0)).resolve()
         elif token == "--before-source":
             before_source = Path(args.pop(0)).read_text(encoding="utf-8")
+        elif token == "--self-test":
+            pass
         else:
             print(f"unknown argument: {token}")
             return 2
