@@ -11,10 +11,11 @@
 //! Design and implementation content are interleaved at the `##`-section level, so
 //! selection happens per-section against a small **allowlist** of design headers:
 //!
-//!   * `packet.spec.md`  → `## Goal`
-//!   * `requirements.md` → `## Problem Statement`
-//!   * `design.md`       → Architecture Constraints, Data and Contract Notes,
-//!     Risks and Tradeoffs, Locked Assumptions and Invariants, Implementation Deviations
+//!   * Legacy packets: `packet.spec.md` → Goal, `requirements.md` → Problem
+//!     Statement, and `design.md` → architecture constraints, contract notes,
+//!     risks, invariants, and implementation deviations.
+//!   * Two-file packets: `packet.spec.md` → Goal, Why, Design notes,
+//!     OrcaSlicer references, and Deviations.
 //!
 //! `implementation-plan.md` and `task-map.md` are dropped whole. If a kept file yields
 //! zero recognized design sections (the phase/step-structured `design.md` outliers), the
@@ -28,6 +29,14 @@ use std::path::{Path, PathBuf};
 
 /// Squished design-header stems kept from `packet.spec.md`.
 const SPEC_ALLOW: &[&str] = &["goal"];
+/// New packets keep their design and rationale in the spec itself.
+const TWO_FILE_SPEC_ALLOW: &[&str] = &[
+    "goal",
+    "why",
+    "designnotes",
+    "orcaslicerreferences",
+    "deviations",
+];
 /// Squished design-header stems kept from `requirements.md`.
 const REQ_ALLOW: &[&str] = &["problemstatement", "problem", "motivation"];
 /// Squished design-header stems kept from `design.md`.
@@ -186,7 +195,12 @@ fn kept_content(file_text: &str, allow: &[&str]) -> String {
 /// Assemble one packet's digest from its three source files' raw contents.
 fn build_digest(slug: &str, spec: &str, requirements: &str, design: &str) -> String {
     let fm = filter_front_matter(&split_front_matter(spec).0.unwrap_or_default());
-    let goal = kept_content(spec, SPEC_ALLOW);
+    let spec_allow = if requirements.trim().is_empty() && design.trim().is_empty() {
+        TWO_FILE_SPEC_ALLOW
+    } else {
+        SPEC_ALLOW
+    };
+    let spec_kept = kept_content(spec, spec_allow);
     let problem = kept_content(requirements, REQ_ALLOW);
     let design_kept = kept_content(design, DESIGN_ALLOW);
 
@@ -199,7 +213,7 @@ fn build_digest(slug: &str, spec: &str, requirements: &str, design: &str) -> Str
     out.push_str("# ");
     out.push_str(slug);
     out.push('\n');
-    for block in [goal, problem, design_kept] {
+    for block in [spec_kept, problem, design_kept] {
         let b = block.trim();
         if !b.is_empty() {
             out.push('\n');
@@ -490,6 +504,81 @@ dispatch
         assert!(!d.contains("## Acceptance Criteria"));
         assert!(!d.contains("## In Scope"));
         assert!(!d.contains("Expected Sub-Agent Dispatches"));
+    }
+
+    #[test]
+    fn two_file_digest_preserves_spec_design_and_discards_execution_material() {
+        let spec = "\
+---
+status: implemented
+packet: config_01_example
+supersedes: old_packet
+---
+
+# Example
+
+## Goal
+the goal
+
+## Why
+the reason
+
+## Scope
+scope scaffolding
+
+## Design notes
+chosen approach
+
+## Acceptance criteria
+test command
+
+## OrcaSlicer references
+canonical function
+
+## Verification
+verification command
+
+## Deviations
+recorded rationale
+";
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let workspace = std::env::temp_dir().join(format!(
+            "pnp-compact-two-file-{}-{nonce}",
+            std::process::id()
+        ));
+        let old = workspace.join("docs/spec_packets/_OLD");
+        let packet = old.join("config_01_example");
+        fs::create_dir_all(&packet).unwrap();
+        fs::write(packet.join("packet.spec.md"), spec).unwrap();
+        fs::write(packet.join("implementation-plan.md"), "secret plan detail").unwrap();
+
+        assert_eq!(run(&workspace, false), 0);
+        let digest = fs::read_to_string(old.join("config_01_example.md")).unwrap();
+        assert!(!packet.exists(), "source directory was not removed");
+        for text in [
+            "status: implemented",
+            "packet: config_01_example",
+            "supersedes: old_packet",
+            "## Goal\nthe goal",
+            "## Why\nthe reason",
+            "## Design notes\nchosen approach",
+            "## OrcaSlicer references\ncanonical function",
+            "## Deviations\nrecorded rationale",
+        ] {
+            assert!(digest.contains(text), "missing {text:?} in {digest}");
+        }
+        for text in [
+            "scope scaffolding",
+            "test command",
+            "verification command",
+            "secret plan detail",
+        ] {
+            assert!(!digest.contains(text), "unexpected {text:?} in {digest}");
+        }
+        fs::remove_dir_all(workspace).unwrap();
     }
 
     #[test]
