@@ -2306,24 +2306,6 @@ declare_resolved_config! {
     cli "perimeter_arc_tolerance" perimeter_arc_tolerance: f32 = 0.0125 => extract_float;
     /// Slice closing radius in mm (OrcaSlicer: slice_closing_radius).
     cli "slice_closing_radius"   slice_closing_radius: f32 = 0.049 => extract_float;
-    /// Morphological-closing join type used by the flat-bridge enclosure
-    /// discriminator in `PrePass::Slice`. One of `"miter"` (default),
-    /// `"square"`, or `"round"` (case-insensitive; unknown values fall back to
-    /// `miter`). The discriminator is a boolean "does a gap ≤ 2·R re-fill?"
-    /// test, so corner roundness never changes the verdict:
-    /// - `miter` matches OrcaSlicer's `closing` default (`jtMiter`,
-    ///   `ClipperUtils.hpp`) and is cheap (one bevel point per corner).
-    /// - `square` is an equally cheap alternative.
-    /// - `round` reproduces pre-optimisation flat-bridge detection
-    ///   bit-for-bit, but tessellates every corner into an arc and made the
-    ///   closing ~92% of `PrePass::Slice` on high-vertex cross-sections.
-    cli "flat_bridge_closing_join" flat_bridge_closing_join: String = String::from("miter") => extract_string @ {
-        wire_type: Some("enum"),
-        values: &["miter", "square", "round"],
-        display: Some("Flat bridge closing join"),
-        description: Some("Polygon-closing join used when detecting flat bridges. Unknown values fall back to miter."),
-        group: Some("Quality"),
-    };
 
      // Support
      /// Whether support is enabled.
@@ -2577,7 +2559,6 @@ impl PartialEq for ResolvedConfig {
             && self.gcode_xy_decimals == other.gcode_xy_decimals
             && self.perimeter_arc_tolerance.to_bits() == other.perimeter_arc_tolerance.to_bits()
             && self.slice_closing_radius.to_bits() == other.slice_closing_radius.to_bits()
-            && self.flat_bridge_closing_join == other.flat_bridge_closing_join
             && self.support_enabled == other.support_enabled
             && self.support_type == other.support_type
             && self.support_threshold_angle.to_bits() == other.support_threshold_angle.to_bits()
@@ -2686,7 +2667,6 @@ impl std::hash::Hash for ResolvedConfig {
         self.gcode_xy_decimals.hash(state);
         self.perimeter_arc_tolerance.to_bits().hash(state);
         self.slice_closing_radius.to_bits().hash(state);
-        self.flat_bridge_closing_join.hash(state);
         self.support_enabled.hash(state);
         self.support_type.hash(state);
         self.support_threshold_angle.to_bits().hash(state);
@@ -3169,7 +3149,6 @@ mod config_map_parity_tests {
             "bed_shape",                              // cli, float-list
             "fill_authored_coloring",                 // cli, string-list
             "disable_m73",                            // cli, bool
-            "flat_bridge_closing_join",               // cli, string + metadata
             "mmu_segmented_region_interlocking_beam", // cli, annotated bool
             "gcode_resolution",                       // cli, annotated f32
             "retract_length",                         // cli, f32

@@ -90,13 +90,13 @@ pub fn execute_prepass_slice_all_layers(
     // ordered `collect` preserves plan order and short-circuits on the first
     // `Err`, so the result is bit-identical to the previous sequential `.iter()`.
     // This is the dominant cost of the stage (bridge classification + flat-bridge
-    // enclosure per layer), so parallelising it scales the stage with core count.
+    // opening per layer), so parallelising it scales the stage with core count.
     //
     // Each layer also receives the *previous* global layer's raw cross-sections
     // (position `i-1` in plan order, which is the layer physically below), so
-    // the flat-bridge enclosure test can compute its unsupported region as
-    // `diff(current, previous)` — reading only the already-built immutable
-    // batch, so the parallelism is unaffected.
+    // the flat-bridge classifier can compute its unsupported region as
+    // `diff(current, safety_offset(previous))` — reading only the already-built
+    // immutable batch, so the parallelism is unaffected.
     use rayon::prelude::*;
     layer_plan
         .global_layers

@@ -1145,11 +1145,13 @@ fn supported_bridge_candidate_does_not_emit_bridge_fill() {
 /// The beam's underside is a `BottomSurface` facet, so it never enters the
 /// sloped-overhang bridge pipeline (`assemble_bridge_areas` only consumes
 /// `Overhang`/`Bridge` clusters). `PrePass::Slice` recovers it from the
-/// unsupported region it derives as `diff(this-layer cross-section,
-/// previous-layer cross-section)` — the same consecutive-layer diff OrcaSlicer
-/// uses (`PrintObject.cpp:901`). Here the beam's full 30×10 footprint sits over
-/// a previous layer of two end pillars ([0,5] and [25,30]), so the diff is the
-/// 20×10 middle gap. The test drives the real cache path (as
+/// unsupported region it derives as
+/// `diff(this-layer cross-section, safety_offset(previous-layer))` — the port of
+/// `PrintObject::detect_surfaces_type`'s `diff_ex(..., ApplySafetyOffset::Yes)`.
+/// Here the beam's full 30×10 footprint sits over a previous layer of two end
+/// pillars ([0,5] and [25,30]), so the diff is the 20×10 middle gap, which
+/// canonical's opening (`0.1 × external_perimeter_width` = 0.04 mm at the
+/// default width) keeps in full. The test drives the real cache path (as
 /// `execute_prepass_slice_all_layers` does) and asserts `bridge_areas` +
 /// `is_bridge` over that gap.
 #[test]
@@ -1248,11 +1250,13 @@ fn flat_bridge_span_over_gap_flagged_via_layer_diff() {
 /// bottom layer.
 ///
 /// A constant-cross-section box never grows, so `diff(current, previous)` is
-/// empty at every interior layer. Its very first layer (`prev_raw_polygons`
-/// absent) diffs to the *whole* cross-section — the naïve `difference(layer0,
-/// ∅)` failure mode — but the flat-bridge enclosure discriminator rejects it,
-/// because a fully-unsupported footprint leaves an empty `support` set (nothing
-/// to enclose the "gap" against). Both cases must produce no bridge.
+/// empty at every interior layer (the lower set is inflated by `SCALED_EPSILON`
+/// before the difference, so a coincident boundary cannot leak a hairline ring).
+/// The very first layer has **no** previous cross-section at all, and canonical
+/// `detect_surfaces_type` demotes a bottom with `lower_layer == nullptr` to
+/// `stBottom`, never a bridge — `PrePass::Slice` enforces that by skipping the
+/// flat-bridge assembly when the object has no previous cross-section. Both
+/// cases must produce no bridge.
 #[test]
 fn solid_box_bottom_layers_not_flagged_as_flat_bridge() {
     let box_mesh = make_box("box-obj", 0.0, 0.0, 0.0, 10.0, 10.0, 10.0);

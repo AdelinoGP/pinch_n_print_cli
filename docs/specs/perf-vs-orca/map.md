@@ -82,7 +82,32 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-04, twenty-first session — the t115 take):**
+**Current selection scope (2026-11-04/05, twenty-second session — the t116 take, PAUSED):**
+the human said "continue the perf vs orca map, pick up the next afk ticket" (no
+ticket named; **117** is the human's grilling, so **116** was the first AFK
+frontier ticket in order) and then "pause it here" to sleep. **116 is CLAIMED and
+in progress** — do not re-claim it. Headline so far: **the canonical flat-bridge
+rule is implemented and output-verified; the timed gate is 30/48 rows.** The
+enclosure closing (`closing_ex(support, 12 mm, Miter)` + `≥ 10 %` refill) is
+replaced by canonical's `opening_ex(flat_bridge, 0.1 × external_perimeter_width,
+Miter, 3.0)` over PnP's flat family, with canonical's `ApplySafetyOffset` (1-unit
+lower inflate) and the lower-layer guard (`lower_layer == nullptr` ⇒ `stBottom`).
+The `flat_bridge_closing_join` key is retired end to end. **16-cell output: met** —
+baseline ordinary ≡ baseline accelerated ≡ the t115 post-merge set, candidate
+ordinary ≡ candidate accelerated, candidate moves every cell. **Delta stop rule:
+not triggered** — `audit_delta.py` finds **0 structural geometry lines** in all
+eight cells; wall/support deltas are extrusion-token-only on bridge-flagged
+segments, plus the retired config appendix row and `M73` counters. **Paired gate:
+NOT EVALUATED** (pair 1 complete, pair 2 on seven of eight cells, pair 3 unrun;
+provisional 2-pair medians clear the floor by 10.8x–33.7x and must not be
+quoted). Resume with `run_t116.ps1 -Mode ab -Pairs 3 -PairFrom 2 -PairTo 3
+-Append -OnlyMissing -BatchId ab`, then `reduce_t116.py` + `verify.py
+--self-test`, then resolve. See [ticket 116](issues/116-prep-slice-canonical-bridge-classification.md)
+`## Paused state` and [`evidence/t116-prep-slice-canonical-bridge/`](evidence/t116-prep-slice-canonical-bridge/FINDINGS.md).
+Frontier otherwise: **119, 121** open and unclaimed; **117** is the human's
+grilling.
+
+**Previous selection scope (2026-11-04, twenty-first session — the t115 take):**
 the human said "continue the perf vs orca map" (no ticket named) and asked that
 any uncommitted work be committed; the t120 take's six files were committed
 first as `9a7371aa`. The frontier at HEAD `f70e8ba7` held four open children —

@@ -18,14 +18,14 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::polygon_ops::{
-    clip_polylines, closing_ex, difference, intersection, offset, OffsetJoinType,
+    clip_polylines, difference, intersection, offset, opening_ex, OffsetJoinType,
 };
 use crate::slice_mesh_ex;
 use crate::triangle_mesh_slicer::apply_slice_closing_radius;
 use slicer_ir::{
-    ExPolygon, GlobalLayer, IndexedTriangleSet, MeshIR, ObjectId, ObjectMesh, ObjectSurfaceData,
-    Point2, Point3, Polygon, RegionKey, RegionMapIR, SliceIR, SlicedRegion,
-    SurfaceClassificationIR, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
+    ConfigValue, ExPolygon, GlobalLayer, IndexedTriangleSet, MeshIR, ObjectId, ObjectMesh,
+    ObjectSurfaceData, Point2, Point3, Polygon, RegionKey, RegionMapIR, ResolvedConfig, SliceIR,
+    SlicedRegion, SurfaceClassificationIR, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 
 use slicer_ir::BlackboardError;
@@ -616,55 +616,46 @@ pub fn update_external_bridge_orientation(
 // assemble_flat_bridge_areas
 // ============================================================================
 
-/// Maximum flat gap span (mm) the enclosure discriminator will bridge.
-///
-/// A genuine flat bridge spans a gap *enclosed* by supported material on
-/// opposite sides. We detect enclosure by morphologically **closing** the
-/// supported region (dilate then erode by [`FLAT_BRIDGE_ENCLOSURE_RADIUS_MM`]):
-/// closing re-fills only a gap pinched between supports on opposite sides
-/// within `2·R`, and never a convex free-edge band. The dilation from each
-/// supported side must reach the middle of the gap, so the closing radius is
-/// half the widest span we accept. 24 mm comfortably clears the positive unit
-/// test's 20 mm beam-over-gap (the dilations overlap by 4 mm, a solid fill)
-/// while staying moderate enough not to close over unrelated free-edge notches.
-const MAX_FLAT_BRIDGE_SPAN_MM: f64 = 24.0;
+/// Canonical OrcaSlicer's `SCALED_EPSILON`, in millimetres: exactly one PnP
+/// workspace unit (1 unit = 100 nm = 1e-4 mm). `PrintObject::detect_surfaces_type`
+/// diffs the lower layer with `ApplySafetyOffset::Yes`, which inflates the lower
+/// set by this much so boundary-coincident material is not labelled a bridge.
+const SCALED_EPSILON_MM: f32 = 0.0001;
 
-/// Morphological-closing radius (mm) used for the enclosure test — half the
-/// widest bridgeable span (see [`MAX_FLAT_BRIDGE_SPAN_MM`]).
-const FLAT_BRIDGE_ENCLOSURE_RADIUS_MM: f64 = MAX_FLAT_BRIDGE_SPAN_MM / 2.0;
+/// Miter limit canonical passes to the bridge opening
+/// (`opening_ex(..., jtMiter, 3.0)`).
+const FLAT_BRIDGE_OPENING_MITER_LIMIT: f64 = 3.0;
 
-/// Minimum fraction of a flat-unsupported component that must be covered by the
-/// closing's re-filled ("enclosed-gap") mask for it to count as a bridge.
-///
-/// This gate separates genuine gap-spans from the thin closing artifacts a
-/// free-edge bottom leaves along its supported boundary. Measured re-fill
-/// fractions (closing radius = 12 mm):
-///
-/// | case                                    | comp   | refill | fraction |
-/// |-----------------------------------------|--------|--------|----------|
-/// | wedge interior slot (true bridge)       | 400 mm²| 393 mm²| **0.98** |
-/// | beam-over-20 mm-gap unit test (true)    | 200 mm²|  51 mm²| **0.26** |
-/// | wedge cantilever lip (free-edge, false) | 160 mm²| 0.9 mm²|   0.006  |
-/// | wedge edge sliver (free-edge, false)    |10.4 mm²| 0.3 mm²|   0.03   |
-///
-/// A wide thin bridge only *partially* re-fills (the opposing dilations meet
-/// in a narrow waist), so the true-positive floor is ~0.26 — far below 1.0 but
-/// far above the artifact ceiling (~0.03). 0.1 sits in that empty band.
-const FLAT_BRIDGE_ENCLOSURE_MIN_FRACTION: f64 = 0.1;
+/// Arc tolerance (mm) for the safety-offset inflate of the lower layer. The
+/// offset is one workspace unit with a square join, so this only bounds
+/// numerical noise; it never becomes emitted geometry on its own.
+const SAFETY_OFFSET_ARC_TOLERANCE_MM: f32 = 0.05;
 
-/// Parse the `flat_bridge_closing_join` config string into an
-/// [`OffsetJoinType`]. Recognises `"miter"`, `"square"`, and `"round"`
-/// (case-insensitive, surrounding whitespace ignored); any other value falls
-/// back to `Miter` — the OrcaSlicer-parity default — with a warning.
-fn parse_flat_bridge_join(raw: &str) -> OffsetJoinType {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "miter" => OffsetJoinType::Miter,
-        "square" => OffsetJoinType::Square,
-        "round" => OffsetJoinType::Round,
-        other => {
-            log::warn!("unknown flat_bridge_closing_join {other:?}; falling back to \"miter\"");
-            OffsetJoinType::Miter
-        }
+/// Default extrusion width (mm) when neither `outer_wall_line_width` nor the
+/// typed `line_width` carries a positive value — the same floor
+/// `support_analysis_producer::resolve_contact_params`
+/// (`crates/slicer-runtime/src/builtins/support_analysis_producer.rs`) applies,
+/// and the same guest-side perimeter default.
+const DEFAULT_LINE_WIDTH_MM: f32 = 0.4;
+
+/// Resolve the external-perimeter extrusion width (mm) the way canonical's
+/// `flow(frExternalPerimeter).scaled_width()` resolves it, mirroring
+/// `resolve_contact_params` exactly: the `outer_wall_line_width` extension when
+/// it carries an absolute width, else the typed `line_width`, else
+/// [`DEFAULT_LINE_WIDTH_MM`].
+fn resolve_external_perimeter_width_mm(config: &ResolvedConfig) -> f32 {
+    let typed_line_width = if config.line_width > 0.0 {
+        config.line_width as f32
+    } else {
+        DEFAULT_LINE_WIDTH_MM
+    };
+    match config.extensions.get("outer_wall_line_width") {
+        Some(ConfigValue::Float(value)) => *value as f32,
+        Some(ConfigValue::FloatOrPercent {
+            value,
+            is_percent: false,
+        }) => *value as f32,
+        _ => typed_line_width,
     }
 }
 
@@ -684,58 +675,51 @@ fn parse_flat_bridge_join(raw: &str) -> OffsetJoinType {
 ///    via [`crate::algos::mesh_analysis::bottom_surface_footprint`]), and
 /// 2. `unsupported_region` — this layer's area **not** supported by the layer
 ///    below, computed by the caller (`PrePass::Slice`) as
-///    `diff(this-layer cross-section, previous-layer cross-section)`, matching
-///    OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp:901`),
+///    `diff(this-layer cross-section, safety_offset(previous-layer))`, the port
+///    of `PrintObject::detect_surfaces_type`'s
+///    `diff_ex(slices, lower_slices, ApplySafetyOffset::Yes)`,
 ///
 /// then clipping the result to the region's own printable area
-/// (`region.infill_areas`, mirroring [`assemble_bridge_areas`]) and appending
-/// it to `region.bridge_areas`. `region.is_bridge` is set whenever any
-/// flat-bridge area is added.
+/// (`region.infill_areas`, mirroring [`assemble_bridge_areas`]), applying
+/// canonical's opening, and appending every surviving component to
+/// `region.bridge_areas`.
+///
+/// # Canonical classification
+///
+/// Canonical OrcaSlicer has no free-edge / enclosed-gap discriminator: a bottom
+/// area the layer below does not cover **is** a bridge
+/// (`PrintObject::detect_surfaces_type` tags it `stBottomBridge`) as long as it
+/// survives canonical's opening. This function applies that rule to PnP's flat
+/// family — [`assemble_bridge_areas`] owns the facet/sloped family — with the
+/// same operator and the same radius:
+///
+/// ```text
+/// bridged = opening_ex(flat_bridge, 0.1 × external_perimeter_width, Miter, 3.0)
+/// ```
+///
+/// The opening deletes features narrower than `0.2 × width` (0.08 mm at a
+/// 0.4 mm width), so a sub-printable sliver is not reported as bridge area.
+/// Every component that survives the opening is kept **in full**, so a
+/// free-edge band — the outward-growing perimeter of a sloped solid — now
+/// classifies as a bridge exactly as canonical calls it.
+///
+/// `external_perimeter_width_mm` must be positive; callers resolve it through
+/// [`resolve_external_perimeter_width_mm`] (`outer_wall_line_width`, else
+/// `line_width`, else [`DEFAULT_LINE_WIDTH_MM`]).
 ///
 /// # First-layer / build-plate exclusion
 ///
-/// Build-plate-contact and first-layer bottoms are excluded automatically: the
-/// object's first layer has no predecessor cross-section, so its
-/// `unsupported_region` (`diff(current, previous)`) is empty, and a genuinely
-/// *supported* bottom surface (its footprint sits entirely on material below)
-/// likewise diffs to empty. In both cases this function is a no-op. The
-/// discriminator is exactly "is this flat bottom supported by the layer
-/// below?" — never the facet normal in isolation.
-///
-/// # Enclosure discriminator (free-edge vs. gap-span)
-///
-/// Being flat *and* unsupported is necessary but **not** sufficient to be a
-/// bridge. A sloped solid's outward-growing perimeter band, or a cantilever
-/// lip, is flat and unsupported at a **free edge** — there is no opposing
-/// support — and is a genuine `Bottom surface`, not a bridge. Only a gap
-/// **enclosed** by supported material on opposite sides (a slot ceiling, a beam
-/// over a gap) is a flat bridge.
-///
-/// Enclosure is detected by morphologically **closing** the supported region:
-///
-/// * `support  = region.polygons \ unsupported_region` (this layer's
-///   cross-section that *is* carried by the layer below),
-/// * `closed   = dilate(support, R)` then `erode(support, R)` with
-///   `R = FLAT_BRIDGE_ENCLOSURE_RADIUS_MM`,
-/// * `refilled = closed \ support`.
-///
-/// Closing re-fills a gap only when supported material lies on opposite sides
-/// within `2·R`; a convex free-edge band is never re-filled. So `refilled` is
-/// the "enclosed-gap" mask, and a flat-unsupported component is a bridge iff it
-/// overlaps `refilled`.
-///
-/// The closing radius is used **only** as a boolean enclosure test: a
-/// flat-bridge component that overlaps `refilled` is kept in **full**, and the
-/// reported `bridge_areas` geometry is the untouched flat-bottom ∩ unsupported
-/// span — never the eroded closing geometry. This decouples the enclosure
-/// radius from the reported area, so a radius large enough to span a wide gap
-/// cannot pinch the reported span's middle (which would otherwise collapse the
-/// detected area of a wide bridge).
+/// Canonical demotes a bottom with no lower layer (`lower_layer == nullptr`) to
+/// `stBottom`, never a bridge. The caller enforces the same guard by requiring
+/// a previous cross-section for the object. A genuinely *supported* bottom
+/// surface (its footprint sits entirely on material below) diffs to empty and
+/// is likewise a no-op here. The discriminator is exactly "is this flat bottom
+/// supported by the layer below?" — never the facet normal in isolation.
 pub fn assemble_flat_bridge_areas(
     region: &mut SlicedRegion,
     bottom_surface_footprint: &[ExPolygon],
     unsupported_region: &[ExPolygon],
-    closing_join: OffsetJoinType,
+    external_perimeter_width_mm: f32,
 ) {
     if bottom_surface_footprint.is_empty() || unsupported_region.is_empty() {
         return;
@@ -757,90 +741,20 @@ pub fn assemble_flat_bridge_areas(
         return;
     }
 
-    // Enclosure discriminator: keep only flat-unsupported spans that are
-    // pinched between supported material on opposite sides. See the fn doc.
-    let support = difference(&region.polygons, unsupported_region);
-    if support.is_empty() {
-        // Entire cross-section is unsupported: nothing to enclose the flat
-        // bottom against, so it is a free-floating bottom, not a bridge.
-        return;
-    }
-    // Morphological closing (dilate-then-erode by R) used purely as a BOOLEAN
-    // enclosure discriminator: does a gap ≤ 2·R get re-filled? The exact
-    // roundness of the offset corners is irrelevant here, and the downstream
-    // `FLAT_BRIDGE_ENCLOSURE_MIN_FRACTION` gate (10 %) is loose — which is why
-    // the join type is configurable via `flat_bridge_closing_join`:
-    // - `Miter` (default) matches OrcaSlicer's `closing` join (`jtMiter`,
-    //   `ClipperUtils.hpp`) and adds at most one point per corner.
-    // - `Square` is an equally cheap alternative (one bevel point per corner).
-    // - `Round` tessellates every corner of the (high-vertex) cross-section
-    //   into dozens of arc points at a 12 mm radius, which exploded the
-    //   intermediate polygon and made this call ~92 % of PrePass::Slice
-    //   wall-clock on Benchy (~28 s / 30 s). It is retained only as the
-    //   bit-identical pre-optimisation legacy path.
-    // - Exact same-direction-collinearity cleanup and a sound per-component
-    //   bounding-box rejection guard were also evaluated. Both preserve the
-    //   discriminator, but the former reduced the 0.2 mm Benchy profile by
-    //   only ~2% (inside timing noise) and the latter skipped none of its 240
-    //   calls. Do not revive either without a deterministic win or hit rate.
-    let closed = closing_ex(&support, FLAT_BRIDGE_ENCLOSURE_RADIUS_MM, closing_join);
-    let refilled = difference(&closed, &support);
-    if refilled.is_empty() {
-        // No pinched gap anywhere: every flat-unsupported area is a free-edge
-        // bottom (growing perimeter band, cantilever lip). Not a bridge.
+    // Canonical classification: one opening at a tenth of the external
+    // perimeter width, miter limit 3.0, every surviving component kept.
+    let bridged = opening_ex(
+        &flat_bridge,
+        0.1 * external_perimeter_width_mm as f64,
+        OffsetJoinType::Miter,
+        FLAT_BRIDGE_OPENING_MITER_LIMIT,
+    );
+    if bridged.is_empty() {
         return;
     }
 
-    // A component is a genuine bridge iff the enclosed-gap mask (`refilled`)
-    // covers a SUBSTANTIAL fraction of it. A real gap-span is almost fully
-    // re-filled by the closing (~100% overlap); a free-edge bottom (an
-    // outward-growing perimeter band, a cantilever lip) only *grazes*
-    // `refilled` through thin dilate/erode artifacts along the shared support
-    // boundary (a few % at most). The fraction gate rejects those slivers.
-    //
-    // Emit the FULL component (not the eroded closing geometry) so the enclosure
-    // radius never shrinks the reported bridge area.
-    let mut enclosed_bridge: Vec<ExPolygon> = Vec::new();
-    for component in &flat_bridge {
-        let comp_area = expoly_set_area(std::slice::from_ref(component));
-        if comp_area <= 0.0 {
-            continue;
-        }
-        let overlap = intersection(std::slice::from_ref(component), &refilled);
-        let overlap_area = expoly_set_area(&overlap);
-        if overlap_area >= FLAT_BRIDGE_ENCLOSURE_MIN_FRACTION * comp_area {
-            enclosed_bridge.push(component.clone());
-        }
-    }
-    if enclosed_bridge.is_empty() {
-        return;
-    }
-
-    region.bridge_areas.extend(enclosed_bridge);
+    region.bridge_areas.extend(bridged);
     region.is_bridge = true;
-}
-
-/// Total area (in workspace units², 1 unit = 100 nm) of a polygon set: the sum
-/// of each ExPolygon's outer-contour area minus its holes, via the shoelace
-/// formula. Used only for the flat-bridge enclosure fraction test, where the
-/// absolute unit scaling cancels (it appears on both sides of the ratio).
-fn expoly_set_area(polys: &[ExPolygon]) -> f64 {
-    fn ring_area(ring: &Polygon) -> f64 {
-        let pts = &ring.points;
-        if pts.len() < 3 {
-            return 0.0;
-        }
-        let mut a = 0.0_f64;
-        for i in 0..pts.len() {
-            let j = (i + 1) % pts.len();
-            a += (pts[i].x as f64) * (pts[j].y as f64) - (pts[j].x as f64) * (pts[i].y as f64);
-        }
-        (a * 0.5).abs()
-    }
-    polys
-        .iter()
-        .map(|ep| ring_area(&ep.contour) - ep.holes.iter().map(ring_area).sum::<f64>())
-        .sum()
 }
 
 // ============================================================================
@@ -932,8 +846,10 @@ pub struct PrepassSliceCache<'a> {
     pub raw_polygons: &'a HashMap<ObjectId, Vec<ExPolygon>>,
     /// The *previous* global layer's raw slice polygons, keyed by object id.
     /// `None` for the first layer in plan order (no predecessor). The
-    /// flat-bridge enclosure test derives this layer's unsupported region as
-    /// `diff(raw_polygons, prev_raw_polygons)`.
+    /// flat-bridge classifier derives this layer's unsupported region as
+    /// `diff(raw_polygons, safety_offset(prev_raw_polygons))`, and a missing
+    /// entry for an object means "no lower layer" — canonical demotes that
+    /// bottom to `stBottom`, so it is never a flat bridge.
     pub prev_raw_polygons: Option<&'a HashMap<ObjectId, Vec<ExPolygon>>>,
     /// Whole-object bottom-surface XY footprint, keyed by object id.
     pub bottom_surface_footprint: &'a HashMap<ObjectId, Vec<ExPolygon>>,
@@ -992,7 +908,7 @@ fn execute_prepass_slice_single_layer_impl(
                 object_id: active.object_id.clone(),
             })?;
 
-        let (slice_closing_radius_mm, flat_bridge_join) = if let Some(rm) = region_map {
+        let (slice_closing_radius_mm, external_perimeter_width_mm) = if let Some(rm) = region_map {
             let key = RegionKey {
                 global_layer_index: layer.index,
                 object_id: active.object_id.clone(),
@@ -1022,13 +938,13 @@ fn execute_prepass_slice_single_layer_impl(
                     let cfg = rm.config_for(&key);
                     (
                         cfg.slice_closing_radius,
-                        parse_flat_bridge_join(&cfg.flat_bridge_closing_join),
+                        resolve_external_perimeter_width_mm(cfg),
                     )
                 }
-                None => (0.0_f32, OffsetJoinType::Miter),
+                None => (0.0_f32, DEFAULT_LINE_WIDTH_MM),
             }
         } else {
-            (0.0_f32, OffsetJoinType::Miter)
+            (0.0_f32, DEFAULT_LINE_WIDTH_MM)
         };
 
         let raw_polygons = match cache.and_then(|c| c.raw_polygons.get(&active.object_id)) {
@@ -1118,12 +1034,16 @@ fn execute_prepass_slice_single_layer_impl(
         // pipeline above only sees `Overhang`-derived clusters; a flat beam
         // over a gap has a `BottomSurface` underside and is missed there. The
         // unsupported region is this object's cross-section area not covered by
-        // the previous layer — `diff(current, previous)` — mirroring
-        // OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp:901`).
-        // It is empty for the object's first layer (no previous cross-section
-        // in the batch), so genuinely-supported build-plate bottoms are never
-        // flagged; a fully-unsupported bottom is additionally rejected by the
-        // enclosure discriminator's empty-`support` early-out.
+        // the previous layer, after canonical's `ApplySafetyOffset::Yes`
+        // inflate of the lower set.
+        //
+        // The lower layer is also the guard: canonical's
+        // `PrintObject::detect_surfaces_type` demotes a bottom with
+        // `lower_layer == nullptr` to `stBottom`, never a bridge, so an object
+        // with no previous cross-section in the batch (its first layer) has no
+        // flat-bridge candidates at all. `gate_bridge_areas_by_unsupported_span`
+        // would clear a layer-0 candidate downstream anyway; skipping it here
+        // also avoids paying for geometry the gate throws away.
         if let Some(sc) = surface_class {
             if let Some(obj_data) = sc.per_object.get(&active.object_id) {
                 let current_raw = cache
@@ -1133,26 +1053,33 @@ fn execute_prepass_slice_single_layer_impl(
                 let prev_raw = cache
                     .and_then(|c| c.prev_raw_polygons)
                     .and_then(|m| m.get(&active.object_id))
-                    .map(Vec::as_slice)
-                    .unwrap_or(&[]);
-                let unsupported = difference(current_raw, prev_raw);
-                if !unsupported.is_empty() {
-                    let bottom_fp = match cache
-                        .and_then(|c| c.bottom_surface_footprint.get(&active.object_id))
-                    {
-                        Some(cached) => cached.clone(),
-                        None => crate::algos::mesh_analysis::bottom_surface_footprint(
-                            &object.mesh,
-                            &object.transform,
-                            &obj_data.facet_classes,
-                        ),
-                    };
-                    assemble_flat_bridge_areas(
-                        &mut sliced_region,
-                        &bottom_fp,
-                        &unsupported,
-                        flat_bridge_join,
+                    .map(Vec::as_slice);
+                if let Some(prev_raw) = prev_raw {
+                    let safety_offset = offset(
+                        prev_raw,
+                        SCALED_EPSILON_MM,
+                        OffsetJoinType::Square,
+                        SAFETY_OFFSET_ARC_TOLERANCE_MM,
                     );
+                    let unsupported = difference(current_raw, &safety_offset);
+                    if !unsupported.is_empty() {
+                        let bottom_fp = match cache
+                            .and_then(|c| c.bottom_surface_footprint.get(&active.object_id))
+                        {
+                            Some(cached) => cached.clone(),
+                            None => crate::algos::mesh_analysis::bottom_surface_footprint(
+                                &object.mesh,
+                                &object.transform,
+                                &obj_data.facet_classes,
+                            ),
+                        };
+                        assemble_flat_bridge_areas(
+                            &mut sliced_region,
+                            &bottom_fp,
+                            &unsupported,
+                            external_perimeter_width_mm,
+                        );
+                    }
                 }
             }
         }
@@ -1166,4 +1093,67 @@ fn execute_prepass_slice_single_layer_impl(
         z: layer.z,
         regions,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_external_perimeter_width_mm;
+    use slicer_ir::{ConfigValue, ResolvedConfig};
+
+    /// Canonical's `flow(frExternalPerimeter).scaled_width()` is the
+    /// `outer_wall_line_width` knob when the user sets it; `line_width` is only
+    /// the fallback. A regression here would silently classify at the wrong
+    /// opening radius (0.1 × width), so the extension must win.
+    #[test]
+    fn external_perimeter_width_prefers_outer_wall_extension() {
+        let mut config = ResolvedConfig {
+            line_width: 0.4,
+            ..ResolvedConfig::default()
+        };
+        config
+            .extensions
+            .insert("outer_wall_line_width".to_owned(), ConfigValue::Float(0.62));
+        assert_eq!(resolve_external_perimeter_width_mm(&config), 0.62);
+    }
+
+    /// A *percent* `outer_wall_line_width` resolves against the nozzle, not
+    /// against `line_width`, and only the config pipeline may do that; the
+    /// resolver therefore ignores it and keeps the typed width, exactly as
+    /// `resolve_contact_params` does.
+    #[test]
+    fn external_perimeter_width_ignores_percent_form() {
+        let mut config = ResolvedConfig {
+            line_width: 0.45,
+            ..ResolvedConfig::default()
+        };
+        config.extensions.insert(
+            "outer_wall_line_width".to_owned(),
+            ConfigValue::FloatOrPercent {
+                value: 150.0,
+                is_percent: true,
+            },
+        );
+        assert_eq!(resolve_external_perimeter_width_mm(&config), 0.45);
+    }
+
+    /// With no extension the typed `line_width` is the external perimeter
+    /// width (canonical falls back the same way).
+    #[test]
+    fn external_perimeter_width_falls_back_to_typed_line_width() {
+        let config = ResolvedConfig {
+            line_width: 0.5,
+            ..ResolvedConfig::default()
+        };
+        assert_eq!(resolve_external_perimeter_width_mm(&config), 0.5);
+    }
+
+    /// An unset typed width is `0.0`; the resolver must substitute the
+    /// perimeter default rather than zero, which would make the opening a
+    /// no-op and keep the sub-printable sliver tail.
+    #[test]
+    fn external_perimeter_width_defaults_when_unset() {
+        let config = ResolvedConfig::default();
+        assert_eq!(config.line_width, 0.0, "fixture precondition");
+        assert_eq!(resolve_external_perimeter_width_mm(&config), 0.4);
+    }
 }

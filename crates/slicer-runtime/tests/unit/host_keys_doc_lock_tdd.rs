@@ -73,7 +73,6 @@ fn resolved_str<'a>(c: &'a ResolvedConfig, key: &str) -> Option<&'a str> {
         "bottom_fill_holder" => c.bottom_fill_holder.as_str(),
         "bridge_fill_holder" => c.bridge_fill_holder.as_str(),
         "sparse_fill_holder" => c.sparse_fill_holder.as_str(),
-        "flat_bridge_closing_join" => c.flat_bridge_closing_join.as_str(),
         _ => return None,
     })
 }

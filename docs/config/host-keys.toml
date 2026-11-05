@@ -71,7 +71,6 @@ support_object_first_layer_gap = { default = 0.2, range = ">= 0" }
 support_sharp_tails     = { default = true }
 gcode_xy_decimals       = { default = 3,      range = "[1, 6]", note = "X / Y / Z token formatting" }
 slice_closing_radius    = { default = 0.049,  range = ">= 0", note = "per-layer Clipper2 close" }
-flat_bridge_closing_join = { default = "miter", note = "flat-bridge enclosure closing join: miter (OrcaSlicer parity, default) | square | round (legacy, bit-identical, slow)" }
 top_fill_holder         = { default = "rectilinear-infill", note = "holder of claim:top-fill (packet 37)" }
 bottom_fill_holder      = { default = "rectilinear-infill", note = "holder of claim:bottom-fill (packet 37)" }
 bridge_fill_holder      = { default = "rectilinear-infill", note = "holder of claim:bridge-fill (packet 37)" }

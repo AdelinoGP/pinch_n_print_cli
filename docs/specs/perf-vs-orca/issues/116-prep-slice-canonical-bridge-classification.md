@@ -2,8 +2,10 @@
 
 Type: task
 Label: wayfinder:task
-Status: open
-Assignee: (unclaimed)
+Status: in progress (PAUSED 2026-11-05 — candidate built and output-verified in
+  all 8 cells; the three-pair timed gate is 30/48 rows and must be resumed; see
+  ## Paused state)
+Assignee: 2026-11-04 OpenCode wayfinder session — the human said "continue the perf vs orca map, pick up the next afk ticket" (no ticket named; 117 is the human's grilling, so 116 is the first AFK frontier ticket in order)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [ticket 112](112-prep-slice-parity-phase1.md)'s Phase-1
@@ -103,3 +105,45 @@ checkout).
   — why no shape can preserve the gate's verdicts (the artefact field).
 - [`evidence/matched-pair/run_scoreboard.ps1`](../evidence/matched-pair/run_scoreboard.ps1)
   and `configs/pnp-classic-supports-{off,on}.json`.
+
+## Paused state (2026-11-05)
+
+**Implemented.** `assemble_flat_bridge_areas`
+(`crates/slicer-core/src/algos/prepass_slice.rs`) applies canonical's
+`opening_ex(flat_bridge, 0.1 × external_perimeter_width, Miter, 3.0)` over PnP's
+flat family; the caller adds canonical's `ApplySafetyOffset` (1-unit lower-layer
+inflate, square join) and skips the assembly when the object has no previous
+cross-section (canonical demotes that bottom to `stBottom`). The 12 mm
+`closing_ex`, the `≥ 10 %` refill gate, `MAX_FLAT_BRIDGE_SPAN_MM`,
+`FLAT_BRIDGE_ENCLOSURE_RADIUS_MM`, `FLAT_BRIDGE_ENCLOSURE_MIN_FRACTION`,
+`parse_flat_bridge_join` and `expoly_set_area` are deleted. The
+`flat_bridge_closing_join` key is retired from `ResolvedConfig`, its `PartialEq`
+and `Hash`, `docs/config/host-keys.toml`, `docs/15_config_keys_reference.md`, the
+host-keys doc-lock test and the scheduler manifest's enum assertions. The width
+resolver mirrors `resolve_contact_params` and has four unit tests.
+
+**Verified.** All eight cells: baseline ordinary ≡ baseline accelerated ≡ the
+t115 post-merge reference hash set; candidate ordinary ≡ candidate accelerated;
+candidate output differs from baseline in every cell. `audit_delta.py` reports
+**0 structural geometry lines** in all eight cells — the wall/support deltas are
+extrusion-token-only (same motion, different `E`) on bridge-flagged segments,
+plus the retired config appendix row and `M73` counters. Tests re-derived
+(`algo_prepass_slice_tdd`, `bridge_detector_tdd`, the wedge e2e);
+`cargo check/clippy --workspace --all-targets`, `check-literals`,
+`check-test-quality --report`, `cargo test -p slicer-core --features host-algos`
+and both guest freshness checks pass.
+
+**Remaining (the only open work).**
+
+1. Resume the paired A/B (30 of 48 rows recorded):
+   ```bash
+   pwsh -NoProfile -File docs/specs/perf-vs-orca/evidence/t116-prep-slice-canonical-bridge/run_t116.ps1 \
+     -Mode ab -Pairs 3 -PairFrom 2 -PairTo 3 -Append -OnlyMissing -BatchId ab
+   ```
+2. `reduce_t116.py` (needs `target/t116/audit/*.json`, already generated) and
+   `verify.py --self-test`; record the eight-cell floor multiples in
+   `evidence/t116-prep-slice-canonical-bridge/FINDINGS.md` §4.
+3. Only then write the resolution, close this ticket, and add the map's
+   Decisions-so-far entry. **Do not quote a wall ratio from the 2-pair
+   provisional table.**
+
