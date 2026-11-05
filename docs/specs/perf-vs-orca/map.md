@@ -82,30 +82,34 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-04/05, twenty-second session — the t116 take, PAUSED):**
+**Current selection scope (2026-11-04/05, twenty-second session — the t116 take):**
 the human said "continue the perf vs orca map, pick up the next afk ticket" (no
 ticket named; **117** is the human's grilling, so **116** was the first AFK
-frontier ticket in order) and then "pause it here" to sleep. **116 is CLAIMED and
-in progress** — do not re-claim it. Headline so far: **the canonical flat-bridge
-rule is implemented and output-verified; the timed gate is 30/48 rows.** The
-enclosure closing (`closing_ex(support, 12 mm, Miter)` + `≥ 10 %` refill) is
-replaced by canonical's `opening_ex(flat_bridge, 0.1 × external_perimeter_width,
-Miter, 3.0)` over PnP's flat family, with canonical's `ApplySafetyOffset` (1-unit
-lower inflate) and the lower-layer guard (`lower_layer == nullptr` ⇒ `stBottom`).
-The `flat_bridge_closing_join` key is retired end to end. **16-cell output: met** —
+frontier ticket in order), then paused the campaign overnight and resumed it.
+**116 is resolved.** Headline: **the canonical flat-bridge rule is built, output-
+verified and 8/8 above the floor.** The PnP-local enclosure closing
+(`closing_ex(support, 12 mm, Miter)` + `≥ 10 %` refill) is replaced by canonical's
+`opening_ex(flat_bridge, 0.1 × external_perimeter_width, Miter, 3.0)` over PnP's
+flat family, with canonical's `ApplySafetyOffset` (1-unit lower inflate) and the
+lower-layer guard (`lower_layer == nullptr` ⇒ `stBottom`); the
+`flat_bridge_closing_join` key is retired end to end. **16-cell output: met** —
 baseline ordinary ≡ baseline accelerated ≡ the t115 post-merge set, candidate
 ordinary ≡ candidate accelerated, candidate moves every cell. **Delta stop rule:
 not triggered** — `audit_delta.py` finds **0 structural geometry lines** in all
-eight cells; wall/support deltas are extrusion-token-only on bridge-flagged
-segments, plus the retired config appendix row and `M73` counters. **Paired gate:
-NOT EVALUATED** (pair 1 complete, pair 2 on seven of eight cells, pair 3 unrun;
-provisional 2-pair medians clear the floor by 10.8x–33.7x and must not be
-quoted). Resume with `run_t116.ps1 -Mode ab -Pairs 3 -PairFrom 2 -PairTo 3
--Append -OnlyMissing -BatchId ab`, then `reduce_t116.py` + `verify.py
---self-test`, then resolve. See [ticket 116](issues/116-prep-slice-canonical-bridge-classification.md)
-`## Paused state` and [`evidence/t116-prep-slice-canonical-bridge/`](evidence/t116-prep-slice-canonical-bridge/FINDINGS.md).
-Frontier otherwise: **119, 121** open and unclaimed; **117** is the human's
-grilling.
+eight cells. **Paired gate: 8/8** at **11.1x–30.5x** the 0.80 % floor (median wall
+−8.9 % … −24.4 %; CPU −16.6 … −288.9 s), narrowest base classic-on. Two ledger
+corrections: the baseline check is against the **post-merge** set (the ticket's
+post-t81 wording predates the merge), and after the key retirement **no declared
+config key carries `wire-type: enum`**, so the scheduler manifest's enum
+assertions retire too. Disclosures: the campaign was interrupted twice (session
+recycle, then a requested overnight pause), so pairs 1–2 and pair 3 come from two
+windows ~4 h apart; each pair is internally paired. No Orca arm — the post-merge
+scoreboard stays [ticket 121](issues/121-post-merge-per-layer-dispatch-regression.md)'s
+closing measurement. See [ticket 116](issues/116-prep-slice-canonical-bridge-classification.md)
+and [`evidence/t116-prep-slice-canonical-bridge/`](evidence/t116-prep-slice-canonical-bridge/FINDINGS.md)
+(`verify.py` exits 0 checkout-only, 316 checks; `--self-test` rejects 10/10
+negative controls). **Frontier now: 119, 121 and 122 open and unclaimed; 117 is the
+human's grilling.** Standing paired acceptance and KEEP/DROP rules unchanged.
 
 **Previous selection scope (2026-11-04, twenty-first session — the t115 take):**
 the human said "continue the perf vs orca map" (no ticket named) and asked that
@@ -2382,6 +2386,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [`PrePass::Slice` candidate: canonical flat-bridge classification](issues/116-prep-slice-canonical-bridge-classification.md): **resolved (2026-11-05; BUILD — 8/8 cells clear the 0.80 % floor at 11.1x–30.5x, CPU corroborating)**: the PnP-local enclosure discriminator is gone, replaced by canonical's `opening_ex(flat_bridge, 0.1 × external_perimeter_width, Miter, 3.0)` over PnP's flat family, canonical's `ApplySafetyOffset` (1-unit lower-layer inflate) and the `lower_layer == nullptr ⇒ stBottom` guard; the `flat_bridge_closing_join` key is retired end to end. **16-cell output:** baseline ordinary ≡ baseline accelerated ≡ the t115 post-merge reference set, candidate ordinary ≡ candidate accelerated, candidate moves every cell. **Delta audit: 0 structural geometry lines in all eight cells** — the wall/support deltas are extrusion-token-only (same `G1` motion, different `E`) on bridge-flagged segments, plus the retired config appendix row and `M73` counters; no coordinate, feedrate, travel, skirt, brim or raft line moved. **Paired gate (3 interleaved pairs):** median wall **7.23 → 5.79 / 11.58 → 10.21 / 7.27 → 5.94 / 11.75 → 10.12 s** (benchy classic-off/on, arachne-off/on) and **106.83 → 83.98 / 176.41 → 160.73 / 106.39 → 80.39 / 185.47 → 164.41 s** (base), i.e. **−8.9 % … −24.4 %**, **11.1x–30.5x** the floor, with process CPU **−16.6 … −288.9 s** in every cell. Narrowest multiple base classic-on at **11.1x**; one disclosed wall-range overlap there (0.55 s). Seven of eight cells strictly separated on wall, all eight on CPU. **Ledger corrections:** the baseline check moved from the post-t81 set (the ticket's pre-merge wording) to the t115 **post-merge** set, which is what HEAD produces; and the retirement of `flat_bridge_closing_join` leaves **no declared key carrying `wire_type: "enum"`**, so the scheduler manifest's enum-metadata assertions retire with it. Disclosures: the campaign was interrupted twice (session recycle mid-pair-2, then a requested pause), so pairs 1–2 and pair 3 come from two windows ~4 h apart — each pair is internally paired; host load was not independently measured (the slicer saturates its own 12 threads); no Orca arm, so no ratio of record — the post-merge scoreboard remains [ticket 121](issues/121-post-merge-per-layer-dispatch-regression.md)'s closing measurement. Evidence: [`evidence/t116-prep-slice-canonical-bridge/`](evidence/t116-prep-slice-canonical-bridge/FINDINGS.md) (`verify.py` exits 0 checkout-only, 316 checks; `--self-test` rejects 10/10 negative controls).
+
 - [Post-merge reconciliation: re-baseline the perf keeps and audit master's semantic drift](issues/115-post-merge-reconciliation.md): **resolved (2026-11-04; the merge is output-neutral on the matched job and regresses the per-layer phase)** — all eight matched cells grow by exactly **+34 bytes**, the added config line `; prepared_plan_diagnostic = none`, and a direct line diff on the four classic cells returns that single hunk (base classic-on `22200671… → 4b6d2843…`, benchy classic-off `3672dc7e… → 39298f40…`), so the reference set moves by a disclosure line and no toolpath needs re-recording. Painted fixtures do move: `cube_4color.3mf` **−1.08 %** bytes with up to **8.19 %** of extrusion redistributed between tools (T0 −8.19 / T1 −3.18 / T2 +1.73 / T3 +5.06 %) while total extrusion moves **−0.11 %**, and `painted_seams.3mf` keeps 111,958 moves with 9,608 reordered lines — the classic paint-attribution fix and variant-chain ordering, with no painted ratio of record affected. Performance: a three-pair interleaved A/B (preserved t103 developer snapshot `4cb96942…` vs the merged ordinary build, load 71 % disclosed) puts **process CPU up in 12/12 pairs** (+24.11 / +16.96 / +53.57 / +34.88 % medians) and the cost entirely in the **per-layer phase** (2.23x / 1.91x / 6.02x / 5.08x; instrumented base-off 7,265 → 42,886 ms = 5.90x, prepass flat at −0.3 %); call counts are unchanged while `fuzzy-skin` goes 162 → 56,068 ms and ten modules land at ~28.5 s, with the per-call cost rising 55 → 141 ms across layers. The accelerated build does not show it (2,318 vs 4,807–5,860 ms, same hash), pointing at a build-mode-sensitive host path. All keeps are structurally present (t78/t81/t90/t95/t101/t102) but their prices were not re-measured. Ruling: **no ratio of record may be quoted against the merged tree**; the post-merge Orca scoreboard is deferred to the fix's closing gate; references move to the post-merge set; the regression is [ticket 121](issues/121-post-merge-per-layer-dispatch-regression.md). Evidence: [`evidence/t115-post-merge/`](evidence/t115-post-merge/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 403 checks, 6/6 negative controls rejected).
 
 - [Lightning test-leg concurrency](issues/120-lightning-test-leg-concurrency.md): **resolved (2026-11-04; test-only screen — 798.61 s → 700.16 s on one warm shared-machine pair)** — `module_plan_matches_recorded_baseline` joins its WASM and native arms, `fresh_consumers_emit_baseline_segments` schedules preparation-only / visual-consumer / cancellation legs on the Rayon pool, and `typed_projection_is_atomic_and_neutral` schedules its projection / failure / empty-scene / G-code runs and joins the two G-code results before comparing. 172 passed / 1 ignored with identical rosters, calicat SHA `d12cdfd1…` unchanged, −98.45 s (−12.33 %) with browser load active, so no idle-box or statistically established effect is claimed; the 6–8 minute projection was not reached. No production code, assertion, roster entry or pipeline invocation removed. Ticket 119 remains open. Evidence: [`evidence/t120-lightning-parallel-legs/`](evidence/t120-lightning-parallel-legs/FINDINGS.md) (`verify.py --self-test` 6/6 mutations rejected).
@@ -2598,20 +2604,6 @@ Standing decisions for this effort (2026-09-22):
 - [Repair the Orca rig](issues/98-orca-rig-repair.md): **rig measures Orca again on the 2.5.0 install, and the repair falsified the archived Orca side.** OrcaSlicer 2.5 resolves `--load-settings` through a vendor preset bundle (`PresetBundle::resolve_preset_config`: file-identity match, else a `"from": "system"` manifest walk that flattens `inherits`/`include`), and the install ships only `BBL.opc` with no preset JSON tree. The rig now stages a version-gated source-manifest tree from the tag whose `BBL.json` version equals the installed cache stamp (`02.08.00.16` == `2.8.0.16`, fail-closed) and applies the matched keys as CLI overrides, with `enable_arc_fitting` pinned to 0 because 2.5 flipped that default to enabled. Three measured runs of benchy classic-off: **1.978 s** wall / 6.50 s CPU / 4,000,709 bytes, against the archive's 2.787 s / 9.27 s / 3,890,392 — the archived Orca applied its hardcoded **filament** defaults (density 0, max volumetric speed 2, first-layer temp 200) while the process chain resolved in both eras (300 mm/s walls). So the archived Orca under-measured Orca's own work: PnP's recorded multiples are optimistic for PnP and every archived Orca median needs re-derivation (fog). No ratio requoted. Evidence: `evidence/orca-rig-repair/` (`verify.py --self-test` exit 0, 4 claims, 7/7 negative controls rejected).
 
 ## Not yet specified
-
-- **The canonical bridge pipeline's second half: wave expansion and the facet-path
-  retirement (surfaced 2026-11-03 by [t112](issues/112-prep-slice-parity-phase1.md)).**
-  Shape **P2** would retire `assemble_bridge_areas`' mesh-facet classification and
-  derive `bridge_areas` from `diff(slices, lower)` alone, matching
-  `PrintObject::detect_surfaces_type`. It is **not** a drop-in: canonical follows
-  classification with `expand_expolygons` → `propagate_waves_ex` into the shell,
-  sparse and top expansion zones and **trims** those zones by the expanded bridges,
-  while PnP offsets a facet footprint by a fixed `expansion_margin_mm` (1.0 mm) and
-  trims nothing. t112 measured the classification-level set at **1,307 mm² / 4,655
-  mm²** on benchy / base (**2.58x / 9.12x** the flat family), so the output delta is
-  material, not cosmetic — but it cannot be bounded until the wave expansion exists.
-  This graduates only after [ticket 116](issues/116-prep-slice-canonical-bridge-classification.md)
-  lands or is dropped; it is the next prepass take, not part of this campaign.
 
 - **The per-layer/emit program is the next stage after the prepass rewrite
   (t111, 2026-11-03).** The destination stays 8/8, but even deleting both largest

@@ -67,6 +67,7 @@ FILL_TYPES = {
     "Bottom surface",
     "Ironing",
     "Gap fill",
+    "Gap infill",
 }
 
 FLOOR_FRACTION = 0.008
@@ -168,8 +169,8 @@ def check(summary, reference, *, skip_gate=False):
                 f"{cell}/{section}: structural section moved geometry lines",
             )
         ok(
-            audit["geometry_samples"] == [],
-            f"{cell}: the audit recorded unclassified geometry changes",
+            audit["structural_geometry_samples"] == [],
+            f"{cell}: the audit recorded structural geometry changes",
         )
         ok(
             any(

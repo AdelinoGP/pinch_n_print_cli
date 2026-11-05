@@ -131,7 +131,11 @@ def audit(baseline_path, candidate_path, cell):
                     buckets[kind] += 1
                     if kind == "appendix":
                         appendix_samples.add(b_line.strip())
-                    if kind == "geometry" and len(geometry_samples) < 10:
+                    if (
+                        kind == "geometry"
+                        and section in STRUCTURAL_TYPES
+                        and len(geometry_samples) < 10
+                    ):
                         geometry_samples.append(
                             {
                                 "z": z,
@@ -146,7 +150,11 @@ def audit(baseline_path, candidate_path, cell):
                     buckets[kind] += 1
                     if kind == "appendix":
                         appendix_samples.add(b_line.strip())
-                    if kind == "geometry" and len(geometry_samples) < 10:
+                    if (
+                        kind == "geometry"
+                        and section in STRUCTURAL_TYPES
+                        and len(geometry_samples) < 10
+                    ):
                         geometry_samples.append(
                             {
                                 "z": z,
@@ -160,7 +168,11 @@ def audit(baseline_path, candidate_path, cell):
                     buckets[kind] += 1
                     if kind == "appendix":
                         appendix_samples.add(a_line.strip())
-                    if kind == "geometry" and len(geometry_samples) < 10:
+                    if (
+                        kind == "geometry"
+                        and section in STRUCTURAL_TYPES
+                        and len(geometry_samples) < 10
+                    ):
                         geometry_samples.append(
                             {
                                 "z": z,
@@ -174,6 +186,16 @@ def audit(baseline_path, candidate_path, cell):
             or float(z) < first_changed_layer[section]
         ):
             first_changed_layer[section] = float(z)
+
+    # The fill/bridge families are *expected* to move toolpaths — that is the
+    # classification's whole point — so only structural geometry counts as an
+    # escape. Keep the structural samples for the failure message and total the
+    # fill geometry for the record.
+    fill_geometry_lines = sum(
+        buckets.get("geometry", 0)
+        for section, buckets in per_type.items()
+        if section not in STRUCTURAL_TYPES
+    )
 
     changed_types = {
         section: {"changed_lines": sum(buckets.values()), **dict(buckets)}
@@ -193,7 +215,8 @@ def audit(baseline_path, candidate_path, cell):
         "structural_geometry_lines": structural_geometry_lines,
         "structural_geometry_identical": structural_geometry_lines == 0,
         "appendix_changed_lines": sorted(appendix_samples),
-        "geometry_samples": geometry_samples,
+        "structural_geometry_samples": geometry_samples,
+        "fill_geometry_lines": fill_geometry_lines,
         "first_changed_z": {
             k: first_changed_layer[k] for k in sorted(first_changed_layer)
         },

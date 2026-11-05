@@ -9,12 +9,8 @@ mode-distinct accelerated staging (accelerated).
 
 ## Verdict
 
-**Candidate built and output-verified; the timed gate is PAUSED, not yet decided.**
-The campaign was paused on 2026-11-05 with the paired A/B at 30 of 48 rows
-(pair 1 complete, pair 2 complete on seven of eight cells, pair 3 unrun). Nothing
-below claims a wall result that has not been measured.
-
-What is established:
+**BUILD.** The canonical rule replaces a PnP-local discriminator that had no
+canonical counterpart, and it is cheaper in every cell:
 
 - **16-cell output contract: met.** Both arms are byte-identical within each
   build in all eight cells (`ordinary ≡ accelerated`), the baseline reproduces
@@ -26,8 +22,8 @@ What is established:
   segments the new bridge flag covers, plus the retired
   `; flat_bridge_closing_join = miter` appendix row and time-estimate `M73`
   counters.
-- **Paired gate: PENDING.** See §4 for the exact state and the resume command.
-  The 0.80 % floor is not yet asserted in this document.
+- **Paired gate: 8/8 cells clear the 0.80 % floor** at **11.1x–30.5x**, with
+  process CPU corroborating in every cell (table in §4).
 
 The candidate also removes a config-surface lie: the retired key was the only
 knob the prepass read for the closing.
@@ -120,16 +116,16 @@ classifies every changed line as `extrusion_only` (identical motion, different
 `E`), `appendix` (`;` comments: the config appendix and the time/filament
 estimates), `progress_counter` (`M73`), or `geometry` (a moved toolpath).
 
-| cell | changed section types | structural geometry lines |
-| --- | --- | ---: |
-| benchy classic-off | Bottom surface, Bridge, Gap infill, Inner wall, Internal Bridge, Outer wall, Sparse infill | **0** |
-| benchy classic-on | … + Internal solid infill, Support | **0** |
-| benchy arachne-off | Bottom surface, Bridge, Inner wall, Internal Bridge, Sparse infill | **0** |
-| benchy arachne-on | … + Internal solid infill, Outer wall, Support | **0** |
-| base classic-off | Bottom surface, Bridge, Gap infill, Inner wall, Internal Bridge, Outer wall, Sparse infill | **0** |
-| base classic-on | … + Support, Support interface | **0** |
-| base arachne-off | Bottom surface, Bridge, Inner wall, Internal Bridge, Outer wall, Sparse infill | **0** |
-| base arachne-on | Bottom surface, Bridge, Inner wall, Internal Bridge, Sparse infill, Support | **0** |
+| cell | changed section types | fill geometry lines | structural geometry lines |
+| --- | --- | ---: | ---: |
+| benchy classic off | Bottom surface, Bridge, Gap infill, Inner wall, Internal Bridge, Outer wall, Sparse infill | 1215 | **0** |
+| benchy classic on | Bottom surface, Bridge, Gap infill, Inner wall, Internal Bridge, Internal solid infill, Outer wall, Sparse infill, Support | 1208 | **0** |
+| benchy arachne off | Bottom surface, Bridge, Inner wall, Internal Bridge, Sparse infill | 1663 | **0** |
+| benchy arachne on | Bottom surface, Bridge, Inner wall, Internal Bridge, Internal solid infill, Outer wall, Sparse infill, Support | 1658 | **0** |
+| base classic off | Bottom surface, Bridge, Gap infill, Inner wall, Internal Bridge, Outer wall, Sparse infill | 1325 | **0** |
+| base classic on | Bottom surface, Bridge, Inner wall, Internal Bridge, Sparse infill, Support, Support interface | 1323 | **0** |
+| base arachne off | Bottom surface, Bridge, Inner wall, Internal Bridge, Outer wall, Sparse infill | 1274 | **0** |
+| base arachne on | Bottom surface, Bridge, Inner wall, Internal Bridge, Sparse infill, Support | 1274 | **0** |
 
 **Reading the structural entries.** Every `Outer wall`, `Inner wall`,
 `Support` and `Support interface` line that differs is an **`E`-token-only**
@@ -149,47 +145,42 @@ The two visible non-geometry effects are therefore:
 Both are recorded in `reduced/summary.json` `delta_audit.<cell>.appendix_changed_lines`
 and `changed_types`.
 
-## 4. Paired gate — PAUSED
+## 4. Paired gate
 
-**State at pause (2026-11-05).** `target/t116/ab/rows.csv` holds **30 of 48**
-rows: pair 1 complete on all eight cells, pair 2 complete on seven of eight
-(`base-arachne-on` unrun in pair 2), pair 3 unrun. The three-pair median gate has
-therefore **not** been evaluated and no wall claim is made.
+Three interleaved pairs per cell, baseline ordinary vs candidate ordinary,
+`RAYON_NUM_THREADS=12`. Wall is process creation-to-exit; CPU is kernel+user via
+the process handle. The pair order alternates so neither arm always leads.
 
-The two interruptions were infrastructure, not measurement failures: the first
-run was killed mid-pair-2 (background process recycled), and the resumed run was
-stopped on request when the human went to sleep. Rows are append-only, so every
-completed run is kept.
+| cell | baseline median | candidate median | delta | floor (0.80 %) | x floor | CPU delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| benchy classic off | 7.23 s | 5.79 s | 1.44 s (20.0 %) | 58 ms | **25.0x** | −16.6 s |
+| benchy classic on | 11.58 s | 10.21 s | 1.37 s (11.9 %) | 93 ms | **14.8x** | −16.6 s |
+| benchy arachne off | 7.27 s | 5.94 s | 1.34 s (18.4 %) | 58 ms | **22.9x** | −16.9 s |
+| benchy arachne on | 11.75 s | 10.12 s | 1.64 s (13.9 %) | 94 ms | **17.4x** | −17.0 s |
+| base classic off | 106.83 s | 83.98 s | 22.85 s (21.4 %) | 855 ms | **26.7x** | −278.3 s |
+| base classic on | 176.41 s | 160.73 s | 15.68 s (8.9 %) | 1,411 ms | **11.1x** | −258.0 s |
+| base arachne off | 106.39 s | 80.39 s | 26.00 s (24.4 %) | 851 ms | **30.5x** | −288.9 s |
+| base arachne on | 185.47 s | 164.41 s | 21.06 s (11.4 %) | 1,484 ms | **14.2x** | −269.2 s |
 
-Resume (idempotent — `-OnlyMissing` skips recorded `(pair, cell, arm)` rows):
+**All eight cells clear the 0.80 % floor, process CPU corroborating in every
+cell** (the candidate's median CPU is 17 s lower on benchy and 258–289 s lower
+on base). The narrowest multiple is base classic-on at **11.1x**; the widest is
+base arachne-off at **30.5x**.
 
-```bash
-pwsh -NoProfile -File docs/specs/perf-vs-orca/evidence/t116-prep-slice-canonical-bridge/run_t116.ps1 \
-  -Mode ab -Pairs 3 -PairFrom 2 -PairTo 3 -Append -OnlyMissing -BatchId ab
-python docs/specs/perf-vs-orca/evidence/t116-prep-slice-canonical-bridge/reduce_t116.py
-python docs/specs/perf-vs-orca/evidence/t116-prep-slice-canonical-bridge/verify.py
-```
+Raw sample ranges (3 per arm) are in `reduced/summary.json` `ab.<cell>`.
+Seven of eight cells are *strictly separated* on wall and all eight on CPU; the
+exception is base classic-on, where the candidate's slowest pair (174.90 s)
+sits 0.55 s above the baseline's fastest (174.35 s) — the medians are 15.68 s
+apart and the floor multiple is 11.1x, so the gate is not marginal, but the
+overlap is disclosed rather than smoothed over.
 
-**Provisional: the rows recorded so far (2 pairs, one cell with 1 pair), not the
-gate.** Median wall of the recorded pairs, same pairing per cell:
-
-| cell | pairs | baseline median | candidate median | Δ | × floor |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| benchy classic-off | 2 | 7.31 s | 5.82 s | 1.49 s (20.4 %) | 25.5x |
-| benchy classic-on | 2 | 11.89 s | 10.24 s | 1.65 s (13.9 %) | 17.4x |
-| benchy arachne-off | 2 | 7.42 s | 5.97 s | 1.45 s (19.5 %) | 24.4x |
-| benchy arachne-on | 2 | 11.81 s | 10.28 s | 1.53 s (13.0 %) | 16.2x |
-| base classic-off | 2 | 111.29 s | 81.33 s | 29.96 s (26.9 %) | 33.7x |
-| base classic-on | 2 | 175.38 s | 155.38 s | 20.00 s (11.4 %) | 14.3x |
-| base arachne-off | 2 | 104.68 s | 79.57 s | 25.10 s (24.0 %) | 30.0x |
-| base arachne-on | 1 | 192.87 s | 176.14 s | 16.73 s (8.7 %) | 10.8x |
-
-These are two-sample medians from a campaign that was interrupted twice; they
-are **not** the three-pair gate and must not be quoted as the result. The
-`-Mode output` single runs point the same way (base classic-off 111.63 → 85.70 s
-wall, 1,118.6 → 803.8 s CPU; benchy classic-off 7.07 → 5.77 s wall, 59.1 →
-42.8 s CPU), and those ran while clippy was still compiling on this host.
-
+**Campaign interruptions.** The first run was killed mid-pair-2 by a session
+recycle and the campaign was paused overnight on request; pairs 1–2 were
+measured in the first window and pair 3 roughly four hours later on a host that
+was otherwise idle. Each pair measures both arms back-to-back, so the pairing
+absorbs the window shift, and the per-pair deltas are recorded in
+`reduced/summary.json` (`ab.<cell>.pairs`) rather than being collapsed into a
+single median.
 
 ## 5. Disclosures
 
@@ -215,6 +206,16 @@ wall, 1,118.6 → 803.8 s CPU; benchy classic-off 7.07 → 5.77 s wall, 59.1 →
   `SCALED_EPSILON` inflate (1 unit) only moves the unsupported boundary, and the
   opening at 0.04 mm removes boundary slivers anyway. It is implemented for
   canonical fidelity, not as a measured effect.
+- **Host load was not independently measured.** The slicer saturates the 12
+  configured Rayon threads, so a CPU-load percentage cannot separate this
+  workload from anything else on the box; the only load evidence recorded is
+  free memory (≈16.7 GB free during the first window) and the absence of other
+  user workloads. Every claim here is a paired A/B; no absolute wall is offered
+  as a machine capability.
+- **One cell is not strictly separated on wall.** Base classic-on's candidate
+  slowest pair (174.90 s) sits 0.55 s above the baseline fastest (174.35 s); the
+  gate is the median floor (11.1x) and the CPU medians separate by 258 s, but the
+  overlap is recorded rather than hidden. See §4.
 
 ## Evidence index
 
