@@ -61,11 +61,68 @@ and one ignored; active browser load means this is not an idle-box benchmark.
 See its [evidence](evidence/t120-lightning-parallel-legs/FINDINGS.md) for the
 conditions, correctness gates and limits. Ticket 119 remains open.
 
+**Post-merge reconciliation (2026-11-04, ticket 115):** the merge `a5e9a403` is
+**output-neutral on the matched job** — all 8 cells grow by exactly the 34-byte
+line `; prepared_plan_diagnostic = none`, and a line diff on the four classic
+cells confirms that is the only change — but it **regresses the per-layer
+phase 1.9x–6.0x** (benchy 2,608 → 5,816 ms; base 15,341 → 92,418 ms) with
+process CPU **+17…+54 % in 12/12 paired runs**; the prepass is unchanged
+(70,662 → 70,463 ms, −0.3 %). Call counts are identical while small modules jump
+to a near-uniform ~28.5 s accumulated (`fuzzy-skin` 162 → 56,068 ms), and the
+per-call cost grows with layer index. The accelerated dist build does not show
+it (2,318 ms per-layer on benchy classic-off vs ordinary 4,807–5,860 ms, same
+hash), which points at a build-mode-sensitive host path. **No ratio of record
+may be quoted against the merged tree** — t103/t106 ratios and t104/t110 splits
+are pre-merge — and the post-merge Orca scoreboard is deferred to the fix
+ticket's closing gate. See [ticket 115](issues/115-post-merge-reconciliation.md)
+and [`evidence/t115-post-merge/`](evidence/t115-post-merge/FINDINGS.md), and
+[ticket 121](issues/121-post-merge-per-layer-dispatch-regression.md).
+
 Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-04, nineteenth session — the t114 take):** the
+**Current selection scope (2026-11-04, twenty-first session — the t115 take):**
+the human said "continue the perf vs orca map" (no ticket named) and asked that
+any uncommitted work be committed; the t120 take's six files were committed
+first as `9a7371aa`. The frontier at HEAD `f70e8ba7` held four open children —
+[115](issues/115-post-merge-reconciliation.md),
+[116](issues/116-prep-slice-canonical-bridge-classification.md),
+[117](issues/117-strong-planner-carry-ruling.md) (the human's grilling) and
+[119](issues/119-lightning-corpus-consolidation.md) — so the first frontier
+ticket in order, **115**, was claimed and resolved the same session. Headline:
+**the merge is output-neutral and per-layer-expensive.** Every matched cell's
+ordinary output grows by exactly **+34 bytes** (the added config line
+`; prepared_plan_diagnostic = none`), and a direct diff on the four classic cells
+returns that single hunk — no toolpath re-record is needed, only the hash set
+moving (`22200671… → 4b6d2843…` on base classic-on). Painted fixtures do move:
+`cube_4color.3mf` loses **1.08 %** of its bytes and redistributes up to
+**8.19 %** of extrusion between tools while total extrusion moves **−0.11 %**,
+consistent with the classic paint-attribution fix; the map quotes no painted
+ratio, so nothing it says depends on it. The **performance** side is the real
+finding: a paired pre-merge-vs-merged A/B (preserved t103 developer snapshot vs
+the current ordinary build, 3 interleaved pairs, load 71 % disclosed) puts
+**process CPU up in 12/12 pairs** (+24.1 / +17.0 / +53.6 / +34.9 % medians,
+benchy-off / benchy-on / base-off / base-on) and the whole cost in the
+**per-layer phase** (incrementally 2.23x / 1.91x / 6.02x / 5.08x; instrumented
+base-off 7,265 → 42,886 ms = 5.90x with the prepass flat at −0.3 %). Module
+brackets show the same 495 call counts with `fuzzy-skin` 162 → 56,068 ms and ten
+more modules at a near-uniform ~28.5 s, and the per-call cost rises with layer
+index (55 → 141 ms) — a cost proportional to committed state, not guest work.
+The accelerated dist build is unaffected (2,318 ms per-layer on benchy-off vs
+ordinary 4,807–5,860 ms, same hash), so a build-mode-sensitive host path is the
+suspect. All structural keeps are present (t78/t81/t90/t95/t101/t102); their
+prices were not re-measured because the regression dominates their phase. The
+ruling: **no ratio may be quoted against the merged tree**, the post-merge Orca
+scoreboard is deferred (not dropped) to the fix's closing gate, references move
+to the post-merge set, and the regression is graduated as
+[121](issues/121-post-merge-per-layer-dispatch-regression.md). Evidence:
+[`evidence/t115-post-merge/`](evidence/t115-post-merge/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 403 checks, 6/6 negative
+controls). Frontier now: **116, 119, 121** open and unclaimed; **117** is the
+human's grilling. Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-11-04, nineteenth session — the t114 take):** the
 human said "continue the perf vs orca map" (no ticket named). The frontier at HEAD
 `7eeff93e` held four open children — [114](issues/114-e2e-bucket-latency.md),
 [115](issues/115-post-merge-reconciliation.md),
@@ -2300,6 +2357,10 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Post-merge reconciliation: re-baseline the perf keeps and audit master's semantic drift](issues/115-post-merge-reconciliation.md): **resolved (2026-11-04; the merge is output-neutral on the matched job and regresses the per-layer phase)** — all eight matched cells grow by exactly **+34 bytes**, the added config line `; prepared_plan_diagnostic = none`, and a direct line diff on the four classic cells returns that single hunk (base classic-on `22200671… → 4b6d2843…`, benchy classic-off `3672dc7e… → 39298f40…`), so the reference set moves by a disclosure line and no toolpath needs re-recording. Painted fixtures do move: `cube_4color.3mf` **−1.08 %** bytes with up to **8.19 %** of extrusion redistributed between tools (T0 −8.19 / T1 −3.18 / T2 +1.73 / T3 +5.06 %) while total extrusion moves **−0.11 %**, and `painted_seams.3mf` keeps 111,958 moves with 9,608 reordered lines — the classic paint-attribution fix and variant-chain ordering, with no painted ratio of record affected. Performance: a three-pair interleaved A/B (preserved t103 developer snapshot `4cb96942…` vs the merged ordinary build, load 71 % disclosed) puts **process CPU up in 12/12 pairs** (+24.11 / +16.96 / +53.57 / +34.88 % medians) and the cost entirely in the **per-layer phase** (2.23x / 1.91x / 6.02x / 5.08x; instrumented base-off 7,265 → 42,886 ms = 5.90x, prepass flat at −0.3 %); call counts are unchanged while `fuzzy-skin` goes 162 → 56,068 ms and ten modules land at ~28.5 s, with the per-call cost rising 55 → 141 ms across layers. The accelerated build does not show it (2,318 vs 4,807–5,860 ms, same hash), pointing at a build-mode-sensitive host path. All keeps are structurally present (t78/t81/t90/t95/t101/t102) but their prices were not re-measured. Ruling: **no ratio of record may be quoted against the merged tree**; the post-merge Orca scoreboard is deferred to the fix's closing gate; references move to the post-merge set; the regression is [ticket 121](issues/121-post-merge-per-layer-dispatch-regression.md). Evidence: [`evidence/t115-post-merge/`](evidence/t115-post-merge/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 403 checks, 6/6 negative controls rejected).
+
+- [Lightning test-leg concurrency](issues/120-lightning-test-leg-concurrency.md): **resolved (2026-11-04; test-only screen — 798.61 s → 700.16 s on one warm shared-machine pair)** — `module_plan_matches_recorded_baseline` joins its WASM and native arms, `fresh_consumers_emit_baseline_segments` schedules preparation-only / visual-consumer / cancellation legs on the Rayon pool, and `typed_projection_is_atomic_and_neutral` schedules its projection / failure / empty-scene / G-code runs and joins the two G-code results before comparing. 172 passed / 1 ignored with identical rosters, calicat SHA `d12cdfd1…` unchanged, −98.45 s (−12.33 %) with browser load active, so no idle-box or statistically established effect is claimed; the 6–8 minute projection was not reached. No production code, assertion, roster entry or pipeline invocation removed. Ticket 119 remains open. Evidence: [`evidence/t120-lightning-parallel-legs/`](evidence/t120-lightning-parallel-legs/FINDINGS.md) (`verify.py --self-test` 6/6 mutations rejected).
+
 - [Compiled-component cache in the live load path (e2e dev loop)](issues/118-compiled-component-cache.md): **resolved (2026-11-04; milestone met — full e2e bucket 755.12 s / 12.59 min < 900 s, 172 passed / 1 ignored)** — a process-global `(profile, canonical path, mtime, length)` component cache plus one shared engine per profile cuts a debug calicat slice from **11.732 s to 2.813 s warm** (15.424 s cold; byte-identical G-code `d12cdfd1…`); wasmtime's validated 15 MB disk cache makes separate `pnp_cli` processes hit; the per-layer capture loop now uses the same rayon parallelism as the ordinary path, and the lightning corpus tests run their five independent cases in parallel. Module walls: prep **~1,800 → 267.60 s**, `slice_end_to_end` **200.86 → 49.96 s**, precision **86.66 → 11.37 s**, visual capture **96.22 → 22.67 s**. Full bucket **1,282.18 s → 755.12 s** after case parallelism (21.37 → 12.59 min). Evidence: [`evidence/t118-component-cache/`](evidence/t118-component-cache/FINDINGS.md) (`verify.py` 22/22 checks, 11/11 negative controls).
 
 
