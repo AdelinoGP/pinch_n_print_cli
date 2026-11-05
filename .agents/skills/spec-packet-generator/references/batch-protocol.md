@@ -55,7 +55,7 @@ On `PREFLIGHT BLOCKED`, return the findings to the author and re-review, for at 
 
 1. Read the plan file in full and work from it, not memory.
 2. Select the first `pending` row whose dependencies are all `generated`.
-3. Rebuild exports with a short summary per generated dependency: net-new symbols by name, crate, and shape.
+3. Rebuild exports with a short summary per generated dependency: net-new symbols by name, crate, and shape. For an archived dependency, use its `_OLD/<packet-name>.md` digest and re-derive the exports from the current tree; the digest omits implementation plans.
 4. Choose mode by remaining count: 2-3 inline, 4+ orchestrated.
 5. When exhausted, report the final queue, blockers, the commit-together reminder, and how to resume.
 

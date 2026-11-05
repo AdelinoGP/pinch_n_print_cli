@@ -225,8 +225,9 @@ which is committed and re-runnable.
   linker-owned clipping.
 - `docs/specs/layer-module-preparation-plan.md` — queue rows 01–08, the row-08
   re-scope note and the Gate A/B records.
-- `docs/spec_packets/layer-module-preparation_08_lightning-migration/` — the
-  packet that implements this decision; its acceptance criteria are the
-  equivalence and retirement witnesses described above.
+- `docs/spec_packets/_OLD/layer-module-preparation_08_lightning-migration.md` —
+  the design digest for the packet that implements this decision. Its original
+  acceptance criteria, available in Git history, are the equivalence and
+  retirement witnesses described above.
 - `docs/DEVIATION_LOG.md` — `D-LMP08-ADR-0066-RETIREMENT-PRECONDITION`,
   `D-LMP08-ADR-0029-HOST-OWNERSHIP`.

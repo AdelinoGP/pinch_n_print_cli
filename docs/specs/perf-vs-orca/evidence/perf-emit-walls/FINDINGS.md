@@ -102,7 +102,7 @@ rings at ~376 M instructions each. `bridge_scan` is the same story through
 `PerimeterSpatialContext::is_bridge` → `point_in_any_polygon`
 (`crates/slicer-core/src/perimeter_spatial.rs`).
 
-This is packet 254's (`docs/spec_packets/254-exact-perimeter-spatial-queries`)
+This is packet 254's (`docs/spec_packets/_OLD/254-exact-perimeter-spatial-queries.md`)
 ordinary/accelerated duality: ordinary builds are deliberately the "reference
 route for exactness" (`docs/23_controlled_perimeter_builds.md`), and the
 indexed path exists behind the controlled build's acceptance campaign

@@ -318,8 +318,8 @@ amendment above remain unchanged.
 Architectural acceptance of ADR-0072 is independent of packet closure. The
 subsequent cold review reopened Packet 10; do not infer implementation or test
 success from this amendment. Re-derive current packet status, TASK-571 and
-closure evidence from `docs/spec_packets/config-scope-resolution_10_remaining-automatic-values/packet.spec.md`,
+closure evidence from `docs/spec_packets/_OLD/config-scope-resolution_10_remaining-automatic-values.md`,
 `docs/07_implementation_status.md` and the packet's
-[review remediation](../spec_packets/config-scope-resolution_10_remaining-automatic-values/review-remediation.md)
+[review remediation](../spec_packets/_OLD/config-scope-resolution_10_remaining-automatic-values.md#review-remediation)
 rather than freezing their mutable status here. No commit is authorized by
 this amendment.

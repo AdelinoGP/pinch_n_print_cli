@@ -93,9 +93,9 @@ global-8/tool-0-12 control with the independent 12/8 ratio. Source inspection an
 documentation greps are not behavior proof. Historical preflight/closure
 claims do not establish the reopened packet's current test results. Re-derive
 status and evidence from
-`docs/spec_packets/config-scope-resolution_10_remaining-automatic-values/packet.spec.md`,
+`docs/spec_packets/_OLD/config-scope-resolution_10_remaining-automatic-values.md`,
 `docs/07_implementation_status.md` and the packet's
-[review remediation](../spec_packets/config-scope-resolution_10_remaining-automatic-values/review-remediation.md).
+[review remediation](../spec_packets/_OLD/config-scope-resolution_10_remaining-automatic-values.md#review-remediation).
 This accepted decision does not authorize a commit or close the packet.
 Performance impact is unmeasured; no timing claim is made by this decision
 record.

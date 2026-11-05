@@ -7,6 +7,7 @@ A packet is one coherent slice of work, specified well enough that a fresh agent
 - Directory: `docs/spec_packets/<prefix>_<NN>_<packet-name>/`. `<prefix>` is the workstream (for plan-driven packets, the `docs/specs/<prefix>-plan.md` file name minus `-plan`), `<NN>` is the zero-padded plan queue row or the next free number for that prefix, `<packet-name>` is kebab-case.
 - Files: `packet.spec.md` (goal, why, scope, design notes, acceptance criteria, verification, docs impact) and `implementation-plan.md` (ordered steps).
 - Legacy packets keep their historical names and their older four-or-five-file shape (`requirements.md`, `design.md`, `task-map.md`). Do not migrate them.
+- Archived packets are design-only digests at `docs/spec_packets/_OLD/<packet-name>.md`; their full source files remain in Git history. They are not implementable packet directories.
 
 ## Lifecycle
 

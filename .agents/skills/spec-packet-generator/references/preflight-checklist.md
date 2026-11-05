@@ -9,7 +9,7 @@ Each check covers names the packet treats as **pre-existing** (verbs like extend
 3. **Schema versions.** Criteria assert the field or variant addition, not a literal future version. A bump targets the constant that governs that IR, and the packet agrees with itself on the target.
 4. **ADRs.** When proposing a new ADR, check `docs/adr/` for number collisions and re-derive the free number when creating it. The design conforms to every existing ADR's normative content it touches, or records the required amendment and rationale.
 5. **Deviation IDs.** IDs follow the convention `docs/DEVIATION_LOG.md` actually uses. IDs to close or supersede exist there; IDs to create do not.
-6. **Prerequisites.** Every dependency described as satisfied has `status: implemented` in its own `packet.spec.md`.
+6. **Prerequisites.** Every dependency described as satisfied has `status: implemented` in its own `packet.spec.md`, or in its `_OLD/<packet-name>.md` digest if archived. Recheck any required exports against the current tree.
 7. **Test targets.** Each new test file under an aggregated binary is registered in its aggregator. Each criterion's `--test` binary is the one the file lands in, and that binary can drive the asserted behaviour today, or the plan adds the fixture. Check required features and file-level feature gates (AGENTS.md §Test Discipline).
 8. **Criteria.** Each criterion is checkable and names exact outputs. Validation, enforcement, contract-boundary, and failure-path changes have a negative criterion. No criterion command is `cargo test --workspace`.
 9. **Fallout.** Every step that adds a struct field or bumps a schema or WIT version lists its struct-literal sites and old-value assertions (README gotcha 6).

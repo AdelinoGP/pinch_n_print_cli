@@ -27,6 +27,8 @@ Delegate large reads (`OrcaSlicerDocumented/`, long files, broad surveys) and no
 
 Read `packet.spec.md` and `implementation-plan.md` (legacy packets: also `requirements.md` and `design.md`; for `supersedes:`, the predecessor's `packet.spec.md`). Build a step ledger: step, files touched, verify command, done-when, dependencies, status.
 
+An archived `_OLD/<packet-name>.md` is a design-only digest, not an implementable packet. For historical audits, retrieve the full packet from Git history; for an archived predecessor, read its digest and recheck required exports against the current tree.
+
 Sanity-check the packet against the tree before dispatching work. A cited symbol that does not exist, a criterion no test binary can drive, or a missing negative case for an enforcement change is a packet defect. In `implement` mode, fix the packet and record each fix under `## Deviations` in `packet.spec.md`; when the fix changes scope, stop and ask. Never bend code to satisfy a broken criterion.
 
 Resolve `[BLOCK]` questions and unmet implementation prerequisites before dispatching implementation work. In `refine-draft` mode, update only the packet, run the authoring checklist, report the result, and stop. In `review-only` mode, run the requested `spec-review` and report its verdict without changing code, packet status, or commits.

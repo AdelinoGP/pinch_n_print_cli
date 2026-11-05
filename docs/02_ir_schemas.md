@@ -709,7 +709,7 @@ experimental fixed-field 3.1.0 layout and its packet-added production decoder
 are abandoned without authorizing deletion or regeneration of existing
 experimental artifacts and without a reader compatibility promise. This
 preservation constraint does not assert that a 3.1.0 fixture was produced;
-Packet 10's [review remediation](spec_packets/config-scope-resolution_10_remaining-automatic-values/review-remediation.md)
+Packet 10's [review remediation](spec_packets/_OLD/config-scope-resolution_10_remaining-automatic-values.md#review-remediation)
 records the identified artifact inventory.
 No WIT, CLI-output, or manifest schema version changes.
 
