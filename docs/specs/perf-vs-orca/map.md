@@ -82,7 +82,35 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-05, twenty-third session — the t119 take):**
+**Current selection scope (2026-11-05, twenty-fourth session — the t121 take):**
+the human said "Continue" after the t119 resolution. **121 is in progress with
+the fix landed and verified; it is not closed.** Headline: **the per-layer
+transport was deriving prepared-region geometry for every module call, and for
+`Layer::PerimetersPostProcess` it derived data the stage never consumes.** The
+first is fixed by reusing the arena's `PreparedRegionData` when the
+perimeter-source projection is the identity and every projected origin is
+staged; the second by passing `derive_prepared = false` for that stage. **Four
+classic cells, 3 interleaved pairs:** CPU **−27 % … −46 %** in **12/12 pairs**,
+wall **−9.3 % … −37.5 %** in **11/12** (the exception is benchy-off pair 2 at
++0.66 % wall with −37.23 % CPU; the cell median is −14.29 %), and all four
+G-code hashes identical pre/fix. **Per-layer bracket (base-off, instrumented):
+7,265 pre-merge → 42,406 unfixed → 6,758 fixed**, below the pre-merge bracket.
+Residual cost after the first fast path was isolated to `fuzzy-skin` and
+`seam-placer` (the `PerimetersPostProcess` stage), which the stage-aware empty
+view returned to their pre-merge aggregate. **Ledger correction:** the t115
+`output_audit` hashes predate t116 (which moved every cell); the current
+references are `35600ee4…` / `596f6da5…` / `6a6a3d9d…` / `8f46fe92…`, and the
+fix is output-neutral against them. **Remaining closing measurement:** the
+fresh post-merge Orca scoreboard (Orca + PNP ordinary + PNP accelerated, 1
+warmup + 3 runs over 8 cells) is a separate multi-hour campaign and has not been
+run; 121 stays in progress until it lands. See
+[ticket 121](issues/121-post-merge-per-layer-dispatch-regression.md) and
+[`evidence/t121-per-layer-dispatch/`](evidence/t121-per-layer-dispatch/FINDINGS.md)
+(`verify.py` exits 0 checkout-only, 8/8 negative controls rejected).
+**Frontier now: 121 in progress; 122 open and unclaimed; 117 is the human's
+grilling.** Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-11-05, twenty-third session — the t119 take):**
 the human said "continue the perf vs orca map, pick up the next afk ticket" (no
 ticket named; **117** is the human's grilling, so **119** was the first AFK
 frontier ticket in order). **119 is resolved.** Headline: **the lightning module

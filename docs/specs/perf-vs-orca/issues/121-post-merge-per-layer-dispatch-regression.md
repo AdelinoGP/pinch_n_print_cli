@@ -2,8 +2,11 @@
 
 Type: task
 Label: wayfinder:task
-Status: open
-Assignee: (unclaimed)
+Status: in progress (fix landed and verified 2026-11-05; the fresh post-merge
+Orca scoreboard is the remaining closing measurement — see ## Answer)
+Assignee: 2026-11-05 OpenCode wayfinder session — the human said "Continue"
+  after the t119 resolution; 121 is the first AFK frontier ticket in order
+  (117 is the human's grilling)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [ticket 115](115-post-merge-reconciliation.md)'s reconciliation
@@ -78,3 +81,98 @@ If the cost is intrinsic to the preparation-lifecycle contract (i.e. it buys a
 capability the map needs), record the measured price and escalate the
 capability/performance trade to the human as a grilling ticket instead of
 weakening the contract.
+
+## Answer
+
+**The per-layer transport was deriving prepared-region geometry for every
+module call, and for `Layer::PerimetersPostProcess` it was deriving data the
+stage never consumes. Both are host-side and output-neutral; removing them
+accounts for the whole measured regression.**
+
+### Diagnosis
+
+A temporary `PNP_T121_PROBE` bracket inside the per-module dispatch (debug
+build, `tmp/3dbenchy.stl` classic supports-off) split the call into setup /
+transport / guest. Transport assembly averaged **51.7 ms** against **11.6 ms**
+of guest work, and inside it `prepare_regions` averaged **45.9 ms** (86 % of
+the transport, 82 % of the call). The setup maps were 73 µs. The transport is
+assembled per module call even though its geometry inputs are layer-level, so
+every module re-derived the same prepared regions the arena had already
+computed.
+
+The same probe run showed the module attribution: after the first fast path
+every module returned to its pre-merge bracket except `com.core.fuzzy-skin`
+and `com.core.seam-placer` (55.7 / 55.3 s against 162 / 211 ms pre-merge),
+the two `Layer::PerimetersPostProcess` modules. That stage is outside
+`prepare_dispatch_region_views`' prepared-region contract, but the transport
+still synthesized the prepared view for it per call.
+
+### Fix
+
+`crates/slicer-wasm-host/src/marshal/transport.rs`:
+
+- `reuse_arena_preparation`: reuse the arena's `PreparedRegionData` only when
+  the perimeter-source projection is the identity **and** every projected
+  origin is staged. A modifier footprint/child or a missing origin takes the
+  fresh derivation.
+- `assemble_layer_transport_for_stage(…, derive_prepared)`: `false` delivers
+  the empty prepared view for a stage outside the prepared-region contract.
+  The test-facing `assemble_layer_transport` wrapper keeps `true`.
+- `crates/slicer-wasm-host/src/dispatch.rs` passes
+  `stage_export != "Layer::PerimetersPostProcess"`.
+
+### Measured
+
+| cell | wall pre → fix (median) | wall Δ | CPU pre → fix (median) | CPU Δ | output |
+| --- | --- | ---: | --- | ---: | --- |
+| benchy classic-off | 7,073 → 6,062 ms | −14.29 % | 42.84 → 26.89 s | −37.23 % | identical |
+| benchy classic-on | 11,081 → 10,056 ms | −9.25 % | 58.73 → 42.66 s | −27.36 % | identical |
+| base classic-off | 85,451 → 53,434 ms | −37.47 % | 810.02 → 435.95 s | −46.18 % | identical |
+| base classic-on | 164,383 → 126,731 ms | −22.91 % | 1,131.25 → 746.55 s | −34.01 % | identical |
+
+Three interleaved pairs per cell, same release binaries and module tree.
+**CPU negative 12/12; wall 11/12.** The exception is benchy-off pair 2 at
+**+0.66 %** wall with **−37.23 %** CPU (that pair's pre arm ran 6,031 ms against
+7,074/7,073 ms in the other pairs); the cell median is −14.29 %.
+
+**Per-layer bracket (base classic-off, instrumented):** pre-merge **7,265 ms**
+→ unfixed merged **42,406 ms** → fixed **6,758 ms**, i.e. below the pre-merge
+bracket with identical G-code. The t115 post-merge value (42,886 ms) is
+reproduced by this take's unfixed arm within 1.1 %.
+
+### Verification
+
+- `cargo test -p slicer-wasm-host --lib` — 96 passed.
+- `cargo test -p slicer-runtime --test contract` — 315 passed (including the
+  wave-overhangs native/WASM parity leg that relies on the synthesized view
+  for `Layer::Infill`).
+- `cargo test -p slicer-runtime --test integration` — 376 passed, 4 ignored.
+- `cargo xtask test --summary -p slicer-runtime --test e2e` — 172 passed,
+  1 ignored, 695.77 s.
+- `cargo clippy --workspace --all-targets -- -D warnings` — clean.
+- `cargo xtask check-literals` — 0; `check-test-quality --report` — 0.
+- Regression seam: `reuse_decision_requires_identity_and_every_staged_origin`,
+  `identity_reuse_matches_the_fresh_preparation`,
+  `non_prepared_stage_delivers_the_empty_view`.
+
+### Ledger correction
+
+The acceptance names the **t115 post-merge** output hashes. They predate
+**t116**, which moved every cell's output (canonical flat-bridge
+classification). The current references are `35600ee4…` (benchy-off),
+`596f6da5…` (benchy-on), `6a6a3d9d…` (base-off) and `8f46fe92…` (base-on); the
+fix is output-neutral against them. Any post-merge scoreboard must use the t116
+set.
+
+### Remaining closing measurement
+
+The **fresh post-merge Orca scoreboard** (t115 step 3) is not run in this take:
+the matched-pair rig runs Orca + PNP ordinary + PNP accelerated, 1 warmup +
+3 measured runs over 8 cells, a separate multi-hour campaign. The fix and its
+four-cell paired gate are complete; the scoreboard must use the t116 reference
+set above.
+
+Evidence:
+[`evidence/t121-per-layer-dispatch/`](../evidence/t121-per-layer-dispatch/FINDINGS.md)
+— `verify.py` exits 0 checkout-only; `--self-test` rejects 8/8 negative
+controls.

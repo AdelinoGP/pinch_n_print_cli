@@ -3258,7 +3258,7 @@ impl WasmRuntimeDispatcher {
         }
         let authored_coloring_ctx =
             build_dispatch_authored_coloring_context(selection, &config_fields_per_region);
-        let transport = crate::marshal::transport::assemble_layer_transport(
+        let transport = crate::marshal::transport::assemble_layer_transport_for_stage(
             selection,
             layer.index,
             input.slice,
@@ -3266,6 +3266,7 @@ impl WasmRuntimeDispatcher {
             input.support_plan.as_deref(),
             input.prepared_regions,
             input.surface_classification,
+            stage_export != "Layer::PerimetersPostProcess",
         );
         if let Some(entry) = &module.native_entry {
             let stage_export = slicer_schema::stage_by_id(stage_id)
