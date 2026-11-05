@@ -46,6 +46,7 @@ mod integrated_parity_tree_support_tdd;
 mod integrated_parity_wave_overhangs_tdd;
 mod integrated_parity_wipe_tower_tdd;
 mod layer_stage_commit_stages_tdd;
+mod lightning_selection_contract_tdd;
 mod macro_all_worlds_roundtrip_tdd;
 mod macro_postpass_text_roundtrip_tdd;
 mod modifier_split_subregion_density_tdd;

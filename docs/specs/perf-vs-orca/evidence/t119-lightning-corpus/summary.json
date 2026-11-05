@@ -1,0 +1,47 @@
+{
+  "base_commit": "1e20f52ee7c4e7b041272ea314807df45d6ac1f3",
+  "command": "cargo test -p slicer-runtime --test e2e -- --test-threads 1 --nocapture lightning_migration_tdd::",
+  "before": {
+    "module_seconds": 688.89,
+    "passed": 9,
+    "failed": 0,
+    "ignored": 1,
+    "active_invocations": 41,
+    "components": {
+      "corpus_wasm": 5,
+      "corpus_native": 5,
+      "fresh_preparation": 5,
+      "fresh_visual": 5,
+      "fresh_cancellation": 5,
+      "typed_projection": 6,
+      "legacy_positive": 1,
+      "comparator_positive": 1,
+      "failure_scenarios": 4,
+      "selection_scenarios": 3,
+      "compile_retirement_positive": 1
+    }
+  },
+  "after": {
+    "module_seconds": 620.44,
+    "passed": 9,
+    "failed": 0,
+    "ignored": 1,
+    "active_invocations": 32,
+    "components": {
+      "corpus_wasm": 5,
+      "corpus_native": 5,
+      "fresh_preparation": 5,
+      "fresh_cancellation": 5,
+      "typed_projection": 6,
+      "failure_scenarios": 4,
+      "selection_scenarios": 2
+    },
+    "trace_counts": {
+      "run_visual": 13,
+      "run_visual_native": 5,
+      "run_slice_preparation_capture": 6,
+      "run_slice_with_runtime_extensions": 8
+    }
+  },
+  "repeat_after_module_seconds": 611.64
+}
