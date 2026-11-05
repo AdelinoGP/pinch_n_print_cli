@@ -28,7 +28,7 @@ If specific files are given, still run `git status` for broader context but focu
 - IR field additions are backwards-compatible (additive fields only for minor bumps). No removal or type changes to existing IR fields without major version bump. New IR types added to `crates/slicer-ir/` with proper serialization.
 
 **WASM module contracts:**
-- Manifest `[ir-access].reads` / `[ir-access].writes` match actual usage. Manifest `wit-world` references the correct world version. Manifest `[stage]` uses canonical stage identifiers from `docs/01_system_architecture.md`. Claim declarations use canonical claim names (perimeter-generator, infill-generator, …). `min-host-version`, `min-ir-schema`, `max-ir-schema` correctly set.
+- Manifest `[ir-access].reads` / `[ir-access].writes` match actual usage. Check WIT and manifest compatibility against `docs/03_wit_and_manifest.md`. Manifest `[stage]` uses canonical stage identifiers from `docs/01_system_architecture.md`. Claim declarations use canonical claim names (perimeter-generator, infill-generator, …). `min-host-version`, `min-ir-schema`, `max-ir-schema` are correctly set.
 
 **Host service usage:**
 - Host services accessed via SDK wrappers, not raw wasmtime. Memory allocated in per-layer arenas, not long-lived WASM memory.
@@ -62,7 +62,7 @@ If specific files are given, still run `git status` for broader context but focu
 
 ### 7. Compatibility policy (High)
 
-- Additive changes: minor version bumps. Breaking changes (rename/remove/type change): major version bumps. Host rejects incompatible modules at startup with explicit diagnostics: expected vs actual host version, WIT world version, and IR range in the error messages.
+- Check additive and breaking changes against the compatibility policy in `docs/11_operational_governance_and_acceptance_gate.md` and the current WIT contract in `docs/03_wit_and_manifest.md`. Incompatible modules receive actionable diagnostics.
 
 ### 8. Config robustness (Medium)
 
@@ -80,10 +80,10 @@ If specific files are given, still run `git status` for broader context but focu
 
 A fixed set of Fowler code smells (*Refactoring*, ch. 3) matched against the pinned diff — the **quality axis**, running beside the architecture axis of dimensions 1–10. Two rules bind it:
 
-- **The repo overrides.** A documented standard (CLAUDE.md, `docs/`) wins; where it endorses something the baseline would flag, suppress the smell.
+- **The repo overrides.** A documented standard (`AGENTS.md`, `docs/`) wins; where it endorses something the baseline would flag, suppress the smell.
 - **Always a judgement call.** Each hit is a labelled heuristic ("possible Feature Envy"), never a hard violation. Report hits under the report's own `Smell Baseline` heading — never rerank them into the severity lists, so neither axis masks the other — and smells never move the verdict.
 
-**Dispatch the sweep as one sub-agent**: give it the pinned diff command and this smell list pasted in full (the sub-agent cannot see this file). Return format: SUMMARY — per hit, smell name + `file:line` + the offending hunk quoted.
+Sweep the pinned diff against this list. For each hit, report the smell name, location, and offending hunk or rationale.
 
 Each smell reads *what it is* → *how to fix*:
 
@@ -102,13 +102,13 @@ Each smell reads *what it is* → *how to fix*:
 
 ## Automated checks
 
-Run these and include the results in the report. Test selection follows SKILL.md Test discipline — narrowest command that proves the change, never `cargo test --workspace` by default. **These commands are one batched dispatch** (one `FACT` line per command, SNIPPETS follow-up only for failures) — they are independent cargo invocations over one shared build cache, so running them one dispatch apiece pays the sub-agent startup cost four times for one warm cache.
+Include these results in the report. Reuse valid evidence from the unchanged tree or run the checks; test selection follows SKILL.md Test discipline. Record failures and checks you could not run.
 
 - `cargo build --workspace` — any build failure is blocking.
 - `cargo clippy --workspace --all-targets -- -D warnings` — blocking. (`--all-targets` is required: plain `--workspace` skips test/bench targets and has shipped broken test targets before.)
 - `cargo check --workspace --all-targets` — fast type-check of everything, seconds not minutes.
 - Targeted tests: from the pinned diff's `--stat`, identify changed crates/modules; run one narrow proving command per affected crate. If no narrow test exercises the change, say so explicitly in the report rather than falling back to the full suite.
-- If the diff touches any guest-WASM input path (see CLAUDE.md "Guest WASM Staleness"), run `cargo xtask build-guests --check` before interpreting any test result.
+- If the diff touches any guest-WASM input path (see AGENTS.md "Guest WASM Staleness"), run `cargo xtask build-guests --check` before interpreting any guest-related failure.
 
 ## Rules
 

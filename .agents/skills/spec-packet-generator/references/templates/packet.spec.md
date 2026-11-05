@@ -1,75 +1,47 @@
 ---
-status: implemented
 packet: [packet-dir]
-task_ids:
-  - TASK-000
-backlog_source: docs/07_implementation_status.md
-context_cost_estimate: S | M
-copy_note: Template only; emitted copies use draft or explicitly approved active status.
+status: draft
 ---
 
-# Packet Contract: [packet-name]
-
-This template is `implemented` so preflight ignores it in place. Replace all placeholders in emitted copies.
+# [Packet title]
 
 ## Goal
 
-[One solution-shaped sentence. Motivation belongs in `requirements.md`.]
+[One sentence describing the end state.]
 
-## Scope Boundaries
+## Why
 
-[A 2-3 sentence prose bounding box. Full lists belong in `requirements.md`.]
+[The gap and why it is one coherent slice, in one to three short paragraphs. When superseding a packet, name it and what it missed.]
 
-## Prerequisites and Blockers
+## Scope
 
-- Depends on:
-- Unblocks:
-- Activation blockers:
+- In: [item]
+- Out: [item a reader might reasonably assume is included]
 
-## Acceptance Criteria
+## Depends on
 
-State ACs only here; `requirements.md` references their IDs.
+- `[packet-dir]` ([current status]): [what this packet consumes and whether implementation must wait]. Or `None.`
 
-- **AC-1. Given** [condition], **when** [action], **then** [exact observable result]. | `[delegation-friendly verification command]`
-- **AC-2. Given** [condition], **when** [action], **then** [exact observable result]. | `[verification command]`
+## Design notes
 
-Every AC names exact fields, paths, counts, errors, variants, or output fragments and ends with its own runnable command. Repeat shared commands; never write "see AC-N". Commands that dump more than 200 successful output lines must be wrapped or filtered so a subagent can return a FACT.
+[The chosen approach and any rejected alternative worth recording; non-obvious decisions; invariants and locked assumptions; IR / WIT / manifest / scheduler contract notes. Applicable snippets from `references/snippets.md` go here. Keep only what a fresh implementer would otherwise get wrong.]
 
-AC verification command rule (mandatory): each pipe-suffixed command's `--test` binary must be one that can actually drive the asserted behavior. Before authoring an AC that requires an end-to-end driver (e.g. `run_slice`, full pipeline, real module dispatch), verify the target test binary has a working setup for that driver today — dispatch a `LOCATIONS` check for existing call sites. If the target binary is the wrong home (e.g. `--test unit` for a `run_slice` test when no unit test today calls `run_slice`), either pick a binary that has the setup, or author a shim/test fixture in the same step and document the shim in `requirements.md` §In Scope.
+## Acceptance criteria
 
-## Negative Test Cases
-
-- **AC-N1. Given** [rejection/failure condition], **when** [action], **then** [observable rejection]. | `[verification command]`
-
-Include this section for validation, enforcement, contract-boundary, or error-path changes.
+- **AC-1** [Checkable statement naming exact fields, keys, errors, or outputs.] `[command or test]`
+- **AC-N1** [Rejection case, for validator, enforcement, contract-boundary, or failure-path changes.] `[command or test]`
 
 ## Verification
 
-List only 2-3 closure-gate commands; the full matrix belongs in `requirements.md`. Use `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets -- -D warnings` as defaults.
-
+- `cargo build --workspace`
 - `cargo check --workspace --all-targets`
 - `cargo clippy --workspace --all-targets -- -D warnings`
-- `[targeted integration test proving the primary contract]`
+- `[targeted test command proving the main contract]`
 
-## Authoritative Docs
+## Docs impact
 
-- `[docs/path.md]` - [state direct range read or delegated summary; delegate when the doc is over 300 lines or only one section applies]
+[Either `none` with a one-line reason (not allowed when the change touches IR, WIT, scheduler, claim, manifest, host-service, or SDK contracts), or one bullet per doc section to edit with its check: `docs/02_ir_schemas.md` § <section> `rg -q '<anchor>' docs/02_ir_schemas.md`]
 
-## Doc Impact Statement (Required)
+## Open questions
 
-Choose exactly one:
-
-- **`none`** - [one-line rationale; only for work that changes no IR, WIT, scheduler, claim, manifest, host-service, or SDK contract].
-- Specific same-packet doc edits; each entry must list a verification grep, for example: `docs/02_ir_schemas.md` section "<name>" - `rg -q '<anchor>' docs/02_ir_schemas.md`. The full list must contain one grep per edited section.
-
-Append doc greps to the ACs. `spec-review` requires this section and verifies each grep before `status: implemented`.
-
-<!-- snippet: orca-delegation -->
-## OrcaSlicer Reference Obligations
-
-[When parity applies, replace this placeholder with the exact snippet and packet-specific paths. Otherwise omit the entire section.]
-
-<!-- snippet: context-discipline -->
-## Context Discipline Note
-
-[Replace with the exact mandatory context-discipline snippet.]
+[`[BLOCK]` must be answered before implementing; `[FWD]` the implementer may resolve. Or `None.`]

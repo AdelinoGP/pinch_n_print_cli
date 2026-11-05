@@ -14,9 +14,9 @@ Critical senior-engineer review of **this session's work** against the spec pack
 
 ## Workflow
 
-1. **Identify packet and scope.** Read in full: `packet.spec.md`, `requirements.md`, `design.md`, `implementation-plan.md` (and `task-map.md` only if closure depends on it). Run `git status` and `git diff --stat <main>...HEAD` to enumerate concrete changes.
+1. **Identify packet and scope.** Read `packet.spec.md` and `implementation-plan.md`; for legacy packets also read `requirements.md`, `design.md`, and any task map relevant to closure. Run `git status` and `git diff --stat <main>...HEAD` to enumerate concrete changes.
 
-2. **Build an evidence ledger.** For every AC, requirement, and implementation-plan step, record: spec ref · expected behaviour · `file:line` evidence (or `[unverified]`) · status (Implemented / Partial / Missing). For the AC verification commands, dispatch **one batched run** — the whole command list to one sub-agent, one `FACT pass/fail` line per command (never `cargo test --workspace`) — or report the unrun ones as `[unverified — command not run]`.
+2. **Build an evidence ledger.** For every AC, scope item, legacy requirement, and implementation-plan step, record: spec ref · expected behaviour · file and symbol evidence (or `[unverified]`) · status (Implemented / Partial / Missing). Check the AC verification commands; reuse valid results from the unchanged tree or run narrow commands. Report unrun ones as `[unverified — command not run]`.
 
 3. **Write the report.** Exactly these three sections, in this order, no additions (template in `references/output-format.md`):
 
@@ -45,7 +45,7 @@ Critical senior-engineer review of **this session's work** against the spec pack
 
 ## Not this scope
 
-- Packet-wide contract review with the five-value verdict and heavy sub-agent dispatch → **packet scope** (`references/packet-review.md`).
+- Packet-wide contract review with the five-value verdict → **packet scope** (`references/packet-review.md`).
 - Reviewing changes with no packet as the contract → **code scope** (`references/code-review.md`).
 - Applying fixes → not review at all; even obvious bugs are findings.
 - Running the full suite → this scope may dispatch narrow commands, never the workspace ceremony.
