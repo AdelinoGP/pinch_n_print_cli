@@ -138,11 +138,13 @@ four). Any post-merge scoreboard must use the t116 set, not t115's.
 
 ## Remaining closing measurement
 
-The ticket's acceptance still requires a **fresh post-merge Orca scoreboard**.
-It has not been run in this take: the matched-pair rig (`run_scoreboard.ps1`)
-runs Orca + PNP ordinary + PNP accelerated, 1 warmup + 3 measured runs over 8
-cells, which is a separate multi-hour campaign. The fix and its four-cell paired
-gate are complete; the scoreboard must use the t116 reference set above.
+The **fresh post-merge Orca scoreboard** was paused at **6 of 8 cells** (batch
+`t121-post-merge2`, 2026-11-05 ~21:16). The six complete cells measure
+**ordinary/Orca 2.78x–4.10x** and **accelerated/Orca 2.76x–4.18x**, with
+ordinary ≡ accelerated G-code bytes in every complete cell; `base classic-on`
+and `base arachne-on` are missing. This is a partial screen, not a ratio of
+record. Resume commands, raw rows and the starvation disclosure:
+[`SCOREBOARD-PARTIAL.md`](SCOREBOARD-PARTIAL.md).
 
 Evidence: [`ab-rows-classic.csv`](ab-rows-classic.csv),
 [`summary.json`](summary.json), [`verify.py`](verify.py)

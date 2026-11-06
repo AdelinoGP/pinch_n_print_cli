@@ -101,12 +101,15 @@ view returned to their pre-merge aggregate. **Ledger correction:** the t115
 `output_audit` hashes predate t116 (which moved every cell); the current
 references are `35600ee4…` / `596f6da5…` / `6a6a3d9d…` / `8f46fe92…`, and the
 fix is output-neutral against them. **Remaining closing measurement:** the
-fresh post-merge Orca scoreboard (Orca + PNP ordinary + PNP accelerated, 1
-warmup + 3 runs over 8 cells) is a separate multi-hour campaign and has not been
-run; 121 stays in progress until it lands. See
-[ticket 121](issues/121-post-merge-per-layer-dispatch-regression.md) and
+fresh post-merge Orca scoreboard. It is **paused at 6 of 8 cells** (batch
+`t121-post-merge2`; the six complete cells measure ordinary/Orca **2.78x–4.10x**
+and accelerated/Orca 2.76x–4.18x, with ordinary ≡ accelerated bytes; `base
+classic-on` and `base arachne-on` are missing). That is a partial screen, not a
+ratio of record, and 121 stays in progress. See
+[ticket 121](issues/121-post-merge-per-layer-dispatch-regression.md),
 [`evidence/t121-per-layer-dispatch/`](evidence/t121-per-layer-dispatch/FINDINGS.md)
-(`verify.py` exits 0 checkout-only, 8/8 negative controls rejected).
+(`verify.py` exits 0 checkout-only, 8/8 negative controls rejected) and the
+[partial scoreboard](evidence/t121-per-layer-dispatch/SCOREBOARD-PARTIAL.md).
 **Frontier now: 121 in progress; 122 open and unclaimed; 117 is the human's
 grilling.** Standing paired acceptance and KEEP/DROP rules unchanged.
 

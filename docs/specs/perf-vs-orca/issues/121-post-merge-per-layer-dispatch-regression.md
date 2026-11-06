@@ -166,11 +166,15 @@ set.
 
 ### Remaining closing measurement
 
-The **fresh post-merge Orca scoreboard** (t115 step 3) is not run in this take:
-the matched-pair rig runs Orca + PNP ordinary + PNP accelerated, 1 warmup +
-3 measured runs over 8 cells, a separate multi-hour campaign. The fix and its
-four-cell paired gate are complete; the scoreboard must use the t116 reference
-set above.
+The **fresh post-merge Orca scoreboard** (t115 step 3) was **paused at 6 of 8
+cells** when the session restarted on 2026-11-05 ~21:16. Batch
+`t121-post-merge2` holds 76 data rows; the six complete cells give
+**ordinary/Orca 2.78x–4.10x** (accelerated/Orca 2.76x–4.18x), with PnP ordinary ≡
+accelerated G-code bytes in every complete cell. Missing: `base classic-on`
+and `base arachne-on`. This is a **partial screen, not a ratio of record**; the
+destination's 8/8 is not reached. The resume commands and the starvation
+disclosure are in
+[`evidence/t121-per-layer-dispatch/SCOREBOARD-PARTIAL.md`](../evidence/t121-per-layer-dispatch/SCOREBOARD-PARTIAL.md).
 
 Evidence:
 [`evidence/t121-per-layer-dispatch/`](../evidence/t121-per-layer-dispatch/FINDINGS.md)
