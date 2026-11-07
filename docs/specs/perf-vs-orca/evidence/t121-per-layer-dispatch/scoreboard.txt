@@ -1,4 +1,4 @@
-rows total=76 measured=55
+rows total=96 measured=72
 
 ## base | arachne-off | orca
     run1: wall=16.36s cpu=38.95s ratio=2.3811
@@ -26,6 +26,33 @@ rows total=76 measured=55
     gcode bytes: 20847171/20847171/20847171
     degraded=false non_fatal=0
     sections (base-arachne-off-pnp-ordinary-m1): Top surface=77, Internal Bridge=6, Bottom surface=61, Sparse infill=591, Bridge=80, Skirt=1, Inner wall=844, Outer wall=844, Internal solid infill=2, Brim=1
+
+## base | arachne-on | orca
+    run1: wall=25.81s cpu=106.08s ratio=4.1092
+    run2: wall=24.95s cpu=105.2s ratio=4.2159
+    run3: wall=24.67s cpu=103.91s ratio=4.2122
+    medians(n=3): wall=24.95s cpu=105.2s
+    gcode bytes: 43928003/43928003/43928003
+    degraded=n/a non_fatal=n/a
+    sections (base-arachne-on-orca-m2): Internal solid infill=1642, Bridge=149, Top surface=135, Inner wall=964, Overhang wall=1054, Custom=2, Support=748, Sparse infill=1406, Internal Bridge=21, Support interface=426, Outer wall=1725
+
+## base | arachne-on | pnp-accelerated
+    run1: wall=124.15s cpu=746.05s ratio=6.0093
+    run2: wall=125.17s cpu=745.38s ratio=5.9551
+    run3: wall=124.25s cpu=744.22s ratio=5.9896
+    medians(n=3): wall=124.25s cpu=745.38s
+    gcode bytes: 42331252/42331252/42331252
+    degraded=false non_fatal=0
+    sections (base-arachne-on-pnp-accelerated-m3): Internal solid infill=2, Bridge=80, Support=431, Internal Bridge=6, Outer wall=844, Support interface=70, Brim=1, Skirt=1, Top surface=77, Inner wall=844, Bottom surface=61, Sparse infill=591
+
+## base | arachne-on | pnp-ordinary
+    run1: wall=125.07s cpu=751.12s ratio=6.0054
+    run2: wall=123.41s cpu=746.61s ratio=6.05
+    run3: wall=124.36s cpu=750.89s ratio=6.0382
+    medians(n=3): wall=124.36s cpu=750.89s
+    gcode bytes: 42331252/42331252/42331252
+    degraded=false non_fatal=0
+    sections (base-arachne-on-pnp-ordinary-m3): Internal solid infill=2, Bridge=80, Support=431, Internal Bridge=6, Outer wall=844, Support interface=70, Brim=1, Skirt=1, Top surface=77, Inner wall=844, Bottom surface=61, Sparse infill=591
 
 ## base | classic-off | orca
     run1: wall=15.84s cpu=31.5s ratio=1.9891
@@ -55,11 +82,31 @@ rows total=76 measured=55
     sections (base-classic-off-pnp-ordinary-m2): Top surface=70, Internal Bridge=6, Gap infill=220, Sparse infill=664, Bridge=66, Skirt=1, Inner wall=494, Outer wall=494, Internal solid infill=2, Brim=1, Bottom surface=54
 
 ## base | classic-on | orca
-    run1: wall=26.86s cpu=99.08s ratio=3.6886
-    medians(n=1): wall=26.86s cpu=99.08s
-    gcode bytes: 44934634
+    run1: wall=25.88s cpu=99.78s ratio=3.8553
+    run2: wall=25.63s cpu=99.39s ratio=3.8778
+    run3: wall=29.05s cpu=101.41s ratio=3.4903
+    medians(n=3): wall=25.88s cpu=99.78s
+    gcode bytes: 44934634/44934634/44934634
     degraded=n/a non_fatal=n/a
-    sections (base-classic-on-orca-m1): Sparse infill=1499, Custom=2, Gap infill=561, Internal solid infill=1663, Outer wall=1737, Inner wall=925, Support=744, Overhang wall=1020, Bridge=127, Support interface=421, Top surface=127, Internal Bridge=16
+    sections (base-classic-on-orca-m1): Outer wall=1737, Custom=2, Internal solid infill=1663, Support interface=421, Internal Bridge=16, Top surface=127, Gap infill=561, Support=744, Sparse infill=1499, Bridge=127, Inner wall=925, Overhang wall=1020
+
+## base | classic-on | pnp-accelerated
+    run1: wall=126.89s cpu=742.8s ratio=5.854
+    run2: wall=133.5s cpu=749.06s ratio=5.6111
+    run3: wall=131.88s cpu=746.42s ratio=5.6601
+    medians(n=3): wall=131.88s cpu=746.42s
+    gcode bytes: 42510534/42510534/42510534
+    degraded=false non_fatal=0
+    sections (base-classic-on-pnp-accelerated-m3): Outer wall=495, Skirt=1, Internal solid infill=2, Support interface=70, Internal Bridge=6, Top surface=70, Gap infill=220, Support=431, Bottom surface=54, Brim=1, Sparse infill=664, Bridge=66, Inner wall=494
+
+## base | classic-on | pnp-ordinary
+    run1: wall=125.51s cpu=749.77s ratio=5.9735
+    run2: wall=132.24s cpu=748.19s ratio=5.6579
+    run3: wall=135.01s cpu=755.72s ratio=5.5976
+    medians(n=3): wall=132.24s cpu=749.77s
+    gcode bytes: 42510534/42510534/42510534
+    degraded=false non_fatal=0
+    sections (base-classic-on-pnp-ordinary-m2): Outer wall=495, Skirt=1, Internal solid infill=2, Support interface=70, Internal Bridge=6, Top surface=70, Gap infill=220, Support=431, Bottom surface=54, Brim=1, Sparse infill=664, Bridge=66, Inner wall=494
 
 ## benchy | arachne-off | orca
     run1: wall=2.02s cpu=7.55s ratio=3.7331
@@ -171,8 +218,9 @@ rows total=76 measured=55
 
 ## Per-cell gaps (median wall ratios)
 base/arachne-off: pnp-ordinary/orca=3.39x  pnp-accelerated/orca=3.31x  accelerated/ordinary=0.977
+base/arachne-on: pnp-ordinary/orca=4.98x  pnp-accelerated/orca=4.98x  accelerated/ordinary=0.999
 base/classic-off: pnp-ordinary/orca=3.4x  pnp-accelerated/orca=3.31x  accelerated/ordinary=0.971
-base/classic-on: pnp-ordinary/orca=0x  pnp-accelerated/orca=0x  accelerated/ordinary=NaN
+base/classic-on: pnp-ordinary/orca=5.11x  pnp-accelerated/orca=5.1x  accelerated/ordinary=0.997
 benchy/arachne-off: pnp-ordinary/orca=2.78x  pnp-accelerated/orca=2.76x  accelerated/ordinary=0.991
 benchy/arachne-on: pnp-ordinary/orca=4.1x  pnp-accelerated/orca=4.18x  accelerated/ordinary=1.021
 benchy/classic-off: pnp-ordinary/orca=2.99x  pnp-accelerated/orca=2.89x  accelerated/ordinary=0.968

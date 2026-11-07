@@ -136,15 +136,15 @@ four). Any post-merge scoreboard must use the t116 set, not t115's.
 - The per-layer values are instrumented (`--instrument-stderr`) and released
   builds; they are not wall claims.
 
-## Remaining closing measurement
+## Scoreboard (complete)
 
-The **fresh post-merge Orca scoreboard** was paused at **6 of 8 cells** (batch
-`t121-post-merge2`, 2026-11-05 ~21:16). The six complete cells measure
-**ordinary/Orca 2.78x–4.10x** and **accelerated/Orca 2.76x–4.18x**, with
-ordinary ≡ accelerated G-code bytes in every complete cell; `base classic-on`
-and `base arachne-on` are missing. This is a partial screen, not a ratio of
-record. Resume commands, raw rows and the starvation disclosure:
-[`SCOREBOARD-PARTIAL.md`](SCOREBOARD-PARTIAL.md).
+The **fresh post-merge Orca scoreboard** is recorded: 8 cells × 3 tools ×
+(1 warmup + 3 measured). PnP ordinary/accelerated G-code bytes are identical in
+8/8 cells, and PnP loses every cell: **ordinary/Orca 2.78x–5.11x**,
+**accelerated/Orca 2.76x–5.10x** (best benchy arachne-off 2.78x; worst base
+classic-on 5.11x). The destination's 8/8 is not met; the required cut is 64%–80%
+of today's PnP wall. Table, raw rows, reducer output and verifier:
+[`SCOREBOARD.md`](SCOREBOARD.md).
 
 Evidence: [`ab-rows-classic.csv`](ab-rows-classic.csv),
 [`summary.json`](summary.json), [`verify.py`](verify.py)

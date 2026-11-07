@@ -72,9 +72,11 @@ to a near-uniform ~28.5 s accumulated (`fuzzy-skin` 162 → 56,068 ms), and the
 per-call cost grows with layer index. The accelerated dist build does not show
 it (2,318 ms per-layer on benchy classic-off vs ordinary 4,807–5,860 ms, same
 hash), which points at a build-mode-sensitive host path. **No ratio of record
-may be quoted against the merged tree** — t103/t106 ratios and t104/t110 splits
-are pre-merge — and the post-merge Orca scoreboard is deferred to the fix
-ticket's closing gate. See [ticket 115](issues/115-post-merge-reconciliation.md)
+may be quoted from the pre-fix merged tree** — t103/t106 ratios and t104/t110
+splits are pre-merge. The post-merge scoreboard is now recorded by
+[ticket 121](issues/121-post-merge-per-layer-dispatch-regression.md) at
+**2.78x–5.11x ordinary** (accelerated 2.76x–5.10x) after the per-layer fix. See
+[ticket 115](issues/115-post-merge-reconciliation.md)
 and [`evidence/t115-post-merge/`](evidence/t115-post-merge/FINDINGS.md), and
 [ticket 121](issues/121-post-merge-per-layer-dispatch-regression.md).
 
@@ -83,8 +85,8 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `cargo xtask test`, guest freshness) governs any code change.
 
 **Current selection scope (2026-11-05, twenty-fourth session — the t121 take):**
-the human said "Continue" after the t119 resolution. **121 is in progress with
-the fix landed and verified; it is not closed.** Headline: **the per-layer
+the human said "Continue" after the t119 resolution, then paused the Orca
+campaign overnight and resumed it. **121 is resolved.** Headline: **the per-layer
 transport was deriving prepared-region geometry for every module call, and for
 `Layer::PerimetersPostProcess` it derived data the stage never consumes.** The
 first is fixed by reusing the arena's `PreparedRegionData` when the
@@ -100,18 +102,20 @@ Residual cost after the first fast path was isolated to `fuzzy-skin` and
 view returned to their pre-merge aggregate. **Ledger correction:** the t115
 `output_audit` hashes predate t116 (which moved every cell); the current
 references are `35600ee4…` / `596f6da5…` / `6a6a3d9d…` / `8f46fe92…`, and the
-fix is output-neutral against them. **Remaining closing measurement:** the
-fresh post-merge Orca scoreboard. It is **paused at 6 of 8 cells** (batch
-`t121-post-merge2`; the six complete cells measure ordinary/Orca **2.78x–4.10x**
-and accelerated/Orca 2.76x–4.18x, with ordinary ≡ accelerated bytes; `base
-classic-on` and `base arachne-on` are missing). That is a partial screen, not a
-ratio of record, and 121 stays in progress. See
+fix is output-neutral against them. **Scoreboard (complete):** the
+fresh post-merge Orca scoreboard is recorded — 8 cells × 3 tools × (1 warmup +
+3 measured). PnP ordinary and accelerated G-code bytes are identical in **8/8**,
+and PnP **loses every cell**: ordinary/Orca **2.78x–5.11x**, accelerated/Orca
+**2.76x–5.10x** (best benchy arachne-off 2.78x, worst base classic-on 5.11x).
+The destination's 8/8 is not met; the required cut is **64%–80%** of today's
+PnP wall (76%–87% for a 1.5x margin). See
 [ticket 121](issues/121-post-merge-per-layer-dispatch-regression.md),
 [`evidence/t121-per-layer-dispatch/`](evidence/t121-per-layer-dispatch/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, 8/8 negative controls rejected) and the
-[partial scoreboard](evidence/t121-per-layer-dispatch/SCOREBOARD-PARTIAL.md).
-**Frontier now: 121 in progress; 122 open and unclaimed; 117 is the human's
-grilling.** Standing paired acceptance and KEEP/DROP rules unchanged.
+[scoreboard](evidence/t121-per-layer-dispatch/SCOREBOARD.md)
+(`verify_scoreboard.py --self-test` rejects 6/6).
+**Frontier now: 122 open and unclaimed; 117 is the human's grilling.** Standing
+paired acceptance and KEEP/DROP rules unchanged.
 
 **Previous selection scope (2026-11-05, twenty-third session — the t119 take):**
 the human said "continue the perf vs orca map, pick up the next afk ticket" (no
@@ -2446,6 +2450,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Post-merge per-layer dispatch regression: localize and remove the per-call cost](issues/121-post-merge-per-layer-dispatch-regression.md): **resolved (2026-11-06; the per-layer cost is removed, and the first post-merge Orca scoreboard is recorded at 2.78x–5.11x ordinary)** — the per-layer transport was deriving `prepare_regions` for every module call even though the arena had already computed the same pure function for the staged slice, and it synthesized the prepared view for `Layer::PerimetersPostProcess` even though that stage is outside the prepared-region contract. Reuse the arena record when the perimeter-source projection is the identity and every projected origin is staged; pass `derive_prepared=false` for the non-prepared stage. Four classic cells, 3 interleaved pairs: CPU **−27%…−46%** in **12/12** pairs, wall −9.3%…−37.5% in 11/12 (one +0.66% wall with CPU −37.23%; cell median −14.29%), all four G-code hashes identical. Per-layer base-off **42,406 → 6,758 ms**, below the 7,265 ms pre-merge bracket. The complete 8-cell scoreboard (Orca + PnP ordinary + PnP accelerated, 1 warmup + 3 measured) has ordinary ≡ accelerated bytes in 8/8 and PnP losing all 8 at **2.78x–5.11x ordinary / 2.76x–5.10x accelerated**; the destination's 8/8 is not met, and the required cut is 64%–80%. Ledger correction: the t115 output hashes predate t116; the current references are `35600ee4…` / `596f6da5…` / `6a6a3d9d…` / `8f46fe92…`. Evidence: [`evidence/t121-per-layer-dispatch/`](evidence/t121-per-layer-dispatch/FINDINGS.md) (`verify.py` 8/8 controls; `verify_scoreboard.py` 6/6).
+
 - [Lightning corpus consolidation: share the 5-case captures across the 10 tests](issues/119-lightning-corpus-consolidation.md): **resolved (2026-11-05; corpus shared — 41 → 32 active invocations, 688.89 s → 620.44 s serial module wall, −9.94 %, every assertion preserved)**: a process-global `OnceLock<Corpus>` holds one observation per `(case, arm)` (5 cases × 2 arms = 10 runs) plus its lifecycle trace; the five `fresh_consumers` visual legs, the legacy/comparator/retirement positive captures and the selection external-artifact run read it. The runtime trace emitted exactly 32 starts (`run_visual` 13 / native 5 / preparation 6 / full slice 8), matching the source inventory. The saving is smaller than t114's pre-cache ~423 s estimate because t118 had already made each capture cheap (≈7.6 s of wall per removed capture here), so this is claim hygiene and aggregate CPU, not a large wall lever. Audit fixes: the typed-projection `Arc::ptr_eq` scene check now requests two layers (it was vacuous at one); the test-local selection Boolean is dropped; `max_retained_after_disposal` returns `Option` and cleanup requires `Some(0)`; a real cross-owner `InvalidOwner` control replaces the mislabelled foreign-owner block; the zero-slice selection predicate and store controls moved to `tests/contract/lightning_selection_contract_tdd.rs` (2 tests, 0.00 s). The box was **not idle** (43 % CPU sampled, browsers running), the arms are same-session not interleaved, a second after run measured 611.64 s, and no full-bucket wall or per-test split is claimed. Evidence: [`evidence/t119-lightning-corpus/`](evidence/t119-lightning-corpus/FINDINGS.md) (`verify.py` exits 0 checkout-only; `--self-test` rejects 7/7 negative controls).
 
 - [`PrePass::Slice` candidate: canonical flat-bridge classification](issues/116-prep-slice-canonical-bridge-classification.md): **resolved (2026-11-05; BUILD — 8/8 cells clear the 0.80 % floor at 11.1x–30.5x, CPU corroborating)**: the PnP-local enclosure discriminator is gone, replaced by canonical's `opening_ex(flat_bridge, 0.1 × external_perimeter_width, Miter, 3.0)` over PnP's flat family, canonical's `ApplySafetyOffset` (1-unit lower-layer inflate) and the `lower_layer == nullptr ⇒ stBottom` guard; the `flat_bridge_closing_join` key is retired end to end. **16-cell output:** baseline ordinary ≡ baseline accelerated ≡ the t115 post-merge reference set, candidate ordinary ≡ candidate accelerated, candidate moves every cell. **Delta audit: 0 structural geometry lines in all eight cells** — the wall/support deltas are extrusion-token-only (same `G1` motion, different `E`) on bridge-flagged segments, plus the retired config appendix row and `M73` counters; no coordinate, feedrate, travel, skirt, brim or raft line moved. **Paired gate (3 interleaved pairs):** median wall **7.23 → 5.79 / 11.58 → 10.21 / 7.27 → 5.94 / 11.75 → 10.12 s** (benchy classic-off/on, arachne-off/on) and **106.83 → 83.98 / 176.41 → 160.73 / 106.39 → 80.39 / 185.47 → 164.41 s** (base), i.e. **−8.9 % … −24.4 %**, **11.1x–30.5x** the floor, with process CPU **−16.6 … −288.9 s** in every cell. Narrowest multiple base classic-on at **11.1x**; one disclosed wall-range overlap there (0.55 s). Seven of eight cells strictly separated on wall, all eight on CPU. **Ledger corrections:** the baseline check moved from the post-t81 set (the ticket's pre-merge wording) to the t115 **post-merge** set, which is what HEAD produces; and the retirement of `flat_bridge_closing_join` leaves **no declared key carrying `wire_type: "enum"`**, so the scheduler manifest's enum-metadata assertions retire with it. Disclosures: the campaign was interrupted twice (session recycle mid-pair-2, then a requested pause), so pairs 1–2 and pair 3 come from two windows ~4 h apart — each pair is internally paired; host load was not independently measured (the slicer saturates its own 12 threads); no Orca arm, so no ratio of record — the post-merge scoreboard remains [ticket 121](issues/121-post-merge-per-layer-dispatch-regression.md)'s closing measurement. Evidence: [`evidence/t116-prep-slice-canonical-bridge/`](evidence/t116-prep-slice-canonical-bridge/FINDINGS.md) (`verify.py` exits 0 checkout-only, 316 checks; `--self-test` rejects 10/10 negative controls).

@@ -2,8 +2,11 @@
 
 Type: task
 Label: wayfinder:task
-Status: in progress (fix landed and verified 2026-11-05; the fresh post-merge
-Orca scoreboard is the remaining closing measurement — see ## Answer)
+Status: resolved (2026-11-06; the per-layer cost is removed — per-layer 42,406 →
+6,758 ms, below the 7,265 ms pre-merge bracket; four-cell paired CPU −27…−46 %
+in 12/12 pairs; the complete 8-cell post-merge Orca scoreboard records PnP at
+2.78x–5.11x ordinary, 2.76x–5.10x accelerated, with ordinary ≡ accelerated bytes
+in 8/8 — see ## Answer)
 Assignee: 2026-11-05 OpenCode wayfinder session — the human said "Continue"
   after the t119 resolution; 121 is the first AFK frontier ticket in order
   (117 is the human's grilling)
@@ -164,17 +167,16 @@ classification). The current references are `35600ee4…` (benchy-off),
 fix is output-neutral against them. Any post-merge scoreboard must use the t116
 set.
 
-### Remaining closing measurement
+### Scoreboard (complete)
 
-The **fresh post-merge Orca scoreboard** (t115 step 3) was **paused at 6 of 8
-cells** when the session restarted on 2026-11-05 ~21:16. Batch
-`t121-post-merge2` holds 76 data rows; the six complete cells give
-**ordinary/Orca 2.78x–4.10x** (accelerated/Orca 2.76x–4.18x), with PnP ordinary ≡
-accelerated G-code bytes in every complete cell. Missing: `base classic-on`
-and `base arachne-on`. This is a **partial screen, not a ratio of record**; the
-destination's 8/8 is not reached. The resume commands and the starvation
-disclosure are in
-[`evidence/t121-per-layer-dispatch/SCOREBOARD-PARTIAL.md`](../evidence/t121-per-layer-dispatch/SCOREBOARD-PARTIAL.md).
+The **fresh post-merge Orca scoreboard** (t115 step 3) is recorded on the
+post-fix tree: 8 cells × 3 tools × (1 warmup + 3 measured). PnP ordinary and
+accelerated G-code bytes are identical in **8/8** cells, and PnP loses every
+cell: **ordinary/Orca 2.78x–5.11x**, **accelerated/Orca 2.76x–5.10x** (best
+benchy arachne-off 2.78x, worst base classic-on 5.11x). The destination's 8/8 is
+not met; the required cut is **64%–80%** of today's wall. Table, raw rows,
+reducer output and verifier:
+[`evidence/t121-per-layer-dispatch/SCOREBOARD.md`](../evidence/t121-per-layer-dispatch/SCOREBOARD.md).
 
 Evidence:
 [`evidence/t121-per-layer-dispatch/`](../evidence/t121-per-layer-dispatch/FINDINGS.md)
