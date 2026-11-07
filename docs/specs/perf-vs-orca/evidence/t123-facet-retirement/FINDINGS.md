@@ -203,7 +203,9 @@ candidate's highest CPU is below the baseline's lowest. Raw ranges (3 per arm):
   extrusion-role boundaries, so the new bridge set relocates 60–71 fan lines
   per cell. The audit buckets them as `fan_control` (not geometry); three land
   in a structural section in each base cell. This is a role-keyed aux command,
-  not a toolpath move.
+  not a toolpath move. The bucket was added after the first base-cell audit
+  surfaced three `M106 S255` lines as `geometry`; inspection showed a fan
+  toggle, and the same classification is applied uniformly to all eight cells.
 - **The removed bottom-surface footprint cost is not separately claimed.**
   The old path computed `batch_bottom_surface_footprints` once per object; the
   new classifier does not need it. That saving is included in the paired delta
