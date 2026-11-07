@@ -2,8 +2,12 @@
 
 Type: task / candidate campaign
 Label: wayfinder:task
-Status: open
-Assignee: (unclaimed)
+Status: resolved (2026-11-07; **BUILD** — 8/8 cells clear the 0.80 % floor
+  at 3.4x–27.8x, CPU corroborating; 16-cell output contract met; 0 structural
+  geometry lines in any cell — see ## Answer)
+Assignee: 2026-11-06/07 OpenCode wayfinder session — the human said "Continue the
+  perf vs orca map, pick up the next afk ticket" (no ticket named); 117 is the
+  human's grilling, so 123 is the only takeable AFK frontier ticket.
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [ticket 122](122-prep-slice-wave-expansion-facet-retirement.md)'s
@@ -145,3 +149,87 @@ structural finding) and is not a rescue path for this campaign.
   — the flat-family candidate, the 16-cell proof method and the delta auditor.
 - `PrintObject::detect_surfaces_type` (`PrintObject.cpp`) — the canonical
   classifier this shape applies.
+
+## Answer
+
+**BUILD. The classification-only retirement clears the 0.80 % floor in all
+eight cells at 3.4x–27.8x, with process CPU corroborating in every cell, and
+the delta audit finds no moved geometry in any structural section.**
+
+### 16-cell output (t111's contract)
+
+- Baseline ordinary ≡ baseline accelerated ≡ the **post-t116** set in all eight
+  cells (`35600ee4…`, `596f6da5…`, `f21df124…`, `e90f491d…`, `6a6a3d9d…`,
+  `8f46fe92…`, `655c99d4…`, `8b5d1de0…`).
+- Candidate ordinary ≡ candidate accelerated in all eight cells; the candidate
+  moves every cell.
+- Bytes: benchy **+873 / +832 / +1,281 / +1,159** (classic-off/on,
+  arachne-off/on) and base **−20,294 / −20,255 / −20,767 / −20,745**.
+
+### Delta audit (the stop rule)
+
+**0 structural geometry lines in all eight cells.** Every `Outer wall`,
+`Inner wall`, `Support` and `Support interface` difference is an `E`-token-only
+change on an unchanged `G1 … X Y Z … F` move, an `M73` progress counter, an
+`M106`/`M107` fan command that relocated with the role boundary, or an
+appendix comment. No coordinate, feedrate, travel, skirt, brim or raft line
+moved. Fill sections re-role **1,864–2,067** benchy lines and **11,465–15,018**
+base lines; that is the classification's purpose and is not a stop-rule
+failure. The audit buckets fan commands separately (`fan_control`) because
+they are role-keyed aux commands, not motion; 60–71 per cell, three of them in
+a structural section in each base cell.
+
+### Paired gate
+
+Three interleaved pairs per cell, `RAYON_NUM_THREADS=12`, ordinary arms only.
+Median wall (baseline → candidate), floor multiple, and median CPU delta:
+
+| cell | wall | multiple | CPU |
+| --- | ---: | ---: | ---: |
+| benchy classic-off | 4.91 → 4.53 s (−7.60 %) | 9.5x | −1.0 s |
+| benchy classic-on | 8.92 → 8.65 s (−3.04 %) | 3.8x | −1.4 s |
+| benchy arachne-off | 5.00 → 4.65 s (−7.02 %) | 8.8x | −1.1 s |
+| benchy arachne-on | 8.93 → 8.68 s (−2.73 %) | 3.4x | −1.1 s |
+| base classic-off | 49.28 → 38.33 s (−22.23 %) | 27.8x | −109.4 s |
+| base classic-on | 116.48 → 108.07 s (−7.23 %) | 9.0x | −108.9 s |
+| base arachne-off | 48.92 → 38.68 s (−20.94 %) | 26.2x | −110.2 s |
+| base arachne-on | 117.88 → 108.52 s (−7.94 %) | 9.9x | −103.9 s |
+
+Every cell is strictly separated on wall and on CPU (the candidate's slowest
+run is faster than the baseline's fastest; its highest CPU is below the
+baseline's lowest). Narrowest multiple: benchy arachne-on at **3.4x**; widest:
+base classic-off at **27.8x**.
+
+### What was retired
+
+`classify_region_surfaces`, `assemble_bridge_areas` (the facet / 1.0 mm
+`expansion_margin_mm` path), `assemble_flat_bridge_areas`, the
+`PrePass::ShellClassification` unsupported-span gate, the bottom-surface
+footprint cache and helper, and the `surface_class` parameter of the layer-slice
+entry points. `classify_unsupported_bridge_areas` now applies canonical
+`PrintObject::detect_surfaces_type`'s
+`opening_ex(diff(current_raw, safety_offset(previous_raw)), 0.1 x
+external_perimeter_width)` to the region's whole unsupported set.
+`update_external_bridge_orientation`, the internal-bridge gate, paint splits and
+`BridgeSpatialIndex` are unchanged. `SurfaceClassificationIR.bridge_regions` /
+`expansion_margin_mm` remain for visual debug and guest observation; no
+`PrePass::Slice` consumer remains. `DEV-200` records the unported wave
+expansion / zone trim; `DEV-039` (the retired bounding-box fallback) is closed.
+
+### Disclosures
+
+No Orca arm (the post-merge scoreboard remains t121's closing measurement). No
+independent load measurement: the slicer saturates its own 12 Rayon threads;
+output-mode walls are single runs, only the A/B medians are gated. The t121
+per-layer fix is present in both arms. t122's area prediction is not
+re-measured from G-code; the line-level audit is the confinement gate. The
+removed footprint cost is included in the paired delta but was not part of the
+t122 screen. Both guest freshness checks exit 0 (rebuild required because the
+fingerprint closure includes `slicer-core`; the WIT world is unchanged).
+Baseline binaries `abad3599…` (ordinary) / `40fab992…` (accelerated) at
+`270ec239`; candidate `7737a74f…` / `a6ae2adc…`.
+
+Evidence:
+[`evidence/t123-facet-retirement/`](../evidence/t123-facet-retirement/FINDINGS.md)
+— `verify.py` exits 0 checkout-only (309 checks); `--self-test` rejects 11/11
+negative controls.

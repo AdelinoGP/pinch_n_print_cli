@@ -84,7 +84,46 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-06, twenty-fifth session — the t122 take):**
+**Current selection scope (2026-11-06/07, twenty-sixth session — the t123 take):**
+the human said "Continue the perf vs orca map, pick up the next afk ticket" (no
+ticket named). The frontier held **123 open and unclaimed** (117 is the human's
+grilling), so 123 was claimed and **resolved as a BUILD**. Headline: **retiring
+the facet bridge path and classifying canonical's whole unsupported bottom set
+is output-bounded and clears the 0.80 % floor in all eight cells.** The
+PnP-local facet split — `classify_region_surfaces`' facet point-in-polygon scan,
+`assemble_bridge_areas`' 1.0 mm `expansion_margin_mm` offset, the flat-family
+special case, the postpass `gate_bridge_areas_by_unsupported_span`, and the
+bottom-surface footprint cache — is replaced by
+`classify_unsupported_bridge_areas` applying canonical
+`PrintObject::detect_surfaces_type`'s
+`opening_ex(diff(current_raw, safety_offset(previous_raw)), 0.1 x
+external_perimeter_width)` to the region's whole unsupported set.
+**16-cell output: met** — baseline ordinary ≡ baseline accelerated ≡ the
+post-t116 set in all eight cells, candidate ordinary ≡ candidate accelerated,
+candidate moves every cell; benchy grows **+873 / +832 / +1,281 / +1,159** bytes
+and base shrinks **~20.3 KB** in every cell. **Delta audit: 0 structural
+geometry lines in all eight cells** — every wall/support difference is
+`E`-token-only on unchanged `G1` motion or a non-motion command (`M73`,
+`M106`/`M107` fan, appendix); no coordinate, feedrate, travel, skirt, brim or
+raft line moved. **Paired gate (3 interleaved pairs):** median wall **4.91 →
+4.53 / 8.92 → 8.65 / 5.00 → 4.65 / 8.93 → 8.68 s** (benchy classic-off/on,
+arachne-off/on) and **49.28 → 38.33 / 116.48 → 108.07 / 48.92 → 38.68 / 117.88
+→ 108.52 s** (base), i.e. **−2.73 % … −22.23 %**, **3.4x–27.8x** the floor,
+with process CPU **−1.0 … −110.2 s** in every cell; every cell is strictly
+separated on wall and CPU. **Ledger:** the base win is mostly the removed facet
+work (t122 measured the facet path at 27x the canonical classifier for a
+1.04x set), and the benchy win is the same removal on a set that grows 1.85x;
+the removed bottom-surface footprint is an extra saving the t122 screen did not
+price. `DEV-200` records the unported wave expansion / zone trim; `DEV-039`
+(the retired bounding-box fallback) is closed. See
+[ticket 123](issues/123-facet-bridge-path-retirement.md) and
+[`evidence/t123-facet-retirement/`](evidence/t123-facet-retirement/FINDINGS.md)
+(`verify.py` exits 0 checkout-only, 309 checks; `--self-test` rejects 11/11
+negative controls).
+**Frontier now: 117 open (the human's grilling); no AFK child remains.** Standing
+paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-11-06, twenty-fifth session — the t122 take):**
 the human said "Continue the perf vs orca map" (no ticket named). The frontier
 held **122 open and unclaimed** (117 is the human's grilling), so 122 was
 claimed and **resolved**. Headline: **the bridge-expansion half is mis-staged
@@ -2480,6 +2519,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Facet bridge-path retirement: canonical classification over the whole unsupported set](issues/123-facet-bridge-path-retirement.md): **resolved (2026-11-07; BUILD — 8/8 cells clear the 0.80 % floor at 3.4x–27.8x, CPU corroborating)** — `PrePass::Slice` retires the facet point-in-polygon scan, the 1.0 mm `expansion_margin_mm` offset, the flat-family special case, the postpass unsupported-span gate and the bottom-surface footprint cache, and applies canonical `PrintObject::detect_surfaces_type`'s `opening_ex(diff(current_raw, safety_offset(previous_raw)), 0.1 × external_perimeter_width)` to the region's whole unsupported set (`classify_unsupported_bridge_areas`). **16-cell output:** baseline ordinary ≡ baseline accelerated ≡ the post-t116 set in all eight cells, candidate ordinary ≡ candidate accelerated, candidate moves every cell; benchy **+873 / +832 / +1,281 / +1,159** bytes, base **−20,294 / −20,255 / −20,767 / −20,745**. **Delta audit: 0 structural geometry lines in all eight cells** — wall/support differences are `E`-token-only on unchanged `G1` motion or non-motion commands (`M73`, `M106`/`M107` fan, appendix); no coordinate, feedrate, travel, skirt, brim or raft line moved. **Paired gate (3 interleaved pairs):** median wall **−7.60 / −3.04 / −7.02 / −2.73 %** (benchy classic-off/on, arachne-off/on) and **−22.23 / −7.23 / −20.94 / −7.94 %** (base), **3.4x–27.8x** the floor, process CPU **−1.0 … −110.2 s** in every cell; all eight strictly separated on wall and CPU. **Ledger:** the base win is mostly the removed facet work (1.04x set at 27x the canonical classifier); the benchy set grows 1.85x; the removed footprint is an extra saving the t122 screen did not price. `DEV-200` records the unported expansion/trim; `DEV-039` is closed. Evidence: [`evidence/t123-facet-retirement/`](evidence/t123-facet-retirement/FINDINGS.md) (`verify.py` exits 0 checkout-only, 309 checks; `--self-test` rejects 11/11 negative controls).
+
 - [`PrePass::Slice` parity Phase-1: wave expansion and the facet-path retirement](issues/122-prep-slice-wave-expansion-facet-retirement.md): **resolved (2026-11-06; split verdict — STOP on the combined expansion shape, BUILD the classification-only retirement)** — canonical expands bridges into `stInternalSolid` / `stInternal` / `stTop` **after** perimeters and fill surfaces exist (`LayerRegion::process_external_surfaces`), but PnP's sparse zone and `perimeter.infill_areas` are created only at the `Layer::Perimeters` commit partition; `PrePass::Slice` has none of the three zones. A faithful port is therefore a per-layer change, not a prepass one. The probe reconstructs production inputs (fidelity exact on six sampled layers; canonical area 1,306.72 / 4,653.28 mm² reproduces t112's 1,307.30 / 4,654.62; flat 447.16 / 438.76 reproduces t116's 447.27 / 438.92). Classification-only net **+1,122.9 ms** benchy / **+94,852.4 ms** base; the expansion costs **1,151.9 / 4,976.6 ms** = **102.6 %** of the benchy saving and 5.2 % of the base saving. **The classification-only shape clears the 0.80 % floor in all eight cells at 12.5x–24.5x (benchy) and 89.7x–213.9x (base); the combined shape is negative in all four benchy cells**, so the all-8-cell gate fails. Delta is bounded: benchy added 618.44 / removed 18.45 mm², expansion reach ≤300.64 mm²; base added 564.17 / removed 384.82 mm², reach ≤513.85 mm². **Ledger correction:** the current facet path's pre-gate polygon sum is 14,232.05 / 419,106.22 mm² and at most 5.0 % / 1.1 % survives the gate — on base it produces an almost identical set (1.04x) at 27x the canonical classifier's cost, and `classify_region_surfaces` is 18,275.8 ms of that cost on its own (the `is_bridge` boolean is re-derivable). The classification-only candidate is [ticket 123](issues/123-facet-bridge-path-retirement.md). Evidence: [`evidence/t122-wave-expansion/`](evidence/t122-wave-expansion/FINDINGS.md) (`verify.py` exits 0 checkout-only; `--self-test` rejects 14/14 negative controls).
 
 - [Post-merge per-layer dispatch regression: localize and remove the per-call cost](issues/121-post-merge-per-layer-dispatch-regression.md): **resolved (2026-11-06; the per-layer cost is removed, and the first post-merge Orca scoreboard is recorded at 2.78x–5.11x ordinary)** — the per-layer transport was deriving `prepare_regions` for every module call even though the arena had already computed the same pure function for the staged slice, and it synthesized the prepared view for `Layer::PerimetersPostProcess` even though that stage is outside the prepared-region contract. Reuse the arena record when the perimeter-source projection is the identity and every projected origin is staged; pass `derive_prepared=false` for the non-prepared stage. Four classic cells, 3 interleaved pairs: CPU **−27%…−46%** in **12/12** pairs, wall −9.3%…−37.5% in 11/12 (one +0.66% wall with CPU −37.23%; cell median −14.29%), all four G-code hashes identical. Per-layer base-off **42,406 → 6,758 ms**, below the 7,265 ms pre-merge bracket. The complete 8-cell scoreboard (Orca + PnP ordinary + PnP accelerated, 1 warmup + 3 measured) has ordinary ≡ accelerated bytes in 8/8 and PnP losing all 8 at **2.78x–5.11x ordinary / 2.76x–5.10x accelerated**; the destination's 8/8 is not met, and the required cut is 64%–80%. Ledger correction: the t115 output hashes predate t116; the current references are `35600ee4…` / `596f6da5…` / `6a6a3d9d…` / `8f46fe92…`. Evidence: [`evidence/t121-per-layer-dispatch/`](evidence/t121-per-layer-dispatch/FINDINGS.md) (`verify.py` 8/8 controls; `verify_scoreboard.py` 6/6).
@@ -2716,7 +2757,10 @@ Standing decisions for this effort (2026-09-22):
   expansion at **1,151.9 ms** thread-time on benchy (**102.6 %** of the
   classification saving) and **4,976.6 ms** on base (5.2 %); the combined shape
   is negative in all four benchy cells, while the classification-only
-  retirement clears all eight. Re-enter only with a per-zone implementation at
+  retirement clears all eight. **The classification half landed as
+  [ticket 123](issues/123-facet-bridge-path-retirement.md) on 2026-11-07**
+  (8/8 at 3.4x–27.8x); only the expansion/trim remains in this patch.
+  Re-enter only with a per-zone implementation at
   the Perimeters commit, a measured benchy expansion cost below roughly **1.1 s**
   thread-time, and an explicit `detect_bridge_directions` vs PnP-direction
   decision. Do not re-open the old prepass framing.
