@@ -23,9 +23,9 @@ use crate::polygon_ops::{
 use crate::slice_mesh_ex;
 use crate::triangle_mesh_slicer::apply_slice_closing_radius;
 use slicer_ir::{
-    ConfigValue, ExPolygon, GlobalLayer, IndexedTriangleSet, MeshIR, ObjectId, ObjectMesh,
-    ObjectSurfaceData, Point2, Point3, Polygon, RegionKey, RegionMapIR, ResolvedConfig, SliceIR,
-    SlicedRegion, SurfaceClassificationIR, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
+    ConfigValue, ExPolygon, GlobalLayer, IndexedTriangleSet, MeshIR, ObjectId, ObjectMesh, Point2,
+    Polygon, RegionKey, RegionMapIR, ResolvedConfig, SliceIR, SlicedRegion,
+    CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 
 use slicer_ir::BlackboardError;
@@ -79,22 +79,16 @@ impl std::error::Error for LayerSliceError {}
 // Internal geometry helpers
 // ============================================================================
 
-/// Apply a 4x4 column-major transform to a 3-D point.
-fn transform_point(t: &Transform3d, p: &Point3) -> Point3 {
-    crate::transform_point3(&t.matrix, *p)
-}
-
 /// A copy of `object`'s mesh with its transform baked into every vertex, so it
 /// is sliced in world/global space.
 ///
-/// `PrePass::Slice` must slice world-space geometry: the object's bridge
-/// classification ([`classify_region_surfaces`]) and its `BottomSurface`
-/// footprint ([`crate::algos::mesh_analysis::bottom_surface_footprint`]) both
-/// already apply the transform, and `PrePass::OverhangAnnotation` derives its
-/// overhang bands from these slices — slicing local-space here would desync all
-/// three for any non-identity transform (e.g. slicing a translated object at a
-/// global-space layer Z would miss the mesh entirely). For an identity
-/// transform this is a vertex-wise copy, so slice output is bit-identical.
+/// `PrePass::Slice` must slice world-space geometry: the whole-set bridge
+/// classifier diffs one world-space cross-section against the next, and
+/// `PrePass::OverhangAnnotation` derives its overhang bands from these slices —
+/// slicing local-space here would desync the two for any non-identity transform
+/// (e.g. slicing a translated object at a global-space layer Z would miss the
+/// mesh entirely). For an identity transform this is a vertex-wise copy, so
+/// slice output is bit-identical.
 fn object_world_mesh(object: &ObjectMesh) -> IndexedTriangleSet {
     IndexedTriangleSet {
         vertices: object
@@ -107,186 +101,71 @@ fn object_world_mesh(object: &ObjectMesh) -> IndexedTriangleSet {
     }
 }
 
-/// Ray-casting point-in-polygon test (integer coordinate space).
-fn point_in_ring(ring: &Polygon, pt: Point2) -> bool {
-    let pts = &ring.points;
-    if pts.len() < 3 {
-        return false;
-    }
-    let px = pt.x;
-    let py = pt.y;
-    let mut inside = false;
-    let n = pts.len();
-    let mut j = n - 1;
-    for i in 0..n {
-        let xi = pts[i].x;
-        let yi = pts[i].y;
-        let xj = pts[j].x;
-        let yj = pts[j].y;
-        if (yi == py && xi == px) || (yj == py && xj == px) {
-            return true;
-        }
-        if ((yi > py) != (yj > py))
-            && (px as i128)
-                < ((xj - xi) as i128 * (py - yi) as i128 / (yj - yi) as i128 + xi as i128)
-        {
-            inside = !inside;
-        }
-        j = i;
-    }
-    inside
-}
-
-/// Return `true` if any of `polygons` contains `pt` in its contour ring.
-fn any_polygon_contains(polygons: &[Polygon], pt: Point2) -> bool {
-    polygons.iter().any(|p| point_in_ring(p, pt))
-}
-
 // ============================================================================
-// Public helper: classify_region_surfaces
+// classify_unsupported_bridge_areas
 // ============================================================================
 
-/// Detect whether the given region carries any bridge facets at this layer.
-pub fn classify_region_surfaces(
-    object_mesh: &ObjectMesh,
-    surface_data: &ObjectSurfaceData,
-    region_polygons: &[Polygon],
-    layer_z: f32,
-) -> bool {
-    let mesh = &object_mesh.mesh;
-    let t = &object_mesh.transform;
-    let tri_count = mesh.indices.len() / 3;
-
-    let bridge_set: std::collections::HashSet<u32> = surface_data
-        .bridge_regions
-        .iter()
-        .filter(|br| br.is_valid)
-        .flat_map(|br| br.facet_indices.iter().copied())
-        .collect();
-
-    for tri_idx in 0..tri_count {
-        if !bridge_set.contains(&(tri_idx as u32)) {
-            continue;
-        }
-
-        let i0 = mesh.indices[tri_idx * 3] as usize;
-        let i1 = mesh.indices[tri_idx * 3 + 1] as usize;
-        let i2 = mesh.indices[tri_idx * 3 + 2] as usize;
-        if i0 >= mesh.vertices.len() || i1 >= mesh.vertices.len() || i2 >= mesh.vertices.len() {
-            continue;
-        }
-
-        let wv0 = transform_point(t, &mesh.vertices[i0]);
-        let wv1 = transform_point(t, &mesh.vertices[i1]);
-        let wv2 = transform_point(t, &mesh.vertices[i2]);
-
-        let fz_min = wv0.z.min(wv1.z).min(wv2.z);
-        let fz_max = wv0.z.max(wv1.z).max(wv2.z);
-        if fz_min <= layer_z && layer_z <= fz_max {
-            let p0 = Point2::from_mm(wv0.x, wv0.y);
-            let p1 = Point2::from_mm(wv1.x, wv1.y);
-            let p2 = Point2::from_mm(wv2.x, wv2.y);
-            if any_polygon_contains(region_polygons, p0)
-                || any_polygon_contains(region_polygons, p1)
-                || any_polygon_contains(region_polygons, p2)
-            {
-                return true;
+/// Canonical OrcaSlicer's unsupported-bottom classification.
+///
+/// `PrintObject::detect_surfaces_type` labels **every** bottom area the layer
+/// below does not cover as `stBottomBridge`:
+///
+/// ```text
+/// bottom = opening_ex(
+///     diff_ex(slices, lower_slices, ApplySafetyOffset::Yes),
+///     external_perimeter_width / 10)
+/// ```
+///
+/// This function applies that rule to the region's whole unsupported bottom
+/// set. `current_raw` and `previous_raw` are this object's raw (pre-closing)
+/// cross-sections; `region.infill_areas` is the region's printable area at this
+/// stage, as in canonical's per-region slice. A missing previous layer
+/// (`previous_raw == None`) is canonical's `lower_layer == nullptr` case: the
+/// bottom is `stBottom`, never a bridge, so any existing candidates are
+/// cleared.
+///
+/// `external_perimeter_width_mm` must be positive; callers resolve it through
+/// [`resolve_external_perimeter_width_mm`].
+pub fn classify_unsupported_bridge_areas(
+    region: &mut SlicedRegion,
+    current_raw: &[ExPolygon],
+    previous_raw: Option<&[ExPolygon]>,
+    external_perimeter_width_mm: f32,
+) {
+    let bridged = match previous_raw {
+        None => Vec::new(),
+        Some(previous_raw) => {
+            // Canonical `ApplySafetyOffset::Yes`: inflate the lower set by one
+            // unit so boundary-coincident material is not labelled a bridge.
+            let safety_offset = offset(
+                previous_raw,
+                SCALED_EPSILON_MM,
+                OffsetJoinType::Square,
+                SAFETY_OFFSET_ARC_TOLERANCE_MM,
+            );
+            let unsupported = difference(current_raw, &safety_offset);
+            if unsupported.is_empty() {
+                Vec::new()
+            } else {
+                // Clip to this region's printable area, then apply canonical's
+                // opening. Every component that survives is kept in full.
+                let unsupported_in_region = intersection(&unsupported, &region.infill_areas);
+                if unsupported_in_region.is_empty() {
+                    Vec::new()
+                } else {
+                    opening_ex(
+                        &unsupported_in_region,
+                        0.1 * external_perimeter_width_mm as f64,
+                        OffsetJoinType::Miter,
+                        BRIDGE_OPENING_MITER_LIMIT,
+                    )
+                }
             }
         }
-    }
-
-    false
-}
-
-// ============================================================================
-// assemble_bridge_areas
-// ============================================================================
-
-/// Assemble expanded bridge polygons for a slice region.
-pub fn assemble_bridge_areas(
-    region: &mut SlicedRegion,
-    surface_class: Option<&SurfaceClassificationIR>,
-) {
-    let Some(sc) = surface_class else {
-        return;
-    };
-    let Some(obj_data) = sc.per_object.get(&region.object_id) else {
-        return;
     };
 
-    let mut best_orientation_deg = 0.0_f32;
-    let mut best_bridge_length = 0.0_f32;
-
-    for br in &obj_data.bridge_regions {
-        if !br.is_valid {
-            continue;
-        }
-        if br.facet_indices.is_empty() {
-            continue;
-        }
-        if br.xy_footprint.is_empty() {
-            continue;
-        }
-        if !br.expansion_margin_mm.is_finite() || br.expansion_margin_mm < 0.0 {
-            continue;
-        }
-
-        let footprint_as_expoly: Vec<ExPolygon> = br.xy_footprint.to_vec();
-        let intersection_result = intersection(&footprint_as_expoly, &region.infill_areas);
-        if intersection_result.is_empty() {
-            continue;
-        }
-
-        let expanded: Vec<ExPolygon> = offset(
-            &intersection_result,
-            br.expansion_margin_mm,
-            OffsetJoinType::Miter,
-            0.0,
-        );
-
-        let final_polys = intersection(&expanded, &region.infill_areas);
-
-        if final_polys.is_empty() {
-            continue;
-        }
-
-        region.bridge_areas.extend(final_polys);
-
-        if br.bridge_length_mm > best_bridge_length {
-            best_bridge_length = br.bridge_length_mm;
-            best_orientation_deg = br.bridge_direction_deg;
-        }
-    }
-
-    region.bridge_orientation_deg = best_orientation_deg;
-}
-
-/// Keep mesh-derived bridge candidates only where the lower layer does not
-/// provide an anchor.
-///
-/// `None` means the region has no lower layer at all (first layer): canonical
-/// demotes first-layer `stBottomBridge` candidates to `stBottom`, so all
-/// candidates are removed. `Some(slices)` means the lower layer exists; the
-/// candidates are reduced by the ungrown lower-layer contours (canonical
-/// `voids = diff(voids, *lower_layer_covered)`). An existing-but-empty lower
-/// layer subtracts nothing, so the whole span stays unsupported and every
-/// candidate is retained.
-pub fn gate_bridge_areas_by_unsupported_span(
-    region: &mut SlicedRegion,
-    lower_layer_slices: Option<&[ExPolygon]>,
-) {
-    let Some(lower_layer_slices) = lower_layer_slices else {
-        region.bridge_areas.clear();
-        region.is_bridge = false;
-        return;
-    };
-
-    if !lower_layer_slices.is_empty() {
-        region.bridge_areas = difference(&region.bridge_areas, lower_layer_slices);
-    }
-    if region.bridge_areas.is_empty() {
-        region.is_bridge = false;
-    }
+    region.is_bridge = !bridged.is_empty();
+    region.bridge_areas = bridged;
 }
 
 // ============================================================================
@@ -514,8 +393,8 @@ fn principal_minor_axis_deg(overhang: &[ExPolygon]) -> f32 {
 /// the overhang area; fully-degenerate input yields canonical `{1, 0}` ->
 /// 0.0 degrees (never NaN, never panics).
 ///
-/// Pure and deterministic. NOTE: not yet wired into
-/// [`assemble_bridge_areas`] — see packet 235 (later steps wire the seam).
+/// Pure and deterministic. Consumed by
+/// [`update_external_bridge_orientation`] during `PrePass::ShellClassification`.
 pub fn detect_bridging_direction_deg(to_cover: &[ExPolygon], anchors: &[ExPolygon]) -> f32 {
     // Clipper2 boolean ops with an empty clip set do not reliably return the
     // subject, so short-circuit the no-anchor case.
@@ -587,20 +466,18 @@ pub fn detect_bridging_direction_deg(to_cover: &[ExPolygon], anchors: &[ExPolygo
 // update_external_bridge_orientation
 // ============================================================================
 
-/// Re-derive a region's bridge orientation from its GATED bridge areas and
-/// the RAW previous-layer contours (packet 235 Step 2, AC-6).
+/// Re-derive a region's bridge orientation from its classified bridge areas
+/// and the RAW previous-layer contours (packet 235 Step 2, AC-6).
 ///
-/// Invoked from `commit_shell_classification_builtin` immediately after
-/// [`gate_bridge_areas_by_unsupported_span`], so `region.bridge_areas` is
-/// already the gated (unsupported-span-only) geometry and
-/// `lower_layer_slices` are the same raw lower-layer contours the gate
-/// subtracted. This call OVERWRITES the mesh-heuristic orientation that
-/// [`assemble_bridge_areas`] wrote during `PrePass::Slice`; that earlier
-/// value is retired in a later step.
+/// Invoked from `commit_shell_classification_builtin`: `region.bridge_areas`
+/// was written by [`classify_unsupported_bridge_areas`] during
+/// `PrePass::Slice`, and `lower_layer_slices` are the committed lower-layer
+/// polygons used as anchors. This call overwrites the field's initial value
+/// (0.0) with the floating-edge normal-cost minimisation.
 ///
-/// No-op when the gated areas are empty (fully supported span, or `None`
-/// lower layer — the gate already cleared the candidates in that case):
-/// the pre-existing field value is left untouched.
+/// No-op when the classified areas are empty (fully supported span, or `None`
+/// lower layer — the classifier writes an empty set in that case): the
+/// pre-existing field value is left untouched.
 pub fn update_external_bridge_orientation(
     region: &mut SlicedRegion,
     lower_layer_slices: Option<&[ExPolygon]>,
@@ -613,7 +490,7 @@ pub fn update_external_bridge_orientation(
 }
 
 // ============================================================================
-// assemble_flat_bridge_areas
+// classification constants
 // ============================================================================
 
 /// Canonical OrcaSlicer's `SCALED_EPSILON`, in millimetres: exactly one PnP
@@ -624,7 +501,7 @@ const SCALED_EPSILON_MM: f32 = 0.0001;
 
 /// Miter limit canonical passes to the bridge opening
 /// (`opening_ex(..., jtMiter, 3.0)`).
-const FLAT_BRIDGE_OPENING_MITER_LIMIT: f64 = 3.0;
+const BRIDGE_OPENING_MITER_LIMIT: f64 = 3.0;
 
 /// Arc tolerance (mm) for the safety-offset inflate of the lower layer. The
 /// offset is one workspace unit with a square join, so this only bounds
@@ -657,104 +534,6 @@ fn resolve_external_perimeter_width_mm(config: &ResolvedConfig) -> f32 {
         }) => *value as f32,
         _ => typed_line_width,
     }
-}
-
-/// Detect and record *flat* (perfectly horizontal) unsupported bridge spans.
-///
-/// The sloped-overhang bridge pipeline ([`assemble_bridge_areas`]) never sees
-/// perfectly-horizontal downward facets: they classify as
-/// [`slicer_ir::FacetClass::BottomSurface`], not
-/// [`slicer_ir::FacetClass::Overhang`], so a flat beam spanning a gap between
-/// two supports is missed (its underside normal points straight down, so the
-/// facet-normal test alone cannot tell a build-plate bottom from a
-/// gap-spanning bridge). This function recovers those spans by intersecting
-/// two pre-computed polygon sets:
-///
-/// 1. `bottom_surface_footprint` — the XY projection of the region's
-///    `BottomSurface` facets (the region's flat-bottom footprint,
-///    via [`crate::algos::mesh_analysis::bottom_surface_footprint`]), and
-/// 2. `unsupported_region` — this layer's area **not** supported by the layer
-///    below, computed by the caller (`PrePass::Slice`) as
-///    `diff(this-layer cross-section, safety_offset(previous-layer))`, the port
-///    of `PrintObject::detect_surfaces_type`'s
-///    `diff_ex(slices, lower_slices, ApplySafetyOffset::Yes)`,
-///
-/// then clipping the result to the region's own printable area
-/// (`region.infill_areas`, mirroring [`assemble_bridge_areas`]), applying
-/// canonical's opening, and appending every surviving component to
-/// `region.bridge_areas`.
-///
-/// # Canonical classification
-///
-/// Canonical OrcaSlicer has no free-edge / enclosed-gap discriminator: a bottom
-/// area the layer below does not cover **is** a bridge
-/// (`PrintObject::detect_surfaces_type` tags it `stBottomBridge`) as long as it
-/// survives canonical's opening. This function applies that rule to PnP's flat
-/// family — [`assemble_bridge_areas`] owns the facet/sloped family — with the
-/// same operator and the same radius:
-///
-/// ```text
-/// bridged = opening_ex(flat_bridge, 0.1 × external_perimeter_width, Miter, 3.0)
-/// ```
-///
-/// The opening deletes features narrower than `0.2 × width` (0.08 mm at a
-/// 0.4 mm width), so a sub-printable sliver is not reported as bridge area.
-/// Every component that survives the opening is kept **in full**, so a
-/// free-edge band — the outward-growing perimeter of a sloped solid — now
-/// classifies as a bridge exactly as canonical calls it.
-///
-/// `external_perimeter_width_mm` must be positive; callers resolve it through
-/// [`resolve_external_perimeter_width_mm`] (`outer_wall_line_width`, else
-/// `line_width`, else [`DEFAULT_LINE_WIDTH_MM`]).
-///
-/// # First-layer / build-plate exclusion
-///
-/// Canonical demotes a bottom with no lower layer (`lower_layer == nullptr`) to
-/// `stBottom`, never a bridge. The caller enforces the same guard by requiring
-/// a previous cross-section for the object. A genuinely *supported* bottom
-/// surface (its footprint sits entirely on material below) diffs to empty and
-/// is likewise a no-op here. The discriminator is exactly "is this flat bottom
-/// supported by the layer below?" — never the facet normal in isolation.
-pub fn assemble_flat_bridge_areas(
-    region: &mut SlicedRegion,
-    bottom_surface_footprint: &[ExPolygon],
-    unsupported_region: &[ExPolygon],
-    external_perimeter_width_mm: f32,
-) {
-    if bottom_surface_footprint.is_empty() || unsupported_region.is_empty() {
-        return;
-    }
-
-    // Flat unsupported = flat-bottom footprint ∩ not-supported-by-below.
-    // Intersecting with the bottom-surface footprint restricts the result to
-    // genuinely-flat bottoms, so sloped overhangs (already handled by
-    // `assemble_bridge_areas`, and never `BottomSurface`) are not re-flagged
-    // here and keep their min-length / anchor-width validity filtering.
-    let flat_unsupported = intersection(bottom_surface_footprint, unsupported_region);
-    if flat_unsupported.is_empty() {
-        return;
-    }
-
-    // Clip to this region's printable area (matches `assemble_bridge_areas`).
-    let flat_bridge = intersection(&flat_unsupported, &region.infill_areas);
-    if flat_bridge.is_empty() {
-        return;
-    }
-
-    // Canonical classification: one opening at a tenth of the external
-    // perimeter width, miter limit 3.0, every surviving component kept.
-    let bridged = opening_ex(
-        &flat_bridge,
-        0.1 * external_perimeter_width_mm as f64,
-        OffsetJoinType::Miter,
-        FLAT_BRIDGE_OPENING_MITER_LIMIT,
-    );
-    if bridged.is_empty() {
-        return;
-    }
-
-    region.bridge_areas.extend(bridged);
-    region.is_bridge = true;
 }
 
 // ============================================================================
@@ -802,57 +581,20 @@ pub fn batch_slice_objects_by_layer(
     result
 }
 
-// ============================================================================
-// batch_bottom_surface_footprints
-// ============================================================================
-
-/// Pre-compute each object's whole-mesh bottom-surface XY footprint once.
-/// [`crate::algos::mesh_analysis::bottom_surface_footprint`] depends only on
-/// an object's mesh, transform, and facet classes — never on a specific
-/// layer — so calling it from inside the per-layer loop (as
-/// `execute_prepass_slice_single_layer` does when no cache is supplied)
-/// recomputes an identical boolean-union result once per layer instead of
-/// once per object. Returns `None` if `surface_class` is absent (matching
-/// the guard `execute_prepass_slice_single_layer` already applies before
-/// ever needing this footprint).
-pub fn batch_bottom_surface_footprints(
-    mesh: &MeshIR,
-    surface_class: Option<&SurfaceClassificationIR>,
-) -> HashMap<ObjectId, Vec<ExPolygon>> {
-    let mut result = HashMap::new();
-    let Some(sc) = surface_class else {
-        return result;
-    };
-    for object in &mesh.objects {
-        let Some(obj_data) = sc.per_object.get(&object.id) else {
-            continue;
-        };
-        let footprint = crate::algos::mesh_analysis::bottom_surface_footprint(
-            &object.mesh,
-            &object.transform,
-            &obj_data.facet_classes,
-        );
-        result.insert(object.id.clone(), footprint);
-    }
-    result
-}
-
 /// Layer-invariant and per-layer data pre-computed once for a whole
-/// `PrePass::Slice` run, built by [`batch_slice_objects_by_layer`] and
-/// [`batch_bottom_surface_footprints`], and reused across every
-/// [`execute_prepass_slice_single_layer_with_cache`] call for that run.
+/// `PrePass::Slice` run, built by [`batch_slice_objects_by_layer`] and reused
+/// across every [`execute_prepass_slice_single_layer_with_cache`] call for that
+/// run.
 pub struct PrepassSliceCache<'a> {
     /// This layer's raw (pre-closing-radius) slice polygons, keyed by object id.
     pub raw_polygons: &'a HashMap<ObjectId, Vec<ExPolygon>>,
     /// The *previous* global layer's raw slice polygons, keyed by object id.
     /// `None` for the first layer in plan order (no predecessor). The
-    /// flat-bridge classifier derives this layer's unsupported region as
+    /// whole-set classifier derives this layer's unsupported region as
     /// `diff(raw_polygons, safety_offset(prev_raw_polygons))`, and a missing
     /// entry for an object means "no lower layer" — canonical demotes that
-    /// bottom to `stBottom`, so it is never a flat bridge.
+    /// bottom to `stBottom`, so it is never a bridge.
     pub prev_raw_polygons: Option<&'a HashMap<ObjectId, Vec<ExPolygon>>>,
-    /// Whole-object bottom-surface XY footprint, keyed by object id.
-    pub bottom_surface_footprint: &'a HashMap<ObjectId, Vec<ExPolygon>>,
 }
 
 // ============================================================================
@@ -864,29 +606,26 @@ pub struct PrepassSliceCache<'a> {
 pub fn execute_prepass_slice_single_layer(
     mesh: &MeshIR,
     layer: &GlobalLayer,
-    surface_class: Option<&SurfaceClassificationIR>,
     region_map: Option<&RegionMapIR>,
 ) -> Result<SliceIR, LayerSliceError> {
-    execute_prepass_slice_single_layer_impl(mesh, layer, surface_class, region_map, None)
+    execute_prepass_slice_single_layer_impl(mesh, layer, region_map, None)
 }
 
 /// Same as [`execute_prepass_slice_single_layer`], but takes pre-computed
 /// per-object data from `cache` (see [`PrepassSliceCache`]) instead of
-/// calling `slice_mesh_ex` and `bottom_surface_footprint` from scratch.
+/// calling `slice_mesh_ex` from scratch.
 pub fn execute_prepass_slice_single_layer_with_cache(
     mesh: &MeshIR,
     layer: &GlobalLayer,
-    surface_class: Option<&SurfaceClassificationIR>,
     region_map: Option<&RegionMapIR>,
     cache: &PrepassSliceCache<'_>,
 ) -> Result<SliceIR, LayerSliceError> {
-    execute_prepass_slice_single_layer_impl(mesh, layer, surface_class, region_map, Some(cache))
+    execute_prepass_slice_single_layer_impl(mesh, layer, region_map, Some(cache))
 }
 
 fn execute_prepass_slice_single_layer_impl(
     mesh: &MeshIR,
     layer: &GlobalLayer,
-    surface_class: Option<&SurfaceClassificationIR>,
     region_map: Option<&RegionMapIR>,
     cache: Option<&PrepassSliceCache<'_>>,
 ) -> Result<SliceIR, LayerSliceError> {
@@ -955,54 +694,9 @@ fn execute_prepass_slice_single_layer_impl(
             }
         };
         let polygons = if slice_closing_radius_mm > 0.0 {
-            apply_slice_closing_radius(raw_polygons, slice_closing_radius_mm)
+            apply_slice_closing_radius(raw_polygons.clone(), slice_closing_radius_mm)
         } else {
-            raw_polygons
-        };
-
-        let is_bridge = if let Some(sc) = surface_class {
-            if let Some(obj_data) = sc.per_object.get(&active.object_id) {
-                let contours: Vec<Polygon> = if polygons.is_empty() {
-                    let verts = &object.mesh.vertices;
-                    if verts.is_empty() {
-                        Vec::new()
-                    } else {
-                        let mut min_x = verts[0].x;
-                        let mut max_x = verts[0].x;
-                        let mut min_y = verts[0].y;
-                        let mut max_y = verts[0].y;
-                        for v in verts.iter().skip(1) {
-                            if v.x < min_x {
-                                min_x = v.x;
-                            }
-                            if v.x > max_x {
-                                max_x = v.x;
-                            }
-                            if v.y < min_y {
-                                min_y = v.y;
-                            }
-                            if v.y > max_y {
-                                max_y = v.y;
-                            }
-                        }
-                        vec![Polygon {
-                            points: vec![
-                                Point2::from_mm(min_x, min_y),
-                                Point2::from_mm(max_x, min_y),
-                                Point2::from_mm(max_x, max_y),
-                                Point2::from_mm(min_x, max_y),
-                            ],
-                        }]
-                    }
-                } else {
-                    polygons.iter().map(|ep| ep.contour.clone()).collect()
-                };
-                classify_region_surfaces(object, obj_data, &contours, layer.z)
-            } else {
-                false
-            }
-        } else {
-            false
+            raw_polygons.clone()
         };
 
         let mut sliced_region = SlicedRegion {
@@ -1018,7 +712,7 @@ fn execute_prepass_slice_single_layer_impl(
             bottom_shell_index: None,
             top_solid_fill: Vec::new(),
             bottom_solid_fill: Vec::new(),
-            is_bridge,
+            is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
@@ -1028,61 +722,25 @@ fn execute_prepass_slice_single_layer_impl(
             raft_fill: Vec::new(),
         };
 
-        assemble_bridge_areas(&mut sliced_region, surface_class);
-
-        // Flat (perfectly horizontal) unsupported bridge spans. The sloped
-        // pipeline above only sees `Overhang`-derived clusters; a flat beam
-        // over a gap has a `BottomSurface` underside and is missed there. The
-        // unsupported region is this object's cross-section area not covered by
-        // the previous layer, after canonical's `ApplySafetyOffset::Yes`
-        // inflate of the lower set.
-        //
-        // The lower layer is also the guard: canonical's
-        // `PrintObject::detect_surfaces_type` demotes a bottom with
-        // `lower_layer == nullptr` to `stBottom`, never a bridge, so an object
-        // with no previous cross-section in the batch (its first layer) has no
-        // flat-bridge candidates at all. `gate_bridge_areas_by_unsupported_span`
-        // would clear a layer-0 candidate downstream anyway; skipping it here
-        // also avoids paying for geometry the gate throws away.
-        if let Some(sc) = surface_class {
-            if let Some(obj_data) = sc.per_object.get(&active.object_id) {
-                let current_raw = cache
-                    .and_then(|c| c.raw_polygons.get(&active.object_id))
-                    .map(Vec::as_slice)
-                    .unwrap_or(&[]);
-                let prev_raw = cache
-                    .and_then(|c| c.prev_raw_polygons)
-                    .and_then(|m| m.get(&active.object_id))
-                    .map(Vec::as_slice);
-                if let Some(prev_raw) = prev_raw {
-                    let safety_offset = offset(
-                        prev_raw,
-                        SCALED_EPSILON_MM,
-                        OffsetJoinType::Square,
-                        SAFETY_OFFSET_ARC_TOLERANCE_MM,
-                    );
-                    let unsupported = difference(current_raw, &safety_offset);
-                    if !unsupported.is_empty() {
-                        let bottom_fp = match cache
-                            .and_then(|c| c.bottom_surface_footprint.get(&active.object_id))
-                        {
-                            Some(cached) => cached.clone(),
-                            None => crate::algos::mesh_analysis::bottom_surface_footprint(
-                                &object.mesh,
-                                &object.transform,
-                                &obj_data.facet_classes,
-                            ),
-                        };
-                        assemble_flat_bridge_areas(
-                            &mut sliced_region,
-                            &bottom_fp,
-                            &unsupported,
-                            external_perimeter_width_mm,
-                        );
-                    }
-                }
-            }
-        }
+        // Canonical `PrintObject::detect_surfaces_type`: every bottom area the
+        // previous layer does not cover is a bridge. The classifier needs the
+        // raw (pre-closing-radius) cross-sections, so it reads `raw_polygons`
+        // while clipping against the region's printable area. A missing
+        // previous layer is canonical's `lower_layer == nullptr` case and
+        // yields no bridge. The committed lower-layer diff that used to run in
+        // `PrePass::ShellClassification` is gone: it subtracted the closed
+        // region polygons, not canonical's raw slices, and this classifier
+        // already performs the canonical difference.
+        let previous_raw = cache
+            .and_then(|c| c.prev_raw_polygons)
+            .and_then(|m| m.get(&active.object_id))
+            .map(Vec::as_slice);
+        classify_unsupported_bridge_areas(
+            &mut sliced_region,
+            &raw_polygons,
+            previous_raw,
+            external_perimeter_width_mm,
+        );
 
         regions.push(sliced_region);
     }

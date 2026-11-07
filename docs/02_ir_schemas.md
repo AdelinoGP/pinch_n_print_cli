@@ -851,8 +851,8 @@ After the host runs `sync_perimeter_infill_areas_into_slice` at
 `Layer::Perimeters` commit (see
 `crates/slicer-runtime/src/region_partition.rs`):
 
-1. **`bridge_areas`** is claimed directly from the gated
-   `SlicedRegion.bridge_areas` (post-unsupported-span gate, packet 234) and
+1. **`bridge_areas`** is claimed directly from the classified
+   `SlicedRegion.bridge_areas` (whole-set classifier, ticket 123) and
    may extend beyond the wall-inset polygon — at a ceiling layer the
    perimeter module's infill area can be empty (the whole cross-section is
    top surface) and the canonical bridge site must survive.
@@ -864,12 +864,12 @@ After the host runs `sync_perimeter_infill_areas_into_slice` at
    bridge claim in `sync_perimeter_infill_areas_into_slice`).
 2. Precedence on overlap is strict: `bridge > bottom > top > sparse`
    (OrcaSlicer `PrintObject::prepare_infill` parity).
-   An unsupported span is the bridge candidate after subtracting ungrown
-   committed lower-layer contours. This is a pure gate: it does not expand
-   the candidate or grow the result, and repeated application is invariant.
-3. The pre-perimeter values of `top_solid_fill` / `bottom_solid_fill` /
-   `bridge_areas` (committed by `PrePass::ShellClassification` and
-   `PrePass::MeshAnalysis`) live unchanged on the **Blackboard**'s
+   An unsupported span is classified in `PrePass::Slice` against the raw
+   previous cross-section (canonical `detect_surfaces_type`); the
+   `ShellClassification` stage does not subtract a second lower layer.
+3. The pre-perimeter values of `top_solid_fill` / `bottom_solid_fill`
+   (committed by `PrePass::ShellClassification`) and `bridge_areas`
+   (committed by `PrePass::Slice`) live unchanged on the **Blackboard**'s
    `Arc<Vec<SliceIR>>`; the per-layer arena copy is the one that gets
    clipped + deduped. This preserves the read-only Blackboard contract.
 4. A `SliceIR` region with no matching `PerimeterIR.regions` entry is

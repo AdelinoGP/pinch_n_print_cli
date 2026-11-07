@@ -49,7 +49,7 @@ pub fn seed_slice_ir(blackboard: &mut Blackboard, plan: &ExecutionPlan) {
 
     for gl in plan.global_layers.iter() {
         slices[gl.index as usize] =
-            execute_prepass_slice_single_layer(mesh.as_ref(), gl, None, None).unwrap();
+            execute_prepass_slice_single_layer(mesh.as_ref(), gl, None).unwrap();
     }
 
     blackboard

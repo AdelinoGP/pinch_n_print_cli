@@ -2070,9 +2070,8 @@ fn slice_feature_evidence_failures_name_the_missing_family() {
 /// least 3 distinct `;TYPE:Top surface` / `;TYPE:Bottom surface` blocks
 /// appear in the produced G-code. (The PART 1 direct-API strict-
 /// inequality proof was retired with the slicing-promotion refactor
-/// because per-layer top/bottom flagging via `classify_region_surfaces`
-/// no longer exists â€” that cross-layer logic now lives in
-/// `PrePass::ShellClassification` and is covered by
+/// because per-layer top/bottom flagging moved to
+/// `PrePass::ShellClassification`, covered by
 /// `prepass_slice_and_shell_tdd`.)
 #[test]
 fn wedge_multi_layer_top_bottom_evidence() {
@@ -2123,7 +2122,8 @@ fn wedge_multi_layer_top_bottom_evidence() {
     );
 
     // ------------------------------------------------------------------
-    // Packet 109 (flat-bridge classification) — RE-DERIVED 2026-11-04.
+    // Packet 109 / ticket 123 (whole-set bridge classification) — RE-DERIVED
+    // 2026-11-07.
     //
     // `regression_wedge.stl` has exactly TWO genuine flat bottom surfaces:
     //   * z=0.2  — the build-plate base (no lower layer at all),

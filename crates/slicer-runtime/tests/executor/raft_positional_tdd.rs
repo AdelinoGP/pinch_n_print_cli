@@ -131,7 +131,7 @@ fn seed_slice_ir(blackboard: &mut Blackboard, plan: &ExecutionPlan) -> Vec<Slice
         .global_layers
         .iter()
         .map(|gl| {
-            execute_prepass_slice_single_layer(mesh.as_ref(), gl, None, None)
+            execute_prepass_slice_single_layer(mesh.as_ref(), gl, None)
                 .expect("prepass slice must not fail on a raft layer")
         })
         .collect();

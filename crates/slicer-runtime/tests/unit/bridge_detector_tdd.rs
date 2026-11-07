@@ -4,15 +4,11 @@
 
 use slicer_core::algos::mesh_analysis::{execute_mesh_analysis_with, MeshAnalysisConfig};
 use slicer_core::algos::prepass_slice::{
-    assemble_bridge_areas, execute_prepass_slice_single_layer,
-    execute_prepass_slice_single_layer_with_cache, gate_bridge_areas_by_unsupported_span,
-    PrepassSliceCache,
+    execute_prepass_slice_single_layer_with_cache, PrepassSliceCache,
 };
-use slicer_core::polygon_ops::{intersection, validate_polygon_simplicity};
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, BridgeRegion, ExPolygon, FacetClass, GlobalLayer,
-    IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, ObjectSurfaceData, Point2, Point3,
-    Polygon, RegionId, SlicedRegion, SurfaceClassificationIR, Transform3d,
+    ActiveRegion, BoundingBox3, ExPolygon, FacetClass, GlobalLayer, IndexedTriangleSet, MeshIR,
+    ObjectConfig, ObjectMesh, Point2, Point3, Polygon, RegionId, Transform3d,
 };
 use std::collections::HashMap;
 
@@ -314,8 +310,8 @@ fn make_topfacing_only_mesh() -> MeshIR {
 /// NOTE: unlike `overhang_annotation::tests::flat_cube_mesh` (whose bottom
 /// winding yields a +Z normal — harmless there because only cross-sections
 /// are taken), this helper deliberately reverses the bottom winding so facet
-/// classification sees a genuine `BottomSurface`, which the flat-bridge path
-/// depends on.
+/// classification sees a genuine `BottomSurface`, which the mesh-analysis
+/// fixtures still exercise.
 fn make_box(id: &str, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) -> MeshIR {
     let pt3 = |x: f32, y: f32, z: f32| Point3 { x, y, z };
     let vertices = vec![
@@ -373,58 +369,6 @@ fn make_box(id: &str, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) -> M
             },
         },
     }
-}
-
-/// Builds a V-shaped ExPolygon footprint with two long arms of 20 mm each
-/// meeting at a sharp interior angle. Used for NEG-1 (sharp anchor pipeline).
-fn make_vshape_sharp_anchor_footprint(interior_angle_deg: f32) -> Vec<ExPolygon> {
-    // The V is symmetric: each arm goes 20 mm from the vertex at the origin.
-    // The half-angle from the V's bisector (the Y axis) is interior_angle_deg/2.
-    let half_angle_rad = (interior_angle_deg / 2.0).to_radians();
-    let arm_len = 20.0_f32;
-    let arm_width = 1.0_f32;
-
-    // Left arm tip and right arm tip (symmetric about Y axis).
-    let tip_lx = -arm_len * half_angle_rad.sin();
-    let tip_ly = arm_len * half_angle_rad.cos();
-    let tip_rx = arm_len * half_angle_rad.sin();
-    let tip_ry = tip_ly;
-
-    // Build a V polygon: vertex at origin, two arms going outward.
-    // We build it as a closed polygon with 1 mm width on each arm.
-    let sin_h = half_angle_rad.sin();
-    let cos_h = half_angle_rad.cos();
-
-    // Perpendicular to each arm (outward offset by arm_width/2).
-    let left_perp_x = -cos_h;
-    let left_perp_y = -sin_h;
-    let right_perp_x = cos_h;
-    let right_perp_y = -sin_h;
-
-    let half_w = arm_width / 2.0;
-
-    // Approximate the V as an octagonal polygon (outer edge of both arms + bottom vertex).
-    let points = vec![
-        Point2::from_mm(0.0 + left_perp_x * half_w, 0.0 + left_perp_y * half_w),
-        Point2::from_mm(tip_lx + left_perp_x * half_w, tip_ly + left_perp_y * half_w),
-        Point2::from_mm(tip_lx - left_perp_x * half_w, tip_ly - left_perp_y * half_w),
-        // Transition through origin region.
-        Point2::from_mm(0.0, 0.0),
-        Point2::from_mm(
-            tip_rx - right_perp_x * half_w,
-            tip_ry - right_perp_y * half_w,
-        ),
-        Point2::from_mm(
-            tip_rx + right_perp_x * half_w,
-            tip_ry + right_perp_y * half_w,
-        ),
-        Point2::from_mm(0.0 + right_perp_x * half_w, 0.0 + right_perp_y * half_w),
-    ];
-
-    vec![ExPolygon {
-        contour: Polygon { points },
-        holes: vec![],
-    }]
 }
 
 // ---------------------------------------------------------------------------
@@ -703,165 +647,6 @@ fn rotated_narrow_anchor_fails_anchor_width_filter() {
     }
 }
 
-/// AC-7 (expansion margin is observable in output bbox).
-#[test]
-fn expansion_margin_grows_polygon_observably() {
-    // footprint: [0,0]â€“[20,5] mm
-    let footprint = rect_expoly_mm(0.0, 0.0, 20.0, 5.0);
-    // infill: [-3,-3]â€“[23,8] mm (3 mm border on every side)
-    let infill_area = rect_expoly_mm(-3.0, -3.0, 23.0, 8.0);
-
-    let object_id = "test-obj".to_string();
-
-    // exhaustive: expansion-margin fixture explicitly defines every BridgeRegion field
-    let bridge_region = BridgeRegion {
-        id: 0,
-        facet_indices: vec![0],
-        bridge_direction_deg: 0.0,
-        anchor_width_mm: 5.0,
-        bridge_length_mm: 20.0,
-        expansion_margin_mm: 1.5,
-        is_valid: true,
-        xy_footprint: vec![footprint],
-    };
-
-    let obj_surface = ObjectSurfaceData {
-        facet_classes: vec![],
-        surface_groups: vec![],
-        bridge_regions: vec![bridge_region],
-        overhang_regions: vec![],
-    };
-    let sc_ir = SurfaceClassificationIR {
-        schema_version: slicer_ir::SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        per_object: vec![(object_id.clone(), obj_surface)].into_iter().collect(),
-        overhang_quartile_polygons: std::collections::HashMap::new(),
-        prev_layer_boundaries: std::collections::HashMap::new(),
-    };
-
-    let mut sliced_region = SlicedRegion {
-        object_id: object_id.clone(),
-        region_id: RegionId::default(),
-        polygons: vec![infill_area.clone()],
-        infill_areas: vec![infill_area.clone()],
-        effective_layer_height: 0.2,
-        is_bridge: true,
-        ..Default::default()
-    };
-
-    assemble_bridge_areas(&mut sliced_region, Some(&sc_ir));
-
-    assert!(
-        !sliced_region.bridge_areas.is_empty(),
-        "bridge_areas must be non-empty after assemble_bridge_areas"
-    );
-
-    // Input footprint bbox: x=[0,20], y=[0,5].
-    let fp_x0 = 0.0_f32;
-    let fp_y0 = 0.0_f32;
-    let fp_x1 = 20.0_f32;
-    let fp_y1 = 5.0_f32;
-    let margin = 1.5_f32;
-
-    for ba in &sliced_region.bridge_areas {
-        let (bx0, by0, bx1, by1) = expoly_bbox_mm(ba);
-
-        assert!(
-            bx0 <= fp_x0 - margin + 0.05,
-            "bridge_area left edge ({:.3}) must extend at least {:.1} mm beyond footprint left ({:.1})",
-            bx0, margin, fp_x0
-        );
-        assert!(
-            bx1 >= fp_x1 + margin - 0.05,
-            "bridge_area right edge ({:.3}) must extend at least {:.1} mm beyond footprint right ({:.1})",
-            bx1, margin, fp_x1
-        );
-        assert!(
-            by0 <= fp_y0 - margin + 0.05,
-            "bridge_area bottom edge ({:.3}) must extend at least {:.1} mm beyond footprint bottom ({:.1})",
-            by0, margin, fp_y0
-        );
-        assert!(
-            by1 >= fp_y1 + margin - 0.05,
-            "bridge_area top edge ({:.3}) must extend at least {:.1} mm beyond footprint top ({:.1})",
-            by1, margin, fp_y1
-        );
-
-        // Must be contained within infill_areas.
-        let remaining = intersection(&[ba.clone()], &[infill_area.clone()]);
-        let output_area = expoly_area_mm2(ba);
-        let intersected_area: f64 = remaining.iter().map(expoly_area_mm2).sum();
-        assert!(
-            (output_area - intersected_area).abs() <= 1e-3,
-            "bridge_area (area {:.4} mmÂ²) must be contained in infill_areas (intersection area {:.4} mmÂ²)",
-            output_area,
-            intersected_area
-        );
-    }
-}
-
-/// NEG-1 (sharp anchor pipeline produces simple polygons, no panic).
-#[test]
-fn vshape_sharp_anchor_pipeline_produces_simple_polygons() {
-    let v_footprint = make_vshape_sharp_anchor_footprint(30.0);
-
-    // Generous infill area: bounding box of V + 5 mm border.
-    let infill_area = rect_expoly_mm(-25.0, -5.0, 25.0, 30.0);
-
-    let object_id = "vshape-obj".to_string();
-
-    // exhaustive: sharp-anchor fixture explicitly defines every BridgeRegion field
-    let bridge_region = BridgeRegion {
-        id: 0,
-        facet_indices: vec![0],
-        bridge_direction_deg: 90.0,
-        anchor_width_mm: 1.0,
-        bridge_length_mm: 20.0,
-        expansion_margin_mm: 1.5,
-        is_valid: true,
-        xy_footprint: v_footprint,
-    };
-
-    let obj_surface = ObjectSurfaceData {
-        facet_classes: vec![],
-        surface_groups: vec![],
-        bridge_regions: vec![bridge_region],
-        overhang_regions: vec![],
-    };
-    let sc_ir = SurfaceClassificationIR {
-        schema_version: slicer_ir::SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        per_object: vec![(object_id.clone(), obj_surface)].into_iter().collect(),
-        overhang_quartile_polygons: std::collections::HashMap::new(),
-        prev_layer_boundaries: std::collections::HashMap::new(),
-    };
-
-    let mut sliced_region = SlicedRegion {
-        object_id: object_id.clone(),
-        region_id: RegionId::default(),
-        polygons: vec![infill_area.clone()],
-        infill_areas: vec![infill_area.clone()],
-        effective_layer_height: 0.2,
-        is_bridge: true,
-        ..Default::default()
-    };
-
-    // Must not panic.
-    assemble_bridge_areas(&mut sliced_region, Some(&sc_ir));
-
-    // Every output polygon must be simple.
-    for ba in &sliced_region.bridge_areas {
-        validate_polygon_simplicity(ba)
-            .expect("bridge_area polygon must be simple (no self-intersections)");
-    }
-}
-
 /// NEG-3 (top-surface-only mesh produces no bridge regions).
 #[test]
 fn topsurface_only_mesh_produces_no_bridge_regions() {
@@ -880,65 +665,24 @@ fn topsurface_only_mesh_produces_no_bridge_regions() {
     }
 }
 
-/// Non-bridge region has empty bridge_areas.
+/// A region whose cross-section is fully supported has empty bridge_areas
+/// under the whole-set rule: `diff(current, previous)` is empty.
 #[test]
 fn non_bridge_region_has_empty_bridge_areas() {
-    // Build a mesh with only vertical wall facets (normal in XY plane, not bridge candidates).
-    let pt3 = |x: f32, y: f32, z: f32| Point3 { x, y, z };
-    let vertices = vec![
-        pt3(0.0, 0.0, 0.0),
-        pt3(10.0, 0.0, 0.0),
-        pt3(10.0, 0.0, 1.0),
-        pt3(0.0, 0.0, 0.0),
-        pt3(10.0, 0.0, 1.0),
-        pt3(0.0, 0.0, 1.0),
-    ];
-    let indices = vec![0, 1, 2, 3, 4, 5];
-    let mesh = IndexedTriangleSet { vertices, indices };
-    let object_id = "solid-block".to_string();
-    // exhaustive: solid-block fixture explicitly defines every ObjectMesh field
-    let object_mesh = ObjectMesh {
-        id: object_id.clone(),
-        mesh,
-        transform: identity_transform(),
-        config: ObjectConfig {
-            data: HashMap::new(),
-        },
-        modifier_volumes: vec![],
-        paint_data: None,
-        world_z_extent: None,
-    };
-    let mesh_ir = MeshIR {
-        schema_version: slicer_ir::SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        objects: vec![object_mesh],
-        build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            max: Point3 {
-                x: 10.0,
-                y: 10.0,
-                z: 1.0,
-            },
-        },
-    };
-    let analysis = execute_mesh_analysis_with(&mesh_ir, MeshAnalysisConfig::default())
-        .expect("analysis must succeed");
+    let box_mesh = make_box("solid-block", 0.0, 0.0, 0.0, 10.0, 10.0, 10.0);
+    let footprint: HashMap<String, Vec<ExPolygon>> = HashMap::from([(
+        "solid-block".to_string(),
+        vec![rect_expoly_mm(0.0, 0.0, 10.0, 10.0)],
+    )]);
 
     // exhaustive: solid-block fixture explicitly defines every GlobalLayer field
     let layer = GlobalLayer {
-        index: 0,
-        z: 0.5,
+        index: 5,
+        z: 2.1,
         active_regions: vec![{
             // exhaustive: solid-block fixture explicitly defines every ActiveRegion field
             ActiveRegion {
-                object_id: object_id.clone(),
+                object_id: "solid-block".to_string(),
                 region_id: RegionId::default(),
                 resolved_config: slicer_ir::ResolvedConfig::default(),
                 effective_layer_height: 0.2,
@@ -953,146 +697,32 @@ fn non_bridge_region_has_empty_bridge_areas() {
         is_raft: false,
     };
 
-    let slice_ir = execute_prepass_slice_single_layer(&mesh_ir, &layer, Some(&analysis), None)
-        .expect("execute_layer_slice must succeed");
+    let cache = PrepassSliceCache {
+        raw_polygons: &footprint,
+        prev_raw_polygons: Some(&footprint),
+    };
+    let slice_ir = execute_prepass_slice_single_layer_with_cache(&box_mesh, &layer, None, &cache)
+        .expect("slice must succeed");
 
-    for region in &slice_ir.regions {
-        assert!(
-            region.bridge_areas.is_empty(),
-            "non-bridge region must have empty bridge_areas"
-        );
-    }
-}
-
-/// Invalid bridge (is_valid == false) contributes nothing to bridge_areas.
-#[test]
-fn invalid_bridge_excluded_from_slice_areas() {
-    let mesh_ir = make_rotated_bridge_mesh(5.0, 20.0, 0.0, false);
-
-    let result = execute_mesh_analysis_with(
-        &mesh_ir,
-        MeshAnalysisConfig {
-            min_bridge_length_mm: 25.0,
-            ..MeshAnalysisConfig::default()
-        },
-    )
-    .expect("mesh analysis must succeed");
-
-    let obj_data = result
-        .per_object
-        .get("bridge-obj")
-        .expect("must be present");
-    let valid_count = obj_data
-        .bridge_regions
-        .iter()
-        .filter(|br| br.is_valid)
-        .count();
-    assert_eq!(
-        valid_count, 0,
-        "5Ã—20mm bridge must be invalid under min_bridge_length_mm=25.0"
+    let region = slice_ir.regions.first().expect("region must be sliced");
+    assert!(
+        !region.polygons.is_empty(),
+        "fixture precondition: the box layer must have a cross-section"
     );
-
-    // exhaustive: invalid-bridge fixture explicitly defines every GlobalLayer field
-    let layer = GlobalLayer {
-        index: 0,
-        z: 1.0,
-        active_regions: vec![{
-            // exhaustive: invalid-bridge fixture explicitly defines every ActiveRegion field
-            ActiveRegion {
-                object_id: "bridge-obj".to_string(),
-                region_id: RegionId::default(),
-                resolved_config: slicer_ir::ResolvedConfig::default(),
-                effective_layer_height: 0.2,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: 0.0,
-                tool_index: 0,
-            }
-        }],
-        has_nonplanar: false,
-        is_sync_layer: false,
-        is_raft: false,
-    };
-
-    let slice_ir = execute_prepass_slice_single_layer(&mesh_ir, &layer, Some(&result), None)
-        .expect("execute_layer_slice must succeed");
-
-    for region in &slice_ir.regions {
-        assert!(
-            !region.is_bridge,
-            "invalid bridge candidates must not mark the layer as a bridge"
-        );
-        assert!(
-            region.bridge_areas.is_empty(),
-            "invalid bridge must contribute nothing to bridge_areas"
-        );
-    }
-}
-
-/// A mesh-level bridge footprint must not be reused on layers outside the
-/// bridge facets' Z span. Orca's `BridgeDetector` is invoked for the current
-/// layer surface against the lower-layer slices; it does not make a bridge
-/// material region layer-invariant.
-#[test]
-fn bridge_footprint_does_not_leak_outside_facet_z_span() {
-    let object_id = "bridge-z-guard".to_string();
-    // exhaustive: bridge-z-guard fixture explicitly defines every BridgeRegion field
-    let bridge_region = BridgeRegion {
-        id: 0,
-        facet_indices: vec![],
-        bridge_direction_deg: 0.0,
-        anchor_width_mm: 5.0,
-        bridge_length_mm: 20.0,
-        expansion_margin_mm: 1.0,
-        is_valid: true,
-        xy_footprint: vec![rect_expoly_mm(0.0, 0.0, 20.0, 5.0)],
-    };
-    // exhaustive: bridge-z-guard fixture explicitly defines every ObjectSurfaceData field
-    let object_surface = ObjectSurfaceData {
-        facet_classes: vec![],
-        surface_groups: vec![],
-        bridge_regions: vec![bridge_region],
-        overhang_regions: vec![],
-    };
-    let classification = SurfaceClassificationIR {
-        schema_version: slicer_ir::SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        per_object: vec![(object_id.clone(), object_surface)]
-            .into_iter()
-            .collect(),
-        overhang_quartile_polygons: HashMap::new(),
-        prev_layer_boundaries: HashMap::new(),
-    };
-    let mut region = SlicedRegion {
-        object_id,
-        region_id: RegionId::default(),
-        polygons: vec![rect_expoly_mm(0.0, 0.0, 20.0, 5.0)],
-        infill_areas: vec![rect_expoly_mm(0.0, 0.0, 20.0, 5.0)],
-        effective_layer_height: 0.2,
-        ..Default::default()
-    };
-
-    assemble_bridge_areas(&mut region, Some(&classification));
-
     assert!(
         region.bridge_areas.is_empty(),
-        "bridge footprint must not leak below its facet Z span"
+        "a fully supported region must have empty bridge_areas"
     );
+    assert!(!region.is_bridge);
 }
 
 /// A valid mesh bridge candidate still needs unsupported area on the current
-/// layer. Orca's `LayerRegion::process_external_surfaces` compares the bottom
-/// surface with the lower-layer slices before assigning bridge flow; a fully
-/// supported candidate must remain ordinary fill.
+/// layer. The whole-set classifier compares the raw cross-sections before
+/// assigning bridge flow; a fully supported candidate must remain ordinary fill.
 #[test]
 fn supported_bridge_candidate_does_not_emit_bridge_fill() {
     let mesh_ir =
         make_rotated_bridge_mesh_walls(5.0, 20.0, 0.0, false, WallPlacement::LeftAndBottom);
-    let analysis = execute_mesh_analysis_with(&mesh_ir, MeshAnalysisConfig::default())
-        .expect("mesh analysis must succeed");
 
     let current_area = rect_expoly_mm(0.0, 0.0, 5.0, 20.0);
     let previous_area = current_area.clone();
@@ -1100,11 +730,9 @@ fn supported_bridge_candidate_does_not_emit_bridge_fill() {
     current_by_object.insert("bridge-obj".to_string(), vec![current_area]);
     let mut previous_by_object = HashMap::new();
     previous_by_object.insert("bridge-obj".to_string(), vec![previous_area]);
-    let bottom_footprints = HashMap::new();
     let cache = PrepassSliceCache {
         raw_polygons: &current_by_object,
         prev_raw_polygons: Some(&previous_by_object),
-        bottom_surface_footprint: &bottom_footprints,
     };
 
     let layer = GlobalLayer {
@@ -1118,17 +746,14 @@ fn supported_bridge_candidate_does_not_emit_bridge_fill() {
         ..GlobalLayer::default()
     };
 
-    let mut slice_ir = execute_prepass_slice_single_layer_with_cache(
-        &mesh_ir,
-        &layer,
-        Some(&analysis),
-        None,
-        &cache,
-    )
-    .expect("slice must succeed");
-    let region = slice_ir.regions.first_mut().expect("region must be sliced");
-    gate_bridge_areas_by_unsupported_span(region, Some(&previous_by_object["bridge-obj"]));
+    let slice_ir = execute_prepass_slice_single_layer_with_cache(&mesh_ir, &layer, None, &cache)
+        .expect("slice must succeed");
+    let region = slice_ir.regions.first().expect("region must be sliced");
 
+    assert!(
+        !region.polygons.is_empty(),
+        "fixture precondition: the current cross-section must be non-empty"
+    );
     assert!(
         !region.is_bridge,
         "supported area must not be marked as bridge"
@@ -1139,13 +764,11 @@ fn supported_bridge_candidate_does_not_emit_bridge_fill() {
     );
 }
 
-/// FLAT-BRIDGE POSITIVE (packet 109 defect fix): a perfectly horizontal
-/// unsupported span — a flat beam over a gap — must be flagged as a bridge.
+/// WHOLE-SET POSITIVE: a perfectly horizontal unsupported span — a flat beam
+/// over a gap — is a bridge, exactly like a sloped-free-edge bottom.
 ///
-/// The beam's underside is a `BottomSurface` facet, so it never enters the
-/// sloped-overhang bridge pipeline (`assemble_bridge_areas` only consumes
-/// `Overhang`/`Bridge` clusters). `PrePass::Slice` recovers it from the
-/// unsupported region it derives as
+/// The beam's underside is a `BottomSurface` facet, but the classifier does not
+/// look at facet classes: it derives the unsupported region as
 /// `diff(this-layer cross-section, safety_offset(previous-layer))` — the port of
 /// `PrintObject::detect_surfaces_type`'s `diff_ex(..., ApplySafetyOffset::Yes)`.
 /// Here the beam's full 30×10 footprint sits over a previous layer of two end
@@ -1158,17 +781,6 @@ fn supported_bridge_candidate_does_not_emit_bridge_fill() {
 fn flat_bridge_span_over_gap_flagged_via_layer_diff() {
     // Flat slab (beam) spanning x∈[0,30], y∈[0,10], underside at z=10.
     let slab = make_box("slab-obj", 0.0, 0.0, 10.0, 30.0, 10.0, 13.0);
-
-    let analysis = execute_mesh_analysis_with(&slab, MeshAnalysisConfig::default())
-        .expect("mesh analysis must succeed");
-
-    // Defect precondition: the flat underside yields NO sloped bridge_regions.
-    let obj = analysis.per_object.get("slab-obj").expect("slab present");
-    assert!(
-        obj.bridge_regions.is_empty(),
-        "flat slab must yield no sloped bridge_regions (the underside is BottomSurface, \
-         not Overhang) — this is the defect precondition"
-    );
 
     // exhaustive: flat-bridge fixture explicitly defines every GlobalLayer field
     let layer = GlobalLayer {
@@ -1205,20 +817,13 @@ fn flat_bridge_span_over_gap_flagged_via_layer_diff() {
             rect_expoly_mm(25.0, 0.0, 30.0, 10.0),
         ],
     )]);
-    // The beam's whole underside is a BottomSurface facet → full 30×10 footprint.
-    let bottom_fp: HashMap<String, Vec<ExPolygon>> = HashMap::from([(
-        "slab-obj".to_string(),
-        vec![rect_expoly_mm(0.0, 0.0, 30.0, 10.0)],
-    )]);
     let cache = PrepassSliceCache {
         raw_polygons: &current,
         prev_raw_polygons: Some(&previous),
-        bottom_surface_footprint: &bottom_fp,
     };
 
-    let slice_ir =
-        execute_prepass_slice_single_layer_with_cache(&slab, &layer, Some(&analysis), None, &cache)
-            .expect("slice must succeed");
+    let slice_ir = execute_prepass_slice_single_layer_with_cache(&slab, &layer, None, &cache)
+        .expect("slice must succeed");
 
     let region = slice_ir
         .regions
@@ -1235,34 +840,28 @@ fn flat_bridge_span_over_gap_flagged_via_layer_diff() {
         "flat unsupported span must set is_bridge = true (fix under test)"
     );
 
-    // The flat-bridge area must be ≈ the gap span (20×10 = 200 mm²), i.e. the
-    // flat-bottom footprint ∩ unsupported region — NOT the whole beam (300 mm²).
+    // The bridge area must be ≈ the gap span (20×10 = 200 mm²), i.e. the
+    // unsupported region ∩ the region, NOT the whole beam (300 mm²).
     let total: f64 = region.bridge_areas.iter().map(expoly_area_mm2).sum();
     assert!(
         (total - 200.0).abs() / 200.0 <= 0.05,
-        "flat bridge_areas total ({:.2} mm²) must be within 5% of the 200 mm² gap span",
+        "bridge_areas total ({:.2} mm²) must be within 5% of the 200 mm² gap span",
         total
     );
 }
 
-/// FLAT-BRIDGE NEGATIVE (packet 109 regression guard): a solid box on the
-/// build plate must NOT be flagged as a flat bridge on its first layer or any
-/// bottom layer.
+/// WHOLE-SET NEGATIVE (packet 109 regression guard): a solid box on the build
+/// plate must NOT be flagged as a bridge on its first layer or any bottom layer.
 ///
 /// A constant-cross-section box never grows, so `diff(current, previous)` is
 /// empty at every interior layer (the lower set is inflated by `SCALED_EPSILON`
 /// before the difference, so a coincident boundary cannot leak a hairline ring).
 /// The very first layer has **no** previous cross-section at all, and canonical
 /// `detect_surfaces_type` demotes a bottom with `lower_layer == nullptr` to
-/// `stBottom`, never a bridge — `PrePass::Slice` enforces that by skipping the
-/// flat-bridge assembly when the object has no previous cross-section. Both
-/// cases must produce no bridge.
+/// `stBottom`, never a bridge. Both cases must produce no bridge.
 #[test]
-fn solid_box_bottom_layers_not_flagged_as_flat_bridge() {
+fn solid_box_bottom_layers_not_flagged_as_bridge() {
     let box_mesh = make_box("box-obj", 0.0, 0.0, 0.0, 10.0, 10.0, 10.0);
-
-    let analysis = execute_mesh_analysis_with(&box_mesh, MeshAnalysisConfig::default())
-        .expect("mesh analysis must succeed");
 
     let footprint: HashMap<String, Vec<ExPolygon>> = HashMap::from([(
         "box-obj".to_string(),
@@ -1298,16 +897,10 @@ fn solid_box_bottom_layers_not_flagged_as_flat_bridge() {
         let cache = PrepassSliceCache {
             raw_polygons: &footprint,
             prev_raw_polygons,
-            bottom_surface_footprint: &footprint,
         };
-        let slice_ir = execute_prepass_slice_single_layer_with_cache(
-            &box_mesh,
-            &layer,
-            Some(&analysis),
-            None,
-            &cache,
-        )
-        .expect("slice must succeed");
+        let slice_ir =
+            execute_prepass_slice_single_layer_with_cache(&box_mesh, &layer, None, &cache)
+                .expect("slice must succeed");
         for region in &slice_ir.regions {
             assert!(
                 region.bridge_areas.is_empty(),

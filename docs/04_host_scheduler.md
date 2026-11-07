@@ -1532,21 +1532,25 @@ the prepass without invoking any module. This guard short-circuits before
 dispatch so module-side error handling for "the IR I need wasn't committed"
 is unnecessary.
 
-Bridge gating occurs after `PrePass::Slice`, in `ShellClassification`. It uses
-the previous global layer's same-object committed region polygons; when that
-layer is missing, candidates are cleared, while an existing layer with empty
-polygons subtracts nothing. Cross-layer internal-bridge qualification runs only
-after the `ShellClassification` shell state is committed, and it is the single
-internal-bridge producer: it writes `internal_bridge_areas`, one bridge angle
-per polygon in `internal_bridge_angles_deg`, and the qualified polygons into
-`bridge_areas` (plus the optional extra-bridge-layer duplicates at the parent
-angle + 90°). The `claim:bridge-fill` holder emits them during `Layer::Infill`;
-the `InfillPostProcess` commit arm constructs no internal-bridge paths.
+Bridge classification runs inside `PrePass::Slice`:
+`classify_unsupported_bridge_areas` applies canonical
+`PrintObject::detect_surfaces_type`'s whole-set rule —
+`opening_ex(diff(current_raw, safety_offset(previous_raw)), 0.1 x external_perimeter_width)`
+— to each region. A missing previous layer clears the candidates; an existing
+empty layer leaves the whole cross-section unsupported. `ShellClassification`
+does not subtract a second lower layer. Cross-layer internal-bridge
+qualification runs only after the `ShellClassification` shell state is
+committed, and it is the single internal-bridge producer: it writes
+`internal_bridge_areas`, one bridge angle per polygon in
+`internal_bridge_angles_deg`, and the qualified polygons into `bridge_areas`
+(plus the optional extra-bridge-layer duplicates at the parent angle + 90°).
+The `claim:bridge-fill` holder emits them during `Layer::Infill`; the
+`InfillPostProcess` commit arm constructs no internal-bridge paths.
 
-`ShellClassification` consumes gated bridge areas plus previous-layer
-contours and writes `bridge_orientation_deg` after gating. Empty gated areas
-leave the existing orientation unchanged. External orientation is computed
-from gated geometry and raw lower contours by floating-edge normal-cost
+`ShellClassification` consumes the classified bridge areas plus previous-layer
+contours and writes `bridge_orientation_deg`. Empty classified areas leave the
+existing orientation unchanged. External orientation is computed from the
+classified geometry and raw lower contours by floating-edge normal-cost
 minimization; empty candidates use the minor principal axis, and degenerate
 geometry falls back to `0°`.
 

@@ -26,7 +26,7 @@ fn seed_slice_ir(blackboard: &mut Blackboard, plan: &ExecutionPlan) {
     let slices: Vec<SliceIR> = plan
         .global_layers
         .iter()
-        .map(|gl| execute_prepass_slice_single_layer(mesh.as_ref(), gl, None, None).unwrap())
+        .map(|gl| execute_prepass_slice_single_layer(mesh.as_ref(), gl, None).unwrap())
         .collect();
     blackboard
         .commit_slice_ir(Arc::new(slices))
@@ -125,7 +125,7 @@ fn layer_slice_builtin_produces_real_polygons_from_mesh() {
     let mesh = tetra_mesh_ir("obj-a");
     let layer = layer_at(0, 0.1, "obj-a");
 
-    let slice = execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice ok");
+    let slice = execute_prepass_slice_single_layer(&mesh, &layer, None).expect("slice ok");
     assert_eq!(slice.global_layer_index, 0);
     assert!((slice.z - 0.1).abs() < 1e-6);
     assert_eq!(slice.regions.len(), 1);
@@ -140,7 +140,7 @@ fn layer_slice_builtin_rejects_unknown_object_with_structured_diagnostic() {
     let layer = layer_at(0, 0.1, "missing-object");
 
     let err =
-        execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect_err("should fail");
+        execute_prepass_slice_single_layer(&mesh, &layer, None).expect_err("should fail");
     match err {
         LayerSliceError::UnknownObject {
             layer_index,
@@ -237,10 +237,10 @@ fn per_layer_executor_produces_deterministic_slice_across_runs() {
     }
 
     let slice_a =
-        execute_prepass_slice_single_layer(mesh.as_ref(), &plan1.global_layers[0], None, None)
+        execute_prepass_slice_single_layer(mesh.as_ref(), &plan1.global_layers[0], None)
             .unwrap();
     let slice_b =
-        execute_prepass_slice_single_layer(mesh.as_ref(), &plan2.global_layers[0], None, None)
+        execute_prepass_slice_single_layer(mesh.as_ref(), &plan2.global_layers[0], None)
             .unwrap();
     assert_eq!(slice_a, slice_b, "repeated slices must be byte-identical");
 
@@ -302,7 +302,7 @@ fn layer_slice_builtin_produces_real_polygons_for_wedge_mesh() {
             ..Default::default()
         };
         let slice =
-            execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice ok");
+            execute_prepass_slice_single_layer(&mesh, &layer, None).expect("slice ok");
         assert_eq!(slice.z, z);
         assert_eq!(slice.regions.len(), 1);
         let region = &slice.regions[0];
@@ -350,8 +350,8 @@ fn layer_slice_builtin_is_deterministic_for_wedge_mesh() {
         }],
         ..Default::default()
     };
-    let a = execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice a");
-    let b = execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice b");
+    let a = execute_prepass_slice_single_layer(&mesh, &layer, None).expect("slice a");
+    let b = execute_prepass_slice_single_layer(&mesh, &layer, None).expect("slice b");
     assert_eq!(
         a, b,
         "two slices of the same mesh at the same Z must be byte-identical"
@@ -377,7 +377,7 @@ fn per_layer_executor_surfaces_layer_slice_failure_structured() {
     let mesh = tetra_mesh_ir("obj-a");
     let layer = layer_at(0, 0.1, "missing-object");
 
-    let err = execute_prepass_slice_single_layer(&mesh, &layer, None, None)
+    let err = execute_prepass_slice_single_layer(&mesh, &layer, None)
         .expect_err("execute_layer_slice should fail on unknown object");
     match err {
         LayerSliceError::UnknownObject {
@@ -421,7 +421,7 @@ fn layer_slice_builtin_preserves_effective_layer_height_for_catchup_regions() {
         ..Default::default()
     };
 
-    let slice = execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice ok");
+    let slice = execute_prepass_slice_single_layer(&mesh, &layer, None).expect("slice ok");
 
     // effective_layer_height must be preserved from the source ActiveRegion
     // into the downstream SlicedRegion.

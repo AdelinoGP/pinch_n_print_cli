@@ -54,9 +54,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use rayon::prelude::*;
-use slicer_core::algos::prepass_slice::{
-    gate_bridge_areas_by_unsupported_span, update_external_bridge_orientation,
-};
+use slicer_core::algos::prepass_slice::update_external_bridge_orientation;
 use slicer_core::polygon_ops::{difference, intersection, offset, opening, union, OffsetJoinType};
 use slicer_ir::{ConfigValue, ExPolygon, ObjectId, RegionId, RegionKey, RegionMapIR, SliceIR};
 
@@ -187,10 +185,12 @@ pub fn commit_shell_classification_builtin(
         }
     }
 
-    // Bridge candidates are produced during slicing, but only remain bridges
-    // where the committed lower-layer slice leaves an unsupported span. Keep
-    // layer presence separate from its polygons: an existing empty layer must
-    // retain candidates, while a missing previous layer must clear them.
+    // Bridge classification already ran in `PrePass::Slice` against the raw
+    // previous cross-section (canonical `detect_surfaces_type`'s difference).
+    // This stage only re-derives the orientation from the classified areas and
+    // the committed lower-layer polygons; it must not subtract a second lower
+    // layer, which here would be the closed region polygons rather than the
+    // raw slices.
     let mut object_layers: HashMap<ObjectId, HashSet<u32>> = HashMap::new();
     let mut lower_layer_polygons: HashMap<(ObjectId, u32), Vec<ExPolygon>> = HashMap::new();
     for slice in &new_vec {
@@ -222,9 +222,8 @@ pub fn commit_shell_classification_builtin(
                         .get(&(region.object_id.clone(), lower_index))
                         .map(Vec::as_slice)
                 });
-            gate_bridge_areas_by_unsupported_span(region, lower_layer_slices);
-            // Packet 235 Step 2: orientation derives from the GATED geometry
-            // + RAW lower contours, overwriting the Slice-stage heuristic.
+            // Packet 235 Step 2: orientation derives from the classified
+            // geometry + committed lower contours.
             update_external_bridge_orientation(region, lower_layer_slices);
         }
     });
