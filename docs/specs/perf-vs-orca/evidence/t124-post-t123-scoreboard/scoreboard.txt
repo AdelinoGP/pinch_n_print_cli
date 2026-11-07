@@ -1,0 +1,176 @@
+input rows=103 batches=t124-post-t123,t124-resume-base-classic-on,t124-resume-base-arachne-on
+
+## base | arachne-off
+    run1: wall=15.65s cpu=38.38s ratio=2.4516
+    run2: wall=17.45s cpu=40.05s ratio=2.2944
+    run3: wall=17.95s cpu=41.28s ratio=2.2997
+    medians(n=3): wall=17.45s cpu=40.05s
+    gcode bytes: 19292399
+    degraded=n/a non_fatal=n/a
+    run1: wall=41.18s cpu=326.77s ratio=7.9353
+    run2: wall=40.76s cpu=326.17s ratio=8.0029
+    run3: wall=44.88s cpu=328.61s ratio=7.3224
+    medians(n=3): wall=41.18s cpu=326.77s
+    gcode bytes: 20826404
+    degraded=false non_fatal=0
+    run1: wall=40.81s cpu=322.25s ratio=7.8957
+    run2: wall=41.90s cpu=324.41s ratio=7.7427
+    run3: wall=43.88s cpu=324.83s ratio=7.4025
+    medians(n=3): wall=41.90s cpu=324.41s
+    gcode bytes: 20826404
+    degraded=false non_fatal=0
+
+## base | arachne-on
+    run1: wall=28.69s cpu=109.19s ratio=3.8053
+    run2: wall=26.00s cpu=106.61s ratio=4.0997
+    run3: wall=26.24s cpu=105.81s ratio=4.0329
+    medians(n=3): wall=26.24s cpu=106.61s
+    gcode bytes: 43928003
+    degraded=n/a non_fatal=n/a
+    run1: wall=125.98s cpu=647.88s ratio=5.1425
+    run2: wall=122.10s cpu=646.25s ratio=5.2926
+    run3: wall=115.60s cpu=640.17s ratio=5.5380
+    medians(n=3): wall=122.10s cpu=646.25s
+    gcode bytes: 42310507
+    degraded=false non_fatal=0
+    run1: wall=123.69s cpu=646.48s ratio=5.2268
+    run2: wall=122.50s cpu=643.17s ratio=5.2503
+    run3: wall=114.72s cpu=637.52s ratio=5.5571
+    medians(n=3): wall=122.50s cpu=643.17s
+    gcode bytes: 42310507
+    degraded=false non_fatal=0
+
+## base | classic-off
+    run1: wall=13.55s cpu=29.11s ratio=2.1487
+    run2: wall=14.44s cpu=30.69s ratio=2.1256
+    run3: wall=16.40s cpu=31.11s ratio=1.8964
+    medians(n=3): wall=14.44s cpu=30.69s
+    gcode bytes: 20299881
+    degraded=n/a non_fatal=n/a
+    run1: wall=41.69s cpu=323.58s ratio=7.7610
+    run2: wall=42.53s cpu=325.50s ratio=7.6526
+    run3: wall=54.03s cpu=329.91s ratio=6.1057
+    medians(n=3): wall=42.53s cpu=325.50s
+    gcode bytes: 21006116
+    degraded=false non_fatal=0
+    run1: wall=41.06s cpu=318.78s ratio=7.7633
+    run2: wall=40.39s cpu=318.06s ratio=7.8749
+    run3: wall=42.60s cpu=321.61s ratio=7.5492
+    medians(n=3): wall=41.06s cpu=318.78s
+    gcode bytes: 21006116
+    degraded=false non_fatal=0
+
+## base | classic-on
+    run1: wall=29.43s cpu=101.95s ratio=3.4642
+    run2: wall=27.28s cpu=99.23s ratio=3.6373
+    run3: wall=27.15s cpu=99.28s ratio=3.6568
+    medians(n=3): wall=27.28s cpu=99.28s
+    gcode bytes: 44934634
+    degraded=n/a non_fatal=n/a
+    run1: wall=126.27s cpu=643.05s ratio=5.0925
+    run2: wall=122.58s cpu=642.75s ratio=5.2435
+    run3: wall=127.77s cpu=648.14s ratio=5.0728
+    medians(n=3): wall=126.27s cpu=643.05s
+    gcode bytes: 42490279
+    degraded=false non_fatal=0
+    run1: wall=120.77s cpu=637.83s ratio=5.2816
+    run2: wall=121.31s cpu=633.98s ratio=5.2260
+    run3: wall=126.13s cpu=641.45s ratio=5.0856
+    medians(n=3): wall=121.31s cpu=637.83s
+    gcode bytes: 42490279
+    degraded=false non_fatal=0
+
+## benchy | arachne-off
+    run1: wall=2.24s cpu=7.44s ratio=3.3207
+    run2: wall=2.14s cpu=7.52s ratio=3.5196
+    run3: wall=1.98s cpu=7.59s ratio=3.8427
+    medians(n=3): wall=2.14s cpu=7.52s
+    gcode bytes: 4769602
+    degraded=n/a non_fatal=n/a
+    run1: wall=5.34s cpu=26.78s ratio=5.0171
+    run2: wall=5.32s cpu=27.27s ratio=5.1235
+    run3: wall=5.57s cpu=27.30s ratio=4.9021
+    medians(n=3): wall=5.34s cpu=27.27s
+    gcode bytes: 4065372
+    degraded=false non_fatal=0
+    run1: wall=5.44s cpu=26.94s ratio=4.9475
+    run2: wall=5.14s cpu=26.59s ratio=5.1704
+    run3: wall=5.37s cpu=26.73s ratio=4.9747
+    medians(n=3): wall=5.37s cpu=26.73s
+    gcode bytes: 4065372
+    degraded=false non_fatal=0
+
+## benchy | arachne-on
+    run1: wall=2.77s cpu=12.41s ratio=4.4775
+    run2: wall=3.02s cpu=12.73s ratio=4.2186
+    run3: wall=2.62s cpu=11.86s ratio=4.5230
+    medians(n=3): wall=2.77s cpu=12.41s
+    gcode bytes: 10346058
+    degraded=n/a non_fatal=n/a
+    run1: wall=9.51s cpu=44.11s ratio=4.6404
+    run2: wall=9.96s cpu=43.80s ratio=4.3976
+    run3: wall=10.21s cpu=44.45s ratio=4.3518
+    medians(n=3): wall=9.96s cpu=44.11s
+    gcode bytes: 8391228
+    degraded=false non_fatal=0
+    run1: wall=9.43s cpu=42.66s ratio=4.5234
+    run2: wall=10.40s cpu=43.89s ratio=4.2187
+    run3: wall=9.61s cpu=42.77s ratio=4.4507
+    medians(n=3): wall=9.61s cpu=42.77s
+    gcode bytes: 8391228
+    degraded=false non_fatal=0
+
+## benchy | classic-off
+    run1: wall=1.93s cpu=6.00s ratio=3.1153
+    run2: wall=2.14s cpu=6.45s ratio=3.0216
+    run3: wall=2.22s cpu=6.17s ratio=2.7801
+    medians(n=3): wall=2.14s cpu=6.17s
+    gcode bytes: 3999820
+    degraded=n/a non_fatal=n/a
+    run1: wall=5.77s cpu=26.50s ratio=4.5938
+    run2: wall=5.82s cpu=27.31s ratio=4.6928
+    run3: wall=5.64s cpu=26.77s ratio=4.7447
+    medians(n=3): wall=5.77s cpu=26.77s
+    gcode bytes: 3926897
+    degraded=false non_fatal=0
+    run1: wall=5.25s cpu=26.11s ratio=4.9700
+    run2: wall=5.34s cpu=26.33s ratio=4.9344
+    run3: wall=5.26s cpu=26.02s ratio=4.9471
+    medians(n=3): wall=5.26s cpu=26.11s
+    gcode bytes: 3926897
+    degraded=false non_fatal=0
+
+## benchy | classic-on
+    run1: wall=2.59s cpu=10.41s ratio=4.0193
+    run2: wall=2.94s cpu=11.17s ratio=3.7937
+    run3: wall=2.77s cpu=11.08s ratio=3.9993
+    medians(n=3): wall=2.77s cpu=11.08s
+    gcode bytes: 9495974
+    degraded=n/a non_fatal=n/a
+    run1: wall=9.72s cpu=43.34s ratio=4.4597
+    run2: wall=10.22s cpu=42.22s ratio=4.1309
+    run3: wall=10.01s cpu=43.42s ratio=4.3371
+    medians(n=3): wall=10.01s cpu=43.34s
+    gcode bytes: 8253678
+    degraded=false non_fatal=0
+    run1: wall=9.98s cpu=41.95s ratio=4.2051
+    run2: wall=9.72s cpu=41.64s ratio=4.2829
+    run3: wall=9.74s cpu=42.81s ratio=4.3953
+    medians(n=3): wall=9.74s cpu=41.95s
+    gcode bytes: 8253678
+    degraded=false non_fatal=0
+
+## Discarded partial sources
+    t124-post-t123:base/classic/on ({'orca': (1, 1), 'pnp-ordinary': (1, 2), 'pnp-accelerated': (1, 1)})
+
+## Committed set: 8 cells / 96 rows (one complete batch per cell)
+
+## Per-cell gaps (median wall ratios)
+base/arachne/off: pnp-ordinary/orca=2.36x  pnp-accelerated/orca=2.40x  accelerated/ordinary=1.017
+base/arachne/on: pnp-ordinary/orca=4.65x  pnp-accelerated/orca=4.67x  accelerated/ordinary=1.003
+base/classic/off: pnp-ordinary/orca=2.95x  pnp-accelerated/orca=2.84x  accelerated/ordinary=0.965
+base/classic/on: pnp-ordinary/orca=4.63x  pnp-accelerated/orca=4.45x  accelerated/ordinary=0.961
+benchy/arachne/off: pnp-ordinary/orca=2.50x  pnp-accelerated/orca=2.52x  accelerated/ordinary=1.007
+benchy/arachne/on: pnp-ordinary/orca=3.59x  pnp-accelerated/orca=3.47x  accelerated/ordinary=0.965
+benchy/classic/off: pnp-ordinary/orca=2.70x  pnp-accelerated/orca=2.46x  accelerated/ordinary=0.912
+benchy/classic/on: pnp-ordinary/orca=3.61x  pnp-accelerated/orca=3.52x  accelerated/ordinary=0.973

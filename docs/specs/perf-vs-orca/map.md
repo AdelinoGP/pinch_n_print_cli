@@ -13,6 +13,11 @@ wall-clock (process CPU corroborating, never contradicting) in every cell of
 the {benchy, base} × {classic, arachne} × {supports off, on} matrix, under the
 matched-pair protocol with outputs disclosed. 8 of 8 cells won closes the map.
 
+**Destination status (2026-11-07, [t124](issues/124-post-t123-orca-scoreboard.md)):
+0 of 8 cells won.** PnP is **2.36x–4.65x** slower on the ordinary arm
+(**2.40x–4.67x** accelerated) and needs a **58%–79%** wall cut to win,
+**72%–86%** for a 1.5x margin.
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -84,7 +89,40 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-06/07, twenty-sixth session — the t123 take):**
+**Current selection scope (2026-11-07, twenty-seventh session — the t124 take):**
+the human said "Continue the perf vs orca map, pick up the next afk ticket" (no
+ticket named). The frontier held **124 open and unclaimed** (117 is the human's
+grilling), so 124 was claimed and **resolved as a measurement**. Headline: **the
+post-t123 scoreboard is re-derived — PnP loses all eight cells at 2.36x–4.65x
+ordinary / 2.40x–4.67x accelerated**, and the required cut to beat Orca is
+**58%–79%** of today's PnP wall (**72%–86%** for a 1.5x margin). Every cell's
+ratio improved against t121's pre-t123 **2.78x–5.11x**, but the move is a mix of
+both arms (PnP ordinary medians **−25.7% … +0.7%**; Orca medians
+**−12.3% … +11.5%**), so **no causal claim is taken from the cross-take
+comparison** — t123's paired A/B remains the causal measurement. The base
+supports-off PnP deltas (**−24.2% / −25.7%**) agree with t123's paired
+**−22.2% / −20.9%**. **Proof:** 96 rows = 8 cells × 3 tools × (1 warmup + 3
+measured), **zero starvation exclusions**, PnP ordinary ≡ accelerated bytes in
+8/8, every PnP hash equal to the t123 candidate set, 64/64 PnP runs
+`degraded=false` / `non_fatal=0`, 32/32 Orca runs pinned
+(`enable_arc_fitting = disabled`, `elefant_foot_compensation = 0`,
+`brim_width = 0`) with the repaired filament leg `1.24 / 12 / 220`. Both
+freshness gates exit 0; the arms are the t123 candidate binaries
+(`7737a74f…` / `a6ae2adc…`) and `git diff c598f098..HEAD` is docs-only.
+**Disclosed:** the first batch was killed by the host mid-cell at 13:14 local
+(79 of 96 runs); its `base classic-on` partial was discarded whole (named in
+`discarded_partial_sources`) and re-taken in its own interleaved batch, and
+`base arachne-on` followed in a second — each cell is internally paired, so no
+ratio spans windows. See
+[ticket 124](issues/124-post-t123-orca-scoreboard.md) and
+[`evidence/t124-post-t123-scoreboard/`](evidence/t124-post-t123-scoreboard/FINDINGS.md)
+(`verify.py --self-test` exits 0 checkout-only, 10/10 negative controls
+rejected). The standing adhesion asymmetry (PnP 8 mm brim vs pinned Orca 0) is
+disclosed. **Frontier now: no open AFK child; 117 is the human's grilling.**
+The per-layer/emit program remains the next stage and is unchanged by this
+take.
+
+**Previous selection scope (2026-11-06/07, twenty-sixth session — the t123 take):**
 the human said "Continue the perf vs orca map, pick up the next afk ticket" (no
 ticket named). The frontier held **123 open and unclaimed** (117 is the human's
 grilling), so 123 was claimed and **resolved as a BUILD**. Headline: **retiring
@@ -2521,6 +2559,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Post-t123 Orca scoreboard](issues/124-post-t123-orca-scoreboard.md): **resolved (2026-11-07; measurement-only — PnP loses all 8 cells at 2.36x–4.65x ordinary / 2.40x–4.67x accelerated)** — fresh 8 cells × 3 tools × (1 warmup + 3 measured), interleaved, on the post-t123 tree; **zero starvation exclusions**; 96 rows, PnP ordinary ≡ accelerated bytes in 8/8, every PnP hash equal to t123's candidate set, 64/64 PnP `degraded=false` / `non_fatal=0`, 32/32 Orca runs pinned (arc disabled, elephant-foot 0, brim 0) with the repaired filament leg `1.24 / 12 / 220`; required cut **58%–79%** of today's PnP wall (**72%–86%** for 1.5x). Every ratio improved against t121's pre-t123 **2.78x–5.11x**, but the Orca side also moved (**−12.3% … +11.5%**), so no causal claim is taken; the base supports-off PnP deltas (**−24.2% / −25.7%**) agree with t123's paired **−22.2% / −20.9%**. The first batch was killed by the host mid-cell: its `base classic-on` partial is discarded whole and that cell plus `base arachne-on` were re-taken in interleaved batches. Evidence: [`evidence/t124-post-t123-scoreboard/`](evidence/t124-post-t123-scoreboard/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 10/10 negative controls rejected).
 - [Facet bridge-path retirement: canonical classification over the whole unsupported set](issues/123-facet-bridge-path-retirement.md): **resolved (2026-11-07; BUILD — 8/8 cells clear the 0.80 % floor at 3.4x–27.8x, CPU corroborating)** — `PrePass::Slice` retires the facet point-in-polygon scan, the 1.0 mm `expansion_margin_mm` offset, the flat-family special case, the postpass unsupported-span gate and the bottom-surface footprint cache, and applies canonical `PrintObject::detect_surfaces_type`'s `opening_ex(diff(current_raw, safety_offset(previous_raw)), 0.1 × external_perimeter_width)` to the region's whole unsupported set (`classify_unsupported_bridge_areas`). **16-cell output:** baseline ordinary ≡ baseline accelerated ≡ the post-t116 set in all eight cells, candidate ordinary ≡ candidate accelerated, candidate moves every cell; benchy **+873 / +832 / +1,281 / +1,159** bytes, base **−20,294 / −20,255 / −20,767 / −20,745**. **Delta audit: 0 structural geometry lines in all eight cells** — wall/support differences are `E`-token-only on unchanged `G1` motion or non-motion commands (`M73`, `M106`/`M107` fan, appendix); no coordinate, feedrate, travel, skirt, brim or raft line moved. **Paired gate (3 interleaved pairs):** median wall **−7.60 / −3.04 / −7.02 / −2.73 %** (benchy classic-off/on, arachne-off/on) and **−22.23 / −7.23 / −20.94 / −7.94 %** (base), **3.4x–27.8x** the floor, process CPU **−1.0 … −110.2 s** in every cell; all eight strictly separated on wall and CPU. **Ledger:** the base win is mostly the removed facet work (1.04x set at 27x the canonical classifier); the benchy set grows 1.85x; the removed footprint is an extra saving the t122 screen did not price. `DEV-200` records the unported expansion/trim; `DEV-039` is closed. Evidence: [`evidence/t123-facet-retirement/`](evidence/t123-facet-retirement/FINDINGS.md) (`verify.py` exits 0 checkout-only, 309 checks; `--self-test` rejects 11/11 negative controls).
 
 - [`PrePass::Slice` parity Phase-1: wave expansion and the facet-path retirement](issues/122-prep-slice-wave-expansion-facet-retirement.md): **resolved (2026-11-06; split verdict — STOP on the combined expansion shape, BUILD the classification-only retirement)** — canonical expands bridges into `stInternalSolid` / `stInternal` / `stTop` **after** perimeters and fill surfaces exist (`LayerRegion::process_external_surfaces`), but PnP's sparse zone and `perimeter.infill_areas` are created only at the `Layer::Perimeters` commit partition; `PrePass::Slice` has none of the three zones. A faithful port is therefore a per-layer change, not a prepass one. The probe reconstructs production inputs (fidelity exact on six sampled layers; canonical area 1,306.72 / 4,653.28 mm² reproduces t112's 1,307.30 / 4,654.62; flat 447.16 / 438.76 reproduces t116's 447.27 / 438.92). Classification-only net **+1,122.9 ms** benchy / **+94,852.4 ms** base; the expansion costs **1,151.9 / 4,976.6 ms** = **102.6 %** of the benchy saving and 5.2 % of the base saving. **The classification-only shape clears the 0.80 % floor in all eight cells at 12.5x–24.5x (benchy) and 89.7x–213.9x (base); the combined shape is negative in all four benchy cells**, so the all-8-cell gate fails. Delta is bounded: benchy added 618.44 / removed 18.45 mm², expansion reach ≤300.64 mm²; base added 564.17 / removed 384.82 mm², reach ≤513.85 mm². **Ledger correction:** the current facet path's pre-gate polygon sum is 14,232.05 / 419,106.22 mm² and at most 5.0 % / 1.1 % survives the gate — on base it produces an almost identical set (1.04x) at 27x the canonical classifier's cost, and `classify_region_surfaces` is 18,275.8 ms of that cost on its own (the `is_bridge` boolean is re-derivable). The classification-only candidate is [ticket 123](issues/123-facet-bridge-path-retirement.md). Evidence: [`evidence/t122-wave-expansion/`](evidence/t122-wave-expansion/FINDINGS.md) (`verify.py` exits 0 checkout-only; `--self-test` rejects 14/14 negative controls).
