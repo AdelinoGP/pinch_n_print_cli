@@ -1,0 +1,81 @@
+{
+  "floor_fraction": 0.008,
+  "wall_source": "t121 post-merge scoreboard (ordinary arm, median wall)",
+  "cells": [
+    {
+      "cell": "benchy classic-off",
+      "generator": "classic",
+      "supports": false,
+      "wall_s": 5.73,
+      "floor_ms": 45.84,
+      "classification_only_multiple": 24.49664703315881,
+      "combined_multiple": -0.6329319371727797
+    },
+    {
+      "cell": "benchy classic-on",
+      "generator": "classic",
+      "supports": true,
+      "wall_s": 10.64,
+      "floor_ms": 85.12,
+      "classification_only_multiple": 13.192273261278194,
+      "combined_multiple": -0.3408552631578973
+    },
+    {
+      "cell": "benchy arachne-off",
+      "generator": "arachne",
+      "supports": false,
+      "wall_s": 6.01,
+      "floor_ms": 48.08,
+      "classification_only_multiple": 23.355372296173044,
+      "combined_multiple": -0.6034442595673923
+    },
+    {
+      "cell": "benchy arachne-on",
+      "generator": "arachne",
+      "supports": true,
+      "wall_s": 11.26,
+      "floor_ms": 90.08,
+      "classification_only_multiple": 12.465878108348134,
+      "combined_multiple": -0.32208703374778225
+    },
+    {
+      "cell": "base classic-off",
+      "generator": "classic",
+      "supports": false,
+      "wall_s": 56.08,
+      "floor_ms": 448.64,
+      "classification_only_multiple": 211.42204774429388,
+      "combined_multiple": 200.3294951408702
+    },
+    {
+      "cell": "base classic-on",
+      "generator": "classic",
+      "supports": true,
+      "wall_s": 132.24,
+      "floor_ms": 1057.92,
+      "classification_only_multiple": 89.65931970281306,
+      "combined_multiple": 84.95521844751966
+    },
+    {
+      "cell": "base arachne-off",
+      "generator": "arachne",
+      "supports": false,
+      "wall_s": 55.43,
+      "floor_ms": 443.44,
+      "classification_only_multiple": 213.9012887876601,
+      "combined_multiple": 202.67865934511997
+    },
+    {
+      "cell": "base arachne-on",
+      "generator": "arachne",
+      "supports": true,
+      "wall_s": 124.36,
+      "floor_ms": 994.88,
+      "classification_only_multiple": 95.34053101881634,
+      "combined_multiple": 90.33835708829206
+    }
+  ],
+  "all_eight_clear": false,
+  "benchy_combined_negative": true,
+  "base_combined_clears": true
+}

@@ -2,8 +2,14 @@
 
 Type: task / Phase-1 parity analysis
 Label: wayfinder:task
-Status: open
-Assignee: (unclaimed)
+Status: resolved (2026-11-06; split verdict — **STOP** on the combined
+  expansion shape, **BUILD** the classification-only retirement; the expansion
+  zones do not exist at `PrePass::Slice`, and the expansion consumes 102.6 % of
+  the classification saving on benchy; classification-only clears all eight
+  floors at 12.5x–24.5x (benchy) / 89.7x–213.9x (base) — see ## Answer)
+Assignee: 2026-11-06 OpenCode wayfinder session — the human said "Continue the
+  perf vs orca map" (no ticket named); the frontier's first takeable ticket is
+  122 (117 is the human's grilling).
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: the fog entry **"The canonical bridge pipeline's second half:
@@ -86,3 +92,98 @@ candidate ticket with the exact shape and its acceptance contract.
   (`BridgeDetector.cpp` / `LayerRegion.cpp`).
 - `grep -rn "expansion_margin_mm" crates modules` — the fixed 1.0 mm offset that
   would be retired.
+
+## Answer
+
+**Split verdict: the classification half is a BUILD; the expansion half is a
+STOP.** They cannot ship together, and the expansion is mis-staged as a
+`PrePass::Slice` change.
+
+### The stage finding
+
+Canonical's `LayerRegion::process_external_surfaces` expands bridges into three
+zones — `stInternalSolid` (shells), `stInternal` (sparse) and `stTop` (top) —
+after perimeters and fill surfaces exist. In PnP:
+
+- `PrePass::Slice` has `polygons`, `infill_areas` (= `polygons` at that stage)
+  and `bridge_areas`; it has none of the three zones;
+- `PrePass::ShellClassification` later populates top/bottom/internal-solid;
+- `sparse_infill_area` and `perimeter.infill_areas` do not exist until the
+  `Layer::Perimeters` commit partition
+  (`sync_perimeter_infill_areas_into_slice`, `crates/slicer-runtime/src/region_partition.rs`).
+
+So a faithful port of `expand_expolygons` / `wave_seeds` / `propagate_waves_ex`
+/ `merge_bridges` is a per-layer partition change, not a prepass change. A
+prepass version would need a second source of truth for the fill zones. This
+alone disqualifies the combined shape under this ticket's `PrePass::Slice`
+framing.
+
+### Measured delta (bounded)
+
+Committed layers only, both heavy fixtures; the probe reconstructs production
+inputs and asserts fidelity against
+`execute_prepass_slice_single_layer_with_cache` on six sampled layers. It
+reproduces t112's canonical areas (1,306.72 / 4,653.28 mm² vs 1,307.30 /
+4,654.62) and t116's flat areas (447.16 / 438.76 vs 447.27 / 438.92).
+
+| fixture | current bridge | canonical bridge | added | removed | expansion reach bound | combined movement |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| benchy | 706.73 | 1,306.72 | 618.44 | 18.45 | 300.64 | 937.53 |
+| base | 4,473.93 | 4,653.28 | 564.17 | 384.82 | 513.85 | 1,462.83 |
+
+Areas in mm². The expansion reach is the wall-inset zone-proxy upper bound
+(the solid/top reach 1.2928 mm contains the sparse reach 0.35708 mm, so one
+band bounds all three zones). `merge_bridges`' closing shrinks the union
+slightly (−1.32 / −9.86 mm²). The current facet path's polygon sum before the
+gate is 14,232.05 / 419,106.22 mm²; at most 5.0 % / 1.1 % survives. The benchy
+bridge set grows 1.85x under canonical classification; the base set is 1.04x.
+
+Consumer confinement: `bridge_areas` feeds the direction update, the
+internal-bridge gate, the `bridge > bottom > top > sparse` partition, paint
+splits, `BridgeSpatialIndex`'s per-vertex `is_bridge`, the six guests and visual
+debug. The expansion trims exactly top/internal-solid/sparse; it does not target
+bottom. The only consumer outside the four fill roles is the bridge-derived
+per-vertex flag. Porting canonical's `detect_bridge_directions` would rotate
+lines *inside* the bridge polygons — a separate consumer-visible rewrite not
+priced here; the candidate must keep PnP's direction path or audit it
+separately.
+
+### Eight-cell ceiling
+
+Floors are 0.80 % of the t121 post-merge ordinary walls; multiples are the
+probe's net thread-time over the floor.
+
+| cell | floor | classification-only | combined (tight) |
+| --- | ---: | ---: | ---: |
+| benchy classic-off | 45.84 ms | 24.50x | **−0.63x** |
+| benchy classic-on | 85.12 ms | 13.19x | **−0.34x** |
+| benchy arachne-off | 48.08 ms | 23.36x | **−0.60x** |
+| benchy arachne-on | 90.08 ms | 12.47x | **−0.32x** |
+| base classic-off | 448.64 ms | 211.42x | 200.33x |
+| base classic-on | 1,057.92 ms | 89.66x | 84.96x |
+| base arachne-off | 443.44 ms | 213.90x | 202.68x |
+| base arachne-on | 994.88 ms | 95.34x | 90.34x |
+
+The expansion's cost is **102.6 %** of the classification saving on benchy
+(1,151.9 vs 1,122.9 ms thread-time) and **5.2 %** on base (4,976.6 vs
+94,852.4 ms). The all-8-cell gate therefore fails for the combined shape: all
+four benchy cells are negative. The classification-only shape clears all eight.
+
+### Recommendation
+
+- **STOP** the combined expansion shape. No candidate ticket.
+- **BUILD** the classification-only retirement: delete
+  `classify_region_surfaces`, `assemble_bridge_areas`,
+  `assemble_flat_bridge_areas` and the redundant
+  `gate_bridge_areas_by_unsupported_span`; classify canonical's whole
+  unsupported bottom set with the same opening. Graduated as
+  [ticket 123](123-facet-bridge-path-retirement.md), with the exact shape, the
+  measured delta, the test moves, the `DEV` row for the unported expansion, and
+  t111's 16-cell acceptance contract.
+- Do not fold the expansion in as a facade over the 1.0 mm offset: the offset
+  is deleted, and the missing expansion is recorded as a divergence.
+
+Evidence:
+[`evidence/t122-wave-expansion/`](../evidence/t122-wave-expansion/FINDINGS.md)
+— `verify.py` exits 0 checkout-only; `--self-test` rejects 14/14 negative
+controls.

@@ -84,7 +84,37 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-05, twenty-fourth session — the t121 take):**
+**Current selection scope (2026-11-06, twenty-fifth session — the t122 take):**
+the human said "Continue the perf vs orca map" (no ticket named). The frontier
+held **122 open and unclaimed** (117 is the human's grilling), so 122 was
+claimed and **resolved**. Headline: **the bridge-expansion half is mis-staged
+as a `PrePass::Slice` change and its cost consumes the classification win on
+benchy; the facet-path retirement alone is a strong BUILD.** Canonical's
+`LayerRegion::process_external_surfaces` expands bridges into `stInternalSolid`
+/ `stInternal` / `stTop` after perimeters and fill surfaces exist; in PnP the
+sparse zone and `perimeter.infill_areas` are not created until the
+`Layer::Perimeters` commit partition, while `PrePass::Slice` has none of the
+three zones. A faithful port is therefore a per-layer partition change, not a
+prepass one. Measured (serial thread-time, probe): classification-only nets
+**+1,122.9 ms** benchy / **+94,852.4 ms** base; the expansion costs **1,151.9 /
+4,976.6 ms**, i.e. **102.6 %** of the benchy saving and 5.2 % of the base
+saving. **Classification-only clears the 0.80 % floor in all eight cells at
+12.5x–24.5x (benchy) and 89.7x–213.9x (base); the combined shape is negative in
+all four benchy cells.** Delta is bounded on both fixtures: benchy added
+618.44 / removed 18.45 mm², expansion reach ≤300.64 mm²; base added 564.17 /
+removed 384.82 mm², reach ≤513.85 mm². **Ledger correction:** the current facet
+path's pre-gate polygon sum is 14,232.05 mm² (benchy) / 419,106.22 mm² (base) —
+at most 5.0 % / 1.1 % survives the gate, so on base the expensive facet path
+produces an almost identical set (1.04x) at 27x the canonical classifier's
+cost. The classification-only candidate is graduated as
+[ticket 123](issues/123-facet-bridge-path-retirement.md). See
+[ticket 122](issues/122-prep-slice-wave-expansion-facet-retirement.md),
+[`evidence/t122-wave-expansion/`](evidence/t122-wave-expansion/FINDINGS.md)
+(`verify.py` exits 0 checkout-only, 14/14 negative controls rejected).
+**Frontier now: 123 open and unclaimed; 117 is the human's grilling.** Standing
+paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-11-05, twenty-fourth session — the t121 take):**
 the human said "Continue" after the t119 resolution, then paused the Orca
 campaign overnight and resumed it. **121 is resolved.** Headline: **the per-layer
 transport was deriving prepared-region geometry for every module call, and for
@@ -2450,6 +2480,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [`PrePass::Slice` parity Phase-1: wave expansion and the facet-path retirement](issues/122-prep-slice-wave-expansion-facet-retirement.md): **resolved (2026-11-06; split verdict — STOP on the combined expansion shape, BUILD the classification-only retirement)** — canonical expands bridges into `stInternalSolid` / `stInternal` / `stTop` **after** perimeters and fill surfaces exist (`LayerRegion::process_external_surfaces`), but PnP's sparse zone and `perimeter.infill_areas` are created only at the `Layer::Perimeters` commit partition; `PrePass::Slice` has none of the three zones. A faithful port is therefore a per-layer change, not a prepass one. The probe reconstructs production inputs (fidelity exact on six sampled layers; canonical area 1,306.72 / 4,653.28 mm² reproduces t112's 1,307.30 / 4,654.62; flat 447.16 / 438.76 reproduces t116's 447.27 / 438.92). Classification-only net **+1,122.9 ms** benchy / **+94,852.4 ms** base; the expansion costs **1,151.9 / 4,976.6 ms** = **102.6 %** of the benchy saving and 5.2 % of the base saving. **The classification-only shape clears the 0.80 % floor in all eight cells at 12.5x–24.5x (benchy) and 89.7x–213.9x (base); the combined shape is negative in all four benchy cells**, so the all-8-cell gate fails. Delta is bounded: benchy added 618.44 / removed 18.45 mm², expansion reach ≤300.64 mm²; base added 564.17 / removed 384.82 mm², reach ≤513.85 mm². **Ledger correction:** the current facet path's pre-gate polygon sum is 14,232.05 / 419,106.22 mm² and at most 5.0 % / 1.1 % survives the gate — on base it produces an almost identical set (1.04x) at 27x the canonical classifier's cost, and `classify_region_surfaces` is 18,275.8 ms of that cost on its own (the `is_bridge` boolean is re-derivable). The classification-only candidate is [ticket 123](issues/123-facet-bridge-path-retirement.md). Evidence: [`evidence/t122-wave-expansion/`](evidence/t122-wave-expansion/FINDINGS.md) (`verify.py` exits 0 checkout-only; `--self-test` rejects 14/14 negative controls).
+
 - [Post-merge per-layer dispatch regression: localize and remove the per-call cost](issues/121-post-merge-per-layer-dispatch-regression.md): **resolved (2026-11-06; the per-layer cost is removed, and the first post-merge Orca scoreboard is recorded at 2.78x–5.11x ordinary)** — the per-layer transport was deriving `prepare_regions` for every module call even though the arena had already computed the same pure function for the staged slice, and it synthesized the prepared view for `Layer::PerimetersPostProcess` even though that stage is outside the prepared-region contract. Reuse the arena record when the perimeter-source projection is the identity and every projected origin is staged; pass `derive_prepared=false` for the non-prepared stage. Four classic cells, 3 interleaved pairs: CPU **−27%…−46%** in **12/12** pairs, wall −9.3%…−37.5% in 11/12 (one +0.66% wall with CPU −37.23%; cell median −14.29%), all four G-code hashes identical. Per-layer base-off **42,406 → 6,758 ms**, below the 7,265 ms pre-merge bracket. The complete 8-cell scoreboard (Orca + PnP ordinary + PnP accelerated, 1 warmup + 3 measured) has ordinary ≡ accelerated bytes in 8/8 and PnP losing all 8 at **2.78x–5.11x ordinary / 2.76x–5.10x accelerated**; the destination's 8/8 is not met, and the required cut is 64%–80%. Ledger correction: the t115 output hashes predate t116; the current references are `35600ee4…` / `596f6da5…` / `6a6a3d9d…` / `8f46fe92…`. Evidence: [`evidence/t121-per-layer-dispatch/`](evidence/t121-per-layer-dispatch/FINDINGS.md) (`verify.py` 8/8 controls; `verify_scoreboard.py` 6/6).
 
 - [Lightning corpus consolidation: share the 5-case captures across the 10 tests](issues/119-lightning-corpus-consolidation.md): **resolved (2026-11-05; corpus shared — 41 → 32 active invocations, 688.89 s → 620.44 s serial module wall, −9.94 %, every assertion preserved)**: a process-global `OnceLock<Corpus>` holds one observation per `(case, arm)` (5 cases × 2 arms = 10 runs) plus its lifecycle trace; the five `fresh_consumers` visual legs, the legacy/comparator/retirement positive captures and the selection external-artifact run read it. The runtime trace emitted exactly 32 starts (`run_visual` 13 / native 5 / preparation 6 / full slice 8), matching the source inventory. The saving is smaller than t114's pre-cache ~423 s estimate because t118 had already made each capture cheap (≈7.6 s of wall per removed capture here), so this is claim hygiene and aggregate CPU, not a large wall lever. Audit fixes: the typed-projection `Arc::ptr_eq` scene check now requests two layers (it was vacuous at one); the test-local selection Boolean is dropped; `max_retained_after_disposal` returns `Option` and cleanup requires `Some(0)`; a real cross-owner `InvalidOwner` control replaces the mislabelled foreign-owner block; the zero-slice selection predicate and store controls moved to `tests/contract/lightning_selection_contract_tdd.rs` (2 tests, 0.00 s). The box was **not idle** (43 % CPU sampled, browsers running), the arms are same-session not interleaved, a second after run measured 611.64 s, and no full-bucket wall or per-test split is claimed. Evidence: [`evidence/t119-lightning-corpus/`](evidence/t119-lightning-corpus/FINDINGS.md) (`verify.py` exits 0 checkout-only; `--self-test` rejects 7/7 negative controls).
@@ -2672,6 +2704,22 @@ Standing decisions for this effort (2026-09-22):
 - [Repair the Orca rig](issues/98-orca-rig-repair.md): **rig measures Orca again on the 2.5.0 install, and the repair falsified the archived Orca side.** OrcaSlicer 2.5 resolves `--load-settings` through a vendor preset bundle (`PresetBundle::resolve_preset_config`: file-identity match, else a `"from": "system"` manifest walk that flattens `inherits`/`include`), and the install ships only `BBL.opc` with no preset JSON tree. The rig now stages a version-gated source-manifest tree from the tag whose `BBL.json` version equals the installed cache stamp (`02.08.00.16` == `2.8.0.16`, fail-closed) and applies the matched keys as CLI overrides, with `enable_arc_fitting` pinned to 0 because 2.5 flipped that default to enabled. Three measured runs of benchy classic-off: **1.978 s** wall / 6.50 s CPU / 4,000,709 bytes, against the archive's 2.787 s / 9.27 s / 3,890,392 — the archived Orca applied its hardcoded **filament** defaults (density 0, max volumetric speed 2, first-layer temp 200) while the process chain resolved in both eras (300 mm/s walls). So the archived Orca under-measured Orca's own work: PnP's recorded multiples are optimistic for PnP and every archived Orca median needs re-derivation (fog). No ratio requoted. Evidence: `evidence/orca-rig-repair/` (`verify.py --self-test` exit 0, 4 claims, 7/7 negative controls rejected).
 
 ## Not yet specified
+
+- **The bridge wave expansion is a per-layer partition change, and its benchy
+  cost is the blocker (surfaced 2026-11-06 by
+  [t122](issues/122-prep-slice-wave-expansion-facet-retirement.md)).** Canonical's
+  `expand_expolygons` / `wave_seeds` / `propagate_waves_ex` / `merge_bridges`
+  grow classified bridges into `stInternalSolid` / `stInternal` / `stTop` and
+  trim those zones. PnP's sparse zone and `perimeter.infill_areas` do not exist
+  until the `Layer::Perimeters` commit partition, so the port belongs there,
+  not in `PrePass::Slice`. The tight wall-inset zone-proxy screen prices the
+  expansion at **1,151.9 ms** thread-time on benchy (**102.6 %** of the
+  classification saving) and **4,976.6 ms** on base (5.2 %); the combined shape
+  is negative in all four benchy cells, while the classification-only
+  retirement clears all eight. Re-enter only with a per-zone implementation at
+  the Perimeters commit, a measured benchy expansion cost below roughly **1.1 s**
+  thread-time, and an explicit `detect_bridge_directions` vs PnP-direction
+  decision. Do not re-open the old prepass framing.
 
 - **The per-layer/emit program is the next stage after the prepass rewrite
   (t111, 2026-11-03).** The destination stays 8/8, but even deleting both largest
