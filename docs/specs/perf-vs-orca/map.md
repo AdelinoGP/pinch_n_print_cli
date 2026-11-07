@@ -119,8 +119,10 @@ price. `DEV-200` records the unported wave expansion / zone trim; `DEV-039`
 [ticket 123](issues/123-facet-bridge-path-retirement.md) and
 [`evidence/t123-facet-retirement/`](evidence/t123-facet-retirement/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, 309 checks; `--self-test` rejects 11/11
-negative controls).
-**Frontier now: 117 open (the human's grilling); no AFK child remains.** Standing
+negative controls). The now-stale scoreboard is graduated as
+[124](issues/124-post-t123-orca-scoreboard.md): every t121 ratio predates this
+take.
+**Frontier now: 124 open and unclaimed; 117 is the human's grilling.** Standing
 paired acceptance and KEEP/DROP rules unchanged.
 
 **Previous selection scope (2026-11-06, twenty-fifth session — the t122 take):**
