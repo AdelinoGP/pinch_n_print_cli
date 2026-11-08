@@ -93,7 +93,36 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-08, thirtieth session — the t126 take):**
+**Current selection scope (2026-11-08, thirty-first session — the t127 take):**
+the human said "Continue the perf vs orca map" (no ticket named; 127 and 128
+were open), so the first unblocked AFK frontier ticket,
+[Raft-fill dispatch outside the raft band](issues/127-raft-fill-dispatch-outside-band.md),
+was claimed and **resolved as a measured DROP**. Headline: **the decline removes
+the call but not the cost.** The candidate is output-identical in **8/8 cells**
+on both build arms with every guest module identical between arms (32-run output
+campaign, all hashes equal to the t123 reference set), and the raft-default
+dispatch really disappears (**495 → 0** on each base cell, **240 → 0** on
+benchy). But the 61–63 ms per call is the **`Layer::Infill` stage's shared
+prepared-region view materialisation**, paid by whichever Infill module is
+dispatched first: in the candidate `com.core.gyroid-infill` pays the same p50
+(**60 / 58 / 61 / 57 ms** against raft-default's **56 / 60 / 66 / 66 ms**) on the
+same layers, and layer 0 of base classic-off shows 26 ms in raft-default / 1 ms
+in gyroid flipping to 0 / 25 ms. The per-layer phase wall does not fall and the
+gate passes **2/8** cells (benchy classic-on +1.97 %, base classic-on +3.06 %);
+ticket 117's narrower gate also fails 4/8. **Ledger correction to t126:** its
+61–63 ms "ceiling" is not a saving, and its 17-layer "other module first pays
+0 ms" control cannot be a dispatch-order claim. **Disclosures:** the first AB
+batch was split by a 14.7-hour session interruption and two visible stalls and
+is preserved, not used; the measurement of record is a cell-local
+three-interleaved-pair ABBA batch (load 42 % → 15 %, base within-cell spread
+2–9 %); the `Layer::Support` half and raft-enabled jobs are unit-tested only; no
+Orca arm was run, so t124's scoreboard stands. Candidate, two tests and both
+staged binaries retired; patch preserved. Evidence:
+[`evidence/t127-raft-band-dispatch/`](evidence/t127-raft-band-dispatch/FINDINGS.md)
+(`verify.py` 528 claims checkout-only; `--self-test` rejects 18/18 negative
+controls). **Frontier now: no open AFK child; 128 is the human's grilling.**
+
+**Previous selection scope (2026-11-08, thirtieth session — the t126 take):**
 the human said "Continue the perf vs orca map" (no ticket named; all 125
 children were resolved), was offered the live fog routes, and selected **refresh
 the post-t123 split, then attribute per-layer/emit**.
@@ -2634,6 +2663,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Raft-fill dispatch outside the raft band: decline the no-op per-layer call](issues/127-raft-fill-dispatch-outside-band.md): **resolved (2026-11-08; measured DROP — 2/8 cells pass)** — output byte-identical in all eight cells on both build arms and every guest module identical between arms; the dispatch really disappears (**495 → 0** calls on each base cell, **240 → 0** on benchy) and the call count is the only thing that moved. The 61–63 ms the module was charged is the **`Layer::Infill` stage's shared prepared-region view materialisation**, paid by whichever Infill module is dispatched first: with raft-default declined, `com.core.gyroid-infill` pays the same p50 (**60 / 58 / 61 / 57 ms** against **56 / 60 / 66 / 66 ms**) on the same layers, and the per-layer phase wall does not fall. The gate passes only benchy classic-on (+1.97 %) and base classic-on (+3.06 %); ticket 117's narrower gate also fails 4/8. **Ledger correction to t126:** its 61–63 ms and 2.64x–8.25x "ceiling" are not a saving, and its 17-layer "other module first pays 0 ms" control cannot be a dispatch-order claim. Candidate and tests retired; patch preserved. Evidence: [`evidence/t127-raft-band-dispatch/`](evidence/t127-raft-band-dispatch/FINDINGS.md) (`verify.py` 528 checks; 18/18 negative controls).
 - [Post-t123 phase split refresh and per-layer/emit attribution](issues/126-post-t123-phase-split-refresh.md): **resolved (2026-11-08; measurement + Phase-1 attribution — the split is re-derived on all eight cells, and even a zero prepass loses benchy classic-off at 1.02x)** — eight instrumented passes (Arachne measured for the first time), all clean and byte-identical to the t123 reference set. Prepass **62.1–87.1 %**, per-layer **10.6–33.3 %**, postpass **1.8–4.9 %**; `PrePass::Slice` fell **41,472 → 2,110 ms** on base classic-off (**−94.9 %**), so the supports-off prepass is now `ShellClassification` + `OverhangAnnotation` (**24.4 s of 42.5 s**) and the supports-on prepass is `SupportGeometry` + `SupportAnalysis` (**68.9 s of 126.3 s**). Deleting the per-layer phase leaves **1.67x–4.14x**; deleting the prepass reaches **0.48x–1.02x**; the required prepass removal is **72–101 %**. The per-layer phase has no globally idle wall (0 ms gap on base; 2.0–2.3 % on benchy). Carriers: perimeters (3.82x–15.84x floor ceiling), tree-support supports-on (4.66x–9.63x), raft-default (2.64x–8.25x), infill-linker (1.17x–8.28x); the postpass is not a route. Graduated [raft-fill dispatch outside the raft band](issues/127-raft-fill-dispatch-outside-band.md) (61–63 ms on all 495 base layers while the body early-outs) and the HITL [destination-arithmetic ruling](issues/128-destination-arithmetic-ruling.md). Evidence: [`evidence/t126-post-t123-phase-split/`](evidence/t126-post-t123-phase-split/FINDINGS.md) (`verify.py` 617/617 claims; 10/10 negative controls).
 - [Strong planner occupancy-offset batching: representation-safe four-cell campaign](issues/125-strong-planner-occupancy-offset-batching.md): **resolved (2026-11-07; measured DROP — 2/8 cells pass)** — per-origin role-carve offsets batched inside the bounded emit flush, output byte-identical in all 16 arm/cell combinations and all 80 output/paired runs clean, but six cells fail the amended gate; base classic-on gains +6.13 % wall with CPU regressing 1.7656 s, while benchy classic-on regresses −17.90 % wall. Candidate and WASMs retired, production restored, 148 planner tests passed. Evidence: [`evidence/t125-occupancy-offset-batching/`](evidence/t125-occupancy-offset-batching/FINDINGS.md) (`verify.py` 442 checks; 10/10 negative controls).
 - [Strong planner carry: fold the occupancy batching into the Slice campaign, amend the gate, or park it?](issues/117-strong-planner-carry-ruling.md): **resolved (2026-11-07; human ruling — amend this representation-safe candidate's gate)** — the original Slice carrier is already banked, so the occupancy-offset batch proceeds with the 0.80 % paired wall/CPU gate on the four supports-on cells, byte-identical output in all eight, and no median wall/CPU regression on the four supports-off cells; the 8/8 destination is unchanged. Candidate graduated as [Strong planner occupancy-offset batching: representation-safe four-cell campaign](issues/125-strong-planner-occupancy-offset-batching.md).
@@ -2892,11 +2922,17 @@ Standing decisions for this effort (2026-09-22):
   bracket above **2.61x** floor. The per-layer phase has no globally idle wall
   (module-busy union = phase wall on the base cells; 2.0–2.3 % on benchy), so
   there is no cross-worker idle pool to reclaim; a per-worker host cost between
-  dispatches is not resolved by that instrument. The shapes that survive are
-  either graduated — raft-fill dispatch outside the raft band,
-  [127](issues/127-raft-fill-dispatch-outside-band.md) — or left here with their
-  prices: tree-support's per-layer emit-check half (≤**4.66x / 4.72x** for the
-  whole supports-on call; the half is smaller, and
+  dispatches is not resolved by that instrument. **[t127](issues/127-raft-fill-dispatch-outside-band.md)
+  then measured the one graduated shape and it is a DROP (2026-11-08): the
+  61–63 ms raft-default bracket is the `Layer::Infill` stage's shared
+  prepared-region view materialisation, paid by whichever Infill module is
+  dispatched first, so declining it transfers the cost to `gyroid-infill` and
+  the per-layer phase wall does not move.** Any future per-layer shape priced
+  from a module bracket must first show the cost is module-specific by
+  declining the module and watching the bracket move. The remaining shapes are
+  left here with their prices, now discounted by that lesson: tree-support's
+  per-layer emit-check half (≤**4.66x / 4.72x** for the whole supports-on call;
+  the half is smaller, and
   [125](issues/125-strong-planner-occupancy-offset-batching.md)'s DROP is a live
   warning that this family does not automatically transfer), `infill-linker`
   (**1.17x–8.28x**, no shape identified), and the perimeters
