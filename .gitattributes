@@ -15,8 +15,72 @@
 /docs/specs/perf-vs-orca/evidence/t25-arachne-attribution/captures/** -text whitespace=cr-at-eol
 /docs/specs/perf-vs-orca/evidence/t25-arachne-attribution/probe_outputs/** -text whitespace=cr-at-eol
 
+# T19's verifier hash-pins protocol.json (its sha is recorded in evidence.json),
+# so preserve the evidence set's bytes on add/checkout.
+/docs/specs/perf-vs-orca/evidence/t19-offset2-call-graph/** -text whitespace=cr-at-eol
+
 # Captured command output and source diffs retain the producer's whitespace.
 /docs/specs/perf-vs-orca/evidence/t3[89]-*/**/*.log -whitespace
 /docs/specs/perf-vs-orca/evidence/t4[0-3]-*/**/*.log -whitespace
 /docs/specs/perf-vs-orca/evidence/t3[89]-*/**/*.diff -whitespace
 /docs/specs/perf-vs-orca/evidence/t4[0-3]-*/**/*.diff -whitespace
+
+# The t29/t31/t45 sets and the t49-t57 diagnostic/experiment sets carry
+# hash-pinned manifests, inputs and captured logs; preserve their bytes on
+# add/checkout instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/t29-mesh-ops-fixtures/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t31-clipper2-120/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t45-quartile-bbox/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t49-signed-distance/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t51-winding-cache/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t53-union-simplify/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t55-body-union/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t57-topx-cache/** -text whitespace=cr-at-eol
+
+# The t61 perf refresh and the t62/t65 linker evidence sets carry hash-checked
+# reductions, captured json and probe patches; preserve their bytes on
+# add/checkout instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/perf-refresh-2026-10-13/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t62-linker-post-hoist/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t65-linker-batch/** -text whitespace=cr-at-eol
+
+# The t64 tree-support renderer attribution set carries hash-checked captures,
+# the temporary probe patch and its verifiers; preserve their bytes on
+# add/checkout instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/t64-tree-support-renderer/** -text whitespace=cr-at-eol
+
+# The t59 flat-bridge closing set carries the temporary probe patch, reduced
+# captures and its verifiers; preserve their bytes on add/checkout instead of
+# normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/t59-flat-bridge-closing/** -text whitespace=cr-at-eol
+
+# The t60 host:native attribution set carries the temporary probe patch, reduced
+# captures (hash-checked owners) and its verifiers; preserve their bytes on
+# add/checkout instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/t60-host-native/** -text whitespace=cr-at-eol
+
+# The t68 classic-perimeters round-trip set carries the temporary probe patch,
+# reduced captures (hash-checked site buckets) and its verifiers; preserve
+# their bytes on add/checkout instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/t68-host-roundtrips/** -text whitespace=cr-at-eol
+
+# The scoreboard-refresh set carries curated per-batch run CSVs (median inputs
+# re-derived by verify.py) and the verbatim evicted-partial `.interrupted.csv`
+# disclosures; preserve their bytes on add/checkout instead of normalizing line
+# endings.
+/docs/specs/perf-vs-orca/evidence/scoreboard-refresh-20261017/** -text whitespace=cr-at-eol
+
+# The 2026-10-25 scoreboard-refresh set carries five verbatim batch row CSVs plus
+# the preserved duplicate-round disclosure; preserve their bytes on add/checkout
+# instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/scoreboard-refresh-20261025/** -text whitespace=cr-at-eol
+
+# The t82 fairness-key audit carries eight Orca resolved-config appendices
+# written by `Set-Content` (CRLF) and a generated key table; preserve their
+# bytes on add/checkout instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/t82-fairness-key-audit/** -text whitespace=cr-at-eol
+
+# The t83 Arachne-tolerance pricing set carries reduced per-run captures, a
+# generated summary and its wall-pair reduction; preserve their bytes on
+# add/checkout instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/t83-arachne-tolerance-price/** -text whitespace=cr-at-eol

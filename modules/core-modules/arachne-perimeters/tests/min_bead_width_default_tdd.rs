@@ -20,6 +20,7 @@ use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 
 fn config() -> ConfigView {
     ConfigViewBuilder::new()
+        .float("resolution", 0.01)
         .int("wall_count", 5)
         .float("outer_wall_line_width", 0.42)
         .float("inner_wall_line_width", 0.45)

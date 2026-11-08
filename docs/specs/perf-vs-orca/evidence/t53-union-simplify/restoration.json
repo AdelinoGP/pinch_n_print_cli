@@ -1,0 +1,30 @@
+{
+  "sources": {
+    "modules/core-modules/tree-support-planner/src/lib.rs": "57642cced9be71645b99d202e8ee7975765ae9899caa1581f7f4962b1883832a",
+    "crates/slicer-wasm-host/src/host.rs": "f71dd0904a576e03fcd917570cb13cd01063e940429659766476ab223b1b1faa"
+  },
+  "freshness": {
+    "ordinary": {
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--check"
+      ],
+      "exit_code": 0
+    },
+    "accelerated": {
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--accelerated",
+        "--check"
+      ],
+      "exit_code": 0
+    }
+  },
+  "artifacts_match_before": true,
+  "production_diff": "",
+  "distribution_file_sets_match_before": true
+}

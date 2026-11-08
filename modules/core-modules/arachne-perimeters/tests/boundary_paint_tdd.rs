@@ -33,6 +33,7 @@ use slicer_sdk::views::SliceRegionView;
 /// see `arachne_parity_outer_wall_boundary_type_tdd.rs`'s identical helper.
 fn make_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
     ConfigViewBuilder::new()
+        .float("resolution", 0.01)
         .int("wall_count", wall_count as i64)
         .float("inner_wall_line_width", line_width_mm as f64)
         .float("outer_wall_line_width", line_width_mm as f64)

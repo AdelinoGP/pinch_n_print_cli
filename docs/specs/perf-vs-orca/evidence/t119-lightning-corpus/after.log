@@ -1,0 +1,44 @@
+running 10 tests
+test lightning_migration_tdd::baseline_is_deterministic_and_strict ... ok
+lightning-invocation: run_visual
+lightning-invocation: run_visual
+lightning-invocation: run_visual
+lightning-invocation: run_visual
+lightning-invocation: run_visual
+lightning-invocation: run_visual_native
+lightning-invocation: run_visual_native
+lightning-invocation: run_visual_native
+lightning-invocation: run_visual_native
+lightning-invocation: run_visual_native
+test lightning_migration_tdd::equivalence_rejects_corrupted_baseline ... ok
+lightning-invocation: run_slice_preparation_capture
+lightning-invocation: run_visual
+lightning-invocation: run_visual
+lightning-invocation: run_visual
+test lightning_migration_tdd::failed_or_malformed_plan_never_falls_back ... ok
+lightning-invocation: run_slice_preparation_capture
+lightning-invocation: run_slice_with_runtime_extensions
+lightning-invocation: run_slice_with_runtime_extensions
+lightning-invocation: run_slice_preparation_capture
+lightning-invocation: run_slice_with_runtime_extensions
+lightning-invocation: run_slice_preparation_capture
+lightning-invocation: run_slice_with_runtime_extensions
+lightning-invocation: run_slice_preparation_capture
+lightning-invocation: run_slice_preparation_capture
+lightning-invocation: run_slice_with_runtime_extensions
+test lightning_migration_tdd::fresh_consumers_emit_baseline_segments ... ok
+test lightning_migration_tdd::legacy_contract_is_retired ... ok
+test lightning_migration_tdd::module_plan_matches_recorded_baseline ... ok
+test lightning_migration_tdd::record_lightning_baseline ... ignored, rewrites the committed baseline; run explicitly after an intentional output change
+test lightning_migration_tdd::retirement_leaves_no_host_fallback ... ok
+lightning-invocation: run_slice_with_runtime_extensions
+lightning-invocation: run_visual
+test lightning_migration_tdd::selection_override_empty_and_foreign_owner ... ok
+lightning-invocation: run_visual
+lightning-invocation: run_visual
+lightning-invocation: run_visual
+lightning-invocation: run_slice_with_runtime_extensions
+lightning-invocation: run_slice_with_runtime_extensions
+lightning-invocation: run_visual
+test lightning_migration_tdd::typed_projection_is_atomic_and_neutral ... ok
+test result: ok. 9 passed; 0 failed; 1 ignored; 0 measured; 163 filtered out; finished in 620.44s

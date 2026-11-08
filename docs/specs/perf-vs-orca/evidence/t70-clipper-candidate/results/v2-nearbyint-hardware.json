@@ -1,0 +1,42 @@
+{
+  "label": "v2-nearbyint-hardware",
+  "exactness_mismatches": [],
+  "opclasses": {
+    "difference": {
+      "cases": 68,
+      "pristine_median_ns": 277450.0,
+      "candidate_median_ns": 267600.0,
+      "ratio": 0.9644981077671653,
+      "case_ratio_min": 0.5,
+      "case_ratio_median": 0.84,
+      "case_ratio_max": 2.0140485312899106
+    },
+    "intersection": {
+      "cases": 34,
+      "pristine_median_ns": 2099150.0,
+      "candidate_median_ns": 1365000.0,
+      "ratio": 0.6502632017721459,
+      "case_ratio_min": 0.5039234497607805,
+      "case_ratio_median": 0.8096259155445915,
+      "case_ratio_max": 1.4616564417177915
+    },
+    "offset": {
+      "cases": 177,
+      "pristine_median_ns": 6634800,
+      "candidate_median_ns": 3891500,
+      "ratio": 0.5865286067402182,
+      "case_ratio_min": 0.42980769230769234,
+      "case_ratio_median": 0.6707822824889867,
+      "case_ratio_max": 1.435483870967742
+    },
+    "union": {
+      "cases": 16,
+      "pristine_median_ns": 105615650.0,
+      "candidate_median_ns": 59065850.0,
+      "ratio": 0.5592528190661138,
+      "case_ratio_min": 0.47452885175830584,
+      "case_ratio_median": 0.6239618684987446,
+      "case_ratio_max": 0.8206334537511552
+    }
+  }
+}

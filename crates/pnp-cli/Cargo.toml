@@ -58,6 +58,10 @@ slicer-ir = { path = "../slicer-ir" }
 slicer-sdk = { path = "../slicer-sdk", features = ["test"] }
 clap = { workspace = true, features = ["derive"] }
 env_logger = "0.11"
+# Global allocator replacement (wayfinder ticket 102). Wrapped by the
+# `AccountingAllocator` below, exactly as the packager contract in
+# docs/16_slicer_report.md prescribes, so `--report` accounting still works.
+mimalloc = { version = "0.1.52", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"

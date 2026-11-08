@@ -1,0 +1,16 @@
+{
+  "decision": "DROP",
+  "decided_by": "human",
+  "date": "2026-10-07",
+  "human_statement": "Confirmed, drop is accepted",
+  "confirms": [
+    "the standing 'Continue until completion' authorization covered the externally interrupted-cell rerun after the harness session eviction (reviewer finding 2)",
+    "the measured DROP recommendation is accepted; the scanbeam TopX projection cache is not adopted"
+  ],
+  "effect": "No commit, no permanent dependency, no mode adoption, no retry. Production restored state stands. Candidate patch and raw archive preserved for reproducibility; nothing further to retire from the tracked tree because all candidate source lived in the gitignored experiment workspace.",
+  "measured_basis": {
+    "qualification": "qualification.json pass=true, 16/16 cells byte-identical in both modes",
+    "campaign": "campaign.json recommendation DROP; first cell ordinary-benchy-classic-on failed with candidate slower in 6/6 retained pairs (wall +0.505 s / +2.14%, CPU +4.086 s / +2.78%); remaining 3 cells not_run by stop rule",
+    "independent_review": "review-record.json — no BLOCKER/HIGH; bounded DROP supported"
+  }
+}

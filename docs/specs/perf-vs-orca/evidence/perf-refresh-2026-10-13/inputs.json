@@ -1,0 +1,767 @@
+{
+ "captured_commit": "921306dcaf8e1b686b43101972f5b5f5bf0c28d7",
+ "exe_sha256": "b84c0e1a93b8dd6742493236766525cf80721fd80f549f225c9230d615adb335",
+ "model_sha256": "6a07f34cc7769b1c852635212c91a1b354532f4222a9a8105c1035a1a7b284f7",
+ "threads": 12,
+ "guest_freshness_exit": 0,
+ "provenance": [
+  {
+   "id": "com.core.arachne-perimeters",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.classic-perimeters",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.fuzzy-skin",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.gyroid-infill",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.infill-linker",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.layer-planner-default",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.lightning-infill",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.machine-gcode-emit",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.overhang-classifier-default",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.part-cooling",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.path-optimization-default",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.raft-default",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.rectilinear-infill",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.seam-placer",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.seam-planner-default",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.skirt-brim",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.support-surface-ironing",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.top-surface-ironing",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.traditional-support",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.traditional-support-planner",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.tree-support",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.tree-support-planner",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.wave-overhangs",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.wipe-tower",
+   "provenance": "external"
+  }
+ ],
+ "modules": [
+  {
+   "path": "modules/core-modules/arachne-perimeters/arachne-perimeters.toml",
+   "sha256": "e870c6c9c4ed4e74b053e9a4d52e0255b8affc98ea38aa0d5904023881a7980d"
+  },
+  {
+   "path": "modules/core-modules/arachne-perimeters/arachne-perimeters.wasm",
+   "sha256": "06339677d6c56b71dd547fa4eccb63a235e1f12fe6eeb7c870fa36650cac8360"
+  },
+  {
+   "path": "modules/core-modules/arachne-perimeters/Cargo.toml",
+   "sha256": "eb21c2bf094ed0b10e0f436521182d6ca3634fa99d58689ef7c86653d38f734a"
+  },
+  {
+   "path": "modules/core-modules/arachne-perimeters/wit-guest/Cargo.toml",
+   "sha256": "328e655a760cbd1bb66c6baa6025f0f4d842443c8dbedc89c15d450f199b1c7e"
+  },
+  {
+   "path": "modules/core-modules/arachne-perimeters/wit-guest/target/wasm32-unknown-unknown/release/arachne_perimeters_guest-component-input.wasm",
+   "sha256": "ce6372a8e3c9a0d8f7861bae42a3cdff5485dd234fbd98470a3e2774a816d786"
+  },
+  {
+   "path": "modules/core-modules/arachne-perimeters/wit-guest/target/wasm32-unknown-unknown/release/arachne_perimeters_guest.wasm",
+   "sha256": "d9a5ff1802aa4b4acbc3472f6d69145d79162431b4e4945d4cbf31b0cfd69e3f"
+  },
+  {
+   "path": "modules/core-modules/arachne-perimeters/wit-guest/target/wasm32-unknown-unknown/release/deps/arachne_perimeters_guest.wasm",
+   "sha256": "d9a5ff1802aa4b4acbc3472f6d69145d79162431b4e4945d4cbf31b0cfd69e3f"
+  },
+  {
+   "path": "modules/core-modules/classic-perimeters/Cargo.toml",
+   "sha256": "4d04954ab43f11371f35396d47317b26685de783d0969a54b92db14a5ad70fb9"
+  },
+  {
+   "path": "modules/core-modules/classic-perimeters/classic-perimeters.toml",
+   "sha256": "1f277fc12bdee0ee0a9a59b700af681bc337f3bfd10c3aa4293d860dc032200c"
+  },
+  {
+   "path": "modules/core-modules/classic-perimeters/classic-perimeters.wasm",
+   "sha256": "162c68159adc9ceacd0ac82278086a9adb29fb8fad4f09c5e24f6db971f3d8ea"
+  },
+  {
+   "path": "modules/core-modules/classic-perimeters/wit-guest/Cargo.toml",
+   "sha256": "f7b712f0e64016d644bb9e7d8ae8a710a1c964d76dae3f9a8215cf1905a029cc"
+  },
+  {
+   "path": "modules/core-modules/classic-perimeters/wit-guest/target/wasm32-unknown-unknown/release/classic_perimeters_guest-component-input.wasm",
+   "sha256": "46470f87bf15952fd189abf4a26d7e78458c17c8fd777f95814e1b0e0958fbdc"
+  },
+  {
+   "path": "modules/core-modules/classic-perimeters/wit-guest/target/wasm32-unknown-unknown/release/classic_perimeters_guest.wasm",
+   "sha256": "e5d2f52dd469e7f219af7613b840c8b3016465a0d64259d4bd97a1464ee62a86"
+  },
+  {
+   "path": "modules/core-modules/classic-perimeters/wit-guest/target/wasm32-unknown-unknown/release/deps/classic_perimeters_guest.wasm",
+   "sha256": "e5d2f52dd469e7f219af7613b840c8b3016465a0d64259d4bd97a1464ee62a86"
+  },
+  {
+   "path": "modules/core-modules/fuzzy-skin/Cargo.toml",
+   "sha256": "a890d1ef317b7383cbb51bdb78aa495f492e48e9a7daec2ec64523bbed1bce5d"
+  },
+  {
+   "path": "modules/core-modules/fuzzy-skin/fuzzy-skin.toml",
+   "sha256": "dd074eb769df5e5703a4bae9c8820807c52c7577272c7ebf97b7bc90bf49a1a9"
+  },
+  {
+   "path": "modules/core-modules/fuzzy-skin/fuzzy-skin.wasm",
+   "sha256": "9cc7e22dbff3cff4329ccf753319c79e57f5f38a500e57ed3fdc2e4465562885"
+  },
+  {
+   "path": "modules/core-modules/fuzzy-skin/wit-guest/Cargo.toml",
+   "sha256": "6c8ef7feea61805c57974d292e34c80ca1df75c606a95fdfef04a436b8485a3d"
+  },
+  {
+   "path": "modules/core-modules/fuzzy-skin/wit-guest/target/wasm32-unknown-unknown/release/deps/fuzzy_skin_guest.wasm",
+   "sha256": "4bfe7832a569c1894ef379992e67c1b243f8118baade9595ddb8620e01ae98d6"
+  },
+  {
+   "path": "modules/core-modules/fuzzy-skin/wit-guest/target/wasm32-unknown-unknown/release/fuzzy_skin_guest-component-input.wasm",
+   "sha256": "396dd0acdf4a6c92c8533c228e7a6095c28bc1d0f0122f96ad41ab23c918fc73"
+  },
+  {
+   "path": "modules/core-modules/fuzzy-skin/wit-guest/target/wasm32-unknown-unknown/release/fuzzy_skin_guest.wasm",
+   "sha256": "4bfe7832a569c1894ef379992e67c1b243f8118baade9595ddb8620e01ae98d6"
+  },
+  {
+   "path": "modules/core-modules/gyroid-infill/Cargo.toml",
+   "sha256": "ff34c3785da3592abecabe1345607f0bf5faf0547847d6da78b72348edfdccdf"
+  },
+  {
+   "path": "modules/core-modules/gyroid-infill/gyroid-infill.toml",
+   "sha256": "599b5ea45abba86fe6c645dd109fd63f011192982e99a3275a32d949b3018258"
+  },
+  {
+   "path": "modules/core-modules/gyroid-infill/gyroid-infill.wasm",
+   "sha256": "f2b337e1b9a23aa5b8fb509c8e3caf47a694e0d6ab0d53a5451d3b844a0111e5"
+  },
+  {
+   "path": "modules/core-modules/gyroid-infill/wit-guest/Cargo.toml",
+   "sha256": "6ed0a441148a45e0629712025d592c8c2e22286192390b991dfa32b87019ae00"
+  },
+  {
+   "path": "modules/core-modules/gyroid-infill/wit-guest/target/wasm32-unknown-unknown/release/deps/gyroid_infill_guest.wasm",
+   "sha256": "5e37c2e6e361f5bf24fff886516ab3e57a86fcc0de83f912da10e88434e0b982"
+  },
+  {
+   "path": "modules/core-modules/gyroid-infill/wit-guest/target/wasm32-unknown-unknown/release/gyroid_infill_guest-component-input.wasm",
+   "sha256": "6ed77c20c0032b7ad386bf7625cae984707c00eafe84d2ceda9d955a00eb4c49"
+  },
+  {
+   "path": "modules/core-modules/gyroid-infill/wit-guest/target/wasm32-unknown-unknown/release/gyroid_infill_guest.wasm",
+   "sha256": "5e37c2e6e361f5bf24fff886516ab3e57a86fcc0de83f912da10e88434e0b982"
+  },
+  {
+   "path": "modules/core-modules/infill-linker/Cargo.toml",
+   "sha256": "7ee888f88209b8ce5833d213e04227ffb29316f7b2c88fe6e924e61a537eb5e4"
+  },
+  {
+   "path": "modules/core-modules/infill-linker/infill-linker.toml",
+   "sha256": "146985a9e0f57964dd07b19ab6c2c4b9b0fea4fbb863a68697bdaebb866276a9"
+  },
+  {
+   "path": "modules/core-modules/infill-linker/infill-linker.wasm",
+   "sha256": "544f6183f1d94340d73fe36809e2f9a266c7fb07c733667c8bd078e81db7589b"
+  },
+  {
+   "path": "modules/core-modules/infill-linker/wit-guest/Cargo.toml",
+   "sha256": "63b044d048c361ce8597a04fc903dcf6217e48104a9cb1d18ea672a8daec85a3"
+  },
+  {
+   "path": "modules/core-modules/infill-linker/wit-guest/target/wasm32-unknown-unknown/release/deps/infill_linker_guest.wasm",
+   "sha256": "77f8dffff4ae8cb3941b45f92c0b4d9846b769055e0449c4ffa4430e97f0d5c0"
+  },
+  {
+   "path": "modules/core-modules/infill-linker/wit-guest/target/wasm32-unknown-unknown/release/infill_linker_guest-component-input.wasm",
+   "sha256": "34744c4b04952ca175bfce3534cd91d0855fdb2c8f148920a9e099266dc9109b"
+  },
+  {
+   "path": "modules/core-modules/infill-linker/wit-guest/target/wasm32-unknown-unknown/release/infill_linker_guest.wasm",
+   "sha256": "77f8dffff4ae8cb3941b45f92c0b4d9846b769055e0449c4ffa4430e97f0d5c0"
+  },
+  {
+   "path": "modules/core-modules/layer-planner-default/Cargo.toml",
+   "sha256": "47b269b5ee8eb2631ea112b7f1a7e68c37d3c25c624d31493ede9e25a41a8309"
+  },
+  {
+   "path": "modules/core-modules/layer-planner-default/layer-planner-default.toml",
+   "sha256": "c882cf8c3e88c9d390ffeb8ae922132208566628697bf6eeb295f993d3b4581c"
+  },
+  {
+   "path": "modules/core-modules/layer-planner-default/layer-planner-default.wasm",
+   "sha256": "a9472e547516e968925e03e8ccc88aa6c94df4d3f368eac765efff24c1910218"
+  },
+  {
+   "path": "modules/core-modules/layer-planner-default/wit-guest/Cargo.toml",
+   "sha256": "2a76dfe5318fb5f16510b3be569ca3518cd6cf3e8cc274114957c83e9eb05460"
+  },
+  {
+   "path": "modules/core-modules/layer-planner-default/wit-guest/target/wasm32-unknown-unknown/release/deps/layer_planner_default_guest.wasm",
+   "sha256": "3f0d11b64b980b150e7f97b69a37468e9ed994d738e9d227968779926d87658f"
+  },
+  {
+   "path": "modules/core-modules/layer-planner-default/wit-guest/target/wasm32-unknown-unknown/release/layer_planner_default_guest-component-input.wasm",
+   "sha256": "ebd6e29ac02fdc6b60b93329a66e85474d4f8b44385bacd4b533be9458f36b50"
+  },
+  {
+   "path": "modules/core-modules/layer-planner-default/wit-guest/target/wasm32-unknown-unknown/release/layer_planner_default_guest.wasm",
+   "sha256": "3f0d11b64b980b150e7f97b69a37468e9ed994d738e9d227968779926d87658f"
+  },
+  {
+   "path": "modules/core-modules/lightning-infill/Cargo.toml",
+   "sha256": "8aaf4ac27b73f03a9fa1ea0df0ff74c1915b81104092116be206a7ae198d0704"
+  },
+  {
+   "path": "modules/core-modules/lightning-infill/lightning-infill.toml",
+   "sha256": "133800ce7128e6ef1d12c0e63207ef2d27395a0cc3d58e2be5dc5674e8ab9b7a"
+  },
+  {
+   "path": "modules/core-modules/lightning-infill/lightning-infill.wasm",
+   "sha256": "434090fad0d75d701e1167b48b947b77183c0544974b556cb9d1e07259690890"
+  },
+  {
+   "path": "modules/core-modules/lightning-infill/wit-guest/Cargo.toml",
+   "sha256": "bf49f7bf71ac3602bb081b9c375059b3e2c0d794806012375c5f5dc639930c51"
+  },
+  {
+   "path": "modules/core-modules/lightning-infill/wit-guest/target/wasm32-unknown-unknown/release/deps/lightning_infill_guest.wasm",
+   "sha256": "21cd9f5c8b5fa6c06f71f2ad694a079f8bf60b951df70ae3c1e43b6e19f151c6"
+  },
+  {
+   "path": "modules/core-modules/lightning-infill/wit-guest/target/wasm32-unknown-unknown/release/lightning_infill_guest-component-input.wasm",
+   "sha256": "dcca8092757b3e812e579f53667da8e9151e7cf08e628342511d899952cbea09"
+  },
+  {
+   "path": "modules/core-modules/lightning-infill/wit-guest/target/wasm32-unknown-unknown/release/lightning_infill_guest.wasm",
+   "sha256": "21cd9f5c8b5fa6c06f71f2ad694a079f8bf60b951df70ae3c1e43b6e19f151c6"
+  },
+  {
+   "path": "modules/core-modules/machine-gcode-emit/Cargo.toml",
+   "sha256": "d5dcdd82afbc5600d07881e244afbbbdb0516632d6dce0bfa556b6a6b3a6df4a"
+  },
+  {
+   "path": "modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml",
+   "sha256": "b8440d935452967a2d7fa75d33fe9cbb93d07d0d9888d511e5235cd1b3415cd1"
+  },
+  {
+   "path": "modules/core-modules/machine-gcode-emit/machine-gcode-emit.wasm",
+   "sha256": "f566d14cf954b79f3fa11f44227f64884b522d139f47c2003e153856adc9302d"
+  },
+  {
+   "path": "modules/core-modules/machine-gcode-emit/wit-guest/Cargo.toml",
+   "sha256": "62196a4340823dd105a00724e3dc4081a3c4861621da8a0b4c784579bcc5df9b"
+  },
+  {
+   "path": "modules/core-modules/machine-gcode-emit/wit-guest/target/wasm32-unknown-unknown/release/deps/machine_gcode_emit_guest.wasm",
+   "sha256": "cb2775b6c05bbb09e9ffb03a34fa4a66b062f3219c2b4fa849190450c0355897"
+  },
+  {
+   "path": "modules/core-modules/machine-gcode-emit/wit-guest/target/wasm32-unknown-unknown/release/machine_gcode_emit_guest-component-input.wasm",
+   "sha256": "d197d646c0c97e22e6185b1dfb31eb093ea5d195acbe3b1dbf6ed2570e01e2b8"
+  },
+  {
+   "path": "modules/core-modules/machine-gcode-emit/wit-guest/target/wasm32-unknown-unknown/release/machine_gcode_emit_guest.wasm",
+   "sha256": "cb2775b6c05bbb09e9ffb03a34fa4a66b062f3219c2b4fa849190450c0355897"
+  },
+  {
+   "path": "modules/core-modules/overhang-classifier-default/Cargo.toml",
+   "sha256": "70bea02aa5e08742d38e8296994a8968505d2e158a37935f8768fdb5be77d17d"
+  },
+  {
+   "path": "modules/core-modules/overhang-classifier-default/overhang-classifier-default.toml",
+   "sha256": "7b32987f5e961bd1ce0da9522fddc1e7f1439eb0bc080447fd5f664c338d3b83"
+  },
+  {
+   "path": "modules/core-modules/overhang-classifier-default/overhang-classifier-default.wasm",
+   "sha256": "b1f2b45860341c471d9ddafa84ecdea995909fd7e475bf3459a828bf7779d626"
+  },
+  {
+   "path": "modules/core-modules/overhang-classifier-default/wit-guest/Cargo.toml",
+   "sha256": "6d4466d3ea295ad40b52e313f09c7f6cd999b1d7fb82273fb6c20ffabb0fc44b"
+  },
+  {
+   "path": "modules/core-modules/overhang-classifier-default/wit-guest/target/wasm32-unknown-unknown/release/deps/overhang_classifier_default_guest.wasm",
+   "sha256": "e3835901094d184fc9a67c27334b103b306d5e93388353c90f9a8ce6624fca00"
+  },
+  {
+   "path": "modules/core-modules/overhang-classifier-default/wit-guest/target/wasm32-unknown-unknown/release/overhang_classifier_default_guest-component-input.wasm",
+   "sha256": "6df48b9fc0883e8134277b2cf388b3757edb26439bc9ee3e282bc62e795ba501"
+  },
+  {
+   "path": "modules/core-modules/overhang-classifier-default/wit-guest/target/wasm32-unknown-unknown/release/overhang_classifier_default_guest.wasm",
+   "sha256": "e3835901094d184fc9a67c27334b103b306d5e93388353c90f9a8ce6624fca00"
+  },
+  {
+   "path": "modules/core-modules/part-cooling/Cargo.toml",
+   "sha256": "43f9c377b1e5957453685991533cefc5af1fb7d9d17b7b25cb165ab630a83037"
+  },
+  {
+   "path": "modules/core-modules/part-cooling/part-cooling.toml",
+   "sha256": "6bc7b930977bba2466fee8d59d2803c58b0cbe427478e997a9bf5fde07bf2b31"
+  },
+  {
+   "path": "modules/core-modules/part-cooling/part-cooling.wasm",
+   "sha256": "5342d8cf7817e1e1e0d0f689d1110c2f79b42e1503d07f92498785a0a15a6d07"
+  },
+  {
+   "path": "modules/core-modules/part-cooling/wit-guest/Cargo.toml",
+   "sha256": "a839b787fe18236134a371c16e6007a1c86ca91b91bbc20b6e6f86f57d84523f"
+  },
+  {
+   "path": "modules/core-modules/part-cooling/wit-guest/target/wasm32-unknown-unknown/release/deps/part_cooling_guest.wasm",
+   "sha256": "864c4ff4c2f2115ce12196098ac372da792ba5ac8d4c272224f13dce5c38afbc"
+  },
+  {
+   "path": "modules/core-modules/part-cooling/wit-guest/target/wasm32-unknown-unknown/release/part_cooling_guest-component-input.wasm",
+   "sha256": "deaa2fad874de978cab74d3c74778bbbe695b2ddf243bbd95e345814b0f914d7"
+  },
+  {
+   "path": "modules/core-modules/part-cooling/wit-guest/target/wasm32-unknown-unknown/release/part_cooling_guest.wasm",
+   "sha256": "864c4ff4c2f2115ce12196098ac372da792ba5ac8d4c272224f13dce5c38afbc"
+  },
+  {
+   "path": "modules/core-modules/path-optimization-default/Cargo.toml",
+   "sha256": "42fa6090fd324599bd12debda72825065a9a39f9f59c8573237ceb374809e08c"
+  },
+  {
+   "path": "modules/core-modules/path-optimization-default/path-optimization-default.toml",
+   "sha256": "a880c192af0e701c758cc5ec74e1e3e342952f3df5d30df87141a7bd1ef4255e"
+  },
+  {
+   "path": "modules/core-modules/path-optimization-default/path-optimization-default.wasm",
+   "sha256": "0050df852fba6d7402a6c67a30beb2130d7327e113085dbed907d722532dd080"
+  },
+  {
+   "path": "modules/core-modules/path-optimization-default/wit-guest/Cargo.toml",
+   "sha256": "feb78e8ce0aa5fcade6395ce0357e069c35c985e5f68d655bae33ce89cb823db"
+  },
+  {
+   "path": "modules/core-modules/path-optimization-default/wit-guest/target/wasm32-unknown-unknown/release/deps/path_optimization_default_guest.wasm",
+   "sha256": "5c08098450dd5d30f0f07ee2d107f08ded6928f9ac576a939fad523e29cdfaa9"
+  },
+  {
+   "path": "modules/core-modules/path-optimization-default/wit-guest/target/wasm32-unknown-unknown/release/path_optimization_default_guest-component-input.wasm",
+   "sha256": "87bea9dfaa0b87aecf16734c88b7735bffe0747654b8116dc783b4d27858417e"
+  },
+  {
+   "path": "modules/core-modules/path-optimization-default/wit-guest/target/wasm32-unknown-unknown/release/path_optimization_default_guest.wasm",
+   "sha256": "5c08098450dd5d30f0f07ee2d107f08ded6928f9ac576a939fad523e29cdfaa9"
+  },
+  {
+   "path": "modules/core-modules/raft-default/Cargo.toml",
+   "sha256": "cf1f47ce0df7d5bfa3832ef6d2b4e9f3d257632538be0b29ca2ff1b4ef7c20ca"
+  },
+  {
+   "path": "modules/core-modules/raft-default/raft-default.toml",
+   "sha256": "a0d6d8286836a13a9422b24bf16aace8219a254feab0abc26a35850a15d84d06"
+  },
+  {
+   "path": "modules/core-modules/raft-default/raft-default.wasm",
+   "sha256": "651c19c2ad0d9c25545ba3402de76c563d4a552ffa208e16a375f6a0a7e5132c"
+  },
+  {
+   "path": "modules/core-modules/raft-default/wit-guest/Cargo.toml",
+   "sha256": "18abc00deab8231a38347b7575a4e86f1342fd0153e34520646dc6411af97a79"
+  },
+  {
+   "path": "modules/core-modules/rectilinear-infill/Cargo.toml",
+   "sha256": "f029827c6db278ddac64b38fa1941b46c3c969631b65ee3c9f5fe203f82e1873"
+  },
+  {
+   "path": "modules/core-modules/rectilinear-infill/rectilinear-infill.toml",
+   "sha256": "5f77aca49758f73c53251e90d77c0b905dbf420db4f4997311f74b8868ff37ec"
+  },
+  {
+   "path": "modules/core-modules/rectilinear-infill/rectilinear-infill.wasm",
+   "sha256": "cc32bf30d2e7321de6e6a7b0c123d54e207ead1cfa6af7d2c0e8b885d6cd7718"
+  },
+  {
+   "path": "modules/core-modules/rectilinear-infill/wit-guest/Cargo.toml",
+   "sha256": "5aa5812af836ca8c77708eca3c0b85a38e0333b26efd17aae8fbfe2ee76d8970"
+  },
+  {
+   "path": "modules/core-modules/rectilinear-infill/wit-guest/target/wasm32-unknown-unknown/release/deps/rectilinear_infill_guest.wasm",
+   "sha256": "56478255d20a987d664aa8b3f45d8de70be398a920e19846c3c66fceba59d2c0"
+  },
+  {
+   "path": "modules/core-modules/rectilinear-infill/wit-guest/target/wasm32-unknown-unknown/release/rectilinear_infill_guest-component-input.wasm",
+   "sha256": "88ff9eb29e89ae021460b7b4edde3a51a4b4750c31efadc76e6715503cd95e6c"
+  },
+  {
+   "path": "modules/core-modules/rectilinear-infill/wit-guest/target/wasm32-unknown-unknown/release/rectilinear_infill_guest.wasm",
+   "sha256": "56478255d20a987d664aa8b3f45d8de70be398a920e19846c3c66fceba59d2c0"
+  },
+  {
+   "path": "modules/core-modules/seam-placer/Cargo.toml",
+   "sha256": "a9fdcbb8fdcadede8a81a85b10aa6b03837c309fe707e299555811f62685b130"
+  },
+  {
+   "path": "modules/core-modules/seam-placer/seam-placer.toml",
+   "sha256": "7989376a7dbc63793822cc3c258b1575cd8ada4fbae0e05c3e579c6cd117186a"
+  },
+  {
+   "path": "modules/core-modules/seam-placer/seam-placer.wasm",
+   "sha256": "4daee341409d592407f5f6ac85bfe77219fc7eab0c2173e765526edfee8bb471"
+  },
+  {
+   "path": "modules/core-modules/seam-placer/wit-guest/Cargo.toml",
+   "sha256": "afe24226d70e64941a5bc331f076e179d63a44b1d69b86146b6f0bb18eb244f8"
+  },
+  {
+   "path": "modules/core-modules/seam-placer/wit-guest/target/wasm32-unknown-unknown/release/deps/seam_placer_guest.wasm",
+   "sha256": "ccdf5567d7a7809bbc84ade503db4921b789d63710e609bfbf8a98d7ddee7584"
+  },
+  {
+   "path": "modules/core-modules/seam-placer/wit-guest/target/wasm32-unknown-unknown/release/seam_placer_guest-component-input.wasm",
+   "sha256": "926a306531f032a154091821dc2588e5f9472d961cd4259bf3e476b8914a43b3"
+  },
+  {
+   "path": "modules/core-modules/seam-placer/wit-guest/target/wasm32-unknown-unknown/release/seam_placer_guest.wasm",
+   "sha256": "ccdf5567d7a7809bbc84ade503db4921b789d63710e609bfbf8a98d7ddee7584"
+  },
+  {
+   "path": "modules/core-modules/seam-planner-default/Cargo.toml",
+   "sha256": "d53e10d687e0213e386494f26a0ac5349b34fd7e71f4a06441ac14b1c0d9965e"
+  },
+  {
+   "path": "modules/core-modules/seam-planner-default/seam-planner-default.toml",
+   "sha256": "65cb0452e86f8379fc88e89d30f8529b371c6c03cc40c42b09f43ea2676e43c2"
+  },
+  {
+   "path": "modules/core-modules/seam-planner-default/seam-planner-default.wasm",
+   "sha256": "4088fd39860d9cf1752c8296b4b3b57a0f3567078d3d216b3630c55f4bd0b90e"
+  },
+  {
+   "path": "modules/core-modules/seam-planner-default/wit-guest/Cargo.toml",
+   "sha256": "4c6e580236fca78a5eefed4d2331b4a421effa720fbf88a72bc967f2b8c286bf"
+  },
+  {
+   "path": "modules/core-modules/seam-planner-default/wit-guest/target/wasm32-unknown-unknown/release/deps/seam_planner_default.wasm",
+   "sha256": "02a2af3256dece95ab9b3eb63b0e15abb22670d55fe74c961ccb684781fd93cd"
+  },
+  {
+   "path": "modules/core-modules/seam-planner-default/wit-guest/target/wasm32-unknown-unknown/release/seam_planner_default-component-input.wasm",
+   "sha256": "863ef027149f82055237e9c5245455f268f9652851f08e170c289250dd7b9fa4"
+  },
+  {
+   "path": "modules/core-modules/seam-planner-default/wit-guest/target/wasm32-unknown-unknown/release/seam_planner_default.wasm",
+   "sha256": "02a2af3256dece95ab9b3eb63b0e15abb22670d55fe74c961ccb684781fd93cd"
+  },
+  {
+   "path": "modules/core-modules/skirt-brim/Cargo.toml",
+   "sha256": "c38a6998daddccf3701d4c65c5510bef6b42a181ae99f782c9f051535d6a4f70"
+  },
+  {
+   "path": "modules/core-modules/skirt-brim/skirt-brim.toml",
+   "sha256": "ef0cd25341d7f4b6cffbaec755104ce84f006429922fe1b7401ecd079b670ef9"
+  },
+  {
+   "path": "modules/core-modules/skirt-brim/skirt-brim.wasm",
+   "sha256": "2dad7cabeb7f90502d8e05974b3f0dcd3defd90c9d61e716ef9fa53432859dc3"
+  },
+  {
+   "path": "modules/core-modules/skirt-brim/wit-guest/Cargo.toml",
+   "sha256": "0dac6b0db0dc400ab3a07998dd7bbfbd7034caff7f91e8f99a5327332235efcd"
+  },
+  {
+   "path": "modules/core-modules/skirt-brim/wit-guest/target/wasm32-unknown-unknown/release/deps/skirt_brim_guest.wasm",
+   "sha256": "0a34f851be30421ee942cdb825405ad3c5c6d82d6cd50226e02a7ac4d40fd558"
+  },
+  {
+   "path": "modules/core-modules/skirt-brim/wit-guest/target/wasm32-unknown-unknown/release/skirt_brim_guest-component-input.wasm",
+   "sha256": "81a88df873c907234d4f6ce00d97d7f5b0b8ba92b5f62fed6471959c0c83750b"
+  },
+  {
+   "path": "modules/core-modules/skirt-brim/wit-guest/target/wasm32-unknown-unknown/release/skirt_brim_guest.wasm",
+   "sha256": "0a34f851be30421ee942cdb825405ad3c5c6d82d6cd50226e02a7ac4d40fd558"
+  },
+  {
+   "path": "modules/core-modules/support-surface-ironing/Cargo.toml",
+   "sha256": "a8c3a43bc3ecda0a04dd20daf1db11ddf7c108d3444c2f5c3ef529e56f5a188c"
+  },
+  {
+   "path": "modules/core-modules/support-surface-ironing/support-surface-ironing.toml",
+   "sha256": "721784f3a26835795b8e6593d4f7763d89051f4966f49b5b513d2f6148587a91"
+  },
+  {
+   "path": "modules/core-modules/support-surface-ironing/support-surface-ironing.wasm",
+   "sha256": "b92a5f29668782cd395f14ee2387ad54ac7309240f3393f47087bacb88ef30f8"
+  },
+  {
+   "path": "modules/core-modules/support-surface-ironing/wit-guest/Cargo.toml",
+   "sha256": "82e9b613a8334d07b0071a84ef9efeb67310633452e102caa0e05f53ebd75369"
+  },
+  {
+   "path": "modules/core-modules/support-surface-ironing/wit-guest/target/wasm32-unknown-unknown/release/deps/support_surface_ironing_guest.wasm",
+   "sha256": "3706be2283c75d9f6c92fffed21256c1cb505fac06d484f8a2d1332df0c28e1c"
+  },
+  {
+   "path": "modules/core-modules/support-surface-ironing/wit-guest/target/wasm32-unknown-unknown/release/support_surface_ironing_guest-component-input.wasm",
+   "sha256": "068ae98d47b5deaf923d855bdec0c7f1b29c15d81baa593f9a04a95afb288cae"
+  },
+  {
+   "path": "modules/core-modules/support-surface-ironing/wit-guest/target/wasm32-unknown-unknown/release/support_surface_ironing_guest.wasm",
+   "sha256": "3706be2283c75d9f6c92fffed21256c1cb505fac06d484f8a2d1332df0c28e1c"
+  },
+  {
+   "path": "modules/core-modules/top-surface-ironing/Cargo.toml",
+   "sha256": "d7408bf46a705d4ff6d6568cd2f69548e3db3daefd16fa89acb2b84e448944ce"
+  },
+  {
+   "path": "modules/core-modules/top-surface-ironing/top-surface-ironing.toml",
+   "sha256": "96fddc80a5d46f9fac5fccd9fa2da6774c0b1273fc8df24da93c02f36cd9ab48"
+  },
+  {
+   "path": "modules/core-modules/top-surface-ironing/top-surface-ironing.wasm",
+   "sha256": "0cab9a5bc2f0b7d2ef73712e30c05aa3155ca25e81d5623dd83ebb32570ca5cd"
+  },
+  {
+   "path": "modules/core-modules/top-surface-ironing/wit-guest/Cargo.toml",
+   "sha256": "a870ed85fad6f575be33be88b0435226387d1844cd1fc429edb37c37f74f4a3b"
+  },
+  {
+   "path": "modules/core-modules/top-surface-ironing/wit-guest/target/wasm32-unknown-unknown/release/deps/top_surface_ironing_guest.wasm",
+   "sha256": "633b1c5f7917aa3a3918e5ba12cf723bf7376b74b312969b0c487b7402cc8884"
+  },
+  {
+   "path": "modules/core-modules/top-surface-ironing/wit-guest/target/wasm32-unknown-unknown/release/top_surface_ironing_guest-component-input.wasm",
+   "sha256": "932b0f9defd465f4a543543bbe13506e47c2ea0fc4f1ab16e8fb47a646e5f391"
+  },
+  {
+   "path": "modules/core-modules/top-surface-ironing/wit-guest/target/wasm32-unknown-unknown/release/top_surface_ironing_guest.wasm",
+   "sha256": "633b1c5f7917aa3a3918e5ba12cf723bf7376b74b312969b0c487b7402cc8884"
+  },
+  {
+   "path": "modules/core-modules/traditional-support-planner/Cargo.toml",
+   "sha256": "05ccba2336bb06ebdae03d220377ddfc3ca9145d09d2f6dbffe00d75268d81c1"
+  },
+  {
+   "path": "modules/core-modules/traditional-support-planner/traditional-support-planner.toml",
+   "sha256": "9d80d1603c4fbdb39cd14900f30dca0152f9fe8b40b331c91608a035cd9ba37c"
+  },
+  {
+   "path": "modules/core-modules/traditional-support-planner/traditional-support-planner.wasm",
+   "sha256": "37f5f4329542705130c0fc4601cb6a83ae1515e6418d590a2c64a7af1d460e9f"
+  },
+  {
+   "path": "modules/core-modules/traditional-support-planner/wit-guest/Cargo.toml",
+   "sha256": "1f17b8a4c5934bfd051f750e31827c6744bb8c7df54bd94f0ee124d6d7f59d4e"
+  },
+  {
+   "path": "modules/core-modules/traditional-support-planner/wit-guest/target/wasm32-unknown-unknown/release/deps/traditional_support_planner_guest.wasm",
+   "sha256": "4f2e21e2b761aa89820d5a20e2e817c42366629c8fe24f31c61b90fe06e5c3f7"
+  },
+  {
+   "path": "modules/core-modules/traditional-support-planner/wit-guest/target/wasm32-unknown-unknown/release/traditional_support_planner_guest-component-input.wasm",
+   "sha256": "426e35bdfc7c7ba1829132efc5373391204fe00b4c1e86c5f0867103dd057f2d"
+  },
+  {
+   "path": "modules/core-modules/traditional-support-planner/wit-guest/target/wasm32-unknown-unknown/release/traditional_support_planner_guest.wasm",
+   "sha256": "4f2e21e2b761aa89820d5a20e2e817c42366629c8fe24f31c61b90fe06e5c3f7"
+  },
+  {
+   "path": "modules/core-modules/traditional-support/Cargo.toml",
+   "sha256": "440648f2a55e4b4378764ce2fcf5231a3928d3d7151e40879b7015e8f97d3c9c"
+  },
+  {
+   "path": "modules/core-modules/traditional-support/traditional-support.toml",
+   "sha256": "b10abb13284193d9030bf5549199c4616df45cfe0f24fef6df09485e8955b296"
+  },
+  {
+   "path": "modules/core-modules/traditional-support/traditional-support.wasm",
+   "sha256": "e3127cde3bb4b7cf5149e7d585458662394e31b65f334eda55ba737af5e352b9"
+  },
+  {
+   "path": "modules/core-modules/traditional-support/wit-guest/Cargo.toml",
+   "sha256": "43ba145710cde208477b8b48c92628bdc47ebc4ca02dd74fbfd4a0e836326388"
+  },
+  {
+   "path": "modules/core-modules/traditional-support/wit-guest/target/wasm32-unknown-unknown/release/deps/traditional_support_guest.wasm",
+   "sha256": "007a8d0165c87b20eee47866e2b39eb089f8c6467b3f31f7ed1d22227e17a64b"
+  },
+  {
+   "path": "modules/core-modules/traditional-support/wit-guest/target/wasm32-unknown-unknown/release/traditional_support_guest-component-input.wasm",
+   "sha256": "65caeeeb97c39bdc9e42756b39fcfbbebd0506c0557ea67feecfc277d91404b9"
+  },
+  {
+   "path": "modules/core-modules/traditional-support/wit-guest/target/wasm32-unknown-unknown/release/traditional_support_guest.wasm",
+   "sha256": "007a8d0165c87b20eee47866e2b39eb089f8c6467b3f31f7ed1d22227e17a64b"
+  },
+  {
+   "path": "modules/core-modules/tree-support-planner/Cargo.toml",
+   "sha256": "f378dc4f47665761288ef65ad3de30b743b839a86ace81f3b5f2ef1f73f7f734"
+  },
+  {
+   "path": "modules/core-modules/tree-support-planner/tree-support-planner.toml",
+   "sha256": "57c4b910c82a79663648ca0e145956a0877f848269398a26e75c5b5e3fb43f02"
+  },
+  {
+   "path": "modules/core-modules/tree-support-planner/tree-support-planner.wasm",
+   "sha256": "a8bd414e1d236bff512169f006f394959231a14caf662e8782ad709400e81bd2"
+  },
+  {
+   "path": "modules/core-modules/tree-support-planner/wit-guest/Cargo.toml",
+   "sha256": "d3906817a49f893289cefeca62dc0f6a2b27dc2cecbbb52cf74d076f0561f496"
+  },
+  {
+   "path": "modules/core-modules/tree-support-planner/wit-guest/target/wasm32-unknown-unknown/release/deps/tree_support_planner_guest.wasm",
+   "sha256": "da9cb9f8183781e0a6cff97f4f512aa409c18c36f1f55b1387a7f3d0779f9c09"
+  },
+  {
+   "path": "modules/core-modules/tree-support-planner/wit-guest/target/wasm32-unknown-unknown/release/tree_support_planner_guest-component-input.wasm",
+   "sha256": "33730bf8eaa4012e02e48c792d3d68365a64950861885255d62b441cba818bd3"
+  },
+  {
+   "path": "modules/core-modules/tree-support-planner/wit-guest/target/wasm32-unknown-unknown/release/tree_support_planner_guest.wasm",
+   "sha256": "da9cb9f8183781e0a6cff97f4f512aa409c18c36f1f55b1387a7f3d0779f9c09"
+  },
+  {
+   "path": "modules/core-modules/tree-support/Cargo.toml",
+   "sha256": "4882286dcd704b4bcb8d5b27bf36a78c806bd85157227289923519fd25443a94"
+  },
+  {
+   "path": "modules/core-modules/tree-support/tree-support.toml",
+   "sha256": "3788a8f7bc32193e9c03f8bf55e12d925689467b62029a5dc02c0f242261b3f3"
+  },
+  {
+   "path": "modules/core-modules/tree-support/tree-support.wasm",
+   "sha256": "ed3de35a3caae20c56ca6d7d42044a491ad813c4c60185ec3aca14f66a63549a"
+  },
+  {
+   "path": "modules/core-modules/tree-support/wit-guest/Cargo.toml",
+   "sha256": "2fd4ad9185b5b6db698a15d2592a1e96ae51c190d2f99c0cafaf7966025341da"
+  },
+  {
+   "path": "modules/core-modules/tree-support/wit-guest/target/wasm32-unknown-unknown/release/deps/tree_support_guest.wasm",
+   "sha256": "88e1fc33949da0905feb8f97f9a2d4384469740f8a34a5489180ced8fc87a80f"
+  },
+  {
+   "path": "modules/core-modules/tree-support/wit-guest/target/wasm32-unknown-unknown/release/tree_support_guest-component-input.wasm",
+   "sha256": "1c965a5f4ffa1d64e82bd997c35fa2511443b7b2674d436d2f0ad8e179a47d90"
+  },
+  {
+   "path": "modules/core-modules/tree-support/wit-guest/target/wasm32-unknown-unknown/release/tree_support_guest.wasm",
+   "sha256": "88e1fc33949da0905feb8f97f9a2d4384469740f8a34a5489180ced8fc87a80f"
+  },
+  {
+   "path": "modules/core-modules/wave-overhangs/Cargo.toml",
+   "sha256": "54f8e2382e674e5cb1d73399ead92bfd5857057e4160b48a7f3613a7f463147f"
+  },
+  {
+   "path": "modules/core-modules/wave-overhangs/wave-overhangs.toml",
+   "sha256": "6aae0e812587245936cc861eb775b17d91a49e57aa92290b2f8c5b24af0e0319"
+  },
+  {
+   "path": "modules/core-modules/wave-overhangs/wave-overhangs.wasm",
+   "sha256": "573e8d54422d0d33d1ebb259dcacf417fabd5ea2b3841b35dbcf9dd991dd6a4f"
+  },
+  {
+   "path": "modules/core-modules/wave-overhangs/wit-guest/Cargo.toml",
+   "sha256": "902f73510127d9f896199cd477aced9c5d94dba5192a9616dfff70d57168c833"
+  },
+  {
+   "path": "modules/core-modules/wave-overhangs/wit-guest/target/wasm32-unknown-unknown/release/deps/wave_overhangs_guest.wasm",
+   "sha256": "fb829d9e9f223a51e6555c7d247ec86380928b22121994f70c129c73738cff83"
+  },
+  {
+   "path": "modules/core-modules/wave-overhangs/wit-guest/target/wasm32-unknown-unknown/release/wave_overhangs_guest-component-input.wasm",
+   "sha256": "081e903648744d3ac7dbe9026346a1c478ff5906261ad0bee6e6291f5e626aca"
+  },
+  {
+   "path": "modules/core-modules/wave-overhangs/wit-guest/target/wasm32-unknown-unknown/release/wave_overhangs_guest.wasm",
+   "sha256": "fb829d9e9f223a51e6555c7d247ec86380928b22121994f70c129c73738cff83"
+  },
+  {
+   "path": "modules/core-modules/wipe-tower/Cargo.toml",
+   "sha256": "fd5237c6e61dce590c2fd147e4b1263f44b82c8fdd656e6eadc878d9bae8fb6d"
+  },
+  {
+   "path": "modules/core-modules/wipe-tower/wipe-tower.toml",
+   "sha256": "3fcf88d8a588ef2331936799dc9dbd9d0078ef8429ad89c955281fb29fa29def"
+  },
+  {
+   "path": "modules/core-modules/wipe-tower/wipe-tower.wasm",
+   "sha256": "f16b9c4540d6f486f767f987bd9f057bf264e0de74f390287bd730b4438331cf"
+  },
+  {
+   "path": "modules/core-modules/wipe-tower/wit-guest/Cargo.toml",
+   "sha256": "0b01b9d1dae07b01b0ea209b77a68c9df1e7deb51b5dbb90e55048fdfeb03fad"
+  },
+  {
+   "path": "modules/core-modules/wipe-tower/wit-guest/target/wasm32-unknown-unknown/release/deps/wipe_tower_guest.wasm",
+   "sha256": "44b9d7fdd8fe72943d9e9eb07caab63aaf0b53144b0a3f40d1fcbc918e3d3e1a"
+  },
+  {
+   "path": "modules/core-modules/wipe-tower/wit-guest/target/wasm32-unknown-unknown/release/wipe_tower_guest-component-input.wasm",
+   "sha256": "711712ba942e3c48a6c724761bc890d327761149538bea77dc1b115afa2b9dab"
+  },
+  {
+   "path": "modules/core-modules/wipe-tower/wit-guest/target/wasm32-unknown-unknown/release/wipe_tower_guest.wasm",
+   "sha256": "44b9d7fdd8fe72943d9e9eb07caab63aaf0b53144b0a3f40d1fcbc918e3d3e1a"
+  }
+ ]
+}

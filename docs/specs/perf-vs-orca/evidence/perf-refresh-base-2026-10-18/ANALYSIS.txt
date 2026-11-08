@@ -1,0 +1,57 @@
+## Phase anatomy (instrumented / profile)
+classic-off instrumented wall= 214.52s prepass= 115.03 per_layer=  94.31 postpass=   2.42
+   MeshAnalysis=22.04, Slice=43.42, OverhangAnnotation=10.59, ShellClassification=30.00, SupportAnalysis=0.00, SupportGeometry=0.24, SeamPlanning=8.62, LayerFinalization=1.45, GCodeEmit=0.17
+classic-off profile      wall= 238.36s prepass= 120.61 per_layer= 110.63 postpass=   3.02
+   MeshAnalysis=22.88, Slice=44.70, OverhangAnnotation=10.88, ShellClassification=30.86, SupportAnalysis=0.00, SupportGeometry=0.30, SeamPlanning=10.84, LayerFinalization=1.80, GCodeEmit=0.22
+classic-on  instrumented wall= 408.66s prepass= 237.61 per_layer=  98.22 postpass=  69.09
+   MeshAnalysis=19.40, Slice=40.02, OverhangAnnotation=9.48, ShellClassification=26.02, SupportAnalysis=14.01, SupportGeometry=119.68, SeamPlanning=8.88, LayerFinalization=55.65, GCodeEmit=7.13
+classic-on  profile      wall= 487.17s prepass= 288.41 per_layer= 117.27 postpass=  76.72
+   MeshAnalysis=23.94, Slice=44.92, OverhangAnnotation=10.70, ShellClassification=31.42, SupportAnalysis=17.55, SupportGeometry=147.79, SeamPlanning=11.51, LayerFinalization=62.33, GCodeEmit=7.42
+arachne-off instrumented wall= 130.21s prepass= 109.20 per_layer=  16.11 postpass=   1.39
+   MeshAnalysis=21.78, Slice=41.68, OverhangAnnotation=9.84, ShellClassification=26.87, SupportAnalysis=0.00, SupportGeometry=0.24, SeamPlanning=8.68, LayerFinalization=0.31, GCodeEmit=0.13
+arachne-off profile      wall= 139.81s prepass= 115.97 per_layer=  16.59 postpass=   1.41
+   MeshAnalysis=22.63, Slice=42.10, OverhangAnnotation=10.20, ShellClassification=29.46, SupportAnalysis=0.00, SupportGeometry=0.31, SeamPlanning=11.03, LayerFinalization=0.38, GCodeEmit=0.11
+arachne-on  instrumented wall= 360.20s prepass= 259.88 per_layer=  19.81 postpass=  76.61
+   MeshAnalysis=22.02, Slice=40.20, OverhangAnnotation=9.27, ShellClassification=28.23, SupportAnalysis=13.17, SupportGeometry=136.02, SeamPlanning=10.85, LayerFinalization=60.22, GCodeEmit=8.29
+arachne-on  profile      wall= 368.01s prepass= 269.44 per_layer=  22.88 postpass=  71.83
+   MeshAnalysis=22.16, Slice=41.59, OverhangAnnotation=9.66, ShellClassification=29.19, SupportAnalysis=13.67, SupportGeometry=142.16, SeamPlanning=10.88, LayerFinalization=56.94, GCodeEmit=7.84
+
+## Finalization module brackets (supports-on vs supports-off)
+classic-off stage=  1.45 modules={'com.core.overhang-classifier-default': 0.36, 'com.core.part-cooling': 0.34, 'com.core.skirt-brim': 0.34, 'com.core.wipe-tower': 0.35} sum=  1.39
+classic-on  stage= 55.65 modules={'com.core.overhang-classifier-default': 10.11, 'com.core.part-cooling': 11.61, 'com.core.skirt-brim': 11.07, 'com.core.wipe-tower': 12.25} sum= 45.04
+arachne-off stage=  0.31 modules={'com.core.overhang-classifier-default': 0.09, 'com.core.part-cooling': 0.07, 'com.core.skirt-brim': 0.07, 'com.core.wipe-tower': 0.07} sum=  0.30
+arachne-on  stage= 60.22 modules={'com.core.overhang-classifier-default': 11.42, 'com.core.part-cooling': 12.2, 'com.core.skirt-brim': 12.48, 'com.core.wipe-tower': 12.4} sum= 48.50
+
+## Guest leaders (profile)
+classic-off per_layer=110.63s fuel=12466713895415 com.core.classic-perimeters=98.80% (self 10572.9B), com.core.infill-linker=0.99% (self 124.0B), com.core.seam-placer=0.05% (self 6.4B)
+classic-on  per_layer=117.27s fuel=12963962266292 com.core.classic-perimeters=95.01% (self 10572.9B), com.core.tree-support=3.40% (self 427.9B), com.core.infill-linker=0.96% (self 124.0B)
+arachne-off per_layer= 16.59s fuel=1186551214836 com.core.arachne-perimeters=91.58% (self 1032.5B), com.core.infill-linker=7.45% (self 88.4B), com.core.seam-planner-default=0.33% (self 3.9B)
+arachne-on  per_layer= 22.88s fuel=1683834539810 com.core.arachne-perimeters=64.54% (self 1032.5B), com.core.tree-support=26.17% (self 427.9B), com.core.infill-linker=5.25% (self 88.4B)
+
+## Host accumulated (profile)
+classic-off
+   host:slice                     459.68s  polygon_ops::closing_ex=321.87, polygon_ops::offset=100.19, polygon_ops::clip_polygons=37.62
+   host:native                    155.06s  polygon_ops::offset=78.13, polygon_ops::clip_polygons=76.93
+   host:overhang_annotation       126.15s  polygon_ops::offset=107.39, polygon_ops::clip_polygons=18.75
+   host:shell_classification      124.01s  polygon_ops::offset=109.39, polygon_ops::clip_polygons=12.18, polygon_ops::closing_ex=2.44
+   host:mesh_analysis              19.55s  polygon_ops::clip_polygons=19.55
+classic-on
+   host:slice                     487.78s  polygon_ops::closing_ex=347.59, polygon_ops::offset=102.01, polygon_ops::clip_polygons=38.18
+   host:native                    304.36s  polygon_ops::clip_polygons=155.23, polygon_ops::offset=149.12
+   host:support_analysis          189.83s  polygon_ops::offset=156.14, polygon_ops::clip_polygons=33.69
+   host:shell_classification      133.14s  polygon_ops::offset=117.21, polygon_ops::clip_polygons=13.32, polygon_ops::closing_ex=2.60
+   host:overhang_annotation       125.99s  polygon_ops::offset=107.19, polygon_ops::clip_polygons=18.80
+   host:mesh_analysis              20.09s  polygon_ops::clip_polygons=20.09
+arachne-off
+   host:slice                     454.27s  polygon_ops::closing_ex=318.07, polygon_ops::offset=99.25, polygon_ops::clip_polygons=36.95
+   host:overhang_annotation       119.67s  polygon_ops::offset=102.36, polygon_ops::clip_polygons=17.30
+   host:shell_classification      118.71s  polygon_ops::offset=104.86, polygon_ops::clip_polygons=11.51, polygon_ops::closing_ex=2.33
+   host:native                     84.80s  polygon_ops::clip_polygons=64.77, polygon_ops::offset=13.58, polygon_ops::offset2_ex=6.45
+   host:mesh_analysis              19.60s  polygon_ops::clip_polygons=19.60
+arachne-on
+   host:slice                     444.71s  polygon_ops::closing_ex=311.16, polygon_ops::offset=97.28, polygon_ops::clip_polygons=36.27
+   host:native                    237.03s  polygon_ops::clip_polygons=147.66, polygon_ops::offset=82.04, polygon_ops::offset2_ex=7.34
+   host:support_analysis          156.01s  polygon_ops::offset=125.37, polygon_ops::clip_polygons=30.64
+   host:shell_classification      115.15s  polygon_ops::offset=101.48, polygon_ops::clip_polygons=11.41, polygon_ops::closing_ex=2.26
+   host:overhang_annotation       113.24s  polygon_ops::offset=96.62, polygon_ops::clip_polygons=16.62
+   host:mesh_analysis              19.19s  polygon_ops::clip_polygons=19.19

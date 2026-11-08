@@ -1,0 +1,24 @@
+   Compiling slicer-core v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.96s
+     Running tests\perimeter_spatial_tdd.rs (target\debug\deps\perimeter_spatial_tdd-2ff546618d325e2a.exe)
+
+running 1 test
+test prepared_winding_matches_unchanged_predicate_at_precision_extremes ... FAILED
+
+failures:
+
+---- prepared_winding_matches_unchanged_predicate_at_precision_extremes stdout ----
+
+thread 'prepared_winding_matches_unchanged_predicate_at_precision_extremes' (29000) panicked at crates\slicer-core\tests\perimeter_spatial_tdd.rs:243:17:
+assertion `left == right` failed: raw-unit ring [Point2 { x: 16777217, y: -10000 }, Point2 { x: 16827217, y: -10000 }, Point2 { x: 16827217, y: 10000 }, Point2 { x: 16777217, y: 10000 }], query (1677.7216999999998, -1.0)
+  left: true
+ right: false
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    prepared_winding_matches_unchanged_predicate_at_precision_extremes
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p slicer-core --test perimeter_spatial_tdd`

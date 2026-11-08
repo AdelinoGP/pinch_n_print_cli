@@ -2005,157 +2005,171 @@ pub fn execute_captured_stages_with_support_tools(
     sorted_layers.sort_by_key(|l| l.index);
     let executed_layer_indices: Vec<u32> = sorted_layers.iter().map(|l| l.index).collect();
 
-    let mut captures = Vec::new();
     // Stays empty: no tap in `SUPPORTED_TAP_STAGE_IDS` has a genuine
     // cross-layer correctness dependency today, so no layer is ever
     // executed-but-not-retained. See [`LayerExpansion`] for when a real one
     // would be recorded here.
     let expansions: Vec<LayerExpansion> = Vec::new();
 
-    for layer in sorted_layers {
-        let mut arena = LayerArena::new();
-        hydrate_slice_arena(&mut arena, blackboard, layer)?;
+    // Layers are independent at Tier 2 (docs/01 "Each layer runs independently.
+    // Layers share no mutable state."), so capture executes them with the same
+    // rayon parallelism as the ordinary per-layer path. Results are collected in
+    // layer order and the first failing layer's error is returned, preserving the
+    // serial loop's deterministic error choice.
+    let per_layer: Vec<Result<Vec<StageCapture>, CaptureExecutionError>> = sorted_layers
+        .par_iter()
+        .map(|layer| {
+            let layer = *layer;
+            let mut layer_captures = Vec::new();
+            let mut arena = LayerArena::new();
+            hydrate_slice_arena(&mut arena, blackboard, layer)?;
 
-        for stage in truncated_stages {
-            prestage_layer_collection_if_path_optimization(
-                &mut arena,
-                stage,
-                layer,
-                blackboard,
-                support_tools,
-            );
+            for stage in truncated_stages {
+                prestage_layer_collection_if_path_optimization(
+                    &mut arena,
+                    stage,
+                    layer,
+                    blackboard,
+                    support_tools,
+                );
 
-            for module in &stage.modules {
-                // Only module-backed schema Layer stages have indexed selection pairs.
-                let selection = if is_indexed_module_stage(&stage.stage_id) {
-                    Some(
-                        blackboard
-                            .layer_selection_index()
-                            .ok_or_else(|| slicer_ir::LayerStageError::FatalModule {
-                                stage_id: stage.stage_id.clone(),
-                                module_id: module.module_id().to_owned(),
-                                message:
-                                    "internal consistency: layer selection index is not committed"
-                                        .into(),
-                            })
-                            .and_then(|index| {
-                                index
-                                    .selection_for(layer.index, module.module_id())
-                                    .ok_or_else(|| slicer_ir::LayerStageError::FatalModule {
-                                        stage_id: stage.stage_id.clone(),
-                                        module_id: module.module_id().to_owned(),
-                                        message: format!(
-                                            "internal consistency: layer selection is missing for layer {}",
-                                            layer.index
-                                        ),
-                                    })
-                            })
-                            .map_err(|error| LayerExecutionError::FatalLayer {
+                for module in &stage.modules {
+                    // Only module-backed schema Layer stages have indexed selection pairs.
+                    let selection = if is_indexed_module_stage(&stage.stage_id) {
+                        Some(
+                            blackboard
+                                .layer_selection_index()
+                                .ok_or_else(|| slicer_ir::LayerStageError::FatalModule {
+                                    stage_id: stage.stage_id.clone(),
+                                    module_id: module.module_id().to_owned(),
+                                    message:
+                                        "internal consistency: layer selection index is not committed"
+                                            .into(),
+                                })
+                                .and_then(|index| {
+                                    index
+                                        .selection_for(layer.index, module.module_id())
+                                        .ok_or_else(|| slicer_ir::LayerStageError::FatalModule {
+                                            stage_id: stage.stage_id.clone(),
+                                            module_id: module.module_id().to_owned(),
+                                            message: format!(
+                                                "internal consistency: layer selection is missing for layer {}",
+                                                layer.index
+                                            ),
+                                        })
+                                })
+                                .map_err(|error| LayerExecutionError::FatalLayer {
+                                    layer_index: layer.index,
+                                    stage_id: stage.stage_id.clone(),
+                                    module_id: module.module_id().to_owned(),
+                                    message: error.to_string(),
+                                })?,
+                        )
+                    } else {
+                        None
+                    };
+                    if selection
+                        .as_ref()
+                        .is_some_and(|selection| !selection.invoke)
+                    {
+                        continue;
+                    }
+                    let (instance_pool, wasm_component, native_entry) = wasm_handles
+                        .get(module.module_id().as_str())
+                        .map(|(p, c, e)| (Arc::clone(p), c.clone(), *e))
+                        .unwrap_or_else(|| (WasmInstancePool::placeholder(), None, None));
+                    let mut live_module = CompiledModuleLive::new(
+                        module.module_id(),
+                        instance_pool,
+                        wasm_component,
+                        module.claims(),
+                        Arc::clone(module.config_view()),
+                    );
+                    if let Some(entry) = native_entry {
+                        live_module = live_module.with_native_entry(entry);
+                    }
+                    prepare_dispatch_region_views(&mut arena, &stage.stage_id, blackboard);
+                    let prepared_regions = arena.prepared_regions();
+                    let prepared_perimeter_source_regions = arena.prepared_perimeter_source_regions();
+                    let input = LayerStageInput {
+                        selection,
+                        mesh: Arc::clone(blackboard.mesh()),
+                        paint_regions: None,
+                        seam_plan: blackboard.seam_plan().cloned(),
+                        support_plan: blackboard.support_plan().cloned(),
+                        region_map: blackboard.region_map().cloned(),
+                        slice: arena.slice(),
+                        perimeter: arena.perimeter(),
+                        layer_collection: arena.layer_collection(),
+                        surface_classification: blackboard.surface_classification().map(|a| a.as_ref()),
+                        prepared_regions,
+                        prepared_perimeter_source_regions,
+                        // Same gating as `execute_per_layer`: the committed
+                        // InfillIR feeds only `run-infill-postprocess`.
+                        infill: if stage.stage_id == "Layer::InfillPostProcess" {
+                            arena.infill()
+                        } else {
+                            None
+                        },
+                    };
+                    let seam_plan_ir_for_commit = blackboard.seam_plan().map(|arc| arc.as_ref());
+
+                    let commit = runner
+                        .run_stage(&stage.stage_id, layer, &live_module, input)
+                        .map_err(|e| {
+                            CaptureExecutionError::Layer(LayerExecutionError::FatalLayer {
                                 layer_index: layer.index,
                                 stage_id: stage.stage_id.clone(),
                                 module_id: module.module_id().to_owned(),
-                                message: error.to_string(),
-                            })?,
-                    )
-                } else {
-                    None
-                };
-                if selection
-                    .as_ref()
-                    .is_some_and(|selection| !selection.invoke)
-                {
-                    continue;
-                }
-                let (instance_pool, wasm_component, native_entry) = wasm_handles
-                    .get(module.module_id().as_str())
-                    .map(|(p, c, e)| (Arc::clone(p), c.clone(), *e))
-                    .unwrap_or_else(|| (WasmInstancePool::placeholder(), None, None));
-                let mut live_module = CompiledModuleLive::new(
-                    module.module_id(),
-                    instance_pool,
-                    wasm_component,
-                    module.claims(),
-                    Arc::clone(module.config_view()),
-                );
-                if let Some(entry) = native_entry {
-                    live_module = live_module.with_native_entry(entry);
-                }
-                prepare_dispatch_region_views(&mut arena, &stage.stage_id, blackboard);
-                let prepared_regions = arena.prepared_regions();
-                let prepared_perimeter_source_regions = arena.prepared_perimeter_source_regions();
-                let input = LayerStageInput {
-                    selection,
-                    mesh: Arc::clone(blackboard.mesh()),
-                    paint_regions: None,
-                    seam_plan: blackboard.seam_plan().cloned(),
-                    support_plan: blackboard.support_plan().cloned(),
-                    region_map: blackboard.region_map().cloned(),
-                    slice: arena.slice(),
-                    perimeter: arena.perimeter(),
-                    layer_collection: arena.layer_collection(),
-                    surface_classification: blackboard.surface_classification().map(|a| a.as_ref()),
-                    prepared_regions,
-                    prepared_perimeter_source_regions,
-                    // Same gating as `execute_per_layer`: the committed
-                    // InfillIR feeds only `run-infill-postprocess`.
-                    infill: if stage.stage_id == "Layer::InfillPostProcess" {
-                        arena.infill()
-                    } else {
-                        None
-                    },
-                };
-                let seam_plan_ir_for_commit = blackboard.seam_plan().map(|arc| arc.as_ref());
+                                message: e.to_string(),
+                            })
+                        })?;
 
-                let commit = runner
-                    .run_stage(&stage.stage_id, layer, &live_module, input)
-                    .map_err(|e| {
-                        CaptureExecutionError::Layer(LayerExecutionError::FatalLayer {
+                    if let Some(staged) = commit {
+                        let ctx = StageApplyContext {
+                            stage_id: &stage.stage_id,
+                            module_id: module.module_id().as_str(),
                             layer_index: layer.index,
-                            stage_id: stage.stage_id.clone(),
-                            module_id: module.module_id().to_owned(),
-                            message: e.to_string(),
-                        })
-                    })?;
-
-                if let Some(staged) = commit {
-                    let ctx = StageApplyContext {
-                        stage_id: &stage.stage_id,
-                        module_id: module.module_id().as_str(),
-                        layer_index: layer.index,
-                        seam_plan: seam_plan_ir_for_commit,
-                        config_view: Some(module.config_view().as_ref()),
-                        committed_slices: blackboard.slice_ir().map(|slices| slices.as_slice()),
-                    };
-                    apply(&mut arena, staged, &ctx).map_err(|e| {
-                        CaptureExecutionError::Layer(LayerExecutionError::FatalLayer {
-                            layer_index: layer.index,
-                            stage_id: stage.stage_id.clone(),
-                            module_id: module.module_id().to_owned(),
-                            message: e.to_string(),
-                        })
-                    })?;
+                            seam_plan: seam_plan_ir_for_commit,
+                            config_view: Some(module.config_view().as_ref()),
+                            committed_slices: blackboard.slice_ir().map(|slices| slices.as_slice()),
+                        };
+                        apply(&mut arena, staged, &ctx).map_err(|e| {
+                            CaptureExecutionError::Layer(LayerExecutionError::FatalLayer {
+                                layer_index: layer.index,
+                                stage_id: stage.stage_id.clone(),
+                                module_id: module.module_id().to_owned(),
+                                message: e.to_string(),
+                            })
+                        })?;
+                    }
                 }
-            }
 
-            ensure_infill_slot_committed(&mut arena, &stage.stage_id);
+                ensure_infill_slot_committed(&mut arena, &stage.stage_id);
 
-            if requested.contains(stage.stage_id.as_str()) {
-                match capture_ir_for_stage(&stage.stage_id, &arena) {
-                    Some(ir) => captures.push(StageCapture {
-                        stage_id: stage.stage_id.clone(),
-                        layer_index: layer.index,
-                        layer_z: layer.z,
-                        ir,
-                    }),
-                    None => {
-                        return Err(CaptureExecutionError::TapSourceUnavailable {
+                if requested.contains(stage.stage_id.as_str()) {
+                    match capture_ir_for_stage(&stage.stage_id, &arena) {
+                        Some(ir) => layer_captures.push(StageCapture {
                             stage_id: stage.stage_id.clone(),
                             layer_index: layer.index,
-                        })
+                            layer_z: layer.z,
+                            ir,
+                        }),
+                        None => {
+                            return Err(CaptureExecutionError::TapSourceUnavailable {
+                                stage_id: stage.stage_id.clone(),
+                                layer_index: layer.index,
+                            })
+                        }
                     }
                 }
             }
-        }
+            Ok(layer_captures)
+        })
+        .collect();
+    let mut captures = Vec::new();
+    for layer_result in per_layer {
+        captures.extend(layer_result?);
     }
 
     captures.sort_by_key(|c| {

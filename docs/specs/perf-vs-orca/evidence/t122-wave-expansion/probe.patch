@@ -1,0 +1,665 @@
+diff --git a/crates/slicer-core/Cargo.toml b/crates/slicer-core/Cargo.toml
+index 0f78cea0..3572610b 100644
+--- a/crates/slicer-core/Cargo.toml
++++ b/crates/slicer-core/Cargo.toml
+@@ -53,6 +53,10 @@ required-features = ["host-algos"]
+ name = "algo_prepass_slice_tdd"
+ required-features = ["host-algos"]
+ 
++[[test]]
++name = "t122_wave_expansion_probe_tdd"
++required-features = ["host-algos"]
++
+ [[test]]
+ name = "bridge_orientation_tdd"
+ required-features = ["host-algos"]
+diff --git a/crates/slicer-core/tests/t122_wave_expansion_probe_tdd.rs b/crates/slicer-core/tests/t122_wave_expansion_probe_tdd.rs
+new file mode 100644
+index 00000000..dd98be70
+--- /dev/null
++++ b/crates/slicer-core/tests/t122_wave_expansion_probe_tdd.rs
+@@ -0,0 +1,644 @@
++#![allow(missing_docs)]
++
++//! t122 probe: canonical bridge wave-expansion — real-layer structure scan.
++//!
++//! TEMPORARY probe for wayfinder ticket 122 (not a CI test). Run manually:
++//!
++//! ```text
++//! T122_FIXTURE=benchy cargo test --release -p slicer-core --features host-algos \
++//!     --test t122_wave_expansion_probe_tdd -- --ignored --nocapture
++//! T122_FIXTURE=base cargo test --release -p slicer-core --features host-algos \
++//!     --test t122_wave_expansion_probe_tdd -- --ignored --nocapture
++//! ```
++//!
++//! For every layer of the matched fixture (placed on the default bed exactly as
++//! `pnp_cli` places STLs, sliced on the production layer-top schedule), this
++//! reconstructs `PrePass::Slice`'s production inputs and measures, per layer:
++//!
++//! 1. the current facet path (`classify_region_surfaces` + `assemble_bridge_areas`)
++//!    and the flat path (`assemble_flat_bridge_areas`) — their area and cost;
++//! 2. canonical's classification operand (`diff(slices, safety_offset(lower))`)
++//!    and its opening — area and cost;
++//! 3. a conservative area bound for the three expansion zones: the region area
++//!    within `full_expansion` of the canonical bridge set, split by the
++//!    solid/top reach and the sparse reach;
++//! 4. a cost proxy for `wave_seeds` + `propagate_waves_ex` (repeated round
++//!    offset + clip at the canonical step sizes), the zone trim, and
++//!    `merge_bridges`' closing — all over-estimates because the proxy uses the
++//!    whole region as the expansion boundary instead of the three fill zones.
++//!
++//! Outputs `target/t122/<fixture>.csv` plus a printed SUMMARY block.
++//!
++//! The probe is deliberately an **upper-bound** instrument: where canonical
++//! clips a wave to a fill zone, the proxy clips to the whole region. A ceiling
++//! that fails under these numbers cannot pass under the real zones.
++
++use std::collections::HashMap;
++use std::fmt::Write as _;
++use std::time::Instant;
++
++use slicer_core::algos::mesh_analysis::execute_mesh_analysis;
++use slicer_core::algos::prepass_slice::{
++    assemble_bridge_areas, assemble_flat_bridge_areas, batch_bottom_surface_footprints,
++    batch_slice_objects_by_layer, classify_region_surfaces,
++    execute_prepass_slice_single_layer_with_cache, PrepassSliceCache,
++};
++use slicer_core::polygon_ops::{
++    closing_ex, difference, intersection, offset, opening_ex, union, OffsetJoinType,
++};
++use slicer_core::triangle_mesh_slicer::apply_slice_closing_radius;
++use slicer_ir::{
++    ActiveRegion, ExPolygon, GlobalLayer, MeshIR, Polygon, RegionKey, RegionMapIR, RegionPlan,
++    ResolvedConfig, SlicedRegion,
++};
++
++const LAYER_HEIGHT_MM: f64 = 0.2;
++const LINE_WIDTH_MM: f32 = 0.4;
++/// Matched job: `wall_count = 2`.
++const WALL_COUNT: usize = 2;
++/// 1 mm in workspace units (1 unit = 100 nm).
++const UNITS_PER_MM: f64 = 10_000.0;
++/// 1 mm² in workspace units².
++const UNITS2_PER_MM2: f64 = 100_000_000.0;
++
++fn repo_root() -> std::path::PathBuf {
++    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
++}
++
++fn fixture_path(fixture: &str) -> std::path::PathBuf {
++    let root = repo_root();
++    match fixture {
++        "benchy" => root.join("tmp/3dbenchy.stl"),
++        "base" => root.join("tmp/base.stl"),
++        other => panic!("unknown T122_FIXTURE {other:?} (expected benchy|base)"),
++    }
++}
++
++fn load_placed(fixture: &str) -> MeshIR {
++    let path = fixture_path(fixture);
++    assert!(
++        path.exists(),
++        "fixture {} missing at {}",
++        fixture,
++        path.display()
++    );
++    let mut mesh = slicer_model_io::load_model(&path).expect("load_model");
++    let bed_shape = ResolvedConfig::default().bed_shape;
++    let center = slicer_model_io::bed_center_mm(&bed_shape).expect("bed center");
++    slicer_model_io::place_bare_mesh_on_bed(&mut mesh, center);
++    mesh
++}
++
++/// Production layer-top schedule (`layer_top_zs` walk).
++fn plan_layers(mesh: &MeshIR) -> Vec<GlobalLayer> {
++    let object = &mesh.objects[0];
++    let (_, max_z) =
++        slicer_model_io::loader::object_world_z_extent(object).expect("object z extent");
++    let object_height = max_z as f64;
++    let mut tops: Vec<f32> = Vec::new();
++    let mut z = 0.0_f64;
++    loop {
++        z += LAYER_HEIGHT_MM;
++        if z <= object_height + 1.0e-9 {
++            tops.push(z as f32);
++        } else {
++            break;
++        }
++    }
++    tops.iter()
++        .enumerate()
++        .map(|(i, &z)| GlobalLayer {
++            index: i as u32,
++            z,
++            active_regions: vec![ActiveRegion {
++                object_id: object.id.clone(),
++                region_id: 0,
++                resolved_config: ResolvedConfig::default(),
++                effective_layer_height: LAYER_HEIGHT_MM as f32,
++                ..Default::default()
++            }],
++            ..Default::default()
++        })
++        .collect()
++}
++
++fn build_region_map(mesh: &MeshIR, layers: &[GlobalLayer]) -> RegionMapIR {
++    let object_id = mesh.objects[0].id.clone();
++    let mut rm = RegionMapIR::default();
++    for layer in layers {
++        rm.entries.insert(
++            RegionKey {
++                global_layer_index: layer.index,
++                object_id: object_id.clone(),
++                region_id: 0,
++                variant_chain: Vec::new(),
++            },
++            RegionPlan::default(),
++        );
++    }
++    rm
++}
++
++// ---------------------------------------------------------------------------
++// geometry helpers
++// ---------------------------------------------------------------------------
++
++fn ring_area(ring: &Polygon) -> f64 {
++    let pts = &ring.points;
++    if pts.len() < 3 {
++        return 0.0;
++    }
++    let mut a = 0.0_f64;
++    for i in 0..pts.len() {
++        let j = (i + 1) % pts.len();
++        a += (pts[i].x as f64) * (pts[j].y as f64) - (pts[j].x as f64) * (pts[i].y as f64);
++    }
++    (a * 0.5).abs()
++}
++
++fn expoly_set_area_mm2(polys: &[ExPolygon]) -> f64 {
++    let units2: f64 = polys
++        .iter()
++        .map(|ep| ring_area(&ep.contour) - ep.holes.iter().map(ring_area).sum::<f64>())
++        .sum();
++    units2 / UNITS2_PER_MM2
++}
++
++fn ring_perimeter_units(ring: &Polygon) -> f64 {
++    let pts = &ring.points;
++    if pts.len() < 2 {
++        return 0.0;
++    }
++    let mut total = 0.0_f64;
++    for i in 0..pts.len() {
++        let j = (i + 1) % pts.len();
++        let dx = (pts[j].x - pts[i].x) as f64;
++        let dy = (pts[j].y - pts[i].y) as f64;
++        total += (dx * dx + dy * dy).sqrt();
++    }
++    total
++}
++
++fn perimeter_mm(polys: &[ExPolygon]) -> f64 {
++    let units: f64 = polys
++        .iter()
++        .map(|ep| {
++            ring_perimeter_units(&ep.contour)
++                + ep.holes.iter().map(ring_perimeter_units).sum::<f64>()
++        })
++        .sum();
++    units / UNITS_PER_MM
++}
++
++// ---------------------------------------------------------------------------
++// canonical parameter arithmetic (matched job: 0.2 mm layers, 0.4 mm width)
++// ---------------------------------------------------------------------------
++
++fn extrusion_spacing_mm(width: f32, height: f32) -> f32 {
++    width - height * (1.0 - 0.25 * std::f32::consts::PI)
++}
++
++fn canonical_parameters() -> (f32, f32, f32) {
++    let spacing = extrusion_spacing_mm(LINE_WIDTH_MM, LAYER_HEIGHT_MM as f32);
++    let shell_width =
++        0.5 * LINE_WIDTH_MM + spacing + spacing * (WALL_COUNT.saturating_sub(1)) as f32;
++    let expansion_solid = shell_width * std::f32::consts::SQRT_2;
++    let expansion_sparse = spacing;
++    let closing_radius = 0.55 * 0.65 * 1.05 * spacing;
++    (expansion_solid, expansion_sparse, closing_radius)
++}
++
++// ---------------------------------------------------------------------------
++// conservative expansion proxy
++// ---------------------------------------------------------------------------
++
++/// Canonical `RegionExpansionParameters::build` step arithmetic.
++/// Returns `(tiny_expansion, initial_step, num_other_steps + 1)`.
++fn expansion_steps(full_expansion: f32) -> (f32, f32, usize) {
++    let mut tiny = (0.25 * full_expansion).min(0.05);
++    let mut nsteps = (((full_expansion - tiny) / 0.1).ceil() as usize).clamp(1, 5);
++    let mut initial = (full_expansion - tiny) / nsteps as f32;
++    if nsteps > 1 && 0.25 * initial < tiny {
++        nsteps = (((full_expansion - tiny) / (4.0 * tiny)).floor() as usize).max(1);
++        initial = (full_expansion - tiny) / nsteps as f32;
++    }
++    if 0.25 * initial < tiny || nsteps == 1 {
++        tiny = 0.2 * full_expansion;
++        nsteps = 1;
++        initial = 0.8 * full_expansion;
++    }
++    (tiny, initial, nsteps)
++}
++
++/// Upper-bound wave expansion: the canonical step count and step size, each
++/// step a round offset clipped to `boundary`. Canonical's first step offsets
++/// open seed polylines; this proxy offsets the seed polygon (a superset), and
++/// clips to the whole region rather than one fill zone. Both choices only
++/// increase the measured cost and area.
++fn expansion_proxy(
++    bridge: &[ExPolygon],
++    boundary: &[ExPolygon],
++    full_expansion: f32,
++) -> (Vec<ExPolygon>, f64) {
++    let started = Instant::now();
++    if bridge.is_empty() || boundary.is_empty() {
++        return (Vec::new(), 0.0);
++    }
++    let (tiny, step, nsteps) = expansion_steps(full_expansion);
++    let seed = intersection(&offset(bridge, tiny, OffsetJoinType::Round, 0.01), boundary);
++    if seed.is_empty() {
++        return (Vec::new(), started.elapsed().as_secs_f64() * 1000.0);
++    }
++    let mut current = intersection(&offset(&seed, step, OffsetJoinType::Round, 0.01), boundary);
++    for _ in 1..nsteps {
++        if current.is_empty() {
++            break;
++        }
++        current = intersection(
++            &offset(&current, step, OffsetJoinType::Round, 0.01),
++            boundary,
++        );
++    }
++    (current, started.elapsed().as_secs_f64() * 1000.0)
++}
++
++#[derive(Default)]
++struct Totals {
++    layers: usize,
++    classify_ms: f64,
++    facet_ms: f64,
++    flat_ms: f64,
++    canon_class_ms: f64,
++    expand_solid_ms: f64,
++    expand_sparse_ms: f64,
++    trim_ms: f64,
++    closing_ms: f64,
++    facet_area: f64,
++    flat_area: f64,
++    current_area: f64,
++    canonical_area: f64,
++    canonical_added: f64,
++    canonical_removed: f64,
++    moved_solid: f64,
++    moved_sparse: f64,
++    moved_solid_zone: f64,
++    moved_sparse_zone: f64,
++    closing_area: f64,
++    closing_bound: f64,
++    expand_solid_zone_ms: f64,
++    expand_sparse_zone_ms: f64,
++    trim_zone_ms: f64,
++    closing_zone_ms: f64,
++    layers_bridge: usize,
++    layers_current_only: usize,
++    layers_canonical_only: usize,
++}
++
++#[test]
++#[ignore = "t122 probe: run manually with --ignored and T122_FIXTURE=benchy|base"]
++fn t122_wave_expansion_real_layer_scan() {
++    let fixture = std::env::var("T122_FIXTURE").unwrap_or_else(|_| "benchy".to_string());
++    let limit: Option<usize> = std::env::var("T122_LIMIT")
++        .ok()
++        .and_then(|v| v.parse().ok());
++
++    let mesh = load_placed(&fixture);
++    let layers = plan_layers(&mesh);
++    let sc = execute_mesh_analysis(&mesh).expect("mesh analysis");
++    let object_id = mesh.objects[0].id.clone();
++    let raw_by_layer = batch_slice_objects_by_layer(&mesh, &layers);
++    let bottom = batch_bottom_surface_footprints(&mesh, Some(&sc));
++    let rm = build_region_map(&mesh, &layers);
++
++    let cfg = ResolvedConfig::default();
++    let slice_closing_radius = cfg.slice_closing_radius;
++    let (expansion_solid, expansion_sparse, closing_radius) = canonical_parameters();
++    let bottom_fp = bottom.get(&object_id).cloned().unwrap_or_default();
++
++    let out_dir = repo_root().join("target/t122");
++    std::fs::create_dir_all(&out_dir).expect("create target/t122");
++    let mut csv = String::from(
++        "layer,z,current_area,canonical_area,facet_area,flat_area,added,removed,\
++         moved_solid,moved_sparse,moved_solid_zone,moved_sparse_zone,closing_area,\
++         closing_bound,classify_ms,facet_ms,flat_ms,canon_class_ms,expand_solid_ms,\
++         expand_sparse_ms,trim_ms,closing_ms,expand_solid_zone_ms,expand_sparse_zone_ms,\
++         trim_zone_ms,closing_zone_ms\n",
++    );
++
++    let mut totals = Totals::default();
++    let mut scanned = 0usize;
++    let mut fidelity_checked = 0usize;
++    let empty_map: HashMap<slicer_ir::ObjectId, Vec<ExPolygon>> = HashMap::new();
++
++    for (i, layer) in layers.iter().enumerate() {
++        if let Some(limit) = limit {
++            if scanned >= limit {
++                break;
++            }
++        }
++        let Some(prev_layer) = i.checked_sub(1).map(|p| &layers[p]) else {
++            continue;
++        };
++        let raw_cur_map = raw_by_layer.get(&layer.index).unwrap_or(&empty_map);
++        let raw_prev_map = raw_by_layer.get(&prev_layer.index).unwrap_or(&empty_map);
++        let raw_cur = raw_cur_map.get(&object_id).cloned().unwrap_or_default();
++        let raw_prev = raw_prev_map.get(&object_id).cloned().unwrap_or_default();
++        if raw_cur.is_empty() || raw_prev.is_empty() {
++            continue;
++        }
++        scanned += 1;
++
++        let polygons = if slice_closing_radius > 0.0 {
++            apply_slice_closing_radius(raw_cur.clone(), slice_closing_radius)
++        } else {
++            raw_cur.clone()
++        };
++        let object = &mesh.objects[0];
++        let contours: Vec<Polygon> = polygons.iter().map(|ep| ep.contour.clone()).collect();
++        let obj_data = sc.per_object.get(&object_id).expect("object surface data");
++
++        // --- current path: facet classification + 1 mm offset, then gate ---
++        let t = Instant::now();
++        let is_bridge = classify_region_surfaces(object, obj_data, &contours, layer.z);
++        let classify_ms = t.elapsed().as_secs_f64() * 1000.0;
++
++        let mut facet_region = SlicedRegion {
++            object_id: object.id.clone(),
++            region_id: 0,
++            polygons: polygons.clone(),
++            infill_areas: polygons.clone(),
++            effective_layer_height: layer.active_regions[0].effective_layer_height,
++            is_bridge,
++            ..Default::default()
++        };
++        let t = Instant::now();
++        assemble_bridge_areas(&mut facet_region, Some(&sc));
++        let facet_ms = t.elapsed().as_secs_f64() * 1000.0;
++        let facet_area = expoly_set_area_mm2(&facet_region.bridge_areas);
++        // The downstream gate subtracts the raw lower layer.
++        let facet_gated = difference(&facet_region.bridge_areas, &raw_prev);
++
++        // --- flat path (current canonical flat family) ---
++        let safety_offset = offset(&raw_prev, 0.0001, OffsetJoinType::Square, 0.05);
++        let unsupported = difference(&raw_cur, &safety_offset);
++        let mut flat_region = SlicedRegion {
++            object_id: object.id.clone(),
++            region_id: 0,
++            polygons: polygons.clone(),
++            infill_areas: polygons.clone(),
++            effective_layer_height: layer.active_regions[0].effective_layer_height,
++            ..Default::default()
++        };
++        let t = Instant::now();
++        assemble_flat_bridge_areas(&mut flat_region, &bottom_fp, &unsupported, LINE_WIDTH_MM);
++        let flat_ms = t.elapsed().as_secs_f64() * 1000.0;
++        let flat_area = expoly_set_area_mm2(&flat_region.bridge_areas);
++
++        let current = union(&facet_gated, &flat_region.bridge_areas);
++        let current_area = expoly_set_area_mm2(&current);
++
++        // --- canonical classification over the whole unsupported set ---
++        let t = Instant::now();
++        let unsupported_clipped = intersection(&unsupported, &polygons);
++        let canonical = opening_ex(
++            &unsupported_clipped,
++            (0.1 * LINE_WIDTH_MM) as f64,
++            OffsetJoinType::Miter,
++            3.0,
++        );
++        let canon_class_ms = t.elapsed().as_secs_f64() * 1000.0;
++        let canonical_area = expoly_set_area_mm2(&canonical);
++
++        let added = expoly_set_area_mm2(&difference(&canonical, &current));
++        let removed = expoly_set_area_mm2(&difference(&current, &canonical));
++
++        // --- upper-bound role movement: region area within each zone reach ---
++        let (expanded_solid, expand_solid_ms) =
++            expansion_proxy(&canonical, &polygons, expansion_solid);
++        let (expanded_sparse, expand_sparse_ms) =
++            expansion_proxy(&canonical, &polygons, expansion_sparse);
++        let moved_solid = expoly_set_area_mm2(&difference(&expanded_solid, &canonical));
++        let moved_sparse = expoly_set_area_mm2(&difference(&expanded_sparse, &canonical));
++
++        // --- trim over-estimate: one difference against the union of both waves ---
++        let t = Instant::now();
++        let _trimmed = difference(&polygons, &union(&expanded_solid, &expanded_sparse));
++        let trim_ms = t.elapsed().as_secs_f64() * 1000.0;
++
++        // --- merge_bridges closing over source + anchors ---
++        let merged = union(&canonical, &expanded_solid);
++        let t = Instant::now();
++        let closed = closing_ex(&merged, closing_radius as f64, OffsetJoinType::Miter);
++        let closing_ms = t.elapsed().as_secs_f64() * 1000.0;
++        let closing_area = expoly_set_area_mm2(&closed) - expoly_set_area_mm2(&merged);
++        let closing_bound = perimeter_mm(&merged) * closing_radius as f64;
++
++        // A tighter zone-union proxy: the fill area begins at the inner edge of
++        // the wall band. `shell_width` (0.5*ext width + ext spacing +
++        // perimeter spacing*(n-1)) is the canonical wall-band width, so
++        // `offset(polygons, -shell_width)` removes the whole wall band. The
++        // real three zones are disjoint subsets of this, so these numbers
++        // remain upper bounds but are much closer than the whole region.
++        let wall_inset_mm = 0.5 * LINE_WIDTH_MM
++            + extrusion_spacing_mm(LINE_WIDTH_MM, LAYER_HEIGHT_MM as f32)
++            + extrusion_spacing_mm(LINE_WIDTH_MM, LAYER_HEIGHT_MM as f32)
++                * (WALL_COUNT.saturating_sub(1)) as f32;
++        let zone_proxy = offset(&polygons, -wall_inset_mm, OffsetJoinType::Miter, 0.05);
++        let (expanded_solid_zone, expand_solid_zone_ms) =
++            expansion_proxy(&canonical, &zone_proxy, expansion_solid);
++        let (expanded_sparse_zone, expand_sparse_zone_ms) =
++            expansion_proxy(&canonical, &zone_proxy, expansion_sparse);
++        let moved_solid_zone = expoly_set_area_mm2(&difference(&expanded_solid_zone, &canonical));
++        let moved_sparse_zone = expoly_set_area_mm2(&difference(&expanded_sparse_zone, &canonical));
++        let t = Instant::now();
++        let _trimmed_zone = difference(
++            &zone_proxy,
++            &union(&expanded_solid_zone, &expanded_sparse_zone),
++        );
++        let trim_zone_ms = t.elapsed().as_secs_f64() * 1000.0;
++        let merged_zone = union(&canonical, &expanded_solid_zone);
++        let t = Instant::now();
++        let _closed_zone = closing_ex(&merged_zone, closing_radius as f64, OffsetJoinType::Miter);
++        let closing_zone_ms = t.elapsed().as_secs_f64() * 1000.0;
++
++        // --- fidelity: production entry point on sampled layers ---
++        if i < 2 || i == layers.len() / 2 || i + 1 == layers.len() {
++            let cache = PrepassSliceCache {
++                raw_polygons: raw_cur_map,
++                prev_raw_polygons: Some(raw_prev_map),
++                bottom_surface_footprint: &bottom,
++            };
++            let produced = execute_prepass_slice_single_layer_with_cache(
++                &mesh,
++                layer,
++                Some(&sc),
++                Some(&rm),
++                &cache,
++            )
++            .expect("production prepass");
++            let prod_area = produced
++                .regions
++                .iter()
++                .map(|r| expoly_set_area_mm2(&r.bridge_areas))
++                .sum::<f64>();
++            // The prepass emits the ungated facet + flat lists; the
++            // unsupported-span gate runs later in PrePass::ShellClassification.
++            // The production metric is the sum of the list areas, so overlaps
++            // between the two families are counted twice on both sides.
++            let manual_area = facet_area + flat_area;
++            assert!(
++                (prod_area - manual_area).abs() <= 1.0e-6 * (1.0 + prod_area),
++                "layer {} fidelity: production {prod_area} vs manual {manual_area}",
++                layer.index
++            );
++            fidelity_checked += 1;
++        }
++
++        let _ = writeln!(
++            csv,
++            "{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},\
++             {:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},\
++             {:.6},{:.6},{:.6},{:.6}",
++            layer.index,
++            layer.z,
++            current_area,
++            canonical_area,
++            facet_area,
++            flat_area,
++            added,
++            removed,
++            moved_solid,
++            moved_sparse,
++            moved_solid_zone,
++            moved_sparse_zone,
++            closing_area,
++            closing_bound,
++            classify_ms,
++            facet_ms,
++            flat_ms,
++            canon_class_ms,
++            expand_solid_ms,
++            expand_sparse_ms,
++            trim_ms,
++            closing_ms,
++            expand_solid_zone_ms,
++            expand_sparse_zone_ms,
++            trim_zone_ms,
++            closing_zone_ms,
++        )
++        .expect("write csv row");
++
++        totals.layers += 1;
++        totals.classify_ms += classify_ms;
++        totals.facet_ms += facet_ms;
++        totals.flat_ms += flat_ms;
++        totals.canon_class_ms += canon_class_ms;
++        totals.expand_solid_ms += expand_solid_ms;
++        totals.expand_sparse_ms += expand_sparse_ms;
++        totals.trim_ms += trim_ms;
++        totals.closing_ms += closing_ms;
++        totals.facet_area += facet_area;
++        totals.flat_area += flat_area;
++        totals.current_area += current_area;
++        totals.canonical_area += canonical_area;
++        totals.canonical_added += added;
++        totals.canonical_removed += removed;
++        totals.moved_solid += moved_solid;
++        totals.moved_sparse += moved_sparse;
++        totals.moved_solid_zone += moved_solid_zone;
++        totals.moved_sparse_zone += moved_sparse_zone;
++        totals.closing_area += closing_area;
++        totals.closing_bound += closing_bound;
++        totals.expand_solid_zone_ms += expand_solid_zone_ms;
++        totals.expand_sparse_zone_ms += expand_sparse_zone_ms;
++        totals.trim_zone_ms += trim_zone_ms;
++        totals.closing_zone_ms += closing_zone_ms;
++        if !current.is_empty() || !canonical.is_empty() {
++            totals.layers_bridge += 1;
++        }
++        if current.is_empty() && !canonical.is_empty() {
++            totals.layers_canonical_only += 1;
++        }
++        if !current.is_empty() && canonical.is_empty() {
++            totals.layers_current_only += 1;
++        }
++    }
++
++    std::fs::write(out_dir.join(format!("{fixture}.csv")), csv).expect("write csv");
++
++    let current_classification_ms = totals.classify_ms + totals.facet_ms + totals.flat_ms;
++    let canonical_classification_ms = totals.canon_class_ms
++        + totals.expand_solid_ms
++        + totals.expand_sparse_ms
++        + totals.trim_ms
++        + totals.closing_ms;
++    let net_saving_ms = current_classification_ms - canonical_classification_ms;
++    let canonical_zone_ms = totals.canon_class_ms
++        + totals.expand_solid_zone_ms
++        + totals.expand_sparse_zone_ms
++        + totals.trim_zone_ms
++        + totals.closing_zone_ms;
++    let net_saving_zone_ms = current_classification_ms - canonical_zone_ms;
++
++    println!("\n=== t122 SUMMARY ({fixture}) ===");
++    println!(
++        "layers={} fidelity_checked={fidelity_checked}",
++        totals.layers
++    );
++    println!(
++        "areas mm2: facet={:.3} flat={:.3} current={:.3} canonical={:.3} added={:.3} removed={:.3}",
++        totals.facet_area,
++        totals.flat_area,
++        totals.current_area,
++        totals.canonical_area,
++        totals.canonical_added,
++        totals.canonical_removed,
++    );
++    println!(
++        "bound mm2 (whole region): moved_solid={:.3} moved_sparse={:.3} \
++         closing_area={:.3} closing_steiner={:.3}",
++        totals.moved_solid, totals.moved_sparse, totals.closing_area, totals.closing_bound,
++    );
++    println!(
++        "bound mm2 (wall-inset zone proxy): moved_solid={:.3} moved_sparse={:.3}",
++        totals.moved_solid_zone, totals.moved_sparse_zone,
++    );
++    println!(
++        "layers with any bridge={} canonical_only={} current_only={}",
++        totals.layers_bridge, totals.layers_canonical_only, totals.layers_current_only,
++    );
++    println!(
++        "thread-ms: classify={:.1} facet={:.1} flat={:.1} canon_class={:.1} \
++         expand_solid={:.1} expand_sparse={:.1} trim={:.1} closing={:.1}",
++        totals.classify_ms,
++        totals.facet_ms,
++        totals.flat_ms,
++        totals.canon_class_ms,
++        totals.expand_solid_ms,
++        totals.expand_sparse_ms,
++        totals.trim_ms,
++        totals.closing_ms,
++    );
++    println!(
++        "thread-ms: current_classification={current_classification_ms:.1} \
++         canonical_whole_region={canonical_classification_ms:.1} \
++         net_saving_whole_region={net_saving_ms:.1}"
++    );
++    println!(
++        "thread-ms: canonical_zone_proxy={canonical_zone_ms:.1} \
++         net_saving_zone_proxy={net_saving_zone_ms:.1}"
++    );
++    println!(
++        "thread-ms (zone proxy): expand_solid={:.1} expand_sparse={:.1} \
++         trim={:.1} closing={:.1}",
++        totals.expand_solid_zone_ms,
++        totals.expand_sparse_zone_ms,
++        totals.trim_zone_ms,
++        totals.closing_zone_ms,
++    );
++    println!(
++        "canonical params: expansion_solid={expansion_solid:.4} mm \
++         expansion_sparse={expansion_sparse:.4} mm closing_radius={closing_radius:.4} mm"
++    );
++    println!("=== end t122 SUMMARY ===\n");
++}

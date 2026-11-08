@@ -1258,10 +1258,19 @@ mod tests {
     }
 
     fn ws_root() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("xtask/ must have a parent")
-            .to_path_buf()
+        // Runtime-first so a cached test binary built in another checkout
+        // still resolves the tree it runs in (ticket 71); the compile-time
+        // parent stays as the fallback for runners that do not set this
+        // package's directory as the current directory.
+        std::env::current_dir()
+            .ok()
+            .and_then(|cwd| crate::build_guests::locate_root_from(&cwd))
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .expect("xtask/ must have a parent")
+                    .to_path_buf()
+            })
     }
 
     // NOTE: the packet-221-era regression tests built on `canonical_type_blocks`

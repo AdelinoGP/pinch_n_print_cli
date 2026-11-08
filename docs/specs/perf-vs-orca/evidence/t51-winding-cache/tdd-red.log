@@ -1,0 +1,9 @@
+   Compiling slicer-core v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-core)
+error[E0432]: unresolved import `slicer_core::perimeter_spatial::diagnostics::prepared_contour_contains`
+   --> crates\slicer-core\tests\perimeter_spatial_tdd.rs:123:9
+    |
+123 |     use slicer_core::perimeter_spatial::diagnostics::prepared_contour_contains;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `prepared_contour_contains` in `perimeter_spatial::diagnostics`
+
+For more information about this error, try `rustc --explain E0432`.
+error: could not compile `slicer-core` (test "perimeter_spatial_tdd") due to 1 previous error

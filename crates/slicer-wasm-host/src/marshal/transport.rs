@@ -88,6 +88,7 @@ fn associate_perimeter<'a>(
     (perimeters.get(&donor).copied(), Some(donor))
 }
 
+#[cfg(test)]
 pub(crate) fn assemble_layer_transport<'a>(
     selection: &'a LayerSelection,
     layer_index: u32,
@@ -96,6 +97,32 @@ pub(crate) fn assemble_layer_transport<'a>(
     support_plan: Option<&'a SupportPlanIR>,
     prepared: Option<&[PreparedRegionData]>,
     surface_classification: Option<&SurfaceClassificationIR>,
+) -> LayerTransport<'a> {
+    assemble_layer_transport_for_stage(
+        selection,
+        layer_index,
+        slice,
+        perimeter,
+        support_plan,
+        prepared,
+        surface_classification,
+        true,
+    )
+}
+
+/// Stage-aware assembly: `derive_prepared = false` is the arena's "this stage
+/// marshals only perimeter IR" contract (`prepare_dispatch_region_views`), so
+/// the transport delivers the empty prepared view instead of deriving it per
+/// module call.
+pub(crate) fn assemble_layer_transport_for_stage<'a>(
+    selection: &'a LayerSelection,
+    layer_index: u32,
+    slice: Option<&SliceIR>,
+    perimeter: Option<&'a PerimeterIR>,
+    support_plan: Option<&'a SupportPlanIR>,
+    prepared: Option<&[PreparedRegionData]>,
+    surface_classification: Option<&SurfaceClassificationIR>,
+    derive_prepared: bool,
 ) -> LayerTransport<'a> {
     let slice = slice.filter(|slice| slice.global_layer_index == layer_index);
     let current = slice.map_or(&[][..], |slice| slice.regions.as_slice());
@@ -165,7 +192,7 @@ pub(crate) fn assemble_layer_transport<'a>(
                 },
                 |region| (*region).clone(),
             );
-            let prepared = if present.is_none() {
+            let prepared = if present.is_none() || !derive_prepared {
                 PreparedRegionData::default()
             } else if let Some(data) = prepared_by_origin.get(&identity) {
                 (*data).clone()
@@ -195,17 +222,43 @@ pub(crate) fn assemble_layer_transport<'a>(
         ..SliceIR::default()
     };
     let projected = super::perimeter_source_regions(&selected_slice);
-    // Recompute geometry-derived preparation on the filtered union: an arena
-    // perimeter-source record may already contain an unindexed child's geometry.
-    let projected_prepared: HashMap<_, _> = projected
-        .iter()
-        .map(origin)
-        .zip(super::prepare_regions(
-            &projected,
-            surface_classification,
-            layer_index,
-        ))
-        .collect();
+    // Recompute geometry-derived preparation on the filtered union only when
+    // the projection is not the identity. When it is (no modifier footprint,
+    // no modifier child), `projected` is a subset of the arena's staged slice
+    // with byte-identical polygons, so the arena's `prepare_regions` result is
+    // the same pure function of (region, surface classification, layer) and is
+    // reused instead of being recomputed for every module call. A missing
+    // origin (a selected member with no committed region) falls back to the
+    // full derivation.
+    let projected_origins: Vec<_> = projected.iter().map(origin).collect();
+    let projected_prepared: HashMap<_, _> = if !derive_prepared {
+        // The arena prepares region views only for the stages that consume
+        // them; this stage is not one, so its wire view stays empty rather
+        // than paying the per-call derivation.
+        projected_origins
+            .into_iter()
+            .map(|identity| (identity, PreparedRegionData::default()))
+            .collect()
+    } else if reuse_arena_preparation(
+        &selected_slice,
+        prepared.is_some(),
+        &projected_origins,
+        &prepared_by_origin,
+    ) {
+        projected_origins
+            .iter()
+            .map(|identity| (identity.clone(), (*prepared_by_origin[identity]).clone()))
+            .collect()
+    } else {
+        projected_origins
+            .into_iter()
+            .zip(super::prepare_regions(
+                &projected,
+                surface_classification,
+                layer_index,
+            ))
+            .collect()
+    };
     let owners: HashMap<_, _> = models
         .iter()
         .map(|view| (key_origin(&view.key), (view.key.clone(), view.target)))
@@ -257,6 +310,27 @@ pub(crate) fn assemble_layer_transport<'a>(
         non_model_targets,
         support_plan,
     }
+}
+
+/// Whether the projected union may reuse the arena's staged preparation.
+///
+/// The reused data is the same pure function of `(region, surface
+/// classification, layer)` exactly when the perimeter-source projection is the
+/// identity and every projected origin already has a staged record. A missing
+/// origin (a selected member with no committed region) or a modifier
+/// footprint/child must take the fresh derivation, because the projected
+/// geometry can then differ from the staged region with the same origin.
+fn reuse_arena_preparation(
+    selected_slice: &SliceIR,
+    prepared_is_some: bool,
+    projected_origins: &[OriginId],
+    prepared_by_origin: &HashMap<OriginId, &PreparedRegionData>,
+) -> bool {
+    prepared_is_some
+        && super::perimeter_source_projection_is_identity(selected_slice)
+        && projected_origins
+            .iter()
+            .all(|identity| prepared_by_origin.contains_key(identity))
 }
 
 #[cfg(test)]
@@ -697,5 +771,114 @@ mod tests {
             }
             other => panic!("expected the nonempty-chain wire record, got {other:?}"),
         }
+    }
+
+    /// Identity projection + a staged record for every projected origin is the
+    /// only shape that may reuse the arena's preparation. A modifier
+    /// footprint/child, a missing origin, or an absent arena record must take
+    /// the fresh derivation.
+    #[test]
+    fn reuse_decision_requires_identity_and_every_staged_origin() {
+        let plain = region(2, Vec::new());
+        let identity = SliceIR {
+            global_layer_index: 7,
+            regions: vec![plain.clone()],
+            ..SliceIR::default()
+        };
+        let prepared = crate::marshal::prepare_regions(&identity.regions, None, 7);
+        let origins: Vec<OriginId> = identity.regions.iter().map(origin).collect();
+        let by_origin: HashMap<_, _> = origins.iter().cloned().zip(prepared.iter()).collect();
+        assert!(reuse_arena_preparation(
+            &identity, true, &origins, &by_origin
+        ));
+        assert!(!reuse_arena_preparation(
+            &identity, false, &origins, &by_origin
+        ));
+
+        let mut missing = origins.clone();
+        missing.push(OriginId {
+            object_id: "absent".into(),
+            region_id: 9,
+            variant_chain: Vec::new(),
+        });
+        assert!(!reuse_arena_preparation(
+            &identity, true, &missing, &by_origin
+        ));
+
+        let modifier = SliceIR {
+            global_layer_index: 7,
+            regions: vec![region(
+                slicer_ir::modifier_sub_region_id(2, "stored", &[]),
+                Vec::new(),
+            )],
+            ..SliceIR::default()
+        };
+        let modifier_origins: Vec<OriginId> = modifier.regions.iter().map(origin).collect();
+        let modifier_prepared = crate::marshal::prepare_regions(&modifier.regions, None, 7);
+        let modifier_by_origin: HashMap<_, _> = modifier_origins
+            .iter()
+            .cloned()
+            .zip(modifier_prepared.iter())
+            .collect();
+        assert!(!reuse_arena_preparation(
+            &modifier,
+            true,
+            &modifier_origins,
+            &modifier_by_origin
+        ));
+    }
+
+    /// The reused record is byte-identical to the fresh derivation of the
+    /// identity projection, which is what makes the fast path exact.
+    #[test]
+    fn identity_reuse_matches_the_fresh_preparation() {
+        let mut selected = region(2, Vec::new());
+        selected.polygons = vec![rectangle(0.0)];
+        let slice = SliceIR {
+            global_layer_index: 7,
+            regions: vec![selected.clone()],
+            ..SliceIR::default()
+        };
+        let selection = selection(std::slice::from_ref(&selected));
+        let staged = crate::marshal::prepare_regions(&slice.regions, None, 7);
+        let transport =
+            assemble_layer_transport(&selection, 7, Some(&slice), None, None, Some(&staged), None);
+        assert_eq!(transport.models[0].prepared, staged[0]);
+
+        let projected = crate::marshal::perimeter_source_regions(&slice);
+        let fresh = crate::marshal::prepare_regions(&projected, None, 7);
+        assert_eq!(transport.perimeter_sources[0].prepared, fresh[0]);
+        assert_eq!(transport.perimeter_sources[0].prepared, staged[0]);
+    }
+
+    /// A stage outside the arena's prepared-region contract gets the empty
+    /// view even when the caller supplied staged records, and pays no
+    /// per-call derivation.
+    #[test]
+    fn non_prepared_stage_delivers_the_empty_view() {
+        let mut selected = region(2, Vec::new());
+        selected.polygons = vec![rectangle(0.0)];
+        let slice = SliceIR {
+            global_layer_index: 7,
+            regions: vec![selected.clone()],
+            ..SliceIR::default()
+        };
+        let selection = selection(std::slice::from_ref(&selected));
+        let staged = crate::marshal::prepare_regions(&slice.regions, None, 7);
+        let transport = assemble_layer_transport_for_stage(
+            &selection,
+            7,
+            Some(&slice),
+            None,
+            None,
+            Some(&staged),
+            None,
+            false,
+        );
+        assert_eq!(transport.models[0].prepared, PreparedRegionData::default());
+        assert_eq!(
+            transport.perimeter_sources[0].prepared,
+            PreparedRegionData::default()
+        );
     }
 }

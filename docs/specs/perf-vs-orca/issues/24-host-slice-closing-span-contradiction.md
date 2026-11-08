@@ -101,3 +101,8 @@ document the accumulated-thread-time semantics where the columns are defined
 (`ScopeTotals::total_wall_ns`, `ProfileModuleRow::total_wall_ns`, and the
 `profiling_report.rs` module doc's observer-effect note). Until then the map's
 recipe-traps list carries the trap.
+
+**Follow-up closed 2026-10-07:** ticket 30 resolved that documentation — the
+unit is now stated at those definition sites, in the rendered wall heading and
+closing note (pinned by `summary_always_states_the_observer_effect_contract`),
+and in ADR-0055, `docs/09_progress_events.md`, and `docs/17_agent_debugging.md`.

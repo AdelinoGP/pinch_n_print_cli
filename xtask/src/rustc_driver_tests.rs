@@ -1,9 +1,9 @@
 use super::build_guests::enforce_accelerated_latch_gate;
 use super::rustc_driver::{
     clear_latch, is_latched, latch_path, latch_policy_rejection, parse_rustc_identity,
-    prepare_rustc_invocation, shim_wrapper_path, validate_rustc_invocation, AccelerationProfile,
-    DriverMode, InvocationKind, ALLOWED_COMMIT_HASH, ALLOWED_HOST, ALLOWED_LLVM_VERSION,
-    ALLOWED_RELEASE, ALLOWED_WASM_TARGET, RESERVED_CFG,
+    prepare_rustc_invocation, resolve_shim_root, shim_wrapper_path, validate_rustc_invocation,
+    AccelerationProfile, DriverMode, InvocationKind, ALLOWED_COMMIT_HASH, ALLOWED_HOST,
+    ALLOWED_LLVM_VERSION, ALLOWED_RELEASE, ALLOWED_WASM_TARGET, RESERVED_CFG,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -650,4 +650,71 @@ fn accelerated_policy_rejection_latch_keeps_ordinary_mode_linear_without_cfg() {
     assert_eq!(prepared.args, invocation);
     assert!(!prepared.info.inject_accelerated_cfg);
     assert!(!prepared.args.iter().any(|value| value == RESERVED_CFG));
+}
+
+/// The shim is invoked as the `rustc` compiling a **dependency's** `build.rs`,
+/// where cargo sets CWD to that package's directory inside the cargo registry.
+/// No ancestor of a registry package holds `Cargo.toml` + `crates/`, so the
+/// working-directory walk that the user-facing entry points use cannot answer
+/// (a cold accelerated build died on `proc-macro2`'s build script before the
+/// root was exported). The exported root must therefore win, and a bogus
+/// export must fall through instead of being trusted.
+#[test]
+fn shim_root_prefers_the_exported_workspace_root_over_a_dependency_cwd() {
+    let ws = test_root("shim-root-ws");
+    fs::write(ws.join("Cargo.toml"), "[workspace]\n").expect("write manifest");
+    fs::create_dir_all(ws.join("crates")).expect("create crates dir");
+    let registry_package = test_root("shim-root-registry");
+    let decoy = test_root("shim-root-decoy");
+    fs::write(decoy.join("Cargo.toml"), "[workspace]\n").expect("write decoy manifest");
+    fs::create_dir_all(decoy.join("crates")).expect("create decoy crates dir");
+
+    assert_eq!(
+        resolve_shim_root(Some(&ws), &registry_package, None),
+        Some(ws.clone().canonicalize().unwrap_or_else(|_| ws.clone())),
+        "the exported root is the only candidate that survives a registry CWD"
+    );
+    assert_eq!(
+        resolve_shim_root(None, &registry_package, None),
+        None,
+        "a registry CWD with no export and no binary hint cannot resolve"
+    );
+    assert_eq!(
+        resolve_shim_root(Some(&registry_package), &decoy, None),
+        Some(
+            decoy
+                .clone()
+                .canonicalize()
+                .unwrap_or_else(|_| decoy.clone())
+        ),
+        "an export that is not a workspace root must fall through to the CWD walk"
+    );
+
+    for root in [ws, registry_package, decoy] {
+        remove_test_root(&root);
+    }
+}
+
+/// A shim started from an unresolvable CWD still finds the tree that installed
+/// it, because the xtask binary lives inside that tree's `target/` directory.
+#[test]
+fn shim_root_falls_back_to_the_xtask_binary_directory() {
+    let root = test_root("shim-root-exe");
+    fs::write(root.join("Cargo.toml"), "[workspace]\n").expect("write manifest");
+    fs::create_dir_all(root.join("crates")).expect("create crates dir");
+    let exe_dir = root.join("target").join("debug");
+    fs::create_dir_all(&exe_dir).expect("create exe dir");
+    let exe = exe_dir.join("xtask.exe");
+    fs::write(&exe, b"stub").expect("write stub exe");
+    let elsewhere = test_root("shim-root-elsewhere");
+
+    assert_eq!(
+        resolve_shim_root(None, &elsewhere, Some(&exe)),
+        Some(root.clone().canonicalize().unwrap_or_else(|_| root.clone())),
+        "the binary directory identifies the tree that installed the shim"
+    );
+
+    for path in [root, elsewhere] {
+        remove_test_root(&path);
+    }
 }

@@ -1,0 +1,107 @@
+xtask dist: building guest WASMs...
+STALE: arachne-perimeters-guest
+fingerprint mismatch
+STALE: classic-perimeters-guest
+fingerprint mismatch
+STALE: fuzzy-skin-guest
+fingerprint mismatch
+STALE: gyroid-infill-guest
+fingerprint mismatch
+STALE: infill-linker-guest
+fingerprint mismatch
+STALE: layer-planner-default-guest
+fingerprint mismatch
+STALE: lightning-infill-guest
+fingerprint mismatch
+STALE: machine_gcode_emit_guest
+fingerprint mismatch
+STALE: overhang_classifier_default_guest
+fingerprint mismatch
+STALE: part_cooling_guest
+fingerprint mismatch
+STALE: path-optimization-default-guest
+fingerprint mismatch
+STALE: raft-default-guest
+fingerprint mismatch
+STALE: rectilinear-infill-guest
+fingerprint mismatch
+STALE: seam-placer-guest
+fingerprint mismatch
+STALE: seam-planner-default-guest
+fingerprint mismatch
+STALE: skirt-brim-guest
+fingerprint mismatch
+STALE: support-surface-ironing-guest
+fingerprint mismatch
+STALE: top-surface-ironing-guest
+fingerprint mismatch
+STALE: traditional-support-guest
+fingerprint mismatch
+STALE: traditional-support-planner-guest
+fingerprint mismatch
+STALE: tree-support-guest
+fingerprint mismatch
+STALE: tree-support-planner-guest
+fingerprint mismatch
+STALE: wave-overhangs-guest
+fingerprint mismatch
+STALE: wipe-tower-guest
+fingerprint mismatch
+STALE: anchored-events-roundtrip-guest
+fingerprint mismatch
+STALE: dispatch-layer-infill-postprocess-guest
+fingerprint mismatch
+STALE: dispatch-layer-path-optimization-guest
+fingerprint mismatch
+STALE: dispatch-layer-perimeters-guest
+fingerprint mismatch
+STALE: dispatch-layer-perimeters-postprocess-guest
+fingerprint mismatch
+STALE: dispatch-layer-slice-postprocess-guest
+fingerprint mismatch
+STALE: dispatch-layer-support-postprocess-guest
+fingerprint mismatch
+STALE: finalization-guest
+fingerprint mismatch
+STALE: finalization-mutation-roundtrip-guest
+fingerprint mismatch
+STALE: infill-postprocess-echo-guest
+fingerprint mismatch
+STALE: layer-infill-guest
+fingerprint mismatch
+STALE: path-optimization-multi-read
+fingerprint mismatch
+STALE: postpass-guest
+fingerprint mismatch
+STALE: prepass-guest
+fingerprint mismatch
+STALE: prepass-layer-planning-guest
+fingerprint mismatch
+STALE: sdk-finalization-guest
+fingerprint mismatch
+STALE: sdk-host-bridge-guest
+fingerprint mismatch
+STALE: sdk-infill-postprocess-view-guest
+fingerprint mismatch
+STALE: sdk-layer-infill-guest
+fingerprint mismatch
+STALE: sdk-layer-pathopt-guest
+fingerprint mismatch
+STALE: sdk-postpass-text-guest
+fingerprint mismatch
+STALE: sdk-prepass-guest
+fingerprint mismatch
+STALE: sdk-support-diagnostic-guest
+fingerprint mismatch
+STALE: support-anchored-reach-guest
+fingerprint mismatch
+building: arachne-perimeters-guest
+error: cargo build failed for 'arachne-perimeters-guest':
+error: linking with `link.exe` failed: exit code: 1181
+  |
+  = note: "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\HostX64\\x64\\link.exe" "/NOLOGO" "\\\\?\\D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t57-topx-cache\\source\\target\\guests-accelerated\\release\\build\\slicer-macros-fa3ea2bf0df70a86\\rustczp0UNI\\symbols.o" "<2 object files omitted>" "<sysroot>\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib/{libstd-*,libpanic_unwind-*,libcfg_if-*,libwindows_link-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libunwind-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib" "kernel32.lib" "kernel32.lib" "kernel32.lib" "ntdll.lib" "userenv.lib" "ws2_32.lib" "dbghelp.lib" "/defaultlib:msvcrt" "/NXCOMPAT" "/OUT:\\\\?\\D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t57-topx-cache\\source\\target\\guests-accelerated\\release\\build\\slicer-macros-fa3ea2bf0df70a86\\build_script_build-fa3ea2bf0df70a86.exe" "/OPT:REF,NOICF" "/DEBUG" "/PDBALTPATH:%_PDB%" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\intrinsic.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\liballoc.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\libcore.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\libstd.natvis"
+  = note: some arguments are omitted. use `--verbose` to show all linker arguments
+  = note: LINK : fatal error LNK1181: cannot open input file '.obj'
+          
+
+error: could not compile `slicer-macros` (build script) due to 1 previous error

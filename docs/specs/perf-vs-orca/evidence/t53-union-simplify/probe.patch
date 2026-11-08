@@ -1,0 +1,290 @@
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index 7f55a576..2acccc29 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -2597,10 +2597,26 @@ impl hs::Host for HostExecutionContext {
+         clip: Vec<ExPolygon>,
+         op: hs::ClipOperation,
+     ) -> wasmtime::Result<Vec<ExPolygon>> {
++        // PERF-T53-PROBE: correlate only the immediately tagged build_roles union.
++        let t53_id = self
++            .log_messages
++            .last()
++            .and_then(|(_, message)| message.strip_prefix("PERF-T53-UNION-BEGIN "))
++            .map(str::to_owned);
++        let t53_start = Instant::now();
+         let ir_subject = wit_to_ir_expolygons(&subject);
+         let ir_clip = wit_to_ir_expolygons(&clip);
++        let t53_converted = Instant::now();
+         let result = slicer_core::polygon_ops::clip_polygons(&ir_subject, &ir_clip, ir_clip_op(op));
+-        Ok(ir_to_wit_expolygons(&result))
++        let t53_core_end = Instant::now();
++        let output = ir_to_wit_expolygons(&result);
++        let t53_end = Instant::now();
++        if let Some(id) = t53_id {
++            self.log_messages.push(("warn".to_owned(), format!("PERF-T53-HOST {{\"id\":{},\"input_convert_ns\":{},\"core_ns\":{},\"output_convert_ns\":{},\"full_ns\":{}}}",
++                id, t53_converted.duration_since(t53_start).as_nanos(), t53_core_end.duration_since(t53_converted).as_nanos(),
++                t53_end.duration_since(t53_core_end).as_nanos(), t53_end.duration_since(t53_start).as_nanos())));
++        }
++        Ok(output)
+     }
+ 
+     fn offset_polygons(
+diff --git a/modules/core-modules/tree-support-planner/src/lib.rs b/modules/core-modules/tree-support-planner/src/lib.rs
+index a5df8231..c9844bb8 100644
+--- a/modules/core-modules/tree-support-planner/src/lib.rs
++++ b/modules/core-modules/tree-support-planner/src/lib.rs
+@@ -964,6 +964,53 @@ pub fn carve_emitted_regions(
+     }
+ }
+ 
++// PERF-T53-PROBE: temporary diagnostics, no geometry changes.
++std::thread_local! {
++    static T53_ID: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
++    static T53_SAMPLES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
++    static T53_LAYER_SAMPLE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
++}
++
++fn t53_shape(polys: &[ExPolygon]) -> [usize; 4] {
++    let mut shape = [polys.len(), 0, 0, 0];
++    for ex in polys {
++        shape[1] += ex.holes.len();
++        for ring in std::iter::once(&ex.contour).chain(ex.holes.iter()) {
++            shape[2] += ring.points.len();
++            shape[3] = shape[3].max(ring.points.len());
++        }
++    }
++    shape
++}
++
++fn t53_geometry(polys: &[ExPolygon]) -> String {
++    // Exact integer coordinates, polygon/ring/vertex order retained; no float conversion.
++    let rings = |ex: &ExPolygon| -> String {
++        let ring = |p: &Polygon| -> String {
++            format!(
++                "[{}]",
++                p.points
++                    .iter()
++                    .map(|p| format!("[{},{}]", p.x, p.y))
++                    .collect::<Vec<_>>()
++                    .join(",")
++            )
++        };
++        format!(
++            "[{}]",
++            std::iter::once(&ex.contour)
++                .chain(ex.holes.iter())
++                .map(ring)
++                .collect::<Vec<_>>()
++                .join(",")
++        )
++    };
++    format!(
++        "[{}]",
++        polys.iter().map(rings).collect::<Vec<_>>().join(",")
++    )
++}
++
+ #[allow(clippy::too_many_arguments)]
+ #[doc(hidden)]
+ pub fn build_roles(
+@@ -992,62 +1039,116 @@ pub fn build_roles(
+     // Ticket 32: the collision bounding box is shared by every role's carve
+     // gate, so it is computed once here rather than per role.
+     let collision_bbox = expolygons_bbox(collision_polys);
+-    let with_areas =
+-        |segments: &[Vec<Point3WithWidth>], areas: &[ExPolygon], is_base_area: bool| {
+-            let mut regions = structural_body_regions(segments, branch_radius);
+-            regions.extend_from_slice(areas);
+-            // Canonical carves each drawn node circle before appending it to
+-            // the role area. Carving after this union can join separate node
+-            // circles through collision and then retain only one fragment.
+-            // Ticket 32: the carve skips bounding-box-disjoint regions (the
+-            // clip is a no-op set-wise); a lone gated region under an active
+-            // simplify tolerance is re-clipped because the Douglas–Peucker
+-            // anchor is start-vertex sensitive (see
+-            // `carve_emitted_regions_with_bbox_gate`).
+-            let simplify_tolerance =
+-                role_simplify_tolerance(is_base_area, avg_node_per_layer, line_width_mm);
+-            let regions = carve_emitted_regions_with_bbox_gate(
+-                &regions,
+-                collision_polys,
+-                collision_bbox,
+-                simplify_tolerance.is_some(),
+-            );
+-            // Canonical accumulates the carved circles into `base_areas` /
+-            // `roof_areas` and then runs them through Clipper boolean ops
+-            // (`diff_ex(base_areas, roofs)`, `intersection_ex(base_areas,
+-            // m_machine_border)`, `closing_ex`/`diff_clipped` for the
+-            // interfaces). Every one of those returns non-overlapping
+-            // `ExPolygons`, so adjacent node cross-sections come out fused
+-            // into a single outline. Emitting them unmerged puts a duplicate
+-            // perimeter through the inside of each fused branch pair and makes
+-            // the branch silhouette pop between layers as neighbouring circles
+-            // drift in and out of contact.
+-            let regions = union_expolys(regions);
+-            let regions = match simplify_tolerance {
+-                Some(tolerance) => expolygons_simplify(&regions, tolerance),
+-                None => regions,
+-            };
+-            if collision_polys.is_empty() {
+-                regions
++    T53_LAYER_SAMPLE.with(|s| s.set(false));
++    let t53_first_id = T53_ID.with(|s| s.get());
++    let with_areas = |segments: &[Vec<Point3WithWidth>],
++                      areas: &[ExPolygon],
++                      is_base_area: bool,
++                      role: usize| {
++        let id = T53_ID.with(|v| {
++            let id = v.get();
++            v.set(id + 1);
++            id
++        });
++        let start = host::now_us();
++        let mut regions = structural_body_regions(segments, branch_radius);
++        regions.extend_from_slice(areas);
++        let structural_us = host::now_us() - start;
++        // Canonical carves each drawn node circle before appending it to
++        // the role area. Carving after this union can join separate node
++        // circles through collision and then retain only one fragment.
++        // Ticket 32: the carve skips bounding-box-disjoint regions (the
++        // clip is a no-op set-wise); a lone gated region under an active
++        // simplify tolerance is re-clipped because the Douglas–Peucker
++        // anchor is start-vertex sensitive (see
++        // `carve_emitted_regions_with_bbox_gate`).
++        let simplify_tolerance =
++            role_simplify_tolerance(is_base_area, avg_node_per_layer, line_width_mm);
++        let start = host::now_us();
++        let regions = carve_emitted_regions_with_bbox_gate(
++            &regions,
++            collision_polys,
++            collision_bbox,
++            simplify_tolerance.is_some(),
++        );
++        let carve_us = host::now_us() - start;
++        let input_shape = t53_shape(&regions);
++        let sample = T53_SAMPLES.with(|s| {
++            let bit = 1 << (role * 2 + usize::from(regions.len() > 1));
++            if !regions.is_empty() && s.get() & bit == 0 {
++                s.set(s.get() | bit);
++                true
+             } else {
+-                // Simplification may move a boundary back into collision. The
+-                // per-circle largest-part selection already happened above, so
+-                // this is canonical's plain set-wide difference.
+-                host::clip_polygons(&regions, collision_polys, ClipOperation::Difference)
++                false
+             }
++        });
++        if sample {
++            T53_LAYER_SAMPLE.with(|s| s.set(true));
++        }
++        let capture = if sample {
++            Some((t53_geometry(&regions), t53_geometry(collision_polys)))
++        } else {
++            None
+         };
+-    let body = with_areas(branch_segments, branch_areas, true);
+-    let roof = with_areas(interface_segments, interface_areas, false);
+-    let base = with_areas(base_segments, base_areas, false);
+-    let floor = with_areas(floor_segments, floor_areas, false);
++        // Canonical accumulates the carved circles into `base_areas` /
++        // `roof_areas` and then runs them through Clipper boolean ops
++        // (`diff_ex(base_areas, roofs)`, `intersection_ex(base_areas,
++        // m_machine_border)`, `closing_ex`/`diff_clipped` for the
++        // interfaces). Every one of those returns non-overlapping
++        // `ExPolygons`, so adjacent node cross-sections come out fused
++        // into a single outline. Emitting them unmerged puts a duplicate
++        // perimeter through the inside of each fused branch pair and makes
++        // the branch silhouette pop between layers as neighbouring circles
++        // drift in and out of contact.
++        if regions.len() > 1 {
++            host::log_warn(&format!("PERF-T53-UNION-BEGIN {}", id));
++        }
++        let start = host::now_us();
++        let regions = union_expolys(regions);
++        let union_us = host::now_us() - start;
++        host::log_warn(&format!("PERF-T53-UNION-END {}", id));
++        let union_shape = t53_shape(&regions);
++        let union_capture = sample.then(|| t53_geometry(&regions));
++        let start = host::now_us();
++        let regions = match simplify_tolerance {
++            Some(tolerance) => expolygons_simplify(&regions, tolerance),
++            None => regions,
++        };
++        let simplify_us = host::now_us() - start;
++        let simplify_shape = t53_shape(&regions);
++        let simplify_capture = sample.then(|| t53_geometry(&regions));
++        let start = host::now_us();
++        let regions = if collision_polys.is_empty() {
++            regions
++        } else {
++            // Simplification may move a boundary back into collision. The
++            // per-circle largest-part selection already happened above, so
++            // this is canonical's plain set-wide difference.
++            host::clip_polygons(&regions, collision_polys, ClipOperation::Difference)
++        };
++        let difference_us = host::now_us() - start;
++        host::log_warn(&format!("PERF-T53-ROLE {{\"id\":{},\"role\":{},\"avg_nodes\":{},\"tolerance\":{:?},\"input\":{:?},\"union\":{:?},\"simplify\":{:?},\"final\":{:?},\"structural_us\":{},\"carve_us\":{},\"union_us\":{},\"simplify_us\":{},\"difference_us\":{}}}",
++                id, role, avg_node_per_layer, simplify_tolerance.unwrap_or(-1.0), input_shape, union_shape, simplify_shape, t53_shape(&regions), structural_us, carve_us, union_us, simplify_us, difference_us));
++        if let Some((input, collision)) = capture {
++            host::log_warn(&format!("PERF-T53-CAPTURE {{\"id\":{},\"input\":{},\"collision\":{},\"union\":{},\"simplify\":{},\"final\":{}}}",
++                    id, input, collision, union_capture.unwrap(), simplify_capture.unwrap(), t53_geometry(&regions)));
++        }
++        regions
++    };
++    let body = with_areas(branch_segments, branch_areas, true, 0);
++    let roof = with_areas(interface_segments, interface_areas, false, 1);
++    let base = with_areas(base_segments, base_areas, false, 2);
++    let floor = with_areas(floor_segments, floor_areas, false, 3);
+ 
+     // Subtract interface geometry out of the body, per canonical.
++    let start = host::now_us();
+     let mut carved = body;
+     for cut in [&roof, &base, &floor] {
+         if !carved.is_empty() && !cut.is_empty() {
+             carved = host::clip_polygons(&carved, cut, ClipOperation::Difference);
+         }
+     }
++    let body_difference_us = host::now_us() - start;
+     let mut roles = Vec::new();
+     if !carved.is_empty() {
+         roles.push(slicer_ir::SupportPlanRoleRegion {
+@@ -1073,6 +1174,26 @@ pub fn build_roles(
+             regions: floor,
+         });
+     }
++    host::log_warn(&format!(
++        "PERF-T53-BODY-DIFFERENCE {{\"us\":{},\"roles\":{}}}",
++        body_difference_us,
++        roles.len()
++    ));
++    if T53_LAYER_SAMPLE.with(|s| s.get()) {
++        host::log_warn(&format!(
++            "PERF-T53-RETURN {{\"first_id\":{},\"roles\":[{}]}}",
++            t53_first_id,
++            roles
++                .iter()
++                .map(|r| format!(
++                    "{{\"role\":\"{:?}\",\"regions\":{}}}",
++                    r.role,
++                    t53_geometry(&r.regions)
++                ))
++                .collect::<Vec<_>>()
++                .join(",")
++        ));
++    }
+     roles
+ }
+ 
+@@ -3739,6 +3860,10 @@ impl SupportPlanner {
+                             }
+                         }
+                     };
++                    host::log_warn(&format!(
++                        "PERF-T53-CONTEXT {{\"layer\":{},\"object\":{:?},\"region\":{:?}}}",
++                        current_global_layer_index, obj.object_id, region_id
++                    ));
+                     let mut roles = build_roles(
+                         &branch_segments,
+                         &interface_segments,

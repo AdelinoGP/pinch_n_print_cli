@@ -1,0 +1,13 @@
+ M docs/specs/perf-vs-orca/issues/19-offset2-ex-call-reduction.md
+ M docs/specs/perf-vs-orca/issues/45-overhang-quartile-predicate-narrowing.md
+ M docs/specs/perf-vs-orca/map.md
+?? docs/specs/perf-vs-orca/evidence/t45-quartile-bbox/
+?? docs/specs/perf-vs-orca/evidence/t49-signed-distance/
+?? docs/specs/perf-vs-orca/evidence/t51-winding-cache/
+?? docs/specs/perf-vs-orca/evidence/t53-union-simplify/
+?? docs/specs/perf-vs-orca/issues/48-signed-distance-investigation-scope.md
+?? docs/specs/perf-vs-orca/issues/49-signed-distance-sign-versus-distance-attribution.md
+?? docs/specs/perf-vs-orca/issues/50-prepared-winding-coordinate-cache-scope.md
+?? docs/specs/perf-vs-orca/issues/51-prepared-winding-coordinate-cache-experiment.md
+?? docs/specs/perf-vs-orca/issues/52-tree-planner-union-simplify-investigation-scope.md
+?? docs/specs/perf-vs-orca/issues/53-tree-planner-union-simplify-current-job-attribution.md

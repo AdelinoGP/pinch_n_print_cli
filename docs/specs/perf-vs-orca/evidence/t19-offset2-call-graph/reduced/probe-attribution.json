@@ -1,0 +1,210 @@
+{
+  "benchy-classic-off": {
+    "elapsed_ms": 19832,
+    "fuel_total": 834900685430,
+    "modules": [
+      {
+        "module_id": "com.core.classic-perimeters",
+        "calls": 240,
+        "total_fuel": 750034672437,
+        "self_fuel": 639988960024,
+        "scopes": [
+          {
+            "scope": "polygon_ops::offset2_ex",
+            "calls": 720,
+            "self_fuel": 110045712413,
+            "total_fuel": 110045712413
+          }
+        ]
+      },
+      {
+        "module_id": "com.core.infill-linker",
+        "calls": 240,
+        "total_fuel": 79913537572,
+        "self_fuel": 79711247641,
+        "scopes": [
+          {
+            "scope": "polygon_ops::clip_polygons",
+            "calls": 310,
+            "self_fuel": 202289931,
+            "total_fuel": 202289931
+          }
+        ]
+      }
+    ]
+  },
+  "probe-base2": {
+    "elapsed_ms": 19221,
+    "fuel_total": 834902570954,
+    "modules": [
+      {
+        "module_id": "com.core.classic-perimeters",
+        "calls": 240,
+        "total_fuel": 750034599482,
+        "self_fuel": 639988984826,
+        "scopes": [
+          {
+            "scope": "polygon_ops::offset2_ex",
+            "calls": 720,
+            "self_fuel": 110045535936,
+            "total_fuel": 110045535936
+          },
+          {
+            "scope": "t19::gapfill_open_min",
+            "calls": 240,
+            "self_fuel": 27840,
+            "total_fuel": 10147895405
+          },
+          {
+            "scope": "t19::narrow_island_opening",
+            "calls": 240,
+            "self_fuel": 26400,
+            "total_fuel": 44940282244
+          },
+          {
+            "scope": "t19::gapfill_open_max",
+            "calls": 240,
+            "self_fuel": 24480,
+            "total_fuel": 54957437007
+          }
+        ]
+      },
+      {
+        "module_id": "com.core.infill-linker",
+        "calls": 240,
+        "total_fuel": 79915481540,
+        "self_fuel": 79713191214,
+        "scopes": [
+          {
+            "scope": "polygon_ops::clip_polygons",
+            "calls": 310,
+            "self_fuel": 202290326,
+            "total_fuel": 202290326
+          }
+        ]
+      }
+    ]
+  },
+  "probe-oowt": {
+    "elapsed_ms": 19331,
+    "fuel_total": 669400673555,
+    "modules": [
+      {
+        "module_id": "com.core.classic-perimeters",
+        "calls": 240,
+        "total_fuel": 584485103574,
+        "self_fuel": 494064733398,
+        "scopes": [
+          {
+            "scope": "polygon_ops::offset2_ex",
+            "calls": 743,
+            "self_fuel": 90241996509,
+            "total_fuel": 90241996509
+          },
+          {
+            "scope": "polygon_ops::clip_polygons",
+            "calls": 26,
+            "self_fuel": 178292518,
+            "total_fuel": 178292518
+          },
+          {
+            "scope": "t19::gapfill_open_min",
+            "calls": 245,
+            "self_fuel": 28420,
+            "total_fuel": 7019377561
+          },
+          {
+            "scope": "t19::narrow_island_opening",
+            "calls": 240,
+            "self_fuel": 26400,
+            "total_fuel": 44940075921
+          },
+          {
+            "scope": "t19::gapfill_open_max",
+            "calls": 245,
+            "self_fuel": 24990,
+            "total_fuel": 38065636702
+          },
+          {
+            "scope": "t19::min_width_top_expand",
+            "calls": 13,
+            "self_fuel": 1339,
+            "total_fuel": 216987474
+          }
+        ]
+      },
+      {
+        "module_id": "com.core.infill-linker",
+        "calls": 240,
+        "total_fuel": 80455735427,
+        "self_fuel": 80397785451,
+        "scopes": [
+          {
+            "scope": "polygon_ops::clip_polygons",
+            "calls": 351,
+            "self_fuel": 57949976,
+            "total_fuel": 57949976
+          }
+        ]
+      }
+    ]
+  },
+  "probe-erode-only": {
+    "elapsed_ms": 19727,
+    "fuel_total": 817297340558,
+    "modules": [
+      {
+        "module_id": "com.core.classic-perimeters",
+        "calls": 240,
+        "total_fuel": 732434604227,
+        "self_fuel": 639988781563,
+        "scopes": [
+          {
+            "scope": "polygon_ops::offset2_ex",
+            "calls": 480,
+            "self_fuel": 65104812883,
+            "total_fuel": 65104812883
+          },
+          {
+            "scope": "polygon_ops::offset",
+            "calls": 240,
+            "self_fuel": 27340937301,
+            "total_fuel": 27340937301
+          },
+          {
+            "scope": "t19::gapfill_open_min",
+            "calls": 240,
+            "self_fuel": 27840,
+            "total_fuel": 10147344935
+          },
+          {
+            "scope": "t19::gapfill_open_max",
+            "calls": 240,
+            "self_fuel": 24480,
+            "total_fuel": 54957520268
+          },
+          {
+            "scope": "t19::narrow_island_opening",
+            "calls": 240,
+            "self_fuel": 20160,
+            "total_fuel": 27340957461
+          }
+        ]
+      },
+      {
+        "module_id": "com.core.infill-linker",
+        "calls": 240,
+        "total_fuel": 79910220420,
+        "self_fuel": 79707930183,
+        "scopes": [
+          {
+            "scope": "polygon_ops::clip_polygons",
+            "calls": 310,
+            "self_fuel": 202290237,
+            "total_fuel": 202290237
+          }
+        ]
+      }
+    ]
+  }
+}

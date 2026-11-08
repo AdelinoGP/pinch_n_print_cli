@@ -1,0 +1,456 @@
+diff --git a/crates/slicer-runtime/src/builtins/support_analysis_producer.rs b/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
+index f079435f..2bc8ab4e 100644
+--- a/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
++++ b/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
+@@ -42,6 +42,7 @@ pub fn commit_support_analysis_builtin(
+     blackboard: &mut Blackboard,
+     config: &ResolvedConfig,
+ ) -> Result<(), crate::BlackboardError> {
++    let _stage_scope = crate::perf_t27_probe3::Scope::new("sa3_stage_wall");
+     let enable_support = config.support_enabled;
+     // Read the typed field directly. `support_threshold_angle` is CLI-bound, so
+     // `resolve_*` routes it into this field and never into `extensions` — an
+@@ -74,55 +75,104 @@ pub fn commit_support_analysis_builtin(
+             let mut object_layer_polygons: BTreeMap<(String, u32), Vec<ExPolygon>> =
+                 BTreeMap::new();
+             let surface_classification = blackboard.surface_classification().cloned();
++            // PARALLEL PREDICATE CANDIDATE (probe: dual-compute).
++            let parallel_needs_support: Vec<bool> = {
++                let _pw = crate::perf_t27_probe3::Scope::new("sa3_par_predicate_wall");
++                let work: Vec<&slicer_ir::SlicedRegion> = slices
++                    .iter()
++                    .flat_map(|slice| slice.regions.iter())
++                    .filter(|region| !region.polygons.is_empty())
++                    .collect();
++                work.par_iter()
++                    .map(|region| {
++                        slicer_sdk::views::SliceRegionView::from_ir(region, 0.0, Vec::new())
++                            .derive_needs_support(surface_classification.as_deref())
++                    })
++                    .collect()
++            };
++            let mut parallel_index = 0_usize;
+             let mut contact_work: Vec<(u32, String, u64, Vec<ExPolygon>, bool)> = Vec::new();
+-            for slice in slices.iter() {
+-                for region in &slice.regions {
+-                    if region.polygons.is_empty() {
+-                        continue;
+-                    }
+-                    let key = SupportGeometryKey {
+-                        global_support_layer_index: slice.global_layer_index,
+-                        object_id: region.object_id.clone(),
+-                        region_id: region.region_id,
+-                    };
+-                    ir.model_occupancy.insert(key, region.polygons.clone());
+-                    let bounds = object_bounds.entry(region.object_id.clone()).or_insert((
+-                        i64::MAX,
+-                        i64::MIN,
+-                        i64::MAX,
+-                        i64::MIN,
+-                    ));
+-                    for polygon in &region.polygons {
+-                        for point in &polygon.contour.points {
+-                            bounds.0 = bounds.0.min(point.x);
+-                            bounds.1 = bounds.1.max(point.x);
+-                            bounds.2 = bounds.2.min(point.y);
+-                            bounds.3 = bounds.3.max(point.y);
++            {
++                let _sweep = crate::perf_t27_probe3::Scope::new("sa3_model_occupancy_sweep");
++                for slice in slices.iter() {
++                    for region in &slice.regions {
++                        if region.polygons.is_empty() {
++                            continue;
+                         }
++                        {
++                            let _occ = crate::perf_t27_probe3::Scope::new("sa3_occupancy_block");
++                            let key = SupportGeometryKey {
++                                global_support_layer_index: slice.global_layer_index,
++                                object_id: region.object_id.clone(),
++                                region_id: region.region_id,
++                            };
++                            ir.model_occupancy.insert(key, region.polygons.clone());
++                            let bounds = object_bounds.entry(region.object_id.clone()).or_insert((
++                                i64::MAX,
++                                i64::MIN,
++                                i64::MAX,
++                                i64::MIN,
++                            ));
++                            for polygon in &region.polygons {
++                                for point in &polygon.contour.points {
++                                    bounds.0 = bounds.0.min(point.x);
++                                    bounds.1 = bounds.1.max(point.x);
++                                    bounds.2 = bounds.2.min(point.y);
++                                    bounds.3 = bounds.3.max(point.y);
++                                }
++                            }
++                            let top = object_tops
++                                .entry(region.object_id.clone())
++                                .or_insert((slice.global_layer_index, region.polygons.clone()));
++                            if slice.global_layer_index > top.0 {
++                                *top = (slice.global_layer_index, region.polygons.clone());
++                            }
++                        }
++                        // Feed the layer-major detection state: this region's
++                        // polygons join its object's layer union, and the region
++                        // itself becomes one unit of contact-detection work.
++                        {
++                            let _ext =
++                                crate::perf_t27_probe3::Scope::new("sa3_layer_polygons_extend");
++                            object_layer_polygons
++                                .entry((region.object_id.clone(), slice.global_layer_index))
++                                .or_default()
++                                .extend(region.polygons.iter().cloned());
++                        }
++                        let needs_support = {
++                            let _ns = crate::perf_t27_probe3::Scope::new("sa3_needs_support_total");
++                            let view = {
++                                let _c =
++                                    crate::perf_t27_probe3::Scope::new("sa3_view_construction");
++                                slicer_sdk::views::SliceRegionView::from_ir(region, 0.0, Vec::new())
++                            };
++                            let _p =
++                                crate::perf_t27_probe3::Scope::new("sa3_needs_support_predicate");
++                            let real = view.derive_needs_support(surface_classification.as_deref());
++                            if real {
++                                crate::perf_t27_probe3::add("sa3_real_true", 1.0);
++                            } else {
++                                crate::perf_t27_probe3::add("sa3_real_false", 1.0);
++                            }
++                            // Differential: the parallel pre-pass value must agree
++                            // with this serial run on every region.
++                            if let Some(par) = parallel_needs_support.get(parallel_index) {
++                                crate::perf_t27_probe3::add("sa3_par_compared", 1.0);
++                                if *par != real {
++                                    crate::perf_t27_probe3::add("sa3_par_mismatch", 1.0);
++                                }
++                            }
++                            parallel_index += 1;
++                            real
++                        };
++                        contact_work.push((
++                            slice.global_layer_index,
++                            region.object_id.clone(),
++                            region.region_id,
++                            region.polygons.clone(),
++                            needs_support,
++                        ));
+                     }
+-                    let top = object_tops
+-                        .entry(region.object_id.clone())
+-                        .or_insert((slice.global_layer_index, region.polygons.clone()));
+-                    if slice.global_layer_index > top.0 {
+-                        *top = (slice.global_layer_index, region.polygons.clone());
+-                    }
+-                    // Feed the layer-major detection state: this region's
+-                    // polygons join its object's layer union, and the region
+-                    // itself becomes one unit of contact-detection work.
+-                    object_layer_polygons
+-                        .entry((region.object_id.clone(), slice.global_layer_index))
+-                        .or_default()
+-                        .extend(region.polygons.iter().cloned());
+-                    let needs_support =
+-                        slicer_sdk::views::SliceRegionView::from_ir(region, 0.0, Vec::new())
+-                            .derive_needs_support(surface_classification.as_deref());
+-                    contact_work.push((
+-                        slice.global_layer_index,
+-                        region.object_id.clone(),
+-                        region.region_id,
+-                        region.polygons.clone(),
+-                        needs_support,
+-                    ));
+                 }
+             }
+ 
+@@ -135,10 +185,13 @@ pub fn commit_support_analysis_builtin(
+             // first appears at layer `k` while sitting squarely on a *different*
+             // region below emit its entire cross-section as a contact --
+             // spurious full-area support on every multi-region object.
+-            let object_layer_union: BTreeMap<(String, u32), Vec<ExPolygon>> = object_layer_polygons
+-                .into_iter()
+-                .map(|(key, polygons)| (key, union_ex(&polygons)))
+-                .collect();
++            let object_layer_union: BTreeMap<(String, u32), Vec<ExPolygon>> = {
++                let _u = crate::perf_t27_probe3::Scope::new("sa3_layer_union_build");
++                object_layer_polygons
++                    .into_iter()
++                    .map(|(key, polygons)| (key, union_ex(&polygons)))
++                    .collect()
++            };
+             let base_params = resolve_contact_params(config, threshold_angle_deg);
+             // F-19: sliced support-enforcer / support-blocker modifier volumes.
+             // `crates/slicer-core/src/algos/region_mapping.rs` deliberately
+@@ -146,8 +199,10 @@ pub fn commit_support_analysis_builtin(
+             // never appear as a `variant_chain` entry -- slicing the modifier
+             // volumes here is the only way this stage can see them.
+             let layer_zs: Vec<f32> = plan.global_layers.iter().map(|layer| layer.z).collect();
+-            let modifiers =
+-                ModifierGeometry::slice(blackboard.mesh(), &layer_zs, &plan.global_layers);
++            let modifiers = {
++                let _m = crate::perf_t27_probe3::Scope::new("sa3_modifier_slice");
++                ModifierGeometry::slice(blackboard.mesh(), &layer_zs, &plan.global_layers)
++            };
+             // Deterministic order regardless of `SliceIR` ordering; the
+             // parallel pass below reads only shared immutable state and
+             // `rayon`'s `collect` into a `Vec` preserves this order, so the
+@@ -155,94 +210,97 @@ pub fn commit_support_analysis_builtin(
+             // order-independence property the previous per-series `par_iter`
+             // had).
+             contact_work.sort_by(|a, b| (a.0, &a.1, a.2).cmp(&(b.0, &b.1, b.2)));
+-            let contacts: Vec<Contact> = contact_work
+-                .par_iter()
+-                .filter_map(
+-                    |(layer_index, object_id, region_id, polygons, needs_support)| {
+-                        // Layer 0 rests on the bed and has no layer below it.
+-                        let lower_index = layer_index.checked_sub(1)?;
+-                        let empty: Vec<ExPolygon> = Vec::new();
+-                        let lower = object_layer_union
+-                            .get(&(object_id.clone(), lower_index))
+-                            .unwrap_or(&empty);
+-                        let params = SupportContactParams {
+-                            // Canonical scales the offset by the *lower* layer's
+-                            // height.
+-                            lower_layer_height_mm: layer_height_mm(
+-                                &plan.global_layers,
+-                                lower_index,
+-                            ),
+-                            // `layer_id` is trivially available here; the other
+-                            // new knobs ride neutral from `base_params` (OFF).
+-                            // Clone (not move) the base: `bridge_polygons` is a
+-                            // non-Copy field and this `Fn` closure may run
+-                            // multiple times under rayon.
+-                            layer_id: *layer_index,
+-                            ..base_params.clone()
+-                        };
+-                        let enforcers = modifiers.enforcers_at(object_id, *layer_index);
+-                        let blockers = modifiers.blockers_at(object_id, *layer_index);
+-                        // F-19: the auto/manual axis is a *per-region* setting --
+-                        // an object's regions may carry different `support_type`
+-                        // values -- so it is resolved from the region's own config,
+-                        // never from the run config.
+-                        let support_type = effective_support_type(
+-                            region_config(
+-                                region_map.as_deref(),
+-                                *layer_index,
+-                                object_id,
+-                                *region_id,
+-                            )
+-                            .unwrap_or(config),
+-                        );
+-                        // Canonical `detect_contacts` applies enforcers under every
+-                        // support type; only its angle-thresholded branch is
+-                        // auto-gated. Keep the annotation attached to the
+-                        // thresholded result, before the enforcer union.
+-                        let mut cantilever_surfaces = Vec::new();
+-                        let mut geometry = if support_type.is_auto() && *needs_support {
+-                            let annotations = detect_support_contacts_with_annotations(
+-                                polygons, lower, blockers, &params,
++            let contacts: Vec<Contact> = {
++                let _par = crate::perf_t27_probe3::Scope::new("sa3_contact_par_wall");
++                contact_work
++                    .par_iter()
++                    .filter_map(
++                        |(layer_index, object_id, region_id, polygons, needs_support)| {
++                            // Layer 0 rests on the bed and has no layer below it.
++                            let lower_index = layer_index.checked_sub(1)?;
++                            let empty: Vec<ExPolygon> = Vec::new();
++                            let lower = object_layer_union
++                                .get(&(object_id.clone(), lower_index))
++                                .unwrap_or(&empty);
++                            let params = SupportContactParams {
++                                // Canonical scales the offset by the *lower* layer's
++                                // height.
++                                lower_layer_height_mm: layer_height_mm(
++                                    &plan.global_layers,
++                                    lower_index,
++                                ),
++                                // `layer_id` is trivially available here; the other
++                                // new knobs ride neutral from `base_params` (OFF).
++                                // Clone (not move) the base: `bridge_polygons` is a
++                                // non-Copy field and this `Fn` closure may run
++                                // multiple times under rayon.
++                                layer_id: *layer_index,
++                                ..base_params.clone()
++                            };
++                            let enforcers = modifiers.enforcers_at(object_id, *layer_index);
++                            let blockers = modifiers.blockers_at(object_id, *layer_index);
++                            // F-19: the auto/manual axis is a *per-region* setting --
++                            // an object's regions may carry different `support_type`
++                            // values -- so it is resolved from the region's own config,
++                            // never from the run config.
++                            let support_type = effective_support_type(
++                                region_config(
++                                    region_map.as_deref(),
++                                    *layer_index,
++                                    object_id,
++                                    *region_id,
++                                )
++                                .unwrap_or(config),
+                             );
+-                            cantilever_surfaces = annotations.cantilever_surfaces;
+-                            annotations.contacts
+-                        } else {
+-                            Vec::new()
+-                        };
+-                        if !enforcers.is_empty() {
+-                            if let Some(enforcer_geometry) = enforcer_contacts(
+-                                polygons,
+-                                lower,
+-                                enforcers,
+-                                blockers,
+-                                params.external_perimeter_width_mm,
+-                            ) {
+-                                geometry.extend(enforcer_geometry);
+-                                geometry = union_ex(&geometry);
++                            // Canonical `detect_contacts` applies enforcers under every
++                            // support type; only its angle-thresholded branch is
++                            // auto-gated. Keep the annotation attached to the
++                            // thresholded result, before the enforcer union.
++                            let mut cantilever_surfaces = Vec::new();
++                            let mut geometry = if support_type.is_auto() && *needs_support {
++                                let annotations = detect_support_contacts_with_annotations(
++                                    polygons, lower, blockers, &params,
++                                );
++                                cantilever_surfaces = annotations.cantilever_surfaces;
++                                annotations.contacts
++                            } else {
++                                Vec::new()
++                            };
++                            if !enforcers.is_empty() {
++                                if let Some(enforcer_geometry) = enforcer_contacts(
++                                    polygons,
++                                    lower,
++                                    enforcers,
++                                    blockers,
++                                    params.external_perimeter_width_mm,
++                                ) {
++                                    geometry.extend(enforcer_geometry);
++                                    geometry = union_ex(&geometry);
++                                }
+                             }
+-                        }
+-                        if geometry.is_empty() {
+-                            return None;
+-                        }
+-                        // `enforced` / `blocked` describe how the region relates to
+-                        // the painted modifier volumes. `blocked` is tested against
+-                        // the region's own cross-section, not the surviving
+-                        // geometry, so it stays true for a candidate whose blocked
+-                        // part has already been subtracted away.
+-                        let enforced = !intersection_ex(&geometry, enforcers).is_empty();
+-                        let blocked = !intersection_ex(polygons, blockers).is_empty();
+-                        Some(Contact {
+-                            layer_index: *layer_index,
+-                            object_id: object_id.clone(),
+-                            region_id: *region_id,
+-                            geometry,
+-                            cantilever_surfaces,
+-                            enforced,
+-                            blocked,
+-                        })
+-                    },
+-                )
+-                .collect();
++                            if geometry.is_empty() {
++                                return None;
++                            }
++                            // `enforced` / `blocked` describe how the region relates to
++                            // the painted modifier volumes. `blocked` is tested against
++                            // the region's own cross-section, not the surviving
++                            // geometry, so it stays true for a candidate whose blocked
++                            // part has already been subtracted away.
++                            let enforced = !intersection_ex(&geometry, enforcers).is_empty();
++                            let blocked = !intersection_ex(polygons, blockers).is_empty();
++                            Some(Contact {
++                                layer_index: *layer_index,
++                                object_id: object_id.clone(),
++                                region_id: *region_id,
++                                geometry,
++                                cantilever_surfaces,
++                                enforced,
++                                blocked,
++                            })
++                        },
++                    )
++                    .collect()
++            };
+ 
+             for Contact {
+                 layer_index,
+@@ -347,33 +405,42 @@ pub fn commit_support_analysis_builtin(
+                 SUPPORT_TERRITORY_CLEARANCE_KEY.to_string(),
+                 support_territory_clearance_mm(config).to_string(),
+             );
+-            collect_support_territory(&mut ir, blackboard.mesh(), slices);
+-            // SliceIR has no facet classification, so the highest observed
+-            // cross-section is the narrowest truthful model-termination
+-            // approximation. The exact-Z service uses the same fallback.
+-            for (object_id, (top_layer, top_polygons)) in object_tops {
+-                let Some(plate) = object_bounds
+-                    .get(&object_id)
+-                    .and_then(|bounds| rectangle_from_bounds(*bounds))
+-                else {
+-                    continue;
+-                };
+-                for key in ir.model_occupancy.keys() {
+-                    if key.object_id == object_id && key.global_support_layer_index == top_layer {
+-                        ir.termination_surfaces.insert(
+-                            key.clone(),
+-                            top_polygons
+-                                .clone()
+-                                .into_iter()
+-                                .chain(std::iter::once(plate.clone()))
+-                                .collect(),
+-                        );
++            {
++                let _ter = crate::perf_t27_probe3::Scope::new("sa3_territory");
++                collect_support_territory(&mut ir, blackboard.mesh(), slices);
++            }
++            {
++                let _t = crate::perf_t27_probe3::Scope::new("sa3_termination_tail");
++                // SliceIR has no facet classification, so the highest observed
++                // cross-section is the narrowest truthful model-termination
++                // approximation. The exact-Z service uses the same fallback.
++                for (object_id, (top_layer, top_polygons)) in object_tops {
++                    let Some(plate) = object_bounds
++                        .get(&object_id)
++                        .and_then(|bounds| rectangle_from_bounds(*bounds))
++                    else {
++                        continue;
++                    };
++                    for key in ir.model_occupancy.keys() {
++                        if key.object_id == object_id && key.global_support_layer_index == top_layer
++                        {
++                            ir.termination_surfaces.insert(
++                                key.clone(),
++                                top_polygons
++                                    .clone()
++                                    .into_iter()
++                                    .chain(std::iter::once(plate.clone()))
++                                    .collect(),
++                            );
++                        }
+                     }
++                    ir.baseline_feasible_envelope.push(plate);
+                 }
+-                ir.baseline_feasible_envelope.push(plate);
+             }
+         }
+     }
++    drop(_stage_scope);
++    crate::perf_t27_probe3::flush();
+     blackboard.commit_support_analysis(Arc::new(ir))
+ }
+ 
+diff --git a/crates/slicer-runtime/src/lib.rs b/crates/slicer-runtime/src/lib.rs
+index c07726c6..f13e2d8a 100644
+--- a/crates/slicer-runtime/src/lib.rs
++++ b/crates/slicer-runtime/src/lib.rs
+@@ -14,6 +14,8 @@ pub mod layer_executor;
+ pub mod layer_finalization;
+ pub mod negative_part_subtract;
+ pub mod order_lock;
++/// TEMPORARY `PERF-T27-PROBE3` attribution scopes (t27 take; removed before commit).
++pub mod perf_t27_probe3;
+ pub mod pipeline;
+ pub mod postpass;
+ pub mod prepass;

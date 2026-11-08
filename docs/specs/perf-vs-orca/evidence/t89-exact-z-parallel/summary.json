@@ -1,0 +1,34 @@
+{
+ "ticket": 89,
+ "verdict": "GATE NOT MET - wall -5.50 % but process CPU +6.78 % against the pre-declared +3.0 % work-preserving ceiling; measured recommendation: DROP the parallel fold",
+ "qualification_pass": true,
+ "qualified_cells": 16,
+ "cross_mode_mismatches": [],
+ "pregate": {
+  "cell": "ordinary-base-classic-on",
+  "retained_pairs": 3,
+  "wall_delta_pct_paired_median": -5.495095851879473,
+  "cpu_delta_pct_paired_median": 6.775151408243674,
+  "cpu_clause_ceiling_pct": 3.0,
+  "wall_clause": "pass",
+  "cpu_clause": "fail",
+  "output_identity_clause": "pass"
+ },
+ "probe": {
+  "counters": {
+   "entries": 431,
+   "admitted": 431,
+   "distinct_object_z": 431,
+   "queries": 431,
+   "misses": 431,
+   "validate_ms": 7989.3
+  },
+  "shares": {
+   "mesh_us": 0.05648775037108029,
+   "z_section_us": 0.5096486698245392,
+   "top_section_us": 0.43386357980438056
+  },
+  "note": "`entries == distinct_object_z` means an object-level `(object, z)` occupancy cache has no headroom on this job. The split terms are accumulated thread-time under 12-way concurrency: shares only, never wall claims."
+ },
+ "standing_campaign": "not run: the pre-gate's CPU clause failed by more than a factor of two against the ceiling, so the stop discipline forbids spending the four-cell campaign on it"
+}

@@ -47,6 +47,7 @@ const BUMPED_WALL_COUNT: usize = 3;
 
 fn make_config(alternate_extra_wall: bool) -> ConfigView {
     ConfigViewBuilder::new()
+        .float("resolution", 0.01)
         .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
         .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
         .int("wall_count", BASE_WALL_COUNT as i64)

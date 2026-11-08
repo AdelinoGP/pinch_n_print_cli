@@ -1,0 +1,24 @@
+{
+  "cell": "classic-off",
+  "pairs": 6,
+  "wall_delta_pct_median": -22.2423,
+  "cpu_delta_pct_median": -26.8733,
+  "wall_deltas": [
+    -15.8271,
+    -12.0246,
+    -33.5605,
+    -22.7005,
+    -23.1673,
+    -21.7841
+  ],
+  "cpu_deltas": [
+    -25.7412,
+    -25.8485,
+    -27.6734,
+    -26.7836,
+    -26.9629,
+    -26.9894
+  ],
+  "wall_clause": true,
+  "cpu_clause": true
+}

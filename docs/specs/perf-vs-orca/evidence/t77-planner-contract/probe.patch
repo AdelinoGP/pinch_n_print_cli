@@ -1,0 +1,213 @@
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index 720a8fd7..e7fa1868 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -1207,6 +1207,8 @@ pub struct HostExecutionContext {
+     start_time: Instant,
+     /// Log messages emitted by the guest via host-services.log.
+     pub(crate) log_messages: Vec<(String, String)>,
++    /// PERF-T77-PROBE: last site tag seen from the guest (temporary).
++    pub(crate) t77_site: String,
+ 
+     // ── Output collectors ───────────────────────────────────────────
+     /// Infill output collected during a call.
+@@ -1509,6 +1511,7 @@ impl HostExecutionContextBuilder {
+             module_id: self.module_id,
+             start_time: Instant::now(),
+             log_messages: Vec::new(),
++            t77_site: String::new(),
+             infill_output: InfillOutputCollected::default(),
+             perimeter_output: PerimeterOutputCollected::default(),
+             support_output: SupportOutputCollected::default(),
+@@ -2603,9 +2606,52 @@ impl hs::Host for HostExecutionContext {
+         clip: Vec<ExPolygon>,
+         op: hs::ClipOperation,
+     ) -> wasmtime::Result<Vec<ExPolygon>> {
++        // PERF-T77-PROBE: temporary diagnostics, no geometry changes.
++        let t77_new_site = self
++            .log_messages
++            .last()
++            .and_then(|(_, message)| message.strip_prefix("PERF-T77-SITE ").map(str::to_owned));
++        if let Some(site) = t77_new_site {
++            self.t77_site = site;
++        }
++        let t77_site = self.t77_site.clone();
++        let t77_op = match op {
++            hs::ClipOperation::Union => "union",
++            hs::ClipOperation::Difference => "difference",
++            hs::ClipOperation::Intersection => "intersection",
++            _ => "other",
++        };
+         let ir_subject = wit_to_ir_expolygons(&subject);
+         let ir_clip = wit_to_ir_expolygons(&clip);
++        let t77_start = Instant::now();
+         let result = slicer_core::polygon_ops::clip_polygons(&ir_subject, &ir_clip, ir_clip_op(op));
++        let t77_core = t77_start.elapsed();
++        if std::env::var_os("PERF_T77_LOG").is_some() {
++            static T77_LOG: std::sync::OnceLock<std::sync::Mutex<std::fs::File>> =
++                std::sync::OnceLock::new();
++            let file = T77_LOG.get_or_init(|| {
++                let path = std::env::var("PERF_T77_LOG").expect("PERF_T77_LOG");
++                std::sync::Mutex::new(
++                    std::fs::OpenOptions::new()
++                        .create(true)
++                        .append(true)
++                        .open(path)
++                        .expect("t77 log file"),
++                )
++            });
++            if let Ok(mut file) = file.lock() {
++                use std::io::Write as _;
++                let _ = writeln!(
++                    file,
++                    "{}\t{}\t{}\t{}\t{}",
++                    t77_op,
++                    t77_site,
++                    subject.len(),
++                    clip.len(),
++                    t77_core.as_nanos()
++                );
++            }
++        }
+         Ok(ir_to_wit_expolygons(&result))
+     }
+ 
+diff --git a/modules/core-modules/tree-support-planner/src/lib.rs b/modules/core-modules/tree-support-planner/src/lib.rs
+index a5df8231..dd10aace 100644
+--- a/modules/core-modules/tree-support-planner/src/lib.rs
++++ b/modules/core-modules/tree-support-planner/src/lib.rs
+@@ -907,11 +907,14 @@ fn carve_emitted_regions_with_bbox_gate(
+             continue;
+         }
+         carved.extend(
+-            host::clip_polygons(
+-                std::slice::from_ref(region),
+-                collision_polys,
+-                ClipOperation::Difference,
+-            )
++            {
++                t77_site("carve_region");
++                host::clip_polygons(
++                    std::slice::from_ref(region),
++                    collision_polys,
++                    ClipOperation::Difference,
++                )
++            }
+             .into_iter()
+             .max_by(|a, b| {
+                 expolygon_area(a)
+@@ -1022,7 +1025,10 @@ pub fn build_roles(
+             // perimeter through the inside of each fused branch pair and makes
+             // the branch silhouette pop between layers as neighbouring circles
+             // drift in and out of contact.
+-            let regions = union_expolys(regions);
++            let regions = {
++                t77_site("role_union");
++                union_expolys(regions)
++            };
+             let regions = match simplify_tolerance {
+                 Some(tolerance) => expolygons_simplify(&regions, tolerance),
+                 None => regions,
+@@ -1033,6 +1039,7 @@ pub fn build_roles(
+                 // Simplification may move a boundary back into collision. The
+                 // per-circle largest-part selection already happened above, so
+                 // this is canonical's plain set-wide difference.
++                t77_site("set_diff");
+                 host::clip_polygons(&regions, collision_polys, ClipOperation::Difference)
+             }
+         };
+@@ -1045,6 +1052,7 @@ pub fn build_roles(
+     let mut carved = body;
+     for cut in [&roof, &base, &floor] {
+         if !carved.is_empty() && !cut.is_empty() {
++            t77_site("cross_role_diff");
+             carved = host::clip_polygons(&carved, cut, ClipOperation::Difference);
+         }
+     }
+@@ -1403,6 +1411,7 @@ fn expolygons_simplify_union(polys: &[ExPolygon], tolerance_units: f64) -> Vec<E
+         return simplified;
+     }
+     let (head, tail) = simplified.split_at(1);
++    t77_site("simplify_union");
+     host::clip_polygons(head, tail, ClipOperation::Union)
+ }
+ 
+@@ -1415,6 +1424,22 @@ fn union_expolys(polys: Vec<ExPolygon>) -> Vec<ExPolygon> {
+     host::clip_polygons(head, tail, ClipOperation::Union)
+ }
+ 
++// PERF-T77-PROBE: temporary diagnostics, no geometry changes.
++std::thread_local! {
++    static T77_SITE: std::cell::Cell<&'static str> = const { std::cell::Cell::new("") };
++}
++
++/// Emit a site tag only when the call site changes, so the host can attribute
++/// every `clip_polygons` call without one log event per call.
++fn t77_site(site: &'static str) {
++    T77_SITE.with(|cell| {
++        if cell.get() != site {
++            cell.set(site);
++            host::log_warn(&format!("PERF-T77-SITE {}", site));
++        }
++    });
++}
++
+ /// Canonical `TreeSupportData` — the radius-keyed collision / avoidance volumes
+ /// a tree-support run is planned against.
+ ///
+@@ -1559,8 +1584,10 @@ impl TreeVolumes {
+         for outlines in &layer_outlines {
+             if !outlines.is_empty() {
+                 below = if below.is_empty() {
++                    t77_site("below_first");
+                     union_expolys(outlines.clone())
+                 } else {
++                    t77_site("below");
+                     host::clip_polygons(&below, outlines, ClipOperation::Union)
+                 };
+             }
+@@ -1688,7 +1715,10 @@ impl TreeVolumes {
+             if polys.is_empty() {
+                 continue;
+             }
+-            by_layer[layer] = expolygons_simplify(&union_expolys(polys), tolerance_units);
++            by_layer[layer] = {
++                t77_site("ladder_union");
++                expolygons_simplify(&union_expolys(polys), tolerance_units)
++            };
+         }
+         let mut cache = self.collision.borrow_mut();
+         for (layer, polys) in by_layer.into_iter().enumerate() {
+@@ -2236,6 +2266,7 @@ impl SupportPlanner {
+             for (layer_idx, polygons) in polygons_by_layer {
+                 let polygons = if polygons.len() > 1 {
+                     let (first, rest) = polygons.split_at(1);
++                    t77_site("layer_union");
+                     host::clip_polygons(first, rest, ClipOperation::Union)
+                 } else {
+                     polygons
+@@ -3777,6 +3808,7 @@ impl SupportPlanner {
+                     // fixture (`SupportTest_Tree_Orca.gcode`).
+                     if let Some(own) = own_territory {
+                         for role in &mut roles {
++                            t77_site("territory_intersect");
+                             role.regions = host::clip_polygons(
+                                 &role.regions,
+                                 own,
+@@ -5696,12 +5728,10 @@ fn move_out_expolys(
+     if polygons.is_empty() || !is_inside_ex(polygons, x, y) {
+         return false;
+     }
+-    let polygons_dilated = union_expolys(host::offset_polygons(
+-        polygons,
+-        min_dist,
+-        OffsetJoinType::Miter,
+-        0.0,
+-    ));
++    let polygons_dilated = {
++        t77_site("move_union");
++        union_expolys(host::offset_polygons(polygons, min_dist, OffsetJoinType::Miter, 0.0))
++    };
+     let target = projection_onto(&polygons_dilated, from0);
+     let outward_dir = (target.0 - from0.0, target.1 - from0.1);
+     let dist2 = outward_dir.0 * outward_dir.0 + outward_dir.1 * outward_dir.1;

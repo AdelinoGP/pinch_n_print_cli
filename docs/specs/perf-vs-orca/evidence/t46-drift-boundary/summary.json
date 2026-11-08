@@ -1,0 +1,31 @@
+{
+  "kind": "ticket-46 frozen-job drift boundary — verified summary",
+  "frozen_reference_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+  "t44_reference_sha256": "1b71f83db378d33c2c52ee84028a7180b8b65d26edffde7eff0b06b40b2d403b",
+  "current_reference_sha256": "5a61a1066a4607c6968cc038eb221a38ed39d30b5d26d8448ad87895abc92c4a",
+  "t47_t44job_reference_sha256": "11e7d38a60f5018badd9c06424c296fcfc12e5d87bc785800fa2c803ba555a58",
+  "t47_classic_off_reference_sha256": "e1088b3df78b51b4d0add0c64b3cf143d44ca95cfb5c15db14080772b4e77fbf",
+  "t47_t44job_plus_alias_reconstruction": true,
+  "t47_classic_plus_alias_reconstruction": true,
+  "t44job_reconstruction": "current-head.gcode + '; support_overhang_angle = 30' == 11e7d38a… (3,809,057 B)",
+  "classic_reconstruction": "classic-off-current.gcode + '; support_overhang_angle = 30' == e1088b3d… (4,332,881 B)",
+  "t44_reconstruction": "current-head.gcode - 277 fan lines + '; support_overhang_angle = 30' == 1b71f83d… (3,806,297 B)",
+  "frozen_reconstruction": "t38-campaign snapshot exe+modules reproduces 7049a06d… (3,821,661 B)",
+  "visual_manifests": {
+    "frozen": {
+      "manifest_sha256": "4238dac9334004d282b207bbaf268b3c6a6305427b4d9a77c374ee80ac01bf1b",
+      "request_file": "request-frozen.json",
+      "gcode_path_leaf": "frozen-exact-flags.gcode"
+    },
+    "head": {
+      "manifest_sha256": "bccb13c305fa113b24a4c654f66bc48f90df42df87a0becb7761ddcf4b5fa9df",
+      "request_file": "request-head.json",
+      "gcode_path_leaf": "head-exact-flags.gcode"
+    },
+    "current": {
+      "manifest_sha256": "32ad7e2fb3e774098bd967eb474b697569e8607b800e941ac11ca4618d10c165",
+      "request_file": "request-current.json",
+      "gcode_path_leaf": "current-head.gcode"
+    }
+  }
+}

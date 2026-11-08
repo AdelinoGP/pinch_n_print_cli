@@ -116,6 +116,10 @@ fn arachne_negative_spacing_config_fails_the_slice_with_actionable_error() {
         slicer_ir::ConfigValue::Float(0.45),
     );
     fields.insert(
+        "resolution".to_string(),
+        slicer_ir::ConfigValue::Float(0.01),
+    );
+    fields.insert(
         "bridge_line_width".to_string(),
         slicer_ir::ConfigValue::Float(0.0),
     );

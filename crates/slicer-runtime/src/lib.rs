@@ -160,8 +160,8 @@ pub use layer_executor::{
     LayerExpansion, StageCapture, PREPARATION_PROJECTION_SCHEMA_VERSION, SUPPORTED_TAP_STAGE_IDS,
 };
 pub use layer_finalization::{
-    execute_layer_finalization, execute_layer_finalization_with_instrumentation,
-    FinalizationOutputBuilder,
+    execute_layer_finalization, execute_layer_finalization_owned,
+    execute_layer_finalization_with_instrumentation, FinalizationOutputBuilder,
 };
 // Intermediate renderer (packet 159): pure typed-capture-in, PNG-bytes-out
 // rendering, consumed by `pnp-cli`'s visual-debug command.

@@ -1,0 +1,45 @@
+{
+  "candidate": "SupportAnalysis eligibility-predicate parallel pre-pass (host-only)",
+  "changed_file": "crates/slicer-runtime/src/builtins/support_analysis_producer.rs",
+  "head_at_campaign": "b56f429a",
+  "model_sha256": {
+    "benchy": "6a07f34cc7769b1c852635212c91a1b354532f4222a9a8105c1035a1a7b284f7",
+    "base": "b26c8c79158bd009119e13c89aa0cb9b6f8100bef1de63f58c0d58e2c1c178af"
+  },
+  "config": {
+    "path": "docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-classic-supports-on.json",
+    "wall_generator": "classic",
+    "enable_support": true
+  },
+  "host_binary_sha256": {
+    "ordinary": {
+      "baseline": "d0d6e08fffe3625675a47283be1a1befbd4effd0d589aeabbf2ea3d5f0e37c27",
+      "candidate": "1ea961b76f7280f4b55cbb9a5b64eee2ce6af0b288bdc49116e27e355d5500dd"
+    },
+    "accelerated": {
+      "baseline": "c46eff52d293f2150d8394db857841595e090ec1b91bb04eb4761deda7a083f2",
+      "candidate": "1ef4da21e3be76b114a0370cd805d16538d904175a2be542fdf8788f16507954"
+    }
+  },
+  "arm_module_trees": {
+    "ordinary": "byte-identical between arms (diff -rq clean)",
+    "accelerated": "byte-identical between arms (diff -rq clean)"
+  },
+  "freshness": {
+    "ordinary_command": ["cargo", "xtask", "build-guests", "--check"],
+    "ordinary_exit": 0,
+    "accelerated_command": ["cargo", "xtask", "build-guests", "--accelerated", "--check"],
+    "accelerated_exit": 0
+  },
+  "reference_gcode_sha256": "76eb4e1df3a47abf9a973be4ac99cd6bac41efa9fb65240786251ec0f7cdf6a8",
+  "reference_gcode_bytes": 8658663,
+  "probe_evidence": {
+    "serial_predicate_base_on_ns": 24193993000,
+    "parallel_pre_pass_base_on_ns": 2914490300,
+    "regions_compared_base": 495,
+    "mismatches": 0,
+    "serial_predicate_benchy_on_ns": 811702000,
+    "parallel_pre_pass_benchy_on_ns": 89489100,
+    "regions_compared_benchy": 240
+  }
+}

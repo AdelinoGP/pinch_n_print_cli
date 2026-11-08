@@ -1,0 +1,558 @@
+{
+  "take": "t80-resolution-fairness",
+  "note": "'floor' is OrcaSlicer's canonical minimum resolution (0.001 mm); the matched job inherits 0.01. Deltas are (floor - default) / default, so a positive delta is the wall Orca gains from its slicing-time contour simplification. PnP implements no equivalent pass.",
+  "arms": {
+    "default": {
+      "resolution_mm": "0.01"
+    },
+    "floor": {
+      "resolution_mm": "0.001"
+    }
+  },
+  "cells": [
+    {
+      "fixture": "base",
+      "cell": "arachne-off",
+      "arms": {
+        "default": {
+          "n": 3,
+          "wall_median_s": 33.901,
+          "cpu_median_s": 49.891,
+          "bytes_median": 19219022.0,
+          "wall_samples": [
+            34.286,
+            33.901,
+            31.922
+          ],
+          "cpu_samples": [
+            49.906,
+            49.531,
+            49.891
+          ],
+          "bytes_samples": [
+            19236878,
+            19219022,
+            19219022
+          ]
+        },
+        "floor": {
+          "n": 3,
+          "wall_median_s": 37.131,
+          "cpu_median_s": 72.484,
+          "bytes_median": 22038256.0,
+          "wall_samples": [
+            32.496,
+            37.131,
+            41.813
+          ],
+          "cpu_samples": [
+            71.156,
+            72.484,
+            75.156
+          ],
+          "bytes_samples": [
+            22026376,
+            22038256,
+            22038256
+          ]
+        }
+      },
+      "paired": [
+        {
+          "run_index": 1,
+          "wall_delta_pct": -5.2207898267514405,
+          "cpu_delta_pct": 42.58005049493048
+        },
+        {
+          "run_index": 2,
+          "wall_delta_pct": 9.527742544467705,
+          "cpu_delta_pct": 46.34067553653267
+        },
+        {
+          "run_index": 3,
+          "wall_delta_pct": 30.98490069544515,
+          "cpu_delta_pct": 50.64039606341827
+        }
+      ],
+      "median_wall_delta_pct": 9.527742544467705,
+      "median_cpu_delta_pct": 46.34067553653267,
+      "byte_delta_pct": 14.668977432878737
+    },
+    {
+      "fixture": "base",
+      "cell": "arachne-on",
+      "arms": {
+        "default": {
+          "n": 3,
+          "wall_median_s": 43.128,
+          "cpu_median_s": 79.938,
+          "bytes_median": 35976867.0,
+          "wall_samples": [
+            42.698,
+            43.128,
+            43.465
+          ],
+          "cpu_samples": [
+            81.578,
+            79.438,
+            79.938
+          ],
+          "bytes_samples": [
+            35994723,
+            35976867,
+            35943911
+          ]
+        },
+        "floor": {
+          "n": 3,
+          "wall_median_s": 55.901,
+          "cpu_median_s": 132.734,
+          "bytes_median": 45498056.0,
+          "wall_samples": [
+            55.901,
+            59.242,
+            54.378
+          ],
+          "cpu_samples": [
+            134.359,
+            132.734,
+            127.641
+          ],
+          "bytes_samples": [
+            45498056,
+            45498056,
+            45498056
+          ]
+        }
+      },
+      "paired": [
+        {
+          "run_index": 1,
+          "wall_delta_pct": 30.92182303620779,
+          "cpu_delta_pct": 64.70004167790336
+        },
+        {
+          "run_index": 2,
+          "wall_delta_pct": 37.36319792246336,
+          "cpu_delta_pct": 67.09131649840128
+        },
+        {
+          "run_index": 3,
+          "wall_delta_pct": 25.107557805130554,
+          "cpu_delta_pct": 59.674998123545755
+        }
+      ],
+      "median_wall_delta_pct": 30.92182303620779,
+      "median_cpu_delta_pct": 64.70004167790336,
+      "byte_delta_pct": 26.464753031441006
+    },
+    {
+      "fixture": "base",
+      "cell": "classic-off",
+      "arms": {
+        "default": {
+          "n": 3,
+          "wall_median_s": 32.794,
+          "cpu_median_s": 47.359,
+          "bytes_median": 20636243.0,
+          "wall_samples": [
+            32.455,
+            32.794,
+            33.027
+          ],
+          "cpu_samples": [
+            47.562,
+            46.578,
+            47.359
+          ],
+          "bytes_samples": [
+            20636243,
+            20636243,
+            20648147
+          ]
+        },
+        "floor": {
+          "n": 3,
+          "wall_median_s": 44.806,
+          "cpu_median_s": 80.203,
+          "bytes_median": 39365366.0,
+          "wall_samples": [
+            44.639,
+            45.256,
+            44.806
+          ],
+          "cpu_samples": [
+            80.203,
+            81.375,
+            77.844
+          ],
+          "bytes_samples": [
+            39365366,
+            39365366,
+            39365366
+          ]
+        }
+      },
+      "paired": [
+        {
+          "run_index": 1,
+          "wall_delta_pct": 37.541210907410274,
+          "cpu_delta_pct": 68.6283167234347
+        },
+        {
+          "run_index": 2,
+          "wall_delta_pct": 38.00085381472222,
+          "cpu_delta_pct": 74.70694319206491
+        },
+        {
+          "run_index": 3,
+          "wall_delta_pct": 35.66475913646409,
+          "cpu_delta_pct": 64.3700247049135
+        }
+      ],
+      "median_wall_delta_pct": 37.541210907410274,
+      "median_cpu_delta_pct": 68.6283167234347,
+      "byte_delta_pct": 90.75839531449596
+    },
+    {
+      "fixture": "base",
+      "cell": "classic-on",
+      "arms": {
+        "default": {
+          "n": 3,
+          "wall_median_s": 43.021,
+          "cpu_median_s": 74.0,
+          "bytes_median": 37471577.0,
+          "wall_samples": [
+            43.021,
+            41.865,
+            43.684
+          ],
+          "cpu_samples": [
+            74.0,
+            72.156,
+            74.344
+          ],
+          "bytes_samples": [
+            37408971,
+            37471577,
+            37471577
+          ]
+        },
+        "floor": {
+          "n": 3,
+          "wall_median_s": 60.417,
+          "cpu_median_s": 138.531,
+          "bytes_median": 62828069.0,
+          "wall_samples": [
+            61.439,
+            60.417,
+            58.954
+          ],
+          "cpu_samples": [
+            144.109,
+            138.531,
+            136.812
+          ],
+          "bytes_samples": [
+            62828069,
+            62828069,
+            62848849
+          ]
+        }
+      },
+      "paired": [
+        {
+          "run_index": 1,
+          "wall_delta_pct": 42.81165012435787,
+          "cpu_delta_pct": 94.74189189189191
+        },
+        {
+          "run_index": 2,
+          "wall_delta_pct": 44.31386599785023,
+          "cpu_delta_pct": 91.98819225012473
+        },
+        {
+          "run_index": 3,
+          "wall_delta_pct": 34.955590147422406,
+          "cpu_delta_pct": 84.02561067470143
+        }
+      ],
+      "median_wall_delta_pct": 42.81165012435787,
+      "median_cpu_delta_pct": 91.98819225012473,
+      "byte_delta_pct": 67.6686011907105
+    },
+    {
+      "fixture": "benchy",
+      "cell": "arachne-off",
+      "arms": {
+        "default": {
+          "n": 3,
+          "wall_median_s": 5.967,
+          "cpu_median_s": 13.438,
+          "bytes_median": 4675532.0,
+          "wall_samples": [
+            5.967,
+            6.175,
+            5.854
+          ],
+          "cpu_samples": [
+            13.438,
+            12.047,
+            13.578
+          ],
+          "bytes_samples": [
+            4684172,
+            4675532,
+            4675532
+          ]
+        },
+        "floor": {
+          "n": 3,
+          "wall_median_s": 7.881,
+          "cpu_median_s": 16.438,
+          "bytes_median": 5094246.0,
+          "wall_samples": [
+            7.882,
+            7.842,
+            7.881
+          ],
+          "cpu_samples": [
+            14.531,
+            19.562,
+            16.438
+          ],
+          "bytes_samples": [
+            5100006,
+            5094246,
+            5094246
+          ]
+        }
+      },
+      "paired": [
+        {
+          "run_index": 1,
+          "wall_delta_pct": 32.09317915200268,
+          "cpu_delta_pct": 8.133650840898943
+        },
+        {
+          "run_index": 2,
+          "wall_delta_pct": 26.995951417004044,
+          "cpu_delta_pct": 62.38067568689301
+        },
+        {
+          "run_index": 3,
+          "wall_delta_pct": 34.62589682268534,
+          "cpu_delta_pct": 21.063485049344525
+        }
+      ],
+      "median_wall_delta_pct": 32.09317915200268,
+      "median_cpu_delta_pct": 21.063485049344525,
+      "byte_delta_pct": 8.955430098649735
+    },
+    {
+      "fixture": "benchy",
+      "cell": "arachne-on",
+      "arms": {
+        "default": {
+          "n": 3,
+          "wall_median_s": 7.046,
+          "cpu_median_s": 17.125,
+          "bytes_median": 9719000.0,
+          "wall_samples": [
+            6.9,
+            7.174,
+            7.046
+          ],
+          "cpu_samples": [
+            19.016,
+            17.125,
+            16.812
+          ],
+          "bytes_samples": [
+            9719000,
+            9719000,
+            9719000
+          ]
+        },
+        "floor": {
+          "n": 3,
+          "wall_median_s": 10.166,
+          "cpu_median_s": 25.422,
+          "bytes_median": 11659829.0,
+          "wall_samples": [
+            10.166,
+            11.141,
+            9.708
+          ],
+          "cpu_samples": [
+            25.422,
+            26.766,
+            24.234
+          ],
+          "bytes_samples": [
+            11659829,
+            11659829,
+            11665589
+          ]
+        }
+      },
+      "paired": [
+        {
+          "run_index": 1,
+          "wall_delta_pct": 47.333333333333336,
+          "cpu_delta_pct": 33.68742111905765
+        },
+        {
+          "run_index": 2,
+          "wall_delta_pct": 55.296905492054634,
+          "cpu_delta_pct": 56.29781021897809
+        },
+        {
+          "run_index": 3,
+          "wall_delta_pct": 37.78030087993187,
+          "cpu_delta_pct": 44.14703783012134
+        }
+      ],
+      "median_wall_delta_pct": 47.333333333333336,
+      "median_cpu_delta_pct": 44.14703783012134,
+      "byte_delta_pct": 19.969431011420927
+    },
+    {
+      "fixture": "benchy",
+      "cell": "classic-off",
+      "arms": {
+        "default": {
+          "n": 3,
+          "wall_median_s": 5.723,
+          "cpu_median_s": 10.797,
+          "bytes_median": 3890403.0,
+          "wall_samples": [
+            5.27,
+            5.894,
+            5.723
+          ],
+          "cpu_samples": [
+            10.797,
+            11.625,
+            9.422
+          ],
+          "bytes_samples": [
+            3890403,
+            3890403,
+            3890403
+          ]
+        },
+        "floor": {
+          "n": 3,
+          "wall_median_s": 8.951,
+          "cpu_median_s": 17.828,
+          "bytes_median": 6479594.0,
+          "wall_samples": [
+            8.951,
+            8.884,
+            9.066
+          ],
+          "cpu_samples": [
+            17.188,
+            17.828,
+            17.953
+          ],
+          "bytes_samples": [
+            6479594,
+            6479594,
+            6479594
+          ]
+        }
+      },
+      "paired": [
+        {
+          "run_index": 1,
+          "wall_delta_pct": 69.84819734345353,
+          "cpu_delta_pct": 59.19236825043992
+        },
+        {
+          "run_index": 2,
+          "wall_delta_pct": 50.7295554801493,
+          "cpu_delta_pct": 53.35913978494623
+        },
+        {
+          "run_index": 3,
+          "wall_delta_pct": 58.413419535208824,
+          "cpu_delta_pct": 90.54340904266608
+        }
+      ],
+      "median_wall_delta_pct": 58.413419535208824,
+      "median_cpu_delta_pct": 59.19236825043992,
+      "byte_delta_pct": 66.55328509668536
+    },
+    {
+      "fixture": "benchy",
+      "cell": "classic-on",
+      "arms": {
+        "default": {
+          "n": 3,
+          "wall_median_s": 6.253,
+          "cpu_median_s": 16.484,
+          "bytes_median": 8923339.0,
+          "wall_samples": [
+            6.075,
+            6.825,
+            6.253
+          ],
+          "cpu_samples": [
+            16.281,
+            16.484,
+            17.031
+          ],
+          "bytes_samples": [
+            8923339,
+            8923339,
+            8923339
+          ]
+        },
+        "floor": {
+          "n": 3,
+          "wall_median_s": 10.429,
+          "cpu_median_s": 27.797,
+          "bytes_median": 13025634.0,
+          "wall_samples": [
+            10.035,
+            10.429,
+            10.731
+          ],
+          "cpu_samples": [
+            27.797,
+            28.391,
+            26.562
+          ],
+          "bytes_samples": [
+            13025634,
+            13025634,
+            13031394
+          ]
+        }
+      },
+      "paired": [
+        {
+          "run_index": 1,
+          "wall_delta_pct": 65.18518518518518,
+          "cpu_delta_pct": 70.73275597322034
+        },
+        {
+          "run_index": 2,
+          "wall_delta_pct": 52.8058608058608,
+          "cpu_delta_pct": 72.23368114535305
+        },
+        {
+          "run_index": 3,
+          "wall_delta_pct": 71.6136254597793,
+          "cpu_delta_pct": 55.962656332570035
+        }
+      ],
+      "median_wall_delta_pct": 65.18518518518518,
+      "median_cpu_delta_pct": 70.73275597322034,
+      "byte_delta_pct": 45.972645441353286
+    }
+  ]
+}

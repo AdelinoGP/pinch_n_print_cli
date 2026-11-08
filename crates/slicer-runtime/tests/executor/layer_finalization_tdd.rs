@@ -17,6 +17,59 @@ use slicer_runtime::{
 };
 
 #[test]
+fn owning_entry_point_publishes_the_module_mutation_without_a_rollback_copy() {
+    struct AppendingRunner;
+    impl FinalizationStageRunner for AppendingRunner {
+        fn run_stage(
+            &self,
+            _stage_id: &StageId,
+            _module: &CompiledModuleLive<'_>,
+            _input: FinalizationStageInput<'_>,
+            layers: &mut Vec<LayerCollectionIR>,
+        ) -> Result<FinalizationOutput, FinalizationError> {
+            layers.push(layer_collection_fixture(1, 0.4));
+            Ok(FinalizationOutput::Success)
+        }
+    }
+
+    let plan = execution_plan_fixture(Some(compiled_stage(
+        "PostPass::LayerFinalization",
+        &["com.example.appender"],
+    )));
+    let blackboard = Blackboard::new(Arc::new(mesh_fixture()), 0);
+
+    let owned = slicer_runtime::execute_layer_finalization_owned(
+        &plan,
+        &blackboard,
+        &AppendingRunner,
+        vec![layer_collection_fixture(0, 0.2)],
+        &slicer_runtime::NoopInstrumentation,
+        &Default::default(),
+    )
+    .expect("owning finalization succeeds");
+    assert_eq!(
+        owned
+            .iter()
+            .map(|l| l.global_layer_index)
+            .collect::<Vec<_>>(),
+        vec![0, 1],
+        "the owning entry point returns the module's committed collection"
+    );
+
+    // The borrowed compatibility wrapper publishes exactly the same collection.
+    let mut borrowed = vec![layer_collection_fixture(0, 0.2)];
+    execute_layer_finalization(
+        &plan,
+        &blackboard,
+        &AppendingRunner,
+        &mut borrowed,
+        &Default::default(),
+    )
+    .expect("borrowed finalization succeeds");
+    assert_eq!(borrowed, owned);
+}
+
+#[test]
 fn finalization_executor_locks_down_stage_order_and_passes_mut_layers() {
     let mesh = Arc::new(mesh_fixture());
     let blackboard = Blackboard::new(mesh, 0);
@@ -118,7 +171,6 @@ fn finalization_executor_rejects_non_monotonic_layers() {
         layer_collection_fixture(1, 0.4),
     ];
 
-    let before = layers.clone();
     let recorder = ValidationErrorRecorder::default();
     let result =
         slicer_runtime::layer_finalization::execute_layer_finalization_with_instrumentation(
@@ -135,7 +187,13 @@ fn finalization_executor_rejects_non_monotonic_layers() {
             message: "layer indices must be monotonic, found 1 followed by 0".into(),
         })
     );
-    assert_eq!(layers, before, "rejected candidate must not commit");
+    // t90 ownership contract: the stage works on the caller's own collection, so
+    // an abort consumes it. There is no rollback snapshot to restore and nothing
+    // production-side reads the vector after a fatal finalization error.
+    assert!(
+        layers.is_empty(),
+        "the rejected working collection is consumed by the abort, not committed"
+    );
     assert_eq!(
         *recorder.0.lock().unwrap(),
         vec![(
@@ -263,7 +321,7 @@ fn finalization_executor_handles_fatal_error() {
 }
 
 #[test]
-fn finalization_fatal_error_is_instrumented_and_mutating_runner_rolls_back() {
+fn finalization_fatal_error_is_instrumented_and_abort_consumes_the_working_collection() {
     struct MutatingFailure;
     impl FinalizationStageRunner for MutatingFailure {
         fn run_stage(
@@ -328,7 +386,6 @@ fn finalization_fatal_error_is_instrumented_and_mutating_runner_rolls_back() {
     )));
     let blackboard = Blackboard::new(Arc::new(mesh_fixture()), 0);
     let mut layers = vec![layer_collection_fixture(0, 0.2)];
-    let before = layers.clone();
     let recorder = Recorder::default();
     let error =
         slicer_runtime::layer_finalization::execute_layer_finalization_with_instrumentation(
@@ -341,7 +398,13 @@ fn finalization_fatal_error_is_instrumented_and_mutating_runner_rolls_back() {
         )
         .expect_err("runner fails after mutation");
     assert!(matches!(error, FinalizationError::FatalModule { .. }));
-    assert_eq!(layers, before);
+    // t90: the runner mutated the caller's own collection (`layers.clear()`),
+    // and the abort consumes it — the pre-stage snapshot the old clone
+    // preserved is gone by design, and production drops the vector here anyway.
+    assert!(
+        layers.is_empty(),
+        "a fatal module error consumes the working collection"
+    );
     assert_eq!(
         *recorder.0.lock().unwrap(),
         vec![(

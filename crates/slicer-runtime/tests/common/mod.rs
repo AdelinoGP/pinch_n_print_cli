@@ -52,6 +52,7 @@ pub fn classic_perimeters_baseline() -> ConfigViewBuilder {
     ConfigViewBuilder::new()
         .float("nozzle_diameter", 0.4)
         .float("layer_height", 0.2)
+        .float("resolution", 0.01)
         .float("bridge_line_width", 0.0)
         .float("initial_layer_line_width", 0.0)
         .float("outer_wall_line_width", 0.0)

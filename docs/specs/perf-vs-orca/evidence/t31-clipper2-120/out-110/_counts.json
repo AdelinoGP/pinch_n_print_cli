@@ -1,0 +1,1837 @@
+{
+  "annulus__closing_ex_miter": [
+    1,
+    1,
+    8
+  ],
+  "annulus__difference_shifted": [
+    0,
+    0,
+    0
+  ],
+  "annulus__intersection_shifted": [
+    1,
+    1,
+    8
+  ],
+  "annulus__offset2_ex": [
+    1,
+    1,
+    8
+  ],
+  "annulus__offset_erode": [
+    1,
+    1,
+    8
+  ],
+  "annulus__offset_grow": [
+    1,
+    1,
+    60
+  ],
+  "annulus__opening_miter": [
+    1,
+    1,
+    8
+  ],
+  "annulus__union_ex": [
+    1,
+    1,
+    8
+  ],
+  "benchy__layer00_clip_polylines": [
+    74,
+    0,
+    148
+  ],
+  "benchy__layer00_closing": [
+    1,
+    0,
+    777
+  ],
+  "benchy__layer00_offset2_ex": [
+    1,
+    0,
+    806
+  ],
+  "benchy__layer00_opening": [
+    1,
+    0,
+    816
+  ],
+  "benchy__layer00_raw": [
+    1,
+    0,
+    702
+  ],
+  "benchy__layer01_clip_polylines": [
+    74,
+    0,
+    148
+  ],
+  "benchy__layer01_closing": [
+    1,
+    0,
+    783
+  ],
+  "benchy__layer01_offset2_ex": [
+    1,
+    0,
+    820
+  ],
+  "benchy__layer01_opening": [
+    1,
+    0,
+    822
+  ],
+  "benchy__layer01_raw": [
+    1,
+    0,
+    706
+  ],
+  "benchy__layer02_clip_polylines": [
+    84,
+    0,
+    168
+  ],
+  "benchy__layer02_closing": [
+    1,
+    1,
+    851
+  ],
+  "benchy__layer02_offset2_ex": [
+    1,
+    1,
+    921
+  ],
+  "benchy__layer02_opening": [
+    1,
+    1,
+    910
+  ],
+  "benchy__layer02_raw": [
+    1,
+    1,
+    815
+  ],
+  "benchy__layer03_clip_polylines": [
+    113,
+    0,
+    226
+  ],
+  "benchy__layer03_closing": [
+    1,
+    2,
+    1288
+  ],
+  "benchy__layer03_offset2_ex": [
+    1,
+    2,
+    1116
+  ],
+  "benchy__layer03_opening": [
+    1,
+    2,
+    1333
+  ],
+  "benchy__layer03_raw": [
+    9,
+    2,
+    1457
+  ],
+  "benchy__layer04_clip_polylines": [
+    239,
+    0,
+    478
+  ],
+  "benchy__layer04_closing": [
+    2,
+    3,
+    2183
+  ],
+  "benchy__layer04_offset2_ex": [
+    2,
+    3,
+    1940
+  ],
+  "benchy__layer04_opening": [
+    2,
+    3,
+    2205
+  ],
+  "benchy__layer04_raw": [
+    7,
+    3,
+    2104
+  ],
+  "benchy__layer05_clip_polylines": [
+    195,
+    0,
+    390
+  ],
+  "benchy__layer05_closing": [
+    3,
+    2,
+    2287
+  ],
+  "benchy__layer05_offset2_ex": [
+    3,
+    2,
+    2117
+  ],
+  "benchy__layer05_opening": [
+    3,
+    2,
+    2412
+  ],
+  "benchy__layer05_raw": [
+    3,
+    2,
+    2176
+  ],
+  "benchy__layer06_clip_polylines": [
+    151,
+    0,
+    302
+  ],
+  "benchy__layer06_closing": [
+    2,
+    1,
+    1570
+  ],
+  "benchy__layer06_offset2_ex": [
+    2,
+    1,
+    1497
+  ],
+  "benchy__layer06_opening": [
+    2,
+    1,
+    1724
+  ],
+  "benchy__layer06_raw": [
+    2,
+    1,
+    1446
+  ],
+  "benchy__layer07_clip_polylines": [
+    167,
+    0,
+    334
+  ],
+  "benchy__layer07_closing": [
+    3,
+    1,
+    1640
+  ],
+  "benchy__layer07_offset2_ex": [
+    3,
+    1,
+    1385
+  ],
+  "benchy__layer07_opening": [
+    3,
+    1,
+    1612
+  ],
+  "benchy__layer07_raw": [
+    3,
+    1,
+    1603
+  ],
+  "benchy__layer08_clip_polylines": [
+    135,
+    0,
+    270
+  ],
+  "benchy__layer08_closing": [
+    3,
+    0,
+    1570
+  ],
+  "benchy__layer08_offset2_ex": [
+    3,
+    0,
+    1333
+  ],
+  "benchy__layer08_opening": [
+    3,
+    0,
+    1541
+  ],
+  "benchy__layer08_raw": [
+    3,
+    0,
+    1496
+  ],
+  "benchy__layer09_clip_polylines": [
+    137,
+    0,
+    274
+  ],
+  "benchy__layer09_closing": [
+    5,
+    0,
+    1975
+  ],
+  "benchy__layer09_offset2_ex": [
+    5,
+    0,
+    1615
+  ],
+  "benchy__layer09_opening": [
+    5,
+    0,
+    1961
+  ],
+  "benchy__layer09_raw": [
+    5,
+    0,
+    1913
+  ],
+  "benchy__layer10_clip_polylines": [
+    144,
+    0,
+    288
+  ],
+  "benchy__layer10_closing": [
+    6,
+    0,
+    1798
+  ],
+  "benchy__layer10_offset2_ex": [
+    6,
+    0,
+    1588
+  ],
+  "benchy__layer10_opening": [
+    6,
+    0,
+    1851
+  ],
+  "benchy__layer10_raw": [
+    6,
+    0,
+    1796
+  ],
+  "benchy__layer11_clip_polylines": [
+    129,
+    0,
+    258
+  ],
+  "benchy__layer11_closing": [
+    5,
+    0,
+    1612
+  ],
+  "benchy__layer11_offset2_ex": [
+    5,
+    0,
+    1477
+  ],
+  "benchy__layer11_opening": [
+    5,
+    0,
+    1650
+  ],
+  "benchy__layer11_raw": [
+    5,
+    0,
+    1575
+  ],
+  "benchy__layer12_clip_polylines": [
+    80,
+    0,
+    160
+  ],
+  "benchy__layer12_closing": [
+    5,
+    0,
+    1054
+  ],
+  "benchy__layer12_offset2_ex": [
+    5,
+    0,
+    961
+  ],
+  "benchy__layer12_opening": [
+    5,
+    0,
+    1068
+  ],
+  "benchy__layer12_raw": [
+    5,
+    0,
+    1032
+  ],
+  "benchy__layer13_clip_polylines": [
+    58,
+    0,
+    116
+  ],
+  "benchy__layer13_closing": [
+    5,
+    0,
+    596
+  ],
+  "benchy__layer13_offset2_ex": [
+    5,
+    0,
+    525
+  ],
+  "benchy__layer13_opening": [
+    5,
+    0,
+    622
+  ],
+  "benchy__layer13_raw": [
+    5,
+    0,
+    632
+  ],
+  "benchy__layer14_clip_polylines": [
+    54,
+    0,
+    108
+  ],
+  "benchy__layer14_closing": [
+    4,
+    0,
+    451
+  ],
+  "benchy__layer14_offset2_ex": [
+    4,
+    0,
+    374
+  ],
+  "benchy__layer14_opening": [
+    4,
+    0,
+    455
+  ],
+  "benchy__layer14_raw": [
+    5,
+    0,
+    433
+  ],
+  "benchy__layer15_clip_polylines": [
+    69,
+    0,
+    138
+  ],
+  "benchy__layer15_closing": [
+    4,
+    0,
+    780
+  ],
+  "benchy__layer15_offset2_ex": [
+    4,
+    0,
+    683
+  ],
+  "benchy__layer15_opening": [
+    4,
+    0,
+    783
+  ],
+  "benchy__layer15_raw": [
+    4,
+    0,
+    663
+  ],
+  "benchy__layer16_clip_polylines": [
+    83,
+    0,
+    166
+  ],
+  "benchy__layer16_closing": [
+    1,
+    0,
+    1073
+  ],
+  "benchy__layer16_offset2_ex": [
+    1,
+    0,
+    974
+  ],
+  "benchy__layer16_opening": [
+    1,
+    0,
+    1057
+  ],
+  "benchy__layer16_raw": [
+    1,
+    0,
+    867
+  ],
+  "benchy__layer17_clip_polylines": [
+    93,
+    0,
+    186
+  ],
+  "benchy__layer17_closing": [
+    1,
+    1,
+    830
+  ],
+  "benchy__layer17_offset2_ex": [
+    1,
+    1,
+    641
+  ],
+  "benchy__layer17_opening": [
+    1,
+    1,
+    830
+  ],
+  "benchy__layer17_raw": [
+    1,
+    1,
+    700
+  ],
+  "benchy__layer18_clip_polylines": [
+    54,
+    0,
+    108
+  ],
+  "benchy__layer18_closing": [
+    1,
+    0,
+    404
+  ],
+  "benchy__layer18_offset2_ex": [
+    1,
+    0,
+    418
+  ],
+  "benchy__layer18_opening": [
+    1,
+    0,
+    482
+  ],
+  "benchy__layer18_raw": [
+    1,
+    0,
+    433
+  ],
+  "benchy__layer19_clip_polylines": [
+    61,
+    0,
+    122
+  ],
+  "benchy__layer19_closing": [
+    2,
+    1,
+    1128
+  ],
+  "benchy__layer19_offset2_ex": [
+    2,
+    1,
+    916
+  ],
+  "benchy__layer19_opening": [
+    2,
+    1,
+    1206
+  ],
+  "benchy__layer19_raw": [
+    2,
+    1,
+    1094
+  ],
+  "benchy__layer20_clip_polylines": [
+    17,
+    0,
+    34
+  ],
+  "benchy__layer20_closing": [
+    1,
+    1,
+    684
+  ],
+  "benchy__layer20_offset2_ex": [
+    1,
+    1,
+    547
+  ],
+  "benchy__layer20_opening": [
+    1,
+    1,
+    676
+  ],
+  "benchy__layer20_raw": [
+    1,
+    1,
+    596
+  ],
+  "benchy__layer21_clip_polylines": [
+    17,
+    0,
+    34
+  ],
+  "benchy__layer21_closing": [
+    1,
+    1,
+    655
+  ],
+  "benchy__layer21_offset2_ex": [
+    1,
+    1,
+    572
+  ],
+  "benchy__layer21_opening": [
+    1,
+    1,
+    657
+  ],
+  "benchy__layer21_raw": [
+    1,
+    1,
+    592
+  ],
+  "benchy__layer22_clip_polylines": [
+    18,
+    0,
+    36
+  ],
+  "benchy__layer22_closing": [
+    1,
+    1,
+    777
+  ],
+  "benchy__layer22_offset2_ex": [
+    1,
+    1,
+    615
+  ],
+  "benchy__layer22_opening": [
+    1,
+    1,
+    831
+  ],
+  "benchy__layer22_raw": [
+    1,
+    1,
+    709
+  ],
+  "benchy__layer23_clip_polylines": [
+    19,
+    0,
+    38
+  ],
+  "benchy__layer23_closing": [
+    1,
+    1,
+    841
+  ],
+  "benchy__layer23_offset2_ex": [
+    1,
+    1,
+    714
+  ],
+  "benchy__layer23_opening": [
+    1,
+    1,
+    843
+  ],
+  "benchy__layer23_raw": [
+    1,
+    1,
+    767
+  ],
+  "benchy__slice_all_union_ex": [
+    1,
+    0,
+    2128
+  ],
+  "bowtie__union_ex_self": [
+    2,
+    0,
+    6
+  ],
+  "grid16__closing_ex_miter": [
+    1,
+    0,
+    4
+  ],
+  "grid16__difference_benchclip": [
+    1,
+    0,
+    12
+  ],
+  "grid16__intersection_benchclip": [
+    1,
+    0,
+    16
+  ],
+  "grid16__offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "grid16__offset_bench": [
+    1,
+    0,
+    4
+  ],
+  "grid16__offset_round": [
+    1,
+    0,
+    12
+  ],
+  "grid16__offset_square_neg": [
+    1,
+    36,
+    148
+  ],
+  "grid16__opening_miter": [
+    1,
+    0,
+    4
+  ],
+  "grid16__union_benchclip": [
+    1,
+    0,
+    4
+  ],
+  "grid16__union_ex": [
+    1,
+    0,
+    16
+  ],
+  "grid16__xor": [
+    1,
+    1,
+    20
+  ],
+  "grid256__closing_ex_miter": [
+    1,
+    0,
+    4
+  ],
+  "grid256__difference_benchclip": [
+    1,
+    0,
+    60
+  ],
+  "grid256__intersection_benchclip": [
+    1,
+    0,
+    20
+  ],
+  "grid256__offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "grid256__offset_bench": [
+    1,
+    0,
+    4
+  ],
+  "grid256__offset_round": [
+    1,
+    0,
+    12
+  ],
+  "grid256__offset_square_neg": [
+    1,
+    900,
+    3604
+  ],
+  "grid256__opening_miter": [
+    1,
+    0,
+    4
+  ],
+  "grid256__union_benchclip": [
+    1,
+    0,
+    58
+  ],
+  "grid256__union_ex": [
+    1,
+    0,
+    64
+  ],
+  "grid256__xor": [
+    2,
+    0,
+    72
+  ],
+  "grid64__closing_ex_miter": [
+    1,
+    0,
+    4
+  ],
+  "grid64__difference_benchclip": [
+    1,
+    0,
+    28
+  ],
+  "grid64__intersection_benchclip": [
+    1,
+    0,
+    32
+  ],
+  "grid64__offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "grid64__offset_bench": [
+    1,
+    0,
+    4
+  ],
+  "grid64__offset_round": [
+    1,
+    0,
+    12
+  ],
+  "grid64__offset_square_neg": [
+    1,
+    196,
+    788
+  ],
+  "grid64__opening_miter": [
+    1,
+    0,
+    4
+  ],
+  "grid64__union_benchclip": [
+    1,
+    0,
+    26
+  ],
+  "grid64__union_ex": [
+    1,
+    0,
+    32
+  ],
+  "grid64__xor": [
+    2,
+    0,
+    40
+  ],
+  "hole_overlap__difference": [
+    0,
+    0,
+    0
+  ],
+  "hole_overlap__intersection": [
+    1,
+    1,
+    8
+  ],
+  "hole_overlap__union": [
+    1,
+    0,
+    6
+  ],
+  "wedge__layer00_clip_polylines": [
+    106,
+    0,
+    212
+  ],
+  "wedge__layer00_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer00_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer00_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer01_clip_polylines": [
+    106,
+    0,
+    212
+  ],
+  "wedge__layer01_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer01_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer01_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer02_clip_polylines": [
+    106,
+    0,
+    212
+  ],
+  "wedge__layer02_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer02_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer02_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer03_clip_polylines": [
+    108,
+    0,
+    216
+  ],
+  "wedge__layer03_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer03_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer03_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer04_clip_polylines": [
+    111,
+    0,
+    222
+  ],
+  "wedge__layer04_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer04_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer04_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer05_clip_polylines": [
+    114,
+    0,
+    228
+  ],
+  "wedge__layer05_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer05_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer05_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer06_clip_polylines": [
+    117,
+    0,
+    234
+  ],
+  "wedge__layer06_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer06_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer06_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer07_clip_polylines": [
+    120,
+    0,
+    240
+  ],
+  "wedge__layer07_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer07_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer07_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer08_clip_polylines": [
+    123,
+    0,
+    246
+  ],
+  "wedge__layer08_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer08_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer08_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer09_clip_polylines": [
+    125,
+    0,
+    250
+  ],
+  "wedge__layer09_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer09_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer09_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer10_clip_polylines": [
+    128,
+    0,
+    256
+  ],
+  "wedge__layer10_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer10_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer10_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer11_clip_polylines": [
+    131,
+    0,
+    262
+  ],
+  "wedge__layer11_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer11_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer11_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer12_clip_polylines": [
+    134,
+    0,
+    268
+  ],
+  "wedge__layer12_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer12_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer12_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer13_clip_polylines": [
+    137,
+    0,
+    274
+  ],
+  "wedge__layer13_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer13_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer13_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer14_clip_polylines": [
+    140,
+    0,
+    280
+  ],
+  "wedge__layer14_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer14_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer14_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer15_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer15_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer15_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer15_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer16_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer16_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer16_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer16_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer17_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer17_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer17_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer17_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer18_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer18_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer18_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer18_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer19_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer19_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer19_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer19_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer20_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer20_offset2_ex": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer20_offset_erode": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer20_raw": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer21_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer21_offset2_ex": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer21_offset_erode": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer21_raw": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer22_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer22_offset2_ex": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer22_offset_erode": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer22_raw": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer23_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer23_offset2_ex": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer23_offset_erode": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer23_raw": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer24_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer24_offset2_ex": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer24_offset_erode": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer24_raw": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer25_clip_polylines": [
+    200,
+    0,
+    400
+  ],
+  "wedge__layer25_offset2_ex": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer25_offset_erode": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer25_raw": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer26_clip_polylines": [
+    200,
+    0,
+    400
+  ],
+  "wedge__layer26_offset2_ex": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer26_offset_erode": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer26_raw": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer27_clip_polylines": [
+    200,
+    0,
+    400
+  ],
+  "wedge__layer27_offset2_ex": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer27_offset_erode": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer27_raw": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer28_clip_polylines": [
+    200,
+    0,
+    400
+  ],
+  "wedge__layer28_offset2_ex": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer28_offset_erode": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer28_raw": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer29_clip_polylines": [
+    200,
+    0,
+    400
+  ],
+  "wedge__layer29_offset2_ex": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer29_offset_erode": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer29_raw": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer30_clip_polylines": [
+    200,
+    0,
+    400
+  ],
+  "wedge__layer30_offset2_ex": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer30_offset_erode": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer30_raw": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer31_clip_polylines": [
+    200,
+    0,
+    400
+  ],
+  "wedge__layer31_offset2_ex": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer31_offset_erode": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer31_raw": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer32_clip_polylines": [
+    200,
+    0,
+    400
+  ],
+  "wedge__layer32_offset2_ex": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer32_offset_erode": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer32_raw": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer33_clip_polylines": [
+    200,
+    0,
+    400
+  ],
+  "wedge__layer33_offset2_ex": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer33_offset_erode": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer33_raw": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer34_clip_polylines": [
+    200,
+    0,
+    400
+  ],
+  "wedge__layer34_offset2_ex": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer34_offset_erode": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer34_raw": [
+    2,
+    0,
+    12
+  ],
+  "wedge__layer35_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer35_offset2_ex": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer35_offset_erode": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer35_raw": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer36_clip_polylines": [
+    152,
+    0,
+    304
+  ],
+  "wedge__layer36_offset2_ex": [
+    1,
+    0,
+    12
+  ],
+  "wedge__layer36_offset_erode": [
+    1,
+    0,
+    12
+  ],
+  "wedge__layer36_raw": [
+    1,
+    0,
+    12
+  ],
+  "wedge__layer37_clip_polylines": [
+    152,
+    0,
+    304
+  ],
+  "wedge__layer37_offset2_ex": [
+    1,
+    0,
+    12
+  ],
+  "wedge__layer37_offset_erode": [
+    1,
+    0,
+    12
+  ],
+  "wedge__layer37_raw": [
+    1,
+    0,
+    12
+  ],
+  "wedge__layer38_clip_polylines": [
+    152,
+    0,
+    304
+  ],
+  "wedge__layer38_offset2_ex": [
+    1,
+    0,
+    12
+  ],
+  "wedge__layer38_offset_erode": [
+    1,
+    0,
+    12
+  ],
+  "wedge__layer38_raw": [
+    1,
+    0,
+    12
+  ],
+  "wedge__layer39_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer39_offset2_ex": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer39_offset_erode": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer39_raw": [
+    1,
+    0,
+    8
+  ],
+  "wedge__layer40_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer40_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer40_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer40_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer41_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer41_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer41_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer41_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer42_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer42_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer42_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer42_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer43_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer43_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer43_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer43_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer44_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer44_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer44_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer44_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer45_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer45_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer45_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer45_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer46_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer46_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer46_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer46_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer47_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer47_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer47_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer47_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer48_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer48_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer48_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer48_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer49_clip_polylines": [
+    141,
+    0,
+    282
+  ],
+  "wedge__layer49_offset2_ex": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer49_offset_erode": [
+    1,
+    0,
+    4
+  ],
+  "wedge__layer49_raw": [
+    1,
+    0,
+    4
+  ],
+  "wedge__slice_all_union_ex": [
+    1,
+    0,
+    12
+  ]
+}

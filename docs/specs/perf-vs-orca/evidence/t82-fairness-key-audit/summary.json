@@ -1,0 +1,53 @@
+{
+  "rows": 618,
+  "geometry_scope": 227,
+  "buckets": {
+    "absent-non-geometry": 332,
+    "absent-inert": 101,
+    "matched": 68,
+    "equal-by-units": 36,
+    "absent-material": 18,
+    "emission": 40,
+    "geometry-differs": 14,
+    "equal-by-rename": 6,
+    "equal-by-clamp": 2,
+    "differs-inert": 1
+  },
+  "geometry_differs": [
+    "brim_width",
+    "filter_out_gap_fill",
+    "infill_shift_step",
+    "precise_outer_wall",
+    "skirt_distance",
+    "skirt_loops",
+    "support_interface_bottom_layers",
+    "support_interface_spacing",
+    "support_interface_top_layers",
+    "top_shell_layers",
+    "tree_support_branch_angle",
+    "tree_support_branch_distance",
+    "wall_maximum_deviation",
+    "wall_maximum_resolution"
+  ],
+  "resolved_not_in_reference": 82,
+  "absent_material": [
+    "bottom_surface_density",
+    "bottom_surface_pattern",
+    "brim_type",
+    "detect_narrow_internal_solid_infill",
+    "ensure_vertical_shell_thickness",
+    "fill_multiline",
+    "infill_direction",
+    "internal_solid_infill_pattern",
+    "minimum_sparse_infill_area",
+    "solid_infill_direction",
+    "top_shell_thickness",
+    "top_surface_density",
+    "top_surface_pattern",
+    "tree_support_angle_slow",
+    "tree_support_auto_brim",
+    "tree_support_brim_width",
+    "tree_support_tip_diameter",
+    "tree_support_top_rate"
+  ]
+}

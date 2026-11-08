@@ -125,6 +125,10 @@ fn arachne_perimeters_simple_square_produces_walls() {
             // so 0.4 must actually be configured.
             std::collections::HashMap::from([
                 ("line_width".to_string(), slicer_ir::ConfigValue::Float(0.4)),
+                (
+                    "resolution".to_string(),
+                    slicer_ir::ConfigValue::Float(0.01),
+                ),
                 // Required-read baseline (packet 06 5c): classified reads in
                 // run_perimeters/arachne_params_from_config are now
                 // require_*; the view holds every key the path reads at

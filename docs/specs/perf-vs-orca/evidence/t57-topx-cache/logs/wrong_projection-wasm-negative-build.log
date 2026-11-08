@@ -1,0 +1,5 @@
+   Compiling num-traits v0.2.19
+   Compiling clipper2-rust v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\negative-controls\wrong_projection\engine)
+   Compiling clipper2-rust-oracle v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-original)
+   Compiling t57-negative-wrong-projection v0.0.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\negative-controls\wrong_projection)
+    Finished `release` profile [optimized] target(s) in 7.82s

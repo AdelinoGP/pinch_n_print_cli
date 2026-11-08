@@ -1,0 +1,19 @@
+{
+  "purpose": "isolated quartile bbox experiment, not adoption acceptance or Orca scoreboard",
+  "job": "supports-off Benchy Arachne; ticket-44 attribution settings, current post-repair baseline",
+  "modes": ["ordinary", "accelerated"],
+  "threads": 12,
+  "measured_pairs_per_mode": 6,
+  "excluded_warmups_per_arm": 1,
+  "order": "AB then BA, alternating by pair; ordinary batch then accelerated batch",
+  "exactness": "both proof pairs must pass before either timing batch; every output equals fresh baseline byte-for-byte",
+  "only_arm_difference": "modules/arachne-perimeters/arachne-perimeters.wasm",
+  "starvation": {
+    "cutoff_fraction_of_best_cpu_wall_ratio": 0.75,
+    "reference_group": "mode and arm separately",
+    "discard": "exclude entire pair if either arm is below its own cutoff; no automatic resampling",
+    "minimum_retained_pairs_per_mode": 5
+  },
+  "keep": "both modes require lower median wall and process CPU, with negative paired median deltas",
+  "automatic_commit": false
+}

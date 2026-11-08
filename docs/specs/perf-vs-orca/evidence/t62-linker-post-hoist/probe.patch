@@ -1,0 +1,484 @@
+diff --git a/crates/slicer-core/src/polygon_ops.rs b/crates/slicer-core/src/polygon_ops.rs
+index a56418b4..f9472f0e 100644
+--- a/crates/slicer-core/src/polygon_ops.rs
++++ b/crates/slicer-core/src/polygon_ops.rs
+@@ -235,11 +235,15 @@ pub fn clip_polylines(polylines: &[Vec<Point2>], clip: &[ExPolygon]) -> Vec<Vec<
+         return Vec::new();
+     }
+ 
+-    let open_subjects: Vec<Vec<Point64>> = polylines
+-        .iter()
+-        .filter(|p| p.len() >= 2)
+-        .map(|p| polyline_to_path(p))
+-        .collect();
++    let open_subjects: Vec<Vec<Point64>> = {
++        // [T62-PROBE] wayfinder ticket 62; removed before any commit.
++        let _t62_subj = crate::profile::scope(crate::profile::ScopeId::T62_SUBJ_BUILD);
++        polylines
++            .iter()
++            .filter(|p| p.len() >= 2)
++            .map(|p| polyline_to_path(p))
++            .collect()
++    };
+     if open_subjects.is_empty() {
+         return Vec::new();
+     }
+@@ -260,6 +264,8 @@ impl PreparedPolylineClip {
+     pub fn new(clip: &[ExPolygon]) -> Self {
+         use clipper2_rust::{inflate_paths_64, EndType, JoinType};
+ 
++        // [T62-PROBE] wayfinder ticket 62; removed before any commit.
++        let _t62_prepare = crate::profile::scope(crate::profile::ScopeId::T62_CLIP_PREPARE);
+         if clip.is_empty() {
+             return Self {
+                 clip_paths: Vec::new(),
+@@ -283,11 +289,15 @@ impl PreparedPolylineClip {
+     /// Clips polylines with all seven guarantees of [`clip_polylines`].
+     /// No execution state is retained between calls, including empty results.
+     pub fn clip(&self, polylines: &[Vec<Point2>]) -> Vec<Vec<Point2>> {
++        let _t62_call = crate::profile::scope(crate::profile::ScopeId::T62_CLIP_CALL_TOTAL);
++        // [T62-PROBE] wayfinder ticket 62; removed before any commit.
++        let _t62_subj = crate::profile::scope(crate::profile::ScopeId::T62_SUBJ_BUILD);
+         let open_subjects: Vec<Vec<Point64>> = polylines
+             .iter()
+             .filter(|p| p.len() >= 2)
+             .map(|p| polyline_to_path(p))
+             .collect();
++        drop(_t62_subj);
+         self.clip_open_subjects(open_subjects)
+     }
+ 
+@@ -295,25 +305,32 @@ impl PreparedPolylineClip {
+         use clipper2_rust::core::FillRule;
+         use clipper2_rust::{ClipType, Clipper64};
+ 
++        // [T62-PROBE] wayfinder ticket 62; removed before any commit.
++        let _t62_call = crate::profile::scope(crate::profile::ScopeId::T62_CLIP_CALL_TOTAL);
+         if open_subjects.is_empty() || self.clip_paths.is_empty() {
+             return Vec::new();
+         }
++        let _t62_engine = crate::profile::scope(crate::profile::ScopeId::T62_ENGINE_ADD);
+         let mut clipper = Clipper64::default();
+         clipper.add_open_subject(&open_subjects);
+         clipper.add_clip(&self.clip_paths);
++        drop(_t62_engine);
+ 
+         let mut closed_solution: Vec<Vec<Point64>> = Vec::new();
+         let mut open_solution: Vec<Vec<Point64>> = Vec::new();
++        let _t62_exec = crate::profile::scope(crate::profile::ScopeId::T62_EXECUTE);
+         let ok = clipper.execute(
+             ClipType::Intersection,
+             FillRule::NonZero,
+             &mut closed_solution,
+             Some(&mut open_solution),
+         );
++        drop(_t62_exec);
+         if !ok {
+             return Vec::new();
+         }
+ 
++        let _t62_out = crate::profile::scope(crate::profile::ScopeId::T62_OUT_CONVERT);
+         open_solution
+             .iter()
+             .filter(|path| path.len() >= 2)
+diff --git a/crates/slicer-core/src/profile.rs b/crates/slicer-core/src/profile.rs
+index 9095cec9..cbdcfac0 100644
+--- a/crates/slicer-core/src/profile.rs
++++ b/crates/slicer-core/src/profile.rs
+@@ -99,6 +99,21 @@ impl ScopeId {
+     /// bypass as [`ScopeId::OPENING`].
+     pub const CLOSING_EX: ScopeId = ScopeId(5);
+ 
++    // [T62-PROBE] Temporary post-hoist linker clip attribution scopes
++    // (wayfinder ticket 62); removed before any commit.
++    /// `PreparedPolylineClip::new` — boundary flatten + 1-unit pre-inflate.
++    pub const T62_CLIP_PREPARE: ScopeId = ScopeId(9);
++    /// Open-subject path conversion inside `clip` / `clip_polylines`.
++    pub const T62_SUBJ_BUILD: ScopeId = ScopeId(10);
++    /// Engine construction per clip call: `Clipper64` + add subjects + add clip.
++    pub const T62_ENGINE_ADD: ScopeId = ScopeId(11);
++    /// The clipper `execute` per clip call.
++    pub const T62_EXECUTE: ScopeId = ScopeId(12);
++    /// Open-solution to polyline conversion per clip call.
++    pub const T62_OUT_CONVERT: ScopeId = ScopeId(13);
++    /// The whole `PreparedPolylineClip::clip_open_subjects` call.
++    pub const T62_CLIP_CALL_TOTAL: ScopeId = ScopeId(14);
++
+     /// Every scope id minted by `slicer-core`, in ascending order.
+     ///
+     /// A sink implementation can walk this to build an id-to-name table up
+@@ -109,6 +124,14 @@ impl ScopeId {
+         ScopeId::OFFSET2_EX,
+         ScopeId::OPENING,
+         ScopeId::CLOSING_EX,
++        // [T62-PROBE] Temporary post-hoist linker clip attribution
++        // (wayfinder ticket 62); removed before any commit.
++        ScopeId::T62_CLIP_PREPARE,
++        ScopeId::T62_SUBJ_BUILD,
++        ScopeId::T62_ENGINE_ADD,
++        ScopeId::T62_EXECUTE,
++        ScopeId::T62_OUT_CONVERT,
++        ScopeId::T62_CLIP_CALL_TOTAL,
+     ];
+ 
+     /// Constructs a scope id from its raw representation.
+@@ -139,6 +162,13 @@ impl ScopeId {
+             3 => Some("polygon_ops::offset2_ex"),
+             4 => Some("polygon_ops::opening"),
+             5 => Some("polygon_ops::closing_ex"),
++            // [T62-PROBE] wayfinder ticket 62; removed before any commit.
++            9 => Some("t62::clip_prepare"),
++            10 => Some("t62::subj_build"),
++            11 => Some("t62::engine_add"),
++            12 => Some("t62::execute"),
++            13 => Some("t62::out_convert"),
++            14 => Some("t62::clip_call_total"),
+             _ => None,
+         }
+     }
+diff --git a/modules/core-modules/infill-linker/src/connect.rs b/modules/core-modules/infill-linker/src/connect.rs
+index 424fb9e7..7351017d 100644
+--- a/modules/core-modules/infill-linker/src/connect.rs
++++ b/modules/core-modules/infill-linker/src/connect.rs
+@@ -134,6 +134,9 @@ pub fn connect_infill(
+         };
+ 
+     let mut candidates = nearest_pair_candidates(&active, graph);
++    crate::t62::add(|c| {
++        c.cands += candidates.len() as u64;
++    });
+     candidates.sort_by(|left, right| {
+         left.distance
+             .total_cmp(&right.distance)
+@@ -249,6 +252,9 @@ pub fn connect_infill(
+             let (lower, upper) = (first_index.min(second_index), first_index.max(second_index));
+             active[lower] = Some(first);
+             merged_with[upper] = lower;
++            crate::t62::add(|c| {
++                c.merges += 1;
++            });
+         } else if anchor_length_units > 0.0 {
+             let direction = ring
+                 .directed_distance(
+@@ -432,6 +438,9 @@ fn nearest_pair_candidates(
+         })
+         .flatten()
+         .collect::<Vec<_>>();
++    crate::t62::add(|c| {
++        c.endpoints += endpoints.len() as u64;
++    });
+     endpoints.sort_by(endpoint_order);
+ 
+     let mut candidates = Vec::new();
+diff --git a/modules/core-modules/infill-linker/src/lib.rs b/modules/core-modules/infill-linker/src/lib.rs
+index d3ce0411..b718ead3 100644
+--- a/modules/core-modules/infill-linker/src/lib.rs
++++ b/modules/core-modules/infill-linker/src/lib.rs
+@@ -4,6 +4,9 @@ pub mod connect;
+ pub mod graph;
+ pub mod offset;
+ pub mod orchestrate;
++// [T62-PROBE] Temporary post-hoist linker clip attribution (wayfinder
++// ticket 62); removed before any commit.
++pub mod t62;
+ 
+ use slicer_ir::{ConfigValue, ConfigView, InfillRegion};
+ use slicer_sdk::builders::InfillOutputBuilder;
+@@ -63,6 +66,8 @@ impl LayerModule for InfillLinker {
+         output: &mut InfillOutputBuilder,
+         config: &ConfigView,
+     ) -> Result<(), ModuleError> {
++        // [T62-PROBE] Export-call entry timestamp (host clock for this call).
++        let t62_entry_us = slicer_sdk::host::now_us();
+         let spacing_mm = match config.get("line_width") {
+             Some(ConfigValue::Float(value)) if value.is_finite() && *value > 0.0 => *value as f32,
+             Some(ConfigValue::Int(value)) if *value > 0 => *value as f32,
+@@ -79,6 +84,8 @@ impl LayerModule for InfillLinker {
+         for region in prior_infill {
+             Self::copy_ironing(region, output)?;
+         }
++        // [T62-PROBE]
++        crate::t62::flush(_layer_index, t62_entry_us);
+         Ok(())
+     }
+ }
+diff --git a/modules/core-modules/infill-linker/src/orchestrate.rs b/modules/core-modules/infill-linker/src/orchestrate.rs
+index eaf52871..099f1ff3 100644
+--- a/modules/core-modules/infill-linker/src/orchestrate.rs
++++ b/modules/core-modules/infill-linker/src/orchestrate.rs
+@@ -170,9 +170,13 @@ pub fn orchestrate_infill(
+     default_line_width: f32,
+     output: &mut InfillOutputBuilder,
+ ) -> Result<(), String> {
++    // [T62-PROBE] Whole-orchestration wall bracket and fuel scope.
++    let t62_orch_start_us = slicer_sdk::host::now_us();
++    let _t62_orch = crate::t62::t62_scope!("t62::orchestrate_total");
+     let mut records = Vec::with_capacity(prior_infill.len());
+     let mut buckets = vec![BucketPaths::default(); prior_infill.len()];
+ 
++    let _t62_records = crate::t62::t62_scope!("t62::records_build");
+     for (prior_index, region) in prior_infill.iter().enumerate() {
+         let Some(view) = regions.iter().find(|view| {
+             view.object_id() == &region.object_id && view.region_id() == &region.region_id
+@@ -181,6 +185,9 @@ pub fn orchestrate_infill(
+             buckets[prior_index].solid = region.solid_infill.clone();
+             continue;
+         };
++        crate::t62::add(|c| {
++            c.matched += 1;
++        });
+ 
+         let line_width = config_float(view.config(), "line_width")
+             .filter(|value| value.is_finite() && *value > 0.0)
+@@ -233,10 +240,17 @@ pub fn orchestrate_infill(
+             solid_paths: region.solid_infill.clone(),
+         });
+     }
++    crate::t62::add(|c| {
++        c.regions = prior_infill.len() as u64;
++    });
++    drop(_t62_records);
+ 
++    let _t62_buckets = crate::t62::t62_scope!("t62::bucket_process");
+     process_bucket(&records, PathBucket::Sparse, infill_overlap, &mut buckets);
+     process_bucket(&records, PathBucket::Solid, infill_overlap, &mut buckets);
++    drop(_t62_buckets);
+ 
++    let _t62_emit = crate::t62::t62_scope!("t62::output_emit");
+     for (index, region) in prior_infill.iter().enumerate() {
+         output.begin_region(&region.object_id, region.region_id, &region.variant_chain);
+         for path in buckets[index].sparse.drain(..) {
+@@ -247,6 +261,9 @@ pub fn orchestrate_infill(
+         }
+     }
+ 
++    // [T62-PROBE] Record the orchestration wall span; the export-call flush
++    // reads it back.
++    crate::t62::set_orch_us(slicer_sdk::host::now_us().saturating_sub(t62_orch_start_us));
+     Ok(())
+ }
+ 
+@@ -283,8 +300,13 @@ fn process_bucket_role(
+         record.solid_paths.retain(|path| path.order_lock.is_none());
+     }
+ 
++    crate::t62::add(|c| {
++        c.roles += 1;
++    });
++
+     // Per-role, per-region: `role`'s own partitioned polygon, never the union
+     // of all four (see `RoleBoundaries::for_role`).
++    let _t62_bnd = crate::t62::t62_scope!("t62::boundary_prep");
+     let boundaries = records
+         .iter()
+         .map(|record| {
+@@ -305,6 +327,7 @@ fn process_bucket_role(
+             })
+         })
+         .collect::<Vec<_>>();
++    drop(_t62_bnd);
+     let records = unlocked_records.as_slice();
+ 
+     let active = (0..records.len())
+@@ -315,6 +338,15 @@ fn process_bucket_role(
+ 
+     for (index, record) in records.iter().enumerate() {
+         let selected = selected_paths(record, bucket, role);
++        crate::t62::add(|c| {
++            c.selected += selected.len() as u64;
++            c.locked += record
++                .sparse_paths
++                .iter()
++                .chain(&record.solid_paths)
++                .filter(|path| path.order_lock.is_some())
++                .count() as u64;
++        });
+         if selected.is_empty() || boundaries[index].is_none() {
+             append_paths(
+                 &mut buckets[record.prior_index],
+@@ -329,7 +361,11 @@ fn process_bucket_role(
+         .filter_map(|record| record.wall_source_region_id)
+         .collect::<Vec<_>>();
+     let groups = wall_groups(records, &active, &shared_sources);
++    crate::t62::add(|c| {
++        c.rgroups += groups.len() as u64;
++    });
+ 
++    let _t62_groups = crate::t62::t62_scope!("t62::group_link");
+     for group in groups {
+         let same_config = group
+             .windows(2)
+@@ -369,10 +405,12 @@ fn process_bucket_role(
+             );
+         }
+     }
++    drop(_t62_groups);
+ }
+ 
+ fn swept_footprint_polygons(paths: &[ExtrusionPath3D]) -> Vec<ExPolygon> {
+     const DISK_SEGMENTS: usize = 16;
++    let _t62_footprint = crate::t62::t62_scope!("t62::locked_footprint");
+ 
+     let mut pieces = Vec::new();
+     for path in paths {
+@@ -537,7 +575,12 @@ fn link_union_group(
+         .iter()
+         .flat_map(|&index| boundary_for(boundaries, index).iter().cloned())
+         .collect::<Vec<_>>();
++    let _t62_union = crate::t62::t62_scope!("t62::union_boundary");
+     let boundary = union_ex(&source);
++    drop(_t62_union);
++    crate::t62::add(|c| {
++        c.unions += 1;
++    });
+     let spacing = spacing(records, group[0], bucket);
+     let tagged = group
+         .iter()
+@@ -556,7 +599,12 @@ fn link_union_group(
+         anchor(records, group[0], bucket),
+     );
+     for path in linked {
++        let _t62_owner = crate::t62::t62_scope!("t62::majority_owner");
+         let owner = majority_owner(&path, &source_segments, records, group);
++        drop(_t62_owner);
++        crate::t62::add(|c| {
++            c.owners += 1;
++        });
+         append_paths(&mut buckets[records[owner].prior_index], bucket, vec![path]);
+     }
+ }
+@@ -574,6 +622,7 @@ fn link_region_group(
+         let spacing_mm = spacing(records, index, bucket);
+         let anchor = anchor(records, index, bucket);
+         let raw = boundary_for(boundaries, index);
++        let _t62_offset = crate::t62::t62_scope!("t62::overlap_offset");
+         let boundary = if group.len() == 1 {
+             ExPolygonWithOffset::for_infill_overlap(raw, infill_overlap, spacing_mm)
+                 .polygons_outer()
+@@ -581,6 +630,7 @@ fn link_region_group(
+         } else {
+             mixed_boundary(boundaries, group, index, infill_overlap, spacing_mm)
+         };
++        drop(_t62_offset);
+         let tagged = selected_paths(&records[index], bucket, role)
+             .into_iter()
+             .cloned()
+@@ -802,6 +852,10 @@ fn link_paths_against(
+     if !linked.is_empty() {
+         return (linked, source_segments);
+     }
++    // [T62-PROBE] First arm produced nothing; the raw-boundary fallback ran.
++    crate::t62::add(|c| {
++        c.fallbacks += 1;
++    });
+     link_paths_without_offset(tagged, raw_boundary, spacing_mm, anchor)
+ }
+ 
+@@ -811,6 +865,12 @@ fn link_paths_without_offset(
+     spacing_mm: f32,
+     anchor: AnchorParams,
+ ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
++    let _t62_clip = crate::t62::t62_scope!("t62::clip_loop");
++    // [T62-PROBE] One invocation = one `PreparedPolylineClip` + N per-path
++    // engine/execute round trips.
++    crate::t62::add(|c| {
++        c.invocations += 1;
++    });
+     let mut clipped = Vec::new();
+     let mut source_segments = Vec::new();
+     // Keep independent per-path intersections (and their owner/metadata), but
+@@ -826,10 +886,39 @@ fn link_paths_without_offset(
+         if polyline.len() < 2 {
+             continue;
+         }
++        crate::t62::add(|c| {
++            c.clip_calls += 1;
++            c.clip_in_pts += polyline.len() as u64;
++            c.clip_bnd_pts += boundary
++                .iter()
++                .map(|ex| {
++                    ex.contour.points.len() + ex.holes.iter().map(|h| h.points.len()).sum::<usize>()
++                })
++                .sum::<usize>() as u64;
++        });
+         let clipped_polylines = prepared_clip
+-            .get_or_insert_with(|| PreparedPolylineClip::new(boundary))
++            .get_or_insert_with(|| {
++                crate::t62::add(|c| {
++                    c.prepare_calls += 1;
++                    c.prep_bnd_pts += boundary
++                        .iter()
++                        .map(|ex| {
++                            ex.contour.points.len()
++                                + ex.holes.iter().map(|h| h.points.len()).sum::<usize>()
++                        })
++                        .sum::<usize>() as u64;
++                });
++                PreparedPolylineClip::new(boundary)
++            })
+             .clip(&[polyline]);
++        crate::t62::add(|c| {
++            c.clip_out += clipped_polylines.len() as u64;
++        });
++        let _t62_short_meta = crate::t62::t62_scope!("t62::short_meta");
+         for points in remove_short_polylines(&clipped_polylines, spacing_mm) {
++            crate::t62::add(|c| {
++                c.short_out += 1;
++            });
+             source_segments.extend(points.windows(2).filter_map(|segment| {
+                 let length = ((segment[1].x - segment[0].x) as f64)
+                     .hypot((segment[1].y - segment[0].y) as f64);
+@@ -841,21 +930,41 @@ fn link_paths_without_offset(
+                 })
+             }));
+             let mut clipped_path = path.clone();
+-            clipped_path.points = points
+-                .into_iter()
+-                .map(|point| point_with_metadata(&path, point))
+-                .collect();
++            clipped_path.points = {
++                let _t62_meta = crate::t62::t62_scope!("t62::meta_convert");
++                crate::t62::add(|c| {
++                    c.meta_in_pts += points.len() as u64;
++                    c.meta_src_pts += path.points.len() as u64;
++                });
++                points
++                    .into_iter()
++                    .map(|point| point_with_metadata(&path, point))
++                    .collect()
++            };
+             clipped.push(clipped_path);
+         }
++        drop(_t62_short_meta);
+     }
+-    (
+-        chain_or_connect_infill(
+-            clipped,
+-            &crate::graph::BoundaryInfillGraph::new(boundary),
+-            anchor,
+-        ),
+-        source_segments,
+-    )
++    drop(_t62_clip);
++
++    // [T62-PROBE] Connectivity split out so its fuel no longer rides inside
++    // the clip loop's share.
++    let _t62_graph = crate::t62::t62_scope!("t62::graph_build");
++    let graph = crate::graph::BoundaryInfillGraph::new(boundary);
++    let rings = graph.rings();
++    crate::t62::add(|c| {
++        c.rings += rings.len() as u64;
++        c.bpts += rings
++            .iter()
++            .map(|ring| ring.polygon.points.len() as u64)
++            .sum::<u64>();
++    });
++    drop(_t62_graph);
++
++    let _t62_connect = crate::t62::t62_scope!("t62::connect_infill");
++    let linked = chain_or_connect_infill(clipped, &graph, anchor);
++    drop(_t62_connect);
++    (linked, source_segments)
+ }
+ 
+ fn majority_owner(

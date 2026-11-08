@@ -823,7 +823,7 @@ pub struct LayerCollectionViewData {
     /// previous empty-shell stub.
     pub tool_changes: Vec<(u32, u32, u32)>,
     /// Ordered print entities exposed by `ordered-entities()`.
-    pub ordered_entities: Vec<slicer_ir::PrintEntity>,
+    pub ordered_entities: Arc<Vec<slicer_ir::PrintEntity>>,
     /// Z hops exposed by `z-hops()`.
     pub z_hops: Vec<slicer_ir::ZHop>,
 }
@@ -841,7 +841,7 @@ impl LayerCollectionViewData {
                 .iter()
                 .map(|t| (t.after_entity_index, t.from_tool, t.to_tool))
                 .collect(),
-            ordered_entities: ir.ordered_entities.clone(),
+            ordered_entities: Arc::new(ir.ordered_entities.clone()),
             z_hops: ir.z_hops.clone(),
         }
     }
@@ -1307,12 +1307,16 @@ pub struct HostExecutionContext {
     /// world-finalization.wit §finalization-output-builder).
     pub(crate) finalization_pushes: Vec<FinalizationBuilderPush>,
 
-    /// Snapshot of all `LayerCollectionIR` layers passed into the finalization
-    /// stage for this invocation. Populated by `push_finalization_layer_view`
-    /// so that `get_ordered_entities` can serve synchronous read-backs against
-    /// the pre-apply layer state without needing to search the resource table.
+    /// Snapshot of the `ordered_entities` of every `LayerCollectionIR` layer
+    /// passed into the finalization stage for this invocation. Populated by
+    /// `push_finalization_layer_view` so that `get_ordered_entities` can serve
+    /// synchronous read-backs against the pre-apply layer state. The entries
+    /// are shared `Arc`s with the corresponding `LayerCollectionViewData`, so
+    /// capturing the snapshot never duplicates the entity list (ticket 74:
+    /// the old full-`LayerCollectionIR` clone was ~2.8 s per module on a
+    /// supports-on base slice and its free was another ~3.4 s).
     /// Empty for all non-finalization stages.
-    pub(crate) finalization_layer_snapshot: Vec<slicer_ir::LayerCollectionIR>,
+    pub(crate) finalization_layer_snapshot: Vec<(u32, Arc<Vec<slicer_ir::PrintEntity>>)>,
 
     /// Layer-collection ordering proposal captured during a
     /// `Layer::PathOptimization` call via
@@ -2067,8 +2071,10 @@ impl HostExecutionContext {
         &mut self,
         ir: &slicer_ir::LayerCollectionIR,
     ) -> wasmtime::Result<Resource<finalization_types::LayerCollectionView>> {
-        self.finalization_layer_snapshot.push(ir.clone());
-        let rep = self.table.push(LayerCollectionViewData::from_ir(ir))?;
+        let data = LayerCollectionViewData::from_ir(ir);
+        self.finalization_layer_snapshot
+            .push((ir.global_layer_index, Arc::clone(&data.ordered_entities)));
+        let rep = self.table.push(data)?;
         Ok(Resource::new_own(rep.rep()))
     }
 
@@ -5317,8 +5323,8 @@ mod finalization_impls {
             let mut staged: Vec<slicer_ir::PrintEntity> = self
                 .finalization_layer_snapshot
                 .iter()
-                .find(|l| l.global_layer_index == layer_index)
-                .map(|l| l.ordered_entities.clone())
+                .find(|(index, _)| *index == layer_index)
+                .map(|(_, entities)| entities.as_ref().clone())
                 .unwrap_or_default();
             let mut next_id: u64 = staged.iter().map(|e| e.entity_id).max().unwrap_or(0) + 1;
 

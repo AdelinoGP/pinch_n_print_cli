@@ -1,0 +1,21 @@
+{
+  "purpose": "t27 serial-floor candidate: SupportAnalysis eligibility-predicate parallel pre-pass; standing paired A/B, not adoption acceptance or an Orca scoreboard",
+  "job": "matched-pair classic supports-on benchy and base (docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-classic-supports-on.json), 12 threads",
+  "modes": ["ordinary", "accelerated"],
+  "cell_scope": "classic supports-on (the SupportAnalysis stage only runs when supports are enabled); benchy first, base where the measured prize is",
+  "measured_pairs_per_mode": 6,
+  "excluded_warmups_per_arm": 1,
+  "order": "AB then BA, alternating by pair",
+  "exactness": "prove both arms byte-identical before any measurement batch; every later output must equal the proved reference byte-for-byte",
+  "only_arm_difference": "pnp_cli.exe (host-only change: crates/slicer-runtime/src/builtins/support_analysis_producer.rs); module trees byte-identical between arms",
+  "prior_attribution": "probe-3: the serial predicate is 24.19 s of the 38.20 s SupportAnalysis stage wall on base-on; probe-3c dual-compute measured the parallel pre-pass at 2.914 s (8.7x) with 0 value mismatches and byte-identical G-code",
+  "starvation": {
+    "cutoff_fraction_of_best_cpu_wall_ratio": 0.75,
+    "reference_group": "mode and arm separately",
+    "discard": "the whole pair if either member is below its arm cutoff; retain all excluded rows; no automatic resampling",
+    "minimum_retained_pairs_per_mode": 5
+  },
+  "keep": "in both modes: lower candidate median wall with lower candidate median process CPU; paired median deltas must agree; otherwise return DROP/inconclusive to the human",
+  "disclosure": "SHA-256, bytes, TYPE counts, generator, status, degraded/fatal/non-fatal counts, existing open-loop warnings, and every sample cpu/wall ratio",
+  "automatic_commit": false
+}

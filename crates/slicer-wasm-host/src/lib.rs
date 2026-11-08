@@ -8,6 +8,7 @@
 
 pub mod batch;
 pub mod binding;
+mod component_cache;
 pub mod dispatch;
 pub mod exact_z_query;
 pub mod execution_plan_live;

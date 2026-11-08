@@ -1,0 +1,10 @@
+--- a/modules/core-modules/tree-support-planner/src/lib.rs
++++ b/modules/core-modules/tree-support-planner/src/lib.rs
+@@ -8605,3 +8605,7 @@
+         );
+     }
+ }
++
++#[cfg(test)]
++#[path = "../../../../docs/specs/perf-vs-orca/evidence/t53-union-simplify/replay.rs"]
++mod t53_replay;

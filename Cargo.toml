@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "vendor/clipper2-rust",
     "crates/pnp-cli",
     "crates/slicer-runtime",
     "crates/slicer-scheduler",
@@ -65,13 +66,15 @@ criterion = { version = "0.5.1", default-features = false, features = ["html_rep
 # every guest→host transition, which is how fuel is sampled at a `profile-mark`
 # (ADR-0055): bindgen-generated host methods receive only `&mut T`, never the
 # `Store`, so `get_fuel` is unreachable from inside them.
-wasmtime = { version = "47.0.3", features = ["call-hook"] }
+wasmtime = { version = "47.0.3", features = ["call-hook", "cache"] }
 wasmtime-wasi = { version = "47.0.3" }
 wit-bindgen = "0.60.0"
 rayon = "1.80"
 geo = "0.28"
 nalgebra = "0.32"
-clipper2-rust = "1.1.0"
+# clipper2-rust is NOT a workspace dependency: slicer-core path-depends on the
+# in-tree vendored copy (vendor/clipper2-rust, t70) so the guest freshness
+# fingerprint walk covers engine source changes.
 serde = { version = "1.0.228", features = ["derive"] }
 postcard = { version = "1.1.3", features = ["use-std"] }
 meshopt = "0.6"
@@ -88,6 +91,15 @@ unused_imports = "warn"
 unused_must_use = "warn"
 
 [workspace.lints.clippy]
+# `opening_is_empty`'s `!(delta_mm > 0.0)` in `crates/slicer-core/src/polygon_ops.rs`
+# is the deliberate NaN-inclusive non-positive test: NaN must take the delegate
+# path, and `delta_mm <= 0.0` alone would let it reach the single-pass fast path.
+# Rewriting the expression recompiles the accelerated classic-perimeters guest
+# and orphans its paired-A/B artifact identity (measured 2026-10-08: even a
+# comment insertion in that file shifts the accelerated artifact's
+# `.llvm.<hash>` symbol suffixes), so the expression is allowed here rather than
+# rewritten in place.
+neg_cmp_op_on_partial_ord = "allow"
 # Tests in this workspace freely use vec! literals, identity assertions, and
 # slice::from_ref-equivalent patterns; setting these style lints to allow
 # keeps `cargo clippy --all-targets -- -D warnings` green without rewriting

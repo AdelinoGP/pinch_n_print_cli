@@ -85,6 +85,7 @@ fn live_arachne_layer_one_sandwich_reaches_path_optimizer_unchanged() {
                 ("layer_height", ConfigValue::Float(0.2)),
                 ("nozzle_diameter", ConfigValue::Float(0.4)),
                 ("line_width", ConfigValue::Float(0.45)),
+                ("resolution", ConfigValue::Float(0.01)),
                 ("bridge_line_width", ConfigValue::Float(0.0)),
                 ("initial_layer_line_width", ConfigValue::Float(0.0)),
                 ("inner_wall_line_width", ConfigValue::Float(0.0)),

@@ -25,6 +25,7 @@ use slicer_sdk::views::SliceRegionView;
 
 fn make_config(bridge_flow: f32, thick_bridges: bool) -> ConfigView {
     ConfigViewBuilder::new()
+        .float("resolution", 0.01)
         .int("wall_count", 2)
         .float("inner_wall_line_width", 0.4)
         .float("outer_wall_line_width", 0.4)

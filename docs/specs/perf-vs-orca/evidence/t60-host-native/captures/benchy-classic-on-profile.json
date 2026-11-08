@@ -1,0 +1,433 @@
+{
+ "captured_commit": "200d4611396854e7434ae5a7a3ce77302649fd85",
+ "elapsed_ms": 30501,
+ "exe_sha256": "8a6ace4859fc5ef2bf0fb4d4c98843c5d37c84bd784db25a6617f80f26fd9be1",
+ "fuel_total": 817970764859,
+ "layers": 240,
+ "metadata": {
+  "bytes": 8658663,
+  "config_sha256": "ceca6be08991f120a74c98df47a6deaae98aaaad61c2eaeb6c346677a2072a7e",
+  "cpu_seconds": 144.6875,
+  "cpu_wall_ratio": 4.71110929177047,
+  "degraded": false,
+  "exit_code": 0,
+  "fatal": 0,
+  "generator": "classic",
+  "model": "benchy",
+  "non_fatal": 0,
+  "raw_stderr_sha256": "a33c121c7dec30abbea0b2c6b48294bed09146aa1a836b197fa920e7b06825e0",
+  "reference_sha256": "76eb4e1df3a47abf9a973be4ac99cd6bac41efa9fb65240786251ec0f7cdf6a8",
+  "run_id": "benchy-classic-on-profile",
+  "sha256": "76eb4e1df3a47abf9a973be4ac99cd6bac41efa9fb65240786251ec0f7cdf6a8",
+  "status": "ok",
+  "stderr_sha256": "a33c121c7dec30abbea0b2c6b48294bed09146aa1a836b197fa920e7b06825e0",
+  "supports": "on",
+  "threads": 12,
+  "wall_seconds": 30.7119812
+ },
+ "owners": [
+  {
+   "calls": 343,
+   "owner": "host:mesh_analysis",
+   "scopes": [
+    {
+     "calls": 343,
+     "scope": "polygon_ops::clip_polygons",
+     "self_wall_ns": 125057200,
+     "total_wall_ns": 125057200
+    }
+   ],
+   "self_wall_ns": 8300,
+   "total_wall_ns": 125065500
+  },
+  {
+   "calls": 3107,
+   "owner": "host:overhang_annotation",
+   "scopes": [
+    {
+     "calls": 717,
+     "scope": "polygon_ops::offset",
+     "self_wall_ns": 5912309700,
+     "total_wall_ns": 5912309700
+    },
+    {
+     "calls": 2390,
+     "scope": "polygon_ops::clip_polygons",
+     "self_wall_ns": 2304692200,
+     "total_wall_ns": 2304692200
+    }
+   ],
+   "self_wall_ns": 83800,
+   "total_wall_ns": 8217085700
+  },
+  {
+   "calls": 4150,
+   "owner": "host:shell_classification",
+   "scopes": [
+    {
+     "calls": 1761,
+     "scope": "polygon_ops::offset",
+     "self_wall_ns": 10442395200,
+     "total_wall_ns": 10442395200
+    },
+    {
+     "calls": 2194,
+     "scope": "polygon_ops::clip_polygons",
+     "self_wall_ns": 1234875400,
+     "total_wall_ns": 1234875400
+    },
+    {
+     "calls": 195,
+     "scope": "polygon_ops::closing_ex",
+     "self_wall_ns": 291355100,
+     "total_wall_ns": 291355100
+    }
+   ],
+   "self_wall_ns": 108000,
+   "total_wall_ns": 11968733700
+  },
+  {
+   "calls": 5921,
+   "owner": "host:slice",
+   "scopes": [
+    {
+     "calls": 240,
+     "scope": "polygon_ops::closing_ex",
+     "self_wall_ns": 22794290100,
+     "total_wall_ns": 22794290100
+    },
+    {
+     "calls": 5005,
+     "scope": "polygon_ops::clip_polygons",
+     "self_wall_ns": 2006333100,
+     "total_wall_ns": 2006333100
+    },
+    {
+     "calls": 676,
+     "scope": "polygon_ops::offset",
+     "self_wall_ns": 1646535800,
+     "total_wall_ns": 1646535800
+    }
+   ],
+   "self_wall_ns": 149600,
+   "total_wall_ns": 26447308600
+  },
+  {
+   "calls": 1574,
+   "owner": "host:support_analysis",
+   "scopes": [
+    {
+     "calls": 393,
+     "scope": "polygon_ops::offset",
+     "self_wall_ns": 6239497300,
+     "total_wall_ns": 6239497300
+    },
+    {
+     "calls": 1181,
+     "scope": "polygon_ops::clip_polygons",
+     "self_wall_ns": 1562298400,
+     "total_wall_ns": 1562298400
+    }
+   ],
+   "self_wall_ns": 39600,
+   "total_wall_ns": 7801835300
+  },
+  {
+   "calls": 2640,
+   "owner": "probe:d:classic-perimeters",
+   "scopes": [
+    {
+     "calls": 1920,
+     "scope": "polygon_ops::offset",
+     "self_wall_ns": 5916871600,
+     "total_wall_ns": 5916871600
+    },
+    {
+     "calls": 720,
+     "scope": "polygon_ops::clip_polygons",
+     "self_wall_ns": 394659400,
+     "total_wall_ns": 394659400
+    }
+   ],
+   "self_wall_ns": 71300,
+   "total_wall_ns": 6311602300
+  },
+  {
+   "calls": 294,
+   "owner": "probe:d:infill-linker",
+   "scopes": [
+    {
+     "calls": 294,
+     "scope": "polygon_ops::offset",
+     "self_wall_ns": 622653000,
+     "total_wall_ns": 622653000
+    }
+   ],
+   "self_wall_ns": 5400,
+   "total_wall_ns": 622658400
+  },
+  {
+   "calls": 31,
+   "owner": "probe:d:rectilinear-infill",
+   "scopes": [
+    {
+     "calls": 31,
+     "scope": "polygon_ops::clip_polygons",
+     "self_wall_ns": 1129900,
+     "total_wall_ns": 1129900
+    }
+   ],
+   "self_wall_ns": 800,
+   "total_wall_ns": 1130700
+  },
+  {
+   "calls": 1822,
+   "owner": "probe:d:tree-support",
+   "scopes": [
+    {
+     "calls": 1822,
+     "scope": "polygon_ops::offset",
+     "self_wall_ns": 3792360500,
+     "total_wall_ns": 3792360500
+    }
+   ],
+   "self_wall_ns": 47200,
+   "total_wall_ns": 3792407700
+  },
+  {
+   "calls": 661,
+   "owner": "probe:derive_ordinary",
+   "scopes": [
+    {
+     "calls": 661,
+     "scope": "polygon_ops::clip_polygons",
+     "self_wall_ns": 1468943100,
+     "total_wall_ns": 1468943100
+    }
+   ],
+   "self_wall_ns": 16800,
+   "total_wall_ns": 1468959900
+  },
+  {
+   "calls": 661,
+   "owner": "probe:derive_perimeter_source",
+   "scopes": [
+    {
+     "calls": 661,
+     "scope": "polygon_ops::clip_polygons",
+     "self_wall_ns": 1542705500,
+     "total_wall_ns": 1542705500
+    }
+   ],
+   "self_wall_ns": 15800,
+   "total_wall_ns": 1542721300
+  },
+  {
+   "calls": 240,
+   "owner": "probe:p:seam-planner-default",
+   "scopes": [
+    {
+     "calls": 240,
+     "scope": "polygon_ops::offset",
+     "self_wall_ns": 936534600,
+     "total_wall_ns": 936534600
+    }
+   ],
+   "self_wall_ns": 5100,
+   "total_wall_ns": 936539700
+  },
+  {
+   "calls": 22959,
+   "owner": "probe:p:tree-support-planner",
+   "scopes": [
+    {
+     "calls": 17982,
+     "scope": "polygon_ops::clip_polygons",
+     "self_wall_ns": 4121508000,
+     "total_wall_ns": 4121508000
+    },
+    {
+     "calls": 4977,
+     "scope": "polygon_ops::offset",
+     "self_wall_ns": 2364015400,
+     "total_wall_ns": 2364015400
+    }
+   ],
+   "self_wall_ns": 571200,
+   "total_wall_ns": 6486094600
+  },
+  {
+   "calls": 3191,
+   "owner": "probe:plan_aggregation",
+   "scopes": [
+    {
+     "calls": 3191,
+     "scope": "polygon_ops::clip_polygons",
+     "self_wall_ns": 215482200,
+     "total_wall_ns": 215482200
+    }
+   ],
+   "self_wall_ns": 82300,
+   "total_wall_ns": 215564500
+  },
+  {
+   "calls": 6120,
+   "owner": "probe:region_partition",
+   "scopes": [
+    {
+     "calls": 6120,
+     "scope": "polygon_ops::clip_polygons",
+     "self_wall_ns": 1315998600,
+     "total_wall_ns": 1315998600
+    }
+   ],
+   "self_wall_ns": 157900,
+   "total_wall_ns": 1316156500
+  },
+  {
+   "calls": 6480,
+   "owner": "probe:svc_offset_batch",
+   "scopes": [
+    {
+     "calls": 6480,
+     "scope": "polygon_ops::offset",
+     "self_wall_ns": 247774700,
+     "total_wall_ns": 247774700
+    }
+   ],
+   "self_wall_ns": 181900,
+   "total_wall_ns": 247956600
+  }
+ ],
+ "phases_ms": {
+  "per_layer": 8354,
+  "postpass": 3080,
+  "prepass": 17684,
+  "validation": 84
+ },
+ "probe_totals": [
+  {
+   "entries": 240,
+   "owner": "probe:d:classic-perimeters",
+   "span_ns": 73373977100
+  },
+  {
+   "entries": 240,
+   "owner": "probe:d:fuzzy-skin",
+   "span_ns": 474338500
+  },
+  {
+   "entries": 240,
+   "owner": "probe:d:gyroid-infill",
+   "span_ns": 295141000
+  },
+  {
+   "entries": 240,
+   "owner": "probe:d:infill-linker",
+   "span_ns": 5041547000
+  },
+  {
+   "entries": 240,
+   "owner": "probe:d:lightning-infill",
+   "span_ns": 217433900
+  },
+  {
+   "entries": 240,
+   "owner": "probe:d:path-optimization-default",
+   "span_ns": 344979800
+  },
+  {
+   "entries": 240,
+   "owner": "probe:d:raft-default",
+   "span_ns": 282401900
+  },
+  {
+   "entries": 240,
+   "owner": "probe:d:rectilinear-infill",
+   "span_ns": 242482800
+  },
+  {
+   "entries": 240,
+   "owner": "probe:d:seam-placer",
+   "span_ns": 519285600
+  },
+  {
+   "entries": 240,
+   "owner": "probe:d:support-surface-ironing",
+   "span_ns": 213420000
+  },
+  {
+   "entries": 240,
+   "owner": "probe:d:top-surface-ironing",
+   "span_ns": 213529800
+  },
+  {
+   "entries": 240,
+   "owner": "probe:d:tree-support",
+   "span_ns": 7532673800
+  },
+  {
+   "entries": 240,
+   "owner": "probe:d:wave-overhangs",
+   "span_ns": 222536000
+  },
+  {
+   "entries": 240,
+   "owner": "probe:derive_ordinary",
+   "span_ns": 1488188900
+  },
+  {
+   "entries": 240,
+   "owner": "probe:derive_perimeter_source",
+   "span_ns": 1563175100
+  },
+  {
+   "entries": 240,
+   "owner": "probe:layer_span",
+   "span_ns": 97275281000
+  },
+  {
+   "entries": 1,
+   "owner": "probe:p:layer-planner-default",
+   "span_ns": 1142000
+  },
+  {
+   "entries": 1,
+   "owner": "probe:p:seam-planner-default",
+   "span_ns": 1106496800
+  },
+  {
+   "entries": 1,
+   "owner": "probe:p:traditional-support-planner",
+   "span_ns": 48364700
+  },
+  {
+   "entries": 1,
+   "owner": "probe:p:tree-support-planner",
+   "span_ns": 7292787100
+  },
+  {
+   "entries": 1,
+   "owner": "probe:plan_aggregation",
+   "span_ns": 737033400
+  },
+  {
+   "entries": 4,
+   "owner": "probe:postpass_dispatch",
+   "span_ns": 1497303700
+  },
+  {
+   "entries": 3120,
+   "owner": "probe:prepare_regions",
+   "span_ns": 3052058700
+  },
+  {
+   "entries": 720,
+   "owner": "probe:region_partition",
+   "span_ns": 1335622400
+  }
+ ],
+ "warnings": {
+  "malformed_layer_marker": 179
+ }
+}

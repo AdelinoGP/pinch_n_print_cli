@@ -82,6 +82,7 @@ fn integrated_parity_arachne_perimeters_native_matches_wasm() {
         // to the authored `line_width` above).
         ("layer_height".to_owned(), ConfigValue::Float(0.2)),
         ("nozzle_diameter".to_owned(), ConfigValue::Float(0.4)),
+        ("resolution".to_owned(), ConfigValue::Float(0.01)),
         ("bridge_line_width".to_owned(), ConfigValue::Float(0.0)),
         (
             "initial_layer_line_width".to_owned(),

@@ -1,0 +1,130 @@
+// [T65-PROBE] Temporary batch-execute oracle counters (wayfinder ticket 65);
+// removed before any commit.
+#![allow(missing_docs)]
+#![allow(dead_code)]
+
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Counters for the in-guest batch-vs-per-path replay oracle. Values leave
+/// the guest once per layer through `flush` (host `module_log` lines,
+/// captured by `--instrument-stderr`, reduced by the t65 evidence set).
+pub struct Counters {
+    /// `link_paths_without_offset` invocations replayed.
+    pub invocations: AtomicU64,
+    /// Subjects (valid polylines) replayed across those invocations.
+    pub subjects: AtomicU64,
+    /// Subjects whose batched spans equal the per-path chain exactly.
+    pub matches: AtomicU64,
+    /// Subjects that differ.
+    pub mismatches: AtomicU64,
+    /// Total spans across the batched results.
+    pub batch_spans: AtomicU64,
+    /// Total spans across the replayed per-path chain.
+    pub replay_spans: AtomicU64,
+    /// `clip_batched` single-subject early-outs (same engine shape either
+    /// way; the batch was bypassed but no ambiguity was involved).
+    pub singles: AtomicU64,
+    /// `clip_batched` whole-call fallback fires (unattributable segment /
+    /// engine failure; the batch was discarded and the per-path chain
+    /// re-ran).
+    pub fallbacks: AtomicU64,
+    /// Ambiguity-repaired subjects (per-subject per-path repair inside a
+    /// successful batch).
+    pub repairs: AtomicU64,
+    /// Subject index of the first differing subject in the run, else the
+    /// sentinel usize::MAX as u64.
+    pub first_bad_subject: AtomicU64,
+}
+
+static COUNTERS: Counters = Counters {
+    invocations: AtomicU64::new(0),
+    subjects: AtomicU64::new(0),
+    matches: AtomicU64::new(0),
+    mismatches: AtomicU64::new(0),
+    batch_spans: AtomicU64::new(0),
+    replay_spans: AtomicU64::new(0),
+    singles: AtomicU64::new(0),
+    fallbacks: AtomicU64::new(0),
+    repairs: AtomicU64::new(0),
+    first_bad_subject: AtomicU64::new(usize::MAX as u64),
+};
+
+const FIRST_BAD_SENTINEL: u64 = usize::MAX as u64;
+
+pub fn record_invocation(
+    subjects: usize,
+    matches: usize,
+    mismatches: usize,
+    batch_spans: usize,
+    replay_spans: usize,
+    singles: u64,
+    fallbacks: u64,
+    repairs: u64,
+    first_bad: usize,
+) {
+    COUNTERS.invocations.fetch_add(1, Ordering::Relaxed);
+    COUNTERS
+        .subjects
+        .fetch_add(subjects as u64, Ordering::Relaxed);
+    COUNTERS
+        .matches
+        .fetch_add(matches as u64, Ordering::Relaxed);
+    COUNTERS
+        .mismatches
+        .fetch_add(mismatches as u64, Ordering::Relaxed);
+    COUNTERS
+        .batch_spans
+        .fetch_add(batch_spans as u64, Ordering::Relaxed);
+    COUNTERS
+        .replay_spans
+        .fetch_add(replay_spans as u64, Ordering::Relaxed);
+    COUNTERS.singles.fetch_add(singles, Ordering::Relaxed);
+    COUNTERS.fallbacks.fetch_add(fallbacks, Ordering::Relaxed);
+    COUNTERS.repairs.fetch_add(repairs, Ordering::Relaxed);
+    let previous = COUNTERS.first_bad_subject.load(Ordering::Relaxed);
+    if first_bad as u64 != FIRST_BAD_SENTINEL && (first_bad as u64) < previous {
+        COUNTERS
+            .first_bad_subject
+            .store(first_bad as u64, Ordering::Relaxed);
+    }
+}
+
+pub fn flush(layer_index: u32) {
+    let load = |counter: &AtomicU64| counter.load(Ordering::Relaxed);
+    if load(&COUNTERS.invocations) == 0 {
+        return;
+    }
+    let invocations = load(&COUNTERS.invocations);
+    let subjects = load(&COUNTERS.subjects);
+    let matches = load(&COUNTERS.matches);
+    let mismatches = load(&COUNTERS.mismatches);
+    let batch_spans = load(&COUNTERS.batch_spans);
+    let replay_spans = load(&COUNTERS.replay_spans);
+    let singles = load(&COUNTERS.singles);
+    let fallbacks = load(&COUNTERS.fallbacks);
+    let repairs = load(&COUNTERS.repairs);
+    let first_bad = load(&COUNTERS.first_bad_subject);
+    slicer_sdk::host::log_trace(&format!(
+        "T65-PROBE layer={layer_index} invocations={invocations} subjects={subjects} \
+         matches={matches} mismatches={mismatches} batch_spans={batch_spans} \
+         replay_spans={replay_spans} singles={singles} fallbacks={fallbacks} \
+         repairs={repairs} first_bad={first_bad}"
+    ));
+    if mismatches > 0 {
+        slicer_sdk::host::log_warn(&format!(
+            "T65-PROBE layer={layer_index} batch-vs-perpath MISMATCH (first_bad={first_bad})"
+        ));
+    }
+    COUNTERS.invocations.store(0, Ordering::Relaxed);
+    COUNTERS.subjects.store(0, Ordering::Relaxed);
+    COUNTERS.matches.store(0, Ordering::Relaxed);
+    COUNTERS.mismatches.store(0, Ordering::Relaxed);
+    COUNTERS.batch_spans.store(0, Ordering::Relaxed);
+    COUNTERS.replay_spans.store(0, Ordering::Relaxed);
+    COUNTERS.singles.store(0, Ordering::Relaxed);
+    COUNTERS.fallbacks.store(0, Ordering::Relaxed);
+    COUNTERS.repairs.store(0, Ordering::Relaxed);
+    COUNTERS
+        .first_bad_subject
+        .store(FIRST_BAD_SENTINEL, Ordering::Relaxed);
+}

@@ -1,0 +1,30 @@
+{
+ "pass": true,
+ "modes": {
+  "ordinary": {
+   "files": 49,
+   "differing": [
+    "modules/tree-support-planner/tree-support-planner.wasm"
+   ],
+   "module_differing": [
+    "modules/tree-support-planner/tree-support-planner.wasm"
+   ],
+   "executable_equal": true,
+   "baseline_planner_sha256": "621e4ce9b0d0bf56e975457b6f0e7a599c069679432ffb8ea33a7551053786ef",
+   "candidate_planner_sha256": "362e2fcebe0f6247218fbec367f7879f653f4dde091936d427b15e20b6c4ae1b"
+  },
+  "accelerated": {
+   "files": 50,
+   "differing": [
+    "modules/tree-support-planner/tree-support-planner.wasm"
+   ],
+   "module_differing": [
+    "modules/tree-support-planner/tree-support-planner.wasm"
+   ],
+   "executable_equal": true,
+   "baseline_planner_sha256": "0246671608ce9d4cf9c52b7623c475eda1232357b92f6179441f7c279bf90f4b",
+   "candidate_planner_sha256": "0054f2a54ca5d8a306b9407bd880990e803a2f98837dbb35b7d227f4f5c34c89"
+  }
+ },
+ "problems": []
+}

@@ -17,6 +17,9 @@ truck-meshalgo = { workspace = true }
 truck-modeling = { workspace = true }
 truck-topology = "0.6"
 criterion = { workspace = true }
+# Bench fixtures are loaded through the production model loader so the
+# benches exercise the same STL path as `pnp_cli mesh repair|decimate`.
+slicer-model-io = { path = "../slicer-model-io" }
 
 [[bench]]
 name = "mesh_ops"

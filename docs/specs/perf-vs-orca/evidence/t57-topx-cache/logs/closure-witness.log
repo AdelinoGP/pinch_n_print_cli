@@ -1,0 +1,10 @@
+   Compiling xtask v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\xtask)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.63s
+     Running unittests src\main.rs (target\debug\deps\xtask-a6687e42e444f4e5.exe)
+
+running 1 test
+T57_CLOSURE_GUESTS arachne-perimeters-guest,classic-perimeters-guest,fuzzy-skin-guest,gyroid-infill-guest,infill-linker-guest,layer-planner-default-guest,lightning-infill-guest,machine_gcode_emit_guest,overhang_classifier_default_guest,part_cooling_guest,path-optimization-default-guest,raft-default-guest,rectilinear-infill-guest,seam-placer-guest,seam-planner-default-guest,skirt-brim-guest,support-surface-ironing-guest,top-surface-ironing-guest,traditional-support-guest,traditional-support-planner-guest,tree-support-guest,tree-support-planner-guest,wave-overhangs-guest,wipe-tower-guest,anchored-events-roundtrip-guest,finalization-mutation-roundtrip-guest,infill-postprocess-echo-guest,path-optimization-multi-read,sdk-finalization-guest,sdk-host-bridge-guest,sdk-infill-postprocess-view-guest,sdk-layer-infill-guest,sdk-layer-pathopt-guest,sdk-postpass-text-guest,sdk-prepass-guest,sdk-support-diagnostic-guest,support-anchored-reach-guest
+test build_guests::t57_dependency_closure::t57_explicit_clipper_source_is_fingerprint_sensitive_in_each_affected_guest ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 176 filtered out; finished in 2.71s
+

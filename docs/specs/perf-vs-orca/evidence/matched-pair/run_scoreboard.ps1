@@ -6,9 +6,25 @@
 .DESCRIPTION
     Three-tool interleaved measurement schedule over the {benchy, base} x
     {classic, arachne} x {supports off, on} matrix: OrcaSlicer (vendor profile
-    triple + generated string-typed override profile), PNP ordinary
+    triple + matched-job CLI overrides), PNP ordinary
     (target/release + modules/core-modules) and PNP accelerated
     (target/dist-accelerated/developer snapshot).
+
+    Orca invocation (perf-vs-orca ticket 98): OrcaSlicer 2.5 resolves
+    `--load-settings` through the vendor preset bundle, not through bare JSON
+    paths — a `"from": "system"` preset is flattened by walking up to the
+    vendor directory and reading the sibling `<Vendor>.json` manifest. The
+    shipped install carries only `resources/profiles/BBL.opc`, so the rig reads
+    a vendor tree materialized by
+    `evidence/orca-rig-repair/prepare_orca_vendor.ps1` (pinned tag,
+    version-asserted against the installed cache) and applies the matched-job
+    keys as CLI overrides, which the CLI ranks above loaded settings. Overrides
+    are not a convenience: an override-free load of the raw vendor process
+    preset is the matched job's process preset, and the four per-cell keys
+    (generator, supports, and the fixed layer/infill values) must come last.
+    Loading vendor JSONs as bare paths under 2.5 fails loudly rather than
+    silently using hardcoded defaults (upstream #14718), so a misconfigured
+    tree cannot pass validation.
 
     Measurement core extends the alloc-bench/run_bench.ps1 lineage: process
     creation-to-exit wall clock and kernel+user CPU via GetProcessTimes, peak
@@ -45,6 +61,19 @@ param(
     [string]$BatchId = (Get-Date -Format 'yyyyMMdd-HHmmss'),
     [ValidateSet('All', 'Last', 'None')][string]$KeepGcode = 'Last',
     [switch]$SkipFreshness,
+    [switch]$OrcaDebugLog,
+    # perf-vs-orca ticket 105 (human ruling, 2026-11-02): the supports-on
+    # matched job pins Orca's tree style to `tree_strong` so both sides run the
+    # classic engine class PnP implements (`DEV-156` substituted Strong for
+    # every canonically-organic input). Orca's canonical default on a tree
+    # family is organic; the pin is a protocol choice and is disclosed beside
+    # every supports-on ratio. The measured price (ticket 105, 4 paired
+    # rounds): Orca +39.6–44.4 % wall on the two base cells and +7.6–9.5 % on
+    # the two benchy cells, with +23.5–35.3 % G-code bytes.
+    # Empty is the escape hatch for an organic/vendor-default arm (the t105
+    # baseline arm uses it); the assertion follows the chosen value.
+    [ValidateSet('', 'vendor', 'default', 'grid', 'snug', 'organic', 'tree_slim', 'tree_strong', 'tree_hybrid')]
+    [string]$OrcaSupportStyle = 'tree_strong',
     [string]$RepoRoot = (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))))
 )
 
@@ -60,14 +89,27 @@ $Job = @{
     SupportType       = 'tree(auto)'
 }
 
+# perf-vs-orca ticket 105 ruling (2026-11-02): the style a supports-on run must
+# resolve to. The pin is `tree_strong`; `-OrcaSupportStyle vendor` (or an empty
+# value) restores the vendor default (`default` -> organic on a tree family) for
+# a disclosed organic arm. Supports-off runs always resolve the vendor default.
+$OrcaExpectedSupportStyle =
+    if (-not $OrcaSupportStyle -or $OrcaSupportStyle -eq 'vendor') { 'default' } else { $OrcaSupportStyle }
+
 # --- Paths -------------------------------------------------------------------
 $ConfigDir   = Join-Path $PSScriptRoot 'configs'
 $Validator   = Join-Path $RepoRoot 'resources\perimeter-acceptance\validate_measurement.ps1'
 $OrcaExe     = 'C:\Program Files\OrcaSlicer\orca-slicer.exe'
-$OrcaProfile = 'C:\Program Files\OrcaSlicer\resources\profiles\BBL'
-$OrcaMachine = Join-Path $OrcaProfile 'machine\Bambu Lab X1 Carbon 0.4 nozzle.json'
-$OrcaVendorProcess = Join-Path $OrcaProfile 'process\0.20mm Standard @BBL X1C.json'
-$OrcaFilament = Join-Path $OrcaProfile 'filament\Generic PLA.json'
+# perf-vs-orca ticket 98: the 2.5 install ships the vendor as a binary preset
+# cache alone (resources/profiles/BBL.opc) and no preset JSON tree, so the rig
+# loads a prepared source-manifest tree instead. Materialize it with
+# evidence/orca-rig-repair/prepare_orca_vendor.ps1 (pinned tag, version-asserted
+# against the installed cache); the preflight below fails closed if it is absent.
+$OrcaVendorRoot     = Join-Path $RepoRoot 'target\orca-vendor'
+$OrcaVendorManifest = Join-Path $OrcaVendorRoot 'BBL.json'
+$OrcaMachine        = Join-Path $OrcaVendorRoot 'BBL\machine\Bambu Lab X1 Carbon 0.4 nozzle.json'
+$OrcaVendorProcess  = Join-Path $OrcaVendorRoot 'BBL\process\0.20mm Standard @BBL X1C.json'
+$OrcaFilament       = Join-Path $OrcaVendorRoot 'BBL\filament\Generic PLA.json'
 
 $FixturePaths = @{
     calicat = Join-Path $RepoRoot 'resources\calicat.stl'
@@ -221,7 +263,8 @@ function Test-OrcaEvidence {
         [Parameter(Mandatory = $true)][string]$ExpectedGenerator,
         [Parameter(Mandatory = $true)][string]$ExpectedSupportFlag,
         [Parameter(Mandatory = $true)][int]$ExitCode,
-        [Parameter(Mandatory = $true)][string]$RunId
+        [Parameter(Mandatory = $true)][string]$RunId,
+        [string]$ExpectedSupportStyle = 'default'
     )
     if ($ExitCode -ne 0) { throw "measurement rejected ($RunId): Orca exit code was $ExitCode" }
     if (-not (Test-Path -LiteralPath $OutputPath) -or (Get-Item -LiteralPath $OutputPath).Length -eq 0) {
@@ -235,7 +278,36 @@ function Test-OrcaEvidence {
     Assert-EqualValue 'sparse_infill_pattern' $cfg['sparse_infill_pattern'] $Job.SparseInfillPattern $RunId
     Assert-EqualValue 'enable_support' $cfg['enable_support'] $ExpectedSupportFlag $RunId
     Assert-EqualValue 'support_type' $cfg['support_type'] $Job.SupportType $RunId
+    Assert-EqualValue 'support_style' $cfg['support_style'] $ExpectedSupportStyle $RunId
     Assert-EqualValue 'layer_height' $cfg['layer_height'] $Job.LayerHeight $RunId
+
+    # --- perf-vs-orca ticket 103 ruling: the three pins fail closed ----------
+    # `enable_arc_fitting` is emitted as disabled/enabled, not 0/1.
+    $arc = $cfg['enable_arc_fitting']
+    if (-not (@('0', 'disabled') -contains $arc)) {
+        throw "measurement rejected ($RunId): enable_arc_fitting is '$arc', expected 'disabled' (2.5 flipped this default; the pin must win)"
+    }
+    Assert-EqualValue 'elefant_foot_compensation' $cfg['elefant_foot_compensation'] '0' $RunId
+    Assert-EqualValue 'brim_width' $cfg['brim_width'] '0' $RunId
+
+    # --- perf-vs-orca ticket 98 defect: the filament chain must resolve -------
+    # Every run records the resolved filament leg, and the archived 2026-10-25
+    # defect signature (density 0, max volumetric speed 2, first-layer 200) is
+    # rejected outright so a future install cannot silently re-run the wrong job.
+    $filament = @{
+        filament_density                = '0'
+        filament_max_volumetric_speed   = '2'
+        first_layer_temperature         = '200'
+    }
+    foreach ($k in $filament.Keys) {
+        $v = $cfg[$k]
+        if ([string]::IsNullOrWhiteSpace($v)) {
+            throw "measurement rejected ($RunId): $k missing from the resolved appendix"
+        }
+        if ($v -eq $filament[$k]) {
+            throw "measurement rejected ($RunId): $k is '$v', Orca's hardcoded default — the vendor filament chain did not resolve (the t98 defect)"
+        }
+    }
     return $cfg
 }
 
@@ -243,7 +315,7 @@ function Get-PnpAppendixExcerpt {
     param([Parameter(Mandatory = $true)][string]$OutputPath)
     $cfg = Get-AppendixMap -Path $OutputPath
     $excerpt = @{}
-    foreach ($k in @('wall_generator', 'sparse_infill_pattern', 'sparse_infill_density', 'support_type', 'enable_support', 'layer_height', 'nozzle_diameter')) {
+    foreach ($k in @('wall_generator', 'sparse_infill_pattern', 'sparse_infill_density', 'support_type', 'enable_support', 'layer_height', 'nozzle_diameter', 'brim_width')) {
         if ($cfg.ContainsKey($k)) { $excerpt[$k] = $cfg[$k] }
     }
     return $excerpt
@@ -260,33 +332,51 @@ function Test-PnpGyroidDispatch {
     }
 }
 
-# --- Orca config generation (string-typed overrides; numbers are ignored) ----
-function New-OrcaDerivedConfig {
+# --- Orca config: matched-job CLI overrides over the vendor preset triple ---
+function New-OrcaOverrideArgs {
+    # Matched-job keys, ranked above the loaded vendor presets by the CLI. The
+    # process/machine/filament presets themselves are the vendor ones, resolved
+    # through the source manifest so their `inherits` chain is flattened.
     param(
         [Parameter(Mandatory = $true)][string]$Generator,
         [Parameter(Mandatory = $true)][string]$SupportFlag
     )
-    $derivedDir = Join-Path $RunDir 'orca-configs'
-    New-Item -ItemType Directory -Path $derivedDir -Force | Out-Null
-    $path = Join-Path $derivedDir ('derived-' + $Generator + '-support' + $SupportFlag + '.json')
-    if (Test-Path -LiteralPath $path) { return $path }
-    $j = Get-Content -LiteralPath $OrcaVendorProcess -Raw | ConvertFrom-Json
-    $sets = [ordered]@{
-        name = 'pnp-matched-' + $Generator + '-support' + $SupportFlag
-        wall_generator = $Generator
-        wall_loops = $Job.WallLoops
-        sparse_infill_density = $Job.SparseInfillDensity
-        sparse_infill_pattern = $Job.SparseInfillPattern
-        enable_support = $SupportFlag
-        support_type = $Job.SupportType
-        layer_height = $Job.LayerHeight
-        initial_layer_print_height = $Job.FirstLayerHeight
+    $args = @(
+        ('--wall-generator=' + $Generator),
+        ('--wall-loops=' + $Job.WallLoops),
+        ('--sparse-infill-density=' + $Job.SparseInfillDensity),
+        ('--sparse-infill-pattern=' + $Job.SparseInfillPattern),
+        ('--enable-support=' + $SupportFlag),
+        ('--layer-height=' + $Job.LayerHeight),
+        ('--initial-layer-print-height=' + $Job.FirstLayerHeight),
+        # The map's fairness contract records enable_arc_fitting = 0 in every
+        # matched cell (ticket 82) and treats the key as inert on that basis.
+        # OrcaSlicer 2.5 flipped the *default* to enabled; no vendor preset in
+        # the matched chain sets it either way, so without this pin the repaired
+        # rig would silently start emitting arcs — a feature PnP does not have.
+        # Pin it to the contract's value rather than inherit a version default.
+        '--enable-arc-fitting=0',
+        # perf-vs-orca ticket 103 ruling ("pinned back", 2026-10-31): OrcaSlicer
+        # 2.5 also flipped `elefant_foot_compensation` (0 -> 0.15) and
+        # `brim_width` (0 -> 5). Both are pinned to the 2.4-era value for the
+        # same reason as arc fitting: the re-baselined job must differ from the
+        # archive only by the filament leg t98 repaired. PnP has no
+        # elephant-foot feature, and the PnP side of the matched job prints its
+        # own 8 mm skirt-brim default, so leaving 2.5's 5 mm brim would compare
+        # two different adhesion jobs. Test-OrcaEvidence asserts all three
+        # resolved values from each run's appendix (fail closed on a version
+        # bump instead of drifting silently).
+        '--elefant-foot-compensation=0',
+        '--brim-width=0'
+    )
+    if ($OrcaSupportStyle -and $OrcaSupportStyle -ne 'vendor' -and $SupportFlag -eq '1') {
+        # Ticket 105 ruling: appended last so it ranks above every loaded preset
+        # and above the matched-job keys (none of which set this key). Inert and
+        # omitted on supports-off runs, where the appendix must keep resolving
+        # the vendor default.
+        $args += ('--support-style=' + $OrcaSupportStyle)
     }
-    foreach ($k in $sets.Keys) {
-        $j | Add-Member -NotePropertyName $k -NotePropertyValue ([string]$sets[$k]) -Force
-    }
-    $j | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $path
-    return $path
+    return $args
 }
 
 # --- Preflight (fail-closed) -------------------------------------------------
@@ -301,6 +391,10 @@ function Assert-Preflight {
         if (-not (Test-Path -LiteralPath $spec.Exe)) { throw "missing-artifact: $($spec.Exe)" }
     }
     if ($Tools -contains 'orca') {
+        if (-not (Test-Path -LiteralPath $OrcaVendorManifest)) {
+            throw ("missing-artifact: $OrcaVendorManifest. OrcaSlicer 2.5 needs a source-manifest vendor tree; " +
+                   "run: pwsh -NoProfile -File docs/specs/perf-vs-orca/evidence/orca-rig-repair/prepare_orca_vendor.ps1")
+        }
         foreach ($p in @($OrcaMachine, $OrcaVendorProcess, $OrcaFilament)) {
             if (-not (Test-Path -LiteralPath $p)) { throw "missing-artifact: $p" }
         }
@@ -333,7 +427,7 @@ function Assert-Preflight {
 }
 
 # --- CSV ---------------------------------------------------------------------
-$CsvHeader = 'run_id,batch_id,cell,fixture,generator,supports,tool,run_index,warmup,threads,expected_generator,validated_generator,config_path,exe_path,module_dir,model_path,output_path,stderr_path,wall_seconds,cpu_seconds,cpu_wall_ratio,peak_workingset_bytes,gcode_bytes,sha256_of_gcode,type_counts_json,completion_status,fatal_error_count,non_fatal_error_count,degraded,exit_code,timestamp_utc'
+$CsvHeader = 'run_id,batch_id,cell,fixture,generator,supports,tool,run_index,warmup,threads,expected_generator,validated_generator,config_path,exe_path,module_dir,model_path,output_path,stderr_path,wall_seconds,cpu_seconds,cpu_wall_ratio,peak_workingset_bytes,gcode_bytes,sha256_of_gcode,type_counts_json,completion_status,fatal_error_count,non_fatal_error_count,degraded,exit_code,timestamp_utc,resolved_brim_width,resolved_enable_arc_fitting,resolved_elefant_foot_compensation,resolved_filament_density,resolved_filament_max_volumetric_speed,resolved_first_layer_temperature'
 if (-not (Test-Path $CsvPath)) {
     Set-Content -Path $CsvPath -Value $CsvHeader -Encoding utf8
 } else {
@@ -352,7 +446,10 @@ function Add-ScoreRow {
         ([math]::Round($Row.wall_seconds, 4)), ([math]::Round($Row.cpu_seconds, 4)), ([math]::Round($Row.cpu_wall_ratio, 4)),
         $Row.peak_workingset_bytes, $Row.gcode_bytes, (ConvertTo-CsvField $Row.sha256_of_gcode),
         (ConvertTo-CsvField $Row.type_counts_json), (ConvertTo-CsvField $Row.completion_status),
-        $Row.fatal_error_count, $Row.non_fatal_error_count, $Row.degraded, $Row.exit_code, $Row.timestamp_utc
+        $Row.fatal_error_count, $Row.non_fatal_error_count, $Row.degraded, $Row.exit_code, $Row.timestamp_utc,
+        (ConvertTo-CsvField $Row.resolved_brim_width), (ConvertTo-CsvField $Row.resolved_enable_arc_fitting),
+        (ConvertTo-CsvField $Row.resolved_elefant_foot_compensation), (ConvertTo-CsvField $Row.resolved_filament_density),
+        (ConvertTo-CsvField $Row.resolved_filament_max_volumetric_speed), (ConvertTo-CsvField $Row.resolved_first_layer_temperature)
     ) -join ','
     Add-Content -Path $CsvPath -Value $line -Encoding utf8
 }
@@ -386,23 +483,35 @@ function Invoke-ScoreRun {
     $appendixExcerpt = @{}
 
     if ($Tool -eq 'orca') {
-        $derived = New-OrcaDerivedConfig -Generator $Generator -SupportFlag $supportFlag
+        $overrideArgs = New-OrcaOverrideArgs -Generator $Generator -SupportFlag $supportFlag
         $outDir = Join-Path $OrcaOutRoot $runId
         New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-        $loadSettings = $OrcaMachine + ';' + $derived
+        $loadSettings = $OrcaMachine + ';' + $OrcaVendorProcess
+        # The CLI always writes its log, and without --logfile it lands in the
+        # process working directory — i.e. one 1.1 MB 00000.log per run in the
+        # repo root. Pin it beside the run instead; -OrcaDebugLog only raises the
+        # level on the same file. The 2.5 fatal messages ("can not resolve
+        # preset ...", "can not install <preset> ... : <reason>") appear here and
+        # nowhere else, stderr included.
+        $cliLogArgs = @('--logfile', ('"' + (Join-Path $outDir 'orca-cli.log') + '"'))
+        if ($OrcaDebugLog) { $cliLogArgs = @('--debug', '5') + $cliLogArgs }
         $argList = @(
             '--slice', '0',
             '--load-settings', ('"' + $loadSettings + '"'),
-            '--load-filaments', ('"' + $OrcaFilament + '"'),
+            '--load-filaments', ('"' + $OrcaFilament + '"')
+        ) + $overrideArgs + $cliLogArgs + @(
             '--outputdir', ('"' + $outDir + '"'),
             ('"' + $modelPath + '"')
         )
         $measured = Invoke-MeasuredProcess -FilePath $OrcaExe -ArgumentList $argList -StdoutPath (Join-Path $outDir 'orca.log') -StderrPath $stderrPath
         $gcodePath = Join-Path $GcodeDir ($runId + '.gcode')
         Move-Item -LiteralPath (Join-Path $outDir 'plate_1.gcode') -Destination $gcodePath -Force
-        $cfg = Test-OrcaEvidence -OutputPath $gcodePath -ExpectedGenerator $Generator -ExpectedSupportFlag $supportFlag -ExitCode $measured.ExitCode -RunId $runId
+        $expectedStyle = if ($supportFlag -eq '1') { $OrcaExpectedSupportStyle } else { 'default' }
+        $cfg = Test-OrcaEvidence -OutputPath $gcodePath -ExpectedGenerator $Generator -ExpectedSupportFlag $supportFlag -ExitCode $measured.ExitCode -RunId $runId -ExpectedSupportStyle $expectedStyle
         $validatedGenerator = $Generator
-        foreach ($k in @('wall_generator', 'wall_loops', 'sparse_infill_density', 'sparse_infill_pattern', 'enable_support', 'support_type', 'layer_height')) {
+        foreach ($k in @('wall_generator', 'wall_loops', 'sparse_infill_density', 'sparse_infill_pattern', 'enable_support', 'support_type', 'support_style', 'layer_height',
+                         'enable_arc_fitting', 'elefant_foot_compensation', 'brim_width',
+                         'filament_density', 'filament_max_volumetric_speed', 'first_layer_temperature')) {
             $appendixExcerpt[$k] = $cfg[$k]
         }
         $completionStatus = 'n/a'
@@ -455,12 +564,13 @@ function Invoke-ScoreRun {
 
     $wall = $measured.WallSeconds
     $cpu = $measured.CpuSeconds
+    $resolved = { param($k) if ($appendixExcerpt.ContainsKey($k)) { [string]$appendixExcerpt[$k] } else { '' } }
     Add-ScoreRow @{
         run_id = $runId; batch_id = $BatchId; cell = $cell; fixture = $Fixture
         generator = $Generator; supports = $Supports; tool = $Tool
         run_index = $RunIndex; warmup = $(if ($Warmup) { 1 } else { 0 }); threads = $Threads
         expected_generator = $Generator; validated_generator = $validatedGenerator
-        config_path = $(if ($Tool -eq 'orca') { $derived } else { $configPath })
+        config_path = $(if ($Tool -eq 'orca') { $loadSettings + ' | ' + ($overrideArgs -join ' ') } else { $configPath })
         exe_path = $ToolSpecs[$Tool].Exe; module_dir = $(if ($Tool -eq 'orca') { '' } else { $spec.ModuleDir })
         model_path = $modelPath; output_path = $gcodePath; stderr_path = $stderrPath
         wall_seconds = $wall; cpu_seconds = $cpu; cpu_wall_ratio = $(if ($wall -gt 0) { $cpu / $wall } else { 0 })
@@ -470,6 +580,12 @@ function Invoke-ScoreRun {
         non_fatal_error_count = $nonFatalCount; degraded = $degraded
         exit_code = $measured.ExitCode
         timestamp_utc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+        resolved_brim_width = (& $resolved 'brim_width')
+        resolved_enable_arc_fitting = (& $resolved 'enable_arc_fitting')
+        resolved_elefant_foot_compensation = (& $resolved 'elefant_foot_compensation')
+        resolved_filament_density = (& $resolved 'filament_density')
+        resolved_filament_max_volumetric_speed = (& $resolved 'filament_max_volumetric_speed')
+        resolved_first_layer_temperature = (& $resolved 'first_layer_temperature')
     }
     Write-Host ("[scoreboard] " + (Get-Date).ToString('HH:mm:ss') + " DONE  " + $runId + (" wall={0:N1}s cpu={1:N1}s ratio={2:N2}" -f $wall, $cpu, $(if ($wall -gt 0) { $cpu / $wall } else { 0 })))
     return $gcodePath

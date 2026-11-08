@@ -32,7 +32,8 @@ use slicer_core::perimeter_utils::{
     seam_paint_boxes, wall_sequence_reorder, WallSequence, BASE_SPEED,
 };
 use slicer_core::polygon_ops::{
-    offset2_ex, opening_ex, remove_small_and_small_holes, OffsetJoinType as CoreJoin,
+    offset2_ex, opening_ex, opening_is_empty, remove_small_and_small_holes,
+    OffsetJoinType as CoreJoin,
 };
 use slicer_core::top_surface_split::split_top_surfaces;
 use slicer_ir::{
@@ -65,6 +66,12 @@ pub struct ClassicPerimeters {
     inner_speed_factor: f32,
     /// Arc tolerance for polygon offset operations (mm).
     perimeter_arc_tolerance: f32,
+    /// OrcaSlicer `resolution`: slicing-time contour simplification tolerance,
+    /// already clamped to canonical's 1 µm floor and converted to `Point2`
+    /// units. Canonical reads it from the **print** config
+    /// (`PerimeterGenerator`'s `m_scaled_resolution`), not from object config,
+    /// so caching it at construction cannot miss a per-object override.
+    resolution_units: f64,
 }
 
 /// Minimum enclosed area (workspace-unit², 1 unit² = 10⁻⁸ mm²) for a contour to
@@ -105,12 +112,14 @@ impl LayerModule for ClassicPerimeters {
         let outer_wall_speed = config.require_float("outer_wall_speed")? as f32;
         let inner_wall_speed = config.require_float("inner_wall_speed")? as f32;
         let perimeter_arc_tolerance = config.require_float("perimeter_arc_tolerance")? as f32;
+        let resolution = config.require_float("resolution")? as f32;
 
         Ok(Self {
             wall_count,
             outer_speed_factor: configured_speed_factor(outer_wall_speed),
             inner_speed_factor: configured_speed_factor(inner_wall_speed),
             perimeter_arc_tolerance,
+            resolution_units: slicer_sdk::contour_resolution::tolerance_units(resolution),
         })
     }
 
@@ -340,6 +349,24 @@ impl LayerModule for ClassicPerimeters {
         let bridge_flow_ratio = _config.require_float("bridge_flow")? as f32;
         let thick_bridges = _config.require_bool("thick_bridges")?;
 
+        // Consume-only-when-read (t20): the per-vertex overhang stamps are
+        // read only by overhang-classifier-default, and only when its own
+        // liveness predicate holds. Read the same predicate here so this
+        // per-layer producer skips both spatial queries when nobody reads
+        // them; when live, the exact same modes as before are used.
+        let overhang_annotations_consumed =
+            slicer_sdk::config_predicates::overhang_annotations_consumed_or_inactive(_config);
+        let planar_annotation_mode = if overhang_annotations_consumed {
+            PathAnnotationMode::Planar
+        } else {
+            PathAnnotationMode::Unconsumed
+        };
+        let nonplanar_annotation_mode = if overhang_annotations_consumed {
+            PathAnnotationMode::NonPlanarNoQuartile
+        } else {
+            PathAnnotationMode::Unconsumed
+        };
+
         for region in regions {
             output.begin_region(
                 region.object_id(),
@@ -372,6 +399,7 @@ impl LayerModule for ClassicPerimeters {
                     layer_height,
                     output,
                     &spatial_context,
+                    nonplanar_annotation_mode,
                 )?;
                 continue;
             }
@@ -397,7 +425,21 @@ impl LayerModule for ClassicPerimeters {
             } else {
                 layer_wall_count
             };
-            let polygons = region.polygons();
+            let original_polygons = region.polygons();
+            // OrcaSlicer `resolution` (site 1): canonical simplifies each
+            // *surface* at the top of the wall pass
+            // (`union_ex(surface.expolygon.simplify_p(surface_simplify_resolution))`).
+            // This stage has no `Surface` decomposition, so the canonical
+            // function runs on the region contour and each hole — the finest
+            // granularity the seam owns. Everything downstream of here (wall
+            // insets, narrow-island classification, the overhang sub-area
+            // split, the infill boundary) therefore consumes simplified
+            // geometry, exactly as canonical's wall pass does.
+            let simplified = slicer_sdk::contour_resolution::simplify_p(
+                original_polygons,
+                self.resolution_units,
+            );
+            let polygons: &[ExPolygon] = &simplified;
             let z = region.z();
             if wall_count == 0 {
                 output.set_infill_areas(polygons.to_vec())?;
@@ -435,6 +477,7 @@ impl LayerModule for ClassicPerimeters {
                 if !split.top_portion.is_empty() {
                     self.emit_walls(
                         &split.top_portion,
+                        original_polygons,
                         z,
                         region.segment_annotations(),
                         region_fuzzy,
@@ -460,11 +503,13 @@ impl LayerModule for ClassicPerimeters {
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
                         &spatial_context,
+                        planar_annotation_mode,
                     )?;
                 }
                 if !split.non_top_portion.is_empty() {
                     self.emit_walls(
                         &split.non_top_portion,
+                        original_polygons,
                         z,
                         region.segment_annotations(),
                         region_fuzzy,
@@ -490,6 +535,7 @@ impl LayerModule for ClassicPerimeters {
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
                         &spatial_context,
+                        planar_annotation_mode,
                     )?;
                 }
             } else if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
@@ -529,6 +575,7 @@ impl LayerModule for ClassicPerimeters {
                 if !split.top_portion.is_empty() {
                     self.emit_walls(
                         &split.top_portion,
+                        original_polygons,
                         z,
                         region.segment_annotations(),
                         region_fuzzy,
@@ -554,11 +601,13 @@ impl LayerModule for ClassicPerimeters {
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
                         &spatial_context,
+                        planar_annotation_mode,
                     )?;
                 }
                 if !split.non_top_portion.is_empty() {
                     self.emit_walls(
                         &split.non_top_portion,
+                        original_polygons,
                         z,
                         region.segment_annotations(),
                         region_fuzzy,
@@ -584,11 +633,13 @@ impl LayerModule for ClassicPerimeters {
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
                         &spatial_context,
+                        planar_annotation_mode,
                     )?;
                 }
             } else {
                 self.emit_walls(
                     polygons,
+                    original_polygons,
                     z,
                     region.segment_annotations(),
                     region_fuzzy,
@@ -614,6 +665,7 @@ impl LayerModule for ClassicPerimeters {
                     medial_axis_enabled,
                     seam_candidate_angle_threshold_deg,
                     &spatial_context,
+                    planar_annotation_mode,
                 )?;
             }
         }
@@ -658,6 +710,11 @@ impl ClassicPerimeters {
     fn emit_walls(
         &self,
         polygons: &[ExPolygon],
+        // Original, un-simplified region polygons. Paint annotations are
+        // indexed by this contour's vertex order; `resolution` simplification
+        // re-unions rings and may reorder their start vertex, so attribution
+        // must not read the simplified set.
+        original_polygons: &[ExPolygon],
         z: f32,
         segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
         variant_fuzzy: bool,
@@ -683,6 +740,7 @@ impl ClassicPerimeters {
         medial_axis_enabled: bool,
         seam_candidate_angle_threshold_deg: f32,
         context: &PerimeterSpatialContext,
+        annotation_mode: PathAnnotationMode,
     ) -> Result<(), ModuleError> {
         // P109 degeneracy guard: a contour needs >=3 non-collinear vertices
         // (strictly positive enclosed area) to be offsettable. Clipper's polygon
@@ -869,7 +927,7 @@ impl ClassicPerimeters {
                     z,
                     bead_flow_width_mm,
                     context,
-                    PathAnnotationMode::Planar,
+                    annotation_mode,
                 );
                 if points.is_empty() {
                     return None;
@@ -877,10 +935,16 @@ impl ClassicPerimeters {
                 let num_points = points.len();
 
                 let (mut feature_flags, boundary_type) = if is_contour {
-                    let ring_pts: Option<&[slicer_ir::Point2]> =
-                        if is_outer { None } else { Some(&ring.points) };
-                    let orig_polys: Option<&[ExPolygon]> =
-                        if is_outer { None } else { Some(polygons) };
+                    // Paint annotations are indexed by the *original* region
+                    // contour's vertex order. `resolution` simplification
+                    // re-unions the ring through clipper, which can change the
+                    // start vertex, so attribute against `original_polygons`
+                    // rather than the simplified geometry the wall is built
+                    // from. The offset ring's order no longer matches the
+                    // original 1:1, so use the reprojection path for both the
+                    // outer and inner walls.
+                    let ring_pts: Option<&[slicer_ir::Point2]> = Some(&ring.points);
+                    let orig_polys: Option<&[ExPolygon]> = Some(original_polygons);
                     build_wall_flags(
                         num_points,
                         poly_idx,
@@ -1088,6 +1152,13 @@ impl ClassicPerimeters {
                 ClipOperation::Difference,
             );
             for gap in &filtered_gaps {
+                // OrcaSlicer `resolution` (site 2): canonical runs
+                // `ex.douglas_peucker(surface_simplify_resolution)` on each gap
+                // candidate before the medial-axis pass, to avoid duplicated
+                // points and speed that pass up. No union here — the gap is not
+                // re-tessellated, only its ring is thinned.
+                let gap =
+                    &slicer_sdk::contour_resolution::douglas_peucker(gap, self.resolution_units);
                 let axes =
                     slicer_sdk::host::medial_axis(gap, min_gap_fill_width, max_gap_fill_width);
                 if let Err(e) = &axes {
@@ -1174,8 +1245,16 @@ impl ClassicPerimeters {
                 .unwrap_or(inner_wall_line_width)
                 - infill_wall_overlap)
                 .max(0.0);
-            let infill = slicer_sdk::host::offset_polygons(
+            // OrcaSlicer `resolution` (site 3): canonical simplifies the
+            // innermost wall contour again before deriving the infill boundary
+            // (`for (ExPolygon &ex : last) ex.simplify_p(m_scaled_resolution,
+            // &pp); ExPolygons not_filled_exp = union_ex(pp);`).
+            let infill_source = slicer_sdk::contour_resolution::simplify_p(
                 &current_polygons,
+                self.resolution_units,
+            );
+            let infill = slicer_sdk::host::offset_polygons(
+                &infill_source,
                 -infill_inset,
                 HostJoin::Miter,
                 self.perimeter_arc_tolerance,
@@ -1209,6 +1288,7 @@ impl ClassicPerimeters {
         layer_height: f32,
         output: &mut PerimeterOutputBuilder,
         context: &PerimeterSpatialContext,
+        annotation_mode: PathAnnotationMode,
     ) -> Result<(), ModuleError> {
         // D-105 residual (packet 185): inset consecutive shells by Flow
         // *spacing* (rounded cross-section via `line_width_to_spacing`), not by
@@ -1248,15 +1328,10 @@ impl ClassicPerimeters {
                 ExtrusionRole::InnerWall
             };
             for poly in &inset_result {
-                // Non-planar shells are an explicitly separate concern (D-3); never
+                // Non-planar shells are an explicitly separate concern (D-3): never
                 // stamp overhang_quartile here.
-                let points = expolygon_to_path3d_indexed(
-                    &poly.contour,
-                    z,
-                    width,
-                    context,
-                    PathAnnotationMode::NonPlanarNoQuartile,
-                );
+                let points =
+                    expolygon_to_path3d_indexed(&poly.contour, z, width, context, annotation_mode);
                 if points.is_empty() {
                     continue;
                 }
@@ -1330,13 +1405,16 @@ fn classify_narrow_island(
     if polygons.is_empty() {
         return false;
     }
-    let opened = opening_ex(
+    // Only the emptiness of the opening is consumed; `opening_is_empty` answers
+    // it with the shared single erosion pass instead of materialising the
+    // erode-then-dilate geometry. Exact, not an approximation — see the
+    // predicate's docs in `slicer_core::polygon_ops`.
+    if !opening_is_empty(
         polygons,
         (threshold_mm / 2.0) as f64,
         CoreJoin::Miter,
         arc_tolerance as f64,
-    );
-    if !opened.is_empty() {
+    ) {
         return false;
     }
     let mut min_x = i64::MAX;
@@ -1374,9 +1452,15 @@ mod tests {
                 "perimeter_arc_tolerance".to_string(),
                 ConfigValue::Float(0.0125),
             ),
+            ("resolution".to_string(), ConfigValue::Float(0.01)),
         ]));
         let module = ClassicPerimeters::from_config(&config).unwrap();
         assert_eq!(module.wall_count, 3);
+        assert!(
+            (module.resolution_units - 100.0).abs() < 1e-4,
+            "0.01 mm at 10 000 units/mm is 100 units, got {}",
+            module.resolution_units
+        );
         // R2: inner_wall_line_width is now read per-invocation, not cached.
         // Verify the module still initialises without error (struct fields reduced).
         let _ = module.wall_count();

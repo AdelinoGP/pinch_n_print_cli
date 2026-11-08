@@ -18,12 +18,12 @@ use pnp_cli::profile_cmd::run_profile_from;
 // the symbol in.
 //
 // See docs/16_slicer_report.md §"Global allocator contract" for the binary
-// installation contract and the downstream-packager rule for wrapping
-// jemalloc/mimalloc.
+// installation contract. The wrapped allocator is mimalloc rather than the
+// system heap (wayfinder ticket 102 candidate).
 #[cfg(feature = "report")]
 #[global_allocator]
-static ALLOC: slicer_runtime::report::AccountingAllocator<std::alloc::System> =
-    slicer_runtime::report::AccountingAllocator::new(std::alloc::System);
+static ALLOC: slicer_runtime::report::AccountingAllocator<mimalloc::MiMalloc> =
+    slicer_runtime::report::AccountingAllocator::new(mimalloc::MiMalloc);
 
 mod helpers_cmd;
 mod support_preview;

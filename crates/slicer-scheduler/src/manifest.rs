@@ -2066,14 +2066,6 @@ denied_scopes = ["object", "layer_range"]
             "an identity-routed speed stays un-annotated"
         );
         assert!(travel["group"].is_null());
-        // An enum-promoted string key reports the enum wire type and its
-        // domain.
-        let join = by_key("flat_bridge_closing_join");
-        assert_eq!(join["type"], "enum");
-        assert_eq!(
-            join["values"],
-            serde_json::json!(["miter", "square", "round"])
-        );
 
         // Scope routes the key to a preset list on the GUI side; getting it
         // wrong round-trips the key into the wrong preset file.

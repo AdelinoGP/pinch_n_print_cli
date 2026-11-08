@@ -1,0 +1,346 @@
+diff --git a/crates/slicer-gcode/src/emit.rs b/crates/slicer-gcode/src/emit.rs
+index 8a8e8676..50bc5d94 100644
+--- a/crates/slicer-gcode/src/emit.rs
++++ b/crates/slicer-gcode/src/emit.rs
+@@ -28,6 +28,23 @@ use slicer_ir::{
+ use crate::error::GCodeEmitError;
+ use crate::serialize::{format_xyz, tolerance_for_role};
+ 
++// Ticket-88 attribution probe (temporary; env-gated, reverted before close).
++fn t88_probe_on() -> bool {
++    std::env::var_os("PNP_T88_PROBE").is_some()
++}
++fn t88_mark(term: &str, start: std::time::Instant) {
++    if t88_probe_on() {
++        let now = std::time::SystemTime::now()
++            .duration_since(std::time::UNIX_EPOCH)
++            .map(|d| d.as_millis())
++            .unwrap_or(0);
++        eprintln!(
++            "T88PROBE term={term} ms={:.3} at_ms={now}",
++            start.elapsed().as_secs_f64() * 1000.0
++        );
++    }
++}
++
+ /// Maximum plausible number of extruder/tool slots.
+ ///
+ /// `filament_per_tool` is sized as a dense `Vec<f32>` indexed by tool id.
+@@ -429,8 +446,11 @@ pub fn orca_type_label(role: &ExtrusionRole) -> &'static str {
+ 
+ impl GCodeEmitter for DefaultGCodeEmitter {
+     fn emit_gcode(&self, layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
++        let t88 = std::time::Instant::now();
+         // Clone for mutation (overhang classification + tool rotation).
+         let mut owned_layers: Vec<LayerCollectionIR> = layer_irs.to_vec();
++        t88_mark("ge.clone", t88);
++        let t88 = std::time::Instant::now();
+         // Apply cross-layer tool rotation before classification and emission.
+         // This rotates each layer's entity clusters so the first cluster's tool
+         // matches the previous layer's ending tool, avoiding redundant T<n>
+@@ -438,6 +458,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
+         // clusters in ascending tool order (H1: module state doesn't survive
+         // across calls), so the host performs the rotation post-dispatch.
+         apply_cross_layer_tool_rotation(&mut owned_layers);
++        t88_mark("ge.tool_rotation", t88);
+         let layer_irs: &[LayerCollectionIR] = &owned_layers;
+ 
+         // Count of layers that actually produce g-code moves. This drives
+@@ -962,6 +983,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
+             }
+         }
+ 
++        t88_mark("ge.walk", t88);
+         // Build filament_used_mm vector (indexed by tool)
+         let max_tool = filament_per_tool.keys().max().copied().unwrap_or(0);
+         // Defense-in-depth: reject any tool index that would cause a multi-GB
+@@ -1002,11 +1024,15 @@ impl GCodeEmitter for DefaultGCodeEmitter {
+             },
+             ..Default::default()
+         };
++        let t88 = std::time::Instant::now();
+         let (estimate, elapsed) =
+             crate::estimator::estimate_print_with_elapsed(&gcode_ir, &limits, &tool_diameters);
++        t88_mark("ge.estimate", t88);
++        let t88 = std::time::Instant::now();
+         if !self.resolved_config.disable_m73 {
+             crate::m73::inject_m73(&mut gcode_ir, &elapsed);
+         }
++        t88_mark("ge.m73", t88);
+         gcode_ir
+             .commands
+             .extend(crate::m73::filament_stats_comment_block(
+diff --git a/crates/slicer-runtime/src/builtins/support_analysis_producer.rs b/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
+index 5eeef861..2cc2b470 100644
+--- a/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
++++ b/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
+@@ -24,6 +24,19 @@ use slicer_wasm_host::support_territory::SUPPORT_TERRITORY_CLEARANCE_KEY;
+ use crate::blackboard::Blackboard;
+ use crate::layer_executor::config_for_region_smallest_chain;
+ 
++// Ticket-88 attribution probe (temporary; env-gated, reverted before close).
++fn t88_probe_on() -> bool {
++    std::env::var_os("PNP_T88_PROBE").is_some()
++}
++fn t88_mark(term: &str, start: std::time::Instant) {
++    if t88_probe_on() {
++        eprintln!(
++            "T88PROBE term={term} ms={:.3}",
++            start.elapsed().as_secs_f64() * 1000.0
++        );
++    }
++}
++
+ /// Build conservative candidates without propagating support bodies.
+ ///
+ /// Candidates are **support contacts**, not model cross-sections. Each is the
+@@ -84,6 +97,7 @@ pub fn commit_support_analysis_builtin(
+             // the same values in the same order. Values are identical by
+             // construction: the same function, the same inputs, no shared
+             // mutable state.
++            let t88 = std::time::Instant::now();
+             let eligibility_work: Vec<&slicer_ir::SlicedRegion> = slices
+                 .iter()
+                 .flat_map(|slice| slice.regions.iter())
+@@ -96,6 +110,8 @@ pub fn commit_support_analysis_builtin(
+                         .derive_needs_support(surface_classification.as_deref())
+                 })
+                 .collect();
++            t88_mark("sa.eligibility", t88);
++            let t88 = std::time::Instant::now();
+             let mut needs_support_index = 0_usize;
+             let mut contact_work: Vec<(u32, String, u64, Vec<ExPolygon>, bool)> = Vec::new();
+             for slice in slices.iter() {
+@@ -159,10 +175,14 @@ pub fn commit_support_analysis_builtin(
+             // first appears at layer `k` while sitting squarely on a *different*
+             // region below emit its entire cross-section as a contact --
+             // spurious full-area support on every multi-region object.
++            t88_mark("sa.collect", t88);
++            let t88 = std::time::Instant::now();
+             let object_layer_union: BTreeMap<(String, u32), Vec<ExPolygon>> = object_layer_polygons
+                 .into_iter()
+                 .map(|(key, polygons)| (key, union_ex(&polygons)))
+                 .collect();
++            t88_mark("sa.layer_unions", t88);
++            let t88 = std::time::Instant::now();
+             let base_params = resolve_contact_params(config, threshold_angle_deg);
+             // F-19: sliced support-enforcer / support-blocker modifier volumes.
+             // `crates/slicer-core/src/algos/region_mapping.rs` deliberately
+@@ -170,8 +190,12 @@ pub fn commit_support_analysis_builtin(
+             // never appear as a `variant_chain` entry -- slicing the modifier
+             // volumes here is the only way this stage can see them.
+             let layer_zs: Vec<f32> = plan.global_layers.iter().map(|layer| layer.z).collect();
++            t88_mark("sa.params", t88);
++            let t88 = std::time::Instant::now();
+             let modifiers =
+                 ModifierGeometry::slice(blackboard.mesh(), &layer_zs, &plan.global_layers);
++            t88_mark("sa.modifiers", t88);
++            let t88 = std::time::Instant::now();
+             // Deterministic order regardless of `SliceIR` ordering; the
+             // parallel pass below reads only shared immutable state and
+             // `rayon`'s `collect` into a `Vec` preserves this order, so the
+@@ -267,7 +291,9 @@ pub fn commit_support_analysis_builtin(
+                     },
+                 )
+                 .collect();
++            t88_mark("sa.contacts", t88);
+ 
++            let t88 = std::time::Instant::now();
+             for Contact {
+                 layer_index,
+                 object_id,
+@@ -396,9 +422,13 @@ pub fn commit_support_analysis_builtin(
+                 }
+                 ir.baseline_feasible_envelope.push(plate);
+             }
++            t88_mark("sa.build", t88);
+         }
+     }
+-    blackboard.commit_support_analysis(Arc::new(ir))
++    let t88 = std::time::Instant::now();
++    let committed = blackboard.commit_support_analysis(Arc::new(ir));
++    t88_mark("sa.commit", t88);
++    committed
+ }
+ 
+ /// Clearance base-family bodies keep from foreign territory: the already
+diff --git a/crates/slicer-runtime/src/prepass.rs b/crates/slicer-runtime/src/prepass.rs
+index fa9659cd..986f2c38 100644
+--- a/crates/slicer-runtime/src/prepass.rs
++++ b/crates/slicer-runtime/src/prepass.rs
+@@ -43,6 +43,19 @@ use slicer_wasm_host::{
+     CompiledModuleLive, PrepassStageInput, PrepassStageRunner, WasmComponent, WasmInstancePool,
+ };
+ 
++// Ticket-88 attribution probe (temporary; env-gated, reverted before close).
++fn t88_probe_on() -> bool {
++    std::env::var_os("PNP_T88_PROBE").is_some()
++}
++fn t88_mark(term: &str, start: std::time::Instant) {
++    if t88_probe_on() {
++        eprintln!(
++            "T88PROBE term={term} ms={:.3}",
++            start.elapsed().as_secs_f64() * 1000.0
++        );
++    }
++}
++
+ // PrepassStageRunner trait is now defined in slicer-wasm-host::traits and re-exported
+ // from slicer_runtime via the transitional re-exports block in lib.rs (P83 Step 4c+4d).
+ // The trait signature changed to take CompiledModuleLive<'_> + PrepassStageInput<'_>
+@@ -393,12 +406,17 @@ fn execute_prepass_with_instrumentation_collecting(
+                 let PrepassStageOutput::SupportPlan(plan) = output else {
+                     unreachable!("matched support plan output")
+                 };
++                let t88 = std::time::Instant::now();
+                 support_plans.push((*plan).clone());
++                t88_mark("prepass.clone", t88);
+                 support_plan_audits.push(None);
+                 support_plan_producers.push(SupportPlanProducer {
+                     module_id: module.module_id().to_string(),
+                     claims: module.claims().to_vec(),
+                 });
++                let t88 = std::time::Instant::now();
++                drop(plan);
++                t88_mark("prepass.drop", t88);
+             } else if let Err(e) =
+                 commit_stage_output(&stage.stage_id, module.module_id(), blackboard, output)
+             {
+@@ -457,6 +475,7 @@ fn execute_prepass_with_instrumentation_collecting(
+             // discard every other retained entry and abort the prepass. The
+             // first-arriving family keeps the region and the loser is reported
+             // as a non-fatal 1202 diagnostic on the family writer's audit.
++            let t88 = std::time::Instant::now();
+             let (plan, diagnostics) =
+                 aggregate_support_plan_irs_degrading_with_attributed_diagnostics(
+                     support_plans,
+@@ -464,6 +483,7 @@ fn execute_prepass_with_instrumentation_collecting(
+                     &exact_z,
+                     blackboard.support_analysis().map(Arc::as_ref),
+                 );
++            t88_mark("prepass.aggregate", t88);
+             let aggregation_module = ModuleId::from("host:support_plan_aggregation");
+             // The aggregate is a host-owned stage result, but its diagnostics
+             // are per-family. Attach each one to the audit of the module that
+@@ -501,6 +521,7 @@ fn execute_prepass_with_instrumentation_collecting(
+                 };
+                 audits[target].diagnostics.push(entry.diagnostic);
+             }
++            let t88 = std::time::Instant::now();
+             if let Err(e) = commit_stage_output(
+                 &stage.stage_id,
+                 &aggregation_module,
+@@ -510,6 +531,7 @@ fn execute_prepass_with_instrumentation_collecting(
+                 instrumentation.on_stage_end(&stage.stage_id, None);
+                 return Err(e);
+             }
++            t88_mark("prepass.commit", t88);
+         }
+         instrumentation.on_stage_end(&stage.stage_id, None);
+     }
+diff --git a/crates/slicer-wasm-host/src/support_aggregation.rs b/crates/slicer-wasm-host/src/support_aggregation.rs
+index e4c5cd20..922a34bb 100644
+--- a/crates/slicer-wasm-host/src/support_aggregation.rs
++++ b/crates/slicer-wasm-host/src/support_aggregation.rs
+@@ -23,6 +23,19 @@ use crate::support_territory::TerritoryClipper;
+ /// in deciding which entries merge.
+ const MAX_BODY_EXTENT_UNITS: i64 = 1 << 22;
+ 
++// Ticket-88 attribution probe (temporary; env-gated, reverted before close).
++fn t88_probe_on() -> bool {
++    std::env::var_os("PNP_T88_PROBE").is_some()
++}
++fn t88_mark(term: &str, start: std::time::Instant) {
++    if t88_probe_on() {
++        eprintln!(
++            "T88PROBE term={term} ms={:.3}",
++            start.elapsed().as_secs_f64() * 1000.0
++        );
++    }
++}
++
+ /// Inputs to the single host multi-writer support merge point.
+ pub struct SupportAggregationInput<'a> {
+     /// Plans collected from support-family writers.
+@@ -379,6 +392,7 @@ pub fn try_aggregate_support_plans_with_policy(
+     );
+     let mut result = SupportAggregationResult::default();
+     let mut identities = HashMap::new();
++    let t88 = std::time::Instant::now();
+     let mut entries = input
+         .plans
+         .iter()
+@@ -389,11 +403,16 @@ pub fn try_aggregate_support_plans_with_policy(
+                 .map(move |entry| (plan_index, entry.clone()))
+         })
+         .collect::<Vec<_>>();
++    t88_mark("agg.entries_clone", t88);
+     // Purely for output determinism: ownership no longer depends on order.
++    let t88 = std::time::Instant::now();
+     entries.sort_by(|left, right| compare_entries(&left.1, &right.1));
++    t88_mark("agg.sort", t88);
+     for plan in &input.plans {
+         result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan.clone());
+     }
++    let t88_loop = std::time::Instant::now();
++    let mut t88_validate_ms = 0.0_f64;
+     for (plan_index, entry) in entries {
+         let identity = (
+             entry.global_layer_index,
+@@ -442,7 +461,10 @@ pub fn try_aggregate_support_plans_with_policy(
+             }
+             continue;
+         }
+-        match validate_entry(&entry, input.exact_z) {
++        let t88 = std::time::Instant::now();
++        let validation = validate_entry(&entry, input.exact_z);
++        t88_validate_ms += t88.elapsed().as_secs_f64() * 1000.0;
++        match validation {
+             None => result.retained.push(entry),
+             Some(reason) => {
+                 result.degraded = true;
+@@ -450,6 +472,12 @@ pub fn try_aggregate_support_plans_with_policy(
+             }
+         }
+     }
++    if t88_probe_on() {
++        eprintln!(
++            "T88PROBE term=agg.validate ms={t88_validate_ms:.3} loop_ms={:.3}",
++            t88_loop.elapsed().as_secs_f64() * 1000.0
++        );
++    }
+     // Validation is a *per-body* gate and runs only here, before union.
+     // Re-running it on merged groups was a category error: a merged group is by
+     // construction not one planner-emitted body, so the per-body max-body-extent
+@@ -460,7 +488,9 @@ pub fn try_aggregate_support_plans_with_policy(
+     // cap on the merged result. The occupancy predicate is set-monotone -- a
+     // union cannot introduce an overlap that was absent from every input -- so
+     // re-checking it after merging would be redundant as well.
++    let t88 = std::time::Instant::now();
+     union_same_family_entries(&mut result.retained);
++    t88_mark("agg.union", t88);
+     // Ticket 19: where the host published support territory for an
+     // `(object, layer)`, each retained body is clipped to the side its family
+     // owns (sub-region: `∩ own`; base: `- inflate(foreign, clearance)`).
+@@ -810,15 +840,20 @@ pub fn aggregate_support_plan_irs_with_policy_attributed(
+         .first()
+         .map(|plan| plan.schema_version)
+         .unwrap_or_default();
++    let t88 = std::time::Instant::now();
++    let plans_clone = plans.clone();
++    t88_mark("agg.plans_clone", t88);
++    let t88 = std::time::Instant::now();
+     let aggregate = try_aggregate_support_plans_with_policy(
+         SupportAggregationInput {
+-            plans: plans.clone(),
++            plans: plans_clone,
+             exact_z,
+             territory,
+             producers,
+         },
+         conflict_policy,
+     )?;
++    t88_mark("agg.try", t88);
+     // Attribution indices. Aggregation flattens every family's entries into
+     // one list, so the post-hoc diagnostics carry only `family_id` / `body_id`
+     // rather than a plan ordinal; these maps invert that back to the producing

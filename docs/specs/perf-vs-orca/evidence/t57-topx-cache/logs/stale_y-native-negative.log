@@ -1,0 +1,3 @@
+error: multiple workspace roots found in the same workspace:
+  D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\negative-controls\stale_y
+  D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\negative-controls\stale_y\engine

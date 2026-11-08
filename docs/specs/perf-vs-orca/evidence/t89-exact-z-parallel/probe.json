@@ -1,0 +1,24 @@
+{
+ "source": "probe.patch (env-gated PNP_T89_PROBE)",
+ "counters": {
+  "entries": 431,
+  "admitted": 431,
+  "distinct_object_z": 431,
+  "queries": 431,
+  "misses": 431,
+  "validate_ms": 7989.3
+ },
+ "split": {
+  "terms_us": {
+   "mesh_us": 5237915,
+   "z_section_us": 47257970,
+   "top_section_us": 40230679
+  },
+  "total_us": 92726564,
+  "shares": {
+   "mesh_us": 0.05648775037108029,
+   "z_section_us": 0.5096486698245392,
+   "top_section_us": 0.43386357980438056
+  }
+ }
+}

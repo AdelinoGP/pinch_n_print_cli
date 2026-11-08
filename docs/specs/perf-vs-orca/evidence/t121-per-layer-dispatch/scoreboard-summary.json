@@ -1,0 +1,204 @@
+{
+ "cells": {
+  "base/arachne/off": {
+   "orca": {
+    "wall_s": 16.3595,
+    "cpu_s": 39.0156,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "2d944e82542eff5d5a3fa24cf576474925c6412698de0119341b7ca5f278b9fc"
+   },
+   "pnp-ordinary": {
+    "wall_s": 55.4327,
+    "cpu_s": 442.0156,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f"
+   },
+   "pnp-accelerated": {
+    "wall_s": 54.18,
+    "cpu_s": 439.6719,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f"
+   },
+   "ordinary_ratio": 3.3884104037409455,
+   "accelerated_ratio": 3.3118371588373727
+  },
+  "base/arachne/on": {
+   "orca": {
+    "wall_s": 24.9541,
+    "cpu_s": 105.2031,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "2578e485fa6b0b76f9ec8f3c906f96cbd29aef8f20f02998a7e3f9d41bb750ae"
+   },
+   "pnp-ordinary": {
+    "wall_s": 124.3567,
+    "cpu_s": 750.8906,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee"
+   },
+   "pnp-accelerated": {
+    "wall_s": 124.252,
+    "cpu_s": 745.375,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee"
+   },
+   "ordinary_ratio": 4.983417554630301,
+   "accelerated_ratio": 4.979221851319021
+  },
+  "base/classic/off": {
+   "orca": {
+    "wall_s": 16.4704,
+    "cpu_s": 32.375,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "a331b405ebb223fd0bf340352a85ad03befd8b2a28da181026d5119ea2e75e74"
+   },
+   "pnp-ordinary": {
+    "wall_s": 56.0784,
+    "cpu_s": 437.2969,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131"
+   },
+   "pnp-accelerated": {
+    "wall_s": 54.48,
+    "cpu_s": 431.6406,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131"
+   },
+   "ordinary_ratio": 3.4047989119875655,
+   "accelerated_ratio": 3.3077520885952976
+  },
+  "base/classic/on": {
+   "orca": {
+    "wall_s": 25.8818,
+    "cpu_s": 99.7812,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "8479dd609428c2e53dd6564df8a12a68bbcf7a27b8251333c49050a5a0f0aba0"
+   },
+   "pnp-ordinary": {
+    "wall_s": 132.238,
+    "cpu_s": 749.7656,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca"
+   },
+   "pnp-accelerated": {
+    "wall_s": 131.8752,
+    "cpu_s": 746.4219,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca"
+   },
+   "ordinary_ratio": 5.109304607871168,
+   "accelerated_ratio": 5.095287035677581
+  },
+  "benchy/arachne/off": {
+   "orca": {
+    "wall_s": 2.1594,
+    "cpu_s": 7.6406,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "df18c682163ed5a67567dfbb7defe02d698d742f0a10b0e1df4c386c33f7d20f"
+   },
+   "pnp-ordinary": {
+    "wall_s": 6.0129,
+    "cpu_s": 29.0156,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219"
+   },
+   "pnp-accelerated": {
+    "wall_s": 5.9615,
+    "cpu_s": 28.3281,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219"
+   },
+   "ordinary_ratio": 2.7845234787440956,
+   "accelerated_ratio": 2.7607205705288504
+  },
+  "benchy/arachne/on": {
+   "orca": {
+    "wall_s": 2.7476,
+    "cpu_s": 11.9688,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "9f864a8e8ad51ee2bdca5ca9a83819c1dcdce628bc55ae41b160d7ddc4098917"
+   },
+   "pnp-ordinary": {
+    "wall_s": 11.2603,
+    "cpu_s": 45.0781,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd"
+   },
+   "pnp-accelerated": {
+    "wall_s": 11.49335,
+    "cpu_s": 45.7578,
+    "n": 2,
+    "excluded": 1,
+    "sha256": "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd"
+   },
+   "ordinary_ratio": 4.098231183578396,
+   "accelerated_ratio": 4.1830506623962735
+  },
+  "benchy/classic/off": {
+   "orca": {
+    "wall_s": 1.9157,
+    "cpu_s": 6.2969,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "27797d92d3a283f5972210dffe9367292555d744a1b4aeda8199d404be91c50e"
+   },
+   "pnp-ordinary": {
+    "wall_s": 5.7258,
+    "cpu_s": 27.625,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897"
+   },
+   "pnp-accelerated": {
+    "wall_s": 5.5437,
+    "cpu_s": 26.9844,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897"
+   },
+   "ordinary_ratio": 2.9888813488542048,
+   "accelerated_ratio": 2.8938247115936737
+  },
+  "benchy/classic/on": {
+   "orca": {
+    "wall_s": 2.6496,
+    "cpu_s": 10.6875,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "2e4317032bc939f8a14883fca58a42f88c813203b2dc85dc4a8978fb03b7f959"
+   },
+   "pnp-ordinary": {
+    "wall_s": 10.6371,
+    "cpu_s": 44.2344,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e"
+   },
+   "pnp-accelerated": {
+    "wall_s": 10.259,
+    "cpu_s": 43.375,
+    "n": 3,
+    "excluded": 0,
+    "sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e"
+   },
+   "ordinary_ratio": 4.01460597826087,
+   "accelerated_ratio": 3.871905193236715
+  }
+ }
+}

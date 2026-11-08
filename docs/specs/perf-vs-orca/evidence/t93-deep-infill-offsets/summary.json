@@ -1,0 +1,41 @@
+{
+ "ticket": 93,
+ "verdict": "GATE NOT MET - measured recommendation returns to the human",
+ "qualification_pass": true,
+ "qualified_cells": 16,
+ "cross_mode_mismatches": [],
+ "paired_gate": {
+  "ordinary-base-classic-off": {
+   "wall_delta_pct": -3.306466052670576,
+   "cpu_delta_pct": -1.1939584618696153,
+   "wall_delta_s": -2.431374049999988,
+   "retained_pairs": 6,
+   "excluded_pairs": [],
+   "baseline_wall_median_s": 74.0201956
+  },
+  "ordinary-base-classic-on": {
+   "wall_delta_pct": -0.2560337823050318,
+   "cpu_delta_pct": -0.47958381625498037,
+   "wall_delta_s": 2.8822054000000037,
+   "retained_pairs": 6,
+   "excluded_pairs": [],
+   "baseline_wall_median_s": 170.3404966
+  },
+  "accelerated-base-classic-off": {
+   "wall_delta_pct": 0.12680536757430083,
+   "cpu_delta_pct": -0.807227489818918,
+   "wall_delta_s": 0.573119399999996,
+   "retained_pairs": 6,
+   "excluded_pairs": [],
+   "baseline_wall_median_s": 81.0071537
+  },
+  "accelerated-base-classic-on": {
+   "wall_delta_pct": 0.6153051442793878,
+   "cpu_delta_pct": -0.44595808193730324,
+   "wall_delta_s": 2.20125969999998,
+   "retained_pairs": 6,
+   "excluded_pairs": [],
+   "baseline_wall_median_s": 165.89925625
+  }
+ }
+}

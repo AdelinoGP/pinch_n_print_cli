@@ -33,12 +33,11 @@ use crate::layer_executor::{
     CaptureExecutionError, CaptureRequest, StageCapture, SupportToolSelection,
 };
 use crate::{
-    compute_serial_edges_from_compiled, execute_layer_finalization_with_instrumentation,
-    execute_postpass, prepass::ConfigExpansionAuthority, Blackboard, ConfigBoundsIndex,
-    ExecutionPlan, FinalizationError, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
-    LayerExecutionError, LayerProgressSink, LayerStageRunner, ModuleAccessAudit,
-    NoopInstrumentation, NoopLayerProgressSink, Phase, PipelineInstrumentation, PostpassError,
-    PostpassStageRunner, PrepassExecutionError, PrepassStageRunner, TierKind,
+    compute_serial_edges_from_compiled, execute_postpass, prepass::ConfigExpansionAuthority,
+    Blackboard, ConfigBoundsIndex, ExecutionPlan, FinalizationError, FinalizationStageRunner,
+    GCodeEmitter, GCodeSerializer, LayerExecutionError, LayerProgressSink, LayerStageRunner,
+    ModuleAccessAudit, NoopInstrumentation, NoopLayerProgressSink, Phase, PipelineInstrumentation,
+    PostpassError, PostpassStageRunner, PrepassExecutionError, PrepassStageRunner, TierKind,
 };
 
 /// Injectable stage runners for the pipeline.
@@ -697,7 +696,7 @@ pub(crate) fn run_pipeline_until_preparation(
     );
     instrumentation.on_phase_end(Phase::PerLayer);
     let (committed_events, layer_audits) = per_layer_result?;
-    let mut layer_irs = crate::anchored_rows::synthesize_anchored_rows(committed_events)?;
+    let layer_irs = crate::anchored_rows::synthesize_anchored_rows(committed_events)?;
 
     if cancel_flag
         .as_ref()
@@ -716,18 +715,21 @@ pub(crate) fn run_pipeline_until_preparation(
         if let Some(fin_stage) = plan.layer_finalization_stage.as_ref() {
             instrumentation.on_stage_start(&fin_stage.stage_id, None);
         }
-        let fin_result = execute_layer_finalization_with_instrumentation(
+        // Ownership passes through the stage: it mutates the committed
+        // collection in place instead of cloning a rollback snapshot no
+        // production caller reads (t90), and hands it to postpass.
+        let fin_result = crate::layer_finalization::execute_layer_finalization_owned(
             &plan,
             &blackboard,
             runners.finalization.as_ref(),
-            &mut layer_irs,
+            layer_irs,
             instrumentation,
             &wasm_handles,
         );
         if let Some(fin_stage) = plan.layer_finalization_stage.as_ref() {
             instrumentation.on_stage_end(&fin_stage.stage_id, None);
         }
-        fin_result?;
+        let layer_irs = fin_result?;
 
         if !wrap_serializer {
             return execute_postpass(
@@ -748,7 +750,7 @@ pub(crate) fn run_pipeline_until_preparation(
             raw_config_source,
             &default_resolved_config,
             config_block,
-            &layer_irs,
+            layer_irs,
             instrumentation,
             &wasm_handles,
         )
@@ -826,7 +828,10 @@ fn run_postpass_with_thumbnail(
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
     default_resolved_config: &ResolvedConfig,
     config_block: Option<&BTreeMap<String, ConfigValue>>,
-    layer_irs: &[LayerCollectionIR],
+    // Owned: the production pipeline drops `layer_irs` right after this call,
+    // so the postpass reconciles and emits against the caller's vector itself
+    // (see `execute_postpass_with_owned_capture`).
+    layer_irs: Vec<LayerCollectionIR>,
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     wasm_handles: &HashMap<
         ModuleId,
@@ -920,7 +925,7 @@ fn run_postpass_with_thumbnail(
         effective_config,
     ));
 
-    crate::postpass::execute_postpass_with_instrumentation(
+    crate::postpass::execute_postpass_with_owned_capture(
         plan,
         layer_irs,
         blackboard,
@@ -929,6 +934,9 @@ fn run_postpass_with_thumbnail(
         runners.postpass.as_mut(),
         instrumentation,
         wasm_handles,
+        // An ordinary pipeline slice never captures; the visual-debug taps call
+        // `execute_postpass_with_capture` themselves.
+        None,
     )
     .map_err(PipelineError::from)
 }

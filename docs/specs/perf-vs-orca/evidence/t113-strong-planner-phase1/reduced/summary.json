@@ -1,0 +1,635 @@
+{
+  "attribution_only": true,
+  "cells": {
+    "base-arachne-on": {
+      "capture": "base-arachne-on.jsonl",
+      "clean": {
+        "degraded": false,
+        "fatal_error_count": 0,
+        "non_fatal_error_count": 0,
+        "status": "ok"
+      },
+      "floor_ms": 3331.0,
+      "occupancy_inflate_ceiling_12x_ms": 39551.359833333336,
+      "occupancy_inflate_ceiling_12x_multiple_of_floor": 11.873719553687582,
+      "occupancy_inflate_ceiling_2_6x_ms": 26551.96184615385,
+      "occupancy_inflate_ceiling_2_6x_multiple_of_floor": 7.971168371706349,
+      "occupancy_inflate_entry_ms": 21653.383,
+      "occupancy_inflate_layer_ms": 21577.626,
+      "occupancy_inflate_multiple_of_floor": 12.953148604022816,
+      "occupancy_inflate_share_of_cell": 0.10362518883218254,
+      "planner_module_ms": 84337,
+      "planner_multiple_of_floor": 25.318823176223358,
+      "planner_share_of_cell": 0.20255058540978685,
+      "probe_line": "t113-planner-split p0_volumes_new=312146us/1 p3c_collision_ladder=969576us/698304 p2_contacts=1830276us/1 p3d_avoidance_ladder=2732090us/173847 p3_mst=508591us/858 p3_drop=5021559us/1 p4_drain=2688us/1 p5_smooth=196638us/1 p6d_inflate=43146938us/864 p6d_layer=21577626us/433 p6e_node_roles=1826385us/433 p6f_node_ellipses=612068us/433 p6d_entry=21653383us/431 p6a_carve=11757634us/109 p6a_lone=66us/109 p6a_union=17097938us/109 p6a_simplify=147us/109 p6a_setdiff=399096us/109 p6a_bodydiff=72712us/109 p6a_territory=41us/109 p6a_build_roles=30099967us/109 p6_flush=30125997us/109 p6_emit=76444105us/1 p7_stamp=29072us/1 p1_total=83896048us/1",
+      "probe_total_ms": 83896.048,
+      "probe_total_share_of_cell": 0.20149155929150403,
+      "subterm_shares_of_probe_total": {
+        "clip_core": 0.35877693547615025,
+        "contacts": 0.02181599781672672,
+        "drop_loop": 0.05985453569874949,
+        "node_ellipses": 0.007295552229110959,
+        "node_roles": 0.02176961899325699,
+        "occupancy_inflate": 0.5142904705117934,
+        "smooth": 0.0023438291157647857,
+        "stamp": 0.0003465240698822905,
+        "volumes": 0.003720628175477348
+      },
+      "subterms_ms": {
+        "clip_core": 30099.967,
+        "contacts": 1830.276,
+        "drop_loop": 5021.559,
+        "node_ellipses": 612.068,
+        "node_roles": 1826.385,
+        "occupancy_inflate": 43146.938,
+        "smooth": 196.638,
+        "stamp": 29.072,
+        "volumes": 312.146
+      },
+      "terms": {
+        "p0_volumes_new": {
+          "calls": 1,
+          "us": 312146
+        },
+        "p1_total": {
+          "calls": 1,
+          "us": 83896048
+        },
+        "p2_contacts": {
+          "calls": 1,
+          "us": 1830276
+        },
+        "p3_drop": {
+          "calls": 1,
+          "us": 5021559
+        },
+        "p3_mst": {
+          "calls": 858,
+          "us": 508591
+        },
+        "p3c_collision_ladder": {
+          "calls": 698304,
+          "us": 969576
+        },
+        "p3d_avoidance_ladder": {
+          "calls": 173847,
+          "us": 2732090
+        },
+        "p4_drain": {
+          "calls": 1,
+          "us": 2688
+        },
+        "p5_smooth": {
+          "calls": 1,
+          "us": 196638
+        },
+        "p6_emit": {
+          "calls": 1,
+          "us": 76444105
+        },
+        "p6_flush": {
+          "calls": 109,
+          "us": 30125997
+        },
+        "p6a_bodydiff": {
+          "calls": 109,
+          "us": 72712
+        },
+        "p6a_build_roles": {
+          "calls": 109,
+          "us": 30099967
+        },
+        "p6a_carve": {
+          "calls": 109,
+          "us": 11757634
+        },
+        "p6a_lone": {
+          "calls": 109,
+          "us": 66
+        },
+        "p6a_setdiff": {
+          "calls": 109,
+          "us": 399096
+        },
+        "p6a_simplify": {
+          "calls": 109,
+          "us": 147
+        },
+        "p6a_territory": {
+          "calls": 109,
+          "us": 41
+        },
+        "p6a_union": {
+          "calls": 109,
+          "us": 17097938
+        },
+        "p6d_entry": {
+          "calls": 431,
+          "us": 21653383
+        },
+        "p6d_inflate": {
+          "calls": 864,
+          "us": 43146938
+        },
+        "p6d_layer": {
+          "calls": 433,
+          "us": 21577626
+        },
+        "p6e_node_roles": {
+          "calls": 433,
+          "us": 1826385
+        },
+        "p6f_node_ellipses": {
+          "calls": 433,
+          "us": 612068
+        },
+        "p7_stamp": {
+          "calls": 1,
+          "us": 29072
+        }
+      },
+      "wall_ms": 416375
+    },
+    "base-classic-off": {
+      "capture": "base-classic-off.jsonl",
+      "clean": {
+        "degraded": false,
+        "fatal_error_count": 0,
+        "non_fatal_error_count": 0,
+        "status": "ok"
+      },
+      "floor_ms": 1080.24,
+      "planner_module_ms": 141,
+      "planner_multiple_of_floor": 0.13052654965563207,
+      "planner_share_of_cell": 0.0010442123972450566,
+      "probe_line": null,
+      "terms": {},
+      "wall_ms": 135030
+    },
+    "base-classic-on": {
+      "capture": "base-classic-on.jsonl",
+      "clean": {
+        "degraded": false,
+        "fatal_error_count": 0,
+        "non_fatal_error_count": 0,
+        "status": "ok"
+      },
+      "floor_ms": 1600.7920000000001,
+      "occupancy_inflate_ceiling_12x_ms": 29985.723166666667,
+      "occupancy_inflate_ceiling_12x_multiple_of_floor": 18.731804735822433,
+      "occupancy_inflate_ceiling_2_6x_ms": 20130.275692307692,
+      "occupancy_inflate_ceiling_2_6x_multiple_of_floor": 12.575197584887787,
+      "occupancy_inflate_entry_ms": 16366.598,
+      "occupancy_inflate_layer_ms": 16397.531,
+      "occupancy_inflate_multiple_of_floor": 20.434696075442655,
+      "occupancy_inflate_share_of_cell": 0.16347756860354126,
+      "planner_module_ms": 58498,
+      "planner_multiple_of_floor": 36.54316113523805,
+      "planner_share_of_cell": 0.29234528908190444,
+      "probe_line": "t113-planner-split p0_volumes_new=226780us/1 p3c_collision_ladder=536091us/698304 p2_contacts=1397194us/1 p3d_avoidance_ladder=1942935us/173847 p3_mst=410938us/858 p3_drop=3612459us/1 p4_drain=1756us/1 p5_smooth=118843us/1 p6d_inflate=32711698us/864 p6d_layer=16397531us/433 p6e_node_roles=1184764us/433 p6f_node_ellipses=380971us/433 p6d_entry=16366598us/431 p6a_carve=5622602us/109 p6a_lone=43us/109 p6a_union=11631573us/109 p6a_simplify=80us/109 p6a_setdiff=252167us/109 p6a_bodydiff=41901us/109 p6a_territory=40us/109 p6a_build_roles=18022535us/109 p6_flush=18038215us/109 p6_emit=52811483us/1 p7_stamp=17741us/1 p1_total=58222888us/1",
+      "probe_total_ms": 58222.888,
+      "probe_total_share_of_cell": 0.2909704096472246,
+      "subterm_shares_of_probe_total": {
+        "clip_core": 0.30954381720123536,
+        "contacts": 0.023997332457984563,
+        "drop_loop": 0.062045342031127,
+        "node_ellipses": 0.006543320214552051,
+        "node_roles": 0.020348767309515802,
+        "occupancy_inflate": 0.5618357165656228,
+        "smooth": 0.0020411732238359596,
+        "stamp": 0.00030470834768622264,
+        "volumes": 0.0038950317957432822
+      },
+      "subterms_ms": {
+        "clip_core": 18022.535,
+        "contacts": 1397.194,
+        "drop_loop": 3612.459,
+        "node_ellipses": 380.971,
+        "node_roles": 1184.764,
+        "occupancy_inflate": 32711.698,
+        "smooth": 118.843,
+        "stamp": 17.741,
+        "volumes": 226.78
+      },
+      "terms": {
+        "p0_volumes_new": {
+          "calls": 1,
+          "us": 226780
+        },
+        "p1_total": {
+          "calls": 1,
+          "us": 58222888
+        },
+        "p2_contacts": {
+          "calls": 1,
+          "us": 1397194
+        },
+        "p3_drop": {
+          "calls": 1,
+          "us": 3612459
+        },
+        "p3_mst": {
+          "calls": 858,
+          "us": 410938
+        },
+        "p3c_collision_ladder": {
+          "calls": 698304,
+          "us": 536091
+        },
+        "p3d_avoidance_ladder": {
+          "calls": 173847,
+          "us": 1942935
+        },
+        "p4_drain": {
+          "calls": 1,
+          "us": 1756
+        },
+        "p5_smooth": {
+          "calls": 1,
+          "us": 118843
+        },
+        "p6_emit": {
+          "calls": 1,
+          "us": 52811483
+        },
+        "p6_flush": {
+          "calls": 109,
+          "us": 18038215
+        },
+        "p6a_bodydiff": {
+          "calls": 109,
+          "us": 41901
+        },
+        "p6a_build_roles": {
+          "calls": 109,
+          "us": 18022535
+        },
+        "p6a_carve": {
+          "calls": 109,
+          "us": 5622602
+        },
+        "p6a_lone": {
+          "calls": 109,
+          "us": 43
+        },
+        "p6a_setdiff": {
+          "calls": 109,
+          "us": 252167
+        },
+        "p6a_simplify": {
+          "calls": 109,
+          "us": 80
+        },
+        "p6a_territory": {
+          "calls": 109,
+          "us": 40
+        },
+        "p6a_union": {
+          "calls": 109,
+          "us": 11631573
+        },
+        "p6d_entry": {
+          "calls": 431,
+          "us": 16366598
+        },
+        "p6d_inflate": {
+          "calls": 864,
+          "us": 32711698
+        },
+        "p6d_layer": {
+          "calls": 433,
+          "us": 16397531
+        },
+        "p6e_node_roles": {
+          "calls": 433,
+          "us": 1184764
+        },
+        "p6f_node_ellipses": {
+          "calls": 433,
+          "us": 380971
+        },
+        "p7_stamp": {
+          "calls": 1,
+          "us": 17741
+        }
+      },
+      "wall_ms": 200099
+    },
+    "benchy-arachne-on": {
+      "capture": "benchy-arachne-on.jsonl",
+      "clean": {
+        "degraded": false,
+        "fatal_error_count": 0,
+        "non_fatal_error_count": 0,
+        "status": "ok"
+      },
+      "floor_ms": 216.976,
+      "occupancy_inflate_ceiling_12x_ms": 1539.3528333333334,
+      "occupancy_inflate_ceiling_12x_multiple_of_floor": 7.094576512302436,
+      "occupancy_inflate_ceiling_2_6x_ms": 1033.4116923076924,
+      "occupancy_inflate_ceiling_2_6x_multiple_of_floor": 4.762792623643594,
+      "occupancy_inflate_entry_ms": 831.896,
+      "occupancy_inflate_layer_ms": 865.344,
+      "occupancy_inflate_multiple_of_floor": 7.73953801342084,
+      "occupancy_inflate_share_of_cell": 0.06191630410736672,
+      "planner_module_ms": 4133,
+      "planner_multiple_of_floor": 19.048189661529385,
+      "planner_share_of_cell": 0.1523855172922351,
+      "probe_line": "t113-planner-split p0_volumes_new=31031us/1 p3c_collision_ladder=148653us/108981 p2_contacts=217550us/1 p3_mst=19290us/268 p3d_avoidance_ladder=275620us/26804 p3_drop=452062us/1 p4_drain=249us/1 p5_smooth=15914us/1 p6d_inflate=1679294us/365 p6d_layer=865344us/186 p6e_node_roles=132560us/186 p6f_node_ellipses=108128us/186 p6_flush=1319091us/47 p6d_entry=831896us/179 p6a_carve=602874us/46 p6a_lone=26us/46 p6a_union=572122us/46 p6a_simplify=48us/46 p6a_setdiff=69090us/46 p6a_bodydiff=1014us/46 p6a_territory=18us/46 p6a_build_roles=1314322us/46 p6_emit=3328298us/1 p7_stamp=4487us/1 p1_total=4058324us/1",
+      "probe_total_ms": 4058.324,
+      "probe_total_share_of_cell": 0.14963218051766095,
+      "subterm_shares_of_probe_total": {
+        "clip_core": 0.3238583218096928,
+        "contacts": 0.05360587276915298,
+        "drop_loop": 0.11139130340505095,
+        "node_ellipses": 0.026643510966596062,
+        "node_roles": 0.03266373015067304,
+        "occupancy_inflate": 0.4137900276074557,
+        "smooth": 0.003921323186615953,
+        "stamp": 0.001105628826086828,
+        "volumes": 0.0076462598846223214
+      },
+      "subterms_ms": {
+        "clip_core": 1314.322,
+        "contacts": 217.55,
+        "drop_loop": 452.062,
+        "node_ellipses": 108.128,
+        "node_roles": 132.56,
+        "occupancy_inflate": 1679.294,
+        "smooth": 15.914,
+        "stamp": 4.487,
+        "volumes": 31.031
+      },
+      "terms": {
+        "p0_volumes_new": {
+          "calls": 1,
+          "us": 31031
+        },
+        "p1_total": {
+          "calls": 1,
+          "us": 4058324
+        },
+        "p2_contacts": {
+          "calls": 1,
+          "us": 217550
+        },
+        "p3_drop": {
+          "calls": 1,
+          "us": 452062
+        },
+        "p3_mst": {
+          "calls": 268,
+          "us": 19290
+        },
+        "p3c_collision_ladder": {
+          "calls": 108981,
+          "us": 148653
+        },
+        "p3d_avoidance_ladder": {
+          "calls": 26804,
+          "us": 275620
+        },
+        "p4_drain": {
+          "calls": 1,
+          "us": 249
+        },
+        "p5_smooth": {
+          "calls": 1,
+          "us": 15914
+        },
+        "p6_emit": {
+          "calls": 1,
+          "us": 3328298
+        },
+        "p6_flush": {
+          "calls": 47,
+          "us": 1319091
+        },
+        "p6a_bodydiff": {
+          "calls": 46,
+          "us": 1014
+        },
+        "p6a_build_roles": {
+          "calls": 46,
+          "us": 1314322
+        },
+        "p6a_carve": {
+          "calls": 46,
+          "us": 602874
+        },
+        "p6a_lone": {
+          "calls": 46,
+          "us": 26
+        },
+        "p6a_setdiff": {
+          "calls": 46,
+          "us": 69090
+        },
+        "p6a_simplify": {
+          "calls": 46,
+          "us": 48
+        },
+        "p6a_territory": {
+          "calls": 46,
+          "us": 18
+        },
+        "p6a_union": {
+          "calls": 46,
+          "us": 572122
+        },
+        "p6d_entry": {
+          "calls": 179,
+          "us": 831896
+        },
+        "p6d_inflate": {
+          "calls": 365,
+          "us": 1679294
+        },
+        "p6d_layer": {
+          "calls": 186,
+          "us": 865344
+        },
+        "p6e_node_roles": {
+          "calls": 186,
+          "us": 132560
+        },
+        "p6f_node_ellipses": {
+          "calls": 186,
+          "us": 108128
+        },
+        "p7_stamp": {
+          "calls": 1,
+          "us": 4487
+        }
+      },
+      "wall_ms": 27122
+    },
+    "benchy-classic-off": {
+      "capture": "benchy-classic-off.jsonl",
+      "clean": {
+        "degraded": false,
+        "fatal_error_count": 0,
+        "non_fatal_error_count": 0,
+        "status": "ok"
+      },
+      "floor_ms": 72.68,
+      "planner_module_ms": 23,
+      "planner_multiple_of_floor": 0.3164556962025316,
+      "planner_share_of_cell": 0.002531645569620253,
+      "probe_line": null,
+      "terms": {},
+      "wall_ms": 9085
+    },
+    "benchy-classic-on": {
+      "capture": "benchy-classic-on.jsonl",
+      "clean": {
+        "degraded": false,
+        "fatal_error_count": 0,
+        "non_fatal_error_count": 0,
+        "status": "ok"
+      },
+      "floor_ms": 122.664,
+      "occupancy_inflate_ceiling_12x_ms": 1359.3314166666667,
+      "occupancy_inflate_ceiling_12x_multiple_of_floor": 11.081747021674383,
+      "occupancy_inflate_ceiling_2_6x_ms": 912.5581538461538,
+      "occupancy_inflate_ceiling_2_6x_multiple_of_floor": 7.439494504061124,
+      "occupancy_inflate_entry_ms": 743.37,
+      "occupancy_inflate_layer_ms": 750.767,
+      "occupancy_inflate_multiple_of_floor": 12.089178569099328,
+      "occupancy_inflate_share_of_cell": 0.09671342855279462,
+      "planner_module_ms": 3279,
+      "planner_multiple_of_floor": 26.73155938172569,
+      "planner_share_of_cell": 0.21385247505380553,
+      "probe_line": "t113-planner-split p0_volumes_new=21794us/1 p3c_collision_ladder=101593us/108981 p2_contacts=193536us/1 p3_mst=18339us/268 p3d_avoidance_ladder=201189us/26804 p3_drop=349034us/1 p4_drain=240us/1 p5_smooth=17041us/1 p6d_inflate=1482907us/365 p6d_layer=750767us/186 p6e_node_roles=82577us/186 p6f_node_ellipses=77305us/186 p6_flush=923688us/47 p6d_entry=743370us/179 p6a_carve=407699us/46 p6a_lone=23us/46 p6a_union=416283us/46 p6a_simplify=35us/46 p6a_setdiff=44545us/46 p6a_bodydiff=940us/46 p6a_territory=19us/46 p6a_build_roles=920901us/46 p6_emit=2632258us/1 p7_stamp=3550us/1 p1_total=3226006us/1",
+      "probe_total_ms": 3226.006,
+      "probe_total_share_of_cell": 0.2103962694841192,
+      "subterm_shares_of_probe_total": {
+        "clip_core": 0.285461651342248,
+        "contacts": 0.059992448867113086,
+        "drop_loop": 0.10819384712861663,
+        "node_ellipses": 0.023963067644635506,
+        "node_roles": 0.025597286551853903,
+        "occupancy_inflate": 0.4596727346446349,
+        "smooth": 0.005282383231773283,
+        "stamp": 0.0011004319272809784,
+        "volumes": 0.006755722091031449
+      },
+      "subterms_ms": {
+        "clip_core": 920.901,
+        "contacts": 193.536,
+        "drop_loop": 349.034,
+        "node_ellipses": 77.305,
+        "node_roles": 82.577,
+        "occupancy_inflate": 1482.907,
+        "smooth": 17.041,
+        "stamp": 3.55,
+        "volumes": 21.794
+      },
+      "terms": {
+        "p0_volumes_new": {
+          "calls": 1,
+          "us": 21794
+        },
+        "p1_total": {
+          "calls": 1,
+          "us": 3226006
+        },
+        "p2_contacts": {
+          "calls": 1,
+          "us": 193536
+        },
+        "p3_drop": {
+          "calls": 1,
+          "us": 349034
+        },
+        "p3_mst": {
+          "calls": 268,
+          "us": 18339
+        },
+        "p3c_collision_ladder": {
+          "calls": 108981,
+          "us": 101593
+        },
+        "p3d_avoidance_ladder": {
+          "calls": 26804,
+          "us": 201189
+        },
+        "p4_drain": {
+          "calls": 1,
+          "us": 240
+        },
+        "p5_smooth": {
+          "calls": 1,
+          "us": 17041
+        },
+        "p6_emit": {
+          "calls": 1,
+          "us": 2632258
+        },
+        "p6_flush": {
+          "calls": 47,
+          "us": 923688
+        },
+        "p6a_bodydiff": {
+          "calls": 46,
+          "us": 940
+        },
+        "p6a_build_roles": {
+          "calls": 46,
+          "us": 920901
+        },
+        "p6a_carve": {
+          "calls": 46,
+          "us": 407699
+        },
+        "p6a_lone": {
+          "calls": 46,
+          "us": 23
+        },
+        "p6a_setdiff": {
+          "calls": 46,
+          "us": 44545
+        },
+        "p6a_simplify": {
+          "calls": 46,
+          "us": 35
+        },
+        "p6a_territory": {
+          "calls": 46,
+          "us": 19
+        },
+        "p6a_union": {
+          "calls": 46,
+          "us": 416283
+        },
+        "p6d_entry": {
+          "calls": 179,
+          "us": 743370
+        },
+        "p6d_inflate": {
+          "calls": 365,
+          "us": 1482907
+        },
+        "p6d_layer": {
+          "calls": 186,
+          "us": 750767
+        },
+        "p6e_node_roles": {
+          "calls": 186,
+          "us": 82577
+        },
+        "p6f_node_ellipses": {
+          "calls": 186,
+          "us": 77305
+        },
+        "p7_stamp": {
+          "calls": 1,
+          "us": 3550
+        }
+      },
+      "wall_ms": 15333
+    }
+  },
+  "floor_fraction": 0.008,
+  "route": "wayfinder ticket 113 (Strong support planner Phase 1)"
+}

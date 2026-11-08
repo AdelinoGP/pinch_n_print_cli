@@ -1,0 +1,29 @@
+{
+ "cell": "ordinary-base-classic-on",
+ "pairs": [
+  {
+   "pair": 1,
+   "baseline_wall_s": 220.8575618,
+   "candidate_wall_s": 231.82506,
+   "baseline_cpu_s": 1333.5625,
+   "candidate_cpu_s": 1346.265625,
+   "wall_ratio": 1.0496586945478088,
+   "cpu_ratio": 1.009525706519192,
+   "sha_equal": true
+  },
+  {
+   "pair": 2,
+   "baseline_wall_s": 226.2717689,
+   "candidate_wall_s": 243.5466641,
+   "baseline_cpu_s": 1336.453125,
+   "candidate_cpu_s": 1359.515625,
+   "wall_ratio": 1.0763457822598919,
+   "cpu_ratio": 1.017256497492196,
+   "sha_equal": true
+  }
+ ],
+ "wall_delta_pct_paired_median": 6.300223840385044,
+ "cpu_delta_pct_paired_median": 1.3391102005694044,
+ "direction": "candidate not faster",
+ "note": "Direction check only; the standing 6-pair campaign is the decision."
+}

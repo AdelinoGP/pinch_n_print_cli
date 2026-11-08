@@ -50,6 +50,22 @@ pub trait GCodeEmitter {
     /// Emit GCode IR from layer collections.
     fn emit_gcode(&self, layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError>;
 
+    /// Emit GCode IR from layer collections the caller hands over.
+    ///
+    /// Behaviour is identical to [`Self::emit_gcode`]; the difference is that
+    /// an implementation may consume the owned vector instead of copying it
+    /// (the default implementation simply borrows it and drops it after).
+    /// `DefaultGCodeEmitter` overrides this to run cross-layer tool rotation on
+    /// the caller's own vector, which removes one whole-print clone and one
+    /// whole-print drop per slice on collections with many small allocations
+    /// (supports-on jobs; see the perf-vs-orca map's t90 take).
+    fn emit_gcode_owned(
+        &self,
+        layer_irs: Vec<LayerCollectionIR>,
+    ) -> Result<GCodeIR, GCodeEmitError> {
+        self.emit_gcode(&layer_irs)
+    }
+
     /// Resolved travel feedrate in mm/min for finalization-aware travel inserts.
     /// `None` means the caller should fall back to whatever resolution path it owns.
     fn travel_feedrate_mm_per_min(&self) -> Option<f32> {
@@ -429,17 +445,41 @@ pub fn orca_type_label(role: &ExtrusionRole) -> &'static str {
 
 impl GCodeEmitter for DefaultGCodeEmitter {
     fn emit_gcode(&self, layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
-        // Clone for mutation (overhang classification + tool rotation).
-        let mut owned_layers: Vec<LayerCollectionIR> = layer_irs.to_vec();
+        self.emit_gcode_owned(layer_irs.to_vec())
+    }
+
+    /// Owning emission: the caller's vector is the mutable working copy, so
+    /// cross-layer tool rotation runs in place and the collection is dropped
+    /// exactly once (at the end of this call) instead of being cloned here and
+    /// dropped again by the caller.
+    fn emit_gcode_owned(
+        &self,
+        mut layer_irs: Vec<LayerCollectionIR>,
+    ) -> Result<GCodeIR, GCodeEmitError> {
         // Apply cross-layer tool rotation before classification and emission.
         // This rotates each layer's entity clusters so the first cluster's tool
         // matches the previous layer's ending tool, avoiding redundant T<n>
         // commands at every layer boundary. The WASM module always orders
         // clusters in ascending tool order (H1: module state doesn't survive
-        // across calls), so the host performs the rotation post-dispatch.
-        apply_cross_layer_tool_rotation(&mut owned_layers);
-        let layer_irs: &[LayerCollectionIR] = &owned_layers;
+        // across calls), so the host performs the rotation post-dispatch. The
+        // rotation is a no-op on single-tool layers; only a layer whose leading
+        // cluster's tool differs from the previous layer's ending tool moves.
+        apply_cross_layer_tool_rotation(&mut layer_irs);
+        self.emit_from_reconciled_layers(&layer_irs)
+    }
 
+    /// Resolved travel feedrate in mm/min for finalization-aware travel inserts.
+    fn travel_feedrate_mm_per_min(&self) -> Option<f32> {
+        Some(self.feedrate_config.travel_speed * 60.0)
+    }
+}
+
+impl DefaultGCodeEmitter {
+    /// The emission walk itself, over already-rotated layers.
+    fn emit_from_reconciled_layers(
+        &self,
+        layer_irs: &[LayerCollectionIR],
+    ) -> Result<GCodeIR, GCodeEmitError> {
         // Count of layers that actually produce g-code moves. This drives
         // `; total layer number:` in the header and must equal the number of
         // emitted `;LAYER_CHANGE` markers (see skip below). Layers with no moves
@@ -1015,10 +1055,6 @@ impl GCodeEmitter for DefaultGCodeEmitter {
             ));
         gcode_ir.metadata.estimated_print_time_s = estimate.total_time_s.round() as u32;
         Ok(gcode_ir)
-    }
-
-    fn travel_feedrate_mm_per_min(&self) -> Option<f32> {
-        Some(self.feedrate_config.travel_speed * 60.0)
     }
 }
 

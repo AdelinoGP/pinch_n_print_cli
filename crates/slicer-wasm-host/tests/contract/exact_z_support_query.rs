@@ -117,3 +117,111 @@ pub fn exact_z_support_query() {
         "identical inputs use immutable cache"
     );
 }
+
+#[test]
+pub fn exact_z_memoizes_z_independent_terms_per_object() {
+    let mut mesh = cube_mesh();
+    let mut neighbouring = mesh.objects[0].clone();
+    neighbouring.id = "object-b".into();
+    // Translate the second cube +20 mm in X so its plate differs from object-a's.
+    neighbouring.transform.matrix[12] = 20.0;
+    mesh.objects.push(neighbouring);
+    let service = ExactZQueryService::new(Arc::new(mesh));
+
+    let low = service.query("object-a", 7, &[], 4.321).expect("query");
+    assert_eq!(
+        service.geometry_build_count(),
+        1,
+        "first query builds the object's z-independent terms"
+    );
+    let above = service.query("object-a", 7, &[], 11.0).expect("second Z");
+    assert_eq!(
+        service.geometry_build_count(),
+        1,
+        "a new requested Z must not rebuild the object's terms"
+    );
+
+    // The z-independent terms are identical at both Z values; only occupancy
+    // (and its blocker copy) follows the requested Z.
+    assert_eq!(low.termination_surfaces, above.termination_surfaces);
+    assert_eq!(low.baseline_envelope, above.baseline_envelope);
+    assert_ne!(
+        low.occupancy, above.occupancy,
+        "requested-Z occupancy still tracks the requested Z"
+    );
+
+    let other = service
+        .query("object-b", 7, &[], 4.321)
+        .expect("other object");
+    assert_eq!(
+        service.geometry_build_count(),
+        2,
+        "each object builds its own terms"
+    );
+    assert_ne!(
+        low.baseline_envelope, other.baseline_envelope,
+        "one object's plate is never shared with another object"
+    );
+
+    let third = service.query("object-a", 7, &[], 8.0).expect("third Z");
+    assert_eq!(service.geometry_build_count(), 2);
+    assert_eq!(third.termination_surfaces, low.termination_surfaces);
+}
+
+/// The batched prefetch must serve exactly what the single-Z path computes.
+///
+/// `slice_mesh_ex` builds every requested plane independently, so batching the
+/// planes is a work-removal, not a geometry change — this pins that claim on the
+/// real API, including the two degenerate planes (exactly on the mesh bottom
+/// and top) and one outside the Z extent.
+#[test]
+pub fn prefetched_cross_sections_match_the_single_z_queries() {
+    let zs = [4.321_f32, 8.0, 0.0, 10.0, 11.0];
+    let single = ExactZQueryService::new(Arc::new(cube_mesh()));
+    let batched = ExactZQueryService::new(Arc::new(cube_mesh()));
+
+    let expected: Vec<_> = zs
+        .iter()
+        .map(|z| {
+            single
+                .query("object-a", 7, &[], *z)
+                .expect("single-Z query")
+                .occupancy
+                .clone()
+        })
+        .collect();
+
+    batched.prefetch_cross_sections("object-a", &zs);
+    assert_eq!(
+        batched.geometry_build_count(),
+        1,
+        "the prefetch builds the object's z-independent terms exactly once"
+    );
+
+    for (z, want) in zs.iter().zip(&expected) {
+        let got = batched
+            .query("object-a", 7, &[], *z)
+            .expect("batched query");
+        assert_eq!(
+            &got.occupancy, want,
+            "prefetched cross-section at Z={z} must equal the single-Z result"
+        );
+    }
+}
+
+/// A prefetch that cannot resolve its object is inert: the per-query path keeps
+/// its own error contract, so entry validation still degrades per entry.
+#[test]
+pub fn prefetch_of_an_unknown_object_leaves_the_query_contract_untouched() {
+    let service = ExactZQueryService::new(Arc::new(cube_mesh()));
+    service.prefetch_cross_sections("object-missing", &[1.0, 2.0]);
+    assert_eq!(
+        service.geometry_build_count(),
+        0,
+        "an unknown object must not publish geometry terms"
+    );
+    assert!(
+        service.query("object-missing", 7, &[], 1.0).is_err(),
+        "the query path still reports the unknown object"
+    );
+}

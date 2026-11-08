@@ -1,0 +1,27 @@
+{
+  "cell": "base-classic-on",
+  "run_id": "base-classic-on-head",
+  "label": "head",
+  "probe": false,
+  "profile": {},
+  "wall_seconds": 210.685,
+  "cpu_seconds": 1081.031,
+  "slice_complete_ms": 208632,
+  "bytes": 42507912,
+  "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+  "status": "ok",
+  "degraded": false,
+  "fatal": 0,
+  "non_fatal": 0,
+  "stages_ms": {
+    "PrePass::OverhangAnnotation": 10304,
+    "PrePass::SeamPlanning": 8974
+  },
+  "terms": {
+    "overhang": {},
+    "seam_project": {},
+    "seam_call": {},
+    "seam_harvest": {},
+    "overhang_window": {}
+  }
+}

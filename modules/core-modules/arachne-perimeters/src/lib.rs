@@ -488,6 +488,12 @@ impl LayerModule for ArachnePerimeters {
         // back out of that function.
         let nozzle_diameter_mm = config.require_float("nozzle_diameter")? as f32;
         let layer_height_mm = config.require_float("layer_height")? as f32;
+        // OrcaSlicer `resolution`: canonical's `m_scaled_resolution`, read from
+        // the print config and clamped to its 1 µm floor. Converted to `Point2`
+        // units by the shared helper, never copied across the scale change.
+        let resolution_units = slicer_sdk::contour_resolution::tolerance_units(
+            config.require_float("resolution")? as f32,
+        );
         // is_bottom_layer keys the classic "first/last layer" threshold (layer 0
         // in object coordinates). PnP historically folded this into
         // is_initial_layer; both flags are kept distinct so downstream flag
@@ -621,6 +627,14 @@ impl LayerModule for ArachnePerimeters {
         let bridge_flow_ratio = config.require_float("bridge_flow")? as f32;
         let thick_bridges = config.require_bool("thick_bridges")?;
 
+        // Consume-only-when-read (t20): the per-vertex overhang stamps are
+        // read only by overhang-classifier-default, and only when its own
+        // liveness predicate holds. Read the same predicate here so this
+        // per-layer producer skips both spatial query loops when nobody reads
+        // them; when live, the exact same stamps as before are produced.
+        let overhang_annotations_consumed =
+            slicer_sdk::config_predicates::overhang_annotations_consumed_or_inactive(config);
+
         // Per-color (MMU) wiring (P112 Step 10B): `regions` already contains
         // one entry per paint-color cell (see PrePass::PaintSegmentation) plus
         // any residual base-color region — no per-tool grouping/splitting is
@@ -691,6 +705,14 @@ impl LayerModule for ArachnePerimeters {
                 rounded_rectangle_bump / 2.0
             };
             let shrunk_storage: Vec<ExPolygon>;
+            // OrcaSlicer `resolution` (site 1, arachne path): canonical
+            // simplifies the surface inside the pre-shrink offset —
+            // `last = offset_ex(surface.expolygon.simplify_p(surface_simplify_resolution), ...)`
+            // — so the simplification applies to the outline fed to
+            // `WallToolPaths`, not to the region identity (seam candidates and
+            // paint reprojection below keep the raw outline).
+            let simplified_outline =
+                slicer_sdk::contour_resolution::simplify_p(polygons, resolution_units);
             let wall_outline: &[ExPolygon] = if shrink_mm > 0.0 {
                 // `offset_with_miter_limit` (not the bare `offset`) because
                 // canonical's `offset_ex(surface.expolygon, -d)` runs with
@@ -699,7 +721,7 @@ impl LayerModule for ArachnePerimeters {
                 // agree on convex corners and differ on the sharp concave
                 // notches in the benchy's engraved stern text.
                 shrunk_storage = offset_with_miter_limit(
-                    polygons,
+                    &simplified_outline,
                     -shrink_mm as f32,
                     OffsetJoinType::Miter,
                     ORCA_DEFAULT_MITER_LIMIT as f32,
@@ -710,7 +732,7 @@ impl LayerModule for ArachnePerimeters {
                 }
                 &shrunk_storage
             } else {
-                polygons
+                &simplified_outline
             };
             let z = region.z();
             let spatial_context = PerimeterSpatialContext::new(
@@ -765,6 +787,7 @@ impl LayerModule for ArachnePerimeters {
                     bridge_flow_ratio,
                     thick_bridges,
                     &spatial_context,
+                    overhang_annotations_consumed,
                     output,
                 )?;
                 continue;
@@ -807,6 +830,7 @@ impl LayerModule for ArachnePerimeters {
                 bridge_flow_ratio,
                 thick_bridges,
                 &spatial_context,
+                overhang_annotations_consumed,
             )?;
             commit_wall_sequence(&mut walls, sequence);
             for wall in walls {
@@ -848,7 +872,7 @@ impl LayerModule for ArachnePerimeters {
                 }
             }
 
-            publish_infill_areas(&inner_contour, &[], output)?;
+            publish_infill_areas(&inner_contour, &[], resolution_units, output)?;
         }
 
         Ok(())
@@ -869,6 +893,7 @@ impl LayerModule for ArachnePerimeters {
 fn publish_infill_areas(
     inner_contour: &[ExtrusionLine],
     extra_areas: &[ExPolygon],
+    resolution_units: f64,
     output: &mut PerimeterOutputBuilder,
 ) -> Result<(), ModuleError> {
     let mut infill_candidates: Vec<ExPolygon> = inner_contour
@@ -899,6 +924,12 @@ fn publish_infill_areas(
             &[],
             slicer_sdk::host::ClipOperation::Union,
         );
+        // OrcaSlicer `resolution` (site 5): canonical's arachne path simplifies
+        // the infill contour before deriving the fill area
+        // (`for (ExPolygon& ex : infill_contour) ex.simplify_p(m_scaled_resolution, &pp);
+        //   ExPolygons not_filled_exp = union_ex(pp);`).
+        let infill_areas =
+            slicer_sdk::contour_resolution::simplify_p(&infill_areas, resolution_units);
         if !infill_areas.is_empty() {
             output.set_infill_areas(infill_areas)?;
         }
@@ -924,6 +955,7 @@ impl ArachnePerimeters {
         bridge_flow_ratio: f32,
         thick_bridges: bool,
         context: &PerimeterSpatialContext,
+        overhang_annotations_consumed: bool,
     ) -> Result<Vec<WallLoop>, ModuleError> {
         let bridge_areas = region.bridge_areas();
         let overhang_bands = region.overhang_quartile_polygons();
@@ -1029,18 +1061,20 @@ impl ArachnePerimeters {
                 }
             }
 
-            for pt in &mut path.points {
-                pt.overhang_distance_mm = if prev_layer_boundary.is_empty() {
-                    None
-                } else {
-                    Some(context.signed_distance_to_boundary(pt.x, pt.y) + 0.5 * pt.width)
-                };
+            if overhang_annotations_consumed {
+                for pt in &mut path.points {
+                    pt.overhang_distance_mm = if prev_layer_boundary.is_empty() {
+                        None
+                    } else {
+                        Some(context.signed_distance_to_boundary(pt.x, pt.y) + 0.5 * pt.width)
+                    };
+                }
             }
 
             // AC-5 (packet 148): overhang_quartile is set per-vertex on
             // every wall type, for every vertex whose path point lies
             // inside a `overhang_quartile_polygons` band's polygon(s).
-            if !overhang_bands.is_empty() {
+            if overhang_annotations_consumed && !overhang_bands.is_empty() {
                 for pt in &mut path.points {
                     pt.overhang_quartile = context.overhang_quartile(pt.x, pt.y);
                 }
@@ -1111,8 +1145,14 @@ impl ArachnePerimeters {
         bridge_flow_ratio: f32,
         thick_bridges: bool,
         context: &PerimeterSpatialContext,
+        overhang_annotations_consumed: bool,
         output: &mut PerimeterOutputBuilder,
     ) -> Result<(), ModuleError> {
+        // OrcaSlicer `resolution`: the same print-level tolerance the single-pass
+        // path uses, re-read here because this method receives only `config`.
+        let resolution_units = slicer_sdk::contour_resolution::tolerance_units(
+            config.require_float("resolution")? as f32,
+        );
         let sequence =
             if params.wall_sequence == WallSequence::InnerOuterInner && params.is_initial_layer {
                 WallSequence::InnerOuter
@@ -1185,6 +1225,7 @@ impl ArachnePerimeters {
             bridge_flow_ratio,
             thick_bridges,
             context,
+            overhang_annotations_consumed,
         )?;
 
         // Not-top remainder. Generation comes from the SHRUNK outline, because
@@ -1226,13 +1267,14 @@ impl ArachnePerimeters {
                 bridge_flow_ratio,
                 thick_bridges,
                 context,
+                overhang_annotations_consumed,
             )?;
             commit_wall_sequence(&mut fb_walls, sequence);
             for w in fb_walls {
                 output.push_wall_loop(w)?;
             }
             // Canonical: the fallback pass's inner contour is the infill contour.
-            publish_infill_areas(&fb_inner, &[], output)?;
+            publish_infill_areas(&fb_inner, &[], resolution_units, output)?;
             return Ok(());
         }
 
@@ -1259,7 +1301,7 @@ impl ArachnePerimeters {
                     for w in top_walls {
                         output.push_wall_loop(w)?;
                     }
-                    publish_infill_areas(&top_inner, &top_expolygons, output)?;
+                    publish_infill_areas(&top_inner, &top_expolygons, resolution_units, output)?;
                     return Ok(());
                 }
             };
@@ -1288,6 +1330,7 @@ impl ArachnePerimeters {
             bridge_flow_ratio,
             thick_bridges,
             context,
+            overhang_annotations_consumed,
         )?;
 
         // Step 7: merge — top single wall + renumbered second-pass inner walls.
@@ -1305,7 +1348,7 @@ impl ArachnePerimeters {
         // inner contour — that contour is the same area shrunk by the wall's
         // own width, so unioning it would leave a ring of the top surface
         // unfilled.
-        publish_infill_areas(&second_inner, &top_expolygons, output)?;
+        publish_infill_areas(&second_inner, &top_expolygons, resolution_units, output)?;
         Ok(())
     }
 }

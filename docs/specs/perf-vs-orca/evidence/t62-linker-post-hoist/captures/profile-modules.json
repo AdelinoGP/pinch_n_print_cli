@@ -1,0 +1,643 @@
+{
+ "ordinary-benchy-classic-off-profile": {
+  "fuel_total": 818091210949,
+  "linker_total_fuel": 79929332403,
+  "linker_scopes": [
+   {
+    "scope": "t62::execute",
+    "calls": 12841,
+    "self_fuel": 67132244416,
+    "total_fuel": 67132244416
+   },
+   {
+    "scope": "t62::engine_add",
+    "calls": 12841,
+    "self_fuel": 4348105954,
+    "total_fuel": 4348105954
+   },
+   {
+    "scope": "t62::connect_infill",
+    "calls": 396,
+    "self_fuel": 3944576432,
+    "total_fuel": 3944576432
+   },
+   {
+    "scope": "t62::clip_prepare",
+    "calls": 396,
+    "self_fuel": 2503320336,
+    "total_fuel": 2503320336
+   },
+   {
+    "scope": "t62::meta_convert",
+    "calls": 4561,
+    "self_fuel": 865651119,
+    "total_fuel": 865651119
+   },
+   {
+    "scope": "polygon_ops::clip_polygons",
+    "calls": 310,
+    "self_fuel": 202296860,
+    "total_fuel": 202296860
+   },
+   {
+    "scope": "t62::overlap_offset",
+    "calls": 294,
+    "self_fuel": 73520811,
+    "total_fuel": 73520811
+   },
+   {
+    "scope": "t62::clip_loop",
+    "calls": 396,
+    "self_fuel": 69512895,
+    "total_fuel": 75024866804
+   },
+   {
+    "scope": "t62::graph_build",
+    "calls": 396,
+    "self_fuel": 58688603,
+    "total_fuel": 58688603
+   },
+   {
+    "scope": "t62::clip_call_total",
+    "calls": 25902,
+    "self_fuel": 53573010,
+    "total_fuel": 71555516698
+   },
+   {
+    "scope": "t62::bucket_process",
+    "calls": 240,
+    "self_fuel": 52509145,
+    "total_fuel": 79402142505
+   },
+   {
+    "scope": "t62::group_link",
+    "calls": 294,
+    "self_fuel": 39731267,
+    "total_fuel": 79141383917
+   },
+   {
+    "scope": "t62::short_meta",
+    "calls": 12951,
+    "self_fuel": 30865756,
+    "total_fuel": 896516875
+   },
+   {
+    "scope": "t62::records_build",
+    "calls": 240,
+    "self_fuel": 26988178,
+    "total_fuel": 26988178
+   },
+   {
+    "scope": "t62::subj_build",
+    "calls": 12951,
+    "self_fuel": 16212552,
+    "total_fuel": 16212552
+   },
+   {
+    "scope": "t62::boundary_prep",
+    "calls": 294,
+    "self_fuel": 5916127,
+    "total_fuel": 208249443
+   },
+   {
+    "scope": "t62::out_convert",
+    "calls": 12841,
+    "self_fuel": 5380766,
+    "total_fuel": 5380766
+   },
+   {
+    "scope": "t62::orchestrate_total",
+    "calls": 240,
+    "self_fuel": 4151881,
+    "total_fuel": 79434312416
+   },
+   {
+    "scope": "t62::output_emit",
+    "calls": 240,
+    "self_fuel": 1029852,
+    "total_fuel": 1029852
+   },
+   {
+    "scope": "t62::locked_footprint",
+    "calls": 294,
+    "self_fuel": 36456,
+    "total_fuel": 338141
+   }
+  ],
+  "output_sha256": "34886ccb56b214d57c28aa58bdcc8d371a41f440200f5b49276b96b53e18cc40"
+ },
+ "ordinary-benchy-classic-on-profile": {
+  "fuel_total": 867411195895,
+  "linker_total_fuel": 79924906509,
+  "linker_scopes": [
+   {
+    "scope": "t62::execute",
+    "calls": 12841,
+    "self_fuel": 67130933167,
+    "total_fuel": 67130933167
+   },
+   {
+    "scope": "t62::engine_add",
+    "calls": 12841,
+    "self_fuel": 4345105958,
+    "total_fuel": 4345105958
+   },
+   {
+    "scope": "t62::connect_infill",
+    "calls": 396,
+    "self_fuel": 3944566725,
+    "total_fuel": 3944566725
+   },
+   {
+    "scope": "t62::clip_prepare",
+    "calls": 396,
+    "self_fuel": 2503267882,
+    "total_fuel": 2503267882
+   },
+   {
+    "scope": "t62::meta_convert",
+    "calls": 4561,
+    "self_fuel": 865649887,
+    "total_fuel": 865649887
+   },
+   {
+    "scope": "polygon_ops::clip_polygons",
+    "calls": 310,
+    "self_fuel": 202298015,
+    "total_fuel": 202298015
+   },
+   {
+    "scope": "t62::overlap_offset",
+    "calls": 294,
+    "self_fuel": 73520422,
+    "total_fuel": 73520422
+   },
+   {
+    "scope": "t62::clip_loop",
+    "calls": 396,
+    "self_fuel": 69495870,
+    "total_fuel": 75020464268
+   },
+   {
+    "scope": "t62::graph_build",
+    "calls": 396,
+    "self_fuel": 58687835,
+    "total_fuel": 58687835
+   },
+   {
+    "scope": "t62::clip_call_total",
+    "calls": 25902,
+    "self_fuel": 53605890,
+    "total_fuel": 71551235753
+   },
+   {
+    "scope": "t62::bucket_process",
+    "calls": 240,
+    "self_fuel": 52503584,
+    "total_fuel": 79397716831
+   },
+   {
+    "scope": "t62::group_link",
+    "calls": 294,
+    "self_fuel": 39723350,
+    "total_fuel": 79136962600
+   },
+   {
+    "scope": "t62::short_meta",
+    "calls": 12951,
+    "self_fuel": 30814876,
+    "total_fuel": 896464763
+   },
+   {
+    "scope": "t62::records_build",
+    "calls": 240,
+    "self_fuel": 26987524,
+    "total_fuel": 26987524
+   },
+   {
+    "scope": "t62::subj_build",
+    "calls": 12951,
+    "self_fuel": 16215665,
+    "total_fuel": 16215665
+   },
+   {
+    "scope": "t62::boundary_prep",
+    "calls": 294,
+    "self_fuel": 5916176,
+    "total_fuel": 208250647
+   },
+   {
+    "scope": "t62::out_convert",
+    "calls": 12841,
+    "self_fuel": 5375073,
+    "total_fuel": 5375073
+   },
+   {
+    "scope": "t62::orchestrate_total",
+    "calls": 240,
+    "self_fuel": 4152513,
+    "total_fuel": 79429888669
+   },
+   {
+    "scope": "t62::output_emit",
+    "calls": 240,
+    "self_fuel": 1031801,
+    "total_fuel": 1031801
+   },
+   {
+    "scope": "t62::locked_footprint",
+    "calls": 294,
+    "self_fuel": 36456,
+    "total_fuel": 338453
+   }
+  ],
+  "output_sha256": "76eb4e1df3a47abf9a973be4ac99cd6bac41efa9fb65240786251ec0f7cdf6a8"
+ },
+ "ordinary-benchy-arachne-off-profile": {
+  "fuel_total": 164258505703,
+  "linker_total_fuel": 72740681783,
+  "linker_scopes": [
+   {
+    "scope": "t62::execute",
+    "calls": 11977,
+    "self_fuel": 62524472575,
+    "total_fuel": 62524472575
+   },
+   {
+    "scope": "t62::connect_infill",
+    "calls": 393,
+    "self_fuel": 3442526642,
+    "total_fuel": 3442526642
+   },
+   {
+    "scope": "t62::engine_add",
+    "calls": 11977,
+    "self_fuel": 3215819329,
+    "total_fuel": 3215819329
+   },
+   {
+    "scope": "t62::clip_prepare",
+    "calls": 393,
+    "self_fuel": 1890706516,
+    "total_fuel": 1890706516
+   },
+   {
+    "scope": "t62::meta_convert",
+    "calls": 4824,
+    "self_fuel": 907887504,
+    "total_fuel": 907887504
+   },
+   {
+    "scope": "polygon_ops::clip_polygons",
+    "calls": 319,
+    "self_fuel": 198798468,
+    "total_fuel": 198798468
+   },
+   {
+    "scope": "t62::clip_loop",
+    "calls": 393,
+    "self_fuel": 64699590,
+    "total_fuel": 68706297050
+   },
+   {
+    "scope": "t62::clip_call_total",
+    "calls": 24044,
+    "self_fuel": 49823898,
+    "total_fuel": 65810421738
+   },
+   {
+    "scope": "t62::bucket_process",
+    "calls": 240,
+    "self_fuel": 49508538,
+    "total_fuel": 72527607147
+   },
+   {
+    "scope": "t62::overlap_offset",
+    "calls": 303,
+    "self_fuel": 48407308,
+    "total_fuel": 48407308
+   },
+   {
+    "scope": "t62::group_link",
+    "calls": 303,
+    "self_fuel": 39715341,
+    "total_fuel": 72274948559
+   },
+   {
+    "scope": "t62::graph_build",
+    "calls": 393,
+    "self_fuel": 38002218,
+    "total_fuel": 38002218
+   },
+   {
+    "scope": "t62::short_meta",
+    "calls": 12022,
+    "self_fuel": 32581702,
+    "total_fuel": 940469206
+   },
+   {
+    "scope": "t62::records_build",
+    "calls": 240,
+    "self_fuel": 23001104,
+    "total_fuel": 23001104
+   },
+   {
+    "scope": "t62::subj_build",
+    "calls": 12022,
+    "self_fuel": 15002950,
+    "total_fuel": 15002950
+   },
+   {
+    "scope": "t62::out_convert",
+    "calls": 11977,
+    "self_fuel": 5302986,
+    "total_fuel": 5302986
+   },
+   {
+    "scope": "t62::boundary_prep",
+    "calls": 303,
+    "self_fuel": 4314010,
+    "total_fuel": 203150050
+   },
+   {
+    "scope": "t62::orchestrate_total",
+    "calls": 240,
+    "self_fuel": 4091577,
+    "total_fuel": 72555822342
+   },
+   {
+    "scope": "t62::output_emit",
+    "calls": 240,
+    "self_fuel": 1122514,
+    "total_fuel": 1122514
+   },
+   {
+    "scope": "t62::locked_footprint",
+    "calls": 303,
+    "self_fuel": 37572,
+    "total_fuel": 347983
+   }
+  ],
+  "output_sha256": "b76d846acdb13f3255c515878a43082da160c01a4155ae6904d2d473c30e1ba1"
+ },
+ "ordinary-benchy-arachne-on-profile": {
+  "fuel_total": 213589086871,
+  "linker_total_fuel": 72744400932,
+  "linker_scopes": [
+   {
+    "scope": "t62::execute",
+    "calls": 11977,
+    "self_fuel": 62525214679,
+    "total_fuel": 62525214679
+   },
+   {
+    "scope": "t62::connect_infill",
+    "calls": 393,
+    "self_fuel": 3442514600,
+    "total_fuel": 3442514600
+   },
+   {
+    "scope": "t62::engine_add",
+    "calls": 11977,
+    "self_fuel": 3218816381,
+    "total_fuel": 3218816381
+   },
+   {
+    "scope": "t62::clip_prepare",
+    "calls": 393,
+    "self_fuel": 1890638372,
+    "total_fuel": 1890638372
+   },
+   {
+    "scope": "t62::meta_convert",
+    "calls": 4824,
+    "self_fuel": 907882748,
+    "total_fuel": 907882748
+   },
+   {
+    "scope": "polygon_ops::clip_polygons",
+    "calls": 319,
+    "self_fuel": 198797260,
+    "total_fuel": 198797260
+   },
+   {
+    "scope": "t62::clip_loop",
+    "calls": 393,
+    "self_fuel": 64710950,
+    "total_fuel": 68710015791
+   },
+   {
+    "scope": "t62::clip_call_total",
+    "calls": 24044,
+    "self_fuel": 49857347,
+    "total_fuel": 65814206944
+   },
+   {
+    "scope": "t62::bucket_process",
+    "calls": 240,
+    "self_fuel": 49508343,
+    "total_fuel": 72531320980
+   },
+   {
+    "scope": "t62::overlap_offset",
+    "calls": 303,
+    "self_fuel": 48408957,
+    "total_fuel": 48408957
+   },
+   {
+    "scope": "t62::group_link",
+    "calls": 303,
+    "self_fuel": 39721258,
+    "total_fuel": 72278665010
+   },
+   {
+    "scope": "t62::graph_build",
+    "calls": 393,
+    "self_fuel": 38004404,
+    "total_fuel": 38004404
+   },
+   {
+    "scope": "t62::short_meta",
+    "calls": 12022,
+    "self_fuel": 32576777,
+    "total_fuel": 940459525
+   },
+   {
+    "scope": "t62::records_build",
+    "calls": 240,
+    "self_fuel": 22998151,
+    "total_fuel": 22998151
+   },
+   {
+    "scope": "t62::subj_build",
+    "calls": 12022,
+    "self_fuel": 15010051,
+    "total_fuel": 15010051
+   },
+   {
+    "scope": "t62::out_convert",
+    "calls": 11977,
+    "self_fuel": 5308486,
+    "total_fuel": 5308486
+   },
+   {
+    "scope": "t62::boundary_prep",
+    "calls": 303,
+    "self_fuel": 4312795,
+    "total_fuel": 203147627
+   },
+   {
+    "scope": "t62::orchestrate_total",
+    "calls": 240,
+    "self_fuel": 4093870,
+    "total_fuel": 72559538119
+   },
+   {
+    "scope": "t62::output_emit",
+    "calls": 240,
+    "self_fuel": 1125118,
+    "total_fuel": 1125118
+   },
+   {
+    "scope": "t62::locked_footprint",
+    "calls": 303,
+    "self_fuel": 37572,
+    "total_fuel": 347928
+   }
+  ],
+  "output_sha256": "ae9d90612bf87ae9f76cb6faf341482e1abbaf5897bb2b981c3247d1646c3b9f"
+ },
+ "ordinary-benchy-arachne-off-instrumented": {
+  "fuel_total": 0,
+  "linker_total_fuel": null,
+  "linker_scopes": [],
+  "output_sha256": "b76d846acdb13f3255c515878a43082da160c01a4155ae6904d2d473c30e1ba1"
+ },
+ "accelerated-benchy-arachne-off-profile": {
+  "fuel_total": 127421239255,
+  "linker_total_fuel": 72743085959,
+  "linker_scopes": [
+   {
+    "scope": "t62::execute",
+    "calls": 11977,
+    "self_fuel": 62525145579,
+    "total_fuel": 62525145579
+   },
+   {
+    "scope": "t62::connect_infill",
+    "calls": 393,
+    "self_fuel": 3442525195,
+    "total_fuel": 3442525195
+   },
+   {
+    "scope": "t62::engine_add",
+    "calls": 11977,
+    "self_fuel": 3217540501,
+    "total_fuel": 3217540501
+   },
+   {
+    "scope": "t62::clip_prepare",
+    "calls": 393,
+    "self_fuel": 1890694686,
+    "total_fuel": 1890694686
+   },
+   {
+    "scope": "t62::meta_convert",
+    "calls": 4824,
+    "self_fuel": 907883712,
+    "total_fuel": 907883712
+   },
+   {
+    "scope": "polygon_ops::clip_polygons",
+    "calls": 319,
+    "self_fuel": 198797888,
+    "total_fuel": 198797888
+   },
+   {
+    "scope": "t62::clip_loop",
+    "calls": 393,
+    "self_fuel": 64718623,
+    "total_fuel": 68708704404
+   },
+   {
+    "scope": "t62::clip_call_total",
+    "calls": 24044,
+    "self_fuel": 49860108,
+    "total_fuel": 65812855320
+   },
+   {
+    "scope": "t62::bucket_process",
+    "calls": 240,
+    "self_fuel": 49513098,
+    "total_fuel": 72530014776
+   },
+   {
+    "scope": "t62::overlap_offset",
+    "calls": 303,
+    "self_fuel": 48407857,
+    "total_fuel": 48407857
+   },
+   {
+    "scope": "t62::group_link",
+    "calls": 303,
+    "self_fuel": 39710207,
+    "total_fuel": 72277352798
+   },
+   {
+    "scope": "t62::graph_build",
+    "calls": 393,
+    "self_fuel": 38005135,
+    "total_fuel": 38005135
+   },
+   {
+    "scope": "t62::short_meta",
+    "calls": 12022,
+    "self_fuel": 32552063,
+    "total_fuel": 940435775
+   },
+   {
+    "scope": "t62::records_build",
+    "calls": 240,
+    "self_fuel": 23000983,
+    "total_fuel": 23000983
+   },
+   {
+    "scope": "t62::subj_build",
+    "calls": 12022,
+    "self_fuel": 15004472,
+    "total_fuel": 15004472
+   },
+   {
+    "scope": "t62::out_convert",
+    "calls": 11977,
+    "self_fuel": 5304660,
+    "total_fuel": 5304660
+   },
+   {
+    "scope": "t62::boundary_prep",
+    "calls": 303,
+    "self_fuel": 4313420,
+    "total_fuel": 203148880
+   },
+   {
+    "scope": "t62::orchestrate_total",
+    "calls": 240,
+    "self_fuel": 4095009,
+    "total_fuel": 72558234297
+   },
+   {
+    "scope": "t62::output_emit",
+    "calls": 240,
+    "self_fuel": 1123529,
+    "total_fuel": 1123529
+   },
+   {
+    "scope": "t62::locked_footprint",
+    "calls": 303,
+    "self_fuel": 37572,
+    "total_fuel": 347995
+   }
+  ],
+  "output_sha256": "b76d846acdb13f3255c515878a43082da160c01a4155ae6904d2d473c30e1ba1"
+ }
+}

@@ -851,8 +851,8 @@ After the host runs `sync_perimeter_infill_areas_into_slice` at
 `Layer::Perimeters` commit (see
 `crates/slicer-runtime/src/region_partition.rs`):
 
-1. **`bridge_areas`** is claimed directly from the gated
-   `SlicedRegion.bridge_areas` (post-unsupported-span gate, packet 234) and
+1. **`bridge_areas`** is claimed directly from the classified
+   `SlicedRegion.bridge_areas` (whole-set classifier, ticket 123) and
    may extend beyond the wall-inset polygon — at a ceiling layer the
    perimeter module's infill area can be empty (the whole cross-section is
    top surface) and the canonical bridge site must survive.
@@ -864,12 +864,12 @@ After the host runs `sync_perimeter_infill_areas_into_slice` at
    bridge claim in `sync_perimeter_infill_areas_into_slice`).
 2. Precedence on overlap is strict: `bridge > bottom > top > sparse`
    (OrcaSlicer `PrintObject::prepare_infill` parity).
-   An unsupported span is the bridge candidate after subtracting ungrown
-   committed lower-layer contours. This is a pure gate: it does not expand
-   the candidate or grow the result, and repeated application is invariant.
-3. The pre-perimeter values of `top_solid_fill` / `bottom_solid_fill` /
-   `bridge_areas` (committed by `PrePass::ShellClassification` and
-   `PrePass::MeshAnalysis`) live unchanged on the **Blackboard**'s
+   An unsupported span is classified in `PrePass::Slice` against the raw
+   previous cross-section (canonical `detect_surfaces_type`); the
+   `ShellClassification` stage does not subtract a second lower layer.
+3. The pre-perimeter values of `top_solid_fill` / `bottom_solid_fill`
+   (committed by `PrePass::ShellClassification`) and `bridge_areas`
+   (committed by `PrePass::Slice`) live unchanged on the **Blackboard**'s
    `Arc<Vec<SliceIR>>`; the per-layer arena copy is the one that gets
    clipped + deduped. This preserves the read-only Blackboard contract.
 4. A `SliceIR` region with no matching `PerimeterIR.regions` entry is
@@ -1772,13 +1772,21 @@ not a canonical-parity claim; the recorded Gate A/B outcomes remain unchanged.
    exclusive mutable ownership of the `Vec` and is single-threaded — no
    `RwLock` or `Mutex` is needed. Finalization modules may append entities
    to existing layers or insert new synthetic layers (e.g. wipe tower
-   slices).
+   slices). The stage mutates that vector in place
+   (`execute_layer_finalization_owned`) instead of cloning a rollback
+   snapshot: a fatal module or validation error aborts the stage and the
+   working collection is dropped with the error, which is unobservable in
+   production because the slice aborts there.
 
 3. **After finalization — `PostPass::GCodeEmit` onward:**
-   The `Vec<LayerCollectionIR>` is passed as `&[LayerCollectionIR]`
-   (immutable slice) to `execute_postpass`. It is never re-entered into
-   the Blackboard. GCodeEmit reads it sequentially and the Vec is dropped
-   after emission completes.
+   The `Vec<LayerCollectionIR>` is **moved by value** into
+   `execute_postpass` (`execute_postpass_with_owned_capture`), reconciled in
+   place, and passed to `GCodeEmitter::emit_gcode_owned`, which consumes it.
+   GCodeEmit reads it sequentially and the collection is dropped exactly once
+   inside that bracket. The visual-debug capture sinks are the one path that
+   keeps the collection afterwards: they take the borrowed
+   `execute_postpass_with_capture` entry point, whose copy is moved into the
+   capture instead of being cloned again.
 
 **Consequence for module authors:**
 A module in `PostPass::LayerFinalization` receives a mutable view of the

@@ -1,0 +1,1543 @@
+{
+  "ab": {
+    "base-arachne-off": {
+      "baseline_cpu_seconds": [
+        434.2031,
+        433.1719,
+        435.5625
+      ],
+      "baseline_median_wall_seconds": 48.9192,
+      "baseline_sha256": [
+        "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f"
+      ],
+      "baseline_wall_seconds": [
+        48.9192,
+        49.7013,
+        48.5738
+      ],
+      "candidate_cpu_seconds": [
+        324.7344,
+        324.0469,
+        323.9844
+      ],
+      "candidate_median_wall_seconds": 38.6767,
+      "candidate_sha256": [
+        "6b865d4a2cb892daa3172add3e3677e0dc35192bcedd0acbc463abca7064d715"
+      ],
+      "candidate_wall_seconds": [
+        38.6767,
+        39.2398,
+        38.1551
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 110.15620000000001,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 26.171983597442313,
+      "floor_seconds": 0.39135359999999997,
+      "gcode_bytes": [
+        20826404,
+        20847171
+      ],
+      "median_wall_delta_fraction": 0.2093758687795385,
+      "median_wall_delta_seconds": 10.2425,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 109.46870000000001,
+          "pair": 1,
+          "wall_delta_seconds": 10.2425
+        },
+        {
+          "cpu_delta_seconds": 109.125,
+          "pair": 2,
+          "wall_delta_seconds": 10.461500000000001
+        },
+        {
+          "cpu_delta_seconds": 111.5781,
+          "pair": 3,
+          "wall_delta_seconds": 10.418700000000001
+        }
+      ],
+      "runs_per_arm": 3
+    },
+    "base-arachne-on": {
+      "baseline_cpu_seconds": [
+        731.6094,
+        731.9844,
+        731.1875
+      ],
+      "baseline_median_wall_seconds": 117.883,
+      "baseline_sha256": [
+        "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee"
+      ],
+      "baseline_wall_seconds": [
+        117.883,
+        116.2753,
+        118.633
+      ],
+      "candidate_cpu_seconds": [
+        627.7344,
+        626.4375,
+        628.6094
+      ],
+      "candidate_median_wall_seconds": 108.5228,
+      "candidate_sha256": [
+        "62d6eedc02e5db972928f830104aab95c3598f6df6407159cb5438adb35bef13"
+      ],
+      "candidate_wall_seconds": [
+        106.8143,
+        108.6088,
+        108.5228
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 103.875,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 9.925307296217428,
+      "floor_seconds": 0.943064,
+      "gcode_bytes": [
+        42310507,
+        42331252
+      ],
+      "median_wall_delta_fraction": 0.07940245836973941,
+      "median_wall_delta_seconds": 9.360199999999992,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 103.875,
+          "pair": 1,
+          "wall_delta_seconds": 11.068699999999993
+        },
+        {
+          "cpu_delta_seconds": 105.54690000000005,
+          "pair": 2,
+          "wall_delta_seconds": 7.666499999999999
+        },
+        {
+          "cpu_delta_seconds": 102.57809999999995,
+          "pair": 3,
+          "wall_delta_seconds": 10.110199999999992
+        }
+      ],
+      "runs_per_arm": 3
+    },
+    "base-classic-off": {
+      "baseline_cpu_seconds": [
+        429.5469,
+        429.2969,
+        429.4531
+      ],
+      "baseline_median_wall_seconds": 49.2848,
+      "baseline_sha256": [
+        "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131"
+      ],
+      "baseline_wall_seconds": [
+        49.2848,
+        49.4462,
+        48.1956
+      ],
+      "candidate_cpu_seconds": [
+        320.9531,
+        320.0312,
+        318.7969
+      ],
+      "candidate_median_wall_seconds": 38.329,
+      "candidate_sha256": [
+        "b3b4ac5e885c7f637b98f79eca21901a41d85739627d4dcb40820663c15e90ef"
+      ],
+      "candidate_wall_seconds": [
+        38.329,
+        38.7983,
+        38.2939
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 109.4219,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 27.78696474369379,
+      "floor_seconds": 0.3942784,
+      "gcode_bytes": [
+        21006116,
+        21026410
+      ],
+      "median_wall_delta_fraction": 0.2222957179495503,
+      "median_wall_delta_seconds": 10.955799999999996,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 108.59379999999999,
+          "pair": 1,
+          "wall_delta_seconds": 10.955799999999996
+        },
+        {
+          "cpu_delta_seconds": 109.26569999999998,
+          "pair": 2,
+          "wall_delta_seconds": 10.6479
+        },
+        {
+          "cpu_delta_seconds": 110.65620000000001,
+          "pair": 3,
+          "wall_delta_seconds": 9.901699999999998
+        }
+      ],
+      "runs_per_arm": 3
+    },
+    "base-classic-on": {
+      "baseline_cpu_seconds": [
+        730.5781,
+        732.2031,
+        730.1562
+      ],
+      "baseline_median_wall_seconds": 116.4836,
+      "baseline_sha256": [
+        "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca"
+      ],
+      "baseline_wall_seconds": [
+        116.3889,
+        117.4485,
+        116.4836
+      ],
+      "candidate_cpu_seconds": [
+        622.2188,
+        619.4531,
+        621.6406
+      ],
+      "candidate_median_wall_seconds": 108.0654,
+      "candidate_sha256": [
+        "4e31a2db368ff80f388512211ae824b9660342a465c87f093f6182023e34eb4e"
+      ],
+      "candidate_wall_seconds": [
+        106.2918,
+        108.5325,
+        108.0654
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 108.9375,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 9.033675126798965,
+      "floor_seconds": 0.9318687999999999,
+      "gcode_bytes": [
+        42490279,
+        42510534
+      ],
+      "median_wall_delta_fraction": 0.07226940101439172,
+      "median_wall_delta_seconds": 8.418199999999999,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 108.35929999999996,
+          "pair": 1,
+          "wall_delta_seconds": 10.097100000000012
+        },
+        {
+          "cpu_delta_seconds": 112.75,
+          "pair": 2,
+          "wall_delta_seconds": 8.915999999999997
+        },
+        {
+          "cpu_delta_seconds": 108.51560000000006,
+          "pair": 3,
+          "wall_delta_seconds": 8.418199999999999
+        }
+      ],
+      "runs_per_arm": 3
+    },
+    "benchy-arachne-off": {
+      "baseline_cpu_seconds": [
+        27.6406,
+        27.875,
+        27.4844
+      ],
+      "baseline_median_wall_seconds": 5.0028,
+      "baseline_sha256": [
+        "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219"
+      ],
+      "baseline_wall_seconds": [
+        4.9971,
+        5.0341,
+        5.0028
+      ],
+      "candidate_cpu_seconds": [
+        26.5781,
+        26.2812,
+        26.5469
+      ],
+      "candidate_median_wall_seconds": 4.6517,
+      "candidate_sha256": [
+        "2ba5d84ccf3c8deea6f39f4977dd71221faaecde9987d1699b361a5366e86380"
+      ],
+      "candidate_wall_seconds": [
+        4.6072,
+        4.7336,
+        4.6517
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 1.0936999999999983,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 8.772587351083388,
+      "floor_seconds": 0.0400224,
+      "gcode_bytes": [
+        4064091,
+        4065372
+      ],
+      "median_wall_delta_fraction": 0.0701806988086671,
+      "median_wall_delta_seconds": 0.35109999999999975,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 1.0625,
+          "pair": 1,
+          "wall_delta_seconds": 0.3898999999999999
+        },
+        {
+          "cpu_delta_seconds": 1.5938000000000017,
+          "pair": 2,
+          "wall_delta_seconds": 0.30049999999999955
+        },
+        {
+          "cpu_delta_seconds": 0.9375,
+          "pair": 3,
+          "wall_delta_seconds": 0.35109999999999975
+        }
+      ],
+      "runs_per_arm": 3
+    },
+    "benchy-arachne-on": {
+      "baseline_cpu_seconds": [
+        43.2188,
+        42.7812,
+        43.6562
+      ],
+      "baseline_median_wall_seconds": 8.9261,
+      "baseline_sha256": [
+        "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd"
+      ],
+      "baseline_wall_seconds": [
+        8.9051,
+        9.0283,
+        8.9261
+      ],
+      "candidate_cpu_seconds": [
+        42.0781,
+        41.0625,
+        42.2031
+      ],
+      "candidate_median_wall_seconds": 8.682,
+      "candidate_sha256": [
+        "a972b0f2c25a988e667ecf5a5b3d6c3f5ba87f5c8872733c2a4b4e5d51a9695e"
+      ],
+      "candidate_wall_seconds": [
+        8.682,
+        8.8258,
+        8.6103
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 1.1407000000000025,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 3.4183461982276633,
+      "floor_seconds": 0.0714088,
+      "gcode_bytes": [
+        8390069,
+        8391228
+      ],
+      "median_wall_delta_fraction": 0.027346769585821305,
+      "median_wall_delta_seconds": 0.24409999999999954,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 1.1407000000000025,
+          "pair": 1,
+          "wall_delta_seconds": 0.22309999999999874
+        },
+        {
+          "cpu_delta_seconds": 1.7186999999999983,
+          "pair": 2,
+          "wall_delta_seconds": 0.20250000000000057
+        },
+        {
+          "cpu_delta_seconds": 1.4530999999999992,
+          "pair": 3,
+          "wall_delta_seconds": 0.3157999999999994
+        }
+      ],
+      "runs_per_arm": 3
+    },
+    "benchy-classic-off": {
+      "baseline_cpu_seconds": [
+        26.9375,
+        26.5938,
+        26.9531
+      ],
+      "baseline_median_wall_seconds": 4.907,
+      "baseline_sha256": [
+        "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897"
+      ],
+      "baseline_wall_seconds": [
+        4.9767,
+        4.8017,
+        4.907
+      ],
+      "candidate_cpu_seconds": [
+        25.9219,
+        25.2188,
+        25.8906
+      ],
+      "candidate_median_wall_seconds": 4.5342,
+      "candidate_sha256": [
+        "90638bf3ea9e592d573b223c3eb9af64473efe804578d2478adfbbc5f0e67008"
+      ],
+      "candidate_wall_seconds": [
+        4.5724,
+        4.4606,
+        4.5342
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 1.0469000000000008,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 9.496637456694513,
+      "floor_seconds": 0.039256,
+      "gcode_bytes": [
+        3926024,
+        3926897
+      ],
+      "median_wall_delta_fraction": 0.0759730996535561,
+      "median_wall_delta_seconds": 0.3727999999999998,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 1.0155999999999992,
+          "pair": 1,
+          "wall_delta_seconds": 0.4043000000000001
+        },
+        {
+          "cpu_delta_seconds": 1.375,
+          "pair": 2,
+          "wall_delta_seconds": 0.34109999999999996
+        },
+        {
+          "cpu_delta_seconds": 1.0625,
+          "pair": 3,
+          "wall_delta_seconds": 0.3727999999999998
+        }
+      ],
+      "runs_per_arm": 3
+    },
+    "benchy-classic-on": {
+      "baseline_cpu_seconds": [
+        42.1875,
+        42.375,
+        42.4688
+      ],
+      "baseline_median_wall_seconds": 8.9179,
+      "baseline_sha256": [
+        "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e"
+      ],
+      "baseline_wall_seconds": [
+        9.0543,
+        8.8651,
+        8.9179
+      ],
+      "candidate_cpu_seconds": [
+        41.5469,
+        41.0,
+        40.7031
+      ],
+      "candidate_median_wall_seconds": 8.6471,
+      "candidate_sha256": [
+        "711c6334e397e5ae6911b15bfc71d42add9e93822cddd0a29391db6ef531d556"
+      ],
+      "candidate_wall_seconds": [
+        8.7568,
+        8.6471,
+        8.4129
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 1.375,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 3.7957366644613573,
+      "floor_seconds": 0.0713432,
+      "gcode_bytes": [
+        8252846,
+        8253678
+      ],
+      "median_wall_delta_fraction": 0.030365893315690857,
+      "median_wall_delta_seconds": 0.2707999999999995,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 0.6405999999999992,
+          "pair": 1,
+          "wall_delta_seconds": 0.29749999999999943
+        },
+        {
+          "cpu_delta_seconds": 1.375,
+          "pair": 2,
+          "wall_delta_seconds": 0.21799999999999997
+        },
+        {
+          "cpu_delta_seconds": 1.7657000000000025,
+          "pair": 3,
+          "wall_delta_seconds": 0.504999999999999
+        }
+      ],
+      "runs_per_arm": 3
+    }
+  },
+  "arm_equality": {
+    "base-arachne-off": {
+      "baseline_accelerated_sha256": "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f",
+      "candidate_accelerated_sha256": "6b865d4a2cb892daa3172add3e3677e0dc35192bcedd0acbc463abca7064d715",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "6b865d4a2cb892daa3172add3e3677e0dc35192bcedd0acbc463abca7064d715"
+    },
+    "base-arachne-on": {
+      "baseline_accelerated_sha256": "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee",
+      "candidate_accelerated_sha256": "62d6eedc02e5db972928f830104aab95c3598f6df6407159cb5438adb35bef13",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "62d6eedc02e5db972928f830104aab95c3598f6df6407159cb5438adb35bef13"
+    },
+    "base-classic-off": {
+      "baseline_accelerated_sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131",
+      "candidate_accelerated_sha256": "b3b4ac5e885c7f637b98f79eca21901a41d85739627d4dcb40820663c15e90ef",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "b3b4ac5e885c7f637b98f79eca21901a41d85739627d4dcb40820663c15e90ef"
+    },
+    "base-classic-on": {
+      "baseline_accelerated_sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca",
+      "candidate_accelerated_sha256": "4e31a2db368ff80f388512211ae824b9660342a465c87f093f6182023e34eb4e",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "4e31a2db368ff80f388512211ae824b9660342a465c87f093f6182023e34eb4e"
+    },
+    "benchy-arachne-off": {
+      "baseline_accelerated_sha256": "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219",
+      "candidate_accelerated_sha256": "2ba5d84ccf3c8deea6f39f4977dd71221faaecde9987d1699b361a5366e86380",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "2ba5d84ccf3c8deea6f39f4977dd71221faaecde9987d1699b361a5366e86380"
+    },
+    "benchy-arachne-on": {
+      "baseline_accelerated_sha256": "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd",
+      "candidate_accelerated_sha256": "a972b0f2c25a988e667ecf5a5b3d6c3f5ba87f5c8872733c2a4b4e5d51a9695e",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "a972b0f2c25a988e667ecf5a5b3d6c3f5ba87f5c8872733c2a4b4e5d51a9695e"
+    },
+    "benchy-classic-off": {
+      "baseline_accelerated_sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897",
+      "candidate_accelerated_sha256": "90638bf3ea9e592d573b223c3eb9af64473efe804578d2478adfbbc5f0e67008",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "90638bf3ea9e592d573b223c3eb9af64473efe804578d2478adfbbc5f0e67008"
+    },
+    "benchy-classic-on": {
+      "baseline_accelerated_sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e",
+      "candidate_accelerated_sha256": "711c6334e397e5ae6911b15bfc71d42add9e93822cddd0a29391db6ef531d556",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "711c6334e397e5ae6911b15bfc71d42add9e93822cddd0a29391db6ef531d556"
+    }
+  },
+  "arms": [
+    "baseline-ordinary",
+    "baseline-accelerated",
+    "candidate-ordinary",
+    "candidate-accelerated"
+  ],
+  "binaries": {
+    "baseline_ordinary_sha256": "abad35997ddeefb9e8512e0ebbe1ca1d67b386ce930a1949e647b46fbbe35c83",
+    "candidate_ordinary_sha256": "7737a74fd9f7ea012681ba83e9afdcf511d067fc50a0f919cef8b877b35759b0"
+  },
+  "cells": [
+    "benchy-classic-off",
+    "benchy-classic-on",
+    "benchy-arachne-off",
+    "benchy-arachne-on",
+    "base-classic-off",
+    "base-classic-on",
+    "base-arachne-off",
+    "base-arachne-on"
+  ],
+  "delta_audit": {
+    "base-arachne-off": {
+      "appendix_changed_lines": [
+        "; filament used [cm3] = 31.92",
+        "; filament used [mm] = 13271.58",
+        "; path-optimization layer 12 regions=1 entities=4",
+        "; path-optimization layer 233 regions=1 entities=2",
+        "; path-optimization layer 41 regions=1 entities=12",
+        "; path-optimization layer 42 regions=1 entities=11",
+        ";LAYER_CHANGE"
+      ],
+      "baseline_sha256": "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f",
+      "candidate_sha256": "6b865d4a2cb892daa3172add3e3677e0dc35192bcedd0acbc463abca7064d715",
+      "cell": "base-arachne-off",
+      "changed_types": {
+        "Bottom surface": {
+          "appendix": 6,
+          "changed_lines": 348,
+          "extrusion_only": 1,
+          "fan_control": 16,
+          "geometry": 317,
+          "progress_counter": 8
+        },
+        "Bridge": {
+          "appendix": 4,
+          "changed_lines": 955,
+          "extrusion_only": 1,
+          "fan_control": 17,
+          "geometry": 923,
+          "progress_counter": 10
+        },
+        "Inner wall": {
+          "appendix": 2,
+          "changed_lines": 75,
+          "extrusion_only": 70,
+          "fan_control": 3
+        },
+        "Internal Bridge": {
+          "changed_lines": 943,
+          "extrusion_only": 1,
+          "geometry": 938,
+          "progress_counter": 4
+        },
+        "Outer wall": {
+          "changed_lines": 176,
+          "extrusion_only": 176
+        },
+        "Sparse infill": {
+          "appendix": 6,
+          "changed_lines": 13402,
+          "extrusion_only": 334,
+          "fan_control": 28,
+          "geometry": 12836,
+          "progress_counter": 198
+        },
+        "Top surface": {
+          "changed_lines": 6,
+          "geometry": 4,
+          "progress_counter": 2
+        }
+      },
+      "fill_geometry_lines": 15018,
+      "first_changed_z": {
+        "Bottom surface": 2.6,
+        "Bridge": 0.4,
+        "Inner wall": 2.0,
+        "Internal Bridge": 8.0,
+        "Outer wall": 3.8,
+        "Sparse infill": 0.8,
+        "Top surface": 9.8
+      },
+      "layer_count": 495,
+      "structural_changed_types": {
+        "Inner wall": {
+          "appendix": 2,
+          "changed_lines": 75,
+          "extrusion_only": 70,
+          "fan_control": 3
+        },
+        "Outer wall": {
+          "changed_lines": 176,
+          "extrusion_only": 176
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    },
+    "base-arachne-on": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 10h 30m 56s",
+        "; filament used [cm3] = 73.68",
+        "; filament used [mm] = 30631.41"
+      ],
+      "baseline_sha256": "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee",
+      "candidate_sha256": "62d6eedc02e5db972928f830104aab95c3598f6df6407159cb5438adb35bef13",
+      "cell": "base-arachne-on",
+      "changed_types": {
+        "Bottom surface": {
+          "changed_lines": 327,
+          "fan_control": 16,
+          "geometry": 311
+        },
+        "Bridge": {
+          "changed_lines": 935,
+          "extrusion_only": 1,
+          "fan_control": 15,
+          "geometry": 919
+        },
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 23,
+          "extrusion_only": 17,
+          "fan_control": 3
+        },
+        "Internal Bridge": {
+          "changed_lines": 941,
+          "extrusion_only": 1,
+          "geometry": 940
+        },
+        "Outer wall": {
+          "changed_lines": 94,
+          "extrusion_only": 94
+        },
+        "Sparse infill": {
+          "changed_lines": 12863,
+          "extrusion_only": 19,
+          "fan_control": 28,
+          "geometry": 12816
+        },
+        "Support": {
+          "changed_lines": 386,
+          "extrusion_only": 296,
+          "progress_counter": 90
+        },
+        "Support interface": {
+          "changed_lines": 22,
+          "progress_counter": 22
+        },
+        "Top surface": {
+          "changed_lines": 4,
+          "geometry": 4
+        }
+      },
+      "fill_geometry_lines": 14990,
+      "first_changed_z": {
+        "Bottom surface": 2.6,
+        "Bridge": 0.4,
+        "Inner wall": 2.8,
+        "Internal Bridge": 12.0,
+        "Outer wall": 2.0,
+        "Sparse infill": 0.8,
+        "Support": 0.6,
+        "Support interface": 6.6,
+        "Top surface": 9.8
+      },
+      "layer_count": 495,
+      "structural_changed_types": {
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 23,
+          "extrusion_only": 17,
+          "fan_control": 3
+        },
+        "Outer wall": {
+          "changed_lines": 94,
+          "extrusion_only": 94
+        },
+        "Support": {
+          "changed_lines": 386,
+          "extrusion_only": 296,
+          "progress_counter": 90
+        },
+        "Support interface": {
+          "changed_lines": 22,
+          "progress_counter": 22
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    },
+    "base-classic-off": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 5h 44m 1s",
+        "; filament used [cm3] = 31.59",
+        "; filament used [mm] = 13133.31",
+        "; path-optimization layer 317 regions=1 entities=4",
+        "; path-optimization layer 328 regions=1 entities=3",
+        "; path-optimization layer 329 regions=1 entities=3",
+        "; path-optimization layer 352 regions=1 entities=2",
+        "; path-optimization layer 77 regions=1 entities=4",
+        ";LAYER_CHANGE"
+      ],
+      "baseline_sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131",
+      "candidate_sha256": "b3b4ac5e885c7f637b98f79eca21901a41d85739627d4dcb40820663c15e90ef",
+      "cell": "base-classic-off",
+      "changed_types": {
+        "Bottom surface": {
+          "changed_lines": 279,
+          "fan_control": 15,
+          "geometry": 264
+        },
+        "Bridge": {
+          "appendix": 6,
+          "changed_lines": 766,
+          "extrusion_only": 6,
+          "fan_control": 20,
+          "geometry": 724,
+          "progress_counter": 10
+        },
+        "Gap infill": {
+          "changed_lines": 25,
+          "fan_control": 1,
+          "geometry": 10,
+          "progress_counter": 14
+        },
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 8,
+          "extrusion_only": 2,
+          "fan_control": 3
+        },
+        "Internal Bridge": {
+          "changed_lines": 958,
+          "geometry": 958
+        },
+        "Outer wall": {
+          "changed_lines": 48,
+          "extrusion_only": 48
+        },
+        "Sparse infill": {
+          "appendix": 10,
+          "changed_lines": 9812,
+          "extrusion_only": 203,
+          "fan_control": 24,
+          "geometry": 9547,
+          "progress_counter": 28
+        },
+        "Top surface": {
+          "appendix": 4,
+          "changed_lines": 10,
+          "geometry": 4,
+          "progress_counter": 2
+        }
+      },
+      "fill_geometry_lines": 11507,
+      "first_changed_z": {
+        "Bottom surface": 7.4,
+        "Bridge": 0.4,
+        "Gap infill": 3.8,
+        "Inner wall": 10.0,
+        "Internal Bridge": 12.0,
+        "Outer wall": 3.8,
+        "Sparse infill": 0.8,
+        "Top surface": 65.8
+      },
+      "layer_count": 495,
+      "structural_changed_types": {
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 8,
+          "extrusion_only": 2,
+          "fan_control": 3
+        },
+        "Outer wall": {
+          "changed_lines": 48,
+          "extrusion_only": 48
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    },
+    "base-classic-on": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 10h 33m 33s",
+        "; filament used [cm3] = 73.35",
+        "; filament used [mm] = 30494.60"
+      ],
+      "baseline_sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca",
+      "candidate_sha256": "4e31a2db368ff80f388512211ae824b9660342a465c87f093f6182023e34eb4e",
+      "cell": "base-classic-on",
+      "changed_types": {
+        "Bottom surface": {
+          "changed_lines": 279,
+          "fan_control": 15,
+          "geometry": 264
+        },
+        "Bridge": {
+          "changed_lines": 737,
+          "extrusion_only": 4,
+          "fan_control": 17,
+          "geometry": 716
+        },
+        "Gap infill": {
+          "changed_lines": 11,
+          "fan_control": 1,
+          "geometry": 10
+        },
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 6,
+          "fan_control": 3
+        },
+        "Internal Bridge": {
+          "changed_lines": 956,
+          "geometry": 954,
+          "progress_counter": 2
+        },
+        "Sparse infill": {
+          "changed_lines": 9556,
+          "extrusion_only": 11,
+          "fan_control": 24,
+          "geometry": 9521
+        },
+        "Support": {
+          "changed_lines": 161,
+          "extrusion_only": 137,
+          "progress_counter": 24
+        },
+        "Support interface": {
+          "changed_lines": 10,
+          "progress_counter": 10
+        }
+      },
+      "fill_geometry_lines": 11465,
+      "first_changed_z": {
+        "Bottom surface": 7.4,
+        "Bridge": 0.4,
+        "Gap infill": 6.6,
+        "Inner wall": 54.4,
+        "Internal Bridge": 12.0,
+        "Sparse infill": 0.8,
+        "Support": 0.6,
+        "Support interface": 7.4
+      },
+      "layer_count": 495,
+      "structural_changed_types": {
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 6,
+          "fan_control": 3
+        },
+        "Support": {
+          "changed_lines": 161,
+          "extrusion_only": 137,
+          "progress_counter": 24
+        },
+        "Support interface": {
+          "changed_lines": 10,
+          "progress_counter": 10
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    },
+    "benchy-arachne-off": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 1h 38m 46s",
+        "; filament used [mm] = 3407.27",
+        "; path-optimization layer 183 regions=1 entities=2",
+        ";LAYER_CHANGE"
+      ],
+      "baseline_sha256": "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219",
+      "candidate_sha256": "2ba5d84ccf3c8deea6f39f4977dd71221faaecde9987d1699b361a5366e86380",
+      "cell": "benchy-arachne-off",
+      "changed_types": {
+        "Bottom surface": {
+          "changed_lines": 527,
+          "fan_control": 29,
+          "geometry": 498
+        },
+        "Bridge": {
+          "appendix": 2,
+          "changed_lines": 951,
+          "extrusion_only": 1,
+          "fan_control": 40,
+          "geometry": 906,
+          "progress_counter": 2
+        },
+        "Inner wall": {
+          "appendix": 2,
+          "changed_lines": 13,
+          "extrusion_only": 7,
+          "progress_counter": 4
+        },
+        "Internal Bridge": {
+          "changed_lines": 578,
+          "geometry": 576,
+          "progress_counter": 2
+        },
+        "Sparse infill": {
+          "appendix": 2,
+          "changed_lines": 126,
+          "extrusion_only": 3,
+          "fan_control": 2,
+          "geometry": 87,
+          "progress_counter": 32
+        }
+      },
+      "fill_geometry_lines": 2067,
+      "first_changed_z": {
+        "Bottom surface": 0.4,
+        "Bridge": 0.4,
+        "Inner wall": 3.8,
+        "Internal Bridge": 6.0,
+        "Sparse infill": 0.8
+      },
+      "layer_count": 240,
+      "structural_changed_types": {
+        "Inner wall": {
+          "appendix": 2,
+          "changed_lines": 13,
+          "extrusion_only": 7,
+          "progress_counter": 4
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    },
+    "benchy-arachne-on": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 2h 34m 38s",
+        "; filament used [mm] = 6057.40",
+        "; path-optimization layer 183 regions=1 entities=2",
+        ";LAYER_CHANGE"
+      ],
+      "baseline_sha256": "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd",
+      "candidate_sha256": "a972b0f2c25a988e667ecf5a5b3d6c3f5ba87f5c8872733c2a4b4e5d51a9695e",
+      "cell": "benchy-arachne-on",
+      "changed_types": {
+        "Bottom surface": {
+          "changed_lines": 527,
+          "fan_control": 29,
+          "geometry": 498
+        },
+        "Bridge": {
+          "appendix": 2,
+          "changed_lines": 951,
+          "extrusion_only": 1,
+          "fan_control": 40,
+          "geometry": 906,
+          "progress_counter": 2
+        },
+        "Inner wall": {
+          "appendix": 2,
+          "changed_lines": 5,
+          "extrusion_only": 3
+        },
+        "Internal Bridge": {
+          "changed_lines": 570,
+          "extrusion_only": 1,
+          "geometry": 569
+        },
+        "Internal solid infill": {
+          "changed_lines": 2,
+          "progress_counter": 2
+        },
+        "Outer wall": {
+          "changed_lines": 1,
+          "extrusion_only": 1
+        },
+        "Sparse infill": {
+          "appendix": 2,
+          "changed_lines": 93,
+          "fan_control": 2,
+          "geometry": 87,
+          "progress_counter": 2
+        },
+        "Support": {
+          "changed_lines": 36,
+          "extrusion_only": 4,
+          "progress_counter": 32
+        }
+      },
+      "fill_geometry_lines": 2060,
+      "first_changed_z": {
+        "Bottom surface": 0.4,
+        "Bridge": 0.4,
+        "Inner wall": 8.4,
+        "Internal Bridge": 8.0,
+        "Internal solid infill": 10.2,
+        "Outer wall": 19.2,
+        "Sparse infill": 22.8,
+        "Support": 1.2
+      },
+      "layer_count": 240,
+      "structural_changed_types": {
+        "Inner wall": {
+          "appendix": 2,
+          "changed_lines": 5,
+          "extrusion_only": 3
+        },
+        "Outer wall": {
+          "changed_lines": 1,
+          "extrusion_only": 1
+        },
+        "Support": {
+          "changed_lines": 36,
+          "extrusion_only": 4,
+          "progress_counter": 32
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    },
+    "benchy-classic-off": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 1h 40m 8s",
+        "; filament used [mm] = 3374.28",
+        "; path-optimization layer 12 regions=1 entities=2",
+        "; path-optimization layer 183 regions=1 entities=2",
+        ";LAYER_CHANGE"
+      ],
+      "baseline_sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897",
+      "candidate_sha256": "90638bf3ea9e592d573b223c3eb9af64473efe804578d2478adfbbc5f0e67008",
+      "cell": "benchy-classic-off",
+      "changed_types": {
+        "Bottom surface": {
+          "changed_lines": 309,
+          "fan_control": 17,
+          "geometry": 292
+        },
+        "Bridge": {
+          "appendix": 2,
+          "changed_lines": 934,
+          "fan_control": 40,
+          "geometry": 892
+        },
+        "Gap infill": {
+          "appendix": 2,
+          "changed_lines": 8,
+          "extrusion_only": 1,
+          "fan_control": 1,
+          "progress_counter": 4
+        },
+        "Inner wall": {
+          "changed_lines": 10,
+          "extrusion_only": 2,
+          "progress_counter": 8
+        },
+        "Internal Bridge": {
+          "changed_lines": 576,
+          "geometry": 576
+        },
+        "Sparse infill": {
+          "appendix": 4,
+          "changed_lines": 119,
+          "extrusion_only": 4,
+          "fan_control": 5,
+          "geometry": 104,
+          "progress_counter": 2
+        }
+      },
+      "fill_geometry_lines": 1864,
+      "first_changed_z": {
+        "Bottom surface": 0.4,
+        "Bridge": 0.4,
+        "Gap infill": 10.4,
+        "Inner wall": 15.8,
+        "Internal Bridge": 8.0,
+        "Sparse infill": 2.6
+      },
+      "layer_count": 240,
+      "structural_changed_types": {
+        "Inner wall": {
+          "changed_lines": 10,
+          "extrusion_only": 2,
+          "progress_counter": 8
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    },
+    "benchy-classic-on": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 2h 36m 6s",
+        "; filament used [mm] = 6024.46",
+        "; path-optimization layer 183 regions=1 entities=2",
+        ";LAYER_CHANGE"
+      ],
+      "baseline_sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e",
+      "candidate_sha256": "711c6334e397e5ae6911b15bfc71d42add9e93822cddd0a29391db6ef531d556",
+      "cell": "benchy-classic-on",
+      "changed_types": {
+        "Bottom surface": {
+          "changed_lines": 309,
+          "fan_control": 17,
+          "geometry": 292
+        },
+        "Bridge": {
+          "appendix": 2,
+          "changed_lines": 943,
+          "fan_control": 40,
+          "geometry": 899,
+          "progress_counter": 2
+        },
+        "Gap infill": {
+          "appendix": 2,
+          "changed_lines": 3,
+          "fan_control": 1
+        },
+        "Inner wall": {
+          "changed_lines": 8,
+          "extrusion_only": 8
+        },
+        "Internal Bridge": {
+          "changed_lines": 572,
+          "extrusion_only": 1,
+          "geometry": 569,
+          "progress_counter": 2
+        },
+        "Outer wall": {
+          "changed_lines": 4,
+          "extrusion_only": 4
+        },
+        "Sparse infill": {
+          "appendix": 2,
+          "changed_lines": 111,
+          "fan_control": 5,
+          "geometry": 102,
+          "progress_counter": 2
+        },
+        "Support": {
+          "changed_lines": 15,
+          "extrusion_only": 3,
+          "progress_counter": 12
+        },
+        "Top surface": {
+          "changed_lines": 1,
+          "extrusion_only": 1
+        }
+      },
+      "fill_geometry_lines": 1862,
+      "first_changed_z": {
+        "Bottom surface": 0.4,
+        "Bridge": 0.4,
+        "Gap infill": 22.8,
+        "Inner wall": 19.4,
+        "Internal Bridge": 8.0,
+        "Outer wall": 4.0,
+        "Sparse infill": 2.6,
+        "Support": 1.2,
+        "Top surface": 8.4
+      },
+      "layer_count": 240,
+      "structural_changed_types": {
+        "Inner wall": {
+          "changed_lines": 8,
+          "extrusion_only": 8
+        },
+        "Outer wall": {
+          "changed_lines": 4,
+          "extrusion_only": 4
+        },
+        "Support": {
+          "changed_lines": 15,
+          "extrusion_only": 3,
+          "progress_counter": 12
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    }
+  },
+  "floor_fraction": 0.008,
+  "output": {
+    "base-arachne-off": {
+      "baseline-accelerated": {
+        "cpu_seconds": 430.1875,
+        "exit_code": 0,
+        "gcode_bytes": 20847171,
+        "sha256": "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f",
+        "wall_seconds": 49.076
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 434.2656,
+        "exit_code": 0,
+        "gcode_bytes": 20847171,
+        "sha256": "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f",
+        "wall_seconds": 48.2665
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 321.0,
+        "exit_code": 0,
+        "gcode_bytes": 20826404,
+        "sha256": "6b865d4a2cb892daa3172add3e3677e0dc35192bcedd0acbc463abca7064d715",
+        "wall_seconds": 38.2333
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 324.9219,
+        "exit_code": 0,
+        "gcode_bytes": 20826404,
+        "sha256": "6b865d4a2cb892daa3172add3e3677e0dc35192bcedd0acbc463abca7064d715",
+        "wall_seconds": 38.6211
+      }
+    },
+    "base-arachne-on": {
+      "baseline-accelerated": {
+        "cpu_seconds": 729.4844,
+        "exit_code": 0,
+        "gcode_bytes": 42331252,
+        "sha256": "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee",
+        "wall_seconds": 118.2366
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 731.4844,
+        "exit_code": 0,
+        "gcode_bytes": 42331252,
+        "sha256": "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee",
+        "wall_seconds": 117.5104
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 621.375,
+        "exit_code": 0,
+        "gcode_bytes": 42310507,
+        "sha256": "62d6eedc02e5db972928f830104aab95c3598f6df6407159cb5438adb35bef13",
+        "wall_seconds": 106.6201
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 626.5312,
+        "exit_code": 0,
+        "gcode_bytes": 42310507,
+        "sha256": "62d6eedc02e5db972928f830104aab95c3598f6df6407159cb5438adb35bef13",
+        "wall_seconds": 107.0945
+      }
+    },
+    "base-classic-off": {
+      "baseline-accelerated": {
+        "cpu_seconds": 425.0469,
+        "exit_code": 0,
+        "gcode_bytes": 21026410,
+        "sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131",
+        "wall_seconds": 48.7282
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 428.6406,
+        "exit_code": 0,
+        "gcode_bytes": 21026410,
+        "sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131",
+        "wall_seconds": 49.112
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 316.2031,
+        "exit_code": 0,
+        "gcode_bytes": 21006116,
+        "sha256": "b3b4ac5e885c7f637b98f79eca21901a41d85739627d4dcb40820663c15e90ef",
+        "wall_seconds": 37.9786
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 319.5781,
+        "exit_code": 0,
+        "gcode_bytes": 21006116,
+        "sha256": "b3b4ac5e885c7f637b98f79eca21901a41d85739627d4dcb40820663c15e90ef",
+        "wall_seconds": 39.4537
+      }
+    },
+    "base-classic-on": {
+      "baseline-accelerated": {
+        "cpu_seconds": 727.5156,
+        "exit_code": 0,
+        "gcode_bytes": 42510534,
+        "sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca",
+        "wall_seconds": 117.7198
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 731.1406,
+        "exit_code": 0,
+        "gcode_bytes": 42510534,
+        "sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca",
+        "wall_seconds": 117.8434
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 617.0312,
+        "exit_code": 0,
+        "gcode_bytes": 42490279,
+        "sha256": "4e31a2db368ff80f388512211ae824b9660342a465c87f093f6182023e34eb4e",
+        "wall_seconds": 107.9299
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 624.2656,
+        "exit_code": 0,
+        "gcode_bytes": 42490279,
+        "sha256": "4e31a2db368ff80f388512211ae824b9660342a465c87f093f6182023e34eb4e",
+        "wall_seconds": 111.2054
+      }
+    },
+    "benchy-arachne-off": {
+      "baseline-accelerated": {
+        "cpu_seconds": 27.7344,
+        "exit_code": 0,
+        "gcode_bytes": 4064091,
+        "sha256": "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219",
+        "wall_seconds": 5.1006
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 27.8594,
+        "exit_code": 0,
+        "gcode_bytes": 4064091,
+        "sha256": "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219",
+        "wall_seconds": 4.976
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 26.5,
+        "exit_code": 0,
+        "gcode_bytes": 4065372,
+        "sha256": "2ba5d84ccf3c8deea6f39f4977dd71221faaecde9987d1699b361a5366e86380",
+        "wall_seconds": 4.6043
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 26.7344,
+        "exit_code": 0,
+        "gcode_bytes": 4065372,
+        "sha256": "2ba5d84ccf3c8deea6f39f4977dd71221faaecde9987d1699b361a5366e86380",
+        "wall_seconds": 4.7834
+      }
+    },
+    "benchy-arachne-on": {
+      "baseline-accelerated": {
+        "cpu_seconds": 42.6562,
+        "exit_code": 0,
+        "gcode_bytes": 8390069,
+        "sha256": "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd",
+        "wall_seconds": 8.9634
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 43.0,
+        "exit_code": 0,
+        "gcode_bytes": 8390069,
+        "sha256": "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd",
+        "wall_seconds": 8.9858
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 41.3594,
+        "exit_code": 0,
+        "gcode_bytes": 8391228,
+        "sha256": "a972b0f2c25a988e667ecf5a5b3d6c3f5ba87f5c8872733c2a4b4e5d51a9695e",
+        "wall_seconds": 8.6088
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 42.6719,
+        "exit_code": 0,
+        "gcode_bytes": 8391228,
+        "sha256": "a972b0f2c25a988e667ecf5a5b3d6c3f5ba87f5c8872733c2a4b4e5d51a9695e",
+        "wall_seconds": 8.6992
+      }
+    },
+    "benchy-classic-off": {
+      "baseline-accelerated": {
+        "cpu_seconds": 26.5781,
+        "exit_code": 0,
+        "gcode_bytes": 3926024,
+        "sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897",
+        "wall_seconds": 5.3454
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 26.625,
+        "exit_code": 0,
+        "gcode_bytes": 3926024,
+        "sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897",
+        "wall_seconds": 4.879
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 25.3438,
+        "exit_code": 0,
+        "gcode_bytes": 3926897,
+        "sha256": "90638bf3ea9e592d573b223c3eb9af64473efe804578d2478adfbbc5f0e67008",
+        "wall_seconds": 4.751
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 25.75,
+        "exit_code": 0,
+        "gcode_bytes": 3926897,
+        "sha256": "90638bf3ea9e592d573b223c3eb9af64473efe804578d2478adfbbc5f0e67008",
+        "wall_seconds": 4.5735
+      }
+    },
+    "benchy-classic-on": {
+      "baseline-accelerated": {
+        "cpu_seconds": 42.3594,
+        "exit_code": 0,
+        "gcode_bytes": 8252846,
+        "sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e",
+        "wall_seconds": 8.8011
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 42.2344,
+        "exit_code": 0,
+        "gcode_bytes": 8252846,
+        "sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e",
+        "wall_seconds": 8.8337
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 41.5156,
+        "exit_code": 0,
+        "gcode_bytes": 8253678,
+        "sha256": "711c6334e397e5ae6911b15bfc71d42add9e93822cddd0a29391db6ef531d556",
+        "wall_seconds": 8.6991
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 40.3594,
+        "exit_code": 0,
+        "gcode_bytes": 8253678,
+        "sha256": "711c6334e397e5ae6911b15bfc71d42add9e93822cddd0a29391db6ef531d556",
+        "wall_seconds": 8.4359
+      }
+    }
+  },
+  "reference_check": {
+    "base-arachne-off": {
+      "baseline_ordinary_sha256": "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f",
+      "reproduces": true,
+      "t116_candidate_sha256": "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f"
+    },
+    "base-arachne-on": {
+      "baseline_ordinary_sha256": "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee",
+      "reproduces": true,
+      "t116_candidate_sha256": "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee"
+    },
+    "base-classic-off": {
+      "baseline_ordinary_sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131",
+      "reproduces": true,
+      "t116_candidate_sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131"
+    },
+    "base-classic-on": {
+      "baseline_ordinary_sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca",
+      "reproduces": true,
+      "t116_candidate_sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca"
+    },
+    "benchy-arachne-off": {
+      "baseline_ordinary_sha256": "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219",
+      "reproduces": true,
+      "t116_candidate_sha256": "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219"
+    },
+    "benchy-arachne-on": {
+      "baseline_ordinary_sha256": "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd",
+      "reproduces": true,
+      "t116_candidate_sha256": "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd"
+    },
+    "benchy-classic-off": {
+      "baseline_ordinary_sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897",
+      "reproduces": true,
+      "t116_candidate_sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897"
+    },
+    "benchy-classic-on": {
+      "baseline_ordinary_sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e",
+      "reproduces": true,
+      "t116_candidate_sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e"
+    }
+  },
+  "ticket": "123"
+}

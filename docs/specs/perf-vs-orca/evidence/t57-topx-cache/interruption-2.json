@@ -1,0 +1,42 @@
+{
+  "human_request": "Continue until completion; second stop observed",
+  "stage": "15/16 proof cells recorded and revalidated; final cell candidate warmup interrupted",
+  "interrupted_cell": "accelerated-base-arachne-on",
+  "interrupted_arm": "candidate",
+  "recorded_rows_in_last_cell": [
+    "accelerated-base-arachne-on-baseline-w0"
+  ],
+  "candidate_gcode_present": false,
+  "partial_files_archived": {
+    "accelerated-base-arachne-on-baseline-w0.gcode": {
+      "archived_as": "interrupted/second-stop-partial-baseline-w0.gcode (raw archive, not tracked evidence)",
+      "bytes": 42664553,
+      "sha256": "e2c39557a130b8862c65391985bd122f5014c18055a06eba6ee8555dfade0cc4"
+    },
+    "accelerated-base-arachne-on-baseline-w0.stderr.jsonl": {
+      "archived_as": "second-stop-partial-baseline-w0.stderr.jsonl",
+      "bytes": 357883
+    },
+    "accelerated-base-arachne-on-baseline-w0.stdout.log": {
+      "archived_as": "second-stop-partial-baseline-w0.stdout.log",
+      "bytes": 0
+    },
+    "accelerated-base-arachne-on-candidate-w0.stderr.jsonl": {
+      "archived_as": "second-stop-partial-candidate-w0.stderr.jsonl",
+      "bytes": 25842
+    },
+    "accelerated-base-arachne-on-candidate-w0.stdout.log": {
+      "archived_as": "second-stop-partial-candidate-w0.stdout.log",
+      "bytes": 0
+    },
+    "rows.csv": {
+      "archived_as": "second-stop-partial-rows.csv",
+      "bytes": 122459
+    }
+  },
+  "qualification_json_present": false,
+  "timing_started": false,
+  "production_still_restored": true,
+  "cause": "unknown; resumed background shell died mid-slice with no OS event, no timeout, no space pressure; stream file absent afterwards",
+  "baseline_gcode_sha256": "e2c39557a130b8862c65391985bd122f5014c18055a06eba6ee8555dfade0cc4"
+}

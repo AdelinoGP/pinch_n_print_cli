@@ -101,62 +101,59 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
     // module crates' wasm32 guest builds, which don't compile). Instead we enforce
     // the feature at the `cargo test` invocation here.
     //
-    // We also quarantine deliberate RED parity anchors / out-of-scope tests via the
-    // libtest `--skip` filter so a green gate stays meaningful (only NEW breakage
-    // fails). These are tracked in docs/specs/arachne-parity-recovery.md. We skip
-    // them at the runner rather than `#[ignore]`-ing them: sibling RED-anchor files
-    // (arachne_parity_gaps.rs, arachne_parity_round2.rs) carry a checked-in policy
-    // forbidding `#[ignore]` on this test family, and the roster stays diffable here.
-    const QUARANTINED_TESTS: &[&str] = &[
-        // Concentric-infill-through-Arachne — out of scope (D-104f; user decision
-        // 2026-07-15: not on the roadmap, may never be Arachne).
-        "arachne_parity_pipeline_concentric_infill_uses_arachne",
-    ];
+    // The feature is injected only when the selection includes slicer-core
+    // itself: a qualified `slicer-core/host-algos` name is invalid on any other
+    // `-p <package>` (t108 finding A1). See `selection_includes_slicer_core`.
 
     // Split caller args at the first `--` into cargo-level and libtest-level args so
     // `--features` lands on the cargo side and `--skip` on the libtest side.
-    let (mut cargo_args, mut libtest_args): (Vec<String>, Vec<String>) =
+    let (cargo_args, libtest_args): (Vec<String>, Vec<String>) =
         match test_args.iter().position(|a| a == "--") {
             Some(i) => (test_args[..i].to_vec(), test_args[i + 1..].to_vec()),
             None => (test_args.clone(), Vec::new()),
         };
 
-    // Enforce host-algos unless the caller already chose features explicitly.
-    let caller_set_features = cargo_args
-        .iter()
-        .any(|a| a == "--features" || a.starts_with("--features=") || a == "--all-features");
-    if !caller_set_features {
-        cargo_args.push("--features".to_string());
-        cargo_args.push("slicer-core/host-algos".to_string());
-    }
+    let test_args = build_test_arguments(ws_root, cargo_args, libtest_args);
 
-    for name in QUARANTINED_TESTS {
-        libtest_args.push("--skip".to_string());
-        libtest_args.push((*name).to_string());
-    }
+    // Step 1: three independent read-only preflights — check-literals, the
+    // test-quality gate (report mode until the remediation program's final wave
+    // flips enforce — ADR-0065; `TEST_QUALITY_ENFORCED` is the single promotion
+    // point), and the guest-freshness check — run concurrently. They share no
+    // state, so the gate's fixed cost is the slowest of the three rather than
+    // their sum. Failure reporting keeps the original order: the source scans
+    // are reported before the freshness outcome is consumed, so a literals or
+    // test-quality failure still aborts without a guest rebuild.
+    //
+    // ONE invocation context for both halves of the gate: `xtask test` probes
+    // the toolchain and parses the canonical WIT set once, not once per phase.
+    let inv = build_guests::Invocation::new(ws_root);
+    let (literals_code, test_quality_code, freshness) = run_preflights_with(
+        || check_literals_preflight(ws_root),
+        || {
+            crate::check_test_quality::run(
+                ws_root,
+                !crate::check_test_quality::TEST_QUALITY_ENFORCED,
+                &[],
+            )
+        },
+        || {
+            if accelerated {
+                build_guests::CheckOutcome {
+                    stale: Vec::new(),
+                    code: build_guests::EXIT_FRESH,
+                }
+            } else {
+                build_guests::check_command_in(ws_root, &inv)
+            }
+        },
+    );
 
-    let mut test_args = cargo_args;
-    if !libtest_args.is_empty() {
-        test_args.push("--".to_string());
-        test_args.extend(libtest_args);
-    }
-
-    // Step 1: check-literals preflight, then the test-quality gate (report
-    // mode until the remediation program's final wave flips enforce —
-    // ADR-0065; `TEST_QUALITY_ENFORCED` is the single promotion point), then
-    // freshness check.
-    let literals_code = check_literals_preflight(ws_root);
     if literals_code != 0 {
         eprintln!(
             "xtask test: check-literals preflight failed; fix violations or add reasoned waivers (docs/21_data_defaults_and_fixtures.md), then re-run."
         );
         return 1;
     }
-    let test_quality_code = crate::check_test_quality::run(
-        ws_root,
-        !crate::check_test_quality::TEST_QUALITY_ENFORCED,
-        &[],
-    );
     if test_quality_code != 0 {
         eprintln!(
             "xtask test: check-test-quality preflight failed; fix findings or add reasoned waivers (docs/22_test_quality.md), then re-run."
@@ -164,9 +161,6 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         return 1;
     }
 
-    // ONE invocation context for both halves of the gate: `xtask test` probes
-    // the toolchain and parses the canonical WIT set once, not once per phase.
-    let inv = build_guests::Invocation::new(ws_root);
     if accelerated {
         let code = build_guests::accelerated_build_command(ws_root, false);
         if code != 0 {
@@ -175,7 +169,7 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         }
     } else if let Some(code) = handle_guest_freshness_with(
         ws_root,
-        || build_guests::check_command_in(ws_root, &inv),
+        || freshness,
         |stale| build_guests::build_stale_command(ws_root, stale, &inv),
     ) {
         return code;
@@ -209,7 +203,7 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         cmd.arg("test");
         if let Some(wrapper) = accelerated_wrapper.as_deref() {
             cmd.current_dir(ws_root);
-            configure_accelerated_host_command(&mut cmd, wrapper, true);
+            configure_accelerated_host_command(&mut cmd, wrapper, ws_root, true);
         }
         cmd.args(&test_args);
         cmd.stdout(std::process::Stdio::piped());
@@ -266,6 +260,158 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
     }
 
     exit_code
+}
+
+/// Deliberate RED parity anchors / out-of-scope tests quarantined from the gate.
+///
+/// Skipped via the libtest `--skip` filter so a green gate stays meaningful
+/// (only NEW breakage fails). These are tracked in
+/// docs/specs/arachne-parity-recovery.md. We skip them at the runner rather
+/// than `#[ignore]`-ing them: sibling RED-anchor files (arachne_parity_gaps.rs,
+/// arachne_parity_round2.rs) carry a checked-in policy forbidding `#[ignore]`
+/// on this test family, and the roster stays diffable here.
+const QUARANTINED_TESTS: &[&str] = &[
+    // Concentric-infill-through-Arachne — out of scope (D-104f; user decision
+    // 2026-07-15: not on the roadmap, may never be Arachne).
+    "arachne_parity_pipeline_concentric_infill_uses_arachne",
+];
+
+/// Build the final `cargo test` argument vector.
+///
+/// Two policies live here, both testable without spawning cargo:
+/// - `slicer-core/host-algos` is injected only when the caller set no features
+///   and the selection includes `slicer-core` itself (see
+///   `selection_includes_slicer_core`);
+/// - the quarantined parity tests are skipped on the libtest side.
+fn build_test_arguments(
+    ws_root: &Path,
+    mut cargo_args: Vec<String>,
+    mut libtest_args: Vec<String>,
+) -> Vec<String> {
+    let caller_set_features = cargo_args.iter().any(|arg| {
+        arg == "--features" || arg.starts_with("--features=") || arg == "--all-features"
+    });
+    if !caller_set_features && selection_includes_slicer_core(ws_root, &cargo_args) {
+        cargo_args.push("--features".to_string());
+        cargo_args.push("slicer-core/host-algos".to_string());
+    }
+
+    for name in QUARANTINED_TESTS {
+        libtest_args.push("--skip".to_string());
+        libtest_args.push((*name).to_string());
+    }
+
+    let mut test_args = cargo_args;
+    if !libtest_args.is_empty() {
+        test_args.push("--".to_string());
+        test_args.extend(libtest_args);
+    }
+    test_args
+}
+
+/// True when a `-p` / `--exclude` spec names `slicer-core`, including cargo's
+/// `name@version` pkgid form.
+fn names_slicer_core(package: &str) -> bool {
+    package == "slicer-core" || package.starts_with("slicer-core@")
+}
+
+/// True when cargo's package selection includes `slicer-core` itself.
+///
+/// The Arachne parity suite is gated by `#![cfg(feature = "host-algos")]`, and
+/// `host-algos` is not a default feature, so the gated entry point forces it
+/// on. A qualified `package/feature` name is valid only when that package is
+/// part of the selection: `cargo test -p xtask --features
+/// slicer-core/host-algos` fails with "the package 'xtask' does not contain
+/// this feature" (t108 finding A1). Every in-repo package that depends on
+/// `slicer-core` and needs the feature enables it in its own manifest, so the
+/// injection only has to cover `slicer-core` itself.
+fn selection_includes_slicer_core(ws_root: &Path, cargo_args: &[String]) -> bool {
+    let mut packages: Vec<&str> = Vec::new();
+    let mut excludes: Vec<&str> = Vec::new();
+    let mut workspace = false;
+    let mut manifest_path: Option<&str> = None;
+
+    let mut index = 0;
+    while index < cargo_args.len() {
+        let arg = cargo_args[index].as_str();
+        if arg == "--" {
+            break;
+        }
+        match arg {
+            "-p" | "--package" => {
+                if let Some(value) = cargo_args.get(index + 1) {
+                    packages.push(value.as_str());
+                    index += 1;
+                }
+            }
+            "--exclude" => {
+                if let Some(value) = cargo_args.get(index + 1) {
+                    excludes.push(value.as_str());
+                    index += 1;
+                }
+            }
+            "--manifest-path" => {
+                if let Some(value) = cargo_args.get(index + 1) {
+                    manifest_path = Some(value.as_str());
+                    index += 1;
+                }
+            }
+            "--workspace" | "--all" => workspace = true,
+            _ => {
+                if let Some(value) = arg.strip_prefix("--package=") {
+                    packages.push(value);
+                } else if let Some(value) = arg.strip_prefix("--exclude=") {
+                    excludes.push(value);
+                } else if let Some(value) = arg.strip_prefix("--manifest-path=") {
+                    manifest_path = Some(value);
+                } else if let Some(value) = arg.strip_prefix("-p") {
+                    // cargo accepts the attached short form: `-pfoo`.
+                    if !value.is_empty() {
+                        packages.push(value);
+                    }
+                }
+            }
+        }
+        index += 1;
+    }
+
+    if !packages.is_empty() {
+        return packages.iter().copied().any(names_slicer_core);
+    }
+    if workspace {
+        return !excludes.iter().copied().any(names_slicer_core);
+    }
+    if let Some(path) = manifest_path {
+        return manifest_declares_package(ws_root, path, "slicer-core");
+    }
+    // No selector at a virtual workspace root selects every member, slicer-core
+    // included.
+    true
+}
+
+/// Read a Cargo manifest and report whether its `[package]` name matches.
+///
+/// A missing or unreadable manifest returns `false`: cargo reports the real
+/// error, and skipping the injection avoids turning an unrelated failure into
+/// a feature-resolution failure.
+fn manifest_declares_package(ws_root: &Path, manifest: &str, expected: &str) -> bool {
+    let candidate = Path::new(manifest);
+    let path = if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        ws_root.join(candidate)
+    };
+    let Ok(text) = fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(parsed) = text.parse::<toml::Value>() else {
+        return false;
+    };
+    parsed
+        .get("package")
+        .and_then(|package| package.get("name"))
+        .and_then(toml::Value::as_str)
+        == Some(expected)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -325,12 +471,18 @@ const ACCELERATED_TEST_CONFIG: &[&str] = &[
     "profile.dev.package.slicer-core.debug-assertions=true",
 ];
 
-fn configure_accelerated_host_command(cmd: &mut Command, wrapper: &Path, test_profile: bool) {
+fn configure_accelerated_host_command(
+    cmd: &mut Command,
+    wrapper: &Path,
+    ws_root: &Path,
+    test_profile: bool,
+) {
     cmd.env("RUSTC", wrapper)
         .env(
             crate::rustc_driver::PNP_XTASK_EXE_ENV,
             std::env::current_exe().expect("resolve current xtask executable"),
         )
+        .env(crate::rustc_driver::PNP_WORKSPACE_ROOT_ENV, ws_root)
         .env(crate::rustc_driver::ACCELERATED_ENV, "1")
         .env(crate::rustc_driver::ACCELERATED_MODE_ENV, "host-debug");
     if test_profile {
@@ -340,6 +492,41 @@ fn configure_accelerated_host_command(cmd: &mut Command, wrapper: &Path, test_pr
 
 fn check_literals_preflight(ws_root: &Path) -> i32 {
     check_literals::run(ws_root, false, &[])
+}
+
+/// Run the three preflights concurrently and join them in a fixed order.
+///
+/// The two source scans run on scoped threads; `freshness` runs on this thread
+/// so the caller-owned `Invocation` (which holds a non-`Send` canonical-WIT
+/// loader closure) stays put and can be reused for a stale rebuild. All three
+/// overlap, so the gate costs `max(latency)` instead of their sum.
+///
+/// The generic seam exists so a test can assert both properties this function
+/// promises: the outcomes are preserved one-for-one, and the three closures
+/// genuinely overlap in time.
+fn run_preflights_with<L, Q, F>(
+    literals: L,
+    test_quality: Q,
+    freshness: F,
+) -> (i32, i32, build_guests::CheckOutcome)
+where
+    L: FnOnce() -> i32 + Send,
+    Q: FnOnce() -> i32 + Send,
+    F: FnOnce() -> build_guests::CheckOutcome,
+{
+    std::thread::scope(|scope| {
+        let literals = scope.spawn(literals);
+        let test_quality = scope.spawn(test_quality);
+        // Overlaps both scanners; see the doc comment for why it is not spawned.
+        let freshness = freshness();
+        let literals = literals
+            .join()
+            .expect("check-literals preflight thread panicked");
+        let test_quality = test_quality
+            .join()
+            .expect("check-test-quality preflight thread panicked");
+        (literals, test_quality, freshness)
+    })
 }
 
 fn handle_guest_freshness_with(
@@ -384,7 +571,7 @@ fn ensure_pnp_cli_fresh_accelerated(ws_root: &Path, wrapper: &Path) -> PnpCliFre
     ensure_pnp_cli_fresh_with(ws_root, |ws_root| {
         let mut cmd = Command::new("cargo");
         cmd.args(["build", "--bin", "pnp_cli"]).current_dir(ws_root);
-        configure_accelerated_host_command(&mut cmd, wrapper, true);
+        configure_accelerated_host_command(&mut cmd, wrapper, ws_root, true);
         cmd.status()
     })
 }
@@ -432,7 +619,7 @@ fn run_streaming_test(
     let mut cmd = Command::new("cargo");
     cmd.arg("test");
     if let Some(wrapper) = accelerated_wrapper {
-        configure_accelerated_host_command(&mut cmd, wrapper, true);
+        configure_accelerated_host_command(&mut cmd, wrapper, ws_root, true);
     }
     let mut child = cmd
         .args(test_args)
@@ -656,6 +843,129 @@ mod tests {
     }
 
     #[test]
+    fn host_algos_selection_follows_the_package_selector() {
+        let ws = std::path::Path::new("unused-for-package-selections");
+        let cases: &[(&[&str], bool)] = &[
+            (&["-p", "slicer-core"], true),
+            (&["-p", "xtask"], false),
+            (&["--package", "slicer-scheduler"], false),
+            (&["--package=slicer-core"], true),
+            (&["-pslicer-core"], true),
+            (&["-p", "slicer-core@0.1.0"], true),
+            (&["-p", "slicer-config", "-p", "slicer-core"], true),
+            (&["--workspace"], true),
+            (&["--workspace", "--exclude", "slicer-core"], false),
+            (&["--workspace", "--exclude=slicer-core"], false),
+            (&["--workspace", "--exclude", "slicer-core@0.1.0"], false),
+            (&["--all"], true),
+            (&[], true),
+        ];
+        for (args, expected) in cases {
+            assert_eq!(
+                super::selection_includes_slicer_core(ws, &strings(args)),
+                *expected,
+                "selection {args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn foreign_package_selection_does_not_activate_slicer_core_features() {
+        let args = super::build_test_arguments(
+            std::path::Path::new("unused"),
+            strings(&["-p", "xtask"]),
+            Vec::new(),
+        );
+        assert_eq!(
+            args,
+            strings(&[
+                "-p",
+                "xtask",
+                "--",
+                "--skip",
+                "arachne_parity_pipeline_concentric_infill_uses_arachne",
+            ]),
+            "a feature of a package outside the selection must not be requested"
+        );
+    }
+
+    #[test]
+    fn slicer_core_selection_activates_host_algos() {
+        let args = super::build_test_arguments(
+            std::path::Path::new("unused"),
+            strings(&["-p", "slicer-core"]),
+            Vec::new(),
+        );
+        assert_eq!(
+            args,
+            strings(&[
+                "-p",
+                "slicer-core",
+                "--features",
+                "slicer-core/host-algos",
+                "--",
+                "--skip",
+                "arachne_parity_pipeline_concentric_infill_uses_arachne",
+            ])
+        );
+    }
+
+    #[test]
+    fn caller_feature_choice_is_not_overridden() {
+        for feature_args in [
+            strings(&["-p", "slicer-core", "--features", "foo"]),
+            strings(&["-p", "slicer-core", "--features=foo"]),
+            strings(&["-p", "slicer-core", "--all-features"]),
+        ] {
+            let args = super::build_test_arguments(
+                std::path::Path::new("unused"),
+                feature_args,
+                Vec::new(),
+            );
+            assert!(
+                !args.iter().any(|arg| arg == "slicer-core/host-algos"),
+                "{args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn manifest_path_selection_reads_the_package_name() {
+        let ws = std::env::temp_dir().join(format!("xtask-t109-manifest-{}", std::process::id()));
+        std::fs::create_dir_all(ws.join("core")).expect("create core dir");
+        std::fs::write(
+            ws.join("core/Cargo.toml"),
+            "[package]\nname = \"slicer-core\"\n",
+        )
+        .expect("write core manifest");
+        std::fs::create_dir_all(ws.join("tool")).expect("create tool dir");
+        std::fs::write(ws.join("tool/Cargo.toml"), "[package]\nname = \"xtask\"\n")
+            .expect("write tool manifest");
+
+        assert!(super::selection_includes_slicer_core(
+            &ws,
+            &strings(&["--manifest-path", "core/Cargo.toml"])
+        ));
+        assert!(super::selection_includes_slicer_core(
+            &ws,
+            &strings(&["--manifest-path=core/Cargo.toml"])
+        ));
+        assert!(!super::selection_includes_slicer_core(
+            &ws,
+            &strings(&["--manifest-path", "tool/Cargo.toml"])
+        ));
+        assert!(
+            !super::selection_includes_slicer_core(
+                &ws,
+                &strings(&["--manifest-path", "missing/Cargo.toml"])
+            ),
+            "an unreadable manifest must not claim slicer-core"
+        );
+
+        std::fs::remove_dir_all(&ws).ok();
+    }
+
+    #[test]
     fn accelerated_entry_points_flag_parses() {
         let options = parse_test_options(&strings(&["--accelerated", "--summary", "--workspace"]))
             .expect("accelerated test flag parses");
@@ -757,6 +1067,60 @@ mod tests {
         ];
 
         assert!(collect_process_failure_details(&lines).is_empty());
+    }
+
+    #[test]
+    fn preflights_overlap_and_preserve_every_outcome() {
+        use std::sync::{Arc, Mutex};
+        use std::time::{Duration, Instant};
+
+        // Each closure records the interval it was running in. If the three ran
+        // one after another the intervals could not overlap and the assertion
+        // below would fail — this tests the concurrency claim itself.
+        let spans: Arc<Mutex<Vec<(Instant, Instant)>>> = Arc::new(Mutex::new(Vec::new()));
+        let record = |spans: &Arc<Mutex<Vec<(Instant, Instant)>>>| {
+            let started = Instant::now();
+            std::thread::sleep(Duration::from_millis(250));
+            spans
+                .lock()
+                .expect("span log poisoned")
+                .push((started, Instant::now()));
+        };
+
+        let literals_spans = Arc::clone(&spans);
+        let quality_spans = Arc::clone(&spans);
+        let freshness_spans = Arc::clone(&spans);
+
+        let (literals, test_quality, freshness) = super::run_preflights_with(
+            move || {
+                record(&literals_spans);
+                11
+            },
+            move || {
+                record(&quality_spans);
+                22
+            },
+            move || {
+                record(&freshness_spans);
+                crate::build_guests::CheckOutcome {
+                    stale: Vec::new(),
+                    code: 33,
+                }
+            },
+        );
+
+        assert_eq!(literals, 11, "literals outcome must be preserved");
+        assert_eq!(test_quality, 22, "test-quality outcome must be preserved");
+        assert_eq!(freshness.code, 33, "freshness outcome must be preserved");
+
+        let spans = spans.lock().expect("span log poisoned");
+        assert_eq!(spans.len(), 3, "all three preflights must run");
+        let latest_start = spans.iter().map(|(start, _)| *start).max().unwrap();
+        let earliest_end = spans.iter().map(|(_, end)| *end).min().unwrap();
+        assert!(
+            latest_start < earliest_end,
+            "preflights must overlap; recorded spans were {spans:?}"
+        );
     }
 
     #[test]

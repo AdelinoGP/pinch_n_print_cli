@@ -1,0 +1,527 @@
+diff --git a/crates/slicer-core/src/perimeter_spatial.rs b/crates/slicer-core/src/perimeter_spatial.rs
+index 8bfbf8e4..638cbdf4 100644
+--- a/crates/slicer-core/src/perimeter_spatial.rs
++++ b/crates/slicer-core/src/perimeter_spatial.rs
+@@ -114,6 +114,12 @@ pub fn observe_prepared_region(record: RegionCaptureRecord) {
+ pub mod diagnostics {
+     pub use super::{observe_prepared_region, RegionCaptureRecord};
+ 
++    /// Evaluate the prepared signed-distance sign predicate independently of indexing.
++    #[cfg(feature = "perimeter-spatial-test-support")]
++    pub fn prepared_contour_contains(ring: &slicer_ir::Polygon, x: f64, y: f64) -> bool {
++        super::PreparedWindingContour::new(ring).contains(x, y)
++    }
++
+     #[cfg(feature = "perimeter-spatial-test-support")]
+     pub use super::{
+         with_capture, with_context_accounting, with_counters,
+@@ -525,6 +531,7 @@ struct BridgeBounds {
+ /// Immutable indexes and source geometry for one perimeter region.
+ pub struct PerimeterSpatialContext {
+     boundary: Vec<ExPolygon>,
++    winding_contours: Vec<PreparedWindingContour>,
+     overhang_bands: Vec<QuartileBand>,
+     bridge_areas: Vec<ExPolygon>,
+     distance_index: IndexState<DistanceEdgeRecord>,
+@@ -544,6 +551,10 @@ impl PerimeterSpatialContext {
+     ) -> Self {
+         count_context_constructed();
+         let boundary = boundary.to_vec();
++        let winding_contours = boundary
++            .iter()
++            .map(|polygon| PreparedWindingContour::new(&polygon.contour))
++            .collect();
+         let overhang_bands = overhang_bands.to_vec();
+         let bridge_areas = bridge_areas.to_vec();
+ 
+@@ -559,6 +570,7 @@ impl PerimeterSpatialContext {
+ 
+         Self {
+             boundary,
++            winding_contours,
+             overhang_bands,
+             bridge_areas,
+             distance_index,
+@@ -578,7 +590,7 @@ impl PerimeterSpatialContext {
+             let distance = if self.boundary.is_empty() {
+                 0.0
+             } else {
+-                signed_distance_to_boundary(x, y, &self.boundary)
++                self.prepared_signed_distance(x, y)
+             };
+             capture_legacy_distance_selection(x, y, &self.boundary);
+             return distance;
+@@ -607,7 +619,7 @@ impl PerimeterSpatialContext {
+ 
+         let inside = match &self.boundary_y_index {
+             IndexState::Linear => return self.fallback_signed_distance(x, y),
+-            IndexState::Indexed(tree) => match indexed_inside(tree, x, y, &self.boundary) {
++            IndexState::Indexed(tree) => match indexed_inside(tree, x, y, &self.winding_contours) {
+                 Some(inside) => inside,
+                 None => return self.fallback_signed_distance(x, y),
+             },
+@@ -704,6 +716,62 @@ impl PerimeterSpatialContext {
+         distance
+     }
+ 
++    // The legacy helper remains untouched as an independent oracle and fallback.
++    // Only the sign source differs here; distance operations and traversal mirror
++    // signed_distance_to_boundary (crates/slicer-core/src/perimeter_utils.rs) exactly.
++    fn prepared_signed_distance(&self, x: f32, y: f32) -> f32 {
++        let query_x = f64::from(x);
++        let query_y = f64::from(y);
++        let point_to_mm = |point: Point2| {
++            (
++                f64::from(slicer_ir::units_to_mm(point.x)),
++                f64::from(slicer_ir::units_to_mm(point.y)),
++            )
++        };
++        let inside_region = self
++            .winding_contours
++            .iter()
++            .any(|contour| contour.contains(query_x, query_y));
++        let mut nearest_distance_sq = None;
++        for expolygon in &self.boundary {
++            for polygon in std::iter::once(&expolygon.contour).chain(expolygon.holes.iter()) {
++                let point_count = polygon.points.len();
++                if point_count == 0 {
++                    continue;
++                }
++                for edge_index in 0..point_count {
++                    let (ax, ay) = point_to_mm(polygon.points[edge_index]);
++                    let (bx, by) = point_to_mm(polygon.points[(edge_index + 1) % point_count]);
++                    let dx = bx - ax;
++                    let dy = by - ay;
++                    let length_sq = dx * dx + dy * dy;
++                    let projection = if length_sq == 0.0 {
++                        0.0
++                    } else {
++                        ((query_x - ax) * dx + (query_y - ay) * dy) / length_sq
++                    };
++                    let projection = projection.clamp(0.0, 1.0);
++                    let closest_x = ax + projection * dx;
++                    let closest_y = ay + projection * dy;
++                    let distance_sq = (query_x - closest_x).powi(2) + (query_y - closest_y).powi(2);
++                    match nearest_distance_sq {
++                        None => nearest_distance_sq = Some(distance_sq),
++                        Some(best) if distance_sq.total_cmp(&best) == Ordering::Less => {
++                            nearest_distance_sq = Some(distance_sq);
++                        }
++                        Some(_) => {}
++                    }
++                }
++            }
++        }
++        let distance_mm = nearest_distance_sq.map(|d| d.sqrt() as f32).unwrap_or(0.0);
++        if inside_region {
++            -distance_mm
++        } else {
++            distance_mm
++        }
++    }
++
+     fn fallback_overhang_quartile(&self, x: f32, y: f32) -> Option<u8> {
+         count_fallback();
+         count_legacy();
+@@ -1009,11 +1077,72 @@ fn indexed_distance(tree: &RTree<DistanceEdgeRecord>, x: f32, y: f32) -> Option<
+     best.map(|(distance_sq, source_ordinal)| (distance_sq.sqrt() as f32, source_ordinal))
+ }
+ 
++// Coordinates alone are prepared: retain the boundary pass, winding pass and
++// operation ordering of point_in_contour_winding (crates/slicer-ir/src/polygon_predicate.rs).
++// These direct-f64 endpoints must never be borrowed from the f32-rounded distance index.
++struct PreparedWindingContour {
++    points: Vec<[f64; 2]>,
++}
++
++impl PreparedWindingContour {
++    fn new(ring: &Polygon) -> Self {
++        Self {
++            points: ring
++                .points
++                .iter()
++                .map(|point| [point.x as f64 / 10_000.0, point.y as f64 / 10_000.0])
++                .collect(),
++        }
++    }
++
++    fn contains(&self, px: f64, py: f64) -> bool {
++        let n = self.points.len();
++        if n < 3 {
++            return false;
++        }
++        for i in 0..n {
++            let [ax, ay] = self.points[i];
++            let [bx, by] = self.points[(i + 1) % n];
++            let dx = bx - ax;
++            let dy = by - ay;
++            let len2 = dx * dx + dy * dy;
++            let distance_sq = if len2 == 0.0 {
++                let ex = px - ax;
++                let ey = py - ay;
++                ex * ex + ey * ey
++            } else {
++                let t = (((px - ax) * dx + (py - ay) * dy) / len2).clamp(0.0, 1.0);
++                let cx = ax + t * dx;
++                let cy = ay + t * dy;
++                let ex = px - cx;
++                let ey = py - cy;
++                ex * ex + ey * ey
++            };
++            if distance_sq <= 0.0 {
++                return true;
++            }
++        }
++        let mut winding = 0_i32;
++        for i in 0..n {
++            let [ax, ay] = self.points[i];
++            let [bx, by] = self.points[(i + 1) % n];
++            if ay <= py {
++                if by > py && (bx - ax) * (py - ay) - (px - ax) * (by - ay) > 0.0 {
++                    winding += 1;
++                }
++            } else if by <= py && (bx - ax) * (py - ay) - (px - ax) * (by - ay) < 0.0 {
++                winding -= 1;
++            }
++        }
++        winding != 0
++    }
++}
++
+ fn indexed_inside(
+     tree: &RTree<BoundaryYRecord>,
+     x: f32,
+     y: f32,
+-    boundary: &[ExPolygon],
++    contours: &[PreparedWindingContour],
+ ) -> Option<bool> {
+     let query = [0.0, f64::from(y)];
+     let envelope = AABB::from_corners(query, query);
+@@ -1024,9 +1153,9 @@ fn indexed_inside(
+ 
+     let mut inside = false;
+     for polygon_index in candidates {
+-        let polygon = boundary.get(polygon_index)?;
++        let contour = contours.get(polygon_index)?;
+         count_exact_evaluation();
+-        if slicer_ir::point_in_polygon_winding(polygon, f64::from(x), f64::from(y), 0.0) {
++        if contour.contains(f64::from(x), f64::from(y)) {
+             inside = true;
+         }
+     }
+diff --git a/crates/slicer-core/tests/perimeter_spatial_tdd.rs b/crates/slicer-core/tests/perimeter_spatial_tdd.rs
+index 45fcfafa..e5c612b5 100644
+--- a/crates/slicer-core/tests/perimeter_spatial_tdd.rs
++++ b/crates/slicer-core/tests/perimeter_spatial_tdd.rs
+@@ -1,3 +1,5 @@
++//! Independent exactness and dispatch regressions for perimeter spatial queries.
++
+ use slicer_core::perimeter_utils::{
+     expolygon_to_path3d, point_in_any_polygon, signed_distance_to_boundary,
+ };
+@@ -118,6 +120,305 @@ fn query_points() -> Vec<(f32, f32)> {
+     ]
+ }
+ 
++#[test]
++fn prepared_winding_retains_zero_epsilon_edges_holes_and_degenerate_vertices() {
++    use slicer_core::perimeter_spatial::diagnostics::prepared_contour_contains;
++
++    let square = expolygon_mm(
++        &[(-5.0, -5.0), (5.0, -5.0), (5.0, 5.0), (-5.0, 5.0)],
++        &[&[(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]],
++    );
++    for (x, y, expected) in [
++        (5.0, 0.0, true),
++        (5.0, 5.0, true),
++        (0.0, 0.0, true),
++        (-5.0, 0.0, true),
++        (5.001, 0.0, false),
++        (0.0, 8.0, false),
++    ] {
++        assert_eq!(
++            prepared_contour_contains(&square.contour, x, y),
++            expected,
++            "analytical square verdict at ({x}, {y})"
++        );
++        assert_eq!(
++            slicer_ir::point_in_polygon_winding(&square, x, y, 0.0),
++            expected,
++            "unchanged oracle's analytical verdict at ({x}, {y})"
++        );
++    }
++    let repeated = polygon_mm(&[
++        (-5.0, -5.0),
++        (5.0, -5.0),
++        (5.0, -5.0),
++        (5.0, 5.0),
++        (-5.0, 5.0),
++    ]);
++    assert!(prepared_contour_contains(&repeated, 5.0, -5.0));
++    assert!(prepared_contour_contains(&repeated, 0.0, 0.0));
++    for points in [
++        vec![],
++        vec![Point2 { x: 0, y: 0 }],
++        vec![Point2 { x: 0, y: 0 }; 2],
++    ] {
++        assert!(!prepared_contour_contains(&Polygon { points }, 0.0, 0.0));
++    }
++}
++
++#[test]
++fn prepared_winding_matches_unchanged_predicate_at_precision_extremes() {
++    use slicer_core::perimeter_spatial::diagnostics::prepared_contour_contains;
++
++    let rings = [
++        vec![
++            (16_777_217, -10_000),
++            (16_827_217, -10_000),
++            (16_827_217, 10_000),
++            (16_777_217, 10_000),
++        ],
++        vec![
++            (i64::MIN + 65_536, -32_768),
++            (i64::MIN + 131_072, -32_768),
++            (i64::MIN + 131_072, 32_768),
++            (i64::MIN + 65_536, 32_768),
++        ],
++        vec![
++            (i64::MAX - 131_072, -32_768),
++            (i64::MAX - 65_536, -32_768),
++            (i64::MAX - 65_536, 32_768),
++            (i64::MAX - 131_072, 32_768),
++        ],
++        vec![
++            (i64::MIN, i64::MIN),
++            (i64::MAX, i64::MIN),
++            (i64::MAX, i64::MAX),
++            (i64::MIN, i64::MAX),
++        ],
++        vec![
++            (-100_000, -100_000),
++            (100_000, -100_000),
++            (100_000, 100_000),
++            (40_000, 100_000),
++            (40_000, 20_000),
++            (-40_000, 20_000),
++            (-40_000, 100_000),
++            (-100_000, 100_000),
++        ],
++        vec![(0, 0), (0, 0), (0, 0)],
++        vec![
++            (-50_000, -50_000),
++            (50_000, 50_000),
++            (-50_000, 50_000),
++            (50_000, -50_000),
++        ],
++    ];
++    let mut inside_count = 0;
++    let mut outside_count = 0;
++    for points in rings {
++        let ring = Polygon {
++            points: points.into_iter().map(|(x, y)| Point2 { x, y }).collect(),
++        };
++        for point in &ring.points {
++            let x = point.x as f64 / 10_000.0;
++            let y = point.y as f64 / 10_000.0;
++            let queries = [
++                (x, y),
++                (x.next_up(), y),
++                (x.next_down(), y),
++                (x, y.next_up()),
++                (x, y.next_down()),
++                (f64::from((x as f32).next_up()), f64::from(y as f32)),
++                (f64::from((x as f32).next_down()), f64::from(y as f32)),
++                (0.0, 0.0),
++                (-0.0, -0.0),
++                (0.0, 5.0),
++                (f64::NAN, y),
++                (x, f64::NAN),
++                (f64::INFINITY, y),
++                (f64::NEG_INFINITY, y),
++                (x, f64::INFINITY),
++            ];
++            for (px, py) in queries {
++                let expected = slicer_ir::point_in_contour_winding(&ring, px, py, 0.0);
++                assert_eq!(
++                    prepared_contour_contains(&ring, px, py),
++                    expected,
++                    "raw-unit ring {:?}, query ({px:?}, {py:?})",
++                    ring.points
++                );
++                if expected {
++                    inside_count += 1;
++                } else {
++                    outside_count += 1;
++                }
++            }
++        }
++    }
++    assert!(
++        inside_count > 0 && outside_count > 0,
++        "oracle corpus must exercise both verdicts"
++    );
++}
++
++#[test]
++fn prepared_distance_matches_full_scan_bits_and_forced_fallbacks() {
++    use slicer_core::perimeter_spatial::{diagnostics, PerimeterSpatialContext};
++
++    let fixture = adversarial_fixture();
++    let mut queries = query_points();
++    queries.extend([
++        (5.0, 0.0),
++        (10.0, 0.0),
++        (10.0_f32.next_up(), 0.0),
++        (10.0_f32.next_down(), 0.0),
++        (f32::NAN, 0.0),
++        (0.0, f32::NAN),
++        (f32::INFINITY, 0.0),
++        (0.0, f32::NEG_INFINITY),
++    ]);
++    assert!(!queries.is_empty());
++    let expected: Vec<_> = queries
++        .iter()
++        .map(|&(x, y)| signed_distance_to_boundary(x, y, &fixture.boundary).to_bits())
++        .collect();
++    for (accelerated, inject_fault) in [(false, false), (true, false), (true, true)] {
++        let (actual, counters, ordinals) =
++            diagnostics::with_counters_and_distance_selections(accelerated, inject_fault, || {
++                let context = PerimeterSpatialContext::new(&fixture.boundary, &[], &[]);
++                queries
++                    .iter()
++                    .map(|&(x, y)| context.signed_distance_to_boundary(x, y).to_bits())
++                    .collect::<Vec<_>>()
++            });
++        assert_eq!(actual, expected, "mode={accelerated} fault={inject_fault}");
++        assert_eq!(
++            ordinals[1],
++            Some(4),
++            "center tie must select first hole edge"
++        );
++        assert_eq!(counters.contexts_constructed, 1);
++        if inject_fault {
++            assert_eq!(counters.fallback_queries, queries.len());
++            assert_eq!(counters.legacy_queries, queries.len());
++            assert_eq!(counters.indexed_queries, 0);
++        } else if accelerated {
++            assert!(counters.indexed_queries > 0);
++            assert_eq!(counters.fallback_queries, 4);
++            assert_eq!(
++                counters.indexed_queries + counters.fallback_queries,
++                queries.len()
++            );
++        } else {
++            assert_eq!(counters.legacy_queries, queries.len());
++            assert_eq!(counters.indexed_queries, 0);
++            assert_eq!(counters.fallback_queries, 0);
++        }
++    }
++}
++
++#[test]
++fn prepared_full_queries_match_full_scan_on_raw_unit_precision_boundaries() {
++    use slicer_core::perimeter_spatial::{diagnostics, PerimeterSpatialContext};
++
++    let cases = [
++        (16_777_217_i64, -10_000_i64, 50_000_i64, 20_000_i64),
++        (i64::MIN + 65_536, -32_768, 65_536, 65_536),
++        (i64::MAX - 131_072, -32_768, 65_536, 65_536),
++        (
++            -900_000_000_000_000,
++            -900_000_000_000_000,
++            1_800_000_000_000_000,
++            1_800_000_000_000_000,
++        ),
++    ];
++    for (left, bottom, width, height) in cases {
++        let ring = Polygon {
++            points: vec![
++                Point2 { x: left, y: bottom },
++                Point2 {
++                    x: left + width,
++                    y: bottom,
++                },
++                Point2 {
++                    x: left + width,
++                    y: bottom + height,
++                },
++                Point2 {
++                    x: left,
++                    y: bottom + height,
++                },
++            ],
++        };
++        // A distinct second contour keeps both trees indexed and tests source alignment.
++        let boundary = vec![
++            ExPolygon {
++                contour: ring.clone(),
++                holes: vec![],
++            },
++            expolygon_mm(
++                &[(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0)],
++                &[],
++            ),
++        ];
++        let mut queries = vec![(0.0_f32, 0.0_f32)];
++        for point in &ring.points {
++            let x = (point.x as f64 / 10_000.0) as f32;
++            let y = (point.y as f64 / 10_000.0) as f32;
++            queries.extend([
++                (x, y),
++                (x.next_up(), y),
++                (x.next_down(), y),
++                (x, y.next_up()),
++                (x, y.next_down()),
++            ]);
++        }
++        let expected: Vec<_> = queries
++            .iter()
++            .map(|&(x, y)| signed_distance_to_boundary(x, y, &boundary).to_bits())
++            .collect();
++        let mut reference_ordinals = None;
++        for (accelerated, inject_fault) in [(true, true), (false, false), (true, false)] {
++            let (actual, counters, ordinals) = diagnostics::with_counters_and_distance_selections(
++                accelerated,
++                inject_fault,
++                || {
++                    let context = PerimeterSpatialContext::new(&boundary, &[], &[]);
++                    queries
++                        .iter()
++                        .map(|&(x, y)| context.signed_distance_to_boundary(x, y).to_bits())
++                        .collect::<Vec<_>>()
++                },
++            );
++            assert_eq!(
++                actual, expected,
++                "raw-unit full queries at {left}, mode={accelerated}, fault={inject_fault}"
++            );
++            if let Some(reference) = &reference_ordinals {
++                assert_eq!(
++                    &ordinals, reference,
++                    "source-order selections at raw-unit {left}"
++                );
++            } else {
++                reference_ordinals = Some(ordinals);
++            }
++            if inject_fault {
++                assert_eq!(counters.fallback_queries, queries.len());
++            } else if accelerated {
++                assert_eq!(
++                    counters.indexed_queries,
++                    queries.len(),
++                    "precision queries must exercise indexed cache routing"
++                );
++                assert_eq!(counters.fallback_queries, 0);
++                assert_eq!(counters.legacy_queries, 0);
++            } else {
++                assert_eq!(counters.legacy_queries, queries.len());
++                assert_eq!(counters.fallback_queries, 0);
++            }
++        }
++    }
++}
++
+ fn bridge_points() -> Vec<Point2> {
+     vec![
+         point_mm(0.0, 0.0),

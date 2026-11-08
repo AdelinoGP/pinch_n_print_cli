@@ -1,0 +1,1059 @@
+{
+  "branch_distance": {
+    "base_gcode_bytes": 42507912,
+    "base_planner_ms": 55524,
+    "base_slice_ms": 184115,
+    "base_validate_ms": 15236.928,
+    "bytes": 42154300,
+    "cell": "classic-supports-on",
+    "config_sha256": "69d90ed63127da027cb79628661fb6d272fc78d7c80449020caad2f48490841a",
+    "gcode_bytes": 42154300,
+    "note": "config-only measurement arm; output differs from the 1 mm reference",
+    "planner_ms": 54077,
+    "reference_sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+    "run_id": "base-classic-on-branch5",
+    "sha256": "4727ebb6974e60c2fe02f35e201037623828634f08deff793efdf2de20d5a548",
+    "slice_ms": 176869,
+    "validate_ms": 13672.638
+  },
+  "floor_pct": 0.8,
+  "head": "5c7fa03ecf02a1a1e8bc6621e6be2a6a03b9b83a",
+  "ownership": {
+    "base-arachne-off": {
+      "batch": "t88b-probe-base-arachne-off",
+      "finalization_after_ms": 2,
+      "finalization_before_ms": 4,
+      "finalization_copy_drop_ms": 6,
+      "finalization_modules_ms": 173,
+      "gcode_emit_drop_ms": 8.361000000000004,
+      "gcode_emit_non_copy_ms": 78.639,
+      "gcode_emit_stage_ms": 87,
+      "net_share_pct": 0.012772370807469282,
+      "net_upper_ms": 10,
+      "ownership_total_ms": 18.361000000000004,
+      "postpass_gap_ms": 4,
+      "quiet_cell_wall_s": 73.2513,
+      "run_id": "base-arachne-off-probe",
+      "share_pct": 0.023451350039594355,
+      "slice_ms": 78294
+    },
+    "base-arachne-on": {
+      "batch": "t88-probe-base-arachne-on",
+      "finalization_after_ms": 4100,
+      "finalization_before_ms": 1979,
+      "finalization_copy_drop_ms": 6079,
+      "finalization_modules_ms": 837,
+      "gcode_emit_drop_ms": 5870.361,
+      "gcode_emit_non_copy_ms": 220.639,
+      "gcode_emit_stage_ms": 6091,
+      "net_share_pct": 5.474751558742791,
+      "net_upper_ms": 10291,
+      "ownership_total_ms": 16161.361,
+      "postpass_gap_ms": 4212,
+      "quiet_cell_wall_s": 186.6261,
+      "run_id": "base-arachne-on-probe",
+      "share_pct": 8.597749132849573,
+      "slice_ms": 187972
+    },
+    "base-classic-off": {
+      "batch": "t88b-probe-base-classic-off",
+      "finalization_after_ms": 2,
+      "finalization_before_ms": 5,
+      "finalization_copy_drop_ms": 7,
+      "finalization_modules_ms": 197,
+      "gcode_emit_drop_ms": 8.843000000000004,
+      "gcode_emit_non_copy_ms": 72.157,
+      "gcode_emit_stage_ms": 81,
+      "net_share_pct": 0.0155259412601889,
+      "net_upper_ms": 12,
+      "ownership_total_ms": 20.843000000000004,
+      "postpass_gap_ms": 5,
+      "quiet_cell_wall_s": 73.1735,
+      "run_id": "base-classic-off-probe",
+      "share_pct": 0.02696726614050977,
+      "slice_ms": 77290
+    },
+    "base-classic-on": {
+      "batch": "t88b-probe-base-classic-on",
+      "finalization_after_ms": 4337,
+      "finalization_before_ms": 1843,
+      "finalization_copy_drop_ms": 6180,
+      "finalization_modules_ms": 779,
+      "gcode_emit_drop_ms": 6151.26,
+      "gcode_emit_non_copy_ms": 190.74,
+      "gcode_emit_stage_ms": 6342,
+      "net_share_pct": 5.843630339733319,
+      "net_upper_ms": 10759,
+      "ownership_total_ms": 16910.260000000002,
+      "postpass_gap_ms": 4579,
+      "quiet_cell_wall_s": 171.0669,
+      "run_id": "base-classic-on-probe",
+      "share_pct": 9.18461830920892,
+      "slice_ms": 184115
+    }
+  },
+  "probe_table": {
+    "base-arachne-off": {
+      "batch": "t88b-probe-base-arachne-off",
+      "probe_terms": {
+        "agg.entries_clone": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.003
+        },
+        "agg.plans_clone": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.004
+        },
+        "agg.sort": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.001
+        },
+        "agg.try": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 2.621
+        },
+        "agg.union": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.005
+        },
+        "agg.validate": {
+          "calls": 1,
+          "loop_ms": 0.005,
+          "ms": 0.0
+        },
+        "ge.clone": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 4.088
+        },
+        "ge.estimate": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 28.729
+        },
+        "ge.m73": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 7.563
+        },
+        "ge.tool_rotation": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.009
+        },
+        "ge.walk": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 42.347
+        },
+        "prepass.aggregate": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 3.84
+        },
+        "prepass.clone": {
+          "calls": 2,
+          "loop_ms": 0.0,
+          "ms": 0.009000000000000001
+        },
+        "prepass.commit": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.006
+        },
+        "prepass.drop": {
+          "calls": 2,
+          "loop_ms": 0.0,
+          "ms": 0.007
+        },
+        "sa.commit": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.006
+        }
+      },
+      "run_id": "base-arachne-off-probe",
+      "slice_ms": 78294
+    },
+    "base-arachne-on": {
+      "batch": "t88-probe-base-arachne-on",
+      "probe_terms": {
+        "agg.entries_clone": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 36.223
+        },
+        "agg.plans_clone": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 19.496
+        },
+        "agg.sort": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.035
+        },
+        "agg.try": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 13993.507
+        },
+        "agg.union": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.263
+        },
+        "agg.validate": {
+          "calls": 1,
+          "loop_ms": 13943.621,
+          "ms": 13941.419
+        },
+        "ge.clone": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 2395.863
+        },
+        "ge.estimate": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 82.539
+        },
+        "ge.m73": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 19.415
+        },
+        "ge.tool_rotation": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.019
+        },
+        "ge.walk": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 118.685
+        },
+        "prepass.aggregate": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 14028.161
+        },
+        "prepass.clone": {
+          "calls": 2,
+          "loop_ms": 0.0,
+          "ms": 28.075000000000003
+        },
+        "prepass.commit": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.084
+        },
+        "prepass.drop": {
+          "calls": 2,
+          "loop_ms": 0.0,
+          "ms": 9.027000000000001
+        },
+        "sa.build": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.203
+        },
+        "sa.collect": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 39.169
+        },
+        "sa.commit": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.003
+        },
+        "sa.contacts": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 10302.771
+        },
+        "sa.eligibility": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 2279.92
+        },
+        "sa.layer_unions": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 380.591
+        },
+        "sa.modifiers": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.01
+        },
+        "sa.params": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.014
+        }
+      },
+      "run_id": "base-arachne-on-probe",
+      "slice_ms": 187972
+    },
+    "base-classic-off": {
+      "batch": "t88b-probe-base-classic-off",
+      "probe_terms": {
+        "agg.entries_clone": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.004
+        },
+        "agg.plans_clone": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.004
+        },
+        "agg.sort": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.002
+        },
+        "agg.try": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 2.184
+        },
+        "agg.union": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.004
+        },
+        "agg.validate": {
+          "calls": 1,
+          "loop_ms": 0.004,
+          "ms": 0.0
+        },
+        "ge.clone": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 4.094
+        },
+        "ge.estimate": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 29.308
+        },
+        "ge.m73": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 8.412
+        },
+        "ge.tool_rotation": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.009
+        },
+        "ge.walk": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 34.437
+        },
+        "prepass.aggregate": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 3.5
+        },
+        "prepass.clone": {
+          "calls": 2,
+          "loop_ms": 0.0,
+          "ms": 0.01
+        },
+        "prepass.commit": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.002
+        },
+        "prepass.drop": {
+          "calls": 2,
+          "loop_ms": 0.0,
+          "ms": 0.007
+        },
+        "sa.commit": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.006
+        }
+      },
+      "run_id": "base-classic-off-probe",
+      "slice_ms": 77290
+    },
+    "base-classic-on": {
+      "batch": "t88b-probe-base-classic-on",
+      "probe_terms": {
+        "agg.entries_clone": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 37.371
+        },
+        "agg.plans_clone": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 18.92
+        },
+        "agg.sort": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.023
+        },
+        "agg.try": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 15290.519
+        },
+        "agg.union": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.268
+        },
+        "agg.validate": {
+          "calls": 1,
+          "loop_ms": 15239.202,
+          "ms": 15236.928
+        },
+        "ge.clone": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 2824.904
+        },
+        "ge.estimate": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 66.321
+        },
+        "ge.m73": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 15.818
+        },
+        "ge.tool_rotation": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.024
+        },
+        "ge.walk": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 108.601
+        },
+        "prepass.aggregate": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 15326.428
+        },
+        "prepass.clone": {
+          "calls": 2,
+          "loop_ms": 0.0,
+          "ms": 31.117
+        },
+        "prepass.commit": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.089
+        },
+        "prepass.drop": {
+          "calls": 2,
+          "loop_ms": 0.0,
+          "ms": 9.314
+        },
+        "sa.build": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.278
+        },
+        "sa.collect": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 48.329
+        },
+        "sa.commit": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.005
+        },
+        "sa.contacts": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 10160.464
+        },
+        "sa.eligibility": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 2236.422
+        },
+        "sa.layer_unions": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 386.188
+        },
+        "sa.modifiers": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.005
+        },
+        "sa.params": {
+          "calls": 1,
+          "loop_ms": 0.0,
+          "ms": 0.009
+        }
+      },
+      "run_id": "base-classic-on-probe",
+      "slice_ms": 184115
+    }
+  },
+  "quiet_scoreboard": {
+    "base-arachne-off": {
+      "cpu_s": 714.1719,
+      "samples": 3,
+      "wall_s": 73.2513
+    },
+    "base-arachne-on": {
+      "cpu_s": 1075.625,
+      "samples": 3,
+      "wall_s": 186.6261
+    },
+    "base-classic-off": {
+      "cpu_s": 708.5938,
+      "samples": 3,
+      "wall_s": 73.1735
+    },
+    "base-classic-on": {
+      "cpu_s": 1034.3438,
+      "samples": 3,
+      "wall_s": 171.0669
+    }
+  },
+  "shapes": [
+    {
+      "cell": "base-classic",
+      "floor_pct": 0.8,
+      "id": "support-plan-exact-z-validation",
+      "quiet_cell_wall_s": 171.0669,
+      "run_id": "base-classic-on-probe",
+      "share_pct": 8.275766776199658,
+      "source": "probe term agg.validate",
+      "term_ms": 15236.928,
+      "verdict": "graduate (parallelize; object-level cache dedupe)"
+    },
+    {
+      "cell": "base-classic",
+      "floor_pct": 0.8,
+      "id": "postpass-layer-collection-ownership",
+      "quiet_cell_wall_s": 171.0669,
+      "run_id": "base-classic-on-probe",
+      "share_pct": 5.843630339733319,
+      "source": "one fewer collection: finalization clone+drop + postpass gap retained as the removed drop; emitter drop remains",
+      "term_ms": 10759,
+      "upper_bound_ms": 16910.260000000002,
+      "upper_bound_share_pct": 9.18461830920892,
+      "verdict": "graduate (single-ownership pass through finalization/emission)"
+    },
+    {
+      "cell": "base-classic",
+      "floor_pct": 0.8,
+      "id": "support-analysis-eligibility-fold",
+      "quiet_cell_wall_s": 171.0669,
+      "run_id": "base-classic-on-probe",
+      "share_pct": 1.2146875594058062,
+      "source": "probe term sa.eligibility",
+      "term_ms": 2236.422,
+      "verdict": "not graduated (work-bound: the predicate still runs; net below floor)"
+    },
+    {
+      "cell": "base-classic",
+      "floor_pct": 0.8,
+      "id": "support-contact-detection",
+      "quiet_cell_wall_s": 171.0669,
+      "run_id": "base-classic-on-probe",
+      "share_pct": 5.518542215463162,
+      "source": "probe term sa.contacts",
+      "term_ms": 10160.464,
+      "verdict": "not graduated (parallel canonical support geometry)"
+    },
+    {
+      "cell": "base-classic",
+      "floor_pct": 0.8,
+      "id": "tree-support-planner",
+      "quiet_cell_wall_s": 171.0669,
+      "run_id": "base-classic-on-probe",
+      "share_pct": 30.157238682345273,
+      "source": "module_complete com.core.tree-support-planner",
+      "term_ms": 55524,
+      "verdict": "not graduated (support geometry; clip core batched by t78)"
+    },
+    {
+      "cell": "base-arachne",
+      "floor_pct": 0.8,
+      "id": "support-plan-exact-z-validation",
+      "quiet_cell_wall_s": 186.6261,
+      "run_id": "base-arachne-on-probe",
+      "share_pct": 7.416753027046581,
+      "source": "probe term agg.validate",
+      "term_ms": 13941.419,
+      "verdict": "graduate (parallelize; object-level cache dedupe)"
+    },
+    {
+      "cell": "base-arachne",
+      "floor_pct": 0.8,
+      "id": "postpass-layer-collection-ownership",
+      "quiet_cell_wall_s": 186.6261,
+      "run_id": "base-arachne-on-probe",
+      "share_pct": 5.474751558742791,
+      "source": "one fewer collection: finalization clone+drop + postpass gap retained as the removed drop; emitter drop remains",
+      "term_ms": 10291,
+      "upper_bound_ms": 16161.361,
+      "upper_bound_share_pct": 8.597749132849573,
+      "verdict": "graduate (single-ownership pass through finalization/emission)"
+    },
+    {
+      "cell": "base-arachne",
+      "floor_pct": 0.8,
+      "id": "support-analysis-eligibility-fold",
+      "quiet_cell_wall_s": 186.6261,
+      "run_id": "base-arachne-on-probe",
+      "share_pct": 1.212904049539293,
+      "source": "probe term sa.eligibility",
+      "term_ms": 2279.92,
+      "verdict": "not graduated (work-bound: the predicate still runs; net below floor)"
+    },
+    {
+      "cell": "base-arachne",
+      "floor_pct": 0.8,
+      "id": "support-contact-detection",
+      "quiet_cell_wall_s": 186.6261,
+      "run_id": "base-arachne-on-probe",
+      "share_pct": 5.481013661609176,
+      "source": "probe term sa.contacts",
+      "term_ms": 10302.771,
+      "verdict": "not graduated (parallel canonical support geometry)"
+    },
+    {
+      "cell": "base-arachne",
+      "floor_pct": 0.8,
+      "id": "tree-support-planner",
+      "quiet_cell_wall_s": 186.6261,
+      "run_id": "base-arachne-on-probe",
+      "share_pct": 29.423531164215948,
+      "source": "module_complete com.core.tree-support-planner",
+      "term_ms": 55308,
+      "verdict": "not graduated (support geometry; clip core batched by t78)"
+    }
+  ],
+  "stage_table": {
+    "base-arachne-off": {
+      "batch": "t88b-probe-base-arachne-off",
+      "phases": {
+        "per_layer": 8184,
+        "postpass": 928,
+        "prepass": 68126,
+        "validation": 84
+      },
+      "run_id": "base-arachne-off-probe",
+      "slice_ms": 78294,
+      "stages": {
+        "Layer::Infill": {
+          "calls": 495,
+          "elapsed_ms": 34455
+        },
+        "Layer::InfillPostProcess": {
+          "calls": 495,
+          "elapsed_ms": 4621
+        },
+        "Layer::PaintRegionAnnotation": {
+          "calls": 495,
+          "elapsed_ms": 524
+        },
+        "Layer::PathOptimization": {
+          "calls": 495,
+          "elapsed_ms": 867
+        },
+        "Layer::Perimeters": {
+          "calls": 495,
+          "elapsed_ms": 46827
+        },
+        "Layer::PerimetersPostProcess": {
+          "calls": 495,
+          "elapsed_ms": 3570
+        },
+        "Layer::Support": {
+          "calls": 495,
+          "elapsed_ms": 1164
+        },
+        "Layer::SupportPostProcess": {
+          "calls": 495,
+          "elapsed_ms": 1040
+        },
+        "PostPass::GCodeEmit": {
+          "calls": 1,
+          "elapsed_ms": 87
+        },
+        "PostPass::GCodePostProcess": {
+          "calls": 1,
+          "elapsed_ms": 314
+        },
+        "PostPass::GCodeSerialize": {
+          "calls": 1,
+          "elapsed_ms": 344
+        },
+        "PostPass::LayerFinalization": {
+          "calls": 1,
+          "elapsed_ms": 179
+        },
+        "PrePass::LayerPlanning": {
+          "calls": 1,
+          "elapsed_ms": 2
+        },
+        "PrePass::MeshAnalysis": {
+          "calls": 1,
+          "elapsed_ms": 5903
+        },
+        "PrePass::OverhangAnnotation": {
+          "calls": 1,
+          "elapsed_ms": 9650
+        },
+        "PrePass::PaintSegmentation": {
+          "calls": 1,
+          "elapsed_ms": 76
+        },
+        "PrePass::RegionMapping": {
+          "calls": 1,
+          "elapsed_ms": 22
+        },
+        "PrePass::SeamPlanning": {
+          "calls": 1,
+          "elapsed_ms": 1715
+        },
+        "PrePass::ShellClassification": {
+          "calls": 1,
+          "elapsed_ms": 13227
+        },
+        "PrePass::Slice": {
+          "calls": 1,
+          "elapsed_ms": 37275
+        },
+        "PrePass::SupportAnalysis": {
+          "calls": 1,
+          "elapsed_ms": 1
+        },
+        "PrePass::SupportGeometry": {
+          "calls": 2,
+          "elapsed_ms": 249
+        }
+      }
+    },
+    "base-arachne-on": {
+      "batch": "t88-probe-base-arachne-on",
+      "phases": {
+        "per_layer": 13266,
+        "postpass": 18690,
+        "prepass": 154543,
+        "validation": 95
+      },
+      "run_id": "base-arachne-on-probe",
+      "slice_ms": 187972,
+      "stages": {
+        "Layer::Infill": {
+          "calls": 495,
+          "elapsed_ms": 38557
+        },
+        "Layer::InfillPostProcess": {
+          "calls": 495,
+          "elapsed_ms": 4734
+        },
+        "Layer::PaintRegionAnnotation": {
+          "calls": 495,
+          "elapsed_ms": 320
+        },
+        "Layer::PathOptimization": {
+          "calls": 495,
+          "elapsed_ms": 769
+        },
+        "Layer::Perimeters": {
+          "calls": 495,
+          "elapsed_ms": 50991
+        },
+        "Layer::PerimetersPostProcess": {
+          "calls": 495,
+          "elapsed_ms": 3939
+        },
+        "Layer::Support": {
+          "calls": 495,
+          "elapsed_ms": 50578
+        },
+        "Layer::SupportPostProcess": {
+          "calls": 495,
+          "elapsed_ms": 1123
+        },
+        "PostPass::GCodeEmit": {
+          "calls": 1,
+          "elapsed_ms": 6091
+        },
+        "PostPass::GCodePostProcess": {
+          "calls": 1,
+          "elapsed_ms": 684
+        },
+        "PostPass::GCodeSerialize": {
+          "calls": 1,
+          "elapsed_ms": 787
+        },
+        "PostPass::LayerFinalization": {
+          "calls": 1,
+          "elapsed_ms": 6916
+        },
+        "PrePass::LayerPlanning": {
+          "calls": 1,
+          "elapsed_ms": 2
+        },
+        "PrePass::MeshAnalysis": {
+          "calls": 1,
+          "elapsed_ms": 5415
+        },
+        "PrePass::OverhangAnnotation": {
+          "calls": 1,
+          "elapsed_ms": 9671
+        },
+        "PrePass::PaintSegmentation": {
+          "calls": 1,
+          "elapsed_ms": 90
+        },
+        "PrePass::RegionMapping": {
+          "calls": 1,
+          "elapsed_ms": 20
+        },
+        "PrePass::SeamPlanning": {
+          "calls": 1,
+          "elapsed_ms": 1766
+        },
+        "PrePass::ShellClassification": {
+          "calls": 1,
+          "elapsed_ms": 13929
+        },
+        "PrePass::Slice": {
+          "calls": 1,
+          "elapsed_ms": 40991
+        },
+        "PrePass::SupportAnalysis": {
+          "calls": 1,
+          "elapsed_ms": 13022
+        },
+        "PrePass::SupportGeometry": {
+          "calls": 2,
+          "elapsed_ms": 69628
+        }
+      }
+    },
+    "base-classic-off": {
+      "batch": "t88b-probe-base-classic-off",
+      "phases": {
+        "per_layer": 7887,
+        "postpass": 1066,
+        "prepass": 67284,
+        "validation": 89
+      },
+      "run_id": "base-classic-off-probe",
+      "slice_ms": 77290,
+      "stages": {
+        "Layer::Infill": {
+          "calls": 495,
+          "elapsed_ms": 34926
+        },
+        "Layer::InfillPostProcess": {
+          "calls": 495,
+          "elapsed_ms": 4415
+        },
+        "Layer::PaintRegionAnnotation": {
+          "calls": 495,
+          "elapsed_ms": 596
+        },
+        "Layer::PathOptimization": {
+          "calls": 495,
+          "elapsed_ms": 912
+        },
+        "Layer::Perimeters": {
+          "calls": 495,
+          "elapsed_ms": 42404
+        },
+        "Layer::PerimetersPostProcess": {
+          "calls": 495,
+          "elapsed_ms": 3627
+        },
+        "Layer::Support": {
+          "calls": 495,
+          "elapsed_ms": 1211
+        },
+        "Layer::SupportPostProcess": {
+          "calls": 495,
+          "elapsed_ms": 1035
+        },
+        "PostPass::GCodeEmit": {
+          "calls": 1,
+          "elapsed_ms": 81
+        },
+        "PostPass::GCodePostProcess": {
+          "calls": 1,
+          "elapsed_ms": 318
+        },
+        "PostPass::GCodeSerialize": {
+          "calls": 1,
+          "elapsed_ms": 458
+        },
+        "PostPass::LayerFinalization": {
+          "calls": 1,
+          "elapsed_ms": 204
+        },
+        "PrePass::LayerPlanning": {
+          "calls": 1,
+          "elapsed_ms": 2
+        },
+        "PrePass::MeshAnalysis": {
+          "calls": 1,
+          "elapsed_ms": 4812
+        },
+        "PrePass::OverhangAnnotation": {
+          "calls": 1,
+          "elapsed_ms": 9492
+        },
+        "PrePass::PaintSegmentation": {
+          "calls": 1,
+          "elapsed_ms": 83
+        },
+        "PrePass::RegionMapping": {
+          "calls": 1,
+          "elapsed_ms": 20
+        },
+        "PrePass::SeamPlanning": {
+          "calls": 1,
+          "elapsed_ms": 1775
+        },
+        "PrePass::ShellClassification": {
+          "calls": 1,
+          "elapsed_ms": 13843
+        },
+        "PrePass::Slice": {
+          "calls": 1,
+          "elapsed_ms": 36987
+        },
+        "PrePass::SupportAnalysis": {
+          "calls": 1,
+          "elapsed_ms": 1
+        },
+        "PrePass::SupportGeometry": {
+          "calls": 2,
+          "elapsed_ms": 261
+        }
+      }
+    },
+    "base-classic-on": {
+      "batch": "t88b-probe-base-classic-on",
+      "phases": {
+        "per_layer": 13797,
+        "postpass": 19226,
+        "prepass": 149683,
+        "validation": 102
+      },
+      "run_id": "base-classic-on-probe",
+      "slice_ms": 184115,
+      "stages": {
+        "Layer::Infill": {
+          "calls": 495,
+          "elapsed_ms": 43694
+        },
+        "Layer::InfillPostProcess": {
+          "calls": 495,
+          "elapsed_ms": 4607
+        },
+        "Layer::PaintRegionAnnotation": {
+          "calls": 495,
+          "elapsed_ms": 276
+        },
+        "Layer::PathOptimization": {
+          "calls": 495,
+          "elapsed_ms": 870
+        },
+        "Layer::Perimeters": {
+          "calls": 495,
+          "elapsed_ms": 50558
+        },
+        "Layer::PerimetersPostProcess": {
+          "calls": 495,
+          "elapsed_ms": 4765
+        },
+        "Layer::Support": {
+          "calls": 495,
+          "elapsed_ms": 51956
+        },
+        "Layer::SupportPostProcess": {
+          "calls": 495,
+          "elapsed_ms": 1468
+        },
+        "PostPass::GCodeEmit": {
+          "calls": 1,
+          "elapsed_ms": 6342
+        },
+        "PostPass::GCodePostProcess": {
+          "calls": 1,
+          "elapsed_ms": 627
+        },
+        "PostPass::GCodeSerialize": {
+          "calls": 1,
+          "elapsed_ms": 719
+        },
+        "PostPass::LayerFinalization": {
+          "calls": 1,
+          "elapsed_ms": 6959
+        },
+        "PrePass::LayerPlanning": {
+          "calls": 1,
+          "elapsed_ms": 2
+        },
+        "PrePass::MeshAnalysis": {
+          "calls": 1,
+          "elapsed_ms": 5057
+        },
+        "PrePass::OverhangAnnotation": {
+          "calls": 1,
+          "elapsed_ms": 8837
+        },
+        "PrePass::PaintSegmentation": {
+          "calls": 1,
+          "elapsed_ms": 87
+        },
+        "PrePass::RegionMapping": {
+          "calls": 1,
+          "elapsed_ms": 21
+        },
+        "PrePass::SeamPlanning": {
+          "calls": 1,
+          "elapsed_ms": 1829
+        },
+        "PrePass::ShellClassification": {
+          "calls": 1,
+          "elapsed_ms": 13498
+        },
+        "PrePass::Slice": {
+          "calls": 1,
+          "elapsed_ms": 36376
+        },
+        "PrePass::SupportAnalysis": {
+          "calls": 1,
+          "elapsed_ms": 12850
+        },
+        "PrePass::SupportGeometry": {
+          "calls": 2,
+          "elapsed_ms": 71117
+        }
+      }
+    }
+  }
+}

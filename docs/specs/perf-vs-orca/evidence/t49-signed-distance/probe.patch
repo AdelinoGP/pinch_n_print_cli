@@ -1,0 +1,300 @@
+diff --git a/crates/slicer-core/src/perimeter_spatial.rs b/crates/slicer-core/src/perimeter_spatial.rs
+index 8bfbf8e4..cb617abf 100644
+--- a/crates/slicer-core/src/perimeter_spatial.rs
++++ b/crates/slicer-core/src/perimeter_spatial.rs
+@@ -12,6 +12,25 @@ use slicer_ir::slice_ir::QuartileBand;
+ use slicer_ir::{ExPolygon, Point2, Point3WithWidth, Polygon};
+ 
+ use crate::perimeter_utils::{point_in_any_polygon, signed_distance_to_boundary};
++use crate::profile::{self, ScopeId};
++
++// Diagnostic work counts only; profile this bookkeeping separately.
++static T49_COUNTS: [std::sync::atomic::AtomicU64; 14] =
++    [const { std::sync::atomic::AtomicU64::new(0) }; 14];
++
++/// Temporary diagnostic counter update.
++pub fn t49_add(index: usize, amount: u64) {
++    let _account = profile::scope(ScopeId::T49_ACCOUNT);
++    T49_COUNTS[index].fetch_add(amount, std::sync::atomic::Ordering::Relaxed);
++}
++
++/// Temporary per-invocation work counts, drained by the guest probe.
++pub fn t49_take() -> Vec<u64> {
++    T49_COUNTS
++        .iter()
++        .map(|c| c.swap(0, std::sync::atomic::Ordering::Relaxed))
++        .collect()
++}
+ 
+ const RSTAR_MAX_SIZE: usize = <rstar::DefaultParams as RTreeParams>::MAX_SIZE;
+ 
+@@ -542,6 +561,8 @@ impl PerimeterSpatialContext {
+         overhang_bands: &[QuartileBand],
+         bridge_areas: &[ExPolygon],
+     ) -> Self {
++        let _t49 = profile::scope(ScopeId::T49_CONTEXT);
++        t49_add(3, 1);
+         count_context_constructed();
+         let boundary = boundary.to_vec();
+         let overhang_bands = overhang_bands.to_vec();
+@@ -572,6 +593,8 @@ impl PerimeterSpatialContext {
+ 
+     /// Return the exact signed distance to the nearest boundary edge.
+     pub fn signed_distance_to_boundary(&self, x: f32, y: f32) -> f32 {
++        let _t49 = profile::scope(ScopeId::T49_PUBLIC);
++        t49_add(4, 1);
+         let dispatch = dispatch();
+         if !dispatch.indexed {
+             count_legacy();
+@@ -593,6 +616,15 @@ impl PerimeterSpatialContext {
+             || matches!(&self.distance_index, IndexState::Linear)
+             || matches!(&self.boundary_y_index, IndexState::Linear)
+         {
++            let _reason = profile::scope(
++                if matches!(&self.distance_index, IndexState::Linear)
++                    || matches!(&self.boundary_y_index, IndexState::Linear)
++                {
++                    ScopeId::T49_LINEAR
++                } else {
++                    ScopeId::T49_OTHER
++                },
++            );
+             return self.fallback_signed_distance(x, y);
+         }
+ 
+@@ -693,6 +725,7 @@ impl PerimeterSpatialContext {
+     }
+ 
+     fn fallback_signed_distance(&self, x: f32, y: f32) -> f32 {
++        let _t49 = profile::scope(ScopeId::T49_FALLBACK);
+         count_fallback();
+         count_legacy();
+         let distance = if self.boundary.is_empty() {
+@@ -970,6 +1003,8 @@ fn reduce_distance_candidate(
+ }
+ 
+ fn edge_distance_sq(record: &DistanceEdgeRecord, query_x: f64, query_y: f64) -> f64 {
++    let _t49 = profile::scope(ScopeId::T49_EDGE);
++    t49_add(5, 1);
+     let ax = record.a[0];
+     let ay = record.a[1];
+     let bx = record.b[0];
+@@ -989,10 +1024,14 @@ fn edge_distance_sq(record: &DistanceEdgeRecord, query_x: f64, query_y: f64) ->
+ }
+ 
+ fn indexed_distance(tree: &RTree<DistanceEdgeRecord>, x: f32, y: f32) -> Option<(f32, usize)> {
++    let _t49 = profile::scope(ScopeId::T49_INDEX_DISTANCE);
+     let query_x = f64::from(x);
+     let query_y = f64::from(y);
+     let query = [query_x, query_y];
+-    let seed = tree.nearest_neighbor(&query)?;
++    let seed = {
++        let _seed = profile::scope(ScopeId::T49_SEED);
++        tree.nearest_neighbor(&query)?
++    };
+     let seed_distance_sq = edge_distance_sq(seed, query_x, query_y);
+     let radius = next_up(next_up(seed_distance_sq.next_up().sqrt()));
+     let envelope = AABB::from_corners(
+@@ -1000,8 +1039,10 @@ fn indexed_distance(tree: &RTree<DistanceEdgeRecord>, x: f32, y: f32) -> Option<
+         [next_up(query_x + radius), next_up(query_y + radius)],
+     );
+ 
++    let _range = profile::scope(ScopeId::T49_RANGE);
+     let mut best: Option<(f64, usize)> = None;
+     for candidate in tree.locate_in_envelope_intersecting(&envelope) {
++        t49_add(6, 1);
+         count_distance_exact_evaluation();
+         let distance_sq = edge_distance_sq(candidate, query_x, query_y);
+         best = reduce_distance_candidate(best, distance_sq, candidate.source_ordinal);
+@@ -1015,18 +1056,37 @@ fn indexed_inside(
+     y: f32,
+     boundary: &[ExPolygon],
+ ) -> Option<bool> {
++    let _t49 = profile::scope(ScopeId::T49_INDEX_SIGN);
+     let query = [0.0, f64::from(y)];
+     let envelope = AABB::from_corners(query, query);
+-    let mut candidates = BTreeSet::new();
+-    for record in tree.locate_in_envelope_intersecting(&envelope) {
+-        candidates.insert(record.polygon_index);
+-    }
++    let candidates = {
++        let _collect = profile::scope(ScopeId::T49_COLLECT);
++        let mut candidates = BTreeSet::new();
++        for record in tree.locate_in_envelope_intersecting(&envelope) {
++            t49_add(7, 1);
++            candidates.insert(record.polygon_index);
++        }
++        t49_add(8, candidates.len() as u64);
++        candidates
++    };
+ 
++    let _scan = profile::scope(ScopeId::T49_SCAN);
+     let mut inside = false;
+     for polygon_index in candidates {
+         let polygon = boundary.get(polygon_index)?;
++        t49_add(9, 1);
++        t49_add(10, polygon.contour.points.len() as u64);
++        if inside {
++            t49_add(11, 1);
++            t49_add(12, polygon.contour.points.len() as u64);
++        }
+         count_exact_evaluation();
+-        if slicer_ir::point_in_polygon_winding(polygon, f64::from(x), f64::from(y), 0.0) {
++        let verdict = {
++            let _predicate = profile::scope(ScopeId::T49_PREDICATE);
++            slicer_ir::point_in_polygon_winding(polygon, f64::from(x), f64::from(y), 0.0)
++        };
++        if verdict {
++            t49_add(13, 1);
+             inside = true;
+         }
+     }
+diff --git a/crates/slicer-core/src/perimeter_utils.rs b/crates/slicer-core/src/perimeter_utils.rs
+index c34ff004..8c06bbaf 100644
+--- a/crates/slicer-core/src/perimeter_utils.rs
++++ b/crates/slicer-core/src/perimeter_utils.rs
+@@ -365,6 +365,7 @@ pub fn extract_tool_index(val: &Option<PaintValue>) -> Option<u32> {
+ /// decide that themselves and stamp `None` on every vertex — never a
+ /// sentinel — without invoking this helper.
+ pub fn signed_distance_to_boundary(x: f32, y: f32, boundary: &[ExPolygon]) -> f32 {
++    let _t49 = crate::profile::scope(crate::profile::ScopeId::T49_LEGACY);
+     debug_assert!(
+         !boundary.is_empty(),
+         "signed_distance_to_boundary: empty boundary must be gated by the caller"
+@@ -378,14 +379,22 @@ pub fn signed_distance_to_boundary(x: f32, y: f32, boundary: &[ExPolygon]) -> f3
+         )
+     };
+ 
+-    let inside_region = boundary
+-        .iter()
+-        .any(|expolygon| slicer_ir::point_in_polygon_winding(expolygon, query_x, query_y, 0.0));
++    let inside_region = {
++        let _sign = crate::profile::scope(crate::profile::ScopeId::T49_SIGN);
++        boundary.iter().any(|expolygon| {
++            crate::perimeter_spatial::t49_add(0, 1);
++            crate::perimeter_spatial::t49_add(1, expolygon.contour.points.len() as u64);
++            let _predicate = crate::profile::scope(crate::profile::ScopeId::T49_PREDICATE);
++            slicer_ir::point_in_polygon_winding(expolygon, query_x, query_y, 0.0)
++        })
++    };
+ 
++    let _distance = crate::profile::scope(crate::profile::ScopeId::T49_FULL_DISTANCE);
+     let mut nearest_distance_sq = None;
+     for expolygon in boundary {
+         for polygon in std::iter::once(&expolygon.contour).chain(expolygon.holes.iter()) {
+             let point_count = polygon.points.len();
++            crate::perimeter_spatial::t49_add(2, point_count as u64);
+             if point_count == 0 {
+                 continue;
+             }
+diff --git a/crates/slicer-core/src/profile.rs b/crates/slicer-core/src/profile.rs
+index 9095cec9..02efcbcc 100644
+--- a/crates/slicer-core/src/profile.rs
++++ b/crates/slicer-core/src/profile.rs
+@@ -99,6 +99,25 @@ impl ScopeId {
+     /// bypass as [`ScopeId::OPENING`].
+     pub const CLOSING_EX: ScopeId = ScopeId(5);
+ 
++    // T49 diagnostic-only scopes. Retire after capture.
++    pub const T49_CONTEXT: ScopeId = ScopeId(6);
++    pub const T49_PUBLIC: ScopeId = ScopeId(7);
++    pub const T49_LEGACY: ScopeId = ScopeId(8);
++    pub const T49_SIGN: ScopeId = ScopeId(9);
++    pub const T49_PREDICATE: ScopeId = ScopeId(10);
++    pub const T49_FULL_DISTANCE: ScopeId = ScopeId(11);
++    pub const T49_INDEX_DISTANCE: ScopeId = ScopeId(12);
++    pub const T49_SEED: ScopeId = ScopeId(13);
++    pub const T49_RANGE: ScopeId = ScopeId(14);
++    pub const T49_EDGE: ScopeId = ScopeId(15);
++    pub const T49_INDEX_SIGN: ScopeId = ScopeId(16);
++    pub const T49_COLLECT: ScopeId = ScopeId(17);
++    pub const T49_SCAN: ScopeId = ScopeId(18);
++    pub const T49_FALLBACK: ScopeId = ScopeId(19);
++    pub const T49_LINEAR: ScopeId = ScopeId(20);
++    pub const T49_OTHER: ScopeId = ScopeId(21);
++    pub const T49_ACCOUNT: ScopeId = ScopeId(22);
++
+     /// Every scope id minted by `slicer-core`, in ascending order.
+     ///
+     /// A sink implementation can walk this to build an id-to-name table up
+@@ -109,6 +128,23 @@ impl ScopeId {
+         ScopeId::OFFSET2_EX,
+         ScopeId::OPENING,
+         ScopeId::CLOSING_EX,
++        ScopeId::T49_CONTEXT,
++        ScopeId::T49_PUBLIC,
++        ScopeId::T49_LEGACY,
++        ScopeId::T49_SIGN,
++        ScopeId::T49_PREDICATE,
++        ScopeId::T49_FULL_DISTANCE,
++        ScopeId::T49_INDEX_DISTANCE,
++        ScopeId::T49_SEED,
++        ScopeId::T49_RANGE,
++        ScopeId::T49_EDGE,
++        ScopeId::T49_INDEX_SIGN,
++        ScopeId::T49_COLLECT,
++        ScopeId::T49_SCAN,
++        ScopeId::T49_FALLBACK,
++        ScopeId::T49_LINEAR,
++        ScopeId::T49_OTHER,
++        ScopeId::T49_ACCOUNT,
+     ];
+ 
+     /// Constructs a scope id from its raw representation.
+@@ -139,6 +175,23 @@ impl ScopeId {
+             3 => Some("polygon_ops::offset2_ex"),
+             4 => Some("polygon_ops::opening"),
+             5 => Some("polygon_ops::closing_ex"),
++            6 => Some("t49::context"),
++            7 => Some("t49::public"),
++            8 => Some("t49::legacy"),
++            9 => Some("t49::sign"),
++            10 => Some("t49::predicate"),
++            11 => Some("t49::full_distance"),
++            12 => Some("t49::index_distance"),
++            13 => Some("t49::seed"),
++            14 => Some("t49::range"),
++            15 => Some("t49::edge"),
++            16 => Some("t49::index_sign"),
++            17 => Some("t49::collect"),
++            18 => Some("t49::scan"),
++            19 => Some("t49::fallback"),
++            20 => Some("t49::linear"),
++            21 => Some("t49::other"),
++            22 => Some("t49::account"),
+             _ => None,
+         }
+     }
+diff --git a/modules/core-modules/arachne-perimeters/src/lib.rs b/modules/core-modules/arachne-perimeters/src/lib.rs
+index c20912c4..cc0f3190 100644
+--- a/modules/core-modules/arachne-perimeters/src/lib.rs
++++ b/modules/core-modules/arachne-perimeters/src/lib.rs
+@@ -93,6 +93,19 @@ use slicer_sdk::views::SliceRegionView;
+ /// own R2 convention for per-object/per-layer overridable keys.
+ pub struct ArachnePerimeters;
+ 
++struct T49Counts;
++impl Drop for T49Counts {
++    fn drop(&mut self) {
++        slicer_sdk::host::log(
++            slicer_sdk::host::LogLevel::Info,
++            &format!(
++                "T49-COUNTS {:?}",
++                slicer_core::perimeter_spatial::t49_take()
++            ),
++        );
++    }
++}
++
+ /// Builds the SDK's [`ArachneParams`] mirror from `config`.
+ ///
+ /// Classified config reads use `ConfigView::require_*` (packet 06): a key the
+@@ -479,6 +492,8 @@ impl LayerModule for ArachnePerimeters {
+         output: &mut PerimeterOutputBuilder,
+         config: &ConfigView,
+     ) -> Result<(), ModuleError> {
++        let _ = slicer_core::perimeter_spatial::t49_take();
++        let _t49_counts = T49Counts;
+         let mut params = arachne_params_from_config(config, layer_index == 0)?;
+         // nozzle_diameter/layer_height (packet 150 step 5): read here (mm,
+         // same config keys + seeded defaults as arachne_params_from_config's

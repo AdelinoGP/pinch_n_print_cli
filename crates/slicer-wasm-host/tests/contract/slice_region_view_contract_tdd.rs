@@ -211,6 +211,21 @@ fn prev_layer_boundary_reaches_live_perimeters_guest_view() {
         "wall_sequence".into(),
         ConfigValueStorage::Str("InnerOuter".into()),
     );
+    // Ticket 81 added the canonical slicing-time contour simplification to both
+    // perimeter generators, so they now read `resolution` (manifest default
+    // 0.01 mm) on every path.
+    fields.insert("resolution".into(), ConfigValueStorage::Float(0.01));
+    // Ticket 20 made the overhang distance stamps conditional on a live
+    // consumer, so a fixture that asserts stamped points has to declare one:
+    // overhang speed enabled with a non-zero band.
+    fields.insert(
+        "enable_overhang_speed".into(),
+        ConfigValueStorage::Bool(true),
+    );
+    fields.insert("overhang_1_4_speed".into(), ConfigValueStorage::Float(10.0));
+    fields.insert("overhang_2_4_speed".into(), ConfigValueStorage::Float(10.0));
+    fields.insert("overhang_3_4_speed".into(), ConfigValueStorage::Float(10.0));
+    fields.insert("overhang_4_4_speed".into(), ConfigValueStorage::Float(10.0));
     // Arachne-only classified reads (packet 151 Step 2, packet 06): the four
     // keys the arachne `run_perimeters` path reads that classic never touches,
     // at their `arachne-perimeters.toml` manifest defaults.

@@ -1,0 +1,177 @@
+{
+ "source": "target/criterion/**/new/*.json (criterion 0.5.1), reduced by reduce-baselines.py",
+ "bench": "cargo bench -p slicer-helpers --bench mesh_ops",
+ "note": "First run on the t29 fixture change, so base == new for every leaf here. The pre-ticket mesh_ops/repair/cube and mesh_ops/decimate/cube_default leaves were replaced; their t15 values are recorded under pre_ticket_leaves_superseded and are not comparable to these leaves.",
+ "leaves": [
+  {
+   "full_id": "mesh_ops/decimate/calicat_default",
+   "group_id": "mesh_ops/decimate/calicat_default",
+   "sampling_mode": "Linear",
+   "samples": 100,
+   "iters_per_sample_range": [
+    6.0,
+    600.0
+   ],
+   "mean_ns": 185571.88292238725,
+   "mean_ci95_ns": [
+    181912.1498057511,
+    189655.31798778256
+   ],
+   "median_ns": 178289.82546988875,
+   "median_ci95_ns": [
+    175742.85714285713,
+    182715.15151515152
+   ],
+   "std_dev_ns": 19955.251834561313,
+   "cv_pct": 1.0665499965864194,
+   "slope_ns": 183435.6226786858,
+   "console_typical_vs_mean_pct": -1.1511766815422773,
+   "outliers": {
+    "low_severe": 0,
+    "low_mild": 0,
+    "high_mild": 6,
+    "high_severe": 1,
+    "total": 7,
+    "recomputed": true
+   },
+   "tukey_fences_ns": [
+    118550.15920483033,
+    146266.54334700393,
+    220176.90105946682,
+    247893.2852016404
+   ],
+   "base_present": true,
+   "base_identical_to_new": true
+  },
+  {
+   "full_id": "mesh_ops/import_step/assembly",
+   "group_id": "mesh_ops/import_step",
+   "sampling_mode": "Flat",
+   "samples": 100,
+   "iters_per_sample_range": [
+    20.0,
+    20.0
+   ],
+   "mean_ns": 2406452.45,
+   "mean_ci95_ns": [
+    2389641.3025,
+    2424391.8175
+   ],
+   "median_ns": 2387192.5,
+   "median_ci95_ns": [
+    2369855.0,
+    2402340.0
+   ],
+   "std_dev_ns": 88687.95528636493,
+   "cv_pct": 0.36842278594831757,
+   "slope_ns": null,
+   "console_typical_vs_mean_pct": null,
+   "outliers": {
+    "low_severe": 0,
+    "low_mild": 0,
+    "high_mild": 5,
+    "high_severe": 0,
+    "total": 5,
+    "recomputed": true
+   },
+   "tukey_fences_ns": [
+    2037672.5,
+    2191407.5,
+    2601367.5,
+    2755102.5
+   ],
+   "base_present": true,
+   "base_identical_to_new": true
+  },
+  {
+   "full_id": "mesh_ops/import_step/cube",
+   "group_id": "mesh_ops/import_step",
+   "sampling_mode": "Linear",
+   "samples": 100,
+   "iters_per_sample_range": [
+    1.0,
+    100.0
+   ],
+   "mean_ns": 1410826.6197352621,
+   "mean_ci95_ns": [
+    1383351.262212722,
+    1439766.0713401085
+   ],
+   "median_ns": 1356969.514106583,
+   "median_ci95_ns": [
+    1336151.282051282,
+    1383465.0
+   ],
+   "std_dev_ns": 145049.23821149083,
+   "cv_pct": 1.020281739544438,
+   "slope_ns": 1511000.8307965125,
+   "console_typical_vs_mean_pct": 7.100391335120104,
+   "outliers": {
+    "low_severe": 0,
+    "low_mild": 0,
+    "high_mild": 5,
+    "high_severe": 0,
+    "total": 5,
+    "recomputed": true
+   },
+   "tukey_fences_ns": [
+    838327.7786831814,
+    1075028.7198500652,
+    1706231.2296284223,
+    1942932.1707953063
+   ],
+   "base_present": true,
+   "base_identical_to_new": true
+  },
+  {
+   "full_id": "mesh_ops/repair/wedge",
+   "group_id": "mesh_ops/repair/wedge",
+   "sampling_mode": "Linear",
+   "samples": 100,
+   "iters_per_sample_range": [
+    32.0,
+    3200.0
+   ],
+   "mean_ns": 36295.45227781692,
+   "mean_ci95_ns": [
+    35153.596667024125,
+    37503.67045393328
+   ],
+   "median_ns": 32891.76164215686,
+   "median_ci95_ns": [
+    32305.208333333332,
+    34015.90909090909
+   ],
+   "std_dev_ns": 5997.514580411055,
+   "cv_pct": 1.6493060352664377,
+   "slope_ns": 40524.55234963795,
+   "console_typical_vs_mean_pct": 11.651873186343435,
+   "outliers": {
+    "low_severe": 0,
+    "low_mild": 0,
+    "high_mild": 0,
+    "high_severe": 0,
+    "total": 0,
+    "recomputed": true
+   },
+   "tukey_fences_ns": [
+    5239.197191881693,
+    18551.313963906214,
+    54050.29202263827,
+    67362.4087946628
+   ],
+   "base_present": true,
+   "base_identical_to_new": true
+  }
+ ],
+ "pre_ticket_leaves_superseded": {
+  "mesh_ops/repair/cube": {
+   "mean_ns": 2947.0,
+   "median_ns": 2903.0
+  },
+  "mesh_ops/decimate/cube_default": {
+   "mean_ns": 3745.0,
+   "median_ns": 3692.9
+  }
+ }
+}

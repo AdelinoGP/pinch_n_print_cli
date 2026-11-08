@@ -1,0 +1,7 @@
+    Checking slicer-ir v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-ir)
+    Checking slicer-config v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-config)
+   Compiling slicer-core v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-core)
+    Checking clipper2-rust v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-rust)
+    Checking slicer-scheduler v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-scheduler)
+    Checking slicer-model-io v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-model-io)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 24.32s

@@ -385,7 +385,17 @@ fn derive_expected_value(raw: &str, entry: &RegistryEntry) -> Result<ConfigValue
             .map_err(|_| format!("invalid int: {raw:?}")),
         "float" => raw
             .parse::<f64>()
-            .map(|value| ConfigValue::Float(if value.is_subnormal() { 0.0 } else { value }))
+            .map(|value| {
+                // Canonical `normalize_fdm` clamps the slicing-time contour
+                // simplification below the 1 um floor (perf-vs-orca t81 port);
+                // the resolver stores the f32 clamp, so mirror its width.
+                let value = if entry.key == "resolution" && value < 0.001 {
+                    f64::from(0.001_f32)
+                } else {
+                    value
+                };
+                ConfigValue::Float(if value.is_subnormal() { 0.0 } else { value })
+            })
             .map_err(|_| format!("invalid float: {raw:?}")),
         "string" => Ok(ConfigValue::String(raw.to_owned())),
         "enum" => Err(format!("enum declaration has no values: {raw:?}")),

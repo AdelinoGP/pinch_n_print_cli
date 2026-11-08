@@ -1,0 +1,1214 @@
+{
+  "ordinary-benchy": {
+    "summary": {
+      "total": {
+        "rows": 716,
+        "union_calls": 181,
+        "empty_bypass": 533,
+        "singleton_bypass": 2,
+        "simplify_activations": 0,
+        "core_ns": 2427742600,
+        "host_conversion_ns": 6155600,
+        "host_full_ns": 2433898200,
+        "guest_union_call_ns": 2478236000,
+        "roundtrip_residual_ns": 44337800,
+        "union_bypass_ns": 125000,
+        "inactive_simplify_branch_ns": 230000,
+        "active_simplify_ns": 0,
+        "structural_ns": 10144000,
+        "carve_ns": 2717638000,
+        "difference_ns": 297777000,
+        "body_difference_ns": 1845000
+      },
+      "by_role": {
+        "0": {
+          "rows": 179,
+          "union_calls": 177,
+          "empty_bypass": 0,
+          "singleton_bypass": 2,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            5
+          ],
+          "core_ns": 2427052500,
+          "host_conversion_ns": 6144200,
+          "host_full_ns": 2433196700,
+          "guest_union_call_ns": 2477468000,
+          "roundtrip_residual_ns": 44271300,
+          "union_bypass_ns": 2000,
+          "inactive_simplify_branch_ns": 65000,
+          "active_simplify_ns": 0,
+          "structural_ns": 9858000,
+          "carve_ns": 2709022000,
+          "difference_ns": 187891000,
+          "shape_totals": {
+            "input": [
+              21680,
+              0,
+              2154791
+            ],
+            "union": [
+              831,
+              18,
+              356649
+            ],
+            "simplify": [
+              831,
+              18,
+              356649
+            ],
+            "final": [
+              831,
+              18,
+              356647
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              182,
+              0,
+              18200,
+              119
+            ],
+            "union": [
+              12,
+              2,
+              3487,
+              2140
+            ],
+            "simplify": [
+              12,
+              2,
+              3487,
+              2140
+            ],
+            "final": [
+              12,
+              2,
+              3487,
+              2140
+            ]
+          }
+        },
+        "1": {
+          "rows": 179,
+          "union_calls": 2,
+          "empty_bypass": 177,
+          "singleton_bypass": 0,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            5
+          ],
+          "core_ns": 54300,
+          "host_conversion_ns": 1000,
+          "host_full_ns": 55300,
+          "guest_union_call_ns": 69000,
+          "roundtrip_residual_ns": 13700,
+          "union_bypass_ns": 41000,
+          "inactive_simplify_branch_ns": 55000,
+          "active_simplify_ns": 0,
+          "structural_ns": 166000,
+          "carve_ns": 547000,
+          "difference_ns": 40412000,
+          "shape_totals": {
+            "input": [
+              4,
+              0,
+              400
+            ],
+            "union": [
+              2,
+              0,
+              281
+            ],
+            "simplify": [
+              2,
+              0,
+              281
+            ],
+            "final": [
+              2,
+              0,
+              281
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              2,
+              0,
+              200,
+              100
+            ],
+            "union": [
+              1,
+              0,
+              141,
+              141
+            ],
+            "simplify": [
+              1,
+              0,
+              141,
+              141
+            ],
+            "final": [
+              1,
+              0,
+              141,
+              141
+            ]
+          }
+        },
+        "2": {
+          "rows": 179,
+          "union_calls": 0,
+          "empty_bypass": 179,
+          "singleton_bypass": 0,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            5
+          ],
+          "core_ns": 0,
+          "host_conversion_ns": 0,
+          "host_full_ns": 0,
+          "guest_union_call_ns": 0,
+          "roundtrip_residual_ns": 0,
+          "union_bypass_ns": 40000,
+          "inactive_simplify_branch_ns": 58000,
+          "active_simplify_ns": 0,
+          "structural_ns": 49000,
+          "carve_ns": 51000,
+          "difference_ns": 35999000,
+          "shape_totals": {
+            "input": [
+              0,
+              0,
+              0
+            ],
+            "union": [
+              0,
+              0,
+              0
+            ],
+            "simplify": [
+              0,
+              0,
+              0
+            ],
+            "final": [
+              0,
+              0,
+              0
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "union": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "simplify": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "final": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "3": {
+          "rows": 179,
+          "union_calls": 2,
+          "empty_bypass": 177,
+          "singleton_bypass": 0,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            5
+          ],
+          "core_ns": 635800,
+          "host_conversion_ns": 10400,
+          "host_full_ns": 646200,
+          "guest_union_call_ns": 699000,
+          "roundtrip_residual_ns": 52800,
+          "union_bypass_ns": 42000,
+          "inactive_simplify_branch_ns": 52000,
+          "active_simplify_ns": 0,
+          "structural_ns": 71000,
+          "carve_ns": 8018000,
+          "difference_ns": 33475000,
+          "shape_totals": {
+            "input": [
+              28,
+              0,
+              2800
+            ],
+            "union": [
+              3,
+              0,
+              799
+            ],
+            "simplify": [
+              3,
+              0,
+              799
+            ],
+            "final": [
+              3,
+              0,
+              799
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              14,
+              0,
+              1400,
+              100
+            ],
+            "union": [
+              2,
+              0,
+              403,
+              396
+            ],
+            "simplify": [
+              2,
+              0,
+              403,
+              396
+            ],
+            "final": [
+              2,
+              0,
+              403,
+              396
+            ]
+          }
+        }
+      }
+    },
+    "raw_log_sha256": "617d61940ea9979c2f3f3d180d3e41901f5077edb648f4fa80e544bf15784844",
+    "records_sha256": "9c3d404e141fa542ddda193dba6bc1e2288cd666d92ef504f03a07ff67edfc0f"
+  },
+  "ordinary-base": {
+    "summary": {
+      "total": {
+        "rows": 1724,
+        "union_calls": 472,
+        "empty_bypass": 1220,
+        "singleton_bypass": 32,
+        "simplify_activations": 0,
+        "core_ns": 74648876700,
+        "host_conversion_ns": 43083900,
+        "host_full_ns": 74691960600,
+        "guest_union_call_ns": 74972530000,
+        "roundtrip_residual_ns": 280569400,
+        "union_bypass_ns": 431000,
+        "inactive_simplify_branch_ns": 484000,
+        "active_simplify_ns": 0,
+        "structural_ns": 75004000,
+        "carve_ns": 68942362000,
+        "difference_ns": 2406589000,
+        "body_difference_ns": 132794000
+      },
+      "by_role": {
+        "0": {
+          "rows": 431,
+          "union_calls": 430,
+          "empty_bypass": 0,
+          "singleton_bypass": 1,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            9
+          ],
+          "core_ns": 74643925500,
+          "host_conversion_ns": 43025600,
+          "host_full_ns": 74686951100,
+          "guest_union_call_ns": 74967030000,
+          "roundtrip_residual_ns": 280078900,
+          "union_bypass_ns": 0,
+          "inactive_simplify_branch_ns": 132000,
+          "active_simplify_ns": 0,
+          "structural_ns": 74014000,
+          "carve_ns": 68817849000,
+          "difference_ns": 1325777000,
+          "shape_totals": {
+            "input": [
+              147779,
+              0,
+              14629069
+            ],
+            "union": [
+              2261,
+              510,
+              1302435
+            ],
+            "simplify": [
+              2261,
+              510,
+              1302435
+            ],
+            "final": [
+              2261,
+              510,
+              1302431
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              1024,
+              0,
+              102400,
+              154
+            ],
+            "union": [
+              18,
+              12,
+              5420,
+              4242
+            ],
+            "simplify": [
+              18,
+              12,
+              5420,
+              4242
+            ],
+            "final": [
+              18,
+              12,
+              5420,
+              4242
+            ]
+          }
+        },
+        "1": {
+          "rows": 431,
+          "union_calls": 38,
+          "empty_bypass": 369,
+          "singleton_bypass": 24,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            9
+          ],
+          "core_ns": 3494300,
+          "host_conversion_ns": 49000,
+          "host_full_ns": 3543300,
+          "guest_union_call_ns": 3976000,
+          "roundtrip_residual_ns": 432700,
+          "union_bypass_ns": 109000,
+          "inactive_simplify_branch_ns": 117000,
+          "active_simplify_ns": 0,
+          "structural_ns": 608000,
+          "carve_ns": 107584000,
+          "difference_ns": 379958000,
+          "shape_totals": {
+            "input": [
+              177,
+              0,
+              17294
+            ],
+            "union": [
+              75,
+              0,
+              9696
+            ],
+            "simplify": [
+              75,
+              0,
+              9696
+            ],
+            "final": [
+              75,
+              0,
+              9697
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              22,
+              0,
+              2116,
+              112
+            ],
+            "union": [
+              4,
+              0,
+              520,
+              340
+            ],
+            "simplify": [
+              4,
+              0,
+              520,
+              340
+            ],
+            "final": [
+              4,
+              0,
+              520,
+              340
+            ]
+          }
+        },
+        "2": {
+          "rows": 431,
+          "union_calls": 0,
+          "empty_bypass": 431,
+          "singleton_bypass": 0,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            9
+          ],
+          "core_ns": 0,
+          "host_conversion_ns": 0,
+          "host_full_ns": 0,
+          "guest_union_call_ns": 0,
+          "roundtrip_residual_ns": 0,
+          "union_bypass_ns": 201000,
+          "inactive_simplify_branch_ns": 122000,
+          "active_simplify_ns": 0,
+          "structural_ns": 176000,
+          "carve_ns": 136000,
+          "difference_ns": 346191000,
+          "shape_totals": {
+            "input": [
+              0,
+              0,
+              0
+            ],
+            "union": [
+              0,
+              0,
+              0
+            ],
+            "simplify": [
+              0,
+              0,
+              0
+            ],
+            "final": [
+              0,
+              0,
+              0
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "union": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "simplify": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "final": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "3": {
+          "rows": 431,
+          "union_calls": 4,
+          "empty_bypass": 420,
+          "singleton_bypass": 7,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            9
+          ],
+          "core_ns": 1456900,
+          "host_conversion_ns": 9300,
+          "host_full_ns": 1466200,
+          "guest_union_call_ns": 1524000,
+          "roundtrip_residual_ns": 57800,
+          "union_bypass_ns": 121000,
+          "inactive_simplify_branch_ns": 113000,
+          "active_simplify_ns": 0,
+          "structural_ns": 206000,
+          "carve_ns": 16793000,
+          "difference_ns": 354663000,
+          "shape_totals": {
+            "input": [
+              37,
+              0,
+              3616
+            ],
+            "union": [
+              12,
+              0,
+              1387
+            ],
+            "simplify": [
+              12,
+              0,
+              1387
+            ],
+            "final": [
+              12,
+              0,
+              1387
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              17,
+              0,
+              1616,
+              100
+            ],
+            "union": [
+              2,
+              0,
+              234,
+              206
+            ],
+            "simplify": [
+              2,
+              0,
+              234,
+              206
+            ],
+            "final": [
+              2,
+              0,
+              234,
+              206
+            ]
+          }
+        }
+      }
+    },
+    "raw_log_sha256": "7662b80d6f8d35bd2d17afe8060a79323f09f940e46ed6087d5052df5f73f779",
+    "records_sha256": "f36a570f96b3d127dd22d3efa56a990375a47804bbce9b34b6ed05438acd03d9"
+  },
+  "accelerated-benchy": {
+    "summary": {
+      "total": {
+        "rows": 716,
+        "union_calls": 181,
+        "empty_bypass": 533,
+        "singleton_bypass": 2,
+        "simplify_activations": 0,
+        "core_ns": 1816151500,
+        "host_conversion_ns": 4221800,
+        "host_full_ns": 1820373300,
+        "guest_union_call_ns": 1847178000,
+        "roundtrip_residual_ns": 26804700,
+        "union_bypass_ns": 117000,
+        "inactive_simplify_branch_ns": 158000,
+        "active_simplify_ns": 0,
+        "structural_ns": 6049000,
+        "carve_ns": 1726705000,
+        "difference_ns": 197967000,
+        "body_difference_ns": 1387000
+      },
+      "by_role": {
+        "0": {
+          "rows": 179,
+          "union_calls": 177,
+          "empty_bypass": 0,
+          "singleton_bypass": 2,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            5
+          ],
+          "core_ns": 1815683500,
+          "host_conversion_ns": 4213800,
+          "host_full_ns": 1819897300,
+          "guest_union_call_ns": 1846661000,
+          "roundtrip_residual_ns": 26763700,
+          "union_bypass_ns": 0,
+          "inactive_simplify_branch_ns": 37000,
+          "active_simplify_ns": 0,
+          "structural_ns": 5866000,
+          "carve_ns": 1720684000,
+          "difference_ns": 128593000,
+          "shape_totals": {
+            "input": [
+              21680,
+              0,
+              2154791
+            ],
+            "union": [
+              831,
+              18,
+              356649
+            ],
+            "simplify": [
+              831,
+              18,
+              356649
+            ],
+            "final": [
+              831,
+              18,
+              356647
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              182,
+              0,
+              18200,
+              119
+            ],
+            "union": [
+              12,
+              2,
+              3487,
+              2140
+            ],
+            "simplify": [
+              12,
+              2,
+              3487,
+              2140
+            ],
+            "final": [
+              12,
+              2,
+              3487,
+              2140
+            ]
+          }
+        },
+        "1": {
+          "rows": 179,
+          "union_calls": 2,
+          "empty_bypass": 177,
+          "singleton_bypass": 0,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            5
+          ],
+          "core_ns": 43300,
+          "host_conversion_ns": 800,
+          "host_full_ns": 44100,
+          "guest_union_call_ns": 53000,
+          "roundtrip_residual_ns": 8900,
+          "union_bypass_ns": 44000,
+          "inactive_simplify_branch_ns": 38000,
+          "active_simplify_ns": 0,
+          "structural_ns": 105000,
+          "carve_ns": 410000,
+          "difference_ns": 25427000,
+          "shape_totals": {
+            "input": [
+              4,
+              0,
+              400
+            ],
+            "union": [
+              2,
+              0,
+              281
+            ],
+            "simplify": [
+              2,
+              0,
+              281
+            ],
+            "final": [
+              2,
+              0,
+              281
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              2,
+              0,
+              200,
+              100
+            ],
+            "union": [
+              1,
+              0,
+              141,
+              141
+            ],
+            "simplify": [
+              1,
+              0,
+              141,
+              141
+            ],
+            "final": [
+              1,
+              0,
+              141,
+              141
+            ]
+          }
+        },
+        "2": {
+          "rows": 179,
+          "union_calls": 0,
+          "empty_bypass": 179,
+          "singleton_bypass": 0,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            5
+          ],
+          "core_ns": 0,
+          "host_conversion_ns": 0,
+          "host_full_ns": 0,
+          "guest_union_call_ns": 0,
+          "roundtrip_residual_ns": 0,
+          "union_bypass_ns": 36000,
+          "inactive_simplify_branch_ns": 41000,
+          "active_simplify_ns": 0,
+          "structural_ns": 35000,
+          "carve_ns": 40000,
+          "difference_ns": 22771000,
+          "shape_totals": {
+            "input": [
+              0,
+              0,
+              0
+            ],
+            "union": [
+              0,
+              0,
+              0
+            ],
+            "simplify": [
+              0,
+              0,
+              0
+            ],
+            "final": [
+              0,
+              0,
+              0
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "union": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "simplify": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "final": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "3": {
+          "rows": 179,
+          "union_calls": 2,
+          "empty_bypass": 177,
+          "singleton_bypass": 0,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            5
+          ],
+          "core_ns": 424700,
+          "host_conversion_ns": 7200,
+          "host_full_ns": 431900,
+          "guest_union_call_ns": 464000,
+          "roundtrip_residual_ns": 32100,
+          "union_bypass_ns": 37000,
+          "inactive_simplify_branch_ns": 42000,
+          "active_simplify_ns": 0,
+          "structural_ns": 43000,
+          "carve_ns": 5571000,
+          "difference_ns": 21176000,
+          "shape_totals": {
+            "input": [
+              28,
+              0,
+              2800
+            ],
+            "union": [
+              3,
+              0,
+              799
+            ],
+            "simplify": [
+              3,
+              0,
+              799
+            ],
+            "final": [
+              3,
+              0,
+              799
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              14,
+              0,
+              1400,
+              100
+            ],
+            "union": [
+              2,
+              0,
+              403,
+              396
+            ],
+            "simplify": [
+              2,
+              0,
+              403,
+              396
+            ],
+            "final": [
+              2,
+              0,
+              403,
+              396
+            ]
+          }
+        }
+      }
+    },
+    "raw_log_sha256": "34daa815c9c3fefad72ae6b1888b8c68e3bef39c50d6f4541c00d3598acf73f2",
+    "records_sha256": "794ad6f2b02efb74e0b8d3ba147136abc9089155248a896a80fbf6272bbc040c"
+  },
+  "accelerated-base": {
+    "summary": {
+      "total": {
+        "rows": 1724,
+        "union_calls": 472,
+        "empty_bypass": 1220,
+        "singleton_bypass": 32,
+        "simplify_activations": 0,
+        "core_ns": 77705378500,
+        "host_conversion_ns": 49376400,
+        "host_full_ns": 77754754900,
+        "guest_union_call_ns": 78019614000,
+        "roundtrip_residual_ns": 264859100,
+        "union_bypass_ns": 394000,
+        "inactive_simplify_branch_ns": 2565000,
+        "active_simplify_ns": 0,
+        "structural_ns": 76276000,
+        "carve_ns": 68766829000,
+        "difference_ns": 2475980000,
+        "body_difference_ns": 138154000
+      },
+      "by_role": {
+        "0": {
+          "rows": 431,
+          "union_calls": 430,
+          "empty_bypass": 0,
+          "singleton_bypass": 1,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            9
+          ],
+          "core_ns": 77696244200,
+          "host_conversion_ns": 49244600,
+          "host_full_ns": 77745488800,
+          "guest_union_call_ns": 78009364000,
+          "roundtrip_residual_ns": 263875200,
+          "union_bypass_ns": 1000,
+          "inactive_simplify_branch_ns": 158000,
+          "active_simplify_ns": 0,
+          "structural_ns": 74674000,
+          "carve_ns": 68646005000,
+          "difference_ns": 1368691000,
+          "shape_totals": {
+            "input": [
+              147779,
+              0,
+              14629069
+            ],
+            "union": [
+              2261,
+              510,
+              1302435
+            ],
+            "simplify": [
+              2261,
+              510,
+              1302435
+            ],
+            "final": [
+              2261,
+              510,
+              1302431
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              1024,
+              0,
+              102400,
+              154
+            ],
+            "union": [
+              18,
+              12,
+              5420,
+              4242
+            ],
+            "simplify": [
+              18,
+              12,
+              5420,
+              4242
+            ],
+            "final": [
+              18,
+              12,
+              5420,
+              4242
+            ]
+          }
+        },
+        "1": {
+          "rows": 431,
+          "union_calls": 38,
+          "empty_bypass": 369,
+          "singleton_bypass": 24,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            9
+          ],
+          "core_ns": 3627800,
+          "host_conversion_ns": 48300,
+          "host_full_ns": 3676100,
+          "guest_union_call_ns": 4477000,
+          "roundtrip_residual_ns": 800900,
+          "union_bypass_ns": 137000,
+          "inactive_simplify_branch_ns": 131000,
+          "active_simplify_ns": 0,
+          "structural_ns": 586000,
+          "carve_ns": 101574000,
+          "difference_ns": 375137000,
+          "shape_totals": {
+            "input": [
+              177,
+              0,
+              17294
+            ],
+            "union": [
+              75,
+              0,
+              9696
+            ],
+            "simplify": [
+              75,
+              0,
+              9696
+            ],
+            "final": [
+              75,
+              0,
+              9697
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              22,
+              0,
+              2116,
+              112
+            ],
+            "union": [
+              4,
+              0,
+              520,
+              340
+            ],
+            "simplify": [
+              4,
+              0,
+              520,
+              340
+            ],
+            "final": [
+              4,
+              0,
+              520,
+              340
+            ]
+          }
+        },
+        "2": {
+          "rows": 431,
+          "union_calls": 0,
+          "empty_bypass": 431,
+          "singleton_bypass": 0,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            9
+          ],
+          "core_ns": 0,
+          "host_conversion_ns": 0,
+          "host_full_ns": 0,
+          "guest_union_call_ns": 0,
+          "roundtrip_residual_ns": 0,
+          "union_bypass_ns": 135000,
+          "inactive_simplify_branch_ns": 2152000,
+          "active_simplify_ns": 0,
+          "structural_ns": 177000,
+          "carve_ns": 219000,
+          "difference_ns": 363740000,
+          "shape_totals": {
+            "input": [
+              0,
+              0,
+              0
+            ],
+            "union": [
+              0,
+              0,
+              0
+            ],
+            "simplify": [
+              0,
+              0,
+              0
+            ],
+            "final": [
+              0,
+              0,
+              0
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "union": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "simplify": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "final": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "3": {
+          "rows": 431,
+          "union_calls": 4,
+          "empty_bypass": 420,
+          "singleton_bypass": 7,
+          "simplify_activations": 0,
+          "avg_nodes": [
+            9
+          ],
+          "core_ns": 5506500,
+          "host_conversion_ns": 83500,
+          "host_full_ns": 5590000,
+          "guest_union_call_ns": 5773000,
+          "roundtrip_residual_ns": 183000,
+          "union_bypass_ns": 121000,
+          "inactive_simplify_branch_ns": 124000,
+          "active_simplify_ns": 0,
+          "structural_ns": 839000,
+          "carve_ns": 19031000,
+          "difference_ns": 368412000,
+          "shape_totals": {
+            "input": [
+              37,
+              0,
+              3616
+            ],
+            "union": [
+              12,
+              0,
+              1387
+            ],
+            "simplify": [
+              12,
+              0,
+              1387
+            ],
+            "final": [
+              12,
+              0,
+              1387
+            ]
+          },
+          "shape_maxima": {
+            "input": [
+              17,
+              0,
+              1616,
+              100
+            ],
+            "union": [
+              2,
+              0,
+              234,
+              206
+            ],
+            "simplify": [
+              2,
+              0,
+              234,
+              206
+            ],
+            "final": [
+              2,
+              0,
+              234,
+              206
+            ]
+          }
+        }
+      }
+    },
+    "raw_log_sha256": "b77695a5e2429c71ffa1ff54a7afbbfe53b823049574b802d7fdf5dae856dad5",
+    "records_sha256": "cd03684acb570f919c5fbe050ab0d8ad68c339d841202c162a2481781bf913d1"
+  }
+}

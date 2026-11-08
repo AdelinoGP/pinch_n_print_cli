@@ -1,0 +1,11 @@
+{
+  "orca_exe": "C:\\Program Files\\OrcaSlicer\\orca-slicer.exe",
+  "orca_bytes": 278528,
+  "orca_sha256": "7663f5d3b87228f58196a8bb8e00157ac654c5c3db4fe4e3619116e9309406eb",
+  "orca_cli_version": "cli mode, Current OrcaSlicer Version 2.5.0-beta",
+  "orca_support_style": "tree_strong",
+  "vendor_manifest": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\orca-vendor\\BBL.json",
+  "started_utc": "2026-11-02T14:33:25.2836075Z",
+  "rounds": 3,
+  "warmups": 1
+}

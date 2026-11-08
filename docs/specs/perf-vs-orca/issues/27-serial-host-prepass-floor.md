@@ -1,8 +1,11 @@
 # Serial host floor: prepass built-ins and slice-outside wall
 
 Type: task
-Status: open
-Assignee: unassigned — last take: ses_f14ba59b7ffeteaZ0tDfSNEjpc (human route decision); earlier takes: ses_f1507d458ffetnZ0plQLQ4yUmf, ses_f1b6563ccffeO4IE3vsBNXl6QL and ses_f1994dd16ffeSxSBJeKjScCYRW
+Status: resolved (2026-10-09; probe-3 SupportAnalysis parallel eligibility
+pre-pass KEPT by the human and committed — see the 2026-10-09 comment)
+Assignee: agpen (OpenCode wayfinder sessions), 2026-10-08/09 — human selected
+this ticket as the take after the t19 KEEP and the t20 premise audit; the take
+completed with the human-kept probe-3 candidate; closure recorded 2026-10-09
 Blocked by: 24
 
 ## Question
@@ -244,7 +247,9 @@ removed; details and the canonical `apply_opening` reassessment are in
 [`FLAT-BRIDGE-EXPERIMENT.md`](../evidence/t27-serial-floor/FLAT-BRIDGE-EXPERIMENT.md).
 The `apply_opening` lead is a geometry-parity investigation (canonical Miter/3,
 width/10, versus current Round/0, width/2), not a representation-preserving
-performance drop-in. The ticket remains open for a new safe call reduction.
+performance drop-in. The ticket remained open for a new safe call reduction
+until the probe-3 take (comment below) delivered one — the SupportAnalysis
+parallel eligibility pre-pass, KEPT by the human 2026-10-09.
 
 ## Comments
 
@@ -260,3 +265,34 @@ measurably useful reduction with a real-layer IR oracle before paired A/B.
 Meanwhile prioritize [Classic output-volume surplus](28-classic-output-volume-surplus.md)
 for its disclosure-only attribution; that ticket is already open and does not
 claim a serial-floor speedup. No candidate was committed in this take.
+
+**2026-10-09 — human kept the SupportAnalysis parallel eligibility pre-pass**
+(the probe-3 candidate). Probe-3 attributed 24.19 s of the 38.20 s
+SupportAnalysis stage wall on supports-on base to the serial per-region
+`derive_needs_support` predicate; the candidate moves it to an indexed rayon
+pre-pass (order-preserving by construction; dual-compute probe compared
+495/495 base + 240/240 benchy regions, 0 mismatches, 8.7x). The standing
+four-cell paired A/B (matched classic supports-on benchy + base, 12 threads,
+6 alternating AB/BA pairs per mode, one excluded warmup per arm,
+starvation-filtered, arm-isolated) reduced clean: base median wall
+**−18.198 s ordinary / −19.380 s accelerated** (6/6 and 5/6 pairs) with
+median process CPU +12.789 s / +9.047 s; benchy median wall −1.105 s /
+−0.943 s (CPU −0.828 s / +0.047 s). All 48 measured outputs byte-identical to
+`f60e5e9b…` (base) / `76eb4e1d…` (benchy), no starvation exclusions, all
+negative controls caught. The strict "lower median wall **and** lower median
+CPU" clause is met in ordinary/benchy only; the human kept the candidate for
+the base wall win (~3.4–3.7% of arm-median wall at ~0.5% CPU overhead) as a
+serialization fix, not an Orca scoreboard claim. One disclosed caveat:
+accelerated/base pair 1 straddles a host-side process kill and is retained
+per protocol (sensitivity-only exclusion leaves wall −20.4 s / CPU +8.25 s).
+Evidence:
+[`FINDINGS-PROBE3.md`](../evidence/t27-serial-floor/FINDINGS-PROBE3.md),
+`protocol-ab.json`, `t27-ab-reduction.json`.
+
+**Resolution.** The ticket closes with this keep: the serial floor is
+attributed (work items 1–5, `PrePass::Slice`, and the teardown), the reduction
+it waited for has landed, and the remaining leads — flat-bridge representation
+analysis, the `apply_opening` geometry-parity question, and the
+pipeline-teardown early release — stay in the map's **Not yet specified** fog
+rather than in an open ticket. This closure records the decision only; the
+take's commit is the code change.

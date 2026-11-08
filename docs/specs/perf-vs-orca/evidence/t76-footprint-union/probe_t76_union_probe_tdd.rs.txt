@@ -1,0 +1,457 @@
+#![cfg(feature = "host-algos")]
+//! [T76-PROBE] Temporary probe for wayfinder ticket 76 (MeshAnalysis exact
+//! footprint union reduction). Removed before any commit; preserved as a
+//! patch in the ticket evidence directory.
+//!
+//! Census of the overhang-facet union input at HEAD plus prototype exact
+//! variants (dedupe, spatial-chunk parallel union, one final merge).
+//!
+//! Run:
+//! `cargo test -p slicer-core --features host-algos --test t76_union_probe_tdd -- --nocapture`
+
+use std::collections::BTreeMap;
+use std::path::Path;
+use std::time::Instant;
+
+use rayon::prelude::*;
+use slicer_core::algos::mesh_analysis::execute_mesh_analysis;
+use slicer_core::polygon_ops::{difference, union_ex, xor};
+use slicer_ir::slice_ir::{ExPolygon, IndexedTriangleSet, Point2, Polygon, Transform3d};
+
+fn project(
+    mesh: &IndexedTriangleSet,
+    transform: &Transform3d,
+    facet_indices: &[u32],
+) -> Vec<ExPolygon> {
+    facet_indices
+        .iter()
+        .map(|&t| {
+            let t = t as usize;
+            let idx = [
+                mesh.indices[t * 3],
+                mesh.indices[t * 3 + 1],
+                mesh.indices[t * 3 + 2],
+            ];
+            let p: Vec<Point2> = idx
+                .iter()
+                .map(|&i| {
+                    let wv = slicer_core::transform_point3(&transform.matrix, mesh.vertices[i as usize]);
+                    Point2::from_mm(wv.x, wv.y)
+                })
+                .collect();
+            ExPolygon {
+                contour: Polygon { points: p },
+                holes: vec![],
+            }
+        })
+        .collect()
+}
+
+fn signed_area_units2(points: &[Point2]) -> i128 {
+    let mut acc: i128 = 0;
+    for i in 0..points.len() {
+        let a = points[i];
+        let b = points[(i + 1) % points.len()];
+        acc += i128::from(a.x) * i128::from(b.y) - i128::from(b.x) * i128::from(a.y);
+    }
+    acc / 2
+}
+
+fn filled_area(polys: &[ExPolygon]) -> i128 {
+    polys
+        .iter()
+        .map(|p| {
+            signed_area_units2(&p.contour.points)
+                + p.holes.iter().map(|h| signed_area_units2(&h.points)).sum::<i128>()
+        })
+        .sum()
+}
+
+fn bbox(polys: &[ExPolygon]) -> (i64, i64, i64, i64) {
+    polys
+        .iter()
+        .flat_map(|p| p.contour.points.iter().chain(p.holes.iter().flat_map(|h| h.points.iter())))
+        .fold((i64::MAX, i64::MIN, i64::MAX, i64::MIN), |b, p| {
+            (b.0.min(p.x), b.1.max(p.x), b.2.min(p.y), b.3.max(p.y))
+        })
+}
+
+fn total_vertices(polys: &[ExPolygon]) -> usize {
+    polys
+        .iter()
+        .map(|p| p.contour.points.len() + p.holes.iter().map(|h| h.points.len()).sum::<usize>())
+        .sum()
+}
+
+fn same_region(a: &[ExPolygon], b: &[ExPolygon]) -> bool {
+    xor(a, b).is_empty()
+}
+
+fn canonical_triangle(t: &ExPolygon) -> [i64; 6] {
+    let mut v: Vec<(i64, i64)> = t.contour.points.iter().map(|p| (p.x, p.y)).collect();
+    v.sort_unstable();
+    [v[0].0, v[0].1, v[1].0, v[1].1, v[2].0, v[2].1]
+}
+
+fn centroid(t: &ExPolygon) -> (i64, i64) {
+    let n = t.contour.points.len() as i128;
+    let sx: i128 = t.contour.points.iter().map(|p| i128::from(p.x)).sum();
+    let sy: i128 = t.contour.points.iter().map(|p| i128::from(p.y)).sum();
+    ((sx / n) as i64, (sy / n) as i64)
+}
+
+fn morton(x: i64, y: i64, bits: u32) -> u64 {
+    fn spread(mut v: u64) -> u64 {
+        v &= 0x1f_ffff;
+        v = (v | (v << 16)) & 0x0000_ffff_0000_ffff;
+        v = (v | (v << 8)) & 0x00ff_00ff_00ff_00ff;
+        v = (v | (v << 4)) & 0x0f0f_0f0f_0f0f_0f0f;
+        v = (v | (v << 2)) & 0x3333_3333_3333_3333;
+        v = (v | (v << 1)) & 0x5555_5555_5555_5555;
+        v
+    }
+    (spread(x as u64) | (spread(y as u64) << 1)) & ((1u64 << (2 * bits)) - 1)
+}
+
+#[test]
+fn t76_benchy_census() {
+    let path = Path::new("../../tmp/3dbenchy.stl");
+    if !path.exists() {
+        eprintln!("[T76-PROBE] SKIP: {} absent", path.display());
+        return;
+    }
+    let mesh = slicer_model_io::load_model(path).expect("load benchy");
+    let surface = execute_mesh_analysis(&mesh).expect("mesh analysis");
+    let object = &mesh.objects[0];
+    let data = surface.per_object.get(&object.id).expect("surface");
+    let facets = &data.overhang_regions.first().expect("region").facet_indices;
+    let tris = project(&object.mesh, &object.transform, facets);
+    let t = Instant::now();
+    let out = union_ex(&tris);
+    eprintln!(
+        "[T76-PROBE] benchy tri_count={} overhang_facets={} union={:.3} s polys={}",
+        object.mesh.indices.len() / 3,
+        facets.len(),
+        t.elapsed().as_secs_f64(),
+        out.len()
+    );
+}
+
+#[test]
+fn t76_union_census_and_prototypes() {
+    let path = Path::new("../../tmp/base.stl");
+    if !path.exists() {
+        eprintln!("[T76-PROBE] SKIP: {} absent", path.display());
+        return;
+    }
+    let t_load = Instant::now();
+    let mesh = slicer_model_io::load_model(path).expect("load base.stl");
+    eprintln!(
+        "[T76-PROBE] load {:.3} s objects={}",
+        t_load.elapsed().as_secs_f64(),
+        mesh.objects.len()
+    );
+
+    let t_analysis = Instant::now();
+    let surface = execute_mesh_analysis(&mesh).expect("mesh analysis");
+    let analysis_s = t_analysis.elapsed().as_secs_f64();
+    eprintln!("[T76-PROBE] execute_mesh_analysis {analysis_s:.3} s");
+
+    let object = &mesh.objects[0];
+    let data = surface
+        .per_object
+        .get(&object.id)
+        .expect("object surface data");
+    let region = data.overhang_regions.first().expect("overhang region");
+    let facets = &region.facet_indices;
+    eprintln!(
+        "[T76-PROBE] tri_count={} overhang_facets={} ir_footprint_polys={} ir_vertices={}",
+        object.mesh.indices.len() / 3,
+        facets.len(),
+        region.xy_footprint.len(),
+        total_vertices(&region.xy_footprint)
+    );
+    eprintln!(
+        "[T76-PROBE] ir_area={} ir_bbox={:?}",
+        filled_area(&region.xy_footprint),
+        bbox(&region.xy_footprint)
+    );
+
+    let t_proj = Instant::now();
+    let tris = project(&object.mesh, &object.transform, facets);
+    eprintln!("[T76-PROBE] projection {:.3} s", t_proj.elapsed().as_secs_f64());
+
+    // Census: exact duplicate projected triangles and degenerate ones.
+    let mut distinct: BTreeMap<[i64; 6], u32> = BTreeMap::new();
+    let mut zero_area = 0usize;
+    let mut pos = 0usize;
+    let mut neg = 0usize;
+    for t in &tris {
+        let a = signed_area_units2(&t.contour.points);
+        if a == 0 {
+            zero_area += 1;
+        } else if a > 0 {
+            pos += 1;
+        } else {
+            neg += 1;
+        }
+        *distinct.entry(canonical_triangle(t)).or_insert(0) += 1;
+    }
+    let dup_facets: usize = distinct.values().filter(|&&c| c > 1).map(|&c| c as usize - 1).sum();
+    eprintln!(
+        "[T76-PROBE] census distinct={} duplicate_facets_removable={} zero_area={} distinct_area={} orient(pos/neg)={pos}/{neg}",
+        distinct.len(),
+        dup_facets,
+        zero_area,
+        distinct.len() - zero_area
+    );
+
+    // Baseline: the production shape, one n-way union.
+    let t_base = Instant::now();
+    let baseline = union_ex(&tris);
+    let base_s = t_base.elapsed().as_secs_f64();
+    eprintln!(
+        "[T76-PROBE] baseline union {base_s:.3} s polys={} verts={} area={} bbox={:?}",
+        baseline.len(),
+        total_vertices(&baseline),
+        filled_area(&baseline),
+        bbox(&baseline)
+    );
+    eprintln!(
+        "[T76-PROBE] production_ir_matches_one_shot={} (tiled path expected to differ by sub-resolution slivers)",
+        same_region(&baseline, &region.xy_footprint)
+    );
+    eprintln!(
+        "[T76-PROBE] control self_xor={} idempotent_union={}",
+        same_region(&baseline, &baseline),
+        same_region(&union_ex(&baseline), &baseline)
+    );
+
+    // Dedupe-only variant (exact: duplicate closed CW paths never change a NonZero union).
+    let deduped: Vec<ExPolygon> = {
+        let mut seen: BTreeMap<[i64; 6], ()> = BTreeMap::new();
+        let mut out = Vec::with_capacity(distinct.len());
+        for t in &tris {
+            if seen.insert(canonical_triangle(t), ()).is_none() {
+                out.push(t.clone());
+            }
+        }
+        out
+    };
+    let t_dedupe = Instant::now();
+    let dedupe_result = union_ex(&deduped);
+    let dedupe_s = t_dedupe.elapsed().as_secs_f64();
+    eprintln!(
+        "[T76-PROBE] dedupe union {dedupe_s:.3} s polys={} verts={} same_region={}",
+        dedupe_result.len(),
+        total_vertices(&dedupe_result),
+        same_region(&dedupe_result, &baseline)
+    );
+
+    // Exact input reduction: a triangle whose three vertices all lie inside
+    // (or on) another triangle is wholly inside it (convexity), so dropping it
+    // cannot change the union's filled region.
+    let tri_bbox: Vec<(i64, i64, i64, i64)> = tris
+        .iter()
+        .map(|t| {
+            t.contour.points.iter().fold(
+                (i64::MAX, i64::MIN, i64::MAX, i64::MIN),
+                |b, p| (b.0.min(p.x), b.1.max(p.x), b.2.min(p.y), b.3.max(p.y)),
+            )
+        })
+        .collect();
+    let tri_abs_area: Vec<i128> = tris
+        .iter()
+        .map(|t| signed_area_units2(&t.contour.points).abs())
+        .collect();
+    const CELL: i64 = 50_000; // 5 mm
+    let mut grid: std::collections::HashMap<(i64, i64), Vec<u32>> =
+        std::collections::HashMap::new();
+    for (i, b) in tri_bbox.iter().enumerate() {
+        for gx in b.0.div_euclid(CELL)..=b.1.div_euclid(CELL) {
+            for gy in b.2.div_euclid(CELL)..=b.3.div_euclid(CELL) {
+                grid.entry((gx, gy)).or_default().push(i as u32);
+            }
+        }
+    }
+
+    fn cross(a: Point2, b: Point2, p: Point2) -> i128 {
+        i128::from(b.x - a.x) * i128::from(p.y - a.y)
+            - i128::from(b.y - a.y) * i128::from(p.x - a.x)
+    }
+
+    fn triangle_contains(container: &ExPolygon, inner: &ExPolygon) -> bool {
+        let c = &container.contour.points;
+        let orient = if signed_area_units2(c) >= 0 { 1i128 } else { -1i128 };
+        for p in &inner.contour.points {
+            for k in 0..3 {
+                if orient * cross(c[k], c[(k + 1) % 3], *p) < 0 {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    let t_census = Instant::now();
+    let mut removable = vec![false; tris.len()];
+    let mut candidates_tested = 0usize;
+    for i in 0..tris.len() {
+        let b = tri_bbox[i];
+        let mut seen_cand: Vec<u32> = Vec::new();
+        for gx in b.0.div_euclid(CELL)..=b.1.div_euclid(CELL) {
+            for gy in b.2.div_euclid(CELL)..=b.3.div_euclid(CELL) {
+                if let Some(cell) = grid.get(&(gx, gy)) {
+                    for &j in cell {
+                        if j as usize != i
+                            && tri_abs_area[j as usize] >= tri_abs_area[i]
+                            && tri_bbox[j as usize].0 <= b.0
+                            && tri_bbox[j as usize].1 >= b.1
+                            && tri_bbox[j as usize].2 <= b.2
+                            && tri_bbox[j as usize].3 >= b.3
+                        {
+                            seen_cand.push(j);
+                        }
+                    }
+                }
+            }
+        }
+        seen_cand.sort_unstable();
+        seen_cand.dedup();
+        seen_cand.sort_unstable_by_key(|&j| -tri_abs_area[j as usize]);
+        for &j in seen_cand.iter().take(256) {
+            candidates_tested += 1;
+            if triangle_contains(&tris[j as usize], &tris[i]) {
+                removable[i] = true;
+                break;
+            }
+        }
+    }
+    let inside_count = removable.iter().filter(|&&r| r).count();
+    eprintln!(
+        "[T76-PROBE] containment census {:.3} s: inside_another={} ({:.1} %) candidates_tested={}",
+        t_census.elapsed().as_secs_f64(),
+        inside_count,
+        100.0 * inside_count as f64 / tris.len() as f64,
+        candidates_tested
+    );
+
+    let reduced: Vec<ExPolygon> = tris
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !removable[*i])
+        .map(|(_, t)| t.clone())
+        .collect();
+    let t_reduced = Instant::now();
+    let reduced_result = union_ex(&reduced);
+    let reduced_s = t_reduced.elapsed().as_secs_f64();
+    eprintln!(
+        "[T76-PROBE] contained-drop union {reduced_s:.3} s input={} polys={} verts={} same_region={} same_json={}",
+        reduced.len(),
+        reduced_result.len(),
+        total_vertices(&reduced_result),
+        same_region(&reduced_result, &baseline),
+        serde_json::to_string(&reduced_result).unwrap()
+            == serde_json::to_string(&region.xy_footprint).unwrap()
+    );
+
+    // Bottom-surface footprint union (the same function's other production
+    // caller, once per object in `PrePass::Slice`).
+    {
+        use slicer_core::algos::mesh_analysis::bottom_surface_footprint;
+        let bottom_facets = data
+            .facet_classes
+            .iter()
+            .filter(|c| matches!(c, slicer_ir::slice_ir::FacetClass::BottomSurface))
+            .count();
+        let t_bottom = Instant::now();
+        let bottom = bottom_surface_footprint(&object.mesh, &object.transform, &data.facet_classes);
+        eprintln!(
+            "[T76-PROBE] bottom_surface_footprint {:.3} s facets={} polys={} verts={}",
+            t_bottom.elapsed().as_secs_f64(),
+            bottom_facets,
+            bottom.len(),
+            total_vertices(&bottom)
+        );
+    }
+
+    // Order-sensitivity controls: the same facets in a different input order.
+    {
+        let mut reversed = tris.clone();
+        reversed.reverse();
+        let t_rev = Instant::now();
+        let rev = union_ex(&reversed);
+        let rev_s = t_rev.elapsed().as_secs_f64();
+        eprintln!(
+            "[T76-PROBE] control reversed-order union {rev_s:.3} s same_region={} same_json={}",
+            same_region(&rev, &baseline),
+            serde_json::to_string(&rev).unwrap() == serde_json::to_string(&baseline).unwrap()
+        );
+
+        let mut xy_sorted: Vec<ExPolygon> = tris.clone();
+        xy_sorted.sort_unstable_by_key(|t| {
+            t.contour
+                .points
+                .iter()
+                .fold((i64::MAX, i64::MAX), |m, p| (m.0.min(p.x), m.1.min(p.y)))
+        });
+        // `sort_unstable_by_key` on a tuple of min coords is deterministic only
+        // up to ties; ties keep an arbitrary but run-stable order here.
+        let t_sort = Instant::now();
+        let sorted = union_ex(&xy_sorted);
+        eprintln!(
+            "[T76-PROBE] control xy-sorted-input union {:.3} s same_region={} same_json={}",
+            t_sort.elapsed().as_secs_f64(),
+            same_region(&sorted, &baseline),
+            serde_json::to_string(&sorted).unwrap() == serde_json::to_string(&baseline).unwrap()
+        );
+    }
+
+    // Spatial Morton chunks + parallel union + one final merge.
+    let mut order: Vec<usize> = (0..tris.len()).collect();
+    let keys: Vec<u64> = tris
+        .iter()
+        .map(|t| {
+            let (cx, cy) = centroid(t);
+            morton(cx, cy, 24)
+        })
+        .collect();
+    order.sort_unstable_by_key(|&i| keys[i]);
+
+    for k in [2usize, 3, 6, 12, 24, 48, 96] {
+        let chunk_len = order.len().div_ceil(k);
+        let t_parts = Instant::now();
+        let parts: Vec<Vec<ExPolygon>> = order
+            .chunks(chunk_len)
+            .collect::<Vec<_>>()
+            .par_iter()
+            .map(|chunk| {
+                let input: Vec<ExPolygon> = chunk.iter().map(|&i| tris[i].clone()).collect();
+                union_ex(&input)
+            })
+            .collect();
+        let parts_s = t_parts.elapsed().as_secs_f64();
+        let part_polys: usize = parts.iter().map(Vec::len).sum();
+        let part_verts: usize = parts.iter().map(|p| total_vertices(p)).sum();
+        let flat: Vec<ExPolygon> = parts.into_iter().flatten().collect();
+
+        let t_merge = Instant::now();
+        let merged = union_ex(&flat);
+        let merge_s = t_merge.elapsed().as_secs_f64();
+        let d_base_less_merged = difference(&baseline, &merged);
+        let d_merged_less_base = difference(&merged, &baseline);
+        eprintln!(
+            "[T76-PROBE] k={k} parts={parts_s:.3} s (polys={part_polys} verts={part_verts}) merge={merge_s:.3} s total={:.3} s polys={} verts={} area={} (base_area={}) same_region={} base-minus-merged(polys={} area={}) merged-minus-base(polys={} area={})",
+            parts_s + merge_s,
+            merged.len(),
+            total_vertices(&merged),
+            filled_area(&merged),
+            filled_area(&baseline),
+            same_region(&merged, &baseline),
+            d_base_less_merged.len(),
+            filled_area(&d_base_less_merged),
+            d_merged_less_base.len(),
+            filled_area(&d_merged_less_base)
+        );
+    }
+}

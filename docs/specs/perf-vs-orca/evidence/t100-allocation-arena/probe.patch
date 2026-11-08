@@ -1,0 +1,500 @@
+diff --git a/crates/pnp-cli/src/main.rs b/crates/pnp-cli/src/main.rs
+index 0bd63009..cace3409 100644
+--- a/crates/pnp-cli/src/main.rs
++++ b/crates/pnp-cli/src/main.rs
+@@ -22,8 +22,11 @@ use pnp_cli::profile_cmd::run_profile_from;
+ // jemalloc/mimalloc.
+ #[cfg(feature = "report")]
+ #[global_allocator]
+-static ALLOC: slicer_runtime::report::AccountingAllocator<std::alloc::System> =
+-    slicer_runtime::report::AccountingAllocator::new(std::alloc::System);
++static ALLOC: slicer_runtime::probe_t100::Counting<
++    slicer_runtime::report::AccountingAllocator<std::alloc::System>,
++> = slicer_runtime::probe_t100::Counting::new(slicer_runtime::report::AccountingAllocator::new(
++    std::alloc::System,
++));
+ 
+ mod helpers_cmd;
+ mod support_preview;
+diff --git a/crates/slicer-gcode/src/emit.rs b/crates/slicer-gcode/src/emit.rs
+index 608c20a7..9512eb76 100644
+--- a/crates/slicer-gcode/src/emit.rs
++++ b/crates/slicer-gcode/src/emit.rs
+@@ -465,7 +465,37 @@ impl GCodeEmitter for DefaultGCodeEmitter {
+         // rotation is a no-op on single-tool layers; only a layer whose leading
+         // cluster's tool differs from the previous layer's ending tool moves.
+         apply_cross_layer_tool_rotation(&mut layer_irs);
+-        self.emit_from_reconciled_layers(&layer_irs)
++        let result = self.emit_from_reconciled_layers(&layer_irs);
++        // T100 probe (screening only): census the collection's free and, when
++        // requested, price a bulk free of the same byte volume. Unset env var
++        // takes the untouched path below.
++        if crate::probe_t100::enabled() {
++            let tag = std::env::var("PNP_T100_TAG").unwrap_or_else(|_| "cell".to_string());
++            let layers = layer_irs.len();
++            crate::probe_t100::report_shape(&tag, &layer_irs);
++            if matches!(
++                crate::probe_t100::bulk_order(),
++                Some("before") | Some("both")
++            ) {
++                crate::probe_t100::run_bulk_arms(&tag, "before");
++            }
++            crate::probe_t100::arm();
++            let start = std::time::Instant::now();
++            drop(layer_irs);
++            let drop_us = start.elapsed().as_micros();
++            crate::probe_t100::disarm();
++            let census = crate::probe_t100::snapshot();
++            crate::probe_t100::report_census(&tag, layers, drop_us, &census);
++            if matches!(
++                crate::probe_t100::bulk_order(),
++                Some("after") | Some("both")
++            ) {
++                crate::probe_t100::run_bulk_arms(&tag, "after");
++            }
++            return result;
++        }
++        drop(layer_irs);
++        result
+     }
+ 
+     /// Resolved travel feedrate in mm/min for finalization-aware travel inserts.
+diff --git a/crates/slicer-gcode/src/lib.rs b/crates/slicer-gcode/src/lib.rs
+index f358c5db..71cede2c 100644
+--- a/crates/slicer-gcode/src/lib.rs
++++ b/crates/slicer-gcode/src/lib.rs
+@@ -10,6 +10,7 @@ pub mod emit;
+ pub mod error;
+ pub mod estimator;
+ pub mod m73;
++pub mod probe_t100;
+ pub mod serialize;
+ pub mod thumbnail;
+ pub mod thumbnail_btt;
+diff --git a/crates/slicer-gcode/src/probe_t100.rs b/crates/slicer-gcode/src/probe_t100.rs
+new file mode 100644
+index 00000000..2c69ff94
+--- /dev/null
++++ b/crates/slicer-gcode/src/probe_t100.rs
+@@ -0,0 +1,408 @@
++//! T100 probe — allocation census and bulk-free counterfactual.
++//!
++//! Screening instrumentation for wayfinder ticket 100, reverted before the take
++//! closes (`PNP_T100_PROBE=1`). It answers two questions the map's fog entry
++//! made entry conditions for pricing an arena / bulk-free layer collection:
++//!
++//! 1. **What is the collection's allocation shape?** A counting global
++//!    allocator records, only inside an armed window, the number of blocks
++//!    freed, the bytes freed, and a log2 size histogram. The window is the
++//!    explicit `drop(layer_irs)` in
++//!    `DefaultGCodeEmitter::emit_gcode_owned` (`crates/slicer-gcode/src/emit.rs`).
++//!    Relaxed atomics only: the `--report` accounting allocator's per-block
++//!    mutex path would otherwise dominate what it measures.
++//! 2. **What would a bulk free of the same byte volume cost?** The
++//!    counterfactual allocates one block (per-print arena) or one block per
++//!    layer (per-layer arena), touches every page so the pages are committed
++//!    like a live collection, and times the free. A sequential copy of the same
++//!    byte volume prices the "flatten a live collection into an arena"
++//!    construction variant.
++//!
++//! Nothing here is production code, and no production path changes behaviour:
++//! with `PNP_T100_PROBE` unset the emitter takes the untouched `drop` branch and
++//! the allocator wrapper is a single relaxed atomic load per call.
++
++use std::alloc::{GlobalAlloc, Layout};
++use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
++use std::time::Instant;
++
++/// Log2 size buckets, index = bit length of the block size (0 = size 0).
++pub const BUCKETS: usize = 40;
++
++/// Set while a census window is open.
++static ARMED: AtomicBool = AtomicBool::new(false);
++
++static ALLOCS: AtomicU64 = AtomicU64::new(0);
++static ALLOC_BYTES: AtomicU64 = AtomicU64::new(0);
++static DEALLOCS: AtomicU64 = AtomicU64::new(0);
++static DEALLOC_BYTES: AtomicU64 = AtomicU64::new(0);
++static HIST: [AtomicU64; BUCKETS] = [const { AtomicU64::new(0) }; BUCKETS];
++
++/// Content samples of blocks in the 8-15-byte class, taken inside `dealloc`
++/// while the block is still live. Identifies what the tiny blocks are: an
++/// ASCII payload is a `String`, a float bit pattern is numeric storage.
++const SAMPLES: usize = 12;
++static SAMPLE_SEEN: AtomicU64 = AtomicU64::new(0);
++static SAMPLE_BYTES: [AtomicU64; SAMPLES] = [const { AtomicU64::new(0) }; SAMPLES];
++static SAMPLE_LENS: [AtomicU64; SAMPLES] = [const { AtomicU64::new(0) }; SAMPLES];
++
++/// Is the probe enabled for this process?
++pub fn enabled() -> bool {
++    std::env::var_os("PNP_T100_PROBE").is_some()
++}
++
++fn bucket(size: usize) -> usize {
++    let bits = (usize::BITS - size.leading_zeros()) as usize;
++    bits.min(BUCKETS - 1)
++}
++
++fn reset() {
++    ALLOCS.store(0, Ordering::Relaxed);
++    ALLOC_BYTES.store(0, Ordering::Relaxed);
++    DEALLOCS.store(0, Ordering::Relaxed);
++    DEALLOC_BYTES.store(0, Ordering::Relaxed);
++    for b in HIST.iter() {
++        b.store(0, Ordering::Relaxed);
++    }
++    SAMPLE_SEEN.store(0, Ordering::Relaxed);
++    for s in SAMPLE_BYTES.iter() {
++        s.store(0, Ordering::Relaxed);
++    }
++    for s in SAMPLE_LENS.iter() {
++        s.store(0, Ordering::Relaxed);
++    }
++}
++
++/// Open the census window.
++pub fn arm() {
++    reset();
++    ARMED.store(true, Ordering::SeqCst);
++}
++
++/// Close the census window.
++pub fn disarm() {
++    ARMED.store(false, Ordering::SeqCst);
++}
++
++/// Census captured over one window.
++pub struct Census {
++    pub allocs: u64,
++    pub alloc_bytes: u64,
++    pub deallocs: u64,
++    pub dealloc_bytes: u64,
++    pub hist: [u64; BUCKETS],
++}
++
++/// Read the counters without closing the window.
++pub fn snapshot() -> Census {
++    let mut hist = [0u64; BUCKETS];
++    for (i, b) in HIST.iter().enumerate() {
++        hist[i] = b.load(Ordering::Relaxed);
++    }
++    Census {
++        allocs: ALLOCS.load(Ordering::Relaxed),
++        alloc_bytes: ALLOC_BYTES.load(Ordering::Relaxed),
++        deallocs: DEALLOCS.load(Ordering::Relaxed),
++        dealloc_bytes: DEALLOC_BYTES.load(Ordering::Relaxed),
++        hist,
++    }
++}
++
++/// Global allocator wrapper that counts blocks and bytes while armed.
++///
++/// Install this as the binary's `#[global_allocator]` in a probe build only.
++pub struct Counting<A> {
++    inner: A,
++}
++
++impl<A> Counting<A> {
++    /// Wrap an underlying allocator.
++    pub const fn new(inner: A) -> Self {
++        Self { inner }
++    }
++}
++
++unsafe impl<A: GlobalAlloc> GlobalAlloc for Counting<A> {
++    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
++        let ptr = unsafe { self.inner.alloc(layout) };
++        if !ptr.is_null() && ARMED.load(Ordering::Relaxed) {
++            ALLOCS.fetch_add(1, Ordering::Relaxed);
++            ALLOC_BYTES.fetch_add(layout.size() as u64, Ordering::Relaxed);
++        }
++        ptr
++    }
++
++    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
++        let ptr = unsafe { self.inner.alloc_zeroed(layout) };
++        if !ptr.is_null() && ARMED.load(Ordering::Relaxed) {
++            ALLOCS.fetch_add(1, Ordering::Relaxed);
++            ALLOC_BYTES.fetch_add(layout.size() as u64, Ordering::Relaxed);
++        }
++        ptr
++    }
++
++    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
++        let new_ptr = unsafe { self.inner.realloc(ptr, layout, new_size) };
++        if !new_ptr.is_null() && ARMED.load(Ordering::Relaxed) {
++            ALLOCS.fetch_add(1, Ordering::Relaxed);
++            ALLOC_BYTES.fetch_add(new_size as u64, Ordering::Relaxed);
++            DEALLOCS.fetch_add(1, Ordering::Relaxed);
++            DEALLOC_BYTES.fetch_add(layout.size() as u64, Ordering::Relaxed);
++        }
++        new_ptr
++    }
++
++    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
++        if ARMED.load(Ordering::Relaxed) {
++            DEALLOCS.fetch_add(1, Ordering::Relaxed);
++            DEALLOC_BYTES.fetch_add(layout.size() as u64, Ordering::Relaxed);
++            let b = bucket(layout.size());
++            HIST[b].fetch_add(1, Ordering::Relaxed);
++            if b == 4 {
++                let i = SAMPLE_SEEN.fetch_add(1, Ordering::Relaxed) as usize;
++                if i < SAMPLES {
++                    let n = layout.size().min(8);
++                    let mut buf = [0u8; 8];
++                    // The block is still live inside `dealloc`; copying its
++                    // first bytes out is a read of initialized-or-garbage
++                    // memory we are about to release.
++                    unsafe { std::ptr::copy_nonoverlapping(ptr, buf.as_mut_ptr(), n) };
++                    SAMPLE_LENS[i].store(n as u64, Ordering::Relaxed);
++                    SAMPLE_BYTES[i].store(u64::from_le_bytes(buf), Ordering::Relaxed);
++                }
++            }
++        }
++        unsafe { self.inner.dealloc(ptr, layout) }
++    }
++}
++
++/// One bulk-free counterfactual arm.
++pub struct BulkFree {
++    pub blocks: usize,
++    pub bytes: u64,
++    pub touch_us: u128,
++    pub free_us: u128,
++}
++
++const ALIGN: usize = 64;
++
++fn layout_for(size: usize) -> Layout {
++    Layout::from_size_align(size, ALIGN).expect("t100: bulk layout")
++}
++
++/// Allocate `blocks` blocks whose sizes sum to `bytes`, touch every page, and
++/// time the free of all of them.
++///
++/// The touch pass (a `write_bytes(0)`) commits the pages the way a live
++/// arena's data would, so the free is not priced against untouched
++/// reserve-only pages. Touch and free are timed separately.
++pub fn bulk_free(blocks: usize, bytes: u64, tag: &str, order: &str) -> BulkFree {
++    let blocks = blocks.max(1);
++    let total = bytes as usize;
++    let per = (total / blocks / ALIGN).max(1) * ALIGN;
++    let mut ptrs: Vec<(*mut u8, Layout)> = Vec::with_capacity(blocks);
++    for i in 0..blocks {
++        // The last block absorbs the remainder so the byte volume is exact.
++        let size = if i + 1 == blocks {
++            (total - per * (blocks - 1)).max(ALIGN)
++        } else {
++            per
++        };
++        let layout = layout_for(size);
++        let p = unsafe { std::alloc::alloc(layout) };
++        if p.is_null() {
++            eprintln!("T100 BULK {tag} {order} blocks={blocks} FAILED alloc");
++            for (p, l) in ptrs {
++                unsafe { std::alloc::dealloc(p, l) };
++            }
++            return BulkFree {
++                blocks,
++                bytes,
++                touch_us: 0,
++                free_us: 0,
++            };
++        }
++        ptrs.push((p, layout));
++    }
++    let touch_start = Instant::now();
++    for (p, l) in ptrs.iter() {
++        unsafe { p.write_bytes(0, l.size()) };
++        let _ = std::hint::black_box(unsafe { p.add(l.size() - 1).read() });
++    }
++    let touch_us = touch_start.elapsed().as_micros();
++    let free_start = Instant::now();
++    for (p, l) in ptrs {
++        unsafe { std::alloc::dealloc(p, l) };
++    }
++    let free_us = free_start.elapsed().as_micros();
++    BulkFree {
++        blocks,
++        bytes,
++        touch_us,
++        free_us,
++    }
++}
++
++/// Sequential copy of `bytes` (half read, half written), priced as the
++/// construction pass of a "flatten a live collection into an arena" variant.
++///
++/// Returns `(copy_us, checksum)`. The checksum is read back out of the
++/// destination and `black_box`ed, so neither the source fill nor the copy can
++/// be eliminated as dead stores to memory that is freed unread.
++pub fn copy_pass(bytes: u64, tag: &str, order: &str) -> (u128, u64) {
++    let total = (bytes as usize / ALIGN).max(2) * ALIGN;
++    let half = (total / 2 / ALIGN).max(1) * ALIGN;
++    let la = layout_for(half);
++    let lb = layout_for(half);
++    let a = unsafe { std::alloc::alloc(la) };
++    let b = unsafe { std::alloc::alloc(lb) };
++    if a.is_null() || b.is_null() {
++        eprintln!("T100 COPY {tag} {order} FAILED alloc");
++        if !a.is_null() {
++            unsafe { std::alloc::dealloc(a, la) };
++        }
++        if !b.is_null() {
++            unsafe { std::alloc::dealloc(b, lb) };
++        }
++        return (0, 0);
++    }
++    unsafe {
++        a.write_bytes(1, half);
++        b.write_bytes(2, half);
++    }
++    let start = Instant::now();
++    unsafe { std::ptr::copy_nonoverlapping(a, b, half) };
++    let copy_us = start.elapsed().as_micros();
++    let checksum = unsafe { b.add(half - 1).read() } as u64 + unsafe { b.read() } as u64;
++    let _ = std::hint::black_box(checksum);
++    unsafe {
++        std::alloc::dealloc(a, la);
++        std::alloc::dealloc(b, lb);
++    }
++    (copy_us, checksum)
++}
++
++/// `PNP_T100_BULK` handling: `before` | `after` | `both` | unset.
++pub fn bulk_order() -> Option<&'static str> {
++    match std::env::var("PNP_T100_BULK").ok().as_deref() {
++        Some("before") => Some("before"),
++        Some("after") => Some("after"),
++        Some("both") => Some("both"),
++        _ => None,
++    }
++}
++
++fn bulk_bytes_from_env() -> Option<u64> {
++    std::env::var("PNP_T100_BULK_BYTES")
++        .ok()
++        .and_then(|v| v.parse::<u64>().ok())
++}
++
++fn bulk_blocks_from_env() -> Vec<usize> {
++    std::env::var("PNP_T100_BULK_BLOCKS")
++        .ok()
++        .map(|v| {
++            v.split(',')
++                .filter_map(|s| s.trim().parse::<usize>().ok())
++                .collect()
++        })
++        .unwrap_or_else(|| vec![1])
++}
++
++/// Run the bulk arms requested by the environment, if any.
++pub fn run_bulk_arms(tag: &str, order: &str) {
++    let Some(bytes) = bulk_bytes_from_env() else {
++        return;
++    };
++    for blocks in bulk_blocks_from_env() {
++        let arm = bulk_free(blocks, bytes, tag, order);
++        eprintln!(
++            "T100 BULK {tag} {order} blocks={} bytes={} touch_us={} free_us={}",
++            arm.blocks, arm.bytes, arm.touch_us, arm.free_us
++        );
++        let (copy_us, checksum) = copy_pass(bytes, tag, order);
++        eprintln!("T100 COPY {tag} {order} bytes={bytes} copy_us={copy_us} checksum={checksum}");
++    }
++}
++
++/// Print the census for one drop window.
++pub fn report_census(tag: &str, layers: usize, drop_us: u128, c: &Census) {
++    let hist = (0..BUCKETS)
++        .filter(|&i| c.hist[i] > 0)
++        .map(|i| format!("{i}:{}", c.hist[i]))
++        .collect::<Vec<_>>()
++        .join(",");
++    let mut samples = Vec::new();
++    for i in 0..SAMPLES {
++        let n = SAMPLE_LENS[i].load(Ordering::Relaxed) as usize;
++        if n == 0 {
++            continue;
++        }
++        let raw = SAMPLE_BYTES[i].load(Ordering::Relaxed).to_le_bytes();
++        let ascii: String = raw[..n]
++            .iter()
++            .map(|&b| {
++                if b.is_ascii_graphic() || b == b' ' {
++                    b as char
++                } else {
++                    '.'
++                }
++            })
++            .collect();
++        samples.push(format!("{:016x}:{}", u64::from_le_bytes(raw), ascii));
++    }
++    eprintln!(
++        "T100 CENSUS {tag} layers={layers} drop_us={drop_us} deallocs={} dealloc_bytes={} allocs={} alloc_bytes={} hist={hist} samples={}",
++        c.deallocs,
++        c.dealloc_bytes,
++        c.allocs,
++        c.alloc_bytes,
++        samples.join("|")
++    );
++}
++
++/// Structural census of the collection taken **before** the drop: what the
++/// graph is made of, so a block count can be attributed to a shape.
++pub fn report_shape(tag: &str, layers: &[slicer_ir::LayerCollectionIR]) {
++    use std::mem::size_of;
++    let mut entities = 0u64;
++    let mut points = 0u64;
++    let mut one_point = 0u64;
++    let mut supports = 0u64;
++    let mut variant_chain = 0u64;
++    let mut tools = 0u64;
++    let mut zhops = 0u64;
++    let mut annotations = 0u64;
++    let mut retracts = 0u64;
++    let mut travels = 0u64;
++    let mut speed_profiles = 0u64;
++    let mut speed_factors = 0u64;
++    for layer in layers {
++        entities += layer.ordered_entities.len() as u64;
++        supports += layer.support_entity_identities.len() as u64;
++        tools += layer.tool_changes.len() as u64;
++        zhops += layer.z_hops.len() as u64;
++        annotations += layer.annotations.len() as u64;
++        retracts += layer.retracts.len() as u64;
++        travels += layer.travel_moves.len() as u64;
++        speed_profiles += layer.speed_profiles.len() as u64;
++        for entity in &layer.ordered_entities {
++            points += entity.path.points.len() as u64;
++            if entity.path.points.len() == 1 {
++                one_point += 1;
++            }
++            variant_chain += entity.region_key.variant_chain.len() as u64;
++        }
++        for profile in &layer.speed_profiles {
++            speed_factors += profile.factors.len() as u64;
++        }
++    }
++    eprintln!(
++        "T100 SHAPE {tag} layers={} entities={entities} points={points} one_point_paths={one_point} supports={supports} variant_chain={variant_chain} tools={tools} zhops={zhops} annotations={annotations} retracts={retracts} travels={travels} speed_profiles={speed_profiles} speed_factors={speed_factors} size_point={} size_entity={} size_layer={} size_support={}",
++        layers.len(),
++        size_of::<slicer_ir::Point3WithWidth>(),
++        size_of::<slicer_ir::PrintEntity>(),
++        size_of::<slicer_ir::LayerCollectionIR>(),
++        size_of::<slicer_ir::SupportEntityIdentity>(),
++    );
++}
+diff --git a/crates/slicer-runtime/src/lib.rs b/crates/slicer-runtime/src/lib.rs
+index ff4bcf52..b86cc854 100644
+--- a/crates/slicer-runtime/src/lib.rs
++++ b/crates/slicer-runtime/src/lib.rs
+@@ -234,6 +234,8 @@ pub use slicer_core::{
+ };
+ // kept: DefaultGCodeEmitter — consumed by tests (dispatch_tdd, postpass_gcode_emit_contract_tdd, pnp-cli/tests/e2e_integration_tdd)
+ pub use slicer_gcode::DefaultGCodeEmitter;
++// t100 probe (screening only): the counting allocator the probe binary installs.
++pub use slicer_gcode::probe_t100;
+ // kept: DefaultGCodeSerializer — consumed by tests (postpass_gcode_emit_contract_tdd, gcode_skirt_brim_emission_tdd, pnp-cli/tests/e2e_integration_tdd)
+ pub use slicer_gcode::DefaultGCodeSerializer;
+ // kept: GCodeEmitError — consumed by tests (dispatch_tdd, postpass_executor_tdd, pipeline_tdd, runtime_wiring_tdd, run_pipeline_with_instrumentation_tdd, paint_annotation_integration_tdd, pnp-cli/tests/e2e_integration_tdd)

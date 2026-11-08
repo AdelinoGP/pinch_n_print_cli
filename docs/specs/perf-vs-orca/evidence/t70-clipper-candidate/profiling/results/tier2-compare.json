@@ -1,0 +1,335 @@
+{
+  "phases": {
+    "difference/0": {
+      "rust_median_ns": 0.0,
+      "cpp_median_ns": 0.0,
+      "ratio": null
+    },
+    "difference/1": {
+      "rust_median_ns": 20500,
+      "cpp_median_ns": 13800,
+      "ratio": 1.4855072463768115
+    },
+    "difference/2": {
+      "rust_median_ns": 59500,
+      "cpp_median_ns": 60200,
+      "ratio": 0.9883720930232558
+    },
+    "difference/3": {
+      "rust_median_ns": 108500,
+      "cpp_median_ns": 97300,
+      "ratio": 1.1151079136690647
+    },
+    "difference/4": {
+      "rust_median_ns": 146100,
+      "cpp_median_ns": 117000,
+      "ratio": 1.2487179487179487
+    },
+    "difference/5": {
+      "rust_median_ns": 65850.0,
+      "cpp_median_ns": 66650.0,
+      "ratio": 0.9879969992498124
+    },
+    "difference/6": {
+      "rust_median_ns": 166200,
+      "cpp_median_ns": 154700,
+      "ratio": 1.0743374272786037
+    },
+    "difference/7": {
+      "rust_median_ns": 4000.0,
+      "cpp_median_ns": 3950.0,
+      "ratio": 1.0126582278481013
+    },
+    "difference/8": {
+      "rust_median_ns": 100.0,
+      "cpp_median_ns": 100.0,
+      "ratio": 1.0
+    },
+    "difference/9": {
+      "rust_median_ns": 4150.0,
+      "cpp_median_ns": 17800.0,
+      "ratio": 0.23314606741573032
+    },
+    "difference/10": {
+      "rust_median_ns": 26200,
+      "cpp_median_ns": 30800,
+      "ratio": 0.8506493506493507
+    },
+    "difference/11": {
+      "rust_median_ns": 72200,
+      "cpp_median_ns": 90200,
+      "ratio": 0.8004434589800443
+    },
+    "difference/14": {
+      "rust_median_ns": 1000,
+      "cpp_median_ns": 0,
+      "ratio": null
+    },
+    "difference/16": {
+      "rust_median_ns": 54400,
+      "cpp_median_ns": 60700,
+      "ratio": 0.8962108731466227
+    },
+    "difference/17": {
+      "rust_median_ns": 12400,
+      "cpp_median_ns": 11800,
+      "ratio": 1.0508474576271187
+    },
+    "difference/total": {
+      "rust_median_ns": 846800.0,
+      "cpp_median_ns": 715850.0
+    },
+    "intersection/0": {
+      "rust_median_ns": 0.0,
+      "cpp_median_ns": 0.0,
+      "ratio": null
+    },
+    "intersection/1": {
+      "rust_median_ns": 65400.0,
+      "cpp_median_ns": 69500.0,
+      "ratio": 0.9410071942446043
+    },
+    "intersection/2": {
+      "rust_median_ns": 170650.0,
+      "cpp_median_ns": 162200.0,
+      "ratio": 1.0520961775585698
+    },
+    "intersection/3": {
+      "rust_median_ns": 280750.0,
+      "cpp_median_ns": 227550.0,
+      "ratio": 1.2337947703801362
+    },
+    "intersection/4": {
+      "rust_median_ns": 928750.0,
+      "cpp_median_ns": 581350.0,
+      "ratio": 1.597574610819644
+    },
+    "intersection/5": {
+      "rust_median_ns": 700,
+      "cpp_median_ns": 900,
+      "ratio": 0.7777777777777778
+    },
+    "intersection/6": {
+      "rust_median_ns": 768950.0,
+      "cpp_median_ns": 351550.0,
+      "ratio": 2.1873133266960605
+    },
+    "intersection/7": {
+      "rust_median_ns": 500.0,
+      "cpp_median_ns": 550.0,
+      "ratio": 0.9090909090909091
+    },
+    "intersection/8": {
+      "rust_median_ns": 100.0,
+      "cpp_median_ns": 100.0,
+      "ratio": 1.0
+    },
+    "intersection/9": {
+      "rust_median_ns": 10050.0,
+      "cpp_median_ns": 19250.0,
+      "ratio": 0.522077922077922
+    },
+    "intersection/10": {
+      "rust_median_ns": 4400.0,
+      "cpp_median_ns": 4050.0,
+      "ratio": 1.0864197530864197
+    },
+    "intersection/11": {
+      "rust_median_ns": 12400.0,
+      "cpp_median_ns": 8950.0,
+      "ratio": 1.3854748603351956
+    },
+    "intersection/14": {
+      "rust_median_ns": 2800.0,
+      "cpp_median_ns": 0.0,
+      "ratio": null
+    },
+    "intersection/16": {
+      "rust_median_ns": 181500.0,
+      "cpp_median_ns": 184650.0,
+      "ratio": 0.9829406986190089
+    },
+    "intersection/17": {
+      "rust_median_ns": 300.0,
+      "cpp_median_ns": 400.0,
+      "ratio": 0.75
+    },
+    "intersection/total": {
+      "rust_median_ns": 3302800.0,
+      "cpp_median_ns": 2265550.0
+    },
+    "offset/0": {
+      "rust_median_ns": 0,
+      "cpp_median_ns": 0,
+      "ratio": null
+    },
+    "offset/1": {
+      "rust_median_ns": 53600,
+      "cpp_median_ns": 42800,
+      "ratio": 1.2523364485981308
+    },
+    "offset/2": {
+      "rust_median_ns": 354500,
+      "cpp_median_ns": 277800,
+      "ratio": 1.2760979121670266
+    },
+    "offset/3": {
+      "rust_median_ns": 233400,
+      "cpp_median_ns": 190100,
+      "ratio": 1.227774855339295
+    },
+    "offset/4": {
+      "rust_median_ns": 3358800,
+      "cpp_median_ns": 1688100,
+      "ratio": 1.9896925537586636
+    },
+    "offset/5": {
+      "rust_median_ns": 96000,
+      "cpp_median_ns": 92700,
+      "ratio": 1.035598705501618
+    },
+    "offset/6": {
+      "rust_median_ns": 2184800,
+      "cpp_median_ns": 654700,
+      "ratio": 3.3371009622727965
+    },
+    "offset/7": {
+      "rust_median_ns": 6050.0,
+      "cpp_median_ns": 5100.0,
+      "ratio": 1.1862745098039216
+    },
+    "offset/8": {
+      "rust_median_ns": 100,
+      "cpp_median_ns": 100,
+      "ratio": 1.0
+    },
+    "offset/9": {
+      "rust_median_ns": 35600,
+      "cpp_median_ns": 54100,
+      "ratio": 0.6580406654343808
+    },
+    "offset/10": {
+      "rust_median_ns": 36200.0,
+      "cpp_median_ns": 36600.0,
+      "ratio": 0.9890710382513661
+    },
+    "offset/11": {
+      "rust_median_ns": 52400,
+      "cpp_median_ns": 50900,
+      "ratio": 1.0294695481335954
+    },
+    "offset/12": {
+      "rust_median_ns": 54200,
+      "cpp_median_ns": 44700,
+      "ratio": 1.2125279642058167
+    },
+    "offset/13": {
+      "rust_median_ns": 7882900,
+      "cpp_median_ns": 3951300,
+      "ratio": 1.9950142990914383
+    },
+    "offset/14": {
+      "rust_median_ns": 2200,
+      "cpp_median_ns": 0,
+      "ratio": null
+    },
+    "offset/15": {
+      "rust_median_ns": 7827700,
+      "cpp_median_ns": 3905500,
+      "ratio": 2.004276020996031
+    },
+    "offset/16": {
+      "rust_median_ns": 190200,
+      "cpp_median_ns": 191300,
+      "ratio": 0.9942498693152118
+    },
+    "offset/17": {
+      "rust_median_ns": 31700,
+      "cpp_median_ns": 28500,
+      "ratio": 1.1122807017543859
+    },
+    "offset/total": {
+      "rust_median_ns": 8044400,
+      "cpp_median_ns": 4023000
+    },
+    "union/0": {
+      "rust_median_ns": 0.0,
+      "cpp_median_ns": 0.0,
+      "ratio": null
+    },
+    "union/1": {
+      "rust_median_ns": 748250.0,
+      "cpp_median_ns": 280750.0,
+      "ratio": 2.665182546749777
+    },
+    "union/2": {
+      "rust_median_ns": 823200.0,
+      "cpp_median_ns": 668150.0,
+      "ratio": 1.2320586694604505
+    },
+    "union/3": {
+      "rust_median_ns": 1287250.0,
+      "cpp_median_ns": 1083650.0,
+      "ratio": 1.1878835417339546
+    },
+    "union/4": {
+      "rust_median_ns": 64147550.0,
+      "cpp_median_ns": 28343950.0,
+      "ratio": 2.2631831484320286
+    },
+    "union/5": {
+      "rust_median_ns": 220450.0,
+      "cpp_median_ns": 162300.0,
+      "ratio": 1.358287122612446
+    },
+    "union/6": {
+      "rust_median_ns": 36426400.0,
+      "cpp_median_ns": 8549600.0,
+      "ratio": 4.260596986993543
+    },
+    "union/7": {
+      "rust_median_ns": 250.0,
+      "cpp_median_ns": 300.0,
+      "ratio": 0.8333333333333334
+    },
+    "union/8": {
+      "rust_median_ns": 100,
+      "cpp_median_ns": 100,
+      "ratio": 1.0
+    },
+    "union/9": {
+      "rust_median_ns": 13800.0,
+      "cpp_median_ns": 60950.0,
+      "ratio": 0.22641509433962265
+    },
+    "union/10": {
+      "rust_median_ns": 70650.0,
+      "cpp_median_ns": 46200.0,
+      "ratio": 1.5292207792207793
+    },
+    "union/11": {
+      "rust_median_ns": 115600.0,
+      "cpp_median_ns": 105050.0,
+      "ratio": 1.1004283674440742
+    },
+    "union/14": {
+      "rust_median_ns": 130400.0,
+      "cpp_median_ns": 0.0,
+      "ratio": null
+    },
+    "union/16": {
+      "rust_median_ns": 1028350.0,
+      "cpp_median_ns": 1050300.0,
+      "ratio": 0.97910120917833
+    },
+    "union/17": {
+      "rust_median_ns": 103800.0,
+      "cpp_median_ns": 99150.0,
+      "ratio": 1.0468986384266263
+    },
+    "union/total": {
+      "rust_median_ns": 111823100.0,
+      "cpp_median_ns": 46654850.0
+    }
+  }
+}

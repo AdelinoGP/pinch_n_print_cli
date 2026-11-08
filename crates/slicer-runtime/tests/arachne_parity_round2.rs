@@ -243,6 +243,7 @@ fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
     config.insert("layer_height".to_string(), ConfigValue::Float(0.2));
     config.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
     config.insert("line_width".to_string(), ConfigValue::Float(0.45));
+    config.insert("resolution".to_string(), ConfigValue::Float(0.01));
     config.insert("bridge_line_width".to_string(), ConfigValue::Float(0.0));
     config.insert(
         "initial_layer_line_width".to_string(),

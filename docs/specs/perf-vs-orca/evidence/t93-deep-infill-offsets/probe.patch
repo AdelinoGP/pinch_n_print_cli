@@ -1,0 +1,327 @@
+diff --git a/crates/slicer-runtime/src/slice_postprocess_prepass.rs b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+index 7edead57..5874b54e 100644
+--- a/crates/slicer-runtime/src/slice_postprocess_prepass.rs
++++ b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+@@ -582,6 +582,115 @@ fn resolve_opening_radius(
+ // Internal helpers
+ // ============================================================================
+ 
++/// t93 Phase-1 screening probe — env-gated (`PNP_T93_PROBE=1`), attribution
++/// only, removed before the take closes. Records the whole-layer deep-infill
++/// operand shapes and, per call, the bbox precheck verdict, the two offset
++/// spans, the windowed-erosion counterfactual and the duplicate-recompute
++/// fingerprint. Never changes geometry.
++mod t93_probe {
++    use std::sync::OnceLock;
++
++    use slicer_ir::ExPolygon;
++
++    static ENABLED: OnceLock<bool> = OnceLock::new();
++
++    pub(super) fn enabled() -> bool {
++        *ENABLED.get_or_init(|| std::env::var_os("PNP_T93_PROBE").is_some())
++    }
++
++    /// `(min_x, min_y, max_x, max_y)` over every contour and hole point.
++    pub(super) fn bbox(polygons: &[ExPolygon]) -> Option<(i64, i64, i64, i64)> {
++        let mut points = polygons
++            .iter()
++            .flat_map(|polygon| std::iter::once(&polygon.contour).chain(polygon.holes.iter()))
++            .flat_map(|ring| ring.points.iter());
++        let first = points.next()?;
++        let (mut x0, mut y0, mut x1, mut y1) = (first.x, first.y, first.x, first.y);
++        for point in points {
++            x0 = x0.min(point.x);
++            y0 = y0.min(point.y);
++            x1 = x1.max(point.x);
++            y1 = y1.max(point.y);
++        }
++        Some((x0, y0, x1, y1))
++    }
++
++    /// `(polygons, holes, ring vertices)`.
++    pub(super) fn shape(polygons: &[ExPolygon]) -> (u64, u64, u64) {
++        let mut holes = 0u64;
++        let mut vertices = 0u64;
++        for polygon in polygons {
++            vertices += polygon.contour.points.len() as u64;
++            holes += polygon.holes.len() as u64;
++            for hole in &polygon.holes {
++                vertices += hole.points.len() as u64;
++            }
++        }
++        (polygons.len() as u64, holes, vertices)
++    }
++
++    /// FNV-1a over the operand's exact geometry. Two calls with the same
++    /// fingerprint carry the same set, so a duplicate result is reusable.
++    pub(super) fn fingerprint(polygons: &[ExPolygon]) -> u64 {
++        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
++        let mut mix = |value: i64| {
++            for byte in value.to_le_bytes() {
++                hash ^= u64::from(byte);
++                hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
++            }
++        };
++        mix(polygons.len() as i64);
++        for polygon in polygons {
++            mix(-1);
++            mix(polygon.contour.points.len() as i64);
++            for point in &polygon.contour.points {
++                mix(point.x);
++                mix(point.y);
++            }
++            mix(-2);
++            mix(polygon.holes.len() as i64);
++            for hole in &polygon.holes {
++                mix(hole.points.len() as i64);
++                for point in &hole.points {
++                    mix(point.x);
++                    mix(point.y);
++                }
++            }
++        }
++        hash
++    }
++
++    /// Chebyshev separation between two bounding boxes, in scaled units.
++    /// Zero when the boxes touch or overlap.
++    pub(super) fn gap(a: (i64, i64, i64, i64), b: (i64, i64, i64, i64)) -> i64 {
++        let dx = (a.0 - b.2).max(b.0 - a.2).max(0);
++        let dy = (a.1 - b.3).max(b.1 - a.3).max(0);
++        dx.max(dy)
++    }
++
++    /// Axis-aligned rectangle grown from `bbox` by `margin` units.
++    pub(super) fn window(bbox: (i64, i64, i64, i64), margin: i64) -> Vec<ExPolygon> {
++        use slicer_ir::{Point2, Polygon};
++        let (x0, y0, x1, y1) = (
++            bbox.0 - margin,
++            bbox.1 - margin,
++            bbox.2 + margin,
++            bbox.3 + margin,
++        );
++        vec![ExPolygon {
++            contour: Polygon {
++                points: vec![
++                    Point2 { x: x0, y: y0 },
++                    Point2 { x: x1, y: y0 },
++                    Point2 { x: x1, y: y1 },
++                    Point2 { x: x0, y: y1 },
++                ],
++            },
++            holes: Vec::new(),
++        }]
++    }
++}
++
+ /// Fully computed internal-bridge commit for one layer. The expensive
+ /// per-layer clipper work depends only on committed geometry and on this
+ /// layer's own fields, so it can run in the independent qualification phase;
+@@ -606,39 +715,128 @@ fn compute_internal_bridge_layer(
+     region_id: RegionId,
+     layer_index: u32,
+     print_z: f32,
++    phase: &'static str,
+ ) -> Option<InternalBridgeLayerResult> {
++    let probe = t93_probe::enabled();
++    let call_started = probe.then(std::time::Instant::now);
++    let (deep_polys, deep_holes, deep_vertices) = if probe {
++        t93_probe::shape(&deep_infill_area)
++    } else {
++        (0, 0, 0)
++    };
++    let deep_fingerprint = if probe {
++        t93_probe::fingerprint(&deep_infill_area)
++    } else {
++        0
++    };
++    let spacing_units = (f64::from(qualify_spacing_mm) * slicer_ir::UNITS_PER_MM) as i64;
++    // Conservative lazy-dilation precheck: a Miter offset with Clipper2's
++    // default limit 2.0 cannot leave the operand bbox grown by 2 x |delta|,
++    // so a surface more than (2 + 3) x spacing from the deep area cannot
++    // reach its +1.5 x spacing clip. Attribution only; never acts.
++    let bbox_skip =
++        if probe {
++            match t93_probe::bbox(&deep_infill_area) {
++                None => true,
++                Some(deep_bbox) => region.internal_solid_fill.iter().all(|surface| {
++                    match t93_probe::bbox(std::slice::from_ref(surface)) {
++                        None => true,
++                        Some(surface_bbox) => {
++                            t93_probe::gap(surface_bbox, deep_bbox) > 5 * spacing_units
++                        }
++                    }
++                }),
++            }
++        } else {
++            false
++        };
++    let deep_clip_offset_started = probe.then(std::time::Instant::now);
+     let deep_infill_clip_area = offset(
+         &deep_infill_area,
+         1.5 * qualify_spacing_mm,
+         OffsetJoinType::Miter,
+         0.0,
+     );
++    let deep_clip_offset_ns = deep_clip_offset_started
++        .map(|started| started.elapsed().as_nanos())
++        .unwrap_or(0);
+     let mut qualified: Vec<ExPolygon> = Vec::new();
++    let mut surfaces_passed_clip: u64 = 0;
++    let mut surface_offset_ns: u128 = 0;
++    let mut surface_clip_ns: u128 = 0;
++    let mut qualify_ns: u128 = 0;
+     for surface in &region.internal_solid_fill {
++        let offset_started = probe.then(std::time::Instant::now);
+         let expanded_candidate = offset(
+             std::slice::from_ref(surface),
+             qualify_spacing_mm,
+             OffsetJoinType::Miter,
+             0.0,
+         );
+-        if intersection(&expanded_candidate, &deep_infill_clip_area).is_empty() {
++        surface_offset_ns += offset_started
++            .map(|started| started.elapsed().as_nanos())
++            .unwrap_or(0);
++        let clip_started = probe.then(std::time::Instant::now);
++        let expanded_clip = intersection(&expanded_candidate, &deep_infill_clip_area);
++        surface_clip_ns += clip_started
++            .map(|started| started.elapsed().as_nanos())
++            .unwrap_or(0);
++        if expanded_clip.is_empty() {
+             log::debug!(
+                 "internal bridge skip object={} region={} layer={} print_z={} reason=deep_sparse_clip_empty",
+                 object_id, region_id, layer_index, print_z
+             );
+             continue;
+         }
+-        if let Some(polys) = slicer_core::algos::bridge_over_infill::qualify_internal_bridge_surface(
+-            surface,
+-            unsupported,
+-            qualify_spacing_mm,
+-            nofilter,
+-        ) {
++        surfaces_passed_clip += 1;
++        let qualify_started = probe.then(std::time::Instant::now);
++        let qualified_surface =
++            slicer_core::algos::bridge_over_infill::qualify_internal_bridge_surface(
++                surface,
++                unsupported,
++                qualify_spacing_mm,
++                nofilter,
++            );
++        qualify_ns += qualify_started
++            .map(|started| started.elapsed().as_nanos())
++            .unwrap_or(0);
++        if let Some(polys) = qualified_surface {
+             qualified.extend(polys);
+         }
+     }
++    let pre_retain_qualified = qualified.len();
++    // Windowed-erosion counterfactual: the erosion is only queried inside
++    // the pre-retain qualified bbox, so eroding the deep area clipped to that
++    // bbox grown by 14 x spacing (Clipper2's Miter reach is 2 x 4.5, plus the
++    // erosion distance) reproduces every point the predicate can observe.
++    // Probe-only second erosion, run BEFORE the production erosion so run 2
++    // prices it cold; the production erosion above is the one the code uses.
++    let mut window_clip_ns: u128 = 0;
++    let mut window_offset_ns: u128 = 0;
++    let mut window_operand_polys: u64 = 0;
++    let mut window_operand_vertices: u64 = 0;
++    if probe && !qualified.is_empty() {
++        if let Some(qualified_bbox) = t93_probe::bbox(&qualified) {
++            let window = t93_probe::window(qualified_bbox, 14 * spacing_units);
++            let clip_started = std::time::Instant::now();
++            let windowed_operand = intersection(&deep_infill_area, &window);
++            window_clip_ns = clip_started.elapsed().as_nanos();
++            let (polys, _, vertices) = t93_probe::shape(&windowed_operand);
++            window_operand_polys = polys;
++            window_operand_vertices = vertices;
++            let offset_started = std::time::Instant::now();
++            let _windowed_erosion = offset(
++                &windowed_operand,
++                -(4.5 * qualify_spacing_mm),
++                OffsetJoinType::Miter,
++                0.0,
++            );
++            window_offset_ns = offset_started.elapsed().as_nanos();
++        }
++    }
+     // Only the surviving candidates are filtered against this erosion,
+     // so an empty candidate set skips the offset entirely.
++    let unsupported_offset_started = probe.then(std::time::Instant::now);
+     let internal_unsupported_area = if qualified.is_empty() || deep_infill_area.is_empty() {
+         Vec::new()
+     } else {
+@@ -649,9 +847,54 @@ fn compute_internal_bridge_layer(
+             0.0,
+         )
+     };
++    let unsupported_offset_ns = unsupported_offset_started
++        .map(|started| started.elapsed().as_nanos())
++        .unwrap_or(0);
++    let retain_started = probe.then(std::time::Instant::now);
+     qualified.retain(|polygon| {
+         !intersection(std::slice::from_ref(polygon), &internal_unsupported_area).is_empty()
+     });
++    let retain_ns = retain_started
++        .map(|started| started.elapsed().as_nanos())
++        .unwrap_or(0);
++    if probe {
++        eprintln!(
++            "T93LAYER phase={} object={} region={} layer={} print_z={} surfaces={} \
++surfaces_passed_clip={} deep_polys={} deep_holes={} deep_vertices={} deep_fp={} \
++bbox_skip={} deep_clip_polys={} deep_clip_offset_ms={:.3} surface_offset_ms={:.3} \
++surface_clip_ms={:.3} qualify_ms={:.3} pre_qualified={} qualified={} erosion_ms={:.3} \
++window_clip_ms={:.3} window_offset_ms={:.3} window_operand_polys={} \
++window_operand_vertices={} retain_ms={:.3} total_ms={:.3}",
++            phase,
++            object_id,
++            region_id,
++            layer_index,
++            print_z,
++            region.internal_solid_fill.len(),
++            surfaces_passed_clip,
++            deep_polys,
++            deep_holes,
++            deep_vertices,
++            deep_fingerprint,
++            u8::from(bbox_skip),
++            deep_infill_clip_area.len(),
++            deep_clip_offset_ns as f64 / 1.0e6,
++            surface_offset_ns as f64 / 1.0e6,
++            surface_clip_ns as f64 / 1.0e6,
++            qualify_ns as f64 / 1.0e6,
++            pre_retain_qualified,
++            qualified.len(),
++            unsupported_offset_ns as f64 / 1.0e6,
++            window_clip_ns as f64 / 1.0e6,
++            window_offset_ns as f64 / 1.0e6,
++            window_operand_polys,
++            window_operand_vertices,
++            retain_ns as f64 / 1.0e6,
++            call_started
++                .map(|started| started.elapsed().as_nanos() as f64 / 1.0e6)
++                .unwrap_or(0.0),
++        );
++    }
+     if qualified.is_empty() {
+         log::debug!(
+             "internal bridge skip object={} region={} layer={} print_z={} reason=qualified_empty_or_deep_sparse_clip surfaces={}",
+@@ -1059,6 +1302,7 @@ fn gate_internal_bridge_sites(
+                     *region_id,
+                     prep.layer_index,
+                     prep.print_z,
++                    "pre",
+                 )
+             })
+             .collect();
+@@ -1155,6 +1399,7 @@ fn gate_internal_bridge_sites(
+                     *region_id,
+                     layer_index,
+                     print_z,
++                    "recompute",
+                 )
+             } else {
+                 precomputed

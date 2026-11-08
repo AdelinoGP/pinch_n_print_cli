@@ -1,0 +1,302 @@
+{
+  "probe": "PERF-T77-PROBE (temporary, reverted; no geometry change)",
+  "cell": "ordinary base classic supports-on (12 rayon threads)",
+  "output_sha256": "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319",
+  "output_bytes": 43912792,
+  "totals": {
+    "clip_calls": 94310,
+    "clip_core_seconds": 82.293,
+    "planner_clip_calls": 92804,
+    "planner_clip_core_seconds": 79.659,
+    "planner_clip_share_of_module_wall": 0.6288,
+    "build_roles_clip_core_seconds": 78.885,
+    "build_roles_share_of_planner_clip_core": 0.9903,
+    "site_transitions": 15
+  },
+  "by_site": {
+    "role_union": {
+      "calls": 472,
+      "core_seconds": 41.739,
+      "median_ms": 79.214,
+      "p95_ms": 301.595,
+      "max_ms": 436.047,
+      "mean_subj_polys": 1.0,
+      "mean_clip_polys": 312.48,
+      "max_clip_polys": 1023,
+      "share_of_planner_clip_core": 0.524,
+      "role": "planner"
+    },
+    "carve_region": {
+      "calls": 69161,
+      "core_seconds": 35.779,
+      "median_ms": 0.474,
+      "p95_ms": 0.905,
+      "max_ms": 35.884,
+      "mean_subj_polys": 1.0,
+      "mean_clip_polys": 1.96,
+      "max_clip_polys": 6,
+      "share_of_planner_clip_core": 0.4492,
+      "role": "planner"
+    },
+    "(untagged)": {
+      "calls": 1506,
+      "core_seconds": 2.634,
+      "median_ms": 1.495,
+      "p95_ms": 4.893,
+      "max_ms": 9.331,
+      "mean_subj_polys": 2.71,
+      "mean_clip_polys": 1.12,
+      "max_clip_polys": 5,
+      "share_of_clip_core": 0.032,
+      "role": "non-planner modules recorded by the process-global probe"
+    },
+    "set_diff": {
+      "calls": 1724,
+      "core_seconds": 1.29,
+      "median_ms": 0.477,
+      "p95_ms": 2.245,
+      "max_ms": 14.001,
+      "mean_subj_polys": 1.36,
+      "mean_clip_polys": 1.66,
+      "max_clip_polys": 6,
+      "share_of_planner_clip_core": 0.0162,
+      "role": "planner"
+    },
+    "ladder_union": {
+      "calls": 20275,
+      "core_seconds": 0.662,
+      "median_ms": 0.031,
+      "p95_ms": 0.058,
+      "max_ms": 0.176,
+      "mean_subj_polys": 1.03,
+      "mean_clip_polys": 1.05,
+      "max_clip_polys": 5,
+      "share_of_planner_clip_core": 0.0083,
+      "role": "planner"
+    },
+    "below": {
+      "calls": 494,
+      "core_seconds": 0.102,
+      "median_ms": 0.228,
+      "p95_ms": 0.334,
+      "max_ms": 0.402,
+      "mean_subj_polys": 1.34,
+      "mean_clip_polys": 1.69,
+      "max_clip_polys": 6,
+      "share_of_planner_clip_core": 0.0013,
+      "role": "planner"
+    },
+    "cross_role_diff": {
+      "calls": 73,
+      "core_seconds": 0.078,
+      "median_ms": 0.898,
+      "p95_ms": 1.866,
+      "max_ms": 5.513,
+      "mean_subj_polys": 5.92,
+      "mean_clip_polys": 1.19,
+      "max_clip_polys": 4,
+      "share_of_planner_clip_core": 0.001,
+      "role": "planner"
+    },
+    "simplify_union": {
+      "calls": 495,
+      "core_seconds": 0.009,
+      "median_ms": 0.016,
+      "p95_ms": 0.032,
+      "max_ms": 0.092,
+      "mean_subj_polys": 1.0,
+      "mean_clip_polys": 0.69,
+      "max_clip_polys": 5,
+      "share_of_planner_clip_core": 0.0001,
+      "role": "planner"
+    },
+    "move_union": {
+      "calls": 110,
+      "core_seconds": 0.001,
+      "median_ms": 0.011,
+      "p95_ms": 0.015,
+      "max_ms": 0.025,
+      "mean_subj_polys": 1.0,
+      "mean_clip_polys": 1.0,
+      "max_clip_polys": 1,
+      "share_of_planner_clip_core": 0.0,
+      "role": "planner"
+    }
+  },
+  "by_site_and_op": {
+    "role_union/union": {
+      "calls": 472,
+      "core_seconds": 41.739,
+      "median_ms": 79.214,
+      "p95_ms": 301.595,
+      "max_ms": 436.047,
+      "mean_subj_polys": 1.0,
+      "mean_clip_polys": 312.48,
+      "max_clip_polys": 1023
+    },
+    "carve_region/difference": {
+      "calls": 69161,
+      "core_seconds": 35.779,
+      "median_ms": 0.474,
+      "p95_ms": 0.905,
+      "max_ms": 35.884,
+      "mean_subj_polys": 1.0,
+      "mean_clip_polys": 1.96,
+      "max_clip_polys": 6
+    },
+    "(untagged)/difference": {
+      "calls": 1494,
+      "core_seconds": 2.633,
+      "median_ms": 1.527,
+      "p95_ms": 4.928,
+      "max_ms": 9.331,
+      "mean_subj_polys": 2.7,
+      "mean_clip_polys": 1.13,
+      "max_clip_polys": 5
+    },
+    "set_diff/difference": {
+      "calls": 1724,
+      "core_seconds": 1.29,
+      "median_ms": 0.477,
+      "p95_ms": 2.245,
+      "max_ms": 14.001,
+      "mean_subj_polys": 1.36,
+      "mean_clip_polys": 1.66,
+      "max_clip_polys": 6
+    },
+    "ladder_union/union": {
+      "calls": 20275,
+      "core_seconds": 0.662,
+      "median_ms": 0.031,
+      "p95_ms": 0.058,
+      "max_ms": 0.176,
+      "mean_subj_polys": 1.03,
+      "mean_clip_polys": 1.05,
+      "max_clip_polys": 5
+    },
+    "below/union": {
+      "calls": 494,
+      "core_seconds": 0.102,
+      "median_ms": 0.228,
+      "p95_ms": 0.334,
+      "max_ms": 0.402,
+      "mean_subj_polys": 1.34,
+      "mean_clip_polys": 1.69,
+      "max_clip_polys": 6
+    },
+    "cross_role_diff/difference": {
+      "calls": 73,
+      "core_seconds": 0.078,
+      "median_ms": 0.898,
+      "p95_ms": 1.866,
+      "max_ms": 5.513,
+      "mean_subj_polys": 5.92,
+      "mean_clip_polys": 1.19,
+      "max_clip_polys": 4
+    },
+    "simplify_union/union": {
+      "calls": 495,
+      "core_seconds": 0.009,
+      "median_ms": 0.016,
+      "p95_ms": 0.032,
+      "max_ms": 0.092,
+      "mean_subj_polys": 1.0,
+      "mean_clip_polys": 0.69,
+      "max_clip_polys": 5
+    },
+    "(untagged)/intersection": {
+      "calls": 12,
+      "core_seconds": 0.002,
+      "median_ms": 0.037,
+      "p95_ms": 1.423,
+      "max_ms": 1.423,
+      "mean_subj_polys": 3.5,
+      "mean_clip_polys": 1.0,
+      "max_clip_polys": 1
+    },
+    "move_union/union": {
+      "calls": 110,
+      "core_seconds": 0.001,
+      "median_ms": 0.011,
+      "p95_ms": 0.015,
+      "max_ms": 0.025,
+      "mean_subj_polys": 1.0,
+      "mean_clip_polys": 1.0,
+      "max_clip_polys": 1
+    }
+  },
+  "tail": {
+    "ge_1ms": {
+      "calls": 3556,
+      "core_seconds": 47.771
+    },
+    "ge_10ms": {
+      "calls": 382,
+      "core_seconds": 41.705
+    },
+    "ge_100ms": {
+      "calls": 187,
+      "core_seconds": 31.558
+    },
+    "share_of_core_in_top_100_calls": 0.2633
+  },
+  "module_walls_ms": {
+    "host:mesh_analysis": 6967,
+    "com.core.layer-planner-default": 2,
+    "host:region_mapping": 21,
+    "host:slice": 47049,
+    "host:overhang_annotation": 9302,
+    "host:shell_classification": 13986,
+    "host:paint_segmentation": 79,
+    "host:support_analysis": 13477,
+    "host:support_geometry": 15,
+    "com.core.seam-planner-default": 9531,
+    "com.core.traditional-support-planner": 200,
+    "com.core.tree-support-planner": 126674,
+    "host:paint_annotator": 0,
+    "com.core.classic-perimeters": 754,
+    "com.core.fuzzy-skin": 6,
+    "com.core.seam-placer": 5,
+    "com.core.raft-default": 82,
+    "com.core.gyroid-infill": 3,
+    "com.core.lightning-infill": 2,
+    "com.core.rectilinear-infill": 2,
+    "com.core.top-surface-ironing": 2,
+    "com.core.wave-overhangs": 2,
+    "com.core.infill-linker": 29,
+    "com.core.tree-support": 86,
+    "com.core.support-surface-ironing": 1,
+    "com.core.path-optimization-default": 3,
+    "com.core.overhang-classifier-default": 473,
+    "com.core.part-cooling": 454,
+    "com.core.skirt-brim": 366,
+    "com.core.wipe-tower": 408,
+    "host:gcode_emit": 6504,
+    "com.core.machine-gcode-emit": 765,
+    "host:gcode_serialize": 1180
+  },
+  "stage_walls_ms": {
+    "PrePass::MeshAnalysis": 6967,
+    "PrePass::LayerPlanning": 2,
+    "PrePass::RegionMapping": 21,
+    "PrePass::Slice": 47049,
+    "PrePass::OverhangAnnotation": 9302,
+    "PrePass::ShellClassification": 13986,
+    "PrePass::PaintSegmentation": 79,
+    "PrePass::SupportAnalysis": 13477,
+    "PrePass::SupportGeometry": 147040,
+    "PrePass::SeamPlanning": 9531,
+    "Layer::PaintRegionAnnotation": 0,
+    "Layer::Perimeters": 761,
+    "Layer::PerimetersPostProcess": 22,
+    "Layer::Infill": 95,
+    "Layer::InfillPostProcess": 29,
+    "Layer::Support": 86,
+    "Layer::SupportPostProcess": 1,
+    "Layer::PathOptimization": 3,
+    "PostPass::LayerFinalization": 8087,
+    "PostPass::GCodeEmit": 6505,
+    "PostPass::GCodePostProcess": 768,
+    "PostPass::GCodeSerialize": 1180
+  }
+}

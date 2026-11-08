@@ -1,0 +1,16 @@
+{
+  "human_request": "Continue until completion (qualification, timing, handback) (same continuing authorization)",
+  "stage": "second stop; 15/16 cells recorded and revalidated; cell16 archived and cleared for rerun",
+  "stop_2_evidence": {
+    "file": "interruption-2.json",
+    "cause": "harness session eviction mid-slice; opencode.log 2026-10-07T16:02:23.391Z location services evicted + 16:02:23.582Z GET /api/shell/sh_116e21e97001dDoAGWgE3Swlup/output 404; no reboot/crash/disk pressure",
+    "lost_work": "cell16 candidate warmup slice only; baseline arm preserved as raw/interrupted/second-stop-partial-baseline-w0.gcode sha256 e2c39557a130b8862c65391985bd122f5014c18055a06eba6ee8555dfade0cc4"
+  },
+  "resume_scope": [
+    "rerun the whole cell16 via resume-qualify-2.py; revalidate 15 cells from raw bytes first",
+    "then the frozen paired timing protocol via per-cell invocations of the unchanged run-cell.ps1",
+    "restoration already complete; final re-verification and KEEP/DROP handback still pending"
+  ],
+  "runner_unchanged": true,
+  "automatic_retry_beyond_this_authorization": false
+}

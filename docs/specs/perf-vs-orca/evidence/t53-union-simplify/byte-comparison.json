@@ -1,0 +1,14 @@
+{
+  "ordinary-benchy": {
+    "streamed_byte_comparison": true
+  },
+  "ordinary-base": {
+    "streamed_byte_comparison": true
+  },
+  "accelerated-benchy": {
+    "streamed_byte_comparison": true
+  },
+  "accelerated-base": {
+    "streamed_byte_comparison": true
+  }
+}

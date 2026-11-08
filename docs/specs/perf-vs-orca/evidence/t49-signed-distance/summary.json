@@ -1,0 +1,270 @@
+{
+  "ordinary": {
+    "module_fuel": 126130773503,
+    "baseline_module_fuel": 125503350296,
+    "probe_module_fuel_delta": 627423207,
+    "probe_module_fuel_delta_percent": 0.49992546455550624,
+    "public_inclusive_fuel": 60556121871,
+    "sign_self_sum_fuel": 27053571758,
+    "distance_self_sum_fuel": 33427638202,
+    "wrapper_self_sum_fuel": 34411416,
+    "query_counter_self_fuel": 40500495,
+    "context_inclusive_fuel": 5196102224,
+    "sign_percent_excluding_counter_self": 44.70510447196569,
+    "distance_percent_excluding_counter_self": 55.23803183694504,
+    "wrapper_percent_excluding_counter_self": 0.05686369108926854,
+    "predicate_percent_of_sign": 99.86404815848715,
+    "context_percent_of_module": 4.119614967616457,
+    "indexed_seed_traversal_exact_edges": 0,
+    "fallback_queries": 0,
+    "counts": {
+      "legacy_sign_predicates": 192918,
+      "legacy_contour_vertices_presented": 173033046,
+      "legacy_distance_edges": 260813669,
+      "contexts": 240,
+      "public_queries": 110293,
+      "indexed_edge_evaluations_all": 0,
+      "indexed_range_edges": 0,
+      "sign_y_records": 0,
+      "sign_unique_candidates": 0,
+      "indexed_sign_predicates": 0,
+      "indexed_contour_vertices_presented": 0,
+      "post_first_hit_predicates": 0,
+      "post_first_hit_vertices": 0,
+      "true_indexed_predicates": 0
+    },
+    "scope_rows": {
+      "full_distance": {
+        "scope": "t49::full_distance",
+        "scope_id": 11,
+        "calls": 110293,
+        "self_fuel": 33427638202,
+        "total_fuel": 33445812892,
+        "self_wall_ns": 2580715600,
+        "total_wall_ns": 2722419900
+      },
+      "predicate": {
+        "scope": "t49::predicate",
+        "scope_id": 10,
+        "calls": 192918,
+        "self_fuel": 27016791929,
+        "total_fuel": 27016791929,
+        "self_wall_ns": 2234064700,
+        "total_wall_ns": 2234064700
+      },
+      "context": {
+        "scope": "t49::context",
+        "scope_id": 6,
+        "calls": 240,
+        "self_fuel": 5196091424,
+        "total_fuel": 5196102224,
+        "self_wall_ns": 362483500,
+        "total_wall_ns": 362563300
+      },
+      "account": {
+        "scope": "t49::account",
+        "scope_id": 22,
+        "calls": 900251,
+        "self_fuel": 40511295,
+        "total_fuel": 40511295,
+        "self_wall_ns": 315777600,
+        "total_wall_ns": 315777600
+      },
+      "sign": {
+        "scope": "t49::sign",
+        "scope_id": 9,
+        "calls": 110293,
+        "self_fuel": 36779829,
+        "total_fuel": 27070934378,
+        "self_wall_ns": 252944800,
+        "total_wall_ns": 2624275000
+      },
+      "public": {
+        "scope": "t49::public",
+        "scope_id": 7,
+        "calls": 110293,
+        "self_fuel": 18749810,
+        "total_fuel": 60556121871,
+        "self_wall_ns": 122947000,
+        "total_wall_ns": 5622620100
+      },
+      "legacy": {
+        "scope": "t49::legacy",
+        "scope_id": 8,
+        "calls": 110293,
+        "self_fuel": 15661606,
+        "total_fuel": 60532408876,
+        "self_wall_ns": 116250200,
+        "total_wall_ns": 5462945100
+      }
+    },
+    "output_sha256": "5a61a1066a4607c6968cc038eb221a38ed39d30b5d26d8448ad87895abc92c4a",
+    "output_bytes": 3809027,
+    "type_counts": {
+      "Bottom surface": 23,
+      "Bridge": 18,
+      "Brim": 1,
+      "Inner wall": 744,
+      "Internal Bridge": 12,
+      "Internal solid infill": 6,
+      "Outer wall": 698,
+      "Skirt": 1,
+      "Sparse infill": 139,
+      "Top surface": 32
+    },
+    "open_loop_warnings": 1110,
+    "conservation": "PASS; public leaf+self+counter = inclusive; context separate; module sum exact"
+  },
+  "accelerated": {
+    "module_fuel": 73280584408,
+    "baseline_module_fuel": 72453494474,
+    "probe_module_fuel_delta": 827089934,
+    "probe_module_fuel_delta_percent": 1.1415459530344618,
+    "public_inclusive_fuel": 32165690372,
+    "sign_self_sum_fuel": 28662007089,
+    "distance_self_sum_fuel": 3239212575,
+    "wrapper_self_sum_fuel": 31319813,
+    "query_counter_self_fuel": 233150895,
+    "context_inclusive_fuel": 5537154119,
+    "sign_percent_excluding_counter_self": 89.7579946926687,
+    "distance_percent_excluding_counter_self": 10.14392412270594,
+    "wrapper_percent_excluding_counter_self": 0.09808118462535269,
+    "predicate_percent_of_sign": 95.43196843844727,
+    "context_percent_of_module": 7.556099836992447,
+    "indexed_seed_traversal_exact_edges": 530491,
+    "fallback_queries": 0,
+    "counts": {
+      "legacy_sign_predicates": 0,
+      "legacy_contour_vertices_presented": 0,
+      "legacy_distance_edges": 0,
+      "contexts": 240,
+      "public_queries": 110293,
+      "indexed_edge_evaluations_all": 2327888,
+      "indexed_range_edges": 1687104,
+      "sign_y_records": 388422,
+      "sign_unique_candidates": 187986,
+      "indexed_sign_predicates": 187986,
+      "indexed_contour_vertices_presented": 175177655,
+      "post_first_hit_predicates": 34537,
+      "post_first_hit_vertices": 19287301,
+      "true_indexed_predicates": 112085
+    },
+    "scope_rows": {
+      "predicate": {
+        "scope": "t49::predicate",
+        "scope_id": 10,
+        "calls": 187986,
+        "self_fuel": 27352717559,
+        "total_fuel": 27352717559,
+        "self_wall_ns": 2313290600,
+        "total_wall_ns": 2313290600
+      },
+      "context": {
+        "scope": "t49::context",
+        "scope_id": 6,
+        "calls": 240,
+        "self_fuel": 5537143319,
+        "total_fuel": 5537154119,
+        "self_wall_ns": 416620900,
+        "total_wall_ns": 416704200
+      },
+      "seed": {
+        "scope": "t49::seed",
+        "scope_id": 13,
+        "calls": 110293,
+        "self_fuel": 1834209534,
+        "total_fuel": 1927045459,
+        "self_wall_ns": 539518100,
+        "total_wall_ns": 1141371400
+      },
+      "collect": {
+        "scope": "t49::collect",
+        "scope_id": 17,
+        "calls": 110293,
+        "self_fuel": 1173670501,
+        "total_fuel": 1196112676,
+        "self_wall_ns": 425587100,
+        "total_wall_ns": 610165000
+      },
+      "range": {
+        "scope": "t49::range",
+        "scope_id": 14,
+        "calls": 110293,
+        "self_fuel": 1021863711,
+        "total_fuel": 1393026591,
+        "self_wall_ns": 1528917000,
+        "total_wall_ns": 4086579500
+      },
+      "edge": {
+        "scope": "t49::edge",
+        "scope_id": 15,
+        "calls": 2327888,
+        "self_fuel": 302625440,
+        "total_fuel": 407380400,
+        "self_wall_ns": 1738481200,
+        "total_wall_ns": 2657663900
+      },
+      "account": {
+        "scope": "t49::account",
+        "scope_id": 22,
+        "calls": 5181371,
+        "self_fuel": 233161695,
+        "total_fuel": 233161695,
+        "self_wall_ns": 1981117600,
+        "total_wall_ns": 1981117600
+      },
+      "scan": {
+        "scope": "t49::scan",
+        "scope_id": 18,
+        "calls": 110293,
+        "self_fuel": 88303332,
+        "total_fuel": 27466091786,
+        "self_wall_ns": 364796600,
+        "total_wall_ns": 2879125600
+      },
+      "index_distance": {
+        "scope": "t49::index_distance",
+        "scope_id": 12,
+        "calls": 110293,
+        "self_fuel": 80513890,
+        "total_fuel": 3419887215,
+        "self_wall_ns": 178593000,
+        "total_wall_ns": 5537117100
+      },
+      "index_sign": {
+        "scope": "t49::index_sign",
+        "scope_id": 16,
+        "calls": 110293,
+        "self_fuel": 47315697,
+        "total_fuel": 28709520159,
+        "self_wall_ns": 128038000,
+        "total_wall_ns": 3617328600
+      },
+      "public": {
+        "scope": "t49::public",
+        "scope_id": 7,
+        "calls": 110293,
+        "self_fuel": 31319813,
+        "total_fuel": 32165690372,
+        "self_wall_ns": 170977400,
+        "total_wall_ns": 9369233300
+      }
+    },
+    "output_sha256": "5a61a1066a4607c6968cc038eb221a38ed39d30b5d26d8448ad87895abc92c4a",
+    "output_bytes": 3809027,
+    "type_counts": {
+      "Bottom surface": 23,
+      "Bridge": 18,
+      "Brim": 1,
+      "Inner wall": 744,
+      "Internal Bridge": 12,
+      "Internal solid infill": 6,
+      "Outer wall": 698,
+      "Skirt": 1,
+      "Sparse infill": 139,
+      "Top surface": 32
+    },
+    "open_loop_warnings": 1110,
+    "conservation": "PASS; public leaf+self+counter = inclusive; context separate; module sum exact"
+  }
+}

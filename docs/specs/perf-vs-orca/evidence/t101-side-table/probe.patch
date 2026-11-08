@@ -1,0 +1,519 @@
+diff --git a/crates/pnp-cli/src/main.rs b/crates/pnp-cli/src/main.rs
+index 2fdb2715..92e366f5 100644
+--- a/crates/pnp-cli/src/main.rs
++++ b/crates/pnp-cli/src/main.rs
+@@ -22,8 +22,11 @@ use pnp_cli::profile_cmd::run_profile_from;
+ // system heap (wayfinder ticket 102 candidate).
+ #[cfg(feature = "report")]
+ #[global_allocator]
+-static ALLOC: slicer_runtime::report::AccountingAllocator<mimalloc::MiMalloc> =
+-    slicer_runtime::report::AccountingAllocator::new(mimalloc::MiMalloc);
++static ALLOC: slicer_runtime::report::AccountingAllocator<
++    slicer_runtime::probe_t101::Counting<mimalloc::MiMalloc>,
++> = slicer_runtime::report::AccountingAllocator::new(slicer_runtime::probe_t101::Counting::new(
++    mimalloc::MiMalloc,
++));
+ 
+ mod helpers_cmd;
+ mod support_preview;
+diff --git a/crates/slicer-gcode/src/emit.rs b/crates/slicer-gcode/src/emit.rs
+index 608c20a7..d9f75a4a 100644
+--- a/crates/slicer-gcode/src/emit.rs
++++ b/crates/slicer-gcode/src/emit.rs
+@@ -465,7 +465,18 @@ impl GCodeEmitter for DefaultGCodeEmitter {
+         // rotation is a no-op on single-tool layers; only a layer whose leading
+         // cluster's tool differs from the previous layer's ending tool moves.
+         apply_cross_layer_tool_rotation(&mut layer_irs);
+-        self.emit_from_reconciled_layers(&layer_irs)
++        let result = self.emit_from_reconciled_layers(&layer_irs);
++        // T101 probe (screening only): shape census before the collection dies,
++        // then the whole-print drop census. Unset env var takes the untouched
++        // `drop` path below.
++        if crate::probe_t101::enabled() {
++            let tag = std::env::var("PNP_T101_TAG").unwrap_or_else(|_| "cell".to_string());
++            crate::probe_t101::report_shape(&tag, &layer_irs);
++            crate::probe_t101::time_drop(&tag, || drop(layer_irs));
++            return result;
++        }
++        drop(layer_irs);
++        result
+     }
+ 
+     /// Resolved travel feedrate in mm/min for finalization-aware travel inserts.
+diff --git a/crates/slicer-gcode/src/lib.rs b/crates/slicer-gcode/src/lib.rs
+index f358c5db..167df2fb 100644
+--- a/crates/slicer-gcode/src/lib.rs
++++ b/crates/slicer-gcode/src/lib.rs
+@@ -10,6 +10,7 @@ pub mod emit;
+ pub mod error;
+ pub mod estimator;
+ pub mod m73;
++pub mod probe_t101;
+ pub mod serialize;
+ pub mod thumbnail;
+ pub mod thumbnail_btt;
+diff --git a/crates/slicer-gcode/src/probe_t101.rs b/crates/slicer-gcode/src/probe_t101.rs
+new file mode 100644
+index 00000000..3e6bb31f
+--- /dev/null
++++ b/crates/slicer-gcode/src/probe_t101.rs
+@@ -0,0 +1,373 @@
++//! T101 probe — support-attribution side table shape census (screening only).
++//!
++//! Wayfinder ticket 101 Phase 1. Host-only instrumentation, reverted before the
++//! take closes. It answers two questions the ticket made entry conditions for
++//! pricing the table's families:
++//!
++//! 1. **What shape is the table?** A walk of every layer's
++//!    `support_entity_identities` (`PNP_T101_PROBE=1`) reports rows, Σ demand
++//!    ids, id bytes, the per-row length distribution, how many distinct
++//!    `(family_id, body_id)` pairs exist, how many *distinct demand lists* the
++//!    rows carry (the sharing factor family 1's whole value depends on), and
++//!    whether every row of one body carries the identical list.
++//! 2. **What does the table cost in situ?** With `PNP_T101_SKIP_TABLE=1` the
++//!    assembly closure skips building a row at all, so the same binary can be
++//!    run with and without the table. The difference in wall, process CPU, the
++//!    whole-print drop's block count and drop time is the table's combined
++//!    (allocation + free) price. The two arms must emit byte-identical G-code,
++//!    which is the falsifiable form of "no production reader".
++//!
++//! The counting allocator is armed only around the explicit `drop(layer_irs)`
++//! in `DefaultGCodeEmitter::emit_gcode_owned` (`crates/slicer-gcode/src/emit.rs`),
++//! exactly as ticket 100's probe did, so the drop census stays comparable to
++//! t100's.
++
++use std::alloc::{GlobalAlloc, Layout};
++use std::collections::HashMap;
++use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
++use std::time::Instant;
++
++/// Log2 size buckets, index = bit length of the block size (0 = size 0).
++pub const BUCKETS: usize = 40;
++
++/// Set while a census window is open.
++static ARMED: AtomicBool = AtomicBool::new(false);
++
++static ALLOCS: AtomicU64 = AtomicU64::new(0);
++static ALLOC_BYTES: AtomicU64 = AtomicU64::new(0);
++static DEALLOCS: AtomicU64 = AtomicU64::new(0);
++static DEALLOC_BYTES: AtomicU64 = AtomicU64::new(0);
++static HIST: [AtomicU64; BUCKETS] = [const { AtomicU64::new(0) }; BUCKETS];
++
++/// Is the shape/census probe enabled for this process?
++pub fn enabled() -> bool {
++    std::env::var_os("PNP_T101_PROBE").is_some()
++}
++
++/// Should the drop window arm the counting allocator?
++///
++/// The counters cost a few relaxed atomics per freed block, which t100 measured
++/// at 0.506 s over 34.66 M blocks. Timing a drop is only clean with the window
++/// *disarmed*, so the census is opt-in and the default drop timing is
++/// sampling-free.
++pub fn census_enabled() -> bool {
++    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++    *ON.get_or_init(|| std::env::var_os("PNP_T101_CENSUS").is_some())
++}
++
++/// Should the assembly closure skip materialising the side table?
++///
++/// `PNP_T101_SKIP_TABLE` unset keeps production behaviour exactly.
++pub fn skip_table() -> bool {
++    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++    *ON.get_or_init(|| std::env::var_os("PNP_T101_SKIP_TABLE").is_some())
++}
++
++fn bucket(size: usize) -> usize {
++    let bits = (usize::BITS - size.leading_zeros()) as usize;
++    bits.min(BUCKETS - 1)
++}
++
++fn reset() {
++    ALLOCS.store(0, Ordering::Relaxed);
++    ALLOC_BYTES.store(0, Ordering::Relaxed);
++    DEALLOCS.store(0, Ordering::Relaxed);
++    DEALLOC_BYTES.store(0, Ordering::Relaxed);
++    for b in HIST.iter() {
++        b.store(0, Ordering::Relaxed);
++    }
++}
++
++/// Open the census window.
++pub fn arm() {
++    reset();
++    ARMED.store(true, Ordering::SeqCst);
++}
++
++/// Close the census window.
++pub fn disarm() {
++    ARMED.store(false, Ordering::SeqCst);
++}
++
++/// Census captured over one window.
++pub struct Census {
++    /// Blocks allocated inside the window.
++    pub allocs: u64,
++    /// Bytes allocated inside the window.
++    pub alloc_bytes: u64,
++    /// Blocks freed inside the window.
++    pub deallocs: u64,
++    /// Bytes freed inside the window.
++    pub dealloc_bytes: u64,
++    /// Log2 size histogram of freed blocks.
++    pub hist: [u64; BUCKETS],
++}
++
++/// Read the counters without closing the window.
++pub fn snapshot() -> Census {
++    let mut hist = [0u64; BUCKETS];
++    for (i, b) in HIST.iter().enumerate() {
++        hist[i] = b.load(Ordering::Relaxed);
++    }
++    Census {
++        allocs: ALLOCS.load(Ordering::Relaxed),
++        alloc_bytes: ALLOC_BYTES.load(Ordering::Relaxed),
++        deallocs: DEALLOCS.load(Ordering::Relaxed),
++        dealloc_bytes: DEALLOC_BYTES.load(Ordering::Relaxed),
++        hist,
++    }
++}
++
++/// Global allocator wrapper that counts blocks and bytes while armed.
++///
++/// Install this as the binary's innermost `#[global_allocator]` in a probe
++/// build only.
++pub struct Counting<A> {
++    inner: A,
++}
++
++impl<A> Counting<A> {
++    /// Wrap an underlying allocator.
++    pub const fn new(inner: A) -> Self {
++        Self { inner }
++    }
++}
++
++unsafe impl<A: GlobalAlloc> GlobalAlloc for Counting<A> {
++    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
++        let ptr = unsafe { self.inner.alloc(layout) };
++        if !ptr.is_null() && ARMED.load(Ordering::Relaxed) {
++            ALLOCS.fetch_add(1, Ordering::Relaxed);
++            ALLOC_BYTES.fetch_add(layout.size() as u64, Ordering::Relaxed);
++        }
++        ptr
++    }
++
++    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
++        let ptr = unsafe { self.inner.alloc_zeroed(layout) };
++        if !ptr.is_null() && ARMED.load(Ordering::Relaxed) {
++            ALLOCS.fetch_add(1, Ordering::Relaxed);
++            ALLOC_BYTES.fetch_add(layout.size() as u64, Ordering::Relaxed);
++        }
++        ptr
++    }
++
++    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
++        let new_ptr = unsafe { self.inner.realloc(ptr, layout, new_size) };
++        if !new_ptr.is_null() && ARMED.load(Ordering::Relaxed) {
++            ALLOCS.fetch_add(1, Ordering::Relaxed);
++            ALLOC_BYTES.fetch_add(new_size as u64, Ordering::Relaxed);
++            DEALLOCS.fetch_add(1, Ordering::Relaxed);
++            DEALLOC_BYTES.fetch_add(layout.size() as u64, Ordering::Relaxed);
++        }
++        new_ptr
++    }
++
++    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
++        if ARMED.load(Ordering::Relaxed) {
++            DEALLOCS.fetch_add(1, Ordering::Relaxed);
++            DEALLOC_BYTES.fetch_add(layout.size() as u64, Ordering::Relaxed);
++            let b = bucket(layout.size());
++            HIST[b].fetch_add(1, Ordering::Relaxed);
++        }
++        unsafe { self.inner.dealloc(ptr, layout) }
++    }
++}
++
++fn fnv1a(seed: u64, bytes: &[u8]) -> u64 {
++    let mut h = seed;
++    for &b in bytes {
++        h ^= u64::from(b);
++        h = h.wrapping_mul(0x0000_0100_0000_01b3);
++    }
++    h
++}
++
++fn percentile(sorted: &[usize], p: f64) -> usize {
++    if sorted.is_empty() {
++        return 0;
++    }
++    let idx = ((sorted.len() as f64 - 1.0) * p).round() as usize;
++    sorted[idx.min(sorted.len() - 1)]
++}
++
++/// Structural census of the side table, taken **before** the collection drops.
++pub fn report_shape(tag: &str, layers: &[slicer_ir::LayerCollectionIR]) {
++    let mut rows = 0u64;
++    let mut entities = 0u64;
++    let mut ids = 0u64;
++    let mut id_bytes = 0u64;
++    let mut family_body_bytes = 0u64;
++    let mut rows_empty_list = 0u64;
++    let mut row_lens: Vec<usize> = Vec::new();
++
++    // `(family_id, body_id)` -> aggregate over the rows of that body.
++    struct BodyAgg {
++        rows: u64,
++        ids: u64,
++        bytes: u64,
++        hash: u64,
++        mixed: bool,
++    }
++    let mut bodies: HashMap<(&str, &str), BodyAgg> = HashMap::new();
++    // Distinct demand-list contents across the whole print:
++    // hash -> (rows, ids, id bytes, family+body bytes).
++    let mut lists: HashMap<u64, (u64, u64, u64, u64)> = HashMap::new();
++
++    for layer in layers {
++        entities += layer.ordered_entities.len() as u64;
++        for row in &layer.support_entity_identities {
++            rows += 1;
++            let n = row.demand_ids.len();
++            let bytes: usize = row.demand_ids.iter().map(|s| s.len()).sum();
++            let ids_bytes = (row.family_id.len() + row.body_id.len()) as u64;
++            ids += n as u64;
++            id_bytes += bytes as u64;
++            family_body_bytes += ids_bytes;
++            if n == 0 {
++                rows_empty_list += 1;
++            }
++            row_lens.push(n);
++
++            let mut h = 0xcbf2_9ce4_8422_2325u64;
++            for s in &row.demand_ids {
++                h = fnv1a(h, s.as_bytes());
++                h = fnv1a(h, &[0xff]);
++            }
++            let entry = lists.entry(h).or_insert((0, 0, 0, 0));
++            entry.0 += 1;
++            entry.1 += n as u64;
++            entry.2 += bytes as u64;
++            entry.3 += ids_bytes;
++
++            let key = (row.family_id.as_str(), row.body_id.as_str());
++            match bodies.get_mut(&key) {
++                Some(agg) => {
++                    agg.rows += 1;
++                    agg.ids += n as u64;
++                    agg.bytes += bytes as u64;
++                    if agg.hash != h {
++                        agg.mixed = true;
++                    }
++                }
++                None => {
++                    bodies.insert(
++                        key,
++                        BodyAgg {
++                            rows: 1,
++                            ids: n as u64,
++                            bytes: bytes as u64,
++                            hash: h,
++                            mixed: false,
++                        },
++                    );
++                }
++            }
++        }
++    }
++
++    let mut sorted = row_lens.clone();
++    sorted.sort_unstable();
++    let mut body_rows: Vec<usize> = bodies.values().map(|b| b.rows as usize).collect();
++    body_rows.sort_unstable();
++    let mixed_bodies = bodies.values().filter(|b| b.mixed).count();
++    let distinct_lists = lists.len() as u64;
++    // Family 1 keeps one list per distinct body: `retained_*` is what sharing
++    // leaves, `present_*` is what the per-path clone costs today. A distinct
++    // list's own length is its `ids` total divided by the rows that carry it.
++    let retained_ids: u64 = lists.values().map(|t| t.1 / t.0.max(1)).sum();
++    let retained_id_bytes: u64 = lists.values().map(|t| t.2 / t.0.max(1)).sum();
++    let retained_fb_bytes: u64 = lists.values().map(|t| t.3 / t.0.max(1)).sum();
++
++    let nonempty_rows = rows - rows_empty_list;
++    // Blocks: one `Vec<String>` of 24-byte headers per row that has any id, plus
++    // one `String` per non-empty id, plus `family_id`/`body_id` per row.
++    let retained_blocks = retained_ids + distinct_lists * 3;
++    let present_blocks = ids + rows * 2 + nonempty_rows;
++    // Heap bytes: 24-byte header per cloned id in that row's `Vec`, plus payloads.
++    let present_bytes = ids * 24 + id_bytes + family_body_bytes;
++    let retained_bytes = retained_ids * 24 + retained_id_bytes + retained_fb_bytes;
++
++    eprintln!(
++        "T101 SHAPE {tag} layers={} entities={entities} rows={rows} ids={ids} id_bytes={id_bytes} \
++row_len_min={} row_len_p50={} row_len_p90={} row_len_max={} empty_lists={rows_empty_list} \
++bodies={} body_rows_p50={} body_rows_max={} mixed_bodies={mixed_bodies} distinct_lists={distinct_lists} \
++retained_ids={retained_ids} retained_id_bytes={retained_id_bytes} \
++present_blocks={present_blocks} retained_blocks={retained_blocks} \
++present_heap_bytes={present_bytes} retained_heap_bytes={retained_bytes} \
++share_ids={:.4} share_blocks={:.4}",
++        layers.len(),
++        percentile(&sorted, 0.0),
++        percentile(&sorted, 0.5),
++        percentile(&sorted, 0.9),
++        percentile(&sorted, 1.0),
++        bodies.len(),
++        percentile(&body_rows, 0.5),
++        percentile(&body_rows, 1.0),
++        if ids == 0 {
++            0.0
++        } else {
++            retained_ids as f64 / ids as f64
++        },
++        if present_blocks == 0 {
++            0.0
++        } else {
++            retained_blocks as f64 / present_blocks as f64
++        },
++    );
++
++    // Ten biggest bodies, so the shape is attributable.
++    let mut top: Vec<(&(&str, &str), &BodyAgg)> = bodies.iter().collect();
++    top.sort_by_key(|(_, b)| std::cmp::Reverse(b.ids));
++    for (key, agg) in top.into_iter().take(10) {
++        eprintln!(
++            "T101 BODY {tag} family={} body={} rows={} ids={} bytes={} mixed={}",
++            key.0, key.1, agg.rows, agg.ids, agg.bytes, agg.mixed
++        );
++    }
++}
++
++/// Print the drop census for one window.
++pub fn report_census(tag: &str, drop_us: u128, c: &Census) {
++    let hist = (0..BUCKETS)
++        .filter(|&i| c.hist[i] > 0)
++        .map(|i| format!("{i}:{}", c.hist[i]))
++        .collect::<Vec<_>>()
++        .join(",");
++    eprintln!(
++        "T101 CENSUS {tag} drop_us={drop_us} deallocs={} dealloc_bytes={} allocs={} alloc_bytes={} hist={hist}",
++        c.deallocs, c.dealloc_bytes, c.allocs, c.alloc_bytes
++    );
++}
++
++/// Time one whole-print drop, censusing only when `PNP_T101_CENSUS` is set.
++pub fn time_drop<F: FnOnce()>(tag: &str, f: F) {
++    let census = census_enabled();
++    if census {
++        arm();
++    }
++    let start = Instant::now();
++    f();
++    let drop_us = start.elapsed().as_micros();
++    if census {
++        disarm();
++        report_census(tag, drop_us, &snapshot());
++    } else {
++        eprintln!("T101 CENSUS {tag} drop_us={drop_us} sampling_free=true");
++    }
++}
++
++/// Time one per-layer assembly and report its rows.
++///
++/// The A/B pair (table vs `PNP_T101_SKIP_TABLE`) differences this to price the
++/// table's **allocation side**: the same function builds the same geometry in
++/// both arms, so only the table's clones differ.
++pub fn time_assemble<R>(layer: u32, f: impl FnOnce() -> R) -> R {
++    let start = Instant::now();
++    let out = f();
++    eprintln!(
++        "T101 ASSEMBLE layer={layer} us={}",
++        start.elapsed().as_micros()
++    );
++    out
++}
+diff --git a/crates/slicer-runtime/src/layer_executor.rs b/crates/slicer-runtime/src/layer_executor.rs
+index a8d4f75c..44d564b2 100644
+--- a/crates/slicer-runtime/src/layer_executor.rs
++++ b/crates/slicer-runtime/src/layer_executor.rs
+@@ -2189,6 +2189,45 @@ pub fn assemble_ordered_entities_with_support_identities(
+     region_map: Option<&RegionMapIR>,
+     slice: Option<&SliceIR>,
+     support_tools: SupportToolSelection,
++) -> (Vec<PrintEntity>, Vec<slicer_ir::SupportEntityIdentity>) {
++    // T101 probe (screening only): the table's allocation side is the delta
++    // between this window with the table built and the same window with
++    // `PNP_T101_SKIP_TABLE` set. Unset env var takes the untouched call.
++    if slicer_gcode::probe_t101::enabled() {
++        return slicer_gcode::probe_t101::time_assemble(global_layer_index, || {
++            assemble_ordered_entities_with_support_identities_inner(
++                global_layer_index,
++                global_layer_is_raft,
++                perimeter,
++                infill,
++                support,
++                region_map,
++                slice,
++                support_tools,
++            )
++        });
++    }
++    assemble_ordered_entities_with_support_identities_inner(
++        global_layer_index,
++        global_layer_is_raft,
++        perimeter,
++        infill,
++        support,
++        region_map,
++        slice,
++        support_tools,
++    )
++}
++
++fn assemble_ordered_entities_with_support_identities_inner(
++    global_layer_index: u32,
++    global_layer_is_raft: bool,
++    perimeter: Option<&PerimeterIR>,
++    infill: Option<&InfillIR>,
++    support: Option<&SupportIR>,
++    region_map: Option<&RegionMapIR>,
++    slice: Option<&SliceIR>,
++    support_tools: SupportToolSelection,
+ ) -> (Vec<PrintEntity>, Vec<slicer_ir::SupportEntityIdentity>) {
+     let mut out: Vec<PrintEntity> = Vec::new();
+     let mut support_entity_identities = Vec::new();
+@@ -2203,12 +2242,16 @@ pub fn assemble_ordered_entities_with_support_identities(
+         let topo_order = acc.len() as u32;
+         let entity_id = id_gen.next();
+         if let Some(entry) = support_identity {
+-            identities.push(slicer_ir::SupportEntityIdentity {
+-                entity_id,
+-                family_id: entry.family_id.clone(),
+-                body_id: entry.body_id.clone(),
+-                demand_ids: entry.demand_ids.clone(),
+-            });
++            // T101 probe (screening only): `PNP_T101_SKIP_TABLE` builds no row at
++            // all, so the same binary can be run with and without the table.
++            if !slicer_gcode::probe_t101::skip_table() {
++                identities.push(slicer_ir::SupportEntityIdentity {
++                    entity_id,
++                    family_id: entry.family_id.clone(),
++                    body_id: entry.body_id.clone(),
++                    demand_ids: entry.demand_ids.clone(),
++                });
++            }
+         }
+         acc.push(PrintEntity {
+             entity_id,
+diff --git a/crates/slicer-runtime/src/lib.rs b/crates/slicer-runtime/src/lib.rs
+index ff4bcf52..8dcde5e3 100644
+--- a/crates/slicer-runtime/src/lib.rs
++++ b/crates/slicer-runtime/src/lib.rs
+@@ -234,6 +234,8 @@ pub use slicer_core::{
+ };
+ // kept: DefaultGCodeEmitter — consumed by tests (dispatch_tdd, postpass_gcode_emit_contract_tdd, pnp-cli/tests/e2e_integration_tdd)
+ pub use slicer_gcode::DefaultGCodeEmitter;
++// t101 probe (screening only): the counting allocator the probe binary installs.
++pub use slicer_gcode::probe_t101;
+ // kept: DefaultGCodeSerializer — consumed by tests (postpass_gcode_emit_contract_tdd, gcode_skirt_brim_emission_tdd, pnp-cli/tests/e2e_integration_tdd)
+ pub use slicer_gcode::DefaultGCodeSerializer;
+ // kept: GCodeEmitError — consumed by tests (dispatch_tdd, postpass_executor_tdd, pipeline_tdd, runtime_wiring_tdd, run_pipeline_with_instrumentation_tdd, paint_annotation_integration_tdd, pnp-cli/tests/e2e_integration_tdd)

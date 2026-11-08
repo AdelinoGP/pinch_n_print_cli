@@ -202,9 +202,17 @@ fn polyline_to_path(polyline: &[Point2]) -> Vec<Point64> {
         .collect()
 }
 
-/// Converts a clipper2 open-solution path back to a polyline.
+/// converts a clipper2 open-solution path back to a polyline.
 fn path_to_polyline(path: &[Point64]) -> Vec<Point2> {
     path.iter().map(|p| Point2 { x: p.x, y: p.y }).collect()
+}
+
+/// Zero-cost `Point64` -> `Point2` field copy (already integer units).
+fn path_to_point2(point: Point64) -> Point2 {
+    Point2 {
+        x: point.x,
+        y: point.y,
+    }
 }
 
 /// Clips open polylines against an ExPolygon set via a single Clipper2
@@ -320,6 +328,298 @@ impl PreparedPolylineClip {
             .map(|path| path_to_polyline(path))
             .collect()
     }
+
+    /// Clips many polylines in ONE `Clipper64` engine and one `execute`, and
+    /// returns, for every input polyline, exactly what a single-subject
+    /// [`Self::clip`] call would return for that polyline alone (same spans,
+    /// same order, same omissions). The returned outer `Vec` is indexed by
+    /// the input position, so entries whose polyline had fewer than 2 points
+    /// (or which produced no output) are empty.
+    ///
+    /// This is the batch candidate of wayfinder ticket 65: `link_paths_without_offset`
+    /// (`modules/core-modules/infill-linker/src/orchestrate.rs`) replaces its
+    /// per-path engine round trip — 12,022 `Clipper64` constructions,
+    /// universe re-adds and executes per Benchy slice against one immutable
+    /// prepared boundary — with one shared engine per invocation. The
+    /// prepared universe is added once, the subjects once.
+    ///
+    /// Per-subject attribution is re-derived, not assumed: vendored
+    /// `clipper2-rust` 1.1.0 exposes no owner tags on open-path solutions
+    /// and its solution order is outrec creation order, so attribute every
+    /// emitted segment to the subject's own segment it rides on (tolerant
+    /// incidence; output coordinates are within ±2 units of the exact
+    /// boundary, plus intersection rounding) and cut each concatenated
+    /// output path at subject boundaries. Exactness conditions:
+    /// - every emitted segment must be a sub-segment of exactly one
+    ///   subject's segment set; collinear-overlapping or coincident
+    ///   duplicate subjects (segments shared by more than one subject) make
+    ///   attribution ambiguous;
+    /// - if any segment is unattributable or ambiguously attributable, the
+    ///   whole call falls back to per-subject [`Self::clip`] so the
+    ///   per-path-equivalence contract holds unconditionally;
+    /// - subject–subject adjacency (touching spans) can concatenate two
+    ///   subjects into one emitted path (the engine's join logic); splitting
+    ///   at attributed boundaries reconstitutes each subject's own pieces.
+    ///
+    /// Equivalence to the per-path chain on real matched-job invocations is
+    /// proved by the t65 replay oracle and the batch-equivalence tests
+    /// (`crates/slicer-core/tests/polygon_ops_clip_batched_tdd.rs`).
+    pub fn clip_batched(&self, polylines: &[Vec<Point2>]) -> Vec<Vec<Vec<Point2>>> {
+        let mut results: Vec<Vec<Vec<Point2>>> = vec![Vec::new(); polylines.len()];
+        if self.clip_paths.is_empty() {
+            return results;
+        }
+        let subject_segment_lists: Vec<Vec<(Point2, Point2)>> = polylines
+            .iter()
+            .filter(|polyline| polyline.len() >= 2)
+            .map(|polyline| {
+                polyline
+                    .windows(2)
+                    .map(|segment| (segment[0], segment[1]))
+                    .collect()
+            })
+            .collect();
+        // Input positions map to subject segment lists only when valid, so
+        // run the batch over the valid subjects and index back by position.
+        let valid_positions: Vec<usize> = polylines
+            .iter()
+            .enumerate()
+            .filter(|(_, polyline)| polyline.len() >= 2)
+            .map(|(position, _)| position)
+            .collect();
+        if valid_positions.is_empty() {
+            return results;
+        }
+
+        use clipper2_rust::core::FillRule;
+        use clipper2_rust::{ClipType, Clipper64};
+
+        // A single-subject invocation pays one engine + one execute either
+        // way; take the `clip` path directly and skip attribution work.
+        if valid_positions.len() == 1 {
+            let position = valid_positions[0];
+            results[position] = self.clip(&[polylines[position].clone()]);
+            return results;
+        }
+
+        let open_subjects: Vec<Vec<Point64>> = valid_positions
+            .iter()
+            .map(|&position| polyline_to_path(&polylines[position]))
+            .collect();
+        let mut clipper = Clipper64::default();
+        clipper.add_open_subject(&open_subjects);
+        clipper.add_clip(&self.clip_paths);
+
+        let mut closed_solution: Vec<Vec<Point64>> = Vec::new();
+        let mut open_solution: Vec<Vec<Point64>> = Vec::new();
+        let ok = clipper.execute(
+            ClipType::Intersection,
+            FillRule::NonZero,
+            &mut closed_solution,
+            Some(&mut open_solution),
+        );
+
+        let attributed = if ok {
+            attributed_runs(&open_solution, &subject_segment_lists)
+        } else {
+            Err(())
+        };
+        match attributed {
+            Ok((runs_by_subject, ambiguous)) => {
+                for (subject, &position) in valid_positions.iter().enumerate() {
+                    if ambiguous[subject] {
+                        // Ambiguous junction neighbourhood: the subject's
+                        // own per-path chain is exact by construction, and
+                        // only the flagged subjects pay it.
+                        results[position] = self.clip(&[polylines[position].clone()]);
+                    } else {
+                        results[position] = runs_by_subject[subject]
+                            .iter()
+                            .filter(|run| run.len() >= 2)
+                            .cloned()
+                            .collect();
+                    }
+                }
+                results
+            }
+            Err(()) => {
+                // Fallback (unattributable emitted segment or engine
+                // failure): the per-path chain, so the contract still
+                // holds. Expected to never fire on the matched cells — the
+                // t65 oracle counted its fires on the real captures.
+                for &position in &valid_positions {
+                    results[position] = self.clip(&[polylines[position].clone()]);
+                }
+                results
+            }
+        }
+    }
+}
+
+/// Maximum tolerance (integer units; 1 unit = 100 nm) when attributing an
+/// emitted open-path segment to a subject segment: ends and midpoint must
+/// lie within this distance of the subject segment's line and inside its
+/// span. The prepared-universe boundary coordinates sit within ±2 units of
+/// the exact clip boundary (see [`PreparedPolylineClip::new`]) and clipper's
+/// intersection rounding is comparable, while real scan-line separations are
+/// orders of magnitude larger, so the tolerance never bridges distinct
+/// subject geometry.
+const CLIP_BATCH_ATTRIBUTION_TOLERANCE_UNITS: f64 = 2.0;
+
+/// Attributes every emitted open-path segment of a batched execute to the
+/// subject segment it rides on, and cuts each emitted path into maximal
+/// runs of one subject. Returns per-subject runs in encounter order plus an
+/// ambiguity flag per subject — at least one emitted segment rode more than
+/// one subject's segment set (coincident / collinear-touching subjects near
+/// a junction; the caller re-runs exactly those subjects through their own
+/// single-subject `clip`, which is exact by construction) — or `Err(())`
+/// when any emitted segment rides NO subject's segment set at all (the
+/// batch's attribution cannot be trusted; the caller falls back to
+/// per-subject clipping for the whole call).
+fn attributed_runs(
+    open_solution: &[Vec<Point64>],
+    subject_segment_lists: &[Vec<(Point2, Point2)>],
+) -> Result<(Vec<Vec<Vec<Point2>>>, Vec<bool>), ()> {
+    let subject_boxes: Vec<(Point2, Point2)> = subject_segment_lists
+        .iter()
+        .map(|segments| {
+            let mut min_x = i64::MAX;
+            let mut min_y = i64::MAX;
+            let mut max_x = i64::MIN;
+            let mut max_y = i64::MIN;
+            for (a, b) in segments {
+                min_x = min_x.min(a.x).min(b.x);
+                min_y = min_y.min(a.y).min(b.y);
+                max_x = max_x.max(a.x).max(b.x);
+                max_y = max_y.max(a.y).max(b.y);
+            }
+            (
+                Point2 {
+                    x: min_x - 2,
+                    y: min_y - 2,
+                },
+                Point2 {
+                    x: max_x + 2,
+                    y: max_y + 2,
+                },
+            )
+        })
+        .collect();
+
+    let mut runs_by_subject: Vec<Vec<Vec<Point2>>> = vec![Vec::new(); subject_segment_lists.len()];
+    let mut ambiguous: Vec<bool> = vec![false; subject_segment_lists.len()];
+    for path in open_solution.iter().filter(|path| path.len() >= 2) {
+        let mut current_owner: Option<usize> = None;
+        let mut current_run: Vec<Point2> = Vec::new();
+        for window in path.windows(2) {
+            let start = path_to_point2(window[0]);
+            let end = path_to_point2(window[1]);
+            let candidates = candidate_subjects(start, end, subject_segment_lists, &subject_boxes);
+            if candidates.is_empty() {
+                // Rides nothing: the batch's attribution cannot be trusted.
+                return Err(());
+            }
+            if candidates.len() > 1 {
+                for &subject in candidates.iter() {
+                    ambiguous[subject] = true;
+                }
+            }
+            let owner = candidates[0];
+            if current_owner.is_none() {
+                current_owner = Some(owner);
+                current_run.push(start);
+            } else if current_owner != Some(owner) {
+                let previous_owner = current_owner.expect("checked above");
+                runs_by_subject[previous_owner].push(std::mem::take(&mut current_run));
+                // The junction point starts the next run.
+                current_run.push(start);
+                current_owner = Some(owner);
+            }
+            current_run.push(end);
+        }
+        if let Some(owner) = current_owner {
+            runs_by_subject[owner].push(current_run);
+        }
+    }
+    Ok((runs_by_subject, ambiguous))
+}
+
+/// Returns every subject whose segment set contains both endpoints and the
+/// midpoint of `(start, end)` as a contiguous sub-segment.
+///
+/// The midpoint must ride the same subject segment as both ends. At a
+/// collinear junction of two touching subjects the shared vertex is one
+/// subject's own end point and the other's start point, so endpoint
+/// tolerance alone admits both subjects; the midpoint separates them
+/// whenever the shared vertex is emitted as a path vertex, and the
+/// resulting candidate pair is repaired per-subject otherwise.
+fn candidate_subjects(
+    start: Point2,
+    end: Point2,
+    subject_segment_lists: &[Vec<(Point2, Point2)>],
+    subject_boxes: &[(Point2, Point2)],
+) -> Vec<usize> {
+    let midpoint = Point2 {
+        x: ((start.x as i128 + end.x as i128) / 2) as i64,
+        y: ((start.y as i128 + end.y as i128) / 2) as i64,
+    };
+    let mut candidates: Vec<usize> = Vec::new();
+    for (subject, segments) in subject_segment_lists.iter().enumerate() {
+        let (min, max) = &subject_boxes[subject];
+        if start.x < min.x
+            || start.y < min.y
+            || end.x < min.x
+            || end.y < min.y
+            || midpoint.x < min.x
+            || midpoint.y < min.y
+            || start.x > max.x
+            || start.y > max.y
+            || end.x > max.x
+            || end.y > max.y
+            || midpoint.x > max.x
+            || midpoint.y > max.y
+        {
+            continue;
+        }
+        if segments
+            .iter()
+            .any(|(a, b)| segment_rides(start, midpoint, end, *a, *b))
+        {
+            candidates.push(subject);
+        }
+    }
+    candidates
+}
+
+/// True when `a`, `m`, and `b` all lie on the segment `p -> q`: within the
+/// attribution tolerance of its line and inside its span (the tolerance
+/// admits the ±2-unit rounding of emitted boundary/intersection
+/// coordinates). Degenerate subject segments (a repeated subject point)
+/// match only a degenerate candidate at their location.
+fn segment_rides(a: Point2, m: Point2, b: Point2, p: Point2, q: Point2) -> bool {
+    const TOLERANCE: f64 = CLIP_BATCH_ATTRIBUTION_TOLERANCE_UNITS;
+    let vx = (q.x - p.x) as i128;
+    let vy = (q.y - p.y) as i128;
+    let length_squared = vx * vx + vy * vy;
+    let length = (length_squared as f64).sqrt();
+    if length <= TOLERANCE {
+        // Degenerate subject segment: only a coincident degenerate candidate
+        // can ride it.
+        return (a.x as i128 - b.x as i128).abs() <= 1 && (a.y as i128 - b.y as i128).abs() <= 1;
+    }
+    let rides = |point: Point2| {
+        let apx = (point.x - p.x) as i128;
+        let apy = (point.y - p.y) as i128;
+        let cross = apx * vy - apy * vx;
+        let dot = apx * vx + apy * vy;
+        // Perpendicular distance <= tolerance, and the projection lies
+        // inside the segment span extended by the tolerance (the rounding of
+        // emitted boundary coordinates).
+        (cross.abs() as f64) <= TOLERANCE * length
+            && (dot as f64) >= -TOLERANCE * length
+            && (dot as f64) <= length_squared as f64 + TOLERANCE * length
+    };
+    rides(a) && rides(m) && rides(b)
 }
 
 /// Executes a boolean clip operation on polygon sets.
@@ -640,38 +940,29 @@ pub fn offset2_ex(
     join: OffsetJoinType,
     miter_limit: f64,
 ) -> Vec<ExPolygon> {
-    use clipper2_rust::{inflate_paths_64, ClipperOffset, EndType, JoinType, PolyTree64};
+    use clipper2_rust::{ClipperOffset, EndType, JoinType, PolyTree64};
 
     // Profiling mark: the two-pass clipper2 inflate entry point. It does not go
     // through `offset`, so it needs its own scope. `opening_ex` is not marked —
     // it forwards straight here, and marking it would double-count.
     let _profile = crate::profile::scope(crate::profile::ScopeId::OFFSET2_EX);
 
-    let join_type = match join {
-        OffsetJoinType::Miter => JoinType::Miter,
-        OffsetJoinType::Round => JoinType::Round,
-        OffsetJoinType::Square => JoinType::Square,
-    };
-
     // Pass 1: delta1 (typically negative / erode). Flat paths only — hole
     // nesting is re-derived once, from pass 2's PolyTree below. Clipper2's
     // offset cleanup pass always emits correctly-wound rings regardless of
     // whether the caller captures a tree, so feeding pass 2 with pass 1's
     // flat output is equivalent to feeding it ExPolygons.
-    let paths1: Vec<Vec<Point64>> = polys.iter().flat_map(expolygon_to_paths).collect();
-    let delta1_units = delta1_mm * slicer_ir::UNITS_PER_MM;
-    let intermediate = inflate_paths_64(
-        &paths1,
-        delta1_units,
-        join_type,
-        EndType::Polygon,
-        miter_limit,
-        0.0,
-    );
+    let intermediate = offset2_ex_first_pass(polys, delta1_mm, join, miter_limit);
 
     if intermediate.is_empty() {
         return Vec::new();
     }
+
+    let join_type = match join {
+        OffsetJoinType::Miter => JoinType::Miter,
+        OffsetJoinType::Round => JoinType::Round,
+        OffsetJoinType::Square => JoinType::Square,
+    };
 
     // Pass 2: delta2 (typically positive / dilate). Capture the PolyTree so
     // the two-pass result's hole/island nesting survives — see
@@ -683,6 +974,84 @@ pub fn offset2_ex(
     clip_offset.execute_tree(delta2_units, &mut tree);
 
     expolygons_from_tree(&tree)
+}
+
+/// Pass 1 of [`offset2_ex`], shared by the two-pass entry point and the
+/// emptiness predicate so both observe **byte-identical** erosion output.
+///
+/// Flat paths only (the caller re-derives nesting from pass 2's tree). The
+/// conversion and Clipper2 parameters are exactly `offset2_ex`'s: same
+/// `flat_map(expolygon_to_paths)` order, same mm→unit delta, same join type,
+/// same `EndType::Polygon`, same caller-supplied `miter_limit`, same zero arc
+/// tolerance.
+fn offset2_ex_first_pass(
+    polys: &[ExPolygon],
+    delta1_mm: f64,
+    join: OffsetJoinType,
+    miter_limit: f64,
+) -> Vec<Vec<Point64>> {
+    use clipper2_rust::{inflate_paths_64, EndType, JoinType};
+
+    let join_type = match join {
+        OffsetJoinType::Miter => JoinType::Miter,
+        OffsetJoinType::Round => JoinType::Round,
+        OffsetJoinType::Square => JoinType::Square,
+    };
+    let paths1: Vec<Vec<Point64>> = polys.iter().flat_map(expolygon_to_paths).collect();
+    let delta1_units = delta1_mm * slicer_ir::UNITS_PER_MM;
+    inflate_paths_64(
+        &paths1,
+        delta1_units,
+        join_type,
+        EndType::Polygon,
+        miter_limit,
+        0.0,
+    )
+}
+
+/// True when morphological opening by `delta_mm` would produce nothing.
+///
+/// Exact, not an approximation, for every reachable input. For `delta_mm > 0`
+/// the opening is `dilate(erode(X, d), d)`; a positive polygon offset maps
+/// `∅ → ∅` and contains its input on non-empty inputs, so
+/// `dilate(Y) = ∅ ⟺ Y = ∅`, hence `opening(X, d) = ∅ ⟺ erode(X, d) = ∅` and the
+/// single erosion pass decides it. Shares [`offset2_ex`]'s first pass verbatim —
+/// the same primitive, not a re-parameterised copy.
+///
+/// Outside `delta_mm > 0` this delegates to the full two-pass [`opening_ex`]:
+///
+/// - At `delta_mm == 0`, `inflate_paths_64` short-circuits to a clone, so the
+///   "erosion" pass would skip the union cleanup the real second pass still
+///   runs, and a degenerate (zero-area) ring can survive the clone yet be
+///   dropped by the opening.
+/// - At `delta_mm < 0` the two passes have opposite signs, so the second pass
+///   can empty a non-empty first pass (a negative offset on a degenerate ring
+///   does exactly that).
+/// - A non-finite `delta_mm` is not proven either and takes the same
+///   behaviour-preserving path.
+///
+/// `smaller_perimeter_threshold_mm` admits 0.0 (manifest minimum), so the first
+/// case is reachable and must stay exact.
+#[must_use]
+pub fn opening_is_empty(
+    polys: &[ExPolygon],
+    delta_mm: f64,
+    join: OffsetJoinType,
+    miter_limit: f64,
+) -> bool {
+    if polys.is_empty() {
+        return true;
+    }
+    if !(delta_mm > 0.0) {
+        // `opening_ex` marks this op itself; do not double-mark the delegate.
+        // Covers zero, negative and NaN: the delegate is exactly the previous
+        // behaviour, so anything the fast path has not proven stays there.
+        return opening_ex(polys, delta_mm, join, miter_limit).is_empty();
+    }
+    // Marked under the `offset2_ex` umbrella: the op *is* `opening_ex`'s
+    // emptiness answer, computed with one pass instead of two.
+    let _profile = crate::profile::scope(crate::profile::ScopeId::OFFSET2_EX);
+    offset2_ex_first_pass(polys, -delta_mm, join, miter_limit).is_empty()
 }
 
 /// Morphological open using configurable join type and miter limit.

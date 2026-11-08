@@ -13,8 +13,8 @@
 //!    `load_live_modules_for_plan` â†’ `build_live_execution_plan` â†’
 //!    `run_pipeline_with_events` â†’ `DefaultGCodeEmitter` +
 //!    `DefaultGCodeSerializer` â†’ `.gcode` file) runs end-to-end and is
-//!    reproducible. They tolerate empty output (zero layers emitted),
-//!    so they only fail on structural regressions in the pipeline
+//!    reproducible. The content gate below now requires non-empty output,
+//!    so an empty file fails as a structural regression in the pipeline
 //!    wiring itself.
 //!
 //! 2. **MVP content gate** â€” `benchy_mvp_gcode_has_real_extrusion_content`
@@ -104,13 +104,15 @@ fn slice_e2e_real_pipeline_produces_gcode() {
         "--output file must be written to disk (stderr was: {stderr})"
     );
     let gcode = outcome.gcode.as_str();
-    if !gcode.is_empty() {
-        let first = gcode.lines().next().unwrap_or("");
-        assert!(
-            first.starts_with(';') || first.starts_with('G') || first.starts_with('M'),
-            "first G-code line should be a header comment or G/M command, got: {first:?}"
-        );
-    }
+    assert!(
+        !gcode.is_empty(),
+        "the real pipeline must emit G-code; an empty file is a structural regression"
+    );
+    let first = gcode.lines().next().unwrap_or("");
+    assert!(
+        first.starts_with(';') || first.starts_with('G') || first.starts_with('M'),
+        "first G-code line should be a header comment or G/M command, got: {first:?}"
+    );
 }
 
 /// Regression guard: the real production entry path must actually
@@ -2068,9 +2070,8 @@ fn slice_feature_evidence_failures_name_the_missing_family() {
 /// least 3 distinct `;TYPE:Top surface` / `;TYPE:Bottom surface` blocks
 /// appear in the produced G-code. (The PART 1 direct-API strict-
 /// inequality proof was retired with the slicing-promotion refactor
-/// because per-layer top/bottom flagging via `classify_region_surfaces`
-/// no longer exists â€” that cross-layer logic now lives in
-/// `PrePass::ShellClassification` and is covered by
+/// because per-layer top/bottom flagging moved to
+/// `PrePass::ShellClassification`, covered by
 /// `prepass_slice_and_shell_tdd`.)
 #[test]
 fn wedge_multi_layer_top_bottom_evidence() {
@@ -2121,26 +2122,25 @@ fn wedge_multi_layer_top_bottom_evidence() {
     );
 
     // ------------------------------------------------------------------
-    // Packet 109 (flat-bridge enclosure discriminator) reconciliation.
+    // Packet 109 / ticket 123 (whole-set bridge classification) — RE-DERIVED
+    // 2026-11-07.
     //
-    // `regression_wedge.stl` has exactly THREE genuine flat bottom surfaces:
-    //   * z=0.2  — the build-plate base,
-    //   * z=2.2  — the base shell over the first sloped step,
-    //   * z=29.0 — the underside of the cantilevered y-extension. This is a
-    //              FREE-EDGE flat bottom: unsupported by the layer below, but
-    //              NOT spanned by support on opposite sides, so it is a genuine
-    //              `Bottom surface`, not a bridge.
+    // `regression_wedge.stl` has exactly TWO genuine flat bottom surfaces:
+    //   * z=0.2  — the build-plate base (no lower layer at all),
+    //   * z=29.2 — the underside of the cantilevered y-extension, unsupported
+    //              by the layer below.
     // It also has ONE INTERIOR SLOT (x∈[21,29], full-y) whose ceiling at
-    // z≈28.0 is a flat bottom ENCLOSED by supported material on both x-sides —
-    // i.e. a genuine flat *bridge*, not a bottom surface.
+    // z≈28.0 is a flat bottom over an enclosed gap.
     //
-    // Before the flat-bridge fix there was no bridge detection at all, so the
-    // slot ceiling was mis-counted as ~2 extra `;TYPE:Bottom surface` blocks
-    // (total 5). The old `>= 4` gate silently depended on that mis-count. With
-    // the enclosure discriminator the slot ceiling is correctly a bridge, so
-    // the genuine-bottom count is 3, and the slot-is-bridge fact is asserted
-    // separately below. Lowering the count alone would be a weakening; the
-    // slot-is-bridge assertions are what actually verify the fix.
+    // Canonical OrcaSlicer's `PrintObject::detect_surfaces_type` classifies
+    // EVERY unsupported bottom as `stBottomBridge` unless the lower layer is
+    // absent, so the y-extension underside — a free edge, not an enclosed gap
+    // — is a bridge under the canonical rule (ticket 116 retired PnP's
+    // free-edge/enclosed-gap discriminator). Only the build-plate base, which
+    // has no lower layer, stays `;TYPE:Bottom surface`. The per-layer
+    // assertions below are what verify this: the extension underside must emit
+    // `Bridge` and must NOT emit `Bottom surface`, and the slot ceiling stays
+    // a bridge. Lowering the whole-file count alone would be a weakening.
     // ------------------------------------------------------------------
     // ------------------------------------------------------------------
     // 2026-07-17 correction: the old `>= 3` expectation here (plate z=0.2,
@@ -2155,19 +2155,18 @@ fn wedge_multi_layer_top_bottom_evidence() {
     // attributed to its first CONTAINING layer, print_z 29.2, instead of
     // 29.0 (whose extent 28.8..29.0 holds no slab material at all).
     //
-    // The wedge's genuine flat free-edge bottoms are therefore exactly TWO:
-    //   * z=0.2  — the build-plate base,
-    //   * z=29.2 — the underside of the cantilevered y-extension.
     // The interior-slot ceiling stays a Bridge (asserted below), and the
     // shallow sloped flanks (z=2..12, ~0.25mm ring/layer) never produce a
     // discrete flat-bottom block.
     // ------------------------------------------------------------------
-    assert!(
-        bottom_surface_blocks >= 2,
-        "packet-109 evidence: expected at least 2 genuine `;TYPE:Bottom surface` \
-         blocks (plate base z=0.2, y-extension underside z=29.2), found {}. \
-         A count below 2 means a genuine FREE-EDGE bottom was wrongly reclassified \
-         as a bridge (over-eager flat-bridge detection). G-code preview:\n{}",
+    assert_eq!(
+        bottom_surface_blocks,
+        1,
+        "canonical flat-bridge classification leaves exactly ONE `;TYPE:Bottom \
+         surface` block — the build-plate base at z=0.2, the only bottom with no \
+         layer below. Found {}. A higher count means the canonical rule regressed \
+         and a free-edge flat bottom was demoted back to a bottom; a zero count \
+         means the plate base was misclassified. G-code preview:\n{}",
         bottom_surface_blocks,
         preview(gcode, 30)
     );
@@ -2194,14 +2193,21 @@ fn wedge_multi_layer_top_bottom_evidence() {
     );
 
     // The y-extension underside must land at its first containing layer,
-    // print_z 29.2 (material starts at z=29.0), and be a genuine free-edge
-    // bottom — not a bridge.
+    // print_z 29.2 (material starts at z=29.0). It is flat and unsupported by
+    // the layer below, so canonical classification makes it a bridge — it must
+    // NOT be reported as a plain bottom.
     let extension_underside = layer_type_markers(gcode, 29.2);
     assert!(
-        extension_underside.iter().any(|t| t == "Bottom surface"),
-        "y-extension underside must emit `;TYPE:Bottom surface` at print_z \
-         29.2 (first layer containing the z=29..31 slab). Markers found: \
-         {extension_underside:?}"
+        extension_underside.iter().any(|t| t == "Bridge"),
+        "y-extension underside must emit `;TYPE:Bridge` at print_z 29.2 (first \
+         layer containing the z=29..31 slab; canonical labels every unsupported \
+         bottom a bridge). Markers found: {extension_underside:?}"
+    );
+    assert!(
+        !extension_underside.iter().any(|t| t == "Bottom surface"),
+        "y-extension underside must NOT emit `;TYPE:Bottom surface` at print_z \
+         29.2 — the free-edge/enclosed-gap discriminator that demoted it is \
+         retired (ticket 116). Markers found: {extension_underside:?}"
     );
 
     // Slot-ceiling reclassification (this is the assertion that exercises the

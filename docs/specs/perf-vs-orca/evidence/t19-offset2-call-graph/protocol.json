@@ -1,0 +1,21 @@
+{
+  "purpose": "one isolated narrow-island opening-emptiness short-circuit take on the matched classic job, not adoption acceptance or an Orca scoreboard",
+  "job": "matched-pair classic supports-off Benchy (docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-classic-supports-off.json), 12 threads",
+  "modes": ["ordinary", "accelerated"],
+  "threads": 12,
+  "measured_pairs_per_mode": 6,
+  "excluded_warmups_per_arm": 1,
+  "order": "AB then BA, alternating by pair; ordinary batch then accelerated batch",
+  "exactness": "prove both mode-specific pairs before timing; every later output must equal its proved fresh baseline byte-for-byte",
+  "only_arm_difference": "modules/classic-perimeters/classic-perimeters.wasm",
+  "prior_attribution": "module fuel 750.03 B -> 732.43 B at the erode-only probe on this job (byte-identical output); the ticket requires the wall/CPU gate regardless",
+  "starvation": {
+    "cutoff_fraction_of_best_cpu_wall_ratio": 0.75,
+    "reference_group": "mode and arm separately",
+    "discard": "the whole pair if either member is below its arm cutoff; retain all excluded rows; no automatic resampling",
+    "minimum_retained_pairs_per_mode": 5
+  },
+  "keep": "in both modes: lower candidate median wall with lower candidate median process CPU; paired median deltas must agree; otherwise return DROP/inconclusive to the human",
+  "disclosure": "SHA-256, bytes, TYPE counts, generator, status, degraded/fatal/non-fatal counts, existing open-loop warnings, and every sample cpu/wall ratio",
+  "automatic_commit": false
+}

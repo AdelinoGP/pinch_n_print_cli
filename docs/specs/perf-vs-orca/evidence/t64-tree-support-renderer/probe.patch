@@ -1,0 +1,888 @@
+diff --git a/crates/slicer-sdk/src/traits.rs b/crates/slicer-sdk/src/traits.rs
+index 5e0df258..fffc54d2 100644
+--- a/crates/slicer-sdk/src/traits.rs
++++ b/crates/slicer-sdk/src/traits.rs
+@@ -269,15 +269,22 @@ impl PaintRegionLayerView {
+     /// region covers `expoly`, or when no enforcer/blocker annotations
+     /// are present.
+     pub fn paint_policy_for(&self, expoly: &ExPolygon) -> SupportPaintPolicy {
++        // [T64-SDK-PROBE] temporary attribution counters (wayfinder ticket 64;
++        // removed before any commit). One trace line per query; wasm-only
++        // emission so native tests stay quiet.
++        let __t64 = t64_sdk_probe::begin();
+         let Some(slice) = self.slice_ir.as_ref() else {
++            t64_sdk_probe::end(__t64);
+             return SupportPaintPolicy::DefaultEligible;
+         };
+         let mut blocked = false;
+         let mut enforced = false;
+         for region in &slice.regions {
++            t64_sdk_probe::regions(1);
+             if !region_covers_expoly(&region.polygons, expoly) {
+                 continue;
+             }
++            t64_sdk_probe::elig_checks(2);
+             match slicer_core::paint_policy::support_eligibility(
+                 &region.polygons,
+                 &region.segment_annotations,
+@@ -287,13 +294,116 @@ impl PaintRegionLayerView {
+                 SupportPaintPolicy::DefaultEligible => {}
+             }
+         }
+-        if blocked {
++        let policy = if blocked {
+             SupportPaintPolicy::Blocked
+         } else if enforced {
+             SupportPaintPolicy::Enforced
+         } else {
+             SupportPaintPolicy::DefaultEligible
++        };
++        t64_sdk_probe::end(__t64);
++        policy
++    }
++}
++
++// [T64-SDK-PROBE] temporary counters for the paint-policy query; observation
++// only, inverted before any commit.
++#[allow(missing_docs, dead_code, unused_imports)]
++mod t64_sdk_probe {
++    use std::sync::atomic::{AtomicU64, Ordering};
++
++    const C_QUERIES: usize = 0;
++    const C_REGIONS: usize = 1;
++    const C_COVER_HITS: usize = 2;
++    const C_VERT_LOOPS: usize = 3;
++    const C_RING_CALLS: usize = 4;
++    const C_RING_EDGES: usize = 5;
++    const C_RING_FLIPS: usize = 6;
++    const C_ELIG_CHECKS: usize = 7;
++
++    const COUNT: usize = 8;
++    const NAMES: [&str; COUNT] = [
++        "queries",
++        "cover_regions",
++        "cover_hits",
++        "vert_loops",
++        "ring_calls",
++        "ring_edges",
++        "ring_flips",
++        "elig_checks",
++    ];
++
++    static COUNTERS: [AtomicU64; COUNT] = [const { AtomicU64::new(0) }; COUNT];
++
++    #[inline]
++    fn bump(index: usize, amount: u64) {
++        COUNTERS[index].fetch_add(amount, Ordering::Relaxed);
++    }
++
++    /// Snapshot-and-zero handle for one query.
++    pub struct Query([u64; COUNT]);
++
++    #[cfg(target_arch = "wasm32")]
++    pub fn begin() -> Query {
++        let mut snapshot = [0u64; COUNT];
++        for (index, value) in snapshot.iter_mut().enumerate() {
++            *value = COUNTERS[index].load(Ordering::Relaxed);
++        }
++        bump(C_QUERIES, 1);
++        Query(snapshot)
++    }
++
++    #[cfg(not(target_arch = "wasm32"))]
++    pub fn begin() -> Query {
++        bump(C_QUERIES, 1);
++        Query([0u64; COUNT])
++    }
++
++    /// Emits one per-query trace line and zeroes the counters. Zeroing is
++    /// wasm-only: wasm statics are per-instance (single-threaded per instance),
++    /// while native statics are process-global and concurrent native legs must
++    /// not clobber each other.
++    #[cfg(target_arch = "wasm32")]
++    pub fn end(query: Query) {
++        let mut values = [0u64; COUNT];
++        for (index, place) in values.iter_mut().enumerate() {
++            let now = COUNTERS[index].load(Ordering::Relaxed);
++            *place = now.saturating_sub(query.0[index]);
++            COUNTERS[index].store(0, Ordering::Relaxed);
+         }
++        let taken = values;
++        let line: String = NAMES
++            .iter()
++            .zip(taken.iter())
++            .map(|(name, value)| format!("{name}={value}"))
++            .collect::<Vec<_>>()
++            .join(" ");
++        crate::host::log_trace(&format!("T64-SDK {line}"));
++    }
++
++    #[cfg(not(target_arch = "wasm32"))]
++    pub fn end(query: Query) {
++        let _ = query;
++    }
++
++    pub fn regions(count: u64) {
++        bump(C_REGIONS, count);
++    }
++    pub fn cover_hit() {
++        bump(C_COVER_HITS, 1);
++    }
++    pub fn vert_loops(count: u64) {
++        bump(C_VERT_LOOPS, count);
++    }
++    pub fn ring_call(edges: u64) {
++        bump(C_RING_CALLS, 1);
++        bump(C_RING_EDGES, edges);
++    }
++    pub fn ring_flip() {
++        bump(C_RING_FLIPS, 1);
++    }
++    pub fn elig_checks(count: u64) {
++        bump(C_ELIG_CHECKS, count);
+     }
+ }
+ 
+@@ -312,6 +422,7 @@ fn region_covers_expoly(region_polys: &[ExPolygon], caller_expoly: &ExPolygon) -
+         return false;
+     }
+     for vertex in &caller_expoly.contour.points {
++        t64_sdk_probe::vert_loops(1);
+         for ep in region_polys {
+             if point_in_polygon_ring(&ep.contour.points, *vertex) {
+                 let mut in_hole = false;
+@@ -322,6 +433,7 @@ fn region_covers_expoly(region_polys: &[ExPolygon], caller_expoly: &ExPolygon) -
+                     }
+                 }
+                 if !in_hole {
++                    t64_sdk_probe::cover_hit();
+                     return true;
+                 }
+             }
+@@ -339,6 +451,7 @@ fn point_in_polygon_ring(ring: &[slicer_ir::Point2], pt: slicer_ir::Point2) -> b
+     if ring.len() < 3 {
+         return false;
+     }
++    t64_sdk_probe::ring_call(ring.len() as u64);
+     let mut inside = false;
+     let mut j = ring.len() - 1;
+     for i in 0..ring.len() {
+@@ -347,6 +460,7 @@ fn point_in_polygon_ring(ring: &[slicer_ir::Point2], pt: slicer_ir::Point2) -> b
+         let pi_above = pi.y > pt.y;
+         let pj_above = pj.y > pt.y;
+         if pi_above != pj_above {
++            t64_sdk_probe::ring_flip();
+             let pj_x = pj.x as i128;
+             let pi_x = pi.x as i128;
+             let pt_y = pt.y as i128;
+diff --git a/modules/core-modules/tree-support/src/lib.rs b/modules/core-modules/tree-support/src/lib.rs
+index c171c4c6..99d6705d 100644
+--- a/modules/core-modules/tree-support/src/lib.rs
++++ b/modules/core-modules/tree-support/src/lib.rs
+@@ -191,6 +191,20 @@ fn point_in_expolygon(expoly: &ExPolygon, x: f32, y: f32) -> bool {
+     if expoly.contour.points.is_empty() {
+         return false;
+     }
++    // [T64-PROBE] per-test walks: the four bbox scans plus ray/edge walks.
++    t64_probe::count(
++        t64_probe::C_PIE_BBOX,
++        expoly.contour.points.len() as u64 * 4,
++    );
++    t64_probe::count(
++        t64_probe::C_PIE_EDGES,
++        (expoly.contour.points.len()
++            + expoly
++                .holes
++                .iter()
++                .map(|hole| hole.points.len())
++                .sum::<usize>()) as u64,
++    );
+     let min_x = expoly
+         .contour
+         .points
+@@ -317,8 +331,28 @@ impl LayerModule for TreeSupport {
+             return Ok(());
+         }
+ 
++        // [T64-PROBE] scope minting + per-dispatch counter reset.
++        let probe = t64_probe::Scopes::mint();
++        t64_probe::reset();
++
+         let speed_factor = self.support_speed / BASE_SPEED;
+         for region in regions {
++            t64_probe::count(t64_probe::C_REGIONS, 1);
++            // [T64-PROBE] paint-view input sizes: the support-glue SliceIR is
++            // rebuilt from these same region polygons, so their ring length is
++            // the region-ownership scan's term space.
++            t64_probe::count(t64_probe::C_REGION_POLYS, region.polygons().len() as u64);
++            t64_probe::count(
++                t64_probe::C_REGION_EDGES,
++                region
++                    .polygons()
++                    .iter()
++                    .map(|ep| {
++                        ep.contour.points.len()
++                            + ep.holes.iter().map(|h| h.points.len()).sum::<usize>()
++                    })
++                    .sum::<usize>() as u64,
++            );
+             let z = region.z();
+             // F-7: interface roles are pitched by canonical
+             // `SupportParameters::interface_spacing`
+@@ -333,34 +367,50 @@ impl LayerModule for TreeSupport {
+                 // (seeded default 0.2) in the manifest.
+                 _config.require_float("layer_height")? as f32
+             };
++            // [T64-PROBE]
+             let (
+                 interface_width_mm,
+                 interface_flow_spacing_mm,
+                 body_spacing,
+                 top_interface_spacing,
+                 bottom_interface_spacing,
+-            ) = self.pitches_mm(layer_height)?;
++            ) = {
++                let _guard = probe.enter(t64_probe::IDX_PITCH);
++                self.pitches_mm(layer_height)?
++            };
+ 
+             // Structural support plans carry semantic regions, not printable
+             // paths. A missing entry means this demand was declined; do not
+             // resurrect it with the legacy grid-MST filler.
+-            let planned_entries: Vec<&slicer_ir::SupportPlanEntry> = paint
+-                .support_plan()
+-                .map(|plan| {
+-                    plan.entries
+-                        .iter()
+-                        .filter(|entry| {
+-                            entry.object_id == region.object_id().as_str()
+-                                && entry.region_id == *region.region_id()
+-                                && (entry.global_layer_index == layer_index as i32
+-                                    || (entry.anchor_layer_index == layer_index
+-                                        && entry.anchor_z.abs_diff(slicer_ir::mm_to_units(z))
+-                                            > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
+-                                                as u64))
+-                        })
+-                        .collect()
+-                })
+-                .unwrap_or_default();
++            // [T64-PROBE] plan-filter fuel scope + plan-walk counts.
++            let planned_entries: Vec<&slicer_ir::SupportPlanEntry> = {
++                let _guard = probe.enter(t64_probe::IDX_PLAN);
++                paint
++                    .support_plan()
++                    .map(|plan| {
++                        t64_probe::count(
++                            t64_probe::C_PLAN_SEEN,
++                            plan.entries.len() as u64,
++                        );
++                        plan.entries
++                            .iter()
++                            .filter(|entry| {
++                                entry.object_id == region.object_id().as_str()
++                                    && entry.region_id == *region.region_id()
++                                    && (entry.global_layer_index == layer_index as i32
++                                        || (entry.anchor_layer_index == layer_index
++                                            && entry.anchor_z.abs_diff(slicer_ir::mm_to_units(z))
++                                                > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
++                                                    as u64))
++                            })
++                            .collect::<Vec<_>>()
++                    })
++                    .unwrap_or_default()
++            };
++            if !planned_entries.is_empty() {
++                t64_probe::count(t64_probe::C_REGIONS_PLAN, 1);
++            }
++            t64_probe::count(t64_probe::C_PLAN_HITS, planned_entries.len() as u64);
+ 
+             if planned_entries.is_empty() {
+                 continue;
+@@ -375,6 +425,7 @@ impl LayerModule for TreeSupport {
+                                 > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
+                                     as u64))
+             }) {
++                t64_probe::count(t64_probe::C_ENTRIES, 1);
+                 if entry.family_id != "tree" {
+                     return Err(ModuleError::non_fatal(
+                         332,
+@@ -411,6 +462,7 @@ impl LayerModule for TreeSupport {
+                     *region.region_id(),
+                     region.variant_chain(),
+                 );
++                t64_probe::count(t64_probe::C_BEGINS, 1);
+                 // F-37: canonical `generate_interface_layers` regularizes every
+                 // interface band (`closing` + `smooth_outward`) and subtracts
+                 // the result from the base area before anything is filled.
+@@ -420,30 +472,78 @@ impl LayerModule for TreeSupport {
+                 // `smooth_supports` is `support_style != smsGrid`.
+                 // `None` means the entry carries no interface role, so the
+                 // planner's partition is rendered verbatim.
+-                let regularized = slicer_core::support_regularize::regularize_entry_roles(
+-                    &entry.roles,
+-                    interface_flow_spacing_mm,
+-                    top_interface_spacing,
+-                    bottom_interface_spacing,
+-                    true,
+-                );
+-                let rendered: Vec<(slicer_ir::SupportPlanRole, Vec<ExPolygon>)> = regularized
+-                    .unwrap_or_else(|| {
+-                        entry
+-                            .roles
+-                            .iter()
+-                            .map(|r| (r.role, r.regions.clone()))
+-                            .collect()
+-                    })
+-                    .into_iter()
+-                    .map(|(role, regions)| (role, slicer_core::polygon_ops::union_ex(&regions)))
+-                    .collect();
++                // [T64-PROBE] interface-regularization fuel scope (call
++                // pattern unchanged; observation only).
++                let regularized = {
++                    let _guard = probe.enter(t64_probe::IDX_REGULARIZE);
++                    t64_probe::count(t64_probe::C_REGIZE, 1);
++                    slicer_core::support_regularize::regularize_entry_roles(
++                        &entry.roles,
++                        interface_flow_spacing_mm,
++                        top_interface_spacing,
++                        bottom_interface_spacing,
++                        true,
++                    )
++                };
++                if regularized.is_none() {
++                    t64_probe::count(t64_probe::C_REGIZE_NONE, 1);
++                }
++                // [T64-PROBE] per-role union fuel scope.
++                let rendered: Vec<(slicer_ir::SupportPlanRole, Vec<ExPolygon>)> = {
++                    let _guard = probe.enter(t64_probe::IDX_UNION);
++                    regularized
++                        .unwrap_or_else(|| {
++                            entry
++                                .roles
++                                .iter()
++                                .map(|r| (r.role, r.regions.clone()))
++                                .collect()
++                        })
++                        .into_iter()
++                        .map(|(role, regions)| {
++                            t64_probe::count(t64_probe::C_UNIONS, 1);
++                            t64_probe::count(t64_probe::C_UNION_IN, regions.len() as u64);
++                            (role, slicer_core::polygon_ops::union_ex(&regions))
++                        })
++                        .collect()
++                };
+                 for (role, role_regions) in rendered.iter() {
+                     let role = *role;
++                    // [T64-PROBE] role split for downstream counters; body
++                    // includes every non-interface role that renders.
++                    let role_interface = matches!(
++                        role,
++                        slicer_ir::SupportPlanRole::TopInterface
++                            | slicer_ir::SupportPlanRole::BaseInterface
++                            | slicer_ir::SupportPlanRole::BottomInterface
++                    );
+                     for expoly in role_regions.iter() {
+-                        match paint.paint_policy_for(expoly) {
++                        t64_probe::count(t64_probe::C_EXPOLYS, 1);
++                        t64_probe::count(
++                            if role_interface {
++                                t64_probe::C_EXPOLYS_IFACE
++                            } else {
++                                t64_probe::C_EXPOLYS_BODY
++                            },
++                            1,
++                        );
++                        t64_probe::count(
++                            t64_probe::C_EXPOLY_VERTS,
++                            (expoly.contour.points.len()
++                                + expoly.holes.iter().map(|h| h.points.len()).sum::<usize>())
++                                as u64,
++                        );
++                        // [T64-PROBE] paint-query fuel scope.
++                        match {
++                            let _guard = probe.enter(t64_probe::IDX_PAINT);
++                            t64_probe::count(t64_probe::C_PAINTS, 1);
++                            paint.paint_policy_for(expoly)
++                        } {
+                             // Painted "no support here" still overrides the plan.
+-                            SupportPaintPolicy::Blocked => continue,
++                            SupportPaintPolicy::Blocked => {
++                                t64_probe::count(t64_probe::C_PAINT_BLOCKED, 1);
++                                continue;
++                            }
+                             // Painted "support here", and the default case, both
+                             // render what the planner planned.
+                             //
+@@ -474,11 +574,22 @@ impl LayerModule for TreeSupport {
+                             slicer_ir::SupportPlanRole::RaftRelated => continue,
+                         };
+                         let vertical = entry.anchor_layer_index % 2 != 0;
+-                        let extra_walls = entry
+-                            .skeleton
+-                            .as_ref()
+-                            .map(|skeleton| skeleton_wall_count(skeleton, expoly))
+-                            .unwrap_or(0);
++                        // [T64-PROBE] skeleton-containment fuel scope + counts.
++                        let extra_walls = {
++                            let _guard = probe.enter(t64_probe::IDX_SKELETON);
++                            t64_probe::count(t64_probe::C_SKEL_X, 1);
++                            entry
++                                .skeleton
++                                .as_ref()
++                                .map(|skeleton| {
++                                    t64_probe::count(
++                                        t64_probe::C_SKEL_PTS,
++                                        skeleton.points.len() as u64,
++                                    );
++                                    skeleton_wall_count(skeleton, expoly)
++                                })
++                                .unwrap_or(0)
++                        };
+                         let mut paths = self.render_polygon_with_wall_count(
+                             expoly,
+                             print_z_mm,
+@@ -486,7 +597,13 @@ impl LayerModule for TreeSupport {
+                             fill_spacing,
+                             vertical,
+                             self.wall_count + extra_walls,
++                            &probe,
++                            role_interface,
+                         );
++                        // [T64-PROBE] output-construction fuel scope: width
++                        // stamping, role stamping, pushes and off-grid
++                        // entities (one scope per expoly render).
++                        let _output = probe.enter(t64_probe::IDX_OUTPUT);
+                         if matches!(
+                             role,
+                             slicer_ir::SupportPlanRole::TopInterface
+@@ -530,6 +647,7 @@ impl LayerModule for TreeSupport {
+                         // route below is byte-identical to pre-239c.
+                         if off_grid {
+                             for path in paths {
++                                t64_probe::count(t64_probe::C_OFFGRID, 1);
+                                 off_grid_entities.push(slicer_ir::AnchoredEntity {
+                                     local_id: off_grid_entities.len() as u64,
+                                     anchor_global_layer_index: entry.anchor_layer_index,
+@@ -561,6 +679,7 @@ impl LayerModule for TreeSupport {
+                             continue;
+                         }
+                         for mut path in paths {
++                            t64_probe::count(t64_probe::C_OUT_PATHS, 1);
+                             match role {
+                                 slicer_ir::SupportPlanRole::SupportBody => {
+                                     let _ = output.push_support_path(path);
+@@ -596,6 +715,8 @@ impl LayerModule for TreeSupport {
+             }
+         }
+ 
++        // [T64-PROBE] one count flush per dispatch.
++        t64_probe::flush(layer_index);
+         Ok(())
+     }
+ }
+@@ -625,6 +746,8 @@ impl TreeSupport {
+         fill_spacing_mm: f32,
+         vertical: bool,
+     ) -> Vec<ExtrusionPath3D> {
++        // [T64-PROBE] test-only forwarder mints its own scope set.
++        let probe = t64_probe::Scopes::mint();
+         self.render_polygon_with_wall_count(
+             expoly,
+             z,
+@@ -632,6 +755,8 @@ impl TreeSupport {
+             fill_spacing_mm,
+             vertical,
+             self.wall_count,
++            &probe,
++            false,
+         )
+     }
+ 
+@@ -645,6 +770,8 @@ impl TreeSupport {
+         fill_spacing_mm: f32,
+         vertical: bool,
+         wall_count: usize,
++        probe: &t64_probe::Scopes,
++        role_interface: bool,
+     ) -> Vec<ExtrusionPath3D> {
+         let mut paths = Vec::new();
+         if expoly.contour.points.len() < 3 {
+@@ -653,27 +780,42 @@ impl TreeSupport {
+         let line_width = self.line_width.max(f32::EPSILON);
+         let source = [expoly.clone()];
+ 
+-        for wall_index in 0..wall_count {
+-            let inset = -line_width * (wall_index as f32 + 0.5);
+-            let ring_set = host::offset_polygons(&source, inset, OffsetJoinType::Miter, 0.0);
+-            for ring_poly in &ring_set {
+-                for ring in std::iter::once(&ring_poly.contour).chain(ring_poly.holes.iter()) {
+-                    if ring.points.len() < 3 {
+-                        continue;
++        // [T64-PROBE] wall-offset fuel scope (guest marshalling + ring churn;
++        // the import's native clipper2 execution is a host bracket, not fuel).
++        {
++            let _guard = probe.enter(t64_probe::IDX_WALLS);
++            for wall_index in 0..wall_count {
++                let inset = -line_width * (wall_index as f32 + 0.5);
++                t64_probe::count(t64_probe::C_WALL_OFF, 1);
++                let ring_set = host::offset_polygons(&source, inset, OffsetJoinType::Miter, 0.0);
++                for ring_poly in &ring_set {
++                    for ring in std::iter::once(&ring_poly.contour).chain(ring_poly.holes.iter()) {
++                        if ring.points.len() < 3 {
++                            continue;
++                        }
++                        let mut wall = ring
++                            .points
++                            .iter()
++                            .map(|point| self.support_point(point.x, point.y, z))
++                            .collect::<Vec<_>>();
++                        wall.push(wall[0]);
++                        t64_probe::count(t64_probe::C_WALL_PATHS, 1);
++                        t64_probe::count(
++                            if role_interface {
++                                t64_probe::C_WALL_PATHS_IFACE
++                            } else {
++                                t64_probe::C_WALL_PATHS_BODY
++                            },
++                            1,
++                        );
++                        paths.push(ExtrusionPath3D {
++                            points: wall,
++                            role: ExtrusionRole::SupportMaterial,
++                            speed_factor,
++                            tool_index: None,
++                            order_lock: None,
++                        });
+                     }
+-                    let mut wall = ring
+-                        .points
+-                        .iter()
+-                        .map(|point| self.support_point(point.x, point.y, z))
+-                        .collect::<Vec<_>>();
+-                    wall.push(wall[0]);
+-                    paths.push(ExtrusionPath3D {
+-                        points: wall,
+-                        role: ExtrusionRole::SupportMaterial,
+-                        speed_factor,
+-                        tool_index: None,
+-                        order_lock: None,
+-                    });
+                 }
+             }
+         }
+@@ -682,17 +824,33 @@ impl TreeSupport {
+         let fill_regions = if wall_count == 0 {
+             source.to_vec()
+         } else {
+-            host::offset_polygons(
++            // [T64-PROBE] fill-region offset fuel scope.
++            let _guard = probe.enter(t64_probe::IDX_FILL_OFFSET);
++            t64_probe::count(t64_probe::C_FILL_OFF, 1);
++            let regions = host::offset_polygons(
+                 &source,
+                 -line_width * wall_count as f32,
+                 OffsetJoinType::Miter,
+                 0.0,
+-            )
++            );
++            t64_probe::count(t64_probe::C_FILL_REGS, regions.len() as u64);
++            regions
+         };
+ 
+         let spacing = fill_spacing_mm.max(line_width) as f64;
+         for region in &fill_regions {
+-            paths.extend(self.scan_fill_region(region, spacing, z, speed_factor, vertical));
++            // [T64-PROBE] scan-fill fuel scope (nested crossings/emit inside).
++            t64_probe::count(t64_probe::C_SCAN_REGS, 1);
++            let _guard = probe.enter(t64_probe::IDX_SCAN_FILL);
++            paths.extend(self.scan_fill_region(
++                region,
++                spacing,
++                z,
++                speed_factor,
++                vertical,
++                probe,
++                role_interface,
++            ));
+         }
+         paths
+     }
+@@ -715,6 +873,7 @@ impl TreeSupport {
+     ///
+     /// Crossings are gathered from the contour *and* every hole ring, so an
+     /// interior void is not filled over.
++    // [T64-PROBE] probe parameter + row/edge/vertex counters; observation only.
+     fn scan_fill_region(
+         &self,
+         expoly: &ExPolygon,
+@@ -722,6 +881,8 @@ impl TreeSupport {
+         z: f32,
+         speed_factor: f32,
+         vertical: bool,
++        probe: &t64_probe::Scopes,
++        role_interface: bool,
+     ) -> Vec<ExtrusionPath3D> {
+         let mut paths = Vec::new();
+         if expoly.contour.points.len() < 3 || spacing <= 0.0 {
+@@ -738,7 +899,26 @@ impl TreeSupport {
+         };
+         let mut scan = scan_min + spacing * 0.5;
+         let crossings_at = |scan: f64| {
++            // [T64-PROBE] nested crossings scope (per row).
++            let _guard = probe.enter(t64_probe::IDX_SCAN_CROSSINGS);
+             let mut crossings = Vec::new();
++            // [T64-PROBE] one row walked: row/edge/vertex counts and the
++            // always-taken axis conversions.
++            t64_probe::count(t64_probe::C_ROWS, 1);
++            t64_probe::count(
++                if role_interface {
++                    t64_probe::C_ROWS_IFACE
++                } else {
++                    t64_probe::C_ROWS_BODY
++                },
++                1,
++            );
++            let mut row_edge_total: u64 = 0;
++            for ring in &rings {
++                row_edge_total += ring.points.len() as u64;
++            }
++            t64_probe::count(t64_probe::C_ROW_EDGES, row_edge_total);
++            t64_probe::count(t64_probe::C_CONV_Y, row_edge_total * 2);
+             for ring in &rings {
+                 let points = &ring.points;
+                 for i in 0..points.len() {
+@@ -755,6 +935,9 @@ impl TreeSupport {
+                         slicer_ir::units_to_mm(b.y)
+                     } as f64;
+                     if (ay > scan) != (by > scan) {
++                        // [T64-PROBE] sign flip: two more conversions taken.
++                        t64_probe::count(t64_probe::C_FLIPS, 1);
++                        t64_probe::count(t64_probe::C_CONV_X, 2);
+                         let ax = if vertical {
+                             slicer_ir::units_to_mm(a.y)
+                         } else {
+@@ -769,13 +952,25 @@ impl TreeSupport {
+                     }
+                 }
+             }
++            t64_probe::count(t64_probe::C_CROSSINGS, crossings.len() as u64);
+             crossings.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+             crossings
+         };
+         let emit_scanline = |scan: f64, paths: &mut Vec<ExtrusionPath3D>| {
++            // [T64-PROBE] nested emit scope (per row).
++            let _guard = probe.enter(t64_probe::IDX_SCAN_EMIT);
+             let crossings = crossings_at(scan);
+             for pair in crossings.as_chunks::<2>().0 {
+                 if pair[1] > pair[0] && pair[0] >= min_x && pair[1] <= max_x {
++                    t64_probe::count(t64_probe::C_FILL_PATHS, 1);
++                    t64_probe::count(
++                        if role_interface {
++                            t64_probe::C_FILL_PATHS_IFACE
++                        } else {
++                            t64_probe::C_FILL_PATHS_BODY
++                        },
++                        1,
++                    );
+                     paths.push(ExtrusionPath3D {
+                         points: vec![
+                             self.support_point(
+@@ -827,6 +1022,188 @@ impl TreeSupport {
+ // expolygon_centroid was an artifact of the deleted local support_paint_policy
+ // stub.  The v2 query lives in `PaintRegionLayerView::paint_policy_for` (slicer-sdk).
+ 
++// [T64-PROBE] Temporary fuel-scope/count attribution instrument for wayfinder
++// perf-vs-orca ticket 64. Everything in this module is removed before any
++// commit. Scope minting is a no-op unless the host runs the profiling engine
++// (`--profile`), counter increments are one relaxed atomic add each, and no
++// code path here can alter produced geometry.
++#[allow(missing_docs, dead_code, unused_imports)]
++mod t64_probe {
++    use std::sync::atomic::{AtomicU64, Ordering};
++
++    use slicer_core::profile::{ScopeGuard, ScopeId};
++    use slicer_sdk::profile::register_scope;
++
++    /// Stable mint order; `idx()` constants below index into this.
++    const SCOPES: [&str; 12] = [
++        "t64::plan_filter",
++        "t64::pitches",
++        "t64::regularize",
++        "t64::union",
++        "t64::paint",
++        "t64::skeleton",
++        "t64::walls",
++        "t64::fill_offset",
++        "t64::scan_fill",
++        "t64::scan_crossings",
++        "t64::scan_emit",
++        "t64::output",
++    ];
++
++    pub const IDX_PLAN: usize = 0;
++    pub const IDX_PITCH: usize = 1;
++    pub const IDX_REGULARIZE: usize = 2;
++    pub const IDX_UNION: usize = 3;
++    pub const IDX_PAINT: usize = 4;
++    pub const IDX_SKELETON: usize = 5;
++    pub const IDX_WALLS: usize = 6;
++    pub const IDX_FILL_OFFSET: usize = 7;
++    pub const IDX_SCAN_FILL: usize = 8;
++    pub const IDX_SCAN_CROSSINGS: usize = 9;
++    pub const IDX_SCAN_EMIT: usize = 10;
++    pub const IDX_OUTPUT: usize = 11;
++
++    /// Per-instance minted scope ids (`None` when profiling is off or native).
++    pub struct Scopes {
++        ids: [Option<ScopeId>; 12],
++    }
++
++    impl Scopes {
++        /// Mint every probe scope once; host-side interning by name is
++        /// idempotent so re-minting per dispatch is harmless.
++        pub fn mint() -> Self {
++            Scopes {
++                ids: SCOPES.map(register_scope),
++            }
++        }
++
++        /// Opens probe scope `index`, or nothing when profiling is off.
++        pub fn enter(&self, index: usize) -> Option<ScopeGuard> {
++            self.ids[index].map(slicer_core::profile::scope)
++        }
++    }
++
++    /// Counter indexes; flush-line order matches.
++    pub const C_REGIONS: usize = 0;
++    pub const C_REGIONS_PLAN: usize = 1;
++    pub const C_PLAN_SEEN: usize = 2;
++    pub const C_PLAN_HITS: usize = 3;
++    pub const C_ENTRIES: usize = 4;
++    pub const C_BEGINS: usize = 5;
++    pub const C_REGIZE: usize = 6;
++    pub const C_REGIZE_NONE: usize = 7;
++    pub const C_UNIONS: usize = 8;
++    pub const C_UNION_IN: usize = 9;
++    pub const C_EXPOLYS: usize = 10;
++    pub const C_EXPOLY_VERTS: usize = 11;
++    pub const C_PAINTS: usize = 12;
++    pub const C_PAINT_BLOCKED: usize = 13;
++    pub const C_SKEL_X: usize = 14;
++    pub const C_SKEL_PTS: usize = 15;
++    pub const C_PIE_EDGES: usize = 16;
++    pub const C_PIE_BBOX: usize = 17;
++    pub const C_WALL_OFF: usize = 18;
++    pub const C_WALL_PATHS: usize = 19;
++    pub const C_FILL_OFF: usize = 20;
++    pub const C_FILL_REGS: usize = 21;
++    pub const C_SCAN_REGS: usize = 22;
++    pub const C_ROWS: usize = 23;
++    pub const C_ROW_EDGES: usize = 24;
++    pub const C_CONV_Y: usize = 25;
++    pub const C_FLIPS: usize = 26;
++    pub const C_CONV_X: usize = 27;
++    pub const C_CROSSINGS: usize = 28;
++    pub const C_FILL_PATHS: usize = 29;
++    pub const C_OUT_PATHS: usize = 30;
++    pub const C_OFFGRID: usize = 31;
++    pub const C_EXPOLYS_BODY: usize = 32;
++    pub const C_EXPOLYS_IFACE: usize = 33;
++    pub const C_ROWS_BODY: usize = 34;
++    pub const C_ROWS_IFACE: usize = 35;
++    pub const C_FILL_PATHS_BODY: usize = 36;
++    pub const C_FILL_PATHS_IFACE: usize = 37;
++    pub const C_WALL_PATHS_BODY: usize = 38;
++    pub const C_WALL_PATHS_IFACE: usize = 39;
++    pub const C_REGION_POLYS: usize = 40;
++    pub const C_REGION_EDGES: usize = 41;
++
++    const C_COUNT: usize = 42;
++
++    const NAMES: [&str; C_COUNT] = [
++        "regions",
++        "regions_plan",
++        "plan_seen",
++        "plan_hits",
++        "entries",
++        "begins",
++        "regize",
++        "regize_none",
++        "unions",
++        "union_in",
++        "expolys",
++        "expoly_verts",
++        "paints",
++        "paint_blocked",
++        "skel_x",
++        "skel_pts",
++        "pie_edges",
++        "pie_bbox",
++        "wall_off",
++        "wall_paths",
++        "fill_off",
++        "fill_regs",
++        "scan_regs",
++        "rows",
++        "row_edges",
++        "conv_y",
++        "flips",
++        "conv_x",
++        "crossings",
++        "fill_paths",
++        "out_paths",
++        "offgrid",
++        "expolys_body",
++        "expolys_iface",
++        "rows_body",
++        "rows_iface",
++        "fill_paths_body",
++        "fill_paths_iface",
++        "wall_paths_body",
++        "wall_paths_iface",
++        "region_polys",
++        "region_edges",
++    ];
++
++    static COUNTERS: [AtomicU64; C_COUNT] = [const { AtomicU64::new(0) }; C_COUNT];
++
++    #[inline]
++    pub fn count(index: usize, amount: u64) {
++        COUNTERS[index].fetch_add(amount, Ordering::Relaxed);
++    }
++
++    /// Zeroes every counter (start of each dispatch).
++    pub fn reset() {
++        COUNTERS.iter().for_each(|c| c.store(0, Ordering::Relaxed));
++    }
++
++    /// One `T64-PROBE` trace line per dispatch when anything was counted; the
++    /// host's `--instrument-stderr` capture carries it.
++    pub fn flush(layer_index: u32) {
++        let loaded: Vec<u64> = COUNTERS.iter().map(|c| c.load(Ordering::Relaxed)).collect();
++        if loaded.iter().all(|value| *value == 0) {
++            return;
++        }
++        let line: String = NAMES
++            .iter()
++            .zip(loaded.iter())
++            .map(|(name, value)| format!("{name}={value}"))
++            .collect::<Vec<_>>()
++            .join(" ");
++        slicer_sdk::host::log_trace(&format!("T64-PROBE layer={layer_index} {line}"));
++        reset();
++    }
++}
++
+ /// Compute bounding box of an ExPolygon in mm coordinates.
+ fn polygon_bbox_mm(expoly: &ExPolygon) -> (f64, f64, f64, f64) {
+     let mut min_x = f64::MAX;
+@@ -1044,7 +1421,8 @@ mod tests {
+             },
+             holes: vec![],
+         };
+-        let fills = module.scan_fill_region(&region, 2.0, 1.0, 1.0, false);
++        let probe = t64_probe::Scopes::mint();
++        let fills = module.scan_fill_region(&region, 2.0, 1.0, 1.0, false, &probe, false);
+         assert!(!fills.is_empty(), "a small tip region must not be hollow");
+     }
+ }

@@ -73,6 +73,7 @@ fn resolved(width: f64) -> ResolvedConfig {
     for (key, value) in [
         ("nozzle_diameter", 0.4),
         ("layer_height", 0.2),
+        ("resolution", 0.01),
         ("outer_wall_speed", 30.0),
         ("inner_wall_speed", 45.0),
         ("perimeter_arc_tolerance", 0.0125),
@@ -162,6 +163,7 @@ fn historical_invocation_config() -> Arc<ConfigView> {
     for (key, value) in [
         ("infill_density", 0.2),
         ("line_width", 0.8),
+        ("resolution", 0.01),
         ("bridge_line_width", 0.0),
         ("initial_layer_line_width", 0.0),
         ("top_surface_line_width", 0.0),

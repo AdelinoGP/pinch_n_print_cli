@@ -30,6 +30,28 @@
 //! millisecond figure is what turns "this got 20% cheaper in fuel" into a
 //! decision, but it is **indicative only**; absolute timings come from a
 //! profiling-off `--instrument-stderr` run.
+//!
+//! # Wall columns are accumulated thread-time, never wall
+//!
+//! A wall column is not the run's elapsed time. It is built by `flush_native`,
+//! which folds one outermost marked activation **per thread** and merges each
+//! activation into the owning built-in with `entry.wall_ns += wall_ns` and
+//! `scope.total_wall_ns += row.total_wall_ns`. Parallel workers therefore
+//! contribute concurrently, and the summed value is accumulated thread-time —
+//! each completed activation's span added up across every thread that ran one.
+//!
+//! The consequence a reader must not get wrong: **a run-wide wall column can
+//! exceed the whole run's wall-clock, by roughly the mean concurrency of the
+//! workers that emitted marks.** On a 240-layer benchy, `polygon_ops::closing_ex`
+//! accumulated ~34 s (240 calls) under a `host:slice` block whose own
+//! `module_complete` was 3,889 ms of real wall. That is not a corrupted
+//! measurement — it is a work-share signal, the quantity to rank scopes by,
+//! and it is **never comparable to `module_complete`/phase walls or to process
+//! CPU**. The same is true for guest rows: [`ProfileAggregator::record_call`]
+//! sums one call's marks, and every call adds its full span, so a module row's
+//! `total_wall_ns` accumulates across thousands of dispatch calls, not a
+//! contiguous interval. Wall claims need a same-run stopwatch bracket
+//! (`--instrument-stderr`), never these columns.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -59,8 +81,11 @@ pub enum ProfileUnit {
     /// wasmtime fuel — executed guest instructions. Deterministic across runs
     /// and machines, and unaffected by mark overhead.
     Fuel,
-    /// Wall-clock nanoseconds. The only signal available for native host
-    /// built-ins, and inflated by mark overhead (see the module docs).
+    /// Wall-clock **accumulated thread-time** nanoseconds. The only signal
+    /// available for native host built-ins, and inflated by mark overhead (see
+    /// the module docs). Every activation's span is added, and parallel worker
+    /// activations are summed too, so a run-wide total is a work-share number
+    /// that can exceed the run's wall — never a wall interval.
     WallNs,
 }
 
@@ -91,10 +116,13 @@ pub struct ProfileScopeRow {
     pub self_fuel: u64,
     /// Fuel spent in this scope including nested scopes.
     pub total_fuel: u64,
-    /// Wall-clock nanoseconds excluding nested scopes. Indicative — see the
-    /// module docs.
+    /// Wall-clock nanoseconds excluding nested scopes, **accumulated** over
+    /// every activation (and every thread that ran one) — thread-time, not a
+    /// wall interval. Indicative only, and never comparable to a
+    /// `module_complete`/phase wall — see the module docs.
     pub self_wall_ns: u64,
-    /// Wall-clock nanoseconds including nested scopes.
+    /// Wall-clock nanoseconds including nested scopes, accumulated the same
+    /// way as `self_wall_ns` above.
     pub total_wall_ns: u64,
 }
 
@@ -110,12 +138,18 @@ pub struct ProfileModuleRow {
     pub calls: u64,
     /// Total fuel consumed across every call. `0` for a native row.
     pub total_fuel: u64,
-    /// Total wall-clock nanoseconds covered by marks across every call.
+    /// Wall-clock nanoseconds **accumulated** by marks across every call: a
+    /// summed thread-time total, not a wall interval. Guest calls overlap on
+    /// rayon workers, and a native built-in's per-thread flushes add concurrent
+    /// worker activations (`flush_native`), so this can exceed the run's own
+    /// wall and must never be compared to `module_complete`/phase walls or
+    /// process CPU. See the module docs.
     pub total_wall_ns: u64,
     /// `total_fuel` minus the sum of every scope's `self_fuel` — the part of
     /// the module that ran outside any marked scope.
     pub self_fuel: u64,
-    /// `total_wall_ns` minus the sum of every scope's `self_wall_ns`.
+    /// `total_wall_ns` minus the sum of every scope's `self_wall_ns` — the part
+    /// of the module's accumulated thread-time that no scope accounted for.
     pub self_wall_ns: u64,
     /// Per-scope breakdown, ranked by this row's unit, most expensive first.
     pub scopes: Vec<ProfileScopeRow>,
@@ -139,8 +173,9 @@ pub struct ProfileSummary {
     /// Sum of `total_fuel` over every [`ProfileUnit::Fuel`] module. The
     /// denominator for every fuel percentage in the report.
     pub fuel_total: u64,
-    /// Sum of `total_wall_ns` over every [`ProfileUnit::WallNs`] module. The
-    /// denominator for every wall-clock percentage.
+    /// Sum of `total_wall_ns` over every [`ProfileUnit::WallNs`] module — an
+    /// accumulated thread-time total (see the module docs), not the run's wall.
+    /// The denominator for every wall-clock percentage.
     pub wall_total_ns: u64,
     /// Module rows: fuel-metered modules first (by fuel, descending), then
     /// native rows (by wall-clock, descending). Ties break on `module_id` so
@@ -496,6 +531,13 @@ fn elapsed_ns(epoch: Option<Instant>) -> u64 {
 }
 
 /// Fold one outermost native activation and merge it under the current owner.
+///
+/// The merge is where the wall columns become *accumulated thread-time*: this
+/// fires once per outermost marked activation **per thread**, and both
+/// `entry.wall_ns += wall_ns` and the scope-level `+=`s add each activation's
+/// span rather than taking a max. Concurrent rayon workers therefore all count,
+/// so a run-wide total can exceed the run's wall-clock by the mean concurrency.
+/// See the module docs.
 fn flush_native(marks: &[ProfileMark], wall_ns: u64) {
     let folded = fold_marks(marks);
     let owner = NATIVE_OWNER
@@ -644,7 +686,8 @@ pub fn format_profile_summary(summary: &ProfileSummary) -> String {
             out.push('\n');
         }
         out.push_str(&format!(
-            "units: wall-clock (native host built-ins are NOT fuel-metered)\n\
+            "units: wall-clock accumulated thread-time, not run wall\n\
+             (native host built-ins are NOT fuel-metered; parallel activations are summed)\n\
              total: {} across {} built-in(s)\n\n",
             human_ns(summary.wall_total_ns),
             wall_rows.len()
@@ -656,7 +699,11 @@ pub fn format_profile_summary(summary: &ProfileSummary) -> String {
 
     out.push_str(
         "note: fuel ratios are exact (marks burn no fuel); wall-clock under\n\
-         --profile is inflated by mark overhead and is indicative only.\n",
+         --profile is inflated by mark overhead and is indicative only.\n\
+         Wall columns accumulate one span per completed activation, adding\n\
+         concurrent worker spans, so a run-wide total can exceed the run's own\n\
+         wall by the mean concurrency: rank scopes with it (work share), and\n\
+         never compare it to a module_complete/phase wall.\n",
     );
     out
 }
@@ -1062,11 +1109,22 @@ mod tests {
         assert!(shell_line.contains("4.000 s"), "{shell_line}");
     }
 
+    /// The observer-effect note is what a reader sees; it must state both the
+    /// mark-inflation caveat and the accumulated-thread-time unit, or the
+    /// ticket-24 error (comparing a wall column to a phase wall) is repeated.
     #[test]
     fn summary_always_states_the_observer_effect_contract() {
         let text = format_profile_summary(&sample_summary());
         assert!(text.contains("fuel ratios are exact"), "{text}");
         assert!(text.contains("indicative only"), "{text}");
+        assert!(
+            text.contains("accumulate one span per completed activation"),
+            "the rendered note must state the accumulated-thread-time unit: {text}"
+        );
+        assert!(
+            text.contains("never compare it to a module_complete/phase wall"),
+            "the rendered note must forbid the phase-wall comparison: {text}"
+        );
     }
 
     #[test]

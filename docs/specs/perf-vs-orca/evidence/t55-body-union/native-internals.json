@@ -1,0 +1,328 @@
+{
+  "cases": [
+    {
+      "add_paths_ns": 103100,
+      "adjust_copy_ns": 1480100,
+      "adjust_top_x_calls": 98808,
+      "boolean_wrapper_ns": 5645800,
+      "build_tree_ns": 22600,
+      "cleanup_ns": 400,
+      "execute_internal_ns": 5496900,
+      "flatten_ns": 26000,
+      "full_roles": [
+        "SupportBody",
+        "TopInterface"
+      ],
+      "input": [
+        40,
+        0,
+        3995
+      ],
+      "intersection_build_ns": 2388800,
+      "intersection_process_ns": 97900,
+      "job": "benchy",
+      "layer": 168,
+      "merge_comparisons": 285896,
+      "reconstruct_ns": 4400,
+      "repeated_top_x_mismatches": 0,
+      "sweep_final_horz_joins_ns": 0,
+      "sweep_horizontal_ns": 181800,
+      "sweep_insert_ns": 114200,
+      "sweep_intersections_ns": 2788600,
+      "sweep_reset_ns": 2000,
+      "sweep_top_ns": 1869700,
+      "top_nonterminal_top_x_calls": 94813,
+      "total_ns": 5679300,
+      "unchanged_edge_repeated_top_x_calls": 94813,
+      "union": [
+        4,
+        0,
+        1236
+      ]
+    },
+    {
+      "add_paths_ns": 193000,
+      "adjust_copy_ns": 3957700,
+      "adjust_top_x_calls": 268008,
+      "boolean_wrapper_ns": 14167900,
+      "build_tree_ns": 73300,
+      "cleanup_ns": 800,
+      "execute_internal_ns": 13844500,
+      "flatten_ns": 24000,
+      "full_roles": [
+        "SupportBody"
+      ],
+      "input": [
+        96,
+        0,
+        9348
+      ],
+      "intersection_build_ns": 6226400,
+      "intersection_process_ns": 229800,
+      "job": "benchy",
+      "layer": 152,
+      "merge_comparisons": 765546,
+      "reconstruct_ns": 12800,
+      "repeated_top_x_mismatches": 0,
+      "sweep_final_horz_joins_ns": 100,
+      "sweep_horizontal_ns": 430100,
+      "sweep_insert_ns": 256200,
+      "sweep_intersections_ns": 7139700,
+      "sweep_reset_ns": 2700,
+      "sweep_top_ns": 4769500,
+      "top_nonterminal_top_x_calls": 258660,
+      "total_ns": 14211100,
+      "unchanged_edge_repeated_top_x_calls": 258660,
+      "union": [
+        5,
+        2,
+        1994
+      ]
+    },
+    {
+      "add_paths_ns": 265700,
+      "adjust_copy_ns": 11533900,
+      "adjust_top_x_calls": 706258,
+      "boolean_wrapper_ns": 37095500,
+      "build_tree_ns": 161500,
+      "cleanup_ns": 700,
+      "execute_internal_ns": 36612200,
+      "flatten_ns": 127900,
+      "full_roles": [
+        "SupportBody",
+        "BottomInterface"
+      ],
+      "input": [
+        161,
+        0,
+        15758
+      ],
+      "intersection_build_ns": 18376500,
+      "intersection_process_ns": 364500,
+      "job": "benchy",
+      "layer": 43,
+      "merge_comparisons": 2363107,
+      "reconstruct_ns": 4100,
+      "repeated_top_x_mismatches": 0,
+      "sweep_final_horz_joins_ns": 100,
+      "sweep_horizontal_ns": 624500,
+      "sweep_insert_ns": 414600,
+      "sweep_intersections_ns": 19804800,
+      "sweep_reset_ns": 4400,
+      "sweep_top_ns": 13785900,
+      "top_nonterminal_top_x_calls": 690500,
+      "total_ns": 37266000,
+      "unchanged_edge_repeated_top_x_calls": 690500,
+      "union": [
+        3,
+        0,
+        2118
+      ]
+    },
+    {
+      "add_paths_ns": 514800,
+      "adjust_copy_ns": 8788400,
+      "adjust_top_x_calls": 592180,
+      "boolean_wrapper_ns": 28009800,
+      "build_tree_ns": 62100,
+      "cleanup_ns": 500,
+      "execute_internal_ns": 27344600,
+      "flatten_ns": 123700,
+      "full_roles": [
+        "SupportBody"
+      ],
+      "input": [
+        182,
+        0,
+        18200
+      ],
+      "intersection_build_ns": 14016900,
+      "intersection_process_ns": 258600,
+      "job": "benchy",
+      "layer": 0,
+      "merge_comparisons": 2080725,
+      "reconstruct_ns": 7300,
+      "repeated_top_x_mismatches": 0,
+      "sweep_final_horz_joins_ns": 200,
+      "sweep_horizontal_ns": 429900,
+      "sweep_insert_ns": 323200,
+      "sweep_intersections_ns": 14981100,
+      "sweep_reset_ns": 25800,
+      "sweep_top_ns": 10114200,
+      "top_nonterminal_top_x_calls": 573980,
+      "total_ns": 28178800,
+      "unchanged_edge_repeated_top_x_calls": 573980,
+      "union": [
+        1,
+        0,
+        1816
+      ]
+    },
+    {
+      "add_paths_ns": 1084700,
+      "adjust_copy_ns": 116973300,
+      "adjust_top_x_calls": 7839912,
+      "boolean_wrapper_ns": 363412500,
+      "build_tree_ns": 163900,
+      "cleanup_ns": 900,
+      "execute_internal_ns": 361856400,
+      "flatten_ns": 164900,
+      "full_roles": [
+        "SupportBody",
+        "TopInterface",
+        "BottomInterface"
+      ],
+      "input": [
+        417,
+        0,
+        41120
+      ],
+      "intersection_build_ns": 213715900,
+      "intersection_process_ns": 1053400,
+      "job": "base",
+      "layer": 232,
+      "merge_comparisons": 34498554,
+      "reconstruct_ns": 19100,
+      "repeated_top_x_mismatches": 0,
+      "sweep_final_horz_joins_ns": 100,
+      "sweep_horizontal_ns": 1622400,
+      "sweep_insert_ns": 1104000,
+      "sweep_intersections_ns": 217424100,
+      "sweep_reset_ns": 23900,
+      "sweep_top_ns": 136201700,
+      "top_nonterminal_top_x_calls": 7798796,
+      "total_ns": 363781400,
+      "unchanged_edge_repeated_top_x_calls": 7798796,
+      "union": [
+        2,
+        1,
+        3288
+      ]
+    },
+    {
+      "add_paths_ns": 1022100,
+      "adjust_copy_ns": 128112800,
+      "adjust_top_x_calls": 7785078,
+      "boolean_wrapper_ns": 357485700,
+      "build_tree_ns": 488900,
+      "cleanup_ns": 2000,
+      "execute_internal_ns": 355531100,
+      "flatten_ns": 279200,
+      "full_roles": [
+        "SupportBody",
+        "TopInterface"
+      ],
+      "input": [
+        654,
+        0,
+        63638
+      ],
+      "intersection_build_ns": 205724200,
+      "intersection_process_ns": 1522500,
+      "job": "base",
+      "layer": 38,
+      "merge_comparisons": 31334174,
+      "reconstruct_ns": 38800,
+      "repeated_top_x_mismatches": 0,
+      "sweep_final_horz_joins_ns": 100,
+      "sweep_horizontal_ns": 2454200,
+      "sweep_insert_ns": 1670900,
+      "sweep_intersections_ns": 211204600,
+      "sweep_reset_ns": 43500,
+      "sweep_top_ns": 131908600,
+      "top_nonterminal_top_x_calls": 7721441,
+      "total_ns": 357966400,
+      "unchanged_edge_repeated_top_x_calls": 7721441,
+      "union": [
+        6,
+        2,
+        4976
+      ]
+    },
+    {
+      "add_paths_ns": 2224400,
+      "adjust_copy_ns": 249440700,
+      "adjust_top_x_calls": 14739114,
+      "boolean_wrapper_ns": 710261100,
+      "build_tree_ns": 477600,
+      "cleanup_ns": 800,
+      "execute_internal_ns": 707161800,
+      "flatten_ns": 508700,
+      "full_roles": [
+        "SupportBody"
+      ],
+      "input": [
+        921,
+        0,
+        92112
+      ],
+      "intersection_build_ns": 422096100,
+      "intersection_process_ns": 2250200,
+      "job": "base",
+      "layer": 21,
+      "merge_comparisons": 64913122,
+      "reconstruct_ns": 28300,
+      "repeated_top_x_mismatches": 0,
+      "sweep_final_horz_joins_ns": 200,
+      "sweep_horizontal_ns": 3256100,
+      "sweep_insert_ns": 2408600,
+      "sweep_intersections_ns": 429629500,
+      "sweep_reset_ns": 61700,
+      "sweep_top_ns": 260435900,
+      "top_nonterminal_top_x_calls": 14647003,
+      "total_ns": 710994300,
+      "unchanged_edge_repeated_top_x_calls": 14647003,
+      "union": [
+        4,
+        12,
+        5129
+      ]
+    },
+    {
+      "add_paths_ns": 1823700,
+      "adjust_copy_ns": 268868400,
+      "adjust_top_x_calls": 14244614,
+      "boolean_wrapper_ns": 780551600,
+      "build_tree_ns": 394400,
+      "cleanup_ns": 2300,
+      "execute_internal_ns": 777913400,
+      "flatten_ns": 442300,
+      "full_roles": [
+        "SupportBody"
+      ],
+      "input": [
+        1024,
+        0,
+        102400
+      ],
+      "intersection_build_ns": 471160800,
+      "intersection_process_ns": 2389600,
+      "job": "base",
+      "layer": 9,
+      "merge_comparisons": 63508135,
+      "reconstruct_ns": 35800,
+      "repeated_top_x_mismatches": 0,
+      "sweep_final_horz_joins_ns": 100,
+      "sweep_horizontal_ns": 2700600,
+      "sweep_insert_ns": 2302600,
+      "sweep_intersections_ns": 477968700,
+      "sweep_reset_ns": 31200,
+      "sweep_top_ns": 284266600,
+      "top_nonterminal_top_x_calls": 14142214,
+      "total_ns": 781179300,
+      "unchanged_edge_repeated_top_x_calls": 14142214,
+      "union": [
+        4,
+        10,
+        4750
+      ]
+    }
+  ],
+  "hole_cases": 5,
+  "negative_controls": {
+    "hole": 5,
+    "role": 8,
+    "vertex": 8
+  },
+  "positive_body_cuts": 4
+}

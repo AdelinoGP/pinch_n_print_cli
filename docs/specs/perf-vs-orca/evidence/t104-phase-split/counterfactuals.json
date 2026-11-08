@@ -1,0 +1,238 @@
+{
+ "note": "Derived by arithmetic.py. Phase shares from today's instrumented runs; ratios and counterfactual denominators from ticket 103's paired quiet today-vs-today medians; today's uninstrumented walls are corroboration only (external load, disclosed) and enter as load_inflation.",
+ "park_ratio": 1.5,
+ "cells": {
+  "base-classic-off": {
+   "pnp_wall_of_record_s": 75.3794,
+   "orca_wall_of_record_s": 15.2786,
+   "ratio_of_record": 4.93,
+   "park_ratio": 1.5,
+   "target_s": 22.918,
+   "required_cut_s": 52.462,
+   "required_cut_pct": 69.6,
+   "phase_shares": {
+    "validation": 2.5e-05,
+    "prepass": 0.895074,
+    "per_layer": 0.086699,
+    "postpass": 0.009453,
+    "outside_phases": 0.008749
+   },
+   "phase_implied_wall_s": {
+    "validation": 0.002,
+    "prepass": 67.47,
+    "per_layer": 6.535,
+    "postpass": 0.713,
+    "outside_phases": 0.659
+   },
+   "instrumented_slice_complete_ms": 80924,
+   "layer_count": 495,
+   "gcode_sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+   "gcode_bytes": 21023739,
+   "degraded": false,
+   "non_fatal_error_count": 0,
+   "loaded_wall_s": 135.52,
+   "loaded_runs_s": [
+    138.499,
+    132.541
+   ],
+   "loaded_measured_runs": 2,
+   "load_inflation": 1.798,
+   "ratio_if_prepass_zero": 0.52,
+   "ratio_if_per_layer_zero": 4.51,
+   "ratio_if_postpass_zero": 4.89,
+   "ratio_if_outside_phases_zero": 4.89,
+   "prepass_dominators": [
+    {
+     "stage": "PrePass::Slice",
+     "ms": 41472,
+     "share_of_cell": 0.512481,
+     "implied_wall_s": 38.63,
+     "ratio_if_zero": 2.41
+    },
+    {
+     "stage": "PrePass::ShellClassification",
+     "ms": 14042,
+     "share_of_cell": 0.173521,
+     "implied_wall_s": 13.08,
+     "ratio_if_zero": 4.08
+    }
+   ],
+   "ratio_if_both_dominators_zero": 1.55,
+   "ratio_if_all_phases_zero": 0.04
+  },
+  "base-classic-on": {
+   "pnp_wall_of_record_s": 160.857,
+   "orca_wall_of_record_s": 19.488,
+   "ratio_of_record": 8.25,
+   "park_ratio": 1.5,
+   "target_s": 29.232,
+   "required_cut_s": 131.625,
+   "required_cut_pct": 81.83,
+   "phase_shares": {
+    "validation": 1.3e-05,
+    "prepass": 0.894475,
+    "per_layer": 0.07894,
+    "postpass": 0.023603,
+    "outside_phases": 0.002969
+   },
+   "phase_implied_wall_s": {
+    "validation": 0.002,
+    "prepass": 143.883,
+    "per_layer": 12.698,
+    "postpass": 3.797,
+    "outside_phases": 0.478
+   },
+   "instrumented_slice_complete_ms": 228997,
+   "layer_count": 495,
+   "gcode_sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+   "gcode_bytes": 42507912,
+   "degraded": false,
+   "non_fatal_error_count": 0,
+   "loaded_wall_s": 212.34,
+   "loaded_runs_s": [
+    237.513,
+    187.167
+   ],
+   "loaded_measured_runs": 2,
+   "load_inflation": 1.32,
+   "ratio_if_prepass_zero": 0.87,
+   "ratio_if_per_layer_zero": 7.6,
+   "ratio_if_postpass_zero": 8.06,
+   "ratio_if_outside_phases_zero": 8.23,
+   "prepass_dominators": [
+    {
+     "stage": "PrePass::SupportGeometry",
+     "ms": 91902,
+     "share_of_cell": 0.401324,
+     "implied_wall_s": 64.556,
+     "ratio_if_zero": 4.94
+    },
+    {
+     "stage": "PrePass::Slice",
+     "ms": 44558,
+     "share_of_cell": 0.194579,
+     "implied_wall_s": 31.299,
+     "ratio_if_zero": 6.65
+    }
+   ],
+   "ratio_if_both_dominators_zero": 3.34,
+   "ratio_if_all_phases_zero": 0.02
+  },
+  "benchy-classic-off": {
+   "pnp_wall_of_record_s": 7.6778,
+   "orca_wall_of_record_s": 2.0315,
+   "ratio_of_record": 3.78,
+   "park_ratio": 1.5,
+   "target_s": 3.047,
+   "required_cut_s": 4.631,
+   "required_cut_pct": 60.31,
+   "phase_shares": {
+    "validation": 0.000494,
+    "prepass": 0.684906,
+    "per_layer": 0.20084,
+    "postpass": 0.023468,
+    "outside_phases": 0.090292
+   },
+   "phase_implied_wall_s": {
+    "validation": 0.004,
+    "prepass": 5.259,
+    "per_layer": 1.542,
+    "postpass": 0.18,
+    "outside_phases": 0.693
+   },
+   "instrumented_slice_complete_ms": 8096,
+   "layer_count": 240,
+   "gcode_sha256": "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d",
+   "gcode_bytes": 3925554,
+   "degraded": false,
+   "non_fatal_error_count": 0,
+   "loaded_wall_s": 12.966,
+   "loaded_runs_s": [
+    12.73,
+    13.203
+   ],
+   "loaded_measured_runs": 2,
+   "load_inflation": 1.689,
+   "ratio_if_prepass_zero": 1.19,
+   "ratio_if_per_layer_zero": 3.02,
+   "ratio_if_postpass_zero": 3.69,
+   "ratio_if_outside_phases_zero": 3.44,
+   "prepass_dominators": [
+    {
+     "stage": "PrePass::Slice",
+     "ms": 2301,
+     "share_of_cell": 0.284214,
+     "implied_wall_s": 2.182,
+     "ratio_if_zero": 2.71
+    },
+    {
+     "stage": "PrePass::ShellClassification",
+     "ms": 2027,
+     "share_of_cell": 0.250371,
+     "implied_wall_s": 1.922,
+     "ratio_if_zero": 2.83
+    }
+   ],
+   "ratio_if_both_dominators_zero": 1.76,
+   "ratio_if_all_phases_zero": 0.34
+  },
+  "benchy-classic-on": {
+   "pnp_wall_of_record_s": 12.4034,
+   "orca_wall_of_record_s": 2.2861,
+   "ratio_of_record": 5.43,
+   "park_ratio": 1.5,
+   "target_s": 3.429,
+   "required_cut_s": 8.974,
+   "required_cut_pct": 72.35,
+   "phase_shares": {
+    "validation": 0.000161,
+    "prepass": 0.770188,
+    "per_layer": 0.140633,
+    "postpass": 0.034917,
+    "outside_phases": 0.054102
+   },
+   "phase_implied_wall_s": {
+    "validation": 0.002,
+    "prepass": 9.553,
+    "per_layer": 1.744,
+    "postpass": 0.433,
+    "outside_phases": 0.671
+   },
+   "instrumented_slice_complete_ms": 12458,
+   "layer_count": 240,
+   "gcode_sha256": "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714",
+   "gcode_bytes": 8252412,
+   "degraded": false,
+   "non_fatal_error_count": 0,
+   "loaded_wall_s": 18.768,
+   "loaded_runs_s": [
+    19.689,
+    17.848
+   ],
+   "loaded_measured_runs": 2,
+   "load_inflation": 1.513,
+   "ratio_if_prepass_zero": 1.25,
+   "ratio_if_per_layer_zero": 4.66,
+   "ratio_if_postpass_zero": 5.24,
+   "ratio_if_outside_phases_zero": 5.13,
+   "prepass_dominators": [
+    {
+     "stage": "PrePass::SupportGeometry",
+     "ms": 3260,
+     "share_of_cell": 0.261679,
+     "implied_wall_s": 3.246,
+     "ratio_if_zero": 4.01
+    },
+    {
+     "stage": "PrePass::Slice",
+     "ms": 2253,
+     "share_of_cell": 0.180848,
+     "implied_wall_s": 2.243,
+     "ratio_if_zero": 4.44
+    }
+   ],
+   "ratio_if_both_dominators_zero": 3.02,
+   "ratio_if_all_phases_zero": 0.29
+  }
+ }
+}

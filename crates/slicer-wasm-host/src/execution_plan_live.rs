@@ -466,9 +466,12 @@ pub fn load_live_modules_for_plan_manifest_first(
         });
     }
 
-    // Build per-module runtime bindings, compiling each module's .wasm
-    // into a reusable `WasmComponent` via a single shared engine.
-    let engine = Arc::new(WasmEngine::with_profiling(profile));
+    // Build per-module runtime bindings. The engine and every compiled
+    // component are process-global and reused across loads: a debug-mode
+    // compile of the 24 core modules is ~10 s, and the e2e bucket runs
+    // hundreds of slices in one process (t114). Per-run isolation lives in
+    // the instance pools and stores below, which are still created per load.
+    let engine = crate::component_cache::shared_engine(profile);
     let diagnostics = report.diagnostics;
     let mut bindings = Vec::with_capacity(report.modules.len());
     for module in report.modules {
@@ -508,7 +511,7 @@ pub fn load_live_modules_for_plan_manifest_first(
             });
             continue;
         }
-        let wasm_component = compile_module_component(engine.as_ref(), &module)?;
+        let wasm_component = compile_module_component(profile, &module)?;
         bindings.push(LiveModuleBinding {
             module,
             instance_pool,
@@ -530,9 +533,10 @@ pub fn load_live_modules_for_plan_manifest_first(
     })
 }
 
-/// Compile one module's `.wasm` into a `WasmComponent`.
+/// Compile one module's `.wasm` into a `WasmComponent`, reusing the
+/// process-global compiled copy when the file identity is unchanged.
 fn compile_module_component(
-    engine: &WasmEngine,
+    profile: bool,
     module: &LoadedModule,
 ) -> Result<Arc<WasmComponent>, Box<LiveModuleLoadError>> {
     if module.placeholder_wasm() {
@@ -549,13 +553,10 @@ fn compile_module_component(
         })
     })?;
 
-    engine
-        .compile_component(&bytes)
-        .map(|component| Arc::new(component))
-        .map_err(|e| {
-            Box::new(LiveModuleLoadError::Component {
-                module_id: module.id().to_owned(),
-                cause: format!("failed to compile component: {e}"),
-            })
+    crate::component_cache::cached_component(profile, module.wasm_path(), &bytes).map_err(|e| {
+        Box::new(LiveModuleLoadError::Component {
+            module_id: module.id().to_owned(),
+            cause: format!("failed to compile component: {e}"),
         })
+    })
 }

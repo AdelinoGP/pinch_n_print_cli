@@ -153,12 +153,14 @@ after analysis so it can consume the fully-split, colour-resolved `SliceIR`.
 There is no obsolete grid-MST fallback in this chain: a missing or declined
 family plan remains degraded rather than silently generating fallback filler.
 
-Bridge gating occurs in `PrePass::ShellClassification` after `PrePass::Slice`
-and uses the previous global layer's same-object committed region polygons.
-Missing layers clear candidates; existing layers with empty polygons subtract
-nothing. `ShellClassification` consumes gated bridge areas plus previous-layer
-contours and writes `bridge_orientation_deg` after gating; empty gated areas
-leave the existing orientation unchanged. The orientation cost minimizes
+Bridge classification runs in `PrePass::Slice`:
+`classify_unsupported_bridge_areas` applies canonical `detect_surfaces_type`'s
+whole-set rule (`opening_ex(diff(current_raw, safety_offset(previous_raw)),
+0.1 x external_perimeter_width)`) per region. Missing layers clear candidates;
+an existing empty layer leaves the whole cross-section unsupported.
+`ShellClassification` consumes the classified bridge areas plus previous-layer
+contours and writes `bridge_orientation_deg`; empty classified areas leave the
+existing orientation unchanged. The orientation cost minimizes
 floating-edge normal cost, uses the minor principal axis for empty candidates,
 and falls back to `0°` for degenerate geometry.
 

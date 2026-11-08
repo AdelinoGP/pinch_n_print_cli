@@ -1,0 +1,14 @@
+[t57] ordinary-benchy-classic-on-baseline-w0 wall=26.797s cpu=139.828s sha=7e345b1a51f8ca50def4ea24e39bc74e333640e3ef9b78e6e33f73debccf80cb
+[t57] ordinary-benchy-classic-on-candidate-w0 wall=26.594s cpu=143.406s sha=7e345b1a51f8ca50def4ea24e39bc74e333640e3ef9b78e6e33f73debccf80cb
+[t57] ordinary-benchy-classic-on-baseline-m1 wall=25.740s cpu=139.422s sha=7e345b1a51f8ca50def4ea24e39bc74e333640e3ef9b78e6e33f73debccf80cb
+[t57] ordinary-benchy-classic-on-candidate-m1 wall=26.418s cpu=143.438s sha=7e345b1a51f8ca50def4ea24e39bc74e333640e3ef9b78e6e33f73debccf80cb
+[t57] ordinary-benchy-classic-on-candidate-m2 wall=26.260s cpu=143.438s sha=7e345b1a51f8ca50def4ea24e39bc74e333640e3ef9b78e6e33f73debccf80cb
+[t57] ordinary-benchy-classic-on-baseline-m2 wall=25.866s cpu=137.891s sha=7e345b1a51f8ca50def4ea24e39bc74e333640e3ef9b78e6e33f73debccf80cb
+[t57] ordinary-benchy-classic-on-baseline-m3 wall=25.716s cpu=139.844s sha=7e345b1a51f8ca50def4ea24e39bc74e333640e3ef9b78e6e33f73debccf80cb
+[t57] ordinary-benchy-classic-on-candidate-m3 wall=26.235s cpu=142.375s sha=7e345b1a51f8ca50def4ea24e39bc74e333640e3ef9b78e6e33f73debccf80cb
+[t57] ordinary-benchy-classic-on-candidate-m4 wall=26.322s cpu=143.344s sha=7e345b1a51f8ca50def4ea24e39bc74e333640e3ef9b78e6e33f73debccf80cb
+[t57] ordinary-benchy-classic-on-baseline-m4 wall=25.878s cpu=139.188s sha=7e345b1a51f8ca50def4ea24e39bc74e333640e3ef9b78e6e33f73debccf80cb
+[t57] ordinary-benchy-classic-on-baseline-m5 wall=25.768s cpu=138.062s sha=7e345b1a51f8ca50def4ea24e39bc74e333640e3ef9b78e6e33f73debccf80cb
+[t57] ordinary-benchy-classic-on-candidate-m5 wall=26.774s cpu=142.766s sha=7e345b1a51f8ca50def4ea24e39bc74e333640e3ef9b78e6e33f73debccf80cb
+[t57] ordinary-benchy-classic-on-candidate-m6 wall=26.652s cpu=143.016s sha=7e345b1a51f8ca50def4ea24e39bc74e333640e3ef9b78e6e33f73debccf80cb
+[t57] ordinary-benchy-classic-on-baseline-m6 wall=26.160s cpu=139.672s sha=7e345b1a51f8ca50def4ea24e39bc74e333640e3ef9b78e6e33f73debccf80cb

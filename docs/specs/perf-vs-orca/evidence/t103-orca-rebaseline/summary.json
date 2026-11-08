@@ -1,0 +1,1073 @@
+{
+  "cells": {
+    "base/arachne-off": {
+      "fixture": "base",
+      "cell": "arachne-off",
+      "tools": {
+        "orca": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 16.7171,
+          "cpu_s": 40.1094,
+          "cpu_wall": 2.3993,
+          "gcode_bytes": [
+            19292401
+          ],
+          "sha256": [
+            "b2033b5a448810ce7441f81778bf440e5d1039118ddd903b9c2f3725b4e060cf",
+            "e68372e53b4ef5129ae747a55a3708b197b20abefe33b1a2ec61facd46f6d66b",
+            "ee69fbacb3a8905bd8dd60a78ead8be4652257539f8dd6f0fbe1666052393e99"
+          ],
+          "degraded": [
+            "n/a"
+          ],
+          "non_fatal": [
+            "n/a"
+          ],
+          "resolved_brim_width": [
+            "0"
+          ],
+          "resolved_enable_arc_fitting": [
+            "disabled"
+          ],
+          "resolved_elefant_foot_compensation": [
+            "0"
+          ],
+          "resolved_filament_density": [
+            "1.24"
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            "12"
+          ],
+          "resolved_first_layer_temperature": [
+            "220"
+          ]
+        },
+        "pnp-ordinary": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 78.8872,
+          "cpu_s": 719.6562,
+          "cpu_wall": 9.1226,
+          "gcode_bytes": [
+            20846160
+          ],
+          "sha256": [
+            "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        },
+        "pnp-accelerated": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 76.5122,
+          "cpu_s": 714.1562,
+          "cpu_wall": 9.3339,
+          "gcode_bytes": [
+            20846160
+          ],
+          "sha256": [
+            "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        }
+      },
+      "gap_ordinary": 4.719,
+      "gap_accelerated": 4.5769,
+      "cpu_gap_ordinary": 17.942,
+      "park": {
+        "required_wall_reduction_fraction_ordinary": 0.6821,
+        "floor_multiples_ordinary": 85.3,
+        "within_park": false
+      }
+    },
+    "base/arachne-on": {
+      "fixture": "base",
+      "cell": "arachne-on",
+      "tools": {
+        "orca": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 2,
+          "starved": [
+            "base-arachne-on-orca-m3"
+          ],
+          "wall_s": 23.0276,
+          "cpu_s": 59.1484,
+          "cpu_wall": 2.5686,
+          "gcode_bytes": [
+            32363932
+          ],
+          "sha256": [
+            "365c711c4c63f33f56543e2f0bb8568550860182a018caa263dd1f80ae18e076",
+            "df14cea7a3190e4e86fb42db077051796fa06b381ba4939a01c62c7b477db623"
+          ],
+          "degraded": [
+            "n/a"
+          ],
+          "non_fatal": [
+            "n/a"
+          ],
+          "resolved_brim_width": [
+            "0"
+          ],
+          "resolved_enable_arc_fitting": [
+            "disabled"
+          ],
+          "resolved_elefant_foot_compensation": [
+            "0"
+          ],
+          "resolved_filament_density": [
+            "1.24"
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            "12"
+          ],
+          "resolved_first_layer_temperature": [
+            "220"
+          ]
+        },
+        "pnp-ordinary": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 2,
+          "starved": [
+            "base-arachne-on-pnp-ordinary-m3"
+          ],
+          "wall_s": 161.1394,
+          "cpu_s": 1035.3593,
+          "cpu_wall": 6.4252,
+          "gcode_bytes": [
+            42330265
+          ],
+          "sha256": [
+            "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        },
+        "pnp-accelerated": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 173.4689,
+          "cpu_s": 1035.1406,
+          "cpu_wall": 5.9673,
+          "gcode_bytes": [
+            42330265
+          ],
+          "sha256": [
+            "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        }
+      },
+      "gap_ordinary": 6.9977,
+      "gap_accelerated": 7.5331,
+      "cpu_gap_ordinary": 17.504,
+      "park": {
+        "required_wall_reduction_fraction_ordinary": 0.7856,
+        "floor_multiples_ordinary": 98.2,
+        "within_park": false
+      }
+    },
+    "base/classic-off": {
+      "fixture": "base",
+      "cell": "classic-off",
+      "tools": {
+        "orca": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 15.2786,
+          "cpu_s": 30.7812,
+          "cpu_wall": 2.0147,
+          "gcode_bytes": [
+            20299883
+          ],
+          "sha256": [
+            "4597d5de0953e2d23f62951ced5413e5ba193ecc519e4942d468256b2d979cd2",
+            "5647413490c417f0db40942f90f10843cd1b4dc715bc39250b1408cd7eae6ad0",
+            "8187820a69d55538814bde5f5ba6ca96cdb4d62e7aeb3378023b0f7c6c640732"
+          ],
+          "degraded": [
+            "n/a"
+          ],
+          "non_fatal": [
+            "n/a"
+          ],
+          "resolved_brim_width": [
+            "0"
+          ],
+          "resolved_enable_arc_fitting": [
+            "disabled"
+          ],
+          "resolved_elefant_foot_compensation": [
+            "0"
+          ],
+          "resolved_filament_density": [
+            "1.24"
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            "12"
+          ],
+          "resolved_first_layer_temperature": [
+            "220"
+          ]
+        },
+        "pnp-ordinary": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 75.3794,
+          "cpu_s": 710.3438,
+          "cpu_wall": 9.4236,
+          "gcode_bytes": [
+            21023739
+          ],
+          "sha256": [
+            "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        },
+        "pnp-accelerated": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 75.7426,
+          "cpu_s": 708.7188,
+          "cpu_wall": 9.3569,
+          "gcode_bytes": [
+            21023739
+          ],
+          "sha256": [
+            "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        }
+      },
+      "gap_ordinary": 4.9337,
+      "gap_accelerated": 4.9574,
+      "cpu_gap_ordinary": 23.077,
+      "park": {
+        "required_wall_reduction_fraction_ordinary": 0.696,
+        "floor_multiples_ordinary": 87.0,
+        "within_park": false
+      }
+    },
+    "base/classic-on": {
+      "fixture": "base",
+      "cell": "classic-on",
+      "tools": {
+        "orca": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 19.488,
+          "cpu_s": 49.8438,
+          "cpu_wall": 2.5577,
+          "gcode_bytes": [
+            33366060
+          ],
+          "sha256": [
+            "1c6349c1d244c14c7f34db21bd3fbd64861fedf1319fe03fe5ffac33a46297ed",
+            "35c87aea1baf1addbfed0bb178551050b7312171d38b3fb8c161e80b7ef77bea",
+            "6bc74ffbe860a79c2f6acfe0e6298fac9509fd098f0f16f3b40ff98affecb9fd"
+          ],
+          "degraded": [
+            "n/a"
+          ],
+          "non_fatal": [
+            "n/a"
+          ],
+          "resolved_brim_width": [
+            "0"
+          ],
+          "resolved_enable_arc_fitting": [
+            "disabled"
+          ],
+          "resolved_elefant_foot_compensation": [
+            "0"
+          ],
+          "resolved_filament_density": [
+            "1.24"
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            "12"
+          ],
+          "resolved_first_layer_temperature": [
+            "220"
+          ]
+        },
+        "pnp-ordinary": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 160.857,
+          "cpu_s": 1033.3281,
+          "cpu_wall": 6.4239,
+          "gcode_bytes": [
+            42507912
+          ],
+          "sha256": [
+            "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        },
+        "pnp-accelerated": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 160.093,
+          "cpu_s": 1028.75,
+          "cpu_wall": 6.426,
+          "gcode_bytes": [
+            42507912
+          ],
+          "sha256": [
+            "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        }
+      },
+      "gap_ordinary": 8.2542,
+      "gap_accelerated": 8.215,
+      "cpu_gap_ordinary": 20.731,
+      "park": {
+        "required_wall_reduction_fraction_ordinary": 0.8183,
+        "floor_multiples_ordinary": 102.3,
+        "within_park": false
+      }
+    },
+    "benchy/arachne-off": {
+      "fixture": "benchy",
+      "cell": "arachne-off",
+      "tools": {
+        "orca": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 2.1854,
+          "cpu_s": 7.7031,
+          "cpu_wall": 3.5248,
+          "gcode_bytes": [
+            4769604
+          ],
+          "sha256": [
+            "1e99793e59255a655e3e384749f2bdfcd577fda6ef4d869201008b8cd77f1a90",
+            "2e7037159a227962f61b4f154b684e5ff764b436d662e60e9ab6fda126f123c5",
+            "f580018c4592c1d6cffdb040814ca2bb5f7d56426cfe900351d63f3e23d50b8a"
+          ],
+          "degraded": [
+            "n/a"
+          ],
+          "non_fatal": [
+            "n/a"
+          ],
+          "resolved_brim_width": [
+            "0"
+          ],
+          "resolved_enable_arc_fitting": [
+            "disabled"
+          ],
+          "resolved_elefant_foot_compensation": [
+            "0"
+          ],
+          "resolved_filament_density": [
+            "1.24"
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            "12"
+          ],
+          "resolved_first_layer_temperature": [
+            "220"
+          ]
+        },
+        "pnp-ordinary": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 7.6868,
+          "cpu_s": 48.9688,
+          "cpu_wall": 6.3705,
+          "gcode_bytes": [
+            4064270
+          ],
+          "sha256": [
+            "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        },
+        "pnp-accelerated": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 7.8367,
+          "cpu_s": 49.2188,
+          "cpu_wall": 6.2806,
+          "gcode_bytes": [
+            4064270
+          ],
+          "sha256": [
+            "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        }
+      },
+      "gap_ordinary": 3.5173,
+      "gap_accelerated": 3.5859,
+      "cpu_gap_ordinary": 6.357,
+      "park": {
+        "required_wall_reduction_fraction_ordinary": 0.5735,
+        "floor_multiples_ordinary": 71.7,
+        "within_park": false
+      }
+    },
+    "benchy/arachne-on": {
+      "fixture": "benchy",
+      "cell": "arachne-on",
+      "tools": {
+        "orca": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 2.5531,
+          "cpu_s": 10.2031,
+          "cpu_wall": 3.9964,
+          "gcode_bytes": [
+            8367863
+          ],
+          "sha256": [
+            "2a24a05ab7725042f06bdeafa6aaaab6bbbc1cf39d6dc19a4297ac2c44631968",
+            "355eb1ae4aece9ff138475331ea15f1866a3c5b62ad26e24416c499ab38154a2",
+            "b5aedb57f3e4763a7b5f9b7bc8fabe26c06460abebb4752b5a919a738ff7036d"
+          ],
+          "degraded": [
+            "n/a"
+          ],
+          "non_fatal": [
+            "n/a"
+          ],
+          "resolved_brim_width": [
+            "0"
+          ],
+          "resolved_enable_arc_fitting": [
+            "disabled"
+          ],
+          "resolved_elefant_foot_compensation": [
+            "0"
+          ],
+          "resolved_filament_density": [
+            "1.24"
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            "12"
+          ],
+          "resolved_first_layer_temperature": [
+            "220"
+          ]
+        },
+        "pnp-ordinary": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 12.2164,
+          "cpu_s": 65.9531,
+          "cpu_wall": 5.3987,
+          "gcode_bytes": [
+            8390168
+          ],
+          "sha256": [
+            "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        },
+        "pnp-accelerated": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 12.3951,
+          "cpu_s": 65.8438,
+          "cpu_wall": 5.3121,
+          "gcode_bytes": [
+            8390168
+          ],
+          "sha256": [
+            "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        }
+      },
+      "gap_ordinary": 4.7849,
+      "gap_accelerated": 4.8549,
+      "cpu_gap_ordinary": 6.464,
+      "park": {
+        "required_wall_reduction_fraction_ordinary": 0.6865,
+        "floor_multiples_ordinary": 85.8,
+        "within_park": false
+      }
+    },
+    "benchy/classic-off": {
+      "fixture": "benchy",
+      "cell": "classic-off",
+      "tools": {
+        "orca": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 2.0315,
+          "cpu_s": 6.5625,
+          "cpu_wall": 3.2304,
+          "gcode_bytes": [
+            3999822
+          ],
+          "sha256": [
+            "0457821ac274bbb0a64da735b6accbd10fd612cb5cd80928d5e700ba1a64e5dd",
+            "806fece2cbc55aff0febe602e00cdc7058f9d1f2edd2cc8e8834dba43de83bbd",
+            "e34f7ef4a220f1857dd9d2250da1242ee89aa873b5ec5356a16e284899770a65"
+          ],
+          "degraded": [
+            "n/a"
+          ],
+          "non_fatal": [
+            "n/a"
+          ],
+          "resolved_brim_width": [
+            "0"
+          ],
+          "resolved_enable_arc_fitting": [
+            "disabled"
+          ],
+          "resolved_elefant_foot_compensation": [
+            "0"
+          ],
+          "resolved_filament_density": [
+            "1.24"
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            "12"
+          ],
+          "resolved_first_layer_temperature": [
+            "220"
+          ]
+        },
+        "pnp-ordinary": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 7.6778,
+          "cpu_s": 48.375,
+          "cpu_wall": 6.3006,
+          "gcode_bytes": [
+            3925554
+          ],
+          "sha256": [
+            "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        },
+        "pnp-accelerated": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 7.6709,
+          "cpu_s": 48.0781,
+          "cpu_wall": 6.2676,
+          "gcode_bytes": [
+            3925554
+          ],
+          "sha256": [
+            "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        }
+      },
+      "gap_ordinary": 3.7794,
+      "gap_accelerated": 3.776,
+      "cpu_gap_ordinary": 7.371,
+      "park": {
+        "required_wall_reduction_fraction_ordinary": 0.6031,
+        "floor_multiples_ordinary": 75.4,
+        "within_park": false
+      }
+    },
+    "benchy/classic-on": {
+      "fixture": "benchy",
+      "cell": "classic-on",
+      "tools": {
+        "orca": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 2.2861,
+          "cpu_s": 8.7656,
+          "cpu_wall": 3.8343,
+          "gcode_bytes": [
+            7544100
+          ],
+          "sha256": [
+            "24252520e5995d6d89b5dd9d5f02ba097009b885934823660cc0ec97071b0332",
+            "44460863e62ecb687cc1dd89397ee52d3f962bb1e7ffa20bb709ab64614efaba",
+            "66dc30b73ea6d491032a2ae438c90636c73cd0638b78bd48d4944f4c82d72bfe"
+          ],
+          "degraded": [
+            "n/a"
+          ],
+          "non_fatal": [
+            "n/a"
+          ],
+          "resolved_brim_width": [
+            "0"
+          ],
+          "resolved_enable_arc_fitting": [
+            "disabled"
+          ],
+          "resolved_elefant_foot_compensation": [
+            "0"
+          ],
+          "resolved_filament_density": [
+            "1.24"
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            "12"
+          ],
+          "resolved_first_layer_temperature": [
+            "220"
+          ]
+        },
+        "pnp-ordinary": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 12.4034,
+          "cpu_s": 64.25,
+          "cpu_wall": 5.18,
+          "gcode_bytes": [
+            8252412
+          ],
+          "sha256": [
+            "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        },
+        "pnp-accelerated": {
+          "warmups": 1,
+          "measured": 3,
+          "retained": 3,
+          "starved": [],
+          "wall_s": 12.5655,
+          "cpu_s": 64.0781,
+          "cpu_wall": 5.0995,
+          "gcode_bytes": [
+            8252412
+          ],
+          "sha256": [
+            "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714"
+          ],
+          "degraded": [
+            "false"
+          ],
+          "non_fatal": [
+            "0"
+          ],
+          "resolved_brim_width": [
+            "8"
+          ],
+          "resolved_enable_arc_fitting": [
+            ""
+          ],
+          "resolved_elefant_foot_compensation": [
+            ""
+          ],
+          "resolved_filament_density": [
+            ""
+          ],
+          "resolved_filament_max_volumetric_speed": [
+            ""
+          ],
+          "resolved_first_layer_temperature": [
+            ""
+          ]
+        }
+      },
+      "gap_ordinary": 5.4256,
+      "gap_accelerated": 5.4965,
+      "cpu_gap_ordinary": 7.33,
+      "park": {
+        "required_wall_reduction_fraction_ordinary": 0.7235,
+        "floor_multiples_ordinary": 90.4,
+        "within_park": false
+      }
+    }
+  },
+  "floor": 0.008,
+  "park_ratio": 1.5
+}

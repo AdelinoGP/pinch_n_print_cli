@@ -533,6 +533,15 @@ dependencies = [
 [[package]]
 name = "clipper2-rust"
 version = "1.1.0"
+dependencies = [
+ "criterion",
+ "num-traits",
+ "rand 0.8.5",
+]
+
+[[package]]
+name = "clipper2-rust"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fd663fe209e7030c956e3be4c051dcc20cdb73da794f31466762cff12ca11bf"
 dependencies = [
@@ -775,6 +784,8 @@ dependencies = [
  "num-traits",
  "once_cell",
  "oorandom",
+ "plotters",
+ "rayon",
  "regex",
  "serde",
  "serde_derive",
@@ -2034,6 +2045,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
+name = "libmimalloc-sys"
+version = "0.1.49"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a45a52f43e1c16f667ccfe4dd8c85b7f7c204fd5e3bf46c5b0db9a5c3c0b8e9"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "libredox"
 version = "0.1.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2046,7 +2066,7 @@ dependencies = [
 name = "lightning-feasibility-kernel"
 version = "0.1.0"
 dependencies = [
- "clipper2-rust",
+ "clipper2-rust 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
  "serde_json",
  "slicer-core",
@@ -2208,6 +2228,15 @@ dependencies = [
  "cc",
  "float-cmp",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "mimalloc"
+version = "0.1.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d4139bb28d14ad1facf21d5eb8825051b326e172d216b39f6d31df53cc97862"
+dependencies = [
+ "libmimalloc-sys",
 ]
 
 [[package]]
@@ -2591,6 +2620,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
+name = "plotters"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5aeb6f403d7a4911efb1e33402027fc44f29b5bf6def3effcc22d7bb75f2b747"
+dependencies = [
+ "num-traits",
+ "plotters-backend",
+ "plotters-svg",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "plotters-backend"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df42e13c12958a16b3f7f4386b9ab1f3e7933914ecea48da7139435263a4172a"
+
+[[package]]
+name = "plotters-svg"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51bae2ac328883f7acdfea3d66a7c35751187f870bc81f94563733a154d7a670"
+dependencies = [
+ "plotters-backend",
+]
+
+[[package]]
 name = "png"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2611,6 +2668,7 @@ dependencies = [
  "clap",
  "ctrlc",
  "env_logger",
+ "mimalloc",
  "png",
  "predicates",
  "serde",
@@ -3523,7 +3581,7 @@ name = "slicer-core"
 version = "0.1.0"
 dependencies = [
  "boostvoronoi",
- "clipper2-rust",
+ "clipper2-rust 1.1.0",
  "criterion",
  "log",
  "rayon",
@@ -3557,6 +3615,7 @@ dependencies = [
  "nalgebra",
  "serde",
  "slicer-ir",
+ "slicer-model-io",
  "thiserror 1.0.69",
  "truck-meshalgo",
  "truck-modeling",
@@ -4984,6 +5043,16 @@ dependencies = [
  "slicer-schema",
  "slicer-sdk",
  "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "web-sys"
+version = "0.3.94"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd70027e39b12f0849461e08ffc50b9cd7688d942c1c8e3c7b22273236b4dd0a"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
 ]
 
 [[package]]

@@ -1,0 +1,517 @@
+{
+  "command": [
+    "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t51-winding-cache\\snapshots\\ordinary-candidate\\pnp_cli.exe",
+    "slice",
+    "--model",
+    "D:\\slicerProject\\pinch_n_print_cli_2\\tmp\\3dbenchy.stl",
+    "--config",
+    "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t44-clip-universe-hoist\\benchy-arachne.json",
+    "--output",
+    "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t51-winding-cache\\accounting\\ordinary\\control\\output.gcode",
+    "--module-dir",
+    "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t51-winding-cache\\snapshots\\ordinary-candidate\\modules",
+    "--no-default-module-paths",
+    "--no-integrated-modules",
+    "--profile",
+    "--instrument-stderr"
+  ],
+  "exit_code": 0,
+  "sha256": "5a61a1066a4607c6968cc038eb221a38ed39d30b5d26d8448ad87895abc92c4a",
+  "bytes": 3809027,
+  "snapshot": {
+    "modules/arachne-perimeters/arachne-perimeters.toml": "e870c6c9c4ed4e74b053e9a4d52e0255b8affc98ea38aa0d5904023881a7980d",
+    "modules/arachne-perimeters/arachne-perimeters.wasm": "a9a426f14a6fed1106198fbef0caf1686e71a172b7480cd5aa011fbe9701bc30",
+    "modules/classic-perimeters/classic-perimeters.toml": "1f277fc12bdee0ee0a9a59b700af681bc337f3bfd10c3aa4293d860dc032200c",
+    "modules/classic-perimeters/classic-perimeters.wasm": "f07256d0da8b2cc42b7c7a32ef8285acf93489fa92307dfcb17903a17fd0b774",
+    "modules/fuzzy-skin/fuzzy-skin.toml": "dd074eb769df5e5703a4bae9c8820807c52c7577272c7ebf97b7bc90bf49a1a9",
+    "modules/fuzzy-skin/fuzzy-skin.wasm": "5055388782eb31fe9a9b08b7f1b315b98b6008a3ff9df514765a8dc261b06978",
+    "modules/gyroid-infill/gyroid-infill.toml": "599b5ea45abba86fe6c645dd109fd63f011192982e99a3275a32d949b3018258",
+    "modules/gyroid-infill/gyroid-infill.wasm": "98a7c746d3b3f23b87532da59d3db9d6dcf34996c6cf34abeb29306cef330f61",
+    "modules/infill-linker/infill-linker.toml": "146985a9e0f57964dd07b19ab6c2c4b9b0fea4fbb863a68697bdaebb866276a9",
+    "modules/infill-linker/infill-linker.wasm": "402d52ef977118ea0a8472f11673ea5e97fcdb4166c0c4b98eec7699d72b46ad",
+    "modules/layer-planner-default/layer-planner-default.toml": "c882cf8c3e88c9d390ffeb8ae922132208566628697bf6eeb295f993d3b4581c",
+    "modules/layer-planner-default/layer-planner-default.wasm": "92226ef8c497564d7f12b01fd216c309b09995de6e59030bcda80564f44b7c24",
+    "modules/lightning-infill/lightning-infill.toml": "133800ce7128e6ef1d12c0e63207ef2d27395a0cc3d58e2be5dc5674e8ab9b7a",
+    "modules/lightning-infill/lightning-infill.wasm": "962822da3bee48e48dcb0fa0cdc94f156dc9de75c62571acdb65a8b670c40a44",
+    "modules/machine-gcode-emit/machine-gcode-emit.toml": "b8440d935452967a2d7fa75d33fe9cbb93d07d0d9888d511e5235cd1b3415cd1",
+    "modules/machine-gcode-emit/machine-gcode-emit.wasm": "e5cd6672d1724c1ed456ef3f68f9408eae41c6f911f6c8175844fd70417013ee",
+    "modules/overhang-classifier-default/overhang-classifier-default.toml": "7b32987f5e961bd1ce0da9522fddc1e7f1439eb0bc080447fd5f664c338d3b83",
+    "modules/overhang-classifier-default/overhang-classifier-default.wasm": "74041d4109d7b89c618e21574aa539bec6a217c9fe1a1e9eac9b9751b0a2e533",
+    "modules/part-cooling/part-cooling.toml": "6bc7b930977bba2466fee8d59d2803c58b0cbe427478e997a9bf5fde07bf2b31",
+    "modules/part-cooling/part-cooling.wasm": "5338c0df29c8bac9830ad08fd005c2b5ce677f6a53d2523b62f2ae9bc043f94f",
+    "modules/path-optimization-default/path-optimization-default.toml": "a880c192af0e701c758cc5ec74e1e3e342952f3df5d30df87141a7bd1ef4255e",
+    "modules/path-optimization-default/path-optimization-default.wasm": "fb81f26dc4c7c7f1d57a235ca8eaeb69e6018a5367b4718bb9261ca64b60de82",
+    "modules/raft-default/raft-default.toml": "a0d6d8286836a13a9422b24bf16aace8219a254feab0abc26a35850a15d84d06",
+    "modules/raft-default/raft-default.wasm": "f921d69c5509c66155ff9d0b42d4ae015c39d40323dc78288d431fe06baece0d",
+    "modules/rectilinear-infill/rectilinear-infill.toml": "5f77aca49758f73c53251e90d77c0b905dbf420db4f4997311f74b8868ff37ec",
+    "modules/rectilinear-infill/rectilinear-infill.wasm": "b5a5fc7e20506cafeb6607647318fbc0d7b0bf88212fe69737181e7c5490c3b7",
+    "modules/seam-placer/seam-placer.toml": "7989376a7dbc63793822cc3c258b1575cd8ada4fbae0e05c3e579c6cd117186a",
+    "modules/seam-placer/seam-placer.wasm": "3cf1ae548ec571cba023a16cf63c13d8edfd0cd3e8ce35ceb3f38c72e1a8a4a0",
+    "modules/seam-planner-default/seam-planner-default.toml": "65cb0452e86f8379fc88e89d30f8529b371c6c03cc40c42b09f43ea2676e43c2",
+    "modules/seam-planner-default/seam-planner-default.wasm": "be39dcba9a01cf1ee28dab7eb3ac582b7634e0fda0a8ad0d65f838149fa648bd",
+    "modules/skirt-brim/skirt-brim.toml": "ef0cd25341d7f4b6cffbaec755104ce84f006429922fe1b7401ecd079b670ef9",
+    "modules/skirt-brim/skirt-brim.wasm": "59c42e2f45902555241393f1f42b9ab53572d2058ff9f9617377f7548db83317",
+    "modules/support-surface-ironing/support-surface-ironing.toml": "721784f3a26835795b8e6593d4f7763d89051f4966f49b5b513d2f6148587a91",
+    "modules/support-surface-ironing/support-surface-ironing.wasm": "bd5a1c983a5929ef0737e27d9829b48e5e2e58d913f5cfc119abadb764255845",
+    "modules/top-surface-ironing/top-surface-ironing.toml": "96fddc80a5d46f9fac5fccd9fa2da6774c0b1273fc8df24da93c02f36cd9ab48",
+    "modules/top-surface-ironing/top-surface-ironing.wasm": "71bf886bd87e420a6a38fcf232913c667fbfa69ca1e78edcc89c8651dc9fb668",
+    "modules/traditional-support/traditional-support.toml": "b10abb13284193d9030bf5549199c4616df45cfe0f24fef6df09485e8955b296",
+    "modules/traditional-support/traditional-support.wasm": "05e9d6350a11a39854e9377454752d565ed864d50c65b153f517f83d3b18ff5e",
+    "modules/traditional-support-planner/traditional-support-planner.toml": "9d80d1603c4fbdb39cd14900f30dca0152f9fe8b40b331c91608a035cd9ba37c",
+    "modules/traditional-support-planner/traditional-support-planner.wasm": "bfdc950d76f3c9fbcb5f96600281fdfbfc1023174213048b502e27eb83d3928e",
+    "modules/tree-support/tree-support.toml": "3788a8f7bc32193e9c03f8bf55e12d925689467b62029a5dc02c0f242261b3f3",
+    "modules/tree-support/tree-support.wasm": "b89c27e7cd76c05350a36b9ab6b3ea3c5332abdba885935c72da91286f7e1994",
+    "modules/tree-support-planner/tree-support-planner.toml": "57c4b910c82a79663648ca0e145956a0877f848269398a26e75c5b5e3fb43f02",
+    "modules/tree-support-planner/tree-support-planner.wasm": "2108471ba31343eaf6b1cadea7c6e97409c23c6c7864c1f8d316ee77d1f678e6",
+    "modules/wave-overhangs/wave-overhangs.toml": "6aae0e812587245936cc861eb775b17d91a49e57aa92290b2f8c5b24af0e0319",
+    "modules/wave-overhangs/wave-overhangs.wasm": "dfb5a4e8629d64cc2bd08caf128055a9dcae86354ac00710147fcf92e8400b6c",
+    "modules/wipe-tower/wipe-tower.toml": "3fcf88d8a588ef2331936799dc9dbd9d0078ef8429ad89c955281fb29fa29def",
+    "modules/wipe-tower/wipe-tower.wasm": "fc4c2d2cf042b2f45bf017ce8bb2fd4db10ae8063325f55756f6d946e3d8f047",
+    "pnp_cli.exe": "dd62d57a486004c847c673e0e022f437fa9505f31e530df1eca3345267697184"
+  },
+  "events": [
+    {
+      "schema_version": "1.5.0",
+      "event": "profile_summary",
+      "timestamp_ms": 1791257778379,
+      "slice_id": "slice-1791257758017",
+      "status": "ok",
+      "elapsed_ms": 20349,
+      "profile": {
+        "fuel_total": 172201557018,
+        "wall_total_ns": 82928467900,
+        "modules": [
+          {
+            "module_id": "com.core.arachne-perimeters",
+            "unit": "fuel",
+            "calls": 240,
+            "total_fuel": 122391815553,
+            "total_wall_ns": 1602637100,
+            "self_fuel": 117110294532,
+            "self_wall_ns": 288486900,
+            "scopes": [
+              {
+                "scope": "polygon_ops::offset",
+                "scope_id": 2,
+                "calls": 240,
+                "self_fuel": 5281521021,
+                "total_fuel": 5281521021,
+                "self_wall_ns": 1314150200,
+                "total_wall_ns": 1314150200
+              }
+            ]
+          },
+          {
+            "module_id": "com.core.infill-linker",
+            "unit": "fuel",
+            "calls": 240,
+            "total_fuel": 47396306580,
+            "total_wall_ns": 4022302300,
+            "self_fuel": 47210403564,
+            "self_wall_ns": 3983680000,
+            "scopes": [
+              {
+                "scope": "polygon_ops::clip_polygons",
+                "scope_id": 1,
+                "calls": 192,
+                "self_fuel": 185903016,
+                "total_fuel": 185903016,
+                "self_wall_ns": 38622300,
+                "total_wall_ns": 38622300
+              }
+            ]
+          },
+          {
+            "module_id": "com.core.seam-planner-default",
+            "unit": "fuel",
+            "calls": 1,
+            "total_fuel": 671813514,
+            "total_wall_ns": 0,
+            "self_fuel": 671813514,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.seam-placer",
+            "unit": "fuel",
+            "calls": 240,
+            "total_fuel": 251673785,
+            "total_wall_ns": 0,
+            "self_fuel": 251673785,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.rectilinear-infill",
+            "unit": "fuel",
+            "calls": 240,
+            "total_fuel": 231406478,
+            "total_wall_ns": 0,
+            "self_fuel": 231406478,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.fuzzy-skin",
+            "unit": "fuel",
+            "calls": 240,
+            "total_fuel": 161678666,
+            "total_wall_ns": 0,
+            "self_fuel": 161678666,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.traditional-support",
+            "unit": "fuel",
+            "calls": 240,
+            "total_fuel": 105362999,
+            "total_wall_ns": 0,
+            "self_fuel": 105362999,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.wave-overhangs",
+            "unit": "fuel",
+            "calls": 240,
+            "total_fuel": 103755318,
+            "total_wall_ns": 0,
+            "self_fuel": 103755318,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.machine-gcode-emit",
+            "unit": "fuel",
+            "calls": 1,
+            "total_fuel": 100489517,
+            "total_wall_ns": 0,
+            "self_fuel": 100489517,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.path-optimization-default",
+            "unit": "fuel",
+            "calls": 240,
+            "total_fuel": 96312657,
+            "total_wall_ns": 0,
+            "self_fuel": 96312657,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.gyroid-infill",
+            "unit": "fuel",
+            "calls": 240,
+            "total_fuel": 93349676,
+            "total_wall_ns": 0,
+            "self_fuel": 93349676,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.top-surface-ironing",
+            "unit": "fuel",
+            "calls": 240,
+            "total_fuel": 88756553,
+            "total_wall_ns": 0,
+            "self_fuel": 88756553,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.lightning-infill",
+            "unit": "fuel",
+            "calls": 240,
+            "total_fuel": 88368386,
+            "total_wall_ns": 0,
+            "self_fuel": 88368386,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.support-surface-ironing",
+            "unit": "fuel",
+            "calls": 240,
+            "total_fuel": 88113389,
+            "total_wall_ns": 0,
+            "self_fuel": 88113389,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.raft-default",
+            "unit": "fuel",
+            "calls": 240,
+            "total_fuel": 84404315,
+            "total_wall_ns": 0,
+            "self_fuel": 84404315,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.part-cooling",
+            "unit": "fuel",
+            "calls": 1,
+            "total_fuel": 47205883,
+            "total_wall_ns": 0,
+            "self_fuel": 47205883,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.skirt-brim",
+            "unit": "fuel",
+            "calls": 1,
+            "total_fuel": 45063618,
+            "total_wall_ns": 0,
+            "self_fuel": 45063618,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.wipe-tower",
+            "unit": "fuel",
+            "calls": 1,
+            "total_fuel": 44915970,
+            "total_wall_ns": 0,
+            "self_fuel": 44915970,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.overhang-classifier-default",
+            "unit": "fuel",
+            "calls": 1,
+            "total_fuel": 44772846,
+            "total_wall_ns": 0,
+            "self_fuel": 44772846,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.tree-support-planner",
+            "unit": "fuel",
+            "calls": 1,
+            "total_fuel": 32288478,
+            "total_wall_ns": 0,
+            "self_fuel": 32288478,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.traditional-support-planner",
+            "unit": "fuel",
+            "calls": 1,
+            "total_fuel": 32280598,
+            "total_wall_ns": 0,
+            "self_fuel": 32280598,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "com.core.layer-planner-default",
+            "unit": "fuel",
+            "calls": 1,
+            "total_fuel": 1422239,
+            "total_wall_ns": 0,
+            "self_fuel": 1422239,
+            "self_wall_ns": 0,
+            "scopes": []
+          },
+          {
+            "module_id": "host:slice",
+            "unit": "wall_ns",
+            "calls": 5921,
+            "total_fuel": 0,
+            "total_wall_ns": 40616398700,
+            "self_fuel": 0,
+            "self_wall_ns": 155000,
+            "scopes": [
+              {
+                "scope": "polygon_ops::closing_ex",
+                "scope_id": 5,
+                "calls": 240,
+                "self_fuel": 0,
+                "total_fuel": 0,
+                "self_wall_ns": 35002918300,
+                "total_wall_ns": 35002918300
+              },
+              {
+                "scope": "polygon_ops::clip_polygons",
+                "scope_id": 1,
+                "calls": 5005,
+                "self_fuel": 0,
+                "total_fuel": 0,
+                "self_wall_ns": 3136213500,
+                "total_wall_ns": 3136213500
+              },
+              {
+                "scope": "polygon_ops::offset",
+                "scope_id": 2,
+                "calls": 676,
+                "self_fuel": 0,
+                "total_fuel": 0,
+                "self_wall_ns": 2477111900,
+                "total_wall_ns": 2477111900
+              }
+            ]
+          },
+          {
+            "module_id": "host:shell_classification",
+            "unit": "wall_ns",
+            "calls": 4150,
+            "total_fuel": 0,
+            "total_wall_ns": 18384168200,
+            "self_fuel": 0,
+            "self_wall_ns": 105100,
+            "scopes": [
+              {
+                "scope": "polygon_ops::offset",
+                "scope_id": 2,
+                "calls": 1761,
+                "self_fuel": 0,
+                "total_fuel": 0,
+                "self_wall_ns": 16074538000,
+                "total_wall_ns": 16074538000
+              },
+              {
+                "scope": "polygon_ops::clip_polygons",
+                "scope_id": 1,
+                "calls": 2194,
+                "self_fuel": 0,
+                "total_fuel": 0,
+                "self_wall_ns": 1903247300,
+                "total_wall_ns": 1903247300
+              },
+              {
+                "scope": "polygon_ops::closing_ex",
+                "scope_id": 5,
+                "calls": 195,
+                "self_fuel": 0,
+                "total_fuel": 0,
+                "self_wall_ns": 406277800,
+                "total_wall_ns": 406277800
+              }
+            ]
+          },
+          {
+            "module_id": "host:overhang_annotation",
+            "unit": "wall_ns",
+            "calls": 3107,
+            "total_fuel": 0,
+            "total_wall_ns": 13593846200,
+            "self_fuel": 0,
+            "self_wall_ns": 90200,
+            "scopes": [
+              {
+                "scope": "polygon_ops::offset",
+                "scope_id": 2,
+                "calls": 717,
+                "self_fuel": 0,
+                "total_fuel": 0,
+                "self_wall_ns": 9816968800,
+                "total_wall_ns": 9816968800
+              },
+              {
+                "scope": "polygon_ops::clip_polygons",
+                "scope_id": 1,
+                "calls": 2390,
+                "self_fuel": 0,
+                "total_fuel": 0,
+                "self_wall_ns": 3776787200,
+                "total_wall_ns": 3776787200
+              }
+            ]
+          },
+          {
+            "module_id": "host:native",
+            "unit": "wall_ns",
+            "calls": 7949,
+            "total_fuel": 0,
+            "total_wall_ns": 10160229100,
+            "self_fuel": 0,
+            "self_wall_ns": 211900,
+            "scopes": [
+              {
+                "scope": "polygon_ops::clip_polygons",
+                "scope_id": 1,
+                "calls": 7045,
+                "self_fuel": 0,
+                "total_fuel": 0,
+                "self_wall_ns": 6770601500,
+                "total_wall_ns": 6770601500
+              },
+              {
+                "scope": "polygon_ops::offset",
+                "scope_id": 2,
+                "calls": 664,
+                "self_fuel": 0,
+                "total_fuel": 0,
+                "self_wall_ns": 2018939400,
+                "total_wall_ns": 2018939400
+              },
+              {
+                "scope": "polygon_ops::offset2_ex",
+                "scope_id": 3,
+                "calls": 240,
+                "self_fuel": 0,
+                "total_fuel": 0,
+                "self_wall_ns": 1370476300,
+                "total_wall_ns": 1370476300
+              }
+            ]
+          },
+          {
+            "module_id": "host:mesh_analysis",
+            "unit": "wall_ns",
+            "calls": 343,
+            "total_fuel": 0,
+            "total_wall_ns": 173825700,
+            "self_fuel": 0,
+            "self_wall_ns": 8000,
+            "scopes": [
+              {
+                "scope": "polygon_ops::clip_polygons",
+                "scope_id": 1,
+                "calls": 343,
+                "self_fuel": 0,
+                "total_fuel": 0,
+                "self_wall_ns": 173817700,
+                "total_wall_ns": 173817700
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "schema_version": "1.5.0",
+      "event": "slice_stats",
+      "timestamp_ms": 1791257778379,
+      "slice_id": "slice-1791257758017",
+      "status": "ok",
+      "gcode_prediction_seconds": 6068,
+      "gcode_filament_length_mm": 4159.3154296875,
+      "layer_count": 240,
+      "first_layer_height_mm": 0.2,
+      "extruded_volume_mm3": {
+        "0": 10004.326017118394
+      },
+      "toolchange_count": 0
+    },
+    {
+      "schema_version": "1.5.0",
+      "event": "slice_complete",
+      "timestamp_ms": 1791257778379,
+      "slice_id": "slice-1791257758017",
+      "status": "ok",
+      "elapsed_ms": 20349,
+      "degraded": false,
+      "fatal_error_count": 0,
+      "non_fatal_error_count": 0
+    }
+  ]
+}

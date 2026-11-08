@@ -1,0 +1,384 @@
+{
+  "take": "t105-supports-on-engine-style-fairness",
+  "park_ratio": 1.5,
+  "provenance": {
+    "orca_exe": "C:\\Program Files\\OrcaSlicer\\orca-slicer.exe",
+    "orca_bytes": 278528,
+    "orca_sha256": "7663f5d3b87228f58196a8bb8e00157ac654c5c3db4fe4e3619116e9309406eb",
+    "orca_version_line": {
+      "Exception": {
+        "SerializedRemoteException": null,
+        "SerializedRemoteInvocationInfo": null,
+        "ErrorRecord": "Invalid option --version",
+        "WasThrownFromThrowStatement": false,
+        "TargetSite": null,
+        "Message": "Invalid option --version",
+        "Data": "System.Collections.ListDictionaryInternal",
+        "InnerException": null,
+        "HelpLink": null,
+        "Source": null,
+        "HResult": -2146233087,
+        "StackTrace": null
+      },
+      "TargetObject": "Invalid option --version",
+      "CategoryInfo": {
+        "Category": 0,
+        "Activity": "",
+        "Reason": "RemoteException",
+        "TargetName": "Invalid option --version",
+        "TargetType": "String"
+      },
+      "FullyQualifiedErrorId": "NativeCommandError",
+      "ErrorDetails": null,
+      "InvocationInfo": {
+        "MyCommand": "orca-slicer.exe",
+        "BoundParameters": "System.Collections.Generic.Dictionary`2[System.String,System.Object]",
+        "UnboundArguments": "",
+        "ScriptLineNumber": 100,
+        "OffsetInLine": 26,
+        "HistoryId": -1,
+        "ScriptName": "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t105-tree-strong\\run_campaign.ps1",
+        "Line": "    orca_version_line = (& $OrcaExe --version 2>&1 | Select-Object -First 1)\n",
+        "Statement": "& $OrcaExe --version 2>&1",
+        "PositionMessage": "At D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t105-tree-strong\\run_campaign.ps1:100 char:26\r\n+     orca_version_line = (& $OrcaExe --version 2>&1 | Select-Object -F \u2026\r\n+                          ~~~~~~~~~~~~~~~~~~~~~~~~~",
+        "PSScriptRoot": "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t105-tree-strong",
+        "PSCommandPath": "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t105-tree-strong\\run_campaign.ps1",
+        "InvocationName": "&",
+        "PipelineLength": 0,
+        "PipelinePosition": 0,
+        "ExpectingInput": false,
+        "CommandOrigin": 1,
+        "DisplayScriptPosition": null
+      },
+      "ScriptStackTrace": "at <ScriptBlock>, D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t105-tree-strong\\run_campaign.ps1: line 96",
+      "PipelineIterationInfo": [
+        0,
+        0,
+        0
+      ],
+      "PSMessageDetails": null
+    },
+    "vendor_manifest": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\orca-vendor\\BBL.json",
+    "started_utc": "2026-11-02T03:51:10.8883409Z",
+    "rounds": 4,
+    "warmups": 1
+  },
+  "cells": {
+    "base/arachne-on": {
+      "pnp_ordinary_wall_s": 161.1394,
+      "arms": {
+        "organic": {
+          "samples": 4,
+          "retained": 4,
+          "excluded_rounds": [],
+          "resolved_styles": [
+            "default"
+          ],
+          "median_wall_s": 20.5139,
+          "median_cpu_s": 57.3516,
+          "cpu_wall_median": 2.8246,
+          "gcode_bytes": [
+            32363932
+          ],
+          "sha256": [
+            "0d0f5df7f127c3ddfa3ccdf033287c98ca285b81a109ef08031179a715450bf7",
+            "18040892f96b1c04ac88f623d82d650844c72f2d4d92f7ff8d9e527abf1fcd34",
+            "3088053af0dcfdf7dcd0037574b8a50e1ddc1785b9d8f1be792f259789c454c3",
+            "5c504b4f173992423d907c7d974734a03bf5720a22e51c39ba43f8e4cb0cdcf8"
+          ],
+          "support_sections": [
+            619
+          ],
+          "support_interface_sections": [
+            226
+          ],
+          "ratio_vs_pnp": 7.8551,
+          "cut_to_park_pct": 80.9
+        },
+        "strong": {
+          "samples": 4,
+          "retained": 4,
+          "excluded_rounds": [],
+          "resolved_styles": [
+            "tree_strong"
+          ],
+          "median_wall_s": 28.6266,
+          "median_cpu_s": 109.6797,
+          "cpu_wall_median": 3.8409,
+          "gcode_bytes": [
+            43802018
+          ],
+          "sha256": [
+            "2a85920d5bb9098d68fd0bdedf136c1d313455d37b067418ddd576f1877f3248",
+            "6b4c0e72796cac6aaa8d37784e44d4da9e18d8dd56ee6cf4bd00a86e244f4693",
+            "a7295bd4564c03933fe6b727254e8c627214f98c4a4fdaa0bdd4bce6d4e87365",
+            "b132fbcf0ea6b38fcea132c3357e32958f03b0d29ce10f62e84fb295af1fc6a8"
+          ],
+          "support_sections": [
+            742
+          ],
+          "support_interface_sections": [
+            426
+          ],
+          "ratio_vs_pnp": 5.629,
+          "cut_to_park_pct": 73.35
+        }
+      },
+      "paired_rounds_used": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "paired_rounds_excluded": [],
+      "paired_round_deltas_s": [
+        8.7499,
+        9.0617,
+        6.391,
+        8.6385
+      ],
+      "paired_round_delta_median_s": 8.6942,
+      "style_wall_delta_s": 8.1127,
+      "style_wall_delta_pct": 39.55,
+      "ratio_move_pct": -28.34,
+      "non_vacuous": true
+    },
+    "base/classic-on": {
+      "pnp_ordinary_wall_s": 160.857,
+      "arms": {
+        "organic": {
+          "samples": 4,
+          "retained": 4,
+          "excluded_rounds": [],
+          "resolved_styles": [
+            "default"
+          ],
+          "median_wall_s": 20.4486,
+          "median_cpu_s": 50.2031,
+          "cpu_wall_median": 2.4483,
+          "gcode_bytes": [
+            33366060
+          ],
+          "sha256": [
+            "138a89852c8fe5d3d16e5124825b29c1cfe1849b144b2785e09d0b96bfc13bc5",
+            "462c833ee5e4182a1639f9d629a69344306bf8134a318210a456a485b0f75a46",
+            "ba862cc2977d03ff593311fec33ec29ad053b215acffd50eaf2e3ebdaf090d7a",
+            "e4b8f162f6d7e48a993ef34320426725170197c070aa2ddaff212faf1d3b5849"
+          ],
+          "support_sections": [
+            622
+          ],
+          "support_interface_sections": [
+            230
+          ],
+          "ratio_vs_pnp": 7.8664,
+          "cut_to_park_pct": 80.93
+        },
+        "strong": {
+          "samples": 4,
+          "retained": 4,
+          "excluded_rounds": [],
+          "resolved_styles": [
+            "tree_strong"
+          ],
+          "median_wall_s": 29.5316,
+          "median_cpu_s": 102.9062,
+          "cpu_wall_median": 3.5007,
+          "gcode_bytes": [
+            44803778
+          ],
+          "sha256": [
+            "1907940f0a7bb42702ada2c734bc4aa3cf39fd3f7675baad4544573afe2e3970",
+            "23063eb0f9812622b12a96084ff05c583f7704a9fe7db065d9b3fc83d8c57c56",
+            "37e9083ce20234cae00733ff74a3bcca5e1aa79eae78aa5cf56f77f213916e11",
+            "5fa21c2df212f8970d806e4b48096c6b3f97d70220963ea303e29dbc951df829"
+          ],
+          "support_sections": [
+            739
+          ],
+          "support_interface_sections": [
+            423
+          ],
+          "ratio_vs_pnp": 5.4469,
+          "cut_to_park_pct": 72.46
+        }
+      },
+      "paired_rounds_used": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "paired_rounds_excluded": [],
+      "paired_round_deltas_s": [
+        7.0483,
+        9.5659,
+        5.3924,
+        9.7524
+      ],
+      "paired_round_delta_median_s": 8.3071,
+      "style_wall_delta_s": 9.083,
+      "style_wall_delta_pct": 44.42,
+      "ratio_move_pct": -30.76,
+      "non_vacuous": true
+    },
+    "benchy/arachne-on": {
+      "pnp_ordinary_wall_s": 12.2164,
+      "arms": {
+        "organic": {
+          "samples": 4,
+          "retained": 2,
+          "excluded_rounds": [
+            3,
+            4
+          ],
+          "resolved_styles": [
+            "default"
+          ],
+          "median_wall_s": 2.6551,
+          "median_cpu_s": 10.914,
+          "cpu_wall_median": 4.1158,
+          "gcode_bytes": [
+            8367863
+          ],
+          "sha256": [
+            "ae9267060915f2b7b3f639fec7efe953bafcf312290ee99a46d04f485b22f6d5",
+            "ffa01d84da62f029491048d2b905f36a0a25801b373ba75ade141c3f9de294da"
+          ],
+          "support_sections": [
+            191
+          ],
+          "support_interface_sections": [
+            8
+          ],
+          "ratio_vs_pnp": 4.6011,
+          "cut_to_park_pct": 67.4
+        },
+        "strong": {
+          "samples": 4,
+          "retained": 4,
+          "excluded_rounds": [],
+          "resolved_styles": [
+            "tree_strong"
+          ],
+          "median_wall_s": 2.857,
+          "median_cpu_s": 12.6875,
+          "cpu_wall_median": 4.5007,
+          "gcode_bytes": [
+            10331360
+          ],
+          "sha256": [
+            "470bced62c9ec1d83a0b24c653e9d313a00702b25e8b5039295bec929e1e0a40",
+            "67fbdc662fbf1825e3908466bfc4e37f80eef6b5e5146031d4c8eac71b03b332",
+            "8f3a809c7b32ed0e4838a0ced1cdd09172e2ebf5c5572c6b9b0ca1f014adc1e5",
+            "da2e1465f3ab335b54a2d8cf3267ccd0d9b0e7934e4fcca5623a7d1fe9702626"
+          ],
+          "support_sections": [
+            188
+          ],
+          "support_interface_sections": [
+            58
+          ],
+          "ratio_vs_pnp": 4.276,
+          "cut_to_park_pct": 64.92
+        }
+      },
+      "paired_rounds_used": [
+        1,
+        2
+      ],
+      "paired_rounds_excluded": [
+        3,
+        4
+      ],
+      "paired_round_deltas_s": [
+        0.1916,
+        0.0996
+      ],
+      "paired_round_delta_median_s": 0.1456,
+      "style_wall_delta_s": 0.2019,
+      "style_wall_delta_pct": 7.6,
+      "ratio_move_pct": -7.07,
+      "non_vacuous": true
+    },
+    "benchy/classic-on": {
+      "pnp_ordinary_wall_s": 12.4034,
+      "arms": {
+        "organic": {
+          "samples": 4,
+          "retained": 4,
+          "excluded_rounds": [],
+          "resolved_styles": [
+            "default"
+          ],
+          "median_wall_s": 2.4216,
+          "median_cpu_s": 9.2188,
+          "cpu_wall_median": 3.7157,
+          "gcode_bytes": [
+            7544100
+          ],
+          "sha256": [
+            "126ca47e72bf47aa4543bf07821c03ebc44864618c4cd173d85c046ad8c5d39a",
+            "31d800cff225f646eff4395c7958d41bd095902ae581ce4808b60ab45e42a227",
+            "5408630d64b7969575eb0fdd221a70f949cc577e251408133f921194f793d6a8",
+            "79a71927df177c3ea4b8f3f02872994b987543ef42de675b36e649bc7628cf34"
+          ],
+          "support_sections": [
+            189
+          ],
+          "support_interface_sections": [
+            7
+          ],
+          "ratio_vs_pnp": 5.122,
+          "cut_to_park_pct": 70.71
+        },
+        "strong": {
+          "samples": 4,
+          "retained": 4,
+          "excluded_rounds": [],
+          "resolved_styles": [
+            "tree_strong"
+          ],
+          "median_wall_s": 2.6512,
+          "median_cpu_s": 11.1641,
+          "cpu_wall_median": 4.2107,
+          "gcode_bytes": [
+            9481130
+          ],
+          "sha256": [
+            "08590383d141341ddf203e8cdd43aa535d8cdd8ab673eaf67de64eae35181b91",
+            "2507cd86ee869ec96ca61b908e9e9c965cfc850018f2b4831dbc11cd7f8e944c",
+            "4907fbd803c895901983f2afe31856367e6064d5a9ecad5360a54f4b29864a87",
+            "92a4cb8186a3583288c56fdfeff5b67df2fe9c22e2f0919b139e5a6da9fd4684"
+          ],
+          "support_sections": [
+            186
+          ],
+          "support_interface_sections": [
+            57
+          ],
+          "ratio_vs_pnp": 4.6784,
+          "cut_to_park_pct": 67.94
+        }
+      },
+      "paired_rounds_used": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "paired_rounds_excluded": [],
+      "paired_round_deltas_s": [
+        0.306,
+        0.2374,
+        0.1731,
+        -0.1523
+      ],
+      "paired_round_delta_median_s": 0.2052,
+      "style_wall_delta_s": 0.2296,
+      "style_wall_delta_pct": 9.48,
+      "ratio_move_pct": -8.66,
+      "non_vacuous": true
+    }
+  }
+}

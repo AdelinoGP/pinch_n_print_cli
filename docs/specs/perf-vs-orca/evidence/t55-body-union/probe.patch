@@ -1,0 +1,169 @@
+diff --git a/modules/core-modules/tree-support-planner/src/lib.rs b/modules/core-modules/tree-support-planner/src/lib.rs
+index a5df8231..df874351 100644
+--- a/modules/core-modules/tree-support-planner/src/lib.rs
++++ b/modules/core-modules/tree-support-planner/src/lib.rs
+@@ -964,6 +964,9 @@ pub fn carve_emitted_regions(
+     }
+ }
+ 
++#[path = "../../../../docs/specs/perf-vs-orca/evidence/t55-body-union/capture.rs"]
++mod t55_capture;
++
+ #[allow(clippy::too_many_arguments)]
+ #[doc(hidden)]
+ pub fn build_roles(
+@@ -992,61 +995,86 @@ pub fn build_roles(
+     // Ticket 32: the collision bounding box is shared by every role's carve
+     // gate, so it is computed once here rather than per role.
+     let collision_bbox = expolygons_bbox(collision_polys);
+-    let with_areas =
+-        |segments: &[Vec<Point3WithWidth>], areas: &[ExPolygon], is_base_area: bool| {
+-            let mut regions = structural_body_regions(segments, branch_radius);
+-            regions.extend_from_slice(areas);
+-            // Canonical carves each drawn node circle before appending it to
+-            // the role area. Carving after this union can join separate node
+-            // circles through collision and then retain only one fragment.
+-            // Ticket 32: the carve skips bounding-box-disjoint regions (the
+-            // clip is a no-op set-wise); a lone gated region under an active
+-            // simplify tolerance is re-clipped because the Douglas–Peucker
+-            // anchor is start-vertex sensitive (see
+-            // `carve_emitted_regions_with_bbox_gate`).
+-            let simplify_tolerance =
+-                role_simplify_tolerance(is_base_area, avg_node_per_layer, line_width_mm);
+-            let regions = carve_emitted_regions_with_bbox_gate(
+-                &regions,
+-                collision_polys,
+-                collision_bbox,
+-                simplify_tolerance.is_some(),
+-            );
+-            // Canonical accumulates the carved circles into `base_areas` /
+-            // `roof_areas` and then runs them through Clipper boolean ops
+-            // (`diff_ex(base_areas, roofs)`, `intersection_ex(base_areas,
+-            // m_machine_border)`, `closing_ex`/`diff_clipped` for the
+-            // interfaces). Every one of those returns non-overlapping
+-            // `ExPolygons`, so adjacent node cross-sections come out fused
+-            // into a single outline. Emitting them unmerged puts a duplicate
+-            // perimeter through the inside of each fused branch pair and makes
+-            // the branch silhouette pop between layers as neighbouring circles
+-            // drift in and out of contact.
+-            let regions = union_expolys(regions);
+-            let regions = match simplify_tolerance {
+-                Some(tolerance) => expolygons_simplify(&regions, tolerance),
+-                None => regions,
+-            };
+-            if collision_polys.is_empty() {
+-                regions
+-            } else {
+-                // Simplification may move a boundary back into collision. The
+-                // per-circle largest-part selection already happened above, so
+-                // this is canonical's plain set-wide difference.
+-                host::clip_polygons(&regions, collision_polys, ClipOperation::Difference)
+-            }
++    t55_capture::args(
++        [
++            branch_segments,
++            interface_segments,
++            base_segments,
++            floor_segments,
++        ],
++        [branch_areas, interface_areas, base_areas, floor_areas],
++        branch_radius,
++        collision_polys,
++        avg_node_per_layer,
++        line_width_mm,
++    );
++    let with_areas = |segments: &[Vec<Point3WithWidth>],
++                      areas: &[ExPolygon],
++                      is_base_area: bool,
++                      role: usize| {
++        let mut regions = structural_body_regions(segments, branch_radius);
++        regions.extend_from_slice(areas);
++        // Canonical carves each drawn node circle before appending it to
++        // the role area. Carving after this union can join separate node
++        // circles through collision and then retain only one fragment.
++        // Ticket 32: the carve skips bounding-box-disjoint regions (the
++        // clip is a no-op set-wise); a lone gated region under an active
++        // simplify tolerance is re-clipped because the Douglas–Peucker
++        // anchor is start-vertex sensitive (see
++        // `carve_emitted_regions_with_bbox_gate`).
++        let simplify_tolerance =
++            role_simplify_tolerance(is_base_area, avg_node_per_layer, line_width_mm);
++        let regions = carve_emitted_regions_with_bbox_gate(
++            &regions,
++            collision_polys,
++            collision_bbox,
++            simplify_tolerance.is_some(),
++        );
++        t55_capture::polys("carved", role, &regions);
++        // Canonical accumulates the carved circles into `base_areas` /
++        // `roof_areas` and then runs them through Clipper boolean ops
++        // (`diff_ex(base_areas, roofs)`, `intersection_ex(base_areas,
++        // m_machine_border)`, `closing_ex`/`diff_clipped` for the
++        // interfaces). Every one of those returns non-overlapping
++        // `ExPolygons`, so adjacent node cross-sections come out fused
++        // into a single outline. Emitting them unmerged puts a duplicate
++        // perimeter through the inside of each fused branch pair and makes
++        // the branch silhouette pop between layers as neighbouring circles
++        // drift in and out of contact.
++        let regions = union_expolys(regions);
++        t55_capture::polys("union", role, &regions);
++        let regions = match simplify_tolerance {
++            Some(tolerance) => expolygons_simplify(&regions, tolerance),
++            None => regions,
++        };
++        t55_capture::polys("simplify", role, &regions);
++        let regions = if collision_polys.is_empty() {
++            regions
++        } else {
++            // Simplification may move a boundary back into collision. The
++            // per-circle largest-part selection already happened above, so
++            // this is canonical's plain set-wide difference.
++            host::clip_polygons(&regions, collision_polys, ClipOperation::Difference)
+         };
+-    let body = with_areas(branch_segments, branch_areas, true);
+-    let roof = with_areas(interface_segments, interface_areas, false);
+-    let base = with_areas(base_segments, base_areas, false);
+-    let floor = with_areas(floor_segments, floor_areas, false);
++        t55_capture::polys("difference", role, &regions);
++        regions
++    };
++    let body = with_areas(branch_segments, branch_areas, true, 0);
++    let roof = with_areas(interface_segments, interface_areas, false, 1);
++    let base = with_areas(base_segments, base_areas, false, 2);
++    let floor = with_areas(floor_segments, floor_areas, false, 3);
+ 
+     // Subtract interface geometry out of the body, per canonical.
+     let mut carved = body;
+-    for cut in [&roof, &base, &floor] {
++    for (index, cut) in [&roof, &base, &floor].into_iter().enumerate() {
++        let before = t55_capture::active().then(|| carved.clone());
++        let ran = !carved.is_empty() && !cut.is_empty();
+         if !carved.is_empty() && !cut.is_empty() {
+             carved = host::clip_polygons(&carved, cut, ClipOperation::Difference);
+         }
++        if let Some(before) = before {
++            t55_capture::cut(index, &before, &carved, ran);
++        }
+     }
+     let mut roles = Vec::new();
+     if !carved.is_empty() {
+@@ -1073,6 +1101,7 @@ pub fn build_roles(
+             regions: floor,
+         });
+     }
++    t55_capture::finish(&roles);
+     roles
+ }
+ 
+@@ -3739,6 +3768,11 @@ impl SupportPlanner {
+                             }
+                         }
+                     };
++                    t55_capture::begin(
++                        current_global_layer_index as usize,
++                        &obj.object_id,
++                        &region_id.to_string(),
++                    );
+                     let mut roles = build_roles(
+                         &branch_segments,
+                         &interface_segments,

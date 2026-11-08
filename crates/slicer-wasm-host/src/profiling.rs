@@ -80,10 +80,15 @@ pub struct ScopeTotals {
     /// Fuel spent inside this scope *excluding* time attributed to nested
     /// scopes. Summing `self_fuel` over all scopes never exceeds the call total.
     pub self_fuel: u64,
-    /// Wall-clock nanoseconds, inclusive of nested scopes. See the caveat on
-    /// [`ProfileMark::wall_ns`].
+    /// Wall-clock nanoseconds, inclusive of nested scopes, **summed over the
+    /// completed activations in the folded stream** (one for the native sink's
+    /// per-activation flush; several for a guest call with repeated scope
+    /// entries). See the caveat on [`ProfileMark::wall_ns`]. Run-wide consumers
+    /// add these totals across every call and thread, so a summed value is
+    /// accumulated thread-time, never wall.
     pub total_wall_ns: u64,
-    /// Wall-clock nanoseconds excluding nested scopes.
+    /// Wall-clock nanoseconds excluding nested scopes, summed the same way as
+    /// `total_wall_ns` above.
     pub self_wall_ns: u64,
 }
 

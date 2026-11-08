@@ -54,9 +54,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use rayon::prelude::*;
-use slicer_core::algos::prepass_slice::{
-    gate_bridge_areas_by_unsupported_span, update_external_bridge_orientation,
-};
+use slicer_core::algos::prepass_slice::update_external_bridge_orientation;
 use slicer_core::polygon_ops::{difference, intersection, offset, opening, union, OffsetJoinType};
 use slicer_ir::{ConfigValue, ExPolygon, ObjectId, RegionId, RegionKey, RegionMapIR, SliceIR};
 
@@ -187,10 +185,12 @@ pub fn commit_shell_classification_builtin(
         }
     }
 
-    // Bridge candidates are produced during slicing, but only remain bridges
-    // where the committed lower-layer slice leaves an unsupported span. Keep
-    // layer presence separate from its polygons: an existing empty layer must
-    // retain candidates, while a missing previous layer must clear them.
+    // Bridge classification already ran in `PrePass::Slice` against the raw
+    // previous cross-section (canonical `detect_surfaces_type`'s difference).
+    // This stage only re-derives the orientation from the classified areas and
+    // the committed lower-layer polygons; it must not subtract a second lower
+    // layer, which here would be the closed region polygons rather than the
+    // raw slices.
     let mut object_layers: HashMap<ObjectId, HashSet<u32>> = HashMap::new();
     let mut lower_layer_polygons: HashMap<(ObjectId, u32), Vec<ExPolygon>> = HashMap::new();
     for slice in &new_vec {
@@ -222,9 +222,8 @@ pub fn commit_shell_classification_builtin(
                         .get(&(region.object_id.clone(), lower_index))
                         .map(Vec::as_slice)
                 });
-            gate_bridge_areas_by_unsupported_span(region, lower_layer_slices);
-            // Packet 235 Step 2: orientation derives from the GATED geometry
-            // + RAW lower contours, overwriting the Slice-stage heuristic.
+            // Packet 235 Step 2: orientation derives from the classified
+            // geometry + committed lower contours.
             update_external_bridge_orientation(region, lower_layer_slices);
         }
     });
@@ -582,6 +581,155 @@ fn resolve_opening_radius(
 // Internal helpers
 // ============================================================================
 
+/// Fully computed internal-bridge commit for one layer. The expensive
+/// per-layer clipper work depends only on committed geometry and on this
+/// layer's own fields, so it can run in the independent qualification phase;
+/// only the lower-layer candidate subtraction is order-dependent.
+struct InternalBridgeLayerResult {
+    qualified: Vec<ExPolygon>,
+    angles: Vec<f32>,
+}
+
+/// Compute the exact commit result for one layer from `deep_infill_area`
+/// (already lower-candidate-subtracted by the caller when required).
+#[allow(clippy::too_many_arguments)]
+fn compute_internal_bridge_layer(
+    region: &slicer_ir::SlicedRegion,
+    unsupported: &[ExPolygon],
+    qualify_spacing_mm: f32,
+    bridge_spacing_mm: f32,
+    nofilter: bool,
+    internal_bridge_angle: f32,
+    deep_infill_area: Vec<ExPolygon>,
+    object_id: &ObjectId,
+    region_id: RegionId,
+    layer_index: u32,
+    print_z: f32,
+) -> Option<InternalBridgeLayerResult> {
+    let deep_infill_clip_area = offset(
+        &deep_infill_area,
+        1.5 * qualify_spacing_mm,
+        OffsetJoinType::Miter,
+        0.0,
+    );
+    let mut qualified: Vec<ExPolygon> = Vec::new();
+    for surface in &region.internal_solid_fill {
+        let expanded_candidate = offset(
+            std::slice::from_ref(surface),
+            qualify_spacing_mm,
+            OffsetJoinType::Miter,
+            0.0,
+        );
+        if intersection(&expanded_candidate, &deep_infill_clip_area).is_empty() {
+            log::debug!(
+                "internal bridge skip object={} region={} layer={} print_z={} reason=deep_sparse_clip_empty",
+                object_id, region_id, layer_index, print_z
+            );
+            continue;
+        }
+        if let Some(polys) = slicer_core::algos::bridge_over_infill::qualify_internal_bridge_surface(
+            surface,
+            unsupported,
+            qualify_spacing_mm,
+            nofilter,
+        ) {
+            qualified.extend(polys);
+        }
+    }
+    // Only the surviving candidates are filtered against this erosion,
+    // so an empty candidate set skips the offset entirely.
+    let internal_unsupported_area = if qualified.is_empty() || deep_infill_area.is_empty() {
+        Vec::new()
+    } else {
+        offset(
+            &deep_infill_area,
+            -(4.5 * qualify_spacing_mm),
+            OffsetJoinType::Miter,
+            0.0,
+        )
+    };
+    qualified.retain(|polygon| {
+        !intersection(std::slice::from_ref(polygon), &internal_unsupported_area).is_empty()
+    });
+    if qualified.is_empty() {
+        log::debug!(
+            "internal bridge skip object={} region={} layer={} print_z={} reason=qualified_empty_or_deep_sparse_clip surfaces={}",
+            object_id,
+            region_id,
+            layer_index,
+            print_z,
+            region.internal_solid_fill.len()
+        );
+        return None;
+    }
+    // One bridge direction per qualified polygon (canonical
+    // `bridge_over_infill` direction step). The fill module draws each
+    // polygon at its own angle; the region-wide
+    // `bridge_orientation_deg` stays the external-bridge direction.
+    slicer_core::algos::bridge_over_infill::presort_bridge_candidates(&mut qualified);
+    let expansion_area = {
+        let not_sparse = union(
+            &union(&region.top_solid_fill, &region.bottom_solid_fill),
+            &region.bridge_areas,
+        );
+        union(
+            &difference(&region.infill_areas, &not_sparse),
+            &region.internal_solid_fill,
+        )
+    };
+    let angles = slicer_core::algos::bridge_over_infill::internal_bridge_angles(
+        &qualified,
+        &slicer_core::algos::bridge_over_infill::InternalBridgeAngleInputs {
+            deep_infill_clip_area: &deep_infill_clip_area,
+            internal_unsupported_area: &internal_unsupported_area,
+            expansion_area: &expansion_area,
+            total_fill_area: &region.infill_areas,
+            spacing_mm: bridge_spacing_mm,
+            override_deg: internal_bridge_angle,
+        },
+    );
+    Some(InternalBridgeLayerResult { qualified, angles })
+}
+
+fn build_bridge_depth_layers(
+    slices: &[SliceIR],
+    timeline: &[usize],
+    depth_start: usize,
+    timeline_position: usize,
+    object_id: &ObjectId,
+    region_id: RegionId,
+    density_for: &dyn Fn(&slicer_ir::SlicedRegion, u32) -> f32,
+) -> Vec<slicer_core::algos::bridge_over_infill::BridgeDepthLayer> {
+    timeline[depth_start..=timeline_position]
+        .iter()
+        .filter_map(|&lower_idx| {
+            let lower = slices[lower_idx].regions.iter().find(|candidate| {
+                candidate.object_id == *object_id && candidate.region_id == region_id
+            })?;
+            let density = density_for(lower, slices[lower_idx].global_layer_index);
+            let mut not_sparse = lower.top_solid_fill.clone();
+            not_sparse.extend(lower.bottom_solid_fill.iter().cloned());
+            not_sparse.extend(lower.internal_solid_fill.iter().cloned());
+            not_sparse.extend(lower.bridge_areas.iter().cloned());
+            Some(slicer_core::algos::bridge_over_infill::BridgeDepthLayer {
+                print_z: slices[lower_idx].z,
+                sparse_infill: if density < 0.999 {
+                    lower.infill_areas.clone()
+                } else {
+                    Vec::new()
+                },
+                not_sparse_infill: if density >= 0.999 {
+                    let mut dense = lower.infill_areas.clone();
+                    dense.extend(not_sparse);
+                    dense
+                } else {
+                    not_sparse
+                },
+            })
+        })
+        .collect()
+}
+
 /// Packet 234a — canonical `bridge_over_infill` gather port (the support-math
 /// functions landed in `slicer_core::algos::bridge_over_infill`). For each
 /// region timeline, qualifies the upper layer's `internal_solid_fill` surfaces
@@ -866,63 +1014,69 @@ fn gate_internal_bridge_sites(
             })
             .collect();
 
+        // Precompute the exact commit result for every qualified layer in
+        // parallel. The only order-dependent input is the set of lower-layer
+        // bridge polygons subtracted by
+        // `remove_filled_polygons_on_lower_layers`; when that set is empty the
+        // result below is exact and phase B merely publishes it.
+        let precomputed: Vec<Option<InternalBridgeLayerResult>> = preps
+            .par_iter()
+            .map(|prep| {
+                let region = slices_ro[prep.slice_idx].regions.iter().find(|candidate| {
+                    candidate.object_id == *object_id && candidate.region_id == *region_id
+                })?;
+                let depth_start = slicer_core::algos::bridge_over_infill::depth_window_start(
+                    &timeline_zs[..=prep.timeline_position],
+                    prep.timeline_position,
+                    prep.target_flow_height,
+                    slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+                );
+                let depth_layers = build_bridge_depth_layers(
+                    slices_ro,
+                    timeline,
+                    depth_start,
+                    prep.timeline_position,
+                    object_id,
+                    *region_id,
+                    &density_for,
+                );
+                let deep_infill_area = slicer_core::algos::bridge_over_infill::gather_areas_w_depth(
+                    &depth_layers,
+                    depth_layers.len().saturating_sub(1),
+                    prep.target_flow_height,
+                    slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+                );
+                compute_internal_bridge_layer(
+                    region,
+                    &prep.unsupported,
+                    prep.qualify_spacing_mm,
+                    bridge_spacing_mm,
+                    nofilter,
+                    internal_bridge_angle,
+                    deep_infill_area,
+                    object_id,
+                    *region_id,
+                    prep.layer_index,
+                    prep.print_z,
+                )
+            })
+            .collect();
+
         // Phase B — commit. Serial by necessity: `lower_candidates` reads the
         // `internal_bridge_areas` that earlier layers of this same pass wrote.
-        for LayerPrep {
-            timeline_position,
-            slice_idx,
-            layer_index,
-            print_z,
-            target_flow_height,
-            qualify_spacing_mm,
-            unsupported,
-        } in preps
-        {
-            // `gather_areas_w_depth` reads at most a one-flow-height suffix, so
-            // materialise only that window: building a `BridgeDepthLayer` clones
-            // five polygon sets per layer, and doing it for the whole stack below
-            // made this loop quadratic in layer count.
-            let depth_start = slicer_core::algos::bridge_over_infill::depth_window_start(
-                &timeline_zs[..=timeline_position],
+        for (
+            LayerPrep {
                 timeline_position,
+                slice_idx,
+                layer_index,
+                print_z,
                 target_flow_height,
-                slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
-            );
-            let depth_layers: Vec<slicer_core::algos::bridge_over_infill::BridgeDepthLayer> =
-                timeline[depth_start..=timeline_position]
-                    .iter()
-                    .filter_map(|&lower_idx| {
-                        let lower = slices[lower_idx].regions.iter().find(|candidate| {
-                            candidate.object_id == *object_id && candidate.region_id == *region_id
-                        })?;
-                        let density = density_for(lower, slices[lower_idx].global_layer_index);
-                        let mut not_sparse = lower.top_solid_fill.clone();
-                        not_sparse.extend(lower.bottom_solid_fill.iter().cloned());
-                        not_sparse.extend(lower.internal_solid_fill.iter().cloned());
-                        not_sparse.extend(lower.bridge_areas.iter().cloned());
-                        Some(slicer_core::algos::bridge_over_infill::BridgeDepthLayer {
-                            print_z: slices[lower_idx].z,
-                            sparse_infill: if density < 0.999 {
-                                lower.infill_areas.clone()
-                            } else {
-                                Vec::new()
-                            },
-                            not_sparse_infill: if density >= 0.999 {
-                                let mut dense = lower.infill_areas.clone();
-                                dense.extend(not_sparse);
-                                dense
-                            } else {
-                                not_sparse
-                            },
-                        })
-                    })
-                    .collect();
-            let deep_infill_area = slicer_core::algos::bridge_over_infill::gather_areas_w_depth(
-                &depth_layers,
-                depth_layers.len().saturating_sub(1),
-                target_flow_height,
-                slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
-            );
+                qualify_spacing_mm,
+                unsupported,
+            },
+            precomputed,
+        ) in preps.into_iter().zip(precomputed)
+        {
             // Same reasoning as `depth_start`: the callee keeps only layers at or
             // above `print_z - target_flow_height`.
             let filled_start = slicer_core::algos::bridge_over_infill::filled_window_start(
@@ -946,104 +1100,71 @@ fn gate_internal_bridge_sites(
                     )
                 })
                 .collect();
-            let deep_infill_area =
-                slicer_core::algos::bridge_over_infill::remove_filled_polygons_on_lower_layers(
-                    &deep_infill_area,
-                    &lower_candidates,
-                    print_z,
+            // `remove_filled_polygons_on_lower_layers` is the only input that
+            // depends on phase B's own earlier writes. When no lower layer
+            // carries a bridge polygon the subtraction is a no-op, so the
+            // independently precomputed result is exact. Otherwise recompute
+            // this layer against the committed lower candidates.
+            let has_lower_filled = lower_candidates
+                .iter()
+                .any(|candidate| !candidate.new_polys.is_empty());
+            let computed = if has_lower_filled {
+                let depth_start = slicer_core::algos::bridge_over_infill::depth_window_start(
+                    &timeline_zs[..=timeline_position],
+                    timeline_position,
                     target_flow_height,
+                    slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
                 );
-            let deep_infill_clip_area = offset(
-                &deep_infill_area,
-                1.5 * qualify_spacing_mm,
-                OffsetJoinType::Miter,
-                0.0,
-            );
+                let depth_layers = build_bridge_depth_layers(
+                    slices,
+                    timeline,
+                    depth_start,
+                    timeline_position,
+                    object_id,
+                    *region_id,
+                    &density_for,
+                );
+                let deep_infill_area = slicer_core::algos::bridge_over_infill::gather_areas_w_depth(
+                    &depth_layers,
+                    depth_layers.len().saturating_sub(1),
+                    target_flow_height,
+                    slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+                );
+                let deep_infill_area =
+                    slicer_core::algos::bridge_over_infill::remove_filled_polygons_on_lower_layers(
+                        &deep_infill_area,
+                        &lower_candidates,
+                        print_z,
+                        target_flow_height,
+                    );
+                let Some(region) = slices[slice_idx].regions.iter().find(|candidate| {
+                    candidate.object_id == *object_id && candidate.region_id == *region_id
+                }) else {
+                    continue;
+                };
+                compute_internal_bridge_layer(
+                    region,
+                    &unsupported,
+                    qualify_spacing_mm,
+                    bridge_spacing_mm,
+                    nofilter,
+                    internal_bridge_angle,
+                    deep_infill_area,
+                    object_id,
+                    *region_id,
+                    layer_index,
+                    print_z,
+                )
+            } else {
+                precomputed
+            };
+            let Some(InternalBridgeLayerResult { qualified, angles }) = computed else {
+                continue;
+            };
             let Some(region) = find_region_mut(&mut slices[slice_idx], object_id, *region_id)
             else {
                 continue;
             };
-            // Canonical gather arithmetic: closing of lower fills shrunk by
-            // mult*spacing minus grown lower solids (Step 1 port), then the
-            // per-surface gates with the expand(4*spacing) clip.
-            let mut qualified: Vec<ExPolygon> = Vec::new();
-            for surface in &region.internal_solid_fill {
-                let expanded_candidate = offset(
-                    std::slice::from_ref(surface),
-                    qualify_spacing_mm,
-                    OffsetJoinType::Miter,
-                    0.0,
-                );
-                if intersection(&expanded_candidate, &deep_infill_clip_area).is_empty() {
-                    log::debug!(
-                        "internal bridge skip object={} region={} layer={} print_z={} reason=deep_sparse_clip_empty",
-                        object_id, region_id, layer_index, print_z
-                    );
-                    continue;
-                }
-                if let Some(polys) =
-                    slicer_core::algos::bridge_over_infill::qualify_internal_bridge_surface(
-                        surface,
-                        &unsupported,
-                        qualify_spacing_mm,
-                        nofilter,
-                    )
-                {
-                    qualified.extend(polys);
-                }
-            }
-            // Only the surviving candidates are filtered against this erosion,
-            // so an empty candidate set skips the offset entirely.
-            let internal_unsupported_area = if qualified.is_empty() || deep_infill_area.is_empty() {
-                Vec::new()
-            } else {
-                offset(
-                    &deep_infill_area,
-                    -(4.5 * qualify_spacing_mm),
-                    OffsetJoinType::Miter,
-                    0.0,
-                )
-            };
-            qualified.retain(|polygon| {
-                !intersection(std::slice::from_ref(polygon), &internal_unsupported_area).is_empty()
-            });
-            if qualified.is_empty() {
-                log::debug!(
-                    "internal bridge skip object={} region={} layer={} print_z={} reason=qualified_empty_or_deep_sparse_clip surfaces={}",
-                    object_id,
-                    region_id,
-                    layer_index,
-                    print_z,
-                    region.internal_solid_fill.len()
-                );
-                continue;
-            }
-            // One bridge direction per qualified polygon (canonical
-            // `bridge_over_infill` direction step). The fill module draws each
-            // polygon at its own angle; the region-wide
-            // `bridge_orientation_deg` stays the external-bridge direction.
-            slicer_core::algos::bridge_over_infill::presort_bridge_candidates(&mut qualified);
-            let expansion_area = {
-                let not_sparse = union(
-                    &union(&region.top_solid_fill, &region.bottom_solid_fill),
-                    &region.bridge_areas,
-                );
-                union(
-                    &difference(&region.infill_areas, &not_sparse),
-                    &region.internal_solid_fill,
-                )
-            };
-            let angles = slicer_core::algos::bridge_over_infill::internal_bridge_angles(
-                &qualified,
-                &slicer_core::algos::bridge_over_infill::InternalBridgeAngleInputs {
-                    deep_infill_clip_area: &deep_infill_clip_area,
-                    internal_unsupported_area: &internal_unsupported_area,
-                    expansion_area: &expansion_area,
-                    total_fill_area: &region.infill_areas,
-                    spacing_mm: bridge_spacing_mm,
-                    override_deg: internal_bridge_angle,
-                },
-            );
             // The qualified polygons are the final bridge geometry: they join
             // `bridge_areas`, so the Perimeters-commit partition cuts them out
             // of sparse infill (canonical `cut_from_infill`), and the fill
@@ -1051,7 +1172,7 @@ fn gate_internal_bridge_sites(
             // candidate is DEV-150.
             region.internal_bridge_areas = qualified.clone();
             region.internal_bridge_angles_deg = angles.clone();
-            region.bridge_areas.extend(qualified.clone());
+            region.bridge_areas.extend(qualified.iter().cloned());
             qualified_by_entry.insert(
                 (slice_idx, object_id.clone(), *region_id),
                 (qualified, angles),

@@ -1,0 +1,28 @@
+{
+  "before": {
+    "bucket_seconds": 798.61,
+    "command": "cargo test -p slicer-runtime --test e2e",
+    "start_cpu_percent_samples": [
+      10.85,
+      21.2,
+      18.38,
+      6.8,
+      7.15
+    ]
+  },
+  "after": {
+    "bucket_seconds": 700.16,
+    "command": "cargo xtask test --summary -p slicer-runtime --test e2e",
+    "start_cpu_percent_samples": [
+      15.04,
+      13.84,
+      15.68,
+      5.5,
+      16.55
+    ]
+  },
+  "difference_seconds": -98.45,
+  "calicat_before_sha256": "d12cdfd10dab66a0010a0b5d5fca53d9387f4e96227ad5e74d0ec18197c0e260",
+  "calicat_after_sha256": "d12cdfd10dab66a0010a0b5d5fca53d9387f4e96227ad5e74d0ec18197c0e260",
+  "conditions": "Windows, Ryzen 5 7600X (6 cores / 12 logical), debug, default threads, warm cache, active browser load; one run per arm"
+}

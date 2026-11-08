@@ -1,0 +1,27 @@
+{
+  "fields": [
+    "record_bytes",
+    "optional_record_stride_bytes",
+    "vector_header_bytes",
+    "contract_captures",
+    "contract_hits",
+    "contract_fallbacks"
+  ],
+  "native": [
+    72,
+    80,
+    24,
+    4,
+    1,
+    13
+  ],
+  "wasm32": [
+    64,
+    72,
+    12,
+    4,
+    1,
+    13
+  ],
+  "limits": "layout measured by compiled target size_of; diagnostic contract work only, not per-job allocation high water or peak RSS. Entire allocation, key checks, stores, reads and teardown are charged to probe-free end-to-end timing."
+}
