@@ -1,0 +1,225 @@
+diff --git a/modules/core-modules/tree-support-planner/src/lib.rs b/modules/core-modules/tree-support-planner/src/lib.rs
+index eb6d97f6..1b375c53 100644
+--- a/modules/core-modules/tree-support-planner/src/lib.rs
++++ b/modules/core-modules/tree-support-planner/src/lib.rs
+@@ -65,7 +65,9 @@
+ #![warn(missing_docs)]
+ #![warn(unused_imports)]
+ 
+-use slicer_sdk::host_batch::{clip_polygons_batch, ClipRequest};
++use slicer_sdk::host_batch::{
++    clip_polygons_batch, offset_polygons_batch, ClipRequest, OffsetRequest,
++};
+ use slicer_sdk::prelude::*;
+ 
+ const DEFAULT_BRANCH_ANGLE_DEG: f32 = 45.0;
+@@ -821,6 +823,49 @@ fn inflate_model_occupancy(polys: &[ExPolygon], xy_distance_mm: f32) -> Vec<ExPo
+     host::offset_polygons(polys, xy_distance_mm, OffsetJoinType::Miter, 0.0)
+ }
+ 
++/// Batched [`inflate_model_occupancy`], with one result per input in input order.
++///
++/// Empty inputs and non-positive distances retain the singular path's verbatim
++/// no-op. Every other request uses the same offset operation and arguments; only
++/// its execution location and fan-out change.
++fn inflate_model_occupancy_batch<'a>(
++    polygon_sets: impl IntoIterator<Item = &'a [ExPolygon]>,
++    xy_distance_mm: f32,
++) -> Vec<Vec<ExPolygon>> {
++    let polygon_sets: Vec<&[ExPolygon]> = polygon_sets.into_iter().collect();
++    let mut request_slots = vec![None; polygon_sets.len()];
++    let mut requests = Vec::new();
++    for (index, polys) in polygon_sets.iter().enumerate() {
++        if polys.is_empty() || xy_distance_mm <= 0.0 {
++            continue;
++        }
++        request_slots[index] = Some(requests.len());
++        requests.push(OffsetRequest {
++            polygons: polys.to_vec(),
++            delta_mm: xy_distance_mm,
++            join: OffsetJoinType::Miter,
++            arc_tolerance_mm: 0.0,
++            miter_limit: None,
++        });
++    }
++
++    let results = offset_polygons_batch(&requests);
++    assert_eq!(
++        results.len(),
++        requests.len(),
++        "offset batch must return one result per request"
++    );
++    let mut results = results.into_iter();
++    polygon_sets
++        .into_iter()
++        .zip(request_slots)
++        .map(|(polys, slot)| match slot {
++            Some(_) => results.next().expect("validated offset batch result count"),
++            None => polys.to_vec(),
++        })
++        .collect()
++}
++
+ /// Whether two bounding boxes (scaled units) are provably disjoint.
+ /// Touching boxes count as overlapping — they are NOT disjoint.
+ fn bboxes_disjoint(a: Option<(i64, i64, i64, i64)>, b: Option<(i64, i64, i64, i64)>) -> bool {
+@@ -1117,7 +1162,12 @@ struct RoleBuildInput {
+     base_areas: Vec<ExPolygon>,
+     floor_areas: Vec<ExPolygon>,
+     branch_radius: f32,
++    /// Per-layer collision fallback, including foreign support territory.
+     collision_polys: Vec<ExPolygon>,
++    /// Raw origin occupancy, inflated together when this emit chunk flushes.
++    model_occupancy: Vec<ExPolygon>,
++    /// Foreign territory appended to non-empty origin occupancy after inflation.
++    foreign_keepout: Vec<ExPolygon>,
+     avg_node_per_layer: usize,
+     line_width_mm: f32,
+     /// Territory this region owns, when it is a modifier sub-region. Applied
+@@ -1418,10 +1468,27 @@ fn flush_pending_emits(
+     meta: &mut Vec<PendingEmitMeta>,
+     inputs: &mut Vec<RoleBuildInput>,
+     out: &mut Vec<SupportPlanEntry>,
++    xy_distance_mm: f32,
+ ) {
+     if inputs.is_empty() {
+         return;
+     }
++
++    // The per-origin half of occupancy inflation already sits inside this
++    // bounded emit chunk. Run those independent offsets as one host batch, then
++    // assemble exactly the collision set the serial origin loop produced.
++    let inflated = inflate_model_occupancy_batch(
++        inputs.iter().map(|input| input.model_occupancy.as_slice()),
++        xy_distance_mm,
++    );
++    for (input, model_occupancy) in inputs.iter_mut().zip(inflated) {
++        input.model_occupancy = Vec::new();
++        let foreign_keepout = std::mem::take(&mut input.foreign_keepout);
++        if !model_occupancy.is_empty() {
++            input.collision_polys = model_occupancy.into_iter().chain(foreign_keepout).collect();
++        }
++    }
++
+     let refs: Vec<&RoleBuildInput> = inputs.iter().collect();
+     let roles = build_roles_batched(&refs);
+     for (meta, roles) in std::mem::take(meta).into_iter().zip(roles) {
+@@ -4105,30 +4172,20 @@ impl SupportPlanner {
+                     )) {
+                         continue;
+                     }
+-                    let model_occupancy: Vec<ExPolygon> = inflate_model_occupancy(
+-                        &support_analysis
+-                            .model_occupancy
+-                            .iter()
+-                            .filter(|entry| {
+-                                entry.object_id == obj.object_id
+-                                    && entry.global_support_layer_index
+-                                        == current_global_layer_index
+-                                    && entry.region_id == region_id
+-                                    && entry.variant_chain.as_slice() == variant_chain.as_slice()
+-                            })
+-                            .flat_map(|entry| entry.polygons.iter().cloned())
+-                            .collect::<Vec<_>>(),
+-                        self.support_object_xy_distance,
+-                    );
+-                    let role_collision: Vec<ExPolygon> = if model_occupancy.is_empty() {
+-                        collision_polys.to_vec()
+-                    } else {
+-                        model_occupancy
+-                            .into_iter()
+-                            .chain(foreign_keepout.iter().cloned())
+-                            .collect()
+-                    };
+-                    let role_collision = role_collision.as_slice();
++                    // Defer this origin's occupancy offset to the bounded emit
++                    // flush. `collision_polys` remains the exact fallback for an
++                    // empty inflated origin set.
++                    let model_occupancy: Vec<ExPolygon> = support_analysis
++                        .model_occupancy
++                        .iter()
++                        .filter(|entry| {
++                            entry.object_id == obj.object_id
++                                && entry.global_support_layer_index == current_global_layer_index
++                                && entry.region_id == region_id
++                                && entry.variant_chain.as_slice() == variant_chain.as_slice()
++                        })
++                        .flat_map(|entry| entry.polygons.iter().cloned())
++                        .collect();
+                     // Ticket 19: a tree sub-region minted by a modifier keeps
+                     // only what falls inside its own footprint; a base region
+                     // keeps what the foreign carve above left. Skeleton points
+@@ -4222,7 +4279,9 @@ impl SupportPlanner {
+                         base_areas: base_areas.clone(),
+                         floor_areas: floor_areas.clone(),
+                         branch_radius,
+-                        collision_polys: role_collision.to_vec(),
++                        collision_polys: collision_polys.to_vec(),
++                        model_occupancy,
++                        foreign_keepout: foreign_keepout.to_vec(),
+                         avg_node_per_layer: contact_stats.avg_node_per_layer,
+                         line_width_mm: self.support_line_width_mm,
+                         own_territory: own_territory.map(|territory| territory.to_vec()),
+@@ -4265,6 +4324,7 @@ impl SupportPlanner {
+                     &mut pending_emit_meta,
+                     &mut pending_emit_inputs,
+                     &mut entries_in_order,
++                    self.support_object_xy_distance,
+                 );
+                 pending_emit_layers = 0;
+             }
+@@ -4274,6 +4334,7 @@ impl SupportPlanner {
+             &mut pending_emit_meta,
+             &mut pending_emit_inputs,
+             &mut entries_in_order,
++            self.support_object_xy_distance,
+         );
+ 
+         // Family assignments can cover full source origins absent from either
+@@ -7137,6 +7198,8 @@ mod tests {
+             floor_areas: Vec::new(),
+             branch_radius: 1.0,
+             collision_polys,
++            model_occupancy: Vec::new(),
++            foreign_keepout: Vec::new(),
+             avg_node_per_layer: 0,
+             line_width_mm: 0.4,
+             own_territory,
+@@ -8132,6 +8195,37 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn occupancy_offset_batch_matches_singular_in_input_order() {
++        let polygon_sets = vec![
++            Vec::new(),
++            vec![square_mm(0.0, 0.0, 2.0)],
++            vec![square_mm(10.0, 0.0, 2.0), square_mm(20.0, 1.0, 3.0)],
++        ];
++        let expected: Vec<_> = polygon_sets
++            .iter()
++            .map(|polys| inflate_model_occupancy(polys, 0.35))
++            .collect();
++        let actual = inflate_model_occupancy_batch(polygon_sets.iter().map(Vec::as_slice), 0.35);
++
++        assert_eq!(actual, expected);
++        assert!(actual[0].is_empty(), "the empty input must stay empty");
++    }
++
++    #[test]
++    fn occupancy_offset_batch_preserves_nonpositive_distance_noop() {
++        let polygon_sets = vec![
++            Vec::new(),
++            vec![square_mm(0.0, 0.0, 2.0)],
++            vec![square_mm(10.0, 1.0, 3.0)],
++        ];
++        for distance in [0.0, -0.35] {
++            let actual =
++                inflate_model_occupancy_batch(polygon_sets.iter().map(Vec::as_slice), distance);
++            assert_eq!(actual, polygon_sets, "distance {distance} must be a no-op");
++        }
++    }
++
+     /// F-12: canonical `nodes_per_part` bucketing. Group 0 is the
+     /// to-buildplate bucket, `parts[i]` is group `i + 1`.
+     #[test]

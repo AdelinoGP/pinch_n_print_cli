@@ -138,6 +138,12 @@ with a bounded output delta.**
    corroboration and the map's **0.80 %** floor still governs, and the gate is
    **all 8 cells** — no four-cell subset. A candidate that passes on one cell and
    regresses an unmeasured one is not a KEEP.
+   **Amendment (2026-11-07, [Strong planner carry: fold the occupancy batching into the Slice campaign, amend the gate, or park it?](117-strong-planner-carry-ruling.md)):**
+   the representation-safe Strong-planner occupancy-offset batch has a
+   campaign-specific four-supports-on improvement gate, byte-identical output in
+   all eight cells, and a no-median-wall/CPU-regression requirement on the four
+   supports-off cells. This does not amend the 8/8 destination or authorize a
+   four-cell subset for any other candidate.
 4. **First step.** A **Phase-1 parity and consumer analysis**, not a candidate. It
    must pin what canonical OrcaSlicer's closing pipeline does differently from
    PnP's `assemble_flat_bridge_areas`

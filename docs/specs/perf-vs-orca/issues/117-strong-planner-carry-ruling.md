@@ -2,8 +2,11 @@
 
 Type: grilling
 Label: wayfinder:grilling
-Status: open
-Assignee: (unclaimed)
+Status: resolved (2026-11-07; human ruling — **amend this representation-safe
+  candidate's gate** to the four supports-on cells, with byte-identical output in
+  all eight and no median wall/CPU regression in the four supports-off cells;
+  the 8/8 destination is unchanged. See ## Answer)
+Assignee: 2026-11-07 OpenCode wayfinder session — the human said "Continue the perf vs orca map" (no ticket named; this is the first frontier ticket in order)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [ticket 113](113-strong-planner-phase1.md)'s Phase-1
@@ -64,3 +67,61 @@ The options are:
 A ruling on the carry route, and if option 1 or 2, the exact gate wording the
 next candidate ticket must use. No production edit; no candidate until the
 ruling lands.
+
+## Answer
+
+**Resolved 2026-11-07 by human ruling: amend this candidate's acceptance gate.**
+The Strong-planner occupancy-offset batch proceeds as a representation-safe,
+four-supports-on improvement campaign with explicit supports-off no-regression
+requirements. The destination remains **8 of 8 cells won against Orca**; only
+this candidate's positive improvement-floor scope changes.
+
+### Why the original carry options changed
+
+- The original option 1 is no longer executable: the P1 and whole-set
+  classification candidates have landed, so their savings are already in the
+  baseline and cannot carry a new paired candidate. The wave-expansion take also
+  stopped the old prepass expansion framing.
+- The exactness argument survives: `inflate_model_occupancy`
+  (`modules/core-modules/tree-support-planner/src/lib.rs`) can submit the same
+  requests through `HostExecutionContext::offset_polygons_batch`
+  (`crates/slicer-wasm-host/src/host.rs`), which applies the same
+  `slicer_core::polygon_ops::offset` per request in input order. No
+  canonical-parity exception or output delta is needed.
+- The structural supports-off conclusion also survives: the planner declines
+  before this emit work when supports are disabled, so this candidate contributes
+  no positive improvement there. The old wall percentages and floor multiples
+  are historical measurements, not carried into the new gate.
+
+### Exact gate wording
+
+> **Campaign scope:** the positive 0.80 % improvement floor applies to the four
+> supports-on matched cells: `benchy classic-on`, `benchy arachne-on`,
+> `base classic-on` and `base arachne-on`.
+>
+> **Output:** capture a fresh 16-cell reference set before timing. Baseline
+> ordinary ≡ baseline accelerated ≡ the current post-t123 output; candidate
+> ordinary ≡ candidate accelerated; and candidate ≡ baseline byte-for-byte in
+> all eight cells. Because this shape is exact by construction, any output delta
+> is a defect and stops the campaign.
+>
+> **Paired improvement gate:** in each supports-on cell, run at least three
+> interleaved baseline/candidate pairs with alternating order. The candidate's
+> median wall must improve by at least 0.80 % of that cell's same-run baseline
+> median wall, and its median process CPU must decrease. Report every pair,
+> medians, ranges and floor multiples. Measure this request set's own batch
+> occupancy; do not adopt the existing emit-batching campaign's 2.6x as its
+> price.
+>
+> **Supports-off no-regression gate:** in `benchy classic-off`,
+> `benchy arachne-off`, `base classic-off` and `base arachne-off`, use the same
+> interleaved protocol. Candidate median wall and median process CPU must not
+> regress in any cell. Output remains byte-identical as required above.
+>
+> **Disclosure and accounting:** report the full eight-cell wall/CPU table and
+> disclose any spoiled pair or starvation exclusion. Passing this campaign does
+> not close the destination; the four supports-off cells and the remaining Orca
+> gap still require other route steps.
+
+The candidate is graduated as [Strong planner occupancy-offset batching: representation-safe four-cell campaign](125-strong-planner-occupancy-offset-batching.md),
+open and unclaimed. No production code was edited in this ruling session.

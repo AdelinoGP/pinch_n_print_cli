@@ -89,7 +89,44 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-07, twenty-seventh session — the t124 take):**
+**Current selection scope (2026-11-07, twenty-ninth session — the occupancy
+batch candidate):** the human explicitly selected
+[Strong planner occupancy-offset batching: representation-safe four-cell campaign](issues/125-strong-planner-occupancy-offset-batching.md).
+It was claimed and resolved as a measured **DROP**. The candidate batched only
+the per-origin role-carve offsets inside the bounded emit flush; the per-layer
+emit-check half stayed singular. **Output proof passed everywhere:** baseline
+ordinary ≡ baseline accelerated ≡ candidate ordinary ≡ candidate accelerated ≡
+the post-t123 set in 8/8 cells, with 32 output runs + 48 paired runs all clean
+and zero exclusions. **The paired gate failed in 6/8 cells:** only benchy
+arachne-on (+1.89 % wall, +0.5782 s CPU) and base arachne-on (+10.88 %,
++2.3125 s) passed. Base classic-on improved wall +6.13 % but CPU regressed
+1.7656 s; benchy classic-on regressed wall −17.90 %. The candidate and both
+WASMs were retired, the production diff is empty, and both freshness checks are
+green again. Full planner tests: **148 passed**. Evidence:
+[`evidence/t125-occupancy-offset-batching/`](evidence/t125-occupancy-offset-batching/FINDINGS.md)
+(`verify.py` 442 checks, 10/10 negative controls rejected). **Frontier now: no
+open child.** The per-layer/emit program remains the next stage's fog; the
+unmeasured per-layer occupancy half is not an automatic rescue ticket.
+
+**Previous selection scope (2026-11-07, twenty-eighth session — the Strong
+planner carry ruling):** the human said "Continue the perf vs orca map" (no
+ticket named). The frontier held only
+[Strong planner carry: fold the occupancy batching into the Slice campaign, amend the gate, or park it?](issues/117-strong-planner-carry-ruling.md),
+so it was claimed and resolved **with the human**. The original Slice-carry route
+is stale: the landed Slice candidates are already in the baseline and cannot be
+counted again.
+The human **amended this representation-safe candidate's gate**: the 0.80 %
+paired wall floor with CPU corroboration applies to the four supports-on cells;
+all eight outputs must remain byte-identical; the four supports-off cells must
+show no median wall or CPU regression. The **8/8 destination is unchanged**. The
+candidate is graduated as
+[Strong planner occupancy-offset batching: representation-safe four-cell campaign](issues/125-strong-planner-occupancy-offset-batching.md),
+open and unclaimed. This was a ruling-only take: no production edit, build or
+timing campaign. **Frontier now:**
+[Strong planner occupancy-offset batching: representation-safe four-cell campaign](issues/125-strong-planner-occupancy-offset-batching.md)
+is open and unclaimed. The per-layer/emit program remains the next stage's fog.
+
+**Previous selection scope (2026-11-07, twenty-seventh session — the t124 take):**
 the human said "Continue the perf vs orca map, pick up the next afk ticket" (no
 ticket named). The frontier held **124 open and unclaimed** (117 is the human's
 grilling), so 124 was claimed and **resolved as a measurement**. Headline: **the
@@ -2559,6 +2596,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Strong planner occupancy-offset batching: representation-safe four-cell campaign](issues/125-strong-planner-occupancy-offset-batching.md): **resolved (2026-11-07; measured DROP — 2/8 cells pass)** — per-origin role-carve offsets batched inside the bounded emit flush, output byte-identical in all 16 arm/cell combinations and all 80 output/paired runs clean, but six cells fail the amended gate; base classic-on gains +6.13 % wall with CPU regressing 1.7656 s, while benchy classic-on regresses −17.90 % wall. Candidate and WASMs retired, production restored, 148 planner tests passed. Evidence: [`evidence/t125-occupancy-offset-batching/`](evidence/t125-occupancy-offset-batching/FINDINGS.md) (`verify.py` 442 checks; 10/10 negative controls).
+- [Strong planner carry: fold the occupancy batching into the Slice campaign, amend the gate, or park it?](issues/117-strong-planner-carry-ruling.md): **resolved (2026-11-07; human ruling — amend this representation-safe candidate's gate)** — the original Slice carrier is already banked, so the occupancy-offset batch proceeds with the 0.80 % paired wall/CPU gate on the four supports-on cells, byte-identical output in all eight, and no median wall/CPU regression on the four supports-off cells; the 8/8 destination is unchanged. Candidate graduated as [Strong planner occupancy-offset batching: representation-safe four-cell campaign](issues/125-strong-planner-occupancy-offset-batching.md).
 - [Post-t123 Orca scoreboard](issues/124-post-t123-orca-scoreboard.md): **resolved (2026-11-07; measurement-only — PnP loses all 8 cells at 2.36x–4.65x ordinary / 2.40x–4.67x accelerated)** — fresh 8 cells × 3 tools × (1 warmup + 3 measured), interleaved, on the post-t123 tree; **zero starvation exclusions**; 96 rows, PnP ordinary ≡ accelerated bytes in 8/8, every PnP hash equal to t123's candidate set, 64/64 PnP `degraded=false` / `non_fatal=0`, 32/32 Orca runs pinned (arc disabled, elephant-foot 0, brim 0) with the repaired filament leg `1.24 / 12 / 220`; required cut **58%–79%** of today's PnP wall (**72%–86%** for 1.5x). Every ratio improved against t121's pre-t123 **2.78x–5.11x**, but the Orca side also moved (**−12.3% … +11.5%**), so no causal claim is taken; the base supports-off PnP deltas (**−24.2% / −25.7%**) agree with t123's paired **−22.2% / −20.9%**. The first batch was killed by the host mid-cell: its `base classic-on` partial is discarded whole and that cell plus `base arachne-on` were re-taken in interleaved batches. Evidence: [`evidence/t124-post-t123-scoreboard/`](evidence/t124-post-t123-scoreboard/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 10/10 negative controls rejected).
 - [Facet bridge-path retirement: canonical classification over the whole unsupported set](issues/123-facet-bridge-path-retirement.md): **resolved (2026-11-07; BUILD — 8/8 cells clear the 0.80 % floor at 3.4x–27.8x, CPU corroborating)** — `PrePass::Slice` retires the facet point-in-polygon scan, the 1.0 mm `expansion_margin_mm` offset, the flat-family special case, the postpass unsupported-span gate and the bottom-surface footprint cache, and applies canonical `PrintObject::detect_surfaces_type`'s `opening_ex(diff(current_raw, safety_offset(previous_raw)), 0.1 × external_perimeter_width)` to the region's whole unsupported set (`classify_unsupported_bridge_areas`). **16-cell output:** baseline ordinary ≡ baseline accelerated ≡ the post-t116 set in all eight cells, candidate ordinary ≡ candidate accelerated, candidate moves every cell; benchy **+873 / +832 / +1,281 / +1,159** bytes, base **−20,294 / −20,255 / −20,767 / −20,745**. **Delta audit: 0 structural geometry lines in all eight cells** — wall/support differences are `E`-token-only on unchanged `G1` motion or non-motion commands (`M73`, `M106`/`M107` fan, appendix); no coordinate, feedrate, travel, skirt, brim or raft line moved. **Paired gate (3 interleaved pairs):** median wall **−7.60 / −3.04 / −7.02 / −2.73 %** (benchy classic-off/on, arachne-off/on) and **−22.23 / −7.23 / −20.94 / −7.94 %** (base), **3.4x–27.8x** the floor, process CPU **−1.0 … −110.2 s** in every cell; all eight strictly separated on wall and CPU. **Ledger:** the base win is mostly the removed facet work (1.04x set at 27x the canonical classifier); the benchy set grows 1.85x; the removed footprint is an extra saving the t122 screen did not price. `DEV-200` records the unported expansion/trim; `DEV-039` is closed. Evidence: [`evidence/t123-facet-retirement/`](evidence/t123-facet-retirement/FINDINGS.md) (`verify.py` exits 0 checkout-only, 309 checks; `--self-test` rejects 11/11 negative controls).
 
@@ -2817,7 +2856,11 @@ Standing decisions for this effort (2026-09-22):
   per-layer phase still leaves **3.02x / 4.51x / 4.66x / 7.60x** (benchy-off /
   base-off / benchy-on / base-on). The shapes that could move those phases are
   unmeasured; this patch graduates only after the prepass stage lands or the human
-  opens it.
+  opens it. The per-origin occupancy batch failed its paired gate in
+  [Strong planner occupancy-offset batching: representation-safe four-cell campaign](issues/125-strong-planner-occupancy-offset-batching.md);
+  the per-layer emit-check half was not tried and must not inherit either a win or
+  a failure claim. Any per-layer batch candidate needs a separate scope and price,
+  not automatic rescue status.
 - **t110's base-on multiples need a ledger correction (surfaced 2026-11-03 by the
   t111 re-derivation).** The t110 answer's "end-to-end today" **9.49x** divides
   PnP's **instrumented** base-on slice span (**228,997 ms**) by Orca's quiet
@@ -3303,6 +3346,12 @@ Standing decisions for this effort (2026-09-22):
   ([ticket 112](issues/112-prep-slice-parity-phase1.md)). This exception is
   scoped to the prepass and its shapes, is not a standing licence for the rest of
   the parity program, and the next such question still goes back to the human.
+  **Campaign-specific amendment (2026-11-07, [Strong planner carry: fold the occupancy batching into the Slice campaign, amend the gate, or park it?](issues/117-strong-planner-carry-ruling.md)):**
+  the representation-safe Strong-planner occupancy-offset batch uses the four
+  supports-on cells for its positive improvement gate, requires byte-identical
+  output in all eight, and requires no median wall/CPU regression in the four
+  supports-off cells. This is not a parity exception, does not generalize to
+  other candidates, and leaves the 8/8 destination unchanged.
 - **Making the resolved-config-less fallback block satisfy Orca's viewer gate.**
   Ticket 34's residual — the test/legacy path's `CONFIG_BLOCK` cannot reach 80
   *loadable* pairs because the remainder are PnP's own key names — is past this
