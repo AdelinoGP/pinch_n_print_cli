@@ -13,10 +13,14 @@ wall-clock (process CPU corroborating, never contradicting) in every cell of
 the {benchy, base} × {classic, arachne} × {supports off, on} matrix, under the
 matched-pair protocol with outputs disclosed. 8 of 8 cells won closes the map.
 
-**Destination status (2026-11-07, [t124](issues/124-post-t123-orca-scoreboard.md)):
+**Destination status (2026-11-08, [t126](issues/126-post-t123-phase-split-refresh.md)):
 0 of 8 cells won.** PnP is **2.36x–4.65x** slower on the ordinary arm
-(**2.40x–4.67x** accelerated) and needs a **58%–79%** wall cut to win,
-**72%–86%** for a 1.5x margin.
+(**2.40x–4.67x** accelerated) and needs a **58%–79%** wall cut to win. The
+post-t123 split re-derives the terms that cut must come from: the prepass is
+**62.1–87.1 %** of every cell, the required prepass removal is **72–101 %**, and
+even a zero prepass leaves **benchy classic-off at 1.02x**. The destination is
+now the subject of
+[Destination arithmetic after t123: re-aim, rewrite, or park?](issues/128-destination-arithmetic-ruling.md).
 
 ## Notes
 
@@ -89,7 +93,41 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-07, twenty-ninth session — the occupancy
+**Current selection scope (2026-11-08, thirtieth session — the t126 take):**
+the human said "Continue the perf vs orca map" (no ticket named; all 125
+children were resolved), was offered the live fog routes, and selected **refresh
+the post-t123 split, then attribute per-layer/emit**.
+[Post-t123 phase split refresh and per-layer/emit attribution](issues/126-post-t123-phase-split-refresh.md)
+was graduated, claimed and **resolved as a measurement + Phase-1 attribution**.
+Headline: **the split is re-derived on all eight cells and it re-prices the
+map's next stage.** Prepass **62.1–87.1 %**, per-layer **10.6–33.3 %**, postpass
+**1.8–4.9 %**. `PrePass::Slice` is no longer a term (**41,472 → 2,110 ms** on
+base classic-off, **−94.9 %**); the supports-off prepass is now
+`ShellClassification` + `OverhangAnnotation` (**24.4 s of a 42.5 s cell** on base
+classic-off) and the supports-on prepass is `SupportGeometry` +
+`SupportAnalysis` (**68.9 s of a 126.3 s cell** on base classic-on). **The
+destination arithmetic is the headline:** deleting the whole per-layer phase
+leaves **1.67x–4.14x** in every cell; deleting the whole prepass reaches
+**0.48x–1.02x**, and on **benchy classic-off even a zero prepass loses
+(1.02x)**. The required prepass removal is **72 %–101 %** of today's prepass.
+The per-layer phase has **no globally idle wall** (module-busy union = phase
+wall on the base cells; 2.0–2.3 % = 0.47–0.90x floor on benchy). Per-layer
+carriers: perimeters (3.82x–15.84x floor ceiling), tree-support on supports-on
+(4.66x–9.63x), raft-default (**2.64x–8.25x**), infill-linker (1.17x–8.28x). The
+postpass is not a route (largest bracket 0.85–2.61x). One exact shape is
+graduated: [Raft-fill dispatch outside the raft band](issues/127-raft-fill-dispatch-outside-band.md)
+— `com.core.raft-default` pays **61–63 ms on all 495 base layers** while its
+body returns before doing any work (`raft_layers = 2`); the 17-layer
+other-module-first control shows the cost is module-specific, not stage
+preparation. The destination decision is graduated as
+[Destination arithmetic after t123: re-aim, rewrite, or park?](issues/128-destination-arithmetic-ruling.md)
+(HITL). Evidence:
+[`evidence/t126-post-t123-phase-split/`](evidence/t126-post-t123-phase-split/FINDINGS.md)
+(`verify.py` holds 617/617 claims checkout-only; `--self-test` rejects 10/10
+negative controls). **Frontier now: 127 open and unclaimed; 128 is the human's
+grilling.** Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-11-07, twenty-ninth session — the occupancy
 batch candidate):** the human explicitly selected
 [Strong planner occupancy-offset batching: representation-safe four-cell campaign](issues/125-strong-planner-occupancy-offset-batching.md).
 It was claimed and resolved as a measured **DROP**. The candidate batched only
@@ -2596,6 +2634,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Post-t123 phase split refresh and per-layer/emit attribution](issues/126-post-t123-phase-split-refresh.md): **resolved (2026-11-08; measurement + Phase-1 attribution — the split is re-derived on all eight cells, and even a zero prepass loses benchy classic-off at 1.02x)** — eight instrumented passes (Arachne measured for the first time), all clean and byte-identical to the t123 reference set. Prepass **62.1–87.1 %**, per-layer **10.6–33.3 %**, postpass **1.8–4.9 %**; `PrePass::Slice` fell **41,472 → 2,110 ms** on base classic-off (**−94.9 %**), so the supports-off prepass is now `ShellClassification` + `OverhangAnnotation` (**24.4 s of 42.5 s**) and the supports-on prepass is `SupportGeometry` + `SupportAnalysis` (**68.9 s of 126.3 s**). Deleting the per-layer phase leaves **1.67x–4.14x**; deleting the prepass reaches **0.48x–1.02x**; the required prepass removal is **72–101 %**. The per-layer phase has no globally idle wall (0 ms gap on base; 2.0–2.3 % on benchy). Carriers: perimeters (3.82x–15.84x floor ceiling), tree-support supports-on (4.66x–9.63x), raft-default (2.64x–8.25x), infill-linker (1.17x–8.28x); the postpass is not a route. Graduated [raft-fill dispatch outside the raft band](issues/127-raft-fill-dispatch-outside-band.md) (61–63 ms on all 495 base layers while the body early-outs) and the HITL [destination-arithmetic ruling](issues/128-destination-arithmetic-ruling.md). Evidence: [`evidence/t126-post-t123-phase-split/`](evidence/t126-post-t123-phase-split/FINDINGS.md) (`verify.py` 617/617 claims; 10/10 negative controls).
 - [Strong planner occupancy-offset batching: representation-safe four-cell campaign](issues/125-strong-planner-occupancy-offset-batching.md): **resolved (2026-11-07; measured DROP — 2/8 cells pass)** — per-origin role-carve offsets batched inside the bounded emit flush, output byte-identical in all 16 arm/cell combinations and all 80 output/paired runs clean, but six cells fail the amended gate; base classic-on gains +6.13 % wall with CPU regressing 1.7656 s, while benchy classic-on regresses −17.90 % wall. Candidate and WASMs retired, production restored, 148 planner tests passed. Evidence: [`evidence/t125-occupancy-offset-batching/`](evidence/t125-occupancy-offset-batching/FINDINGS.md) (`verify.py` 442 checks; 10/10 negative controls).
 - [Strong planner carry: fold the occupancy batching into the Slice campaign, amend the gate, or park it?](issues/117-strong-planner-carry-ruling.md): **resolved (2026-11-07; human ruling — amend this representation-safe candidate's gate)** — the original Slice carrier is already banked, so the occupancy-offset batch proceeds with the 0.80 % paired wall/CPU gate on the four supports-on cells, byte-identical output in all eight, and no median wall/CPU regression on the four supports-off cells; the 8/8 destination is unchanged. Candidate graduated as [Strong planner occupancy-offset batching: representation-safe four-cell campaign](issues/125-strong-planner-occupancy-offset-batching.md).
 - [Post-t123 Orca scoreboard](issues/124-post-t123-orca-scoreboard.md): **resolved (2026-11-07; measurement-only — PnP loses all 8 cells at 2.36x–4.65x ordinary / 2.40x–4.67x accelerated)** — fresh 8 cells × 3 tools × (1 warmup + 3 measured), interleaved, on the post-t123 tree; **zero starvation exclusions**; 96 rows, PnP ordinary ≡ accelerated bytes in 8/8, every PnP hash equal to t123's candidate set, 64/64 PnP `degraded=false` / `non_fatal=0`, 32/32 Orca runs pinned (arc disabled, elephant-foot 0, brim 0) with the repaired filament leg `1.24 / 12 / 220`; required cut **58%–79%** of today's PnP wall (**72%–86%** for 1.5x). Every ratio improved against t121's pre-t123 **2.78x–5.11x**, but the Orca side also moved (**−12.3% … +11.5%**), so no causal claim is taken; the base supports-off PnP deltas (**−24.2% / −25.7%**) agree with t123's paired **−22.2% / −20.9%**. The first batch was killed by the host mid-cell: its `base classic-on` partial is discarded whole and that cell plus `base arachne-on` were re-taken in interleaved batches. Evidence: [`evidence/t124-post-t123-scoreboard/`](evidence/t124-post-t123-scoreboard/FINDINGS.md) (`verify.py --self-test` exits 0 checkout-only, 10/10 negative controls rejected).
@@ -2845,22 +2884,27 @@ Standing decisions for this effort (2026-09-22):
   thread-time, and an explicit `detect_bridge_directions` vs PnP-direction
   decision. Do not re-open the old prepass framing.
 
-- **The per-layer/emit program is the next stage after the prepass rewrite
-  (t111, 2026-11-03).** The destination stays 8/8, but even deleting both largest
-  prepass stages leaves base classic-off at **2.86x** and base classic-on at
-  **4.00x** inside t104's instrumented arithmetic against Orca's quiet walls — an
-  upper bound on the improvement — so no future prepass ticket may claim the
-  destination closes alone. [t110](issues/110-orca-side-attribution.md) measured
-  Orca's per-layer + emit phases **4.4x–7.3x** cheaper than PnP's (again with an
-  instrumented PnP side), and t104's counterfactual says deleting the entire
-  per-layer phase still leaves **3.02x / 4.51x / 4.66x / 7.60x** (benchy-off /
-  base-off / benchy-on / base-on). The shapes that could move those phases are
-  unmeasured; this patch graduates only after the prepass stage lands or the human
-  opens it. The per-origin occupancy batch failed its paired gate in
-  [Strong planner occupancy-offset batching: representation-safe four-cell campaign](issues/125-strong-planner-occupancy-offset-batching.md);
-  the per-layer emit-check half was not tried and must not inherit either a win or
-  a failure claim. Any per-layer batch candidate needs a separate scope and price,
-  not automatic rescue status.
+- **The per-layer/emit program is measured and cannot close the destination
+  (t111 → t126, 2026-11-08).** [t126](issues/126-post-t123-phase-split-refresh.md)
+  re-derived the split on all eight cells after the prepass rewrite landed: the
+  per-layer phase is **10.6–33.3 %** and deleting it entirely leaves
+  **1.67x–4.14x** against Orca, while the postpass is **1.8–4.9 %** with no
+  bracket above **2.61x** floor. The per-layer phase has no globally idle wall
+  (module-busy union = phase wall on the base cells; 2.0–2.3 % on benchy), so
+  there is no cross-worker idle pool to reclaim; a per-worker host cost between
+  dispatches is not resolved by that instrument. The shapes that survive are
+  either graduated — raft-fill dispatch outside the raft band,
+  [127](issues/127-raft-fill-dispatch-outside-band.md) — or left here with their
+  prices: tree-support's per-layer emit-check half (≤**4.66x / 4.72x** for the
+  whole supports-on call; the half is smaller, and
+  [125](issues/125-strong-planner-occupancy-offset-batching.md)'s DROP is a live
+  warning that this family does not automatically transfer), `infill-linker`
+  (**1.17x–8.28x**, no shape identified), and the perimeters
+  (**3.82x–15.84x**, but t68 measured 97–99 % native clipper ops, so the ceiling
+  is not a shape). The per-origin occupancy batch must not be re-run as-is, and
+  no per-layer batch candidate inherits rescue status. The destination question
+  these numbers force is
+  [128](issues/128-destination-arithmetic-ruling.md), not a per-layer ticket.
 - **t110's base-on multiples need a ledger correction (surfaced 2026-11-03 by the
   t111 re-derivation).** The t110 answer's "end-to-end today" **9.49x** divides
   PnP's **instrumented** base-on slice span (**228,997 ms**) by Orca's quiet
@@ -3209,9 +3253,12 @@ Standing decisions for this effort (2026-09-22):
   stage's Pass 1 `apply_opening` round-join arc-tolerance-0 anomaly (t27
   candidate (a)) remains the largest measured, un-ticketed term in the stage
   and stays in the fog pending its own representation/parity check — **bounded
-  by t104: `PrePass::ShellClassification` is 14.0 s of the base classic-off cell
-  and 22.0 s of base classic-on, so no shape inside it can supply the park's
-  77.8–93.9 % prepass cut.**
+  by [t126](issues/126-post-t123-phase-split-refresh.md): `PrePass::ShellClassification`
+  is **14.7 s** of the base classic-off cell and **15.3 s** of base classic-on,
+  beside `PrePass::OverhangAnnotation`'s **9.7 / 10.3 s**, so no shape inside the
+  stage can supply the destination's now-measured **72–101 %** prepass cut.**
+  (t104's 14.0 / 22.0 s figures are superseded; its base-on pass carries a
+  disclosed +43.6 % instrumented inflation.)
 - **Named leads from the t60 host:native attribution (2026-10-14).**
   [host:native attribution](issues/60-host-native-attribution.md)
   names two reducible shapes beyond the now-resolved (KEEP 2026-10-16)

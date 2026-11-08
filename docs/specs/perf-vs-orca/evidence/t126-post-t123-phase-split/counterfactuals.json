@@ -1,0 +1,1070 @@
+{
+ "note": "Shares from t126's instrumented passes; denominators are ticket 124's paired medians of record. Instrumented walls are not wall claims and per-layer thread sums are not wall time.",
+ "floor_fraction": 0.008,
+ "cells": {
+  "base-arachne-off": {
+   "fixture": "base",
+   "generator": "arachne",
+   "supports": "off",
+   "pnp_ordinary_median_s": 41.1787,
+   "orca_median_s": 17.454,
+   "ratio_of_record": 2.35927,
+   "cut_to_beat": 0.576140077227278,
+   "cut_to_1_5x": 0.3642101158409169,
+   "share": {
+    "validation": 4.4e-05,
+    "prepass": 0.797512,
+    "per_layer": 0.18235,
+    "postpass": 0.018297,
+    "outside": 0.001796
+   },
+   "implied_wall_s": {
+    "validation": 0.002,
+    "prepass": 32.84,
+    "per_layer": 7.509,
+    "postpass": 0.753,
+    "outside": 0.074
+   },
+   "ratio_if_prepass_zero": 0.4777248353256892,
+   "ratio_if_per_layer_zero": 1.9290560245292645,
+   "ratio_if_prepass_and_per_layer_zero": 0.04751085985495365,
+   "floor_ms": 329.4,
+   "per_layer_thread_sum_ms": 96198,
+   "per_layer_parallelism": 11.7,
+   "per_layer_host_gap_share": 1.8e-05,
+   "per_layer_host_gap_implied_ms": 0.8,
+   "per_layer_host_gap_floor_multiple": 0.002,
+   "postpass_thread_sum_ms": 819,
+   "top_per_layer_modules": {
+    "com.core.arachne-perimeters": {
+     "calls": 495,
+     "thread_sum_ms": 49418,
+     "wall_equivalent_ceiling_ms": 4223.7,
+     "floor_multiple_ceiling": 12.821
+    },
+    "com.core.raft-default": {
+     "calls": 495,
+     "thread_sum_ms": 31800,
+     "wall_equivalent_ceiling_ms": 2717.9,
+     "floor_multiple_ceiling": 8.25
+    },
+    "com.core.infill-linker": {
+     "calls": 495,
+     "thread_sum_ms": 4928,
+     "wall_equivalent_ceiling_ms": 421.2,
+     "floor_multiple_ceiling": 1.279
+    },
+    "com.core.gyroid-infill": {
+     "calls": 495,
+     "thread_sum_ms": 708,
+     "wall_equivalent_ceiling_ms": 60.5,
+     "floor_multiple_ceiling": 0.184
+    },
+    "com.core.tree-support": {
+     "calls": 495,
+     "thread_sum_ms": 615,
+     "wall_equivalent_ceiling_ms": 52.6,
+     "floor_multiple_ceiling": 0.16
+    },
+    "com.core.lightning-infill": {
+     "calls": 495,
+     "thread_sum_ms": 543,
+     "wall_equivalent_ceiling_ms": 46.4,
+     "floor_multiple_ceiling": 0.141
+    },
+    "com.core.rectilinear-infill": {
+     "calls": 495,
+     "thread_sum_ms": 541,
+     "wall_equivalent_ceiling_ms": 46.2,
+     "floor_multiple_ceiling": 0.14
+    },
+    "com.core.support-surface-ironing": {
+     "calls": 495,
+     "thread_sum_ms": 520,
+     "wall_equivalent_ceiling_ms": 44.4,
+     "floor_multiple_ceiling": 0.135
+    },
+    "com.core.wave-overhangs": {
+     "calls": 495,
+     "thread_sum_ms": 479,
+     "wall_equivalent_ceiling_ms": 40.9,
+     "floor_multiple_ceiling": 0.124
+    },
+    "com.core.top-surface-ironing": {
+     "calls": 495,
+     "thread_sum_ms": 476,
+     "wall_equivalent_ceiling_ms": 40.7,
+     "floor_multiple_ceiling": 0.123
+    },
+    "com.core.seam-placer": {
+     "calls": 495,
+     "thread_sum_ms": 267,
+     "wall_equivalent_ceiling_ms": 22.8,
+     "floor_multiple_ceiling": 0.069
+    },
+    "com.core.fuzzy-skin": {
+     "calls": 495,
+     "thread_sum_ms": 233,
+     "wall_equivalent_ceiling_ms": 19.9,
+     "floor_multiple_ceiling": 0.06
+    }
+   },
+   "top_postpass_modules_thread_sum_ms": {
+    "host:gcode_serialize": 303,
+    "com.core.machine-gcode-emit": 234,
+    "host:gcode_emit": 62,
+    "com.core.overhang-classifier-default": 58,
+    "com.core.wipe-tower": 55,
+    "com.core.skirt-brim": 54,
+    "com.core.part-cooling": 53
+   },
+   "per_layer_stages_thread_sum_ms": {
+    "Layer::Perimeters": 51124,
+    "Layer::Infill": 35929,
+    "Layer::InfillPostProcess": 4960,
+    "Layer::PerimetersPostProcess": 2844,
+    "Layer::Support": 638,
+    "Layer::SupportPostProcess": 538,
+    "Layer::PathOptimization": 160,
+    "Layer::PaintRegionAnnotation": 5
+   },
+   "postpass_stages_ms": {
+    "PostPass::GCodeSerialize": 303,
+    "PostPass::GCodePostProcess": 236,
+    "PostPass::LayerFinalization": 223,
+    "PostPass::GCodeEmit": 62
+   }
+  },
+  "base-arachne-on": {
+   "fixture": "base",
+   "generator": "arachne",
+   "supports": "on",
+   "pnp_ordinary_median_s": 122.1045,
+   "orca_median_s": 26.2371,
+   "ratio_of_record": 4.653887,
+   "cut_to_beat": 0.7851258528623493,
+   "cut_to_1_5x": 0.6776887792935239,
+   "share": {
+    "validation": 3.4e-05,
+    "prepass": 0.867427,
+    "per_layer": 0.109387,
+    "postpass": 0.022267,
+    "outside": 0.000885
+   },
+   "implied_wall_s": {
+    "validation": 0.004,
+    "prepass": 105.917,
+    "per_layer": 13.357,
+    "postpass": 2.719,
+    "outside": 0.108
+   },
+   "ratio_if_prepass_zero": 0.616980029935852,
+   "ratio_if_per_layer_zero": 4.144812533014453,
+   "ratio_if_prepass_and_per_layer_zero": 0.10790556295030462,
+   "floor_ms": 976.8,
+   "per_layer_thread_sum_ms": 148655,
+   "per_layer_parallelism": 11.67,
+   "per_layer_host_gap_share": 2.2e-05,
+   "per_layer_host_gap_implied_ms": 2.7,
+   "per_layer_host_gap_floor_multiple": 0.003,
+   "postpass_thread_sum_ms": 2586,
+   "top_per_layer_modules": {
+    "com.core.tree-support": {
+     "calls": 495,
+     "thread_sum_ms": 53774,
+     "wall_equivalent_ceiling_ms": 4607.8,
+     "floor_multiple_ceiling": 4.717
+    },
+    "com.core.arachne-perimeters": {
+     "calls": 495,
+     "thread_sum_ms": 48928,
+     "wall_equivalent_ceiling_ms": 4192.6,
+     "floor_multiple_ceiling": 4.292
+    },
+    "com.core.raft-default": {
+     "calls": 495,
+     "thread_sum_ms": 30986,
+     "wall_equivalent_ceiling_ms": 2655.1,
+     "floor_multiple_ceiling": 2.718
+    },
+    "com.core.infill-linker": {
+     "calls": 495,
+     "thread_sum_ms": 4826,
+     "wall_equivalent_ceiling_ms": 413.5,
+     "floor_multiple_ceiling": 0.423
+    },
+    "com.core.gyroid-infill": {
+     "calls": 495,
+     "thread_sum_ms": 814,
+     "wall_equivalent_ceiling_ms": 69.8,
+     "floor_multiple_ceiling": 0.071
+    },
+    "com.core.rectilinear-infill": {
+     "calls": 495,
+     "thread_sum_ms": 696,
+     "wall_equivalent_ceiling_ms": 59.6,
+     "floor_multiple_ceiling": 0.061
+    },
+    "com.core.support-surface-ironing": {
+     "calls": 495,
+     "thread_sum_ms": 652,
+     "wall_equivalent_ceiling_ms": 55.9,
+     "floor_multiple_ceiling": 0.057
+    },
+    "com.core.lightning-infill": {
+     "calls": 495,
+     "thread_sum_ms": 651,
+     "wall_equivalent_ceiling_ms": 55.8,
+     "floor_multiple_ceiling": 0.057
+    },
+    "com.core.wave-overhangs": {
+     "calls": 495,
+     "thread_sum_ms": 630,
+     "wall_equivalent_ceiling_ms": 54.0,
+     "floor_multiple_ceiling": 0.055
+    },
+    "com.core.top-surface-ironing": {
+     "calls": 495,
+     "thread_sum_ms": 576,
+     "wall_equivalent_ceiling_ms": 49.4,
+     "floor_multiple_ceiling": 0.051
+    },
+    "com.core.path-optimization-default": {
+     "calls": 495,
+     "thread_sum_ms": 227,
+     "wall_equivalent_ceiling_ms": 19.5,
+     "floor_multiple_ceiling": 0.02
+    },
+    "com.core.fuzzy-skin": {
+     "calls": 495,
+     "thread_sum_ms": 213,
+     "wall_equivalent_ceiling_ms": 18.3,
+     "floor_multiple_ceiling": 0.019
+    }
+   },
+   "top_postpass_modules_thread_sum_ms": {
+    "host:gcode_serialize": 677,
+    "host:gcode_emit": 564,
+    "com.core.machine-gcode-emit": 484,
+    "com.core.skirt-brim": 229,
+    "com.core.overhang-classifier-default": 224,
+    "com.core.part-cooling": 213,
+    "com.core.wipe-tower": 195
+   },
+   "per_layer_stages_thread_sum_ms": {
+    "Layer::Support": 53797,
+    "Layer::Perimeters": 50576,
+    "Layer::Infill": 35762,
+    "Layer::InfillPostProcess": 4850,
+    "Layer::PerimetersPostProcess": 2738,
+    "Layer::SupportPostProcess": 672,
+    "Layer::PathOptimization": 259,
+    "Layer::PaintRegionAnnotation": 1
+   },
+   "postpass_stages_ms": {
+    "PostPass::LayerFinalization": 862,
+    "PostPass::GCodeSerialize": 677,
+    "PostPass::GCodeEmit": 564,
+    "PostPass::GCodePostProcess": 488
+   }
+  },
+  "base-classic-off": {
+   "fixture": "base",
+   "generator": "classic",
+   "supports": "off",
+   "pnp_ordinary_median_s": 42.5344,
+   "orca_median_s": 14.4374,
+   "ratio_of_record": 2.946126,
+   "cut_to_beat": 0.6605712043544641,
+   "cut_to_1_5x": 0.49085680653169617,
+   "share": {
+    "validation": 7.1e-05,
+    "prepass": 0.782942,
+    "per_layer": 0.191056,
+    "postpass": 0.024033,
+    "outside": 0.001898
+   },
+   "implied_wall_s": {
+    "validation": 0.003,
+    "prepass": 33.302,
+    "per_layer": 8.126,
+    "postpass": 1.022,
+    "outside": 0.081
+   },
+   "ratio_if_prepass_zero": 0.639480587758007,
+   "ratio_if_per_layer_zero": 2.3832516778647688,
+   "ratio_if_prepass_and_per_layer_zero": 0.07660626562277564,
+   "floor_ms": 340.3,
+   "per_layer_thread_sum_ms": 94342,
+   "per_layer_parallelism": 11.715,
+   "per_layer_host_gap_share": 0.0,
+   "per_layer_host_gap_implied_ms": 0.0,
+   "per_layer_host_gap_floor_multiple": 0.0,
+   "postpass_thread_sum_ms": 1007,
+   "top_per_layer_modules": {
+    "com.core.classic-perimeters": {
+     "calls": 495,
+     "thread_sum_ms": 46513,
+     "wall_equivalent_ceiling_ms": 3970.3,
+     "floor_multiple_ceiling": 11.668
+    },
+    "com.core.raft-default": {
+     "calls": 495,
+     "thread_sum_ms": 32547,
+     "wall_equivalent_ceiling_ms": 2778.2,
+     "floor_multiple_ceiling": 8.165
+    },
+    "com.core.infill-linker": {
+     "calls": 495,
+     "thread_sum_ms": 4667,
+     "wall_equivalent_ceiling_ms": 398.4,
+     "floor_multiple_ceiling": 1.171
+    },
+    "com.core.gyroid-infill": {
+     "calls": 495,
+     "thread_sum_ms": 744,
+     "wall_equivalent_ceiling_ms": 63.5,
+     "floor_multiple_ceiling": 0.187
+    },
+    "com.core.tree-support": {
+     "calls": 495,
+     "thread_sum_ms": 679,
+     "wall_equivalent_ceiling_ms": 58.0,
+     "floor_multiple_ceiling": 0.17
+    },
+    "com.core.lightning-infill": {
+     "calls": 495,
+     "thread_sum_ms": 580,
+     "wall_equivalent_ceiling_ms": 49.5,
+     "floor_multiple_ceiling": 0.145
+    },
+    "com.core.rectilinear-infill": {
+     "calls": 495,
+     "thread_sum_ms": 574,
+     "wall_equivalent_ceiling_ms": 49.0,
+     "floor_multiple_ceiling": 0.144
+    },
+    "com.core.support-surface-ironing": {
+     "calls": 495,
+     "thread_sum_ms": 551,
+     "wall_equivalent_ceiling_ms": 47.0,
+     "floor_multiple_ceiling": 0.138
+    },
+    "com.core.wave-overhangs": {
+     "calls": 495,
+     "thread_sum_ms": 542,
+     "wall_equivalent_ceiling_ms": 46.3,
+     "floor_multiple_ceiling": 0.136
+    },
+    "com.core.top-surface-ironing": {
+     "calls": 495,
+     "thread_sum_ms": 537,
+     "wall_equivalent_ceiling_ms": 45.8,
+     "floor_multiple_ceiling": 0.135
+    },
+    "com.core.seam-placer": {
+     "calls": 495,
+     "thread_sum_ms": 319,
+     "wall_equivalent_ceiling_ms": 27.2,
+     "floor_multiple_ceiling": 0.08
+    },
+    "com.core.fuzzy-skin": {
+     "calls": 495,
+     "thread_sum_ms": 265,
+     "wall_equivalent_ceiling_ms": 22.6,
+     "floor_multiple_ceiling": 0.066
+    }
+   },
+   "top_postpass_modules_thread_sum_ms": {
+    "host:gcode_serialize": 367,
+    "com.core.machine-gcode-emit": 312,
+    "host:gcode_emit": 86,
+    "com.core.overhang-classifier-default": 64,
+    "com.core.wipe-tower": 61,
+    "com.core.part-cooling": 60,
+    "com.core.skirt-brim": 57
+   },
+   "per_layer_stages_thread_sum_ms": {
+    "Layer::Perimeters": 48319,
+    "Layer::Infill": 36947,
+    "Layer::InfillPostProcess": 4692,
+    "Layer::PerimetersPostProcess": 2927,
+    "Layer::Support": 700,
+    "Layer::SupportPostProcess": 571,
+    "Layer::PathOptimization": 181,
+    "Layer::PaintRegionAnnotation": 5
+   },
+   "postpass_stages_ms": {
+    "PostPass::GCodeSerialize": 367,
+    "PostPass::GCodePostProcess": 316,
+    "PostPass::LayerFinalization": 243,
+    "PostPass::GCodeEmit": 86
+   }
+  },
+  "base-classic-on": {
+   "fixture": "base",
+   "generator": "classic",
+   "supports": "on",
+   "pnp_ordinary_median_s": 126.2724,
+   "orca_median_s": 27.2821,
+   "ratio_of_record": 4.628397,
+   "cut_to_beat": 0.7839424751161147,
+   "cut_to_1_5x": 0.6759137126741721,
+   "share": {
+    "validation": 2.5e-05,
+    "prepass": 0.870865,
+    "per_layer": 0.105629,
+    "postpass": 0.02276,
+    "outside": 0.000721
+   },
+   "implied_wall_s": {
+    "validation": 0.003,
+    "prepass": 109.966,
+    "per_layer": 13.338,
+    "postpass": 2.874,
+    "outside": 0.091
+   },
+   "ratio_if_prepass_zero": 0.5976858514707126,
+   "ratio_if_per_layer_zero": 4.139506137772314,
+   "ratio_if_prepass_and_per_layer_zero": 0.10879498924302748,
+   "floor_ms": 1010.2,
+   "per_layer_thread_sum_ms": 144703,
+   "per_layer_parallelism": 11.612,
+   "per_layer_host_gap_share": 0.0,
+   "per_layer_host_gap_implied_ms": 0.0,
+   "per_layer_host_gap_floor_multiple": 0.0,
+   "postpass_thread_sum_ms": 2679,
+   "top_per_layer_modules": {
+    "com.core.tree-support": {
+     "calls": 495,
+     "thread_sum_ms": 54666,
+     "wall_equivalent_ceiling_ms": 4707.5,
+     "floor_multiple_ceiling": 4.66
+    },
+    "com.core.classic-perimeters": {
+     "calls": 495,
+     "thread_sum_ms": 44787,
+     "wall_equivalent_ceiling_ms": 3856.8,
+     "floor_multiple_ceiling": 3.818
+    },
+    "com.core.raft-default": {
+     "calls": 495,
+     "thread_sum_ms": 30920,
+     "wall_equivalent_ceiling_ms": 2662.7,
+     "floor_multiple_ceiling": 2.636
+    },
+    "com.core.infill-linker": {
+     "calls": 495,
+     "thread_sum_ms": 4523,
+     "wall_equivalent_ceiling_ms": 389.5,
+     "floor_multiple_ceiling": 0.386
+    },
+    "com.core.gyroid-infill": {
+     "calls": 495,
+     "thread_sum_ms": 815,
+     "wall_equivalent_ceiling_ms": 70.2,
+     "floor_multiple_ceiling": 0.069
+    },
+    "com.core.lightning-infill": {
+     "calls": 495,
+     "thread_sum_ms": 642,
+     "wall_equivalent_ceiling_ms": 55.3,
+     "floor_multiple_ceiling": 0.055
+    },
+    "com.core.rectilinear-infill": {
+     "calls": 495,
+     "thread_sum_ms": 626,
+     "wall_equivalent_ceiling_ms": 53.9,
+     "floor_multiple_ceiling": 0.053
+    },
+    "com.core.wave-overhangs": {
+     "calls": 495,
+     "thread_sum_ms": 590,
+     "wall_equivalent_ceiling_ms": 50.8,
+     "floor_multiple_ceiling": 0.05
+    },
+    "com.core.support-surface-ironing": {
+     "calls": 495,
+     "thread_sum_ms": 573,
+     "wall_equivalent_ceiling_ms": 49.3,
+     "floor_multiple_ceiling": 0.049
+    },
+    "com.core.top-surface-ironing": {
+     "calls": 495,
+     "thread_sum_ms": 571,
+     "wall_equivalent_ceiling_ms": 49.2,
+     "floor_multiple_ceiling": 0.049
+    },
+    "com.core.path-optimization-default": {
+     "calls": 495,
+     "thread_sum_ms": 256,
+     "wall_equivalent_ceiling_ms": 22.0,
+     "floor_multiple_ceiling": 0.022
+    },
+    "com.core.seam-placer": {
+     "calls": 495,
+     "thread_sum_ms": 247,
+     "wall_equivalent_ceiling_ms": 21.3,
+     "floor_multiple_ceiling": 0.021
+    }
+   },
+   "top_postpass_modules_thread_sum_ms": {
+    "host:gcode_serialize": 646,
+    "host:gcode_emit": 612,
+    "com.core.machine-gcode-emit": 564,
+    "com.core.overhang-classifier-default": 259,
+    "com.core.part-cooling": 238,
+    "com.core.skirt-brim": 184,
+    "com.core.wipe-tower": 176
+   },
+   "per_layer_stages_thread_sum_ms": {
+    "Layer::Support": 54690,
+    "Layer::Perimeters": 46386,
+    "Layer::Infill": 35516,
+    "Layer::InfillPostProcess": 4551,
+    "Layer::PerimetersPostProcess": 2675,
+    "Layer::SupportPostProcess": 595,
+    "Layer::PathOptimization": 287,
+    "Layer::PaintRegionAnnotation": 3
+   },
+   "postpass_stages_ms": {
+    "PostPass::LayerFinalization": 858,
+    "PostPass::GCodeSerialize": 646,
+    "PostPass::GCodeEmit": 612,
+    "PostPass::GCodePostProcess": 567
+   }
+  },
+  "benchy-arachne-off": {
+   "fixture": "benchy",
+   "generator": "arachne",
+   "supports": "off",
+   "pnp_ordinary_median_s": 5.338,
+   "orca_median_s": 2.1354,
+   "ratio_of_record": 2.499766,
+   "cut_to_beat": 0.599962556495288,
+   "cut_to_1_5x": 0.39994383474293194,
+   "share": {
+    "validation": 0.0006,
+    "prepass": 0.622476,
+    "per_layer": 0.332533,
+    "postpass": 0.028994,
+    "outside": 0.015397
+   },
+   "implied_wall_s": {
+    "validation": 0.003,
+    "prepass": 3.323,
+    "per_layer": 1.775,
+    "postpass": 0.155,
+    "outside": 0.082
+   },
+   "ratio_if_prepass_zero": 0.9437228970205961,
+   "ratio_if_per_layer_zero": 1.6685100795840833,
+   "ratio_if_prepass_and_per_layer_zero": 0.11246697660467916,
+   "floor_ms": 42.7,
+   "per_layer_thread_sum_ms": 9478,
+   "per_layer_parallelism": 5.699,
+   "per_layer_host_gap_share": 0.007183,
+   "per_layer_host_gap_implied_ms": 38.3,
+   "per_layer_host_gap_floor_multiple": 0.898,
+   "postpass_thread_sum_ms": 141,
+   "top_per_layer_modules": {
+    "com.core.arachne-perimeters": {
+     "calls": 240,
+     "thread_sum_ms": 3854,
+     "wall_equivalent_ceiling_ms": 676.2,
+     "floor_multiple_ceiling": 15.835
+    },
+    "com.core.infill-linker": {
+     "calls": 240,
+     "thread_sum_ms": 2014,
+     "wall_equivalent_ceiling_ms": 353.4,
+     "floor_multiple_ceiling": 8.275
+    },
+    "com.core.raft-default": {
+     "calls": 240,
+     "thread_sum_ms": 1260,
+     "wall_equivalent_ceiling_ms": 221.1,
+     "floor_multiple_ceiling": 5.177
+    },
+    "com.core.gyroid-infill": {
+     "calls": 240,
+     "thread_sum_ms": 154,
+     "wall_equivalent_ceiling_ms": 27.0,
+     "floor_multiple_ceiling": 0.633
+    },
+    "com.core.rectilinear-infill": {
+     "calls": 240,
+     "thread_sum_ms": 69,
+     "wall_equivalent_ceiling_ms": 12.1,
+     "floor_multiple_ceiling": 0.284
+    },
+    "com.core.lightning-infill": {
+     "calls": 240,
+     "thread_sum_ms": 67,
+     "wall_equivalent_ceiling_ms": 11.8,
+     "floor_multiple_ceiling": 0.275
+    },
+    "com.core.tree-support": {
+     "calls": 240,
+     "thread_sum_ms": 64,
+     "wall_equivalent_ceiling_ms": 11.2,
+     "floor_multiple_ceiling": 0.263
+    },
+    "com.core.wave-overhangs": {
+     "calls": 240,
+     "thread_sum_ms": 49,
+     "wall_equivalent_ceiling_ms": 8.6,
+     "floor_multiple_ceiling": 0.201
+    },
+    "com.core.fuzzy-skin": {
+     "calls": 240,
+     "thread_sum_ms": 47,
+     "wall_equivalent_ceiling_ms": 8.2,
+     "floor_multiple_ceiling": 0.193
+    },
+    "com.core.top-surface-ironing": {
+     "calls": 240,
+     "thread_sum_ms": 38,
+     "wall_equivalent_ceiling_ms": 6.7,
+     "floor_multiple_ceiling": 0.156
+    },
+    "com.core.support-surface-ironing": {
+     "calls": 240,
+     "thread_sum_ms": 29,
+     "wall_equivalent_ceiling_ms": 5.1,
+     "floor_multiple_ceiling": 0.119
+    },
+    "com.core.seam-placer": {
+     "calls": 240,
+     "thread_sum_ms": 23,
+     "wall_equivalent_ceiling_ms": 4.0,
+     "floor_multiple_ceiling": 0.095
+    }
+   },
+   "top_postpass_modules_thread_sum_ms": {
+    "host:gcode_serialize": 51,
+    "com.core.machine-gcode-emit": 43,
+    "com.core.overhang-classifier-default": 10,
+    "host:gcode_emit": 10,
+    "com.core.part-cooling": 9,
+    "com.core.skirt-brim": 9,
+    "com.core.wipe-tower": 9
+   },
+   "per_layer_stages_thread_sum_ms": {
+    "Layer::Perimeters": 4146,
+    "Layer::Infill": 2448,
+    "Layer::InfillPostProcess": 2022,
+    "Layer::PerimetersPostProcess": 717,
+    "Layer::Support": 78,
+    "Layer::SupportPostProcess": 43,
+    "Layer::PathOptimization": 24,
+    "Layer::PaintRegionAnnotation": 0
+   },
+   "postpass_stages_ms": {
+    "PostPass::GCodeSerialize": 51,
+    "PostPass::GCodePostProcess": 44,
+    "PostPass::LayerFinalization": 38,
+    "PostPass::GCodeEmit": 10
+   }
+  },
+  "benchy-arachne-on": {
+   "fixture": "benchy",
+   "generator": "arachne",
+   "supports": "on",
+   "pnp_ordinary_median_s": 9.9593,
+   "orca_median_s": 2.7708,
+   "ratio_of_record": 3.594377,
+   "cut_to_beat": 0.7217876700190324,
+   "cut_to_1_5x": 0.5826815050285488,
+   "share": {
+    "validation": 0.00028,
+    "prepass": 0.734398,
+    "per_layer": 0.2088,
+    "postpass": 0.049234,
+    "outside": 0.007287
+   },
+   "implied_wall_s": {
+    "validation": 0.003,
+    "prepass": 7.314,
+    "per_layer": 2.08,
+    "postpass": 0.49,
+    "outside": 0.073
+   },
+   "ratio_if_prepass_zero": 0.9546724412369207,
+   "ratio_if_per_layer_zero": 2.843869470571749,
+   "ratio_if_prepass_and_per_layer_zero": 0.20416491180866958,
+   "floor_ms": 79.7,
+   "per_layer_thread_sum_ms": 17363,
+   "per_layer_parallelism": 7.769,
+   "per_layer_host_gap_share": 0.004113,
+   "per_layer_host_gap_implied_ms": 41.0,
+   "per_layer_host_gap_floor_multiple": 0.514,
+   "postpass_thread_sum_ms": 521,
+   "top_per_layer_modules": {
+    "com.core.tree-support": {
+     "calls": 240,
+     "thread_sum_ms": 5961,
+     "wall_equivalent_ceiling_ms": 767.3,
+     "floor_multiple_ceiling": 9.631
+    },
+    "com.core.arachne-perimeters": {
+     "calls": 240,
+     "thread_sum_ms": 4507,
+     "wall_equivalent_ceiling_ms": 580.2,
+     "floor_multiple_ceiling": 7.282
+    },
+    "com.core.infill-linker": {
+     "calls": 240,
+     "thread_sum_ms": 2588,
+     "wall_equivalent_ceiling_ms": 333.1,
+     "floor_multiple_ceiling": 4.181
+    },
+    "com.core.raft-default": {
+     "calls": 240,
+     "thread_sum_ms": 1503,
+     "wall_equivalent_ceiling_ms": 193.5,
+     "floor_multiple_ceiling": 2.428
+    },
+    "com.core.gyroid-infill": {
+     "calls": 240,
+     "thread_sum_ms": 207,
+     "wall_equivalent_ceiling_ms": 26.6,
+     "floor_multiple_ceiling": 0.334
+    },
+    "com.core.lightning-infill": {
+     "calls": 240,
+     "thread_sum_ms": 141,
+     "wall_equivalent_ceiling_ms": 18.1,
+     "floor_multiple_ceiling": 0.228
+    },
+    "com.core.rectilinear-infill": {
+     "calls": 240,
+     "thread_sum_ms": 136,
+     "wall_equivalent_ceiling_ms": 17.5,
+     "floor_multiple_ceiling": 0.22
+    },
+    "com.core.wave-overhangs": {
+     "calls": 240,
+     "thread_sum_ms": 135,
+     "wall_equivalent_ceiling_ms": 17.4,
+     "floor_multiple_ceiling": 0.218
+    },
+    "com.core.top-surface-ironing": {
+     "calls": 240,
+     "thread_sum_ms": 124,
+     "wall_equivalent_ceiling_ms": 16.0,
+     "floor_multiple_ceiling": 0.2
+    },
+    "com.core.support-surface-ironing": {
+     "calls": 240,
+     "thread_sum_ms": 87,
+     "wall_equivalent_ceiling_ms": 11.2,
+     "floor_multiple_ceiling": 0.141
+    },
+    "com.core.seam-placer": {
+     "calls": 240,
+     "thread_sum_ms": 65,
+     "wall_equivalent_ceiling_ms": 8.4,
+     "floor_multiple_ceiling": 0.105
+    },
+    "com.core.path-optimization-default": {
+     "calls": 240,
+     "thread_sum_ms": 38,
+     "wall_equivalent_ceiling_ms": 4.9,
+     "floor_multiple_ceiling": 0.061
+    }
+   },
+   "top_postpass_modules_thread_sum_ms": {
+    "host:gcode_serialize": 142,
+    "com.core.machine-gcode-emit": 113,
+    "host:gcode_emit": 61,
+    "com.core.overhang-classifier-default": 56,
+    "com.core.skirt-brim": 51,
+    "com.core.part-cooling": 50,
+    "com.core.wipe-tower": 48
+   },
+   "per_layer_stages_thread_sum_ms": {
+    "Layer::Support": 5978,
+    "Layer::Perimeters": 4842,
+    "Layer::Infill": 3020,
+    "Layer::InfillPostProcess": 2604,
+    "Layer::PerimetersPostProcess": 771,
+    "Layer::SupportPostProcess": 98,
+    "Layer::PathOptimization": 47,
+    "Layer::PaintRegionAnnotation": 3
+   },
+   "postpass_stages_ms": {
+    "PostPass::LayerFinalization": 208,
+    "PostPass::GCodeSerialize": 142,
+    "PostPass::GCodePostProcess": 114,
+    "PostPass::GCodeEmit": 61
+   }
+  },
+  "benchy-classic-off": {
+   "fixture": "benchy",
+   "generator": "classic",
+   "supports": "off",
+   "pnp_ordinary_median_s": 5.7687,
+   "orca_median_s": 2.1356,
+   "ratio_of_record": 2.701208,
+   "cut_to_beat": 0.6297952619716808,
+   "cut_to_1_5x": 0.44469289295752124,
+   "share": {
+    "validation": 0.000647,
+    "prepass": 0.62063,
+    "per_layer": 0.312905,
+    "postpass": 0.028701,
+    "outside": 0.037117
+   },
+   "implied_wall_s": {
+    "validation": 0.004,
+    "prepass": 3.58,
+    "per_layer": 1.805,
+    "postpass": 0.166,
+    "outside": 0.214
+   },
+   "ratio_if_prepass_zero": 1.024756940871817,
+   "ratio_if_per_layer_zero": 1.8559875425118688,
+   "ratio_if_prepass_and_per_layer_zero": 0.1795364833836858,
+   "floor_ms": 46.1,
+   "per_layer_thread_sum_ms": 7587,
+   "per_layer_parallelism": 5.232,
+   "per_layer_host_gap_share": 0.007134,
+   "per_layer_host_gap_implied_ms": 41.2,
+   "per_layer_host_gap_floor_multiple": 0.892,
+   "postpass_thread_sum_ms": 129,
+   "top_per_layer_modules": {
+    "com.core.classic-perimeters": {
+     "calls": 240,
+     "thread_sum_ms": 2683,
+     "wall_equivalent_ceiling_ms": 512.8,
+     "floor_multiple_ceiling": 11.111
+    },
+    "com.core.infill-linker": {
+     "calls": 240,
+     "thread_sum_ms": 1578,
+     "wall_equivalent_ceiling_ms": 301.6,
+     "floor_multiple_ceiling": 6.535
+    },
+    "com.core.raft-default": {
+     "calls": 240,
+     "thread_sum_ms": 1180,
+     "wall_equivalent_ceiling_ms": 225.5,
+     "floor_multiple_ceiling": 4.887
+    },
+    "com.core.gyroid-infill": {
+     "calls": 240,
+     "thread_sum_ms": 116,
+     "wall_equivalent_ceiling_ms": 22.2,
+     "floor_multiple_ceiling": 0.48
+    },
+    "com.core.tree-support": {
+     "calls": 240,
+     "thread_sum_ms": 53,
+     "wall_equivalent_ceiling_ms": 10.1,
+     "floor_multiple_ceiling": 0.219
+    },
+    "com.core.rectilinear-infill": {
+     "calls": 240,
+     "thread_sum_ms": 52,
+     "wall_equivalent_ceiling_ms": 9.9,
+     "floor_multiple_ceiling": 0.215
+    },
+    "com.core.lightning-infill": {
+     "calls": 240,
+     "thread_sum_ms": 42,
+     "wall_equivalent_ceiling_ms": 8.0,
+     "floor_multiple_ceiling": 0.174
+    },
+    "com.core.wave-overhangs": {
+     "calls": 240,
+     "thread_sum_ms": 30,
+     "wall_equivalent_ceiling_ms": 5.7,
+     "floor_multiple_ceiling": 0.124
+    },
+    "com.core.top-surface-ironing": {
+     "calls": 240,
+     "thread_sum_ms": 28,
+     "wall_equivalent_ceiling_ms": 5.4,
+     "floor_multiple_ceiling": 0.116
+    },
+    "com.core.support-surface-ironing": {
+     "calls": 240,
+     "thread_sum_ms": 23,
+     "wall_equivalent_ceiling_ms": 4.4,
+     "floor_multiple_ceiling": 0.095
+    },
+    "com.core.seam-placer": {
+     "calls": 240,
+     "thread_sum_ms": 22,
+     "wall_equivalent_ceiling_ms": 4.2,
+     "floor_multiple_ceiling": 0.091
+    },
+    "com.core.fuzzy-skin": {
+     "calls": 240,
+     "thread_sum_ms": 13,
+     "wall_equivalent_ceiling_ms": 2.5,
+     "floor_multiple_ceiling": 0.054
+    }
+   },
+   "top_postpass_modules_thread_sum_ms": {
+    "host:gcode_serialize": 45,
+    "com.core.machine-gcode-emit": 41,
+    "com.core.overhang-classifier-default": 9,
+    "com.core.part-cooling": 9,
+    "host:gcode_emit": 9,
+    "com.core.skirt-brim": 8,
+    "com.core.wipe-tower": 8
+   },
+   "per_layer_stages_thread_sum_ms": {
+    "Layer::Perimeters": 2977,
+    "Layer::Infill": 2265,
+    "Layer::InfillPostProcess": 1589,
+    "Layer::PerimetersPostProcess": 648,
+    "Layer::Support": 67,
+    "Layer::SupportPostProcess": 33,
+    "Layer::PathOptimization": 8,
+    "Layer::PaintRegionAnnotation": 0
+   },
+   "postpass_stages_ms": {
+    "PostPass::GCodeSerialize": 45,
+    "PostPass::GCodePostProcess": 42,
+    "PostPass::LayerFinalization": 36,
+    "PostPass::GCodeEmit": 9
+   }
+  },
+  "benchy-classic-on": {
+   "fixture": "benchy",
+   "generator": "classic",
+   "supports": "on",
+   "pnp_ordinary_median_s": 10.0117,
+   "orca_median_s": 2.77,
+   "ratio_of_record": 3.614332,
+   "cut_to_beat": 0.7233237013091216,
+   "cut_to_1_5x": 0.5849855519636824,
+   "share": {
+    "validation": 0.000338,
+    "prepass": 0.764487,
+    "per_layer": 0.185102,
+    "postpass": 0.041521,
+    "outside": 0.008552
+   },
+   "implied_wall_s": {
+    "validation": 0.003,
+    "prepass": 7.654,
+    "per_layer": 1.853,
+    "postpass": 0.416,
+    "outside": 0.086
+   },
+   "ratio_if_prepass_zero": 0.8512205329132441,
+   "ratio_if_per_layer_zero": 2.945312517609992,
+   "ratio_if_prepass_and_per_layer_zero": 0.18220105052323624,
+   "floor_ms": 80.1,
+   "per_layer_thread_sum_ms": 12673,
+   "per_layer_parallelism": 7.704,
+   "per_layer_host_gap_share": 0.003721,
+   "per_layer_host_gap_implied_ms": 37.2,
+   "per_layer_host_gap_floor_multiple": 0.465,
+   "postpass_thread_sum_ms": 364,
+   "top_per_layer_modules": {
+    "com.core.tree-support": {
+     "calls": 240,
+     "thread_sum_ms": 4896,
+     "wall_equivalent_ceiling_ms": 635.5,
+     "floor_multiple_ceiling": 7.935
+    },
+    "com.core.classic-perimeters": {
+     "calls": 240,
+     "thread_sum_ms": 2755,
+     "wall_equivalent_ceiling_ms": 357.6,
+     "floor_multiple_ceiling": 4.465
+    },
+    "com.core.infill-linker": {
+     "calls": 240,
+     "thread_sum_ms": 1746,
+     "wall_equivalent_ceiling_ms": 226.6,
+     "floor_multiple_ceiling": 2.83
+    },
+    "com.core.raft-default": {
+     "calls": 240,
+     "thread_sum_ms": 1171,
+     "wall_equivalent_ceiling_ms": 152.0,
+     "floor_multiple_ceiling": 1.898
+    },
+    "com.core.gyroid-infill": {
+     "calls": 240,
+     "thread_sum_ms": 130,
+     "wall_equivalent_ceiling_ms": 16.9,
+     "floor_multiple_ceiling": 0.211
+    },
+    "com.core.rectilinear-infill": {
+     "calls": 240,
+     "thread_sum_ms": 60,
+     "wall_equivalent_ceiling_ms": 7.8,
+     "floor_multiple_ceiling": 0.097
+    },
+    "com.core.lightning-infill": {
+     "calls": 240,
+     "thread_sum_ms": 58,
+     "wall_equivalent_ceiling_ms": 7.5,
+     "floor_multiple_ceiling": 0.094
+    },
+    "com.core.support-surface-ironing": {
+     "calls": 240,
+     "thread_sum_ms": 49,
+     "wall_equivalent_ceiling_ms": 6.4,
+     "floor_multiple_ceiling": 0.079
+    },
+    "com.core.fuzzy-skin": {
+     "calls": 240,
+     "thread_sum_ms": 31,
+     "wall_equivalent_ceiling_ms": 4.0,
+     "floor_multiple_ceiling": 0.05
+    },
+    "com.core.top-surface-ironing": {
+     "calls": 240,
+     "thread_sum_ms": 30,
+     "wall_equivalent_ceiling_ms": 3.9,
+     "floor_multiple_ceiling": 0.049
+    },
+    "com.core.wave-overhangs": {
+     "calls": 240,
+     "thread_sum_ms": 28,
+     "wall_equivalent_ceiling_ms": 3.6,
+     "floor_multiple_ceiling": 0.045
+    },
+    "com.core.path-optimization-default": {
+     "calls": 240,
+     "thread_sum_ms": 13,
+     "wall_equivalent_ceiling_ms": 1.7,
+     "floor_multiple_ceiling": 0.021
+    }
+   },
+   "top_postpass_modules_thread_sum_ms": {
+    "host:gcode_serialize": 95,
+    "com.core.machine-gcode-emit": 78,
+    "com.core.wipe-tower": 39,
+    "com.core.overhang-classifier-default": 38,
+    "com.core.part-cooling": 38,
+    "com.core.skirt-brim": 38,
+    "host:gcode_emit": 38
+   },
+   "per_layer_stages_thread_sum_ms": {
+    "Layer::Support": 4908,
+    "Layer::Perimeters": 3020,
+    "Layer::Infill": 2294,
+    "Layer::InfillPostProcess": 1762,
+    "Layer::PerimetersPostProcess": 610,
+    "Layer::SupportPostProcess": 59,
+    "Layer::PathOptimization": 14,
+    "Layer::PaintRegionAnnotation": 6
+   },
+   "postpass_stages_ms": {
+    "PostPass::LayerFinalization": 155,
+    "PostPass::GCodeSerialize": 95,
+    "PostPass::GCodePostProcess": 79,
+    "PostPass::GCodeEmit": 38
+   }
+  }
+ }
+}
