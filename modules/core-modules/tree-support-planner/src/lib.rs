@@ -821,6 +821,85 @@ fn inflate_model_occupancy(polys: &[ExPolygon], xy_distance_mm: f32) -> Vec<ExPo
     host::offset_polygons(polys, xy_distance_mm, OffsetJoinType::Miter, 0.0)
 }
 
+/// One memo slot for [`inflate_model_occupancy`].
+///
+/// The payload is retained beside its result so a hash collision degrades to a
+/// recomputation instead of a wrong answer: the memo is exact, not
+/// probabilistically exact.
+struct OccupancyMemoEntry {
+    payload: Vec<ExPolygon>,
+    inflated: Vec<ExPolygon>,
+}
+
+/// Content key for the occupancy-offset memo.
+///
+/// FNV-1a over every contour and hole boundary plus `xy_distance_mm`. Every
+/// caller of [`inflate_model_occupancy`] passes `Miter` with `arc = 0` and no
+/// miter limit, so the payload and the delta are the whole argument tuple of
+/// the pure function being memoized.
+fn occupancy_offset_key(polys: &[ExPolygon], xy_distance_mm: f32) -> u64 {
+    const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut hash = FNV_OFFSET_BASIS;
+    let mut mix = |word: u64| {
+        hash ^= word;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    };
+    mix(u64::from(xy_distance_mm.to_bits()));
+    mix(polys.len() as u64);
+    for poly in polys {
+        mix(poly.contour.points.len() as u64);
+        for point in &poly.contour.points {
+            mix(point.x as u64);
+            mix(point.y as u64);
+        }
+        mix(poly.holes.len() as u64);
+        for hole in &poly.holes {
+            mix(hole.points.len() as u64);
+            for point in &hole.points {
+                mix(point.x as u64);
+                mix(point.y as u64);
+            }
+        }
+    }
+    hash
+}
+
+/// [`inflate_model_occupancy`] served from a per-layer content memo.
+///
+/// Canonical `draw_circles` asks for the layer occupancy twice with the same
+/// geometry — once as the emit-time collision volume and once as the per-origin
+/// role carve — and on a one-region layer both asks assemble the identical
+/// payload. `offset_polygons` is a pure function of `(polygons, delta, join,
+/// arc, miter)`, so serving the second ask from the first ask's result is
+/// output-identical by construction. The memo is created per emit-loop
+/// iteration, which bounds retained geometry to one layer and keeps the scope
+/// inside the slice (no cross-slice reuse).
+fn inflate_model_occupancy_memoized(
+    memo: &mut std::collections::HashMap<u64, OccupancyMemoEntry>,
+    polys: Vec<ExPolygon>,
+    xy_distance_mm: f32,
+) -> Vec<ExPolygon> {
+    if polys.is_empty() || xy_distance_mm <= 0.0 {
+        return polys;
+    }
+    let key = occupancy_offset_key(&polys, xy_distance_mm);
+    if let Some(entry) = memo.get(&key) {
+        if entry.payload == polys {
+            return entry.inflated.clone();
+        }
+    }
+    let inflated = inflate_model_occupancy(&polys, xy_distance_mm);
+    memo.insert(
+        key,
+        OccupancyMemoEntry {
+            payload: polys,
+            inflated: inflated.clone(),
+        },
+    );
+    inflated
+}
+
 /// Whether two bounding boxes (scaled units) are provably disjoint.
 /// Touching boxes count as overlapping — they are NOT disjoint.
 fn bboxes_disjoint(a: Option<(i64, i64, i64, i64)>, b: Option<(i64, i64, i64, i64)>) -> bool {
@@ -3620,6 +3699,13 @@ impl SupportPlanner {
             if active_nodes.is_empty() {
                 continue;
             }
+            // Per-layer occupancy memo: the emit-time collision volume and the
+            // per-origin role carve ask for the same `+support_object_xy_distance`
+            // offset of the same layer cross-section, so the second ask is served
+            // from the first. Scoped to this iteration, so retained geometry is
+            // one layer and nothing survives the layer.
+            let mut occupancy_memo: std::collections::HashMap<u64, OccupancyMemoEntry> =
+                std::collections::HashMap::new();
             let current_global_layer_index = layer_plan.layers[layer_rev].global_layer_index;
             let cache_idx = current_global_layer_index as usize;
             let z_current = layer_plan.layers[layer_rev].z;
@@ -3649,8 +3735,9 @@ impl SupportPlanner {
             // Host analysis carries the exact per-layer occupancy used by the
             // closure gate. Prefer it for emission checks when present; the
             // support-outline cache remains the compatibility fallback.
-            let model_collision: Vec<ExPolygon> = inflate_model_occupancy(
-                &support_analysis
+            let model_collision: Vec<ExPolygon> = inflate_model_occupancy_memoized(
+                &mut occupancy_memo,
+                support_analysis
                     .model_occupancy
                     .iter()
                     .filter(|entry| {
@@ -4105,8 +4192,9 @@ impl SupportPlanner {
                     )) {
                         continue;
                     }
-                    let model_occupancy: Vec<ExPolygon> = inflate_model_occupancy(
-                        &support_analysis
+                    let model_occupancy: Vec<ExPolygon> = inflate_model_occupancy_memoized(
+                        &mut occupancy_memo,
+                        support_analysis
                             .model_occupancy
                             .iter()
                             .filter(|entry| {
@@ -7831,6 +7919,61 @@ mod tests {
         assert!(
             body_overlaps_occupancy(&[box_far], 6.0, 11.0, 2.5),
             "a body whose radius reaches occupancy must overlap"
+        );
+    }
+
+    #[test]
+    fn occupancy_memo_serves_identical_payloads_and_keeps_collisions_exact() {
+        let payload = vec![square_mm(0.0, 0.0, 10.0), square_mm(20.0, 0.0, 4.0)];
+        let mut memo = std::collections::HashMap::new();
+
+        let first = inflate_model_occupancy_memoized(&mut memo, payload.clone(), 0.35);
+        assert_eq!(
+            memo.len(),
+            1,
+            "the first ask must record its payload in the memo"
+        );
+        assert_eq!(
+            first,
+            inflate_model_occupancy(&payload, 0.35),
+            "a memo record must hold the same value the uncached offset returns"
+        );
+
+        let second = inflate_model_occupancy_memoized(&mut memo, payload.clone(), 0.35);
+        assert_eq!(
+            memo.len(),
+            1,
+            "the identical second ask must be served from the memo, not stored again"
+        );
+        assert_eq!(
+            second, first,
+            "a memo hit must reproduce the cached offset byte for byte"
+        );
+
+        // Same payload, different delta: not the same pure-function call.
+        let wider = inflate_model_occupancy_memoized(&mut memo, payload.clone(), 0.8);
+        assert_eq!(
+            memo.len(),
+            2,
+            "a different delta must not be served from the +0.35 entry"
+        );
+        assert_ne!(
+            wider, first,
+            "a wider offset must differ from the narrower one on this payload"
+        );
+
+        // Different payload, same delta: a miss, not a wrong answer.
+        let moved = vec![square_mm(3.0, 0.0, 10.0)];
+        let moved_offset = inflate_model_occupancy_memoized(&mut memo, moved.clone(), 0.35);
+        assert_eq!(
+            memo.len(),
+            3,
+            "a different payload must not be served from the first entry"
+        );
+        assert_eq!(
+            moved_offset,
+            inflate_model_occupancy(&moved, 0.35),
+            "a differing payload must be recomputed, not answered from the cache"
         );
     }
 
