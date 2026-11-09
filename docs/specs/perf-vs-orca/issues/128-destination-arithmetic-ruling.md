@@ -2,8 +2,12 @@
 
 Type: grilling
 Label: wayfinder:grilling
-Status: open (unclaimed; human's decision)
-Assignee: —
+Status: resolved (2026-11-08; human ruling — **keep 8/8 and authorise an
+  engine rewrite**, gated on the work-set / per-op parity decomposition against
+  canonical `v2.5.0` (`40ecc66f78`). See ## Answer)
+Assignee: 2026-11-08 OpenCode wayfinder session — the human said "Continue the
+  perf vs orca map" (no ticket named); 128 is the only open child and the only
+  frontier ticket.
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [Post-t123 phase split refresh and per-layer/emit attribution](126-post-t123-phase-split-refresh.md)'s
@@ -88,4 +92,68 @@ Secondary decisions to settle while grilling, if they bear on the choice:
 
 ## Answer
 
-_To be recorded on resolution._
+**Ruling (2026-11-08, human): keep the 8/8 destination and authorise an engine
+rewrite; the first gate is a work-set / per-op parity decomposition against
+canonical OrcaSlicer `v2.5.0` (`40ecc66f78`).** The option "re-aim" and the
+option "park" were both on the table and both declined.
+
+**Why.** The arithmetic is now closed: the prepass is 62.1–87.1 % of every
+cell, the required removal is 72–101 %, and benchy classic-off lands at 1.02x
+even with a zero prepass (its per-layer + postpass + outside phases already
+exceed Orca's whole wall). The remaining prepass is a cluster of clipper-bound
+stages, each with its named shapes already screened (t75, t84, t113, t125,
+t53/t55, t76) — the 0.80 %-per-shape machinery would need 72–99x its floor to
+buy the cut. Orca's own prepass on the same job costs ≈2.1 s (base-off) /
+≈10.4 s (base-on) against PnP's 33.0 / 102.8 s, so the target cost is
+demonstrated by the competitor; the gap is implementation, not physics.
+
+**Scope of the rewrite.** In stage order:
+
+1. The supports-off cluster — `ShellClassification` + `OverhangAnnotation`,
+   then `SeamPlanning` and `MeshAnalysis`.
+2. The support planner — `SupportGeometry` + `SupportAnalysis`.
+3. The benchy-classic-off per-layer residual (the last mile: it needs only a
+   small cut once the prepass is gone, but its phase is 97–99 % native clipper
+   ops).
+
+t111's scoped canonical-parity exception is carried forward **from prepass
+shapes to the prepass implementation**; it does not extend to the per-layer
+phase, so any geometry change there still needs its own t81-style exception.
+Acceptance remains the standing 16-cell reference set and the all-8-cell paired
+wall/CPU gate.
+
+**First gate (kill gate).** [Prepass work-set and per-op parity against
+canonical v2.5.0](129-prepass-work-set-per-op-parity.md) must separate PnP's op
+count from its per-op cost per stage. If PnP already computes canonical's work
+set at canonical's per-op cost, the destination returns to this ticket for
+re-aim or park.
+
+**Canonical source pin.** The local checkout `D:\slicerProject\Orca(pnp_gui)`
+was moved from `pnp/main` @ `9f329f13ae` to **detached HEAD at `v2.5.0` =
+`40ecc66f78ed72dc368e0c1ebe40d77f00cc8a19`** (2026-11-07; the tag changes only
+`version.inc` and the flatpak metainfo over its parent `4f33435636`). The
+checkout used `-f` because upstream carries a case-only path rename
+(`FlashForge` → `Flashforge`) that a case-insensitive filesystem refuses
+otherwise; the superproject tree was clean, so no tracked content was
+discarded. The `pinch_n_print_cli` submodule directory is still on disk (at
+`323708021aef6f20502066039d22b3568544b1`) but is now untracked, because the
+upstream tag carries no such submodule. Restore with `git switch pnp/main`, then
+`git -C pinch_n_print_cli checkout 32370802` for the exact prior state (the
+superproject's tree records `a63fd14e`; `git submodule update` would restore
+that instead).
+
+**Disclosure.** The rig's measured binary is the installed OrcaSlicer
+`2.5.0` (files dated 2026-11-06 23:00 local, embedded version `2.5.0`), one day
+before the tag; source and binary are not byte-proven identical. Any op-level
+comparison must reconcile them before it is quoted as a wall claim.
+
+**Graduated.** The route ticket is
+[129](129-prepass-work-set-per-op-parity.md) (AFK, open, unclaimed). The
+secondary decision — **8 mm brim vs pinned Orca 0** — is
+[Matched settings vs the 8 mm brim](130-brim-matched-settings-ruling.md) (HITL,
+open, unclaimed); it was not settled here, so the destination's
+"matched settings" wording still carries the t103/t124 disclosure until it is.
+
+**This take made no production edit and ran no timing campaign.** It changed
+only this tracker (this ticket, the map, and the two graduated tickets) and the
+local Orca checkout.

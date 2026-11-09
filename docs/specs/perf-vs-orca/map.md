@@ -13,14 +13,27 @@ wall-clock (process CPU corroborating, never contradicting) in every cell of
 the {benchy, base} × {classic, arachne} × {supports off, on} matrix, under the
 matched-pair protocol with outputs disclosed. 8 of 8 cells won closes the map.
 
-**Destination status (2026-11-08, [t126](issues/126-post-t123-phase-split-refresh.md)):
-0 of 8 cells won.** PnP is **2.36x–4.65x** slower on the ordinary arm
-(**2.40x–4.67x** accelerated) and needs a **58%–79%** wall cut to win. The
-post-t123 split re-derives the terms that cut must come from: the prepass is
-**62.1–87.1 %** of every cell, the required prepass removal is **72–101 %**, and
-even a zero prepass leaves **benchy classic-off at 1.02x**. The destination is
-now the subject of
-[Destination arithmetic after t123: re-aim, rewrite, or park?](issues/128-destination-arithmetic-ruling.md).
+**Destination status (2026-11-08, [t128](issues/128-destination-arithmetic-ruling.md)):
+the target is unchanged; the route is re-scoped to an engine rewrite.** 0 of 8
+cells won. PnP is **2.36x–4.65x** slower on the ordinary arm (**2.40x–4.67x**
+accelerated) and needs a **58%–79%** wall cut to win. The post-t123 split says
+the only term that can close that cut is the prepass (**62.1–87.1 %** of every
+cell; required removal **72–101 %**), and that **benchy classic-off cannot be
+won by prepass deletion alone** (**1.02x** at zero prepass, because its
+per-layer + postpass + outside phases already exceed Orca's whole wall). The
+remaining prepass stages are clipper-bound and every named shape has been
+screened, so the ruling **keeps 8/8 and authorises a rewrite of the engine's
+geometric work** — the prepass first (the supports-off cluster, then the
+planner), then the benchy-classic-off per-layer residual — under t111's prepass
+exception carried forward to the prepass implementation. **The route's first
+gate is the work-set / per-op parity decomposition against canonical
+OrcaSlicer `v2.5.0` (`40ecc66f78`, 2026-11-07):** [Prepass work-set and
+per-op parity against canonical v2.5.0](issues/129-prepass-work-set-per-op-parity.md).
+A shape graduates only if it names work PnP computes that canonical does not,
+or computes more expensively. If PnP already computes canonical's work set at
+canonical's per-op cost, the destination returns to t128 for re-aim or park.
+The matched-settings claim's brim asymmetry is graduated as
+[Matched settings vs the 8 mm brim](issues/130-brim-matched-settings-ruling.md).
 
 ## Notes
 
@@ -42,6 +55,21 @@ Every number in this tracker is a ledger fact — re-derive at the point of use.
   references allowed are the heavy model fixtures `tmp/3dbenchy.stl` and
   `tmp/base.stl` — user-supplied and licence-encumbered, they must never be
   committed.
+- **Canonical source pin (2026-11-08, t128 ruling).** The local checkout
+  `D:\slicerProject\Orca(pnp_gui)` is on **`v2.5.0` =
+  `40ecc66f78ed72dc368e0c1ebe40d77f00cc8a19`** (2026-11-07, detached HEAD); its
+  parent `4f33435636` is the last functional commit and the tag itself changes
+  only `version.inc` and the flatpak metainfo. Every parity ticket from here
+  cites canonical at this pin, by file + function, never line numbers. The
+  rig's measured binary is the installed `C:\Program Files\OrcaSlicer`
+  (files dated 2026-11-06 23:00, embedded version `2.5.0`) — one day before the
+  tag and not byte-proven identical, so reconcile source vs binary before
+  quoting an op-level comparison as a wall claim. The fork's previous state was
+  `pnp/main` @ `9f329f13ae` (whose tree records the submodule at `a63fd14e`),
+  with the `pinch_n_print_cli` worktree at
+  `323708021aef6f20502066039d22b3568544b1`. Restore with `git switch pnp/main`,
+  then `git -C pinch_n_print_cli checkout 32370802` for that exact state;
+  `git submodule update` would instead restore the recorded `a63fd14e`.
 - **The Orca baseline is RE-DERIVED (ticket 103, 2026-10-31 campaign).** The
   2026-10-27 OrcaSlicer **2.5.0** install (`v2.5.0-beta`) ships the vendor as one
   binary preset cache (`resources/profiles/BBL.opc`) and resolves `--load-settings`
@@ -93,7 +121,28 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-08, thirty-first session — the t127 take):**
+**Current selection scope (2026-11-08, thirty-second session — the t128 take):**
+the human said "Continue the perf vs orca map" (no ticket named; 127 was
+resolved and 128 was the only open child), so 128 was claimed and **resolved
+with the human**. Headline: **the 8/8 destination stays; the route is re-scoped
+from a prepass campaign to an engine rewrite, gated on a work-set/per-op parity
+decomposition against canonical `v2.5.0`.** The ruling rests on the measured
+arithmetic (prepass 62.1–87.1 % of every cell; required removal 72–101 %;
+benchy classic-off 1.02x even at zero prepass) and on the stage census: every
+remaining prepass stage is clipper-bound and every named shape has been
+screened (t75/t84/t113/t125/t53/t55/t76), so the 0.80 %-per-shape machinery
+would need 72–99x its floor. The route ticket is
+[Prepass work-set and per-op parity against canonical v2.5.0](issues/129-prepass-work-set-per-op-parity.md)
+(AFK, open, unclaimed); its kill gate returns the destination to 128 for re-aim
+or park if PnP already computes canonical's work set at canonical's per-op cost.
+The secondary decision — the **8 mm brim vs pinned Orca 0** — is graduated as
+[Matched settings vs the 8 mm brim](issues/130-brim-matched-settings-ruling.md)
+(HITL, open, unclaimed). The local Orca checkout is pinned at `v2.5.0`
+(`40ecc66f78`); the source and the measured binary are disclosed as not
+byte-proven identical. **Frontier now: 129 (AFK, open and unclaimed) and 130
+(HITL).** Standing paired acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-11-08, thirty-first session — the t127 take):**
 the human said "Continue the perf vs orca map" (no ticket named; 127 and 128
 were open), so the first unblocked AFK frontier ticket,
 [Raft-fill dispatch outside the raft band](issues/127-raft-fill-dispatch-outside-band.md),
@@ -2663,6 +2712,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Destination arithmetic after t123: re-aim, rewrite, or park?](issues/128-destination-arithmetic-ruling.md): **resolved (2026-11-08; human ruling — keep 8/8 and authorise an engine rewrite, gated on a work-set/per-op parity decomposition)** — the target is unchanged and the route is re-scoped: the prepass is the only term that can buy the 58–79 % cut (62.1–87.1 % of every cell; required removal 72–101 %), **benchy classic-off is unwinnable by prepass deletion alone (1.02x at zero prepass)**, and every remaining prepass stage is clipper-bound with its named shapes already screened (t75/t84/t113/t125/t53/t55/t76), so the 0.80 %-per-shape machinery would need 72–99x its floor. The rewrite runs the prepass first (supports-off cluster, then the planner), then the benchy-classic-off per-layer residual, under t111's prepass exception carried to the implementation; the first gate is [the work-set/per-op parity decomposition](issues/129-prepass-work-set-per-op-parity.md), whose kill gate returns the destination here if PnP already matches canonical's work set and per-op cost. Canonical is pinned at `v2.5.0` = `40ecc66f78` (2026-11-07) in the local checkout, disclosed against the installed 2.5.0 binary (2026-11-06, not byte-proven identical). The brim asymmetry is graduated as [Matched settings vs the 8 mm brim](issues/130-brim-matched-settings-ruling.md). No production edit in this take.
 - [Raft-fill dispatch outside the raft band: decline the no-op per-layer call](issues/127-raft-fill-dispatch-outside-band.md): **resolved (2026-11-08; measured DROP — 2/8 cells pass)** — output byte-identical in all eight cells on both build arms and every guest module identical between arms; the dispatch really disappears (**495 → 0** calls on each base cell, **240 → 0** on benchy) and the call count is the only thing that moved. The 61–63 ms the module was charged is the **`Layer::Infill` stage's shared prepared-region view materialisation**, paid by whichever Infill module is dispatched first: with raft-default declined, `com.core.gyroid-infill` pays the same p50 (**60 / 58 / 61 / 57 ms** against **56 / 60 / 66 / 66 ms**) on the same layers, and the per-layer phase wall does not fall. The gate passes only benchy classic-on (+1.97 %) and base classic-on (+3.06 %); ticket 117's narrower gate also fails 4/8. **Ledger correction to t126:** its 61–63 ms and 2.64x–8.25x "ceiling" are not a saving, and its 17-layer "other module first pays 0 ms" control cannot be a dispatch-order claim. Candidate and tests retired; patch preserved. Evidence: [`evidence/t127-raft-band-dispatch/`](evidence/t127-raft-band-dispatch/FINDINGS.md) (`verify.py` 528 checks; 18/18 negative controls).
 - [Post-t123 phase split refresh and per-layer/emit attribution](issues/126-post-t123-phase-split-refresh.md): **resolved (2026-11-08; measurement + Phase-1 attribution — the split is re-derived on all eight cells, and even a zero prepass loses benchy classic-off at 1.02x)** — eight instrumented passes (Arachne measured for the first time), all clean and byte-identical to the t123 reference set. Prepass **62.1–87.1 %**, per-layer **10.6–33.3 %**, postpass **1.8–4.9 %**; `PrePass::Slice` fell **41,472 → 2,110 ms** on base classic-off (**−94.9 %**), so the supports-off prepass is now `ShellClassification` + `OverhangAnnotation` (**24.4 s of 42.5 s**) and the supports-on prepass is `SupportGeometry` + `SupportAnalysis` (**68.9 s of 126.3 s**). Deleting the per-layer phase leaves **1.67x–4.14x**; deleting the prepass reaches **0.48x–1.02x**; the required prepass removal is **72–101 %**. The per-layer phase has no globally idle wall (0 ms gap on base; 2.0–2.3 % on benchy). Carriers: perimeters (3.82x–15.84x floor ceiling), tree-support supports-on (4.66x–9.63x), raft-default (2.64x–8.25x), infill-linker (1.17x–8.28x); the postpass is not a route. Graduated [raft-fill dispatch outside the raft band](issues/127-raft-fill-dispatch-outside-band.md) (61–63 ms on all 495 base layers while the body early-outs) and the HITL [destination-arithmetic ruling](issues/128-destination-arithmetic-ruling.md). Evidence: [`evidence/t126-post-t123-phase-split/`](evidence/t126-post-t123-phase-split/FINDINGS.md) (`verify.py` 617/617 claims; 10/10 negative controls).
 - [Strong planner occupancy-offset batching: representation-safe four-cell campaign](issues/125-strong-planner-occupancy-offset-batching.md): **resolved (2026-11-07; measured DROP — 2/8 cells pass)** — per-origin role-carve offsets batched inside the bounded emit flush, output byte-identical in all 16 arm/cell combinations and all 80 output/paired runs clean, but six cells fail the amended gate; base classic-on gains +6.13 % wall with CPU regressing 1.7656 s, while benchy classic-on regresses −17.90 % wall. Candidate and WASMs retired, production restored, 148 planner tests passed. Evidence: [`evidence/t125-occupancy-offset-batching/`](evidence/t125-occupancy-offset-batching/FINDINGS.md) (`verify.py` 442 checks; 10/10 negative controls).
@@ -2938,9 +2988,12 @@ Standing decisions for this effort (2026-09-22):
   (**1.17x–8.28x**, no shape identified), and the perimeters
   (**3.82x–15.84x**, but t68 measured 97–99 % native clipper ops, so the ceiling
   is not a shape). The per-origin occupancy batch must not be re-run as-is, and
-  no per-layer batch candidate inherits rescue status. The destination question
-  these numbers force is
-  [128](issues/128-destination-arithmetic-ruling.md), not a per-layer ticket.
+  no per-layer batch candidate inherits rescue status. **After the t128 ruling
+  the per-layer program is not a route to 8/8 by itself, but it is no longer out
+  of scope either:** once the prepass is gone, benchy classic-off needs only a
+  small per-layer cut to cross 1.0x (**zero prepass lands at 1.02x**), so the
+  per-layer residual is the last mile on that cell and route work under the
+  engine rewrite.
 - **t110's base-on multiples need a ledger correction (surfaced 2026-11-03 by the
   t111 re-derivation).** The t110 answer's "end-to-end today" **9.49x** divides
   PnP's **instrumented** base-on slice span (**228,997 ms**) by Orca's quiet
@@ -3429,6 +3482,15 @@ Standing decisions for this effort (2026-09-22):
   ([ticket 112](issues/112-prep-slice-parity-phase1.md)). This exception is
   scoped to the prepass and its shapes, is not a standing licence for the rest of
   the parity program, and the next such question still goes back to the human.
+  **Extension (2026-11-08, [Destination arithmetic](issues/128-destination-arithmetic-ruling.md)):**
+  the t111 exception is carried forward from prepass *shapes* to the prepass
+  *implementation* — the supports-off cluster and the planner may be replaced by
+  canonical's work set at canonical's cost, gated stage-by-stage by the
+  work-set/per-op decomposition
+  ([129](issues/129-prepass-work-set-per-op-parity.md)). It does **not** extend
+  to the per-layer phase: the benchy-classic-off per-layer residual may be
+  attacked as a speed shape, but any change that alters computed geometry there
+  still needs its own t81-style exception from the human.
   **Campaign-specific amendment (2026-11-07, [Strong planner carry: fold the occupancy batching into the Slice campaign, amend the gate, or park it?](issues/117-strong-planner-carry-ruling.md)):**
   the representation-safe Strong-planner occupancy-offset batch uses the four
   supports-on cells for its positive improvement gate, requires byte-identical
