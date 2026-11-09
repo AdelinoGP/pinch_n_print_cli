@@ -590,6 +590,78 @@ struct InternalBridgeLayerResult {
     angles: Vec<f32>,
 }
 
+/// Rectangular clip window for the negative `deep_infill_area` offset: the
+/// union bounding box of the layer's internal-bridge candidates, grown by
+/// enough to cover the erosion delta plus Clipper's miter reach (`miter_limit`
+/// is 2.0 in [`offset`]). Every point whose erosion can reach a candidate lies
+/// inside the window, so the eroded set is unchanged wherever a candidate
+/// consumes it.
+///
+/// Only the erosion is windowed. The positive offset stays whole-layer because
+/// `internal_bridge_angles` intersects the layer's sparse expansion area with
+/// it and derives bridge directions from that whole-layer boundary anchor set;
+/// clipping the positive operand moves bridge directions even though every
+/// candidate is local (measured: eight benchy layers, up to 22 mm of fill
+/// re-routing).
+///
+/// The window exists because the offset is a local operation: a point farther
+/// than `miter_limit x |delta|` from the candidate bounding box cannot change
+/// the eroded set inside it. `deep_infill_area` on a large plate extends far
+/// beyond the candidate set, and paying to erode that geometry is what the
+/// window removes.
+fn internal_bridge_offset_window(
+    region: &slicer_ir::SlicedRegion,
+    qualify_spacing_mm: f32,
+) -> Option<ExPolygon> {
+    let mut min_x = i64::MAX;
+    let mut min_y = i64::MAX;
+    let mut max_x = i64::MIN;
+    let mut max_y = i64::MIN;
+    let mut any = false;
+    for surface in &region.internal_solid_fill {
+        for ring in std::iter::once(&surface.contour).chain(surface.holes.iter()) {
+            for point in &ring.points {
+                min_x = min_x.min(point.x);
+                min_y = min_y.min(point.y);
+                max_x = max_x.max(point.x);
+                max_y = max_y.max(point.y);
+                any = true;
+            }
+        }
+    }
+    if !any {
+        return None;
+    }
+    // 4.5 * spacing is the erosion delta; miter_limit 2.0 doubles its reach.
+    // One extra spacing keeps the rectangle clear of the offset boundary so
+    // the clipped operand is not itself the clip boundary.
+    let margin_mm = (2.0 * 4.5 + 1.0) * qualify_spacing_mm;
+    let margin = (f64::from(margin_mm) * slicer_ir::UNITS_PER_MM).ceil() as i64;
+    Some(ExPolygon {
+        contour: slicer_ir::Polygon {
+            points: vec![
+                slicer_ir::Point2 {
+                    x: min_x - margin,
+                    y: min_y - margin,
+                },
+                slicer_ir::Point2 {
+                    x: max_x + margin,
+                    y: min_y - margin,
+                },
+                slicer_ir::Point2 {
+                    x: max_x + margin,
+                    y: max_y + margin,
+                },
+                slicer_ir::Point2 {
+                    x: min_x - margin,
+                    y: max_y + margin,
+                },
+            ],
+        },
+        holes: Vec::new(),
+    })
+}
+
 /// Compute the exact commit result for one layer from `deep_infill_area`
 /// (already lower-candidate-subtracted by the caller when required).
 #[allow(clippy::too_many_arguments)]
@@ -641,8 +713,20 @@ fn compute_internal_bridge_layer(
     let internal_unsupported_area = if qualified.is_empty() || deep_infill_area.is_empty() {
         Vec::new()
     } else {
+        // Only the surviving candidates consume this erosion, and each is
+        // inside the offset window by construction, so the whole-layer operand
+        // can be clipped without changing the retained set.
+        let window = internal_bridge_offset_window(region, qualify_spacing_mm);
+        let clipped;
+        let operand: &[ExPolygon] = match &window {
+            Some(rect) => {
+                clipped = intersection(&deep_infill_area, std::slice::from_ref(rect));
+                &clipped
+            }
+            None => &deep_infill_area,
+        };
         offset(
-            &deep_infill_area,
+            operand,
             -(4.5 * qualify_spacing_mm),
             OffsetJoinType::Miter,
             0.0,
@@ -1624,6 +1708,39 @@ mod tests {
         assert!(
             upper_convertible_surfaces(&all_top).is_empty(),
             "no stInternal/stInternalSolid surface means nothing to convert"
+        );
+    }
+
+    /// The erosion window is a locality bound, not an approximation: clipping
+    /// the deep-infill operand to the candidate bbox plus the miter reach must
+    /// leave the eroded set identical *inside the candidate bbox*, even when
+    /// the operand carries a separate island far outside the window.
+    #[test]
+    fn internal_bridge_window_preserves_the_erosion_inside_the_candidate_bbox() {
+        let mut region = slicer_ir::SlicedRegion {
+            object_id: String::from("o"),
+            region_id: 0,
+            ..Default::default()
+        };
+        region.internal_solid_fill = vec![rect(20.0, 30.0)];
+        let deep_infill_area = vec![rect(0.0, 10.0), rect(20.0, 30.0)];
+        let qualify_spacing_mm = 0.4;
+        let window = internal_bridge_offset_window(&region, qualify_spacing_mm)
+            .expect("a non-empty candidate set has a window");
+        let clipped = intersection(&deep_infill_area, std::slice::from_ref(&window));
+        assert_ne!(
+            clipped, deep_infill_area,
+            "the far island must be clipped away or the fixture proves nothing"
+        );
+        let candidate_bbox = vec![rect(20.0, 30.0)];
+        let delta = -4.5 * qualify_spacing_mm;
+        let whole = offset(&deep_infill_area, delta, OffsetJoinType::Miter, 0.0);
+        let windowed = offset(&clipped, delta, OffsetJoinType::Miter, 0.0);
+        let whole_inside = intersection(&whole, &candidate_bbox);
+        let windowed_inside = intersection(&windowed, &candidate_bbox);
+        assert_eq!(
+            whole_inside, windowed_inside,
+            "the erosion moved inside the candidate bbox"
         );
     }
 }
