@@ -1,0 +1,42 @@
+[
+ {
+  "cell": "benchy-classic-off",
+  "flags": "probe",
+  "exit_code": 0,
+  "instrumented_wall_seconds": 4.708,
+  "gcode_sha256": "90638bf3ea9e592d573b223c3eb9af64473efe804578d2478adfbbc5f0e67008",
+  "reference_sha256": "90638bf3ea9e592d573b223c3eb9af64473efe804578d2478adfbbc5f0e67008",
+  "reference_match": true,
+  "jsonl": "benchy-classic-off.probe.jsonl"
+ },
+ {
+  "cell": "benchy-classic-on",
+  "flags": "probe",
+  "exit_code": 0,
+  "instrumented_wall_seconds": 10.319,
+  "gcode_sha256": "711c6334e397e5ae6911b15bfc71d42add9e93822cddd0a29391db6ef531d556",
+  "reference_sha256": "711c6334e397e5ae6911b15bfc71d42add9e93822cddd0a29391db6ef531d556",
+  "reference_match": true,
+  "jsonl": "benchy-classic-on.probe.jsonl"
+ },
+ {
+  "cell": "base-classic-off",
+  "flags": "probe",
+  "exit_code": 0,
+  "instrumented_wall_seconds": 44.18,
+  "gcode_sha256": "b3b4ac5e885c7f637b98f79eca21901a41d85739627d4dcb40820663c15e90ef",
+  "reference_sha256": "b3b4ac5e885c7f637b98f79eca21901a41d85739627d4dcb40820663c15e90ef",
+  "reference_match": true,
+  "jsonl": "base-classic-off.probe.jsonl"
+ },
+ {
+  "cell": "base-classic-on",
+  "flags": "probe",
+  "exit_code": 0,
+  "instrumented_wall_seconds": 114.668,
+  "gcode_sha256": "4e31a2db368ff80f388512211ae824b9660342a465c87f093f6182023e34eb4e",
+  "reference_sha256": "4e31a2db368ff80f388512211ae824b9660342a465c87f093f6182023e34eb4e",
+  "reference_match": true,
+  "jsonl": "base-classic-on.probe.jsonl"
+ }
+]

@@ -1,0 +1,955 @@
+diff --git a/crates/slicer-core/src/lib.rs b/crates/slicer-core/src/lib.rs
+index 0ac2d6a3..3aa1f58e 100644
+--- a/crates/slicer-core/src/lib.rs
++++ b/crates/slicer-core/src/lib.rs
+@@ -44,6 +44,7 @@ pub mod skeletal_trapezoidation;
+ pub mod smooth_outward;
+ pub mod stage_io;
+ pub mod support_regularize;
++pub mod t131_probe;
+ pub mod top_surface_split;
+ pub mod triangle_mesh_slicer;
+ #[cfg(feature = "host-algos")]
+diff --git a/crates/slicer-core/src/polygon_ops.rs b/crates/slicer-core/src/polygon_ops.rs
+index f93cce1e..fa3535f7 100644
+--- a/crates/slicer-core/src/polygon_ops.rs
++++ b/crates/slicer-core/src/polygon_ops.rs
+@@ -641,11 +641,26 @@ pub fn clip_polygons(
+     // as `top_surface_split::split_top_surfaces`, for free.
+     let _profile = crate::profile::scope(crate::profile::ScopeId::CLIP_POLYGONS);
+ 
++    // t131 probe (env-gated; reverted with `probe.patch`).
++    let probe = crate::t131_probe::enabled();
++    let t_conv = if probe {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++
+     // Flatten all polygons (contours + holes) into separate paths — clipper2
+     // boolean ops work on flat path lists as input regardless of hierarchy.
+     let subject_paths: Vec<Vec<Point64>> = subject.iter().flat_map(expolygon_to_paths).collect();
+     let clip_paths: Vec<Vec<Point64>> = clip.iter().flat_map(expolygon_to_paths).collect();
+ 
++    let conv_in_ns = t_conv.map_or(0, |t| t.elapsed().as_nanos() as u64);
++    let t_sweep = if probe {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++
+     let clip_type = match op {
+         ClipOperation::Union => ClipType::Union,
+         ClipOperation::Intersection => ClipType::Intersection,
+@@ -662,7 +677,44 @@ pub fn clip_polygons(
+         &mut tree,
+     );
+ 
+-    expolygons_from_tree(&tree)
++    let sweep_ns = t_sweep.map_or(0, |t| t.elapsed().as_nanos() as u64);
++    let t_rebuild = if probe {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++
++    let out = expolygons_from_tree(&tree);
++
++    if probe {
++        let rebuild_ns = t_rebuild.map_or(0, |t| t.elapsed().as_nanos() as u64);
++        let in_points: u64 = subject_paths
++            .iter()
++            .chain(clip_paths.iter())
++            .map(|p| p.len() as u64)
++            .sum();
++        let in_paths = (subject_paths.len() + clip_paths.len()) as u64;
++        let out_points: u64 = out
++            .iter()
++            .map(|e| {
++                e.contour.points.len() as u64
++                    + e.holes.iter().map(|h| h.points.len() as u64).sum::<u64>()
++            })
++            .sum();
++        let out_paths: u64 = out.iter().map(|e| 1 + e.holes.len() as u64).sum();
++        crate::t131_probe::record(
++            crate::t131_probe::OP_CLIP,
++            conv_in_ns,
++            sweep_ns,
++            rebuild_ns,
++            in_points,
++            in_paths,
++            out_points,
++            out_paths,
++        );
++    }
++
++    out
+ }
+ 
+ /// Computes the union of polygon sets.
+@@ -819,10 +871,17 @@ fn inflate_once(
+     }
+ 
+     // Convert polygons to paths
++    let probe = crate::t131_probe::enabled();
++    let t_conv = if probe {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
+     let paths: Vec<Vec<Point64>> = polygons.iter().flat_map(expolygon_to_paths).collect();
+     if paths.is_empty() {
+         return Vec::new();
+     }
++    let conv_in_ns = t_conv.map_or(0, |t| t.elapsed().as_nanos() as u64);
+ 
+     // Map OffsetJoinType to clipper2_rust JoinType
+     let join_type = match join {
+@@ -831,6 +890,12 @@ fn inflate_once(
+         OffsetJoinType::Square => JoinType::Square,
+     };
+ 
++    let t_sweep = if probe {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++
+     let mut clip_offset = ClipperOffset::new(
+         miter_limit,
+         (arc_tolerance_mm as f64) * slicer_ir::UNITS_PER_MM,
+@@ -842,7 +907,39 @@ fn inflate_once(
+     let mut tree = PolyTree64::new();
+     clip_offset.execute_tree(delta_units, &mut tree);
+ 
+-    expolygons_from_tree(&tree)
++    let sweep_ns = t_sweep.map_or(0, |t| t.elapsed().as_nanos() as u64);
++    let t_rebuild = if probe {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++
++    let out = expolygons_from_tree(&tree);
++
++    if probe {
++        let rebuild_ns = t_rebuild.map_or(0, |t| t.elapsed().as_nanos() as u64);
++        let in_points: u64 = paths.iter().map(|p| p.len() as u64).sum();
++        let out_points: u64 = out
++            .iter()
++            .map(|e| {
++                e.contour.points.len() as u64
++                    + e.holes.iter().map(|h| h.points.len() as u64).sum::<u64>()
++            })
++            .sum();
++        let out_paths: u64 = out.iter().map(|e| 1 + e.holes.len() as u64).sum();
++        crate::t131_probe::record(
++            crate::t131_probe::OP_OFFSET,
++            conv_in_ns,
++            sweep_ns,
++            rebuild_ns,
++            in_points,
++            paths.len() as u64,
++            out_points,
++            out_paths,
++        );
++    }
++
++    out
+ }
+ 
+ /// Union of all subject ExPolygons with each other (no separate clip set).
+@@ -968,12 +1065,49 @@ pub fn offset2_ex(
+     // the two-pass result's hole/island nesting survives — see
+     // [`expolygons_from_tree`].
+     let delta2_units = delta2_mm * slicer_ir::UNITS_PER_MM;
++    let probe = crate::t131_probe::enabled();
++    let t_sweep = if probe {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
+     let mut clip_offset = ClipperOffset::new(miter_limit, 0.0, false, false);
+     clip_offset.add_paths(&intermediate, join_type, EndType::Polygon);
+     let mut tree = PolyTree64::new();
+     clip_offset.execute_tree(delta2_units, &mut tree);
++    let sweep_ns = t_sweep.map_or(0, |t| t.elapsed().as_nanos() as u64);
++    let t_rebuild = if probe {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++
++    let out = expolygons_from_tree(&tree);
++
++    if probe {
++        let rebuild_ns = t_rebuild.map_or(0, |t| t.elapsed().as_nanos() as u64);
++        let in_points: u64 = intermediate.iter().map(|p| p.len() as u64).sum();
++        let out_points: u64 = out
++            .iter()
++            .map(|e| {
++                e.contour.points.len() as u64
++                    + e.holes.iter().map(|h| h.points.len() as u64).sum::<u64>()
++            })
++            .sum();
++        let out_paths: u64 = out.iter().map(|e| 1 + e.holes.len() as u64).sum();
++        crate::t131_probe::record(
++            crate::t131_probe::OP_OFFSET2_P2,
++            0,
++            sweep_ns,
++            rebuild_ns,
++            in_points,
++            intermediate.len() as u64,
++            out_points,
++            out_paths,
++        );
++    }
+ 
+-    expolygons_from_tree(&tree)
++    out
+ }
+ 
+ /// Pass 1 of [`offset2_ex`], shared by the two-pass entry point and the
+@@ -997,16 +1131,44 @@ fn offset2_ex_first_pass(
+         OffsetJoinType::Round => JoinType::Round,
+         OffsetJoinType::Square => JoinType::Square,
+     };
++    let probe = crate::t131_probe::enabled();
++    let t_conv = if probe {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
+     let paths1: Vec<Vec<Point64>> = polys.iter().flat_map(expolygon_to_paths).collect();
++    let conv_in_ns = t_conv.map_or(0, |t| t.elapsed().as_nanos() as u64);
+     let delta1_units = delta1_mm * slicer_ir::UNITS_PER_MM;
+-    inflate_paths_64(
++    let t_sweep = if probe {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++    let out = inflate_paths_64(
+         &paths1,
+         delta1_units,
+         join_type,
+         EndType::Polygon,
+         miter_limit,
+         0.0,
+-    )
++    );
++    if probe {
++        let sweep_ns = t_sweep.map_or(0, |t| t.elapsed().as_nanos() as u64);
++        let in_points: u64 = paths1.iter().map(|p| p.len() as u64).sum();
++        let out_points: u64 = out.iter().map(|p| p.len() as u64).sum();
++        crate::t131_probe::record(
++            crate::t131_probe::OP_OFFSET2_P1,
++            conv_in_ns,
++            sweep_ns,
++            0,
++            in_points,
++            paths1.len() as u64,
++            out_points,
++            out.len() as u64,
++        );
++    }
++    out
+ }
+ 
+ /// True when morphological opening by `delta_mm` would produce nothing.
+diff --git a/crates/slicer-core/src/t131_probe.rs b/crates/slicer-core/src/t131_probe.rs
+new file mode 100644
+index 00000000..1a40a5b5
+--- /dev/null
++++ b/crates/slicer-core/src/t131_probe.rs
+@@ -0,0 +1,246 @@
++//! TEMPORARY probe for wayfinder ticket 131 — per-op cost decomposition.
++//!
++//! Reverted before the take closes (`probe.patch` in the ticket's evidence
++//! directory is the only artifact). Compiled into the host binary only; the
++//! wasm guest build sees the no-op stub via the `cfg` below.
++//!
++//! Enabled at runtime by `PNP_T131_PROBE=1`. When disabled every entry point
++//! is one relaxed atomic load plus a branch, so a probe binary can also be
++//! used for an uninstrumented run.
++
++#![cfg(not(target_arch = "wasm32"))]
++
++use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
++use std::sync::OnceLock;
++
++/// Clipper2 boolean primitive.
++pub const OP_CLIP: usize = 0;
++/// Single-pass clipper2 inflate (`offset`, and both passes of `opening` /
++/// `closing_ex`).
++pub const OP_OFFSET: usize = 1;
++/// `offset2_ex`'s first (flat) pass.
++pub const OP_OFFSET2_P1: usize = 2;
++/// `offset2_ex`'s second (tree-capturing) pass.
++pub const OP_OFFSET2_P2: usize = 3;
++
++/// Op names in [`OP_NAMES`] order.
++pub const OP_NAMES: [&str; 4] = ["clip", "offset", "offset2_p1", "offset2_p2"];
++/// Number of op kinds.
++pub const N_OPS: usize = 4;
++
++/// Field indices in a snapshot row.
++pub const F_CALLS: usize = 0;
++pub const F_WIT_IN: usize = 1;
++pub const F_CONV_IN: usize = 2;
++pub const F_SWEEP: usize = 3;
++pub const F_REBUILD: usize = 4;
++pub const F_WIT_OUT: usize = 5;
++pub const F_IN_POINTS: usize = 6;
++pub const F_IN_PATHS: usize = 7;
++pub const F_OUT_POINTS: usize = 8;
++pub const F_OUT_PATHS: usize = 9;
++pub const F_MAX_IN_POINTS: usize = 10;
++const N_FIELDS: usize = 11;
++
++static DATA: [[AtomicU64; N_FIELDS]; N_OPS] = [
++    [
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++    ],
++    [
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++    ],
++    [
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++    ],
++    [
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++    ],
++];
++
++static ON: OnceLock<bool> = OnceLock::new();
++
++/// Whether the probe is enabled (`PNP_T131_PROBE`).
++pub fn enabled() -> bool {
++    *ON.get_or_init(|| std::env::var_os("PNP_T131_PROBE").is_some())
++}
++
++/// Add `value` to one field of one op kind.
++pub fn add(op: usize, field: usize, value: u64) {
++    if value != 0 {
++        DATA[op][field].fetch_add(value, Relaxed);
++    }
++}
++
++/// Record one completed op's split. Durations are nanoseconds.
++pub fn record(
++    op: usize,
++    conv_in_ns: u64,
++    sweep_ns: u64,
++    rebuild_ns: u64,
++    in_points: u64,
++    in_paths: u64,
++    out_points: u64,
++    out_paths: u64,
++) {
++    add(op, F_CALLS, 1);
++    add(op, F_CONV_IN, conv_in_ns);
++    add(op, F_SWEEP, sweep_ns);
++    add(op, F_REBUILD, rebuild_ns);
++    add(op, F_IN_POINTS, in_points);
++    add(op, F_IN_PATHS, in_paths);
++    add(op, F_OUT_POINTS, out_points);
++    add(op, F_OUT_PATHS, out_paths);
++    if in_points > DATA[op][F_MAX_IN_POINTS].load(Relaxed) {
++        DATA[op][F_MAX_IN_POINTS].store(in_points, Relaxed);
++    }
++}
++
++/// A consistent-ish snapshot of every op/field counter.
++pub fn snapshot() -> [[u64; N_FIELDS]; N_OPS] {
++    let mut out = [[0u64; N_FIELDS]; N_OPS];
++    for op in 0..N_OPS {
++        for field in 0..N_FIELDS {
++            out[op][field] = DATA[op][field].load(Relaxed);
++        }
++    }
++    out
++}
++
++/// Print the per-op delta between two snapshots, tagged with `stage`.
++pub fn emit_stage(stage: &str, before: [[u64; N_FIELDS]; N_OPS], after: [[u64; N_FIELDS]; N_OPS]) {
++    for op in 0..N_OPS {
++        let calls = after[op][F_CALLS].saturating_sub(before[op][F_CALLS]);
++        if calls == 0 {
++            continue;
++        }
++        let d = |f: usize| after[op][f].saturating_sub(before[op][f]);
++        eprintln!(
++            "t131-stage stage={} op={} calls={} wit_in_ns={} conv_in_ns={} sweep_ns={} rebuild_ns={} wit_out_ns={} in_points={} in_paths={} out_points={} out_paths={}",
++            stage,
++            OP_NAMES[op],
++            calls,
++            d(F_WIT_IN),
++            d(F_CONV_IN),
++            d(F_SWEEP),
++            d(F_REBUILD),
++            d(F_WIT_OUT),
++            d(F_IN_POINTS),
++            d(F_IN_PATHS),
++            d(F_OUT_POINTS),
++            d(F_OUT_PATHS),
++        );
++    }
++}
++
++/// Print a whole-cell total row (used for the per-layer and postpass phases).
++pub fn emit_total(stage: &str, before: [[u64; N_FIELDS]; N_OPS], after: [[u64; N_FIELDS]; N_OPS]) {
++    emit_stage(stage, before, after);
++}
++
++/// Content census of one polygon payload: `(polygons, points, hash, bbox)`.
++///
++/// `hash` is an FNV-1a fold over every point's `(x, y)` and every ring
++/// boundary marker, so two payloads hash equal only if their ring structure
++/// and coordinates are equal. `bbox` is `(minx, miny, maxx, maxy)` in scaled
++/// units; an empty payload gets `(0, 0, 0, 0)`.
++pub fn payload_census(polys: &[slicer_ir::ExPolygon]) -> (usize, usize, u64, (i64, i64, i64, i64)) {
++    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
++    let mut points = 0usize;
++    let mut bbox = (i64::MAX, i64::MAX, i64::MIN, i64::MIN);
++    let mut fold = |hash: &mut u64, value: i64| {
++        for byte in value.to_le_bytes() {
++            *hash ^= u64::from(byte);
++            *hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
++        }
++    };
++    for poly in polys {
++        for ring in std::iter::once(&poly.contour).chain(poly.holes.iter()) {
++            fold(&mut hash, -1);
++            for p in &ring.points {
++                fold(&mut hash, p.x);
++                fold(&mut hash, p.y);
++                bbox.0 = bbox.0.min(p.x);
++                bbox.1 = bbox.1.min(p.y);
++                bbox.2 = bbox.2.max(p.x);
++                bbox.3 = bbox.3.max(p.y);
++                points += 1;
++            }
++        }
++    }
++    if points == 0 {
++        bbox = (0, 0, 0, 0);
++    }
++    (polys.len(), points, hash, bbox)
++}
++
++/// One singular `offset_polygons` host-import call: content census plus wall.
++/// `hash`/`bbox` identify the payload so the reducer can count exact repeats
++/// (a memo ceiling). Printed only when the probe is enabled.
++pub fn emit_offset_call(
++    delta_mm: f32,
++    miter_limit: Option<f32>,
++    arc_tolerance_mm: f32,
++    polys: usize,
++    points: usize,
++    hash: u64,
++    bbox: (i64, i64, i64, i64),
++    call_ns: u64,
++) {
++    if !enabled() {
++        return;
++    }
++    eprintln!(
++        "t131-s6op delta_mm={:.6} miter={} arc={:.6} polys={} points={} hash={:016x} bbox={},{},{},{} call_ns={}",
++        delta_mm,
++        miter_limit.map_or_else(|| "none".to_string(), |v| format!("{v:.6}")),
++        arc_tolerance_mm,
++        polys,
++        points,
++        hash,
++        bbox.0,
++        bbox.1,
++        bbox.2,
++        bbox.3,
++        call_ns,
++    );
++}
+diff --git a/crates/slicer-runtime/src/pipeline.rs b/crates/slicer-runtime/src/pipeline.rs
+index 6756db81..30ef6ed1 100644
+--- a/crates/slicer-runtime/src/pipeline.rs
++++ b/crates/slicer-runtime/src/pipeline.rs
+@@ -682,6 +682,7 @@ pub(crate) fn run_pipeline_until_preparation(
+     }
+     instrumentation
+         .on_phase_start_with_layer_count(Phase::PerLayer, Some(plan.global_layers.len() as u32));
++    let t131_layer_before = slicer_core::t131_probe::snapshot();
+     let per_layer_result = execute_per_layer_with_committed_anchored_events_instrumented(
+         &plan,
+         &blackboard,
+@@ -695,6 +696,11 @@ pub(crate) fn run_pipeline_until_preparation(
+         lifecycle.and_then(|scope| scope.observer()),
+     );
+     instrumentation.on_phase_end(Phase::PerLayer);
++    slicer_core::t131_probe::emit_total(
++        "PHASE::PerLayer",
++        t131_layer_before,
++        slicer_core::t131_probe::snapshot(),
++    );
+     let (committed_events, layer_audits) = per_layer_result?;
+     let layer_irs = crate::anchored_rows::synthesize_anchored_rows(committed_events)?;
+ 
+@@ -707,6 +713,7 @@ pub(crate) fn run_pipeline_until_preparation(
+         ));
+     }
+     instrumentation.on_phase_start(Phase::PostPass);
++    let t131_post_before = slicer_core::t131_probe::snapshot();
+     let post_result = (|| -> Result<(String, Vec<ModuleAccessAudit>), PipelineError> {
+         // Bracket layer finalization as a synthetic stage so the report's
+         // per-stage table accounts for time spent in the finalization tier.
+@@ -756,6 +763,11 @@ pub(crate) fn run_pipeline_until_preparation(
+         )
+     })();
+     instrumentation.on_phase_end(Phase::PostPass);
++    slicer_core::t131_probe::emit_total(
++        "PHASE::PostPass",
++        t131_post_before,
++        slicer_core::t131_probe::snapshot(),
++    );
+     let (gcode_text, postpass_audits) = post_result?;
+ 
+     Ok(Some(PipelineOutput {
+diff --git a/crates/slicer-runtime/src/prepass.rs b/crates/slicer-runtime/src/prepass.rs
+index 3fe7a96b..82bea1fc 100644
+--- a/crates/slicer-runtime/src/prepass.rs
++++ b/crates/slicer-runtime/src/prepass.rs
+@@ -286,6 +286,8 @@ fn execute_prepass_with_instrumentation_collecting(
+ 
+     for stage in &plan.prepass_stages {
+         ensure_stage_prerequisites(&stage.stage_id, blackboard)?;
++        // t131 probe: per-stage clipper split (env-gated; reverted).
++        let t131_before = slicer_core::t131_probe::snapshot();
+         let mut support_plans = Vec::new();
+         // Kept index-parallel with `support_plans`: element `i` is the audit
+         // that belongs to the module which produced `support_plans[i]`, so an
+@@ -503,6 +505,11 @@ fn execute_prepass_with_instrumentation_collecting(
+             }
+         }
+         instrumentation.on_stage_end(&stage.stage_id, None);
++        slicer_core::t131_probe::emit_stage(
++            &stage.stage_id,
++            t131_before,
++            slicer_core::t131_probe::snapshot(),
++        );
+     }
+ 
+     Ok(audits)
+@@ -1145,6 +1152,8 @@ fn run_builtin_stage(
+ ) -> Result<(), PrepassExecutionError> {
+     if should_run(blackboard) {
+         let before = blackboard.estimated_size();
++        // t131 probe: host built-in clipper split (env-gated; reverted).
++        let t131_before = slicer_core::t131_probe::snapshot();
+         let guard =
+             StageInstrumentationGuard::start(instrumentation, stage_id, None, module_id, before);
+         // Attribute this built-in's native `slicer_core::polygon_ops` marks to
+@@ -1155,6 +1164,11 @@ fn run_builtin_stage(
+         let _native_owner = crate::profiling_report::NativeOwnerGuard::new(module_id);
+         execute(blackboard)?;
+         guard.finish(blackboard.estimated_size());
++        slicer_core::t131_probe::emit_stage(
++            stage_id,
++            t131_before,
++            slicer_core::t131_probe::snapshot(),
++        );
+     }
+     Ok(())
+ }
+diff --git a/crates/slicer-runtime/src/slice_postprocess_prepass.rs b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+index 471fbc45..4f121db6 100644
+--- a/crates/slicer-runtime/src/slice_postprocess_prepass.rs
++++ b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+@@ -590,6 +590,100 @@ struct InternalBridgeLayerResult {
+     angles: Vec<f32>,
+ }
+ 
++/// t131 probe: union bbox of the layer's internal-bridge candidates, as a
++/// rectangle. `None` when the layer has no candidates.
++fn t131_candidate_rect(region: &slicer_ir::SlicedRegion) -> Option<ExPolygon> {
++    let mut bbox = (i64::MAX, i64::MAX, i64::MIN, i64::MIN);
++    let mut any = false;
++    for poly in &region.internal_solid_fill {
++        for ring in std::iter::once(&poly.contour).chain(poly.holes.iter()) {
++            for p in &ring.points {
++                bbox.0 = bbox.0.min(p.x);
++                bbox.1 = bbox.1.min(p.y);
++                bbox.2 = bbox.2.max(p.x);
++                bbox.3 = bbox.3.max(p.y);
++                any = true;
++            }
++        }
++    }
++    any.then(|| t131_rect(bbox))
++}
++
++/// t131 probe: rectangle `ExPolygon` from `(minx, miny, maxx, maxy)`.
++fn t131_rect(bbox: (i64, i64, i64, i64)) -> ExPolygon {
++    ExPolygon {
++        contour: slicer_ir::Polygon {
++            points: vec![
++                slicer_ir::Point2 {
++                    x: bbox.0,
++                    y: bbox.1,
++                },
++                slicer_ir::Point2 {
++                    x: bbox.2,
++                    y: bbox.1,
++                },
++                slicer_ir::Point2 {
++                    x: bbox.2,
++                    y: bbox.3,
++                },
++                slicer_ir::Point2 {
++                    x: bbox.0,
++                    y: bbox.3,
++                },
++            ],
++        },
++        holes: Vec::new(),
++    }
++}
++
++/// t131 probe: grow a rectangle by `margin` scaled units.
++fn t131_expand_rect(rect: &ExPolygon, margin: f64) -> ExPolygon {
++    let m = margin as i64;
++    let pts = &rect.contour.points;
++    let bbox = (
++        pts.iter().map(|p| p.x).min().unwrap_or(0) - m,
++        pts.iter().map(|p| p.y).min().unwrap_or(0) - m,
++        pts.iter().map(|p| p.x).max().unwrap_or(0) + m,
++        pts.iter().map(|p| p.y).max().unwrap_or(0) + m,
++    );
++    t131_rect(bbox)
++}
++
++/// t131 probe: total point count of a polygon set.
++fn t131_points(polys: &[ExPolygon]) -> usize {
++    polys
++        .iter()
++        .map(|e| e.contour.points.len() + e.holes.iter().map(|h| h.points.len()).sum::<usize>())
++        .sum()
++}
++
++/// t131 probe: total area in mm² (shoelace; holes subtract).
++fn t131_area_mm2(polys: &[ExPolygon]) -> f64 {
++    fn ring_area(points: &[slicer_ir::Point2]) -> f64 {
++        if points.len() < 3 {
++            return 0.0;
++        }
++        let mut acc = 0.0f64;
++        for i in 0..points.len() {
++            let a = points[i];
++            let b = points[(i + 1) % points.len()];
++            acc += (a.x as f64) * (b.y as f64) - (b.x as f64) * (a.y as f64);
++        }
++        acc * 0.5
++    }
++    let units2: f64 = polys
++        .iter()
++        .map(|e| {
++            ring_area(&e.contour.points).abs()
++                - e.holes
++                    .iter()
++                    .map(|h| ring_area(&h.points).abs())
++                    .sum::<f64>()
++        })
++        .sum();
++    units2 / 1.0e8
++}
++
+ /// Compute the exact commit result for one layer from `deep_infill_area`
+ /// (already lower-candidate-subtracted by the caller when required).
+ #[allow(clippy::too_many_arguments)]
+@@ -606,12 +700,16 @@ fn compute_internal_bridge_layer(
+     layer_index: u32,
+     print_z: f32,
+ ) -> Option<InternalBridgeLayerResult> {
++    // t131 probe: S5 windowed-offset ceiling (env-gated; reverted).
++    let t131_s5 = std::env::var_os("PNP_T131_S5").is_some();
++    let t131_pos = t131_s5.then(std::time::Instant::now);
+     let deep_infill_clip_area = offset(
+         &deep_infill_area,
+         1.5 * qualify_spacing_mm,
+         OffsetJoinType::Miter,
+         0.0,
+     );
++    let t131_whole_pos_ns = t131_pos.map_or(0, |t| t.elapsed().as_nanos() as u64);
+     let mut qualified: Vec<ExPolygon> = Vec::new();
+     for surface in &region.internal_solid_fill {
+         let expanded_candidate = offset(
+@@ -638,16 +736,76 @@ fn compute_internal_bridge_layer(
+     }
+     // Only the surviving candidates are filtered against this erosion,
+     // so an empty candidate set skips the offset entirely.
+-    let internal_unsupported_area = if qualified.is_empty() || deep_infill_area.is_empty() {
+-        Vec::new()
+-    } else {
++    let t131_neg_ran = !qualified.is_empty() && !deep_infill_area.is_empty();
++    let t131_neg = t131_s5.then(std::time::Instant::now);
++    let internal_unsupported_area = if t131_neg_ran {
+         offset(
+             &deep_infill_area,
+             -(4.5 * qualify_spacing_mm),
+             OffsetJoinType::Miter,
+             0.0,
+         )
++    } else {
++        Vec::new()
+     };
++    let t131_whole_neg_ns = t131_neg.map_or(0, |t| t.elapsed().as_nanos() as u64);
++    if t131_s5 {
++        if let Some(rect_core) = t131_candidate_rect(region) {
++            let margin = 6.0 * f64::from(qualify_spacing_mm) * slicer_ir::UNITS_PER_MM;
++            let rect_window = t131_expand_rect(&rect_core, margin);
++            let windowed = intersection(&deep_infill_area, std::slice::from_ref(&rect_window));
++            let t = std::time::Instant::now();
++            let win_pos = offset(
++                &windowed,
++                1.5 * qualify_spacing_mm,
++                OffsetJoinType::Miter,
++                0.0,
++            );
++            let win_pos_ns = t.elapsed().as_nanos() as u64;
++            let t = std::time::Instant::now();
++            let win_neg = offset(
++                &windowed,
++                -(4.5 * qualify_spacing_mm),
++                OffsetJoinType::Miter,
++                0.0,
++            );
++            let win_neg_ns = t.elapsed().as_nanos() as u64;
++            let pos_whole = t131_area_mm2(&intersection(
++                &deep_infill_clip_area,
++                std::slice::from_ref(&rect_core),
++            ));
++            let pos_win = t131_area_mm2(&intersection(&win_pos, std::slice::from_ref(&rect_core)));
++            let neg_whole = if t131_neg_ran {
++                t131_area_mm2(&intersection(
++                    &internal_unsupported_area,
++                    std::slice::from_ref(&rect_core),
++                ))
++            } else {
++                0.0
++            };
++            let neg_win = if t131_neg_ran {
++                t131_area_mm2(&intersection(&win_neg, std::slice::from_ref(&rect_core)))
++            } else {
++                0.0
++            };
++            eprintln!(
++                "t131-s5 layer={} region={} neg_ran={} pts_whole={} pts_win={} whole_pos_ns={} win_pos_ns={} whole_neg_ns={} win_neg_ns={} area_pos_whole={:.6} area_pos_win={:.6} area_neg_whole={:.6} area_neg_win={:.6}",
++                layer_index,
++                region_id,
++                u8::from(t131_neg_ran),
++                t131_points(&deep_infill_area),
++                t131_points(&windowed),
++                t131_whole_pos_ns,
++                win_pos_ns,
++                t131_whole_neg_ns,
++                win_neg_ns,
++                pos_whole,
++                pos_win,
++                neg_whole,
++                neg_win,
++            );
++        }
++    }
+     qualified.retain(|polygon| {
+         !intersection(std::slice::from_ref(polygon), &internal_unsupported_area).is_empty()
+     });
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index c5027a37..dc1cba13 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -2630,10 +2630,37 @@ impl hs::Host for HostExecutionContext {
+         clip: Vec<ExPolygon>,
+         op: hs::ClipOperation,
+     ) -> wasmtime::Result<Vec<ExPolygon>> {
++        // t131 probe: WIT -> IR marshal time (env-gated; reverted).
++        let probe = slicer_core::t131_probe::enabled();
++        let t_in = if probe {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
+         let ir_subject = wit_to_ir_expolygons(&subject);
+         let ir_clip = wit_to_ir_expolygons(&clip);
++        if probe {
++            slicer_core::t131_probe::add(
++                slicer_core::t131_probe::OP_CLIP,
++                slicer_core::t131_probe::F_WIT_IN,
++                t_in.map_or(0, |t| t.elapsed().as_nanos() as u64),
++            );
++        }
+         let result = slicer_core::polygon_ops::clip_polygons(&ir_subject, &ir_clip, ir_clip_op(op));
+-        Ok(ir_to_wit_expolygons(&result))
++        let t_out = if probe {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
++        let out = ir_to_wit_expolygons(&result);
++        if probe {
++            slicer_core::t131_probe::add(
++                slicer_core::t131_probe::OP_CLIP,
++                slicer_core::t131_probe::F_WIT_OUT,
++                t_out.map_or(0, |t| t.elapsed().as_nanos() as u64),
++            );
++        }
++        Ok(out)
+     }
+ 
+     fn offset_polygons(
+@@ -2644,7 +2671,27 @@ impl hs::Host for HostExecutionContext {
+         arc_tolerance_mm: f32,
+         miter_limit: Option<f32>,
+     ) -> wasmtime::Result<Vec<ExPolygon>> {
++        // t131 probe: WIT -> IR marshal time and the content census behind
++        // the S6 memo ceiling (env-gated; reverted).
++        let probe = slicer_core::t131_probe::enabled();
++        let t_call = if probe {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
++        let t_in = if probe {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
+         let ir_polys = wit_to_ir_expolygons(&polygons);
++        if probe {
++            slicer_core::t131_probe::add(
++                slicer_core::t131_probe::OP_OFFSET,
++                slicer_core::t131_probe::F_WIT_IN,
++                t_in.map_or(0, |t| t.elapsed().as_nanos() as u64),
++            );
++        }
+         let result = match miter_limit {
+             Some(miter_limit) => slicer_core::polygon_ops::offset_with_miter_limit(
+                 &ir_polys,
+@@ -2660,7 +2707,31 @@ impl hs::Host for HostExecutionContext {
+                 arc_tolerance_mm,
+             ),
+         };
+-        Ok(ir_to_wit_expolygons(&result))
++        let t_out = if probe {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
++        let out = ir_to_wit_expolygons(&result);
++        if probe {
++            slicer_core::t131_probe::add(
++                slicer_core::t131_probe::OP_OFFSET,
++                slicer_core::t131_probe::F_WIT_OUT,
++                t_out.map_or(0, |t| t.elapsed().as_nanos() as u64),
++            );
++            let (polys, points, hash, bbox) = slicer_core::t131_probe::payload_census(&ir_polys);
++            slicer_core::t131_probe::emit_offset_call(
++                delta_mm,
++                miter_limit,
++                arc_tolerance_mm,
++                polys,
++                points,
++                hash,
++                bbox,
++                t_call.map_or(0, |t| t.elapsed().as_nanos() as u64),
++            );
++        }
++        Ok(out)
+     }
+ 
+     fn hatch_areas(
+@@ -2703,11 +2774,25 @@ impl hs::Host for HostExecutionContext {
+         &mut self,
+         requests: Vec<hs::OffsetRequest>,
+     ) -> wasmtime::Result<Vec<Vec<ExPolygon>>> {
++        // t131 probe: per-request WIT marshal time (env-gated; reverted).
++        let probe = slicer_core::t131_probe::enabled();
+         let (results, _mode) = crate::batch::map_batch(
+             &requests,
+             |r| expolygon_vertex_count(&r.polygons),
+             |r| {
++                let t_in = if probe {
++                    Some(std::time::Instant::now())
++                } else {
++                    None
++                };
+                 let ir_polys = wit_to_ir_expolygons(&r.polygons);
++                if probe {
++                    slicer_core::t131_probe::add(
++                        slicer_core::t131_probe::OP_OFFSET,
++                        slicer_core::t131_probe::F_WIT_IN,
++                        t_in.map_or(0, |t| t.elapsed().as_nanos() as u64),
++                    );
++                }
+                 let result = match r.miter_limit {
+                     Some(miter_limit) => slicer_core::polygon_ops::offset_with_miter_limit(
+                         &ir_polys,
+@@ -2723,7 +2808,20 @@ impl hs::Host for HostExecutionContext {
+                         r.arc_tolerance_mm,
+                     ),
+                 };
+-                ir_to_wit_expolygons(&result)
++                let t_out = if probe {
++                    Some(std::time::Instant::now())
++                } else {
++                    None
++                };
++                let out = ir_to_wit_expolygons(&result);
++                if probe {
++                    slicer_core::t131_probe::add(
++                        slicer_core::t131_probe::OP_OFFSET,
++                        slicer_core::t131_probe::F_WIT_OUT,
++                        t_out.map_or(0, |t| t.elapsed().as_nanos() as u64),
++                    );
++                }
++                out
+             },
+         );
+         Ok(results)

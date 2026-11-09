@@ -38,10 +38,31 @@ and 17.5 % of base-on's; a work-set-only rewrite cannot reach 8/8. **Prepass at
 canonical cost wins base classic-off only (0.787x), ties base classic-on
 (1.012x) and loses both benchy cells (1.053x / 1.075x); full geometry parity wins
 all four (0.335x / 0.661x / 0.550x / 0.704x).** The route is a full engine-parity
-program, and the benchy per-layer phase is part of it. The next gate is
-[Common-stage per-op cost decomposition](issues/131-common-stage-per-op-cost-decomposition.md).
+program, and the benchy per-layer phase is part of it. The next gate was
+[Common-stage per-op cost decomposition](issues/131-common-stage-per-op-cost-decomposition.md),
+**resolved 2026-11-09 (see below)**.
 The matched-settings claim's brim asymmetry is graduated as
 [Matched settings vs the 8 mm brim](issues/130-brim-matched-settings-ruling.md).
+
+**Destination status (2026-11-09,
+[t131](issues/131-common-stage-per-op-cost-decomposition.md)): the per-op
+wrapper is dead as a lever; the route is operand volume plus planner
+scheduling.** The Clipper2 sweep is **98.2–99.9 %** of every common prepass
+stage's measured primitive thread-time and the whole non-sweep wrapper
+(conversion, WIT marshal, PolyTree rebuild, allocation) is **0.19–0.56 %** of
+that primitive time, so
+the required 58–79 % wall cut must come from **fewer/smaller sweep operands**,
+not from plumbing. The first priced shapes are **S6** (exact occupancy memo:
+**14,227.7 ms** thread / **6,504 ms** wall on base classic-on) and **S5**
+(bounded-delta windowed internal-bridge offsets: **21.0 s** thread / **2.5 s**
+wall on base classic-off), and the largest measured scheduling lever is the
+planner's **2.19x** effective parallelism (**25,625 ms** wall at 4x on
+base-on). No single shape reaches a cell's required cut. **Frontier:**
+[S6 occupancy memo](issues/132-planner-occupancy-memo.md),
+[S5 windowed offsets](issues/133-internal-bridge-windowed-offsets.md),
+[planner effective parallelism](issues/134-planner-effective-parallelism.md),
+and the human's brim ruling
+[130](issues/130-brim-matched-settings-ruling.md).
 
 ## Notes
 
@@ -129,7 +150,52 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-08, thirty-third session — the t129 take):**
+**Current selection scope (2026-11-09, thirty-fourth session — the t131 take):**
+the human said "Continue the perf vs orca map" (no ticket named); **131 was the
+only open AFK child** (130 is the human's grilling), so it was claimed and
+**resolved as a Phase-1 per-op decomposition**. Headline: **the per-op wrapper
+is not the lever.** On every common prepass stage the Clipper2 sweep holds
+**98.2–99.9 %** of the measured primitive thread-time; path conversion, WIT
+marshalling, PolyTree rebuild and allocation together hold **0.1–1.8 %** (base
+classic-off non-sweep **543 ms of 280,657 ms = 0.19 %**; base classic-on
+**1,075 ms of 517,928 ms = 0.21 %**). The 9.8–15.7x phase gap is **operand
+volume inside the sweep**: `ShellClassification` runs **19.5 calls/layer** at
+**4,608 points/call** (**44,463,545 points**, **89,825/layer**) and the planner
+**290 calls/layer** at **2,040 points/call** (**293,219,629 points**,
+**592,363/layer**), with the kernel at parity (t70). **S5 is now priced but not
+exact:** the two internal-bridge whole-layer offsets are **22,964 → 1,937 ms**
+of thread-time on 130 base-off layers (**16.06x / 8.81x**), wall-equivalent
+**2,520 ms** (**7.4x** floor, **9.1 %** of the cell's required cut), but
+positive exact on **115/130** and negative on **36/42** layers (max **0.71 /
+0.59 mm²**, net **−1.27 / +1.18 mm²**). **S6 is exact by construction:** the
+`+0.35 mm` occupancy family is **864 calls over 433 distinct payloads**, the
+**431** duplicates cost **14,227.7 ms** of thread-time (**6,504 ms** wall at
+2.19x, **6.4x** floor, **7.0 %** of base-on's required cut), and the sibling
+`−0.6 / −0.8 mm` collision family is **1,350/1,350 distinct** — no memo hits.
+**Scheduling is the surprise:** the planner delivers **122,657.6 ms** of sweep
+thread-time in **56,289 ms** of wall (**2.19x**; benchy-on **1.68x**) against
+**8.34–11.80x** elsewhere, so at 4x it would cut **25,625 ms** (**27.7 %** of
+base-on's required cut, **25.4x** floor) — larger than S5 and S6 combined on
+that cell. **Gate:** the first branch fails on every stage (overhead 0.9–2.6 %
+of the stage's share) and the second fails literally (S5 17.7 %, S6 12.8 %,
+planner-at-4x 50.6 % of the stage's share), but the route-level stop rule does
+not fire because the operands *can* be localised (S6 exactly, S5 with a
+bounded delta) and the planner's parallelism is a separate wall lever. Go/no-go:
+**NO-GO for a per-op rewrite; GO (narrowed) for operand locality and planner
+scheduling.** Graduated: [S6 occupancy memo](issues/132-planner-occupancy-memo.md),
+[S5 windowed internal-bridge offsets](issues/133-internal-bridge-windowed-offsets.md),
+[planner effective parallelism](issues/134-planner-effective-parallelism.md) —
+all AFK, open, unclaimed. **Frontier now: 130 (HITL, the human's grilling) and
+132/133/134 (AFK).** Evidence:
+[`evidence/t131-per-op-decomposition/`](evidence/t131-per-op-decomposition/FINDINGS.md)
+(`verify.py` 150/150 checks, prose re-derived; `--self-test` rejects 11/11
+negative controls; four cells × `probe` / `probe+s5`, every G-code hash equal to
+the t123 candidate-ordinary set; probe preserved as `probe.patch` and reverted;
+`cargo xtask build-guests --check` exit 0; rebuilt ordinary binary
+`f3d50217…` reproduces `90638bf3…`). Standing paired acceptance and KEEP/DROP
+rules unchanged.
+
+**Previous selection scope (2026-11-08, thirty-third session — the t129 take):**
 the human said "Continue the perf vs orca map" (no ticket named; 129 was the
 only open AFK child and 130 is the human's grilling), so 129 was claimed and
 **resolved as a Phase-1 decomposition**. Headline: **the work set is not the
@@ -2750,6 +2816,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Common-stage per-op cost decomposition](issues/131-common-stage-per-op-cost-decomposition.md): **resolved (2026-11-09; Phase-1 decomposition — the per-op wrapper is not the lever, the sweep is 98.2–99.9 %, and operand size is the gap)** — probe seams in `polygon_ops`/`host`/`prepass`/`pipeline` split every common stage into WIT marshal / IR→Path64 conversion / Clipper2 sweep / PolyTree rebuild; the non-sweep wrapper is **0.19 %** of base-off primitive thread-time (**543 of 280,657 ms**) and **0.21 %** of base-on (**1,075 of 517,928 ms**), so the ticket's first gate branch fails by two orders of magnitude. Operand volume: shell **19.5 calls/layer at 4,608 points/call** (**44,463,545 points**, 89,825/layer), planner **290 calls/layer at 2,040 points/call** (**293,219,629 points**, 592,363/layer), kernel at parity (t70). **S5** priced at **22,964 → 1,937 ms** thread on 130 base-off layers (16.06x / 8.81x), wall **2,520 ms** (7.4x floor), but **not exact** (115/130 + 36/42 layers, max 0.71 / 0.59 mm², net −1.27 / +1.18 mm²). **S6** priced exact: `+0.35 mm` occupancy is **864 calls / 433 payloads**, duplicates **14,227.7 ms** thread → **6,504 ms** wall (6.4x floor), while the `−0.6/−0.8 mm` collision family is **1,350/1,350 distinct** (no hits). **Scheduling:** planner **2.19x** effective parallelism (benchy-on 1.68x) against 8.34–11.80x elsewhere → **25,625 ms** at 4x on base-on (27.7 % of its required cut). Gate: first branch fails everywhere (0.9–2.6 % of each stage's share), second fails literally (S5 17.7 %, S6 12.8 %, planner-at-4x 50.6 %), but the route-level stop rule does not fire. Go/no-go: **NO-GO for a per-op rewrite; GO (narrowed) for operand locality and planner scheduling.** Graduated [S6 memo](issues/132-planner-occupancy-memo.md), [S5 windowed offsets](issues/133-internal-bridge-windowed-offsets.md), [planner parallelism](issues/134-planner-effective-parallelism.md). Evidence: [`evidence/t131-per-op-decomposition/`](evidence/t131-per-op-decomposition/FINDINGS.md) (`verify.py` 150/150 checks + prose; 11/11 negative controls; four cells × two flag sets, every hash equal to the t123 candidate-ordinary set). No production edit; probe reverted; `build-guests --check` exit 0.
 - [Prepass work-set and per-op parity against canonical v2.5.0](issues/129-prepass-work-set-per-op-parity.md): **resolved (2026-11-08; Phase-1 decomposition — the work set is not the lever, per-op cost / operand locality is)** — canonical does *more* per-layer Clipper work than PnP in the shell cluster (≈45–60 vs ≈15–25 ops/layer; PnP omits `process_external_surfaces`' wave expansion, `DEV-200`), yet its **whole prepass** is **15.7x / 9.8x** cheaper on base classic-off / -on, so PnP does not already compute canonical's work set at canonical's per-op cost and the kill condition is not met. The Rust Clipper2 kernel is at parity (t70), so the gap is above the kernel: canonical bbox-clips (`clip_clipper_polygons_with_subject_bbox`), caches collision/avoidance by `{radius, layer}`, and uses per-vertex `LinesDistancer` queries; PnP's hot ops are whole-layer and its planner occupancy is uncached (32.7 s / 864 calls, t113). The clean PnP-local deletions (overhang bands 9,689 ms, whole-mesh facet union 4,260 ms, seam inset 92.4 % of 1,718 ms) are **15.5 s = 55.8 % of base-off's 27.8 s cut** and **1.6 s = 17.5 %** of base-on's — a first tranche, not the route. **Prepass at canonical cost wins base classic-off only (0.787x), ties base classic-on (1.012x) and loses both benchy cells (1.053x / 1.075x); full geometry parity wins all four (0.335x / 0.661x / 0.550x / 0.704x).** Go/no-go: **GO for the engine rewrite, NO-GO for a work-set-only rewrite**; the next gate is [common-stage per-op cost decomposition](issues/131-common-stage-per-op-cost-decomposition.md). Evidence: [`evidence/t129-prepass-work-set-parity/`](evidence/t129-prepass-work-set-parity/FINDINGS.md) (`verify.py` 4 cells / 6 shapes / 20 claims; 8/8 negative controls; 14 citations at `40ecc66f78`). No production edit.
 - [Destination arithmetic after t123: re-aim, rewrite, or park?](issues/128-destination-arithmetic-ruling.md): **resolved (2026-11-08; human ruling — keep 8/8 and authorise an engine rewrite, gated on a work-set/per-op parity decomposition)** — the target is unchanged and the route is re-scoped: the prepass is the only term that can buy the 58–79 % cut (62.1–87.1 % of every cell; required removal 72–101 %), **benchy classic-off is unwinnable by prepass deletion alone (1.02x at zero prepass)**, and every remaining prepass stage is clipper-bound with its named shapes already screened (t75/t84/t113/t125/t53/t55/t76), so the 0.80 %-per-shape machinery would need 72–99x its floor. The rewrite runs the prepass first (supports-off cluster, then the planner), then the benchy-classic-off per-layer residual, under t111's prepass exception carried to the implementation; the first gate is [the work-set/per-op parity decomposition](issues/129-prepass-work-set-per-op-parity.md), whose kill gate returns the destination here if PnP already matches canonical's work set and per-op cost. Canonical is pinned at `v2.5.0` = `40ecc66f78` (2026-11-07) in the local checkout, disclosed against the installed 2.5.0 binary (2026-11-06, not byte-proven identical). The brim asymmetry is graduated as [Matched settings vs the 8 mm brim](issues/130-brim-matched-settings-ruling.md). No production edit in this take.
 - [Raft-fill dispatch outside the raft band: decline the no-op per-layer call](issues/127-raft-fill-dispatch-outside-band.md): **resolved (2026-11-08; measured DROP — 2/8 cells pass)** — output byte-identical in all eight cells on both build arms and every guest module identical between arms; the dispatch really disappears (**495 → 0** calls on each base cell, **240 → 0** on benchy) and the call count is the only thing that moved. The 61–63 ms the module was charged is the **`Layer::Infill` stage's shared prepared-region view materialisation**, paid by whichever Infill module is dispatched first: with raft-default declined, `com.core.gyroid-infill` pays the same p50 (**60 / 58 / 61 / 57 ms** against **56 / 60 / 66 / 66 ms**) on the same layers, and the per-layer phase wall does not fall. The gate passes only benchy classic-on (+1.97 %) and base classic-on (+3.06 %); ticket 117's narrower gate also fails 4/8. **Ledger correction to t126:** its 61–63 ms and 2.64x–8.25x "ceiling" are not a saving, and its 17-layer "other module first pays 0 ms" control cannot be a dispatch-order claim. Candidate and tests retired; patch preserved. Evidence: [`evidence/t127-raft-band-dispatch/`](evidence/t127-raft-band-dispatch/FINDINGS.md) (`verify.py` 528 checks; 18/18 negative controls).
@@ -2984,26 +3051,26 @@ Standing decisions for this effort (2026-09-22):
 
 ## Not yet specified
 
-- **The per-op / operand-locality program is the next stage (surfaced
-  2026-11-08 by [t129](issues/129-prepass-work-set-per-op-parity.md)).** The
-  work-set question is answered: canonical does more per-layer Clipper work than
-  PnP in the shell cluster, yet its whole prepass is 15.7x / 9.8x cheaper on base
-  classic-off / -on; the Rust Clipper2 kernel is at parity (t70), so the gap is above the
-  kernel — operand size, path conversion, allocation, and parallel scheduling.
-  The clean PnP-local deletions are **55.8 % / 17.5 % / 32.1 % / 14.9 %** of the
+- **The operand-volume program is the route (t129 → t131, 2026-11-09).** The
+  work-set question and the per-op question are both answered: canonical does
+  more per-layer Clipper work than PnP in the shell cluster, yet its whole
+  prepass is 15.7x / 9.8x cheaper, the Rust Clipper2 kernel is at parity (t70),
+  and the wrapper is **0.19–0.56 %** of primitive thread-time. **The gap is the
+  operand volume fed to the sweep** (shell **89,825** points/layer, planner
+  **592,363**/layer), so the route is fewer/smaller operands, not plumbing. The
+  clean PnP-local deletions are **55.8 % / 17.5 % / 32.1 % / 14.9 %** of the
   required cut (base-off / base-on / benchy-off / benchy-on), a first tranche,
   not the route. **Prepass at canonical cost wins base classic-off only
   (0.787x), ties base classic-on (1.012x) and loses both benchy cells (1.053x /
   1.075x); full geometry parity wins all four (0.335x / 0.661x / 0.550x /
-  0.704x).** The next gate is
-  [Common-stage per-op cost decomposition](issues/131-common-stage-per-op-cost-decomposition.md):
-  instrument the wrapper boundary (conversion, offset sweep, PolyTree rebuild,
-  allocation, scheduling), price the bbox-clipped internal-bridge offsets and
-  the radius/layer occupancy cache, and record a go/no-go on the per-op rewrite.
-  The literal single-stage gate fires — no stage's ceiling reaches its cell's
-  required prepass fraction — but the route-level program is not killed. The
-  per-layer phase joins the first program on both benchy cells (see the next
-  bullet).
+  0.704x).** The three priced shapes are the live frontier tickets
+  ([S6](issues/132-planner-occupancy-memo.md),
+  [S5](issues/133-internal-bridge-windowed-offsets.md),
+  [planner parallelism](issues/134-planner-effective-parallelism.md)); the
+  unpriced fog is the **sweep-volume work-set family** — per-vertex overhang
+  distance, per-layer overhang polygons, canonical loop projection — each of
+  which needs its own Phase-1 before a candidate can be priced. The per-layer
+  phase joins the first program on both benchy cells.
 
 - **The bridge wave expansion is a per-layer partition change, and its benchy
   cost is the blocker (surfaced 2026-11-06 by
