@@ -1,0 +1,266 @@
+{
+  "ticket": "129-prepass-work-set-per-op-parity",
+  "taken": "2026-11-08",
+  "canonical_pin": "40ecc66f78ed72dc368e0c1ebe40d77f00cc8a19",
+  "canonical_tag": "v2.5.0",
+  "method": {
+    "stage_walls": "t126-post-t123-phase-split/summary.json (instrumented attribution, one pass per cell, never a wall claim)",
+    "ratios_of_record": "t124-post-t123-orca-scoreboard (uninstrumented paired medians)",
+    "per_op_pnp": "t75-shellclass-phase-b/split.json, t84-common-floor/summary.json, t76-footprint-union/FINDINGS.md, t113-strong-planner-phase1/reduced/summary.json",
+    "kernel_parity": "t70-clipper-candidate/FINDINGS.md (Rust vs C++ Clipper2 twin, 295-case corpus)",
+    "canonical_work_set": "source reading at the pin; file+function citations in canonical_citations.json"
+  },
+  "cells": {
+    "benchy-classic-off": {
+      "slice_complete_ms": 4634,
+      "ratio_of_record": 2.70,
+      "cut_to_beat_pct": 63.0,
+      "prepass_share_pct": 62.1,
+      "prepass_fraction_needed_pct": 101,
+      "floor_080pct_ms": 46,
+      "prepass_ms": 2877.7,
+      "per_layer_ms": 1450.4,
+      "postpass_ms": 134.4,
+      "outside_ms": 171.5,
+      "orca_wall_derived_ms": 1716.3,
+      "orca_prepass_ms": 50.5,
+      "orca_slicing_ms": 637.8,
+      "stages_ms": {
+        "SupportGeometry": 39,
+        "ShellClassification": 1633,
+        "OverhangAnnotation": 617,
+        "SupportAnalysis": 0,
+        "MeshAnalysis": 162,
+        "Slice": 205,
+        "SeamPlanning": 171
+      },
+      "clean_workset_ms": 937.0,
+      "clean_workset_share_cell_pct": 20.2,
+      "clean_workset_share_prepass_pct": 32.6,
+      "clean_workset_share_required_cut_pct": 32.1,
+      "common_shell_slice_ms": 1838,
+      "required_cut_ms": 2919.4,
+      "prepass_only_canonical_ms": 1806.8,
+      "prepass_only_canonical_multiple": 1.053,
+      "full_slicing_parity_ms": 943.6,
+      "full_slicing_parity_multiple": 0.550
+    },
+    "benchy-classic-on": {
+      "slice_complete_ms": 8887,
+      "ratio_of_record": 3.61,
+      "cut_to_beat_pct": 72.0,
+      "prepass_share_pct": 76.4,
+      "prepass_fraction_needed_pct": 95,
+      "floor_080pct_ms": 80,
+      "prepass_ms": 6789.7,
+      "per_layer_ms": 1644.1,
+      "postpass_ms": 373.3,
+      "outside_ms": 80.0,
+      "orca_wall_derived_ms": 2461.8,
+      "orca_prepass_ms": 549.8,
+      "orca_slicing_ms": 1280.1,
+      "stages_ms": {
+        "SupportGeometry": 2842,
+        "ShellClassification": 1668,
+        "OverhangAnnotation": 596,
+        "SupportAnalysis": 1024,
+        "MeshAnalysis": 179,
+        "Slice": 232,
+        "SeamPlanning": 191
+      },
+      "clean_workset_ms": 951.5,
+      "clean_workset_share_cell_pct": 10.7,
+      "clean_workset_share_prepass_pct": 14.0,
+      "clean_workset_share_required_cut_pct": 14.9,
+      "common_shell_slice_ms": 1900,
+      "required_cut_ms": 6398.6,
+      "prepass_only_canonical_ms": 2647.1,
+      "prepass_only_canonical_multiple": 1.075,
+      "full_slicing_parity_ms": 1733.3,
+      "full_slicing_parity_multiple": 0.704
+    },
+    "base-classic-off": {
+      "slice_complete_ms": 42150,
+      "ratio_of_record": 2.95,
+      "cut_to_beat_pct": 66.0,
+      "prepass_share_pct": 78.3,
+      "prepass_fraction_needed_pct": 84,
+      "floor_080pct_ms": 340,
+      "prepass_ms": 33003.4,
+      "per_layer_ms": 8050.7,
+      "postpass_ms": 1011.6,
+      "outside_ms": 84.3,
+      "orca_wall_derived_ms": 14288.1,
+      "orca_prepass_ms": 2103.0,
+      "orca_slicing_ms": 3684.5,
+      "stages_ms": {
+        "SupportGeometry": 296,
+        "ShellClassification": 14698,
+        "OverhangAnnotation": 9689,
+        "SupportAnalysis": 0,
+        "MeshAnalysis": 4260,
+        "Slice": 2110,
+        "SeamPlanning": 1718
+      },
+      "clean_workset_ms": 15536.4,
+      "clean_workset_share_cell_pct": 36.9,
+      "clean_workset_share_prepass_pct": 47.1,
+      "clean_workset_share_required_cut_pct": 55.8,
+      "common_shell_slice_ms": 16808,
+      "required_cut_ms": 27819.0,
+      "prepass_only_canonical_ms": 11249.6,
+      "prepass_only_canonical_multiple": 0.787,
+      "full_slicing_parity_ms": 4780.4,
+      "full_slicing_parity_multiple": 0.335
+    },
+    "base-classic-on": {
+      "slice_complete_ms": 117970,
+      "ratio_of_record": 4.63,
+      "cut_to_beat_pct": 78.0,
+      "prepass_share_pct": 87.1,
+      "prepass_fraction_needed_pct": 90,
+      "floor_080pct_ms": 1010,
+      "prepass_ms": 102751.9,
+      "per_layer_ms": 12504.8,
+      "postpass_ms": 2713.3,
+      "outside_ms": 118.0,
+      "orca_wall_derived_ms": 25479.5,
+      "orca_prepass_ms": 10444.8,
+      "orca_slicing_ms": 14010.3,
+      "stages_ms": {
+        "SupportGeometry": 55798,
+        "ShellClassification": 15300,
+        "OverhangAnnotation": 10309,
+        "SupportAnalysis": 13084,
+        "MeshAnalysis": 4278,
+        "Slice": 2117,
+        "SeamPlanning": 1631
+      },
+      "clean_workset_ms": 16094.0,
+      "clean_workset_share_cell_pct": 13.6,
+      "clean_workset_share_prepass_pct": 15.7,
+      "clean_workset_share_required_cut_pct": 17.5,
+      "common_shell_slice_ms": 17417,
+      "required_cut_ms": 92016.6,
+      "prepass_only_canonical_ms": 25780.9,
+      "prepass_only_canonical_multiple": 1.012,
+      "full_slicing_parity_ms": 16841.6,
+      "full_slicing_parity_multiple": 0.661
+    }
+  },
+  "shapes": [
+    {
+      "id": "S1",
+      "name": "overhang quartile polygon bands replaced by canonical per-vertex distance",
+      "stage": "PrePass::OverhangAnnotation",
+      "kind": "work-set + operand-locality",
+      "pnp_producer": "slicer_core::algos::overhang_annotation::annotate_overhangs",
+      "canonical_counterpart": "PrintObject::detect_overhangs_for_lift + precompute_overhang_layer + ExtrusionQualityEstimator",
+      "ceiling_ms": {
+        "benchy-classic-off": 617,
+        "benchy-classic-on": 596,
+        "base-classic-off": 9689,
+        "base-classic-on": 10309
+      },
+      "floor_multiple": {
+        "benchy-classic-off": 13.4,
+        "benchy-classic-on": 7.5,
+        "base-classic-off": 28.5,
+        "base-classic-on": 10.2
+      },
+      "note": "The whole stage wall is the ceiling; the replacement (per-vertex AABB distance at emit) costs something, so the net is lower. 85.4% of the stage is three whole-layer round offsets per band layer (t84), and 4,859 clips over 485 band layers; canonical has no band polygons and no per-layer overhang-speed clips."
+    },
+    {
+      "id": "S2",
+      "name": "whole-mesh facet classification / overhang footprint union replaced by canonical per-layer overhang polygons",
+      "stage": "PrePass::MeshAnalysis",
+      "kind": "work-set",
+      "pnp_producer": "slicer_core::algos::mesh_analysis::execute_mesh_analysis / compute_xy_footprint",
+      "canonical_counterpart": "PrintObject::detect_overhangs_for_lift (supports-off) and TreeSupport::detect_overhangs (supports-on); no whole-mesh facet pass",
+      "ceiling_ms": {
+        "benchy-classic-off": 162,
+        "benchy-classic-on": 179,
+        "base-classic-off": 4260,
+        "base-classic-on": 4278
+      },
+      "floor_multiple": {
+        "benchy-classic-off": 3.5,
+        "benchy-classic-on": 2.2,
+        "base-classic-off": 12.5,
+        "base-classic-on": 4.2
+      },
+      "note": "After t76 the 326,546-facet overhang union is partitioned; the stage is 4.26 s on base-off. facet_classes/bridge_regions/surface_groups have no production reader outside the needs_support predicate and visual debug; canonical computes per-layer overhang polygons instead."
+    },
+    {
+      "id": "S3",
+      "name": "seam-planning per-region inset offset deleted; canonical projects onto the printed loop",
+      "stage": "PrePass::SeamPlanning",
+      "kind": "work-set",
+      "pnp_producer": "modules/core-modules/seam-planner-default (inset_delta_mm = -0.5 * width; offset_polygons_batch; project_point_onto_inset_boundary)",
+      "canonical_counterpart": "SeamPlacer::init / gather_seam_candidates / calculate_overhangs_and_layer_embedding / align_seam_points (no region-boundary offset anywhere in SeamPlacer.cpp)",
+      "ceiling_ms": {
+        "benchy-classic-off": 158,
+        "benchy-classic-on": 176,
+        "base-classic-off": 1587,
+        "base-classic-on": 1507
+      },
+      "floor_multiple": {
+        "benchy-classic-off": 3.4,
+        "benchy-classic-on": 2.2,
+        "base-classic-off": 4.7,
+        "base-classic-on": 1.5
+      },
+      "note": "92.4% of the stage is one serial native offset per region (t84), 495 calls on base-off; the ceiling applies that share. Canonical does seam planning at G-code export, with per-vertex distances and loop projection, and no inset polygon."
+    },
+    {
+      "id": "S4",
+      "name": "ShellClassification horizontal shadow cascade deleted / vertical-shell path substituted",
+      "stage": "PrePass::ShellClassification",
+      "kind": "work-set (two-way; canonical runs discover_vertical_shells and process_external_surfaces instead)",
+      "pnp_producer": "slice_postprocess_prepass::compute_region_updates (Pass 1 detect_surfaces_type + Pass 2 shrinking-shadow projection)",
+      "canonical_counterpart": "PrintObject::detect_surfaces_type + PrintObject::discover_vertical_shells; PrintObject::discover_horizontal_shells early-outs at the default ensure_vertical_shell_thickness = evstAll",
+      "ceiling_ms": "unpriced; the non-gate shell work was 10,136 ms on base classic supports-off in the t75 pre-t123 probe, and Pass 2 is a subset of that",
+      "floor_multiple": "unpriced",
+      "note": "Canonical does not run the shrinking-shadow cascade at the matched settings, so PnP's Pass 2 is extra work; but canonical adds discover_vertical_shells and the process_external_surfaces wave expansion, which PnP omits (DEV-200). A work-set port is a swap, not a pure deletion."
+    },
+    {
+      "id": "S5",
+      "name": "internal-bridge whole-layer offsets clipped to the candidate surface bbox",
+      "stage": "PrePass::ShellClassification / gate_internal_bridge_sites",
+      "kind": "operand locality",
+      "pnp_producer": "slice_postprocess_prepass::compute_internal_bridge_layer (offset(deep_infill_area, +1.5*spacing) and offset(deep_infill_area, -4.5*spacing))",
+      "canonical_counterpart": "PrintObject::bridge_over_infill (clip_clipper_polygons_with_subject_bbox at the candidate and limiting-area intersections; cached boundary_by_spacing)",
+      "ceiling_ms": "unpriced; the two whole-layer offsets were 21,423 ms of the 27,429 ms serial phase B on base supports-off before t75, and t75 parallelised them",
+      "floor_multiple": "unpriced",
+      "note": "Both engines do whole-layer offsets here, but canonical bbox-clips every downstream intersection and caches the per-spacing boundary; PnP's per-surface qualification still intersects whole-layer clip areas. This is a locality shape, not a deletion."
+    },
+    {
+      "id": "S6",
+      "name": "planner occupancy inflation served from a radius/layer collision cache",
+      "stage": "PrePass::SupportGeometry / tree-support-planner",
+      "kind": "work-set (caching)",
+      "pnp_producer": "modules/core-modules/tree-support-planner inflate_model_occupancy (uncached host::offset_polygons at the per-layer emit check and the per-origin role carve)",
+      "canonical_counterpart": "TreeSupportData::calculate_collision / calculate_avoidance (tbb::concurrent_unordered_map keyed by {radius, layer, recursions}; one offset_ex + expolygons_simplify per distinct radius, reused by every node)",
+      "ceiling_ms": {
+        "benchy-classic-on": 1483,
+        "base-classic-on": 32712
+      },
+      "floor_multiple": {
+        "benchy-classic-on": 18.5,
+        "base-classic-on": 32.4
+      },
+      "note": "t113 measured occupancy at 433 + 431 calls (32.7 s) on base-on; t125 batched the calls but did not reduce their count and the wall gate failed 6/8. A canonical-style cache removes duplicate work rather than only parallelising it. This is the largest supports-on shape and is unmeasured as a cache."
+    }
+  ],
+  "route": {
+    "prepass_only_verdict": "Wins base classic-off only (0.787x); loses base classic-on (1.012x, a tie), benchy classic-off (1.053x) and benchy classic-on (1.075x).",
+    "full_geometry_parity_verdict": "Wins all four (0.335x / 0.661x / 0.550x / 0.704x) because PnP's fast import is kept and the whole geometry phase reaches canonical cost.",
+    "consequence": "The destination is a full engine-parity program, not a prepass work-set port. On the benchy cells the per-layer phase is not a last-mile afterthought: with the prepass at canonical cost it is 1,450 / 1,644 ms against an Orca wall of 1,716 / 2,462 ms.",
+    "clean_workset_share_of_required_cut_pct": {
+      "benchy-classic-off": 32.1,
+      "benchy-classic-on": 14.9,
+      "base-classic-off": 55.8,
+      "base-classic-on": 17.5
+    }
+  }
+}

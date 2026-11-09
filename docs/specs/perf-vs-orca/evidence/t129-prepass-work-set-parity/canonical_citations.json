@@ -1,0 +1,106 @@
+{
+  "pin": "40ecc66f78ed72dc368e0c1ebe40d77f00cc8a19",
+  "tag": "v2.5.0",
+  "checkout": "D:\\slicerProject\\Orca(pnp_gui)",
+  "citation_rule": "file + function only; never line numbers",
+  "citations": [
+    {
+      "stage": "slice",
+      "file": "src/libslic3r/PrintObjectSlice.cpp",
+      "function": "PrintObject::slice",
+      "role": "Driver: builds layers, calls slice_volumes, applies XY compensation, layer->make_slices. Does not walk the mesh itself.",
+      "pnp_contrast": "PrePass::Slice uses one batched slice_mesh_ex per object (batch_slice_objects_by_layer) and then classifies unsupported bottom areas per layer."
+    },
+    {
+      "stage": "slice",
+      "file": "src/libslic3r/TriangleMeshSlicer.cpp",
+      "function": "slice_mesh / slice_make_lines / slice_facet_at_zs / make_loops",
+      "role": "One triangle pass over all Z planes (each triangle binary-searches its span), loop chaining parallel over layers, polygon assembly parallel over layers.",
+      "pnp_contrast": "Same one-walk shape in PnP's slice_mesh_ex; the wall difference is implementation, not work set."
+    },
+    {
+      "stage": "shell",
+      "file": "src/libslic3r/PrintObject.cpp",
+      "function": "PrintObject::detect_surfaces_type",
+      "role": "Per layer: top diff + opening, bottom diff + opening, internal diff; crack block only when top and bottom overlap; optional interface shells and top-surface expansion are off for this job.",
+      "pnp_contrast": "Pass 1 of PrePass::ShellClassification ports this with the same two diffs + openings."
+    },
+    {
+      "stage": "shell",
+      "file": "src/libslic3r/PrintObject.cpp",
+      "function": "PrintObject::discover_vertical_shells",
+      "role": "The active vertical-shell pass at ensure_vertical_shell_thickness = evstAll: per-layer parallel cache of top/bottom/hole unions, then shell accumulation.",
+      "pnp_contrast": "No PnP equivalent; PnP ports discover_horizontal_shells instead."
+    },
+    {
+      "stage": "shell",
+      "file": "src/libslic3r/PrintObject.cpp",
+      "function": "PrintObject::discover_horizontal_shells",
+      "role": "Serial shrinking-shadow cascade. Early-outs per region when ensure_vertical_shell_thickness == evstAll, which is the canonical default.",
+      "pnp_contrast": "Pass 2 of PrePass::ShellClassification ports this cascade; at matched settings canonical does not run it."
+    },
+    {
+      "stage": "shell",
+      "file": "src/libslic3r/PrintObject.cpp",
+      "function": "PrintObject::bridge_over_infill",
+      "role": "Gathers internal-solid candidates; per layer ~7 Clipper ops; per candidate ~15 boolean/offset ops plus construct_anchored_polygon; bbox-clips every downstream intersection via clip_clipper_polygons_with_subject_bbox and caches boundary_by_spacing.",
+      "pnp_contrast": "gate_internal_bridge_sites does the same qualification with two whole-layer offsets (deep_infill_area +1.5*spacing and -4.5*spacing) and per-surface offsets, but no bbox-clipped downstream intersections."
+    },
+    {
+      "stage": "external-surfaces",
+      "file": "src/libslic3r/LayerRegion.cpp",
+      "function": "LayerRegion::process_external_surfaces (live #if 1 branch)",
+      "role": "Builds three ExpansionZones from union_ex; expands bridges/bottoms/tops with RegionExpansion wave propagation; trims zones; culls small internal regions. Parallel over regions then layers.",
+      "pnp_contrast": "Not ported (DEV-200). PnP's PrePass::Slice classifies the unsupported bottom set but does not expand bridges into the shell/sparse/top zones or trim them."
+    },
+    {
+      "stage": "external-surfaces",
+      "file": "src/libslic3r/Algorithm/RegionExpansion.cpp",
+      "function": "RegionExpansionParameters::build / wave_seeds / propagate_wave_from_boundary / propagate_waves_ex",
+      "role": "Per wave set: seed offset + initial offset + (nsteps-1) step offsets + (1+nsteps) clips, all clipped to the subject bbox (clip_clipper_polygons_with_subject_bbox); nsteps <= 5, expansion_step 0.1 mm.",
+      "pnp_contrast": "No counterpart; this is canonical's largest per-layer Clipper-op consumer in the pre-G-code phase."
+    },
+    {
+      "stage": "overhang",
+      "file": "src/libslic3r/PrintObject.cpp",
+      "function": "PrintObject::detect_overhangs_for_lift",
+      "role": "Slice phase, parallel over layers: diff_ex(current lslices, offset_ex(lower lslices, +0.3*line_width)) then offset2_ex(-0.1*line_width, +0.1*line_width). One binary loverhangs set per layer; consumed only by GCode::needs_retraction.",
+      "pnp_contrast": "PrePass::OverhangAnnotation computes 3 offsets per band layer + ~9.8 clips, producing 4 quartile band polygons for wall/infill annotation; 85.4% of the stage is the 3 offsets (t84)."
+    },
+    {
+      "stage": "overhang",
+      "file": "src/libslic3r/GCode/ExtrusionProcessor.hpp",
+      "function": "precompute_overhang_layer / ExtrusionQualityEstimator / estimate_points_properties",
+      "role": "G-code emission, parallel over layers: builds a LinesDistancer<Linef3> from lower->lslices, queries one signed distance per perimeter/bridge vertex, maps overlap to speed by linear interpolation over {90,75,50,25,13,0}%.",
+      "pnp_contrast": "Canonical has no 4-band polygon partition, no 3 whole-layer offsets, and no per-layer band clips; band membership is a numeric distance comparison."
+    },
+    {
+      "stage": "seam",
+      "file": "src/libslic3r/GCode/SeamPlacer.cpp",
+      "function": "SeamPlacer::init / gather_seam_candidates / calculate_overhangs_and_layer_embedding / align_seam_points",
+      "role": "G-code export: candidates are the printed external-perimeter loop points; per-vertex overhang/embedding distances via LinesDistancer; per-layer parallel candidate/visibility/pick; sequential whole-object B-spline alignment; place_seam per loop at emission.",
+      "pnp_contrast": "seam-planner-default computes a per-region offset(-0.5*line_width) inset and projects the chosen seam onto it; SeamPlacer.cpp contains no offset call. The inset is a PnP device with no canonical counterpart."
+    },
+    {
+      "stage": "mesh",
+      "file": "src/libslic3r/PrintObject.cpp",
+      "function": "PrintObject::is_support_necessary / PrintObject::detect_overhangs_for_lift; TreeSupport::detect_overhangs",
+      "role": "Canonical overhang geometry is per layer, from slices: one diff + offsets (supports-off) or diff + cantilever/sharp-tail probes (supports-on). There is no whole-mesh facet classification or whole-mesh overhang footprint union.",
+      "pnp_contrast": "PrePass::MeshAnalysis classifies 2.46M facet normals, builds a half-edge adjacency map, clusters bridge facets, and unions 326,546 projected overhang triangles into an xy_footprint; t76 partitioned the union to 4.26 s on base-off."
+    },
+    {
+      "stage": "support",
+      "file": "src/libslic3r/Support/TreeSupport.cpp",
+      "function": "TreeSupport::generate / detect_overhangs / generate_contact_points / drop_nodes / smooth_nodes / draw_circles / generate_toolpaths",
+      "role": "The executed tree_strong path (organic returns early to TreeSupport3D). Per-node drop/collision/avoidance with a radius/layer-keyed cache; per-layer draw/clip/trim; contact points from corners, branch-distance walks and a grid.",
+      "pnp_contrast": "tree-support-planner is a port of the same legacy path, so the algorithmic work set is comparable. PnP's occupancy inflation is uncached at the per-layer and per-origin sites (t113), while canonical's calculate_collision/calculate_avoidance are cached by {radius, layer, recursions}."
+    },
+    {
+      "stage": "support",
+      "file": "src/libslic3r/Support/TreeSupport.cpp",
+      "function": "TreeSupportData::calculate_collision / calculate_avoidance",
+      "role": "collision = offset_ex(layer outline, radius + support_object_xy_distance) + expolygons_simplify; avoidance = recursive offset_ex(-max_move_distance) + insert(collision) + union_ex, cached in tbb::concurrent_unordered_map keyed by radius and layer.",
+      "pnp_contrast": "PnP has a TreeVolumes ladder but prefers the exact per-layer occupancy and inflates it with an uncached host::offset_polygons at two sites; t113 measured 32.7 s / 864 calls on base-on."
+    }
+  ]
+}

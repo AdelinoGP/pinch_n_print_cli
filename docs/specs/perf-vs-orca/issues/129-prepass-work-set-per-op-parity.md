@@ -2,8 +2,12 @@
 
 Type: task / Phase-1 attribution
 Label: wayfinder:task
-Status: open (unclaimed)
-Assignee: —
+Status: resolved (2026-11-08; Phase-1 decomposition — **the work set is not the
+  lever; per-op cost / operand locality is**, and the prepass-only route wins
+  base classic-off only. See ## Answer)
+Assignee: 2026-11-08 OpenCode wayfinder session — the human said "Continue the
+  perf vs orca map" (no ticket named); 129 is the first unblocked, unclaimed
+  AFK frontier ticket in order (130 is the human's grilling).
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [Destination arithmetic after t123: re-aim, rewrite, or park?](128-destination-arithmetic-ruling.md)'s
@@ -147,4 +151,87 @@ park.** No production edit in this take.
 
 ## Answer
 
-_To be recorded on resolution._
+**Resolved 2026-11-08 as a Phase-1 decomposition. The work set is not the
+lever; per-op cost and operand locality are.** Canonical does *more* per-layer
+Clipper work than PnP in the shell/external-surface cluster, yet its **whole
+pre-G-code phase** is **15.7x / 9.8x** cheaper on base classic-off / -on, so PnP
+does **not** already compute canonical's work set at canonical's per-op cost. The ticket's kill
+condition is not met; a work-set-only rewrite is nevertheless not the route.
+
+Three findings:
+
+1. **The clean PnP-local work-set deletions are a partial tranche, not the
+   route.** Replacing the overhang quartile bands (`PrePass::OverhangAnnotation`,
+   9,689 ms base-off), the whole-mesh facet union (`PrePass::MeshAnalysis`,
+   4,260 ms) and the seam inset (`PrePass::SeamPlanning`, 92.4 % of 1,718 ms)
+   removes **15.5 s** of base classic-off's 42.15 s cell = **55.8 % of the
+   27.8 s cut** the cell needs. On base classic-on it is **1.6 s of 92.0 s =
+   17.5 %**; on benchy-off / -on it is **32.1 % / 14.9 %**. A work-set port
+   cannot reach the destination.
+2. **"Prepass at canonical cost" is not "zero prepass".** Substituting
+   canonical's measured prepass (2.103 / 10.445 / 0.0505 / 0.5498 s) while
+   holding PnP's other phases wins **base classic-off only** (0.787x); it ties
+   base classic-on (1.012x) and loses benchy classic-off (1.053x) and benchy
+   classic-on (1.075x). Full **geometry** parity wins all four (0.335x / 0.661x
+   / 0.550x / 0.704x) because PnP keeps its fast import. **The benchy per-layer
+   phase is part of the first program, not a last mile.**
+3. **The kernel is at parity.** t70 measured the vendored Rust Clipper2 at
+   parity or faster than the C++ twin. The 15.7x is above the kernel: it is the
+   operand size and shape PnP feeds it. Canonical bbox-clips its expensive
+   intersections (`clip_clipper_polygons_with_subject_bbox`), caches collision /
+   avoidance by radius and layer (`TreeSupportData::calculate_collision` /
+   `calculate_avoidance`), and computes overhang speed and seam quality as
+   per-vertex `LinesDistancer` queries. PnP's hot ops are whole-layer polygon
+   operations (3 overhang-band offsets + ~10 clips/layer; a 326,546-facet union;
+   whole-layer `deep_infill_area` offsets; 495 per-region seam insets) and its
+   planner occupancy is uncached at two sites (32.7 s / 864 calls, t113).
+
+The stage verdicts (canonical work set vs PnP work set vs op count / per-op
+cost):
+
+| stage | canonical | PnP | verdict |
+| --- | --- | --- | --- |
+| `PrePass::Slice` | one batched `slice_mesh_ex` walk | one batched `slice_mesh_ex` walk + per-layer classification | same work; per-op cost |
+| `PrePass::ShellClassification` | `detect_surfaces_type` (3 diffs + 2 openings) + `discover_vertical_shells` + `bridge_over_infill` + `process_external_surfaces` wave expansion (30–40 ops/layer) | Pass 1 (2 diffs + ≤4 offsets) + Pass 2 (horizontal shadow cascade) + internal-bridge gate (2 whole-layer offsets); **no wave expansion** (`DEV-200`) | **PnP counts less (≈15–25 vs ≈45–60 ops/layer) and costs ≥7x more**; work-set swap, not deletion |
+| `PrePass::OverhangAnnotation` | `detect_overhangs_for_lift` (1 diff + 3 offsets) + per-vertex `LinesDistancer` distance at emit | 3 round offsets + ~9.8 clips per band layer; 4-band polygon partition | **PnP counts ~3x more and stages the work in the prepass**; work-set + locality |
+| `PrePass::SeamPlanning` | `SeamPlacer::init`: loop-point candidates, per-vertex distances, no offset | 1 per-region `offset(−0.5 × width)` inset + projection | **extra work**; small |
+| `PrePass::MeshAnalysis` | per-layer overhang polygons only | 2.46 M facet classes + half-edge map + 326 k-facet union | **extra work** |
+| `SupportGeometry` / `SupportAnalysis` / planner | legacy `TreeSupport` path, collision/avoidance cached by `{radius, layer}` | same legacy path; occupancy uncached at 2 sites | **caching shape**; largest supports-on term |
+
+**Go/no-go: GO for the engine rewrite, NO-GO for a work-set-only rewrite.** The
+measured lever is operand locality and host geometry cost. The first
+implementation ticket should be a **per-op cost decomposition of the common
+prepass stages** (path conversion, offset sweep, PolyTree rebuild, allocation,
+parallel scheduling) plus the operand-locality shapes (bbox-clipped
+internal-bridge offsets, radius/layer occupancy cache, localized bridge
+expansion); the three clean deletions above are its measured first tranche. The
+literal single-stage gate in this ticket fires — no single stage's ceiling
+reaches its cell's required prepass fraction (the largest, overhang bands, is
+23.0 % of the base-off cell against 84 %) — but the route-level program is not
+killed. The next gate is graduated as
+[Common-stage per-op cost decomposition](131-common-stage-per-op-cost-decomposition.md).
+
+**Ledger corrections.** (1) t126/t128's "zero prepass" counterfactual is not the
+same as "prepass at canonical cost"; canonical's prepass is 2.1 / 10.4 / 0.05 /
+0.55 s, not zero. (2) The t128 route order ("prepass first, then the
+benchy-classic-off per-layer residual") under-scopes the per-layer phase: at
+canonical prepass cost, benchy-on's per-layer phase is 1,644 ms against a
+2,462 ms Orca wall and benchy-off's is 1,450 ms against 1,716 ms. The per-layer
+phase must be in the same program on both benchy cells. (3) PnP's shell stage
+does not need a "work-set port" to delete Pass 2: canonical does not run
+`discover_horizontal_shells` at the matched `ensure_vertical_shell_thickness =
+evstAll`, but it does run `discover_vertical_shells` and the external-surface
+wave expansion that PnP omits — the port is a swap, not a pure saving.
+
+**Evidence:** [`evidence/t129-prepass-work-set-parity/`](../evidence/t129-prepass-work-set-parity/FINDINGS.md)
+(`verify.py` exits 0 checkout-only; `--self-test` rejects 8/8 negative controls;
+`--orca-check` resolves 14 citations at `40ecc66f78`). No production edit, no
+candidate, no G-code reference move; both guest-freshness checks untouched.
+
+**Disclosures:** canonical per-stage walls do not exist on this rig (t110's CLI
+log, ETW and `--pipe` channels all failed), so the canonical per-stage op counts
+are source-derived and the per-op ratio is a phase-level bound. The measured
+binary is the installed 2.5.0 (2026-11-06), not byte-proven identical to the
+`v2.5.0` source pin (2026-11-07). The PnP per-op numbers come from pre-t123
+probes (t75/t84/t76/t113) and are used for shares and per-call prices, not as
+current wall claims; the current stage walls are t126's.
