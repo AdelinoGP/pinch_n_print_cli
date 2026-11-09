@@ -1,0 +1,2261 @@
+{
+  "binary": {
+    "planner_wasm_sha256": "7e30dad2317e5ba4f6bd30365c4b099d815e02de9567b18aad568f0b872f0096",
+    "pnp_cli_sha256": "27dbada00f4c45f705fba7967fb5bfcfadb06c94e85ff4ff6e1b1d05cbb6e0c6"
+  },
+  "cells": {
+    "base-arachne-off": {
+      "planner": {
+        "module_wall_ms": 104,
+        "parallelism": 0.0,
+        "phase_thread_sum_ms": 0.0,
+        "phase_wall_sum_ms": 0.0,
+        "phases": {
+          "p0_volumes": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p2_contacts": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p3_drop": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p5_smooth": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6a_clip_core": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6d_occupancy": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6e_node_roles": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6f_emit_geometry": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          }
+        },
+        "rollup": {
+          "drop_loop": {
+            "parallelism": null,
+            "thread_ms": 0.0,
+            "thread_share": null,
+            "wall_ms": 0.0,
+            "wall_share": 0.0
+          },
+          "emit_pass": {
+            "parallelism": null,
+            "thread_ms": 0.0,
+            "thread_share": null,
+            "wall_ms": 0.0,
+            "wall_share": 0.0
+          },
+          "pre_loop": {
+            "parallelism": null,
+            "thread_ms": 0.0,
+            "thread_share": null,
+            "wall_ms": 0.0,
+            "wall_share": 0.0
+          },
+          "residual": {
+            "thread_ms": null,
+            "wall_ms": 104.0
+          }
+        },
+        "thread_ms": 0.0
+      },
+      "prepass_ms": 27604,
+      "run": {
+        "exit_code": 0,
+        "gcode_bytes": 20826404,
+        "sha256": "6b865d4a2cb892daa3172add3e3677e0dc35192bcedd0acbc463abca7064d715",
+        "wall_seconds": 36.685
+      },
+      "slice_wall_ms": 35269,
+      "stage_census": [
+        {
+          "calls": 3248,
+          "parallelism": 1.098,
+          "stage": "PrePass::MeshAnalysis",
+          "stage_events_ms": [
+            4037
+          ],
+          "thread_ms": 4434.228,
+          "wall_ms": 4037
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::LayerPlanning",
+          "stage_events_ms": [
+            1
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 1
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::RegionMapping",
+          "stage_events_ms": [
+            12
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 12
+        },
+        {
+          "calls": 3433,
+          "parallelism": 6.686,
+          "stage": "PrePass::Slice",
+          "stage_events_ms": [
+            1936
+          ],
+          "thread_ms": 12943.953,
+          "wall_ms": 1936
+        },
+        {
+          "calls": 6314,
+          "parallelism": 11.713,
+          "stage": "PrePass::OverhangAnnotation",
+          "stage_events_ms": [
+            8805
+          ],
+          "thread_ms": 103130.099,
+          "wall_ms": 8805
+        },
+        {
+          "calls": 9692,
+          "parallelism": 9.295,
+          "stage": "PrePass::ShellClassification",
+          "stage_events_ms": [
+            10862
+          ],
+          "thread_ms": 100964.31,
+          "wall_ms": 10862
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::PaintSegmentation",
+          "stage_events_ms": [
+            30
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 30
+        },
+        {
+          "calls": 0,
+          "parallelism": null,
+          "stage": "PrePass::SupportAnalysis",
+          "stage_events_ms": [
+            0
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 0
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "planner_module_parallelism": 0.0,
+          "planner_module_thread_ms": 0.0,
+          "planner_module_wall_ms": 104,
+          "planner_stage_wall_ms": 211,
+          "producer_wall_ms": 3,
+          "stage": "PrePass::SupportGeometry",
+          "stage_events_ms": [
+            3,
+            211
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 211
+        },
+        {
+          "calls": 495,
+          "parallelism": 7.934,
+          "stage": "PrePass::SeamPlanning",
+          "stage_events_ms": [
+            1582
+          ],
+          "thread_ms": 12551.569,
+          "wall_ms": 1582
+        }
+      ]
+    },
+    "base-arachne-on": {
+      "planner": {
+        "module_wall_ms": 37794,
+        "parallelism": 2.786,
+        "phase_thread_sum_ms": 105298.205,
+        "phase_wall_sum_ms": 37244.914,
+        "phases": {
+          "p0_volumes": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 1,
+            "batch_serial_requests": 0,
+            "calls": 989,
+            "clip_calls": 989,
+            "guest_cpu": false,
+            "in_points": 653719,
+            "offset_calls": 0,
+            "parallelism": 0.575,
+            "spans": 1,
+            "thread_ms": 101.395,
+            "wall_ms": 176.299
+          },
+          "p2_contacts": {
+            "batch_parallel_calls": 1,
+            "batch_parallel_requests": 495,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 2029,
+            "clip_calls": 155,
+            "guest_cpu": false,
+            "in_points": 310650,
+            "offset_calls": 1874,
+            "parallelism": 1.005,
+            "spans": 1,
+            "thread_ms": 1127.51,
+            "wall_ms": 1122.095
+          },
+          "p3_drop": {
+            "batch_parallel_calls": 38,
+            "batch_parallel_requests": 18810,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 59498,
+            "clip_calls": 19396,
+            "guest_cpu": false,
+            "in_points": 6325124,
+            "offset_calls": 40102,
+            "parallelism": 1.086,
+            "spans": 1,
+            "thread_ms": 2613.318,
+            "wall_ms": 2405.48
+          },
+          "p5_smooth": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": 0.0,
+            "spans": 1,
+            "thread_ms": 0.0,
+            "wall_ms": 75.983
+          },
+          "p6a_clip_core": {
+            "batch_parallel_calls": 559,
+            "batch_parallel_requests": 70168,
+            "batch_serial_calls": 26,
+            "batch_serial_requests": 42,
+            "calls": 70210,
+            "clip_calls": 70210,
+            "guest_cpu": false,
+            "in_points": 270574905,
+            "offset_calls": 0,
+            "parallelism": 4.831,
+            "spans": 109,
+            "thread_ms": 87060.944,
+            "wall_ms": 18022.445
+          },
+          "p6d_occupancy": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 433,
+            "clip_calls": 0,
+            "guest_cpu": false,
+            "in_points": 2444997,
+            "offset_calls": 433,
+            "parallelism": 0.995,
+            "spans": 864,
+            "thread_ms": 14056.912,
+            "wall_ms": 14134.611
+          },
+          "p6e_node_roles": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": 0.0,
+            "spans": 433,
+            "thread_ms": 0.0,
+            "wall_ms": 1013.883
+          },
+          "p6f_emit_geometry": {
+            "batch_parallel_calls": 10,
+            "batch_parallel_requests": 4950,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 5784,
+            "clip_calls": 834,
+            "guest_cpu": false,
+            "in_points": 466334,
+            "offset_calls": 4950,
+            "parallelism": 1.15,
+            "spans": 433,
+            "thread_ms": 338.126,
+            "wall_ms": 294.118
+          }
+        },
+        "rollup": {
+          "drop_loop": {
+            "parallelism": 1.086,
+            "thread_ms": 2613.318,
+            "thread_share": 0.0248,
+            "wall_ms": 2405.48,
+            "wall_share": 0.0636
+          },
+          "emit_pass": {
+            "parallelism": 3.032,
+            "thread_ms": 101455.982,
+            "thread_share": 0.9635,
+            "wall_ms": 33465.057,
+            "wall_share": 0.8855
+          },
+          "pre_loop": {
+            "parallelism": 0.894,
+            "thread_ms": 1228.905,
+            "thread_share": 0.0117,
+            "wall_ms": 1374.377,
+            "wall_share": 0.0364
+          },
+          "residual": {
+            "thread_ms": 0.002,
+            "wall_ms": 549.086
+          }
+        },
+        "thread_ms": 105298.207
+      },
+      "prepass_ms": 80086,
+      "run": {
+        "exit_code": 0,
+        "gcode_bytes": 42310507,
+        "sha256": "62d6eedc02e5db972928f830104aab95c3598f6df6407159cb5438adb35bef13",
+        "wall_seconds": 95.7213
+      },
+      "slice_wall_ms": 94151,
+      "stage_census": [
+        {
+          "calls": 3248,
+          "parallelism": 1.109,
+          "stage": "PrePass::MeshAnalysis",
+          "stage_events_ms": [
+            3986
+          ],
+          "thread_ms": 4421.231,
+          "wall_ms": 3986
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::LayerPlanning",
+          "stage_events_ms": [
+            1
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 1
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::RegionMapping",
+          "stage_events_ms": [
+            17
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 17
+        },
+        {
+          "calls": 3433,
+          "parallelism": 6.714,
+          "stage": "PrePass::Slice",
+          "stage_events_ms": [
+            1972
+          ],
+          "thread_ms": 13240.951,
+          "wall_ms": 1972
+        },
+        {
+          "calls": 6314,
+          "parallelism": 11.787,
+          "stage": "PrePass::OverhangAnnotation",
+          "stage_events_ms": [
+            8813
+          ],
+          "thread_ms": 103880.203,
+          "wall_ms": 8813
+        },
+        {
+          "calls": 9692,
+          "parallelism": 9.149,
+          "stage": "PrePass::ShellClassification",
+          "stage_events_ms": [
+            11063
+          ],
+          "thread_ms": 101212.041,
+          "wall_ms": 11063
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::PaintSegmentation",
+          "stage_events_ms": [
+            29
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 29
+        },
+        {
+          "calls": 4922,
+          "parallelism": 11.395,
+          "stage": "PrePass::SupportAnalysis",
+          "stage_events_ms": [
+            12470
+          ],
+          "thread_ms": 142091.693,
+          "wall_ms": 12470
+        },
+        {
+          "calls": 143335,
+          "parallelism": 2.659,
+          "planner_module_parallelism": 2.786,
+          "planner_module_thread_ms": 105298.207,
+          "planner_module_wall_ms": 37794,
+          "planner_stage_wall_ms": 39993,
+          "producer_wall_ms": 4,
+          "stage": "PrePass::SupportGeometry",
+          "stage_events_ms": [
+            4,
+            39993
+          ],
+          "thread_ms": 106359.221,
+          "wall_ms": 39993
+        },
+        {
+          "calls": 495,
+          "parallelism": 7.841,
+          "stage": "PrePass::SeamPlanning",
+          "stage_events_ms": [
+            1610
+          ],
+          "thread_ms": 12623.671,
+          "wall_ms": 1610
+        }
+      ]
+    },
+    "base-classic-off": {
+      "planner": {
+        "module_wall_ms": 145,
+        "parallelism": 0.0,
+        "phase_thread_sum_ms": 0.0,
+        "phase_wall_sum_ms": 0.0,
+        "phases": {
+          "p0_volumes": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p2_contacts": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p3_drop": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p5_smooth": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6a_clip_core": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6d_occupancy": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6e_node_roles": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6f_emit_geometry": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          }
+        },
+        "rollup": {
+          "drop_loop": {
+            "parallelism": null,
+            "thread_ms": 0.0,
+            "thread_share": null,
+            "wall_ms": 0.0,
+            "wall_share": 0.0
+          },
+          "emit_pass": {
+            "parallelism": null,
+            "thread_ms": 0.0,
+            "thread_share": null,
+            "wall_ms": 0.0,
+            "wall_share": 0.0
+          },
+          "pre_loop": {
+            "parallelism": null,
+            "thread_ms": 0.0,
+            "thread_share": null,
+            "wall_ms": 0.0,
+            "wall_share": 0.0
+          },
+          "residual": {
+            "thread_ms": null,
+            "wall_ms": 145.0
+          }
+        },
+        "thread_ms": 0.0
+      },
+      "prepass_ms": 28151,
+      "run": {
+        "exit_code": 0,
+        "gcode_bytes": 21006116,
+        "sha256": "b3b4ac5e885c7f637b98f79eca21901a41d85739627d4dcb40820663c15e90ef",
+        "wall_seconds": 36.9756
+      },
+      "slice_wall_ms": 35509,
+      "stage_census": [
+        {
+          "calls": 3248,
+          "parallelism": 1.101,
+          "stage": "PrePass::MeshAnalysis",
+          "stage_events_ms": [
+            4034
+          ],
+          "thread_ms": 4439.639,
+          "wall_ms": 4034
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::LayerPlanning",
+          "stage_events_ms": [
+            1
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 1
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::RegionMapping",
+          "stage_events_ms": [
+            19
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 19
+        },
+        {
+          "calls": 3433,
+          "parallelism": 6.682,
+          "stage": "PrePass::Slice",
+          "stage_events_ms": [
+            1969
+          ],
+          "thread_ms": 13156.851,
+          "wall_ms": 1969
+        },
+        {
+          "calls": 6314,
+          "parallelism": 11.741,
+          "stage": "PrePass::OverhangAnnotation",
+          "stage_events_ms": [
+            8800
+          ],
+          "thread_ms": 103323.394,
+          "wall_ms": 8800
+        },
+        {
+          "calls": 9692,
+          "parallelism": 9.029,
+          "stage": "PrePass::ShellClassification",
+          "stage_events_ms": [
+            11237
+          ],
+          "thread_ms": 101455.342,
+          "wall_ms": 11237
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::PaintSegmentation",
+          "stage_events_ms": [
+            29
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 29
+        },
+        {
+          "calls": 0,
+          "parallelism": null,
+          "stage": "PrePass::SupportAnalysis",
+          "stage_events_ms": [
+            0
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 0
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "planner_module_parallelism": 0.0,
+          "planner_module_thread_ms": 0.0,
+          "planner_module_wall_ms": 145,
+          "planner_stage_wall_ms": 266,
+          "producer_wall_ms": 4,
+          "stage": "PrePass::SupportGeometry",
+          "stage_events_ms": [
+            4,
+            266
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 266
+        },
+        {
+          "calls": 495,
+          "parallelism": 7.732,
+          "stage": "PrePass::SeamPlanning",
+          "stage_events_ms": [
+            1625
+          ],
+          "thread_ms": 12564.273,
+          "wall_ms": 1625
+        }
+      ]
+    },
+    "base-classic-on": {
+      "planner": {
+        "module_wall_ms": 37639,
+        "parallelism": 2.762,
+        "phase_thread_sum_ms": 103972.31,
+        "phase_wall_sum_ms": 37095.286,
+        "phases": {
+          "p0_volumes": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 1,
+            "batch_serial_requests": 0,
+            "calls": 989,
+            "clip_calls": 989,
+            "guest_cpu": false,
+            "in_points": 653719,
+            "offset_calls": 0,
+            "parallelism": 0.568,
+            "spans": 1,
+            "thread_ms": 98.969,
+            "wall_ms": 174.148
+          },
+          "p2_contacts": {
+            "batch_parallel_calls": 1,
+            "batch_parallel_requests": 495,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 2029,
+            "clip_calls": 155,
+            "guest_cpu": false,
+            "in_points": 310650,
+            "offset_calls": 1874,
+            "parallelism": 1.004,
+            "spans": 1,
+            "thread_ms": 1114.13,
+            "wall_ms": 1109.968
+          },
+          "p3_drop": {
+            "batch_parallel_calls": 38,
+            "batch_parallel_requests": 18810,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 59498,
+            "clip_calls": 19396,
+            "guest_cpu": false,
+            "in_points": 6325124,
+            "offset_calls": 40102,
+            "parallelism": 1.087,
+            "spans": 1,
+            "thread_ms": 2610.397,
+            "wall_ms": 2402.445
+          },
+          "p5_smooth": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": 0.0,
+            "spans": 1,
+            "thread_ms": 0.0,
+            "wall_ms": 74.843
+          },
+          "p6a_clip_core": {
+            "batch_parallel_calls": 559,
+            "batch_parallel_requests": 70168,
+            "batch_serial_calls": 26,
+            "batch_serial_requests": 42,
+            "calls": 70210,
+            "clip_calls": 70210,
+            "guest_cpu": false,
+            "in_points": 270574905,
+            "offset_calls": 0,
+            "parallelism": 4.808,
+            "spans": 109,
+            "thread_ms": 85641.408,
+            "wall_ms": 17811.492
+          },
+          "p6d_occupancy": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 433,
+            "clip_calls": 0,
+            "guest_cpu": false,
+            "in_points": 2444997,
+            "offset_calls": 433,
+            "parallelism": 0.994,
+            "spans": 864,
+            "thread_ms": 14168.606,
+            "wall_ms": 14249.106
+          },
+          "p6e_node_roles": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": 0.0,
+            "spans": 433,
+            "thread_ms": 0.0,
+            "wall_ms": 988.906
+          },
+          "p6f_emit_geometry": {
+            "batch_parallel_calls": 10,
+            "batch_parallel_requests": 4950,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 5784,
+            "clip_calls": 834,
+            "guest_cpu": false,
+            "in_points": 466334,
+            "offset_calls": 4950,
+            "parallelism": 1.191,
+            "spans": 433,
+            "thread_ms": 338.8,
+            "wall_ms": 284.378
+          }
+        },
+        "rollup": {
+          "drop_loop": {
+            "parallelism": 1.087,
+            "thread_ms": 2610.397,
+            "thread_share": 0.0251,
+            "wall_ms": 2402.445,
+            "wall_share": 0.0638
+          },
+          "emit_pass": {
+            "parallelism": 3.004,
+            "thread_ms": 100148.814,
+            "thread_share": 0.9632,
+            "wall_ms": 33333.882,
+            "wall_share": 0.8856
+          },
+          "pre_loop": {
+            "parallelism": 0.893,
+            "thread_ms": 1213.099,
+            "thread_share": 0.0117,
+            "wall_ms": 1358.959,
+            "wall_share": 0.0361
+          },
+          "residual": {
+            "thread_ms": 0.001,
+            "wall_ms": 543.714
+          }
+        },
+        "thread_ms": 103972.311
+      },
+      "prepass_ms": 79923,
+      "run": {
+        "exit_code": 0,
+        "gcode_bytes": 42490279,
+        "sha256": "4e31a2db368ff80f388512211ae824b9660342a465c87f093f6182023e34eb4e",
+        "wall_seconds": 94.9076
+      },
+      "slice_wall_ms": 93356,
+      "stage_census": [
+        {
+          "calls": 3248,
+          "parallelism": 1.119,
+          "stage": "PrePass::MeshAnalysis",
+          "stage_events_ms": [
+            3997
+          ],
+          "thread_ms": 4472.485,
+          "wall_ms": 3997
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::LayerPlanning",
+          "stage_events_ms": [
+            1
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 1
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::RegionMapping",
+          "stage_events_ms": [
+            21
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 21
+        },
+        {
+          "calls": 3433,
+          "parallelism": 6.457,
+          "stage": "PrePass::Slice",
+          "stage_events_ms": [
+            2009
+          ],
+          "thread_ms": 12972.156,
+          "wall_ms": 2009
+        },
+        {
+          "calls": 6314,
+          "parallelism": 11.717,
+          "stage": "PrePass::OverhangAnnotation",
+          "stage_events_ms": [
+            8698
+          ],
+          "thread_ms": 101915.269,
+          "wall_ms": 8698
+        },
+        {
+          "calls": 9692,
+          "parallelism": 9.258,
+          "stage": "PrePass::ShellClassification",
+          "stage_events_ms": [
+            11279
+          ],
+          "thread_ms": 104418.216,
+          "wall_ms": 11279
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::PaintSegmentation",
+          "stage_events_ms": [
+            28
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 28
+        },
+        {
+          "calls": 4922,
+          "parallelism": 11.463,
+          "stage": "PrePass::SupportAnalysis",
+          "stage_events_ms": [
+            12305
+          ],
+          "thread_ms": 141047.87,
+          "wall_ms": 12305
+        },
+        {
+          "calls": 143335,
+          "parallelism": 2.641,
+          "planner_module_parallelism": 2.762,
+          "planner_module_thread_ms": 103972.311,
+          "planner_module_wall_ms": 37639,
+          "planner_stage_wall_ms": 39784,
+          "producer_wall_ms": 3,
+          "stage": "PrePass::SupportGeometry",
+          "stage_events_ms": [
+            3,
+            39784
+          ],
+          "thread_ms": 105053.217,
+          "wall_ms": 39784
+        },
+        {
+          "calls": 495,
+          "parallelism": 7.521,
+          "stage": "PrePass::SeamPlanning",
+          "stage_events_ms": [
+            1668
+          ],
+          "thread_ms": 12544.802,
+          "wall_ms": 1668
+        }
+      ]
+    },
+    "benchy-arachne-off": {
+      "planner": {
+        "module_wall_ms": 17,
+        "parallelism": 0.0,
+        "phase_thread_sum_ms": 0.0,
+        "phase_wall_sum_ms": 0.0,
+        "phases": {
+          "p0_volumes": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p2_contacts": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p3_drop": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p5_smooth": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6a_clip_core": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6d_occupancy": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6e_node_roles": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6f_emit_geometry": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          }
+        },
+        "rollup": {
+          "drop_loop": {
+            "parallelism": null,
+            "thread_ms": 0.0,
+            "thread_share": null,
+            "wall_ms": 0.0,
+            "wall_share": 0.0
+          },
+          "emit_pass": {
+            "parallelism": null,
+            "thread_ms": 0.0,
+            "thread_share": null,
+            "wall_ms": 0.0,
+            "wall_share": 0.0
+          },
+          "pre_loop": {
+            "parallelism": null,
+            "thread_ms": 0.0,
+            "thread_share": null,
+            "wall_ms": 0.0,
+            "wall_share": 0.0
+          },
+          "residual": {
+            "thread_ms": null,
+            "wall_ms": 17.0
+          }
+        },
+        "thread_ms": 0.0
+      },
+      "prepass_ms": 2669,
+      "run": {
+        "exit_code": 0,
+        "gcode_bytes": 4065372,
+        "sha256": "2ba5d84ccf3c8deea6f39f4977dd71221faaecde9987d1699b361a5366e86380",
+        "wall_seconds": 4.5413
+      },
+      "slice_wall_ms": 4444,
+      "stage_census": [
+        {
+          "calls": 343,
+          "parallelism": 0.613,
+          "stage": "PrePass::MeshAnalysis",
+          "stage_events_ms": [
+            159
+          ],
+          "thread_ms": 97.402,
+          "wall_ms": 159
+        },
+        {
+          "calls": 0,
+          "parallelism": null,
+          "stage": "PrePass::LayerPlanning",
+          "stage_events_ms": [
+            0
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 0
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::RegionMapping",
+          "stage_events_ms": [
+            4
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 4
+        },
+        {
+          "calls": 1637,
+          "parallelism": 6.239,
+          "stage": "PrePass::Slice",
+          "stage_events_ms": [
+            204
+          ],
+          "thread_ms": 1272.7,
+          "wall_ms": 204
+        },
+        {
+          "calls": 3107,
+          "parallelism": 10.066,
+          "stage": "PrePass::OverhangAnnotation",
+          "stage_events_ms": [
+            598
+          ],
+          "thread_ms": 6019.544,
+          "wall_ms": 598
+        },
+        {
+          "calls": 4421,
+          "parallelism": 5.425,
+          "stage": "PrePass::ShellClassification",
+          "stage_events_ms": [
+            1471
+          ],
+          "thread_ms": 7979.517,
+          "wall_ms": 1471
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::PaintSegmentation",
+          "stage_events_ms": [
+            5
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 5
+        },
+        {
+          "calls": 0,
+          "parallelism": null,
+          "stage": "PrePass::SupportAnalysis",
+          "stage_events_ms": [
+            0
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 0
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "planner_module_parallelism": 0.0,
+          "planner_module_thread_ms": 0.0,
+          "planner_module_wall_ms": 17,
+          "planner_stage_wall_ms": 35,
+          "producer_wall_ms": 0,
+          "stage": "PrePass::SupportGeometry",
+          "stage_events_ms": [
+            0,
+            35
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 35
+        },
+        {
+          "calls": 240,
+          "parallelism": 5.02,
+          "stage": "PrePass::SeamPlanning",
+          "stage_events_ms": [
+            158
+          ],
+          "thread_ms": 793.133,
+          "wall_ms": 158
+        }
+      ]
+    },
+    "benchy-arachne-on": {
+      "planner": {
+        "module_wall_ms": 1997,
+        "parallelism": 2.321,
+        "phase_thread_sum_ms": 4634.32,
+        "phase_wall_sum_ms": 1913.577,
+        "phases": {
+          "p0_volumes": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 1,
+            "batch_serial_requests": 0,
+            "calls": 480,
+            "clip_calls": 480,
+            "guest_cpu": false,
+            "in_points": 89216,
+            "offset_calls": 0,
+            "parallelism": 0.435,
+            "spans": 1,
+            "thread_ms": 8.466,
+            "wall_ms": 19.454
+          },
+          "p2_contacts": {
+            "batch_parallel_calls": 1,
+            "batch_parallel_requests": 240,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 547,
+            "clip_calls": 125,
+            "guest_cpu": false,
+            "in_points": 40575,
+            "offset_calls": 422,
+            "parallelism": 1.014,
+            "spans": 1,
+            "thread_ms": 155.873,
+            "wall_ms": 153.792
+          },
+          "p3_drop": {
+            "batch_parallel_calls": 16,
+            "batch_parallel_requests": 3840,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 12910,
+            "clip_calls": 4640,
+            "guest_cpu": false,
+            "in_points": 743656,
+            "offset_calls": 8270,
+            "parallelism": 0.978,
+            "spans": 1,
+            "thread_ms": 242.702,
+            "wall_ms": 248.157
+          },
+          "p5_smooth": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": 0.0,
+            "spans": 1,
+            "thread_ms": 0.0,
+            "wall_ms": 10.555
+          },
+          "p6a_clip_core": {
+            "batch_parallel_calls": 154,
+            "batch_parallel_requests": 11054,
+            "batch_serial_calls": 5,
+            "batch_serial_requests": 8,
+            "calls": 11062,
+            "clip_calls": 11062,
+            "guest_cpu": false,
+            "in_points": 20153722,
+            "offset_calls": 0,
+            "parallelism": 4.497,
+            "spans": 46,
+            "thread_ms": 3565.656,
+            "wall_ms": 792.812
+          },
+          "p6d_occupancy": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 186,
+            "clip_calls": 0,
+            "guest_cpu": false,
+            "in_points": 388290,
+            "offset_calls": 186,
+            "parallelism": 0.978,
+            "spans": 365,
+            "thread_ms": 586.359,
+            "wall_ms": 599.26
+          },
+          "p6e_node_roles": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": 0.0,
+            "spans": 186,
+            "thread_ms": 0.0,
+            "wall_ms": 36.568
+          },
+          "p6f_emit_geometry": {
+            "batch_parallel_calls": 10,
+            "batch_parallel_requests": 2400,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 3542,
+            "clip_calls": 1142,
+            "guest_cpu": false,
+            "in_points": 158091,
+            "offset_calls": 2400,
+            "parallelism": 1.421,
+            "spans": 186,
+            "thread_ms": 75.264,
+            "wall_ms": 52.979
+          }
+        },
+        "rollup": {
+          "drop_loop": {
+            "parallelism": 0.978,
+            "thread_ms": 242.702,
+            "thread_share": 0.0524,
+            "wall_ms": 248.157,
+            "wall_share": 0.1243
+          },
+          "emit_pass": {
+            "parallelism": 2.853,
+            "thread_ms": 4227.279,
+            "thread_share": 0.9122,
+            "wall_ms": 1481.619,
+            "wall_share": 0.7419
+          },
+          "pre_loop": {
+            "parallelism": 0.894,
+            "thread_ms": 164.339,
+            "thread_share": 0.0355,
+            "wall_ms": 183.801,
+            "wall_share": 0.092
+          },
+          "residual": {
+            "thread_ms": 0.001,
+            "wall_ms": 83.423
+          }
+        },
+        "thread_ms": 4634.321
+      },
+      "prepass_ms": 5933,
+      "run": {
+        "exit_code": 0,
+        "gcode_bytes": 8391228,
+        "sha256": "a972b0f2c25a988e667ecf5a5b3d6c3f5ba87f5c8872733c2a4b4e5d51a9695e",
+        "wall_seconds": 8.2657
+      },
+      "slice_wall_ms": 8149,
+      "stage_census": [
+        {
+          "calls": 343,
+          "parallelism": 0.622,
+          "stage": "PrePass::MeshAnalysis",
+          "stage_events_ms": [
+            156
+          ],
+          "thread_ms": 96.958,
+          "wall_ms": 156
+        },
+        {
+          "calls": 0,
+          "parallelism": null,
+          "stage": "PrePass::LayerPlanning",
+          "stage_events_ms": [
+            0
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 0
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::RegionMapping",
+          "stage_events_ms": [
+            4
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 4
+        },
+        {
+          "calls": 1637,
+          "parallelism": 6.271,
+          "stage": "PrePass::Slice",
+          "stage_events_ms": [
+            207
+          ],
+          "thread_ms": 1298.148,
+          "wall_ms": 207
+        },
+        {
+          "calls": 3107,
+          "parallelism": 10.329,
+          "stage": "PrePass::OverhangAnnotation",
+          "stage_events_ms": [
+            582
+          ],
+          "thread_ms": 6011.267,
+          "wall_ms": 582
+        },
+        {
+          "calls": 4421,
+          "parallelism": 5.566,
+          "stage": "PrePass::ShellClassification",
+          "stage_events_ms": [
+            1513
+          ],
+          "thread_ms": 8420.912,
+          "wall_ms": 1513
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::PaintSegmentation",
+          "stage_events_ms": [
+            5
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 5
+        },
+        {
+          "calls": 1574,
+          "parallelism": 5.587,
+          "stage": "PrePass::SupportAnalysis",
+          "stage_events_ms": [
+            998
+          ],
+          "thread_ms": 5576.143,
+          "wall_ms": 998
+        },
+        {
+          "calls": 31918,
+          "parallelism": 2.112,
+          "planner_module_parallelism": 2.321,
+          "planner_module_thread_ms": 4634.321,
+          "planner_module_wall_ms": 1997,
+          "planner_stage_wall_ms": 2255,
+          "producer_wall_ms": 0,
+          "stage": "PrePass::SupportGeometry",
+          "stage_events_ms": [
+            0,
+            2255
+          ],
+          "thread_ms": 4762.921,
+          "wall_ms": 2255
+        },
+        {
+          "calls": 240,
+          "parallelism": 5.202,
+          "stage": "PrePass::SeamPlanning",
+          "stage_events_ms": [
+            170
+          ],
+          "thread_ms": 884.288,
+          "wall_ms": 170
+        }
+      ]
+    },
+    "benchy-classic-off": {
+      "planner": {
+        "module_wall_ms": 19,
+        "parallelism": 0.0,
+        "phase_thread_sum_ms": 0.0,
+        "phase_wall_sum_ms": 0.0,
+        "phases": {
+          "p0_volumes": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p2_contacts": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p3_drop": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p5_smooth": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6a_clip_core": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6d_occupancy": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6e_node_roles": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          },
+          "p6f_emit_geometry": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": null,
+            "spans": 0,
+            "thread_ms": 0.0,
+            "wall_ms": 0.0
+          }
+        },
+        "rollup": {
+          "drop_loop": {
+            "parallelism": null,
+            "thread_ms": 0.0,
+            "thread_share": null,
+            "wall_ms": 0.0,
+            "wall_share": 0.0
+          },
+          "emit_pass": {
+            "parallelism": null,
+            "thread_ms": 0.0,
+            "thread_share": null,
+            "wall_ms": 0.0,
+            "wall_share": 0.0
+          },
+          "pre_loop": {
+            "parallelism": null,
+            "thread_ms": 0.0,
+            "thread_share": null,
+            "wall_ms": 0.0,
+            "wall_share": 0.0
+          },
+          "residual": {
+            "thread_ms": null,
+            "wall_ms": 19.0
+          }
+        },
+        "thread_ms": 0.0
+      },
+      "prepass_ms": 2675,
+      "run": {
+        "exit_code": 0,
+        "gcode_bytes": 3926897,
+        "sha256": "90638bf3ea9e592d573b223c3eb9af64473efe804578d2478adfbbc5f0e67008",
+        "wall_seconds": 4.4455
+      },
+      "slice_wall_ms": 4314,
+      "stage_census": [
+        {
+          "calls": 343,
+          "parallelism": 0.62,
+          "stage": "PrePass::MeshAnalysis",
+          "stage_events_ms": [
+            156
+          ],
+          "thread_ms": 96.682,
+          "wall_ms": 156
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::LayerPlanning",
+          "stage_events_ms": [
+            1
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 1
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::RegionMapping",
+          "stage_events_ms": [
+            4
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 4
+        },
+        {
+          "calls": 1637,
+          "parallelism": 6.27,
+          "stage": "PrePass::Slice",
+          "stage_events_ms": [
+            206
+          ],
+          "thread_ms": 1291.542,
+          "wall_ms": 206
+        },
+        {
+          "calls": 3107,
+          "parallelism": 10.299,
+          "stage": "PrePass::OverhangAnnotation",
+          "stage_events_ms": [
+            583
+          ],
+          "thread_ms": 6004.165,
+          "wall_ms": 583
+        },
+        {
+          "calls": 4421,
+          "parallelism": 5.42,
+          "stage": "PrePass::ShellClassification",
+          "stage_events_ms": [
+            1483
+          ],
+          "thread_ms": 8037.733,
+          "wall_ms": 1483
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::PaintSegmentation",
+          "stage_events_ms": [
+            5
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 5
+        },
+        {
+          "calls": 0,
+          "parallelism": null,
+          "stage": "PrePass::SupportAnalysis",
+          "stage_events_ms": [
+            0
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 0
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "planner_module_parallelism": 0.0,
+          "planner_module_thread_ms": 0.0,
+          "planner_module_wall_ms": 19,
+          "planner_stage_wall_ms": 37,
+          "producer_wall_ms": 0,
+          "stage": "PrePass::SupportGeometry",
+          "stage_events_ms": [
+            0,
+            37
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 37
+        },
+        {
+          "calls": 240,
+          "parallelism": 4.899,
+          "stage": "PrePass::SeamPlanning",
+          "stage_events_ms": [
+            164
+          ],
+          "thread_ms": 803.451,
+          "wall_ms": 164
+        }
+      ]
+    },
+    "benchy-classic-on": {
+      "planner": {
+        "module_wall_ms": 1993,
+        "parallelism": 2.309,
+        "phase_thread_sum_ms": 4601.58,
+        "phase_wall_sum_ms": 1906.693,
+        "phases": {
+          "p0_volumes": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 1,
+            "batch_serial_requests": 0,
+            "calls": 480,
+            "clip_calls": 480,
+            "guest_cpu": false,
+            "in_points": 89216,
+            "offset_calls": 0,
+            "parallelism": 0.433,
+            "spans": 1,
+            "thread_ms": 8.348,
+            "wall_ms": 19.272
+          },
+          "p2_contacts": {
+            "batch_parallel_calls": 1,
+            "batch_parallel_requests": 240,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 547,
+            "clip_calls": 125,
+            "guest_cpu": false,
+            "in_points": 40575,
+            "offset_calls": 422,
+            "parallelism": 1.013,
+            "spans": 1,
+            "thread_ms": 158.085,
+            "wall_ms": 156.091
+          },
+          "p3_drop": {
+            "batch_parallel_calls": 16,
+            "batch_parallel_requests": 3840,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 12910,
+            "clip_calls": 4640,
+            "guest_cpu": false,
+            "in_points": 743656,
+            "offset_calls": 8270,
+            "parallelism": 0.978,
+            "spans": 1,
+            "thread_ms": 241.601,
+            "wall_ms": 246.918
+          },
+          "p5_smooth": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": 0.0,
+            "spans": 1,
+            "thread_ms": 0.0,
+            "wall_ms": 10.902
+          },
+          "p6a_clip_core": {
+            "batch_parallel_calls": 154,
+            "batch_parallel_requests": 11054,
+            "batch_serial_calls": 5,
+            "batch_serial_requests": 8,
+            "calls": 11062,
+            "clip_calls": 11062,
+            "guest_cpu": false,
+            "in_points": 20153722,
+            "offset_calls": 0,
+            "parallelism": 4.522,
+            "spans": 46,
+            "thread_ms": 3533.613,
+            "wall_ms": 781.502
+          },
+          "p6d_occupancy": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 186,
+            "clip_calls": 0,
+            "guest_cpu": false,
+            "in_points": 388290,
+            "offset_calls": 186,
+            "parallelism": 0.978,
+            "spans": 365,
+            "thread_ms": 584.968,
+            "wall_ms": 597.855
+          },
+          "p6e_node_roles": {
+            "batch_parallel_calls": 0,
+            "batch_parallel_requests": 0,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 0,
+            "clip_calls": 0,
+            "guest_cpu": true,
+            "in_points": 0,
+            "offset_calls": 0,
+            "parallelism": 0.0,
+            "spans": 186,
+            "thread_ms": 0.0,
+            "wall_ms": 39.515
+          },
+          "p6f_emit_geometry": {
+            "batch_parallel_calls": 10,
+            "batch_parallel_requests": 2400,
+            "batch_serial_calls": 0,
+            "batch_serial_requests": 0,
+            "calls": 3542,
+            "clip_calls": 1142,
+            "guest_cpu": false,
+            "in_points": 158091,
+            "offset_calls": 2400,
+            "parallelism": 1.372,
+            "spans": 186,
+            "thread_ms": 74.965,
+            "wall_ms": 54.638
+          }
+        },
+        "rollup": {
+          "drop_loop": {
+            "parallelism": 0.978,
+            "thread_ms": 241.601,
+            "thread_share": 0.0525,
+            "wall_ms": 246.918,
+            "wall_share": 0.1239
+          },
+          "emit_pass": {
+            "parallelism": 2.846,
+            "thread_ms": 4193.546,
+            "thread_share": 0.9113,
+            "wall_ms": 1473.51,
+            "wall_share": 0.7393
+          },
+          "pre_loop": {
+            "parallelism": 0.894,
+            "thread_ms": 166.433,
+            "thread_share": 0.0362,
+            "wall_ms": 186.265,
+            "wall_share": 0.0935
+          },
+          "residual": {
+            "thread_ms": -0.0,
+            "wall_ms": 86.307
+          }
+        },
+        "thread_ms": 4601.58
+      },
+      "prepass_ms": 5844,
+      "run": {
+        "exit_code": 0,
+        "gcode_bytes": 8253678,
+        "sha256": "711c6334e397e5ae6911b15bfc71d42add9e93822cddd0a29391db6ef531d556",
+        "wall_seconds": 7.9988
+      },
+      "slice_wall_ms": 7887,
+      "stage_census": [
+        {
+          "calls": 343,
+          "parallelism": 0.623,
+          "stage": "PrePass::MeshAnalysis",
+          "stage_events_ms": [
+            157
+          ],
+          "thread_ms": 97.79,
+          "wall_ms": 157
+        },
+        {
+          "calls": 0,
+          "parallelism": null,
+          "stage": "PrePass::LayerPlanning",
+          "stage_events_ms": [
+            0
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 0
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::RegionMapping",
+          "stage_events_ms": [
+            4
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 4
+        },
+        {
+          "calls": 1637,
+          "parallelism": 6.283,
+          "stage": "PrePass::Slice",
+          "stage_events_ms": [
+            201
+          ],
+          "thread_ms": 1262.842,
+          "wall_ms": 201
+        },
+        {
+          "calls": 3107,
+          "parallelism": 10.274,
+          "stage": "PrePass::OverhangAnnotation",
+          "stage_events_ms": [
+            587
+          ],
+          "thread_ms": 6031.014,
+          "wall_ms": 587
+        },
+        {
+          "calls": 4421,
+          "parallelism": 5.512,
+          "stage": "PrePass::ShellClassification",
+          "stage_events_ms": [
+            1469
+          ],
+          "thread_ms": 8097.155,
+          "wall_ms": 1469
+        },
+        {
+          "calls": 0,
+          "parallelism": 0.0,
+          "stage": "PrePass::PaintSegmentation",
+          "stage_events_ms": [
+            5
+          ],
+          "thread_ms": 0.0,
+          "wall_ms": 5
+        },
+        {
+          "calls": 1574,
+          "parallelism": 5.572,
+          "stage": "PrePass::SupportAnalysis",
+          "stage_events_ms": [
+            956
+          ],
+          "thread_ms": 5327.117,
+          "wall_ms": 956
+        },
+        {
+          "calls": 31918,
+          "parallelism": 2.093,
+          "planner_module_parallelism": 2.309,
+          "planner_module_thread_ms": 4601.58,
+          "planner_module_wall_ms": 1993,
+          "planner_stage_wall_ms": 2260,
+          "producer_wall_ms": 0,
+          "stage": "PrePass::SupportGeometry",
+          "stage_events_ms": [
+            0,
+            2260
+          ],
+          "thread_ms": 4730.214,
+          "wall_ms": 2260
+        },
+        {
+          "calls": 240,
+          "parallelism": 4.816,
+          "stage": "PrePass::SeamPlanning",
+          "stage_events_ms": [
+            168
+          ],
+          "thread_ms": 809.152,
+          "wall_ms": 168
+        }
+      ]
+    }
+  },
+  "probe_env": {
+    "PNP_T134_PROBE": "1",
+    "RAYON_NUM_THREADS": 12
+  },
+  "raw_source": "target/t134/runs/*.stderr.jsonl (gitignored)",
+  "reference_set": "ticket 123 candidate-ordinary",
+  "repeatability": {
+    "base-classic-on": {
+      "module_wall_spread_pct": 2.45,
+      "passes": [
+        {
+          "module_wall_ms": 37639,
+          "p6a_wall_ms": 17811.492,
+          "p6d_wall_ms": 14249.106,
+          "source": "target/t134/runs/base-classic-on.stderr.jsonl",
+          "thread_ms": 103972.311
+        },
+        {
+          "module_wall_ms": 37734,
+          "p6a_wall_ms": 18114.949,
+          "p6d_wall_ms": 14058.114,
+          "source": "target/t134-runs/base-classic-on-r2.stderr.jsonl",
+          "thread_ms": 104596.422
+        },
+        {
+          "module_wall_ms": 38562,
+          "p6a_wall_ms": 18326.964,
+          "p6d_wall_ms": 14500.269,
+          "source": "target/t134-runs/base-classic-on.stderr.jsonl",
+          "thread_ms": 106360.459
+        }
+      ]
+    },
+    "benchy-classic-on": {
+      "module_wall_spread_pct": 1.17,
+      "passes": [
+        {
+          "module_wall_ms": 1993,
+          "p6a_wall_ms": 781.502,
+          "p6d_wall_ms": 597.855,
+          "source": "target/t134/runs/benchy-classic-on.stderr.jsonl",
+          "thread_ms": 4601.58
+        },
+        {
+          "module_wall_ms": 1972,
+          "p6a_wall_ms": 779.84,
+          "p6d_wall_ms": 593.013,
+          "source": "target/t134-runs/benchy-classic-on-r2.stderr.jsonl",
+          "thread_ms": 4602.04
+        },
+        {
+          "module_wall_ms": 1995,
+          "p6a_wall_ms": 780.19,
+          "p6d_wall_ms": 599.724,
+          "source": "target/t134-runs/benchy-classic-on.stderr.jsonl",
+          "thread_ms": 4591.472
+        }
+      ]
+    }
+  },
+  "take": "t134"
+}

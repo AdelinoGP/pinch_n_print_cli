@@ -100,6 +100,32 @@ classic-on's — a banked keep, not a destination step. **Frontier:**
 and the human's brim ruling
 [130](issues/130-brim-matched-settings-ruling.md).
 
+**Destination status (2026-11-09,
+[t134](issues/134-planner-effective-parallelism.md)): planner scheduling is a
+tranche, not the route; the frontier is two supports-on shapes and the brim
+ruling.** The planner's effective parallelism is **2.64x** at the stage
+bracket and **2.76x** at the module on base classic-on (**2.09x / 2.31x** on
+benchy classic-on), up from t131's **2.19x** because t132 removed 14.2 s of
+*serial* duplicate occupancy work. The **105.1 s** of stage clipper thread-time
+is **95.3 %** layer-independent emit pass and **2.5 %** recurrence-bound drop
+loop; inside the emit pass the 433 per-layer occupancy offsets are **14,249 ms
+wall at 0.99x**, while the clip core is **17,811 ms wall at 4.81x**. The
+occupancy batch ceiling is **11.2 s** (**11.1x** floor, **12.1 %** of base-on's
+required cut) and clip-to-12x is **10.7 s** (**10.6x**, **11.5 %**); combined
+**21.9 s** (**21.7x**, **23.7 %**), still below the ticket's **50.66 s**
+threshold. Even a zero-cost planner leaves **2.87x–3.25x** on the four
+supports-on cells. **The literal all-8-cell gate is structurally unreachable:**
+the whole `PrePass::SupportGeometry` stage is **0.64–0.81x** the 0.80 % floor
+on the supports-off cells and the planner module alone is **0.32–0.43x**.
+Graduated [t135](issues/135-cross-layer-occupancy-batching.md) (cross-layer
+occupancy batch) and [t136](issues/136-planner-clip-batch-fanout.md) (clip
+fan-out diagnosis), both blocked by the human's gate ruling
+[t137](issues/137-planner-scheduling-gate.md).
+**Frontier:** [137](issues/137-planner-scheduling-gate.md) (HITL) and the
+human's brim ruling [130](issues/130-brim-matched-settings-ruling.md) (HITL);
+[135](issues/135-cross-layer-occupancy-batching.md) and
+[136](issues/136-planner-clip-batch-fanout.md) are blocked by 137.
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -185,6 +211,35 @@ and [`evidence/t115-post-merge/`](evidence/t115-post-merge/FINDINGS.md), and
 Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
+
+**Current selection scope (2026-11-09, thirty-seventh session — the t134 take):**
+the human said "Continue the perf vs orca map" (no ticket named); **134 was the
+first unblocked, unclaimed AFK child in order** (130 is the human's grilling),
+so it was claimed and **resolved as a Phase-1 attribution**. Headline: **the
+planner's serial wall is the per-layer occupancy offset, not the clip
+fan-out.** The stage carries **105.1 s** of clipper thread-time: **95.3 %** is
+in the layer-independent emit pass, **2.5 %** in the recurrence-bound drop
+loop. `p6d_occupancy` is **14,249 ms wall / 14,169 ms thread = 0.99x** (433
+unique offsets); `p6a_clip_core` is **17,811 ms wall / 85,641 ms thread =
+4.81x**. The occupancy batch ceiling is **11.2 s** (**11.1x** floor, **12.1 %**
+of base-on's 92.5 s cut); clip-to-12x is **10.7 s** (**10.6x**, **11.5 %**);
+combined **21.9 s** (**21.7x**, **23.7 %**), still a tranche. **The all-8-cell
+gate is structurally unreachable:** the whole `SupportGeometry` stage is
+**0.64–0.81x** the floor on supports-off, the planner module **0.32–0.43x**.
+Go/no-go: **NO-GO as the route, GO (narrowed) for two supports-on tranches** —
+[t135](issues/135-cross-layer-occupancy-batching.md) (occupancy batch, exact)
+and [t136](issues/136-planner-clip-batch-fanout.md) (clip fan-out diagnosis) —
+both blocked by the human's gate ruling
+[t137](issues/137-planner-scheduling-gate.md). Even a zero-cost planner
+leaves **2.87x–3.25x** on the four supports-on cells, so the route remains
+operand volume / geometry. Disclosures: one pass per cell, three classic-on
+repeats spread **2.45 %** (base) / **1.17 %** (benchy); instrumented walls are
+not wall claims; the occupancy fan-out uses the clip core's measured 4.81x as
+a proxy. Evidence:
+[`evidence/t134-planner-parallelism/`](evidence/t134-planner-parallelism/FINDINGS.md)
+(`verify.py` 94 checks, 12/12 negative controls; all eight G-code hashes equal
+t123's candidate-ordinary set). **Frontier now: 137 and 130 (HITL); 135/136
+are blocked by 137.**
 
 **Current selection scope (2026-11-09, thirty-sixth session — the t133 take):**
 the human said "Continue the perf vs orca map" (no ticket named); **133 was the
@@ -2920,6 +2975,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Planner effective parallelism](issues/134-planner-effective-parallelism.md): **resolved (2026-11-09; Phase-1 attribution — NO-GO as the route, GO (narrowed) for two supports-on tranches)** — the planner stage runs at **2.64x / 2.66x / 2.09x / 2.11x** on the four supports-on cells (**2.76x / 2.79x / 2.31x / 2.32x** module-only), up from t131's 2.19x because t132 removed 14.2 s of serial duplicate occupancy; shell is 9.26x, overhang 11.72x, SupportAnalysis 11.46x on the same base classic-on run. The **105,053 ms** stage thread-time is **96.3 %** layer-independent emit pass, **2.5 %** recurrence-bound drop loop, **1.2 %** pre-loop; the `drop_nodes` barrier is 2,402 ms of a 37,639 ms module. Inside the emit pass, `p6d_occupancy` is **14,249 ms wall / 14,169 ms thread = 0.99x** (433 unique offsets) and `p6a_clip_core` is **17,811 / 85,641 = 4.81x**. Ceilings: occupancy batch **11.2 s** at 4.81x (8.7–13.0 s over 2.6x–12x) = **11.1x** floor = **12.1 %** of base-on's 92.5 s cut; clip-to-12x **10.7 s** = **10.6x** = **11.5 %**; combined **21.9 s = 21.7x = 23.7 %**, still below the ticket's 50.66 s threshold. **The literal all-8-cell gate is structurally unreachable:** the whole `SupportGeometry` stage is **0.78x / 0.64x / 0.80x / 0.81x** the 0.80 % floor on supports-off and the planner module is **0.32–0.43x**. Even a zero-cost planner leaves **3.25x / 3.21x / 2.89x / 2.87x** on the supports-on cells against t124's Orca medians. Graduated [t135](issues/135-cross-layer-occupancy-batching.md) (exact occupancy batch) and [t136](issues/136-planner-clip-batch-fanout.md) (clip fan-out diagnosis), both blocked by the human's gate ruling [t137](issues/137-planner-scheduling-gate.md). Evidence: [`evidence/t134-planner-parallelism/`](evidence/t134-planner-parallelism/FINDINGS.md) (`verify.py` 94 checks, 12/12 negative controls; eight probe G-code hashes equal t123's candidate-ordinary set; no production edit, probe reverted).
 - [Internal-bridge offsets on a candidate-bbox operand](issues/133-internal-bridge-windowed-offsets.md): **resolved (2026-11-09; exact measured KEEP — window the negative erosion only, 8/8 at 1.66x–10.94x the floor)** — `internal_bridge_offset_window` clips the `deep_infill_area` operand of the `-4.5 x spacing` erosion to the union bbox of the layer's `internal_solid_fill` candidates grown by `(2 x 4.5 + 1) x qualify_spacing`; both consumers (`qualified.retain`, the `internal_unsupported_area` filter in `internal_bridge_angles`) are candidate-local and the window boundary is outside the erosion's `2 x 4.5 x spacing` miter reach, so the covered set is unchanged. **16-cell output:** 8 cells x 4 arms, one hash per cell, all equal to t123's reference set (`90638bf3…`, `711c6334…`, `2ba5d84c…`, `a972b0f2…`, `b3b4ac5e…`, `4e31a2db…`, `6b865d4a…`, `62d6eedc…`), so the delta audit is equality — **zero moved lines**. **The first candidate windowed both offsets and is rejected:** confined to the bridge role (0 structural geometry lines) but moves **8 benchy bridge layers** by up to **22.09 mm** and 5 base bridge lines, because `internal_bridge_angles` intersects the whole-layer sparse `expansion_area` with `deep_infill_clip_area` and samples that anchor set; the artifact and both audits are preserved. **Paired gate:** **8/8** at **1.66x–10.94x** the 0.80 % floor with CPU corroborating — benchy **4.83 → 4.64 / 8.84 → 8.71 / 5.01 → 4.87 / 8.92 → 8.79 s**, base **42.51 → 39.82 / 102.45 → 101.09 / 43.82 → 39.98 / 106.95 → 102.18 s**. **Sequential sampling:** 3 pairs per cell, extended to 6 for benchy arachne-on and 12 for base classic-on (pre-declared; all pairs retained; 12-pair base-on **+1.36 s, 1.66x floor**, 7/12 wall-positive, 12/12 CPU-positive). **Ledger correction to t131:** the erosion converts thread-time to wall at **2.80x / 3.96x / 3.27x / 6.42x**, not the stage's 5.25–8.78x. Route arithmetic: **9.7 %** of base-off's 27.7 s required cut and **1.5 %** of base-on's 92.5 s — a banked keep, not a destination step. Disclosures: box load **21.2 %** before / **10.9 %** later (DWM/Chrome/Xbox/Discord), 6 physical / 12 logical cores; three windows; no Orca arm. Evidence: [`evidence/t133-windowed-bridge-offsets/`](evidence/t133-windowed-bridge-offsets/FINDINGS.md) (`verify.py` 357 checks, 17/17 negative controls).
 - [Planner occupancy memo: serve the duplicate half of the singular offset imports from a content cache](issues/132-planner-occupancy-memo.md): **resolved (2026-11-09; measured BUILD — the duplicate half is serial and worth 12–13 % of both base supports-on cells)** — a per-layer content-keyed memo (`OccupancyMemoEntry` + `occupancy_offset_key` + `inflate_model_occupancy_memoized`) serves the role carve's `+support_object_xy_distance` offset from the emit check's when the payload is byte-equal, with a payload comparison on a hash hit so the memo is exact rather than probabilistically exact. Probe census reproduces t131 exactly: **864 calls / 433 distinct / 431 hits** on base classic-on and **365 / 186 / 179** on benchy classic-on. **16-cell output:** every one of the 8 cells × 4 arms emits one hash and it is ticket 123's reference set (`90638bf3…`, `711c6334…`, `2ba5d84c…`, `a972b0f2…`, `b3b4ac5e…`, `4e31a2db…`, `6b865d4a…`, `62d6eedc…`); the host binary is identical between arms and only the planner guest differs. **Paired gate:** supports-on **4/4** at **15.78x / 7.39x / 14.97x / 16.54x** the floor — benchy classic-on **9.33 → 8.15 s (+1.18 s, +12.62 %)**, benchy arachne-on **9.17 → 8.62 s (+0.54 s)**, base classic-on **119.45 → 105.14 s (+14.31 s, +11.98 %)**, base arachne-on **119.88 → 104.02 s (+15.87 s)** — with CPU **+1.11 / +0.48 / +13.25 / +19.50 s**. **Supports-off:** inert by construction (`enable_support: false` returns from `SupportPlanner::run_support_geometry_with_analysis` before `plan_for_object`), so the mixed-sign medians (+0.04 / −0.07 / +0.05 / +0.40 s wall) are noise inside a 0.7 s / 4.9 s spread; the strict sign read is **6/8** and is recorded. **Ledger correction to t131:** the duplicate half converts at **1.006x** its thread-time (**14.31 s**, not the 6.5 s priced at the stage's 2.19x), because the duplicate occupancy calls were serial; benchy classic-on saves **1.93x** its 0.61 s thread-time, mechanism unmeasured. Route arithmetic unchanged: **15.5 %** of base classic-on's 92.5 s required prepass cut. Evidence: [`evidence/t132-planner-occupancy-memo/`](evidence/t132-planner-occupancy-memo/FINDINGS.md) (`verify.py` 176 checks, 11/11 negative controls rejected; both freshness gates exit 0).
 - [Common-stage per-op cost decomposition](issues/131-common-stage-per-op-cost-decomposition.md): **resolved (2026-11-09; Phase-1 decomposition — the per-op wrapper is not the lever, the sweep is 98.2–99.9 %, and operand size is the gap)** — probe seams in `polygon_ops`/`host`/`prepass`/`pipeline` split every common stage into WIT marshal / IR→Path64 conversion / Clipper2 sweep / PolyTree rebuild; the non-sweep wrapper is **0.19 %** of base-off primitive thread-time (**543 of 280,657 ms**) and **0.21 %** of base-on (**1,075 of 517,928 ms**), so the ticket's first gate branch fails by two orders of magnitude. Operand volume: shell **19.5 calls/layer at 4,608 points/call** (**44,463,545 points**, 89,825/layer), planner **290 calls/layer at 2,040 points/call** (**293,219,629 points**, 592,363/layer), kernel at parity (t70). **S5** priced at **22,964 → 1,937 ms** thread on 130 base-off layers (16.06x / 8.81x), wall **2,520 ms** (7.4x floor), but **not exact** (115/130 + 36/42 layers, max 0.71 / 0.59 mm², net −1.27 / +1.18 mm²). **S6** priced exact: `+0.35 mm` occupancy is **864 calls / 433 payloads**, duplicates **14,227.7 ms** thread → **6,504 ms** wall (6.4x floor), while the `−0.6/−0.8 mm` collision family is **1,350/1,350 distinct** (no hits). **Scheduling:** planner **2.19x** effective parallelism (benchy-on 1.68x) against 8.34–11.80x elsewhere → **25,625 ms** at 4x on base-on (27.7 % of its required cut). Gate: first branch fails everywhere (0.9–2.6 % of each stage's share), second fails literally (S5 17.7 %, S6 12.8 %, planner-at-4x 50.6 %), but the route-level stop rule does not fire. Go/no-go: **NO-GO for a per-op rewrite; GO (narrowed) for operand locality and planner scheduling.** Graduated [S6 memo](issues/132-planner-occupancy-memo.md), [S5 windowed offsets](issues/133-internal-bridge-windowed-offsets.md), [planner parallelism](issues/134-planner-effective-parallelism.md). Evidence: [`evidence/t131-per-op-decomposition/`](evidence/t131-per-op-decomposition/FINDINGS.md) (`verify.py` 150/150 checks + prose; 11/11 negative controls; four cells × two flag sets, every hash equal to the t123 candidate-ordinary set). No production edit; probe reverted; `build-guests --check` exit 0.
@@ -3175,12 +3231,17 @@ Standing decisions for this effort (2026-09-22):
   required prepass cut.** **S5 is banked exact (t133, 2026-11-09): windowing the
   negative erosion only is byte-identical and clears 8/8 at 1.66x–10.94x, worth
   +0.19 / +0.13 / +2.69 / +1.36 s on the classic cells (9.7 % of base-off's
-  required cut, 1.5 % of base-on's).** The one live priced shape is
-  [planner parallelism](issues/134-planner-effective-parallelism.md)
-  (scheduling); the unpriced fog is the **sweep-volume work-set family** —
-  per-vertex overhang distance, per-layer overhang polygons, canonical loop
-  projection — each of which needs its own Phase-1 before a candidate can be
-  priced. The per-layer phase joins the first program on both benchy cells.
+  required cut, 1.5 % of base-on's).** **Planner parallelism is answered
+  (t134, 2026-11-09): the stage is 2.64x with 14,249 ms of serial per-layer
+  occupancy (0.99x) against a 4.81x clip core; the occupancy batch and the
+  clip-to-12x diagnostic are two supports-on tranches (t135/t136), and even a
+  zero-cost planner leaves 2.87x–3.25x, so they are not the route; the gate
+  decision is [t137](issues/137-planner-scheduling-gate.md).** The live AFK
+  shapes are those two, blocked by 137; the unpriced fog is the **sweep-volume
+  work-set family** — per-vertex overhang distance, per-layer overhang
+  polygons, canonical loop projection — each of which needs its own Phase-1
+  before a candidate can be priced. The per-layer phase joins the first program
+  on both benchy cells.
 
 - **The bridge wave expansion is a per-layer partition change, and its benchy
   cost is the blocker (surfaced 2026-11-06 by

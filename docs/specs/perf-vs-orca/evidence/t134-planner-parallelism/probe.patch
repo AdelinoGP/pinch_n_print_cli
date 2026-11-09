@@ -1,0 +1,836 @@
+diff --git a/crates/slicer-core/src/lib.rs b/crates/slicer-core/src/lib.rs
+index 0ac2d6a3..addd6109 100644
+--- a/crates/slicer-core/src/lib.rs
++++ b/crates/slicer-core/src/lib.rs
+@@ -44,6 +44,7 @@ pub mod skeletal_trapezoidation;
+ pub mod smooth_outward;
+ pub mod stage_io;
+ pub mod support_regularize;
++pub mod t134_probe;
+ pub mod top_surface_split;
+ pub mod triangle_mesh_slicer;
+ #[cfg(feature = "host-algos")]
+diff --git a/crates/slicer-core/src/polygon_ops.rs b/crates/slicer-core/src/polygon_ops.rs
+index f93cce1e..8e1d319e 100644
+--- a/crates/slicer-core/src/polygon_ops.rs
++++ b/crates/slicer-core/src/polygon_ops.rs
+@@ -653,6 +653,12 @@ pub fn clip_polygons(
+         ClipOperation::Xor => ClipType::Xor,
+     };
+ 
++    // t134 probe: Clipper2 sweep thread-time (env-gated; reverted with
++    // `probe.patch`).
++    #[cfg(not(target_arch = "wasm32"))]
++    let t134_probe = crate::t134_probe::enabled();
++    #[cfg(not(target_arch = "wasm32"))]
++    let t134_sweep = t134_probe.then(std::time::Instant::now);
+     let mut tree = PolyTree64::new();
+     boolean_op_tree_64(
+         clip_type,
+@@ -661,6 +667,20 @@ pub fn clip_polygons(
+         &clip_paths,
+         &mut tree,
+     );
++    #[cfg(not(target_arch = "wasm32"))]
++    if t134_probe {
++        let in_points = subject_paths
++            .iter()
++            .chain(clip_paths.iter())
++            .map(|p| p.len() as u64)
++            .sum();
++        crate::t134_probe::record(
++            crate::t134_probe::OP_CLIP,
++            t134_sweep.map_or(0, |t| t.elapsed().as_nanos() as u64),
++            in_points,
++            (subject_paths.len() + clip_paths.len()) as u64,
++        );
++    }
+ 
+     expolygons_from_tree(&tree)
+ }
+@@ -839,8 +859,22 @@ fn inflate_once(
+     );
+     clip_offset.add_paths(&paths, join_type, EndType::Polygon);
+ 
++    // t134 probe: Clipper2 sweep thread-time (env-gated; reverted).
++    #[cfg(not(target_arch = "wasm32"))]
++    let t134_probe = crate::t134_probe::enabled();
++    #[cfg(not(target_arch = "wasm32"))]
++    let t134_sweep = t134_probe.then(std::time::Instant::now);
+     let mut tree = PolyTree64::new();
+     clip_offset.execute_tree(delta_units, &mut tree);
++    #[cfg(not(target_arch = "wasm32"))]
++    if t134_probe {
++        crate::t134_probe::record(
++            crate::t134_probe::OP_OFFSET,
++            t134_sweep.map_or(0, |t| t.elapsed().as_nanos() as u64),
++            paths.iter().map(|p| p.len() as u64).sum(),
++            paths.len() as u64,
++        );
++    }
+ 
+     expolygons_from_tree(&tree)
+ }
+@@ -970,8 +1004,22 @@ pub fn offset2_ex(
+     let delta2_units = delta2_mm * slicer_ir::UNITS_PER_MM;
+     let mut clip_offset = ClipperOffset::new(miter_limit, 0.0, false, false);
+     clip_offset.add_paths(&intermediate, join_type, EndType::Polygon);
++    // t134 probe: Clipper2 sweep thread-time (env-gated; reverted).
++    #[cfg(not(target_arch = "wasm32"))]
++    let t134_probe = crate::t134_probe::enabled();
++    #[cfg(not(target_arch = "wasm32"))]
++    let t134_sweep = t134_probe.then(std::time::Instant::now);
+     let mut tree = PolyTree64::new();
+     clip_offset.execute_tree(delta2_units, &mut tree);
++    #[cfg(not(target_arch = "wasm32"))]
++    if t134_probe {
++        crate::t134_probe::record(
++            crate::t134_probe::OP_OFFSET2_P2,
++            t134_sweep.map_or(0, |t| t.elapsed().as_nanos() as u64),
++            intermediate.iter().map(|p| p.len() as u64).sum(),
++            intermediate.len() as u64,
++        );
++    }
+ 
+     expolygons_from_tree(&tree)
+ }
+@@ -999,14 +1047,29 @@ fn offset2_ex_first_pass(
+     };
+     let paths1: Vec<Vec<Point64>> = polys.iter().flat_map(expolygon_to_paths).collect();
+     let delta1_units = delta1_mm * slicer_ir::UNITS_PER_MM;
+-    inflate_paths_64(
++    // t134 probe: Clipper2 sweep thread-time (env-gated; reverted).
++    #[cfg(not(target_arch = "wasm32"))]
++    let t134_probe = crate::t134_probe::enabled();
++    #[cfg(not(target_arch = "wasm32"))]
++    let t134_sweep = t134_probe.then(std::time::Instant::now);
++    let out = inflate_paths_64(
+         &paths1,
+         delta1_units,
+         join_type,
+         EndType::Polygon,
+         miter_limit,
+         0.0,
+-    )
++    );
++    #[cfg(not(target_arch = "wasm32"))]
++    if t134_probe {
++        crate::t134_probe::record(
++            crate::t134_probe::OP_OFFSET2_P1,
++            t134_sweep.map_or(0, |t| t.elapsed().as_nanos() as u64),
++            paths1.iter().map(|p| p.len() as u64).sum(),
++            paths1.len() as u64,
++        );
++    }
++    out
+ }
+ 
+ /// True when morphological opening by `delta_mm` would produce nothing.
+diff --git a/crates/slicer-core/src/t134_probe.rs b/crates/slicer-core/src/t134_probe.rs
+new file mode 100644
+index 00000000..610959ae
+--- /dev/null
++++ b/crates/slicer-core/src/t134_probe.rs
+@@ -0,0 +1,230 @@
++//! TEMPORARY probe for wayfinder ticket 134 — planner effective parallelism.
++//!
++//! Reverted before the take closes (`probe.patch` in the ticket's evidence
++//! directory is the only artifact). Compiled into the host binary only; the
++//! wasm guest build sees an empty module via the `cfg` below.
++//!
++//! Enabled at runtime by `PNP_T134_PROBE=1`. When disabled every entry point
++//! is one relaxed atomic load plus a branch.
++
++#![cfg(not(target_arch = "wasm32"))]
++
++use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
++use std::sync::OnceLock;
++
++/// Clipper2 boolean primitive.
++pub const OP_CLIP: usize = 0;
++/// Single-pass clipper2 inflate (`offset`, and both passes of `opening` /
++/// `closing_ex`).
++pub const OP_OFFSET: usize = 1;
++/// `offset2_ex`'s first (flat) pass.
++pub const OP_OFFSET2_P1: usize = 2;
++/// `offset2_ex`'s second (tree-capturing) pass.
++pub const OP_OFFSET2_P2: usize = 3;
++
++/// Op names in [`OP_NAMES`] order.
++pub const OP_NAMES: [&str; 4] = ["clip", "offset", "offset2_p1", "offset2_p2"];
++/// Number of op kinds.
++pub const N_OPS: usize = 4;
++
++/// Field indices in a snapshot row.
++pub const F_CALLS: usize = 0;
++/// Clipper2 `execute` / `execute_tree` / `inflate_paths_64` duration.
++pub const F_SWEEP: usize = 1;
++/// Input points fed to the primitive.
++pub const F_IN_POINTS: usize = 2;
++/// Input paths fed to the primitive.
++pub const F_IN_PATHS: usize = 3;
++/// Largest single-call sweep duration seen.
++pub const F_MAX_SWEEP: usize = 4;
++/// Largest single-call input point count seen.
++pub const F_MAX_IN_POINTS: usize = 5;
++const N_FIELDS: usize = 6;
++
++static DATA: [[AtomicU64; N_FIELDS]; N_OPS] = [
++    [
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++    ],
++    [
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++    ],
++    [
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++    ],
++    [
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++        AtomicU64::new(0),
++    ],
++];
++
++static BATCH_SERIAL_CALLS: AtomicU64 = AtomicU64::new(0);
++static BATCH_PARALLEL_CALLS: AtomicU64 = AtomicU64::new(0);
++static BATCH_SERIAL_REQUESTS: AtomicU64 = AtomicU64::new(0);
++static BATCH_PARALLEL_REQUESTS: AtomicU64 = AtomicU64::new(0);
++static SEQ: AtomicU64 = AtomicU64::new(0);
++static ON: OnceLock<bool> = OnceLock::new();
++
++/// Whether the probe is enabled (`PNP_T134_PROBE`).
++pub fn enabled() -> bool {
++    *ON.get_or_init(|| std::env::var_os("PNP_T134_PROBE").is_some())
++}
++
++/// Add `value` to one field of one op kind.
++pub fn add(op: usize, field: usize, value: u64) {
++    if value != 0 {
++        DATA[op][field].fetch_add(value, Relaxed);
++    }
++}
++
++/// Record one completed op. Durations are nanoseconds.
++pub fn record(op: usize, sweep_ns: u64, in_points: u64, in_paths: u64) {
++    if !enabled() {
++        return;
++    }
++    add(op, F_CALLS, 1);
++    add(op, F_SWEEP, sweep_ns);
++    add(op, F_IN_POINTS, in_points);
++    add(op, F_IN_PATHS, in_paths);
++    if sweep_ns > DATA[op][F_MAX_SWEEP].load(Relaxed) {
++        DATA[op][F_MAX_SWEEP].store(sweep_ns, Relaxed);
++    }
++    if in_points > DATA[op][F_MAX_IN_POINTS].load(Relaxed) {
++        DATA[op][F_MAX_IN_POINTS].store(in_points, Relaxed);
++    }
++}
++
++/// Record one `map_batch` decision.
++pub fn record_batch(parallel: bool, requests: usize) {
++    if !enabled() {
++        return;
++    }
++    let requests = requests as u64;
++    if parallel {
++        BATCH_PARALLEL_CALLS.fetch_add(1, Relaxed);
++        BATCH_PARALLEL_REQUESTS.fetch_add(requests, Relaxed);
++    } else {
++        BATCH_SERIAL_CALLS.fetch_add(1, Relaxed);
++        BATCH_SERIAL_REQUESTS.fetch_add(requests, Relaxed);
++    }
++}
++
++/// A consistent-ish snapshot of every counter.
++#[derive(Clone, Copy)]
++pub struct Snap {
++    ops: [[u64; N_FIELDS]; N_OPS],
++    batch_serial_calls: u64,
++    batch_parallel_calls: u64,
++    batch_serial_requests: u64,
++    batch_parallel_requests: u64,
++}
++
++/// Take a snapshot.
++pub fn snapshot() -> Snap {
++    let mut ops = [[0u64; N_FIELDS]; N_OPS];
++    for op in 0..N_OPS {
++        for field in 0..N_FIELDS {
++            ops[op][field] = DATA[op][field].load(Relaxed);
++        }
++    }
++    Snap {
++        ops,
++        batch_serial_calls: BATCH_SERIAL_CALLS.load(Relaxed),
++        batch_parallel_calls: BATCH_PARALLEL_CALLS.load(Relaxed),
++        batch_serial_requests: BATCH_SERIAL_REQUESTS.load(Relaxed),
++        batch_parallel_requests: BATCH_PARALLEL_REQUESTS.load(Relaxed),
++    }
++}
++
++fn print_counters(seq: u64, tag: &str, s: Snap) {
++    let mut line = format!("t134-snap seq={seq} tag={tag}");
++    for op in 0..N_OPS {
++        line.push_str(&format!(
++            " {}_calls={} {}_sweep_ns={} {}_in_points={} {}_in_paths={} {}_max_sweep_ns={} {}_max_in_points={}",
++            OP_NAMES[op],
++            s.ops[op][F_CALLS],
++            OP_NAMES[op],
++            s.ops[op][F_SWEEP],
++            OP_NAMES[op],
++            s.ops[op][F_IN_POINTS],
++            OP_NAMES[op],
++            s.ops[op][F_IN_PATHS],
++            OP_NAMES[op],
++            s.ops[op][F_MAX_SWEEP],
++            OP_NAMES[op],
++            s.ops[op][F_MAX_IN_POINTS],
++        ));
++    }
++    line.push_str(&format!(
++        " batch_serial_calls={} batch_parallel_calls={} batch_serial_requests={} batch_parallel_requests={}",
++        s.batch_serial_calls,
++        s.batch_parallel_calls,
++        s.batch_serial_requests,
++        s.batch_parallel_requests,
++    ));
++    eprintln!("{line}");
++}
++
++/// Print an absolute snapshot, tagged with `tag`.
++///
++/// Guest probes call this through the `log` import with a `T134SNAP:` message
++/// prefix; the host's `log` implementation recognises the prefix and calls
++/// here synchronously, so the line lands in call order.
++pub fn emit_snapshot(tag: &str) {
++    if !enabled() {
++        return;
++    }
++    let seq = SEQ.fetch_add(1, Relaxed);
++    print_counters(seq, tag, snapshot());
++}
++
++/// Print the per-op delta between two snapshots, tagged with `tag`.
++pub fn emit_delta(tag: &str, before: Snap, after: Snap) {
++    if !enabled() {
++        return;
++    }
++    let mut d = Snap {
++        ops: [[0u64; N_FIELDS]; N_OPS],
++        batch_serial_calls: after
++            .batch_serial_calls
++            .saturating_sub(before.batch_serial_calls),
++        batch_parallel_calls: after
++            .batch_parallel_calls
++            .saturating_sub(before.batch_parallel_calls),
++        batch_serial_requests: after
++            .batch_serial_requests
++            .saturating_sub(before.batch_serial_requests),
++        batch_parallel_requests: after
++            .batch_parallel_requests
++            .saturating_sub(before.batch_parallel_requests),
++    };
++    for op in 0..N_OPS {
++        for field in 0..N_FIELDS {
++            d.ops[op][field] = if field == F_MAX_SWEEP || field == F_MAX_IN_POINTS {
++                after.ops[op][field]
++            } else {
++                after.ops[op][field].saturating_sub(before.ops[op][field])
++            };
++        }
++    }
++    let seq = SEQ.fetch_add(1, Relaxed);
++    print_counters(seq, tag, d);
++}
+diff --git a/crates/slicer-runtime/src/prepass.rs b/crates/slicer-runtime/src/prepass.rs
+index 3fe7a96b..cbf7489e 100644
+--- a/crates/slicer-runtime/src/prepass.rs
++++ b/crates/slicer-runtime/src/prepass.rs
+@@ -301,6 +301,8 @@ fn execute_prepass_with_instrumentation_collecting(
+         let mut support_plan_producers: Vec<SupportPlanProducer> = Vec::new();
+ 
+         instrumentation.on_stage_start(&stage.stage_id, None);
++        // t134 probe: per-stage clipper split (env-gated; reverted).
++        let t134_stage_before = slicer_core::t134_probe::snapshot();
+         for module in &stage.modules {
+             instrumentation.on_module_start(&stage.stage_id, None, module.module_id());
+             // Build IR-typed borrow structs for the new slicer-wasm-host trait boundary.
+@@ -327,7 +329,16 @@ fn execute_prepass_with_instrumentation_collecting(
+                 support_geometry: blackboard.support_geometry().cloned(),
+                 _phantom: std::marker::PhantomData,
+             };
++            // t134 probe: isolate the planner module from the host producer,
++            // which shares the `PrePass::SupportGeometry` stage id
++            // (env-gated; reverted).
++            let t134_module_before = slicer_core::t134_probe::snapshot();
+             let run_result = runner.run_stage(&stage.stage_id, &live_module, input);
++            slicer_core::t134_probe::emit_delta(
++                &format!("module:{}", module.module_id().as_str()),
++                t134_module_before,
++                slicer_core::t134_probe::snapshot(),
++            );
+             // Fuel/scope marks (ADR-0055), drained before `on_module_end` so
+             // `--profile-verbose` still has this call's fold to attach to the
+             // `module_complete` that `on_module_end` emits.
+@@ -503,6 +514,11 @@ fn execute_prepass_with_instrumentation_collecting(
+             }
+         }
+         instrumentation.on_stage_end(&stage.stage_id, None);
++        slicer_core::t134_probe::emit_delta(
++            &format!("stage:{}", stage.stage_id.as_str()),
++            t134_stage_before,
++            slicer_core::t134_probe::snapshot(),
++        );
+     }
+ 
+     Ok(audits)
+@@ -1145,6 +1161,8 @@ fn run_builtin_stage(
+ ) -> Result<(), PrepassExecutionError> {
+     if should_run(blackboard) {
+         let before = blackboard.estimated_size();
++        // t134 probe: host built-in clipper split (env-gated; reverted).
++        let t134_stage_before = slicer_core::t134_probe::snapshot();
+         let guard =
+             StageInstrumentationGuard::start(instrumentation, stage_id, None, module_id, before);
+         // Attribute this built-in's native `slicer_core::polygon_ops` marks to
+@@ -1155,6 +1173,11 @@ fn run_builtin_stage(
+         let _native_owner = crate::profiling_report::NativeOwnerGuard::new(module_id);
+         execute(blackboard)?;
+         guard.finish(blackboard.estimated_size());
++        slicer_core::t134_probe::emit_delta(
++            &format!("stage:{stage_id}"),
++            t134_stage_before,
++            slicer_core::t134_probe::snapshot(),
++        );
+     }
+     Ok(())
+ }
+diff --git a/crates/slicer-wasm-host/src/batch.rs b/crates/slicer-wasm-host/src/batch.rs
+index 4f237fe0..32d62eb0 100644
+--- a/crates/slicer-wasm-host/src/batch.rs
++++ b/crates/slicer-wasm-host/src/batch.rs
+@@ -91,6 +91,8 @@ where
+ {
+     let estimated_work: u64 = requests.iter().map(cost).sum();
+     let mode = BatchMode::for_work(requests.len(), estimated_work);
++    // t134 probe: serial/parallel batch census (env-gated; reverted).
++    slicer_core::t134_probe::record_batch(mode == BatchMode::Parallel, requests.len());
+     (map_batch_with_mode(requests, mode, f), mode)
+ }
+ 
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index c5027a37..37c560bc 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -2594,7 +2594,14 @@ impl hs::Host for HostExecutionContext {
+             hs::LogLevel::Warn => "warn",
+             hs::LogLevel::Error => "error",
+         };
+-        self.log_messages.push((level_str.to_string(), message));
++        self.log_messages
++            .push((level_str.to_string(), message.clone()));
++        // t134 probe: a guest phase marker asks the host to print its live
++        // clipper counters synchronously, so phase boundaries and thread-time
++        // line up in the stderr stream (env-gated; reverted).
++        if let Some(tag) = message.strip_prefix("T134SNAP:") {
++            slicer_core::t134_probe::emit_snapshot(tag);
++        }
+         Ok(())
+     }
+ 
+diff --git a/modules/core-modules/tree-support-planner/src/lib.rs b/modules/core-modules/tree-support-planner/src/lib.rs
+index 4bd9d8fd..32596d02 100644
+--- a/modules/core-modules/tree-support-planner/src/lib.rs
++++ b/modules/core-modules/tree-support-planner/src/lib.rs
+@@ -69,11 +69,79 @@ use slicer_sdk::host_batch::{clip_polygons_batch, ClipRequest};
+ use slicer_sdk::prelude::*;
+ 
+ const DEFAULT_BRANCH_ANGLE_DEG: f32 = 45.0;
+-/// Canonical `support_line_width` (`PrintConfig.cpp`, `coFloatOrPercent`).
+-/// Canonical derives the support extrusion width from
+-/// `Flow::auto_extrusion_width(frSupportMaterial, nozzle_diameter)` when the
+-/// setting is 0; this module has no nozzle diameter in scope, so it takes the
+-/// same 0.35 mm default the G-code serializer already uses.
++// ---------------------------------------------------------------------------
++// [PERF-T134-PROBE] Temporary sub-phase wall brackets for wayfinder ticket 134
++// (planner effective parallelism). Probe-only: removed before close; grep
++// `PERF-T134-PROBE` for every site.
++// ---------------------------------------------------------------------------
++thread_local! {
++    static T134_SPANS: std::cell::RefCell<Vec<(&'static str, u64, u64)>> =
++        const { std::cell::RefCell::new(Vec::new()) };
++}
++
++struct T134Span {
++    name: &'static str,
++    start_us: u64,
++    open: bool,
++}
++
++impl T134Span {
++    fn new(name: &'static str) -> Self {
++        // The host recognises this prefix and prints its live clipper
++        // counters synchronously, so the phase's thread-time can be recovered
++        // from the stderr stream.
++        host::log_warn(&format!("T134SNAP:S:{name}"));
++        Self {
++            name,
++            start_us: host::now_us(),
++            open: true,
++        }
++    }
++
++    fn finish(&mut self) {
++        if !self.open {
++            return;
++        }
++        let dt = host::now_us().saturating_sub(self.start_us);
++        host::log_warn(&format!("T134SNAP:E:{}", self.name));
++        T134_SPANS.with(|spans| {
++            let mut spans = spans.borrow_mut();
++            match spans.iter_mut().find(|(name, _, _)| *name == self.name) {
++                Some(entry) => {
++                    entry.1 += dt;
++                    entry.2 += 1;
++                }
++                None => spans.push((self.name, dt, 1)),
++            }
++        });
++        self.open = false;
++    }
++}
++
++impl Drop for T134Span {
++    fn drop(&mut self) {
++        self.finish();
++    }
++}
++
++struct T134GuestGuard;
++
++impl Drop for T134GuestGuard {
++    fn drop(&mut self) {
++        T134_SPANS.with(|spans| {
++            let spans = std::mem::take(&mut *spans.borrow_mut());
++            if spans.is_empty() {
++                return;
++            }
++            let mut line = String::from("t134-guest");
++            for (name, us, calls) in &spans {
++                line.push_str(&format!(" {name}={us}us/{calls}"));
++            }
++            host::log_warn(&line);
++        });
++    }
++}
++
+ const DEFAULT_SUPPORT_LINE_WIDTH_MM: f32 = 0.35;
+ /// Canonical libslic3r `EPSILON`, in mm.
+ const CANONICAL_EPSILON_MM: f32 = 1e-4;
+@@ -1502,7 +1570,11 @@ fn flush_pending_emits(
+         return;
+     }
+     let refs: Vec<&RoleBuildInput> = inputs.iter().collect();
+-    let roles = build_roles_batched(&refs);
++    let roles = {
++        // [PERF-T134-PROBE]
++        let _t134 = T134Span::new("p6a_clip_core");
++        build_roles_batched(&refs)
++    };
+     for (meta, roles) in std::mem::take(meta).into_iter().zip(roles) {
+         if roles.is_empty() {
+             continue;
+@@ -2414,6 +2486,7 @@ impl PrepassModule for SupportPlanner {
+         output: &mut SupportGeometryOutput,
+         _config: &ConfigView,
+     ) -> Result<(), ModuleError> {
++        let _t134_guest = T134GuestGuard;
+         if !self.enabled {
+             return Ok(());
+         }
+@@ -2464,14 +2537,18 @@ impl PrepassModule for SupportPlanner {
+         // quantity with no recursion. Canonical inflates collision by
+         // `radius + m_xy_distance` and derives avoidance as a recurrence down
+         // the layer stack, which is what stops a branch being trapped.
+-        let volumes = TreeVolumes::new(
+-            layer_plan,
+-            support_geometry,
+-            support_analysis,
+-            self.branch_angle_deg,
+-            self.support_object_xy_distance,
+-            self.support_line_width_mm,
+-        );
++        let volumes = {
++            // [PERF-T134-PROBE]
++            let _t134 = T134Span::new("p0_volumes");
++            TreeVolumes::new(
++                layer_plan,
++                support_geometry,
++                support_analysis,
++                self.branch_angle_deg,
++                self.support_object_xy_distance,
++                self.support_line_width_mm,
++            )
++        };
+         // Both ladders are now keyed on the canonical *avoidance query radius*
+         // `calc_radius(dist_mm_to_top + height)` (global base-radius taper) and
+         // materialise on demand (see `PolySet`). Until packet 224 step 5 the
+@@ -2655,6 +2732,8 @@ impl SupportPlanner {
+         // SupportTest.stl before this gate: top=1 emitted 2 interface layers,
+         // top=2 emitted 4, top=3 emitted 5, while traditional (single-source)
+         // emitted the correct 1/2/3.
++        // [PERF-T134-PROBE]
++        let mut t134_contacts = T134Span::new("p2_contacts");
+         let has_analysis_contacts = support_analysis.candidates.iter().any(|candidate| {
+             candidate.object_id == obj.object_id
+                 && candidate
+@@ -2972,6 +3051,7 @@ impl SupportPlanner {
+             .filter(|layer| !layer.is_empty())
+             .count();
+         let contact_stats = contact_stats(&contact_positions, nonempty_layers);
++        t134_contacts.finish();
+ 
+         // ── Step 10: top-down propagation + per-layer MST merging ────────
+         // Walk from top layer down to layer 0. Each iteration:
+@@ -3008,6 +3088,8 @@ impl SupportPlanner {
+         // Per-layer committed state for the emit pass.
+         let mut layer_records: Vec<LayerRecord> = Vec::new();
+ 
++        // [PERF-T134-PROBE]
++        let mut t134_drop = T134Span::new("p3_drop");
+         // Iterate top → bottom.
+         let top = num_layers as usize;
+         for layer_rev in (0..top).rev() {
+@@ -3667,7 +3749,12 @@ impl SupportPlanner {
+         // collision gate in the emit pass runs *after* this, so a smoothed
+         // position is still validated against model occupancy before it is
+         // allowed to print.
+-        smooth_nodes(&mut arena, &layer_records, self.support_line_width_mm);
++        t134_drop.finish();
++        {
++            // [PERF-T134-PROBE]
++            let _t134 = T134Span::new("p5_smooth");
++            smooth_nodes(&mut arena, &layer_records, self.support_line_width_mm);
++        }
+ 
+         // Canonical `draw_circles`' `CIRCLE_RESOLUTION`: a full 100-gon per
+         // node per layer is unaffordable once the model carries hundreds of
+@@ -3735,19 +3822,23 @@ impl SupportPlanner {
+             // Host analysis carries the exact per-layer occupancy used by the
+             // closure gate. Prefer it for emission checks when present; the
+             // support-outline cache remains the compatibility fallback.
+-            let model_collision: Vec<ExPolygon> = inflate_model_occupancy_memoized(
+-                &mut occupancy_memo,
+-                support_analysis
+-                    .model_occupancy
+-                    .iter()
+-                    .filter(|entry| {
+-                        entry.object_id == obj.object_id
+-                            && entry.global_support_layer_index == current_global_layer_index
+-                    })
+-                    .flat_map(|entry| entry.polygons.iter().cloned())
+-                    .collect::<Vec<_>>(),
+-                self.support_object_xy_distance,
+-            );
++            let model_collision: Vec<ExPolygon> = {
++                // [PERF-T134-PROBE]
++                let _t134 = T134Span::new("p6d_occupancy");
++                inflate_model_occupancy_memoized(
++                    &mut occupancy_memo,
++                    support_analysis
++                        .model_occupancy
++                        .iter()
++                        .filter(|entry| {
++                            entry.object_id == obj.object_id
++                                && entry.global_support_layer_index == current_global_layer_index
++                        })
++                        .flat_map(|entry| entry.polygons.iter().cloned())
++                        .collect::<Vec<_>>(),
++                    self.support_object_xy_distance,
++                )
++            };
+             // Ticket 19: foreign support territory (grown by the clearance)
+             // is carved like the model, so no tree role area survives inside
+             // the other family's half.
+@@ -3822,49 +3913,57 @@ impl SupportPlanner {
+             let top_n = self.support_interface_top_layers.max(0) as u32;
+             let base_n = self.num_top_base_interface_layers as usize;
+             let bottom_n = self.support_interface_bottom_layers.max(0) as u32;
+-            let node_roles: Vec<InterfaceRole> = active_nodes
+-                .iter()
+-                .map(|id| {
+-                    let node = &arena[*id];
+-                    // Floor: the branch lands on the model rather than the plate.
+-                    // The lookup is by *global* layer index; it previously mixed
+-                    // in `layer_rev`, the reverse loop counter, and indexed the
+-                    // collision cache with it.
+-                    let is_floor = bottom_n > 0
+-                        && !self.support_on_build_plate_only
+-                        && (1..=bottom_n).any(|k| {
+-                            cache_idx.checked_sub(k as usize).is_some_and(|below| {
+-                                point_in_any_expoly(volumes.outlines_at(below), node.x(), node.y())
+-                            })
+-                        });
+-                    // Roof: canonical `node->support_roof_layers_below > 0`,
+-                    // the per-node counter seeded at contact creation and
+-                    // decremented once per descendant (F-1). The old
+-                    // `roof_band_layers_emitted` object-wide counter is gone:
+-                    // it starved every overhang after the first of interface.
+-                    let is_roof = top_n > 0 && node.is_roof();
+-                    let mut below_roof = 0usize;
+-                    let mut reached_roof = false;
+-                    let mut ancestor = node.parent;
+-                    while let Some(parent_id) = ancestor {
+-                        below_roof += 1;
+-                        if arena[parent_id].is_roof() {
+-                            reached_roof = true;
+-                            break;
++            let node_roles: Vec<InterfaceRole> = {
++                // [PERF-T134-PROBE]
++                let _t134 = T134Span::new("p6e_node_roles");
++                active_nodes
++                    .iter()
++                    .map(|id| {
++                        let node = &arena[*id];
++                        // Floor: the branch lands on the model rather than the plate.
++                        // The lookup is by *global* layer index; it previously mixed
++                        // in `layer_rev`, the reverse loop counter, and indexed the
++                        // collision cache with it.
++                        let is_floor = bottom_n > 0
++                            && !self.support_on_build_plate_only
++                            && (1..=bottom_n).any(|k| {
++                                cache_idx.checked_sub(k as usize).is_some_and(|below| {
++                                    point_in_any_expoly(
++                                        volumes.outlines_at(below),
++                                        node.x(),
++                                        node.y(),
++                                    )
++                                })
++                            });
++                        // Roof: canonical `node->support_roof_layers_below > 0`,
++                        // the per-node counter seeded at contact creation and
++                        // decremented once per descendant (F-1). The old
++                        // `roof_band_layers_emitted` object-wide counter is gone:
++                        // it starved every overhang after the first of interface.
++                        let is_roof = top_n > 0 && node.is_roof();
++                        let mut below_roof = 0usize;
++                        let mut reached_roof = false;
++                        let mut ancestor = node.parent;
++                        while let Some(parent_id) = ancestor {
++                            below_roof += 1;
++                            if arena[parent_id].is_roof() {
++                                reached_roof = true;
++                                break;
++                            }
++                            ancestor = arena[parent_id].parent;
+                         }
+-                        ancestor = arena[parent_id].parent;
+-                    }
+-                    if is_floor {
+-                        InterfaceRole::Floor
+-                    } else if is_roof {
+-                        InterfaceRole::Roof
+-                    } else if reached_roof && below_roof <= base_n {
+-                        InterfaceRole::Base
+-                    } else {
+-                        InterfaceRole::Body
+-                    }
+-                })
+-                .collect();
++                        if is_floor {
++                            InterfaceRole::Floor
++                        } else if is_roof {
++                            InterfaceRole::Roof
++                        } else if reached_roof && below_roof <= base_n {
++                            InterfaceRole::Base
++                        } else {
++                            InterfaceRole::Body
++                        }
++                    })
++                    .collect()
++            };
+             // ── Canonical `draw_circles`: one ellipse per node per layer ──
+             //
+             // Canonical draws every surviving node's own cross-section into
+@@ -3875,6 +3974,8 @@ impl SupportPlanner {
+             // module drew nothing per node at all — only the swept capsules
+             // between MST endpoints — so an isolated or terminal node
+             // contributed no area and a leaning branch had no elongation.
++            // [PERF-T134-PROBE]
++            let mut t134_emit_geometry = T134Span::new("p6f_emit_geometry");
+             let mut branch_areas: Vec<ExPolygon> = Vec::new();
+             let mut interface_areas: Vec<ExPolygon> = Vec::new();
+             let mut base_areas: Vec<ExPolygon> = Vec::new();
+@@ -4107,6 +4208,8 @@ impl SupportPlanner {
+                 }
+             }
+ 
++            t134_emit_geometry.finish();
++
+             // Emit when *either* structural or interface geometry exists. Gating
+             // on `branch_segments` alone was what collapsed the branch shaft in
+             // an earlier attempt at this split: layers carrying only interface
+@@ -4192,22 +4295,27 @@ impl SupportPlanner {
+                     )) {
+                         continue;
+                     }
+-                    let model_occupancy: Vec<ExPolygon> = inflate_model_occupancy_memoized(
+-                        &mut occupancy_memo,
+-                        support_analysis
+-                            .model_occupancy
+-                            .iter()
+-                            .filter(|entry| {
+-                                entry.object_id == obj.object_id
+-                                    && entry.global_support_layer_index
+-                                        == current_global_layer_index
+-                                    && entry.region_id == region_id
+-                                    && entry.variant_chain.as_slice() == variant_chain.as_slice()
+-                            })
+-                            .flat_map(|entry| entry.polygons.iter().cloned())
+-                            .collect::<Vec<_>>(),
+-                        self.support_object_xy_distance,
+-                    );
++                    let model_occupancy: Vec<ExPolygon> = {
++                        // [PERF-T134-PROBE]
++                        let _t134 = T134Span::new("p6d_occupancy");
++                        inflate_model_occupancy_memoized(
++                            &mut occupancy_memo,
++                            support_analysis
++                                .model_occupancy
++                                .iter()
++                                .filter(|entry| {
++                                    entry.object_id == obj.object_id
++                                        && entry.global_support_layer_index
++                                            == current_global_layer_index
++                                        && entry.region_id == region_id
++                                        && entry.variant_chain.as_slice()
++                                            == variant_chain.as_slice()
++                                })
++                                .flat_map(|entry| entry.polygons.iter().cloned())
++                                .collect::<Vec<_>>(),
++                            self.support_object_xy_distance,
++                        )
++                    };
+                     let role_collision: Vec<ExPolygon> = if model_occupancy.is_empty() {
+                         collision_polys.to_vec()
+                     } else {
