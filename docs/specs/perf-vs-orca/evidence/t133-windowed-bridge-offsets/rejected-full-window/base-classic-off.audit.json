@@ -1,0 +1,21 @@
+{
+  "appendix_changed_lines": [],
+  "baseline_sha256": "b3b4ac5e885c7f637b98f79eca21901a41d85739627d4dcb40820663c15e90ef",
+  "candidate_sha256": "f351cda8065f3381e4779bb3d85c6857cfc51eec1f46c9923bd50cce25dd2a65",
+  "cell": "base-classic-off",
+  "changed_types": {
+    "Internal Bridge": {
+      "changed_lines": 5,
+      "geometry": 5
+    }
+  },
+  "fill_geometry_lines": 5,
+  "first_changed_z": {
+    "Internal Bridge": 33.0
+  },
+  "layer_count": 495,
+  "structural_changed_types": {},
+  "structural_geometry_identical": true,
+  "structural_geometry_lines": 0,
+  "structural_geometry_samples": []
+}

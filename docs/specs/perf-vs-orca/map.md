@@ -82,6 +82,24 @@ of base classic-on's required prepass cut: a banked keep, not a destination step
 and the human's brim ruling
 [130](issues/130-brim-matched-settings-ruling.md).
 
+**Destination status (2026-11-09,
+[t133](issues/133-internal-bridge-windowed-offsets.md)): S5 is banked exact;
+the frontier is planner scheduling and the brim ruling.** Windowing the
+**negative** `deep_infill_area` erosion only (candidate-bbox operand grown by the
+miter reach) is **byte-identical in all 16 output cells** — every arm
+reproduces t123's reference set — and clears the 0.80 % floor in **8/8** at
+**1.66x–10.94x** with CPU corroborating: benchy **+0.19 / +0.13 / +0.14 /
++0.13 s**, base classic-off **+2.69 s (+6.34 %)**, base classic-on **+1.36 s
+(+1.33 % over 12 pairs)**, base arachne-off **+3.84 s (+8.76 %)**, base
+arachne-on **+4.77 s (+4.46 %)**. Windowing the positive offset too is
+**rejected**: `internal_bridge_angles` reads the whole-layer clip area, and the
+variant moves 8 benchy bridge layers by up to 22.09 mm. Route arithmetic: this is
+**9.7 %** of base classic-off's required prepass cut and **1.5 %** of base
+classic-on's — a banked keep, not a destination step. **Frontier:**
+[planner effective parallelism](issues/134-planner-effective-parallelism.md)
+and the human's brim ruling
+[130](issues/130-brim-matched-settings-ruling.md).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -168,7 +186,43 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-09, thirty-fifth session — the t132 take):**
+**Current selection scope (2026-11-09, thirty-sixth session — the t133 take):**
+the human said "Continue the perf vs orca map" (no ticket named); **133 was the
+first unblocked, unclaimed AFK child in order** (130 is the human's grilling), so
+it was claimed and **resolved as an exact measured KEEP**. Headline: **window the
+negative erosion only; the positive offset is globally consumed.** The
+formulation is `internal_bridge_offset_window`: the union bbox of the layer's
+`internal_solid_fill` candidates grown by `(2 x 4.5 + 1) x qualify_spacing_mm`,
+applied to the `deep_infill_area` operand of the `-4.5 x spacing` erosion. Both
+consumers (`qualified.retain` and the angle filter) read the eroded set only
+inside a candidate, and the window boundary is outside the erosion's
+`2 x 4.5 x spacing` reach, so the covered set is unchanged. **The first candidate
+windowed both offsets and is rejected:** it is confined to the bridge role (no
+structural geometry lines) but moves 8 benchy bridge layers by up to **22.09 mm**
+because `internal_bridge_angles` intersects the whole-layer `expansion_area` with
+`deep_infill_clip_area` and samples that whole-layer anchor set. **16-cell
+output:** 8 cells x 4 arms, one hash per cell, every hash t123's reference set
+(`90638bf3…`, `711c6334…`, `2ba5d84c…`, `a972b0f2…`, `b3b4ac5e…`, `4e31a2db…`,
+`6b865d4a…`, `62d6eedc…`); delta audit is equality, **zero moved lines**. **Paired
+gate:** **8/8** at **1.66x–10.94x** the 0.80 % floor with CPU corroborating in
+every cell — benchy **4.83 → 4.64 / 8.84 → 8.71 / 5.01 → 4.87 / 8.92 → 8.79 s**,
+base **42.51 → 39.82 / 102.45 → 101.09 / 43.82 → 39.98 / 106.95 → 102.18 s**.
+**Sequential sampling disclosed:** 3 pairs per cell, extended to 6 for benchy
+arachne-on and 12 for base classic-on (pre-declared, all pairs retained; the
+12-pair base-on median is **+1.36 s, 1.66x floor**, 7/12 wall-positive and 12/12
+CPU-positive). **Ledger correction to t131:** the erosion's thread-to-wall
+conversion is **2.80x / 3.96x / 3.27x / 6.42x**, not the stage's 5.25–8.78x, so
+the probe understated benchy-off by 1.7x and base-off by 2.3x. Route arithmetic:
+**9.7 %** of base-off's 27.7 s required cut, **1.5 %** of base-on's 92.5 s — a
+banked keep, not a destination step. Disclosures: box load **21.2 %** before the
+campaign and **10.9 %** later (DWM/Chrome/Xbox/Discord), 6 physical / 12 logical
+cores; three measurement windows; no Orca arm. Evidence:
+[`evidence/t133-windowed-bridge-offsets/`](evidence/t133-windowed-bridge-offsets/FINDINGS.md)
+(`verify.py` 357 checks, 17/17 negative controls; `rejected-full-window/`
+preserves the positive-offset experiment and its audits). **Frontier now: 134
+(AFK) and 130 (HITL).**
+
+**Previous selection scope (2026-11-09, thirty-fifth session — the t132 take):**
 the human said "Continue the perf vs orca map" (no ticket named); **132 was the
 first unblocked, unclaimed AFK child in order** (130 is the human's grilling), so
 it was claimed and **resolved as a measured BUILD**. Headline: **the duplicate
@@ -2866,6 +2920,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Internal-bridge offsets on a candidate-bbox operand](issues/133-internal-bridge-windowed-offsets.md): **resolved (2026-11-09; exact measured KEEP — window the negative erosion only, 8/8 at 1.66x–10.94x the floor)** — `internal_bridge_offset_window` clips the `deep_infill_area` operand of the `-4.5 x spacing` erosion to the union bbox of the layer's `internal_solid_fill` candidates grown by `(2 x 4.5 + 1) x qualify_spacing`; both consumers (`qualified.retain`, the `internal_unsupported_area` filter in `internal_bridge_angles`) are candidate-local and the window boundary is outside the erosion's `2 x 4.5 x spacing` miter reach, so the covered set is unchanged. **16-cell output:** 8 cells x 4 arms, one hash per cell, all equal to t123's reference set (`90638bf3…`, `711c6334…`, `2ba5d84c…`, `a972b0f2…`, `b3b4ac5e…`, `4e31a2db…`, `6b865d4a…`, `62d6eedc…`), so the delta audit is equality — **zero moved lines**. **The first candidate windowed both offsets and is rejected:** confined to the bridge role (0 structural geometry lines) but moves **8 benchy bridge layers** by up to **22.09 mm** and 5 base bridge lines, because `internal_bridge_angles` intersects the whole-layer sparse `expansion_area` with `deep_infill_clip_area` and samples that anchor set; the artifact and both audits are preserved. **Paired gate:** **8/8** at **1.66x–10.94x** the 0.80 % floor with CPU corroborating — benchy **4.83 → 4.64 / 8.84 → 8.71 / 5.01 → 4.87 / 8.92 → 8.79 s**, base **42.51 → 39.82 / 102.45 → 101.09 / 43.82 → 39.98 / 106.95 → 102.18 s**. **Sequential sampling:** 3 pairs per cell, extended to 6 for benchy arachne-on and 12 for base classic-on (pre-declared; all pairs retained; 12-pair base-on **+1.36 s, 1.66x floor**, 7/12 wall-positive, 12/12 CPU-positive). **Ledger correction to t131:** the erosion converts thread-time to wall at **2.80x / 3.96x / 3.27x / 6.42x**, not the stage's 5.25–8.78x. Route arithmetic: **9.7 %** of base-off's 27.7 s required cut and **1.5 %** of base-on's 92.5 s — a banked keep, not a destination step. Disclosures: box load **21.2 %** before / **10.9 %** later (DWM/Chrome/Xbox/Discord), 6 physical / 12 logical cores; three windows; no Orca arm. Evidence: [`evidence/t133-windowed-bridge-offsets/`](evidence/t133-windowed-bridge-offsets/FINDINGS.md) (`verify.py` 357 checks, 17/17 negative controls).
 - [Planner occupancy memo: serve the duplicate half of the singular offset imports from a content cache](issues/132-planner-occupancy-memo.md): **resolved (2026-11-09; measured BUILD — the duplicate half is serial and worth 12–13 % of both base supports-on cells)** — a per-layer content-keyed memo (`OccupancyMemoEntry` + `occupancy_offset_key` + `inflate_model_occupancy_memoized`) serves the role carve's `+support_object_xy_distance` offset from the emit check's when the payload is byte-equal, with a payload comparison on a hash hit so the memo is exact rather than probabilistically exact. Probe census reproduces t131 exactly: **864 calls / 433 distinct / 431 hits** on base classic-on and **365 / 186 / 179** on benchy classic-on. **16-cell output:** every one of the 8 cells × 4 arms emits one hash and it is ticket 123's reference set (`90638bf3…`, `711c6334…`, `2ba5d84c…`, `a972b0f2…`, `b3b4ac5e…`, `4e31a2db…`, `6b865d4a…`, `62d6eedc…`); the host binary is identical between arms and only the planner guest differs. **Paired gate:** supports-on **4/4** at **15.78x / 7.39x / 14.97x / 16.54x** the floor — benchy classic-on **9.33 → 8.15 s (+1.18 s, +12.62 %)**, benchy arachne-on **9.17 → 8.62 s (+0.54 s)**, base classic-on **119.45 → 105.14 s (+14.31 s, +11.98 %)**, base arachne-on **119.88 → 104.02 s (+15.87 s)** — with CPU **+1.11 / +0.48 / +13.25 / +19.50 s**. **Supports-off:** inert by construction (`enable_support: false` returns from `SupportPlanner::run_support_geometry_with_analysis` before `plan_for_object`), so the mixed-sign medians (+0.04 / −0.07 / +0.05 / +0.40 s wall) are noise inside a 0.7 s / 4.9 s spread; the strict sign read is **6/8** and is recorded. **Ledger correction to t131:** the duplicate half converts at **1.006x** its thread-time (**14.31 s**, not the 6.5 s priced at the stage's 2.19x), because the duplicate occupancy calls were serial; benchy classic-on saves **1.93x** its 0.61 s thread-time, mechanism unmeasured. Route arithmetic unchanged: **15.5 %** of base classic-on's 92.5 s required prepass cut. Evidence: [`evidence/t132-planner-occupancy-memo/`](evidence/t132-planner-occupancy-memo/FINDINGS.md) (`verify.py` 176 checks, 11/11 negative controls rejected; both freshness gates exit 0).
 - [Common-stage per-op cost decomposition](issues/131-common-stage-per-op-cost-decomposition.md): **resolved (2026-11-09; Phase-1 decomposition — the per-op wrapper is not the lever, the sweep is 98.2–99.9 %, and operand size is the gap)** — probe seams in `polygon_ops`/`host`/`prepass`/`pipeline` split every common stage into WIT marshal / IR→Path64 conversion / Clipper2 sweep / PolyTree rebuild; the non-sweep wrapper is **0.19 %** of base-off primitive thread-time (**543 of 280,657 ms**) and **0.21 %** of base-on (**1,075 of 517,928 ms**), so the ticket's first gate branch fails by two orders of magnitude. Operand volume: shell **19.5 calls/layer at 4,608 points/call** (**44,463,545 points**, 89,825/layer), planner **290 calls/layer at 2,040 points/call** (**293,219,629 points**, 592,363/layer), kernel at parity (t70). **S5** priced at **22,964 → 1,937 ms** thread on 130 base-off layers (16.06x / 8.81x), wall **2,520 ms** (7.4x floor), but **not exact** (115/130 + 36/42 layers, max 0.71 / 0.59 mm², net −1.27 / +1.18 mm²). **S6** priced exact: `+0.35 mm` occupancy is **864 calls / 433 payloads**, duplicates **14,227.7 ms** thread → **6,504 ms** wall (6.4x floor), while the `−0.6/−0.8 mm` collision family is **1,350/1,350 distinct** (no hits). **Scheduling:** planner **2.19x** effective parallelism (benchy-on 1.68x) against 8.34–11.80x elsewhere → **25,625 ms** at 4x on base-on (27.7 % of its required cut). Gate: first branch fails everywhere (0.9–2.6 % of each stage's share), second fails literally (S5 17.7 %, S6 12.8 %, planner-at-4x 50.6 %), but the route-level stop rule does not fire. Go/no-go: **NO-GO for a per-op rewrite; GO (narrowed) for operand locality and planner scheduling.** Graduated [S6 memo](issues/132-planner-occupancy-memo.md), [S5 windowed offsets](issues/133-internal-bridge-windowed-offsets.md), [planner parallelism](issues/134-planner-effective-parallelism.md). Evidence: [`evidence/t131-per-op-decomposition/`](evidence/t131-per-op-decomposition/FINDINGS.md) (`verify.py` 150/150 checks + prose; 11/11 negative controls; four cells × two flag sets, every hash equal to the t123 candidate-ordinary set). No production edit; probe reverted; `build-guests --check` exit 0.
 - [Prepass work-set and per-op parity against canonical v2.5.0](issues/129-prepass-work-set-per-op-parity.md): **resolved (2026-11-08; Phase-1 decomposition — the work set is not the lever, per-op cost / operand locality is)** — canonical does *more* per-layer Clipper work than PnP in the shell cluster (≈45–60 vs ≈15–25 ops/layer; PnP omits `process_external_surfaces`' wave expansion, `DEV-200`), yet its **whole prepass** is **15.7x / 9.8x** cheaper on base classic-off / -on, so PnP does not already compute canonical's work set at canonical's per-op cost and the kill condition is not met. The Rust Clipper2 kernel is at parity (t70), so the gap is above the kernel: canonical bbox-clips (`clip_clipper_polygons_with_subject_bbox`), caches collision/avoidance by `{radius, layer}`, and uses per-vertex `LinesDistancer` queries; PnP's hot ops are whole-layer and its planner occupancy is uncached (32.7 s / 864 calls, t113). The clean PnP-local deletions (overhang bands 9,689 ms, whole-mesh facet union 4,260 ms, seam inset 92.4 % of 1,718 ms) are **15.5 s = 55.8 % of base-off's 27.8 s cut** and **1.6 s = 17.5 %** of base-on's — a first tranche, not the route. **Prepass at canonical cost wins base classic-off only (0.787x), ties base classic-on (1.012x) and loses both benchy cells (1.053x / 1.075x); full geometry parity wins all four (0.335x / 0.661x / 0.550x / 0.704x).** Go/no-go: **GO for the engine rewrite, NO-GO for a work-set-only rewrite**; the next gate is [common-stage per-op cost decomposition](issues/131-common-stage-per-op-cost-decomposition.md). Evidence: [`evidence/t129-prepass-work-set-parity/`](evidence/t129-prepass-work-set-parity/FINDINGS.md) (`verify.py` 4 cells / 6 shapes / 20 claims; 8/8 negative controls; 14 citations at `40ecc66f78`). No production edit.
@@ -3117,8 +3172,10 @@ Standing decisions for this effort (2026-09-22):
   0.704x).** **S6 is banked (t132, 2026-11-09): the duplicate occupancy half is
   exact, serial and worth +1.18 / +0.54 / +14.31 / +15.87 s on the four
   supports-on cells (7.39x–16.54x the floor), 15.5 % of base classic-on's
-  required prepass cut.** The two live priced shapes are
-  [S5](issues/133-internal-bridge-windowed-offsets.md) (bounded-delta) and
+  required prepass cut.** **S5 is banked exact (t133, 2026-11-09): windowing the
+  negative erosion only is byte-identical and clears 8/8 at 1.66x–10.94x, worth
+  +0.19 / +0.13 / +2.69 / +1.36 s on the classic cells (9.7 % of base-off's
+  required cut, 1.5 % of base-on's).** The one live priced shape is
   [planner parallelism](issues/134-planner-effective-parallelism.md)
   (scheduling); the unpriced fog is the **sweep-volume work-set family** —
   per-vertex overhang distance, per-layer overhang polygons, canonical loop
