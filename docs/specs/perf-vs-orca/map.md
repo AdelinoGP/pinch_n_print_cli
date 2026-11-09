@@ -64,6 +64,24 @@ base-on). No single shape reaches a cell's required cut. **Frontier:**
 and the human's brim ruling
 [130](issues/130-brim-matched-settings-ruling.md).
 
+**Destination status (2026-11-09,
+[t132](issues/132-planner-occupancy-memo.md)): S6 is banked; the frontier is S5
+and planner scheduling.** The occupancy memo reproduces t131's duplicate census
+exactly (**864 calls / 431 hits** base classic-on, **365 / 179** benchy
+classic-on), is byte-identical across all 16 arm/cell runs, and clears the
+supports-on floor at **7.39x–16.54x** with CPU corroborating: **+1.18 s**
+(benchy classic-on), **+0.54 s** (benchy arachne-on), **+14.31 s** (base
+classic-on), **+15.87 s** (base arachne-on). The measured wall saving is
+**1.006x** the duplicate thread-time on base classic-on — the duplicate offsets
+were serial, so t131's 6.5 s wall-equivalent understated the shape by 2.2x — and
+the four supports-off cells are inert (`enable_support: false` returns before
+either memo site), their mixed-sign medians disclosed as noise. This is **15.5 %**
+of base classic-on's required prepass cut: a banked keep, not a destination step.
+**Frontier:** [S5 windowed offsets](issues/133-internal-bridge-windowed-offsets.md),
+[planner effective parallelism](issues/134-planner-effective-parallelism.md),
+and the human's brim ruling
+[130](issues/130-brim-matched-settings-ruling.md).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -150,7 +168,39 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-09, thirty-fourth session — the t131 take):**
+**Current selection scope (2026-11-09, thirty-fifth session — the t132 take):**
+the human said "Continue the perf vs orca map" (no ticket named); **132 was the
+first unblocked, unclaimed AFK child in order** (130 is the human's grilling), so
+it was claimed and **resolved as a measured BUILD**. Headline: **the duplicate
+occupancy half is serial and worth 12–13 % of both base supports-on cells.** A
+per-layer content-keyed memo (`OccupancyMemoEntry`, `occupancy_offset_key`,
+`inflate_model_occupancy_memoized`) serves the role carve's
+`+support_object_xy_distance` offset from the emit check's when the payload is
+byte-equal, comparing the payload on a hash hit so the memo is exact. Probe
+census (counters reverted before the campaign): **864 calls / 433 distinct / 431
+hits** on base classic-on and **365 / 186 / 179** on benchy classic-on —
+identical to t131. **16-cell output:** one hash per cell across four arms, every
+hash ticket 123's reference set; the host binary is identical between arms.
+**Paired gate:** supports-on **4/4** at **15.78x / 7.39x / 14.97x / 16.54x** the
+floor (benchy classic-on **9.33 → 8.15 s**, benchy arachne-on **9.17 → 8.62 s**,
+base classic-on **119.45 → 105.14 s**, base arachne-on **119.88 → 104.02 s**),
+CPU **+1.11 / +0.48 / +13.25 / +19.50 s**. The four supports-off cells are inert
+by construction (`enable_support: false` returns from
+`run_support_geometry_with_analysis` before `plan_for_object`), so their
+mixed-sign medians are noise; the strict sign read is **6/8** and is recorded
+rather than hidden. **Ledger correction to t131:** the duplicate half converts at
+**1.006x** its thread-time on base classic-on (**14.31 s**, not the **6.5 s**
+priced at the stage's 2.19x) because the duplicate calls were serial; benchy
+classic-on saves **1.93x** its 0.61 s thread-time, mechanism unmeasured. Route
+arithmetic is unchanged: **15.5 %** of base classic-on's 92.5 s required prepass
+cut. Disclosures: two measurement windows plus a restart-completed pair; the
+probe arm is not the campaign arm; box load 2 % / 7 % / 4 %; no Orca arm; the
+multi-region caveat holds. Evidence:
+[`evidence/t132-planner-occupancy-memo/`](evidence/t132-planner-occupancy-memo/FINDINGS.md)
+(`verify.py` 176 checks, 11/11 negative controls rejected; both freshness gates
+exit 0). **Frontier now: 133 (AFK), 134 (AFK), 130 (HITL).**
+
+**Previous selection scope (2026-11-09, thirty-fourth session — the t131 take):**
 the human said "Continue the perf vs orca map" (no ticket named); **131 was the
 only open AFK child** (130 is the human's grilling), so it was claimed and
 **resolved as a Phase-1 per-op decomposition**. Headline: **the per-op wrapper
@@ -2816,6 +2866,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Planner occupancy memo: serve the duplicate half of the singular offset imports from a content cache](issues/132-planner-occupancy-memo.md): **resolved (2026-11-09; measured BUILD — the duplicate half is serial and worth 12–13 % of both base supports-on cells)** — a per-layer content-keyed memo (`OccupancyMemoEntry` + `occupancy_offset_key` + `inflate_model_occupancy_memoized`) serves the role carve's `+support_object_xy_distance` offset from the emit check's when the payload is byte-equal, with a payload comparison on a hash hit so the memo is exact rather than probabilistically exact. Probe census reproduces t131 exactly: **864 calls / 433 distinct / 431 hits** on base classic-on and **365 / 186 / 179** on benchy classic-on. **16-cell output:** every one of the 8 cells × 4 arms emits one hash and it is ticket 123's reference set (`90638bf3…`, `711c6334…`, `2ba5d84c…`, `a972b0f2…`, `b3b4ac5e…`, `4e31a2db…`, `6b865d4a…`, `62d6eedc…`); the host binary is identical between arms and only the planner guest differs. **Paired gate:** supports-on **4/4** at **15.78x / 7.39x / 14.97x / 16.54x** the floor — benchy classic-on **9.33 → 8.15 s (+1.18 s, +12.62 %)**, benchy arachne-on **9.17 → 8.62 s (+0.54 s)**, base classic-on **119.45 → 105.14 s (+14.31 s, +11.98 %)**, base arachne-on **119.88 → 104.02 s (+15.87 s)** — with CPU **+1.11 / +0.48 / +13.25 / +19.50 s**. **Supports-off:** inert by construction (`enable_support: false` returns from `SupportPlanner::run_support_geometry_with_analysis` before `plan_for_object`), so the mixed-sign medians (+0.04 / −0.07 / +0.05 / +0.40 s wall) are noise inside a 0.7 s / 4.9 s spread; the strict sign read is **6/8** and is recorded. **Ledger correction to t131:** the duplicate half converts at **1.006x** its thread-time (**14.31 s**, not the 6.5 s priced at the stage's 2.19x), because the duplicate occupancy calls were serial; benchy classic-on saves **1.93x** its 0.61 s thread-time, mechanism unmeasured. Route arithmetic unchanged: **15.5 %** of base classic-on's 92.5 s required prepass cut. Evidence: [`evidence/t132-planner-occupancy-memo/`](evidence/t132-planner-occupancy-memo/FINDINGS.md) (`verify.py` 176 checks, 11/11 negative controls rejected; both freshness gates exit 0).
 - [Common-stage per-op cost decomposition](issues/131-common-stage-per-op-cost-decomposition.md): **resolved (2026-11-09; Phase-1 decomposition — the per-op wrapper is not the lever, the sweep is 98.2–99.9 %, and operand size is the gap)** — probe seams in `polygon_ops`/`host`/`prepass`/`pipeline` split every common stage into WIT marshal / IR→Path64 conversion / Clipper2 sweep / PolyTree rebuild; the non-sweep wrapper is **0.19 %** of base-off primitive thread-time (**543 of 280,657 ms**) and **0.21 %** of base-on (**1,075 of 517,928 ms**), so the ticket's first gate branch fails by two orders of magnitude. Operand volume: shell **19.5 calls/layer at 4,608 points/call** (**44,463,545 points**, 89,825/layer), planner **290 calls/layer at 2,040 points/call** (**293,219,629 points**, 592,363/layer), kernel at parity (t70). **S5** priced at **22,964 → 1,937 ms** thread on 130 base-off layers (16.06x / 8.81x), wall **2,520 ms** (7.4x floor), but **not exact** (115/130 + 36/42 layers, max 0.71 / 0.59 mm², net −1.27 / +1.18 mm²). **S6** priced exact: `+0.35 mm` occupancy is **864 calls / 433 payloads**, duplicates **14,227.7 ms** thread → **6,504 ms** wall (6.4x floor), while the `−0.6/−0.8 mm` collision family is **1,350/1,350 distinct** (no hits). **Scheduling:** planner **2.19x** effective parallelism (benchy-on 1.68x) against 8.34–11.80x elsewhere → **25,625 ms** at 4x on base-on (27.7 % of its required cut). Gate: first branch fails everywhere (0.9–2.6 % of each stage's share), second fails literally (S5 17.7 %, S6 12.8 %, planner-at-4x 50.6 %), but the route-level stop rule does not fire. Go/no-go: **NO-GO for a per-op rewrite; GO (narrowed) for operand locality and planner scheduling.** Graduated [S6 memo](issues/132-planner-occupancy-memo.md), [S5 windowed offsets](issues/133-internal-bridge-windowed-offsets.md), [planner parallelism](issues/134-planner-effective-parallelism.md). Evidence: [`evidence/t131-per-op-decomposition/`](evidence/t131-per-op-decomposition/FINDINGS.md) (`verify.py` 150/150 checks + prose; 11/11 negative controls; four cells × two flag sets, every hash equal to the t123 candidate-ordinary set). No production edit; probe reverted; `build-guests --check` exit 0.
 - [Prepass work-set and per-op parity against canonical v2.5.0](issues/129-prepass-work-set-per-op-parity.md): **resolved (2026-11-08; Phase-1 decomposition — the work set is not the lever, per-op cost / operand locality is)** — canonical does *more* per-layer Clipper work than PnP in the shell cluster (≈45–60 vs ≈15–25 ops/layer; PnP omits `process_external_surfaces`' wave expansion, `DEV-200`), yet its **whole prepass** is **15.7x / 9.8x** cheaper on base classic-off / -on, so PnP does not already compute canonical's work set at canonical's per-op cost and the kill condition is not met. The Rust Clipper2 kernel is at parity (t70), so the gap is above the kernel: canonical bbox-clips (`clip_clipper_polygons_with_subject_bbox`), caches collision/avoidance by `{radius, layer}`, and uses per-vertex `LinesDistancer` queries; PnP's hot ops are whole-layer and its planner occupancy is uncached (32.7 s / 864 calls, t113). The clean PnP-local deletions (overhang bands 9,689 ms, whole-mesh facet union 4,260 ms, seam inset 92.4 % of 1,718 ms) are **15.5 s = 55.8 % of base-off's 27.8 s cut** and **1.6 s = 17.5 %** of base-on's — a first tranche, not the route. **Prepass at canonical cost wins base classic-off only (0.787x), ties base classic-on (1.012x) and loses both benchy cells (1.053x / 1.075x); full geometry parity wins all four (0.335x / 0.661x / 0.550x / 0.704x).** Go/no-go: **GO for the engine rewrite, NO-GO for a work-set-only rewrite**; the next gate is [common-stage per-op cost decomposition](issues/131-common-stage-per-op-cost-decomposition.md). Evidence: [`evidence/t129-prepass-work-set-parity/`](evidence/t129-prepass-work-set-parity/FINDINGS.md) (`verify.py` 4 cells / 6 shapes / 20 claims; 8/8 negative controls; 14 citations at `40ecc66f78`). No production edit.
 - [Destination arithmetic after t123: re-aim, rewrite, or park?](issues/128-destination-arithmetic-ruling.md): **resolved (2026-11-08; human ruling — keep 8/8 and authorise an engine rewrite, gated on a work-set/per-op parity decomposition)** — the target is unchanged and the route is re-scoped: the prepass is the only term that can buy the 58–79 % cut (62.1–87.1 % of every cell; required removal 72–101 %), **benchy classic-off is unwinnable by prepass deletion alone (1.02x at zero prepass)**, and every remaining prepass stage is clipper-bound with its named shapes already screened (t75/t84/t113/t125/t53/t55/t76), so the 0.80 %-per-shape machinery would need 72–99x its floor. The rewrite runs the prepass first (supports-off cluster, then the planner), then the benchy-classic-off per-layer residual, under t111's prepass exception carried to the implementation; the first gate is [the work-set/per-op parity decomposition](issues/129-prepass-work-set-per-op-parity.md), whose kill gate returns the destination here if PnP already matches canonical's work set and per-op cost. Canonical is pinned at `v2.5.0` = `40ecc66f78` (2026-11-07) in the local checkout, disclosed against the installed 2.5.0 binary (2026-11-06, not byte-proven identical). The brim asymmetry is graduated as [Matched settings vs the 8 mm brim](issues/130-brim-matched-settings-ruling.md). No production edit in this take.
@@ -3063,14 +3114,16 @@ Standing decisions for this effort (2026-09-22):
   not the route. **Prepass at canonical cost wins base classic-off only
   (0.787x), ties base classic-on (1.012x) and loses both benchy cells (1.053x /
   1.075x); full geometry parity wins all four (0.335x / 0.661x / 0.550x /
-  0.704x).** The three priced shapes are the live frontier tickets
-  ([S6](issues/132-planner-occupancy-memo.md),
-  [S5](issues/133-internal-bridge-windowed-offsets.md),
-  [planner parallelism](issues/134-planner-effective-parallelism.md)); the
-  unpriced fog is the **sweep-volume work-set family** — per-vertex overhang
-  distance, per-layer overhang polygons, canonical loop projection — each of
-  which needs its own Phase-1 before a candidate can be priced. The per-layer
-  phase joins the first program on both benchy cells.
+  0.704x).** **S6 is banked (t132, 2026-11-09): the duplicate occupancy half is
+  exact, serial and worth +1.18 / +0.54 / +14.31 / +15.87 s on the four
+  supports-on cells (7.39x–16.54x the floor), 15.5 % of base classic-on's
+  required prepass cut.** The two live priced shapes are
+  [S5](issues/133-internal-bridge-windowed-offsets.md) (bounded-delta) and
+  [planner parallelism](issues/134-planner-effective-parallelism.md)
+  (scheduling); the unpriced fog is the **sweep-volume work-set family** —
+  per-vertex overhang distance, per-layer overhang polygons, canonical loop
+  projection — each of which needs its own Phase-1 before a candidate can be
+  priced. The per-layer phase joins the first program on both benchy cells.
 
 - **The bridge wave expansion is a per-layer partition change, and its benchy
   cost is the blocker (surfaced 2026-11-06 by
