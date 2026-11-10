@@ -40,3 +40,203 @@ rng_algorithm = "chacha"
 isolation = "in_process"
 timeout_ms = 0
 bounds = { max_entities = 256, max_travels = 512 }
+
+[[property]]
+id = "D-SCALARS"
+package = "slicer-sdk"
+target_kind = "test"
+target_name = "property_domains"
+test_name = "proptest_direct_scalar_domains"
+production_symbol = "slicer_sdk::test_support::property_testing::domains::finite_f32"
+production_path = "crates/slicer-sdk/src/test_support/property_testing/domains/mod.rs"
+features = ["slicer-sdk/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#d-scalars"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_scalar_units = 10000, max_id_bytes = 64 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_scalar_units = 100000, max_id_bytes = 256 }
+
+[[property]]
+id = "D-GRAPHS"
+package = "slicer-sdk"
+target_kind = "test"
+target_name = "property_domains"
+test_name = "proptest_direct_graph_domains"
+production_symbol = "slicer_sdk::test_support::property_testing::domains::graphs"
+production_path = "crates/slicer-sdk/src/test_support/property_testing/domains/mod.rs"
+features = ["slicer-sdk/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#d-graphs"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_nodes = 16 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_nodes = 32 }
+
+[[property]]
+id = "D-IR"
+package = "slicer-sdk"
+target_kind = "test"
+target_name = "property_domains"
+test_name = "proptest_direct_ir_domains"
+production_symbol = "slicer_sdk::test_support::property_testing::domains::anchor_cases"
+production_path = "crates/slicer-sdk/src/test_support/property_testing/domains/mod.rs"
+features = ["slicer-sdk/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#d-ir"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_entities = 16, max_travels = 32, max_points = 8, max_layers = 8 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_entities = 64, max_travels = 128, max_points = 16, max_layers = 16 }
+
+[[property]]
+id = "D-GEOMETRY"
+package = "slicer-sdk"
+target_kind = "test"
+target_name = "property_domains"
+test_name = "proptest_direct_geometry_domains"
+production_symbol = "slicer_sdk::test_support::property_testing::domains::geometry_cases"
+production_path = "crates/slicer-sdk/src/test_support/property_testing/domains/mod.rs"
+features = ["slicer-sdk/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#d-geometry"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 1000, max_vertices = 32, max_holes = 4, max_components = 4, max_shrink_candidates = 64 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 10000, max_vertices = 64, max_holes = 8, max_components = 8, max_shrink_candidates = 256 }
+
+[[property]]
+id = "D-MESH"
+package = "slicer-sdk"
+target_kind = "test"
+target_name = "property_domains"
+test_name = "proptest_direct_mesh_domains"
+production_symbol = "slicer_sdk::test_support::property_testing::domains::analytical_meshes"
+production_path = "crates/slicer-sdk/src/test_support/property_testing/domains/mod.rs"
+features = ["slicer-sdk/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#d-mesh"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_extent_mm = 128, max_translation_mm = 128 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_extent_mm = 1000, max_translation_mm = 1000 }

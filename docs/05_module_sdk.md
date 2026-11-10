@@ -1367,6 +1367,46 @@ or change per-case panic hooks.
 Property support does not change private-kernel ownership or expose private
 production kernels for tests: test private kernels in their owning crate.
 
+#### Direct input domains, oracles and concrete fixtures
+
+The same feature gates three helper submodules:
+`slicer_sdk::test_support::property_testing::domains` (construction-first input
+strategies), `oracles` (independent reference predicates) and `regression`
+(concrete regression formatting). They are native-only and absent from every
+guest and production graph.
+
+`domains::anchor_cases`, `domain`-specific builders such as `geometry_cases`, and
+the scalar/graph/ID/permutation helpers are validated by
+`crates/slicer-sdk/tests/property_domains.rs` against the registry records
+`D-SCALARS`, `D-GRAPHS`, `D-IR`, `D-GEOMETRY` and `D-MESH`. Those properties check
+the helpers themselves and are not credits toward host or module SUT coverage.
+`GeometryBounds` and `GeometryDomain` (`domains`) provide documented safe `Default`
+values for FRU, but live profiles must supply their measured bounds explicitly;
+`geometry_cases` rejects bounds its bounded catalog cannot satisfy instead of
+narrowing them.
+
+Validity and shrinking are part of the helper contract. Every value produced or
+retained by `GeometryValueTree::current` passes `oracles::validate_geometry` for the
+requested `GeometryDomain`, must keep its topology class and minimum hole/component
+witnesses, and every accepted simplification must be strictly smaller in
+`domains::geometry_complexity`. `oracles` import only `slicer-ir` data types and
+exact big-rational arithmetic — never Clipper, `geo`, `slicer-core` geometry
+helpers, production validators or the scheduler — so an oracle never calls a
+production computation. For the geometry families the generator also validates
+shrink candidates with `validate_geometry`, so that predicate is shared by design
+between generation and checking; deterministic hand-worked counterexamples, not
+the generator, are what guard against a shared blind spot there. Oracle and shrink
+kernel tests belong in `crates/slicer-sdk/tests/property_domain_contracts.rs`, not
+in guest module tests.
+
+`regression::format_regression_fixture` emits a readable Rust statement block for a
+concrete failing input and never a generated `#[test]`; the owning crate must add
+its own assertion against the real SUT. It needs no Proptest RNG, `PropertyRun`
+context or slicing engine to compile or evaluate. See
+[`docs/testing/properties.md`](testing/properties.md) for the family charters and
+[`docs/testing/proptest-domain-evidence.md`](testing/proptest-domain-evidence.md)
+for the measured Windows pilots.
+
 ### Mock Host
 
 ```rust

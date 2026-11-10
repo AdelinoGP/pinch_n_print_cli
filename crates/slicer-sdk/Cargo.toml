@@ -7,6 +7,8 @@ authors = ["Pinch 'n Print Team"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 proptest = { workspace = true, optional = true }
+num-bigint = { workspace = true, optional = true }
+num-rational = { workspace = true, optional = true }
 serde_json = { version = "1", optional = true }
 slicer-ir = { path = "../slicer-ir" }
 slicer-core = { path = "../slicer-core" }
@@ -21,7 +23,7 @@ wit-bindgen.workspace = true
 
 [features]
 test = []
-property_testing = ["test", "dep:proptest", "dep:serde_json"]
+property_testing = ["test", "dep:proptest", "dep:serde_json", "dep:num-bigint", "dep:num-rational"]
 
 # Tests that import the `test_prelude` / `test_support` modules must run
 # with the `test` feature enabled; those modules are gated on
@@ -30,6 +32,14 @@ property_testing = ["test", "dep:proptest", "dep:serde_json"]
 # auto-discovered by cargo and don't need entries.
 [[test]]
 name = "property_harness"
+required-features = ["property_testing"]
+
+[[test]]
+name = "property_domains"
+required-features = ["property_testing"]
+
+[[test]]
+name = "property_domain_contracts"
 required-features = ["property_testing"]
 
 [[test]]

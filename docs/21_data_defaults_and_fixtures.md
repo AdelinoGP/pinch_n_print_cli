@@ -125,6 +125,18 @@ must be independent of the production function under test. A durable
 crate's ordinary test target. Seeds are diagnostics, never committed regression
 history.
 
+`regression::format_regression_fixture` turns a concrete failing input into a
+readable Rust fixture statement block binding `input` (floats via `from_bits`, so
+signed zero, infinities and NaN payloads survive; graph tuples, layers, geometry
+and indexed meshes as literals). It is a starting point, not a test: the owning
+crate must add an independently justified assertion against the real SUT and name
+the root cause. Emitted layer fixtures use `print_entity_base` FRU for a
+default `RegionKey` and pin `RegionKey`, `ExtrusionPath3D`, `Point3WithWidth` and
+`TravelMove` field-for-field (with an `// exhaustive:` waiver) whenever a
+non-default value must be preserved; regenerate them when those watched shapes
+change. A layer carrying a side table the formatter cannot represent is rejected
+rather than silently truncated.
+
 `SliceRunOptions::default()` is the quiet test baseline. It uses
 `MeshIR::default()` for the current schema version, leaves paths and options
 empty or `None`, and intentionally keeps `progress_events = false` rather

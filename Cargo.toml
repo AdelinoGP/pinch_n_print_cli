@@ -63,6 +63,8 @@ criterion = { version = "0.5.1", default-features = false, features = ["html_rep
 
 # Opt-in native property-testing support
 proptest = { version = "1.11", default-features = false, features = ["std", "fork", "timeout"] }
+num-bigint = "0.4"
+num-rational = { version = "0.4.2", features = ["num-bigint"] }
 
 # Core dependencies
 # `call-hook` is NOT a wasmtime default feature. It is what lets a store observe

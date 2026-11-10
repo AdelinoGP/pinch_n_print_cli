@@ -1130,7 +1130,10 @@ mod tests {
 
         let dir = fixture_dir();
         let registry = live_registry();
-        let launcher = FixtureLauncher::new(&registry.property, &["pass"]);
+        // The live registry grows as packet properties land; the fixture launcher
+        // must cover every record rather than assume a single-entry roster.
+        let modes = vec!["pass"; registry.property.len()];
+        let launcher = FixtureLauncher::new(&registry.property, &modes);
         let selected: Vec<_> = registry.property.iter().collect();
         assert_eq!(
             execute(

@@ -12,7 +12,10 @@ use super::capture::{InfillOutputCapture, PerimeterOutputCapture, SupportOutputC
 use super::mock_host::MockHost;
 use super::{mock_host_setup, mock_host_teardown, reset_global_state};
 
+pub mod domains;
 mod oracle;
+pub mod oracles;
+pub mod regression;
 mod run;
 
 pub use oracle::{check_travel_anchors_charter, travel_anchor_oracle, AnchorOracleError};

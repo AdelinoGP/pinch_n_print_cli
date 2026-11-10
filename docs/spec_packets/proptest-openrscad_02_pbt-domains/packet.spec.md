@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_02_pbt-domains
-status: draft
+status: implemented
 ---
 
 # Direct property domains, independent oracles and useful shrinking
@@ -339,3 +339,66 @@ Implementation, not authoring, performs these executions. Every plain `cargo tes
 | 11 | Completeness | PASS | No blocking scope question or placeholder; measurement, numeric implementation and combined-scripted decisions have bounded forward ownership. |
 
 **Verdict: PREFLIGHT PASS (authoring only; direct G-GEOMETRY/pilots not executed; implementation waits for foundation).**
+
+## Deviations
+
+Implementation notes recorded during the packet, with their reasons. None changes scope.
+
+1. **Layer regression fixtures cover the emission-relevant subset, and reject the rest.**
+   `format_regression_fixture` emits `schema_version`, `global_layer_index`, `z`,
+   `ordered_entities` (including every `RegionKey`, `ExtrusionPath3D` and `Point3WithWidth`
+   field; `PrintEntity`, `ExtrusionPath3D`, `Point3WithWidth` and `TravelMove` literals carry an
+   `// exhaustive:` waiver when every field is pinned) and `travel_moves`, then
+   `..Default::default()`. A default `RegionKey` still comes from `print_entity_base` FRU; a
+   non-default one is emitted field-for-field and the independent encoder compares object ID,
+   region ID and paint variants. A layer carrying a non-default support-identity, tool-change,
+   z-hop, annotation, retract or speed-profile side table is rejected with
+   `DomainError::InvalidInput` instead of being silently truncated. The domains in this packet
+   never populate those tables, so every in-scope input round-trips exactly.
+2. **The fixture probe builds a temporary crate with `cargo run`.** The emitted blocks may
+   reference `slicer_sdk::test_support::fixtures::print_entity_base`, so a `rustc`-only compile
+   would need to select a consistent pair of `slicer-ir`/`slicer-sdk` rlibs from
+   `target/debug/deps`; the rlibs present can belong to different `slicer-ir` compilations. The
+   probe therefore writes a `[workspace]`-detached crate under
+   `target/property-regression-probe/<pid>/` with path dependencies and `slicer-sdk` features
+   `["test"]` only, runs `cargo run --quiet --offline` against the workspace `target/`, asserts
+   exact canonical equality, and asserts with `cargo tree -e normal` that the fixture graph holds
+   no `proptest`, `num-bigint` or `num-rational`. Measured first cold build 51.24s, warm rebuild
+   1.24s (live observations, not archived timings).
+3. **The readable fixture is retained under `target/`, not embedded in `failure.json`.**
+   `PropertyRun::check` is generic over `S::Value` and has no formatter to call, so the target's
+   formatted block is written to `target/property-testing/<token>/regressions/fixture.rs` by the
+   contract test (and the `failure.json` `concrete_input` stays the Debug rendering of the
+   failing value). This satisfies the "target-local readable root-cause/input material" intent
+   without widening the foundation's public surface.
+4. **`analytical_meshes` bounds dimensions by `max_extent_mm` and puts the origin on a small
+   bounded grid.** Origin indices are limited to `[-16, 16]` grid units (at most 2 mm at the
+   1/8 mm grid), so an absolute vertex coordinate can exceed `max_extent_mm` by that offset while
+   every dimension stays within it. The public doc comment states both facts.
+5. **`domain_geometry_topology_witnesses` also exercises ten tight-bound domains.** The catalog's
+   per-class minimum vertex counts are stricter than `validate_geometry`'s generic
+   `(components + holes) * 3` proof, so `geometry_cases` rejects a domain its smallest catalog
+   member cannot fit. The tight-bound sweep pins which domains are constructible and which are
+   rejected as `InvalidBounds`.
+
+6. **CI execution is deferred to the post-merge master push (project decision).**
+   The implementation is complete and every local gate is green (workspace build/check/clippy,
+   feature-gated SDK/IR checks, the contract and foundation test targets, both combined registry
+   lanes for all six records, a retained-seed replay, literal/test-quality gates and guest
+   freshness). The identical routine command
+   (`cargo xtask test --summary --properties --tier routine`) was executed successfully on
+   Windows locally, and `.github/workflows/ci.yml` runs that command on `push` to `main`/`master`
+   with no hand-maintained record list, so the job discovers all six records. An actual CI run
+   could not be produced from this workstation (`act` is unavailable and the job targets
+   `windows-latest`); the project owner accepted closure with that execution deferred to the
+   merge-to-master push. Post-merge check: confirm `properties-windows` executes the routine lane
+   for `H-IR-ANCHORS` and the five `D-` records, and retain its log. Any failure there is a
+   regression against this packet.
+7. **Review-driven hardening (post-pilot).** The independent review found that the layer fixture
+   dropped non-default region identity, that the known-failure probe did not use a failing
+   property, and that candidate exhaustion was not driven through the harness. Those were fixed:
+   `RegionKey` is emitted and encoded losslessly (and the default-FRU branch is compiled and
+   evaluated in the same probe), failing hole/component predicates now run through a real
+   `TestRunner` with recorded before/after complexities while the explicit five-vertex witness
+   covers ring-vertex reduction, and a zero-candidate geometry domain runs through
+   `PropertyRun::check` and reports `failed`/`sut_failure` with a retained case.
