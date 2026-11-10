@@ -66,6 +66,10 @@ pub struct SkirtBrim {
     brim_object_gap: f32,
     min_skirt_length: f32,
     line_width: f32,
+    /// First-layer height in mm, used for the canonical flow spacing. `0.0`
+    /// when neither `first_layer_height` nor `layer_height` is readable, which
+    /// falls back to `line_width` as the spacing.
+    first_layer_height: f32,
     enabled: bool,
 }
 
@@ -93,6 +97,15 @@ impl SkirtBrim {
 
         let line_width = config.require_float("line_width")? as f32;
 
+        // Canonical flow spacing needs the first-layer height. Both keys are
+        // global (typed `ResolvedConfig` fields, not module-declared), so the
+        // read is optional and falls back to `layer_height`, then to a plain
+        // `line_width` spacing when neither is present.
+        let first_layer_height = config
+            .get_float("first_layer_height")
+            .or_else(|| config.get_float("layer_height"))
+            .unwrap_or(0.0) as f32;
+
         if min_skirt_length > 0.0 {
             // Pinned semantics: the port has no filament-flow model, so a
             // non-zero minimum cannot be honoured faithfully. Fail closed
@@ -113,6 +126,7 @@ impl SkirtBrim {
             brim_object_gap,
             min_skirt_length,
             line_width,
+            first_layer_height,
             enabled,
         })
     }
@@ -184,7 +198,7 @@ impl SkirtBrim {
             return Vec::new();
         }
 
-        let spacing = self.line_width.max(1e-4);
+        let spacing = self.flow_spacing();
         let max_layer = (self.skirt_height as usize).min(layers.len());
         let first = layers[0];
         // Skirt entities are emitted before brim entities: canonical prints the
@@ -374,7 +388,7 @@ impl SkirtBrim {
                                     polygon,
                                     first.z,
                                     ExtrusionRole::Brim,
-                                    spacing,
+                                    self.line_width,
                                 ) else {
                                     continue;
                                 };
@@ -473,6 +487,24 @@ impl SkirtBrim {
 
         generated.extend(brim_entities);
         generated
+    }
+
+    /// Canonical flow spacing: `width - height x (1 - pi/4)`
+    /// (`Flow::rounded_rectangle_extrusion_spacing`, `Flow.cpp`).
+    ///
+    /// The brim's ring width is quantised in these units and the concentric
+    /// lines step by one spacing, exactly as `make_brim` / `tryExPolygonOffset`
+    /// do. Falls back to `line_width` when no first-layer height is readable,
+    /// and never returns less than half the line width (a spacing below that is
+    /// a degenerate flow).
+    fn flow_spacing(&self) -> f32 {
+        let spacing = self.line_width
+            - self.first_layer_height * (1.0 - std::f32::consts::FRAC_PI_4);
+        if spacing.is_finite() && spacing > self.line_width * 0.5 {
+            spacing.max(1e-4)
+        } else {
+            self.line_width.max(1e-4)
+        }
     }
 
     /// Radius of the morphological closing used to turn support beads into

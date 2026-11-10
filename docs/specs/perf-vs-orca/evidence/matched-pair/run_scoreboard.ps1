@@ -98,6 +98,18 @@ $Job = @{
     SkirtLoops        = '6'
     SkirtDistance     = '3'
     SkirtHeight       = '1'
+    # t135 Stage 1 follow-through: the adhesion flow model is the *first-layer*
+    # flow. Orca's vendor chain resolves `initial_layer_line_width = 0.5` while
+    # PnP prints layer 0 at its `line_width` (0.4), so the brim quantised to
+    # 7.31 mm on one arm and 8.0 mm on the other and the skirt band was 2.74 mm
+    # vs 2.40 mm. Pinning Orca to 0.4 makes both arms' flow spacing 0.35708 mm
+    # and the adhesion geometry identical.
+    InitialLayerLineWidth = '0.4'
+    # PnP's tree-support module emits no support brim; Orca's chain resolves
+    # `tree_support_brim_width = 3` and prints those loops under the same
+    # `; FEATURE: Brim` label. Pin both arms to none so the adhesion job is the
+    # object brim only (a support-brim port is a separate decision).
+    TreeSupportBrimWidth = '0'
 }
 
 # perf-vs-orca ticket 105 ruling (2026-11-02): the style a supports-on run must
@@ -309,6 +321,8 @@ function Test-OrcaEvidence {
     Assert-EqualValue 'skirt_loops' $cfg['skirt_loops'] $Job.SkirtLoops $RunId
     Assert-EqualValue 'skirt_distance' $cfg['skirt_distance'] $Job.SkirtDistance $RunId
     Assert-EqualValue 'skirt_height' $cfg['skirt_height'] $Job.SkirtHeight $RunId
+    Assert-EqualValue 'initial_layer_line_width' $cfg['initial_layer_line_width'] $Job.InitialLayerLineWidth $RunId
+    Assert-EqualValue 'tree_support_brim_width' $cfg['tree_support_brim_width'] $Job.TreeSupportBrimWidth $RunId
 
     # --- perf-vs-orca ticket 98 defect: the filament chain must resolve -------
     # Every run records the resolved filament leg, and the archived 2026-10-25
@@ -368,6 +382,12 @@ function Test-PnpAdhesionKeys {
     if (-not $cfg.ContainsKey('brim_object_gap')) {
         throw "measurement rejected ($RunId): PnP appendix is missing 'brim_object_gap'"
     }
+    # The adhesion flow model is the first-layer flow; PnP resolves it from
+    # `line_width` (its `initial_layer_line_width = 0` is "auto").
+    $lineWidth = [string]$cfg['line_width']
+    if ([double]$lineWidth -ne [double]$Job.InitialLayerLineWidth) {
+        throw "measurement rejected ($RunId): PnP line_width='$lineWidth', expected '$($Job.InitialLayerLineWidth)'"
+    }
 }
 
 function Test-PnpGyroidDispatch {
@@ -425,7 +445,9 @@ function New-OrcaOverrideArgs {
         ('--brim-type=' + $Job.BrimType),
         ('--skirt-loops=' + $Job.SkirtLoops),
         ('--skirt-distance=' + $Job.SkirtDistance),
-        ('--skirt-height=' + $Job.SkirtHeight)
+        ('--skirt-height=' + $Job.SkirtHeight),
+        ('--initial-layer-line-width=' + $Job.InitialLayerLineWidth),
+        ('--tree-support-brim-width=' + $Job.TreeSupportBrimWidth)
     )
     if ($OrcaSupportStyle -and $OrcaSupportStyle -ne 'vendor' -and $SupportFlag -eq '1') {
         # Ticket 105 ruling: appended last so it ranks above every loaded preset
@@ -485,7 +507,7 @@ function Assert-Preflight {
 }
 
 # --- CSV ---------------------------------------------------------------------
-$CsvHeader = 'run_id,batch_id,cell,fixture,generator,supports,tool,run_index,warmup,threads,expected_generator,validated_generator,config_path,exe_path,module_dir,model_path,output_path,stderr_path,wall_seconds,cpu_seconds,cpu_wall_ratio,peak_workingset_bytes,gcode_bytes,sha256_of_gcode,type_counts_json,completion_status,fatal_error_count,non_fatal_error_count,degraded,exit_code,timestamp_utc,resolved_brim_width,resolved_brim_type,resolved_skirt_loops,resolved_skirt_distance,resolved_skirt_height,resolved_enable_arc_fitting,resolved_elefant_foot_compensation,resolved_filament_density,resolved_filament_max_volumetric_speed,resolved_first_layer_temperature'
+$CsvHeader = 'run_id,batch_id,cell,fixture,generator,supports,tool,run_index,warmup,threads,expected_generator,validated_generator,config_path,exe_path,module_dir,model_path,output_path,stderr_path,wall_seconds,cpu_seconds,cpu_wall_ratio,peak_workingset_bytes,gcode_bytes,sha256_of_gcode,type_counts_json,completion_status,fatal_error_count,non_fatal_error_count,degraded,exit_code,timestamp_utc,resolved_brim_width,resolved_brim_type,resolved_skirt_loops,resolved_skirt_distance,resolved_skirt_height,resolved_initial_layer_line_width,resolved_tree_support_brim_width,resolved_enable_arc_fitting,resolved_elefant_foot_compensation,resolved_filament_density,resolved_filament_max_volumetric_speed,resolved_first_layer_temperature'
 if (-not (Test-Path $CsvPath)) {
     Set-Content -Path $CsvPath -Value $CsvHeader -Encoding utf8
 } else {
@@ -508,6 +530,8 @@ function Add-ScoreRow {
         (ConvertTo-CsvField $Row.resolved_brim_width), (ConvertTo-CsvField $Row.resolved_brim_type),
         (ConvertTo-CsvField $Row.resolved_skirt_loops), (ConvertTo-CsvField $Row.resolved_skirt_distance),
         (ConvertTo-CsvField $Row.resolved_skirt_height),
+        (ConvertTo-CsvField $Row.resolved_initial_layer_line_width),
+        (ConvertTo-CsvField $Row.resolved_tree_support_brim_width),
         (ConvertTo-CsvField $Row.resolved_enable_arc_fitting),
         (ConvertTo-CsvField $Row.resolved_elefant_foot_compensation), (ConvertTo-CsvField $Row.resolved_filament_density),
         (ConvertTo-CsvField $Row.resolved_filament_max_volumetric_speed), (ConvertTo-CsvField $Row.resolved_first_layer_temperature)
@@ -573,6 +597,7 @@ function Invoke-ScoreRun {
         foreach ($k in @('wall_generator', 'wall_loops', 'sparse_infill_density', 'sparse_infill_pattern', 'enable_support', 'support_type', 'support_style', 'layer_height',
                          'enable_arc_fitting', 'elefant_foot_compensation', 'brim_width', 'brim_type',
                          'skirt_loops', 'skirt_distance', 'skirt_height',
+                         'initial_layer_line_width', 'tree_support_brim_width',
                          'filament_density', 'filament_max_volumetric_speed', 'first_layer_temperature')) {
             $appendixExcerpt[$k] = $cfg[$k]
         }
@@ -648,6 +673,8 @@ function Invoke-ScoreRun {
         resolved_skirt_loops = (& $resolved 'skirt_loops')
         resolved_skirt_distance = (& $resolved 'skirt_distance')
         resolved_skirt_height = (& $resolved 'skirt_height')
+        resolved_initial_layer_line_width = (& $resolved 'initial_layer_line_width')
+        resolved_tree_support_brim_width = (& $resolved 'tree_support_brim_width')
         resolved_enable_arc_fitting = (& $resolved 'enable_arc_fitting')
         resolved_elefant_foot_compensation = (& $resolved 'elefant_foot_compensation')
         resolved_filament_density = (& $resolved 'filament_density')

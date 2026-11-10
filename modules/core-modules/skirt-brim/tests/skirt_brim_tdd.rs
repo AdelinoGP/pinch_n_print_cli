@@ -466,6 +466,62 @@ fn brim_is_clipped_by_first_layer_supports() {
 }
 
 #[test]
+fn brim_quantises_on_the_canonical_flow_spacing() {
+    // `Flow::rounded_rectangle_extrusion_spacing`: 0.4 - 0.2 * (1 - pi/4)
+    // = 0.35708 mm. 8 mm then quantises to floor(8/0.35708/2) * 2 * 0.35708
+    // = 7.856 mm, and the ring carries 22 lines (11 outer + 11 hole
+    // boundaries), each a spacing apart.
+    let mut fields = HashMap::new();
+    fields.insert("skirt_brim_enabled".to_string(), ConfigValue::Bool(true));
+    fields.insert("skirt_loops".to_string(), ConfigValue::Int(0));
+    fields.insert("skirt_distance".to_string(), ConfigValue::Float(3.0));
+    fields.insert("skirt_height".to_string(), ConfigValue::Int(1));
+    fields.insert("brim_width".to_string(), ConfigValue::Float(8.0));
+    fields.insert("brim_object_gap".to_string(), ConfigValue::Float(0.1));
+    fields.insert("min_skirt_length".to_string(), ConfigValue::Float(0.0));
+    fields.insert("line_width".to_string(), ConfigValue::Float(0.4));
+    fields.insert("first_layer_height".to_string(), ConfigValue::Float(0.2));
+    let cfg = ConfigView::from_map(fields);
+
+    let sb = SkirtBrim::from_config(&cfg).unwrap();
+    let mut layers = vec![make_layer_with_entities(
+        0,
+        0.2,
+        vec![make_loop_at(10.0, 10.0, 1.0, 0.2)],
+    )];
+    sb.process(&mut layers).unwrap();
+
+    let brim_count = layers[0]
+        .ordered_entities
+        .iter()
+        .filter(|e| e.role == ExtrusionRole::Brim)
+        .count();
+    assert_eq!(brim_count, 22, "flow spacing 0.35708 should yield 22 brim lines");
+
+    let spacing = 0.4 - 0.2 * (1.0 - std::f32::consts::FRAC_PI_4);
+    let outer = layers[0]
+        .ordered_entities
+        .iter()
+        .filter(|e| e.role == ExtrusionRole::Brim)
+        .map(|e| {
+            e.path
+                .points
+                .iter()
+                .map(|p| p.x)
+                .fold(f32::MIN, f32::max)
+        })
+        .fold(f32::MIN, f32::max);
+    // Outer boundary at gap + quantised width = 0.1 + 11 * 2 * spacing, less
+    // the half-spacing first-line inset; the square footprint's half extent is
+    // 1.0 mm, so the outermost line's max x is 10 + 1 + (boundary - spacing/2).
+    let expected = 10.0 + 1.0 + (0.1 + 11.0 * 2.0 * spacing) - spacing * 0.5;
+    assert!(
+        (outer - expected).abs() < 0.05,
+        "outermost brim x={outer} should be {expected}"
+    );
+}
+
+#[test]
 fn non_zero_min_skirt_length_fails_closed() {
     let mut fields = HashMap::new();
     fields.insert("skirt_brim_enabled".to_string(), ConfigValue::Bool(true));
