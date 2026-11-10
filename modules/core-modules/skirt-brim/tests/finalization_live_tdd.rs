@@ -13,16 +13,25 @@ use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCol
 // ---- Helpers ----
 
 fn make_entity_at(layer_index: u32, x: f32, y: f32, z: f32) -> PrintEntity {
+    // Closed square wall loop (half-extent 1 mm): the module's footprint is
+    // derived from real loops, so a bare point would (correctly) emit nothing.
+    let mk = |px: f32, py: f32| Point3WithWidth {
+        x: px,
+        y: py,
+        z,
+        width: 0.4,
+        ..Default::default()
+    };
     print_entity(
         1,
         ExtrusionRole::OuterWall,
-        vec![Point3WithWidth {
-            x,
-            y,
-            z,
-            width: 0.4,
-            ..Default::default()
-        }],
+        vec![
+            mk(x - 1.0, y - 1.0),
+            mk(x + 1.0, y - 1.0),
+            mk(x + 1.0, y + 1.0),
+            mk(x - 1.0, y + 1.0),
+            mk(x - 1.0, y - 1.0),
+        ],
         RegionKey {
             global_layer_index: layer_index,
             object_id: "obj1".to_string(),
@@ -55,6 +64,8 @@ fn config_with(pairs: &[(&str, ConfigValue)]) -> ConfigView {
     map.insert("skirt_distance".to_string(), ConfigValue::Float(3.0));
     map.insert("skirt_height".to_string(), ConfigValue::Int(1));
     map.insert("brim_width".to_string(), ConfigValue::Float(8.0));
+    map.insert("brim_object_gap".to_string(), ConfigValue::Float(0.1));
+    map.insert("min_skirt_length".to_string(), ConfigValue::Float(0.0));
     map.insert("line_width".to_string(), ConfigValue::Float(0.4));
     for (k, v) in pairs {
         map.insert(k.to_string(), v.clone());
