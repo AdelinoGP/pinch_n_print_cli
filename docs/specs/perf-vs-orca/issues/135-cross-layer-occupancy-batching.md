@@ -122,85 +122,97 @@ delta is expected and disclosed, not gated KEEP/DROP.
 
 ## Answer
 
-Stage 1 resolved 2026-11-10. The canonical port lands, the matched job is
-authored and asserted on both arms, and the **new reference set** replaces
-t123's. The strict skirt/brim parity oracle is **NOT met 8/8** — 2/8 — and the
-residual is attributed below rather than hidden.
+Stage 1 resolved 2026-11-10. The canonical port lands, the matched job is authored
+and asserted on both arms **including the adhesion flow model**, and the **new
+reference set** replaces t123's. The strict skirt/brim parity oracle is **2/8**;
+the residual is measured and attributed below rather than hidden.
 
 **The port.** `SkirtBrim::generate` builds the brim as the canonical annulus:
-`offset(filled_outline, brim_object_gap)` to `offset(filled_outline, gap +
-quantised_width)`, minus the first-layer **support region**, filled with
-concentric lines half a spacing inside the outer boundary and one spacing per
-pass, emitting both the outer and the hole boundary of each shrunken band
-(`make_brim` / `tryExPolygonOffset`, `Brim.cpp`). The skirt is the convex hull
-of the first `skirt_height` layers **plus the brim footprint**, offset by
+`offset(outline, brim_object_gap)` to `offset(outline, gap + quantised_width)`,
+minus the first-layer **support region**, filled with concentric lines half a
+spacing inside the outer boundary and one spacing per pass, emitting both the
+outer and the hole boundary of each shrunken band (`make_brim` /
+`tryExPolygonOffset`, `Brim.cpp`). The skirt is the convex hull of the first
+`skirt_height` layers **plus the brim footprint**, offset by
 `skirt_distance + spacing/2 + i x spacing` with `jtRound` and 0.1 mm arc
-tolerance (`Print::_make_skirt`, `Print.cpp`). Canonical at the pinned
-`v2.5.0` = `40ecc66f78`, OrcaSlicer attribution header present. Two manifest
-keys added: `brim_object_gap` (0.1) and `min_skirt_length` (0; **non-zero fails
-closed** — no filament cross-section model).
+tolerance (`Print::_make_skirt`, `Print.cpp`). The brim and skirt spacing is the
+canonical flow spacing `line_width - first_layer_height x (1 - pi/4)`
+(`Flow::rounded_rectangle_extrusion_spacing`), 0.35708 mm at the matched job.
+Canonical at the pinned `v2.5.0` = `40ecc66f78`, OrcaSlicer attribution header
+present. Module keys added: `brim_object_gap` (0.1), `min_skirt_length` (0;
+**non-zero fails closed** — no filament cross-section model) and
+`first_layer_height` (flow-spacing input).
 
-Two measured corrections to the t130 instruction:
+**Three measured corrections to the t130 instruction** (all are matched keys, all
+asserted per run from each arm's resolved appendix):
 
-- **`brim_type = outer_only` is a fifth matched key.** The vendor chain resolves
-  `brim_type = auto_brim`, and under it `make_brim` recomputes the width from
-  its adhesion heuristic and discards an explicit `--brim-width=8` (measured on
-  benchy classic-off: a ~10 x 5 mm, 3-loop brim). The ruling's intent — one
-  8 mm adhesion feature on both arms — is what landed.
-- **Support clipping must be region-level, not bead-level.** Canonical subtracts
-  the support *slice contour*; the IR carries bead centerlines, so the port
-  closes the bead union at `2.5 x line_width` (1.0 mm) and fills it. The
-  bead-exact variant left 17 brim loops where Orca prints none on both base
-  supports-on cells, and clipping ring *lines* let the brim thread between
-  support beads (470 of 1,401 brim points within 0.1 mm of a bead).
+- **`brim_type = outer_only`.** The vendor chain resolves `auto_brim`, which
+  recomputes the width from its adhesion heuristic and discards an explicit
+  `--brim-width=8` (measured on benchy classic-off: a ~10 x 5 mm, 3-loop brim).
+- **`initial_layer_line_width = 0.4`.** This is the adhesion flow model. Orca
+  resolved 0.5 mm while PnP prints layer 0 at its 0.4 mm `line_width`, so the
+  same 8 mm quantised to **7.31 mm vs 8.0 mm** and the skirt bands were
+  **2.74 mm vs 2.40 mm**. Pinning Orca to 0.4 makes both spacings 0.35708 mm.
+  The t82 fairness table's "line_width 0.4 on both sides" claim is **falsified
+  by the resolved appendix** (Orca resolves 0.42 for walls, 0.5 for layer 0).
+- **`tree_support_brim_width = 0`.** Orca resolves 3 mm and prints support brims
+  under the same `; FEATURE: Brim` label; PnP's tree-support module emits none.
+
+**Support clipping must be region-level, not bead-level.** Canonical subtracts
+the support *slice contour*; the IR carries bead centerlines, so the port closes
+the bead union at `2.5 x line_width` and fills it. The bead-exact variant left
+17 brim loops where Orca prints none on both base supports-on cells, and clipping
+ring *lines* instead of the *area* let the brim thread between support beads
+(470 of 1,401 brim points within 0.1 mm of a bead).
 
 **Output campaign (16 cells, two build arms).** The baseline arm (pre-port
 module, identical host binary) reproduces t123's eight hashes exactly, so every
 move is attributable to the port. The candidate records the new reference set,
-identical on both arms: `9012df71…`, `7b199bd1…`, `dbafeb9d…`, `c86af409…`,
-`27dd2114…`, `e2c3c60e…`, `32ac8f77…`, `e5f5b8f4…` (full hashes in
+identical on both arms: `7db0641b…`, `c02aa4e9…`, `a2f7a1fe…`, `2326455d…`,
+`7ef84447…`, `1ddea2b7…`, `defae354…`, `4aa1847c…` (full hashes in
 `evidence/t135-skirt-brim-retake/reduced/summary.json`). **Every subsequent
 acceptance that cites t123's set must re-point to this one.**
 
 **Delta audit.** Every motion line outside `Skirt`/`Brim` is identical after the
-extrusion field is stripped, in all eight cells; the extrusion field itself
-differs by at most **0.00098 mm** (declared tolerance 1e-3 mm, an artefact of the
-running extrusion accumulator). The config block gains the two new keys.
+extrusion field is stripped, in all eight cells; the extrusion field differs by
+at most **0.00098 mm** (declared tolerance 1e-3 mm, an artefact of the running
+extrusion accumulator).
 
-**Parity oracle (translation-invariant; bands declared from the benchy
-classic-off probe, applied unchanged).** Presence parity **8/8**; brim radial
-extent **8/8 within 0.46 mm**; skirt outer area 0.40 % on benchy supports-off,
-8.2–8.4 % base supports-off, 4.5 % benchy supports-on, 11.0 % base supports-on.
-**Strict 8/8: not met (2/8).** The brim-work axis fails because of (a) per-arm
-flow-spacing quantisation — 8.0 mm at PnP's 0.4 mm spacing vs 7.31 mm at Orca's
-0.457 mm (+9.7/+9.9 % on the benchy supports-off cells), (b) Orca's per-volume-
-group clipping on the base part (+25.5/+26.4 %), and (c) **Orca's support brims
-riding the same `; FEATURE: Brim` label** (`tree_support_brim_width = 3`, absent
-on PnP's tree-support module — the +75 % on the benchy supports-on cells). The
-supports-on skirt residual is the support hull, not the skirt. None of these
-live in `com.core.skirt-brim`.
+**Parity oracle (translation-invariant; bands declared before the first campaign
+and not widened).** **2/8 pass.** Benchy supports-off passes outright: brim work
+**+2.4 / +2.6 %**, brim area **+1.3 %**, skirt area **+2.3 %**, 22 brim lines on
+PnP against Orca's fragmented 30. Base supports-off is **22 / 22 lines** and
++8.1 / +7.3 % brim work, with skirt area +3.2 / +3.1 % against a 3 % band — the
+residual is the **anchor convention** (PnP anchors on its outer-wall path, Orca
+on the slice contour; g-code carries the path, not the contour, so the comparison
+carries a ~0.2 mm bias). Supports-on: on base both arms clip the entire brim away
+(0 / 0 loops), but the skirt hull differs 12.5 % because `_make_skirt` folds the
+support footprint in and PnP's tree supports are not Orca's `tree_strong`; on
+benchy Orca's brim fragments into **39 runs** around its support pads against
+PnP's 19, so its brim area is 3x larger. Radial extent is 8/8 within 0.92 mm.
 
 **A/B (3 interleaved pairs, same host binary both arms).** Wall ratios
-0.975–1.013, CPU ratios 0.992–1.004 — the port's cost is below the box's paired
-noise floor; no cell wins on wall with CPU corroborating in 3/3.
+0.963–1.046, CPU 0.992–1.026 — the port's cost is inside the box's paired noise
+floor; no cell wins on both axes in 3/3 pairs.
 
 **Scoreboard re-derivation (8 cells x 3 tools x (1 warmup + 3 measured)).**
-**2.364x–4.091x ordinary / 2.320x–4.122x accelerated; required cut
-57.7 %–75.6 %.** 96 rows, zero exclusions; every PnP cell has one hash across
-both build arms equal to the new reference set; 48/48 PnP runs exit 0,
-`degraded=false`, zero fatal errors; every Orca run asserts the five matched
-keys from its resolved appendix. **t124's ratios are superseded, not improved**:
-both arms' adhesion work changed, so the two takes are not comparable.
+**2.445x–3.769x ordinary / 2.420x–3.745x accelerated; required cut
+59.1 %–73.5 %.** Every PnP cell has one hash across both build arms equal to the
+new reference set; PnP runs are `degraded = false` with zero fatal errors; every
+Orca run asserts the seven matched keys from its resolved appendix. **t124's
+2.36x–4.65x is superseded, not improved**: the adhesion job, the first-layer
+width and the support brim all changed. One batch was aborted by a full disk mid
+`base-classic-on`; the three remaining base cells were re-taken in a second
+interleaved batch and both are appended in one CSV.
 
-**Disclosures.** `auto_brim` overrides `brim_width` (above);
-`min_skirt_length > 0` fails closed; support clipping is a declared closing
-radius; the skirt simplify is weaker than canonical's
-`Geometry::simplify_polygons` (collinear-only), so PnP keeps more vertices;
-source-vs-installed-binary caveat unchanged (t128); shared 6-physical /
-12-logical-core box, idle load 0.9–6.5 % before the scoreboard. Evidence:
+**Disclosures.** `auto_brim` overrides `brim_width`; `min_skirt_length > 0` fails
+closed; support clipping is a declared closing radius; the skirt simplify is
+collinear-only against canonical's 0.05 mm Douglas-Peucker; Orca's per-feature
+wall widths (0.42 / 0.45 / 0.5) still differ from PnP's 0.4 and matching them is
+a separate decision; source-vs-installed-binary caveat unchanged (t128); shared
+6-physical / 12-logical-core box, scoreboard in two windows. Evidence:
 [`evidence/t135-skirt-brim-retake/`](../evidence/t135-skirt-brim-retake/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, 16/16 negative controls rejected).
 
 **Stage 2 is untouched**: the cross-layer occupancy batch remains open,
 unclaimed, and gated by [137](137-planner-scheduling-gate.md).
-

@@ -2,29 +2,29 @@
   "ticket": 135,
   "stage": 1,
   "manifest": {
-    "candidate-ordinary": {
-      "exe_sha256": "cbae5e3c74176a7b8dda6314d13758380e58fbdf891b54c2932eac249ad35d83",
-      "skirt_brim_wasm_sha256": "a6134a81313e3d90eacb42bd43c1eadb6e563679fc5c5305982285e897519905",
-      "exe": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t135-candidate\\pnp_cli-ordinary.exe",
-      "module_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t135-candidate\\modules"
-    },
-    "candidate-accelerated": {
-      "exe_sha256": "442f0f2ad275c9fc5fa9ec06bd2de421c16af087c16e93aca658219919778bb0",
-      "skirt_brim_wasm_sha256": "d0f17e8bc45eab30f6a446950a4f170b6712bccc7c0feb262da91000a156c466",
-      "exe": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t135-candidate\\accelerated\\pnp_cli.exe",
-      "module_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t135-candidate\\accelerated\\modules"
-    },
     "baseline-ordinary": {
-      "exe_sha256": "cbae5e3c74176a7b8dda6314d13758380e58fbdf891b54c2932eac249ad35d83",
+      "exe_sha256": "04f8dd8a6d1f3abb7c5fdf91d1026c91e72cb0df7085ef75257497a4d1d86a39",
       "skirt_brim_wasm_sha256": "fd0da67ec12b8198c38a9eddfd7aa81f13de2b1197364600673acf0a92567a5e",
       "exe": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t135-baseline\\pnp_cli-ordinary.exe",
       "module_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t135-baseline\\modules"
     },
+    "candidate-accelerated": {
+      "exe_sha256": "2958de4466b05fcf75aa168159919cc17246b2f5d792dc1f689604a48741e04e",
+      "skirt_brim_wasm_sha256": "47c091fd87cfa8aead24977b8fe09026660e93ea76c0d2886d919f8eb5c1ca34",
+      "exe": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t135-candidate\\accelerated\\pnp_cli.exe",
+      "module_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t135-candidate\\accelerated\\modules"
+    },
     "baseline-accelerated": {
-      "exe_sha256": "442f0f2ad275c9fc5fa9ec06bd2de421c16af087c16e93aca658219919778bb0",
+      "exe_sha256": "2958de4466b05fcf75aa168159919cc17246b2f5d792dc1f689604a48741e04e",
       "skirt_brim_wasm_sha256": "44f92641cfcc10150e099201fd8d0f93850175ff3a3fbb921a865a3c4df8fe72",
       "exe": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t135-baseline\\accelerated\\pnp_cli.exe",
       "module_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t135-baseline\\accelerated\\modules"
+    },
+    "candidate-ordinary": {
+      "exe_sha256": "04f8dd8a6d1f3abb7c5fdf91d1026c91e72cb0df7085ef75257497a4d1d86a39",
+      "skirt_brim_wasm_sha256": "8e5354e0c15d817ee3a5cd09961ca9bbae77d0d85247ad36c4a2ff9ac93b200a",
+      "exe": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t135-candidate\\pnp_cli-ordinary.exe",
+      "module_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t135-candidate\\modules"
     }
   },
   "output": {
@@ -40,13 +40,13 @@
         "exit_code": 0
       },
       "candidate-ordinary": {
-        "sha256": "9012df71023c9cb523ce18bb6bd41af3503a19b4a6b3038b58c3d70216bbe25e",
-        "gcode_bytes": 4017059,
+        "sha256": "7db0641bacec8c205a54147f5b134b2bd5fd19fe2aa038bb42c0ea210b5896b3",
+        "gcode_bytes": 4023709,
         "exit_code": 0
       },
       "candidate-accelerated": {
-        "sha256": "9012df71023c9cb523ce18bb6bd41af3503a19b4a6b3038b58c3d70216bbe25e",
-        "gcode_bytes": 4017059,
+        "sha256": "7db0641bacec8c205a54147f5b134b2bd5fd19fe2aa038bb42c0ea210b5896b3",
+        "gcode_bytes": 4023709,
         "exit_code": 0
       }
     },
@@ -62,13 +62,13 @@
         "exit_code": 0
       },
       "candidate-ordinary": {
-        "sha256": "7b199bd1bd13b9fa296773d8b47be1f799351038683cdc455ca60e3956b6a97c",
-        "gcode_bytes": 8355340,
+        "sha256": "c02aa4e91c6c6a3bf6a6acd27aea4469d1077568ee6dc1546e8ec8eed6b0b6c0",
+        "gcode_bytes": 8362207,
         "exit_code": 0
       },
       "candidate-accelerated": {
-        "sha256": "7b199bd1bd13b9fa296773d8b47be1f799351038683cdc455ca60e3956b6a97c",
-        "gcode_bytes": 8355340,
+        "sha256": "c02aa4e91c6c6a3bf6a6acd27aea4469d1077568ee6dc1546e8ec8eed6b0b6c0",
+        "gcode_bytes": 8362207,
         "exit_code": 0
       }
     },
@@ -84,13 +84,13 @@
         "exit_code": 0
       },
       "candidate-ordinary": {
-        "sha256": "dbafeb9d54d8229b5eb250ecb4c69305ec63445f33b6ea4db36ef66fb5797666",
-        "gcode_bytes": 4156899,
+        "sha256": "a2f7a1fed5f2a5be8529fab8952feeb4786bab568c885a2aee9ba65ee7a61584",
+        "gcode_bytes": 4163351,
         "exit_code": 0
       },
       "candidate-accelerated": {
-        "sha256": "dbafeb9d54d8229b5eb250ecb4c69305ec63445f33b6ea4db36ef66fb5797666",
-        "gcode_bytes": 4156899,
+        "sha256": "a2f7a1fed5f2a5be8529fab8952feeb4786bab568c885a2aee9ba65ee7a61584",
+        "gcode_bytes": 4163351,
         "exit_code": 0
       }
     },
@@ -106,13 +106,13 @@
         "exit_code": 0
       },
       "candidate-ordinary": {
-        "sha256": "c86af409f424ca2099321e167eced02547836ff049758574f4a75547a36e2f40",
-        "gcode_bytes": 8491577,
+        "sha256": "2326455d306101f367b87f31ee1b42fc3ec24c18b3dd35f67ff7d5b9a9f2139b",
+        "gcode_bytes": 8498511,
         "exit_code": 0
       },
       "candidate-accelerated": {
-        "sha256": "c86af409f424ca2099321e167eced02547836ff049758574f4a75547a36e2f40",
-        "gcode_bytes": 8491577,
+        "sha256": "2326455d306101f367b87f31ee1b42fc3ec24c18b3dd35f67ff7d5b9a9f2139b",
+        "gcode_bytes": 8498511,
         "exit_code": 0
       }
     },
@@ -128,13 +128,13 @@
         "exit_code": 0
       },
       "candidate-ordinary": {
-        "sha256": "27dd2114759bb81c3a39362bc1f843f6753d2762145f742c7477657659b4f7de",
-        "gcode_bytes": 21073378,
+        "sha256": "7ef84447e30e473e230cad18a5592eee386fc34501254fcd85670e2a90fa3a23",
+        "gcode_bytes": 21077184,
         "exit_code": 0
       },
       "candidate-accelerated": {
-        "sha256": "27dd2114759bb81c3a39362bc1f843f6753d2762145f742c7477657659b4f7de",
-        "gcode_bytes": 21073378,
+        "sha256": "7ef84447e30e473e230cad18a5592eee386fc34501254fcd85670e2a90fa3a23",
+        "gcode_bytes": 21077184,
         "exit_code": 0
       }
     },
@@ -150,13 +150,13 @@
         "exit_code": 0
       },
       "candidate-ordinary": {
-        "sha256": "e2c3c60e81092984ea1f179447a24db149aa2f1a2dd15aeec4e8d1489cebe6cf",
-        "gcode_bytes": 42510908,
+        "sha256": "1ddea2b7026f13f59ba54d81530e8a50c5738626f131e5d1062c8a87773420b3",
+        "gcode_bytes": 42510886,
         "exit_code": 0
       },
       "candidate-accelerated": {
-        "sha256": "e2c3c60e81092984ea1f179447a24db149aa2f1a2dd15aeec4e8d1489cebe6cf",
-        "gcode_bytes": 42510908,
+        "sha256": "1ddea2b7026f13f59ba54d81530e8a50c5738626f131e5d1062c8a87773420b3",
+        "gcode_bytes": 42510886,
         "exit_code": 0
       }
     },
@@ -172,13 +172,13 @@
         "exit_code": 0
       },
       "candidate-ordinary": {
-        "sha256": "32ac8f77e290adb69d99acb52f27951ebc9472730c78b7ab03290d48d83ad40c",
-        "gcode_bytes": 20892953,
+        "sha256": "defae354a073d81344e2797c1e63e8483f319199872a7fee9f1a38697b716eaf",
+        "gcode_bytes": 20897033,
         "exit_code": 0
       },
       "candidate-accelerated": {
-        "sha256": "32ac8f77e290adb69d99acb52f27951ebc9472730c78b7ab03290d48d83ad40c",
-        "gcode_bytes": 20892953,
+        "sha256": "defae354a073d81344e2797c1e63e8483f319199872a7fee9f1a38697b716eaf",
+        "gcode_bytes": 20897033,
         "exit_code": 0
       }
     },
@@ -194,13 +194,13 @@
         "exit_code": 0
       },
       "candidate-ordinary": {
-        "sha256": "e5f5b8f4e6ce3699744b655f5af7b30e0e85964ffe2a54965deefa739b99a688",
-        "gcode_bytes": 42331088,
+        "sha256": "4aa1847c3b9b5b74ad14360e3529082250299be32a44508d5f0cf0b3785b7826",
+        "gcode_bytes": 42331066,
         "exit_code": 0
       },
       "candidate-accelerated": {
-        "sha256": "e5f5b8f4e6ce3699744b655f5af7b30e0e85964ffe2a54965deefa739b99a688",
-        "gcode_bytes": 42331088,
+        "sha256": "4aa1847c3b9b5b74ad14360e3529082250299be32a44508d5f0cf0b3785b7826",
+        "gcode_bytes": 42331066,
         "exit_code": 0
       }
     }
@@ -209,59 +209,59 @@
     "benchy-classic-off": {
       "baseline": {
         "n": 3,
-        "wall_median": 4.3836,
-        "cpu_median": 25.0781,
+        "wall_median": 4.4536,
+        "cpu_median": 25.1094,
         "wall_values": [
-          4.4412,
-          4.3836,
-          4.2593
+          4.4093,
+          4.4536,
+          4.6507
         ],
         "cpu_values": [
-          24.7344,
-          25.2188,
-          25.0781
+          25.0781,
+          25.1094,
+          25.2188
         ]
       },
       "candidate": {
         "n": 3,
-        "wall_median": 4.4418,
-        "cpu_median": 24.8906,
+        "wall_median": 4.4373,
+        "cpu_median": 25.3906,
         "wall_values": [
-          4.7359,
-          4.4418,
-          4.3214
+          4.3823,
+          4.4373,
+          5.236
         ],
         "cpu_values": [
-          25.3281,
-          24.7656,
-          24.8906
+          25.2031,
+          25.3906,
+          26.2969
         ]
       },
-      "wall_ratio": 1.0133,
-      "cpu_ratio": 0.9925,
-      "delta_wall_median_s": 0.0582,
-      "cpu_signs": 1,
-      "wall_signs": 3,
+      "wall_ratio": 0.9963,
+      "cpu_ratio": 1.0112,
+      "delta_wall_median_s": -0.0163,
+      "cpu_signs": 3,
+      "wall_signs": 1,
       "pairs": {
         "1": {
-          "wall_baseline": 4.4412,
-          "wall_candidate": 4.7359,
-          "cpu_baseline": 24.7344,
-          "cpu_candidate": 25.3281,
+          "wall_baseline": 4.4093,
+          "wall_candidate": 4.3823,
+          "cpu_baseline": 25.0781,
+          "cpu_candidate": 25.2031,
           "order": "baseline-ordinary>candidate-ordinary"
         },
         "2": {
-          "wall_baseline": 4.3836,
-          "wall_candidate": 4.4418,
-          "cpu_baseline": 25.2188,
-          "cpu_candidate": 24.7656,
+          "wall_baseline": 4.4536,
+          "wall_candidate": 4.4373,
+          "cpu_baseline": 25.1094,
+          "cpu_candidate": 25.3906,
           "order": "candidate-ordinary>baseline-ordinary"
         },
         "3": {
-          "wall_baseline": 4.2593,
-          "wall_candidate": 4.3214,
-          "cpu_baseline": 25.0781,
-          "cpu_candidate": 24.8906,
+          "wall_baseline": 4.6507,
+          "wall_candidate": 5.236,
+          "cpu_baseline": 25.2188,
+          "cpu_candidate": 26.2969,
           "order": "baseline-ordinary>candidate-ordinary"
         }
       }
@@ -269,59 +269,59 @@
     "benchy-classic-on": {
       "baseline": {
         "n": 3,
-        "wall_median": 7.7741,
-        "cpu_median": 39.7969,
+        "wall_median": 8.2782,
+        "cpu_median": 41.4062,
         "wall_values": [
-          7.9814,
-          7.7741,
-          7.6376
+          8.2177,
+          8.2782,
+          8.5785
         ],
         "cpu_values": [
-          39.9531,
-          39.5312,
-          39.7969
+          42.375,
+          41.4062,
+          40.6562
         ]
       },
       "candidate": {
         "n": 3,
-        "wall_median": 7.8053,
-        "cpu_median": 39.4844,
+        "wall_median": 8.4562,
+        "cpu_median": 41.1875,
         "wall_values": [
-          7.8834,
-          7.8053,
-          7.7365
+          8.0911,
+          8.4562,
+          8.5824
         ],
         "cpu_values": [
-          40.5625,
-          39.4844,
-          39.1875
+          40.8594,
+          41.1875,
+          41.5938
         ]
       },
-      "wall_ratio": 1.004,
-      "cpu_ratio": 0.9921,
-      "delta_wall_median_s": 0.0312,
+      "wall_ratio": 1.0215,
+      "cpu_ratio": 0.9947,
+      "delta_wall_median_s": 0.178,
       "cpu_signs": 1,
       "wall_signs": 2,
       "pairs": {
         "1": {
-          "wall_baseline": 7.9814,
-          "wall_candidate": 7.8834,
-          "cpu_baseline": 39.9531,
-          "cpu_candidate": 40.5625,
+          "wall_baseline": 8.2177,
+          "wall_candidate": 8.0911,
+          "cpu_baseline": 42.375,
+          "cpu_candidate": 40.8594,
           "order": "baseline-ordinary>candidate-ordinary"
         },
         "2": {
-          "wall_baseline": 7.7741,
-          "wall_candidate": 7.8053,
-          "cpu_baseline": 39.5312,
-          "cpu_candidate": 39.4844,
+          "wall_baseline": 8.2782,
+          "wall_candidate": 8.4562,
+          "cpu_baseline": 41.4062,
+          "cpu_candidate": 41.1875,
           "order": "candidate-ordinary>baseline-ordinary"
         },
         "3": {
-          "wall_baseline": 7.6376,
-          "wall_candidate": 7.7365,
-          "cpu_baseline": 39.7969,
-          "cpu_candidate": 39.1875,
+          "wall_baseline": 8.5785,
+          "wall_candidate": 8.5824,
+          "cpu_baseline": 40.6562,
+          "cpu_candidate": 41.5938,
           "order": "baseline-ordinary>candidate-ordinary"
         }
       }
@@ -329,59 +329,59 @@
     "benchy-arachne-off": {
       "baseline": {
         "n": 3,
-        "wall_median": 4.5514,
-        "cpu_median": 26.0625,
+        "wall_median": 4.6882,
+        "cpu_median": 26.3594,
         "wall_values": [
-          4.5574,
-          4.5514,
-          4.5274
+          4.5529,
+          4.6882,
+          4.8535
         ],
         "cpu_values": [
-          25.9219,
-          26.0625,
-          26.2188
+          26.3594,
+          26.2812,
+          27.0625
         ]
       },
       "candidate": {
         "n": 3,
-        "wall_median": 4.5471,
-        "cpu_median": 26.0781,
+        "wall_median": 4.9051,
+        "cpu_median": 27.0469,
         "wall_values": [
-          4.7506,
-          4.534,
-          4.5471
+          4.5504,
+          4.9051,
+          4.9185
         ],
         "cpu_values": [
-          25.625,
-          26.0781,
-          26.2812
+          26.4062,
+          27.1406,
+          27.0469
         ]
       },
-      "wall_ratio": 0.9991,
-      "cpu_ratio": 1.0006,
-      "delta_wall_median_s": -0.0043,
+      "wall_ratio": 1.0463,
+      "cpu_ratio": 1.0261,
+      "delta_wall_median_s": 0.2169,
       "cpu_signs": 2,
       "wall_signs": 2,
       "pairs": {
         "1": {
-          "wall_baseline": 4.5574,
-          "wall_candidate": 4.7506,
-          "cpu_baseline": 25.9219,
-          "cpu_candidate": 25.625,
+          "wall_baseline": 4.5529,
+          "wall_candidate": 4.5504,
+          "cpu_baseline": 26.3594,
+          "cpu_candidate": 26.4062,
           "order": "baseline-ordinary>candidate-ordinary"
         },
         "2": {
-          "wall_baseline": 4.5514,
-          "wall_candidate": 4.534,
-          "cpu_baseline": 26.0625,
-          "cpu_candidate": 26.0781,
+          "wall_baseline": 4.6882,
+          "wall_candidate": 4.9051,
+          "cpu_baseline": 26.2812,
+          "cpu_candidate": 27.1406,
           "order": "candidate-ordinary>baseline-ordinary"
         },
         "3": {
-          "wall_baseline": 4.5274,
-          "wall_candidate": 4.5471,
-          "cpu_baseline": 26.2188,
-          "cpu_candidate": 26.2812,
+          "wall_baseline": 4.8535,
+          "wall_candidate": 4.9185,
+          "cpu_baseline": 27.0625,
+          "cpu_candidate": 27.0469,
           "order": "baseline-ordinary>candidate-ordinary"
         }
       }
@@ -389,59 +389,59 @@
     "benchy-arachne-on": {
       "baseline": {
         "n": 3,
-        "wall_median": 8.1024,
-        "cpu_median": 40.5469,
+        "wall_median": 8.6652,
+        "cpu_median": 42.0625,
         "wall_values": [
-          8.1024,
-          7.9798,
-          8.6628
+          9.1597,
+          8.6652,
+          8.6433
         ],
         "cpu_values": [
-          40.5469,
-          40.2812,
-          41.9062
+          42.7656,
+          41.6719,
+          42.0625
         ]
       },
       "candidate": {
         "n": 3,
-        "wall_median": 8.0633,
-        "cpu_median": 40.7031,
+        "wall_median": 8.9411,
+        "cpu_median": 42.625,
         "wall_values": [
-          8.0242,
-          8.1465,
-          8.0633
+          8.9307,
+          8.9411,
+          9.7086
         ],
         "cpu_values": [
-          40.7031,
-          40.25,
-          40.8438
+          42.6719,
+          41.7656,
+          42.625
         ]
       },
-      "wall_ratio": 0.9952,
-      "cpu_ratio": 1.0039,
-      "delta_wall_median_s": -0.0391,
-      "cpu_signs": 1,
-      "wall_signs": 1,
+      "wall_ratio": 1.0318,
+      "cpu_ratio": 1.0134,
+      "delta_wall_median_s": 0.2759,
+      "cpu_signs": 2,
+      "wall_signs": 2,
       "pairs": {
         "1": {
-          "wall_baseline": 8.1024,
-          "wall_candidate": 8.0242,
-          "cpu_baseline": 40.5469,
-          "cpu_candidate": 40.7031,
+          "wall_baseline": 9.1597,
+          "wall_candidate": 8.9307,
+          "cpu_baseline": 42.7656,
+          "cpu_candidate": 42.6719,
           "order": "baseline-ordinary>candidate-ordinary"
         },
         "2": {
-          "wall_baseline": 7.9798,
-          "wall_candidate": 8.1465,
-          "cpu_baseline": 40.2812,
-          "cpu_candidate": 40.25,
+          "wall_baseline": 8.6652,
+          "wall_candidate": 8.9411,
+          "cpu_baseline": 41.6719,
+          "cpu_candidate": 41.7656,
           "order": "candidate-ordinary>baseline-ordinary"
         },
         "3": {
-          "wall_baseline": 8.6628,
-          "wall_candidate": 8.0633,
-          "cpu_baseline": 41.9062,
-          "cpu_candidate": 40.8438,
+          "wall_baseline": 8.6433,
+          "wall_candidate": 9.7086,
+          "cpu_baseline": 42.0625,
+          "cpu_candidate": 42.625,
           "order": "baseline-ordinary>candidate-ordinary"
         }
       }
@@ -449,59 +449,59 @@
     "base-classic-off": {
       "baseline": {
         "n": 3,
-        "wall_median": 38.0838,
-        "cpu_median": 311.3438,
+        "wall_median": 40.0917,
+        "cpu_median": 317.0781,
         "wall_values": [
-          38.1241,
-          37.5047,
-          38.0838
+          38.1171,
+          40.0917,
+          40.7428
         ],
         "cpu_values": [
-          311.7969,
-          311.3438,
-          311.1406
+          316.1406,
+          317.0781,
+          317.8438
         ]
       },
       "candidate": {
         "n": 3,
-        "wall_median": 37.1418,
-        "cpu_median": 311.2344,
+        "wall_median": 40.7319,
+        "cpu_median": 317.0312,
         "wall_values": [
-          37.5886,
-          37.1418,
-          37.0536
+          39.9483,
+          40.7319,
+          41.2218
         ],
         "cpu_values": [
-          311.2344,
-          311.1094,
-          311.4688
+          317.0312,
+          317.2656,
+          316.6094
         ]
       },
-      "wall_ratio": 0.9753,
-      "cpu_ratio": 0.9996,
-      "delta_wall_median_s": -0.942,
-      "cpu_signs": 1,
-      "wall_signs": 0,
+      "wall_ratio": 1.016,
+      "cpu_ratio": 0.9999,
+      "delta_wall_median_s": 0.6402,
+      "cpu_signs": 2,
+      "wall_signs": 3,
       "pairs": {
         "1": {
-          "wall_baseline": 38.1241,
-          "wall_candidate": 37.5886,
-          "cpu_baseline": 311.7969,
-          "cpu_candidate": 311.2344,
+          "wall_baseline": 38.1171,
+          "wall_candidate": 39.9483,
+          "cpu_baseline": 316.1406,
+          "cpu_candidate": 317.0312,
           "order": "baseline-ordinary>candidate-ordinary"
         },
         "2": {
-          "wall_baseline": 37.5047,
-          "wall_candidate": 37.1418,
-          "cpu_baseline": 311.3438,
-          "cpu_candidate": 311.1094,
+          "wall_baseline": 40.0917,
+          "wall_candidate": 40.7319,
+          "cpu_baseline": 317.0781,
+          "cpu_candidate": 317.2656,
           "order": "candidate-ordinary>baseline-ordinary"
         },
         "3": {
-          "wall_baseline": 38.0838,
-          "wall_candidate": 37.0536,
-          "cpu_baseline": 311.1406,
-          "cpu_candidate": 311.4688,
+          "wall_baseline": 40.7428,
+          "wall_candidate": 41.2218,
+          "cpu_baseline": 317.8438,
+          "cpu_candidate": 316.6094,
           "order": "baseline-ordinary>candidate-ordinary"
         }
       }
@@ -509,59 +509,59 @@
     "base-classic-on": {
       "baseline": {
         "n": 3,
-        "wall_median": 92.5206,
-        "cpu_median": 599.1562,
+        "wall_median": 104.5328,
+        "cpu_median": 621.7812,
         "wall_values": [
-          91.9302,
-          92.5206,
-          93.8955
+          102.1272,
+          105.7509,
+          104.5328
         ],
         "cpu_values": [
-          599.1562,
-          596.6875,
-          605.5625
+          621.7812,
+          622.1875,
+          620.7188
         ]
       },
       "candidate": {
         "n": 3,
-        "wall_median": 92.3814,
-        "cpu_median": 595.6875,
+        "wall_median": 100.6332,
+        "cpu_median": 616.625,
         "wall_values": [
-          92.3866,
-          92.3814,
-          91.3149
+          100.3799,
+          103.5652,
+          100.6332
         ],
         "cpu_values": [
-          595.6875,
-          592.75,
-          596.3906
+          616.25,
+          620.4844,
+          616.625
         ]
       },
-      "wall_ratio": 0.9985,
-      "cpu_ratio": 0.9942,
-      "delta_wall_median_s": -0.1392,
+      "wall_ratio": 0.9627,
+      "cpu_ratio": 0.9917,
+      "delta_wall_median_s": -3.8996,
       "cpu_signs": 0,
-      "wall_signs": 1,
+      "wall_signs": 0,
       "pairs": {
         "1": {
-          "wall_baseline": 91.9302,
-          "wall_candidate": 92.3866,
-          "cpu_baseline": 599.1562,
-          "cpu_candidate": 595.6875,
+          "wall_baseline": 102.1272,
+          "wall_candidate": 100.3799,
+          "cpu_baseline": 621.7812,
+          "cpu_candidate": 616.25,
           "order": "baseline-ordinary>candidate-ordinary"
         },
         "2": {
-          "wall_baseline": 92.5206,
-          "wall_candidate": 92.3814,
-          "cpu_baseline": 596.6875,
-          "cpu_candidate": 592.75,
+          "wall_baseline": 105.7509,
+          "wall_candidate": 103.5652,
+          "cpu_baseline": 622.1875,
+          "cpu_candidate": 620.4844,
           "order": "candidate-ordinary>baseline-ordinary"
         },
         "3": {
-          "wall_baseline": 93.8955,
-          "wall_candidate": 91.3149,
-          "cpu_baseline": 605.5625,
-          "cpu_candidate": 596.3906,
+          "wall_baseline": 104.5328,
+          "wall_candidate": 100.6332,
+          "cpu_baseline": 620.7188,
+          "cpu_candidate": 616.625,
           "order": "baseline-ordinary>candidate-ordinary"
         }
       }
@@ -569,59 +569,59 @@
     "base-arachne-off": {
       "baseline": {
         "n": 3,
-        "wall_median": 37.7786,
-        "cpu_median": 315.3906,
+        "wall_median": 41.9889,
+        "cpu_median": 322.6875,
         "wall_values": [
-          38.0578,
-          37.7786,
-          36.909
+          40.137,
+          41.9889,
+          43.0801
         ],
         "cpu_values": [
-          315.1094,
-          315.3906,
-          316.4844
+          320.3281,
+          322.6875,
+          323.4062
         ]
       },
       "candidate": {
         "n": 3,
-        "wall_median": 37.8122,
-        "cpu_median": 315.7344,
+        "wall_median": 42.3844,
+        "cpu_median": 323.7969,
         "wall_values": [
-          37.8122,
-          38.1094,
-          35.6238
+          42.3844,
+          42.4404,
+          40.4608
         ],
         "cpu_values": [
-          315.9688,
-          315.7031,
-          315.7344
+          321.9688,
+          324.2969,
+          323.7969
         ]
       },
-      "wall_ratio": 1.0009,
-      "cpu_ratio": 1.0011,
-      "delta_wall_median_s": 0.0336,
-      "cpu_signs": 2,
-      "wall_signs": 1,
+      "wall_ratio": 1.0094,
+      "cpu_ratio": 1.0034,
+      "delta_wall_median_s": 0.3955,
+      "cpu_signs": 3,
+      "wall_signs": 2,
       "pairs": {
         "1": {
-          "wall_baseline": 38.0578,
-          "wall_candidate": 37.8122,
-          "cpu_baseline": 315.1094,
-          "cpu_candidate": 315.9688,
+          "wall_baseline": 40.137,
+          "wall_candidate": 42.3844,
+          "cpu_baseline": 320.3281,
+          "cpu_candidate": 321.9688,
           "order": "baseline-ordinary>candidate-ordinary"
         },
         "2": {
-          "wall_baseline": 37.7786,
-          "wall_candidate": 38.1094,
-          "cpu_baseline": 315.3906,
-          "cpu_candidate": 315.7031,
+          "wall_baseline": 41.9889,
+          "wall_candidate": 42.4404,
+          "cpu_baseline": 322.6875,
+          "cpu_candidate": 324.2969,
           "order": "candidate-ordinary>baseline-ordinary"
         },
         "3": {
-          "wall_baseline": 36.909,
-          "wall_candidate": 35.6238,
-          "cpu_baseline": 316.4844,
-          "cpu_candidate": 315.7344,
+          "wall_baseline": 43.0801,
+          "wall_candidate": 40.4608,
+          "cpu_baseline": 323.4062,
+          "cpu_candidate": 323.7969,
           "order": "baseline-ordinary>candidate-ordinary"
         }
       }
@@ -629,59 +629,59 @@
     "base-arachne-on": {
       "baseline": {
         "n": 3,
-        "wall_median": 91.912,
-        "cpu_median": 601.6094,
+        "wall_median": 105.2807,
+        "cpu_median": 627.9219,
         "wall_values": [
-          92.303,
-          91.912,
-          88.2498
+          105.2807,
+          105.2119,
+          105.6616
         ],
         "cpu_values": [
-          601.6094,
-          601.8438,
-          596.7656
+          633.0,
+          626.4375,
+          627.9219
         ]
       },
       "candidate": {
         "n": 3,
-        "wall_median": 92.2276,
-        "cpu_median": 599.9688,
+        "wall_median": 107.4999,
+        "cpu_median": 626.0469,
         "wall_values": [
-          92.2276,
-          94.1174,
-          87.5468
+          107.4999,
+          108.7741,
+          104.9897
         ],
         "cpu_values": [
-          599.9688,
-          601.4844,
-          596.5
+          627.0625,
+          626.0469,
+          624.9375
         ]
       },
-      "wall_ratio": 1.0034,
-      "cpu_ratio": 0.9973,
-      "delta_wall_median_s": 0.3156,
+      "wall_ratio": 1.0211,
+      "cpu_ratio": 0.997,
+      "delta_wall_median_s": 2.2192,
       "cpu_signs": 0,
-      "wall_signs": 1,
+      "wall_signs": 2,
       "pairs": {
         "1": {
-          "wall_baseline": 92.303,
-          "wall_candidate": 92.2276,
-          "cpu_baseline": 601.6094,
-          "cpu_candidate": 599.9688,
+          "wall_baseline": 105.2807,
+          "wall_candidate": 107.4999,
+          "cpu_baseline": 633.0,
+          "cpu_candidate": 627.0625,
           "order": "baseline-ordinary>candidate-ordinary"
         },
         "2": {
-          "wall_baseline": 91.912,
-          "wall_candidate": 94.1174,
-          "cpu_baseline": 601.8438,
-          "cpu_candidate": 601.4844,
+          "wall_baseline": 105.2119,
+          "wall_candidate": 108.7741,
+          "cpu_baseline": 626.4375,
+          "cpu_candidate": 626.0469,
           "order": "candidate-ordinary>baseline-ordinary"
         },
         "3": {
-          "wall_baseline": 88.2498,
-          "wall_candidate": 87.5468,
-          "cpu_baseline": 596.7656,
-          "cpu_candidate": 596.5,
+          "wall_baseline": 105.6616,
+          "wall_candidate": 104.9897,
+          "cpu_baseline": 627.9219,
+          "cpu_candidate": 624.9375,
           "order": "baseline-ordinary>candidate-ordinary"
         }
       }
@@ -691,82 +691,82 @@
     "benchy-classic-off": {
       "cell": "benchy-classic-off",
       "spacing_mm": {
-        "pnp": 0.4,
-        "orca": 0.45708
+        "pnp": 0.35708,
+        "orca": 0.35708
       },
       "pnp": {
         "Brim": {
-          "loop_count": 20,
+          "loop_count": 22,
           "present": true,
-          "filament_mm": 80.674,
-          "path_length_mm": 2408.66,
-          "swept_area_mm2": 963.46,
-          "outer_loop_area_mm2": 1470.13,
+          "filament_mm": 88.41,
+          "path_length_mm": 2639.63,
+          "swept_area_mm2": 942.56,
+          "outer_loop_area_mm2": 1452.36,
           "growth_mm": {
-            "xmin": 7.900000000000006,
-            "ymin": 7.894999999999996,
-            "xmax": 7.89500000000001,
-            "ymax": 7.899000000000001
+            "xmin": 7.777000000000001,
+            "ymin": 7.772999999999996,
+            "xmax": 7.772999999999996,
+            "ymax": 7.7760000000000105
           }
         },
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 34.231,
-          "path_length_mm": 1023.47,
-          "swept_area_mm2": 409.39,
-          "outer_loop_area_mm2": 2309.66,
+          "filament_mm": 30.276,
+          "path_length_mm": 1014.08,
+          "swept_area_mm2": 362.11,
+          "outer_loop_area_mm2": 2246.28,
           "growth_mm": {
-            "xmin": 13.096999999999994,
-            "ymin": 13.09899999999999,
-            "xmax": 13.093999999999994,
-            "ymax": 13.099000000000018
+            "xmin": 12.739000000000004,
+            "ymin": 12.739999999999995,
+            "xmax": 12.735000000000014,
+            "ymax": 12.740000000000009
           }
         }
       },
       "orca": {
         "Brim": {
-          "loop_count": 19,
+          "loop_count": 30,
           "present": true,
-          "filament_mm": 71.6,
-          "path_length_mm": 1917.26,
-          "swept_area_mm2": 876.34,
-          "outer_loop_area_mm2": 1386.01,
+          "filament_mm": 78.958,
+          "path_length_mm": 2703.38,
+          "swept_area_mm2": 965.32,
+          "outer_loop_area_mm2": 1470.99,
           "growth_mm": {
-            "xmin": 7.4339999999999975,
-            "ymin": 7.435000000000002,
-            "xmax": 7.436999999999983,
-            "ymax": 7.431999999999988
+            "xmin": 7.977000000000004,
+            "ymin": 7.97699999999999,
+            "xmax": 7.978000000000009,
+            "ymax": 7.974000000000018
           }
         },
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 38.046,
-          "path_length_mm": 1014.17,
-          "swept_area_mm2": 463.56,
-          "outer_loop_area_mm2": 2300.26,
+          "filament_mm": 29.988,
+          "path_length_mm": 1026.31,
+          "swept_area_mm2": 366.47,
+          "outer_loop_area_mm2": 2298.88,
           "growth_mm": {
-            "xmin": 13.173000000000002,
-            "ymin": 13.178000000000011,
-            "xmax": 13.171999999999997,
-            "ymax": 13.132999999999981
+            "xmin": 13.115000000000009,
+            "ymin": 13.120999999999995,
+            "xmax": 13.114000000000004,
+            "ymax": 13.076000000000022
           }
         }
       },
       "checks": {
         "brim_presence": true,
         "brim_both_absent": false,
-        "brim_swept_area_rel_diff": 0.0994,
-        "brim_outer_loop_area_rel_diff": 0.0607,
-        "brim_growth_abs_diff_mm": 0.463,
-        "brim_filament_rel_diff": 0.1267,
+        "brim_swept_area_rel_diff": 0.0236,
+        "brim_outer_loop_area_rel_diff": 0.0127,
+        "brim_growth_abs_diff_mm": 0.201,
+        "brim_filament_rel_diff": 0.1197,
         "skirt_presence": true,
         "skirt_both_absent": false,
-        "skirt_swept_area_rel_diff": 0.1169,
-        "skirt_outer_loop_area_rel_diff": 0.0041,
-        "skirt_growth_abs_diff_mm": 0.079,
-        "skirt_filament_rel_diff": 0.1003,
+        "skirt_swept_area_rel_diff": 0.0119,
+        "skirt_outer_loop_area_rel_diff": 0.0229,
+        "skirt_growth_abs_diff_mm": 0.381,
+        "skirt_filament_rel_diff": 0.0096,
         "brim_swept_area_pass": true,
         "skirt_area_pass": true,
         "brim_presence_pass": true,
@@ -779,82 +779,82 @@
     "benchy-classic-on": {
       "cell": "benchy-classic-on",
       "spacing_mm": {
-        "pnp": 0.4,
-        "orca": 0.45708
+        "pnp": 0.35708,
+        "orca": 0.35708
       },
       "pnp": {
         "Brim": {
-          "loop_count": 18,
+          "loop_count": 19,
           "present": true,
-          "filament_mm": 54.422,
-          "path_length_mm": 1620.37,
-          "swept_area_mm2": 648.15,
-          "outer_loop_area_mm2": 1156.5,
+          "filament_mm": 60.154,
+          "path_length_mm": 1790.52,
+          "swept_area_mm2": 639.36,
+          "outer_loop_area_mm2": 1152.41,
           "growth_mm": {
-            "xmin": 2.9440000000000026,
-            "ymin": 7.617999999999995,
-            "xmax": 7.89500000000001,
-            "ymax": 7.575000000000017
+            "xmin": 2.966000000000008,
+            "ymin": 7.5049999999999955,
+            "xmax": 7.772999999999996,
+            "ymax": 7.5800000000000125
           }
         },
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 41.959,
-          "path_length_mm": 1153.1,
-          "swept_area_mm2": 461.24,
-          "outer_loop_area_mm2": 3515.97,
+          "filament_mm": 37.313,
+          "path_length_mm": 1148.27,
+          "swept_area_mm2": 410.03,
+          "outer_loop_area_mm2": 3465.05,
           "growth_mm": {
-            "xmin": 13.977000000000004,
-            "ymin": 18.667,
-            "xmax": 24.236999999999995,
-            "ymax": 20.843999999999994
+            "xmin": 13.741,
+            "ymin": 18.430999999999997,
+            "xmax": 24.0,
+            "ymax": 20.608000000000004
           }
         }
       },
       "orca": {
         "Brim": {
-          "loop_count": 26,
+          "loop_count": 39,
           "present": true,
-          "filament_mm": 31.054,
-          "path_length_mm": 808.84,
-          "swept_area_mm2": 369.71,
-          "outer_loop_area_mm2": 340.42,
+          "filament_mm": 33.955,
+          "path_length_mm": 1158.75,
+          "swept_area_mm2": 413.77,
+          "outer_loop_area_mm2": 373.03,
           "growth_mm": {
-            "xmin": 7.435000000000002,
-            "ymin": 6.0530000000000115,
-            "xmax": 7.435999999999979,
-            "ymax": 7.187999999999988
+            "xmin": 7.972000000000008,
+            "ymin": 6.590999999999994,
+            "xmax": 7.978000000000009,
+            "ymax": 7.597000000000008
           }
         },
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 47.464,
-          "path_length_mm": 1255.24,
-          "swept_area_mm2": 573.74,
-          "outer_loop_area_mm2": 3683.19,
+          "filament_mm": 36.863,
+          "path_length_mm": 1239.84,
+          "swept_area_mm2": 442.72,
+          "outer_loop_area_mm2": 3586.47,
           "growth_mm": {
-            "xmin": 14.513000000000005,
-            "ymin": 24.024,
-            "xmax": 17.373999999999995,
-            "ymax": 24.025000000000006
+            "xmin": 13.977000000000004,
+            "ymin": 23.47399999999999,
+            "xmax": 16.823000000000008,
+            "ymax": 23.475000000000023
           }
         }
       },
       "checks": {
         "brim_presence": true,
         "brim_both_absent": false,
-        "brim_swept_area_rel_diff": 0.7531,
-        "brim_outer_loop_area_rel_diff": 2.3973,
-        "brim_growth_abs_diff_mm": 0.459,
-        "brim_filament_rel_diff": 0.7525,
+        "brim_swept_area_rel_diff": 0.5452,
+        "brim_outer_loop_area_rel_diff": 2.0893,
+        "brim_growth_abs_diff_mm": 0.205,
+        "brim_filament_rel_diff": 0.7716,
         "skirt_presence": true,
         "skirt_both_absent": false,
-        "skirt_swept_area_rel_diff": 0.1961,
-        "skirt_outer_loop_area_rel_diff": 0.0454,
-        "skirt_growth_abs_diff_mm": 0.212,
-        "skirt_filament_rel_diff": 0.116,
+        "skirt_swept_area_rel_diff": 0.0738,
+        "skirt_outer_loop_area_rel_diff": 0.0339,
+        "skirt_growth_abs_diff_mm": 0.525,
+        "skirt_filament_rel_diff": 0.0122,
         "brim_swept_area_pass": false,
         "skirt_area_pass": false,
         "brim_presence_pass": true,
@@ -867,82 +867,82 @@
     "benchy-arachne-off": {
       "cell": "benchy-arachne-off",
       "spacing_mm": {
-        "pnp": 0.4,
-        "orca": 0.45708
+        "pnp": 0.35708,
+        "orca": 0.35708
       },
       "pnp": {
         "Brim": {
-          "loop_count": 20,
+          "loop_count": 22,
           "present": true,
-          "filament_mm": 80.666,
-          "path_length_mm": 2403.74,
-          "swept_area_mm2": 961.5,
-          "outer_loop_area_mm2": 1469.78,
+          "filament_mm": 88.402,
+          "path_length_mm": 2634.23,
+          "swept_area_mm2": 940.63,
+          "outer_loop_area_mm2": 1452.04,
           "growth_mm": {
-            "xmin": 7.900000000000006,
-            "ymin": 7.8999999999999915,
-            "xmax": 7.89500000000001,
-            "ymax": 7.898000000000025
+            "xmin": 7.777000000000001,
+            "ymin": 7.777000000000001,
+            "xmax": 7.77200000000002,
+            "ymax": 7.775000000000006
           }
         },
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 34.228,
-          "path_length_mm": 1023.62,
-          "swept_area_mm2": 409.45,
-          "outer_loop_area_mm2": 2309.41,
+          "filament_mm": 30.274,
+          "path_length_mm": 1010.7,
+          "swept_area_mm2": 360.9,
+          "outer_loop_area_mm2": 2246.01,
           "growth_mm": {
-            "xmin": 13.099000000000004,
-            "ymin": 13.099999999999994,
-            "xmax": 13.093999999999994,
-            "ymax": 13.098000000000013
+            "xmin": 12.741,
+            "ymin": 12.736999999999995,
+            "xmax": 12.735000000000014,
+            "ymax": 12.736000000000018
           }
         }
       },
       "orca": {
         "Brim": {
-          "loop_count": 19,
+          "loop_count": 30,
           "present": true,
-          "filament_mm": 71.6,
-          "path_length_mm": 1917.26,
-          "swept_area_mm2": 876.34,
-          "outer_loop_area_mm2": 1386.01,
+          "filament_mm": 78.958,
+          "path_length_mm": 2703.38,
+          "swept_area_mm2": 965.32,
+          "outer_loop_area_mm2": 1470.99,
           "growth_mm": {
-            "xmin": 7.418999999999997,
-            "ymin": 7.435000000000002,
-            "xmax": 7.456999999999994,
-            "ymax": 7.431999999999988
+            "xmin": 7.977000000000004,
+            "ymin": 7.97699999999999,
+            "xmax": 8.0,
+            "ymax": 7.974000000000018
           }
         },
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 38.046,
-          "path_length_mm": 1014.17,
-          "swept_area_mm2": 463.56,
-          "outer_loop_area_mm2": 2300.26,
+          "filament_mm": 29.988,
+          "path_length_mm": 1026.31,
+          "swept_area_mm2": 366.47,
+          "outer_loop_area_mm2": 2298.88,
           "growth_mm": {
-            "xmin": 13.158000000000001,
-            "ymin": 13.178000000000011,
-            "xmax": 13.192000000000007,
-            "ymax": 13.132999999999981
+            "xmin": 13.115000000000009,
+            "ymin": 13.120999999999995,
+            "xmax": 13.135999999999996,
+            "ymax": 13.076000000000022
           }
         }
       },
       "checks": {
         "brim_presence": true,
         "brim_both_absent": false,
-        "brim_swept_area_rel_diff": 0.0972,
-        "brim_outer_loop_area_rel_diff": 0.0604,
-        "brim_growth_abs_diff_mm": 0.443,
-        "brim_filament_rel_diff": 0.1266,
+        "brim_swept_area_rel_diff": 0.0256,
+        "brim_outer_loop_area_rel_diff": 0.0129,
+        "brim_growth_abs_diff_mm": 0.223,
+        "brim_filament_rel_diff": 0.1196,
         "skirt_presence": true,
         "skirt_both_absent": false,
-        "skirt_swept_area_rel_diff": 0.1167,
-        "skirt_outer_loop_area_rel_diff": 0.004,
-        "skirt_growth_abs_diff_mm": 0.092,
-        "skirt_filament_rel_diff": 0.1004,
+        "skirt_swept_area_rel_diff": 0.0152,
+        "skirt_outer_loop_area_rel_diff": 0.023,
+        "skirt_growth_abs_diff_mm": 0.395,
+        "skirt_filament_rel_diff": 0.0095,
         "brim_swept_area_pass": true,
         "skirt_area_pass": true,
         "brim_presence_pass": true,
@@ -955,82 +955,82 @@
     "benchy-arachne-on": {
       "cell": "benchy-arachne-on",
       "spacing_mm": {
-        "pnp": 0.4,
-        "orca": 0.45708
+        "pnp": 0.35708,
+        "orca": 0.35708
       },
       "pnp": {
         "Brim": {
-          "loop_count": 17,
+          "loop_count": 19,
           "present": true,
-          "filament_mm": 54.444,
-          "path_length_mm": 1620.91,
-          "swept_area_mm2": 648.37,
-          "outer_loop_area_mm2": 1156.44,
+          "filament_mm": 60.164,
+          "path_length_mm": 1791.93,
+          "swept_area_mm2": 639.86,
+          "outer_loop_area_mm2": 1152.35,
           "growth_mm": {
-            "xmin": 2.9440000000000026,
-            "ymin": 7.617999999999995,
-            "xmax": 7.89500000000001,
-            "ymax": 7.576000000000022
+            "xmin": 2.966000000000008,
+            "ymin": 7.5049999999999955,
+            "xmax": 7.77200000000002,
+            "ymax": 7.5800000000000125
           }
         },
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 41.959,
-          "path_length_mm": 1153.1,
-          "swept_area_mm2": 461.24,
-          "outer_loop_area_mm2": 3515.97,
+          "filament_mm": 37.313,
+          "path_length_mm": 1148.27,
+          "swept_area_mm2": 410.03,
+          "outer_loop_area_mm2": 3465.05,
           "growth_mm": {
-            "xmin": 13.977000000000004,
-            "ymin": 18.67,
-            "xmax": 24.236999999999995,
-            "ymax": 20.845
+            "xmin": 13.741,
+            "ymin": 18.433999999999997,
+            "xmax": 24.0,
+            "ymax": 20.60900000000001
           }
         }
       },
       "orca": {
         "Brim": {
-          "loop_count": 26,
+          "loop_count": 39,
           "present": true,
-          "filament_mm": 31.054,
-          "path_length_mm": 808.84,
-          "swept_area_mm2": 369.71,
-          "outer_loop_area_mm2": 340.42,
+          "filament_mm": 33.955,
+          "path_length_mm": 1158.75,
+          "swept_area_mm2": 413.77,
+          "outer_loop_area_mm2": 373.03,
           "growth_mm": {
-            "xmin": 7.420000000000002,
-            "ymin": 6.0530000000000115,
-            "xmax": 7.455999999999989,
-            "ymax": 7.187999999999988
+            "xmin": 7.972000000000008,
+            "ymin": 6.590999999999994,
+            "xmax": 8.0,
+            "ymax": 7.597000000000008
           }
         },
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 47.464,
-          "path_length_mm": 1255.24,
-          "swept_area_mm2": 573.74,
-          "outer_loop_area_mm2": 3683.19,
+          "filament_mm": 36.863,
+          "path_length_mm": 1239.84,
+          "swept_area_mm2": 442.72,
+          "outer_loop_area_mm2": 3586.47,
           "growth_mm": {
-            "xmin": 14.498000000000005,
-            "ymin": 24.024,
-            "xmax": 17.394000000000005,
-            "ymax": 24.025000000000006
+            "xmin": 13.977000000000004,
+            "ymin": 23.47399999999999,
+            "xmax": 16.845,
+            "ymax": 23.475000000000023
           }
         }
       },
       "checks": {
         "brim_presence": true,
         "brim_both_absent": false,
-        "brim_swept_area_rel_diff": 0.7537,
-        "brim_outer_loop_area_rel_diff": 2.3971,
-        "brim_growth_abs_diff_mm": 0.439,
-        "brim_filament_rel_diff": 0.7532,
+        "brim_swept_area_rel_diff": 0.5464,
+        "brim_outer_loop_area_rel_diff": 2.0892,
+        "brim_growth_abs_diff_mm": 0.228,
+        "brim_filament_rel_diff": 0.7719,
         "skirt_presence": true,
         "skirt_both_absent": false,
-        "skirt_swept_area_rel_diff": 0.1961,
-        "skirt_outer_loop_area_rel_diff": 0.0454,
-        "skirt_growth_abs_diff_mm": 0.212,
-        "skirt_filament_rel_diff": 0.116,
+        "skirt_swept_area_rel_diff": 0.0738,
+        "skirt_outer_loop_area_rel_diff": 0.0339,
+        "skirt_growth_abs_diff_mm": 0.525,
+        "skirt_filament_rel_diff": 0.0122,
         "brim_swept_area_pass": false,
         "skirt_area_pass": false,
         "brim_presence_pass": true,
@@ -1043,83 +1043,83 @@
     "base-classic-off": {
       "cell": "base-classic-off",
       "spacing_mm": {
-        "pnp": 0.4,
-        "orca": 0.45708
+        "pnp": 0.35708,
+        "orca": 0.35708
       },
       "pnp": {
         "Brim": {
-          "loop_count": 20,
+          "loop_count": 22,
           "present": true,
-          "filament_mm": 23.864,
-          "path_length_mm": 706.27,
-          "swept_area_mm2": 282.51,
-          "outer_loop_area_mm2": 278.92,
+          "filament_mm": 25.918,
+          "path_length_mm": 766.74,
+          "swept_area_mm2": 273.79,
+          "outer_loop_area_mm2": 271.64,
           "growth_mm": {
-            "xmin": 7.894999999999996,
-            "ymin": 7.896000000000001,
-            "xmax": 7.924000000000007,
-            "ymax": 7.897999999999996
+            "xmin": 7.775999999999996,
+            "ymin": 7.774000000000001,
+            "xmax": 7.8019999999999925,
+            "ymax": 7.7749999999999915
           }
         },
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 17.19,
-          "path_length_mm": 512.17,
-          "swept_area_mm2": 204.87,
-          "outer_loop_area_mm2": 674.43,
+          "filament_mm": 15.064,
+          "path_length_mm": 502.75,
+          "swept_area_mm2": 179.52,
+          "outer_loop_area_mm2": 641.66,
           "growth_mm": {
-            "xmin": 13.093999999999994,
-            "ymin": 13.094000000000008,
-            "xmax": 13.119,
-            "ymax": 13.094999999999999
+            "xmin": 12.736999999999995,
+            "ymin": 12.735,
+            "xmax": 12.759000000000015,
+            "ymax": 12.73599999999999
           }
         }
       },
       "orca": {
         "Brim": {
-          "loop_count": 16,
+          "loop_count": 22,
           "present": true,
-          "filament_mm": 18.453,
-          "path_length_mm": 489.09,
-          "swept_area_mm2": 223.56,
-          "outer_loop_area_mm2": 217.72,
+          "filament_mm": 20.903,
+          "path_length_mm": 709.34,
+          "swept_area_mm2": 253.29,
+          "outer_loop_area_mm2": 249.95,
           "growth_mm": {
-            "xmin": 7.609999999999999,
-            "ymin": 7.426000000000002,
-            "xmax": 7.606999999999999,
-            "ymax": 7.501999999999995
+            "xmin": 8.063000000000002,
+            "ymin": 7.9680000000000035,
+            "xmax": 8.070999999999998,
+            "ymax": 7.997
           }
         },
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 18.192,
-          "path_length_mm": 485.28,
-          "swept_area_mm2": 221.81,
-          "outer_loop_area_mm2": 622.41,
+          "filament_mm": 14.478,
+          "path_length_mm": 495.51,
+          "swept_area_mm2": 176.94,
+          "outer_loop_area_mm2": 621.6,
           "growth_mm": {
-            "xmin": 13.349000000000004,
-            "ymin": 13.176999999999992,
-            "xmax": 13.331999999999994,
-            "ymax": 13.239000000000004
+            "xmin": 13.198999999999998,
+            "ymin": 13.120000000000005,
+            "xmax": 13.201000000000022,
+            "ymax": 13.135000000000005
           }
         }
       },
       "checks": {
         "brim_presence": true,
         "brim_both_absent": false,
-        "brim_swept_area_rel_diff": 0.2637,
-        "brim_outer_loop_area_rel_diff": 0.2811,
-        "brim_growth_abs_diff_mm": 0.314,
-        "brim_filament_rel_diff": 0.2932,
+        "brim_swept_area_rel_diff": 0.0809,
+        "brim_outer_loop_area_rel_diff": 0.0868,
+        "brim_growth_abs_diff_mm": 0.269,
+        "brim_filament_rel_diff": 0.2399,
         "skirt_presence": true,
         "skirt_both_absent": false,
-        "skirt_swept_area_rel_diff": 0.0764,
-        "skirt_outer_loop_area_rel_diff": 0.0836,
-        "skirt_growth_abs_diff_mm": 0.23,
-        "skirt_filament_rel_diff": 0.0551,
-        "brim_swept_area_pass": false,
+        "skirt_swept_area_rel_diff": 0.0146,
+        "skirt_outer_loop_area_rel_diff": 0.0323,
+        "skirt_growth_abs_diff_mm": 0.442,
+        "skirt_filament_rel_diff": 0.0405,
+        "brim_swept_area_pass": true,
         "skirt_area_pass": false,
         "brim_presence_pass": true,
         "skirt_presence_pass": true,
@@ -1131,8 +1131,8 @@
     "base-classic-on": {
       "cell": "base-classic-on",
       "spacing_mm": {
-        "pnp": 0.4,
-        "orca": 0.45708
+        "pnp": 0.35708,
+        "orca": 0.35708
       },
       "pnp": {
         "Brim": {
@@ -1152,15 +1152,15 @@
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 60.264,
-          "path_length_mm": 1791.64,
-          "swept_area_mm2": 716.66,
-          "outer_loop_area_mm2": 7100.98,
+          "filament_mm": 53.653,
+          "path_length_mm": 1786.79,
+          "swept_area_mm2": 638.03,
+          "outer_loop_area_mm2": 7028.38,
           "growth_mm": {
-            "xmin": 57.726,
-            "ymin": 30.471000000000004,
-            "xmax": 49.27600000000001,
-            "ymax": 48.717
+            "xmin": 57.489999999999995,
+            "ymin": 30.235,
+            "xmax": 49.03999999999999,
+            "ymax": 48.48100000000001
           }
         }
       },
@@ -1182,15 +1182,15 @@
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 65.974,
-          "path_length_mm": 1762.17,
-          "swept_area_mm2": 805.45,
-          "outer_loop_area_mm2": 6398.81,
+          "filament_mm": 51.266,
+          "path_length_mm": 1753.3,
+          "swept_area_mm2": 626.07,
+          "outer_loop_area_mm2": 6248.49,
           "growth_mm": {
-            "xmin": 59.004000000000005,
-            "ymin": 17.536,
-            "xmax": 58.03999999999999,
-            "ymax": 52.446
+            "xmin": 58.366,
+            "ymin": 16.98599999999999,
+            "xmax": 57.411,
+            "ymax": 51.849999999999994
           }
         }
       },
@@ -1203,10 +1203,10 @@
         "brim_filament_rel_diff": 0.0,
         "skirt_presence": true,
         "skirt_both_absent": false,
-        "skirt_swept_area_rel_diff": 0.1102,
-        "skirt_outer_loop_area_rel_diff": 0.1097,
-        "skirt_growth_abs_diff_mm": 1.278,
-        "skirt_filament_rel_diff": 0.0865,
+        "skirt_swept_area_rel_diff": 0.0191,
+        "skirt_outer_loop_area_rel_diff": 0.1248,
+        "skirt_growth_abs_diff_mm": 0.876,
+        "skirt_filament_rel_diff": 0.0466,
         "brim_swept_area_pass": true,
         "skirt_area_pass": false,
         "brim_presence_pass": true,
@@ -1219,83 +1219,83 @@
     "base-arachne-off": {
       "cell": "base-arachne-off",
       "spacing_mm": {
-        "pnp": 0.4,
-        "orca": 0.45708
+        "pnp": 0.35708,
+        "orca": 0.35708
       },
       "pnp": {
         "Brim": {
-          "loop_count": 20,
+          "loop_count": 22,
           "present": true,
-          "filament_mm": 23.82,
-          "path_length_mm": 701.19,
-          "swept_area_mm2": 280.48,
-          "outer_loop_area_mm2": 278.41,
+          "filament_mm": 25.871,
+          "path_length_mm": 761.14,
+          "swept_area_mm2": 271.79,
+          "outer_loop_area_mm2": 271.14,
           "growth_mm": {
-            "xmin": 7.894999999999996,
-            "ymin": 7.8940000000000055,
-            "xmax": 7.929000000000002,
-            "ymax": 7.897999999999996
+            "xmin": 7.775999999999996,
+            "ymin": 7.772000000000006,
+            "xmax": 7.802999999999997,
+            "ymax": 7.775999999999996
           }
         },
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 17.176,
-          "path_length_mm": 512.87,
-          "swept_area_mm2": 205.15,
-          "outer_loop_area_mm2": 673.58,
+          "filament_mm": 15.052,
+          "path_length_mm": 503.43,
+          "swept_area_mm2": 179.76,
+          "outer_loop_area_mm2": 640.86,
           "growth_mm": {
-            "xmin": 13.093999999999994,
-            "ymin": 13.093000000000004,
-            "xmax": 13.127999999999986,
-            "ymax": 13.094999999999999
+            "xmin": 12.73599999999999,
+            "ymin": 12.734000000000009,
+            "xmax": 12.766999999999996,
+            "ymax": 12.736000000000004
           }
         }
       },
       "orca": {
         "Brim": {
-          "loop_count": 16,
+          "loop_count": 22,
           "present": true,
-          "filament_mm": 18.453,
-          "path_length_mm": 489.09,
-          "swept_area_mm2": 223.56,
-          "outer_loop_area_mm2": 217.72,
+          "filament_mm": 20.903,
+          "path_length_mm": 709.34,
+          "swept_area_mm2": 253.29,
+          "outer_loop_area_mm2": 249.95,
           "growth_mm": {
-            "xmin": 7.527000000000001,
-            "ymin": 7.403000000000006,
-            "xmax": 7.515999999999991,
-            "ymax": 7.432000000000002
+            "xmin": 8.119000000000014,
+            "ymin": 7.9950000000000045,
+            "xmax": 8.10899999999998,
+            "ymax": 8.024000000000001
           }
         },
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 18.192,
-          "path_length_mm": 485.28,
-          "swept_area_mm2": 221.81,
-          "outer_loop_area_mm2": 622.41,
+          "filament_mm": 14.478,
+          "path_length_mm": 495.51,
+          "swept_area_mm2": 176.94,
+          "outer_loop_area_mm2": 621.6,
           "growth_mm": {
-            "xmin": 13.266000000000005,
-            "ymin": 13.153999999999996,
-            "xmax": 13.240999999999985,
-            "ymax": 13.169000000000011
+            "xmin": 13.25500000000001,
+            "ymin": 13.147000000000006,
+            "xmax": 13.239000000000004,
+            "ymax": 13.162000000000006
           }
         }
       },
       "checks": {
         "brim_presence": true,
         "brim_both_absent": false,
-        "brim_swept_area_rel_diff": 0.2546,
-        "brim_outer_loop_area_rel_diff": 0.2788,
-        "brim_growth_abs_diff_mm": 0.402,
-        "brim_filament_rel_diff": 0.2908,
+        "brim_swept_area_rel_diff": 0.073,
+        "brim_outer_loop_area_rel_diff": 0.0848,
+        "brim_growth_abs_diff_mm": 0.316,
+        "brim_filament_rel_diff": 0.2377,
         "skirt_presence": true,
         "skirt_both_absent": false,
-        "skirt_swept_area_rel_diff": 0.0751,
-        "skirt_outer_loop_area_rel_diff": 0.0822,
-        "skirt_growth_abs_diff_mm": 0.138,
-        "skirt_filament_rel_diff": 0.0558,
-        "brim_swept_area_pass": false,
+        "skirt_swept_area_rel_diff": 0.0159,
+        "skirt_outer_loop_area_rel_diff": 0.031,
+        "skirt_growth_abs_diff_mm": 0.488,
+        "skirt_filament_rel_diff": 0.0396,
+        "brim_swept_area_pass": true,
         "skirt_area_pass": false,
         "brim_presence_pass": true,
         "skirt_presence_pass": true,
@@ -1307,8 +1307,8 @@
     "base-arachne-on": {
       "cell": "base-arachne-on",
       "spacing_mm": {
-        "pnp": 0.4,
-        "orca": 0.45708
+        "pnp": 0.35708,
+        "orca": 0.35708
       },
       "pnp": {
         "Brim": {
@@ -1328,15 +1328,15 @@
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 60.264,
-          "path_length_mm": 1791.64,
-          "swept_area_mm2": 716.66,
-          "outer_loop_area_mm2": 7100.98,
+          "filament_mm": 53.653,
+          "path_length_mm": 1786.79,
+          "swept_area_mm2": 638.03,
+          "outer_loop_area_mm2": 7028.38,
           "growth_mm": {
-            "xmin": 57.741,
-            "ymin": 30.477000000000004,
-            "xmax": 49.29900000000001,
-            "ymax": 48.727000000000004
+            "xmin": 57.504999999999995,
+            "ymin": 30.241,
+            "xmax": 49.06299999999999,
+            "ymax": 48.491000000000014
           }
         }
       },
@@ -1358,15 +1358,15 @@
         "Skirt": {
           "loop_count": 6,
           "present": true,
-          "filament_mm": 65.974,
-          "path_length_mm": 1762.17,
-          "swept_area_mm2": 805.45,
-          "outer_loop_area_mm2": 6398.81,
+          "filament_mm": 51.266,
+          "path_length_mm": 1753.3,
+          "swept_area_mm2": 626.07,
+          "outer_loop_area_mm2": 6248.49,
           "growth_mm": {
-            "xmin": 58.92100000000001,
-            "ymin": 17.512,
-            "xmax": 57.948999999999984,
-            "ymax": 52.37599999999999
+            "xmin": 58.42200000000001,
+            "ymin": 17.012,
+            "xmax": 57.448999999999984,
+            "ymax": 51.876999999999995
           }
         }
       },
@@ -1379,10 +1379,10 @@
         "brim_filament_rel_diff": 0.0,
         "skirt_presence": true,
         "skirt_both_absent": false,
-        "skirt_swept_area_rel_diff": 0.1102,
-        "skirt_outer_loop_area_rel_diff": 0.1097,
-        "skirt_growth_abs_diff_mm": 1.18,
-        "skirt_filament_rel_diff": 0.0865,
+        "skirt_swept_area_rel_diff": 0.0191,
+        "skirt_outer_loop_area_rel_diff": 0.1248,
+        "skirt_growth_abs_diff_mm": 0.917,
+        "skirt_filament_rel_diff": 0.0466,
         "brim_swept_area_pass": true,
         "skirt_area_pass": false,
         "brim_presence_pass": true,
@@ -1446,7 +1446,7 @@
         ],
         "e_stats": {
           "motion_lines_with_e": 92600,
-          "e_changed_lines": 615,
+          "e_changed_lines": 352,
           "max_abs_delta_mm": 0.00013,
           "tolerance_mm": 0.001
         },
@@ -1455,41 +1455,33 @@
             "removed": 0,
             "added": 2
           },
-          "Bridge": {
-            "removed": 1,
-            "added": 1
-          },
           "Brim": {
             "removed": 100,
-            "added": 1649
+            "added": 1813
           },
           "Gap infill": {
-            "removed": 4,
-            "added": 4
+            "removed": 3,
+            "added": 3
           },
           "Inner wall": {
-            "removed": 148,
-            "added": 146
+            "removed": 47,
+            "added": 45
           },
           "Internal Bridge": {
-            "removed": 53,
-            "added": 53
+            "removed": 36,
+            "added": 36
           },
           "Outer wall": {
-            "removed": 226,
-            "added": 226
+            "removed": 144,
+            "added": 144
           },
           "Skirt": {
             "removed": 31,
-            "added": 715
+            "added": 709
           },
           "Sparse infill": {
-            "removed": 204,
-            "added": 188
-          },
-          "Top surface": {
-            "removed": 2,
-            "added": 0
+            "removed": 127,
+            "added": 127
           }
         },
         "failures": [],
@@ -1556,7 +1548,7 @@
         ],
         "e_stats": {
           "motion_lines_with_e": 194179,
-          "e_changed_lines": 9152,
+          "e_changed_lines": 9083,
           "max_abs_delta_mm": 0.00025,
           "tolerance_mm": 0.001
         },
@@ -1570,8 +1562,8 @@
             "added": 2
           },
           "Bottom surface": {
-            "removed": 363,
-            "added": 363
+            "removed": 359,
+            "added": 359
           },
           "Bridge": {
             "removed": 118,
@@ -1579,15 +1571,15 @@
           },
           "Brim": {
             "removed": 100,
-            "added": 2069
+            "added": 2243
           },
           "Gap infill": {
             "removed": 18,
             "added": 18
           },
           "Inner wall": {
-            "removed": 975,
-            "added": 975
+            "removed": 973,
+            "added": 973
           },
           "Internal Bridge": {
             "removed": 2,
@@ -1598,20 +1590,20 @@
             "added": 15
           },
           "Outer wall": {
-            "removed": 1094,
-            "added": 1094
+            "removed": 1076,
+            "added": 1076
           },
           "Skirt": {
             "removed": 31,
-            "added": 557
+            "added": 553
           },
           "Sparse infill": {
-            "removed": 1440,
-            "added": 1442
+            "removed": 1423,
+            "added": 1425
           },
           "Support": {
-            "removed": 5040,
-            "added": 5054
+            "removed": 5008,
+            "added": 5022
           },
           "Support interface": {
             "removed": 48,
@@ -1671,7 +1663,7 @@
         ],
         "e_stats": {
           "motion_lines_with_e": 95573,
-          "e_changed_lines": 526,
+          "e_changed_lines": 268,
           "max_abs_delta_mm": 0.00013,
           "tolerance_mm": 0.001
         },
@@ -1682,31 +1674,27 @@
           },
           "Brim": {
             "removed": 100,
-            "added": 1666
+            "added": 1835
           },
           "Inner wall": {
-            "removed": 168,
-            "added": 168
+            "removed": 52,
+            "added": 52
           },
           "Internal Bridge": {
-            "removed": 16,
-            "added": 16
-          },
-          "Internal solid infill": {
-            "removed": 2,
-            "added": 2
+            "removed": 10,
+            "added": 10
           },
           "Outer wall": {
-            "removed": 102,
-            "added": 102
+            "removed": 100,
+            "added": 100
           },
           "Skirt": {
             "removed": 31,
-            "added": 728
+            "added": 719
           },
           "Sparse infill": {
-            "removed": 249,
-            "added": 245
+            "removed": 112,
+            "added": 108
           }
         },
         "failures": [],
@@ -1768,7 +1756,7 @@
         ],
         "e_stats": {
           "motion_lines_with_e": 197152,
-          "e_changed_lines": 9255,
+          "e_changed_lines": 9173,
           "max_abs_delta_mm": 0.00025,
           "tolerance_mm": 0.001
         },
@@ -1782,8 +1770,8 @@
             "added": 2
           },
           "Bottom surface": {
-            "removed": 292,
-            "added": 292
+            "removed": 279,
+            "added": 279
           },
           "Bridge": {
             "removed": 119,
@@ -1791,11 +1779,11 @@
           },
           "Brim": {
             "removed": 100,
-            "added": 2039
+            "added": 2214
           },
           "Inner wall": {
-            "removed": 1079,
-            "added": 1079
+            "removed": 1062,
+            "added": 1062
           },
           "Internal Bridge": {
             "removed": 2,
@@ -1803,23 +1791,23 @@
           },
           "Internal solid infill": {
             "removed": 9,
-            "added": 11
+            "added": 9
           },
           "Outer wall": {
-            "removed": 1029,
-            "added": 1029
+            "removed": 1017,
+            "added": 1017
           },
           "Skirt": {
             "removed": 31,
-            "added": 557
+            "added": 553
           },
           "Sparse infill": {
             "removed": 1549,
             "added": 1549
           },
           "Support": {
-            "removed": 5111,
-            "added": 5119
+            "removed": 5063,
+            "added": 5075
           },
           "Support interface": {
             "removed": 2,
@@ -1884,7 +1872,7 @@
         ],
         "e_stats": {
           "motion_lines_with_e": 504727,
-          "e_changed_lines": 135,
+          "e_changed_lines": 131,
           "max_abs_delta_mm": 0.00049,
           "tolerance_mm": 0.001
         },
@@ -1895,27 +1883,27 @@
           },
           "Brim": {
             "removed": 100,
-            "added": 1113
+            "added": 1216
           },
           "Gap infill": {
             "removed": 6,
             "added": 6
           },
           "Inner wall": {
-            "removed": 6,
-            "added": 6
+            "removed": 8,
+            "added": 8
           },
           "Outer wall": {
-            "removed": 58,
-            "added": 58
+            "removed": 56,
+            "added": 56
           },
           "Skirt": {
             "removed": 31,
-            "added": 669
+            "added": 659
           },
           "Sparse infill": {
-            "removed": 71,
-            "added": 71
+            "removed": 69,
+            "added": 69
           }
         },
         "failures": [],
@@ -1982,7 +1970,7 @@
         ],
         "e_stats": {
           "motion_lines_with_e": 1013460,
-          "e_changed_lines": 23981,
+          "e_changed_lines": 24650,
           "max_abs_delta_mm": 0.00098,
           "tolerance_mm": 0.001
         },
@@ -1996,20 +1984,20 @@
             "added": 2
           },
           "Bottom surface": {
-            "removed": 19,
-            "added": 19
+            "removed": 20,
+            "added": 20
           },
           "Bridge": {
-            "removed": 22,
-            "added": 22
+            "removed": 23,
+            "added": 23
           },
           "Brim": {
             "removed": 101,
             "added": 0
           },
           "Gap infill": {
-            "removed": 28,
-            "added": 28
+            "removed": 31,
+            "added": 31
           },
           "Inner wall": {
             "removed": 2213,
@@ -2020,20 +2008,20 @@
             "added": 7
           },
           "Outer wall": {
-            "removed": 2640,
-            "added": 2640
+            "removed": 2794,
+            "added": 2794
           },
           "Skirt": {
             "removed": 31,
-            "added": 641
+            "added": 640
           },
           "Sparse infill": {
-            "removed": 3229,
-            "added": 3229
+            "removed": 3464,
+            "added": 3464
           },
           "Support": {
-            "removed": 15774,
-            "added": 15774
+            "removed": 16049,
+            "added": 16049
           },
           "Support interface": {
             "removed": 186,
@@ -2093,8 +2081,8 @@
         ],
         "e_stats": {
           "motion_lines_with_e": 500060,
-          "e_changed_lines": 119,
-          "max_abs_delta_mm": 0.00049,
+          "e_changed_lines": 107,
+          "max_abs_delta_mm": 0.00025,
           "tolerance_mm": 0.001
         },
         "line_census": {
@@ -2112,22 +2100,22 @@
           },
           "Brim": {
             "removed": 100,
-            "added": 1085
+            "added": 1192
           },
           "Inner wall": {
-            "removed": 62,
-            "added": 62
+            "removed": 57,
+            "added": 57
           },
           "Outer wall": {
-            "removed": 3,
-            "added": 3
+            "removed": 2,
+            "added": 2
           },
           "Skirt": {
             "removed": 31,
-            "added": 682
+            "added": 674
           },
           "Sparse infill": {
-            "removed": 59,
+            "removed": 55,
             "added": 59
           }
         },
@@ -2190,7 +2178,7 @@
         ],
         "e_stats": {
           "motion_lines_with_e": 1008793,
-          "e_changed_lines": 23769,
+          "e_changed_lines": 24271,
           "max_abs_delta_mm": 0.00098,
           "tolerance_mm": 0.001
         },
@@ -2216,8 +2204,8 @@
             "added": 0
           },
           "Inner wall": {
-            "removed": 1782,
-            "added": 1782
+            "removed": 1876,
+            "added": 1876
           },
           "Internal Bridge": {
             "removed": 7,
@@ -2228,20 +2216,20 @@
             "added": 2
           },
           "Outer wall": {
-            "removed": 1906,
-            "added": 1906
+            "removed": 2140,
+            "added": 2140
           },
           "Skirt": {
             "removed": 31,
-            "added": 641
+            "added": 640
           },
           "Sparse infill": {
             "removed": 3416,
             "added": 3414
           },
           "Support": {
-            "removed": 16579,
-            "added": 16577
+            "removed": 16753,
+            "added": 16751
           },
           "Support interface": {
             "removed": 184,
@@ -2259,24 +2247,24 @@
     "pass": true
   },
   "scoreboard": {
-    "batch": "t135-scoreboard2",
+    "batch": "t135-scoreboard3",
     "cells": {
       "benchy-classic-off": {
         "orca": {
-          "wall_median": 1.8951,
-          "cpu_median": 6.3281,
+          "wall_median": 2.1427,
+          "cpu_median": 6.4062,
           "wall_values": [
-            1.8951,
-            1.9712,
-            1.8718
+            2.1427,
+            2.1882,
+            2.1308
           ],
           "sha256": [
-            "22ebc85fb7df3d18e3b7847e99b35c0e96a7019ae893830e4c9820b22ad3f76e",
-            "9f319cb8ed3e8560ba5173d1ec84144d2172002b27a36ce58e62cf187e2b9ff5",
-            "baeb383b2da1ecbc512dc179c0b800caf1ebae2129817abdff275d583d0780aa"
+            "193189717bdc729882f75ba9aaf9af2053643aa2df57a75497890115f544ccf9",
+            "3a938881e0c8c4c5047279b064e37eb85bc895b1d13cb4840c747de33d83fdf7",
+            "69350b38c8ca2b3e1e54fe1552c2995f98408baea5834404911a3e6d92faf948"
           ],
           "gcode_bytes": [
-            4049615
+            4073030
           ],
           "exit_codes": [
             0
@@ -2300,22 +2288,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              "0.4"
+            ],
+            "tree_support_brim_width": [
+              "0"
             ]
           }
         },
         "pnp-ordinary": {
-          "wall_median": 4.6763,
-          "cpu_median": 24.9219,
+          "wall_median": 5.2384,
+          "cpu_median": 25.625,
           "wall_values": [
-            4.6763,
-            4.66,
-            4.7728
+            5.2002,
+            5.2384,
+            5.3877
           ],
           "sha256": [
-            "9012df71023c9cb523ce18bb6bd41af3503a19b4a6b3038b58c3d70216bbe25e"
+            "7db0641bacec8c205a54147f5b134b2bd5fd19fe2aa038bb42c0ea210b5896b3"
           ],
           "gcode_bytes": [
-            4017059
+            4023709
           ],
           "exit_codes": [
             0
@@ -2341,22 +2335,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
         "pnp-accelerated": {
-          "wall_median": 4.6438,
-          "cpu_median": 24.7031,
+          "wall_median": 5.4726,
+          "cpu_median": 25.8125,
           "wall_values": [
-            4.7033,
-            4.6438,
-            4.6074
+            5.5158,
+            5.2772,
+            5.4726
           ],
           "sha256": [
-            "9012df71023c9cb523ce18bb6bd41af3503a19b4a6b3038b58c3d70216bbe25e"
+            "7db0641bacec8c205a54147f5b134b2bd5fd19fe2aa038bb42c0ea210b5896b3"
           ],
           "gcode_bytes": [
-            4017059
+            4023709
           ],
           "exit_codes": [
             0
@@ -2382,30 +2382,36 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
-        "ratio_ordinary": 2.4676,
-        "ratio_accelerated": 2.4504,
-        "required_cut_ordinary": 0.5947,
-        "required_cut_accelerated": 0.5919
+        "ratio_ordinary": 2.4448,
+        "ratio_accelerated": 2.5541,
+        "required_cut_ordinary": 0.591,
+        "required_cut_accelerated": 0.6085
       },
       "benchy-classic-on": {
         "orca": {
-          "wall_median": 2.5807,
-          "cpu_median": 11.0469,
+          "wall_median": 2.7467,
+          "cpu_median": 11.2969,
           "wall_values": [
-            2.784,
-            2.4649,
-            2.5807
+            2.7467,
+            2.6855,
+            2.9848
           ],
           "sha256": [
-            "263c2079f5307b5a734b6fdac8524811e05e76b86991665c97808c54758cd9a9",
-            "35ddcb794ab61fc6d6c9f498935eecbc74d8505502bf2047b9be2bfb0a09bfea",
-            "a0ca88c930740386ed6fa5db75781a4a4036729b31de8bc1dc292dc0f9380c8b"
+            "4b71d3d966417771f3d487720227f63716bbdc16653984d01f6a4514fe1384ac",
+            "c76b28ed00811bac1fe83647a4f2136a6fb7d97e893ccb7d3dfdb8f78fdd9a91",
+            "d82b2fbcff0eceeae53dc948c95c2fb8a6b9e49c1c874c352ee595a4c53b9f94"
           ],
           "gcode_bytes": [
-            9544384
+            9566451
           ],
           "exit_codes": [
             0
@@ -2429,22 +2435,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              "0.4"
+            ],
+            "tree_support_brim_width": [
+              "0"
             ]
           }
         },
         "pnp-ordinary": {
-          "wall_median": 8.3431,
-          "cpu_median": 39.875,
+          "wall_median": 9.3499,
+          "cpu_median": 42.125,
           "wall_values": [
-            8.3431,
-            8.3636,
-            8.0886
+            9.3499,
+            9.0401,
+            9.5456
           ],
           "sha256": [
-            "7b199bd1bd13b9fa296773d8b47be1f799351038683cdc455ca60e3956b6a97c"
+            "c02aa4e91c6c6a3bf6a6acd27aea4469d1077568ee6dc1546e8ec8eed6b0b6c0"
           ],
           "gcode_bytes": [
-            8355340
+            8362207
           ],
           "exit_codes": [
             0
@@ -2470,22 +2482,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
         "pnp-accelerated": {
-          "wall_median": 8.1438,
-          "cpu_median": 39.4844,
+          "wall_median": 9.2639,
+          "cpu_median": 41.7812,
           "wall_values": [
-            8.3338,
-            8.0403,
-            8.1438
+            9.1175,
+            9.2639,
+            9.675
           ],
           "sha256": [
-            "7b199bd1bd13b9fa296773d8b47be1f799351038683cdc455ca60e3956b6a97c"
+            "c02aa4e91c6c6a3bf6a6acd27aea4469d1077568ee6dc1546e8ec8eed6b0b6c0"
           ],
           "gcode_bytes": [
-            8355340
+            8362207
           ],
           "exit_codes": [
             0
@@ -2511,30 +2529,36 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
-        "ratio_ordinary": 3.2329,
-        "ratio_accelerated": 3.1557,
-        "required_cut_ordinary": 0.6907,
-        "required_cut_accelerated": 0.6831
+        "ratio_ordinary": 3.404,
+        "ratio_accelerated": 3.3727,
+        "required_cut_ordinary": 0.7062,
+        "required_cut_accelerated": 0.7035
       },
       "benchy-arachne-off": {
         "orca": {
-          "wall_median": 2.1143,
-          "cpu_median": 7.7656,
+          "wall_median": 2.2127,
+          "cpu_median": 8.0938,
           "wall_values": [
-            2.0388,
-            2.1349,
-            2.1143
+            2.2127,
+            2.2918,
+            2.1925
           ],
           "sha256": [
-            "0c02d6d6b09c7f51157866273f1c026d5cefb4f914d7217c3442fba998a2009c",
-            "6865f7dab0a3f360451001e9f69034355a4603c19429c288f18cd90635726abb",
-            "908256cda13f0c5df1999ff53b5ea3da391c412821010310f72a470581023fdd"
+            "09cec386c4863e43fe1860c690dd5e20e776b918422de354e4e7490bc69d205d",
+            "2700ebdf4d598097cf454459ee9ad4e29e7d3d8bc6a4b362935bf08ed1539dc2",
+            "fa4d3e8d9460885304d7d5f0abe6032529157332a62e6cd009dc37303c7d8c08"
           ],
           "gcode_bytes": [
-            4819170
+            4842744
           ],
           "exit_codes": [
             0
@@ -2558,22 +2582,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              "0.4"
+            ],
+            "tree_support_brim_width": [
+              "0"
             ]
           }
         },
         "pnp-ordinary": {
-          "wall_median": 4.998,
-          "cpu_median": 26.125,
+          "wall_median": 5.6155,
+          "cpu_median": 27.3125,
           "wall_values": [
-            4.8763,
-            5.0426,
-            4.998
+            5.6155,
+            5.5565,
+            5.883
           ],
           "sha256": [
-            "dbafeb9d54d8229b5eb250ecb4c69305ec63445f33b6ea4db36ef66fb5797666"
+            "a2f7a1fed5f2a5be8529fab8952feeb4786bab568c885a2aee9ba65ee7a61584"
           ],
           "gcode_bytes": [
-            4156899
+            4163351
           ],
           "exit_codes": [
             0
@@ -2599,22 +2629,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
         "pnp-accelerated": {
-          "wall_median": 4.9057,
-          "cpu_median": 25.7812,
+          "wall_median": 5.5135,
+          "cpu_median": 26.6562,
           "wall_values": [
-            4.9057,
-            5.1767,
-            4.8696
+            5.5597,
+            5.4,
+            5.5135
           ],
           "sha256": [
-            "dbafeb9d54d8229b5eb250ecb4c69305ec63445f33b6ea4db36ef66fb5797666"
+            "a2f7a1fed5f2a5be8529fab8952feeb4786bab568c885a2aee9ba65ee7a61584"
           ],
           "gcode_bytes": [
-            4156899
+            4163351
           ],
           "exit_codes": [
             0
@@ -2640,30 +2676,36 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
-        "ratio_ordinary": 2.3639,
-        "ratio_accelerated": 2.3202,
-        "required_cut_ordinary": 0.577,
-        "required_cut_accelerated": 0.569
+        "ratio_ordinary": 2.5378,
+        "ratio_accelerated": 2.4918,
+        "required_cut_ordinary": 0.606,
+        "required_cut_accelerated": 0.5987
       },
       "benchy-arachne-on": {
         "orca": {
-          "wall_median": 2.5665,
-          "cpu_median": 12.3281,
+          "wall_median": 2.8396,
+          "cpu_median": 12.7812,
           "wall_values": [
-            2.8763,
-            2.5573,
-            2.5665
+            2.8393,
+            2.8396,
+            2.9443
           ],
           "sha256": [
-            "dfd2cfb26b7f8eeeef73c4845fe2f41981064f2933bd89a8b4e93f1cc22d545d",
-            "f23f2140996246011123f0c70155312e850cf6651cdb0d49f652e9baa4a9935a",
-            "fde0d9609ffb040f403102b89aa0c56df76335a3f0db788c33fe2405998f232d"
+            "44447fdb741387492c7073a39163d37cefdd69131051897d610dd9a3f2d41b45",
+            "65d9c11228b5615a07bc183a5cbab58ab63007f150471ed383fd1cafde6b905c",
+            "f89595d16de2b741aef586fd1c1c4ac07968765b2ff61a9457184817de3551a0"
           ],
           "gcode_bytes": [
-            10394262
+            10416507
           ],
           "exit_codes": [
             0
@@ -2687,22 +2729,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              "0.4"
+            ],
+            "tree_support_brim_width": [
+              "0"
             ]
           }
         },
         "pnp-ordinary": {
-          "wall_median": 8.4538,
-          "cpu_median": 41.25,
+          "wall_median": 9.9969,
+          "cpu_median": 42.4062,
           "wall_values": [
-            8.5508,
-            8.4538,
-            8.1108
+            10.0309,
+            9.9969,
+            9.201
           ],
           "sha256": [
-            "c86af409f424ca2099321e167eced02547836ff049758574f4a75547a36e2f40"
+            "2326455d306101f367b87f31ee1b42fc3ec24c18b3dd35f67ff7d5b9a9f2139b"
           ],
           "gcode_bytes": [
-            8491577
+            8498511
           ],
           "exit_codes": [
             0
@@ -2728,22 +2776,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
         "pnp-accelerated": {
-          "wall_median": 8.2806,
-          "cpu_median": 41.1094,
+          "wall_median": 9.548,
+          "cpu_median": 42.7031,
           "wall_values": [
-            8.2806,
-            8.3922,
-            8.1243
+            9.4243,
+            9.548,
+            9.6841
           ],
           "sha256": [
-            "c86af409f424ca2099321e167eced02547836ff049758574f4a75547a36e2f40"
+            "2326455d306101f367b87f31ee1b42fc3ec24c18b3dd35f67ff7d5b9a9f2139b"
           ],
           "gcode_bytes": [
-            8491577
+            8498511
           ],
           "exit_codes": [
             0
@@ -2769,30 +2823,36 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
-        "ratio_ordinary": 3.2939,
-        "ratio_accelerated": 3.2264,
-        "required_cut_ordinary": 0.6964,
-        "required_cut_accelerated": 0.6901
+        "ratio_ordinary": 3.5205,
+        "ratio_accelerated": 3.3624,
+        "required_cut_ordinary": 0.7159,
+        "required_cut_accelerated": 0.7026
       },
       "base-classic-off": {
         "orca": {
-          "wall_median": 13.1153,
-          "cpu_median": 28.4844,
+          "wall_median": 16.1707,
+          "cpu_median": 31.8438,
           "wall_values": [
-            11.8026,
-            26.1113,
-            13.1153
+            17.7558,
+            15.8025,
+            16.1707
           ],
           "sha256": [
-            "227f8aee41b3fdc87b3a0e9d5d69fa5cddfcd82c41380655d2ec3c6376a6e5f2",
-            "2e2e0a4b0ed47fae24b9138efc6a2b108dc8f60249d8f362afad7a71ea7fd810",
-            "e9b3a537ef1d4741d0aebdf7e159a3fe746c0e983a8619ea3f94459800ed27d8"
+            "28cdd2f415b06304cfd3c044e93ef2f0bfc4e1cb2221016f99f4ae091b5b0819",
+            "8960157510802f2c5e2da9c1e2ca180bc6cee8445d104b32881b0a1cb1a20b45",
+            "a5907a4bfb1e442228794324cc95636a89470669907c26c43b3a62d5d1d4a0de"
           ],
           "gcode_bytes": [
-            20327145
+            20336099
           ],
           "exit_codes": [
             0
@@ -2816,22 +2876,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              "0.4"
+            ],
+            "tree_support_brim_width": [
+              "0"
             ]
           }
         },
         "pnp-ordinary": {
-          "wall_median": 35.924,
-          "cpu_median": 310.2188,
+          "wall_median": 43.4567,
+          "cpu_median": 320.6094,
           "wall_values": [
-            35.924,
-            35.774,
-            37.0312
+            44.5178,
+            41.9723,
+            43.4567
           ],
           "sha256": [
-            "27dd2114759bb81c3a39362bc1f843f6753d2762145f742c7477657659b4f7de"
+            "7ef84447e30e473e230cad18a5592eee386fc34501254fcd85670e2a90fa3a23"
           ],
           "gcode_bytes": [
-            21073378
+            21077184
           ],
           "exit_codes": [
             0
@@ -2857,22 +2923,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
         "pnp-accelerated": {
-          "wall_median": 35.3444,
-          "cpu_median": 306.9375,
+          "wall_median": 42.1718,
+          "cpu_median": 313.8281,
           "wall_values": [
-            35.2058,
-            35.3444,
-            35.8208
+            42.1495,
+            42.1718,
+            42.234
           ],
           "sha256": [
-            "27dd2114759bb81c3a39362bc1f843f6753d2762145f742c7477657659b4f7de"
+            "7ef84447e30e473e230cad18a5592eee386fc34501254fcd85670e2a90fa3a23"
           ],
           "gcode_bytes": [
-            21073378
+            21077184
           ],
           "exit_codes": [
             0
@@ -2898,30 +2970,36 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
-        "ratio_ordinary": 2.7391,
-        "ratio_accelerated": 2.6949,
-        "required_cut_ordinary": 0.6349,
-        "required_cut_accelerated": 0.6289
+        "ratio_ordinary": 2.6874,
+        "ratio_accelerated": 2.6079,
+        "required_cut_ordinary": 0.6279,
+        "required_cut_accelerated": 0.6165
       },
       "base-classic-on": {
         "orca": {
-          "wall_median": 24.2764,
-          "cpu_median": 97.0312,
+          "wall_median": 28.3734,
+          "cpu_median": 103.2344,
           "wall_values": [
-            24.208,
-            24.4362,
-            24.2764
+            28.2302,
+            29.8427,
+            28.3734
           ],
           "sha256": [
-            "2153eb8349fe3ecdc3b7ad674e42f97c686215db2d6a199260f2f0379aacfa40",
-            "8897cc09ff57c74c928d5aaec93df196d5cb65a85df71dc13d7449836d078fa7",
-            "b1e39df50635c14e9b2a89690c9c2337af7c03ec386309e256ac2b69e604cea0"
+            "11913f6663153e3e68e243b8135d181b57b43848ab3491d060c0f91613003e81",
+            "80650c8496fbb4e07b37a0cb42ff33df77ffd4e7112b55f40d423a272251a1e0",
+            "f36bca98f9f721b0b9d1ae0ae932dda1e9d82728c58b3943113b884d5ed4be9d"
           ],
           "gcode_bytes": [
-            44946087
+            44955689
           ],
           "exit_codes": [
             0
@@ -2945,22 +3023,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              "0.4"
+            ],
+            "tree_support_brim_width": [
+              "0"
             ]
           }
         },
         "pnp-ordinary": {
-          "wall_median": 92.8226,
-          "cpu_median": 595.2656,
+          "wall_median": 105.3635,
+          "cpu_median": 626.0469,
           "wall_values": [
-            92.8226,
-            92.7495,
-            93.2673
+            105.3635,
+            104.3138,
+            106.7757
           ],
           "sha256": [
-            "e2c3c60e81092984ea1f179447a24db149aa2f1a2dd15aeec4e8d1489cebe6cf"
+            "1ddea2b7026f13f59ba54d81530e8a50c5738626f131e5d1062c8a87773420b3"
           ],
           "gcode_bytes": [
-            42510908
+            42510886
           ],
           "exit_codes": [
             0
@@ -2986,22 +3070,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
         "pnp-accelerated": {
-          "wall_median": 91.7639,
-          "cpu_median": 590.4531,
+          "wall_median": 106.2499,
+          "cpu_median": 624.2344,
           "wall_values": [
-            91.7639,
-            91.7488,
-            92.1695
+            105.8327,
+            106.2936,
+            106.2499
           ],
           "sha256": [
-            "e2c3c60e81092984ea1f179447a24db149aa2f1a2dd15aeec4e8d1489cebe6cf"
+            "1ddea2b7026f13f59ba54d81530e8a50c5738626f131e5d1062c8a87773420b3"
           ],
           "gcode_bytes": [
-            42510908
+            42510886
           ],
           "exit_codes": [
             0
@@ -3027,30 +3117,36 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
-        "ratio_ordinary": 3.8236,
-        "ratio_accelerated": 3.78,
-        "required_cut_ordinary": 0.7385,
-        "required_cut_accelerated": 0.7354
+        "ratio_ordinary": 3.7135,
+        "ratio_accelerated": 3.7447,
+        "required_cut_ordinary": 0.7307,
+        "required_cut_accelerated": 0.733
       },
       "base-arachne-off": {
         "orca": {
-          "wall_median": 14.8929,
-          "cpu_median": 36.9688,
+          "wall_median": 17.7276,
+          "cpu_median": 41.0,
           "wall_values": [
-            14.8929,
-            15.4301,
-            14.8464
+            17.4368,
+            18.0356,
+            17.7276
           ],
           "sha256": [
-            "0cd72f28f066967c46b1dca4861e18d51889c7979162f6d0a6c1d754b6f957c5",
-            "4b22d5cc6f7694c804c4dca6a328e90b10ffb638a21ebe24dba6537872f86306",
-            "82c15954490022845289c2247559a3116db2208f20f7c6f5c273fd829f9fe7cc"
+            "215ae65238848f81603eb4f5111079414fc4d32db7a04a9c2c802762fd756a1f",
+            "2d2ea0c372ec32b9cc72d66e2870224caa723d6ae93ef4e35f8806215fd78df5",
+            "3f1762a3bbb0ed07ff2e52994867c70686fca42ea561c23c19fc24301d102c9f"
           ],
           "gcode_bytes": [
-            19319676
+            19328597
           ],
           "exit_codes": [
             0
@@ -3074,22 +3170,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              "0.4"
+            ],
+            "tree_support_brim_width": [
+              "0"
             ]
           }
         },
         "pnp-ordinary": {
-          "wall_median": 38.1686,
-          "cpu_median": 315.9531,
+          "wall_median": 44.8248,
+          "cpu_median": 325.6562,
           "wall_values": [
-            38.3946,
-            38.1686,
-            37.7987
+            45.0468,
+            44.8248,
+            42.9535
           ],
           "sha256": [
-            "32ac8f77e290adb69d99acb52f27951ebc9472730c78b7ab03290d48d83ad40c"
+            "defae354a073d81344e2797c1e63e8483f319199872a7fee9f1a38697b716eaf"
           ],
           "gcode_bytes": [
-            20892953
+            20897033
           ],
           "exit_codes": [
             0
@@ -3115,22 +3217,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
         "pnp-accelerated": {
-          "wall_median": 37.8507,
-          "cpu_median": 311.8594,
+          "wall_median": 42.896,
+          "cpu_median": 325.5312,
           "wall_values": [
-            37.8507,
-            38.8172,
-            37.661
+            42.896,
+            42.8698,
+            43.2979
           ],
           "sha256": [
-            "32ac8f77e290adb69d99acb52f27951ebc9472730c78b7ab03290d48d83ad40c"
+            "defae354a073d81344e2797c1e63e8483f319199872a7fee9f1a38697b716eaf"
           ],
           "gcode_bytes": [
-            20892953
+            20897033
           ],
           "exit_codes": [
             0
@@ -3156,30 +3264,36 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
-        "ratio_ordinary": 2.5629,
-        "ratio_accelerated": 2.5415,
-        "required_cut_ordinary": 0.6098,
-        "required_cut_accelerated": 0.6065
+        "ratio_ordinary": 2.5285,
+        "ratio_accelerated": 2.4197,
+        "required_cut_ordinary": 0.6045,
+        "required_cut_accelerated": 0.5867
       },
       "base-arachne-on": {
         "orca": {
-          "wall_median": 22.2892,
-          "cpu_median": 104.2656,
+          "wall_median": 27.8633,
+          "cpu_median": 109.8281,
           "wall_values": [
-            22.1162,
-            22.617,
-            22.2892
+            27.6043,
+            27.8633,
+            27.9354
           ],
           "sha256": [
-            "3d97d0d95d0003c6c1e78ec0f420a4f1a4fdba6907d3ec33fb361f8a4b47f3b8",
-            "4096317522916e080fee0ea12e662c8eafe779e67cea2016779b2201c8378d55",
-            "5f449f1c5a558f277e8b57e0f1f546f01029660f96196f4939bfb55662f7efd7"
+            "4be7f834bd3996815899cc6e4a5ed993b5174e144cd7dbe6fc2c4b4fbf49f7d1",
+            "4cefcfe6ab5d852339d0cf2270173c6bb5327d9fee0e63c2c1f63af547228b61",
+            "d582630ccb0a78aba22716be668b01dd6dd4cdd74fbf6b3c6f3c98c68c2ec4d1"
           ],
           "gcode_bytes": [
-            43939444
+            43948962
           ],
           "exit_codes": [
             0
@@ -3203,22 +3317,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              "0.4"
+            ],
+            "tree_support_brim_width": [
+              "0"
             ]
           }
         },
         "pnp-ordinary": {
-          "wall_median": 91.1961,
-          "cpu_median": 598.6562,
+          "wall_median": 105.0091,
+          "cpu_median": 627.7188,
           "wall_values": [
-            91.1961,
-            94.0456,
-            89.3001
+            105.0091,
+            108.7987,
+            103.5919
           ],
           "sha256": [
-            "e5f5b8f4e6ce3699744b655f5af7b30e0e85964ffe2a54965deefa739b99a688"
+            "4aa1847c3b9b5b74ad14360e3529082250299be32a44508d5f0cf0b3785b7826"
           ],
           "gcode_bytes": [
-            42331088
+            42331066
           ],
           "exit_codes": [
             0
@@ -3244,22 +3364,28 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
         "pnp-accelerated": {
-          "wall_median": 91.871,
-          "cpu_median": 598.0,
+          "wall_median": 103.8489,
+          "cpu_median": 620.2344,
           "wall_values": [
-            91.871,
-            92.7403,
-            89.4479
+            103.8489,
+            106.3569,
+            102.4682
           ],
           "sha256": [
-            "e5f5b8f4e6ce3699744b655f5af7b30e0e85964ffe2a54965deefa739b99a688"
+            "4aa1847c3b9b5b74ad14360e3529082250299be32a44508d5f0cf0b3785b7826"
           ],
           "gcode_bytes": [
-            42331088
+            42331066
           ],
           "exit_codes": [
             0
@@ -3285,13 +3411,19 @@
             ],
             "skirt_height": [
               "1"
+            ],
+            "initial_layer_line_width": [
+              ""
+            ],
+            "tree_support_brim_width": [
+              ""
             ]
           }
         },
-        "ratio_ordinary": 4.0915,
-        "ratio_accelerated": 4.1218,
-        "required_cut_ordinary": 0.7556,
-        "required_cut_accelerated": 0.7574
+        "ratio_ordinary": 3.7687,
+        "ratio_accelerated": 3.7271,
+        "required_cut_ordinary": 0.7347,
+        "required_cut_accelerated": 0.7317
       }
     },
     "resolved": {},

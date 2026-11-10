@@ -69,13 +69,12 @@ hashes silently repeat.
 ```bash
 pwsh -NoProfile -File docs/specs/perf-vs-orca/evidence/t135-skirt-brim-retake/run_t135.ps1 -Mode manifest
 pwsh -NoProfile -File docs/specs/perf-vs-orca/evidence/t135-skirt-brim-retake/run_t135.ps1 \
-  -Mode output -Arms baseline-ordinary,baseline-accelerated -BatchId output-baseline-relink
+  -Mode output -Arms baseline-ordinary,baseline-accelerated -BatchId output-baseline-final
 pwsh -NoProfile -File docs/specs/perf-vs-orca/evidence/t135-skirt-brim-retake/run_t135.ps1 \
-  -Mode output -Arms candidate-ordinary -BatchId output-closing
+  -Mode output -Arms candidate-ordinary,candidate-accelerated -BatchId output-candidate-final
 pwsh -NoProfile -File docs/specs/perf-vs-orca/evidence/t135-skirt-brim-retake/run_t135.ps1 \
-  -Mode output -Arms candidate-accelerated -BatchId output-closing-acc
-pwsh -NoProfile -File docs/specs/perf-vs-orca/evidence/t135-skirt-brim-retake/run_t135.ps1 \
-  -Mode ab -Pairs 3 -BatchId ab3
+  pwsh -NoProfile -File docs/specs/perf-vs-orca/evidence/t135-skirt-brim-retake/run_t135.ps1 \
+  -Mode ab -Pairs 3 -BatchId ab4
 ```
 
 Each output batch writes `target/t135/<batch>/rows.csv` (8 rows) and the A/B
@@ -88,7 +87,7 @@ guest rebuild cannot leak between them.
 ```bash
 pwsh -NoProfile -File docs/specs/perf-vs-orca/evidence/matched-pair/run_scoreboard.ps1 \
   -Fixtures benchy,base -Cells classic-off,classic-on,arachne-off,arachne-on \
-  -Tools orca,pnp-ordinary,pnp-accelerated -Runs 3 -Warmups 1 -BatchId t135-scoreboard2
+  -Tools orca,pnp-ordinary,pnp-accelerated -Runs 3 -Warmups 1 -BatchId t135-scoreboard3
 ```
 
 The rig pins and asserts `brim_width = 8`, `brim_type = outer_only`,
@@ -110,14 +109,15 @@ cd docs/specs/perf-vs-orca/evidence/t135-skirt-brim-retake
 for cell in benchy-classic-off benchy-classic-on benchy-arachne-off benchy-arachne-on \
             base-classic-off base-classic-on base-arachne-off base-arachne-on; do
   python oracle_skirt_brim.py \
-    --pnp  ../../../../target/t135/output-closing/gcode/$cell-candidate-ordinary.gcode \
-    --orca ../../../../target/matched-pair/t135-scoreboard2/gcode/$cell-orca-m3.gcode \
-    --cell $cell --json-out ../../../../target/t135/oracle-closing/$cell.json
+    --pnp  ../../../../target/t135/output-candidate-final/gcode/$cell-candidate-ordinary.gcode \
+    --orca ../../../../target/matched-pair/t135-scoreboard3/gcode/$cell-orca-m3.gcode \
+    --cell $cell --json-out ../../../../target/t135/oracle-final/$cell.json
 done
 
 # Delta audit: only skirt/brim/config lines may move vs the pre-port arm.
 python audit_delta.py \
-  --dir ../../../../target/t135/output-closing/gcode \
+  --old-dir ../../../../target/t135/output-baseline-final/gcode \
+  --new-dir ../../../../target/t135/output-candidate-final/gcode \
   --old-suffix -baseline-ordinary --new-suffix -candidate-ordinary \
   --json-out ../../../../target/t135/audit.json
 

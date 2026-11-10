@@ -321,6 +321,14 @@ def check(summary: dict) -> list[str]:
             f"scoreboard[{cell}]: Orca skirt height not 1",
         )
         require(
+            orca["resolved"]["initial_layer_line_width"] == ["0.4"],
+            f"scoreboard[{cell}]: Orca initial-layer width not pinned to 0.4",
+        )
+        require(
+            orca["resolved"]["tree_support_brim_width"] == ["0"],
+            f"scoreboard[{cell}]: Orca support brim not pinned off",
+        )
+        require(
             abs(entry["required_cut_ordinary"] - (1.0 - 1.0 / entry["ratio_ordinary"]))
             < 1e-3,
             f"scoreboard[{cell}]: required-cut arithmetic inconsistent",

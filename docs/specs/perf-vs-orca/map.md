@@ -159,32 +159,39 @@ the frontier is the human gate [137](issues/137-planner-scheduling-gate.md) plus
 t135 Stage 2.** `com.core.skirt-brim` now emits canonical geometry at the pinned
 `v2.5.0` (`40ecc66f78`): the brim is the contour-anchored annulus filled with
 concentric lines (`make_brim` / `tryExPolygonOffset`) and clipped against the
-first-layer support *region*, and the skirt is the convex hull of the first
-`skirt_height` layers plus the brim footprint (`Print::_make_skirt`). The
-matched job authors `brim_width = 8`, `skirt_loops = 6`, `skirt_distance = 3`,
-`skirt_height = 1` and asserts them per run on both arms, **plus a fifth key the
-t130 ruling did not name: `brim_type = outer_only`** — the vendor chain resolves
-`auto_brim`, which recomputes the width and silently discards `--brim-width=8`
-(measured: a ~10 x 5 mm, 3-loop brim). **16-cell output:** the baseline arm
-reproduces t123's reference set exactly in all eight cells, and the candidate
-records the **new reference set** (`9012df71…`, `7b199bd1…`, `dbafeb9d…`,
-`c86af409…`, `27dd2114…`, `e2c3c60e…`, `32ac8f77…`, `e5f5b8f4…`), identical on
-both build arms. **Delta audit:** moved lines are confined to `Skirt`, `Brim`
-and the resolved-config block in all eight cells — zero structural lines.
-**Parity oracle: the strict 8/8 geometric form is NOT met (2/8)** and the
-residual is fully attributed: presence parity is 8/8 (including the two base
-supports-on cells where canonical clips the whole ring away — reproduced only
-after the support *region* clip), radial extent is 8/8 within 0.46 mm, skirt
-outer area is within 0.4 % on the four supports-off cells, while brim *work*
-fails in five cells because of per-arm flow-spacing quantisation (8.0 mm at
-PnP's 0.4 mm vs 7.31 mm at Orca's 0.457 mm), Orca's support brims appearing
-under the same `; FEATURE: Brim` label, and Orca's per-volume-group clipping.
-**A/B (3 interleaved pairs):** **wall ratios 0.975–1.013 and CPU ratios 0.992–1.004 — the port's cost is below the box's paired noise floor**: no cell wins on wall with CPU corroborating in 3/3 pairs, and the one 2.5 % wall lead (base classic-off) has flat CPU, so it is not a corroborated effect — the port's cost is below the box's
-noise floor. **Scoreboard:** **2.364x–4.091x ordinary / 2.320x–4.122x
-accelerated**, required cut **57.7 %–75.6 %** — t124's ratios are superseded
-(not improved: both arms' adhesion work changed). **Frontier:**
-[137](issues/137-planner-scheduling-gate.md) (HITL) and
-[135](issues/135-cross-layer-occupancy-batching.md) Stage 2 (gated by 137);
+first-layer support *region*, the skirt is the convex hull of the first
+`skirt_height` layers plus the brim footprint (`Print::_make_skirt`), and both
+use the canonical **flow spacing** `line_width - first_layer_height x (1 - pi/4)`
+(`Flow::rounded_rectangle_extrusion_spacing`). **Seven** matched keys are
+authored and asserted per run on both arms: `brim_width = 8`,
+`brim_type = outer_only`, `skirt_loops = 6`, `skirt_distance = 3`,
+`skirt_height = 1`, `initial_layer_line_width = 0.4`,
+`tree_support_brim_width = 0`. The last three are measured corrections:
+`auto_brim` silently overrides an explicit width; **Orca resolved a 0.5 mm
+first-layer width against PnP's 0.4**, which quantised the same 8 mm to 7.31 vs
+8.0 mm (the t82 "0.4 on both sides" claim is falsified by the resolved
+appendix); and Orca resolved a 3 mm support brim under the same
+`; FEATURE: Brim` label. **Output:** the baseline arm reproduces t123's eight
+hashes, and the candidate records the **new reference set** (`7db0641b…`,
+`c02aa4e9…`, `a2f7a1fe…`, `2326455d…`, `7ef84447…`, `1ddea2b7…`, `defae354…`,
+`4aa1847c…`), identical on both build arms. **Delta audit:** every motion line
+outside `Skirt`/`Brim` is identical with the E field stripped, |dE| <= 0.00098 mm
+in 8/8. **Parity oracle: strict 2/8, not widened.** Benchy supports-off passes
+outright (brim work +2.4/+2.6 %, brim area +1.3 %, 22 lines); base supports-off
+is 22/22 lines at +8.1/+7.3 % brim work and +3.2/+3.1 % skirt area against a 3 %
+band, the residual being the anchor convention (PnP anchors on the outer-wall
+path, Orca on the slice contour, which g-code does not carry); supports-on is
+dominated by the support engine (base clips the whole brim on both arms at 0/0
+loops but the skirt hull differs 12.5 %; benchy's Orca brim fragments into 39
+runs around its support pads against PnP's 19). Radial extent is 8/8 within
+0.92 mm. **A/B:** wall 0.963–1.046, CPU 0.992–1.026 — below the box's paired
+noise floor. **Scoreboard:** **2.445x–3.769x ordinary / 2.420x–3.745x
+accelerated**, required cut **59.1 %–73.5 %** — t124's 2.36x–4.65x is superseded,
+not improved (the adhesion job and the first-layer width both changed).
+**Frontier:** [137](issues/137-planner-scheduling-gate.md) (HITL),
+[135](issues/135-cross-layer-occupancy-batching.md) Stage 2 (gated by 137) and
+the new [layer-0 cross-section parity](issues/138-layer0-cross-section-parity.md)
+(AFK, takeable now — the oracle's remaining residual is upstream of the module);
 [136](issues/136-planner-clip-batch-fanout.md) stays gated by 137.
 
 ## Notes
@@ -277,22 +284,25 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 the human said "Continue the perf vs orca map" (no ticket named); **135 Stage 1
 was the first unblocked, unclaimed frontier ticket in order** (137 is the
 human's grilling, 136 and 135 Stage 2 are gated by it), so it was claimed and
-resolved. Headline: **the matched-settings asymmetry is closed and the port is
-output-isolated to the adhesion feature.** The module now emits canonical
-geometry at `40ecc66f78`; the matched job authors five keys on both arms
-(`brim_width = 8`, `brim_type = outer_only`, `skirt_loops = 6`,
-`skirt_distance = 3`, `skirt_height = 1`) and asserts them per run. The baseline
-arm reproduces t123's eight hashes; the candidate records the new set
-(`9012df71…`, `7b199bd1…`, `dbafeb9d…`, `c86af409…`, `27dd2114…`, `e2c3c60e…`,
-`32ac8f77…`, `e5f5b8f4…`), identical on both build arms. Delta audit: every
-motion line outside `Skirt`/`Brim` is identical with the E field stripped,
-|dE| <= 0.00098 mm. The oracle is **2/8 strict** with presence 8/8 and extent
-8/8 <= 0.46 mm; the work-axis residual is attributed to flow-spacing
-quantisation, Orca's per-volume-group clipping and Orca's support brims. A/B
-below the noise floor (wall 0.975–1.013, CPU 0.992–1.004). Scoreboard:
-**2.364x–4.091x ordinary / 2.320x–4.122x accelerated**, required cut
-**57.7 %–75.6 %**, superseding t124. **Frontier now: 137 (HITL) and 135 Stage 2
-(gated by 137); 136 gated by 137.**
+resolved. Headline: **the matched-settings asymmetry is closed, including the
+adhesion flow model, and the port is output-isolated to the adhesion feature.**
+The module now emits canonical geometry at `40ecc66f78` with the canonical flow
+spacing; the matched job authors **seven** keys on both arms (`brim_width = 8`,
+`brim_type = outer_only`, `skirt_loops = 6`, `skirt_distance = 3`,
+`skirt_height = 1`, `initial_layer_line_width = 0.4`,
+`tree_support_brim_width = 0`) and asserts them per run. The baseline reproduces
+t123's eight hashes; the candidate records the new set (`7db0641b…`,
+`c02aa4e9…`, `a2f7a1fe…`, `2326455d…`, `7ef84447…`, `1ddea2b7…`, `defae354…`,
+`4aa1847c…`), identical on both build arms. Delta audit: every motion line
+outside `Skirt`/`Brim` is identical with the E field stripped, |dE| <= 0.00098 mm.
+The oracle is **2/8 strict**: benchy supports-off passes (+2.4/+2.6 % brim work,
++1.3 % brim area), base supports-off is 22/22 lines at +8.1/+7.3 % brim work
+with skirt +3.2/+3.1 % against a 3 % band (anchor convention), and supports-on is
+dominated by the support engine (0/0 brim on base, skirt 12.5 %; Orca's benchy
+brim fragments into 39 runs vs 19). A/B below the noise floor (wall 0.963–1.046,
+CPU 0.992–1.026). Scoreboard: **2.445x–3.769x ordinary / 2.420x–3.745x
+accelerated**, required cut **59.1 %–73.5 %**, superseding t124. **Frontier now:
+137 (HITL) and 135 Stage 2 (gated by 137); 136 gated by 137.**
 
 **Previous selection scope (2026-11-09, thirty-eighth session — the t130
 take):** the human said "Continue the perf vs orca map" (no ticket named);
@@ -3082,7 +3092,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
-- [Staged fold: canonical skirt-brim re-take and cross-layer occupancy offset batching](issues/135-cross-layer-occupancy-batching.md): **Stage 1 resolved (2026-11-10) — the canonical skirt/brim port lands, the matched job is authored and asserted on both arms, and the new reference set replaces t123's; the strict parity oracle is 2/8 and its residual is attributed to the flow model and the support engine, not to the module** — brim = contour-anchored annulus (`make_brim` / `tryExPolygonOffset`) clipped against the first-layer support *region*, skirt = hull of the first `skirt_height` layers plus the brim footprint (`Print::_make_skirt`), at `40ecc66f78` with the OrcaSlicer attribution header; module keys `brim_object_gap = 0.1` and `min_skirt_length = 0` (non-zero fails closed). **`brim_type = outer_only` is the fifth matched key**: `auto_brim` overrides an explicit `brim_width` (measured ~10 x 5 mm, 3 loops). **Output:** baseline reproduces t123's eight hashes; candidate records `9012df71…` / `7b199bd1…` / `dbafeb9d…` / `c86af409…` / `27dd2114…` / `e2c3c60e…` / `32ac8f77…` / `e5f5b8f4…`, identical across build arms. **Delta audit:** changed lines only in `Skirt`/`Brim`/config, 8/8. **Oracle:** presence 8/8, brim extent 8/8 within 0.46 mm, skirt area 0.4 % supports-off; strict 2/8 — brim work +9.7/+9.9 % (quantisation), +25.5/+26.4 % (base, per-volume-group clipping) and +75 % (benchy supports-on, Orca's support brims under the same label); supports-on skirt area 4.5–11 % is the support hull, not the skirt. **A/B:** **wall ratios 0.975–1.013 and CPU ratios 0.992–1.004 — the port's cost is below the box's paired noise floor**: no cell wins on wall with CPU corroborating in 3/3 pairs, and the one 2.5 % wall lead (base classic-off) has flat CPU, so it is not a corroborated effect. **Scoreboard:** 2.364x–4.091x ordinary / 2.320x–4.122x accelerated, cut 57.7 %–75.6 %, superseding t124. Stage 2 (the occupancy batch) remains gated by [137](issues/137-planner-scheduling-gate.md).
+- [Staged fold: canonical skirt-brim re-take and cross-layer occupancy offset batching](issues/135-cross-layer-occupancy-batching.md): **Stage 1 resolved (2026-11-10) — the canonical skirt/brim port lands, the adhesion job and its flow model are matched on both arms, and the new reference set replaces t123's; the strict parity oracle is 2/8 with every residual attributed outside the module** — brim = contour-anchored annulus (`make_brim` / `tryExPolygonOffset`) clipped against the first-layer support *region*, skirt = hull of the first `skirt_height` layers plus the brim footprint (`Print::_make_skirt`), both at the canonical flow spacing `line_width - h x (1 - pi/4)`, at `40ecc66f78` with the OrcaSlicer attribution header; module keys `brim_object_gap = 0.1`, `min_skirt_length = 0` (non-zero fails closed) and `first_layer_height`. **Seven matched keys**, three of them re-derived: `brim_type = outer_only` (`auto_brim` overrides `brim_width`), `initial_layer_line_width = 0.4` (**Orca resolved 0.5 against PnP's 0.4**, so 8 mm quantised to 7.31 vs 8.0 mm — the t82 "0.4 both sides" claim is falsified by the appendix) and `tree_support_brim_width = 0`. **Output:** baseline reproduces t123; candidate records `7db0641b…` / `c02aa4e9…` / `a2f7a1fe…` / `2326455d…` / `7ef84447…` / `1ddea2b7…` / `defae354…` / `4aa1847c…`, identical across arms. **Delta audit:** all motion outside `Skirt`/`Brim` identical with E stripped, |dE| <= 0.00098 mm. **Oracle:** benchy supports-off passes (+2.4/+2.6 % brim work, +1.3 % brim area, 22 lines); base supports-off is 22/22 lines at +8.1/+7.3 % brim work with skirt +3.2/+3.1 % against a 3 % band (anchor convention); supports-on is support-engine dominated (0/0 brim on base, skirt 12.5 %; Orca's benchy brim 39 runs vs 19). **A/B:** wall 0.963–1.046, CPU 0.992–1.026 — below the noise floor. **Scoreboard:** 2.445x–3.769x ordinary / 2.420x–3.745x accelerated, cut 59.1 %–73.5 %, superseding t124. Stage 2 (the occupancy batch) remains gated by [137](issues/137-planner-scheduling-gate.md).
+
 - [Matched settings vs the 8 mm brim: close the asymmetry or keep it disclosed?](issues/130-brim-matched-settings-ruling.md): **resolved (2026-11-09; human ruling — close both adhesion/priming asymmetries by canonical port + shared authored values, staged into t135; disclosure declined)** — the job keeps an 8 mm brim and a 6-loop / 3.0 mm / 1-layer skirt on both arms (`brim_width = 8`, `skirt_loops = 6`, `skirt_distance = 3.0`, `skirt_height = 1`, asserted per run fail-closed both sides; the Orca pin amends `--brim-width=0` → `8` plus three skirt overrides, and the t103 "2.4-era" doctrine re-scopes to "the matched job"), and `com.core.skirt-brim`'s bounding-box rectangles are replaced by canonical geometry ported from the pinned `v2.5.0` = `40ecc66f78` (`make_brim` (`Brim.cpp`) + the `Print.cpp` skirt construction, OrcaSlicer attribution header). Fact base: PnP printed 20 brim + 6 skirt loops where Orca's chain resolved `skirt_loops = 0` / brim `0` — two asymmetries, one surface, ~235 ms of PnP wall. Standing policy: **close asymmetries by default before any new ratio of record; parity work licensed only to close asymmetries** (third recorded exception in Out of scope; route-wide lifting declined, repo ADR declined). Sequencing: staged fold into [t135](issues/135-cross-layer-occupancy-batching.md) (a fused single candidate rejected as the t115 failure mode) — Stage 1 (unblocked) is the re-take recording the **new reference set** (t123's set retired as the currency) with its own old-vs-new paired attribution, Stage 2 is the batch under [t137](issues/137-planner-scheduling-gate.md)'s gate ruling, and the closing gate is the 8-cells × 3-tools scoreboard re-derivation superseding t124's ratios (until then they stand as historical and the disclosure rides every scoreboard). No production edit in this take.
 - [Planner effective parallelism](issues/134-planner-effective-parallelism.md): **resolved (2026-11-09; Phase-1 attribution — NO-GO as the route, GO (narrowed) for two supports-on tranches)** — the planner stage runs at **2.64x / 2.66x / 2.09x / 2.11x** on the four supports-on cells (**2.76x / 2.79x / 2.31x / 2.32x** module-only), up from t131's 2.19x because t132 removed 14.2 s of serial duplicate occupancy; shell is 9.26x, overhang 11.72x, SupportAnalysis 11.46x on the same base classic-on run. The **105,053 ms** stage thread-time is **96.3 %** layer-independent emit pass, **2.5 %** recurrence-bound drop loop, **1.2 %** pre-loop; the `drop_nodes` barrier is 2,402 ms of a 37,639 ms module. Inside the emit pass, `p6d_occupancy` is **14,249 ms wall / 14,169 ms thread = 0.99x** (433 unique offsets) and `p6a_clip_core` is **17,811 / 85,641 = 4.81x**. Ceilings: occupancy batch **11.2 s** at 4.81x (8.7–13.0 s over 2.6x–12x) = **11.1x** floor = **12.1 %** of base-on's 92.5 s cut; clip-to-12x **10.7 s** = **10.6x** = **11.5 %**; combined **21.9 s = 21.7x = 23.7 %**, still below the ticket's 50.66 s threshold. **The literal all-8-cell gate is structurally unreachable:** the whole `SupportGeometry` stage is **0.78x / 0.64x / 0.80x / 0.81x** the 0.80 % floor on supports-off and the planner module is **0.32–0.43x**. Even a zero-cost planner leaves **3.25x / 3.21x / 2.89x / 2.87x** on the supports-on cells against t124's Orca medians. Graduated [t135](issues/135-cross-layer-occupancy-batching.md) (exact occupancy batch) and [t136](issues/136-planner-clip-batch-fanout.md) (clip fan-out diagnosis), both blocked by the human's gate ruling [t137](issues/137-planner-scheduling-gate.md). Evidence: [`evidence/t134-planner-parallelism/`](evidence/t134-planner-parallelism/FINDINGS.md) (`verify.py` 94 checks, 12/12 negative controls; eight probe G-code hashes equal t123's candidate-ordinary set; no production edit, probe reverted).
 - [Internal-bridge offsets on a candidate-bbox operand](issues/133-internal-bridge-windowed-offsets.md): **resolved (2026-11-09; exact measured KEEP — window the negative erosion only, 8/8 at 1.66x–10.94x the floor)** — `internal_bridge_offset_window` clips the `deep_infill_area` operand of the `-4.5 x spacing` erosion to the union bbox of the layer's `internal_solid_fill` candidates grown by `(2 x 4.5 + 1) x qualify_spacing`; both consumers (`qualified.retain`, the `internal_unsupported_area` filter in `internal_bridge_angles`) are candidate-local and the window boundary is outside the erosion's `2 x 4.5 x spacing` miter reach, so the covered set is unchanged. **16-cell output:** 8 cells x 4 arms, one hash per cell, all equal to t123's reference set (`90638bf3…`, `711c6334…`, `2ba5d84c…`, `a972b0f2…`, `b3b4ac5e…`, `4e31a2db…`, `6b865d4a…`, `62d6eedc…`), so the delta audit is equality — **zero moved lines**. **The first candidate windowed both offsets and is rejected:** confined to the bridge role (0 structural geometry lines) but moves **8 benchy bridge layers** by up to **22.09 mm** and 5 base bridge lines, because `internal_bridge_angles` intersects the whole-layer sparse `expansion_area` with `deep_infill_clip_area` and samples that anchor set; the artifact and both audits are preserved. **Paired gate:** **8/8** at **1.66x–10.94x** the 0.80 % floor with CPU corroborating — benchy **4.83 → 4.64 / 8.84 → 8.71 / 5.01 → 4.87 / 8.92 → 8.79 s**, base **42.51 → 39.82 / 102.45 → 101.09 / 43.82 → 39.98 / 106.95 → 102.18 s**. **Sequential sampling:** 3 pairs per cell, extended to 6 for benchy arachne-on and 12 for base classic-on (pre-declared; all pairs retained; 12-pair base-on **+1.36 s, 1.66x floor**, 7/12 wall-positive, 12/12 CPU-positive). **Ledger correction to t131:** the erosion converts thread-time to wall at **2.80x / 3.96x / 3.27x / 6.42x**, not the stage's 5.25–8.78x. Route arithmetic: **9.7 %** of base-off's 27.7 s required cut and **1.5 %** of base-on's 92.5 s — a banked keep, not a destination step. Disclosures: box load **21.2 %** before / **10.9 %** later (DWM/Chrome/Xbox/Discord), 6 physical / 12 logical cores; three windows; no Orca arm. Evidence: [`evidence/t133-windowed-bridge-offsets/`](evidence/t133-windowed-bridge-offsets/FINDINGS.md) (`verify.py` 357 checks, 17/17 negative controls).
@@ -3356,7 +3367,8 @@ Standing decisions for this effort (2026-09-22):
   distance, per-layer overhang polygons, canonical loop projection — each of
   which needs its own Phase-1 before a candidate can be priced. The per-layer
   phase joins the first program on both benchy cells. One new, measured
-  residual joins the fog: **cross-arm adhesion parity beyond the module**
+  residual graduated to [138](issues/138-layer0-cross-section-parity.md): **cross-arm
+  adhesion parity beyond the module**
   (Orca's support brims under the same `; FEATURE: Brim` label, its
   per-volume-group brim clipping, and PnP's absent support brim) — it moves the
   oracle's work axis, not the slice, so it is a fairness question for a future

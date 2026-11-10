@@ -56,11 +56,9 @@ def medians(rows: list[dict]) -> dict:
 
 
 def main() -> None:
-    baseline_rows = read_rows(RAW / "output-baseline-relink" / "rows.csv")
-    candidate_rows = read_rows(RAW / "output-closing" / "rows.csv") + read_rows(
-        RAW / "output-closing-acc" / "rows.csv"
-    )
-    ab_rows = read_rows(RAW / "ab3" / "rows.csv")
+    baseline_rows = read_rows(RAW / "output-baseline-final" / "rows.csv")
+    candidate_rows = read_rows(RAW / "output-candidate-final" / "rows.csv")
+    ab_rows = read_rows(RAW / "ab4" / "rows.csv")
     manifest = json.loads((RAW / "manifest.json").read_text(encoding="utf-8"))
 
     output: dict[str, dict] = {}
@@ -129,7 +127,7 @@ def main() -> None:
 
     oracle = {}
     for cell in CELLS:
-        path = RAW / "oracle-closing" / f"{cell}.json"
+        path = RAW / "oracle-final" / f"{cell}.json"
         if not path.exists():
             raise SystemExit(f"reduce: missing oracle {path}")
         oracle[cell] = json.loads(path.read_text(encoding="utf-8"))
@@ -137,10 +135,10 @@ def main() -> None:
     audit = json.loads((RAW / "audit.json").read_text(encoding="utf-8"))
 
     scoreboard_rows = read_rows(
-        REPO / "target" / "matched-pair" / "t135-scoreboard2" / "scoreboard-rows.csv"
+        REPO / "target" / "matched-pair" / "t135-scoreboard3" / "scoreboard-rows.csv"
     )
     measured = [r for r in scoreboard_rows if r["warmup"] == "0"]
-    scoreboard: dict = {"batch": "t135-scoreboard2", "cells": {}, "resolved": {}, "clean": True}
+    scoreboard: dict = {"batch": "t135-scoreboard3", "cells": {}, "resolved": {}, "clean": True}
     for cell in CELLS:
         fixture, generator, supports = cell.split("-")
         entry: dict = {}
@@ -172,6 +170,12 @@ def main() -> None:
                     "skirt_loops": sorted({r["resolved_skirt_loops"] for r in rows}),
                     "skirt_distance": sorted({r["resolved_skirt_distance"] for r in rows}),
                     "skirt_height": sorted({r["resolved_skirt_height"] for r in rows}),
+                    "initial_layer_line_width": sorted(
+                        {r["resolved_initial_layer_line_width"] for r in rows}
+                    ),
+                    "tree_support_brim_width": sorted(
+                        {r["resolved_tree_support_brim_width"] for r in rows}
+                    ),
                 },
             }
         entry["ratio_ordinary"] = round(

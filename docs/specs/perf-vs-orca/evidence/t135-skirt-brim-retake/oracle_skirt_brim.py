@@ -165,7 +165,17 @@ def growth(
 
 
 def pnp_spacing(cfg: dict[str, str]) -> float:
-    return float(cfg.get("line_width", "0.4"))
+    """PnP's adhesion flow spacing: `line_width - h x (1 - pi/4)`.
+
+    `skirt-brim` resolves its own flow spacing from `line_width` and
+    `first_layer_height` (canonical `rounded_rectangle_extrusion_spacing`), so
+    the appendix's `line_width` alone is not the spacing.
+    """
+    width = float(cfg.get("line_width", "0.4"))
+    height = float(cfg.get("first_layer_height", "0") or 0.0)
+    if height <= 0.0:
+        return width
+    return width - height * (1.0 - 0.25 * math.pi)
 
 
 def orca_spacing(cfg: dict[str, str]) -> float:
