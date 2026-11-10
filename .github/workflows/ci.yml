@@ -130,3 +130,33 @@ jobs:
             fi
           done
           echo "OK: disjointness invariant holds for developer and hybrid editions"
+
+  properties-windows:
+    name: Properties (Windows)
+    runs-on: windows-latest
+    # The budget covers a cold workspace compile on a fresh runner plus guest
+    # WASM builds; the routine property run itself is short.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-tools
+      - name: Build guest WASMs
+        run: cargo xtask build-guests
+      - name: Run routine properties
+        run: cargo xtask test --summary --properties --tier routine
+      - name: Upload property failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: properties-windows-failure
+          path: |
+            target/test-output.log
+            target/property-testing/
+          if-no-files-found: ignore

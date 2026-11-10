@@ -7,6 +7,8 @@ use std::thread;
 
 use crate::build_guests;
 use crate::check_literals;
+use crate::properties::executor::{self, PropertySelection};
+use crate::properties::Tier;
 
 // Touch ClosureCache::len for clippy -D dead_code (build_guests::ClosureCache::len is otherwise
 // only referenced from #[cfg(test)] code, which clippy without --tests considers unused).
@@ -43,11 +45,33 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
             return 2;
         }
     };
+    if options.properties.is_some() {
+        if let Err(name) = executor::reject_environment_overrides() {
+            eprintln!(
+                "xtask test: profile_override_conflict: {}",
+                name.to_string_lossy()
+            );
+            return 1;
+        }
+    }
+    // Selection must be resolved before any preflight, wrapper, or child process.
+    let selected_registry = if let Some(selection) = &options.properties {
+        match executor::read_and_select(ws_root, selection) {
+            Ok(registry) => Some(registry),
+            Err(error) => {
+                eprintln!("xtask test: {error}");
+                return error.code;
+            }
+        }
+    } else {
+        None
+    };
     let TestOptions {
         accelerated,
         summary,
         summary_from,
         test_args,
+        properties,
     } = options;
 
     // --- --summary-from: parse-only shortcut (no test run, no freshness gate) ---
@@ -113,7 +137,11 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
             None => (test_args.clone(), Vec::new()),
         };
 
-    let test_args = build_test_arguments(ws_root, cargo_args, libtest_args);
+    let test_args = if properties.is_some() {
+        Vec::new()
+    } else {
+        build_test_arguments(ws_root, cargo_args, libtest_args)
+    };
 
     // Step 1: three independent read-only preflights — check-literals, the
     // test-quality gate (report mode until the remediation program's final wave
@@ -196,7 +224,12 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         .trim_start_matches(r"\\?\")
         .replace('\\', "/");
 
-    let (exit_code, ran) = if summary {
+    let (exit_code, ran) = if let (Some(selection), Some(registry)) =
+        (properties.as_ref(), selected_registry.as_ref())
+    {
+        let code = executor::run(ws_root, registry, selection, &log_path, summary);
+        (code, code == 0)
+    } else if summary {
         // --summary: run cargo test with piped output; write to log; do NOT
         // stream anything to the terminal. Then parse & print the digest.
         let mut cmd = Command::new("cargo");
@@ -415,22 +448,56 @@ fn manifest_declares_package(ws_root: &Path, manifest: &str, expected: &str) -> 
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct TestOptions {
+pub(crate) struct TestOptions {
     accelerated: bool,
     summary: bool,
     summary_from: Option<String>,
     test_args: Vec<String>,
+    properties: Option<PropertySelection>,
 }
 
-fn parse_test_options(passthrough: &[String]) -> Result<TestOptions, String> {
+pub(crate) fn parse_test_options(passthrough: &[String]) -> Result<TestOptions, String> {
     let mut accelerated = false;
     let mut summary = false;
     let mut summary_from: Option<String> = None;
     let mut test_args: Vec<String> = Vec::with_capacity(passthrough.len());
+    let mut property_mode = false;
+    let mut tier = None;
+    let mut ids = Vec::new();
+    let mut seed = None;
+    let mut with_scad = false;
+    let mut after_separator = false;
 
     let mut iter = passthrough.iter();
     while let Some(arg) = iter.next() {
+        if arg == "--" {
+            after_separator = true;
+            test_args.push(arg.clone());
+            continue;
+        }
+        if after_separator
+            && (arg == "--properties"
+                || arg == "--with-scad"
+                || arg == "--tier"
+                || arg.starts_with("--tier=")
+                || arg == "--property"
+                || arg.starts_with("--property=")
+                || arg == "--seed"
+                || arg.starts_with("--seed="))
+        {
+            test_args.push(arg.clone());
+            continue;
+        }
         match arg.as_str() {
+            "--properties" if !property_mode => property_mode = true,
+            "--properties" => return Err("--properties may only be specified once".into()),
+            "--with-scad" => with_scad = true,
+            "--tier" | "--property" | "--seed" => {
+                let value = iter
+                    .next()
+                    .ok_or_else(|| format!("{arg} requires a value"))?;
+                parse_property_option(arg, value, &mut tier, &mut ids, &mut seed)?;
+            }
             "--accelerated" if !accelerated => accelerated = true,
             "--accelerated" => return Err("--accelerated may only be specified once".to_string()),
             "--summary" => summary = true,
@@ -440,8 +507,39 @@ fn parse_test_options(passthrough: &[String]) -> Result<TestOptions, String> {
                     return Err("--summary-from requires a file path argument".to_string());
                 }
             }
+            other
+                if other.starts_with("--tier=")
+                    || other.starts_with("--property=")
+                    || other.starts_with("--seed=") =>
+            {
+                let (name, value) = other.split_once('=').expect("option contains equals");
+                parse_property_option(name, value, &mut tier, &mut ids, &mut seed)?;
+            }
             other => test_args.push(other.to_string()),
         }
+    }
+
+    if property_mode {
+        if accelerated {
+            return Err(
+                "property_selector_conflict: --properties conflicts with --accelerated".into(),
+            );
+        }
+        if summary_from.is_some() {
+            return Err(
+                "property_selector_conflict: --properties conflicts with --summary-from".into(),
+            );
+        }
+        if !test_args.is_empty() {
+            return Err(format!(
+                "property_selector_conflict: --properties conflicts with cargo/libtest argument {}",
+                test_args[0]
+            ));
+        }
+    } else if tier.is_some() || !ids.is_empty() || seed.is_some() || with_scad {
+        return Err(
+            "property_selector_requires_properties: property options require --properties".into(),
+        );
     }
 
     if accelerated && test_args.iter().any(|arg| is_doctest_argument(arg)) {
@@ -455,7 +553,47 @@ fn parse_test_options(passthrough: &[String]) -> Result<TestOptions, String> {
         summary,
         summary_from,
         test_args,
+        properties: property_mode.then_some(PropertySelection {
+            tier: tier.unwrap_or(Tier::Routine),
+            ids,
+            seed,
+            with_scad,
+        }),
     })
+}
+
+fn parse_property_option(
+    name: &str,
+    value: &str,
+    tier: &mut Option<Tier>,
+    ids: &mut Vec<String>,
+    seed: &mut Option<u64>,
+) -> Result<(), String> {
+    match name {
+        "--tier" => {
+            if tier.is_some() {
+                return Err("invalid_property_tier: --tier may only be specified once".into());
+            }
+            *tier = Some(match value {
+                "routine" => Tier::Routine,
+                "extended" => Tier::Extended,
+                _ => return Err(format!("invalid_property_tier: {value}")),
+            });
+        }
+        "--property" => ids.push(value.to_string()),
+        "--seed" => {
+            if seed.is_some() || value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+                return Err(format!("invalid_property_seed: {value}"));
+            }
+            *seed = Some(
+                value
+                    .parse()
+                    .map_err(|_| format!("invalid_property_seed: {value}"))?,
+            );
+        }
+        _ => unreachable!("only property options are parsed here"),
+    }
+    Ok(())
 }
 
 fn is_doctest_argument(arg: &str) -> bool {

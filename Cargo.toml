@@ -61,6 +61,9 @@ version = "0.1.0"
 # Benchmarking
 criterion = { version = "0.5.1", default-features = false, features = ["html_reports", "cargo_bench_support"] }
 
+# Opt-in native property-testing support
+proptest = { version = "1.11", default-features = false, features = ["std", "fork", "timeout"] }
+
 # Core dependencies
 # `call-hook` is NOT a wasmtime default feature. It is what lets a store observe
 # every guest→host transition, which is how fuel is sampled at a `profile-mark`

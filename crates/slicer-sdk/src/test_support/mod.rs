@@ -43,3 +43,6 @@ pub mod assert_paths;
 pub mod capture;
 pub mod fixtures;
 pub mod mock_host;
+
+#[cfg(all(feature = "property_testing", not(target_arch = "wasm32")))]
+pub mod property_testing;

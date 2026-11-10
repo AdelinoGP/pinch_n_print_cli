@@ -7,6 +7,9 @@ mod dist;
 mod editions;
 mod gen_config_docs;
 mod guest_namespaces;
+// The registry/context boundary is wired into the command in packet Step 6.
+#[allow(dead_code)]
+mod properties;
 mod rustc_driver;
 mod sync_agents;
 mod test;
@@ -70,6 +73,12 @@ SUBCOMMANDS:
                           regression-diagnosis runs. Narrow single-test runs
                           should still use plain `cargo test` directly.
     test --accelerated    Use the controlled compiler policy and debug profile for the test run.
+    test --properties     Run registered properties (test-properties.toml): select
+                          with --tier routine|extended (default routine), repeatable
+                          --property ID, --seed U64, --with-scad (exit 2 with
+                          no_eligible_scad_properties until a SCAD record exists).
+                          Conflicts with --accelerated, --summary-from, cargo/libtest
+                          args. See docs/testing/properties.md.
     test --summary [ARGS]  Same as `test`, but prints a compact LLM-friendly
                           digest (summary lines + failure detail + verdict)
                           instead of streaming every per-test `ok` line.

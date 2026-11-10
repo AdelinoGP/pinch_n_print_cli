@@ -116,6 +116,15 @@ boundary_type)`, and `ordered_entity_view_base(role)`. Their explicit enum
 arguments avoid unsafe blanket `Default` implementations, and the returned
 bases are intended for FRU composition.
 
+For `property_testing` fixtures, use FRU over
+`slicer_sdk::test_support::fixtures::print_entity_base` or an appropriate
+`Default`, overriding the fields relevant to the property. Shared strategies
+and oracles belong in `slicer_sdk::test_support::property_testing`; an oracle
+must be independent of the production function under test. A durable
+**concrete regression** is a named test using the concrete input in the owning
+crate's ordinary test target. Seeds are diagnostics, never committed regression
+history.
+
 `SliceRunOptions::default()` is the quiet test baseline. It uses
 `MeshIR::default()` for the current schema version, leaves paths and options
 empty or `None`, and intentionally keeps `progress_events = false` rather

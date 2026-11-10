@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_01_pbt-foundation
-status: draft
+status: implemented
 ---
 
 # Opt-in property harness and an executed IR vertical slice
@@ -179,3 +179,13 @@ For every plain Cargo test command below, run in Bash with `set -o pipefail`, en
 | 11 | Completeness | PASS | No unresolved scope-changing premise, template placeholder or blocking question; measurements and dependency verification are implementation work. |
 
 **Verdict: PREFLIGHT PASS (authoring only; G-BASE/G-HARNESS not executed).**
+
+## Deviations
+
+Recorded by the swarm planner during implementation sanity-check. None changes scope.
+
+1. **Nested `CaseGuard` rejection mechanism.** `CaseGuard::new() -> Self` has no error channel, so "same-thread nested guards are unsupported and rejected before mutating the active guard's state" is implemented as a panic in `CaseGuard::new` (documented in `docs/testing/properties.md`). `case_guard_rejects_nested_use_before_mutation` asserts the panic and that the outer guard's state is untouched.
+2. **Oracle placement and the AC-4 probe split.** The independent anchor-membership oracle (sorted/ordered-set membership over generated `ordered_entities` IDs only) is implemented as a shared helper in `slicer_sdk::test_support::property_testing`, matching the source plan §4.2 which reserves `slicer_sdk::test_support` for shared strategies and independent oracles. The strategy stays local in `crates/slicer-ir/tests/property_ir.rs` as specified. `property_anchor_oracle_catches_accept_all` (AC-4, under `X`) lands in the `xtask` property-test module (`xtask/src/properties.rs`) and drives a controlled evaluation with a synthetic accept-all validator substitute against a dangling witness, asserting the oracle rejects it; the substitute run is never registered in `test-properties.toml`. Step 5's surface therefore also touches `xtask/src/properties.rs` test code. Deterministic empty/valid/dangling/repeated/reordered/extreme-ID witnesses execute inside `proptest_ir_travel_anchors_membership` itself (mandatory structural witnesses per source plan §5), so they run in every registry execution without probabilistic coverage assertions.
+3. **Additive export forced by the no-discard requirement.** "Teardown must not discard the only failure log" and AC-2's observation of it are unobservable through the listed `CaseGuard` surface (drop clears thread state and there is no log accessor). Add one additive module-level export `pub fn take_case_logs() -> Vec<(LogLevel, String)>` in `slicer_sdk::test_support::property_testing`: `CaseGuard`'s `Drop` first drains the real captured logs into a thread-local retained slot, then clears state; the accessor returns and clears that slot, surviving unwinds. `PropertyRun::check` (Step 4) consumes it for `failure.json`'s captured SDK logs. This extends, and does not alter, the handoff contract.
+
+4. **Proptest `1.11.0` API resolution (closes the shape of FWD-1/FWD-3).** Verified against docs.rs proptest 1.11.0 (MSRV 1.85, compatible with workspace `rust-version = 1.91.0` and the pinned 1.96.0 toolchain): `TestRunner::new_with_config` does not exist (use `TestRunner::new`); `Config` carries a `pub _non_exhaustive: ()` so it must be built with `..`-rest (FRU); `Config::default()` reads `PROPTEST_*` environment variables on first use, so profiles set every measured field explicitly and the harness performs its own `profile_override_conflict` detection; fixed seeds map to `rng_seed: RngSeed::Fixed(u64)` with `rng_algorithm: RngAlgorithm::ChaCha` (the registry string `"chacha"` maps explicitly; `RngAlgorithm`'s `FromStr` does not accept it); `failure_persistence: None` must be set explicitly because the default persists source-adjacent seed files. Shrink completion is **not observable** through the 1.11 API (no flag distinguishes "no further candidates" from an iteration/time cap), so `shrink_completed` is `null`/unknown per this packet's FWD-3 rule rather than an invented counter; `runner_statistics` is the runner's `Display` string, and call counters (which include shrink invocations) are harness-owned.

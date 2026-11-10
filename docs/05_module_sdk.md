@@ -1346,6 +1346,27 @@ declared as `[[test]]` targets with `required-features = ["test"]`. `cfg(test)`
 on an integration-test source does not enable the linked SDK feature, so bare
 runs may omit these binaries.
 
+### Property testing
+
+The default-off `slicer-sdk/property_testing` feature implies `test` and enables
+the optional Proptest and `serde_json` dependencies. Its
+`slicer_sdk::test_support::property_testing` module is available only on native
+targets; it is not a guest export. Run registered properties through the
+[property-testing workflow](testing/properties.md).
+
+`slicer_sdk::test_support::property_testing::PropertyRun::check` creates a fresh
+`slicer_sdk::test_support::property_testing::CaseGuard` for every generated case
+and every shrink invocation. The guard resets the thread's log and mesh state,
+installs an empty log sink, and owns fresh output captures and entity IDs.
+`CaseGuard` is `!Send + !Sync`; same-thread nesting panics before mutating the
+active guard's state. On drop, including during unwinding, it retains available
+case logs before teardown; `slicer_sdk::test_support::property_testing::take_case_logs`
+returns and clears those retained thread-local logs. The guard does not install
+or change per-case panic hooks.
+
+Property support does not change private-kernel ownership or expose private
+production kernels for tests: test private kernels in their owning crate.
+
 ### Mock Host
 
 ```rust

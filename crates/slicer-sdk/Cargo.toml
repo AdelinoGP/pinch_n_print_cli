@@ -6,6 +6,8 @@ authors = ["Pinch 'n Print Team"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+proptest = { workspace = true, optional = true }
+serde_json = { version = "1", optional = true }
 slicer-ir = { path = "../slicer-ir" }
 slicer-core = { path = "../slicer-core" }
 slicer-macros = { path = "../slicer-macros" }
@@ -19,12 +21,17 @@ wit-bindgen.workspace = true
 
 [features]
 test = []
+property_testing = ["test", "dep:proptest", "dep:serde_json"]
 
 # Tests that import the `test_prelude` / `test_support` modules must run
 # with the `test` feature enabled; those modules are gated on
 # `#[cfg(any(test, feature = "test"))]` so they're invisible to
 # integration tests otherwise. The non-gated test files are
 # auto-discovered by cargo and don't need entries.
+[[test]]
+name = "property_harness"
+required-features = ["property_testing"]
+
 [[test]]
 name = "smoke"
 required-features = ["test"]

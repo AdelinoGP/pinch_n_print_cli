@@ -1,0 +1,42 @@
+schema_version = 1
+
+[[property]]
+id = "H-IR-ANCHORS"
+package = "slicer-ir"
+target_kind = "test"
+target_name = "property_ir"
+test_name = "proptest_ir_travel_anchors_membership"
+production_symbol = "slicer_ir::validate_travel_anchors"
+production_path = "crates/slicer-ir/src/validation.rs"
+features = ["slicer-ir/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-ir-anchors"
+
+# Windows pilots and exact contexts: docs/testing/properties.md#measured-profiles.
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_entities = 32, max_travels = 64 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_entities = 256, max_travels = 512 }
