@@ -1,0 +1,60 @@
+# Implementation Plan: pbt-foundation
+
+Implement only after this draft is selected for implementation. New targets/symbols below do not exist at authoring time. Every step leaves normal builds and the selected feature configuration compiling. The spec's `X`, `S` and capture wrapper apply to every test command here. Read `target/test-output.log` before another test run; do not rerun to recover truncated output.
+
+## Step 1: Capture G-BASE before adding dependencies
+
+- Objective: establish executed baseline and actual package/target/feature inventory rather than relying on comments or a remembered binary count.
+- Surface: inspect `Cargo.toml`, `crates/slicer-{sdk,ir,core}/Cargo.toml`, `xtask/src/test.rs::{test_command,build_test_arguments,parse_test_options}`, `.github/workflows/ci.yml`, and discovered guest manifests. Create `docs/testing/proptest-foundation-evidence.md` with current `git rev-parse HEAD`, dirty paths, Windows/toolchain identity, `CARGO_TARGET_DIR`, command profiles, graph expectations and separate compile/execution measurements.
+- Verify: run the four existing narrow baseline commands specified in the spec, each using `set -o pipefail` and `2>&1 | tee target/test-output.log`, preserving each result before the next run. Derive inventory with `cargo metadata --no-deps --format-version 1`; inspect required/source gates. Run `cargo xtask build-guests --check` before attributing any guest-related result (exit `1` rebuild; exit `3` infrastructure blocker).
+- Done when: evidence names actual tests/features and factual pass/fail/log provenance; existing failures are classified without skips, loosened assertions or claims based on stale guest artifacts. No SCAD-enabled build is claimed.
+
+## Step 2: Add optional SDK support and compile witnesses
+
+- Objective: establish the dependency/feature boundary without widening production interfaces.
+- Surface: add workspace Proptest dependency and lock resolution in `Cargo.toml`/`Cargo.lock` after current MSRV check; add `property_testing` in `crates/slicer-sdk/Cargo.toml`; register a cfg-gated `property_testing` submodule in `crates/slicer-sdk/src/test_support/mod.rs`. Add `crates/slicer-sdk/src/test_support/property_testing/mod.rs` and opaque helper types with the exact spec signatures. Add the new `property_harness` integration target with `required-features = ["property_testing"]` and compile-witness imports of those exports.
+- Approach: use optional dependencies only for new helper needs; keep Proptest `std`/fork/timeout available. SDK's existing `test` and self dev-dependency stay property-free. Do not make production guest manifests depend on the new feature.
+- Verify: `cargo check -p slicer-sdk --all-targets --features property_testing`; default `cargo check -p slicer-sdk --all-targets`; capture current normal/build feature graphs with `cargo tree -p slicer-sdk -e normal,build,features` and its `--features test` variant.
+- Done when: the new module/target compiles enabled, stays absent disabled, and production graphs remain free of Proptest/OpenRSCAD. Internal bodies can be added incrementally, but do not ship placeholder assertions as tests.
+
+## Step 3: Prove case-local SDK isolation through real wrappers
+
+- Objective: give every generated and shrink invocation fresh thread-local state and owned mutable fixtures.
+- Surface: `CaseGuard` in the new SDK property module; consume `reset_global_state`, `mock_host_setup`, `mock_host_teardown`, `MockHost::install`, capture constructors and `LayerEntityIdGen::new` at their existing seams. Add `case_guard_cleans_success_failure_and_unwind`, `case_guard_isolates_concurrent_threads` and `case_guard_rejects_nested_use_before_mutation` to `crates/slicer-sdk/tests/property_harness.rs`.
+- Approach: reject nested guards before mutation; `Drop` must not panic or churn process-global panic hooks. Use same-thread dirty-state witnesses and concurrent synchronized threads; assert real `host::raycast_z_down`, `host::log_warn`/`take_log_messages`, captures and ID reset after success, `TestCaseError`, and `catch_unwind` around a deliberate panic. Do not serialize unrelated module tests globally.
+- Verify: `S` and the two existing SDK isolation/log targets with `--features test`, each plain test invocation using the spec's log wrapper.
+- Done when: tests would fail if either entry reset or unwind teardown is removed, and a dirty case cannot leak logs, mesh source, capture output or IDs into the next case.
+
+## Step 4: Define typed registry, profiles and SDK context execution
+
+- Objective: establish the stable registry/context/evidence boundary before wiring command dispatch.
+- Surface: new `test-properties.toml`; new `xtask/src/properties.rs` with typed parser/records; register `mod properties` in `xtask/src/main.rs`; implement `PropertyRun::{new,bound,check}` and `PropertyRunError` in the SDK property module. Add optional SDK serialization support and xtask parsing/entropy dependencies only as needed after checking existing versions.
+- Approach: implement the exact schema and identifiers from the spec, including property/target identity, per-tier profile, bounds, `PNP_PROPERTY_CONTEXT`, target-local paths and begin/end JSON events. Initially parser unit fixtures can contain synthetic records; do not add a nonexistent target to the live registry. The live registry may be empty until Step 5, with empty execution rejected. `check` uses Proptest's actual `TestRunner`/`Config`, one `CaseGuard` per callback, disabled source-adjacent persistence and truthful observed counters. Save case input before invoking the callback. Do not parse undocumented private Proptest fields or call a mock-only path.
+- Verify: `X`, `S`; enabled SDK check. Include context/bound/override rejection, returned assertion failure, panic, exhaustion and same-seed concrete-sequence replay tests. Use subprocess-local environment, not concurrent process-global environment mutation in tests.
+- Done when: malformed/unknown/duplicate registry records and mismatched contexts fail, SDK supports a measured context fixture end to end, and emitted evidence distinguishes test calls from accepted cases and unknown shrink status.
+
+## Step 5: Land the owning-crate IR property and measured profiles
+
+- Objective: exercise a real correctness assertion independent of its implementation.
+- Surface: new `crates/slicer-ir/tests/property_ir.rs`, new `slicer-ir/property_testing = []`, explicit `property_ir` required-feature target and dev-only SDK/Proptest dependencies in `crates/slicer-ir/Cargo.toml`; initial `H-IR-ANCHORS` record in `test-properties.toml`; `docs/testing/properties.md#h-ir-anchors`.
+- Approach: call actual `validate_travel_anchors` through `PropertyRun::check`; construct `PrintEntity` with FRU over `print_entity_base`, other fixtures via `Default`. Use an ordered-set/sorted-vector oracle against `ordered_entities`, first missing travel-order witness, both membership modes, empty collections, repeated anchors, permutations and extreme IDs. The strategy is local in this first slice; Step 2 of the later domains packet replaces it with the agreed shared `anchor_cases` without changing property identity. Include deterministic witnesses, not probabilistic coverage assertions.
+- Fallout: no existing IR fields/defaults/version literals change. The new dev dependency may activate native SDK/core algorithms during IR test builds; record that measured cost and verify normal dependency acyclicity. Existing `ir_validation_tdd` and `entity_id_invariants_tdd` remain unweakened.
+- Defect handling: only after reproducing and classifying a real SUT failure, include a focused canonical-correct change in `crates/slicer-ir/src/validation.rs` and a named concrete root-cause/input regression in the existing `ir_validation_tdd` target. No bug is assumed during authoring. A larger defect is blocking fix work, not an excuse to weaken the charter or mark this step done.
+- Verify: enabled `cargo check -p slicer-ir --all-targets --features property_testing`; the existing two IR test targets with log capture. Use a subprocess test fixture with a valid `PNP_PROPERTY_CONTEXT` to pilot the new property until Step 6 provides the real command; retained pilot command/configuration must be exact. Measure before setting live routine/extended case/rejection/shrink/bound values.
+- Done when: all charter fields are documented, both profiles contain measured values, real validator calls occur, and a deliberate accept-all substitute is caught by the separate harness probe. No seed-only committed regression or self-referential oracle is introduced.
+
+## Step 6: Wire selectors, discovery, execution and failure accounting into xtask
+
+- Objective: make the real `cargo xtask test` driver execute and audit registered properties through the existing gates.
+- Surface: `parse_test_options`, `test_command`, `build_test_arguments`, `run_streaming_test`, `print_summary` (`xtask/src/test.rs`); new registry/executor module; `USAGE`/`test` dispatch in `xtask/src/main.rs`.
+- Approach: parse property flags without leaking to Cargo/libtest; reject documented conflicts before gates. Leave non-property passthrough/accelerated semantics intact. Reuse literal/test-quality/guest/CLI gate policy once, merge owner-scoped features explicitly, discover exact nonignored tests and compare registry versus `proptest_` discoveries in both directions. Run selected exact tests, one per context; combine logs without truncating earlier children; require libtest success, callback begin/end and enough accepted cases. Preserve failure status including Windows abnormal-status normalization. `--with-scad` currently reports `no_eligible_scad_properties`; synthetic fixture records test future host-algorithm feature union without adding fictitious real SCAD features.
+- Verify: `X` plus existing `test::tests` tests, each captured. All named failure probes in the spec launch real controlled subprocesses through the executor used by `test_command`, with injected gate implementations only where needed to avoid recursive builds. Exercise missing/zero/ignored/mismatched evidence, explicit failure `17`, abnormal exit, multiple logs, unknown/conflicting selectors and profile overrides.
+- Done when: `cargo xtask test --summary --properties --property H-IR-ANCHORS --tier routine` and explicit-seed replay genuinely execute the property and controlled bad children cannot produce a success verdict. Existing ordinary test-summary and accelerated tests remain green.
+
+## Step 7: Required Windows routine wiring and documentation
+
+- Objective: make delivered coverage required immediately, while retaining explicit extended completion evidence.
+- Surface: add only `jobs.properties-windows` and its prerequisite/artifact steps to `.github/workflows/ci.yml`; finish canonical sections in `docs/05_module_sdk.md`, `docs/21_data_defaults_and_fixtures.md`, new workflow/charter doc, `USAGE`, and G-BASE/G-HARNESS evidence.
+- Approach: match existing toolchain policy; supply wasm target and wasm-tools required by the shared gates. Run routine with the registry command and upload log/property artifacts on failure. Keep existing Ubuntu policy and quarantine unchanged. Record measured baseline/pilot settings, dependency graphs, actual Windows command outcomes, replay and concrete-regression workflow. No scope-specific AGENTS.md edit is necessary.
+- Verify: execute routine, extended and explicit-seed commands from Verification on Windows, archive/read combined logs and artifacts; inspect CI job status/logs when run in CI. Run the spec's doc grep checks and all default/feature-enabled build/check/clippy/literal/test-quality/freshness gates.
+- Done when: every AC has a named artifact/test result; actual Windows routine/extended executions pass; the PR lane exists and invokes them; no zero-test green or unmeasured SCAD/rollout claim is recorded. A CI execution unavailable in the implementation environment is an explicit closure gap, not a fabricated pass. No workspace test run is required.
