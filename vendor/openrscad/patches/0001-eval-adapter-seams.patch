@@ -1,0 +1,583 @@
+--- a/crates/openrscad-eval/src/lib.rs
++++ b/crates/openrscad-eval/src/lib.rs
+@@ -101,6 +101,10 @@
+     /// recursion error inside a `union()`/`difference()` drops that whole node,
+     /// matching the oracle). See the program-root loop in [`Interp::eval_stmts_core`].
+     pub recursion: bool,
++    /// True when the failure is exhaustion of the finite evaluation allowance
++    /// rather than a malformed program or expression. Hosts that must classify
++    /// the two differently cannot do it from the message text alone.
++    pub budget_exhausted: bool,
+ }
+ 
+ impl EvalError {
+@@ -109,6 +113,7 @@
+             message: message.into(),
+             span: None,
+             recursion: false,
++            budget_exhausted: false,
+         }
+     }
+ 
+@@ -129,12 +134,31 @@
+ 
+ /// A warning, optionally carrying the byte span (into the main source) of the
+ /// statement that produced it.
++///
++/// `code` is a stable, machine-readable classification of the warning's origin
++/// (see the `WARN_CODE_*` constants). Hosts that must fail closed on
++/// unclassified diagnostics compare `code` against an explicit allowlist
++/// instead of substring-matching English prose: a rewording upstream cannot
++/// silently promote an unknown diagnostic to "harmless".
+ #[derive(Debug, Clone)]
+ pub struct Warning {
++    pub code: &'static str,
+     pub message: String,
+     pub span: Option<std::ops::Range<usize>>,
+ }
+ 
++/// Default warning code: a diagnostic no host has classified yet.
++pub const WARN_CODE_OTHER: &str = "other";
++/// A dead top-level write: the name is assigned again later in the same scope.
++pub const WARN_CODE_ASSIGNMENT_OVERWRITTEN: &str = "assignment_overwritten";
++/// A function/module call was aborted at the recursion depth limit and the rest
++/// of the top-level statement was dropped.
++pub const WARN_CODE_RECURSION_ABORTED: &str = "recursion_aborted";
++/// A `roof()` profile was concave or holed and part of it was omitted.
++pub const WARN_CODE_ROOF_OMITTED: &str = "roof_omitted";
++/// A 3D `minkowski()` operand was non-convex or too large and was approximated.
++pub const WARN_CODE_MINKOWSKI_APPROXIMATION: &str = "minkowski_approximation";
++
+ /// A structured diagnostic for the frontend (inline squiggles). `start`/`end`
+ /// are byte offsets into the main source, or `-1` when no span is available.
+ #[derive(Debug, Clone, serde::Serialize)]
+@@ -263,6 +287,14 @@
+     pub node: Node,
+     pub echoes: Vec<String>,
+     pub warnings: Vec<Warning>,
++    /// True when a *root-level statement* was dropped because a function/module
++    /// call hit the recursion depth limit. OpenSCAD semantics keep the geometry
++    /// produced by statements before the abort, so this output is non-empty but
++    /// **partial** — its mesh does not describe the whole source. Hosts that
++    /// require exact geometry must reject it rather than treat a non-empty mesh
++    /// as success; `warnings` also carries the matching
++    /// [`WARN_CODE_RECURSION_ABORTED`] entry.
++    pub recursion_aborted: bool,
+     /// Number of `assert()`s that actually executed during evaluation. Used by
+     /// the BOSL2 oracle to reject vacuous passes (eval succeeds but ran zero
+     /// assertions, e.g. because a test module was never invoked).
+@@ -296,6 +328,9 @@
+     specials: Vec<FastMap<String, Value>>,
+     echoes: Vec<String>,
+     warnings: Vec<Warning>,
++    /// Set when a root-level statement was dropped after a recursion-depth
++    /// abort; surfaced as [`EvalOutput::recursion_aborted`].
++    recursion_aborted: bool,
+     /// Count of `assert()`s that executed (see `EvalOutput::asserts_run`).
+     asserts_run: usize,
+     root: Option<Node>,
+@@ -398,16 +433,81 @@
+ /// default fragment specials and no file resolver (an `include`-bearing `-D`
+ /// value is not a thing).
+ pub fn eval_const_expr(src: &str) -> EResult<Value> {
++    eval_const_expr_with_budget(src, u64::MAX).map(|(value, _)| value)
++}
++
++/// Everything one override-expression evaluation produced.
++///
++/// An expression is evaluated in its own scope, so its warnings and echoes used to
++/// be discarded: the host could neither classify an approximation nor observe a
++/// resource request made from an override. A host that must fail closed needs
++/// both, and it needs the resolver to be the same one the program will use.
++#[derive(Debug, Clone)]
++pub struct ConstExprOutcome {
++    /// The value bound to the override name.
++    pub value: Value,
++    /// Remaining evaluation allowance after this expression.
++    pub remaining: u64,
++    /// Warnings the expression produced, with their stable codes.
++    pub warnings: Vec<Warning>,
++    /// Echoes the expression produced, in evaluation order.
++    pub echoes: Vec<String>,
++}
++
++/// Budgeted form of [`eval_const_expr`]: identical parsing and base-scope
++/// rules, but the expression is charged against `budget` evaluation steps and
++/// the **remaining** allowance is returned alongside the value.
++///
++/// Returning the remainder is what lets a host spend one finite allowance
++/// across several `-D`-style override expressions and then the program itself
++/// without resetting it per expression: resetting would let N overrides buy N
++/// budgets and defeat the guarantee that the allowance bounds total work.
++/// `budget == u64::MAX` is exactly the unbudgeted [`eval_const_expr`].
++///
++/// The wrapped source must parse to exactly one statement. Upstream's
++/// `__orscad_const = (<src>);` wrapper discards any statements injected after
++/// the first `);`, but an injected second `__orscad_const = (...)` would
++/// silently change *which* expression is evaluated. Requiring a single
++/// statement makes "one name, one expression, no extra statements" a parse
++/// error instead of a first-match-wins behaviour.
++pub fn eval_const_expr_with_budget(src: &str, budget: u64) -> EResult<(Value, u64)> {
++    let outcome = eval_const_expr_with_budget_and_resolver(src, budget, &NullResolver)?;
++    Ok((outcome.value, outcome.remaining))
++}
++
++/// Budgeted expression evaluation with an explicit [`FileResolver`], returning
++/// the expression's own warnings and echoes.
++///
++/// The resolver is the caller's, so a resource request made from an override
++/// expression is observed by the same deny-all recorder that guards the program
++/// instead of vanishing into a private `NullResolver`. Diagnostics are returned
++/// rather than dropped, because an expression can approximate geometry (a
++/// concave `minkowski` in an override) exactly as a program can.
++pub fn eval_const_expr_with_budget_and_resolver(
++    src: &str,
++    budget: u64,
++    resolver: &dyn FileResolver,
++) -> EResult<ConstExprOutcome> {
+     // Reuse the program parser by wrapping the expression in an assignment, then
+     // pull the value expression back out.
+     let wrapped = format!("__orscad_const = ({src});");
+     let prog = openrscad_syntax::parse(&wrapped)
+         .map_err(|e| EvalError::new(format!("invalid expression: {}", e.message)))?;
+-    let expr = prog.iter().find_map(|s| match &s.node {
+-        Stmt::Assign { name, value } if name == "__orscad_const" => Some(value),
+-        _ => None,
+-    });
+-    let expr = expr.ok_or_else(|| EvalError::new("empty expression"))?;
++    let mut stmts = prog.iter();
++    let expr =
++        match (stmts.next(), stmts.next()) {
++            (
++                Some(Spanned {
++                    node: Stmt::Assign { name, value },
++                    ..
++                }),
++                None,
++            ) if name == "__orscad_const" => value,
++            (None, _) => return err("empty expression"),
++            _ => return err(
++                "parameter expression must be exactly one expression and cannot inject statements",
++            ),
++        };
+ 
+     let mut base = Scope::default();
+     base.vars
+@@ -424,21 +524,28 @@
+         specials: vec![globals],
+         echoes: Vec::new(),
+         warnings: Vec::new(),
++        recursion_aborted: false,
+         asserts_run: 0,
+         root: None,
+         depth: 0,
+-        fuel: u64::MAX,
++        fuel: budget,
+         in_main: true,
+         cur_span: None,
+         children_stack: Vec::new(),
+         module_stack: Vec::new(),
+-        resolver: &NullResolver,
++        resolver,
+         cur_dir: ".".to_string(),
+         loading: HashSet::new(),
+         overrides: FastMap::default(),
+         warned: HashSet::new(),
+     };
+-    interp.eval_expr(expr)
++    let value = interp.eval_expr(expr)?;
++    Ok(ConstExprOutcome {
++        value,
++        remaining: interp.fuel,
++        warnings: interp.warnings,
++        echoes: interp.echoes,
++    })
+ }
+ 
+ /// Evaluate a program with `include`/`use` support via `resolver`, resolving
+@@ -465,7 +572,38 @@
+     base_dir: &str,
+     budget: u64,
+ ) -> EResult<EvalOutput> {
+-    eval_program_impl(prog, resolver, base_dir, &[], budget, RenderMode::default())
++    eval_program_with_budget_and_params(
++        prog,
++        resolver,
++        base_dir,
++        &[],
++        budget,
++        RenderMode::default(),
++    )
++}
++
++/// The combined entrypoint: [`eval_program_with_params`]'s overrides plus
++/// [`eval_program_with_budget`]'s finite step allowance plus an explicit
++/// [`RenderMode`], in one call.
++///
++/// Upstream previously exposed overrides and fuel only through separate public
++/// functions, so a host that needed both had to choose one and either lose the
++/// termination guarantee on adversarial input or lose `-D` semantics. The
++/// private `eval_program_impl` already threaded all three; this exposes it
++/// without duplicating the implementation.
++///
++/// `budget` bounds *this* program evaluation only. A host that also evaluates
++/// override *expressions* with [`eval_const_expr_with_budget`] must pass the
++/// remainder here, so the allowance is shared rather than reset per phase.
++pub fn eval_program_with_budget_and_params(
++    prog: &Program,
++    resolver: &dyn FileResolver,
++    base_dir: &str,
++    overrides: &[(String, Value)],
++    budget: u64,
++    mode: RenderMode,
++) -> EResult<EvalOutput> {
++    eval_program_impl(prog, resolver, base_dir, overrides, budget, mode)
+ }
+ 
+ /// Like [`eval_program_with`], but with customizer / `-D`-style parameter
+@@ -551,6 +689,7 @@
+         specials: vec![globals],
+         echoes: Vec::new(),
+         warnings: Vec::new(),
++        recursion_aborted: false,
+         asserts_run: 0,
+         root: None,
+         depth: 0,
+@@ -583,6 +722,7 @@
+         node,
+         echoes: interp.echoes,
+         warnings: interp.warnings,
++        recursion_aborted: interp.recursion_aborted,
+         asserts_run: interp.asserts_run,
+         viewport,
+     })
+@@ -597,7 +737,14 @@
+         if self.fuel != u64::MAX {
+             match self.fuel.checked_sub(1) {
+                 Some(f) => self.fuel = f,
+-                None => return err("evaluation budget exhausted"),
++                None => {
++                    return Err(EvalError {
++                        message: "evaluation budget exhausted".to_string(),
++                        span: self.cur_span.clone(),
++                        recursion: false,
++                        budget_exhausted: true,
++                    })
++                }
+             }
+         }
+         Ok(())
+@@ -680,7 +827,13 @@
+ 
+     /// Record a warning, tagged with the statement currently executing.
+     fn warn(&mut self, message: impl Into<String>) {
++        self.warn_coded(WARN_CODE_OTHER, message);
++    }
++
++    /// Record a warning with an explicit machine-readable code.
++    fn warn_coded(&mut self, code: &'static str, message: impl Into<String>) {
+         self.warnings.push(Warning {
++            code,
+             message: message.into(),
+             span: self.cur_span.clone(),
+         });
+@@ -697,10 +850,13 @@
+         {
+             return;
+         }
+-        self.warn(format!(
+-            "Recursion detected calling {kind} '{name}': depth limit ({MAX_CALL_DEPTH}) exceeded; \
+-             this call was aborted (matches OpenSCAD)"
+-        ));
++        self.warn_coded(
++            WARN_CODE_RECURSION_ABORTED,
++            format!(
++                "Recursion detected calling {kind} '{name}': depth limit ({MAX_CALL_DEPTH}) exceeded; \
++                 this call was aborted (matches OpenSCAD)"
++            ),
++        );
+     }
+ 
+     /// Build the error raised when a function/module call hits the recursion
+@@ -719,6 +875,7 @@
+             ),
+             span: self.cur_span.clone(),
+             recursion: true,
++            budget_exhausted: false,
+         }
+     }
+ 
+@@ -732,6 +889,7 @@
+             return;
+         }
+         self.warnings.push(Warning {
++            code: WARN_CODE_ASSIGNMENT_OVERWRITTEN,
+             message: format!(
+                 "variable '{name}' is assigned again later; this assignment is overwritten"
+             ),
+@@ -789,8 +947,13 @@
+                         // "Recursion detected" abort: geometry from statements
+                         // *before* it is kept, but the offending statement and
+                         // everything *after* it are dropped. The warning was
+-                        // already recorded at the abort site.
+-                        Err(e) if isolate && e.recursion => break,
++                        // already recorded at the abort site; the flag below is
++                        // what makes the retained geometry identifiable as
++                        // partial rather than exact.
++                        Err(e) if isolate && e.recursion => {
++                            self.recursion_aborted = true;
++                            break;
++                        }
+                         Err(e) => return Err(e),
+                     }
+                 }
+@@ -3508,6 +3671,20 @@
+     static RNG_STATE: std::cell::Cell<u64> = const { std::cell::Cell::new(0x9E37_79B9_7F4A_7C15) };
+ }
+ 
++/// Seed the thread-local `rands()` stream.
++///
++/// `rands(min, max, count, seed)` reseeds itself from its own fourth argument,
++/// so a *seeded* program is already reproducible. This seam exists for the
++/// other half: a program that calls `rands()` **without** an explicit seed
++/// draws from a thread-local generator that advances across calls on the same
++/// thread, so two evaluations of the same source can differ. A host that wants a
++/// reproducible run of such a program calls this once before evaluating.
++///
++/// The generator is thread-local, so seeding one thread never affects another.
++pub fn seed_random_state(seed: u64) {
++    RNG_STATE.with(|c| c.set(seed.max(1)));
++}
++
+ /// `rands(min, max, count, seed=undef)` — a list of pseudo-random numbers.
+ /// Uses an xorshift PRNG. Values won't match OpenSCAD's PRNG bit-for-bit, but
+ /// range/distribution are correct and, crucially, consecutive unseeded calls
+@@ -5095,6 +5272,7 @@
+     fn diagnostics_json_serializes_error_and_warnings() {
+         let err = Diagnostic::from_span("error", "boom".into(), &Some(3..8));
+         let warns = vec![Warning {
++            code: WARN_CODE_OTHER,
+             message: "w".into(),
+             span: None,
+         }];
+@@ -5261,3 +5439,220 @@
+         }
+     }
+ }
++
++/// Tests for the adapter seams added by `patches/0001-eval-adapter-seams.patch`.
++/// Kept in their own module so the patch is additive to upstream's test body.
++#[cfg(test)]
++mod adapter_seam_tests {
++    use super::*;
++
++    #[test]
++    fn budgeted_const_expr_bounds_a_runaway_expression() {
++        // A single expression whose `for` range makes evaluation unbounded: the
++        // per-construct MAX_RANGE_ITERS cap alone would still allow 10M steps.
++        let err = eval_const_expr_with_budget("[for (i = [0:1000000]) i]", 1_000).unwrap_err();
++        assert!(err.message.contains("budget exhausted"), "{err:?}");
++    }
++
++    #[test]
++    fn budgeted_const_expr_reports_remaining_fuel_and_matches_unbudgeted_value() {
++        let (value, remaining) = eval_const_expr_with_budget("sqrt(2)*2", 1_000_000).unwrap();
++        assert!(remaining < 1_000_000, "the expression must be charged");
++        match (value, eval_const_expr("sqrt(2)*2").unwrap()) {
++            (Value::Number(a), Value::Number(b)) => assert_eq!(a, b),
++            _ => panic!("expected numeric values"),
++        }
++    }
++
++    #[test]
++    fn injected_second_statement_in_a_parameter_expression_is_rejected() {
++        // Upstream's `__orscad_const = (<src>);` wrapper discards trailing
++        // statements, but a caller-supplied second `__orscad_const` assignment
++        // would silently change which expression runs.
++        let err =
++            eval_const_expr_with_budget("1); cube(1); __orscad_const = (2", 1_000).unwrap_err();
++        assert!(
++            err.message.contains("exactly one expression"),
++            "expected an injection rejection, got: {err:?}"
++        );
++    }
++
++    #[test]
++    fn combined_entrypoint_applies_overrides_under_a_budget() {
++        let prog = openrscad_syntax::parse("x = 1;\necho(x);\n").unwrap();
++        let out = eval_program_with_budget_and_params(
++            &prog,
++            &NullResolver,
++            ".",
++            &[("x".to_string(), Value::Number(3.0))],
++            1_000_000,
++            RenderMode::Exact,
++        )
++        .unwrap();
++        assert_eq!(out.echoes, vec!["ECHO: 3".to_string()]);
++    }
++
++    #[test]
++    fn combined_entrypoint_reports_budget_exhaustion() {
++        let prog = openrscad_syntax::parse(
++            "for (a = [0:100000]) for (b = [0:100000]) translate([a, b, 0]) cube(1);",
++        )
++        .unwrap();
++        let err = eval_program_with_budget_and_params(
++            &prog,
++            &NullResolver,
++            ".",
++            &[],
++            100_000,
++            RenderMode::Exact,
++        )
++        .unwrap_err();
++        assert!(err.message.contains("budget exhausted"), "{err:?}");
++    }
++
++    #[test]
++    fn root_recursion_abort_is_structured_and_drops_trailing_statements() {
++        // Same contained-abort fixture upstream uses in
++        // `deep_recursion_is_non_fatal`: a real non-terminating recursion whose
++        // abort is caught at the root statement boundary. It needs the CLI's
++        // ample stack because the 6000-frame guard exceeds the 2 MiB test stack.
++        let src = "function cum(list, k) = (k == 0) ? 0 : cum(list, k - 1) + list[k - 1];\
++                   cube(3);\
++                   cube(cum([5], -1));\
++                   cube(7);";
++        let out = std::thread::Builder::new()
++            .stack_size(256 << 20)
++            .spawn(move || {
++                let prog = openrscad_syntax::parse(src).unwrap();
++                eval_program(&prog).unwrap()
++            })
++            .unwrap()
++            .join()
++            .unwrap();
++        assert!(
++            out.recursion_aborted,
++            "a retained-but-partial result must be identified structurally, not by prose"
++        );
++        assert!(out
++            .warnings
++            .iter()
++            .any(|w| w.code == WARN_CODE_RECURSION_ABORTED));
++        let inner = match &out.node {
++            Node::Provenance { child, .. } => child.as_ref(),
++            other => other,
++        };
++        assert_eq!(
++            inner,
++            &Node::Cube {
++                size: [3.0, 3.0, 3.0],
++                center: false
++            },
++            "the aborting statement and everything after it must be dropped"
++        );
++    }
++
++    #[test]
++    fn overwritten_assignment_warning_carries_a_code() {
++        let prog = openrscad_syntax::parse("z = 1; z = 2; echo(z);").unwrap();
++        let out = eval_program(&prog).unwrap();
++        assert!(out
++            .warnings
++            .iter()
++            .any(|w| w.code == WARN_CODE_ASSIGNMENT_OVERWRITTEN));
++        assert!(
++            out.warnings.iter().all(|w| w.code != WARN_CODE_OTHER),
++            "no unclassified warning expected in this fixture: {:?}",
++            out.warnings
++        );
++    }
++}
++
++/// Tests for the RNG-seed and budget-flag seams (patch `0001`).
++#[cfg(test)]
++mod adapter_rng_tests {
++    use super::*;
++
++    #[test]
++    fn scad_seed_random_state_makes_an_unseeded_stream_reproducible() {
++        let prog = openrscad_syntax::parse("echo(rands(0,1,3));").unwrap();
++        seed_random_state(7);
++        let first = eval_program(&prog).unwrap().echoes;
++        seed_random_state(7);
++        let repeat = eval_program(&prog).unwrap().echoes;
++        assert_eq!(first, repeat, "the same seed must reproduce the stream");
++        seed_random_state(8);
++        let other = eval_program(&prog).unwrap().echoes;
++        assert_ne!(first, other, "a different seed must change the stream");
++    }
++
++    #[test]
++    fn scad_budget_exhaustion_is_flagged_structurally() {
++        let err = eval_const_expr_with_budget("[for (i = [0:1000000]) i]", 1_000).unwrap_err();
++        assert!(
++            err.budget_exhausted,
++            "budget exhaustion must be classifiable without matching its message"
++        );
++    }
++}
++
++/// Tests for the override-expression seam added by patch `0001`.
++#[cfg(test)]
++mod adapter_expr_tests {
++    use super::*;
++    use std::cell::Cell;
++
++    struct Recorder {
++        hits: Cell<usize>,
++    }
++
++    impl FileResolver for Recorder {
++        fn load(&self, _path: &str, _from_dir: &str) -> Option<LoadedFile> {
++            self.hits.set(self.hits.get() + 1);
++            None
++        }
++        fn load_bytes(&self, _path: &str, _from_dir: &str) -> Option<Vec<u8>> {
++            self.hits.set(self.hits.get() + 1);
++            None
++        }
++    }
++
++    #[test]
++    fn scad_const_expr_uses_the_callers_resolver() {
++        // `dxf_dim` reads through `load_bytes`; a `NullResolver` would hide the
++        // request from a host that must deny every external resource.
++        let recorder = Recorder {
++            hits: Cell::new(0),
++        };
++        let outcome = eval_const_expr_with_budget_and_resolver(
++            "dxf_dim(file = \"tempting.dxf\")",
++            1_000_000,
++            &recorder,
++        )
++        .expect("a missing DXF is a warning plus undef, not a hard error");
++        assert_eq!(
++            recorder.hits.get(),
++            1,
++            "the caller's resolver must observe the request"
++        );
++        // Both fail-closed signals a host needs: the unclassified warning and the
++        // undefined value that must never become an override binding.
++        assert!(outcome
++            .warnings
++            .iter()
++            .any(|w| w.code == WARN_CODE_OTHER && w.message.contains("tempting.dxf")));
++        assert!(matches!(outcome.value, Value::Undef));
++    }
++
++    #[test]
++    fn scad_const_expr_returns_its_own_warnings_and_echoes() {
++        let outcome =
++            eval_const_expr_with_budget_and_resolver("echo(7) 1", 1_000_000, &NullResolver)
++                .expect("an echo-prefixed expression evaluates");
++        assert!(
++            outcome.echoes.iter().any(|e| e.contains('7')),
++            "the expression's echo must be returned, not discarded: {:?}",
++            outcome.echoes
++        );
++        assert!(outcome.remaining < 1_000_000, "the expression is charged");
++    }
++}

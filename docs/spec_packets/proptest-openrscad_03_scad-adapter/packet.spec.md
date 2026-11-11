@@ -235,3 +235,107 @@ Authoring is read-only source/document inspection plus packet creation, not a G-
 | 11 | Completeness | PASS | No placeholder or scope-changing blocker; pin/patch/numeric/build feasibility are explicit forward implementation obligations. |
 
 **Verdict: PREFLIGHT PASS (authoring only; adapter-prerequisite Windows execution not performed; full G-SCAD requires #4's remaining measurements/profiles).**
+
+## Deviations
+
+Recorded during implementation against `vendor/openrscad@1a45bd33f2` on Windows
+(rustc 1.96.0). Each is a deliberate, evidenced choice, not a loosened criterion.
+
+1. **Engine hosting: vendored patched subset, not a Cargo `rev` or a public fork.**
+   The packet permits "a documented immutable fork revision with its upstream base
+   and patch digest". The patched engine lives at `vendor/openrscad/` as its own
+   workspace (excluded from the root workspace) with the upstream base revision,
+   two ordered patch files and a recomputed digest in `vendor/openrscad/PATCHES.md`
+   and a committed `Cargo.lock`. Rationale: hermetic CI (no network fetch of a
+   fork), a pin held by this repository's own history, and the existing
+   `vendor/clipper2-rust` precedent. The vendored tree reproduces byte-for-byte
+   from base + patches (verified by applying the patches to a pristine checkout).
+2. **Patch scope is wider than the two named gaps.** Besides the combined
+   budget/override/mode entrypoint, budgeted expression evaluation and the
+   diagnostic-returning contour entrypoint, the patch also adds structured
+   `Warning::code`, `EvalError::budget_exhausted`, `EvalOutput::recursion_aborted`,
+   `seed_random_state`, `eval_const_expr_with_budget_and_resolver` (an override
+   expression's own warnings/echoes and the host resolver), and
+   `Mesh::welded_exact`. Each closes a criterion this packet owns: fail-closed
+   classification without prose matching (AC-N2), a budget exhaustion that is not a
+   message (AC-2), a partial result that is not a nonempty mesh (AC-N2),
+   reproducible seeded evaluation (AC-4), an override that cannot reach a resource
+   or smuggle an unclassified warning (AC-N1, AC-N2), and a kernel boundary that
+   cannot delete a thin body silently (AC-N3). Justification per patch is in
+   `vendor/openrscad/PATCHES.md`.
+3. **`MIN_WORKER_STACK_BYTES` is 64 MiB, and it is measured, not derived.** The
+   packet's "unsafe stack setting" is an acceptance criterion, so it needed a real
+   bound. Measured with the `cum` non-tail-recursion fixture in a `dev` profile on
+   Windows: 16/24/32/36/40/44 MiB hit `STATUS_STACK_OVERFLOW` before the engine's
+   6 000-frame guard could fire; 48/64/96 MiB reach the guard and return
+   `PartialOutput`. Upstream's ≈ 1.6 KiB/frame release estimate would have implied
+   ~10 MiB and produced a crash instead of a classification. 64 MiB is the measured
+   debug floor plus margin.
+4. **`RawMesh` carries a flat `Vec<u32>` index stream, not grouped `[u32; 3]`.**
+   AC-N3 requires rejecting a *truncated* index stream. On an already-grouped array
+   that check is vacuous; on a flat stream it is real. The engine adapter flattens
+   the engine's `Vec<[u32; 3]>` at the boundary.
+5. **`max_facets` bounds explicit `$fn` and derived counts for the primitives that
+   expose their radius.** `circle`/`sphere`/`cylinder` carry `r` and `FragmentSpec`,
+   so the engine's own `fragments` formula is evaluated before rendering and
+   bounded. `offset`, extrusion and `import` nodes are bounded by their explicit
+   `$fn` only; their derived counts are bounded after the fact by `max_vertices` and
+   `max_triangles`. This is a narrower claim than "facet bounds are complete" and is
+   recorded as a limitation in `docs/scad/windows-feasibility.md`. (An earlier
+   revision of this entry claimed derived counts were never visible on the tree.
+   That was wrong for the three primitives, and it is corrected here.)
+6. **`DegradedOutput` is reachable from source, and is now tested that way.** An
+   earlier revision claimed the pinned engine only degrades a boolean on an operand
+   the public SCAD surface cannot construct without an `import`. That claim was
+   false: a `polyhedron` whose faces do not form a closed manifold is itself such an
+   operand, so
+   `union(){ cube(10); polyhedron(points=[[0,0,0],[1,0,0],[0,1,0]], faces=[[0,1,2]]); }`
+   and its `projection()` form both return `DegradedOutput` with a
+   `boolean_fallback` diagnostic. Both are committed fixtures.
+7. **No `Default` for `ScadDiagnostic`, `ScadProvenance` or `ScadError`.** The
+   packet says not to invent unsafe defaults for these. The single exhaustive
+   literal in the classifier's test module therefore carries an
+   `// exhaustive: <reason>` waiver naming the pinned data contract, per
+   `docs/21_data_defaults_and_fixtures.md`.
+8. **AST depth counts operator nesting, not parentheses.** `(( (1) ))` parses to a
+   single literal, so the AC-N4 depth fixture uses real `+` nesting. The bound is
+   unchanged; only the fixture was corrected.
+9. **AC-6's CI-execution clause is open.** `.github/workflows/ci.yml` gains the
+   required self-contained `scad-adapter-windows` job, and every command in it was
+   executed on this machine with the same arguments and passed. The GitHub job
+   itself has not run, because that requires a push. Until it is observed green,
+   the "lane and artifact upload execute" clause is unsatisfied; the feasibility
+   record states the adapter prerequisite as **pending**, and this packet is not
+   marked implemented.
+10. **The process-supervision deadline probe blocks deliberately.** A real adapter
+    run long enough to outlast a fixed deadline depends on host speed, which would
+    make AC-5's probe flaky rather than informative. The controlled input is a
+    blocked child; the supervision result is a distinct enum
+    (`Exited`/`TimedOut`/`Terminated`), and the assertions are per case: the hang
+    case is exactly `TimedOut`, the abort case is a failed exit that is **not** a
+    timeout, and the run/budget cases exit successfully with their markers. The
+    minimum-stack recursion fixture also runs in a supervised child, not in the
+    parent test process.
+11. **Post-review corrections.** An independent cold review reproduced six
+    behavioural gaps, all now closed with the reviewer's witnesses kept as
+    regressions: override expressions share the recording resolver and the
+    classifier (and `undef` is `InvalidParameter`); raw rings get a 1 nm
+    pre-quantization contact pass in addition to the 1e-4 mm pass; AST counting is
+    aggregate across the program and every override, `projection()` children are
+    traversed by both the node and facet walks, and derived primitive facet counts
+    are preflighted; dimension-changing wrappers validate their child's dimension;
+    `polyhedron` face indices and arity are validated before rendering; and
+    parameter diagnostic spans are reported in expression coordinates. Isolation
+    assertions now compare geometry as well as diagnostics. This item is recorded
+    because those gaps shipped in the first implementation pass and the review —
+    not the tests — found them.
+12. **Wrapper fix, second delta.** Validating a dimension-changing wrapper's
+    operand initially classified a wrapper around `Node::Empty` as `Mixed`, so
+    `linear_extrude(1){}` and `projection(){}` were rejected instead of returning
+    `Empty`. The empty operand now propagates as `Empty` through `Projection`,
+    `Offset`, `LinearExtrude`, `RotateExtrude` and `Roof`, with public-path
+    regressions for the empty wrapper alone and beside valid sibling geometry. The
+    same delta corrected two documentation defects the first review had flagged but
+    the fix pass missed: the first `adapter.md` example now matches
+    `&out.geometry`, and the feasibility record no longer repeats the retracted
+    `DegradedOutput` claim.

@@ -1,0 +1,41 @@
+# Vendored, patched subset of https://github.com/matthova/openrscad
+#
+# Upstream base revision: 1a45bd33f2886c32bda32fe6e8358a67ab03f5ef (0.14.2)
+# Only the four engine packages the SCAD adapter consumes are present; the
+# upstream CLI, LSP, wasm and xtask members are deliberately absent.
+# Applied patches, their order and their digest are recorded in PATCHES.md.
+#
+# This file carries a `[workspace]` table on purpose: it makes the vendored
+# tree its own workspace so it is a plain path dependency of `slicer-scad`
+# rather than a member of the Pinch 'n Print workspace. Nothing here is
+# reformatted to root-workspace lint policy; upstream code stays upstream code.
+[workspace]
+resolver = "2"
+members = [
+    "crates/openrscad-syntax",
+    "crates/openrscad-ir",
+    "crates/openrscad-eval",
+    "crates/openrscad-geom",
+]
+
+[workspace.package]
+version = "0.14.2"
+edition = "2021"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/matthova/openrscad"
+rust-version = "1.85"
+
+[workspace.dependencies]
+openrscad-syntax = { path = "crates/openrscad-syntax" }
+openrscad-ir = { path = "crates/openrscad-ir" }
+openrscad-eval = { path = "crates/openrscad-eval" }
+openrscad-geom = { path = "crates/openrscad-geom" }
+
+logos = "0.15"
+thiserror = "2"
+rustc-hash = "2"
+ttf-parser = "0.25"
+earcutr = "0.4"
+geo = "0.29"
+png = { version = "0.17", default-features = false }
+miniz_oxide = "0.8"

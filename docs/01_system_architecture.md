@@ -804,6 +804,21 @@ These rules are enforced by the host at runtime. Violations trap the WASM module
 | `LayerCollectionIR`                           | Per-layer arena → Host after join | Read-only in PostPass                                           |
 | `GCodeIR`                                     | Host PostPass buffer              | Write builder (GCodePostProcess only)                           |
 
+### Optional SCAD ingress (`slicer-scad`)
+
+`slicer-scad` (`docs/scad/adapter.md`) is an optional, engine-opaque geometry
+ingress: it converts self-contained OpenSCAD source into checked `ExPolygon`
+contours or an `IndexedTriangleSet`. It does **not** own any of the data above.
+
+- It returns geometry only. `ObjectMesh`/`MeshIR` assembly, source-derived
+  identity, object IDs, bed placement and material/colour assignment stay with the
+  host — `assemble_object` (`crates/slicer-model-io/src/loader.rs`) remains the
+  assembly owner under `docs/02_ir_schemas.md` § `ObjectMesh` Assembly Contract.
+- It is default-off. A default workspace build does not compile the engine or its
+  native kernel, and the crate has no SDK, runtime or Proptest edge.
+- Its output types are existing IR types, so nothing here introduces an IR, WIT or
+  schema version change.
+
 ---
 
 ## Private prepared-plan storage and atomic publication

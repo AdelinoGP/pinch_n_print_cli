@@ -16,6 +16,7 @@ members = [
     "crates/slicer-wasm-host",
     "crates/slicer-integrated-modules",
     "crates/pnp-cli-locator",
+    "crates/slicer-scad",
     "modules/core-modules/layer-planner-default",
     "modules/core-modules/classic-perimeters",
     "modules/core-modules/rectilinear-infill",
@@ -48,7 +49,13 @@ members = [
     "crates/slicer-wasm-host/test-guests/sdk-prepass-guest",
     "xtask",
 ]
-exclude = ["modules/core-modules/lightning-infill/feasibility-kernel"]
+# `vendor/openrscad` is a separate workspace on purpose: it is a pinned third-party
+# engine subset, so it must not inherit this workspace's package fields or lint
+# policy. Its own `[workspace]` table makes it a plain path dependency.
+exclude = [
+    "modules/core-modules/lightning-infill/feasibility-kernel",
+    "vendor/openrscad",
+]
 resolver = "2"
 
 [workspace.package]

@@ -45,6 +45,37 @@ The current implementations use `f32` at both conversion boundaries:
 a nominal maximum quantization error of half a unit (`0.00005 mm`) when the
 floating-point operations do not add a larger error.
 
+### Checked external-`f64` conversion (Normative)
+
+A conversion boundary that receives millimetres as **`f64`** from outside this
+repository cannot use `mm_to_units`: it takes `f32` and its `as i64` cast
+saturates, so an out-of-range value becomes a plausible-looking coordinate
+instead of an error. The SCAD adapter (`docs/scad/adapter.md`) is the first such
+boundary.
+
+Such a boundary applies the same canonical rule — round half away from zero
+against `UNITS_PER_MM` — directly on `f64`, in five checked steps:
+
+1. the input is finite;
+2. `|input|` is within the caller's declared coordinate bound;
+3. the scaled product `input * UNITS_PER_MM` is finite;
+4. the rounded value lies inside the half-open representable `i64` range;
+5. only then is it cast.
+
+Steps 3–5 are the part a saturating cast hides. The `f64` multiply/round error is
+recorded separately from the integer half-unit quantization: when the product is
+exact, rounding to the nearest grid point contributes at most 0.5 unit
+(`0.00005 mm`); for an arbitrary `f64` the product is not exact, and no universal
+exact round trip is claimed.
+
+Checked conversion does not stop at the cast. A boundary that quantizes a
+topology — nested rings, closed solids — must re-validate **after quantization**
+and reject `quantization` damage rather than repair it: collapsed vertices and
+edges, zero-area rings, changed nesting or contact, degenerate or inverted
+triangles. `post-quantization` validation is part of the coordinate contract, not
+an optional extra, because two exactly distinct millimetre coordinates can share
+one integer grid point.
+
 Do not treat either conversion as a universal exact round trip. In particular,
 `units_to_mm` narrows arbitrary `i64` values to `f32`. Retain integer units for
 exact geometry identity and convert to millimeters only at a float boundary.

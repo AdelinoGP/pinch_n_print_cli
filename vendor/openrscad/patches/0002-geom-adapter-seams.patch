@@ -1,0 +1,419 @@
+--- a/crates/openrscad-geom/src/lib.rs
++++ b/crates/openrscad-geom/src/lib.rs
+@@ -45,13 +45,32 @@
+ 
+ /// Cached form of [`render_contours_with`], for hosts that share a geometry
+ /// cache between preview/render and vector export.
++///
++/// This drops the diagnostics the contour/projection/lowering path produced.
++/// Use [`render_contours_cached_diag`] when a host must reject approximate or
++/// degraded 2D geometry: it is the same traversal, not a second render.
+ pub fn render_contours_cached(
+     node: &Node,
+     kernel: &dyn Kernel,
+     cache: &mut GeomCache,
+ ) -> Result<Option<Vec<Contour>>, GeomError> {
++    render_contours_cached_diag(node, kernel, cache).map(|(contours, _)| contours)
++}
++
++/// Cached contour render that also returns the diagnostics of the
++/// contour/projection/lowering path.
++///
++/// The 2D path has its own boolean/hull/minkowski lowering and its own
++/// recoverable failures, so it reports its own diagnostics. Re-rendering the
++/// same tree through the 3D path would not prove this path was clean: a
++/// projection may have skipped a child that the 3D render resolves fine.
++pub fn render_contours_cached_diag(
++    node: &Node,
++    kernel: &dyn Kernel,
++    cache: &mut GeomCache,
++) -> Result<(Option<Vec<Contour>>, RenderDiagnostics), GeomError> {
+     if !is_2d(node) {
+-        return Ok(None);
++        return Ok((None, RenderDiagnostics::default()));
+     }
+     let mut hashes = HashMap::new();
+     hash_all(node, &mut hashes);
+@@ -65,7 +84,12 @@
+         warnings: &mut warnings,
+         errors: &mut errors,
+     };
+-    render2d_lowered(node, &mut ctx).map(Some)
++    let contours = render2d_lowered(node, &mut ctx).map(Some)?;
++    warnings.sort();
++    warnings.dedup();
++    errors.sort();
++    errors.dedup();
++    Ok((contours, RenderDiagnostics { warnings, errors }))
+ }
+ 
+ use openrscad_ir::{Node, Vec3};
+@@ -80,6 +104,26 @@
+     NonManifold(String),
+ }
+ 
++/// One render message, tagged with a stable machine-readable `code`.
++///
++/// The code exists so a host can fail closed. An unrecognized code is a
++/// diagnostic the host has *not* classified, which is a different statement
++/// from a message it has decided is harmless; substring-matching `message`
++/// cannot make that distinction without pinning English prose that may be
++/// reworded upstream.
++#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
++pub struct GeomMessage {
++    pub code: &'static str,
++    pub message: String,
++}
++
++/// A CSG boolean/hull op failed and was replaced by un-combined operands.
++pub const GEOM_CODE_BOOLEAN_FALLBACK: &str = "boolean_fallback";
++/// A `roof()` profile was concave/holed and geometry was omitted.
++pub const GEOM_CODE_ROOF_OMITTED: &str = "roof_omitted";
++/// A 3D `minkowski()` was approximated rather than computed exactly.
++pub const GEOM_CODE_MINKOWSKI_APPROXIMATION: &str = "minkowski_approximation";
++
+ /// Non-fatal diagnostics from a render that still produced a mesh.
+ ///
+ /// A render has three outcomes now: a hard failure (`Err(GeomError)`, no mesh);
+@@ -90,20 +134,22 @@
+ /// non-convex `minkowski` approximation). Both are deduped.
+ #[derive(Default, Debug, Clone)]
+ pub struct RenderDiagnostics {
+-    /// Soft warnings; the geometry is still exact.
+-    pub warnings: Vec<String>,
++    /// Soft warnings; the geometry may still be approximating or incomplete —
++    /// check each `GeomMessage::code` rather than assuming this list is benign.
++    pub warnings: Vec<GeomMessage>,
+     /// Recoverable geometry errors: a CSG op failed and the result is an
+-    /// approximate fallback. Non-empty means the preview is geometrically wrong
++    /// approximate fallback. Non-empty means the render is geometrically wrong
+     /// somewhere and the user should be alerted, even though a mesh exists.
+-    pub errors: Vec<String>,
++    pub errors: Vec<GeomMessage>,
+ }
+ 
+ impl RenderDiagnostics {
+     /// Every message (warnings then errors) as one flat list, for callers that
+-    /// don't distinguish the two.
++    /// don't distinguish the two. Codes are dropped; use the vectors directly
++    /// when classification matters.
+     fn flattened(mut self) -> Vec<String> {
+         self.warnings.append(&mut self.errors);
+-        self.warnings
++        self.warnings.into_iter().map(|m| m.message).collect()
+     }
+ }
+ 
+@@ -115,8 +161,8 @@
+ #[derive(Clone, Default)]
+ struct CachedNode {
+     mesh: Mesh,
+-    warnings: Vec<String>,
+-    errors: Vec<String>,
++    warnings: Vec<GeomMessage>,
++    errors: Vec<GeomMessage>,
+ }
+ 
+ /// A content-addressed geometry cache (M4): maps a structural hash of a CSG
+@@ -188,11 +234,11 @@
+     hashes: &'a HashMap<*const Node, u64>,
+     /// Non-fatal geometry warnings collected during the render (e.g. non-convex
+     /// `minkowski`). Deduped by the caller.
+-    warnings: &'a mut Vec<String>,
++    warnings: &'a mut Vec<GeomMessage>,
+     /// Recoverable CSG failures collected during the render: a boolean/hull op
+     /// failed (usually non-manifold operands) and was replaced by a fallback
+     /// mesh so the render still yields geometry. Deduped by the caller.
+-    errors: &'a mut Vec<String>,
++    errors: &'a mut Vec<GeomMessage>,
+ }
+ 
+ /// Render a CSG tree to a mesh using the default kernel for the target:
+@@ -1060,9 +1106,12 @@
+     match run(ctx.kernel, meshes) {
+         Ok(m) => Ok(m),
+         Err(e) => {
+-            ctx.errors.push(format!(
+-                "{label}: {e} — showing un-combined geometry (the boolean was skipped)"
+-            ));
++            ctx.errors.push(GeomMessage {
++                code: GEOM_CODE_BOOLEAN_FALLBACK,
++                message: format!(
++                    "{label}: {e} — showing un-combined geometry (the boolean was skipped)"
++                ),
++            });
+             // Re-render the operands (cache hits) for the fallback.
+             let operands = render_all(children, ctx)?;
+             let mut acc = Mesh::new();
+@@ -1151,7 +1200,10 @@
+             let contours = render2d_lowered(child, ctx)?;
+             let (mesh, warn) = roof::roof(&contours);
+             if let Some(w) = warn {
+-                ctx.warnings.push(w);
++                ctx.warnings.push(GeomMessage {
++                    code: GEOM_CODE_ROOF_OMITTED,
++                    message: w,
++                });
+             }
+             Ok(mesh)
+         }
+@@ -1514,7 +1566,10 @@
+     // Too many piece-pairings: collapse each operand to a single mesh and take
+     // the convex approximation (the old behavior), warning as before.
+     if pairings > MINKOWSKI_MAX_PIECES {
+-        ctx.warnings.push(MINKOWSKI_APPROX_WARNING.to_string());
++        ctx.warnings.push(GeomMessage {
++            code: GEOM_CODE_MINKOWSKI_APPROXIMATION,
++            message: MINKOWSKI_APPROX_WARNING.to_string(),
++        });
+         let merged = operands
+             .into_iter()
+             .map(|pieces| ctx.kernel.union(pieces))
+@@ -1527,7 +1582,10 @@
+         return Ok(acc);
+     }
+     if nonconvex_piece {
+-        ctx.warnings.push(MINKOWSKI_APPROX_WARNING.to_string());
++        ctx.warnings.push(GeomMessage {
++            code: GEOM_CODE_MINKOWSKI_APPROXIMATION,
++            message: MINKOWSKI_APPROX_WARNING.to_string(),
++        });
+     }
+ 
+     // Distribute: fold operands as piece-sets. `minkowski_pair` returns a convex
+@@ -2404,7 +2462,7 @@
+             "degraded render should still yield geometry"
+         );
+         assert!(!diag.errors.is_empty(), "degradation must be reported");
+-        assert!(diag.errors[0].contains("union"), "{:?}", diag.errors);
++        assert!(diag.errors[0].message.contains("union"), "{:?}", diag.errors);
+         // render_cached_warns flattens the error into its single list.
+         let (_, warns) = render_cached_warns(&node, &kernel, &mut cache).unwrap();
+         assert!(warns.iter().any(|w| w.contains("union")), "{warns:?}");
+@@ -2422,7 +2480,7 @@
+         let (dmesh, ddiag) = render_cached_diag(&diff, &kernel, &mut cache).unwrap();
+         assert!(!dmesh.tris.is_empty());
+         assert!(
+-            ddiag.errors.iter().any(|e| e.contains("difference")),
++            ddiag.errors.iter().any(|e| e.message.contains("difference")),
+             "{:?}",
+             ddiag.errors
+         );
+@@ -3389,3 +3447,71 @@
+         assert_eq!(prev.tris.len(), exact_holed.tris.len() + 12);
+     }
+ }
++
++/// Tests for the adapter seams added by `patches/0002-geom-adapter-seams.patch`.
++#[cfg(test)]
++mod adapter_seam_tests {
++    use super::*;
++
++    fn kernel() -> ManifoldKernel {
++        ManifoldKernel::new()
++    }
++
++    #[test]
++    fn contour_diag_entrypoint_returns_contours_and_empty_diagnostics_for_clean_2d() {
++        let node = Node::Square {
++            size: [10.0, 10.0],
++            center: false,
++        };
++        let mut cache = GeomCache::new();
++        let (contours, diag) = render_contours_cached_diag(&node, &kernel(), &mut cache).unwrap();
++        let contours = contours.expect("a purely 2D tree returns contours");
++        assert_eq!(contours.len(), 1);
++        assert!(
++            diag.warnings.is_empty() && diag.errors.is_empty(),
++            "clean 2D traversal must report no diagnostics: {diag:?}"
++        );
++    }
++
++    #[test]
++    fn contour_diag_entrypoint_agrees_with_the_compatibility_entrypoint() {
++        let node = Node::Square {
++            size: [4.0, 6.0],
++            center: true,
++        };
++        let plain =
++            render_contours_cached(&node, &kernel(), &mut GeomCache::new()).unwrap();
++        let (with_diag, _) =
++            render_contours_cached_diag(&node, &kernel(), &mut GeomCache::new()).unwrap();
++        assert_eq!(plain, with_diag);
++    }
++
++    #[test]
++    fn contour_diag_entrypoint_returns_none_for_3d() {
++        let node = Node::Cube {
++            size: [1.0, 1.0, 1.0],
++            center: false,
++        };
++        let (contours, diag) =
++            render_contours_cached_diag(&node, &kernel(), &mut GeomCache::new()).unwrap();
++        assert!(contours.is_none());
++        assert!(diag.warnings.is_empty() && diag.errors.is_empty());
++    }
++
++    #[test]
++    fn geom_message_ordering_is_well_defined_for_dedup() {
++        let mut v = vec![
++            GeomMessage {
++                code: GEOM_CODE_BOOLEAN_FALLBACK,
++                message: "b".into(),
++            },
++            GeomMessage {
++                code: GEOM_CODE_BOOLEAN_FALLBACK,
++                message: "b".into(),
++            },
++        ];
++        v.sort();
++        v.dedup();
++        assert_eq!(v.len(), 1);
++    }
++}
+--- a/crates/openrscad-geom/src/mesh.rs
++++ b/crates/openrscad-geom/src/mesh.rs
+@@ -103,6 +103,53 @@
+         Mesh { verts, tris }
+     }
+ 
++    /// Weld vertices whose positions are **exactly** equal, returning a
++    /// re-indexed mesh with provably-degenerate triangles dropped.
++    ///
++    /// This is the representation-only form of [`Mesh::welded`]. It serves the
++    /// same purpose — a solid of revolution emits its seam and its cap rings as
++    /// separate vertices at *identical* positions, which is manifold by position
++    /// but not by index — without the epsilon bucket that `welded` uses. The
++    /// difference matters at an exactness boundary: `welded(1e-7)` merges two
++    /// genuinely distinct vertices 1e-8 mm apart and then drops every triangle
++    /// that collapsed, so a thin solid can disappear with no error and no
++    /// diagnostic. Exact identity cannot do that: only points that are the same
++    /// `f64` triple are merged, and only triangles that are already zero-area by
++    /// identity are dropped.
++    ///
++    /// Signed zeros are the same exact position (`-0.0 == 0.0`), so their keys are
++    /// canonicalised; no other value is altered and the output vertex keeps its
++    /// original bits.
++    pub fn welded_exact(&self) -> Mesh {
++        let key = |p: &[f64; 3]| {
++            [
++                if p[0] == 0.0 { 0 } else { p[0].to_bits() },
++                if p[1] == 0.0 { 0 } else { p[1].to_bits() },
++                if p[2] == 0.0 { 0 } else { p[2].to_bits() },
++            ]
++        };
++        let mut map: std::collections::HashMap<[u64; 3], u32> = std::collections::HashMap::new();
++        let mut verts: Vec<[f64; 3]> = Vec::with_capacity(self.verts.len());
++        let mut remap: Vec<u32> = Vec::with_capacity(self.verts.len());
++        for v in &self.verts {
++            let id = *map.entry(key(v)).or_insert_with(|| {
++                verts.push(*v);
++                (verts.len() - 1) as u32
++            });
++            remap.push(id);
++        }
++        let mut tris: Vec<[u32; 3]> = Vec::with_capacity(self.tris.len());
++        for t in &self.tris {
++            let a = remap[t[0] as usize];
++            let b = remap[t[1] as usize];
++            let c = remap[t[2] as usize];
++            if a != b && b != c && a != c {
++                tris.push([a, b, c]);
++            }
++        }
++        Mesh { verts, tris }
++    }
++
+     /// Reverse triangle winding if the signed volume is negative, guaranteeing
+     /// outward-facing normals for a consistently-oriented closed mesh.
+     pub fn ensure_outward(&mut self) {
+@@ -1287,3 +1334,73 @@
+         );
+     }
+ }
++
++#[cfg(test)]
++mod adapter_weld_tests {
++    use super::*;
++
++    fn tri_mesh(x: f64) -> Mesh {
++        // A unit cube whose X extent is `x`: at 1e-8 mm the two X planes are
++        // distinct `f64` values that an epsilon bucket merges.
++        Mesh {
++            verts: vec![
++                [0.0, 0.0, 0.0],
++                [x, 0.0, 0.0],
++                [x, 1.0, 0.0],
++                [0.0, 1.0, 0.0],
++                [0.0, 0.0, 1.0],
++                [x, 0.0, 1.0],
++                [x, 1.0, 1.0],
++                [0.0, 1.0, 1.0],
++            ],
++            tris: vec![
++                [0, 3, 2],
++                [0, 2, 1],
++                [4, 5, 6],
++                [4, 6, 7],
++                [0, 1, 5],
++                [0, 5, 4],
++                [2, 3, 7],
++                [2, 7, 6],
++                [1, 2, 6],
++                [1, 6, 5],
++                [0, 4, 7],
++                [0, 7, 3],
++            ],
++        }
++    }
++
++    #[test]
++    fn scad_exact_weld_keeps_a_thin_body_that_epsilon_welding_deletes() {
++        let thin = tri_mesh(1e-8);
++        assert_eq!(
++            thin.welded_exact().tris.len(),
++            thin.tris.len(),
++            "exact identity must not merge two distinct X planes"
++        );
++        let bucketed = thin.welded(1e-7);
++        assert!(
++            bucketed.verts.len() < thin.verts.len(),
++            "the epsilon bucket merges the two distinct X planes: {} vs {} vertices",
++            bucketed.verts.len(),
++            thin.verts.len()
++        );
++        assert!(
++            bucketed.tris.len() < thin.tris.len(),
++            "and it then drops the triangles that collapsed: {} vs {} triangles",
++            bucketed.tris.len(),
++            thin.tris.len()
++        );
++    }
++
++    #[test]
++    fn scad_exact_weld_merges_only_identical_positions() {
++        let mut mesh = tri_mesh(1.0);
++        // A duplicated seam vertex: same position, distinct index.
++        mesh.verts.push(mesh.verts[1]);
++        let welded = mesh.welded_exact();
++        assert!(welded.verts.len() < mesh.verts.len());
++        assert_eq!(welded.verts.len(), 8);
++        assert_eq!(welded.tris.len(), mesh.tris.len());
++    }
++}
+--- a/crates/openrscad-geom/src/kernel.rs
++++ b/crates/openrscad-geom/src/kernel.rs
+@@ -213,7 +213,12 @@
+         // Weld coincident-but-unshared vertices first: many BOSL2 primitives emit
+         // revolution seams and cap rings as duplicate vertices, leaving the mesh
+         // manifold by position but not by index. The kernel needs shared edges.
+-        let mut welded = m.welded(1e-7);
++        //
++        // Exact identity, not an epsilon bucket: `welded(1e-7)` merges two distinct
++        // vertices 1e-8 mm apart and drops the collapsed triangles, which silently
++        // deletes a thin solid (measured: `union(){cube([1e-8,1,1]);
++        // translate([2,0,0]) cube(1);}` loses the first body with no diagnostic).
++        let mut welded = m.welded_exact();
+         // See the pure-Rust backend: an inside-out solid is still a positive
+         // solid to the kernel upstream.
+         welded.ensure_outward();

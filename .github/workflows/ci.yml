@@ -160,3 +160,131 @@ jobs:
             target/test-output.log
             target/property-testing/
           if-no-files-found: ignore
+
+  # Required lane for the SCAD adapter prerequisite (packet
+  # proptest-openrscad_03_scad-adapter). It is self-contained: it does not depend
+  # on the property-foundation job existing, and it runs its own feature-off and
+  # enabled checks rather than deferring SCAD coverage to a final rollout.
+  #
+  # The engine is a vendored, patched subset of OpenRSCAD whose native Manifold
+  # kernel is a C++ CMake build, so CMake and MSVC must be present before any
+  # enabled step. Provenance and the classification table are in
+  # `vendor/openrscad/PATCHES.md` and `docs/scad/openrscad-compatibility.md`.
+  scad-adapter-windows:
+    name: SCAD adapter (Windows)
+    runs-on: windows-latest
+    # A cold run compiles the vendored engine and its C++ kernel; the narrow
+    # contract runs themselves are seconds.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Record native prerequisites and toolchain identity
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path target/scad-adapter | Out-Null
+          rustc -vV | Tee-Object -FilePath target/scad-adapter/rustc.txt
+          cargo -V | Tee-Object -FilePath target/scad-adapter/cargo.txt
+          cmake --version 2>&1 | Tee-Object -FilePath target/scad-adapter/cmake.txt
+          where.exe cl 2>&1 | Tee-Object -FilePath target/scad-adapter/cl.txt
+          (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\VisualStudio\SxS\VS7' -ErrorAction SilentlyContinue) | Out-String | Tee-Object -FilePath target/scad-adapter/vs7.txt
+          git rev-parse HEAD | Tee-Object -FilePath target/scad-adapter/source_revision.txt
+          git status --porcelain | Tee-Object -FilePath target/scad-adapter/dirty-content.txt
+          exit 0
+
+      - name: Dependency graph evidence (no engine, default features)
+        shell: pwsh
+        run: |
+          cargo tree -p slicer-scad --no-default-features -e normal,build,features 2>&1 |
+            Tee-Object -FilePath target/scad-adapter/tree-default.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # The default graph must not reach the engine, its native kernel or the
+          # font stack; the adapter's own source must not pull SDK/runtime/Proptest.
+          $forbidden = 'openrscad|manifold-csg|rustybuzz|fontdb|slicer-sdk|slicer-runtime|proptest'
+          $hits = Select-String -Path target/scad-adapter/tree-default.txt -Pattern $forbidden
+          if ($hits) {
+            Write-Host "::error::default slicer-scad graph reached a forbidden dependency"
+            $hits | Out-String | Write-Host
+            exit 1
+          }
+          exit 0
+
+      - name: Feature-off contract (F)
+        shell: pwsh
+        run: |
+          cargo test -p slicer-scad --no-default-features --test scad_feature_contract -- --nocapture 2>&1 |
+            Tee-Object -FilePath target/scad-adapter/feature-off.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # A green zero-test binary is not acceptance: prove the test ran.
+          if (-not (Select-String -Path target/scad-adapter/feature-off.log -Pattern '1 passed')) {
+            Write-Host "::error::feature-off contract did not execute a test"
+            exit 1
+          }
+
+      - name: Dependency graph evidence (engine enabled)
+        shell: pwsh
+        run: |
+          cargo tree -p slicer-scad --features openrscad -e normal,build,features 2>&1 |
+            Tee-Object -FilePath target/scad-adapter/tree-enabled.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hits = Select-String -Path target/scad-adapter/tree-enabled.txt -Pattern 'slicer-sdk|slicer-runtime|proptest'
+          if ($hits) {
+            Write-Host "::error::enabled slicer-scad normal/build graph reached SDK, runtime or Proptest"
+            $hits | Out-String | Write-Host
+            exit 1
+          }
+          exit 0
+
+      - name: Enabled engine identity contract (A)
+        shell: pwsh
+        run: |
+          cargo test -p slicer-scad --features openrscad --test scad_feature_contract -- --nocapture 2>&1 |
+            Tee-Object -FilePath target/scad-adapter/enabled-identity.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Adapter contracts (A)
+        shell: pwsh
+        run: |
+          cargo test -p slicer-scad --features openrscad --test scad_adapter_contracts -- --nocapture 2>&1 |
+            Tee-Object -FilePath target/scad-adapter/adapter-contracts.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Private classifier and conversion contracts (U)
+        shell: pwsh
+        run: |
+          cargo test -p slicer-scad --features openrscad --lib -- scad_ --nocapture 2>&1 |
+            Tee-Object -FilePath target/scad-adapter/private-contracts.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # The filter must actually select tests; "0 filtered out / 0 passed" would
+          # otherwise read as success.
+          if (-not (Select-String -Path target/scad-adapter/private-contracts.log -Pattern 'scad_[a-z_]+ \.\.\. ok')) {
+            Write-Host "::error::private scad_ tests did not execute"
+            exit 1
+          }
+
+      - name: Process supervision and worker containment (L)
+        shell: pwsh
+        run: |
+          cargo test -p slicer-scad --features openrscad --test scad_process_limits -- --nocapture 2>&1 |
+            Tee-Object -FilePath target/scad-adapter/process-limits.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Narrow clippy
+        shell: pwsh
+        run: |
+          cargo clippy -p slicer-scad --all-targets --features openrscad -- -D warnings 2>&1 |
+            Tee-Object -FilePath target/scad-adapter/clippy.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload adapter artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scad-adapter-windows
+          path: |
+            target/scad-adapter/
+            target/test-output.log
+          if-no-files-found: warn

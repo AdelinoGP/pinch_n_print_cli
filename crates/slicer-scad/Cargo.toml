@@ -1,0 +1,53 @@
+[package]
+name = "slicer-scad"
+version = "0.1.0"
+edition = "2021"
+authors = ["Pinch 'n Print Team"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+sha2 = "0.10"
+slicer-ir = { path = "../slicer-ir" }
+
+# The optional engine. Every native edge is behind `openrscad`: a default
+# workspace build must not compile the engine, its C++ kernel or its font stack.
+# The engine itself is a vendored, patched subset of matthova/openrscad; see
+# `vendor/openrscad/PATCHES.md` for the immutable base revision and patch digest.
+openrscad-syntax = { path = "../../vendor/openrscad/crates/openrscad-syntax", optional = true }
+openrscad-ir = { path = "../../vendor/openrscad/crates/openrscad-ir", optional = true }
+openrscad-eval = { path = "../../vendor/openrscad/crates/openrscad-eval", optional = true }
+openrscad-geom = { path = "../../vendor/openrscad/crates/openrscad-geom", optional = true }
+
+[dev-dependencies]
+# Integration tests name the IR point shapes directly when building oracles.
+slicer-ir = { path = "../slicer-ir" }
+# Reproducers are real JSON, so a retained failure can be read by any tool.
+serde_json = "1.0"
+# Recomputes the vendored patch-set digest from the committed patch files.
+sha2 = "0.10"
+
+[features]
+default = []
+openrscad = [
+	"dep:openrscad-syntax",
+	"dep:openrscad-ir",
+	"dep:openrscad-eval",
+	"dep:openrscad-geom",
+]
+
+# Ungated on purpose: this target must build and report real assertions in
+# BOTH feature configurations. A `#![cfg(feature = ...)]` whole-file gate would
+# make the feature-off run a green zero-test binary.
+[[test]]
+name = "scad_feature_contract"
+
+[[test]]
+name = "scad_adapter_contracts"
+required-features = ["openrscad"]
+
+[[test]]
+name = "scad_process_limits"
+required-features = ["openrscad"]
+
+[lints]
+workspace = true
