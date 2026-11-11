@@ -181,25 +181,32 @@
      }
  
      // Distribute: fold operands as piece-sets. `minkowski_pair` returns a convex
-@@ -2404,7 +2462,7 @@
+@@ -2404,7 +2462,11 @@
              "degraded render should still yield geometry"
          );
          assert!(!diag.errors.is_empty(), "degradation must be reported");
 -        assert!(diag.errors[0].contains("union"), "{:?}", diag.errors);
-+        assert!(diag.errors[0].message.contains("union"), "{:?}", diag.errors);
++        assert!(
++            diag.errors[0].message.contains("union"),
++            "{:?}",
++            diag.errors
++        );
          // render_cached_warns flattens the error into its single list.
          let (_, warns) = render_cached_warns(&node, &kernel, &mut cache).unwrap();
          assert!(warns.iter().any(|w| w.contains("union")), "{warns:?}");
-@@ -2422,7 +2480,7 @@
+@@ -2422,7 +2484,10 @@
          let (dmesh, ddiag) = render_cached_diag(&diff, &kernel, &mut cache).unwrap();
          assert!(!dmesh.tris.is_empty());
          assert!(
 -            ddiag.errors.iter().any(|e| e.contains("difference")),
-+            ddiag.errors.iter().any(|e| e.message.contains("difference")),
++            ddiag
++                .errors
++                .iter()
++                .any(|e| e.message.contains("difference")),
              "{:?}",
              ddiag.errors
          );
-@@ -3389,3 +3447,71 @@
+@@ -3389,3 +3454,70 @@
          assert_eq!(prev.tris.len(), exact_holed.tris.len() + 12);
      }
  }
@@ -235,8 +242,7 @@
 +            size: [4.0, 6.0],
 +            center: true,
 +        };
-+        let plain =
-+            render_contours_cached(&node, &kernel(), &mut GeomCache::new()).unwrap();
++        let plain = render_contours_cached(&node, &kernel(), &mut GeomCache::new()).unwrap();
 +        let (with_diag, _) =
 +            render_contours_cached_diag(&node, &kernel(), &mut GeomCache::new()).unwrap();
 +        assert_eq!(plain, with_diag);

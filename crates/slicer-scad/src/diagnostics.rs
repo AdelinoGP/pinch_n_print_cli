@@ -169,7 +169,8 @@ mod tests {
         // `ScadDiagnostic` has no `Default` on purpose (no fabricated span, stage
         // or code), so this fixture spells out every field; a new field must be
         // classified here.
-        ScadDiagnostic { // exhaustive: the pinned data contract; no Default may be invented for a diagnostic
+        // exhaustive: the pinned data contract; no Default may be invented for a diagnostic
+        ScadDiagnostic {
             stage: ScadDiagnosticStage::Evaluation,
             class,
             code: "probe".to_string(),

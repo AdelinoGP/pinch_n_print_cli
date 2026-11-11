@@ -430,7 +430,6 @@ fn modifier_infill_two_densities() {
 /// 1.00), which fails the per-layer form on all 125 layers and the per-block
 /// form on all 128 multi-path blocks.
 fn assert_boundary_anchoring(gcode: &str) {
-
     let blocks = parse_sparse_blocks(&gcode);
     assert!(
         blocks.len() >= 2,

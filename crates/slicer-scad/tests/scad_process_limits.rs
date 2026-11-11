@@ -95,7 +95,8 @@ fn write_reproducer(
         "source": source,
         "options": options,
     });
-    let body = serde_json::to_string_pretty(&document).expect("serialize reproducer") + "
+    let body = serde_json::to_string_pretty(&document).expect("serialize reproducer")
+        + "
 ";
     let mut file = std::fs::File::create(&path).expect("create repro file");
     file.write_all(body.as_bytes()).expect("write repro file");

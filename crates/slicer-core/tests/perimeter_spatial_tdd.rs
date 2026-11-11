@@ -424,12 +424,21 @@ fn unconsumed_mode_issues_no_annotation_queries() {
         assert_eq!(planar_point.x.to_bits(), unconsumed_point.x.to_bits());
         assert_eq!(planar_point.y.to_bits(), unconsumed_point.y.to_bits());
         assert_eq!(planar_point.z.to_bits(), unconsumed_point.z.to_bits());
-        assert_eq!(planar_point.width.to_bits(), unconsumed_point.width.to_bits());
+        assert_eq!(
+            planar_point.width.to_bits(),
+            unconsumed_point.width.to_bits()
+        );
         assert_eq!(unconsumed_point.overhang_quartile, None);
         assert_eq!(unconsumed_point.overhang_distance_mm, None);
     }
-    assert_eq!(counters.indexed_queries, 0, "unconsumed mode queried the index");
-    assert_eq!(counters.legacy_queries, 0, "unconsumed mode ran a legacy query");
+    assert_eq!(
+        counters.indexed_queries, 0,
+        "unconsumed mode queried the index"
+    );
+    assert_eq!(
+        counters.legacy_queries, 0,
+        "unconsumed mode ran a legacy query"
+    );
     assert_eq!(counters.fallback_queries, 0, "unconsumed mode fell back");
 }
 

@@ -55,7 +55,7 @@ pub(crate) const ENGINE_REVISION: &str = "1a45bd33f2886c32bda32fe6e8358a67ab03f5
 /// `tests/scad_feature_contract.rs` from those files, so an edit that forgets to
 /// update this constant fails.
 pub(crate) const ENGINE_PATCH_DIGEST: &str =
-    "1edf73830fc830403eec9a3bfeded63de7e033359073f5800d8e7f9f6e13dccf";
+    "a9e67c4a4ab05153672581881480d70bbee11bf02c9642db79c2d446feec6e02";
 
 /// The native backend selected for this target.
 pub(crate) const ENGINE_BACKEND: &str = "manifold_cpp";

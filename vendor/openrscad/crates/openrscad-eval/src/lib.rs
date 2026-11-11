@@ -5620,9 +5620,7 @@ mod adapter_expr_tests {
     fn scad_const_expr_uses_the_callers_resolver() {
         // `dxf_dim` reads through `load_bytes`; a `NullResolver` would hide the
         // request from a host that must deny every external resource.
-        let recorder = Recorder {
-            hits: Cell::new(0),
-        };
+        let recorder = Recorder { hits: Cell::new(0) };
         let outcome = eval_const_expr_with_budget_and_resolver(
             "dxf_dim(file = \"tempting.dxf\")",
             1_000_000,

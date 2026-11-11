@@ -2462,7 +2462,11 @@ mod tests {
             "degraded render should still yield geometry"
         );
         assert!(!diag.errors.is_empty(), "degradation must be reported");
-        assert!(diag.errors[0].message.contains("union"), "{:?}", diag.errors);
+        assert!(
+            diag.errors[0].message.contains("union"),
+            "{:?}",
+            diag.errors
+        );
         // render_cached_warns flattens the error into its single list.
         let (_, warns) = render_cached_warns(&node, &kernel, &mut cache).unwrap();
         assert!(warns.iter().any(|w| w.contains("union")), "{warns:?}");
@@ -2480,7 +2484,10 @@ mod tests {
         let (dmesh, ddiag) = render_cached_diag(&diff, &kernel, &mut cache).unwrap();
         assert!(!dmesh.tris.is_empty());
         assert!(
-            ddiag.errors.iter().any(|e| e.message.contains("difference")),
+            ddiag
+                .errors
+                .iter()
+                .any(|e| e.message.contains("difference")),
             "{:?}",
             ddiag.errors
         );
@@ -3479,8 +3486,7 @@ mod adapter_seam_tests {
             size: [4.0, 6.0],
             center: true,
         };
-        let plain =
-            render_contours_cached(&node, &kernel(), &mut GeomCache::new()).unwrap();
+        let plain = render_contours_cached(&node, &kernel(), &mut GeomCache::new()).unwrap();
         let (with_diag, _) =
             render_contours_cached_diag(&node, &kernel(), &mut GeomCache::new()).unwrap();
         assert_eq!(plain, with_diag);

@@ -42,7 +42,7 @@ patch files above, in filename order, exactly as committed (bytes, no
 normalization):
 
 ```
-1edf73830fc830403eec9a3bfeded63de7e033359073f5800d8e7f9f6e13dccf
+a9e67c4a4ab05153672581881480d70bbee11bf02c9642db79c2d446feec6e02
 ```
 
 The adapter exposes this value as `ScadEngineInfo::patch_digest`, and

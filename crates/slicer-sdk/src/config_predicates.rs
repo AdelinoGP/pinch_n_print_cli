@@ -101,7 +101,9 @@ mod tests {
 
     #[test]
     fn producer_variant_reports_inactive_for_a_missing_key() {
-        assert!(!overhang_annotations_consumed_or_inactive(&ConfigView::new()));
+        assert!(!overhang_annotations_consumed_or_inactive(
+            &ConfigView::new()
+        ));
         assert!(overhang_annotations_consumed_or_inactive(&view(
             true,
             [0.0, 0.0, 30.0, 0.0]

@@ -139,8 +139,7 @@ fn layer_slice_builtin_rejects_unknown_object_with_structured_diagnostic() {
     let mesh = tetra_mesh_ir("real-object");
     let layer = layer_at(0, 0.1, "missing-object");
 
-    let err =
-        execute_prepass_slice_single_layer(&mesh, &layer, None).expect_err("should fail");
+    let err = execute_prepass_slice_single_layer(&mesh, &layer, None).expect_err("should fail");
     match err {
         LayerSliceError::UnknownObject {
             layer_index,
@@ -237,11 +236,9 @@ fn per_layer_executor_produces_deterministic_slice_across_runs() {
     }
 
     let slice_a =
-        execute_prepass_slice_single_layer(mesh.as_ref(), &plan1.global_layers[0], None)
-            .unwrap();
+        execute_prepass_slice_single_layer(mesh.as_ref(), &plan1.global_layers[0], None).unwrap();
     let slice_b =
-        execute_prepass_slice_single_layer(mesh.as_ref(), &plan2.global_layers[0], None)
-            .unwrap();
+        execute_prepass_slice_single_layer(mesh.as_ref(), &plan2.global_layers[0], None).unwrap();
     assert_eq!(slice_a, slice_b, "repeated slices must be byte-identical");
 
     let a = execute_per_layer(&plan1, &bb1, &Noop, &Default::default()).unwrap();
@@ -301,8 +298,7 @@ fn layer_slice_builtin_produces_real_polygons_for_wedge_mesh() {
             }],
             ..Default::default()
         };
-        let slice =
-            execute_prepass_slice_single_layer(&mesh, &layer, None).expect("slice ok");
+        let slice = execute_prepass_slice_single_layer(&mesh, &layer, None).expect("slice ok");
         assert_eq!(slice.z, z);
         assert_eq!(slice.regions.len(), 1);
         let region = &slice.regions[0];
