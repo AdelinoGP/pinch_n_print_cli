@@ -84,3 +84,10 @@
 # generated summary and its wall-pair reduction; preserve their bytes on
 # add/checkout instead of normalizing line endings.
 /docs/specs/perf-vs-orca/evidence/t83-arachne-tolerance-price/** -text whitespace=cr-at-eol
+
+# The vendored OpenRSCAD patch set is hash-pinned: `ScadEngineInfo::patch_digest`
+# is the SHA-256 of these exact bytes, and `tests/scad_feature_contract.rs`
+# recomputes it from the checkout. A Windows runner with `core.autocrlf=true`
+# would otherwise convert LF to CRLF and break the identity, so preserve the
+# bytes on add/checkout.
+/vendor/openrscad/patches/*.patch -text whitespace=cr-at-eol
