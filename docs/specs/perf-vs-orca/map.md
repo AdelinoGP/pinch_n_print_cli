@@ -258,6 +258,35 @@ sites one layer later at the same areas). **Frontier:**
 [140](issues/140-brim-contour-input.md) (HITL, new),
 [135](issues/135-cross-layer-occupancy-batching.md) Stage 2 and
 [136](issues/136-planner-clip-batch-fanout.md) (gated by 137).
+
+**Destination status (2026-11-11,
+[t141](issues/141-overhang-quartile-band-deletion.md)): the overhang band
+partition is deletable work, and the shell program has a priced candidate; the
+frontier is t142, the human's gate and brim ruling, and the two gated planner
+tickets.** The 4-band polygon partition's **value has no production reader** —
+`overhang-classifier-default` reads only `overhang_quartile.is_some()` and
+computes speed from `overhang_distance_mm` via `calculate_speed`; the presence
+bit is the sign of the same signed distance that per-vertex loop already
+computes against the same previous-layer boundary (`prev_layer_boundary`).
+Price on the post-t139 tree (probe, `evidence/t141-overhang-bands/`): base
+classic-off **8.964 / 9.558 / 10.583 s** — **22.1–26.5 %** of the 39.9–40.6 s
+same-session wall and **34.3–40.5 %** of the cell's 26.15 s required cut — base
+arachne-off **9.450 s**, base classic-on **11.195 s**, benchy classic-off
+**0.954 s**, benchy classic-on **0.817 s**. Operation counts are **3 offsets + 6
+whole-layer booleans per band layer** in the cumulative stage over **486 of
+496** base layers and **239 of 240** benchy layers; the band thread-time
+converts at 11.6–11.7x on base, reproducing t84's 11.86x. The deletion is not a
+route step on its own (t139's 2.899x base classic-off moves to about 2.19x),
+but it is the largest single unpriced shell shape and the first whose **work
+set** can go. Two build forks are recorded: the per-layer boundary key
+(`prev_layer_boundaries` exists only for overhang layers) and the visual-debug
+band tap. Graduated [t142](issues/142-overhang-band-partition-deletion.md).
+**Frontier:** t142 (AFK, takeable now),
+[137](issues/137-planner-scheduling-gate.md) (HITL),
+[140](issues/140-brim-contour-input.md) (HITL),
+[135](issues/135-cross-layer-occupancy-batching.md) Stage 2 and
+[136](issues/136-planner-clip-batch-fanout.md) (gated by 137).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -344,7 +373,32 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-10, fortieth session — the t138 take):** the
+**Current selection scope (2026-11-11, the t141 take):** the human said
+"Continue the perf vs orca map, pick an afk ticket". **No AFK ticket was on the
+frontier** — 137 and 140 are the human's grillings and 136 / 135 Stage 2 are
+gated by 137 — so the map's own route arithmetic graduated the largest
+unpriced shell shape from the "sweep-volume work-set family" fog as
+[141](issues/141-overhang-quartile-band-deletion.md) and worked it as a
+Phase-1 attribution. Headline: **the overhang quartile band partition is
+deletable work** — its value has no production reader, its only read is a
+presence bit equal to the sign of the signed distance the perimeter annotation
+already computes against the same previous-layer boundary, and it costs
+**8.964 / 9.558 / 10.583 s** on base classic-off (22–27 % of the wall, 34–41 %
+of the required cut), **9.450 s** on base arachne-off, **11.195 s** on base
+classic-on, **0.954 s** on benchy classic-off and **0.817 s** on benchy
+classic-on. The
+counts (3 offsets + 6 booleans per band layer, 486/496 base and 239/240 benchy)
+and the 11.6–11.7x thread→wall conversion reproduce t84. Two build forks are
+recorded (the per-layer boundary key and the visual-debug tap) and the deletion
+is graduated as [142](issues/142-overhang-band-partition-deletion.md). The box
+was not verified idle, the three base-off probes span 18 % (8.96–10.58 s), and
+no A/B or scoreboard was taken; no wall claim is made for a landed change. Evidence:
+[`evidence/t141-overhang-bands/`](evidence/t141-overhang-bands/FINDINGS.md)
+(`verify.py` 7 rows / 3 sources; `--self-test` 4/4 negative controls).
+**Frontier now: 142 (AFK, takeable) and 137 / 140 (HITL); 135 Stage 2 / 136 are
+gated by 137.**
+
+**Previous selection scope (2026-11-10, fortieth session — the t138 take):** the
 human said "Continue the perf vs orca map" (no ticket named); **138 was the
 first unblocked, unclaimed AFK frontier ticket in order** (137 is the human's
 grilling; 136 and 135 Stage 2 are gated by it), so it was claimed and resolved as
@@ -3182,6 +3236,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Overhang quartile bands: is the 4-band polygon partition read by anything?](issues/141-overhang-quartile-band-deletion.md): **resolved (2026-11-11; Phase-1 attribution + price — the quartile VALUE has no production reader, the only read is a presence bit equal to the sign of the distance the consumer already computes, and the partition is the largest unpriced shell shape)** — stamped at `expolygon_to_path3d_indexed` / `expolygon_to_path3d` / `arachne-perimeters`, and every other production site copies it or tests `.is_some()`; `overhang-classifier-default` computes speed from `overhang_distance_mm` (`calculate_speed`), and `overhang_areas` has no reader in `modules/`. The four bands' union is exactly `current \ previous`, so presence = outside the previous boundary = `signed_distance > 0` (raw, not the `+0.5 x width` stamp), against the very same `prev_layer_boundary`. Price on the post-t139 tree: base classic-off **8.964 / 9.558 / 10.583 s** (22.1–26.5 % of the 39.9–40.6 s wall, 34.3–40.5 % of the 26.15 s cut), base arachne-off **9.450 s**, base classic-on **11.195 s**, benchy classic-off **0.954 s**, benchy classic-on **0.817 s**; **3 offsets + 6 booleans per band layer** over 486/496 and 239/240; 11.6–11.7x thread→wall reproduces t84. Two forks: keep the per-layer boundary key (one `difference_ex`, ≥85.4 % of the stage still saved) or populate every layer and prove inertness; and re-home the visual-debug band tap. Not a route step alone (2.899x → ~2.19x on base classic-off). Graduated [t142](issues/142-overhang-band-partition-deletion.md). Evidence: [`evidence/t141-overhang-bands/`](evidence/t141-overhang-bands/FINDINGS.md) (`verify.py` 7 rows / 3 sources; `--self-test` 4/4 negative controls).
 - [Layer-plane parity: sample at the canonical midpoint](issues/139-layer-plane-parity.md): **resolved (2026-11-11; the plane is canonical, the reference set is re-recorded, and the route arithmetic is unchanged)** — `PrePass::Slice` + the host schedule + the planner terminate/sample on `compute_slice_z`'s band midpoint; base **495 → 496 layers / 99.0 → 99.2**, benchy 240/48.0; layer-0 hull fits the STL mid section on all 8 cells (base classic 0.932 vs mid 0.955 / top 3.165 = **3.31x** separation; arachne 0.757 recorded). **Four modifier-volume slice sites** moved onto the same plane (region mapping, paint segmentation, support enforcer/blocker, Tier-2 staging) to keep the `modifier_sub_region_id` hashes equal. **Slicer defect fixed:** `push_unique_intersection` deduped by coincident coordinates, collapsing base's 69.3 mm section to 0.0025 mm² (correct 671.2054) and dropping the layer; topology-only dedupe restores all 496. **Reference set:** `93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…` / `ca14d055…` / `585c6a8e…` / `d8fdc1d9…` / `c9fee59a…`, arms identical; baseline reproduces t135. **Oracle 2/8** (base supports-off skirt −4.3 % / −4.4 % swept, −5.7 % / −6.6 % outer loop, brim +8.1 % → −5.2 %; supports-on = support engine). **A/B** wall 0.923x–0.984x, CPU 0.963x–0.991x. **Scoreboard** **2.279x–4.187x ordinary / 2.311x–4.179x accelerated, cut 56.1 %–76.1 %** (supersedes t135 with the machine-state disclosure). DEV-201 closed; DEV-202 filed (p241 agg, calicat sites). Graduated [Brim anchor: feed the slice contour into `skirt-brim`](issues/140-brim-contour-input.md). Evidence: [`evidence/t139-layer-plane-parity/`](evidence/t139-layer-plane-parity/FINDINGS.md) (`verify.py` 7 claim groups, 22/22 negative controls).
 - [Layer-0 cross-section parity: do the two arms print the same first layer?](issues/138-layer0-cross-section-parity.md): **resolved (2026-11-10; Phase-1 attribution — the residual is a slice-plane convention, the base skirt is its second-order consequence, supports-on is the support engine)** — PnP slices every layer at its **top** (`first_layer_height + n × layer_height`), canonical OrcaSlicer at the layer **midpoint** (`compute_slice_z` = `0.5 × (lo + hi)`, ZAA off). Slicing the same STL at top/0.20 and mid/0.21 and comparing translation-invariant hulls puts PnP on the top plane (0.02–1.36% error) and Orca on the mid plane (0.02–4.02%) on all ten sampled layers; base L0/L10 separate the candidate planes by **253% / 161%**. On `base.stl` the 0.1 mm shift is **3.42x** of layer-0 area (3.122 vs 0.914 mm²); on the benchy **1.3%**; base is **495 layers / Z 99.0** on PnP vs **496 / 99.2** on Orca. **Classification:** base footprint = slice plane (same-plane wall-width effect 3.3%); base-off brim +8.09% = +88.04 mm contour − 27.65 mm anchor (predicted +60.39 vs observed +57.39); base-off skirt +3.23% = brim footprint +8.68% diluted by the offset; base-on skirt +12.48% and benchy-on brim +54.51% = support engine (Orca support path 10.6–11.7x denser, coverage 10.4–11.5x; skirt tracks the support-dominated input hull); run counts 22/30, 19/39, 0/0 = cosmetic splitting; first-layer height equal. **Oracle: 2/8; no 8/8 without a slicing change** — ceiling 6/8 without one (perfect support parity), expected 4/8 with the plane fix alone, 8/8 needs both; the strict form is an engine-level acceptance. **Price:** fairness fix, not a route step — base layer-0 operand 5.329 → 2.314 mm² (2.30x) on 1 of 495 layers, benchy 1.01x on 1 of 240; no wall claim, 59.1–73.5% cut unchanged; the price is the 16-cell re-take, delta audit and scoreboard re-derivation, plus the multi-height midpoint decision. Graduated [Layer-plane parity](issues/139-layer-plane-parity.md). Evidence: [`evidence/t138-layer0-cross-section/`](evidence/t138-layer0-cross-section/FINDINGS.md) (`verify.py` 8 claim groups, `--self-test` 12/12 controls).
 - [Staged fold: canonical skirt-brim re-take and cross-layer occupancy offset batching](issues/135-cross-layer-occupancy-batching.md): **Stage 1 resolved (2026-11-10) — the canonical skirt/brim port lands, the adhesion job and its flow model are matched on both arms, and the new reference set replaces t123's; the strict parity oracle is 2/8 with every residual attributed outside the module** — brim = contour-anchored annulus (`make_brim` / `tryExPolygonOffset`) clipped against the first-layer support *region*, skirt = hull of the first `skirt_height` layers plus the brim footprint (`Print::_make_skirt`), both at the canonical flow spacing `line_width - h x (1 - pi/4)`, at `40ecc66f78` with the OrcaSlicer attribution header; module keys `brim_object_gap = 0.1`, `min_skirt_length = 0` (non-zero fails closed) and `first_layer_height`. **Seven matched keys**, three of them re-derived: `brim_type = outer_only` (`auto_brim` overrides `brim_width`), `initial_layer_line_width = 0.4` (**Orca resolved 0.5 against PnP's 0.4**, so 8 mm quantised to 7.31 vs 8.0 mm — the t82 "0.4 both sides" claim is falsified by the appendix) and `tree_support_brim_width = 0`. **Output:** baseline reproduces t123; candidate records `7db0641b…` / `c02aa4e9…` / `a2f7a1fe…` / `2326455d…` / `7ef84447…` / `1ddea2b7…` / `defae354…` / `4aa1847c…`, identical across arms. **Delta audit:** all motion outside `Skirt`/`Brim` identical with E stripped, |dE| <= 0.00098 mm. **Oracle:** benchy supports-off passes (+2.4/+2.6 % brim work, +1.3 % brim area, 22 lines); base supports-off is 22/22 lines at +8.1/+7.3 % brim work with skirt +3.2/+3.1 % against a 3 % band (anchor convention); supports-on is support-engine dominated (0/0 brim on base, skirt 12.5 %; Orca's benchy brim 39 runs vs 19). **A/B:** wall 0.963–1.046, CPU 0.992–1.026 — below the noise floor. **Scoreboard:** 2.445x–3.769x ordinary / 2.420x–3.745x accelerated, cut 59.1 %–73.5 %, superseding t124. Stage 2 (the occupancy batch) remains gated by [137](issues/137-planner-scheduling-gate.md).
@@ -3455,10 +3510,15 @@ Standing decisions for this effort (2026-09-22):
   Stage 1 landed 2026-11-10 (the canonical skirt/brim re-take): the
   matched-settings asymmetry is closed and the new reference set is the
   currency, so no future ratio may be quoted against t123's set.** The
-  unpriced fog is the **sweep-volume work-set family** — per-vertex overhang
-  distance, per-layer overhang polygons, canonical loop projection — each of
-  which needs its own Phase-1 before a candidate can be priced. The per-layer
-  phase joins the first program on both benchy cells.
+  unpriced fog is the **sweep-volume work-set family**. Its **per-vertex
+  overhang distance** member is now priced and ticketed: the 4-band partition's
+  value has no production reader and the presence bit is the distance sign, so
+  [t141](issues/141-overhang-quartile-band-deletion.md) /
+  [t142](issues/142-overhang-band-partition-deletion.md) carry a 9.0–10.6 s
+  base-off deletion (22–27 % of the cell, 34–41 % of its required cut). The
+  remaining members — **per-layer overhang polygons** and **canonical loop
+  projection** — each still need their own Phase-1 before a candidate can be
+  priced. The per-layer phase joins the first program on both benchy cells.
 
 - **The bridge wave expansion is a per-layer partition change, and its benchy
   cost is the blocker (surfaced 2026-11-06 by
