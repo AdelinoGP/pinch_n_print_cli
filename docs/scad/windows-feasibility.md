@@ -160,17 +160,37 @@ narrow lanes above exercise every changed surface.
 5. runs the narrow clippy gate;
 6. uploads `target/scad-adapter/` (logs, trees, reproducers) with `if: always()`.
 
-**Execution status: not yet executed.** Every command in the job was run on this
-machine in this session with the same arguments and passed (see the tables above),
-but the GitHub job itself has not run, because that requires a push. The AC-6
-clause "the required `scad-adapter-windows` PR lane and artifact upload execute"
-is therefore **open** until the branch is pushed and the job is observed green.
+**Execution status: executed and passing.**
+
+| Field | Value |
+|---|---|
+| Workflow run | `43113651822` (`CI`, pull request) |
+| Head | `65f6acf` |
+| Job | `SCAD adapter (Windows)`, id `130835934489` — **success** |
+| `F` | `1 passed` |
+| `F`+`A` identity | `1 passed` |
+| `A` | `9 passed`, `1 ignored` (measurement entry point) |
+| `U` | `20 passed` |
+| `L` | `3 passed` in 20.48 s |
+| Artifact | `scad-adapter-windows`, id `13897616839`, 17 292 bytes, uploaded |
+
+The run also passed `Clippy`, `Format`, `Docs staleness guard`, `Dist editions` and
+`Properties (Windows)`.
+
+One job in that run is red and is **not** this packet: `Test` fails four captured
+baseline pins in `crates/slicer-runtime/tests/integration/perimeter_spatial_capture.rs`
+(`perimeter_spatial_capture_and_nonvacuity` and the three
+`perimeter_spatial_self_baseline_*` tests, 377 passed / 4 failed). The identical
+four failures with the identical tally are present on `master@49f6e7bf` in run
+`42535615636`, before any commit of this work. They are determinism pins on a
+pipeline this packet does not touch; per `AGENTS.md` § Test Discipline they are
+left red rather than weakened.
 
 ## Disposition of G-SCAD
 
-**Adapter prerequisite: PENDING**, because one required clause has not executed:
-the `scad-adapter-windows` GitHub job and its artifact upload. Everything else the
-prerequisite owns is demonstrated here:
+**Adapter prerequisite: PASSED on Windows.** The `scad-adapter-windows` job and
+its artifact upload executed and passed on head `65f6acf`. The following are
+demonstrated:
 
 - the engine builds and runs on Windows with the repository's pinned toolchain;
 - exact evaluation and rendering work through the vendored, patched engine;
