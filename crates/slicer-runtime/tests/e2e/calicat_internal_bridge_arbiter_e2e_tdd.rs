@@ -110,7 +110,15 @@ fn calicat_internal_bridge_arbiter_e2e_tdd() {
     }
     // Owner ruling 2026-08-25: low-z and cavity-breadth residuals are tracked by
     // DEV-149 and DEV-150 in docs/DEVIATION_LOG.md, not this packet.
-    let expected = [(4.45, 23.2), (18.45, 8.4), (29.45, 143.2)];
+    //
+    // Perf-vs-orca ticket 139 moved `PrePass::Slice` onto canonical
+    // `compute_slice_z`'s band midpoint. The OrcaSlicer reference sites
+    // (`tmp/calicat_orcaSlicer.gcode`) are 4.45 / 18.45 / 29.45; under canonical
+    // sampling PnP qualifies the same three spans with the same areas one layer
+    // later, at 4.65 / 18.65 / 29.65 (+0.20 mm). That one-layer residual is
+    // DEV-202. The site Zs below are pinned to the measured canonical-sampling
+    // values so a future fix that restores the reference layer fails loudly.
+    let expected = [(4.65, 23.5), (18.65, 8.41), (29.65, 146.78)];
     assert_eq!(
         qualified.len(),
         expected.len(),
@@ -127,14 +135,14 @@ fn calicat_internal_bridge_arbiter_e2e_tdd() {
     }
     let cavity = qualified
         .iter()
-        .find(|(z, _)| (*z - 29.45).abs() <= 0.11)
-        .expect("cavity-ceiling baseline site");
+        .find(|(z, _)| (*z - 29.65).abs() <= 0.11)
+        .expect("cavity-ceiling canonical-sampling site (DEV-202)");
     // The AC-5 bar comes from tmp/calicat_orcaSlicer.gcode. Its 0.525 mm
     // line width at 0.95 bridge flow gives a 0.49875 mm effective width.
     let length = cavity.1 / 0.49875;
     println!("AC-5 qualified sites={qualified:?}, cavity length={length:.3} mm");
     assert!(
-        (29.15..=29.75).contains(&cavity.0),
+        (29.35..=29.95).contains(&cavity.0),
         "qualified z={}",
         cavity.0
     );

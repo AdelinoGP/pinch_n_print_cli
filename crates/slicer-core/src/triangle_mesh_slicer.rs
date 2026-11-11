@@ -230,9 +230,18 @@ fn push_unique_intersection(
     intersections: &mut Vec<IntersectionPoint>,
     candidate: IntersectionPoint,
 ) {
-    if intersections.iter().any(|existing| {
-        existing.topology == candidate.topology || existing.point == candidate.point
-    }) {
+    // Dedupe on topology only. Two intersections of one triangle that project
+    // to the same XY but carry different topology keys are a *grazing* facet's
+    // two distinct cut points (a near-coplanar triangle whose cut segment
+    // collapses in projection), not a duplicate: merging them drops the only
+    // segment that bridges two loops and leaves the topology walk with
+    // unpaired dead ends (the base fixture's 69.3 mm plane). Canonical
+    // `slice_facet` (`TriangleMeshSlicer.cpp`) keys its points the same way
+    // (`point_id` / `edge_id`), never by coincident coordinates.
+    if intersections
+        .iter()
+        .any(|existing| existing.topology == candidate.topology)
+    {
         return;
     }
 
@@ -974,6 +983,52 @@ pub fn slice_mesh_slabs(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A grazing facet cuts the plane at two points that can quantise to the
+    /// same XY yet carry different topology keys (`Edge(a)` / `Edge(b)`).
+    /// Deduping by coordinates drops the second point, so `slice_make_lines`
+    /// sees one point instead of two and discards the segment. That segment is
+    /// the bridge between two chains: losing it leaves the topology walk with
+    /// unpaired dead ends, and the whole cross-section collapses to a sliver
+    /// (the base fixture at its 69.3 mm midpoint plane, measured 2026-11-10:
+    /// 0.0025 mm² instead of 671.2054 mm²). Dedupe must key on topology only —
+    /// canonical `slice_facet` (`TriangleMeshSlicer.cpp`) keys points by
+    /// `point_id` / `edge_id`, never by coincident coordinates.
+    #[test]
+    fn coincident_cut_points_with_distinct_topology_are_both_kept() {
+        let mut points = Vec::new();
+        let point = Point2::from_mm(3.0, 4.0);
+
+        push_unique_intersection(
+            &mut points,
+            IntersectionPoint {
+                point,
+                topology: EndpointTopology::Edge(7),
+            },
+        );
+        push_unique_intersection(
+            &mut points,
+            IntersectionPoint {
+                point,
+                topology: EndpointTopology::Edge(9),
+            },
+        );
+        assert_eq!(
+            points.len(),
+            2,
+            "distinct topology keys must survive coincident coordinates"
+        );
+
+        // The same topology key is still a duplicate, whatever its coordinates.
+        push_unique_intersection(
+            &mut points,
+            IntersectionPoint {
+                point: Point2::from_mm(9.0, 9.0),
+                topology: EndpointTopology::Edge(7),
+            },
+        );
+        assert_eq!(points.len(), 2, "same topology key is a duplicate");
+    }
 
     #[test]
     fn test_empty_mesh() {

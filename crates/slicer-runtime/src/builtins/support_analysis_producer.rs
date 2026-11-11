@@ -177,9 +177,7 @@ pub fn commit_support_analysis_builtin(
             // excludes these two paint subtypes from region splitting, so they
             // never appear as a `variant_chain` entry -- slicing the modifier
             // volumes here is the only way this stage can see them.
-            let layer_zs: Vec<f32> = plan.global_layers.iter().map(|layer| layer.z).collect();
-            let modifiers =
-                ModifierGeometry::slice(blackboard.mesh(), &layer_zs, &plan.global_layers);
+            let modifiers = ModifierGeometry::slice(blackboard.mesh(), &plan.global_layers);
             // Deterministic order regardless of `SliceIR` ordering; the
             // parallel pass below reads only shared immutable state and
             // `rayon`'s `collect` into a `Vec` preserves this order, so the
@@ -646,7 +644,6 @@ struct ModifierGeometry {
 impl ModifierGeometry {
     fn slice(
         mesh: &slicer_ir::MeshIR,
-        layer_zs: &[f32],
         global_layers: &[slicer_ir::slice_ir::GlobalLayer],
     ) -> Self {
         let mut geometry = ModifierGeometry::default();
@@ -668,7 +665,22 @@ impl ModifierGeometry {
                 }],
                 build_volume: mesh.build_volume,
             };
-            for (position, entries) in slice_modifier_volumes(&scoped, layer_zs)
+            // Support enforcer/blocker volumes are sampled on the same plane as
+            // the object cross-section (canonical `compute_slice_z`), using the
+            // widest band among this object's active regions at the layer.
+            let object_zs: Vec<f32> = global_layers
+                .iter()
+                .map(|layer| {
+                    let band = layer
+                        .active_regions
+                        .iter()
+                        .filter(|region| region.object_id == object.id)
+                        .map(|region| region.effective_layer_height)
+                        .fold(0.0_f32, f32::max);
+                    slicer_core::algos::prepass_slice::layer_sample_plane_z(layer.z, band)
+                })
+                .collect();
+            for (position, entries) in slice_modifier_volumes(&scoped, &object_zs)
                 .into_iter()
                 .enumerate()
             {

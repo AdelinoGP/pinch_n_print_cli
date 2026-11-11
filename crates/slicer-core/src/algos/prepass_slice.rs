@@ -540,6 +540,29 @@ fn resolve_external_perimeter_width_mm(config: &ResolvedConfig) -> f32 {
 // batch_slice_objects_by_layer
 // ============================================================================
 
+/// Canonical slice plane of one object layer: the **midpoint** of the layer's
+/// own band, `0.5 × (lo + hi)`, not its print top.
+///
+/// Canonical `new_layers` (`PrintObjectSlice.cpp`) stores `slice_z =
+/// compute_slice_z(...)`, which is `0.5 × (lo + hi)` whenever ZAA is off, and
+/// slices at that plane while `layer.z` (the print top, `hi + zmin`) drives
+/// every downstream consumer. `effective_layer_height` is the band width
+/// `hi − lo`: the uniform step, the profile step for a variable-height
+/// schedule, or the catch-up span for a bridged region, so this one rule
+/// covers all three.
+///
+/// A non-finite or non-positive band (a hand-built layer plan from a focused
+/// test or a legacy fixture) falls back to the print top — the pre-midpoint
+/// behaviour — rather than producing a NaN plane. Production plans always
+/// carry a positive band.
+pub fn layer_sample_plane_z(layer_z: f32, effective_layer_height: f32) -> f32 {
+    if effective_layer_height.is_finite() && effective_layer_height > 0.0 {
+        layer_z - 0.5 * effective_layer_height
+    } else {
+        layer_z
+    }
+}
+
 /// Pre-slice every object mesh referenced across `global_layers` in one
 /// `slice_mesh_ex` call per object, instead of one call per (layer, object)
 /// pair. `slice_mesh_ex` performs a full O(triangle-count) scan of the mesh
@@ -548,19 +571,40 @@ fn resolve_external_perimeter_width_mm(config: &ResolvedConfig) -> f32 {
 /// O(layer-count × triangle-count) instead of O(triangle-count +
 /// intersections). Returns raw (pre-closing-radius) polygons keyed by
 /// `(global_layer_index, object_id)`.
+///
+/// Each object is sampled at its **layer midpoint** ([`layer_sample_plane_z`]), not
+/// at the global layer's print top.
 pub fn batch_slice_objects_by_layer(
     mesh: &MeshIR,
     global_layers: &[GlobalLayer],
 ) -> HashMap<u32, HashMap<ObjectId, Vec<ExPolygon>>> {
     let mut layers_and_zs_by_object: HashMap<ObjectId, (Vec<u32>, Vec<f32>)> = HashMap::new();
     for layer in global_layers {
+        // One plane per (global layer, object). Every region of an object at one
+        // global plane shares that object's layer band by planner construction
+        // (the default planner stamps one `effective_layer_height` on all of a
+        // plane's proposals). Slicing is per object, so a future planner that
+        // disagreed would leave no single canonical midpoint; the widest band
+        // wins deterministically so the plane is never taken above the object's
+        // own midpoint.
+        let mut band_by_object: HashMap<&ObjectId, f32> = HashMap::new();
         for active in &layer.active_regions {
+            band_by_object
+                .entry(&active.object_id)
+                .and_modify(|band| {
+                    if active.effective_layer_height > *band {
+                        *band = active.effective_layer_height;
+                    }
+                })
+                .or_insert(active.effective_layer_height);
+        }
+        for (object_id, band) in band_by_object {
             let entry = layers_and_zs_by_object
-                .entry(active.object_id.clone())
+                .entry(object_id.clone())
                 .or_default();
             if entry.0.last() != Some(&layer.index) {
                 entry.0.push(layer.index);
-                entry.1.push(layer.z);
+                entry.1.push(layer_sample_plane_z(layer.z, band));
             }
         }
     }
@@ -601,8 +645,9 @@ pub struct PrepassSliceCache<'a> {
 // execute_prepass_slice_single_layer
 // ============================================================================
 
-/// Produce the `SliceIR` for `layer` by slicing every referenced object mesh
-/// at `layer.z`.
+/// Produce the `SliceIR` for `layer` by slicing every referenced object mesh at
+/// that object layer's **midpoint** (canonical `compute_slice_z`), while
+/// `SliceIR::z` keeps the layer print top.
 pub fn execute_prepass_slice_single_layer(
     mesh: &MeshIR,
     layer: &GlobalLayer,
@@ -689,7 +734,11 @@ fn execute_prepass_slice_single_layer_impl(
         let raw_polygons = match cache.and_then(|c| c.raw_polygons.get(&active.object_id)) {
             Some(cached) => cached.clone(),
             None => {
-                let mut sliced = slice_mesh_ex(&object_world_mesh(object), &[layer.z]);
+                // No batch cache (direct call / test harness): sample this
+                // object layer at its canonical midpoint. `layer.z` stays the
+                // print top recorded on the resulting `SliceIR`.
+                let plane_z = layer_sample_plane_z(layer.z, active.effective_layer_height);
+                let mut sliced = slice_mesh_ex(&object_world_mesh(object), &[plane_z]);
                 sliced.pop().unwrap_or_default()
             }
         };

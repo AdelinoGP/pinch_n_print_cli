@@ -17,6 +17,10 @@ _Avoid_: mismatch, unfairness
 The pinned OrcaSlicer reference implementation that parity work is ported from and judged against.
 _Avoid_: upstream (ambiguous)
 
+**Slice plane**:
+The Z at which a layer's cross-section is sampled. Both arms sample at the layer midpoint (`0.5 × (lo + hi)`, canonical `compute_slice_z`); `GlobalLayer.z` is the print **top**, and the sample plane is `z − 0.5 × effective_layer_height`.
+_Avoid_: layer Z (ambiguous: the print top is not the sample plane)
+
 **Cell**:
 One entry of the slice-performance benchmark matrix (fixture × wall generator × supports), measured on both arms.
 _Avoid_: case, scenario

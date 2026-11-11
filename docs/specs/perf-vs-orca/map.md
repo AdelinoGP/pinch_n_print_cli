@@ -194,6 +194,70 @@ the new [layer-0 cross-section parity](issues/138-layer0-cross-section-parity.md
 (AFK, takeable now — the oracle's remaining residual is upstream of the module);
 [136](issues/136-planner-clip-batch-fanout.md) stays gated by 137.
 
+**Destination status (2026-11-10,
+[t138](issues/138-layer0-cross-section-parity.md)): the layer-0 residual is a
+slice-plane convention, not a module rule; the supports-off fix is a fairness
+ticket and supports-on is the engine.** PnP slices every layer at its **top**
+(`z = first_layer_height + n × layer_height`); canonical OrcaSlicer slices at the
+layer **midpoint** (`compute_slice_z` = `0.5 × (lo + hi)` in
+`PrintObjectSlice.cpp`, ZAA off). Ten sampled layers put PnP on the top plane
+(0.02–1.36% error) and Orca on the mid plane (0.02–4.02%); the decisive base L0
+and L10 rows separate the planes by 253% / 161%. On `base.stl` the 0.1 mm shift
+is **3.42x** of layer-0 area (3.122 vs 0.914 mm²); on the benchy **1.3%**. It is
+also visible in the layer count: base **495 / last Z 99.0** on PnP against
+**496 / 99.2** on Orca. The base supports-off skirt failure (+3.23% / +3.10%
+against 3%) is the brim footprint (+8.68%) diluted by the skirt offset; the
+brim path decomposes +88.04 mm contour − 27.65 mm anchor = +60.39 mm predicted
+vs +57.39 mm observed. Wall width (0.4 vs 0.42) is a 3.3% same-plane effect;
+first-layer height is equal. The four supports-on cells are the **support
+engine**: Orca's first-layer support is **10.6–11.7x** denser by path and
+**10.4–11.5x** by coverage, and the skirt output tracks the support-dominated
+input hull (base 1.1528 → 1.1248; benchy 0.9567 → 0.9661). **The adhesion
+oracle is 2/8 and cannot reach 8/8 without a slicing change:** without one the
+ceiling is 6/8 (all but base supports-off, only with perfect support parity);
+with the slice-plane change alone it is expected **4/8** (the supports-off
+cells); 8/8 needs both. The slice-plane change is a fairness fix, not a route
+step — base layer-0 operand 5.329 → 2.314 mm² (2.30x) but one layer of 495
+(0.20%), benchy 634.46 → 627.75 (1.01x, 0.42%); no wall claim, and the
+59.1–73.5% required cut is unchanged. **Frontier:**
+[139](issues/139-layer-plane-parity.md) (AFK, takeable now), the human's
+[137](issues/137-planner-scheduling-gate.md) (HITL), and
+[135](issues/135-cross-layer-occupancy-batching.md) Stage 2 /
+[136](issues/136-planner-clip-batch-fanout.md) (gated by 137).
+
+**Destination status (2026-11-11,
+[t139](issues/139-layer-plane-parity.md)): the slice plane is canonical, the
+matched job has a new reference set, and the route arithmetic is unchanged;
+the frontier is the human's gate [137](issues/137-planner-scheduling-gate.md),
+the new brim-anchor ruling [140](issues/140-brim-contour-input.md), and t135
+Stage 2 / t136 (gated by 137).** `PrePass::Slice`, the host layer schedule and
+the planner now sample at canonical `compute_slice_z`'s band **midpoint**
+(`0.5 × (lo + hi)`); `layer.z` stays the print top. Base prints **496 layers /
+last Z 99.2** (was 495 / 99.0); the benchy stays 240 / 48.0. The layer-0
+outer-wall hull fits the STL midpoint on every cell (base classic 0.932 vs mid
+0.955 / top 3.165; benchy 513.195 vs 513.415 / 520.028). The change also fixed
+a pre-existing slicer defect at base's new 69.3 mm plane
+(`push_unique_intersection` merged distinct-topology cut points; **671.2054
+mm² → 0.0025 mm²**, layer vanished) and moved modifier-volume sampling onto the
+same plane at all four sites so the Tier-2 hashes still match. **Reference set:**
+`93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…` / `ca14d055…` /
+`585c6a8e…` / `d8fdc1d9…` / `c9fee59a…`, byte-identical on both build arms; the
+pre-change arm reproduces t135's set exactly. **Oracle: still 2/8** — base
+supports-off now fails the 3 % skirt band as an **undershoot** (−4.3 % / −4.4 %
+swept, −5.7 % / −6.6 % outer loop; brim +8.1 % → −5.2 %), the inward wall-path
+anchor now standing alone; supports-on is the support engine. **A/B
+(attribution):** wall 0.923x–0.984x, CPU 0.963x–0.991x; supports-on filament
+−18.5 %. **Scoreboard: 2.279x–4.187x ordinary / 2.311x–4.179x accelerated,
+required cut 56.1 %–76.1 %**, superseding t135's 2.445x–3.769x with the
+disclosure that both arms also moved with machine state (Orca base-on 27.86 →
+22.85 s, PnP 105.01 → 93.55 s), so the movement is not attributable to the plane
+alone. **DEV-201 is closed; DEV-202 records the canonical-sampling residuals
+outside the matched job** (p241 `agg` drops 3/0/0 → 3/1/6; calicat internal-bridge
+sites one layer later at the same areas). **Frontier:**
+[137](issues/137-planner-scheduling-gate.md) (HITL),
+[140](issues/140-brim-contour-input.md) (HITL, new),
+[135](issues/135-cross-layer-occupancy-batching.md) Stage 2 and
+[136](issues/136-planner-clip-batch-fanout.md) (gated by 137).
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -280,7 +344,33 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-10, thirty-ninth session — the t135 Stage-1 take):**
+**Current selection scope (2026-11-10, fortieth session — the t138 take):** the
+human said "Continue the perf vs orca map" (no ticket named); **138 was the
+first unblocked, unclaimed AFK frontier ticket in order** (137 is the human's
+grilling; 136 and 135 Stage 2 are gated by it), so it was claimed and resolved as
+a Phase-1 attribution. Headline: **the layer-0 cross-section gap is the slice
+plane** — PnP samples every layer at its top, canonical at the midpoint
+(`compute_slice_z`); ten sampled layers put each arm on its expected plane (PnP
+0.02–1.36% off top, Orca 0.02–4.02% off mid), and base L0/L10 separate the
+candidate planes by **253% / 161%**. The 0.1 mm shift is **3.42x** of layer-0
+area on base and **1.3%** on the benchy; base prints **495 layers / Z 99.0** on
+PnP against Orca's **496 / 99.2**. The base-off skirt (+3.23% / +3.10%) is the
+brim footprint (+8.68%, decomposed +88.04 mm contour − 27.65 mm anchor against
++57.39 mm observed) diluted by the skirt offset; the supports-on cells are the
+support engine (Orca's first-layer support **10.6–11.7x** denser, coverage
+**10.4–11.5x**, and the skirt output tracks the support-dominated input hull);
+run counts are cosmetic; first-layer height is equal. **The oracle is 2/8 and no
+8/8 is reachable without a slicing change:** ceiling **6/8** without one
+(perfect support parity), expected **4/8** with the plane fix alone, 8/8 needs
+both. The fix is graduated as [139](issues/139-layer-plane-parity.md) — a
+fairness fix, not a route step (base layer-0 operand 5.329 → 2.314 mm² on 1 of
+495 layers; no wall claim; the 59.1–73.5% cut is unchanged). No production edit,
+no timing campaign, no reference move. Evidence:
+[`evidence/t138-layer0-cross-section/`](evidence/t138-layer0-cross-section/FINDINGS.md)
+(`verify.py` 8 claim groups, **12/12** negative controls). **Frontier now: 139
+(AFK, takeable now) and 137 (HITL); 135 Stage 2 / 136 are gated by 137.**
+
+**Previous selection scope (2026-11-10, thirty-ninth session — the t135 Stage-1 take):**
 the human said "Continue the perf vs orca map" (no ticket named); **135 Stage 1
 was the first unblocked, unclaimed frontier ticket in order** (137 is the
 human's grilling, 136 and 135 Stage 2 are gated by it), so it was claimed and
@@ -3092,6 +3182,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Layer-plane parity: sample at the canonical midpoint](issues/139-layer-plane-parity.md): **resolved (2026-11-11; the plane is canonical, the reference set is re-recorded, and the route arithmetic is unchanged)** — `PrePass::Slice` + the host schedule + the planner terminate/sample on `compute_slice_z`'s band midpoint; base **495 → 496 layers / 99.0 → 99.2**, benchy 240/48.0; layer-0 hull fits the STL mid section on all 8 cells (base classic 0.932 vs mid 0.955 / top 3.165 = **3.31x** separation; arachne 0.757 recorded). **Four modifier-volume slice sites** moved onto the same plane (region mapping, paint segmentation, support enforcer/blocker, Tier-2 staging) to keep the `modifier_sub_region_id` hashes equal. **Slicer defect fixed:** `push_unique_intersection` deduped by coincident coordinates, collapsing base's 69.3 mm section to 0.0025 mm² (correct 671.2054) and dropping the layer; topology-only dedupe restores all 496. **Reference set:** `93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…` / `ca14d055…` / `585c6a8e…` / `d8fdc1d9…` / `c9fee59a…`, arms identical; baseline reproduces t135. **Oracle 2/8** (base supports-off skirt −4.3 % / −4.4 % swept, −5.7 % / −6.6 % outer loop, brim +8.1 % → −5.2 %; supports-on = support engine). **A/B** wall 0.923x–0.984x, CPU 0.963x–0.991x. **Scoreboard** **2.279x–4.187x ordinary / 2.311x–4.179x accelerated, cut 56.1 %–76.1 %** (supersedes t135 with the machine-state disclosure). DEV-201 closed; DEV-202 filed (p241 agg, calicat sites). Graduated [Brim anchor: feed the slice contour into `skirt-brim`](issues/140-brim-contour-input.md). Evidence: [`evidence/t139-layer-plane-parity/`](evidence/t139-layer-plane-parity/FINDINGS.md) (`verify.py` 7 claim groups, 22/22 negative controls).
+- [Layer-0 cross-section parity: do the two arms print the same first layer?](issues/138-layer0-cross-section-parity.md): **resolved (2026-11-10; Phase-1 attribution — the residual is a slice-plane convention, the base skirt is its second-order consequence, supports-on is the support engine)** — PnP slices every layer at its **top** (`first_layer_height + n × layer_height`), canonical OrcaSlicer at the layer **midpoint** (`compute_slice_z` = `0.5 × (lo + hi)`, ZAA off). Slicing the same STL at top/0.20 and mid/0.21 and comparing translation-invariant hulls puts PnP on the top plane (0.02–1.36% error) and Orca on the mid plane (0.02–4.02%) on all ten sampled layers; base L0/L10 separate the candidate planes by **253% / 161%**. On `base.stl` the 0.1 mm shift is **3.42x** of layer-0 area (3.122 vs 0.914 mm²); on the benchy **1.3%**; base is **495 layers / Z 99.0** on PnP vs **496 / 99.2** on Orca. **Classification:** base footprint = slice plane (same-plane wall-width effect 3.3%); base-off brim +8.09% = +88.04 mm contour − 27.65 mm anchor (predicted +60.39 vs observed +57.39); base-off skirt +3.23% = brim footprint +8.68% diluted by the offset; base-on skirt +12.48% and benchy-on brim +54.51% = support engine (Orca support path 10.6–11.7x denser, coverage 10.4–11.5x; skirt tracks the support-dominated input hull); run counts 22/30, 19/39, 0/0 = cosmetic splitting; first-layer height equal. **Oracle: 2/8; no 8/8 without a slicing change** — ceiling 6/8 without one (perfect support parity), expected 4/8 with the plane fix alone, 8/8 needs both; the strict form is an engine-level acceptance. **Price:** fairness fix, not a route step — base layer-0 operand 5.329 → 2.314 mm² (2.30x) on 1 of 495 layers, benchy 1.01x on 1 of 240; no wall claim, 59.1–73.5% cut unchanged; the price is the 16-cell re-take, delta audit and scoreboard re-derivation, plus the multi-height midpoint decision. Graduated [Layer-plane parity](issues/139-layer-plane-parity.md). Evidence: [`evidence/t138-layer0-cross-section/`](evidence/t138-layer0-cross-section/FINDINGS.md) (`verify.py` 8 claim groups, `--self-test` 12/12 controls).
 - [Staged fold: canonical skirt-brim re-take and cross-layer occupancy offset batching](issues/135-cross-layer-occupancy-batching.md): **Stage 1 resolved (2026-11-10) — the canonical skirt/brim port lands, the adhesion job and its flow model are matched on both arms, and the new reference set replaces t123's; the strict parity oracle is 2/8 with every residual attributed outside the module** — brim = contour-anchored annulus (`make_brim` / `tryExPolygonOffset`) clipped against the first-layer support *region*, skirt = hull of the first `skirt_height` layers plus the brim footprint (`Print::_make_skirt`), both at the canonical flow spacing `line_width - h x (1 - pi/4)`, at `40ecc66f78` with the OrcaSlicer attribution header; module keys `brim_object_gap = 0.1`, `min_skirt_length = 0` (non-zero fails closed) and `first_layer_height`. **Seven matched keys**, three of them re-derived: `brim_type = outer_only` (`auto_brim` overrides `brim_width`), `initial_layer_line_width = 0.4` (**Orca resolved 0.5 against PnP's 0.4**, so 8 mm quantised to 7.31 vs 8.0 mm — the t82 "0.4 both sides" claim is falsified by the appendix) and `tree_support_brim_width = 0`. **Output:** baseline reproduces t123; candidate records `7db0641b…` / `c02aa4e9…` / `a2f7a1fe…` / `2326455d…` / `7ef84447…` / `1ddea2b7…` / `defae354…` / `4aa1847c…`, identical across arms. **Delta audit:** all motion outside `Skirt`/`Brim` identical with E stripped, |dE| <= 0.00098 mm. **Oracle:** benchy supports-off passes (+2.4/+2.6 % brim work, +1.3 % brim area, 22 lines); base supports-off is 22/22 lines at +8.1/+7.3 % brim work with skirt +3.2/+3.1 % against a 3 % band (anchor convention); supports-on is support-engine dominated (0/0 brim on base, skirt 12.5 %; Orca's benchy brim 39 runs vs 19). **A/B:** wall 0.963–1.046, CPU 0.992–1.026 — below the noise floor. **Scoreboard:** 2.445x–3.769x ordinary / 2.420x–3.745x accelerated, cut 59.1 %–73.5 %, superseding t124. Stage 2 (the occupancy batch) remains gated by [137](issues/137-planner-scheduling-gate.md).
 
 - [Matched settings vs the 8 mm brim: close the asymmetry or keep it disclosed?](issues/130-brim-matched-settings-ruling.md): **resolved (2026-11-09; human ruling — close both adhesion/priming asymmetries by canonical port + shared authored values, staged into t135; disclosure declined)** — the job keeps an 8 mm brim and a 6-loop / 3.0 mm / 1-layer skirt on both arms (`brim_width = 8`, `skirt_loops = 6`, `skirt_distance = 3.0`, `skirt_height = 1`, asserted per run fail-closed both sides; the Orca pin amends `--brim-width=0` → `8` plus three skirt overrides, and the t103 "2.4-era" doctrine re-scopes to "the matched job"), and `com.core.skirt-brim`'s bounding-box rectangles are replaced by canonical geometry ported from the pinned `v2.5.0` = `40ecc66f78` (`make_brim` (`Brim.cpp`) + the `Print.cpp` skirt construction, OrcaSlicer attribution header). Fact base: PnP printed 20 brim + 6 skirt loops where Orca's chain resolved `skirt_loops = 0` / brim `0` — two asymmetries, one surface, ~235 ms of PnP wall. Standing policy: **close asymmetries by default before any new ratio of record; parity work licensed only to close asymmetries** (third recorded exception in Out of scope; route-wide lifting declined, repo ADR declined). Sequencing: staged fold into [t135](issues/135-cross-layer-occupancy-batching.md) (a fused single candidate rejected as the t115 failure mode) — Stage 1 (unblocked) is the re-take recording the **new reference set** (t123's set retired as the currency) with its own old-vs-new paired attribution, Stage 2 is the batch under [t137](issues/137-planner-scheduling-gate.md)'s gate ruling, and the closing gate is the 8-cells × 3-tools scoreboard re-derivation superseding t124's ratios (until then they stand as historical and the disclosure rides every scoreboard). No production edit in this take.
@@ -3366,13 +3458,7 @@ Standing decisions for this effort (2026-09-22):
   unpriced fog is the **sweep-volume work-set family** — per-vertex overhang
   distance, per-layer overhang polygons, canonical loop projection — each of
   which needs its own Phase-1 before a candidate can be priced. The per-layer
-  phase joins the first program on both benchy cells. One new, measured
-  residual graduated to [138](issues/138-layer0-cross-section-parity.md): **cross-arm
-  adhesion parity beyond the module**
-  (Orca's support brims under the same `; FEATURE: Brim` label, its
-  per-volume-group brim clipping, and PnP's absent support brim) — it moves the
-  oracle's work axis, not the slice, so it is a fairness question for a future
-  ratio, not a route step.
+  phase joins the first program on both benchy cells.
 
 - **The bridge wave expansion is a per-layer partition change, and its benchy
   cost is the blocker (surfaced 2026-11-06 by
@@ -3895,6 +3981,16 @@ Standing decisions for this effort (2026-09-22):
   instead of zero.
 
 ## Out of scope
+
+- **Matching Orca's `tree_strong` support engine to make the supports-on
+  adhesion-oracle cells pass.** [t138](issues/138-layer0-cross-section-parity.md)
+  measured Orca's first-layer support **10.6–11.7x** denser by path and
+  **10.4–11.5x** by coverage than PnP's tree support, which is why the four
+  supports-on cells sit outside the oracle bands (brim +54.5% swept on benchy;
+  skirt +12.5% on base). Making them pass is an engine-parity program for an
+  evidence check, not a speed lever, and it is not a matched-settings asymmetry.
+  It returns only if the human grants a t81-style exception or redraws the
+  destination to include support-engine parity.
 
 - **Pruning the support-attribution table as a memory or hygiene change.**
   [Ticket 101](issues/101-support-identity-table-materialisation.md) measured the

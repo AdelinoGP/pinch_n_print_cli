@@ -1445,9 +1445,9 @@ fn synthetic_triangle_mesh() -> IndexedTriangleSet {
 /// A 1 mm-tall cube (x 0..10, y 0..10, z 0..1) used for SYNTHETIC MODIFIER
 /// meshes. The flat `synthetic_triangle_mesh` has no z-extent, so it cannot
 /// stand in for a modifier: ticket 18 mints a modified object's sub-region
-/// entries from the modifier mesh's slice at the layer Z, and a flat z=0
-/// triangle slices empty at the plan's z=0.1 — the modifier would then be
-/// invisible to the region map (and to Tier-2's `stage_modifier_footprints`).
+/// entries from the modifier mesh's slice at the layer's sample plane, and a
+/// flat z=0 triangle slices empty there — the modifier would then be invisible
+/// to the region map (and to Tier-2's `stage_modifier_footprints`).
 fn synthetic_modifier_mesh() -> IndexedTriangleSet {
     IndexedTriangleSet {
         vertices: vec![
@@ -1548,7 +1548,10 @@ fn synthetic_layer_plan_single_region(object_id: &str) -> LayerPlanIR {
     LayerPlanIR {
         global_layers: vec![GlobalLayer {
             index: 0,
-            z: 0.1,
+            // Print top. Canonical `compute_slice_z` samples the band midpoint,
+            // so this 0.2 mm band's sample plane is 0.1 — the plane the
+            // synthetic modifier fixtures are authored against.
+            z: 0.2,
             active_regions: vec![ActiveRegion {
                 object_id: object_id.into(),
                 effective_layer_height: 0.2,
@@ -1897,12 +1900,13 @@ fn conflicting_extruder_modifier_priority_wins() {
     };
     let sub_id = {
         // Mint the sub-region id exactly as the kernel and the Tier-2 split do:
-        // FNV-1a over object id + the modifier mesh's slice at the plan's Z
-        // (z = 0.1 for the synthetic single-region plan).
+        // FNV-1a over object id + the modifier mesh's slice at the layer's
+        // canonical sample plane (0.1 for the synthetic single-region plan,
+        // whose 0.2 mm band has a 0.2 print top).
         let polygons = slicer_core::slice_mesh_ex(&synthetic_modifier_mesh(), &[0.1])
             .into_iter()
             .next()
-            .expect("synthetic modifier cube must slice at z=0.1");
+            .expect("synthetic modifier cube must slice at the 0.1 sample plane");
         slicer_ir::modifier_sub_region_id(0, "synthetic-obj", &polygons)
     };
 

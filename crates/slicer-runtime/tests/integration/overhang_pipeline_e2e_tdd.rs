@@ -187,10 +187,14 @@ fn active_region(object_id: &str) -> ActiveRegion {
 /// `PrePass::Slice` produces `SliceIR` that `PrePass::OverhangAnnotation` (which
 /// now runs after Slice) derives overhang bands from.
 fn two_global_layers(object_id: &str) -> Vec<GlobalLayer> {
+    // `GlobalLayer::z` is the layer's print **top**, and canonical
+    // `compute_slice_z` samples the band midpoint (`z - 0.5 * height`), so these
+    // 1.0 mm bands are sliced at 0.5 and 1.5 — the planes this fixture's
+    // overhang expectations were written against.
     vec![
         GlobalLayer {
             index: 0,
-            z: 0.5,
+            z: 1.0,
             active_regions: vec![active_region(object_id)],
             has_nonplanar: false,
 
@@ -198,7 +202,7 @@ fn two_global_layers(object_id: &str) -> Vec<GlobalLayer> {
         },
         GlobalLayer {
             index: 1,
-            z: 1.5,
+            z: 2.0,
             active_regions: vec![active_region(object_id)],
             has_nonplanar: false,
 

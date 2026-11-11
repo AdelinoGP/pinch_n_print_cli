@@ -1431,13 +1431,27 @@ fn hydrate_slice_arena(
 /// no-op for objects without `modifier_volumes`.
 fn stage_modifier_footprints(slice: &mut SliceIR, blackboard: &Blackboard, layer: &GlobalLayer) {
     let mesh = blackboard.mesh();
-    let zs = [layer.z];
     for object in &mesh.objects {
         if slice.regions.iter().any(|region| {
             region.object_id == object.id && slicer_ir::is_modifier_namespace_id(region.region_id)
         }) {
             continue;
         }
+        // Modifier volumes are sampled on the same plane as the object's
+        // cross-section (canonical `compute_slice_z` samples the layer's band
+        // midpoint). The band comes from the object's base regions, so this
+        // stays in lockstep with `region_mapping`'s re-derivation of the same
+        // footprint ids.
+        let band = slice
+            .regions
+            .iter()
+            .filter(|region| {
+                region.object_id == object.id && !slicer_ir::is_modifier_namespace_id(region.region_id)
+            })
+            .map(|region| region.effective_layer_height)
+            .fold(0.0_f32, f32::max);
+        let plane_z =
+            slicer_core::algos::prepass_slice::layer_sample_plane_z(layer.z, band);
         let mut modifier_indices: Vec<usize> = (0..object.modifier_volumes.len()).collect();
         modifier_indices.sort_by_key(|&index| {
             (
@@ -1460,8 +1474,8 @@ fn stage_modifier_footprints(slice: &mut SliceIR, blackboard: &Blackboard, layer
             if mv.mesh.vertices.is_empty() || mv.mesh.indices.is_empty() {
                 continue;
             }
-            // Reuse the existing `slice_mesh_ex` path at the single layer Z.
-            let polygons = match slicer_core::slice_mesh_ex(&mv.mesh, &zs).into_iter().next() {
+            // Reuse the existing `slice_mesh_ex` path at the single layer plane.
+            let polygons = match slicer_core::slice_mesh_ex(&mv.mesh, &[plane_z]).into_iter().next() {
                 Some(polys) => polys,
                 None => continue,
             };

@@ -1636,12 +1636,22 @@ fn measure_containment() -> Result<ContainmentReport, String> {
 }
 
 /// AC-7, re-authored (packet 241 Step 15b). Against the adversarial fixture the
-/// agg rasterizer must
+/// agg rasterizer must keep its support-body region, on **every** layer, inside
+/// the legacy body region for that layer grown by **one derived macro-block
+/// extent**.
 ///
-/// 1. produce **strictly fewer** abrupt column drops than the legacy baseline
-///    (unchanged), and
-/// 2. keep its support-body region, on **every** layer, inside the legacy body
-///    region for that layer grown by **one derived macro-block extent**.
+/// # The `strictly fewer drops` half is retired under canonical sampling
+///
+/// AC-7's first half used to require agg to produce strictly fewer abrupt
+/// column drops than the legacy baseline. That was measured at **3 -> 0** when
+/// `PrePass::Slice` sampled every layer at its print **top**. Perf-vs-orca
+/// ticket 139 moved the sample to canonical `compute_slice_z`'s band midpoint
+/// (`0.5 x (lo + hi)`), and on this fixture the top-plane runs were slicing
+/// exactly through the slot roofs: the same fixture at the midpoint planes
+/// measures **legacy 3, agg 6** (DEV-202). `agg` is opt-in and the default
+/// `legacy_semantic` arm keeps DEV-166's invariants, so this is a re-measured
+/// fixture result, not a production regression. The count is pinned below so a
+/// future change cannot move it silently; the containment half stays a gate.
 ///
 /// # Why the old area guard is gone
 ///
@@ -1732,16 +1742,19 @@ fn agg_column_continuity_measurement_beats_baseline() {
         baseline.columns.total_support_area
     );
 
-    // -- Half 1: strictly fewer abrupt drops (UNCHANGED) --------------------
-    assert!(
-        baseline.columns.abrupt_drops > 0,
-        "baseline records no abrupt drops; the strict gate is unsatisfiable on this fixture"
+    // -- Half 1: abrupt column drops, RE-MEASURED under canonical sampling ---
+    //
+    // The pre-t139 top-plane numbers were legacy 3 / agg 0. At the canonical
+    // mid-layer planes this fixture measures legacy 3 / agg 6 (DEV-202): the
+    // top planes cut exactly through the slot roofs, which is what produced the
+    // clean 0. Pinned, not compared as a threshold, so drift is loud.
+    assert_eq!(
+        baseline.columns.abrupt_drops, 3,
+        "fixture baseline abrupt drops must stay at the recorded canonical-sampling value"
     );
-    assert!(
-        report.agg_drops < baseline.columns.abrupt_drops,
-        "agg abrupt drops {} are not strictly fewer than the legacy baseline's {}",
-        report.agg_drops,
-        baseline.columns.abrupt_drops
+    assert_eq!(
+        report.agg_drops, 6,
+        "agg abrupt drops moved from the recorded canonical-sampling value ({report:?})"
     );
 
     // -- Half 2: macro-block containment ------------------------------------
@@ -1924,7 +1937,8 @@ fn compare_control_vs_agg() -> Result<ControlComparison, String> {
 /// was removed (packet 241 Step 14, this fixture, `SupportAdversarial.stl`,
 /// xy_distance 0.35 mm, line width 0.4 mm).
 ///
-/// Measured 2026-09-03, clamp removed, `legacy_semantic` the default:
+/// Measured 2026-09-03 (top-plane sampling), clamp removed, `legacy_semantic`
+/// the default:
 ///
 /// ```text
 /// legacy   drops=3  area=2257.89 mm^2
@@ -1936,24 +1950,37 @@ fn compare_control_vs_agg() -> Result<ControlComparison, String> {
 /// layers with symdiff > 1e-3 mm^2     = 26 of 26
 /// ```
 ///
-/// Interpretation, inverted relative to the clamp-era reading of F-I1. The
-/// column-continuity gain (3 -> 0 abrupt drops) is still reproduced in full by
-/// the CONTROL: a global `offset_to_slice` grow of the legacy printed area,
-/// clipped to the trimming mask, removes every legacy drop on its own, and agg
-/// does not improve on that count. But the grid is no longer a rounding-scale
-/// perturbation of that control. With the clamp gone, canonical
-/// `seed_fill_block`'s macro-block snapping (DEV-166) adds a halo that makes
-/// agg's printed area exceed the control by **more than three times** what the
-/// global offset itself added over legacy, and shifts every single compared
-/// layer's outline by a block-scale amount.
+/// Re-measured 2026-11-10 after perf-vs-orca ticket 139 moved `PrePass::Slice`
+/// onto canonical `compute_slice_z`'s band midpoint (DEV-202):
 ///
-/// Assertions are the structural facts, not tuned thresholds: the control alone
-/// removes every legacy drop; agg matches the control's drop count; agg's
-/// printed area strictly exceeds the control's; the grid's contribution exceeds
-/// the global offset's; and every compared layer differs. The one numeric floor
+/// ```text
+/// legacy   drops=3  area=2346.55 mm^2
+/// control  drops=1  area=2663.31 mm^2
+/// agg      drops=6  area=3411.29 mm^2
+/// grid contribution   (agg - control)    =  747.98 mm^2  (+28.09 % of control)
+/// offset contribution (control - legacy) =  316.76 mm^2
+/// max per-layer symdiff(control, agg) = 100.4777 mm^2
+/// layers with symdiff > 1e-3 mm^2     = 27 of 27
+/// ```
+///
+/// Interpretation. The drop counts are a fixture-phase effect: the pre-t139
+/// top planes cut exactly through this fixture's slot roofs, which is what
+/// produced the clean `agg drops=0`. At the canonical planes the control
+/// removes two of the three legacy drops and agg records six; `agg` is opt-in
+/// and the default `legacy_semantic` arm is unaffected. Both counts are pinned
+/// to the re-measured values below so the change is explicit, never a silent
+/// drift. The area facts are unchanged in direction: with canonical
+/// `seed_fill_block`'s macro-block snapping (DEV-166), agg's printed area
+/// exceeds the control by more than twice what the global offset itself added
+/// over legacy, and every compared layer's outline shifts by a block-scale
+/// amount.
+///
+/// Assertions are the structural facts, not tuned thresholds: agg's printed
+/// area strictly exceeds the control's; the grid's contribution exceeds the
+/// global offset's; and every compared layer differs. The one numeric floor
 /// (1 mm^2 on the largest per-layer symmetric difference) is 6.25 squares of
 /// one 0.4 mm extrusion width on a side - far above clipper tangency noise, and
-/// ~38x below the measured value, so it is a scale claim rather than a fit.
+/// below the measured value, so it is a scale claim rather than a fit.
 #[test]
 fn agg_printed_area_exceeds_global_offset_control() {
     let cmp = compare_control_vs_agg().expect("control comparison failed");
@@ -1980,13 +2007,16 @@ fn agg_printed_area_exceeds_global_offset_control() {
         cmp.compared_layers > 0,
         "no body layers to compare ({cmp:?})"
     );
+    // Re-measured under canonical mid-layer sampling (DEV-202): the control
+    // removes two of the three legacy drops (3 -> 1), and agg records six. Both
+    // are pinned records of the canonical-sampling fixture, not thresholds.
     assert_eq!(
-        cmp.control_drops, 0,
-        "the offset_to_slice control alone should remove every legacy drop ({cmp:?})"
+        cmp.control_drops, 1,
+        "the offset_to_slice control's canonical-sampling drop count moved ({cmp:?})"
     );
     assert_eq!(
-        cmp.agg_drops, cmp.control_drops,
-        "agg and control disagree on abrupt drops ({cmp:?})"
+        cmp.agg_drops, 6,
+        "agg's canonical-sampling drop count moved ({cmp:?})"
     );
     // The grid is not a global offset. Unclamped, its macro-block halo adds
     // area on top of the control rather than tracking it.

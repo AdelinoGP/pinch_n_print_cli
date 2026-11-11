@@ -142,11 +142,85 @@ fn slice_above_mesh_produces_empty_polygons() {
     );
 }
 
+/// Canonical `compute_slice_z` samples a layer at its band **midpoint**, not at
+/// its print top. This frustum's cross-section shrinks with Z (side length
+/// `10 − 0.5·z`), so a top-plane implementation lands on the wrong area and is
+/// rejected: at `z = 4.0` with a 0.4 mm band the mid plane is `3.8`
+/// (`8.1² = 65.61 mm²`) while the top plane is `4.0` (`8.0² = 64.0 mm²`).
+#[test]
+fn slice_uses_the_layer_midpoint_not_the_print_top() {
+    fn p(x: f32, y: f32, z: f32) -> Point3 {
+        p3(x, y, z)
+    }
+    let mesh = MeshIR {
+        schema_version: sv(1, 0, 0),
+        objects: vec![ObjectMesh {
+            id: "frustum".to_string(),
+            mesh: IndexedTriangleSet {
+                vertices: vec![
+                    p(0.0, 0.0, 0.0),
+                    p(10.0, 0.0, 0.0),
+                    p(10.0, 10.0, 0.0),
+                    p(0.0, 10.0, 0.0),
+                    p(2.5, 2.5, 10.0),
+                    p(7.5, 2.5, 10.0),
+                    p(7.5, 7.5, 10.0),
+                    p(2.5, 7.5, 10.0),
+                ],
+                indices: vec![
+                    0, 1, 2, 0, 2, 3, // bottom
+                    4, 6, 5, 4, 7, 6, // top
+                    0, 4, 5, 0, 5, 1, // front
+                    1, 5, 6, 1, 6, 2, // right
+                    2, 6, 7, 2, 7, 3, // back
+                    3, 7, 4, 3, 4, 0, // left
+                ],
+            },
+            transform: identity_transform(),
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
+            modifier_volumes: vec![],
+            paint_data: None,
+            ..Default::default()
+        }],
+        build_volume: build_volume(),
+    };
+    let mut layer = make_global_layer(0, 4.0, "frustum");
+    layer.active_regions[0].effective_layer_height = 0.4;
+
+    let result = execute_prepass_slice_single_layer(&mesh, &layer, None)
+        .expect("slice must succeed at the layer midpoint");
+
+    let area_mm2: f64 = result.regions[0]
+        .polygons
+        .iter()
+        .map(|expoly| {
+            let points = &expoly.contour.points;
+            let mut twice_area = 0.0_f64;
+            for i in 0..points.len() {
+                let a = points[i];
+                let b = points[(i + 1) % points.len()];
+                twice_area += a.x as f64 * b.y as f64 - b.x as f64 * a.y as f64;
+            }
+            twice_area.abs() / 2.0 / 1.0e8
+        })
+        .sum();
+
+    assert!(
+        (area_mm2 - 65.61).abs() < 0.01,
+        "expected the 3.8 mm mid-plane area 65.61 mm², got {area_mm2}"
+    );
+    assert!(
+        (area_mm2 - 64.0).abs() > 0.5,
+        "a top-plane slice (64.0 mm²) must be rejected, got {area_mm2}"
+    );
+}
+
 #[test]
 fn unknown_object_returns_error() {
     let mesh = cube_mesh();
     let layer = make_global_layer(0, 5.0, "nonexistent");
-
     let err = execute_prepass_slice_single_layer(&mesh, &layer, None)
         .expect_err("must fail for unknown object");
 

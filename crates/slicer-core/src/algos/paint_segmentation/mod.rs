@@ -685,7 +685,19 @@ pub fn execute_paint_segmentation(
 
     // ---- Step 10 / AC-13 / D14: slice modifier volumes once for all layers ----
     // Produces per-layer per-semantic polygon lists; routed onto BASE chains only.
-    let layer_zs: Vec<f32> = working.iter().map(|s| s.z).collect();
+    // Sample modifier volumes on each layer's canonical band midpoint, the
+    // same plane `PrePass::Slice` used for the object cross-section.
+    let layer_zs: Vec<f32> = working
+        .iter()
+        .map(|slice| {
+            let band = slice
+                .regions
+                .iter()
+                .map(|region| region.effective_layer_height)
+                .fold(0.0_f32, f32::max);
+            crate::algos::prepass_slice::layer_sample_plane_z(slice.z, band)
+        })
+        .collect();
     let modifier_vol_per_layer = modifier_volumes::slice_modifier_volumes(&mesh, &layer_zs);
 
     if semantic_axes.len() > 1 {

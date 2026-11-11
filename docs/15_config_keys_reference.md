@@ -244,8 +244,11 @@ is the authoritative catalog of their defaults and ranges.
 | `top_surface_speed` | float | `60.0` | [1.0, 300.0] | — | `rectilinear-infill` |
 | `seam_mode` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | — | `seam-placer` |
 | `seam_mode` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | — | `seam-planner-default` |
+| `brim_object_gap` | float | `0.1` | [0.0, 2.0] | — | `skirt-brim` |
 | `brim_width` | float | `8.0` | [0.0, 30.0] | — | `skirt-brim` |
+| `first_layer_height` | float | `0.3` | [0.01, 1.0] | — | `skirt-brim` |
 | `line_width` | float | `0.4` | [0.0, 2.0] | — | `skirt-brim` |
+| `min_skirt_length` | float | `0.0` | [0.0, 10000.0] | — | `skirt-brim` |
 | `skirt_brim_enabled` | bool | `true` | — | — | `skirt-brim` |
 | `skirt_distance` | float | `3.0` | [0.0, 20.0] | — | `skirt-brim` |
 | `skirt_height` | int | `1` | [1.0, 10.0] | — | `skirt-brim` |
@@ -530,6 +533,7 @@ upstream or has no upstream equivalent.
 <!-- BEGIN GENERATED: orca-deviations (cargo xtask gen-config-docs) -->
 | Key | Owner | Pinch 'n Print default | OrcaSlicer default |
 |---|---|---|---|
+| `brim_object_gap` | `skirt-brim` | `0.1` | `0.0` |
 | `brim_width` | `skirt-brim` | `8.0` | `0.0` |
 | `fan_max_speed` | `part-cooling` | `255` | `100.0` |
 | `fan_min_speed` | `part-cooling` | `51` | `20.0` |

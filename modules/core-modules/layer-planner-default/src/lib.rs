@@ -223,6 +223,13 @@ fn merge_raft_sequences(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
 /// schedule and is returned verbatim in `f64`; the uniform formula is never
 /// reapplied. Otherwise the uniform sequence is computed in `f64` using the
 /// direct formula `first_layer_height + n * layer_height`.
+///
+/// The loop terminates on the layer **midpoint**, mirroring canonical
+/// `generate_object_layers` (`Slicing.cpp`): `slice_z = print_z + 0.5 × height`
+/// breaks when `slice_z >= object_print_z_height`. A top-based test would drop
+/// the final layer of an object whose height is not an exact multiple of its
+/// layer height (OrcaSlicer keeps base's 496th layer at a 99.2 top on a
+/// 99.1598 mm object).
 fn generate_object_layers_f64(plan: &ObjectPlan) -> Vec<f64> {
     if plan.has_explicit_schedule() {
         return plan.layer_zs.clone();
@@ -235,7 +242,9 @@ fn generate_object_layers_f64(plan: &ObjectPlan) -> Vec<f64> {
     let mut n: u32 = 0;
     loop {
         let z_f64 = first + (n as f64) * step;
-        if z_f64 > height + 1e-6 {
+        let layer_step = if n == 0 { first } else { step };
+        let slice_z = z_f64 - 0.5 * layer_step;
+        if slice_z >= height {
             break;
         }
         layers.push(z_f64);
@@ -318,7 +327,16 @@ fn merge_same_height(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLayer> {
     let mut n: u32 = 0;
     loop {
         let base_z_f64 = first_z_f64 + (n as f64) * lh_f64;
-        if base_z_f64 > max_height + 1e-6 {
+        // Canonical termination is the layer midpoint, not the top: the layer
+        // exists while `slice_z = print_z + 0.5 × height` is below the object
+        // height (`generate_object_layers`, `Slicing.cpp`).
+        let layer_step = if n == 0 {
+            first.first_layer_height
+        } else {
+            lh_f64
+        };
+        let slice_z_f64 = base_z_f64 - 0.5 * layer_step;
+        if slice_z_f64 >= max_height {
             break;
         }
         let z_f64 = raft_top + base_z_f64;
@@ -326,7 +344,14 @@ fn merge_same_height(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLayer> {
         let z = z_f64 as f32;
         let regions: Vec<RegionLayerProposal> = plans
             .iter()
-            .filter(|p| base_z_f64 <= p.height + 1e-6)
+            .filter(|p| {
+                let object_step = if n == 0 {
+                    p.first_layer_height
+                } else {
+                    p.layer_height
+                };
+                base_z_f64 - 0.5 * object_step < p.height
+            })
             .map(|p| {
                 let effective_lh = if layers.is_empty() {
                     p.first_layer_height
@@ -378,15 +403,6 @@ fn merge_different_heights(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLay
         let base_z_f64 = z_f64 - raft_top;
 
         for (i, plan) in plans.iter().enumerate() {
-            // Both uniform and explicit-schedule objects are bounded by their
-            // scalar `height`: a schedule says which planes are *native*, not
-            // how far the object extends. Planes between a schedule's last top
-            // and the physical height still need catch-up regions, or material
-            // above the final scheduled plane would never be sliced.
-            if base_z_f64 > plan.height + 1e-6 {
-                continue;
-            }
-
             // Check if this object has a native layer at this Z. Explicit
             // schedules are matched on their own `f64` entries so the matched
             // index also gives the variable step below.
@@ -394,6 +410,12 @@ fn merge_different_heights(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLay
 
             if let Some(native_index) = native_index {
                 // Regular layer for this object.
+                //
+                // A native plane is never filtered by `height`: the schedule's
+                // own midpoint termination already decided it belongs to the
+                // object, and its print top may legitimately overshoot the
+                // object height by up to half a layer (canonical's 496th base
+                // layer at 99.2 on a 99.1598 mm object).
                 //
                 // Explicit schedules step between their own `f64` entry pairs
                 // (variable step); the first native plane is credited
@@ -415,7 +437,12 @@ fn merge_different_heights(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLay
                 });
                 last_z[i] = z;
             } else {
-                // Catch-up layer: this object doesn't have a native layer here
+                // Catch-up layer: this object doesn't have a native layer here.
+                // A plane above the object's print top carries no material, so
+                // the object stops participating there.
+                if base_z_f64 > plan.height + 1e-6 {
+                    continue;
+                }
                 let bottom_z = last_z[i];
                 let catchup_height = z - bottom_z;
                 if catchup_height > 1e-6 {

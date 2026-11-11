@@ -234,6 +234,19 @@ pub fn split_modifier_sub_regions_for_prepass(
         .regions
         .retain(|region| region.region_id != MODIFIER_FOOTPRINT_REGION_ID);
 
+    // Modifier volumes are sampled on the same canonical band midpoint as the
+    // object cross-section (`compute_slice_z`). The band comes from this
+    // layer's own regions, so the footprint geometry -- and therefore the
+    // Tier-2 `modifier_sub_region_id` hash -- matches `region_mapping`'s
+    // re-derivation exactly.
+    let band = working
+        .regions
+        .iter()
+        .filter(|region| !slicer_ir::is_modifier_namespace_id(region.region_id))
+        .map(|region| region.effective_layer_height)
+        .fold(0.0_f32, f32::max);
+    let plane_z = slicer_core::algos::prepass_slice::layer_sample_plane_z(working.z, band);
+
     let mut footprints = Vec::new();
     for object in &mesh.objects {
         let mut modifier_indices: Vec<usize> = (0..object.modifier_volumes.len()).collect();
@@ -257,7 +270,7 @@ pub fn split_modifier_sub_regions_for_prepass(
             {
                 continue;
             }
-            let footprint = slicer_core::slice_mesh_ex(&modifier.mesh, &[working.z])
+            let footprint = slicer_core::slice_mesh_ex(&modifier.mesh, &[plane_z])
                 .into_iter()
                 .next()
                 .unwrap_or_default();
