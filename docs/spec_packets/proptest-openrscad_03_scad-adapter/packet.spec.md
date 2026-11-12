@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_03_scad-adapter
-status: draft
+status: implemented
 ---
 
 # Optional exact SCAD adapter with Windows feasibility proof
@@ -300,12 +300,15 @@ Recorded during implementation against `vendor/openrscad@1a45bd33f2` on Windows
 8. **AST depth counts operator nesting, not parentheses.** `(( (1) ))` parses to a
    single literal, so the AC-N4 depth fixture uses real `+` nesting. The bound is
    unchanged; only the fixture was corrected.
-9. **AC-6's CI-execution clause is satisfied.** `.github/workflows/ci.yml` gains
-   the required self-contained `scad-adapter-windows` job. It executed on head
-   `65f6acf` in run `43113651822` (job `130835934489`) and passed every step —
-   `F` 1, `F`+`A` identity 1, `A` 9 + 1 ignored, `U` 20, `L` 3, narrow clippy —
-   and uploaded artifact `scad-adapter-windows` (id `13897616839`). Evidence and
-   the unrelated pre-existing `Test`-job failure are recorded in
+9. **AC-6's CI-execution clause is satisfied on the delivered head.**
+   `.github/workflows/ci.yml` gains the required self-contained
+   `scad-adapter-windows` job. It executed on `800aabde` — the head carrying the
+   final engine patch set, patch digest, `robust` dependency and adapter source — in
+   run `43131961268` (job `130898010397`), passed every step (`F` 1, `F`+`A` identity
+   1, `A` 9 + 1 ignored, `U` 22, `L` 3, narrow clippy) and uploaded artifact
+   `scad-adapter-windows` (id `13906171026`). The superseded run `43113651822` on
+   `65f6acf` is kept as history. Evidence, and the attribution of the unrelated
+   pre-existing `Test`-job failure, are recorded in
    `docs/scad/windows-feasibility.md`.
 10. **The process-supervision deadline probe blocks deliberately.** A real adapter
     run long enough to outlast a fixed deadline depends on host speed, which would

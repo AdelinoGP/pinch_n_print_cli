@@ -164,15 +164,19 @@ narrow lanes above exercise every changed surface.
 
 | Field | Value |
 |---|---|
-| Workflow run | `43113651822` (`CI`, pull request) |
-| Head | `65f6acf` |
-| Job | `SCAD adapter (Windows)`, id `130835934489` — **success** |
+| Workflow run | `43131961268` (`CI`, pull request) |
+| Head | `800aabde` |
+| Job | `SCAD adapter (Windows)`, id `130898010397` — **success** |
 | `F` | `1 passed` |
 | `F`+`A` identity | `1 passed` |
 | `A` | `9 passed`, `1 ignored` (measurement entry point) |
-| `U` | `20 passed` |
-| `L` | `3 passed` in 20.48 s |
-| Artifact | `scad-adapter-windows`, id `13897616839`, 17 292 bytes, uploaded |
+| `U` | `22 passed` |
+| `L` | `3 passed` in 20.45 s |
+| Artifact | `scad-adapter-windows`, id `13906171026`, 16 260 bytes, uploaded |
+
+Superseded history: run `43113651822`, head `65f6acf`, job `130835934489`, artifact
+`13897616839`. That run proved the lane and upload worked before the final engine
+patch changes; it does not certify them.
 
 ### Measurement context
 
@@ -194,24 +198,29 @@ The run also passed `Clippy`, `Format`, `Docs staleness guard`, `Dist editions` 
 
 One job in that run is red and is **not** this packet: `Test` fails four captured
 baseline pins in `crates/slicer-runtime/tests/integration/perimeter_spatial_capture.rs`
-(`perimeter_spatial_capture_and_nonvacuity` and the three
-`perimeter_spatial_self_baseline_*` tests, 377 passed / 4 failed). The identical
-four failures with the identical tally are present on `master@49f6e7bf` in run
-`42535615636`, before any commit of this work. They are determinism pins on a
-pipeline this packet does not touch; per `AGENTS.md` § Test Discipline they are
-left red rather than weakened.
+(`perimeter_spatial_capture_and_novacuity` is a counter invariant; the three
+`perimeter_spatial_self_baseline_*` tests compare against the committed
+`tests/fixtures/perimeter_spatial/*.bin`), 377 passed / 4 failed in every run.
+
+This is a pre-existing repo condition, demonstrated three ways: the identical four
+tests with the identical tally fail in run `42535615636` on `master@49f6e7bf`
+before any commit of this work, in `43113651822` at `65f6acf`, and in
+`43131961268` at `800aabde`. The failures are deterministic (not flaky) and one of
+them is a behavioural counter assertion rather than a stale blob, so neither
+"recapture the baseline" nor "weaken the pin" is the right action here; the
+perimeter-spatial pipeline owner must reconcile the fixture set with the
+pipeline's current counters. Per `AGENTS.md` § Test Discipline the pins are left
+red until then.
 
 ## Disposition of G-SCAD
 
-**Adapter prerequisite: PASSED on Windows, pending re-observation on the delivered
-head.** The `scad-adapter-windows` job and its artifact upload executed and passed
-on head `65f6acf`. That run proves the lane and the upload work; it does not by
-itself certify the final implementation, whose engine patch, patch digest and
-dependency graph changed afterwards (exact predicated contact, exact raw nesting,
-emptiness-aware dispatch, the `robust` dependency). The final head's run is
-recorded in the PR checks for this branch and supersedes the identity above once
-green; the packet is not marked implemented until it is. The following are
-demonstrated:
+**Adapter prerequisite: PASSED on Windows, on the delivered head.** The
+`scad-adapter-windows` job and its artifact upload executed and passed on
+`800aabde` — the head that carries the final engine patch set, patch digest,
+`robust` dependency and adapter source. An earlier run on `65f6acf` proved the
+lane and upload worked; it is superseded by this one and is kept only as history.
+The packet-status commit that follows this record changes documentation and front
+matter only, no code. The following are demonstrated:
 
 - the engine builds and runs on Windows with the repository's pinned toolchain;
 - exact evaluation and rendering work through the vendored, patched engine;
