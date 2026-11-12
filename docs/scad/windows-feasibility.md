@@ -196,21 +196,36 @@ every row above is reproducible by re-running the listed command with the record
 The run also passed `Clippy`, `Format`, `Docs staleness guard`, `Dist editions` and
 `Properties (Windows)`.
 
-One job in that run is red and is **not** this packet: `Test` fails four captured
-baseline pins in `crates/slicer-runtime/tests/integration/perimeter_spatial_capture.rs`
-(`perimeter_spatial_capture_and_novacuity` is a counter invariant; the three
-`perimeter_spatial_self_baseline_*` tests compare against the committed
-`tests/fixtures/perimeter_spatial/*.bin`), 377 passed / 4 failed in every run.
+The `Test` job in that run was red, and it was **not** this packet. It is fixed
+now, and the record keeps the diagnosis because the same three defects would
+otherwise be rediscovered:
 
-This is a pre-existing repo condition, demonstrated three ways: the identical four
-tests with the identical tally fail in run `42535615636` on `master@49f6e7bf`
-before any commit of this work, in `43113651822` at `65f6acf`, and in
-`43131961268` at `800aabde`. The failures are deterministic (not flaky) and one of
-them is a behavioural counter assertion rather than a stale blob, so neither
-"recapture the baseline" nor "weaken the pin" is the right action here; the
-perimeter-spatial pipeline owner must reconcile the fixture set with the
-pipeline's current counters. Per `AGENTS.md` § Test Discipline the pins are left
-red until then.
+- **Unsatisfiable index assertions.** `perimeter_spatial_capture_and_nonvacuity`
+  asserted `indexed_queries > 0`, `exact_evaluations > 0` and a pruning inequality
+  unconditionally, but `default_dispatch()` compiles `indexed: false` unless the
+  controlled perimeter driver injects `pnp_perimeter_spatial_accelerated`. Those
+  assertions are now guarded by `slicer_core::perimeter_spatial::is_accelerated()`
+  — a probe inside the crate that owns the mode, because a `#[cfg]` in the
+  integration test is permanently false in every mode and would silently delete
+  the coverage.
+- **A recorder racing its own pins.** `record_perimeter_spatial_fixtures` was an
+  ordinary `#[test]`, so every suite run rewrote the three committed `.bin`
+  baselines that the pins read in the same process, making them order-dependent.
+  It is now `#[ignore]`d and run with `--ignored`.
+- **Stale self-baselines.** Commit `0dfbfe25` ported canonical contour
+  simplification (`resolution`, default 0.01 mm) before walls and infill — a
+  disclosed output-changing change — without recapturing the self-baselines.
+  They were recaptured with the recorder; two independent recordings agree
+  byte-for-byte, and `indexed == legacy == wasm` still holds as the provenance
+  requires.
+
+Recorded in run `43131961268` at `800aabde` the four tests failed as
+`377 passed / 4 failed`, identically to run `42535615636` on `master@49f6e7bf`
+before any commit of this work. They pass from `c6acb2c7`. One residual issue is
+**not** fixed and is documented rather than hidden: the accelerated gate still
+reports `indexed_queries == 0` because `DIAGNOSTIC_STATE` is `thread_local!` while
+per-layer query work runs on rayon workers, so the counts are invisible from the
+test thread. That needs atomic counters and is independent of this packet.
 
 ## Disposition of G-SCAD
 
