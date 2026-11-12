@@ -411,6 +411,31 @@ destination step; graduated
 [143](issues/143-union-phase-request-grouping.md) (AFK, unblocked) and the
 human's [140](issues/140-brim-contour-input.md) (HITL).
 
+**Destination status (2026-11-12,
+[t140](issues/140-brim-contour-input.md)): the brim anchor is a real geometry
+defect, licensed as the fourth scoped exception and graduated as
+[t144](issues/144-brim-anchor-reconstruction.md); the frontier is t143 and
+t144, both AFK.** `SkirtBrim::generate` anchored `make_brim` on the outer-wall
+**centerline**, 0.20 mm inside canonical's slice contour, so the brim's inner
+boundary sat 0.1 mm inside the part outline and the innermost bead overlapped
+the footprint instead of touching it; the whole ring was 0.2 mm inward on every
+cell. The human kept t138's classification (not a t130 setting asymmetry),
+granted a **scoped t81-style exception** for the `skirt-brim` anchor inputs
+only, and ruled the reconstruction **module-side** (offset the filled footprint
+outward by half the resolved outer-wall width; the same for the `skirt_height`
+layer hulls), not a SliceIR/WIT addition. **Ceremony:** fresh 16-cell reference
+set on both arms, delta audit, the four supports-off oracle cells re-run, a
+3-pair wall/CPU A/B as attribution only, and **no** 8-cells × 3-tools scoreboard
+re-derivation (the surface is ~235 ms; t139's ratios stand with the
+adhesion-geometry disclosure).
+**Stop rule:** the t139 fairness-fix form — geometry correctness plus a bounded
+audit; the oracle is a measure, not a revert gate, and a band miss graduates the
+variable-width envelope or the direct contour. The oracle ceiling from this fix
+is **4/8** (supports-on is out of scope). **Frontier:**
+[143](issues/143-union-phase-request-grouping.md) (AFK, unblocked) and
+[144](issues/144-brim-anchor-reconstruction.md) (AFK, unblocked); no HITL ticket
+remains open.
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -497,7 +522,29 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-12, the t137 take):** the human said
+**Current selection scope (2026-11-12, the t140 take):** the human said
+"Continue the perf vs orca map" (no ticket named); the first frontier ticket by
+number was the human's HITL
+[Brim anchor](issues/140-brim-contour-input.md), so it was claimed and
+**resolved with the human** over three rounds. Headline: **the 0.20 mm
+brim-anchor gap is real printed geometry — the brim's inner boundary sits
+0.1 mm inside the part outline and the innermost bead overlaps the footprint by
+~0.2 mm — and the human granted it a scoped t81-style exception rather than
+stretching t130.** The reconstruction is module-side — offset the filled
+footprint and the multi-layer skirt hulls by half the resolved outer-wall
+width — with no SliceIR/WIT change; the standing fairness ceremony applies (fresh
+16-cell reference set, delta audit, four supports-off oracle cells, 3-pair A/B
+as attribution only), with **no** 8-cells × 3-tools scoreboard re-derivation,
+and t139's
+fairness-fix form is the stop rule (the oracle is a measure, not a revert gate;
+a band miss graduates the variable-width envelope or the direct contour). The
+oracle ceiling from this fix is **4/8**; supports-on remains out of scope. No
+production edit in this take (tracker-only). **Frontier now:**
+[143](issues/143-union-phase-request-grouping.md) (AFK) and
+[144](issues/144-brim-anchor-reconstruction.md) (AFK); no HITL ticket remains
+open.
+
+**Previous selection scope (2026-11-12, the t137 take):** the human said
 "Continue the perf vs orca map" (no ticket named). Both unblocked frontier
 tickets were HITL grillings (`137` and `140`) and **137 was the first in
 order**, so [Planner scheduling gate](issues/137-planner-scheduling-gate.md) was
@@ -3407,6 +3454,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Brim anchor: feed the slice contour (or reconstruct it) into `skirt-brim`?](issues/140-brim-contour-input.md): **resolved (2026-11-12; human ruling — the anchor gap is real printed geometry, gets its own scoped t81-style exception, and is closed module-side)** — `SkirtBrim::generate` (`modules/core-modules/skirt-brim/src/lib.rs`) anchors the brim on the `ExtrusionRole::OuterWall` **centerline**, 0.20 mm inside canonical `make_brim`'s slice contour, so the brim's inner boundary sits 0.1 mm **inside** the part outline and the innermost bead overlaps the footprint by ~0.2 mm instead of its inner edge touching it; the ring is 0.2 mm inward on every cell. [t139](issues/139-layer-plane-parity.md) measures base supports-off at **−4.3 / −4.4 %** swept and **−5.7 / −6.6 %** outer loop against the 3 % skirt band (brim −5.2 %, inside 12 %); both benchy supports-off cells pass; supports-on is the out-of-scope support engine. The human kept [t138](issues/138-layer0-cross-section-parity.md)'s classification (**not** a [t130](issues/130-brim-matched-settings-ruling.md) setting asymmetry) and granted the **fourth recorded parity exception**, scoped to the `skirt-brim` anchor inputs. Shape: **uniform half-width reconstruction** — offset the filled footprint outward by half the resolved outer-wall width (the loop's modal point width, fallback `line_width`; the repo's own `boundary_offset = 0.5 x width` convention) and the `skirt_height` layer hulls likewise; module-only, no SliceIR/WIT change, staged to a variable-width envelope or the direct contour only if a base Arachne cell still misses. Ceremony: fresh 16-cell reference set, delta audit, four supports-off oracle cells, 3-pair A/B as attribution only, **no** scoreboard re-derivation. Stop rule: t139's fairness-fix form (geometry correctness + bounded audit; the oracle is a measure, not a revert gate). Oracle ceiling **4/8**; route arithmetic unchanged (skirt-brim ~235 ms, no wall claim). Graduated [t144](issues/144-brim-anchor-reconstruction.md). No production edit in this take.
 - [Planner clip-batch fan-out: why is the clip core at 4.81x and what scheduling change reaches 12x?](issues/136-planner-clip-batch-fanout.md): **resolved (2026-11-12; Phase-1 attribution — the carve batches are already at 11.56x and the union phase is one request deep)** — the clip core is **15,841.8 ms** on base classic-on (p2 15,938.2 / p3 15,370.0), splitting additively into **6,587.6 ms** work floor (`thread/12`, 41.6 %), **7,224.0 ms** tail-times-chunking (45.6 %), **144.8 ms** dispatch excess (0.9 %), **1,393.7 ms** marshal+decode (8.8 %) and **491.7 ms** guest CPU (3.1 %); end-to-end fan-out **4.99x**, which is t134's 4.81x from a faster run. **The phase contrast is the finding:** `carve_run` issues **65,233 requests** over 312 calls at the saturated 256-request cap (**p50 256** per call) and runs at **11.56x** (40,977.6 ms thread in 3,544.7 ms); `union_run` issues **482 requests** over 109 calls (**p50 4.4** per call) and runs at **3.66x** (37,237.5 ms in 10,176.2 ms) while owning **64.2 %** of the clip-core wall. Its summed per-call `max(thread/12, longest request)` is **10,168.3 ms** against a **10,176.2 ms** wall — **8 ms** of the phase is anything but each call's longest request — so 7.6 of 12 threads are idle by construction: a **parallelism-width** deficit, not imbalance, and re-ordering cannot help. **Candidates:** the 256 cap has **no headroom** (carve is 11.56x against 12.0x, ≤ 0.13 s), dispatch excess is refuted (**0.14 s**), guest assembly is refuted (**0.49 s**, of which `carve_build` is 305.5 ms), marshal is real but below the tranche bar (**1.4 s**, operand locality). **Chunk size is the lever**, through the *phase's* request count: merging the union phase across 2 / 4 / whole-phase chunk-batches takes its floor from 10,176.2 ms to **5,480.2 / 3,465.0 / 3,103.1 ms**; the 16-layer form recovers **6,711.2 ms = 94.9 %** of the 7,073 ms tail gap, LPT-bounded to a **5,556–6,711 ms** saving = **7.3 %** of base-on's 92.5 s cut = **6.6x** the 1,010 ms floor. Benchy reproduces at 17x smaller scale (910.2 ms clip core, carve 11.18x, union 3.71x, 294.0 ms saving). **GO (narrowed)** for union-phase request grouping under the standing [t137](issues/137-planner-scheduling-gate.md) four-cell form, exact by construction; graduated [t143](issues/143-union-phase-request-grouping.md), whose first check is memory (`EMIT_BATCH_LAYERS` 4 → 16 quadruples the buffered collision sets). **NO-GO** on the ticket's three named mechanisms as the explanation, and **NO-GO** on splitting heavy union requests without its own work-set ruling. No production edit; probe reverted. Evidence: [`evidence/t136-clip-fanout/`](evidence/t136-clip-fanout/FINDINGS.md) (`verify.py` 155 checks, 27/27 negative controls; six probe G-code hashes equal the post-t139 reference set).
 - [Planner scheduling gate: apply the t117 four-cell form to t135/t136?](issues/137-planner-scheduling-gate.md): **resolved (2026-11-12; human ruling — extend the t117 four-cell form to t135 Stage 2 and t136, and generalize it as the standing rule for any representation-safe planner-only candidate where supports-off is structurally inert)** — on the four supports-off cells the whole `PrePass::SupportGeometry` stage is **0.64x–0.81x** the 0.80 % floor and the planner module is **0.32x–0.43x**, so no planner-only change can meet the literal all-8-cell 0.80 % gate. Any representation-safe planner-only candidate (`PrePass::SupportGeometry` / `PrePass::SupportAnalysis` / `com.core.tree-support-planner`) where `enable_support: false` declines before the candidate's work now runs under the standing four-cell form without needing its own gate ticket: positive 0.80 % paired wall/CPU improvement in the four supports-on cells, byte-identical output in all eight against the active reference set ([t139](issues/139-layer-plane-parity.md)'s set), and no median wall/CPU regression in the four supports-off cells. "Require a supports-off leg" and "Park the planner scheduling program" are both declined; the 8/8 destination is unchanged. [t135](issues/135-cross-layer-occupancy-batching.md) Stage 2 and [t136](issues/136-planner-clip-batch-fanout.md) are unblocked on the frontier. No production edit in this take.
 - [Overhang band partition deletion: derive the quartile from the distance the consumer already has](issues/142-overhang-band-partition-deletion.md): **resolved (2026-11-11; measured BUILD — the partition is deleted, the quartile is distance-derived, and the matched job's G-code is byte-identical)** — `annotate_overhangs` returns only `overhang_areas` + `prev_layer_boundaries` (Shape A: the per-layer `difference_ex` key test stays; Shape B was rejected because populating the boundary on every layer would flip `overhang_distance_mm` from `None` to `Some` with no measured benefit), and `PerimeterSpatialContext` takes the producer's band width instead of band polygons; `overhang_quartile = overhang_quartile_from_distance(signed_distance, width)` with an epsilon at the 0.0001 mm Clipper quantisation. The band R-tree, `indexed_overhang_quartile` and `legacy_overhang_quartile` are deleted; classic and arachne measure the distance once and stamp both fields. `SurfaceClassificationIR` gains `overhang_areas` + `overhang_band_width_mm` (production leaves the band polygons empty), the scalar rides the WIT `slice-region-view.overhang-band-width-mm`, `extra_perimeters_on_overhangs` reads the new area map, and the visual-debug renderer reconstructs bands at render time. **Output byte-identical in 8/8 cells** and equal to t139's reference set, stable across 48 A/B rows. **Paired A/B: 26.25 / 11.76 / 25.58 / 9.69 / 20.00 / 10.56 / 20.23 / 12.66 % wall saved**, candidate faster in **24/24** pairs, CPU lower in **8/8**; indicative composed ratios **1.818x–3.697x**, required cut **45.0–73.0 %**. Disclosed gap: no accelerated **timing** arm (driver × MSVC verbatim-path bug on `libmimalloc-sys`); accelerated **output parity** was checked with a disclosed manual `--cfg` host + accelerated guests (8/8 same hashes). Evidence: [`evidence/t142-overhang-band-deletion/`](evidence/t142-overhang-band-deletion/FINDINGS.md) (`verify.py` re-derives every number; `--self-test` 4/4 controls).
@@ -4252,7 +4300,7 @@ Standing decisions for this effort (2026-09-22):
 - **OrcaSlicer geometry-parity work.** The repo's parity program runs as spec
   packets; this map treats output as disclosed evidence only (the fairness
   contract), not as a parity target.
-  **Two recorded exceptions.** (1) **2026-10-23:** the human ruled that ticket
+  **Four recorded exceptions.** (1) **2026-10-23:** the human ruled that ticket
   81's `resolution` port be carried in-map end to end, because the fairness
   contract needed the key implemented rather than merely disclosed. That
   exception is scoped to that key. (2) **2026-11-03:** [ticket
@@ -4295,6 +4343,15 @@ Standing decisions for this effort (2026-09-22):
    `make_brim` / `Print.cpp` skirt port + matched `brim_width = 8` /
    `skirt_loops = 6` / `skirt_distance = 3.0` / `skirt_height = 1`), folded
    into [t135](issues/135-cross-layer-occupancy-batching.md).
+   **(4) 2026-11-12:** [Brim anchor: feed the slice contour (or reconstruct
+   it) into `skirt-brim`?](issues/140-brim-contour-input.md) grants a **scoped
+   t81-style exception for the `com.core.skirt-brim` anchor inputs only** — the
+   layer-0 object footprint and the `skirt_height` layer hulls — so the module
+   may reconstruct canonical `make_brim`'s slice-contour anchor from the
+   outer-wall path plus half its width. It is the fourth recorded exception, is
+   **not** a licence for other postpass parity work, and does not change the
+   *Asymmetry* glossary definition or the t130 close-asymmetries ruling. The
+   work is [t144](issues/144-brim-anchor-reconstruction.md).
 - **Making the resolved-config-less fallback block satisfy Orca's viewer gate.**
   Ticket 34's residual — the test/legacy path's `CONFIG_BLOCK` cannot reach 80
   *loadable* pairs because the remainder are PnP's own key names — is past this
