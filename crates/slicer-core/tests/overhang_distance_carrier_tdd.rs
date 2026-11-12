@@ -19,7 +19,7 @@
 //! binary MUST fail to compile until the production half of the packet lands.
 
 use slicer_core::perimeter_utils::expolygon_to_path3d;
-use slicer_ir::{ExPolygon, Point2, Point3WithWidth, Polygon};
+use slicer_ir::{ExPolygon, Point2, Polygon};
 
 /// Axis-aligned square contour (100nm integer units) centred on the origin.
 fn square_contour(half_mm: f32) -> Polygon {
@@ -41,10 +41,6 @@ fn square_boundary(half_mm: f32) -> Vec<ExPolygon> {
     }]
 }
 
-fn quartiles_of(pts: &[Point3WithWidth]) -> Vec<Option<u8>> {
-    pts.iter().map(|p| p.overhang_quartile).collect()
-}
-
 /// AC-4 (PRIMARY): the stamped value is signed, and equals
 /// `signed_distance_to_boundary(x, y, prev) + 0.5 * width`.
 #[test]
@@ -53,7 +49,7 @@ fn overhang_distance_is_signed_and_boundary_offset_normalised() {
     let width = 0.4_f32;
 
     // Supported wall: 10mm square deep inside the 20mm previous layer.
-    let supported = expolygon_to_path3d(&square_contour(5.0), 0.2, width, &[], &boundary);
+    let supported = expolygon_to_path3d(&square_contour(5.0), 0.2, width, 0.4, &boundary);
     assert!(!supported.is_empty());
     for pt in &supported {
         let raw = slicer_core::perimeter_utils::signed_distance_to_boundary(pt.x, pt.y, &boundary);
@@ -75,7 +71,7 @@ fn overhang_distance_is_signed_and_boundary_offset_normalised() {
     }
 
     // Overhanging wall: 30mm square surrounding the 20mm previous layer.
-    let overhanging = expolygon_to_path3d(&square_contour(15.0), 0.2, width, &[], &boundary);
+    let overhanging = expolygon_to_path3d(&square_contour(15.0), 0.2, width, 0.4, &boundary);
     assert!(!overhanging.is_empty());
     for pt in &overhanging {
         let stamped = pt
@@ -90,7 +86,7 @@ fn overhang_distance_is_signed_and_boundary_offset_normalised() {
 
     // Exactly on the offset boundary: vertices 0.2mm inside the previous
     // layer and boundary_offset = 0.5 * 0.4 = 0.2 => stamped == 0 (1e-5).
-    let on_offset = expolygon_to_path3d(&square_contour(9.8), 0.2, width, &[], &boundary);
+    let on_offset = expolygon_to_path3d(&square_contour(9.8), 0.2, width, 0.4, &boundary);
     assert!(!on_offset.is_empty());
     for pt in &on_offset {
         let stamped = pt
@@ -112,7 +108,7 @@ fn expolygon_to_path3d_stamps_signed_distance_and_none_on_empty_boundary() {
     let contour = square_contour(15.0);
     let width = 0.42_f32;
 
-    let with_boundary = expolygon_to_path3d(&contour, 0.3, width, &[], &boundary);
+    let with_boundary = expolygon_to_path3d(&contour, 0.3, width, 0.4, &boundary);
     assert!(!with_boundary.is_empty());
     for pt in &with_boundary {
         let raw = slicer_core::perimeter_utils::signed_distance_to_boundary(pt.x, pt.y, &boundary);
@@ -128,7 +124,7 @@ fn expolygon_to_path3d_stamps_signed_distance_and_none_on_empty_boundary() {
         );
     }
 
-    let without_boundary = expolygon_to_path3d(&contour, 0.3, width, &[], &[]);
+    let without_boundary = expolygon_to_path3d(&contour, 0.3, width, 0.4, &[]);
     assert_eq!(with_boundary.len(), without_boundary.len());
     for pt in &without_boundary {
         assert_eq!(
@@ -142,7 +138,7 @@ fn expolygon_to_path3d_stamps_signed_distance_and_none_on_empty_boundary() {
 /// `Some(0.0)`, `Some(-1.0)`, or `Some(f32::MAX)`.
 #[test]
 fn no_previous_layer_stamps_none_not_zero() {
-    let pts = expolygon_to_path3d(&square_contour(5.0), 0.2, 0.4, &[], &[]);
+    let pts = expolygon_to_path3d(&square_contour(5.0), 0.2, 0.4, 0.4, &[]);
     assert!(!pts.is_empty());
     for pt in &pts {
         assert_eq!(
@@ -159,33 +155,84 @@ fn no_previous_layer_stamps_none_not_zero() {
     }
 }
 
-/// AC-N2: carrying a previous-layer boundary must not change
-/// `overhang_quartile` stamping — values are bit-identical with and without
-/// the carrier present.
+/// AC-N2 (ticket 142): the quartile is derived from the same signed distance
+/// that the carrier stamps, so presence follows the distance sign and the
+/// bucket follows the producer's band width.
+///
+/// This replaces the pre-142 AC-N2, which asserted that carrying a boundary
+/// left band-based quartiles untouched. That contract is what ticket 142
+/// removes: the distance *is* the quartile source now, so the old assertion
+/// would pin the deleted band lookup rather than the surviving contract.
 #[test]
-fn quartile_stamping_is_unchanged_by_the_distance_carrier() {
-    // One quartile-2 band covering a 12mm square: every vertex of the 10mm
-    // contour below falls inside it, so the fixture exercises real bands.
-    let bands = vec![slicer_ir::slice_ir::QuartileBand {
-        quartile: 2,
-        polygons: vec![ExPolygon {
-            contour: square_contour(6.0),
-            holes: Vec::new(),
-        }],
-    }];
+fn quartile_is_derived_from_the_stamped_distance() {
+    let boundary = square_boundary(10.0);
 
-    let contour = square_contour(5.0);
-    let baseline = expolygon_to_path3d(&contour, 0.2, 0.4, &bands, &[]);
-    let carried = expolygon_to_path3d(&contour, 0.2, 0.4, &bands, &square_boundary(6.0));
+    // Inside the previous layer: negative distance, no quartile.
+    let inside = expolygon_to_path3d(&square_contour(5.0), 0.2, 0.4, 0.4, &boundary);
+    assert!(!inside.is_empty());
+    for pt in &inside {
+        assert_eq!(
+            pt.overhang_quartile, None,
+            "a vertex inside the previous layer is not overhanging"
+        );
+    }
 
-    let q_baseline = quartiles_of(&baseline);
-    let q_carried = quartiles_of(&carried);
-    assert!(
-        q_baseline.iter().any(|q| q.is_some()),
-        "fixture must exercise real quartile bands (at least one Some)"
-    );
+    // A 10.3mm half-extent square has its corners sqrt(0.3^2 + 0.3^2) = 0.424mm
+    // outside the 10mm boundary: past 0.4 and inside 0.6, so quartile 3.
+    let near = expolygon_to_path3d(&square_contour(10.3), 0.2, 0.4, 0.4, &boundary);
+    for pt in &near {
+        let raw = slicer_core::perimeter_utils::signed_distance_to_boundary(pt.x, pt.y, &boundary);
+        assert!(
+            raw > 0.0,
+            "fixture vertex must be outside the previous boundary"
+        );
+        assert_eq!(
+            pt.overhang_quartile,
+            Some(3),
+            "0.42 mm outside with a 0.4 mm band width is quartile 3"
+        );
+    }
+
+    // A 11mm half-extent square has its corners 1.414mm outside: beyond
+    // 1.5 x 0.4 = 0.6mm, so quartile 4.
+    let far = expolygon_to_path3d(&square_contour(11.0), 0.2, 0.4, 0.4, &boundary);
+    for pt in &far {
+        assert_eq!(
+            pt.overhang_quartile,
+            Some(4),
+            "1.41 mm outside is beyond the last interior threshold"
+        );
+    }
+}
+
+/// The bucket function itself, across every threshold and both non-positive
+/// cases. Pinned directly so the boundary values do not depend on fixture
+/// corner geometry.
+#[test]
+fn quartile_buckets_follow_the_band_width_multipliers() {
+    use slicer_core::perimeter_utils::overhang_quartile_from_distance;
+
+    assert_eq!(overhang_quartile_from_distance(0.0, 0.4), None);
+    assert_eq!(overhang_quartile_from_distance(-0.5, 0.4), None);
     assert_eq!(
-        q_baseline, q_carried,
-        "overhang_quartile values must be bit-identical with the distance carrier present"
+        overhang_quartile_from_distance(
+            slicer_core::perimeter_utils::OVERHANG_BOUNDARY_EPSILON_MM / 2.0,
+            0.4
+        ),
+        None,
+        "within the boundary epsilon counts as on the boundary"
+    );
+    assert_eq!(overhang_quartile_from_distance(0.0001 + 1e-6, 0.4), Some(1));
+    assert_eq!(overhang_quartile_from_distance(0.2, 0.4), Some(1));
+    assert_eq!(overhang_quartile_from_distance(0.2001, 0.4), Some(2));
+    assert_eq!(overhang_quartile_from_distance(0.4, 0.4), Some(2));
+    assert_eq!(overhang_quartile_from_distance(0.4001, 0.4), Some(3));
+    assert_eq!(overhang_quartile_from_distance(0.6, 0.4), Some(3));
+    assert_eq!(overhang_quartile_from_distance(0.6001, 0.4), Some(4));
+    assert_eq!(overhang_quartile_from_distance(5.0, 0.4), Some(4));
+    assert_eq!(
+        overhang_quartile_from_distance(0.1, 0.0),
+        Some(4),
+        "an unresolved band width collapses every positive distance to quartile 4"
     );
 }

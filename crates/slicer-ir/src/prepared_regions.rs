@@ -19,6 +19,9 @@ pub struct PreparedRegionData {
     pub overhang_quartile_polygons: Vec<QuartileBand>,
     /// Region-clipped overhang polygons flattened across quartiles.
     pub overhang_areas: Vec<ExPolygon>,
+    /// Producer-resolved band width (mm) behind the overhang-quartile
+    /// thresholds. `0.0` when no width was resolved.
+    pub overhang_band_width_mm: f32,
     /// Boundary polygons for this object's previous layer.
     pub prev_layer_boundary: Vec<ExPolygon>,
 }

@@ -1,16 +1,15 @@
 //! TDD test for arachne per-vertex parity packet 148, AC-5.
 //!
-//! `region.overhang_quartile_polygons()` carries `QuartileBand`s (quartile +
-//! polygons). Every wall-loop path point whose (x, y) mm location falls
-//! inside a band's polygon must get `path.points[j].overhang_quartile ==
-//! Some(band.quartile)`; points outside every band get `None`. Lookup mirrors
-//! `slicer_core::perimeter_utils::expolygon_to_path3d` (perimeter_utils.rs
-//! ~316-331): filter bands whose polygons contain the point, take the max
-//! quartile.
+//! Ticket 142 replaced the band-polygon lookup with a distance-derived
+//! quartile: every wall-loop path point that lies outside
+//! `region.prev_layer_boundary()` must get
+//! `path.points[j].overhang_quartile == Some(bucket)` where the bucket is the
+//! signed distance bucketed at `region.overhang_band_width_mm() x {0.5, 1, 1.5}`;
+//! points inside the boundary get `None`. The oracle mirrors
+//! `slicer_core::perimeter_utils::overhang_quartile_from_distance` exactly.
 
 use arachne_perimeters::ArachnePerimeters;
-use slicer_ir::slice_ir::QuartileBand;
-use slicer_ir::{point_in_polygon_winding, ConfigView};
+use slicer_ir::ConfigView;
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -50,21 +49,32 @@ fn make_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
         .float("bridge_flow", 1.0)
         .bool("thick_bridges", false)
         .float("seam_candidate_angle_threshold_deg", 30.0)
+        // Classifier liveness predicate: the per-vertex stamps are only
+        // produced when a consumer reads them.
+        .bool("enable_overhang_speed", true)
+        .float("overhang_1_4_speed", 0.0)
+        .float("overhang_2_4_speed", 0.0)
+        .float("overhang_3_4_speed", 30.0)
+        .float("overhang_4_4_speed", 0.0)
         .build()
 }
 
-/// 10mm square region (centered at origin) with a single quartile-3 band
-/// covering a 4mm x 4mm area at the same center.
-fn make_region(side_mm: f32, band_side_mm: f32, quartile: u8, z: f32) -> SliceRegionView {
+/// 10mm square region (centered at origin) over a smaller previous-layer
+/// boundary. Ticket 142: the quartile comes from the signed distance to
+/// `previous_layer_boundary`, bucketed at `overhang_band_width_mm`.
+fn make_region(
+    side_mm: f32,
+    boundary_side_mm: f32,
+    band_width_mm: f32,
+    z: f32,
+) -> SliceRegionView {
     SliceRegionViewBuilder::new()
         .object_id("obj-1")
         .region_id(1)
         .z(z)
         .add_polygon(square_polygon(0.0, 0.0, side_mm))
-        .overhang_quartile_polygons(vec![QuartileBand {
-            quartile,
-            polygons: vec![square_polygon(0.0, 0.0, band_side_mm)],
-        }])
+        .previous_layer_boundary(vec![square_polygon(0.0, 0.0, boundary_side_mm)])
+        .overhang_band_width_mm(band_width_mm)
         .build()
 }
 
@@ -72,7 +82,8 @@ fn make_region(side_mm: f32, band_side_mm: f32, quartile: u8, z: f32) -> SliceRe
 fn overhang_quartile_set_per_vertex_inside_band() {
     let config = make_config(2, 0.4_f32);
     let module = ArachnePerimeters::from_config(&config).unwrap();
-    let regions = vec![make_region(10.0, 4.0, 3, 0.2)];
+    let band_width_mm = 0.4_f32;
+    let regions = vec![make_region(10.0, 6.0, band_width_mm, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -85,19 +96,24 @@ fn overhang_quartile_set_per_vertex_inside_band() {
         "expected at least one wall loop to be emitted"
     );
 
-    let band_polygon = square_polygon(0.0, 0.0, 4.0);
+    let boundary = vec![square_polygon(0.0, 0.0, 6.0)];
     let mut checked_any_point = false;
+    let mut checked_some_overhang = false;
 
     for wall in output.wall_loops() {
         for pt in &wall.path.points {
             checked_any_point = true;
-            let inside = point_in_polygon_winding(&band_polygon, pt.x as f64, pt.y as f64, 0.0);
-            let expected = if inside { Some(3u8) } else { None };
+            let raw = slicer_core::perimeter_utils::signed_distance_to_boundary(
+                pt.x, pt.y, &boundary,
+            );
+            let expected =
+                slicer_core::perimeter_utils::overhang_quartile_from_distance(raw, band_width_mm);
+            checked_some_overhang |= expected.is_some();
             assert_eq!(
                 pt.overhang_quartile, expected,
                 "vertex at ({}, {}) mm: expected overhang_quartile == {:?} \
-                 (point-in-band == {}), got {:?}",
-                pt.x, pt.y, expected, inside, pt.overhang_quartile
+                 (signed distance {raw} mm), got {:?}",
+                pt.x, pt.y, expected, pt.overhang_quartile
             );
         }
     }
@@ -105,5 +121,9 @@ fn overhang_quartile_set_per_vertex_inside_band() {
     assert!(
         checked_any_point,
         "expected at least one path point to verify"
+    );
+    assert!(
+        checked_some_overhang,
+        "fixture must exercise at least one overhanging vertex"
     );
 }

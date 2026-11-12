@@ -1,57 +1,61 @@
-//! Per-layer overhang quartile-band annotation (Step 4, O-T021/O-T022).
+//! Per-layer overhang annotation (Step 4, O-T021/O-T022).
 //!
 //! Deterministic pure function: given a per-layer sequence of already-computed
-//! cross-section footprints, classifies the *overhanging* portion of each
-//! layer's cross-section — the part of layer `n`'s footprint that is NOT
-//! supported by layer `n - 1`'s footprint — into 4 concentric distance bands
-//! measured from the previous layer's cross-section boundary. Overhang is
-//! derived from the slices, never a second mesh-slicing pass, matching
-//! OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp:880-908`), which
-//! diffs consecutive `lslices`. No host-services, scheduler, or runtime
-//! dependency: this is pure geometry over [`ExPolygon`], reusing existing
-//! [`crate::polygon_ops`] boolean/offset primitives (no new polygon boolean
-//! code is implemented here). The caller (`PrePass::OverhangAnnotation`)
-//! supplies each object's per-layer footprints from the committed `SliceIR`.
+//! cross-section footprints, derives the *overhanging* portion of each layer's
+//! cross-section — the part of layer `n`'s footprint that is NOT supported by
+//! layer `n - 1`'s footprint — and the previous layer's footprint the consumer
+//! needs to locate it. Overhang is derived from the slices, never a second
+//! mesh-slicing pass, matching OrcaSlicer's `detect_overhangs_for_lift`
+//! (`PrintObject.cpp:880-908`), which diffs consecutive `lslices`. No
+//! host-services, scheduler, or runtime dependency: this is pure geometry over
+//! [`ExPolygon`], reusing existing [`crate::polygon_ops`] boolean primitives
+//! (no new polygon boolean code is implemented here). The caller
+//! (`PrePass::OverhangAnnotation`) supplies each object's per-layer footprints
+//! from the committed `SliceIR`.
 //!
-//! # Band thresholds and emission-time speed sections
+//! # Why no band polygons are produced here (ticket 142)
 //!
-//! The emission-time speed profile consumes the restored `speed_sections` table
-//! `{90, 75, 50, 25, 13, 0}` in `overhang-classifier-default` and interpolates
-//! those sections from each point's prepass-stamped `overhang_distance_mm`.
-//! The four concentric `overhang_quartile` bands below, bounded by
-//! `line_width x {0.5, 1.0, 1.5, 2.0}`, remain PnP's classification geometry,
-//! evaluated at prepass time against raw cross-section geometry; they are not
-//! the emission-time speed schedule.
+//! The 4-band concentric partition used to be built here as polygon sets
+//! (`intersection(current, offset(previous, lw × {0.5, 1.0, 1.5})) - previous`,
+//! three round offsets plus six whole-layer booleans per overhang layer). The
+//! band **value** has no production reader: `overhang-classifier-default`
+//! gates on `overhang_quartile.is_some()` and computes its speed from
+//! `overhang_distance_mm`, and the perimeter annotation already computes
+//! `signed_distance_to_boundary(x, y, prev_layer_boundary)` against the very
+//! same previous-layer polygon set. A vertex of `current` is in some band iff
+//! it is outside `previous`, which is exactly the sign of that signed
+//! distance, so the quartile is now **derived from the distance** at the
+//! consumer ([`crate::perimeter_utils::overhang_quartile_from_distance`]) and
+//! no band polygons are built on the slice path.
 //!
 //! Band semantics (distance measured outward from the previous layer's
 //! cross-section boundary, i.e. how far a point in the overhang region sits
 //! from the last supported edge):
 //!
-//! | band | distance range              | meaning                       |
-//! |------|------------------------------|-------------------------------|
-//! | 1    | `(0, 0.5 × lw]`               | least overhanging (nearest support) |
-//! | 2    | `(0.5 × lw, 1.0 × lw]`        | moderate                      |
-//! | 3    | `(1.0 × lw, 1.5 × lw]`        | severe                        |
-//! | 4    | `> 1.5 × lw`                  | most overhanging (capped by the region's own extent, not by the `2.0 × lw` multiplier — see [`BAND_BOUNDARY_MULTIPLIERS`]) |
+//! | quartile | distance range              | meaning                       |
+//! |----------|-----------------------------|-------------------------------|
+//! | 1        | `(0, 0.5 × lw]`             | least overhanging (nearest support) |
+//! | 2        | `(0.5 × lw, 1.0 × lw]`      | moderate                      |
+//! | 3        | `(1.0 × lw, 1.5 × lw]`      | severe                        |
+//! | 4        | `> 1.5 × lw`                | most overhanging (capped by the region's own extent) |
 //!
 //! # Empty-layer semantics
 //!
 //! A layer with **no** overhang (including layer 0, which has no previous
 //! layer and is therefore never overhanging) has its key **absent** from the
 //! returned maps — callers must treat a missing key as "no overhang", not
-//! distinguish it from an explicit empty `Vec`. This is the chosen semantics
-//! for this packet (the alternative — an explicit empty `Vec<QuartileBand>`
-//! entry — was rejected to keep the map's cardinality proportional to actual
-//! overhang, matching `SurfaceClassificationIR.overhang_quartile_polygons`'s
-//! doc-comment).
+//! distinguish it from an explicit empty `Vec`. Keeping the key absent is what
+//! preserves `overhang_distance_mm = None` on non-overhanging layers, which is
+//! the pre-existing IR contract.
 //!
-//! # Config wiring note (for the Step 5 host stage)
+//! # Config wiring note
 //!
-//! `line_width_mm` is taken as a plain parameter here — this module has no
-//! config-key knowledge. The Step 5 host stage is expected to resolve it by
-//! reading config key `outer_wall_line_width`, falling back to `line_width`
-//! (both snake_case per repo convention) before calling
-//! [`annotate_overhangs`].
+//! The band width behind the quartile thresholds is a plain `f32` on
+//! `SurfaceClassificationIR` (`overhang_band_width_mm`), resolved by the host
+//! stage from config key `outer_wall_line_width`, falling back to `line_width`
+//! (both snake_case per repo convention) and finally to `0.4` mm. It is
+//! transported to the layer modules per region so the producer's width — not
+//! the consumer's per-point extrusion width — is the threshold source.
 
 use std::collections::HashMap;
 
@@ -67,47 +71,42 @@ use crate::polygon_ops::{difference_ex, intersection_ex, offset, union_ex, Offse
 /// this crate (see `polygon_ops::opening`/`closing_ex`, which use `0.05`).
 const OFFSET_ARC_TOLERANCE_MM: f32 = 0.01;
 
-/// Multipliers (of `line_width_mm`) defining the 3 interior band boundaries
-/// for the 4-band partition. Per roadmap decision O-4 the nominal threshold
-/// tuple is `{0.5, 1.0, 1.5, 2.0}`; the `2.0` multiplier is intentionally
-/// **not** used as an offset boundary here because band 4's outer edge is
-/// defined as "the rest of the overhang region" (capped by the region's own
-/// extent), not by a fixed distance cutoff — see the module doc-comment's
-/// band-semantics table. `2.0` is retained here only in a comment for
-/// traceability to the roadmap decision text, not as a runtime constant.
-const BAND_BOUNDARY_MULTIPLIERS: [f32; 3] = [0.5, 1.0, 1.5];
+/// Multipliers (of the band width) defining the 3 interior band boundaries of
+/// the 4-quartile distance classification. Re-exported from `perimeter_utils`
+/// because the consumer side is compiled without `host-algos`.
+pub use crate::perimeter_utils::OVERHANG_BAND_BOUNDARY_MULTIPLIERS as BAND_BOUNDARY_MULTIPLIERS;
 
-/// Classifies overhanging cross-section area at every layer into 4 quartile
-/// distance bands, keyed by layer index.
+/// Per-object overhang annotation derived from committed slice footprints.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct OverhangAnnotation {
+    /// Unsupported area `current \ previous` per layer index. Absent on
+    /// layers with no overhang.
+    pub overhang_areas: HashMap<u32, Vec<ExPolygon>>,
+    /// The previous layer's footprint per layer index, present exactly on the
+    /// layers in [`Self::overhang_areas`]. The consumer measures signed
+    /// distance against it to locate a vertex relative to the overhang.
+    pub prev_layer_boundaries: HashMap<u32, Vec<ExPolygon>>,
+}
+
+/// Derives the overhanging cross-section area at every layer.
 ///
 /// # Parameters
 /// - `layer_footprints`: one entry per layer, ordered by increasing Z, each
 ///   `(layer_index, footprint)` pairing the global layer index (used as the
 ///   returned map's key) with that layer's cross-section polygons in
-///   millimeters. Consecutive entries must be physically adjacent layers so
+///   millimetres. Consecutive entries must be physically adjacent layers so
 ///   that `diff(current, previous)` is the true unsupported area. For a single
 ///   object these are its per-layer `SliceIR` polygons; the first entry has no
 ///   predecessor and is therefore never overhanging.
-/// - `line_width_mm`: extrusion line width in millimeters used to derive the
-///   band distance thresholds (`line_width_mm × {0.5, 1.0, 1.5}`). See the
-///   module doc-comment's "Config wiring note" for how the host stage should
-///   resolve this value from config.
 ///
 /// # Returns
 ///
-/// A tuple containing maps from layer index to the layer's `QuartileBand`
-/// partition and to the previous layer's slice boundary contours. **Layers
+/// [`OverhangAnnotation`] with both maps keyed by global layer index. **Layers
 /// with no overhang have their key absent** in both maps — see the module
 /// doc-comment's "Empty-layer semantics" section.
-pub fn annotate_overhangs(
-    layer_footprints: &[(u32, Vec<ExPolygon>)],
-    line_width_mm: f32,
-) -> (
-    HashMap<u32, Vec<QuartileBand>>,
-    HashMap<u32, Vec<ExPolygon>>,
-) {
+pub fn annotate_overhangs(layer_footprints: &[(u32, Vec<ExPolygon>)]) -> OverhangAnnotation {
     if layer_footprints.len() < 2 {
-        return (HashMap::new(), HashMap::new());
+        return OverhangAnnotation::default();
     }
 
     // One O(layers) sweep over already-computed cross-sections — the object's
@@ -118,14 +117,14 @@ pub fn annotate_overhangs(
     // entry's `u32` is the layer index used to key the returned map.
     //
     // The sweep is parallel: iteration `i` reads only `layer_footprints[i - 1]`
-    // and `[i]` and contributes exactly one `(layer_index, bands)` entry, so
-    // there is no cross-iteration state. Because the result is a map keyed by
+    // and `[i]` and contributes exactly one entry, so there is no
+    // cross-iteration state. Because the result is a map keyed by
     // `layer_index` — and each index is produced by exactly one iteration —
     // the collected contents are identical regardless of completion order,
-    // which is what keeps the stage's output byte-stable. `difference_ex`,
-    // `intersection_ex` and `offset` are pure Clipper2 wrappers holding no
-    // shared mutable state, so they are safe to call concurrently.
-    let classified: HashMap<u32, (Vec<QuartileBand>, Vec<ExPolygon>)> = (1..layer_footprints.len())
+    // which is what keeps the stage's output byte-stable. `difference_ex` is a
+    // pure Clipper2 wrapper holding no shared mutable state, so it is safe to
+    // call concurrently.
+    let classified: Vec<(u32, Vec<ExPolygon>, Vec<ExPolygon>)> = (1..layer_footprints.len())
         .into_par_iter()
         .filter_map(|i| {
             let (_, previous) = &layer_footprints[i - 1];
@@ -140,23 +139,21 @@ pub fn annotate_overhangs(
                 return None;
             }
 
-            let bands = partition_into_bands(current, previous, &overhang_area, line_width_mm);
-            if bands.is_empty() {
-                return None;
-            }
-
-            Some((*layer_index, (bands, previous.clone())))
+            Some((*layer_index, overhang_area, previous.clone()))
         })
         .collect();
 
     // Keep both outputs keyed by the same global layer index.
-    let mut bands_map: HashMap<u32, Vec<QuartileBand>> = HashMap::new();
-    let mut prev_map: HashMap<u32, Vec<ExPolygon>> = HashMap::new();
-    for (layer_index, (bands, prev)) in classified {
-        bands_map.insert(layer_index, bands);
-        prev_map.insert(layer_index, prev);
+    let mut overhang_areas: HashMap<u32, Vec<ExPolygon>> = HashMap::new();
+    let mut prev_layer_boundaries: HashMap<u32, Vec<ExPolygon>> = HashMap::new();
+    for (layer_index, area, prev) in classified {
+        overhang_areas.insert(layer_index, area);
+        prev_layer_boundaries.insert(layer_index, prev);
     }
-    (bands_map, prev_map)
+    OverhangAnnotation {
+        overhang_areas,
+        prev_layer_boundaries,
+    }
 }
 
 /// Parameters for [`detect_support_contacts`], mirroring the config inputs
@@ -485,20 +482,26 @@ pub fn detect_support_contacts_with_annotations(
     }
 }
 
-/// Partitions `overhang_area` (already `current \ previous`) into the 4
-/// quartile bands, measuring distance outward from `previous`'s boundary.
+/// Reconstructs the 4 quartile band polygons from `overhang_area` (already
+/// `current \ previous`) by measuring distance outward from `previous`'s
+/// boundary. **Diagnostic only** — the slice path does not call this: the
+/// production quartile is derived from the per-vertex signed distance
+/// ([`crate::perimeter_utils::overhang_quartile_from_distance`]). The
+/// visual-debug renderer calls it at render time to draw band silhouettes,
+/// which is why the band polygons are no longer carried in the IR.
 ///
 /// Implementation strategy (reuses existing boolean/offset primitives —
-/// no new polygon boolean code):
-/// for each interior threshold `t` in [`BAND_BOUNDARY_MULTIPLIERS`], grow
-/// `previous` outward by `t` (`offset`), intersect the grown polygon with
-/// `current`, then subtract `previous` itself — this yields the cumulative
-/// overhang region within distance `t` of the previous boundary. Successive
-/// cumulative regions are subtracted from each other to isolate each band;
-/// the final band (4) is whatever remains of `overhang_area` after removing
-/// the cumulative region within the last interior threshold.
-fn partition_into_bands(
-    current: &[ExPolygon],
+/// no new polygon boolean code): for each interior threshold `t` in
+/// [`BAND_BOUNDARY_MULTIPLIERS`], grow `previous` outward by `t` (`offset`)
+/// and intersect the grown polygon with `overhang_area` — this yields the
+/// cumulative overhang region within distance `t` of the previous boundary
+/// (`(current ∩ grown) \ previous` and `(current \ previous) ∩ grown` are the
+/// same set). Successive cumulative regions are subtracted from each other to
+/// isolate each band; the final band (4) is whatever remains of
+/// `overhang_area` after removing the cumulative region within the last
+/// interior threshold.
+#[must_use]
+pub fn partition_into_bands(
     previous: &[ExPolygon],
     overhang_area: &[ExPolygon],
     line_width_mm: f32,
@@ -515,8 +518,7 @@ fn partition_into_bands(
                 OffsetJoinType::Round,
                 OFFSET_ARC_TOLERANCE_MM,
             );
-            let within_threshold = intersection_ex(current, &grown_previous);
-            difference_ex(&within_threshold, previous)
+            intersection_ex(overhang_area, &grown_previous)
         })
         .collect();
 
@@ -627,9 +629,9 @@ mod tests {
     fn straight_cube_layer0_has_no_previous_and_is_absent() {
         let mesh = flat_cube_mesh();
         let layer_zs = vec![0.5, 1.5];
-        let (result, _) = annotate_overhangs(&footprints(&mesh, &layer_zs), 0.4);
+        let result = annotate_overhangs(&footprints(&mesh, &layer_zs));
         assert!(
-            !result.contains_key(&0),
+            !result.overhang_areas.contains_key(&0),
             "layer 0 has no previous layer and must never be classified as overhanging"
         );
     }
@@ -715,7 +717,8 @@ mod tests {
     /// all — that moved to `PrePass::Slice`, whose committed `SliceIR` the
     /// `PrePass::OverhangAnnotation` producer reads instead of re-slicing).
     /// Slicing here is test setup, done once and excluded from the timed
-    /// region; the assertion guards the band-partition sweep, not slicing.
+    /// region; the assertion guards the per-transition difference sweep, not
+    /// slicing.
     // KEEP-review (core-brittle): O(layers) sweep guard; timed region excludes one-time slicing setup; 1s threshold on 1200 pre-sliced layers.
     #[test]
     fn annotate_overhangs_is_fast_for_many_stacked_layers() {
@@ -725,18 +728,18 @@ mod tests {
         let layers = footprints(&mesh, &layer_zs);
 
         let start = std::time::Instant::now();
-        let (result, _) = annotate_overhangs(&layers, 0.4);
+        let result = annotate_overhangs(&layers);
         let elapsed = start.elapsed();
 
         assert!(
-            result.is_empty(),
+            result.overhang_areas.is_empty(),
             "identically-sized stacked cubes must never classify as overhanging"
         );
         assert!(
             elapsed < std::time::Duration::from_secs(1),
             "annotate_overhangs took {elapsed:?} for {CUBE_COUNT} pre-sliced \
              stacked-cube layers (expected well under 1s) — the per-transition \
-             band partition should be cheap O(layers) polygon work"
+             difference sweep should be cheap O(layers) polygon work"
         );
     }
 }

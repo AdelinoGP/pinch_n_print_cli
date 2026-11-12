@@ -3,7 +3,7 @@
 //! The pure kernel lives in `slicer_core::algos::overhang_annotation`. This
 //! thin wrapper bridges from `Blackboard` (committed `SliceIR`) to the IR-only
 //! kernel and merges the per-object results back into the already-committed
-//! `SurfaceClassificationIR.overhang_quartile_polygons`.
+//! `SurfaceClassificationIR`.
 //!
 //! # Overhang from slices (not a second mesh pass)
 //!
@@ -14,13 +14,21 @@
 //! second mesh-slicing pass here; the object meshes are sliced exactly once,
 //! in `PrePass::Slice`.
 //!
+//! # What it commits (ticket 142)
+//!
+//! No quartile-band polygons: the per-vertex quartile is derived downstream
+//! from the signed distance to `prev_layer_boundaries`, so the stage commits
+//! the unsupported area (`overhang_areas`), the previous-layer footprint, and
+//! the band width the thresholds are multiples of (`overhang_band_width_mm`).
+//! Building the four band polygon sets was 3 round offsets plus 6 whole-layer
+//! booleans per overhang layer, and its value had no production reader.
+//!
 //! # Multi-object merge
 //!
-//! `SurfaceClassificationIR.overhang_quartile_polygons` and
-//! `prev_layer_boundaries` are keyed by object id first, then global layer
-//! index. Each object's per-layer `QuartileBand` list is computed independently
-//! from that object's `SliceIR` footprints, preserving object isolation for
-//! consumers.
+//! `SurfaceClassificationIR.overhang_areas` and `prev_layer_boundaries` are
+//! keyed by object id first, then global layer index. Each object's per-layer
+//! areas are computed independently from that object's `SliceIR` footprints,
+//! preserving object isolation for consumers.
 //!
 //! # Line width resolution
 //!
@@ -28,12 +36,12 @@
 //! to `line_width`, and finally to `0.4` mm if neither is present — matching
 //! the per-invocation config-read convention documented on
 //! `annotate_overhangs`'s module doc-comment and mirrored by
-//! `classic-perimeters`/`arachne-perimeters`'s guest-side config reads.
+//! `classic-perimeters`/`arachne-perimeters`'s guest-side config reads. The
+//! resolved value is committed as `overhang_band_width_mm`.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{ConfigKey, ConfigValue, ExPolygon, SurfaceClassificationIR};
 
 use crate::{Blackboard, BlackboardError};
@@ -124,8 +132,8 @@ pub fn commit_overhang_annotation_builtin(
     let line_width_mm = resolve_line_width_mm(raw_config_source);
 
     let mesh = blackboard.mesh();
-    // object id -> layer index -> quartile bands, preserving object iteration.
-    let mut per_quartile: HashMap<String, HashMap<u32, Vec<QuartileBand>>> = HashMap::new();
+    // object id -> layer index -> unsupported area / previous-layer footprint.
+    let mut overhang_areas: HashMap<String, HashMap<u32, Vec<ExPolygon>>> = HashMap::new();
     let mut prev_layer_boundaries: HashMap<String, HashMap<u32, Vec<ExPolygon>>> = HashMap::new();
     for object in &mesh.objects {
         // This object's per-layer footprint, in plan order: the concatenated
@@ -133,7 +141,7 @@ pub fn commit_overhang_annotation_builtin(
         // object is not active). `difference_ex` unions the subject internally,
         // so overlapping sibling regions need no explicit pre-union. Keyed by
         // each slice's `global_layer_index` — the same key the WIT marshal uses
-        // to hand overhang polygons to layer-tier modules.
+        // to hand overhang anchors to layer-tier modules.
         let layer_footprints: Vec<(u32, Vec<ExPolygon>)> = slice_ir
             .iter()
             .map(|slice| {
@@ -147,47 +155,19 @@ pub fn commit_overhang_annotation_builtin(
             })
             .collect();
 
-        let (per_object, per_object_boundaries) =
-            slicer_core::algos::overhang_annotation::annotate_overhangs(
-                &layer_footprints,
-                line_width_mm,
-            );
-        let mut object_quartile: HashMap<u32, HashMap<u8, Vec<ExPolygon>>> = HashMap::new();
-        for (layer_index, bands) in per_object {
-            let layer_entry = object_quartile.entry(layer_index).or_default();
-            for band in bands {
-                layer_entry
-                    .entry(band.quartile)
-                    .or_default()
-                    .extend(band.polygons);
-            }
-        }
-        let object_quartile: HashMap<u32, Vec<QuartileBand>> = object_quartile
-            .into_iter()
-            .map(|(layer_index, by_quartile)| {
-                let mut bands: Vec<QuartileBand> = by_quartile
-                    .into_iter()
-                    .map(|(quartile, polygons)| QuartileBand { quartile, polygons })
-                    .collect();
-                bands.sort_by_key(|b| b.quartile);
-                (layer_index, bands)
-            })
-            .collect();
-        per_quartile.insert(object.id.clone(), object_quartile);
-
-        let mut object_boundaries: HashMap<u32, Vec<ExPolygon>> = HashMap::new();
-        for (layer_index, boundaries) in per_object_boundaries {
-            object_boundaries
-                .entry(layer_index)
-                .or_default()
-                .extend(boundaries);
-        }
-        prev_layer_boundaries.insert(object.id.clone(), object_boundaries);
+        let annotation =
+            slicer_core::algos::overhang_annotation::annotate_overhangs(&layer_footprints);
+        overhang_areas.insert(object.id.clone(), annotation.overhang_areas);
+        prev_layer_boundaries.insert(object.id.clone(), annotation.prev_layer_boundaries);
     }
 
     let updated = SurfaceClassificationIR {
-        overhang_quartile_polygons: per_quartile,
+        // Production no longer carries band polygons; the diagnostic renderer
+        // reconstructs them from the areas + boundary + band width.
+        overhang_quartile_polygons: HashMap::new(),
+        overhang_areas,
         prev_layer_boundaries,
+        overhang_band_width_mm: line_width_mm,
         ..surface_classification.as_ref().clone()
     };
 

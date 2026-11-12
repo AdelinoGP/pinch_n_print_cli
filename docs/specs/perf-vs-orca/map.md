@@ -287,6 +287,45 @@ band tap. Graduated [t142](issues/142-overhang-band-partition-deletion.md).
 [135](issues/135-cross-layer-occupancy-batching.md) Stage 2 and
 [136](issues/136-planner-clip-batch-fanout.md) (gated by 137).
 
+**Destination status (2026-11-11,
+[t142](issues/142-overhang-band-partition-deletion.md)): the overhang band
+partition is deleted, the quartile is distance-derived, and the matched job's
+G-code did not move; the frontier is the human's gate and two HITL rulings.**
+`annotate_overhangs` now commits only the unsupported area + the previous-layer
+footprint (Shape A: the per-layer `difference_ex` key test is kept), and
+`overhang_quartile` is bucketed from
+`signed_distance_to_boundary` against the producer's band width, so the 3 round
+offsets + 6 whole-layer booleans per overhang layer are gone; the band R-tree
+and its point-in-polygon query are gone with them. **Output: byte-identical in
+8/8 cells**, and every hash is t139's reference value
+(`93e21fee…`/`b3f1eccc…`/`3510e876…`/`96cdac85…`/`ca14d055…`/`585c6a8e…`/
+`d8fdc1d9…`/`c9fee59a…`), stable across all 48 A/B rows — the reference set does
+not move. **Timing (3 interleaved pairs, ordinary): 26.25 % / 11.76 % / 25.58 % /
+9.69 % / 20.00 % / 10.56 % / 20.23 % / 12.66 %** wall saved on base classic-off /
+-on / arachne-off / -on and benchy classic-off / -on / arachne-off / -on;
+candidate faster in **24/24** pairs (ratios 0.738–0.940), process CPU lower in
+**8/8** (14.6 %–32.6 %), no cell regresses. Composing with t139's paired
+scoreboard (indicative, not a re-taken scoreboard): **1.818x–3.697x** ordinary,
+required cut **45.0 %–73.0 %**; base classic-off **2.899x → 2.138x**, base
+classic-on **4.187x → 3.695x**. Disclosures: the **accelerated timing arm is not
+taken** (the controlled-driver `RUSTC` wrapper + MSVC 14.51 mangles the
+`libmimalloc-sys` verbatim source path; the same build without the wrapper
+succeeds), but accelerated **output parity was checked** with a disclosed manual
+`--cfg pnp_perimeter_spatial_accelerated` host plus the accelerated guest
+artifacts — **8/8 cells emit the same hashes**; the 16 output cells are 8 ×
+{baseline, candidate} ordinary; two
+pre-existing reds are recorded, not caused (`integrated_parity_skirt_brim_tdd`'s
+missing `brim_object_gap`, and `layer_slice_tdd`'s z = 0.1 layer now sampling
+z = 0.0 under t139's midpoint plane); two latent-vacuous quartile fixtures were
+repaired. Evidence:
+[`evidence/t142-overhang-band-deletion/`](evidence/t142-overhang-band-deletion/FINDINGS.md)
+(`verify.py` re-derives every number; `--self-test` 4/4 controls).
+**Frontier:** [137](issues/137-planner-scheduling-gate.md) (HITL),
+[140](issues/140-brim-contour-input.md) (HITL),
+[135](issues/135-cross-layer-occupancy-batching.md) Stage 2 and
+[136](issues/136-planner-clip-batch-fanout.md) (gated by 137). No new AFK
+ticket: the deletion answered its own question and opened none.
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -373,7 +412,36 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-11, the t141 take):** the human said
+**Current selection scope (2026-11-11, the t142 take):** the human said
+"continue the perf vs orca map, pick an afk ticket". **t142 was the first
+unblocked, unclaimed AFK frontier ticket in order** (137 and 140 are the
+human's grillings; 136 / 135 Stage 2 are gated by 137) and was claimed and
+resolved as a measured BUILD. Headline: **the 4-band polygon partition is
+deleted and the quartile is derived from the signed distance the consumer
+already measures** — `annotate_overhangs` now commits only the unsupported area
++ previous-layer footprint, `PerimeterSpatialContext` takes the producer's band
+width, and the band R-tree is gone. Output is **byte-identical in 8/8 cells**
+and equal to t139's reference set, stable across all 48 A/B rows; the paired
+A/B (3 interleaved pairs) saves **9.69 %–26.25 %** of the wall (base
+classic-off 26.25 %, base classic-on 11.76 %, benchy classic-off 20.00 %) with
+the candidate faster in **24/24** pairs and process CPU lower in **8/8**
+(14.6 %–32.6 %). Composing with t139's paired scoreboard gives an indicative
+**1.818x–3.697x** ordinary and a required cut of **45.0 %–73.0 %** (not a
+re-taken scoreboard). Gaps disclosed: the accelerated **timing** arm is not taken
+(the controlled-driver `RUSTC` wrapper + MSVC 14.51 mangles the
+`libmimalloc-sys` verbatim source path; the same build without the wrapper
+succeeds), while accelerated **output parity** was checked with a disclosed
+manual `--cfg pnp_perimeter_spatial_accelerated` host plus the accelerated guest
+artifacts (8/8 same hashes); the box was
+not verified idle (the output-mode base-on run took 117.4 s vs its 94.8 s A/B
+median), and two pre-existing reds are recorded
+(`integrated_parity_skirt_brim_tdd`'s missing `brim_object_gap`, confirmed red
+at HEAD via `git stash`; `layer_slice_tdd`'s z = 0.1 layer under t139's midpoint
+plane). Two latent-vacuous quartile fixtures were repaired. Evidence:
+[`evidence/t142-overhang-band-deletion/`](evidence/t142-overhang-band-deletion/FINDINGS.md)
+(`verify.py` re-derives every number; `--self-test` 4/4 controls).
+
+**Previous selection scope (2026-11-11, the t141 take):** the human said
 "Continue the perf vs orca map, pick an afk ticket". **No AFK ticket was on the
 frontier** — 137 and 140 are the human's grillings and 136 / 135 Stage 2 are
 gated by 137 — so the map's own route arithmetic graduated the largest
@@ -3236,6 +3304,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Overhang band partition deletion: derive the quartile from the distance the consumer already has](issues/142-overhang-band-partition-deletion.md): **resolved (2026-11-11; measured BUILD — the partition is deleted, the quartile is distance-derived, and the matched job's G-code is byte-identical)** — `annotate_overhangs` returns only `overhang_areas` + `prev_layer_boundaries` (Shape A: the per-layer `difference_ex` key test stays; Shape B was rejected because populating the boundary on every layer would flip `overhang_distance_mm` from `None` to `Some` with no measured benefit), and `PerimeterSpatialContext` takes the producer's band width instead of band polygons; `overhang_quartile = overhang_quartile_from_distance(signed_distance, width)` with an epsilon at the 0.0001 mm Clipper quantisation. The band R-tree, `indexed_overhang_quartile` and `legacy_overhang_quartile` are deleted; classic and arachne measure the distance once and stamp both fields. `SurfaceClassificationIR` gains `overhang_areas` + `overhang_band_width_mm` (production leaves the band polygons empty), the scalar rides the WIT `slice-region-view.overhang-band-width-mm`, `extra_perimeters_on_overhangs` reads the new area map, and the visual-debug renderer reconstructs bands at render time. **Output byte-identical in 8/8 cells** and equal to t139's reference set, stable across 48 A/B rows. **Paired A/B: 26.25 / 11.76 / 25.58 / 9.69 / 20.00 / 10.56 / 20.23 / 12.66 % wall saved**, candidate faster in **24/24** pairs, CPU lower in **8/8**; indicative composed ratios **1.818x–3.697x**, required cut **45.0–73.0 %**. Disclosed gap: no accelerated **timing** arm (driver × MSVC verbatim-path bug on `libmimalloc-sys`); accelerated **output parity** was checked with a disclosed manual `--cfg` host + accelerated guests (8/8 same hashes). Evidence: [`evidence/t142-overhang-band-deletion/`](evidence/t142-overhang-band-deletion/FINDINGS.md) (`verify.py` re-derives every number; `--self-test` 4/4 controls).
 - [Overhang quartile bands: is the 4-band polygon partition read by anything?](issues/141-overhang-quartile-band-deletion.md): **resolved (2026-11-11; Phase-1 attribution + price — the quartile VALUE has no production reader, the only read is a presence bit equal to the sign of the distance the consumer already computes, and the partition is the largest unpriced shell shape)** — stamped at `expolygon_to_path3d_indexed` / `expolygon_to_path3d` / `arachne-perimeters`, and every other production site copies it or tests `.is_some()`; `overhang-classifier-default` computes speed from `overhang_distance_mm` (`calculate_speed`), and `overhang_areas` has no reader in `modules/`. The four bands' union is exactly `current \ previous`, so presence = outside the previous boundary = `signed_distance > 0` (raw, not the `+0.5 x width` stamp), against the very same `prev_layer_boundary`. Price on the post-t139 tree: base classic-off **8.964 / 9.558 / 10.583 s** (22.1–26.5 % of the 39.9–40.6 s wall, 34.3–40.5 % of the 26.15 s cut), base arachne-off **9.450 s**, base classic-on **11.195 s**, benchy classic-off **0.954 s**, benchy classic-on **0.817 s**; **3 offsets + 6 booleans per band layer** over 486/496 and 239/240; 11.6–11.7x thread→wall reproduces t84. Two forks: keep the per-layer boundary key (one `difference_ex`, ≥85.4 % of the stage still saved) or populate every layer and prove inertness; and re-home the visual-debug band tap. Not a route step alone (2.899x → ~2.19x on base classic-off). Graduated [t142](issues/142-overhang-band-partition-deletion.md). Evidence: [`evidence/t141-overhang-bands/`](evidence/t141-overhang-bands/FINDINGS.md) (`verify.py` 7 rows / 3 sources; `--self-test` 4/4 negative controls).
 - [Layer-plane parity: sample at the canonical midpoint](issues/139-layer-plane-parity.md): **resolved (2026-11-11; the plane is canonical, the reference set is re-recorded, and the route arithmetic is unchanged)** — `PrePass::Slice` + the host schedule + the planner terminate/sample on `compute_slice_z`'s band midpoint; base **495 → 496 layers / 99.0 → 99.2**, benchy 240/48.0; layer-0 hull fits the STL mid section on all 8 cells (base classic 0.932 vs mid 0.955 / top 3.165 = **3.31x** separation; arachne 0.757 recorded). **Four modifier-volume slice sites** moved onto the same plane (region mapping, paint segmentation, support enforcer/blocker, Tier-2 staging) to keep the `modifier_sub_region_id` hashes equal. **Slicer defect fixed:** `push_unique_intersection` deduped by coincident coordinates, collapsing base's 69.3 mm section to 0.0025 mm² (correct 671.2054) and dropping the layer; topology-only dedupe restores all 496. **Reference set:** `93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…` / `ca14d055…` / `585c6a8e…` / `d8fdc1d9…` / `c9fee59a…`, arms identical; baseline reproduces t135. **Oracle 2/8** (base supports-off skirt −4.3 % / −4.4 % swept, −5.7 % / −6.6 % outer loop, brim +8.1 % → −5.2 %; supports-on = support engine). **A/B** wall 0.923x–0.984x, CPU 0.963x–0.991x. **Scoreboard** **2.279x–4.187x ordinary / 2.311x–4.179x accelerated, cut 56.1 %–76.1 %** (supersedes t135 with the machine-state disclosure). DEV-201 closed; DEV-202 filed (p241 agg, calicat sites). Graduated [Brim anchor: feed the slice contour into `skirt-brim`](issues/140-brim-contour-input.md). Evidence: [`evidence/t139-layer-plane-parity/`](evidence/t139-layer-plane-parity/FINDINGS.md) (`verify.py` 7 claim groups, 22/22 negative controls).
 - [Layer-0 cross-section parity: do the two arms print the same first layer?](issues/138-layer0-cross-section-parity.md): **resolved (2026-11-10; Phase-1 attribution — the residual is a slice-plane convention, the base skirt is its second-order consequence, supports-on is the support engine)** — PnP slices every layer at its **top** (`first_layer_height + n × layer_height`), canonical OrcaSlicer at the layer **midpoint** (`compute_slice_z` = `0.5 × (lo + hi)`, ZAA off). Slicing the same STL at top/0.20 and mid/0.21 and comparing translation-invariant hulls puts PnP on the top plane (0.02–1.36% error) and Orca on the mid plane (0.02–4.02%) on all ten sampled layers; base L0/L10 separate the candidate planes by **253% / 161%**. On `base.stl` the 0.1 mm shift is **3.42x** of layer-0 area (3.122 vs 0.914 mm²); on the benchy **1.3%**; base is **495 layers / Z 99.0** on PnP vs **496 / 99.2** on Orca. **Classification:** base footprint = slice plane (same-plane wall-width effect 3.3%); base-off brim +8.09% = +88.04 mm contour − 27.65 mm anchor (predicted +60.39 vs observed +57.39); base-off skirt +3.23% = brim footprint +8.68% diluted by the offset; base-on skirt +12.48% and benchy-on brim +54.51% = support engine (Orca support path 10.6–11.7x denser, coverage 10.4–11.5x; skirt tracks the support-dominated input hull); run counts 22/30, 19/39, 0/0 = cosmetic splitting; first-layer height equal. **Oracle: 2/8; no 8/8 without a slicing change** — ceiling 6/8 without one (perfect support parity), expected 4/8 with the plane fix alone, 8/8 needs both; the strict form is an engine-level acceptance. **Price:** fairness fix, not a route step — base layer-0 operand 5.329 → 2.314 mm² (2.30x) on 1 of 495 layers, benchy 1.01x on 1 of 240; no wall claim, 59.1–73.5% cut unchanged; the price is the 16-cell re-take, delta audit and scoreboard re-derivation, plus the multi-height midpoint decision. Graduated [Layer-plane parity](issues/139-layer-plane-parity.md). Evidence: [`evidence/t138-layer0-cross-section/`](evidence/t138-layer0-cross-section/FINDINGS.md) (`verify.py` 8 claim groups, `--self-test` 12/12 controls).

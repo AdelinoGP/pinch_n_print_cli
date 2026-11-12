@@ -330,9 +330,7 @@ mod tests {
                 minor: 0,
                 patch: 0,
             },
-            per_object: std::collections::HashMap::new(),
-            overhang_quartile_polygons: std::collections::HashMap::new(),
-            prev_layer_boundaries: std::collections::HashMap::new(),
+            ..SurfaceClassificationIR::default()
         };
 
         test_serde_roundtrip!(surf_ir);

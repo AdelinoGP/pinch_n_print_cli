@@ -244,12 +244,35 @@ fn populate_surface_classification_fields(
                 .collect()
         })
         .unwrap_or_default();
-    let overhang_areas: Vec<slicer_ir::ExPolygon> = overhang_quartile_polygons
-        .iter()
-        .flat_map(|band| band.polygons.clone())
-        .collect();
+    let overhang_areas: Vec<slicer_ir::ExPolygon> = surface_classification
+        .and_then(|sc| {
+            sc.overhang_areas
+                .get(&region.object_id)
+                .and_then(|by_layer| by_layer.get(&global_layer_index))
+        })
+        .map(|areas| {
+            let prefiltered: Vec<slicer_ir::ExPolygon> = areas
+                .iter()
+                .filter(|poly| match region_bbox {
+                    Some(rb) => bbox_overlaps(rb, poly),
+                    None => false,
+                })
+                .cloned()
+                .collect();
+            if prefiltered.is_empty() {
+                Vec::new()
+            } else {
+                slicer_core::polygon_ops::intersection_ex(&prefiltered, &region.polygons)
+            }
+        })
+        .unwrap_or_default();
     view.set_overhang_quartile_polygons(overhang_quartile_polygons);
     view.set_overhang_areas(overhang_areas);
+    view.set_overhang_band_width_mm(
+        surface_classification
+            .map(|sc| sc.overhang_band_width_mm)
+            .unwrap_or(0.0),
+    );
 
     let prev_layer_boundary: Vec<slicer_ir::ExPolygon> = surface_classification
         .and_then(|sc| {
@@ -368,6 +391,7 @@ fn native_slice_region_view(
         view.set_surface_group(data.surface_group.clone());
         view.set_overhang_quartile_polygons(data.overhang_quartile_polygons.clone());
         view.set_overhang_areas(data.overhang_areas.clone());
+        view.set_overhang_band_width_mm(data.overhang_band_width_mm);
         view.set_prev_layer_boundary(data.prev_layer_boundary.clone());
     } else {
         populate_surface_classification_fields(

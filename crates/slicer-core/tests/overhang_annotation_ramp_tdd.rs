@@ -2,7 +2,7 @@
 //! TDD (AC-5): 45-degree ramp overhang classified into correctly-ordered
 //! quartile distance bands.
 
-use slicer_core::algos::overhang_annotation::annotate_overhangs;
+use slicer_core::algos::overhang_annotation::{annotate_overhangs, partition_into_bands};
 use slicer_core::slice_mesh_ex;
 use slicer_ir::{ExPolygon, IndexedTriangleSet, Point3, UNITS_PER_MM};
 
@@ -86,35 +86,56 @@ fn ramp_overhang_partitions_into_correctly_ordered_bands() {
     // is 0.9mm wide).
     let layer_zs = vec![3.0_f32, 3.2_f32, 4.1_f32];
 
-    let (result, _) = annotate_overhangs(&footprints(&mesh, &layer_zs), LINE_WIDTH_MM);
+    // Ticket 142: the stage commits the unsupported area + previous boundary;
+    // the band polygons are reconstructed by `partition_into_bands` (the
+    // diagnostic path the visual debug renderer uses).
+    let annotation = annotate_overhangs(&footprints(&mesh, &layer_zs));
 
     // Layer 0 has no previous layer: never overhanging, key absent.
     assert!(
-        !result.contains_key(&0),
+        !annotation.overhang_areas.contains_key(&0),
         "layer 0 must have no key (no previous layer)"
     );
 
     // --- Layer 1 (small 0.2mm step): entirely within band 1. ---
-    let layer1_bands = result
-        .get(&1)
-        .expect("layer 1 (0.2mm ramp step) must have overhang bands");
+    let layer1_area = total_area_mm2(
+        annotation
+            .overhang_areas
+            .get(&1)
+            .expect("layer 1 (0.2mm ramp step) must have an unsupported area"),
+    );
+    // Expected overhang strip: x in (13.0, 13.2], y in [0, 10] => 0.2 * 10 = 2.0 mm^2.
+    assert!(
+        (layer1_area - 2.0).abs() < 0.2,
+        "layer 1 overhang area {layer1_area} should be ~2.0 mm^2"
+    );
+    let layer1_bands = partition_into_bands(
+        annotation
+            .prev_layer_boundaries
+            .get(&1)
+            .expect("layer 1 must carry its previous-layer boundary"),
+        annotation.overhang_areas.get(&1).unwrap(),
+        LINE_WIDTH_MM,
+    );
     assert_eq!(
         layer1_bands.len(),
         1,
         "small 0.2mm step (<= 0.5*0.4=0.2mm threshold) should land entirely in band 1"
     );
     assert_eq!(layer1_bands[0].quartile, 1);
-    let layer1_area = total_area_mm2(&layer1_bands[0].polygons);
-    // Expected overhang strip: x in (13.0, 13.2], y in [0, 10] => 0.2 * 10 = 2.0 mm^2.
-    assert!(
-        (layer1_area - 2.0).abs() < 0.2,
-        "layer 1 band-1 area {layer1_area} should be ~2.0 mm^2"
-    );
 
     // --- Layer 2 (large 0.9mm step): spans bands 1-4 in order. ---
-    let layer2_bands = result
-        .get(&2)
-        .expect("layer 2 (0.9mm ramp step) must have overhang bands");
+    let layer2_bands = partition_into_bands(
+        annotation
+            .prev_layer_boundaries
+            .get(&2)
+            .expect("layer 2 must carry its previous-layer boundary"),
+        annotation
+            .overhang_areas
+            .get(&2)
+            .expect("layer 2 (0.9mm ramp step) must have an unsupported area"),
+        LINE_WIDTH_MM,
+    );
     assert!(
         layer2_bands.len() >= 2,
         "large 0.9mm step should be split across multiple bands, got {}",
@@ -143,7 +164,7 @@ fn ramp_overhang_partitions_into_correctly_ordered_bands() {
         [(1, 2.0), (2, 2.0), (3, 2.0), (4, 3.0)]
             .into_iter()
             .collect();
-    for band in layer2_bands {
+    for band in &layer2_bands {
         let area = total_area_mm2(&band.polygons);
         let expected = expected_area[&band.quartile];
         assert!(

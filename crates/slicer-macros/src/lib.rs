@@ -3519,6 +3519,7 @@ fn layer_light_helpers(stage: &str) -> TokenStream2 {
                 sdk_view.set_overhang_areas(
                     overhang_areas,
                 );
+                sdk_view.set_overhang_band_width_mm(r.overhang_band_width_mm());
                 sdk_view.set_overhang_quartile_polygons(overhang_quartile_polygons);
                 sdk_view.set_prev_layer_boundary(prev_layer_boundary);
                 sdk_view.set_surface_group(

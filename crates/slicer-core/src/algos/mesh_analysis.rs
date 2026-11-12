@@ -130,7 +130,9 @@ pub fn execute_mesh_analysis_with(
         schema_version: CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
         per_object,
         overhang_quartile_polygons: HashMap::new(),
+        overhang_areas: HashMap::new(),
         prev_layer_boundaries: HashMap::new(),
+        overhang_band_width_mm: 0.0,
     })
 }
 

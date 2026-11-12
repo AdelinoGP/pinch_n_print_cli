@@ -601,11 +601,40 @@ pub fn sliced_region_to_data_with_prepared(
                 })
                 .unwrap_or_default()
         });
-    let overhang_areas: Vec<crate::host::layer::slicer::types::geometry::ExPolygon> =
-        overhang_quartile_polygons
-            .iter()
-            .flat_map(|band| band.polygons.clone())
-            .collect();
+    let overhang_areas: Vec<crate::host::layer::slicer::types::geometry::ExPolygon> = prepared
+        .map(|p| ir_to_wit_expolygons(&p.overhang_areas))
+        .unwrap_or_else(|| {
+            let areas = surface_classification
+                .and_then(|sc| {
+                    sc.overhang_areas
+                        .get(&region.object_id)
+                        .and_then(|by_layer| by_layer.get(&global_layer_index))
+                })
+                .map(|areas| {
+                    let prefiltered: Vec<slicer_ir::ExPolygon> = areas
+                        .iter()
+                        .filter(|poly| match region_bbox {
+                            Some(rb) => bbox_overlaps(rb, poly),
+                            None => false,
+                        })
+                        .cloned()
+                        .collect();
+                    if prefiltered.is_empty() {
+                        Vec::new()
+                    } else {
+                        slicer_core::polygon_ops::intersection_ex(&prefiltered, &region.polygons)
+                    }
+                })
+                .unwrap_or_default();
+            ir_to_wit_expolygons(&areas)
+        });
+    let overhang_band_width_mm = prepared
+        .map(|p| p.overhang_band_width_mm)
+        .unwrap_or_else(|| {
+            surface_classification
+                .map(|sc| sc.overhang_band_width_mm)
+                .unwrap_or(0.0)
+        });
     let prev_layer_boundary: Vec<crate::host::layer::slicer::types::geometry::ExPolygon> = prepared
         .map(|p| ir_to_wit_expolygons(&p.prev_layer_boundary))
         .unwrap_or_else(|| {
@@ -648,6 +677,7 @@ pub fn sliced_region_to_data_with_prepared(
         held_claims: view.held_claims().to_vec(),
         overhang_areas,
         overhang_quartile_polygons,
+        overhang_band_width_mm,
         prev_layer_boundary,
         surface_group,
     }

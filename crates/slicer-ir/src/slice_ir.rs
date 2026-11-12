@@ -863,13 +863,33 @@ pub struct SurfaceClassificationIR {
     /// Overhang polygons bucketed by severity quartile, keyed by object ID and
     /// global layer index. Host-only aggregation populated by the PrePass
     /// overhang annotation pipeline; not mirrored in the WIT boundary.
+    ///
+    /// Since ticket 142 the production slice path leaves this **empty**: the
+    /// quartile is derived per vertex from the signed distance to
+    /// `prev_layer_boundaries` (`overhang_quartile_from_distance`), and the
+    /// band polygons are only reconstructed for diagnostics (the visual-debug
+    /// renderer). The field is retained so a diagnostic producer can still
+    /// carry explicit bands.
     #[serde(default)]
     pub overhang_quartile_polygons: HashMap<ObjectId, HashMap<u32, Vec<QuartileBand>>>,
+    /// Unsupported (overhanging) area per object and global layer index: the
+    /// polygons of layer `n` that layer `n - 1` does not support. Host-only
+    /// aggregation populated by the PrePass overhang annotation pipeline;
+    /// absent on layers with no overhang.
+    #[serde(default)]
+    pub overhang_areas: HashMap<ObjectId, HashMap<u32, Vec<ExPolygon>>>,
     /// Previous-layer slice boundary contours keyed by object ID and global
     /// layer index. Host-only aggregation populated by the PrePass overhang
     /// annotation pipeline; not mirrored in the WIT boundary.
     #[serde(default)]
     pub prev_layer_boundaries: HashMap<ObjectId, HashMap<u32, Vec<ExPolygon>>>,
+    /// Producer-resolved band width (mm) that the overhang-quartile thresholds
+    /// are multiples of (`outer_wall_line_width`, then `line_width`, then
+    /// `0.4`). Transported to layer modules so the producer's width — not the
+    /// consumer's per-point extrusion width — decides the buckets. `0.0` means
+    /// "no width was resolved"; presence still follows the distance sign.
+    #[serde(default)]
+    pub overhang_band_width_mm: f32,
 }
 
 impl Default for SurfaceClassificationIR {
@@ -878,7 +898,9 @@ impl Default for SurfaceClassificationIR {
             schema_version: CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
             per_object: HashMap::new(),
             overhang_quartile_polygons: HashMap::new(),
+            overhang_areas: HashMap::new(),
             prev_layer_boundaries: HashMap::new(),
+            overhang_band_width_mm: 0.0,
         }
     }
 }

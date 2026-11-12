@@ -77,11 +77,14 @@ pub struct SliceRegionView {
     /// the module holds no fill claims for this region (suppresses all fill
     /// emission via `should_emit`).
     held_claims: Vec<String>,
-    /// Overhang area polygons for this region, flattened across all severity
-    /// quartiles. Populated by the host populator from
-    /// `SurfaceClassificationIR.overhang_quartile_polygons` at this region's
-    /// layer, pre-filtered to overlap the region (packet 107).
+    /// Overhang area polygons for this region, clipped exactly to the region
+    /// footprint. Populated by the host populator from
+    /// `SurfaceClassificationIR.overhang_areas` at this region's layer
+    /// (ticket 142; previously flattened from the quartile bands).
     overhang_areas: Vec<ExPolygon>,
+    /// Producer-resolved band width (mm) that the overhang-quartile thresholds
+    /// are multiples of. `0.0` when no width was resolved.
+    overhang_band_width_mm: f32,
     /// Quartile-banded overhang polygons for this region's layer, pre-filtered
     /// to overlap the region (packet 107). Preserves the per-quartile grouping
     /// that `overhang_areas` flattens away, for callers that need
@@ -129,6 +132,7 @@ impl Default for SliceRegionView {
             raft_fill: Vec::new(),
             held_claims: Vec::new(),
             overhang_areas: Vec::new(),
+            overhang_band_width_mm: 0.0,
             overhang_quartile_polygons: Vec::new(),
             prev_layer_boundary: Vec::new(),
             surface_group: None,
@@ -593,17 +597,29 @@ impl SliceRegionView {
         &self.held_claims
     }
 
-    /// Returns the overhang area polygons for this region, flattened across
-    /// all severity quartiles.
+    /// Returns the overhang area polygons for this region, clipped exactly to
+    /// the region footprint.
     ///
-    /// Populated by the host populator from
-    /// `SurfaceClassificationIR.overhang_quartile_polygons` for this region's
-    /// layer, pre-filtered to overlap the region (packet 107). Empty when the
-    /// PrePass has not yet run `PrePass::OverhangAnnotation`, or when this
-    /// region has no overlapping overhang polygons at its layer. Safe to call
-    /// at any stage; callers must handle the empty case.
+    /// Populated by the host populator from `SurfaceClassificationIR.overhang_areas`
+    /// for this region's layer (ticket 142). Empty when the PrePass has not yet
+    /// run `PrePass::OverhangAnnotation`, or when this region has no overlapping
+    /// overhang polygons at its layer. Safe to call at any stage; callers must
+    /// handle the empty case.
     pub fn overhang_areas(&self) -> &[ExPolygon] {
         &self.overhang_areas
+    }
+
+    /// Returns the producer-resolved band width (mm) behind the overhang
+    /// quartile thresholds. `0.0` when no width was resolved.
+    pub fn overhang_band_width_mm(&self) -> f32 {
+        self.overhang_band_width_mm
+    }
+
+    /// Override the producer-resolved overhang band width (host-only, for
+    /// testing).
+    #[doc(hidden)]
+    pub fn set_overhang_band_width_mm(&mut self, overhang_band_width_mm: f32) {
+        self.overhang_band_width_mm = overhang_band_width_mm;
     }
 
     /// Override the overhang quartile polygons (host-only, for testing).
@@ -615,7 +631,7 @@ impl SliceRegionView {
     /// Override the flattened overhang area polygons (host-only, for testing).
     ///
     /// Production code populates `overhang_areas` from
-    /// `SurfaceClassificationIR.overhang_quartile_polygons` at the WASM
+    /// `SurfaceClassificationIR.overhang_areas` at the WASM
     /// marshal boundary (`crates/slicer-wasm-host/src/marshal/in_.rs`). Tests
     /// that exercise overhang consumers directly (bypassing the WASM
     /// boundary) can populate it here (P108 T-077).

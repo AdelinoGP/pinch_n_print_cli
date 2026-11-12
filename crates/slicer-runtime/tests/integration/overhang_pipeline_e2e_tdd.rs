@@ -367,12 +367,13 @@ fn run_real_overhang_prepass(mesh: MeshIR, global_layers: Vec<GlobalLayer>) -> B
 /// real `SurfaceClassificationIR.overhang_quartile_polygons` entry for the
 /// wall's own layer (empty slice for layers with no overhang), so this helper
 /// does NOT hand-construct any `overhang_quartile` value — it comes entirely
-/// from calling the real function with real band data.
+/// from calling the real function with the real previous-layer boundary.
 fn real_wall_entity(
     entity_id: u64,
     square_mm: (f32, f32, f32, f32),
     z: f32,
-    overhang_bands: &[slicer_ir::slice_ir::QuartileBand],
+    prev_layer_boundary: &[slicer_ir::ExPolygon],
+    overhang_band_width_mm: f32,
 ) -> PrintEntity {
     let (x0, y0, x1, y1) = square_mm;
     // Inset the contour by half the 0.4mm line width, as a real outer wall is
@@ -390,8 +391,13 @@ fn real_wall_entity(
             Point2::from_mm(x0 + inset, y1 - inset),
         ],
     };
-    let points =
-        slicer_core::perimeter_utils::expolygon_to_path3d(&contour, z, 0.4, overhang_bands, &[]);
+    let points = slicer_core::perimeter_utils::expolygon_to_path3d(
+        &contour,
+        z,
+        0.4,
+        overhang_band_width_mm,
+        prev_layer_boundary,
+    );
     PrintEntity {
         entity_id,
         path: ExtrusionPath3D {
@@ -432,31 +438,43 @@ fn classifier_governing_quartile(entity: &PrintEntity) -> Option<u8> {
 #[test]
 fn overhang_pipeline_full_propagation() {
     // (a) Real PrePass::OverhangAnnotation builtin produces non-empty
-    // quartile-banded overhang data for the ramp mesh.
+    // unsupported-area data for the ramp mesh.
     let blackboard = run_real_overhang_prepass(overhang_ramp_mesh(), two_global_layers("ramp"));
     let surface_classification = blackboard
         .surface_classification()
         .expect("SurfaceClassificationIR must be committed by PrePass::MeshAnalysis");
     assert!(
-        !surface_classification.overhang_quartile_polygons.is_empty(),
+        !surface_classification.overhang_areas.is_empty(),
         "expected PrePass::OverhangAnnotation to produce at least one global layer index \
-         with overhang quartile bands on the ramp mesh, got: {:?}",
-        surface_classification.overhang_quartile_polygons
+         with an unsupported area on the ramp mesh, got: {:?}",
+        surface_classification.overhang_areas
     );
 
     // (b) The upper box occupies global_layer_index 1 (z=1.5 in
     // `two_global_layers()`) and its footprint (x:[5,15]) extends beyond the
     // lower box's footprint (x:[0,10]) — the x:[10,15] strip is a real
     // overhang region annotated against layer 1's own index. Feed that
-    // layer's real bands into `expolygon_to_path3d` via `real_wall_entity`,
-    // exactly as `classic-perimeters::emit_walls` does in production.
-    let bands = surface_classification
-        .overhang_quartile_polygons
+    // layer's real previous-layer boundary into `expolygon_to_path3d` via
+    // `real_wall_entity`, exactly as `classic-perimeters::emit_walls` does in
+    // production (ticket 142: the quartile is derived from the signed
+    // distance, so the boundary — not band polygons — is the carrier).
+    let previous_boundary = surface_classification
+        .prev_layer_boundaries
         .get("ramp")
         .and_then(|by_layer| by_layer.get(&1))
         .cloned()
         .unwrap_or_default();
-    let upper_wall = real_wall_entity(1, (5.0, 0.0, 15.0, 10.0), 1.5, &bands);
+    assert!(
+        !previous_boundary.is_empty(),
+        "layer 1 must carry the previous layer's footprint"
+    );
+    let upper_wall = real_wall_entity(
+        1,
+        (5.0, 0.0, 15.0, 10.0),
+        1.5,
+        &previous_boundary,
+        surface_classification.overhang_band_width_mm,
+    );
     let quartile = classifier_governing_quartile(&upper_wall);
     assert!(
         matches!(quartile, Some(1..=4)),
@@ -487,27 +505,33 @@ fn no_overhang_case() {
         .surface_classification()
         .expect("SurfaceClassificationIR must be committed even with zero overhangs");
 
-    // Flat-top cube: no facet is unsupported, so no quartile bands anywhere.
-    let has_any_bands = surface_classification
-        .overhang_quartile_polygons
+    // Flat-top cube: no facet is unsupported, so no overhang area anywhere.
+    let has_any_areas = surface_classification
+        .overhang_areas
         .values()
         .flat_map(|by_layer| by_layer.values())
-        .any(|bands| !bands.is_empty());
+        .any(|areas| !areas.is_empty());
     assert!(
-        !has_any_bands,
-        "flat-top cube must produce zero overhang quartile bands, got: {:?}",
-        surface_classification.overhang_quartile_polygons
+        !has_any_areas,
+        "flat-top cube must produce zero overhang areas, got: {:?}",
+        surface_classification.overhang_areas
     );
 
     // Wall vertices carry overhang_quartile = None: real expolygon_to_path3d
-    // output fed the real (empty) bands for this layer, not mocked.
-    let bands = surface_classification
-        .overhang_quartile_polygons
+    // output fed the real (empty) boundary for this layer, not mocked.
+    let previous_boundary = surface_classification
+        .prev_layer_boundaries
         .get("cube")
         .and_then(|by_layer| by_layer.get(&1))
         .cloned()
         .unwrap_or_default();
-    let wall = real_wall_entity(1, (0.0, 0.0, 10.0, 10.0), 1.5, &bands);
+    let wall = real_wall_entity(
+        1,
+        (0.0, 0.0, 10.0, 10.0),
+        1.5,
+        &previous_boundary,
+        surface_classification.overhang_band_width_mm,
+    );
     assert!(
         wall.path
             .points

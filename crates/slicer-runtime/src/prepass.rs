@@ -955,7 +955,7 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
         },
     )?;
     // PrePass::OverhangAnnotation — host built-in. Runs strictly AFTER Slice:
-    // it derives each object's overhang bands from the committed SliceIR by
+    // it derives each object's unsupported area from the committed SliceIR by
     // diffing consecutive-layer footprints (OrcaSlicer's
     // `detect_overhangs_for_lift`, `PrintObject.cpp:880-908`), never re-slicing
     // the mesh. Merges per-object `annotate_overhangs` output into a

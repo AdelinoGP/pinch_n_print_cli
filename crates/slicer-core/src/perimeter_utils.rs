@@ -424,6 +424,57 @@ pub fn signed_distance_to_boundary(x: f32, y: f32, boundary: &[ExPolygon]) -> f3
     }
 }
 
+/// Multipliers of the band width defining the 3 interior boundaries of the
+/// 4-quartile overhang distance classification.
+///
+/// Per roadmap decision O-4 the nominal threshold tuple is
+/// `{0.5, 1.0, 1.5, 2.0}`; the `2.0` multiplier is intentionally **not** a
+/// boundary because quartile 4's outer edge is "the rest of the overhang
+/// region" (capped by the region's own extent), not a fixed distance cutoff.
+///
+/// Lives here (not in `algos::overhang_annotation`) because the consumer side
+/// is compiled into the wasm guests, which do not enable `host-algos`.
+pub const OVERHANG_BAND_BOUNDARY_MULTIPLIERS: [f32; 3] = [0.5, 1.0, 1.5];
+
+/// Signed-distance tolerance (mm) below which a vertex counts as lying **on**
+/// the previous-layer boundary rather than outside it. Matches Clipper's
+/// integer quantisation (1 unit = 0.0001 mm), which is what the polygon
+/// difference used to do implicitly: a point the difference excludes is at most
+/// one unit away from the boundary.
+pub const OVERHANG_BOUNDARY_EPSILON_MM: f32 = 0.0001;
+
+/// Derive the overhang quartile from a raw signed distance to the previous
+/// layer's boundary.
+///
+/// This is the whole overhang classification since ticket 142: a vertex of the
+/// current layer is overhanging **iff** it lies outside the previous layer
+/// (`raw > epsilon`), because the old band partition's union was exactly
+/// `current \ previous`. The quartile value buckets that distance at
+/// `band_width_mm × {0.5, 1.0, 1.5}` (see
+/// [`OVERHANG_BAND_BOUNDARY_MULTIPLIERS`]); it is reported for completeness
+/// even though no production reader compares it.
+///
+/// `band_width_mm` is the **producer's** resolved width
+/// (`SurfaceClassificationIR.overhang_band_width_mm`), never the consumer's
+/// per-point extrusion width. A non-positive width collapses every positive
+/// distance into quartile 4.
+#[must_use]
+pub fn overhang_quartile_from_distance(
+    raw_signed_distance_mm: f32,
+    band_width_mm: f32,
+) -> Option<u8> {
+    if !(raw_signed_distance_mm > OVERHANG_BOUNDARY_EPSILON_MM) {
+        return None;
+    }
+    let width = band_width_mm.max(0.0);
+    for (index, multiplier) in OVERHANG_BAND_BOUNDARY_MULTIPLIERS.iter().enumerate() {
+        if raw_signed_distance_mm <= width * multiplier {
+            return Some((index + 1) as u8);
+        }
+    }
+    Some(4)
+}
+
 /// Convert an ExPolygon contour to a Vec<Point3WithWidth> at the given Z and width.
 ///
 /// Converts from scaled i64 coordinates to f32 mm. The returned Vec has N+1
@@ -433,19 +484,18 @@ pub fn signed_distance_to_boundary(x: f32, y: f32, boundary: &[ExPolygon]) -> f3
 /// consumers (seam-placer, fuzzy-skin, G-code emitter) rely on this so the
 /// final closing edge is processed exactly like every other wall segment.
 ///
-/// `overhang_bands` classifies each vertex's `overhang_quartile` by winding-number
-/// membership against the region's quartile-band polygons (T-024-WIRE-VIEW-CONSUMER):
-/// a vertex falling in more than one band (only possible at a shared boundary, since
-/// bands are otherwise a distance-based partition) takes the most severe (highest)
-/// matching quartile, mirroring `overhang-classifier-default`'s own MAX-per-entity
-/// convention. Pass `&[]` for callers with no band data (e.g. non-planar shells,
-/// which are an explicitly separate concern — see `docs/specs/perimeter-modules-orca-parity-roadmap.md`
-/// D-3) to get the prior all-`None` behavior.
+/// `overhang_band_width_mm` classifies each vertex's `overhang_quartile` from
+/// its signed distance to `prev_layer_boundary`
+/// ([`overhang_quartile_from_distance`]); the same distance is stamped as
+/// `overhang_distance_mm`. Pass `0.0` for callers with no band data (e.g.
+/// non-planar shells, which are an explicitly separate concern — see
+/// `docs/specs/perimeter-modules-orca-parity-roadmap.md` D-3) — presence still
+/// follows the distance sign, only the bucket collapses to quartile 4.
 pub fn expolygon_to_path3d(
     contour: &slicer_ir::Polygon,
     z: f32,
     width: f32,
-    overhang_bands: &[slicer_ir::slice_ir::QuartileBand],
+    overhang_band_width_mm: f32,
     prev_layer_boundary: &[ExPolygon],
 ) -> Vec<Point3WithWidth> {
     let mut pts: Vec<Point3WithWidth> = contour
@@ -454,20 +504,15 @@ pub fn expolygon_to_path3d(
         .map(|p| {
             let x = slicer_ir::units_to_mm(p.x);
             let y = slicer_ir::units_to_mm(p.y);
-            let overhang_quartile = overhang_bands
-                .iter()
-                .filter(|band| {
-                    band.polygons.iter().any(|poly| {
-                        slicer_ir::point_in_polygon_winding(poly, f64::from(x), f64::from(y), 0.0)
-                    })
-                })
-                .map(|band| band.quartile)
-                .max();
-            let overhang_distance_mm = if prev_layer_boundary.is_empty() {
+            let raw_distance = if prev_layer_boundary.is_empty() {
                 None
             } else {
-                Some(signed_distance_to_boundary(x, y, prev_layer_boundary) + 0.5 * width)
+                Some(signed_distance_to_boundary(x, y, prev_layer_boundary))
             };
+            let overhang_quartile = raw_distance.and_then(|distance| {
+                overhang_quartile_from_distance(distance, overhang_band_width_mm)
+            });
+            let overhang_distance_mm = raw_distance.map(|distance| distance + 0.5 * width);
             Point3WithWidth {
                 x,
                 y,

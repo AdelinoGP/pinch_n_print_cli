@@ -205,9 +205,14 @@ pub struct SliceRegionData {
     pub raft_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Fill-role claim IDs held by the module that produced this region.
     pub held_claims: Vec<String>,
-    /// Overhang area polygons. Populated from `SurfaceClassificationIR.overhang_quartile_polygons`
-    /// at this region's global layer index, pre-filtered to overlap the region (packet 107).
+    /// Overhang area polygons for this region, clipped exactly to the region
+    /// footprint. Populated from `SurfaceClassificationIR.overhang_areas` at
+    /// this region's global layer index (ticket 142; previously flattened from
+    /// the quartile bands).
     pub overhang_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
+    /// Producer-resolved band width (mm) behind the overhang-quartile
+    /// thresholds. `0.0` when no width was resolved.
+    pub overhang_band_width_mm: f32,
     /// Quartile-banded overhang polygons for this region's layer, pre-filtered to
     /// overlap the region (packet 107). Mirrors `overhang_areas` but preserves the
     /// per-quartile grouping for callers that need severity-aware handling.
@@ -3102,6 +3107,7 @@ mod region_origin_tests {
                     raft_fill: Vec::new(),
                     held_claims: Vec::new(),
                     overhang_areas: Vec::new(),
+                    overhang_band_width_mm: 0.0,
                     overhang_quartile_polygons: Vec::new(),
                     surface_group: None,
                 },
@@ -3520,6 +3526,15 @@ impl ir::HostSliceRegionView for HostExecutionContext {
         self.runtime_reads
             .push(String::from("SliceIR.regions.overhang-areas"));
         Ok(self.table.get(&self_)?.overhang_areas.clone())
+    }
+    fn overhang_band_width_mm(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<f32> {
+        self.runtime_reads.push(String::from(
+            "SurfaceClassificationIR.overhang-band-width-mm",
+        ));
+        Ok(self.table.get(&self_)?.overhang_band_width_mm)
     }
     fn overhang_quartile_polygons(
         &mut self,
