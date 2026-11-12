@@ -382,6 +382,35 @@ t134's 11.2 s ceiling for the shape; indicative base classic-on composition
 unchanged. **Frontier:** [136](issues/136-planner-clip-batch-fanout.md) (AFK,
 unblocked) and the human's [140](issues/140-brim-contour-input.md) (HITL).
 
+**Destination status (2026-11-12,
+[t136](issues/136-planner-clip-batch-fanout.md)): the clip core's deficit is one
+phase wide, not scheduling-wide; [143](issues/143-union-phase-request-grouping.md)
+carries the tranche and the human's [140](issues/140-brim-contour-input.md) is
+still the HITL frontier.** The clip core is **15,841.8 ms** on base classic-on
+and the 4.81x is two different numbers: `carve_run` — the phase the batch API
+was built for — issues **65,233 requests** over 312 calls at the saturated
+256-request cap and runs at **11.56x** (40,977.6 ms thread in 3,544.7 ms),
+while `union_run` issues **482 requests** over 109 calls (**4.4 per call**) and
+runs at **3.66x** (37,237.5 ms in 10,176.2 ms) while owning **64.2 %** of the
+clip-core wall. The union phase's summed per-call critical-path floor is
+**10,168.3 ms** against a **10,176.2 ms** wall — **8 ms** of the phase is
+anything but each call's longest request — so this is a **parallelism-width**
+deficit, not load imbalance: at 4.4 requests per call 7.6 of 12 threads are idle
+by construction. The additive split is **6,587.6 ms** work floor (**41.6 %**),
+**7,224.0 ms** tail-times-chunking (**45.6 %**), **144.8 ms** dispatch excess
+(**0.9 %**), **1,393.7 ms** marshal+decode (**8.8 %**) and **491.7 ms** guest
+CPU (**3.1 %**), so the ticket's guest-assembly candidate is refuted and the
+256 cap is saturated where the work is. Merging the union phase across four
+chunk-batches takes its measured floor to **3,465.0 ms** (**5,480.2 ms** at 8
+layers, **3,103.1 ms** whole-phase); LPT's 4/3 bound puts the achievable saving
+at **5,556–6,711 ms** = **7.3 %** of base classic-on's 92.5 s required cut,
+**6.6x** the 1,010 ms floor. That is a tranche of t135 Stage 2's order, not a
+destination step; graduated
+[143](issues/143-union-phase-request-grouping.md) (memory is its first check:
+`EMIT_BATCH_LAYERS` 4 → 16 quadruples the buffered collision sets). **Frontier:**
+[143](issues/143-union-phase-request-grouping.md) (AFK, unblocked) and the
+human's [140](issues/140-brim-contour-input.md) (HITL).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -3378,6 +3407,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Planner clip-batch fan-out: why is the clip core at 4.81x and what scheduling change reaches 12x?](issues/136-planner-clip-batch-fanout.md): **resolved (2026-11-12; Phase-1 attribution — the carve batches are already at 11.56x and the union phase is one request deep)** — the clip core is **15,841.8 ms** on base classic-on (p2 15,938.2 / p3 15,370.0), splitting additively into **6,587.6 ms** work floor (`thread/12`, 41.6 %), **7,224.0 ms** tail-times-chunking (45.6 %), **144.8 ms** dispatch excess (0.9 %), **1,393.7 ms** marshal+decode (8.8 %) and **491.7 ms** guest CPU (3.1 %); end-to-end fan-out **4.99x**, which is t134's 4.81x from a faster run. **The phase contrast is the finding:** `carve_run` issues **65,233 requests** over 312 calls at the saturated 256-request cap (**p50 256** per call) and runs at **11.56x** (40,977.6 ms thread in 3,544.7 ms); `union_run` issues **482 requests** over 109 calls (**p50 4.4** per call) and runs at **3.66x** (37,237.5 ms in 10,176.2 ms) while owning **64.2 %** of the clip-core wall. Its summed per-call `max(thread/12, longest request)` is **10,168.3 ms** against a **10,176.2 ms** wall — **8 ms** of the phase is anything but each call's longest request — so 7.6 of 12 threads are idle by construction: a **parallelism-width** deficit, not imbalance, and re-ordering cannot help. **Candidates:** the 256 cap has **no headroom** (carve is 11.56x against 12.0x, ≤ 0.13 s), dispatch excess is refuted (**0.14 s**), guest assembly is refuted (**0.49 s**, of which `carve_build` is 305.5 ms), marshal is real but below the tranche bar (**1.4 s**, operand locality). **Chunk size is the lever**, through the *phase's* request count: merging the union phase across 2 / 4 / whole-phase chunk-batches takes its floor from 10,176.2 ms to **5,480.2 / 3,465.0 / 3,103.1 ms**; the 16-layer form recovers **6,711.2 ms = 94.9 %** of the 7,073 ms tail gap, LPT-bounded to a **5,556–6,711 ms** saving = **7.3 %** of base-on's 92.5 s cut = **6.6x** the 1,010 ms floor. Benchy reproduces at 17x smaller scale (910.2 ms clip core, carve 11.18x, union 3.71x, 294.0 ms saving). **GO (narrowed)** for union-phase request grouping under the standing [t137](issues/137-planner-scheduling-gate.md) four-cell form, exact by construction; graduated [t143](issues/143-union-phase-request-grouping.md), whose first check is memory (`EMIT_BATCH_LAYERS` 4 → 16 quadruples the buffered collision sets). **NO-GO** on the ticket's three named mechanisms as the explanation, and **NO-GO** on splitting heavy union requests without its own work-set ruling. No production edit; probe reverted. Evidence: [`evidence/t136-clip-fanout/`](evidence/t136-clip-fanout/FINDINGS.md) (`verify.py` 155 checks, 27/27 negative controls; six probe G-code hashes equal the post-t139 reference set).
 - [Planner scheduling gate: apply the t117 four-cell form to t135/t136?](issues/137-planner-scheduling-gate.md): **resolved (2026-11-12; human ruling — extend the t117 four-cell form to t135 Stage 2 and t136, and generalize it as the standing rule for any representation-safe planner-only candidate where supports-off is structurally inert)** — on the four supports-off cells the whole `PrePass::SupportGeometry` stage is **0.64x–0.81x** the 0.80 % floor and the planner module is **0.32x–0.43x**, so no planner-only change can meet the literal all-8-cell 0.80 % gate. Any representation-safe planner-only candidate (`PrePass::SupportGeometry` / `PrePass::SupportAnalysis` / `com.core.tree-support-planner`) where `enable_support: false` declines before the candidate's work now runs under the standing four-cell form without needing its own gate ticket: positive 0.80 % paired wall/CPU improvement in the four supports-on cells, byte-identical output in all eight against the active reference set ([t139](issues/139-layer-plane-parity.md)'s set), and no median wall/CPU regression in the four supports-off cells. "Require a supports-off leg" and "Park the planner scheduling program" are both declined; the 8/8 destination is unchanged. [t135](issues/135-cross-layer-occupancy-batching.md) Stage 2 and [t136](issues/136-planner-clip-batch-fanout.md) are unblocked on the frontier. No production edit in this take.
 - [Overhang band partition deletion: derive the quartile from the distance the consumer already has](issues/142-overhang-band-partition-deletion.md): **resolved (2026-11-11; measured BUILD — the partition is deleted, the quartile is distance-derived, and the matched job's G-code is byte-identical)** — `annotate_overhangs` returns only `overhang_areas` + `prev_layer_boundaries` (Shape A: the per-layer `difference_ex` key test stays; Shape B was rejected because populating the boundary on every layer would flip `overhang_distance_mm` from `None` to `Some` with no measured benefit), and `PerimeterSpatialContext` takes the producer's band width instead of band polygons; `overhang_quartile = overhang_quartile_from_distance(signed_distance, width)` with an epsilon at the 0.0001 mm Clipper quantisation. The band R-tree, `indexed_overhang_quartile` and `legacy_overhang_quartile` are deleted; classic and arachne measure the distance once and stamp both fields. `SurfaceClassificationIR` gains `overhang_areas` + `overhang_band_width_mm` (production leaves the band polygons empty), the scalar rides the WIT `slice-region-view.overhang-band-width-mm`, `extra_perimeters_on_overhangs` reads the new area map, and the visual-debug renderer reconstructs bands at render time. **Output byte-identical in 8/8 cells** and equal to t139's reference set, stable across 48 A/B rows. **Paired A/B: 26.25 / 11.76 / 25.58 / 9.69 / 20.00 / 10.56 / 20.23 / 12.66 % wall saved**, candidate faster in **24/24** pairs, CPU lower in **8/8**; indicative composed ratios **1.818x–3.697x**, required cut **45.0–73.0 %**. Disclosed gap: no accelerated **timing** arm (driver × MSVC verbatim-path bug on `libmimalloc-sys`); accelerated **output parity** was checked with a disclosed manual `--cfg` host + accelerated guests (8/8 same hashes). Evidence: [`evidence/t142-overhang-band-deletion/`](evidence/t142-overhang-band-deletion/FINDINGS.md) (`verify.py` re-derives every number; `--self-test` 4/4 controls).
 - [Overhang quartile bands: is the 4-band polygon partition read by anything?](issues/141-overhang-quartile-band-deletion.md): **resolved (2026-11-11; Phase-1 attribution + price — the quartile VALUE has no production reader, the only read is a presence bit equal to the sign of the distance the consumer already computes, and the partition is the largest unpriced shell shape)** — stamped at `expolygon_to_path3d_indexed` / `expolygon_to_path3d` / `arachne-perimeters`, and every other production site copies it or tests `.is_some()`; `overhang-classifier-default` computes speed from `overhang_distance_mm` (`calculate_speed`), and `overhang_areas` has no reader in `modules/`. The four bands' union is exactly `current \ previous`, so presence = outside the previous boundary = `signed_distance > 0` (raw, not the `+0.5 x width` stamp), against the very same `prev_layer_boundary`. Price on the post-t139 tree: base classic-off **8.964 / 9.558 / 10.583 s** (22.1–26.5 % of the 39.9–40.6 s wall, 34.3–40.5 % of the 26.15 s cut), base arachne-off **9.450 s**, base classic-on **11.195 s**, benchy classic-off **0.954 s**, benchy classic-on **0.817 s**; **3 offsets + 6 booleans per band layer** over 486/496 and 239/240; 11.6–11.7x thread→wall reproduces t84. Two forks: keep the per-layer boundary key (one `difference_ex`, ≥85.4 % of the stage still saved) or populate every layer and prove inertness; and re-home the visual-debug band tap. Not a route step alone (2.899x → ~2.19x on base classic-off). Graduated [t142](issues/142-overhang-band-partition-deletion.md). Evidence: [`evidence/t141-overhang-bands/`](evidence/t141-overhang-bands/FINDINGS.md) (`verify.py` 7 rows / 3 sources; `--self-test` 4/4 negative controls).
@@ -3649,12 +3679,17 @@ Standing decisions for this effort (2026-09-22):
   zero-cost planner leaves 2.87x–3.25x, so they are not the route; the gate
   decision [t137](issues/137-planner-scheduling-gate.md) is **resolved
   2026-11-12** (standing four-cell form confirmed for representation-safe
-  planner-only candidates).** **Both live shapes are now banked:**
+  planner-only candidates).** **Both t135/t136 planner shapes are now
+  answered:**
   [135](issues/135-cross-layer-occupancy-batching.md) Stage 2 landed
   2026-11-12 (the cross-layer occupancy batch, 3.52x fan-out, +10.80 % /
   +13.31 % on the base supports-on cells, byte-identical 8/8) and
-  [136](issues/136-planner-clip-batch-fanout.md) (the clip core at 4.81x) is
-  the only planner scheduling question left and is AFK-unblocked. **t135
+  [136](issues/136-planner-clip-batch-fanout.md) resolved 2026-11-12 with the
+  clip core split by phase: carve **11.56x**, union **3.66x** at 4.4 requests
+  per call owning 64.2 % of the wall, so the remaining planner scheduling shape
+  is union-phase request grouping — graduated as
+  [143](issues/143-union-phase-request-grouping.md) at 5.6–6.7 s (7.3 % of
+  base-on's cut), with memory as its first check. **t135
   Stage 1 landed 2026-11-10 (the canonical skirt/brim re-take): the
   matched-settings asymmetry is closed and the new reference set (subsequently
   updated by [t139](issues/139-layer-plane-parity.md)) is the
