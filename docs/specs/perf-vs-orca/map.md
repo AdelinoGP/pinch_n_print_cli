@@ -326,6 +326,26 @@ repaired. Evidence:
 [136](issues/136-planner-clip-batch-fanout.md) (gated by 137). No new AFK
 ticket: the deletion answered its own question and opened none.
 
+**Destination status (2026-11-12,
+[t137](issues/137-planner-scheduling-gate.md)): the four-cell planner gate is
+confirmed and generalized as the standing rule for representation-safe
+planner-only candidates; [135](issues/135-cross-layer-occupancy-batching.md)
+Stage 2 and [136](issues/136-planner-clip-batch-fanout.md) are unblocked on the
+frontier.** Because the whole `PrePass::SupportGeometry` stage is
+**0.64x–0.81x** the 0.80 % floor on the four supports-off cells (and the planner
+module alone is **0.32x–0.43x**), no planner-only candidate can meet the literal
+all-8-cell 0.80 % gate. The human ruled to extend the [t117](issues/117-strong-planner-carry-ruling.md)
+four-cell form to t135 Stage 2 and t136, and to generalize it as the standing
+gate rule for any representation-safe planner-only candidate where supports-off
+is structurally inert (`enable_support: false` declines before the candidate's
+work): positive 0.80 % paired wall/CPU improvement in the four supports-on
+cells, byte-identical output in all eight against the active reference set
+([t139](issues/139-layer-plane-parity.md)'s set), and no median wall/CPU
+regression in the four supports-off cells. The 8/8 destination is unchanged.
+**Frontier:** [135](issues/135-cross-layer-occupancy-batching.md) Stage 2 (AFK,
+unblocked), [136](issues/136-planner-clip-batch-fanout.md) (AFK, unblocked), and
+[140](issues/140-brim-contour-input.md) (HITL).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -412,7 +432,25 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-11, the t142 take):** the human said
+**Current selection scope (2026-11-12, the t137 take):** the human said
+"Continue the perf vs orca map" (no ticket named). Both unblocked frontier
+tickets were HITL grillings (`137` and `140`) and **137 was the first in
+order**, so [Planner scheduling gate](issues/137-planner-scheduling-gate.md) was
+claimed and **resolved with the human**. Headline: **extend the t117 four-cell
+gate form to [t135](issues/135-cross-layer-occupancy-batching.md) Stage 2 and
+[t136](issues/136-planner-clip-batch-fanout.md), and generalize it as the
+standing rule for any representation-safe planner-only candidate where the four
+supports-off cells are structurally inert** — positive 0.80 % paired wall/CPU
+improvement on the four supports-on cells, byte-identical output in all eight
+against the active reference set ([t139](issues/139-layer-plane-parity.md)'s
+set), and no median wall/CPU regression on the four supports-off cells. Both
+"require a supports-off leg" and "park the planner scheduling program" were
+declined. No production edit in this take (tracker-only). **Frontier now:
+[135](issues/135-cross-layer-occupancy-batching.md) Stage 2 (AFK, unblocked),
+[136](issues/136-planner-clip-batch-fanout.md) (AFK, unblocked), and
+[140](issues/140-brim-contour-input.md) (HITL).**
+
+**Previous selection scope (2026-11-11, the t142 take):** the human said
 "continue the perf vs orca map, pick an afk ticket". **t142 was the first
 unblocked, unclaimed AFK frontier ticket in order** (137 and 140 are the
 human's grillings; 136 / 135 Stage 2 are gated by 137) and was claimed and
@@ -3304,6 +3342,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Planner scheduling gate: apply the t117 four-cell form to t135/t136?](issues/137-planner-scheduling-gate.md): **resolved (2026-11-12; human ruling — extend the t117 four-cell form to t135 Stage 2 and t136, and generalize it as the standing rule for any representation-safe planner-only candidate where supports-off is structurally inert)** — on the four supports-off cells the whole `PrePass::SupportGeometry` stage is **0.64x–0.81x** the 0.80 % floor and the planner module is **0.32x–0.43x**, so no planner-only change can meet the literal all-8-cell 0.80 % gate. Any representation-safe planner-only candidate (`PrePass::SupportGeometry` / `PrePass::SupportAnalysis` / `com.core.tree-support-planner`) where `enable_support: false` declines before the candidate's work now runs under the standing four-cell form without needing its own gate ticket: positive 0.80 % paired wall/CPU improvement in the four supports-on cells, byte-identical output in all eight against the active reference set ([t139](issues/139-layer-plane-parity.md)'s set), and no median wall/CPU regression in the four supports-off cells. "Require a supports-off leg" and "Park the planner scheduling program" are both declined; the 8/8 destination is unchanged. [t135](issues/135-cross-layer-occupancy-batching.md) Stage 2 and [t136](issues/136-planner-clip-batch-fanout.md) are unblocked on the frontier. No production edit in this take.
 - [Overhang band partition deletion: derive the quartile from the distance the consumer already has](issues/142-overhang-band-partition-deletion.md): **resolved (2026-11-11; measured BUILD — the partition is deleted, the quartile is distance-derived, and the matched job's G-code is byte-identical)** — `annotate_overhangs` returns only `overhang_areas` + `prev_layer_boundaries` (Shape A: the per-layer `difference_ex` key test stays; Shape B was rejected because populating the boundary on every layer would flip `overhang_distance_mm` from `None` to `Some` with no measured benefit), and `PerimeterSpatialContext` takes the producer's band width instead of band polygons; `overhang_quartile = overhang_quartile_from_distance(signed_distance, width)` with an epsilon at the 0.0001 mm Clipper quantisation. The band R-tree, `indexed_overhang_quartile` and `legacy_overhang_quartile` are deleted; classic and arachne measure the distance once and stamp both fields. `SurfaceClassificationIR` gains `overhang_areas` + `overhang_band_width_mm` (production leaves the band polygons empty), the scalar rides the WIT `slice-region-view.overhang-band-width-mm`, `extra_perimeters_on_overhangs` reads the new area map, and the visual-debug renderer reconstructs bands at render time. **Output byte-identical in 8/8 cells** and equal to t139's reference set, stable across 48 A/B rows. **Paired A/B: 26.25 / 11.76 / 25.58 / 9.69 / 20.00 / 10.56 / 20.23 / 12.66 % wall saved**, candidate faster in **24/24** pairs, CPU lower in **8/8**; indicative composed ratios **1.818x–3.697x**, required cut **45.0–73.0 %**. Disclosed gap: no accelerated **timing** arm (driver × MSVC verbatim-path bug on `libmimalloc-sys`); accelerated **output parity** was checked with a disclosed manual `--cfg` host + accelerated guests (8/8 same hashes). Evidence: [`evidence/t142-overhang-band-deletion/`](evidence/t142-overhang-band-deletion/FINDINGS.md) (`verify.py` re-derives every number; `--self-test` 4/4 controls).
 - [Overhang quartile bands: is the 4-band polygon partition read by anything?](issues/141-overhang-quartile-band-deletion.md): **resolved (2026-11-11; Phase-1 attribution + price — the quartile VALUE has no production reader, the only read is a presence bit equal to the sign of the distance the consumer already computes, and the partition is the largest unpriced shell shape)** — stamped at `expolygon_to_path3d_indexed` / `expolygon_to_path3d` / `arachne-perimeters`, and every other production site copies it or tests `.is_some()`; `overhang-classifier-default` computes speed from `overhang_distance_mm` (`calculate_speed`), and `overhang_areas` has no reader in `modules/`. The four bands' union is exactly `current \ previous`, so presence = outside the previous boundary = `signed_distance > 0` (raw, not the `+0.5 x width` stamp), against the very same `prev_layer_boundary`. Price on the post-t139 tree: base classic-off **8.964 / 9.558 / 10.583 s** (22.1–26.5 % of the 39.9–40.6 s wall, 34.3–40.5 % of the 26.15 s cut), base arachne-off **9.450 s**, base classic-on **11.195 s**, benchy classic-off **0.954 s**, benchy classic-on **0.817 s**; **3 offsets + 6 booleans per band layer** over 486/496 and 239/240; 11.6–11.7x thread→wall reproduces t84. Two forks: keep the per-layer boundary key (one `difference_ex`, ≥85.4 % of the stage still saved) or populate every layer and prove inertness; and re-home the visual-debug band tap. Not a route step alone (2.899x → ~2.19x on base classic-off). Graduated [t142](issues/142-overhang-band-partition-deletion.md). Evidence: [`evidence/t141-overhang-bands/`](evidence/t141-overhang-bands/FINDINGS.md) (`verify.py` 7 rows / 3 sources; `--self-test` 4/4 negative controls).
 - [Layer-plane parity: sample at the canonical midpoint](issues/139-layer-plane-parity.md): **resolved (2026-11-11; the plane is canonical, the reference set is re-recorded, and the route arithmetic is unchanged)** — `PrePass::Slice` + the host schedule + the planner terminate/sample on `compute_slice_z`'s band midpoint; base **495 → 496 layers / 99.0 → 99.2**, benchy 240/48.0; layer-0 hull fits the STL mid section on all 8 cells (base classic 0.932 vs mid 0.955 / top 3.165 = **3.31x** separation; arachne 0.757 recorded). **Four modifier-volume slice sites** moved onto the same plane (region mapping, paint segmentation, support enforcer/blocker, Tier-2 staging) to keep the `modifier_sub_region_id` hashes equal. **Slicer defect fixed:** `push_unique_intersection` deduped by coincident coordinates, collapsing base's 69.3 mm section to 0.0025 mm² (correct 671.2054) and dropping the layer; topology-only dedupe restores all 496. **Reference set:** `93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…` / `ca14d055…` / `585c6a8e…` / `d8fdc1d9…` / `c9fee59a…`, arms identical; baseline reproduces t135. **Oracle 2/8** (base supports-off skirt −4.3 % / −4.4 % swept, −5.7 % / −6.6 % outer loop, brim +8.1 % → −5.2 %; supports-on = support engine). **A/B** wall 0.923x–0.984x, CPU 0.963x–0.991x. **Scoreboard** **2.279x–4.187x ordinary / 2.311x–4.179x accelerated, cut 56.1 %–76.1 %** (supersedes t135 with the machine-state disclosure). DEV-201 closed; DEV-202 filed (p241 agg, calicat sites). Graduated [Brim anchor: feed the slice contour into `skirt-brim`](issues/140-brim-contour-input.md). Evidence: [`evidence/t139-layer-plane-parity/`](evidence/t139-layer-plane-parity/FINDINGS.md) (`verify.py` 7 claim groups, 22/22 negative controls).
@@ -3572,19 +3611,22 @@ Standing decisions for this effort (2026-09-22):
   occupancy (0.99x) against a 4.81x clip core; the occupancy batch and the
   clip-to-12x diagnostic are two supports-on tranches (t135/t136), and even a
   zero-cost planner leaves 2.87x–3.25x, so they are not the route; the gate
-  decision is [t137](issues/137-planner-scheduling-gate.md).** The live shapes
+  decision [t137](issues/137-planner-scheduling-gate.md) is **resolved
+  2026-11-12** (standing four-cell form confirmed for representation-safe
+  planner-only candidates).** The live shapes
   are two — [135](issues/135-cross-layer-occupancy-batching.md) Stage 2 (the
   cross-layer occupancy batch) and
-  [136](issues/136-planner-clip-batch-fanout.md) — both gated by 137. **t135
+  [136](issues/136-planner-clip-batch-fanout.md) — both unblocked by 137. **t135
   Stage 1 landed 2026-11-10 (the canonical skirt/brim re-take): the
-  matched-settings asymmetry is closed and the new reference set is the
+  matched-settings asymmetry is closed and the new reference set (subsequently
+  updated by [t139](issues/139-layer-plane-parity.md)) is the
   currency, so no future ratio may be quoted against t123's set.** The
   unpriced fog is the **sweep-volume work-set family**. Its **per-vertex
-  overhang distance** member is now priced and ticketed: the 4-band partition's
-  value has no production reader and the presence bit is the distance sign, so
-  [t141](issues/141-overhang-quartile-band-deletion.md) /
-  [t142](issues/142-overhang-band-partition-deletion.md) carry a 9.0–10.6 s
-  base-off deletion (22–27 % of the cell, 34–41 % of its required cut). The
+  overhang distance** member is now priced, ticketed, and **landed**
+  ([t141](issues/141-overhang-quartile-band-deletion.md) /
+  [t142](issues/142-overhang-band-partition-deletion.md): the 4-band partition
+  is deleted and the quartile is distance-derived, saving 26.25 % on base
+  classic-off with byte-identical G-code in 8/8). The
   remaining members — **per-layer overhang polygons** and **canonical loop
   projection** — each still need their own Phase-1 before a candidate can be
   priced. The per-layer phase joins the first program on both benchy cells.
@@ -4157,12 +4199,17 @@ Standing decisions for this effort (2026-09-22):
   to the per-layer phase: the benchy-classic-off per-layer residual may be
   attacked as a speed shape, but any change that alters computed geometry there
   still needs its own t81-style exception from the human.
-  **Campaign-specific amendment (2026-11-07, [Strong planner carry: fold the occupancy batching into the Slice campaign, amend the gate, or park it?](issues/117-strong-planner-carry-ruling.md)):**
-  the representation-safe Strong-planner occupancy-offset batch uses the four
-  supports-on cells for its positive improvement gate, requires byte-identical
-  output in all eight, and requires no median wall/CPU regression in the four
-  supports-off cells. This is not a parity exception, does not generalize to
-  other candidates, and leaves the 8/8 destination unchanged.
+  **Standing four-cell gate for representation-safe planner-only candidates
+  (2026-11-07, [Strong planner carry](issues/117-strong-planner-carry-ruling.md);
+  generalized 2026-11-12 by [Planner scheduling gate](issues/137-planner-scheduling-gate.md)):**
+  any representation-safe planner-only candidate (`PrePass::SupportGeometry` /
+  `PrePass::SupportAnalysis` / `com.core.tree-support-planner`) where the four
+  supports-off cells are structurally inert (`enable_support: false` declines
+  before the candidate's work) uses the four supports-on cells for its positive
+  0.80 % paired wall/CPU improvement gate, requires byte-identical output in all
+  eight against the active reference set, and requires no median wall/CPU
+  regression in the four supports-off cells. This is not a parity exception and
+  leaves the 8/8 destination unchanged.
    **(3) 2026-11-09:** [Matched settings vs the 8 mm brim](issues/130-brim-matched-settings-ruling.md)
    rules that parity work is licensed **to close matched-settings asymmetries**:
    when the arms diverge on a job-affecting setting, the divergence is closed —

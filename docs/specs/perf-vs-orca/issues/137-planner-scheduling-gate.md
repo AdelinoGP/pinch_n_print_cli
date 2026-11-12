@@ -2,8 +2,12 @@
 
 Type: grilling
 Label: wayfinder:grilling
-Status: open (unclaimed; human's decision)
-Assignee: —
+Status: resolved (2026-11-12; human ruling — **extend the t117 four-cell form to
+  t135 Stage 2 and t136, and generalize it as the standing rule for any
+  representation-safe planner-only candidate** where supports-off is
+  structurally inert; the 8/8 destination is unchanged. See ## Answer)
+Assignee: dev (2026-11-12 — the human said "Continue the perf vs orca map"; 137
+  was the first frontier ticket in order and was resolved the same session)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [Planner effective parallelism](134-planner-effective-parallelism.md)'s
@@ -56,4 +60,49 @@ Which is it:
 
 ## Answer
 
-_To be recorded on resolution._
+**Ruling (2026-11-12, human, grilling): extend the t117 four-cell gate form to
+[t135](135-cross-layer-occupancy-batching.md) Stage 2 and
+[t136](136-planner-clip-batch-fanout.md), and generalize it as the standing rule
+for any representation-safe planner-only candidate (where the four supports-off
+cells are structurally inert).** "Require a supports-off leg" and "Park the
+planner scheduling program" are both declined.
+
+1. **Standing gate rule for representation-safe planner-only candidates.**
+   When a planner-only candidate (`PrePass::SupportGeometry` /
+   `PrePass::SupportAnalysis` or `com.core.tree-support-planner`) is
+   representation-safe and the four supports-off cells are structurally inert
+   (`enable_support: false` declines before the candidate's work), the
+   candidate runs under the four-cell form without requiring a separate gate
+   ticket:
+   - **Output exactness (all 8 cells):** fresh 16-cell reference check (or 8 × 2
+     ordinary when the accelerated host build is blocked, with accelerated
+     output parity verified separately per t142's disclosure). Candidate ≡
+     baseline byte-for-byte in all eight cells on both arms, and equal to the
+     active reference set (currently [t139](139-layer-plane-parity.md)'s set).
+     Any output delta is a defect and stops the campaign.
+   - **Paired improvement gate (4 supports-on cells):** in `benchy classic-on`,
+     `benchy arachne-on`, `base classic-on`, and `base arachne-on`, run at
+     least three interleaved baseline/candidate pairs with alternating order.
+     Candidate median wall must improve by at least `0.80 %` of that cell's
+     same-run baseline median wall, with median process CPU corroborating
+     (decreasing). Measure the candidate's own batch occupancy / thread-to-wall
+     conversion rather than borrowing a proxy constant.
+   - **Supports-off no-regression gate (4 supports-off cells):** in
+     `benchy classic-off`, `benchy arachne-off`, `base classic-off`, and
+     `base arachne-off`, candidate median wall and median process CPU must not
+     regress outside paired noise (or if the code path is proven unreached by
+     construction when `enable_support: false` returns before the touched site,
+     disclose the inertness proof alongside the eight-cell table as in
+     [t132](132-planner-occupancy-memo.md)).
+   - **Destination unchanged:** the map's destination remains **8 of 8 cells won
+     against OrcaSlicer**. Supports-on tranches bank against the supports-on
+     cells only; the supports-off cells and the remaining gap still require
+     their own route steps.
+2. **Unblocked tickets.** [t135](135-cross-layer-occupancy-batching.md) Stage 2
+   and [t136](136-planner-clip-batch-fanout.md) have their `Blocked by: 137`
+   cleared and are now unblocked AFK tickets on the frontier, with their
+   reference-set citations updated to [t139](139-layer-plane-parity.md)'s active
+   reference set.
+3. **No production edit in this take.** Tracker-only update across this ticket,
+   [t135](135-cross-layer-occupancy-batching.md),
+   [t136](136-planner-clip-batch-fanout.md), and [map.md](../map.md).

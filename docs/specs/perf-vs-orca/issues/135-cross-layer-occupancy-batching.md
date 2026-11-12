@@ -3,15 +3,14 @@
 Type: task / staged re-take + BUILD candidate
 Label: wayfinder:task
 Status: **Stage 1 resolved 2026-11-10** (the canonical skirt/brim re-take);
-  Stage 2 is open, unclaimed and still gated by 137
+  Stage 2 is open and unclaimed (unblocked 2026-11-12 by [137](137-planner-scheduling-gate.md))
 Assignee: dev (session 39-40 — the human said "Continue the perf vs orca map"
   (no ticket named); 135 Stage 1 is the first unblocked, unclaimed frontier
   ticket in order — 136 and 135 Stage 2 are gated by 137, and 137 is the
   human's)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
-Blocked by: [137](137-planner-scheduling-gate.md) — **Stage 2 only** (the
-  four-cell gate form must be confirmed). Stage 1 is unblocked and may run
-  first (2026-11-09 fold ruling).
+Blocked by: none ([137](137-planner-scheduling-gate.md) resolved 2026-11-12 —
+  the standing four-cell gate form is confirmed for Stage 2)
 Graduated from: [Planner effective parallelism](134-planner-effective-parallelism.md)'s
   2026-11-09 ruling: the per-layer occupancy offsets are the largest serial term left in
   the planner (**14,249 ms wall / 14,169 ms thread** on base classic-on, **0.99x**), while
@@ -95,11 +94,11 @@ halves and must not silently move the role-carve half into the batch.
 **Stage 2** runs under the **t117 four-cell form**, because the four supports-off
 cells are structurally inert: the whole `PrePass::SupportGeometry` stage is
 **0.64–0.81x** the 0.80 % floor there (t134 measured), so no planner-only change can pass
-the literal all-8-cell form. The final form is
-[137](137-planner-scheduling-gate.md)'s to rule:
+the literal all-8-cell form. Confirmed 2026-11-12 by [137](137-planner-scheduling-gate.md)'s standing four-cell planner gate:
 
-- Byte-identical G-code in all eight cells on both build arms (against the Stage-1
-  reference set).
+- Byte-identical G-code in all eight cells on both build arms against the active
+  post-[t139](139-layer-plane-parity.md) reference set (which superseded Stage 1's
+  set on 2026-11-11).
 - Positive median wall with CPU corroborating at 0.80 % in all four supports-on cells.
 - No median wall or CPU regression in the four supports-off cells.
 
@@ -115,8 +114,9 @@ delta is expected and disclosed, not gated KEEP/DROP.
   lines confined to skirt/brim + appendix) and the skirt/brim parity oracle; the
   old-vs-new paired A/B recording the port's cost; the 8-cells × 3-tools scoreboard
   re-derivation superseding t124's ratios of record.
-- Stage 2: candidate build paired against the Stage-1 baseline; four supports-on cells
-  at or above the decided floor with CPU corroborating, four supports-off cells
+- Stage 2: candidate build paired against the current baseline (active
+  post-[t139](139-layer-plane-parity.md) reference set); four supports-on cells
+  at or above the 0.80 % floor with CPU corroborating, four supports-off cells
   regression-free; a measured conversion of the occupancy thread-time to wall on the
   candidate arm, so the 4.81x proxy is replaced by the batch's own fan-out.
 
@@ -214,5 +214,6 @@ a separate decision; source-vs-installed-binary caveat unchanged (t128); shared
 [`evidence/t135-skirt-brim-retake/`](../evidence/t135-skirt-brim-retake/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, 16/16 negative controls rejected).
 
-**Stage 2 is untouched**: the cross-layer occupancy batch remains open,
-unclaimed, and gated by [137](137-planner-scheduling-gate.md).
+**Stage 2 is unblocked (2026-11-12, [137](137-planner-scheduling-gate.md)):**
+the cross-layer occupancy batch is open and unclaimed under the standing
+four-cell planner gate.

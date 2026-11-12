@@ -5,7 +5,8 @@ Label: wayfinder:task
 Status: open (unclaimed)
 Assignee: —
 Parent: [Slice performance vs OrcaSlicer](../map.md)
-Blocked by: [137](137-planner-scheduling-gate.md) (the four-cell gate form must be confirmed)
+Blocked by: none ([137](137-planner-scheduling-gate.md) resolved 2026-11-12 —
+  the standing four-cell gate form is confirmed)
 Graduated from: [Planner effective parallelism](134-planner-effective-parallelism.md)'s
   2026-11-09 ruling: the clip core is **85,641 ms thread / 17,811 ms wall = 4.81x** on
   base classic-on, against the 12-thread ideal. Raising it to 12x is a derived **10.7 s**
@@ -39,10 +40,11 @@ Candidate mechanisms to price, in order:
 ## Pre-declared gate
 
 No production edit in this take. Any candidate it graduates must be byte-identical in
-all eight cells (a scheduling change is output-neutral; if it is not, it is not this
-shape) and must clear the t117 four-cell form in the four supports-on cells with no
-median wall/CPU regression in the four supports-off cells. The literal all-8-cell
-0.80 % gate is structurally unreachable for a planner-only change.
+all eight cells against the active post-[t139](139-layer-plane-parity.md) reference set
+(a scheduling change is output-neutral; if it is not, it is not this shape) and must
+clear the standing [t137](137-planner-scheduling-gate.md) four-cell form in the four
+supports-on cells with no median wall/CPU regression in the four supports-off cells. The
+literal all-8-cell 0.80 % gate is structurally unreachable for a planner-only change.
 
 ## Acceptance
 
