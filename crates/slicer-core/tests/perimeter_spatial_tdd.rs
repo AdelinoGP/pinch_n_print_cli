@@ -1,3 +1,9 @@
+//! Perimeter spatial index and query contracts.
+//!
+//! Gated on `host-algos` + `perimeter-spatial-test-support`: the counters and
+//! the accelerated dispatch only exist with those features, so this target is
+//! absent from a default `-p slicer-core` run by design.
+
 use slicer_core::perimeter_utils::{
     expolygon_to_path3d, point_in_any_polygon, signed_distance_to_boundary,
 };

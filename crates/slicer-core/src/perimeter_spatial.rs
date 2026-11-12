@@ -299,6 +299,16 @@ fn dispatch() -> Dispatch {
     default_dispatch()
 }
 
+/// Whether this build compiles the accelerated perimeter spatial path.
+///
+/// The controlled perimeter driver injects `pnp_perimeter_spatial_accelerated`
+/// only into canonical `slicer-core` compilations, so a test in another crate
+/// cannot observe that cfg directly — `#[cfg(...)]` there would be permanently
+/// false and silently delete coverage. Callers ask the library instead.
+pub const fn is_accelerated() -> bool {
+    cfg!(pnp_perimeter_spatial_accelerated)
+}
+
 fn default_dispatch() -> Dispatch {
     #[cfg(pnp_perimeter_spatial_accelerated)]
     {
