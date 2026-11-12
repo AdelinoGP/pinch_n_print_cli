@@ -216,7 +216,9 @@ jobs:
         shell: pwsh
         run: |
           cargo test -p slicer-scad --no-default-features --test scad_feature_contract -- --nocapture 2>&1 |
-            Tee-Object -FilePath target/scad-adapter/feature-off.log
+            Tee-Object -FilePath target/test-output.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item target/test-output.log target/scad-adapter/feature-off.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # A green zero-test binary is not acceptance: prove the test ran.
           if (-not (Select-String -Path target/scad-adapter/feature-off.log -Pattern '1 passed')) {
@@ -242,21 +244,27 @@ jobs:
         shell: pwsh
         run: |
           cargo test -p slicer-scad --features openrscad --test scad_feature_contract -- --nocapture 2>&1 |
-            Tee-Object -FilePath target/scad-adapter/enabled-identity.log
+            Tee-Object -FilePath target/test-output.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item target/test-output.log target/scad-adapter/enabled-identity.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Adapter contracts (A)
         shell: pwsh
         run: |
           cargo test -p slicer-scad --features openrscad --test scad_adapter_contracts -- --nocapture 2>&1 |
-            Tee-Object -FilePath target/scad-adapter/adapter-contracts.log
+            Tee-Object -FilePath target/test-output.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item target/test-output.log target/scad-adapter/adapter-contracts.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Private classifier and conversion contracts (U)
         shell: pwsh
         run: |
           cargo test -p slicer-scad --features openrscad --lib -- scad_ --nocapture 2>&1 |
-            Tee-Object -FilePath target/scad-adapter/private-contracts.log
+            Tee-Object -FilePath target/test-output.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item target/test-output.log target/scad-adapter/private-contracts.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # The filter must actually select tests; "0 filtered out / 0 passed" would
           # otherwise read as success.
@@ -269,7 +277,9 @@ jobs:
         shell: pwsh
         run: |
           cargo test -p slicer-scad --features openrscad --test scad_process_limits -- --nocapture 2>&1 |
-            Tee-Object -FilePath target/scad-adapter/process-limits.log
+            Tee-Object -FilePath target/test-output.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item target/test-output.log target/scad-adapter/process-limits.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Narrow clippy

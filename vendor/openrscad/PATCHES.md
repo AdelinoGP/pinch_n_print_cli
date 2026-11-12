@@ -42,7 +42,7 @@ patch files above, in filename order, exactly as committed (bytes, no
 normalization):
 
 ```
-a9e67c4a4ab05153672581881480d70bbee11bf02c9642db79c2d446feec6e02
+c029707967be77f41f5bab502f0a1b1bbad24990c02fa91096a203548baa4024
 ```
 
 The adapter exposes this value as `ScadEngineInfo::patch_digest`, and
@@ -97,6 +97,10 @@ behaviour without the new calls is unchanged.
 
 ### 0002 — geometry
 
+- **Emptiness-aware 2D dispatch.** `is_2d` treated any `Projection`/`Offset` as 2D,
+  so a container holding an *empty* one was routed to the 2D path, which drops 3D
+  children: measured, `union(){ projection(){}; cube(1); }` returned an empty mesh.
+  `is_empty_tree` now distinguishes a wrapper around nothing, and `is_2d` consults it.
 - **Exact welding at the kernel boundary.** `to_manifold` used `Mesh::welded(1e-7)`,
   which buckets positions on a 1e-7 mm grid and drops every triangle that
   collapsed. That is a silent geometry deletion at the boundary the adapter calls

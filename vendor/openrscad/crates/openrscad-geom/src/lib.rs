@@ -927,12 +927,53 @@ fn partition_groups(
 
 /// The actual per-variant renderer (children go back through [`render_node`]).
 /// Is `node` a 2D subtree (result lies in the XY plane)?
+/// Does this subtree produce no geometry at all?
+///
+/// Structural, not numeric: a wrapper around `Empty` is empty, and a container is
+/// empty when every child is. Booleans are not evaluated, so a `difference()` that
+/// happens to cancel is *not* reported empty — this predicate answers "could this
+/// contribute geometry", which is what dispatch needs.
+pub fn is_empty_tree(node: &Node) -> bool {
+    use Node::*;
+    match node {
+        Empty | Background(_) => true,
+        Group(children)
+        | Union(children)
+        | Difference(children)
+        | Intersection(children)
+        | Hull(children)
+        | Minkowski(children) => children.iter().all(is_empty_tree),
+        Translate { child, .. }
+        | Rotate { child, .. }
+        | Scale { child, .. }
+        | Mirror { child, .. }
+        | MultMatrix { child, .. }
+        | Resize { child, .. }
+        | Color { child, .. }
+        | Highlight(child)
+        | Provenance { child, .. }
+        | Offset { child, .. }
+        | LinearExtrude { child, .. }
+        | RotateExtrude { child, .. }
+        | Roof { child, .. }
+        | Projection { child, .. } => is_empty_tree(child),
+        _ => false,
+    }
+}
+
 /// Whether a node renders as a 2D object (its output is a flat profile, exportable
 /// to DXF/SVG) rather than a 3D solid.
+///
+/// A dimension-changing 2D wrapper whose operand is empty contributes no 2D
+/// geometry, so it does not make its container 2D. Without that, a container is
+/// dispatched to the 2D path by the presence of any `Projection`/`Offset`, and the
+/// 2D path silently drops its 3D children: measured,
+/// `union(){ projection(){}; cube(1); }` returned an empty mesh.
 pub fn is_2d(node: &Node) -> bool {
     use Node::*;
     match node {
-        Square { .. } | Circle { .. } | Polygon { .. } | Offset { .. } | Projection { .. } => true,
+        Square { .. } | Circle { .. } | Polygon { .. } => true,
+        Offset { child, .. } | Projection { child, .. } => !is_empty_tree(child),
         Import { format, .. } => matches!(format.as_str(), "dxf" | "svg"),
         Cube { .. }
         | Sphere { .. }
@@ -3519,5 +3560,81 @@ mod adapter_seam_tests {
         v.sort();
         v.dedup();
         assert_eq!(v.len(), 1);
+    }
+}
+
+/// Tests for emptiness-aware 2D dispatch (patch `0002`).
+#[cfg(test)]
+mod adapter_dispatch_tests {
+    use super::*;
+
+    fn cube() -> Node {
+        Node::Cube {
+            size: [1.0, 1.0, 1.0],
+            center: false,
+        }
+    }
+
+    fn projection_of(child: Node) -> Node {
+        Node::Projection {
+            cut: false,
+            child: Box::new(child),
+        }
+    }
+
+    fn offset_of(child: Node) -> Node {
+        Node::Offset {
+            r: 1.0,
+            delta: 0.0,
+            chamfer: false,
+            frags: Default::default(),
+            child: Box::new(child),
+        }
+    }
+
+    #[test]
+    fn scad_empty_2d_wrapper_does_not_make_a_container_2d() {
+        assert!(is_empty_tree(&Node::Empty));
+        assert!(is_empty_tree(&projection_of(Node::Empty)));
+        assert!(is_empty_tree(&offset_of(Node::Empty)));
+        assert!(!is_empty_tree(&projection_of(cube())));
+
+        // An empty wrapper contributes no 2D geometry, so it must not route its
+        // container to the 2D path — that path would drop the 3D sibling.
+        assert!(!is_2d(&projection_of(Node::Empty)));
+        assert!(!is_2d(&offset_of(Node::Empty)));
+        assert!(!is_2d(&Node::Union(vec![
+            projection_of(Node::Empty),
+            cube()
+        ])));
+        assert!(!is_2d(&Node::Union(vec![offset_of(Node::Empty), cube()])));
+
+        // Real 2D geometry still routes to the 2D path, alone and beside an empty
+        // wrapper of the same kind.
+        assert!(is_2d(&projection_of(cube())));
+        assert!(is_2d(&Node::Union(vec![
+            projection_of(Node::Empty),
+            Node::Square {
+                size: [1.0, 1.0],
+                center: false
+            }
+        ])));
+    }
+
+    #[test]
+    fn scad_empty_wrapper_beside_a_cube_renders_the_cube() {
+        for wrapper in [projection_of(Node::Empty), offset_of(Node::Empty)] {
+            let node = Node::Union(vec![wrapper, cube()]);
+            let (mesh, diagnostics) =
+                render_cached_diag(&node, &ManifoldKernel::new(), &mut GeomCache::new())
+                    .expect("the union renders");
+            assert_eq!(
+                mesh.tris.len(),
+                12,
+                "the cube must survive: got {} triangles, diagnostics {:?}",
+                mesh.tris.len(),
+                diagnostics
+            );
+        }
     }
 }

@@ -316,7 +316,7 @@ Recorded during implementation against `vendor/openrscad@1a45bd33f2` on Windows
     timeout, and the run/budget cases exit successfully with their markers. The
     minimum-stack recursion fixture also runs in a supervised child, not in the
     parent test process.
-11. **Post-review corrections.** An independent cold review reproduced six
+11. **Post-review corrections (round 1).** An independent cold review reproduced six
     behavioural gaps, all now closed with the reviewer's witnesses kept as
     regressions: override expressions share the recording resolver and the
     classifier (and `undef` is `InvalidParameter`); raw rings get a 1 nm
@@ -329,7 +329,7 @@ Recorded during implementation against `vendor/openrscad@1a45bd33f2` on Windows
     assertions now compare geometry as well as diagnostics. This item is recorded
     because those gaps shipped in the first implementation pass and the review —
     not the tests — found them.
-12. **Wrapper fix, second delta.** Validating a dimension-changing wrapper's
+12. **Wrapper fix, second delta (round 2).** Validating a dimension-changing wrapper's
     operand initially classified a wrapper around `Node::Empty` as `Mixed`, so
     `linear_extrude(1){}` and `projection(){}` were rejected instead of returning
     `Empty`. The empty operand now propagates as `Empty` through `Projection`,
@@ -339,3 +339,45 @@ Recorded during implementation against `vendor/openrscad@1a45bd33f2` on Windows
     the fix pass missed: the first `adapter.md` example now matches
     `&out.geometry`, and the feasibility record no longer repeats the retracted
     `DegradedOutput` claim.
+
+13. **Root-cause corrections from the third review.** Each of these fixes the cause
+    rather than the symptom, and each keeps the reviewer's witness as a regression:
+    - **Empty 2D wrappers.** The fix is in the engine's dispatch, not in the
+      adapter's classifier: `is_2d` now ignores a `Projection`/`Offset` whose operand
+      is structurally empty (`is_empty_tree`, patch 0002), so
+      `union(){ projection(){}; cube(1); }` renders the cube instead of taking the 2D
+      path and dropping it. The adapter additionally rejects any tree where its own
+      dimensional analysis and `is_2d` disagree, because it must not depend on engine
+      dispatch being right.
+    - **Raw ring contact.** The 1 nm surrogate grid is gone. Contact is validated on
+      the original `f64` rings with `robust::orient2d`, an adaptive-precision
+      predicate with an exact sign for every finite input, so a crossing cannot be
+      rounded out of existence. A sub-nanometre crossing witness is a committed
+      regression.
+    - **Post-quantization witness.** The public-path witness is now a pair of unit
+      squares 2e-5 mm apart, which the exact raw pass accepts and the 100 nm grid
+      rejects; the quantized pass names itself in the error so the two rejections are
+      distinguishable.
+    - **Diagnostic retention.** Evaluation warnings and echoes are classified before
+      primary-error precedence, so an `ExternalResourceDenied` still carries the echo
+      and the unclassified warning the source produced.
+    - **Identifier validation.** Override names are validated by the adopted lexer
+      (exactly one `Ident` token whose text is the whole name), not by a character
+      shape plus a keyword list that could drift. Reserved keywords are rejected.
+    - **Documentation examples.** `docs/scad/adapter.md` is included as crate
+      documentation, so its `no_run` examples are compiled by `cargo test --doc`; the
+      result-reading example now has a coherent `Result<(), Box<dyn Error>>` signature.
+    - **AC-6 record.** The feasibility record now states the measurement context
+      (`CARGO_TARGET_DIR`, profile, features, lockfiles) and where the full logs are
+      retained, and the lane tees every test to `target/test-output.log` before
+      archiving it, per the packet's canonical-log rule.
+    - **Raw nesting containment.** The raw-versus-quantized forest comparison used a
+      float ray-cast, whose intersection could round onto the query point's own X and
+      report a strictly-contained child as outside — hiding a nesting change that
+      quantization introduced. `contains_float` now uses the same exact orientation
+      predicate as the contact check, with a witness that is rejected for every
+      rotation of the child ring.
+    - **AC-N1 coverage.** The named resource regression now also drives program-phase
+      `dxf_dim` and `dxf_cross` (the `load_bytes` seam) and a relative `include`
+      resolved from a child process whose working directory is the one holding a
+      readable `tempting.scad`, so a working-directory fallback would be observed.

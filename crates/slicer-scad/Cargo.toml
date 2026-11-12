@@ -8,6 +8,10 @@ authors = ["Pinch 'n Print Team"]
 serde = { workspace = true, features = ["derive"] }
 sha2 = "0.10"
 slicer-ir = { path = "../slicer-ir" }
+# Exact adaptive geometric predicates (`orient2d`) for raw-ring contact checks.
+# Already in the dependency graph via the engine, so this adds no new supply-chain
+# surface, and it is far safer than hand-rolling Shewchuk-style arithmetic.
+robust = "1.2"
 
 # The optional engine. Every native edge is behind `openrscad`: a default
 # workspace build must not compile the engine, its C++ kernel or its font stack.

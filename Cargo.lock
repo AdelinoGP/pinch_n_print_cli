@@ -4183,6 +4183,7 @@ dependencies = [
  "openrscad-geom",
  "openrscad-ir",
  "openrscad-syntax",
+ "robust",
  "serde",
  "serde_json",
  "sha2",

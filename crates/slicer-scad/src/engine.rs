@@ -55,7 +55,7 @@ pub(crate) const ENGINE_REVISION: &str = "1a45bd33f2886c32bda32fe6e8358a67ab03f5
 /// `tests/scad_feature_contract.rs` from those files, so an edit that forgets to
 /// update this constant fails.
 pub(crate) const ENGINE_PATCH_DIGEST: &str =
-    "a9e67c4a4ab05153672581881480d70bbee11bf02c9642db79c2d446feec6e02";
+    "c029707967be77f41f5bab502f0a1b1bbad24990c02fa91096a203548baa4024";
 
 /// The native backend selected for this target.
 pub(crate) const ENGINE_BACKEND: &str = "manifold_cpp";
@@ -394,18 +394,11 @@ fn evaluate_on_worker(
         }
     };
 
-    // External requests outrank every geometry outcome, including a non-empty
-    // sibling primitive that would otherwise look successful.
-    if !requests.is_empty() {
-        return Err(external_resource_error(
-            label,
-            requests,
-            ScadDiagnosticStage::Evaluation,
-            gathered,
-        ));
-    }
-
     // --- 6. classify every evaluation diagnostic -----------------------------
+    // Classify BEFORE applying primary-error precedence, so a resource denial
+    // still carries the echoes and warnings the evaluation produced. Dropping them
+    // on the way to the resource error would lose the reproduction context the
+    // contract says to retain.
     for warning in &output.warnings {
         gathered.push(make_diagnostic(
             Channel::Evaluation,
@@ -417,6 +410,18 @@ fn evaluate_on_worker(
     }
     for echo in &output.echoes {
         gathered.push(echo_diagnostic(echo.clone()));
+    }
+
+    // External requests outrank every geometry outcome, including a non-empty
+    // sibling primitive that would otherwise look successful — but they do not
+    // discard what the evaluation already reported.
+    if !requests.is_empty() {
+        return Err(external_resource_error(
+            label,
+            requests,
+            ScadDiagnosticStage::Evaluation,
+            gathered,
+        ));
     }
     if output.recursion_aborted && !gathered.iter().any(|d| d.code == "recursion_aborted") {
         gathered.push(make_diagnostic(
@@ -483,6 +488,28 @@ fn evaluate_on_worker(
             .with_diagnostics(gathered))
         }
         _ => {}
+    }
+
+    // The adapter must not trust either its own analysis or the engine's dispatch
+    // alone. `is_2d` answers "does any descendant look 2D" and drives the engine's
+    // container path; the adapter's analysis answers "what does the result
+    // actually contain". If they disagree, one of them would silently drop
+    // geometry, so the result is rejected instead of rendered.
+    let engine_dispatches_2d = openrscad_geom::is_2d(&output.node);
+    let dispatch_disagrees = match dimension {
+        Dimension::Empty => false,
+        Dimension::Two => !engine_dispatches_2d,
+        Dimension::Three => engine_dispatches_2d,
+        Dimension::Mixed => false,
+    };
+    if dispatch_disagrees {
+        return Err(ScadError::new(
+            ScadErrorKind::MixedDimensions,
+            label,
+            "the engine's 2D container dispatch disagrees with the evaluated \
+             result's dimensionality; rendering it would drop geometry",
+        )
+        .with_diagnostics(gathered));
     }
 
     // --- 9. render + convert -------------------------------------------------
@@ -681,18 +708,20 @@ fn conversion_error(
 /// and user-defined `$` names are all legal), so they are validated by the same
 /// grammar rather than normalised, stripped or rejected.
 pub(crate) fn is_valid_scad_identifier(name: &str) -> bool {
-    let mut chars = name.chars();
-    let Some(first) = chars.next() else {
+    // Ask the adopted grammar, not a character-shape approximation: a name is valid
+    // iff it lexes to exactly one identifier token whose text is the whole name.
+    // That rejects reserved keywords (`true`, `false`, `undef`, `module`,
+    // `function`, `if`, `else`, `for`, `let`, `include`, `use`), which are distinct
+    // token kinds, without maintaining a keyword list that can drift from the
+    // lexer — and it rejects anything else the lexer would read as more than one
+    // token.
+    let Ok(tokens) = openrscad_syntax::lexer::lex(name) else {
         return false;
     };
-    let start_ok = |c: char| c == '_' || c.is_ascii_alphabetic();
-    let rest_ok = |c: char| c == '_' || c.is_ascii_alphanumeric();
-
-    if first == '$' {
-        matches!(chars.next(), Some(c) if start_ok(c)) && chars.all(rest_ok)
-    } else {
-        start_ok(first) && chars.all(rest_ok)
-    }
+    matches!(
+        tokens.as_slice(),
+        [spanned] if matches!(&spanned.token, openrscad_syntax::lexer::Token::Ident(sliced) if sliced == name)
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1147,6 +1176,18 @@ mod tests {
         }
         for name in ["", "1x", "a-b", "a.b", "$", "$$x", "x y", "ünicode", "a$b"] {
             assert!(!is_valid_scad_identifier(name), "{name} should be invalid");
+        }
+        // Reserved keywords are distinct token kinds in the adopted grammar, so they
+        // are not identifiers. The check asks the lexer rather than comparing against
+        // a hand-maintained list that could drift from it.
+        for keyword in [
+            "true", "false", "undef", "module", "function", "if", "else", "for", "let",
+            "include", "use",
+        ] {
+            assert!(
+                !is_valid_scad_identifier(keyword),
+                "{keyword} is a keyword, not an identifier"
+            );
         }
         // Case sensitivity is the point: these are different names.
         assert!(is_valid_scad_identifier("X"));

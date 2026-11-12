@@ -174,6 +174,21 @@ narrow lanes above exercise every changed surface.
 | `L` | `3 passed` in 20.48 s |
 | Artifact | `scad-adapter-windows`, id `13897616839`, 17 292 bytes, uploaded |
 
+### Measurement context
+
+| Field | Value |
+|---|---|
+| `CARGO_TARGET_DIR` (local gates) | `D:/slicerProject/pinch_n_print_cli/target` (the repository default; not overridden) |
+| `CARGO_TARGET_DIR` (cold build) | `target/scad-cold`, a fresh directory created for the measurement and removed afterwards |
+| Build profile | `dev` (`cargo test` / `cargo build` defaults), `jobs = 1` from `~/.cargo/config.toml` |
+| Features | `default = []` for the feature-off gate; `openrscad` for every enabled gate |
+| Lockfile | root `Cargo.lock` plus `vendor/openrscad/Cargo.lock` |
+| Retained full logs | CI artifact `scad-adapter-windows` (id `13897616839`) contains the per-step logs, trees and reproducers; local copies are written to `target/scad-adapter/*.log` by the commands in the `F`/`A`/`U`/`L` table every run |
+
+The local logs are build output, not committed source: `target/` is ignored, and
+every row above is reproducible by re-running the listed command with the recorded
+`CARGO_TARGET_DIR`, profile and feature set.
+
 The run also passed `Clippy`, `Format`, `Docs staleness guard`, `Dist editions` and
 `Properties (Windows)`.
 
@@ -188,8 +203,14 @@ left red rather than weakened.
 
 ## Disposition of G-SCAD
 
-**Adapter prerequisite: PASSED on Windows.** The `scad-adapter-windows` job and
-its artifact upload executed and passed on head `65f6acf`. The following are
+**Adapter prerequisite: PASSED on Windows, pending re-observation on the delivered
+head.** The `scad-adapter-windows` job and its artifact upload executed and passed
+on head `65f6acf`. That run proves the lane and the upload work; it does not by
+itself certify the final implementation, whose engine patch, patch digest and
+dependency graph changed afterwards (exact predicated contact, exact raw nesting,
+emptiness-aware dispatch, the `robust` dependency). The final head's run is
+recorded in the PR checks for this branch and supersedes the identity above once
+green; the packet is not marked implemented until it is. The following are
 demonstrated:
 
 - the engine builds and runs on Windows with the repository's pinned toolchain;
@@ -223,11 +244,12 @@ remains incomplete until #4 supplies the rows above.
   `offset`, extrusion and `import` nodes are bounded by their explicit `$fn` only;
   their derived counts are bounded after the fact by `max_vertices` and
   `max_triangles`.
-- **The pre-quantization contact pass runs at 1 nm resolution, not on exact `f64`
-  predicates.** Exact predicates are computed on integer grids; the raw-ring pass
-  scales to 1e6 units/mm, which is strictly finer than the 1e-4 mm output grid, so a
-  contact visible at 1 nm is rejected. A crossing narrower than 1 nm is not
-  representable at the output resolution and is not detected.
+- **The pre-quantization contact pass is exact, not a finer grid.** Self-contact and
+  cross-ring contact are validated on the original millimetre `f64` rings with
+  `robust::orient2d`, an adaptive-precision predicate whose sign is exact for every
+  finite input. An earlier revision used a 1 nm surrogate grid, which a crossing
+  narrower than the grid could defeat; that was a real gap and is gone. The
+  post-quantization pass remains the authoritative check on the emitted grid.
 - **Edge-incidence validation does not claim arbitrary 3D self-intersection
   freedom.** It checks closed, consistently oriented incidence by exact position
   identity, which is what the fixtures require and no more.

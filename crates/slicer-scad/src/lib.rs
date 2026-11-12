@@ -31,6 +31,12 @@
 //! the single authoritative factor, 2D coordinates are scaled integers and 3D
 //! coordinates are millimetre `f32` values.
 
+// The adapter contract document is crate documentation, not a loose file: wiring
+// it in here means its `no_run` examples are compiled by `cargo test --doc`, so a
+// snippet that stops matching the API fails the build instead of rotting in a
+// Markdown file nobody compiles.
+#![doc = include_str!("../../../docs/scad/adapter.md")]
+
 use serde::{Deserialize, Serialize};
 
 pub use slicer_ir::slice_ir::{ExPolygon, IndexedTriangleSet};

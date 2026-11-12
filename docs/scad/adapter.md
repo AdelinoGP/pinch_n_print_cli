@@ -46,7 +46,12 @@ pub fn evaluate(source: &ScadSource, options: &ScadEvalOptions)
     -> Result<ScadEvalOutput, ScadError>;
 ```
 
-```rust,ignore
+```rust,no_run
+use slicer_scad::{
+    evaluate, ScadEvalOptions, ScadGeometry, ScadLimits, ScadParameter, ScadSource,
+};
+
+fn evaluate_bracket(source_text: String) -> Result<(), Box<dyn std::error::Error>> {
 let source = ScadSource {
     label: "bracket.scad".to_string(),   // diagnostics only, never a path
     text: source_text,
@@ -63,9 +68,11 @@ let options = ScadEvalOptions {
 
 let out = evaluate(&source, &options)?;
 match &out.geometry {
-    ScadGeometry::Contours(expolygons) => { /* exact 2D profile */ }
-    ScadGeometry::Mesh(mesh) => { /* exact 3D solid, flat Vec<u32> indices */ }
+    ScadGeometry::Contours(expolygons) => { let _ = expolygons; }
+    ScadGeometry::Mesh(mesh) => { let _ = mesh; }
     ScadGeometry::Empty => { /* an empty model: reject for import */ }
+}
+Ok(())
 }
 ```
 
@@ -252,22 +259,32 @@ classifications and must not be reported as the same failure.
 
 ## Example: reading the result
 
-```rust,ignore
-let out = evaluate(&source, &options)?;
+```rust,no_run
+use slicer_scad::{evaluate, ScadEvalOptions, ScadGeometry, ScadSource};
 
-// Reproduction record: engine revision + patch digest, source digest, the raw
-// override list and the seed in effect.
-assert_eq!(out.provenance.engine.backend, "manifold_cpp");
-assert_eq!(out.provenance.source_digest.len(), 64);
+fn read_result(
+    source: &ScadSource,
+    options: &ScadEvalOptions,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let out = evaluate(source, options)?;
 
-for diagnostic in &out.diagnostics {
-    // On success these are information only; `scad_echo` lines live here too.
-    eprintln!("{}: {}", diagnostic.code, diagnostic.message);
-}
+    // Reproduction record: engine revision + patch digest, source digest, the raw
+    // override list and the seed in effect.
+    assert_eq!(out.provenance.engine.backend, "manifold_cpp");
+    assert_eq!(out.provenance.source_digest.len(), 64);
 
-match &out.geometry {
-    ScadGeometry::Contours(regions) => { /* 2D profile, CCW outer / CW holes */ }
-    ScadGeometry::Mesh(mesh) => { /* millimetre f32 vertices, flat u32 indices */ }
-    ScadGeometry::Empty => return Err("empty model"),
+    for diagnostic in &out.diagnostics {
+        // On success these are information only; `scad_echo` lines live here too.
+        eprintln!("{}: {}", diagnostic.code, diagnostic.message);
+    }
+
+    match &out.geometry {
+        ScadGeometry::Contours(regions) => { let _ = regions; }
+        ScadGeometry::Mesh(mesh) => { let _ = mesh; }
+        // An empty model is not a successful import: callers with a slicing
+        // destination must reject it rather than treat it as zero-thickness.
+        ScadGeometry::Empty => return Err("empty model".into()),
+    }
+    Ok(())
 }
 ```

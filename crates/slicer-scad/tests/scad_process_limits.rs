@@ -121,13 +121,21 @@ struct ChildOutcome {
 /// Spawn `this` test binary with `--exact scad_child_entry`, supervise it with a
 /// hard deadline, and kill it if the deadline expires.
 fn supervise(case: &str) -> ChildOutcome {
+    supervise_in(case, None)
+}
+
+/// [`supervise`] with an explicit working directory for the child, so a
+/// working-directory fallback can be tested without changing the concurrent test
+/// process's own directory.
+fn supervise_in(case: &str, cwd: Option<&std::path::Path>) -> ChildOutcome {
     let exe = std::env::current_exe().expect("current test executable");
     let dir = repro_dir();
     std::fs::create_dir_all(&dir).expect("create repro directory");
     let out_path = dir.join(format!("{case}.stdout.txt"));
 
     let stdout = std::fs::File::create(&out_path).expect("create child stdout file");
-    let mut child = Command::new(exe)
+    let mut command = Command::new(exe);
+    command
         .args([
             "--exact",
             "scad_child_entry",
@@ -137,9 +145,11 @@ fn supervise(case: &str) -> ChildOutcome {
         .env(CHILD_MODE, case)
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::null())
-        .stdin(Stdio::null())
-        .spawn()
-        .expect("spawn supervised child");
+        .stdin(Stdio::null());
+    if let Some(directory) = cwd {
+        command.current_dir(directory);
+    }
+    let mut child = command.spawn().expect("spawn supervised child");
 
     let started = Instant::now();
     let mut timed_out = false;
@@ -271,6 +281,38 @@ fn scad_process_supervision_retains_repro_and_joins() {
         "the pre-execution reproducer must survive an abort"
     );
 
+    // --- case 3b: a relative request resolved from a different CWD ----------
+    // The child runs with its working directory set to the directory that holds a
+    // readable `tempting.scad`, and asks for it by a relative path. A resolver with
+    // any working-directory fallback would find it; the boundary must not.
+    let resource_dir = repro_dir().join("tempting-cwd");
+    std::fs::create_dir_all(&resource_dir).expect("create tempting cwd directory");
+    std::fs::write(resource_dir.join("tempting.scad"), "cube(9);
+")
+        .expect("write tempting include for the cwd probe");
+    let resource_source = ScadSource {
+        label: "supervised-resource-cwd".to_string(),
+        text: "include <tempting.scad>; cube(1);".to_string(),
+    };
+    write_reproducer(
+        "resource-cwd",
+        &resource_source,
+        &options(ScadLimits::default(), None),
+    );
+    let resource = supervise_in("resource-cwd", Some(&resource_dir));
+    assert!(resource.reaped, "the resource child must be reaped");
+    assert_eq!(
+        resource.outcome,
+        Supervised::Exited(0),
+        "the child must classify, not crash: {}",
+        resource.stdout
+    );
+    assert!(
+        resource.stdout.contains("KIND=ExternalResourceDenied"),
+        "a relative include must be denied even when it exists in the child's own          working directory: {}",
+        resource.stdout
+    );
+
     // --- case 4: budget exhaustion is not a timeout -------------------------
     let budget_source = ScadSource {
         label: "supervised-budget".to_string(),
@@ -353,6 +395,20 @@ fn scad_child_entry() {
             // real adapter run takes, so there is no timing claim to be flaky.
             std::thread::sleep(Duration::from_secs(3600)); // test-quality: the controlled blocking input for AC-5's hard-deadline probe; the parent asserts the kill and the reap, not a duration
             println!("UNEXPECTEDLY_COMPLETED");
+        }
+        "resource-cwd" => {
+            // The parent sets this child's working directory to the directory that
+            // holds `tempting.scad`, and this source asks for it by a RELATIVE path.
+            // A resolver with any working-directory fallback would read it; the
+            // deny-all boundary must not.
+            let source = ScadSource {
+                label: "supervised-resource-cwd".to_string(),
+                text: "include <tempting.scad>; cube(1);".to_string(),
+            };
+            match evaluate(&source, &options(ScadLimits::default(), None)) {
+                Ok(_) => println!("KIND=Ok"),
+                Err(error) => println!("KIND={:?}", error.kind),
+            }
         }
         "abort" => {
             println!("ABOUT_TO_ABORT");

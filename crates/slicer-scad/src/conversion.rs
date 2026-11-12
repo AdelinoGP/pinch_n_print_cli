@@ -43,11 +43,18 @@
 //! container. A ring may be closed by an exactly equal terminal point; that
 //! redundant representation is removed. Nothing else is removed or merged.
 //!
-//! Contacts are checked both on a pre-quantization grid at 1 nm resolution
-//! (millimetres scaled by 1_000_000.0) and on the 100 nm output grid. Exact `f64`
-//! predicates are not computed: the pre-quantization grid is strictly finer
-//! than the output grid, not an exact representation of every input float.
-//! Both grids enforce the same absolute 2^40-unit bound for safe i128 predicates.
+//! Contacts are checked twice. Before quantization, self-contact and cross-ring
+//! contact are validated on the **original millimetre `f64` rings** with
+//! `robust::orient2d`, an adaptive-precision predicate that returns the exact
+//! orientation sign (and exactly `0.0` for collinear points). After quantization
+//! they are validated again on the 100 nm output grid with exact `i128`
+//! predicates. Rounding is the hazard: two rings that cross in `f64` can round
+//! into two disjoint integer rings, so a grid-only check can accept a crossing.
+//! No rounded surrogate is used, at any resolution.
+//!
+//! The raw pass has no coordinate-magnitude precondition: `robust` is exact for
+//! every finite input. The integer pass enforces the documented `2^40`-unit bound
+//! so its own `i128` arithmetic is provably safe.
 //!
 //! # Mesh contract
 //!
@@ -106,6 +113,109 @@ impl ConversionFailure {
 /// a ring with fewer than three distinct vertices, a zero-area ring, a
 /// self-intersecting or self-touching ring, two rings that intersect or touch,
 /// a ring that quantization collapses, or nesting that quantization changes.
+/// Exact orientation sign of three raw millimetre points.
+///
+/// `robust::orient2d` is an adaptive-precision predicate: for any finite `f64`
+/// input it returns the **exact** sign, and exactly `0.0` for collinear points.
+/// That is what makes the pre-quantization contact check sound — a crossing cannot
+/// be rounded out of existence because nothing is rounded.
+fn raw_orient(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
+    robust::orient2d(
+        robust::Coord { x: a[0], y: a[1] },
+        robust::Coord { x: b[0], y: b[1] },
+        robust::Coord { x: c[0], y: c[1] },
+    )
+}
+
+/// Whether `p` lies on segment `a..b`, decided exactly.
+fn raw_on_segment(a: [f64; 2], b: [f64; 2], p: [f64; 2]) -> bool {
+    raw_orient(a, b, p) == 0.0
+        && a[0].min(b[0]) <= p[0]
+        && p[0] <= a[0].max(b[0])
+        && a[1].min(b[1]) <= p[1]
+        && p[1] <= a[1].max(b[1])
+}
+
+/// Whether two raw segments intersect or touch, decided exactly.
+fn raw_intersects(a: [f64; 2], b: [f64; 2], c: [f64; 2], d: [f64; 2]) -> bool {
+    let ab_c = raw_orient(a, b, c);
+    let ab_d = raw_orient(a, b, d);
+    let cd_a = raw_orient(c, d, a);
+    let cd_b = raw_orient(c, d, b);
+    let straddles = |x: f64, y: f64| (x > 0.0 && y < 0.0) || (x < 0.0 && y > 0.0);
+    (straddles(ab_c, ab_d) && straddles(cd_a, cd_b))
+        || raw_on_segment(a, b, c)
+        || raw_on_segment(a, b, d)
+        || raw_on_segment(c, d, a)
+        || raw_on_segment(c, d, b)
+}
+
+/// Validate self-contact and cross-ring contact on the ORIGINAL raw rings.
+///
+/// This is the pre-quantization half of the contour contract. It runs on the
+/// millimetre `f64` values the engine produced, before any rounding, so a crossing
+/// that rounding would separate is still seen. The post-quantization pass
+/// ([`validate_contacts`]) remains the authoritative check on the emitted grid.
+fn check_raw_contacts(rings: &[&[[f64; 2]]]) -> Result<(), ConversionFailure> {
+    #[derive(Clone, Copy)]
+    struct RawEdge {
+        ring: usize,
+        index: usize,
+        a: [f64; 2],
+        b: [f64; 2],
+    }
+
+    let mut edges: Vec<RawEdge> = Vec::new();
+    for (ring_index, ring) in rings.iter().enumerate() {
+        for index in 0..ring.len() {
+            edges.push(RawEdge {
+                ring: ring_index,
+                index,
+                a: ring[index],
+                b: ring[(index + 1) % ring.len()],
+            });
+        }
+    }
+    // Output-sensitive x-interval sweep: only x-overlapping edges are candidates.
+    edges.sort_by(|left, right| {
+        left.a[0]
+            .min(left.b[0])
+            .total_cmp(&right.a[0].min(right.b[0]))
+            .then(left.ring.cmp(&right.ring))
+            .then(left.index.cmp(&right.index))
+    });
+
+    let mut active: Vec<RawEdge> = Vec::new();
+    for edge in edges.iter().copied() {
+        let min_x = edge.a[0].min(edge.b[0]);
+        active.retain(|other| other.a[0].max(other.b[0]) >= min_x);
+        for other in &active {
+            if edge.ring == other.ring {
+                let n = rings[edge.ring].len();
+                if (edge.index + 1) % n == other.index || (other.index + 1) % n == edge.index {
+                    continue;
+                }
+            }
+            if edge.a[1].max(edge.b[1]) < other.a[1].min(other.b[1])
+                || other.a[1].max(other.b[1]) < edge.a[1].min(edge.b[1])
+            {
+                continue;
+            }
+            if raw_intersects(edge.a, edge.b, other.a, other.b) {
+                return Err(ConversionFailure::new(
+                    ScadErrorKind::InvalidContours,
+                    format!(
+                        "raw rings {} and {} intersect or touch: edges {} and {}",
+                        edge.ring, other.ring, edge.index, other.index
+                    ),
+                ));
+            }
+        }
+        active.push(edge);
+    }
+    Ok(())
+}
+
 pub(crate) fn convert_contours(
     raw: &[Vec<[f64; 2]>],
     limits: &ScadLimits,
@@ -269,13 +379,20 @@ pub(crate) fn convert_contours(
         inside
     }
 
+    /// Exact even-odd containment of `point` in a raw millimetre ring.
+    ///
+    /// The crossing test is the exact orientation sign ([`raw_orient`]), not a
+    /// division-derived intersection: the previous float form could round the
+    /// intersection onto the query point's own X, flipping "inside" to "outside" and
+    /// hiding a nesting change introduced by quantization.
     fn contains_float(ring: &[[f64; 2]], point: [f64; 2]) -> bool {
         let mut inside = false;
         for (a, b) in ring.iter().zip(ring.iter().cycle().skip(1)) {
-            if (a[1] > point[1]) != (b[1] > point[1])
-                && point[0] < a[0] + (b[0] - a[0]) * (point[1] - a[1]) / (b[1] - a[1])
-            {
-                inside = !inside;
+            if (a[1] > point[1]) != (b[1] > point[1]) {
+                let orient = raw_orient(*a, *b, point);
+                if (orient > 0.0) == (b[1] > a[1]) {
+                    inside = !inside;
+                }
             }
         }
         inside
@@ -398,12 +515,12 @@ pub(crate) fn convert_contours(
         raw_rings.push(points);
     }
 
-    {
-        let fine_rings = quantized_rings(&raw_rings, 1_000_000.0)?;
-        validate_contacts(&fine_rings).map_err(|failure| {
-            invalid(format!("1 nm pre-quantization grid: {}", failure.message))
-        })?;
-    }
+    // Pre-quantization contact validation runs on the ORIGINAL millimetre `f64`
+    // rings with exact adaptive predicates. A fixed-resolution surrogate cannot do
+    // this job: rounding the input to any grid can turn a crossing into two
+    // disjoint rings, so a finer grid only moves the threshold at which a crossing
+    // is hidden instead of removing it.
+    check_raw_contacts(&raw_rings)?;
     let mut rings = quantized_rings(&raw_rings, UNITS_PER_MM)?;
     let mut areas = Vec::with_capacity(rings.len());
     for (ring_index, ring) in rings.iter().enumerate() {
@@ -444,7 +561,9 @@ pub(crate) fn convert_contours(
         areas.push(area);
     }
 
-    validate_contacts(&rings)?;
+    validate_contacts(&rings).map_err(|failure| {
+        invalid(format!("quantized grid: {}", failure.message))
+    })?;
 
     let (depths, parents) = nesting(rings.len(), |outer, child| {
         contains_integer(&rings[outer], rings[child][0])
@@ -985,7 +1104,39 @@ mod tests {
         let error = convert_contours(&input, &ScadLimits::default())
             .expect_err("raw rings cross even though output-grid rings are disjoint");
         assert_eq!(error.kind, ScadErrorKind::InvalidContours);
-        assert!(error.message.contains("intersecting or touching edges"));
+        assert!(
+            error.message.contains("intersect or touch"),
+            "{}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn scad_conversion_rejects_a_crossing_below_any_surrogate_grid() {
+        // A crossing whose excursion is far below both the 100 nm output grid and
+        // the old 1 nm surrogate: the apex clears the outer's lower edge
+        // `y = x/100` by about 2e-6 grid units. Only exact predicates see it, which
+        // is why the contact check runs on the original f64 values rather than on
+        // any rounded grid.
+        let input: Vec<Vec<[f64; 2]>> = vec![
+            vec![
+                [0.0, 0.0],
+                [200.0, 2.0],
+                [200.0, 200.0],
+                [0.0, 200.0],
+            ],
+            vec![[10.0, -0.49], [49.00501, 0.49005011], [110.0, -1.49]],
+        ]
+        .into_iter()
+        .map(|ring| {
+            ring.into_iter()
+                .map(|p| [p[0] / UNITS_PER_MM, p[1] / UNITS_PER_MM])
+                .collect()
+        })
+        .collect();
+        let error = convert_contours(&input, &ScadLimits::default())
+            .expect_err("an exact predicate must see a sub-nanometre crossing");
+        assert_eq!(error.kind, ScadErrorKind::InvalidContours);
     }
 
     #[test]
@@ -1089,7 +1240,9 @@ mod tests {
                     [1.0, 1.0],
                     [0.0, 1.0],
                 ]],
-                "overlapping adjacent edges",
+                // Edge 2 starts on edge 0, so the exact raw pass names the contact
+                // before the integer pass can report the overlap.
+                "intersect or touch",
             ),
             (
                 "nonadjacent edge touches the interior of another edge",
@@ -1100,7 +1253,9 @@ mod tests {
                     [1.0, 0.0],
                     [0.0, 2.0],
                 ]],
-                "intersecting or touching edges",
+                // The exact raw pass sees this before quantization, so its message
+                // is the one that surfaces.
+                "intersect or touch",
             ),
             (
                 "two rings cross without a shared vertex",
@@ -1108,11 +1263,12 @@ mod tests {
                     square(0.0, 2.0),
                     vec![[1.0, -1.0], [3.0, -1.0], [3.0, 1.0], [1.0, 1.0]],
                 ],
-                "intersecting or touching edges",
+                "intersect or touch",
             ),
             (
                 "raw-separated rings touch after quantization",
                 vec![square(0.0, 1.0), square(1.00001, 2.0)],
+                // Raw rings are 1e-5 mm apart, so only the quantized pass fires.
                 "intersecting or touching edges",
             ),
         ];
@@ -1120,6 +1276,40 @@ mod tests {
             let error = convert_contours(&input, &ScadLimits::default()).expect_err(name);
             assert_eq!(error.kind, ScadErrorKind::InvalidContours, "{name}");
             assert!(error.message.contains(check), "{name}: {}", error.message);
+        }
+    }
+
+    #[test]
+    fn scad_conversion_rejects_changed_nesting_hidden_by_float_containment() {
+        // The child triangle is strictly inside the convex raw outer, but after
+        // quantization it rounds entirely outside. A float ray-cast rounded the
+        // intersection onto the query point's own X and reported "outside" for the
+        // raw ring too, so the damaged forest looked unchanged. Exact orientation
+        // containment makes the change visible, so the result is rejected.
+        let outer = vec![
+            [0.0, -0.000049],
+            [0.02, 0.000151],
+            [0.02, 0.02],
+            [0.0, 0.02],
+        ];
+        let child = vec![
+            [0.0009999999999999998, -0.000039],
+            [0.009, 0.000049],
+            [0.011, 0.000149],
+        ];
+        for rotation in 0..child.len() {
+            let mut rotated = child.clone();
+            rotated.rotate_left(rotation);
+            let input = vec![outer.clone(), rotated];
+            let error = convert_contours(&input, &ScadLimits::default()).expect_err(
+                "a nesting change introduced by quantization must be rejected, whatever                  vertex the child ring starts at",
+            );
+            assert_eq!(error.kind, ScadErrorKind::InvalidContours);
+            assert!(
+                error.message.contains("changed nesting"),
+                "rotation {rotation}: {}",
+                error.message
+            );
         }
     }
 
@@ -1138,9 +1328,10 @@ mod tests {
                 Point2 { x: -1, y: 1 },
             ]
         );
-        // The new 1 nm contact pass has the same arithmetic envelope as the
-        // output pass, so its finer grid now sets the accepted mm boundary.
-        let bound_mm = (1_u64 << 40) as f64 / 1_000_000.0;
+        // The raw pass uses exact predicates and needs no magnitude bound. The
+        // output-grid pass does, so it alone sets the accepted millimetre
+        // boundary: 2^40 units `= 2^40 / UNITS_PER_MM` mm.
+        let bound_mm = (1_u64 << 40) as f64 / UNITS_PER_MM;
         let limits = ScadLimits {
             max_abs_coordinate_mm: bound_mm * 2.0,
             ..ScadLimits::default()

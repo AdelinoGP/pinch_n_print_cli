@@ -922,7 +922,7 @@ fn scad_rejects_resources_even_with_remaining_geometry() {
     let tempting_path = tempting_scad.to_string_lossy().replace('\\', "/");
     let tempting_mesh_path = tempting_mesh.to_string_lossy().replace('\\', "/");
 
-    let cases: [(&str, String); 5] = [
+    let cases: [(&str, String); 7] = [
         (
             "include with a readable sibling primitive",
             format!("include <{tempting_path}>; cube(1);"),
@@ -943,6 +943,16 @@ fn scad_rejects_resources_even_with_remaining_geometry() {
             "surface with a readable sibling primitive",
             "surface(\"heightmap.dat\"); cube(1);".to_string(),
         ),
+        (
+            // `dxf_dim`/`dxf_cross` read through `load_bytes` from the PROGRAM
+            // phase, not only from an override expression.
+            "program dxf_dim with a readable sibling primitive",
+            "echo(dxf_dim(file = \"tempting.dxf\", name = \"w\")); cube(1);".to_string(),
+        ),
+        (
+            "program dxf_cross with a readable sibling primitive",
+            "echo(dxf_cross(file = \"tempting.dxf\")); cube(1);".to_string(),
+        ),
     ];
 
     for (label, source) in cases {
@@ -955,17 +965,62 @@ fn scad_rejects_resources_even_with_remaining_geometry() {
             !error.message.is_empty(),
             "{label}: the denial must explain what was requested"
         );
+        let request = error
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "external_resource_denied")
+            .unwrap_or_else(|| {
+                panic!("{label}: the request must be retained as a diagnostic")
+            });
         assert_eq!(
-            error.diagnostics.len(),
-            1,
-            "{label}: the denial must retain exactly the one request diagnostic"
-        );
-        assert_eq!(
-            error.diagnostics[0].class,
+            request.class,
             ScadDiagnosticClass::Error,
             "{label}: a request is a hard error, not a warning"
         );
     }
+
+    // A denial must not discard what the evaluation already reported: the request
+    // is the primary error, but the echo and the unclassified warning are still
+    // reproduction context.
+    let retained = expect_err(
+        eval(
+            "denial-retains-diagnostics",
+            "echo(\"preserve-me\");\nnonsense_module();\ninclude <missing.scad>;\ncube(1);",
+        ),
+        ScadErrorKind::ExternalResourceDenied,
+        "a denial after an echo and an unknown construct",
+    );
+    assert!(
+        retained
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "scad_echo" && d.message.contains("preserve-me")),
+        "the echo must survive the denial: {:?}",
+        retained
+            .diagnostics
+            .iter()
+            .map(|d| d.code.clone())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        retained
+            .diagnostics
+            .iter()
+            .any(|d| d.class == ScadDiagnosticClass::Unknown),
+        "the unclassified warning must survive the denial"
+    );
+
+    // The tempting files live in `target/scad-adapter/tempting/`, not in this
+    // process's working directory, so a working-directory fallback would have to
+    // reach across directories to find them. The recorded request shows resolution
+    // started at "." instead.
+    assert!(
+        std::env::current_dir()
+            .expect("current directory")
+            .join("tempting.scad")
+            != tempting_scad,
+        "the tempting include must not sit in the working directory"
+    );
 
     // The include really would have changed the model had it been read.
     assert!(
@@ -1117,6 +1172,21 @@ fn scad_rejects_invalid_options_and_dimensions() {
         "a parameter name that is not an identifier",
     );
     assert_eq!(bad_name.parameter.as_deref(), Some("1x"));
+
+    // Reserved keywords are distinct token kinds in the adopted grammar, not
+    // identifiers, so they are rejected as override names.
+    for keyword in ["true", "false", "undef", "for", "module", "function", "let"] {
+        let error = expect_err(
+            eval_with("keyword", "cube(1);", &options_with(&[(keyword, "1")])),
+            ScadErrorKind::InvalidParameter,
+            keyword,
+        );
+        assert_eq!(
+            error.parameter.as_deref(),
+            Some(keyword),
+            "{keyword} must be named as the offending parameter"
+        );
+    }
 
     let injected = expect_err(
         eval_with(
@@ -1436,6 +1506,26 @@ fn scad_rejects_invalid_options_and_dimensions() {
         "the sibling cube is the only geometry",
     );
 
+    // A 2D wrapper around nothing must not make its container look 2D: the engine's
+    // 2D path would drop the 3D sibling entirely. Both wrappers must keep the cube.
+    for (label, source) in [
+        (
+            "empty-projection-sibling",
+            "union(){ projection(){}; translate([3,0,0]) cube(1); }",
+        ),
+        (
+            "empty-offset-sibling",
+            "union(){ offset(1){}; translate([3,0,0]) cube(1); }",
+        ),
+    ] {
+        let sibling = expect_ok(eval(label, source), label);
+        assert_close(
+            mesh_volume_mm3(mesh(&sibling, label)),
+            1.0,
+            &format!("{label}: the cube must survive an empty 2D wrapper"),
+        );
+    }
+
     let empty_with_height = expect_ok(
         eval_with(
             "background-with-height",
@@ -1459,24 +1549,39 @@ fn scad_rejects_invalid_options_and_dimensions() {
 
 #[test]
 fn scad_public_path_rejects_quantization_damage() {
-    // A projected concave Minkowski lowers to contours containing a sliver that is
-    // representable in `f64` but collapses at the 1e-4 mm grid. That is a real
-    // public-path post-quantization failure — not a synthetic ring pushed into the
-    // converter — and it must be rejected rather than repaired into a degenerate
-    // outline.
+    // Two unit squares 2e-5 mm apart. In raw `f64` they are disjoint, so the exact
+    // pre-quantization pass accepts them; at the 1e-4 mm output grid the gap rounds
+    // away and the rings touch. This is a genuine public-path *post-quantization*
+    // failure, and it must be rejected rather than repaired into a merged outline.
     let error = expect_err(
         eval(
-            "quantization-collapse",
-            "projection() minkowski(){ union(){ cube([4,4,1]); translate([2,2,0]) cube([4,4,1]); } sphere(1); }",
+            "quantization-contact",
+            "union(){ square(1); translate([1.00002, 0]) square(1); }",
         ),
         ScadErrorKind::InvalidContours,
-        "a sliver that quantization collapses",
+        "a gap that quantization closes",
     );
     assert!(
-        error.message.contains("quantization"),
-        "the rejection must name quantization as the cause: {}",
+        error.message.contains("quantized grid"),
+        "the rejection must name the quantized grid as the cause: {}",
         error.message
     );
+
+    // The same source one grid step wider is accepted: the gap survives rounding,
+    // so this is a boundary in the quantization, not a blanket rejection of unions.
+    let accepted = expect_ok(
+        eval(
+            "quantization-gap-survives",
+            "union(){ square(1); translate([1.00006, 0]) square(1); }",
+        ),
+        "a gap wider than half a grid unit",
+    );
+    assert_eq!(
+        contours(&accepted, "quantization-gap-survives").len(),
+        2,
+        "two separated squares stay two components"
+    );
+
     let conversion = error
         .diagnostics
         .iter()
