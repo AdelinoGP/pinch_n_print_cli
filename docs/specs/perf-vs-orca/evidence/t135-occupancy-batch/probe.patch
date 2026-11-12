@@ -1,0 +1,123 @@
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index f73b4680..51ce1bec 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -2708,10 +2708,18 @@ impl hs::Host for HostExecutionContext {
+         &mut self,
+         requests: Vec<hs::OffsetRequest>,
+     ) -> wasmtime::Result<Vec<Vec<ExPolygon>>> {
+-        let (results, _mode) = crate::batch::map_batch(
++        // TEMPORARY t135 probe (reverted before the campaign).
++        let t135_on = crate::t135_probe::enabled();
++        let t135_call = t135_on.then(std::time::Instant::now);
++        let (results, mode) = crate::batch::map_batch(
+             &requests,
+             |r| expolygon_vertex_count(&r.polygons),
+             |r| {
++                let t135_request = if t135_on {
++                    Some(std::time::Instant::now())
++                } else {
++                    None
++                };
+                 let ir_polys = wit_to_ir_expolygons(&r.polygons);
+                 let result = match r.miter_limit {
+                     Some(miter_limit) => slicer_core::polygon_ops::offset_with_miter_limit(
+@@ -2728,9 +2736,27 @@ impl hs::Host for HostExecutionContext {
+                         r.arc_tolerance_mm,
+                     ),
+                 };
++                if let Some(t135_request) = t135_request {
++                    crate::t135_probe::add_thread_ns(
++                        t135_request.elapsed().as_nanos() as u64,
++                    );
++                }
+                 ir_to_wit_expolygons(&result)
+             },
+         );
++        if let Some(t135_call) = t135_call {
++            crate::t135_probe::emit_call(
++                requests.len(),
++                requests.first().map_or(0.0, |r| r.delta_mm),
++                requests.first().is_some_and(|r| r.miter_limit.is_some()),
++                mode,
++                requests
++                    .iter()
++                    .map(|r| expolygon_vertex_count(&r.polygons))
++                    .sum(),
++                t135_call.elapsed().as_nanos() as u64,
++            );
++        }
+         Ok(results)
+     }
+ 
+diff --git a/crates/slicer-wasm-host/src/lib.rs b/crates/slicer-wasm-host/src/lib.rs
+index fc900794..6481a0e4 100644
+--- a/crates/slicer-wasm-host/src/lib.rs
++++ b/crates/slicer-wasm-host/src/lib.rs
+@@ -26,6 +26,7 @@ pub mod profiling;
+ pub mod selection;
+ pub mod support_aggregation;
+ pub mod support_territory;
++mod t135_probe;
+ pub mod traits;
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/crates/slicer-wasm-host/src/t135_probe.rs b/crates/slicer-wasm-host/src/t135_probe.rs
+new file mode 100644
+index 00000000..cbc39526
+--- /dev/null
++++ b/crates/slicer-wasm-host/src/t135_probe.rs
+@@ -0,0 +1,53 @@
++//! TEMPORARY probe for wayfinder ticket 135 Stage 2 — cross-layer occupancy
++//! batch fan-out.
++//!
++//! Compiled into the host binary only and enabled at runtime by
++//! `PNP_T135_PROBE=1`; the wasm guest never sees it. The take reverts it before
++//! the campaign, so the evidence directory's `probe.patch` is the only artifact.
++//!
++//! One line is printed per `offset_polygons_batch` host call. `thread_ns` is the
++//! sum of the per-request durations (each request runs on one rayon worker);
++//! `wall_ns` is the duration of the whole call. Their ratio is the batch's own
++//! fan-out. The occupancy batch is identified by `miter_some=0` (the foreign
++//! keep-out and seam insets all pass `Some(3.0)`), `delta_mm > 0` and
++//! `requests >= 2`.
++
++#![cfg(not(target_arch = "wasm32"))]
++
++use crate::batch::BatchMode;
++use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
++use std::sync::OnceLock;
++
++static THREAD_NS: AtomicU64 = AtomicU64::new(0);
++static ON: OnceLock<bool> = OnceLock::new();
++
++/// Whether the probe is enabled (`PNP_T135_PROBE`).
++pub fn enabled() -> bool {
++    *ON.get_or_init(|| std::env::var_os("PNP_T135_PROBE").is_some())
++}
++
++/// Add one request's duration to the current call's thread-time.
++pub fn add_thread_ns(ns: u64) {
++    if enabled() {
++        THREAD_NS.fetch_add(ns, Relaxed);
++    }
++}
++
++/// Print one completed batch call and reset the thread-time accumulator.
++pub fn emit_call(
++    requests: usize,
++    delta_mm: f32,
++    miter_some: bool,
++    mode: BatchMode,
++    total_vertices: u64,
++    wall_ns: u64,
++) {
++    if !enabled() {
++        return;
++    }
++    let thread_ns = THREAD_NS.swap(0, Relaxed);
++    eprintln!(
++        "t135-batch requests={requests} delta_mm={delta_mm:.6} miter_some={} mode={mode:?} total_vertices={total_vertices} wall_ns={wall_ns} thread_ns={thread_ns}",
++        u8::from(miter_some)
++    );
++}

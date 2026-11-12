@@ -2,12 +2,12 @@
 
 Type: task / staged re-take + BUILD candidate
 Label: wayfinder:task
-Status: **Stage 1 resolved 2026-11-10** (the canonical skirt/brim re-take);
-  Stage 2 is open and unclaimed (unblocked 2026-11-12 by [137](137-planner-scheduling-gate.md))
-Assignee: dev (session 39-40 — the human said "Continue the perf vs orca map"
-  (no ticket named); 135 Stage 1 is the first unblocked, unclaimed frontier
-  ticket in order — 136 and 135 Stage 2 are gated by 137, and 137 is the
-  human's)
+Status: **resolved 2026-11-12** — Stage 1 (canonical skirt/brim re-take)
+  landed 2026-11-10; Stage 2 (the cross-layer occupancy batch) is a measured
+  KEEP under the standing four-cell planner gate. See ## Answer.
+Assignee: dev (2026-11-12 OpenCode wayfinder session — the human said "continue
+  the perf vs orca map" (no ticket named); 135 Stage 2 was the first unblocked,
+  unclaimed frontier ticket in order)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none ([137](137-planner-scheduling-gate.md) resolved 2026-11-12 —
   the standing four-cell gate form is confirmed for Stage 2)
@@ -217,3 +217,100 @@ a separate decision; source-vs-installed-binary caveat unchanged (t128); shared
 **Stage 2 is unblocked (2026-11-12, [137](137-planner-scheduling-gate.md)):**
 the cross-layer occupancy batch is open and unclaimed under the standing
 four-cell planner gate.
+
+## Stage 2 answer (resolved 2026-11-12)
+
+**Stage 2 resolved 2026-11-12: measured KEEP under the standing four-cell
+planner gate.** The chunk's per-layer occupancy offsets are issued as one
+`offset_polygons_batch` call and the memo is seeded with every result; the
+matched job's G-code does not move.
+
+**The candidate.** `prefetch_occupancy_memo`
+(`modules/core-modules/tree-support-planner/src/lib.rs`) collects the
+`EMIT_BATCH_LAYERS = 4` chunk's per-layer occupancy payloads — the
+`+support_object_xy_distance` `Miter` offset of the object's raw model
+occupancy — and issues them as **109 batch calls / 434 requests** on the base
+supports-on cells instead of 433–434 singular offsets. Each request is the same
+single clipper operation with the same arguments as the serial path and the
+host returns the i-th result for the i-th request, so exactness is by
+construction. `layer_occupancy_payload` is the single definition of the
+emit-time payload (batch and serial site cannot drift), the memo now spans the
+chunk (`chunk_layers_left` mirrors the role-clip flush cadence), and both memo
+sites are served from it — the role carve was already a content hit on every
+layer of the two classic-on cells. Empty layers are skipped exactly as
+`inflate_model_occupancy` skips them. No host, WIT, module-key or role-clip
+change. Unit tests `occupancy_chunk_prefetch_seeds_both_memo_sites` and
+`occupancy_chunk_prefetch_skips_empty_layers` prove the seeded entry equals the
+serial offset and that the emit-time ask hits without growing the memo;
+`cargo test -p tree-support-planner` is 65 unit + 11 binaries, 0 failures.
+
+**The batch's own fan-out (probe, candidate arm, reverted before the
+campaign).** 109 calls / 434 requests at **3.52x** on both base supports-on
+cells (18.6 s summed request time → 5.29 s wall), and 57 / 225 at **2.39x** /
+**2.24x** on benchy classic-on / arachne-on. This replaces t134's **0.99x**
+serial proxy for the shape; the probe's per-request window includes IR↔WIT
+conversion on both sides, so its thread-time is not comparable to t134's
+clipper-only 14,169 ms — the fan-out ratio is the claim.
+
+**Output: byte-identical in 8/8 cells** and equal to t139's reference set
+(`93e21fee…`, `b3f1eccc…`, `3510e876…`, `96cdac85…`, `ca14d055…`, `585c6a8e…`,
+`d8fdc1d9…`, `c9fee59a…`), stable across all A/B rows. The host binary is
+identical between the ordinary arms (`063edc4f75e1…`); only the planner guest
+differs (baseline `3ab6466cb261…`, candidate `68b6f8117f9e…`, accelerated
+`2044eeba4ee5…`).
+
+**Paired A/B (ordinary, interleaved; 7 pairs on the benchy supports-on cells,
+3 on the base cells, 12–24 on the supports-off cells):**
+
+| cell | median wall | Δ | floor multiple | Δ CPU |
+| --- | --- | ---: | ---: | ---: |
+| benchy classic-on | 7.519 → 7.298 s | **+2.93 %** | 3.66x | −0.63 % CPU |
+| benchy arachne-on | 7.710 → 7.153 s | **+7.22 %** | 9.02x | +1.34 % CPU |
+| base classic-on | 90.422 → 80.660 s | **+10.80 %** | 13.49x | +1.09 % CPU |
+| base arachne-on | 92.956 → 80.583 s | **+13.31 %** | 16.64x | +1.09 % CPU |
+
+Per-pair wall deltas are negative in 19 of 20 supports-on pairs (the exception
+is +0.35 % on benchy classic-on). The base win is **9.76 s** and **12.37 s** of
+wall.
+
+**The CPU record is flat, not lower — and the take measured why that is not
+hand-waving.** A null control (the **same** binary against itself, same
+interleaving) bounds this shared box at **±11.02 % wall / ±5.60 % CPU** per
+pair; per-cell medians reach −5.38 % wall and −3.28 % CPU. The candidate's
+supports-on CPU deltas (−1.34 % … +1.09 %) are inside that band, and a
+*parallel* candidate is expected to be flat rather than lower (the same
+instructions now occupy up to four workers; SMT siblings inflate summed CPU
+time slightly). The strict CPU-lower form is disclosed as **0/4**, not gated.
+
+**Supports-off: no measurable regression.** Medians **−0.59 % / +0.44 % /
++2.69 % / −0.35 %** wall and **−0.23 % … +0.40 %** CPU, all inside the null
+band. The cells are structurally inert — `enable_support: false` makes
+`SupportPlanner::run_support_geometry_with_analysis` return at its first
+statement, before `plan_for_object` — and the two guests differ by 4,041 bytes
+of never-entered code. The strict non-negative-sign form is disclosed as
+**2/4**. base arachne-off was extended to 24 pairs after its first 12 landed in
+a slow machine window: −3.06 % → **−0.35 %**, against a baseline-vs-baseline
+null median of −2.06 % on that same cell; a candidate-vs-candidate control
+(6 pairs) medians **+0.31 %**.
+
+**Route arithmetic: a tranche, not the route.** 10.6 % of base classic-on's
+92.5 s required prepass cut and 13.2 % of base arachne-on's; 1.1 % of benchy
+classic-on's. The two base cells save close to t134's 11.2 s ceiling at the
+measured 3.52x fan-out. Composing the indicative scoreboard moves base
+classic-on **3.695x → ~3.30x**, and t134's zero-cost-planner bound (2.87x–3.25x
+on the supports-on cells) still holds, so the 8/8 destination remains the
+operand-volume program's.
+
+**Disclosures.** The accelerated **host** arm is unavailable — the controlled
+driver fails on `libmimalloc-sys`'s verbatim source path (unchanged from t142);
+accelerated **guest** output parity was checked in all eight cells with the
+accelerated guest artifacts against the ordinary host (hybrid, disclosed). No
+accelerated timing claim. base supports-on carries 3 pairs (a pair costs
+~3 minutes); its sign is robust but its median is not to the 11 % envelope. The
+probe is attribution only and reverted; `probe.patch` is the artifact.
+`EMIT_BATCH_LAYERS` stays 4 — raising it is a separate experiment.
+
+Evidence: [`evidence/t135-occupancy-batch/`](../evidence/t135-occupancy-batch/FINDINGS.md)
+(`verify.py` re-derives every number from `reduced/summary.json` alone and
+rejects 8/8 negative controls; `reduce_t135.py` builds that summary from the
+raw tree).
