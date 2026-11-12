@@ -561,9 +561,8 @@ pub(crate) fn convert_contours(
         areas.push(area);
     }
 
-    validate_contacts(&rings).map_err(|failure| {
-        invalid(format!("quantized grid: {}", failure.message))
-    })?;
+    validate_contacts(&rings)
+        .map_err(|failure| invalid(format!("quantized grid: {}", failure.message)))?;
 
     let (depths, parents) = nesting(rings.len(), |outer, child| {
         contains_integer(&rings[outer], rings[child][0])
@@ -1119,12 +1118,7 @@ mod tests {
         // is why the contact check runs on the original f64 values rather than on
         // any rounded grid.
         let input: Vec<Vec<[f64; 2]>> = vec![
-            vec![
-                [0.0, 0.0],
-                [200.0, 2.0],
-                [200.0, 200.0],
-                [0.0, 200.0],
-            ],
+            vec![[0.0, 0.0], [200.0, 2.0], [200.0, 200.0], [0.0, 200.0]],
             vec![[10.0, -0.49], [49.00501, 0.49005011], [110.0, -1.49]],
         ]
         .into_iter()

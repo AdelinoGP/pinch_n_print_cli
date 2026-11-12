@@ -1181,8 +1181,8 @@ mod tests {
         // are not identifiers. The check asks the lexer rather than comparing against
         // a hand-maintained list that could drift from it.
         for keyword in [
-            "true", "false", "undef", "module", "function", "if", "else", "for", "let",
-            "include", "use",
+            "true", "false", "undef", "module", "function", "if", "else", "for", "let", "include",
+            "use",
         ] {
             assert!(
                 !is_valid_scad_identifier(keyword),

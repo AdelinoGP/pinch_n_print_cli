@@ -969,9 +969,7 @@ fn scad_rejects_resources_even_with_remaining_geometry() {
             .diagnostics
             .iter()
             .find(|d| d.code == "external_resource_denied")
-            .unwrap_or_else(|| {
-                panic!("{label}: the request must be retained as a diagnostic")
-            });
+            .unwrap_or_else(|| panic!("{label}: the request must be retained as a diagnostic"));
         assert_eq!(
             request.class,
             ScadDiagnosticClass::Error,

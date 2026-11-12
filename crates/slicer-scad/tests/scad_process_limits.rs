@@ -287,9 +287,12 @@ fn scad_process_supervision_retains_repro_and_joins() {
     // any working-directory fallback would find it; the boundary must not.
     let resource_dir = repro_dir().join("tempting-cwd");
     std::fs::create_dir_all(&resource_dir).expect("create tempting cwd directory");
-    std::fs::write(resource_dir.join("tempting.scad"), "cube(9);
-")
-        .expect("write tempting include for the cwd probe");
+    std::fs::write(
+        resource_dir.join("tempting.scad"),
+        "cube(9);
+",
+    )
+    .expect("write tempting include for the cwd probe");
     let resource_source = ScadSource {
         label: "supervised-resource-cwd".to_string(),
         text: "include <tempting.scad>; cube(1);".to_string(),

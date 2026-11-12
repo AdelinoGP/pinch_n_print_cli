@@ -377,6 +377,11 @@ Recorded during implementation against `vendor/openrscad@1a45bd33f2` on Windows
       quantization introduced. `contains_float` now uses the same exact orientation
       predicate as the contact check, with a witness that is rejected for every
       rotation of the child ring.
+    - **Local `rustfmt` gate.** `cargo fmt --all` cannot run on the development host:
+      rustfmt is invoked with a single over-long argument list and fails with
+      `os error 206` before checking anything, so the workspace-wide Format job is the
+      first thing to see drift. The adapter is therefore checked per file with
+      `rustfmt --edition 2021 --check crates/slicer-scad/**/*.rs` before each push.
     - **AC-N1 coverage.** The named resource regression now also drives program-phase
       `dxf_dim` and `dxf_cross` (the `load_bytes` seam) and a relative `include`
       resolved from a child process whose working directory is the one holding a
