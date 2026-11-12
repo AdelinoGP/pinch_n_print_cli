@@ -1407,6 +1407,73 @@ context or slicing engine to compile or evaluate. See
 [`docs/testing/proptest-domain-evidence.md`](testing/proptest-domain-evidence.md)
 for the measured Windows pilots.
 
+#### Scripted SCAD recipes (`property_testing_scad`, native only)
+
+The separate `property_testing_scad` feature enables the typed scripted surface:
+
+```toml
+features = ["slicer-sdk/property_testing_scad"]   # implies property_testing
+```
+
+It adds an optional `slicer-scad` dependency with the engine feature and the
+`sha2` digest dependency, and gates
+`slicer_sdk::test_support::property_testing::scripted` with
+`all(feature = "property_testing_scad", not(target_arch = "wasm32"))`. The
+feature is **default-off** and is not enabled by `test`, by the SDK's self
+dev-dependency, by the production prelude, or by any guest manifest: the default
+and `test` graphs resolve neither Proptest nor the engine,
+`slicer-sdk/property_testing` enables Proptest but stays engine-free, and only
+`property_testing_scad` reaches the adapter. `cargo xtask test`'s
+`property_scripted_feature_isolation_and_union` asserts that from resolved
+metadata and `cargo tree` rather than from source text.
+
+Ownership is a typed recipe, not arbitrary source text. `Recipe2d` / `Recipe3d` /
+`ScadRecipe` carry primitive parameters, transforms, Boolean operations and
+extrusions in **canonical units** (1 unit = 100 nm = 10⁻⁴ mm); `emit_scad` renders
+a readable, self-contained program with exact millimetre decimal text, explicit
+facet counts, and no resource loads, ambient variables, text requests, loops,
+recursion or random programs. Emission is a pure function of the recipe and
+`RecipeBounds`, so a retained source can be compared byte for byte. Evaluation
+goes through the public `slicer_scad::evaluate`; it is never a second renderer.
+
+A successful render is **stimulus, not an oracle**. `ScriptedDomain` names the
+converted contour domain (or a bounded constituent profile domain) plus an
+optional `SolidWitness` (`ClosedSolid`, `Cavity`, `Bridge`, `Overhang`,
+`SeparatedBodies`). `scripted_cases` only exposes values that were emitted,
+evaluated and then independently validated: `oracles::validate_geometry` for
+converted contours, mesh closure/volume checks plus an axis-aligned occupancy
+model for solids. A recipe AST being valid says nothing about its converted
+output, and closed edge incidence alone does not prove self-intersection freedom
+or a cavity.
+
+Two isolation layers are distinct on purpose:
+
+- `PropertyRun::check` gives every **SUT callback** a fresh `CaseGuard`, on
+  failure and shrink invocations alike;
+- generation, candidate rendering and shrink rendering happen **outside** that
+  guard. A fatal adapter/artifact/accounting error there is recorded as a
+  generator fault and fails the run as `generator_or_oracle`; reaching a
+  candidate or evaluation limit on a known failure reports
+  `shrink_completed = false` and never a pass. A callback-only timeout cannot
+  certify this lifecycle, so registered `requires_scad` records also carry a
+  positive `bounds.test_process_timeout_ms` that the xtask executor applies to
+  the whole libtest child, killing the Windows process tree on deadline.
+
+Artifacts and replay use fixed filenames under
+`target/property-testing/<run_token>/<property_id>/attempts/<role>-<pid>-<seq>/`:
+`recipe.json`, `recipe-bounds.json`, `source.scad`, `options.json`, `engine.json`
+and an honest `state.json` are written **before** the adapter runs, then
+`geometry.json`, `diagnostics.json`, `output.json` and a final `state.json`
+follow. `write_scripted_artifacts` writes one complete evaluated case with the
+same layout; `replay_scripted_case` re-emits the retained recipe, compares it
+with the retained source bytes, re-checks the source/input digests, generator
+version and active engine identity, and evaluates with the retained options and
+bounds. It never regenerates a seed and never falls back to defaults; changed
+provenance is `ReplayMismatch`, missing/damaged/oversized or escaping files are
+`Artifact`. See
+[`docs/testing/proptest-scripted-evidence.md`](testing/proptest-scripted-evidence.md)
+for the measured Windows profiles and the combined geometry disposition.
+
 ### Mock Host
 
 ```rust

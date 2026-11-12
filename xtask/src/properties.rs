@@ -338,6 +338,23 @@ fn validate_record(record: &PropertyRecord, metadata: &Metadata) -> Result<(), P
                 "a nonzero timeout requires process isolation",
             ));
         }
+        // A SCAD property renders and shrinks outside any callback, so a
+        // callback timeout cannot certify its lifecycle: the executor must
+        // supervise the whole libtest child instead.
+        if record.requires_scad {
+            match profile.bounds.get("test_process_timeout_ms") {
+                Some(value) if *value > 0 => {}
+                _ => {
+                    return Err(error(
+                        "missing_scad_process_timeout",
+                        format!(
+                            "{} needs a positive bounds.test_process_timeout_ms",
+                            record.id
+                        ),
+                    ))
+                }
+            }
+        }
     }
     let pkg = metadata
         .package(&record.package)
@@ -1305,6 +1322,80 @@ bounds = { positive = 7 }
             parts.next().expect("minor"),
             parts.next().unwrap_or(0),
         )
+    }
+
+    #[test]
+    fn property_scripted_feature_isolation_and_union() {
+        // Graph half of AC-1. The behavioural half lives in the SDK's
+        // `property_scripted_contracts::scripted_feature_isolation_and_union`,
+        // which requires the feature and therefore cannot observe a feature-off
+        // graph. These assertions use resolved metadata and `cargo tree`, never
+        // source text, so a re-exported or renamed edge still counts.
+        let root = root();
+        let manifest = root.join("Cargo.toml");
+
+        // Default and `test` graphs must resolve neither Proptest nor the engine.
+        // The tree selector takes the *unqualified* feature name; a qualified
+        // `slicer-sdk/x` argument is silently ignored by `cargo tree`, which
+        // would make the tree half of the isolation check vacuous.
+        for (metadata_features, tree_feature) in
+            [(None, None), (Some("slicer-sdk/test"), Some("test"))]
+        {
+            let metadata = metadata_json(&manifest, metadata_features);
+            assert_isolated(&metadata, &manifest, "slicer-sdk", tree_feature);
+        }
+
+        // The property-only graph must enable Proptest and stay engine-free.
+        let property = metadata_json(&manifest, Some("slicer-sdk/property_testing"));
+        let property_tree = active_names(&manifest, "slicer-sdk", Some("property_testing"));
+        assert!(
+            property_tree.contains("proptest"),
+            "the tree graph must really activate property support, not fall back to the default"
+        );
+        let graph = graph_packages(&property, "slicer-sdk");
+        assert!(
+            graph.iter().any(|pkg| pkg["name"] == "proptest"),
+            "slicer-sdk/property_testing must resolve Proptest"
+        );
+        assert!(
+            !graph.iter().any(|pkg| pkg["name"]
+                .as_str()
+                .is_some_and(|name| name.to_ascii_lowercase().contains("openrscad"))),
+            "the property-only graph must stay engine-free"
+        );
+
+        // The positive half: the scripted feature really resolves the adapter,
+        // its engine crates and Proptest together.
+        let enabled = metadata_json(&manifest, Some("slicer-sdk/property_testing_scad"));
+        let graph = graph_packages(&enabled, "slicer-sdk");
+        let names: BTreeSet<_> = graph
+            .iter()
+            .map(|pkg| pkg["name"].as_str().expect("package name"))
+            .collect();
+        for required in [
+            "slicer-scad",
+            "openrscad-eval",
+            "openrscad-geom",
+            "manifold-csg",
+            "proptest",
+        ] {
+            assert!(
+                names.contains(required),
+                "property_testing_scad must resolve {required}; graph has {names:?}"
+            );
+        }
+
+        // The product CLI graph stays Proptest- and engine-free: scripted
+        // support is a test-only opt-in, not a product dependency.
+        let default = metadata_json(&manifest, None);
+        let product = graph_packages(&default, "pnp-cli");
+        for package in &product {
+            let name = package["name"].as_str().expect("package name");
+            assert!(
+                !name.to_ascii_lowercase().contains("openrscad"),
+                "the product CLI graph must not contain {name}"
+            );
+        }
     }
 
     #[test]

@@ -18,6 +18,9 @@ pub mod oracles;
 pub mod regression;
 mod run;
 
+#[cfg(all(feature = "property_testing_scad", not(target_arch = "wasm32")))]
+pub mod scripted;
+
 pub use oracle::{check_travel_anchors_charter, travel_anchor_oracle, AnchorOracleError};
 pub use run::{PropertyRun, PropertyRunError};
 

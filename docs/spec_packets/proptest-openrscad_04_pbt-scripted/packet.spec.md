@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_04_pbt-scripted
-status: draft
+status: implemented
 ---
 
 # Typed scripted geometry strategies and the hybrid geometry decision
@@ -237,3 +237,157 @@ Implementation executes these after prerequisites; authoring does not claim prof
 | 11 | Completeness | PASS | No unresolved scope question or placeholder; conditional generator outcome has explicit ownership and cannot be mistaken for green closure. |
 
 **Verdict: PREFLIGHT PASS (authoring only; implementation waits for #2/#3; combined G-GEOMETRY and Windows pilots not executed).**
+
+## Deviations
+
+Recorded during implementation on the delivered tree. None changes scope.
+
+1. **Dimensionality mismatch maps to `ScriptedError::Domain`.** The planned
+   `ScriptedError` variants cannot construct a `slicer_scad::ScadError` (its
+   constructor is crate-private), so a recipe whose converted dimensionality
+   contradicts its recipe variant is reported as
+   `Domain(DomainError::InvalidInput)` and treated as a generator/domain failure.
+   Adapter rejections still surface as `ScriptedError::Adapter`.
+2. **Adapter AST/geometry capacity is derived with a source-byte floor.** The
+   structural estimate alone is not a bound: a polygon leaf contributes one AST
+   node per vertex, and a holed leaf expands to extra evaluated CSG nodes.
+   Measured while implementing: a 96-vertex leaf needed 208 AST nodes against an
+   `8 * 24 + 16 = 208` structural estimate, and a holed leaf needed 28 evaluated
+   CSG nodes against `max_nodes = 24`. `required_adapter_capacity` therefore uses
+   `max(8 * max_nodes + 16, max_source_bytes)` for both AST nodes and geometry
+   nodes, and `2 * max_depth + 8` for AST depth. `scripted_cases` and
+   `evaluate_recipe` reject a smaller adapter capacity before any render.
+3. **Attempt journaling happens for every candidate, not only failures.** The
+   pre-execution input set must exist before the adapter call, so a passing run
+   also keeps an attempt directory per evaluated candidate. With
+   `isolation = "fork"` the controller and the worker each generate the certified
+   tree, so the measured runs record two attempt directories per accepted case
+   (48 routine, 192 extended per record); both record `stage = "evaluated"`.
+4. **The foundation's `no_eligible_scad_properties` selector test changed
+   premise.** That assertion was only true while no `requires_scad` record
+   existed, and this packet deliberately makes `--with-scad` eligible. The test
+   now asserts the honest refusal against a SCAD-free registry (including an
+   empty one) and adds a positive control that the live registry selects exactly
+   `D-SCAD-2D` and `D-SCAD-3D`.
+5. **Windows process-tree containment uses `taskkill /T /F`.** No new dependency
+   was added to `xtask`. The observable guarantee — a live descendant PID is gone
+   after the deadline kill — is tested rather than assumed.
+6. **Delegated geometry shrinking is undone on rejection.**
+   `ScriptedValueTree` reuses `GeometryValueTree` for explicit polygon leaves and
+   only calls its `simplify` while the current recipe is tree-derived. A
+   delegated step whose candidate fails certification is undone with
+   `complicate`, so the delegated tree never drifts from the certified value.
+   Boolean/CSG simplifications then run only from a value the tree can still
+   explain.
+7. **Registered properties select among per-class strategies.** A single
+   `ScriptedDomain` cannot reach every planar class, so `property_scripted` builds
+   one strategy per class/witness and combines them with `prop_oneof!`. The SDK
+   surface stays `scripted_cases(domain, options)` as planned; the union lives in
+   the registry test.
+8. **No extra public helpers were added to produce `ConcreteInput`.** The planned
+   export block is implemented exactly; tests build `ConcreteInput::Geometry` /
+   `ConcreteInput::Mesh` from the certified output themselves.
+9. **`docs/testing/properties.md` carries the two charters and the supervision
+   rule.** It is the planned prerequisite document; the `D-SCAD-2D` / `D-SCAD-3D`
+   charters, the exact bound keys and the positive
+   `test_process_timeout_ms` requirement are documented there, and the measured
+   evidence is in the new `docs/testing/proptest-scripted-evidence.md`.
+
+Combined `G-GEOMETRY` disposition: **`hybrid_sufficient`** for the stated bounded
+domain. Full `G-SCAD` is recorded as passed by combining the adapter-prerequisite
+evidence in `docs/scad/windows-feasibility.md` with the generation, render and
+shrink measurements and the eligible profiles in
+`docs/testing/proptest-scripted-evidence.md`.
+
+10. **Supervision fault-injection seam.** `PNP_SCRIPTED_PAUSE_BEFORE_RENDER`
+    pauses inside `evaluate_certified` between the complete, readable input set
+    and the adapter call. It lives in the test-only
+    `test_support::property_testing::scripted` module (no guest or product graph
+    enables that module), is default-off, and only the abort fixture in
+    `property_scripted_contracts` sets it. It is how a kill is proven to retain a
+    real `prepared` attempt rather than a fabricated `evaluated` one.
+11. **Windows containment is a Job Object plus `taskkill /T`.** The supervisor
+    creates a Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and assigns the
+    execution child to it, so a descendant left behind by an abnormal controller
+    exit is terminated when the job handle closes; the deadline path additionally
+    runs `taskkill /T /F`. `windows-sys` 0.59 was already in the workspace lock,
+    so this only adds an `xtask` dependency edge. Assignment can be refused when
+    the runner already holds a non-nestable job; the deadline kill remains the
+    fallback and the job handle is still the abnormal-exit guarantee. Containment
+    is established **before execution is accepted**: a failed job creation or
+    assignment refuses to run the child, and the deadline path kills the direct
+    child on every platform before waiting so a blocked fixture cannot outlive its
+    deadline. Both paths are tested, including a fixture that exits `9` with a
+    live descendant.
+12. **Solid domains accept only convex rectangular constituent profiles.**
+    `geometry` on a solid domain describes the bounded constituent planar
+    domain. The bounded solid families build convex rectangular profiles, so a
+    request for another constituent topology (or `min_holes > 0`,
+    `min_components > 1`) is rejected as `DomainError::UnsupportedDomain` before
+    sampling instead of being silently ignored. Both registry records request
+    `TopologyClass::Convex`.
+13. **Shrink rejection memory is keyed by the transition.** A rejected
+    `(base, candidate)` pair is never re-proposed from the same base, and a
+    `complicate` records the just-undone transition as rejected. Without the
+    second half, a candidate that makes the property pass was re-accepted and
+    re-complicated forever, retaining the original non-minimal value; the
+    committed selective-failure regression now proves the search continues with
+    the other dimensions.
+14. **Recipe parameters span 0..4096.** The earlier 0..64 range never reached the
+    template jitter spans, so every generated dimension sat in its first few
+    units. The wider range is what makes dimension shrinking meaningful; the
+    reachability and selective-failure tests depend on it.
+15. **Attempt journaling is thread-local, not environment-global.** `PropertyRun`
+    publishes its artifact directory to the scripted generator through a
+    thread-local slot; `prepare_attempt` no longer reads
+    `PNP_PROPERTY_CONTEXT`. A process-global read let one contract test's blocked
+    attempts path corrupt a sibling test that happened to run concurrently. The
+    context environment variable is still read by `PropertyRun::new` itself.
+16. **Native-risk contract bodies run in supervised children.** The artifact,
+    concrete-fixture and replay-refusal bodies each execute in a child of the
+    test binary with a deadline kill, so no engine call happens on the parent
+    test thread.
+17. **The render-pause probe is phase-selectable.** `PNP_SCRIPTED_PAUSE_AFTER=<n>`
+    pauses on the n-th candidate evaluation of the thread
+    (`PNP_SCRIPTED_PAUSE_BEFORE_RENDER` is the n = 1 form), so the supervision
+    test kills the child once before any callback and once during a shrink
+    candidate render. Both killed runs retain a `prepared` attempt.
+## Closure review status
+
+Four independent closure reviews were run. Every substantive finding was fixed
+and re-verified:
+
+- shrink progress after a passing candidate (rejection memory keyed by
+  transition, plus a committed selective-failure regression);
+- fatal shrink errors retaining incomplete status;
+- converted-mesh witness loss (occupancy probes plus surface connectivity, with
+  a converted-beam counterexample);
+- ray casting shared-edge double counting;
+- cylinder regular-polygon extrema (odd facet counts);
+- generator reachability of every advertised CSG/solid family;
+- prepared-only abort retention and kills at both generation and shrink-render
+  phases;
+- proposal/evaluation limits and their failure reporting;
+- the named AC-N1 test, constructor capacity/limit validation, and the solid
+  constituent-domain restriction;
+- `failure.json` attempt links and the `--with-scad` reproduction command;
+- the CI log-ownership collision;
+- Windows Job Object containment (Windows-only, fail-closed, with abnormal-exit
+  and deadline tests) and the non-Windows deadline path;
+- the contract-test process-global context race (attempt journaling is
+  thread-local);
+- supervised children for the native-risk fixture/replay bodies.
+
+One witness remains **unverified on this machine**: creating a Windows directory
+junction or file symlink is refused by the workspace volume ("Local volumes are
+required", "The specified path is invalid"). The refusal itself is implemented
+(symlink metadata plus canonical containment) and the probe reports the
+environment limitation instead of silently passing. The final review recorded
+that item plus the completed fixes; the delivered tree's executable gates (SDK
+contracts, reference/fatal-shrink units, xtask property tests, workspace
+clippy/build/check, literals, test-quality, guest freshness, and the full
+incremental routine and extended `--with-scad` runs) are green.
+
+The packet keeps `status: implemented` because the implementation and all
+executable acceptance evidence are delivered; closure review approval is
+recorded here rather than implied.

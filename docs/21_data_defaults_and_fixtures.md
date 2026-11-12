@@ -142,6 +142,26 @@ rather than silently truncated.
 empty or `None`, and intentionally keeps `progress_events = false` rather
 than using the CLI default.
 
+Scripted SCAD fixtures follow the same separation with one extra stage:
+
+- The **scripted source** is evidence, not a fixture. `emit_scad` output plus the
+  attempt journal under
+  `target/property-testing/<run_token>/<property_id>/attempts/` records what was
+  actually rendered (`recipe.json`, `recipe-bounds.json`, `source.scad`,
+  `options.json`, `engine.json`, `state.json` before evaluation, then the
+  evaluated `geometry.json` / `diagnostics.json` / `output.json`). It stays
+  target-local and is never committed as an ad-hoc JSON blob.
+- The **durable regression** is still a named owner test. A retained case is
+  converted through `regression::format_regression_fixture` — contours as
+  `ConcreteInput::Geometry`, meshes as `ConcreteInput::Mesh` — and the owning
+  crate adds its own assertion. Seeds are diagnostics here too; a retained case
+  directory is not regression history.
+- `RecipeBounds` has a documented bounded `Default` for FRU composition, but live
+  profiles must pass their measured bounds explicitly. `ScriptedCase` has **no**
+  default: an exhaustive literal in a test carries an `// exhaustive:` waiver
+  naming the complete replay-record contract, so adding a field fails the round
+  trip instead of silently dropping it.
+
 ## 6. `clippy::needless_update` guidance
 
 When converting a site, **omit default-equal fields** rather than spelling all

@@ -3,7 +3,14 @@
 This file records the **adapter-prerequisite** disposition of the G-SCAD gate. It
 covers the optional `slicer-scad` adapter only. Full G-SCAD closure — recipe
 generation and shrink measurements, final eligible property profiles — belongs to
-`docs/spec_packets/proptest-openrscad_04_pbt-scripted/` and is **pending** there.
+`docs/spec_packets/proptest-openrscad_04_pbt-scripted/`. Those generation,
+render and shrink measurements and the eligible scripted profiles are recorded in
+[`docs/testing/proptest-scripted-evidence.md`](../testing/proptest-scripted-evidence.md).
+
+The engine remains an exact stimulus source, never the slicer's correctness
+oracle: a successful render says nothing about whether the slicer consumed the
+converted geometry correctly, and the scripted witnesses are independently
+derived from the recipe dimensions rather than from the engine's own output.
 
 Upstream CI or source inspection alone does not satisfy this prerequisite. What
 follows is measured on this machine.

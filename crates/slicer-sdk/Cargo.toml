@@ -10,6 +10,7 @@ proptest = { workspace = true, optional = true }
 num-bigint = { workspace = true, optional = true }
 num-rational = { workspace = true, optional = true }
 serde_json = { version = "1", optional = true }
+sha2 = { version = "0.10", optional = true }
 slicer-ir = { path = "../slicer-ir" }
 slicer-core = { path = "../slicer-core" }
 slicer-macros = { path = "../slicer-macros" }
@@ -17,6 +18,11 @@ slicer-schema = { path = "../slicer-schema" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 slicer-core = { path = "../slicer-core", features = ["host-algos"] }
+# The optional native SCAD engine edge. It is reachable only through the
+# `property_testing_scad` feature: a default build, a `test` build and a
+# property-only build must never compile the engine, its C++ kernel or its font
+# stack.
+slicer-scad = { path = "../slicer-scad", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wit-bindgen.workspace = true
@@ -24,6 +30,9 @@ wit-bindgen.workspace = true
 [features]
 test = []
 property_testing = ["test", "dep:proptest", "dep:serde_json", "dep:num-bigint", "dep:num-rational"]
+# Native-only scripted SCAD properties. Enables the adapter and its engine; it
+# is deliberately not part of `default`, `test`, or any guest manifest.
+property_testing_scad = ["property_testing", "dep:slicer-scad", "dep:sha2", "slicer-scad/openrscad"]
 
 # Tests that import the `test_prelude` / `test_support` modules must run
 # with the `test` feature enabled; those modules are gated on
@@ -41,6 +50,14 @@ required-features = ["property_testing"]
 [[test]]
 name = "property_domain_contracts"
 required-features = ["property_testing"]
+
+[[test]]
+name = "property_scripted"
+required-features = ["property_testing_scad"]
+
+[[test]]
+name = "property_scripted_contracts"
+required-features = ["property_testing_scad"]
 
 [[test]]
 name = "smoke"

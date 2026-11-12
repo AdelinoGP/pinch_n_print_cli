@@ -240,3 +240,87 @@ rng_algorithm = "chacha"
 isolation = "in_process"
 timeout_ms = 0
 bounds = { max_extent_mm = 1000, max_translation_mm = 1000 }
+
+# Native scripted SCAD helpers. These validate the recipe/emission/witness and
+# value-tree contracts; they do not credit host or module SUT coverage.
+# `test_process_timeout_ms` bounds the whole libtest child, including recipe
+# generation and shrink rendering that happens outside any property callback.
+[[property]]
+id = "D-SCAD-2D"
+package = "slicer-sdk"
+target_kind = "test"
+target_name = "property_scripted"
+test_name = "proptest_scripted_contour_domains"
+production_symbol = "slicer_sdk::test_support::property_testing::scripted::scripted_cases"
+production_path = "crates/slicer-sdk/src/test_support/property_testing/scripted/mod.rs"
+features = ["slicer-sdk/property_testing_scad"]
+requires_host_algos = false
+requires_scad = true
+generator_version = 1
+charter = "docs/testing/properties.md#d-scad-2d"
+
+[property.routine]
+cases = 24
+max_local_rejects = 32
+max_global_rejects = 128
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "fork"
+timeout_ms = 30000
+bounds = { max_abs_units = 20000, max_vertices = 64, max_holes = 4, max_components = 4, max_shrink_candidates = 32, max_recipe_nodes = 24, max_recipe_depth = 6, max_facets = 16, max_source_bytes = 16384, max_evaluations = 48, max_scad_vertices = 200000, max_scad_triangles = 400000, evaluation_steps = 5000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 120000 }
+
+[property.extended]
+cases = 96
+max_local_rejects = 128
+max_global_rejects = 512
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "fork"
+timeout_ms = 60000
+bounds = { max_abs_units = 40000, max_vertices = 96, max_holes = 8, max_components = 8, max_shrink_candidates = 64, max_recipe_nodes = 32, max_recipe_depth = 8, max_facets = 24, max_source_bytes = 32768, max_evaluations = 128, max_scad_vertices = 400000, max_scad_triangles = 800000, evaluation_steps = 20000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 600000 }
+
+[[property]]
+id = "D-SCAD-3D"
+package = "slicer-sdk"
+target_kind = "test"
+target_name = "property_scripted"
+test_name = "proptest_scripted_solid_domains"
+production_symbol = "slicer_sdk::test_support::property_testing::scripted::scripted_cases"
+production_path = "crates/slicer-sdk/src/test_support/property_testing/scripted/mod.rs"
+features = ["slicer-sdk/property_testing_scad"]
+requires_host_algos = false
+requires_scad = true
+generator_version = 1
+charter = "docs/testing/properties.md#d-scad-3d"
+
+[property.routine]
+cases = 24
+max_local_rejects = 32
+max_global_rejects = 128
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "fork"
+timeout_ms = 30000
+bounds = { max_abs_units = 20000, max_vertices = 64, max_holes = 4, max_components = 4, max_shrink_candidates = 32, max_recipe_nodes = 24, max_recipe_depth = 6, max_facets = 16, max_source_bytes = 16384, max_evaluations = 48, max_scad_vertices = 200000, max_scad_triangles = 400000, evaluation_steps = 5000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 120000 }
+
+[property.extended]
+cases = 96
+max_local_rejects = 128
+max_global_rejects = 512
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "fork"
+timeout_ms = 60000
+bounds = { max_abs_units = 40000, max_vertices = 96, max_holes = 8, max_components = 8, max_shrink_candidates = 64, max_recipe_nodes = 32, max_recipe_depth = 8, max_facets = 24, max_source_bytes = 32768, max_evaluations = 128, max_scad_vertices = 400000, max_scad_triangles = 800000, evaluation_steps = 20000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 600000 }

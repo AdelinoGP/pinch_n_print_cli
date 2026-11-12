@@ -4219,9 +4219,11 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "sha2",
  "slicer-core",
  "slicer-ir",
  "slicer-macros",
+ "slicer-scad",
  "slicer-schema",
  "slicer-sdk",
  "wit-bindgen 0.60.0",
@@ -6181,6 +6183,7 @@ dependencies = [
  "syn 2.0.117",
  "toml 0.8.23",
  "walkdir",
+ "windows-sys 0.59.0",
  "wit-parser 0.247.0",
 ]
 

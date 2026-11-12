@@ -241,6 +241,11 @@ impl PropertyRun {
             &context.source_state_digest,
             &context.cargo_target_dir,
         );
+        #[cfg(all(feature = "property_testing_scad", not(target_arch = "wasm32")))]
+        crate::test_support::property_testing::scripted::set_attempt_root(
+            Some(std::path::PathBuf::from(&context.artifact_dir)),
+            Some(context.generator_version),
+        );
         Ok(Self {
             context,
             raw_context,
@@ -278,6 +283,10 @@ impl PropertyRun {
         let verbose =
             std::env::var_os("PROPTEST_VERBOSE").map(|v| v.to_string_lossy().into_owned());
         let mut details = RunDetails::default();
+        #[cfg(all(feature = "property_testing_scad", not(target_arch = "wasm32")))]
+        if !worker {
+            crate::test_support::property_testing::scripted::reset_generator_telemetry();
+        }
         let result = self.execute(strategy, &test, worker, verbose.as_deref(), &mut details);
         if worker {
             // rusty-fork exits the worker inside TestRunner::run; if it returns
@@ -463,6 +472,14 @@ impl PropertyRun {
         if let Some(message) = local_error.into_inner() {
             return Err(PropertyRunError::new("harness", message));
         }
+        // A fatal scripted generator/adapter/artifact error outside any callback
+        // must fail the run even though Proptest only saw a strategy value.
+        #[cfg(all(feature = "property_testing_scad", not(target_arch = "wasm32")))]
+        if let Some(fault) =
+            crate::test_support::property_testing::scripted::take_generator_fault()
+        {
+            return Err(PropertyRunError::new("generator_or_oracle", fault.message));
+        }
         let outcome = match run_result {
             Ok(result) => result,
             Err(_) => {
@@ -563,7 +580,7 @@ impl PropertyRun {
             "phase": "end", "process_role": role, "outcome": outcome,
             "accepted_cases": details.accepted_cases, "accepted_test_calls": details.accepted_test_calls,
             "rejected_test_calls": details.rejected_test_calls, "call_counts_complete": details.call_counts_complete,
-            "runner_statistics": details.runner_statistics, "shrink_completed": Value::Null,
+            "runner_statistics": details.runner_statistics, "shrink_completed": shrink_state(),
             "completion_eligible": self.context.completion_eligible && details.profile_applied,
             "error_kind": result.as_ref().err().map(PropertyRunError::kind),
             "proptest_verbose_override": verbose, "artifact_write_error": details.artifact_write_error,
@@ -630,16 +647,37 @@ impl PropertyRun {
             "--exact".to_owned(),
             "--nocapture".to_owned(),
         ]);
+        // A scripted record is only selectable with `--with-scad`; a
+        // reproduction command without it would fail as unavailable.
+        let scad = self
+            .context
+            .features
+            .iter()
+            .any(|feature| feature.contains("property_testing_scad"));
+        let scad_flag = if scad { " --with-scad" } else { "" };
+        // Link the retained attempt journals so a reader can open the exact
+        // inputs that existed before the render that failed.
+        let mut retained_attempts: Vec<String> = fs::read_dir(dir.join("attempts"))
+            .map(|entries| {
+                entries
+                    .filter_map(|entry| entry.ok())
+                    .filter(|entry| entry.path().is_dir())
+                    .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        retained_attempts.sort();
         let report = json!({
             "classification": classification, "error_kind": error.kind, "message": error.message,
             "context": self.raw_context, "concrete_input": concrete,
-            "reproduction_command": format!("cargo xtask test --summary --properties --property {} --tier {} --seed {}", self.context.property_id, tier, self.context.seed),
+            "retained_attempts": retained_attempts,
+            "reproduction_command": format!("cargo xtask test --summary --properties --property {} --tier {}{} --seed {}", self.context.property_id, tier, scad_flag, self.context.seed),
             "reproduction_direct": {
                 "program": "cargo", "args": args,
                 "env": { "PNP_PROPERTY_CONTEXT": self.context_json },
             },
             "captured_sdk_logs": selected.map(|o| &o.logs),
-            "shrink_completed": Value::Null, "shrink_status_reason": "Proptest 1.11 does not expose whether shrinking reached a limit",
+            "shrink_completed": shrink_state(), "shrink_status_reason": shrink_status_reason(),
         });
         fs::write(
             dir.join("failure.json"),
@@ -716,4 +754,28 @@ fn is_process_failure(message: &str) -> bool {
     message.starts_with("Child process ")
         || message.starts_with("Timed out waiting for child process")
         || message.starts_with("Giving up after ")
+}
+
+/// The scripted generator's own shrink-completion state, when it has one.
+///
+/// `Null` means "no scripted generator took part in this run"; Proptest 1.11
+/// does not expose whether a purely Proptest shrink reached a limit.
+fn shrink_state() -> Value {
+    #[cfg(all(feature = "property_testing_scad", not(target_arch = "wasm32")))]
+    {
+        if let Some(completed) =
+            crate::test_support::property_testing::scripted::last_shrink_completed()
+        {
+            return json!(completed);
+        }
+    }
+    Value::Null
+}
+
+fn shrink_status_reason() -> &'static str {
+    if shrink_state().is_null() {
+        "Proptest 1.11 does not expose whether shrinking reached a limit"
+    } else {
+        "the scripted generator recorded whether its bounded shrink search completed"
+    }
 }

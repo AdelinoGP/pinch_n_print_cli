@@ -3,9 +3,10 @@
 use std::collections::BTreeSet;
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, File};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -22,6 +23,7 @@ pub(crate) struct PropertySelection {
     pub(crate) with_scad: bool,
 }
 
+#[derive(Debug)]
 pub(crate) struct SelectionError {
     pub(crate) code: i32,
     message: String,
@@ -114,6 +116,32 @@ struct ChildPlan {
     kind: ChildKind,
     context_json: Option<String>,
     artifact_dir: PathBuf,
+    /// Whole-process deadline. Required for a SCAD property's execution child,
+    /// whose generation and shrink rendering happen outside any callback.
+    timeout_ms: Option<u64>,
+}
+
+/// The captured result of one child, including whether supervision ended it.
+struct ChildOutput {
+    status: Option<i32>,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    timed_out: bool,
+}
+
+impl ChildOutput {
+    fn success(&self) -> bool {
+        self.status == Some(0) && !self.timed_out
+    }
+
+    fn from_output(output: std::process::Output) -> Self {
+        Self {
+            status: output.status.code(),
+            stdout: output.stdout,
+            stderr: output.stderr,
+            timed_out: false,
+        }
+    }
 }
 
 trait ChildLauncher {
@@ -236,26 +264,40 @@ impl ExecutionLog {
         Ok(())
     }
 
-    fn child(&mut self, launcher: &impl ChildLauncher, plan: &ChildPlan) -> io::Result<Output> {
+    fn child(&mut self, launcher: &impl ChildLauncher, plan: &ChildPlan) -> io::Result<ChildOutput> {
         let mut cmd = launcher.build(plan)?;
         configure_child(&mut cmd, plan);
         writeln!(
             self.file,
-            "\n=== property {} {:?} ({}/{}, artifacts {}) ===\ncommand: {:?}",
+            "\n=== property {} {:?} ({}/{}, artifacts {}) ===\ncommand: {:?}\ntimeout: {:?}",
             plan.property_id,
             plan.kind,
             plan.package,
             plan.target_name,
             plan.artifact_dir.display(),
-            cmd
+            cmd,
+            plan.timeout_ms
         )?;
-        let output = cmd.output()?;
+        let output = match plan.timeout_ms {
+            Some(timeout_ms) => {
+                let output = supervise(&mut cmd, timeout_ms)?;
+                if output.timed_out {
+                    let message = format!(
+                        "property_process_timeout: {} {:?} exceeded {timeout_ms} ms; process tree terminated",
+                        plan.property_id, plan.kind
+                    );
+                    self.message(&message)?;
+                }
+                output
+            }
+            None => ChildOutput::from_output(cmd.output()?),
+        };
         self.file.write_all(&output.stdout)?;
         self.file.write_all(&output.stderr)?;
         writeln!(
             self.file,
-            "\n=== property {} {:?} status: {:?} ===",
-            plan.property_id, plan.kind, output.status
+            "\n=== property {} {:?} status: {:?} (timed_out: {}) ===",
+            plan.property_id, plan.kind, output.status, output.timed_out
         )?;
         self.file.flush()?;
         if !self.summary {
@@ -263,6 +305,177 @@ impl ExecutionLog {
             io::stderr().write_all(&output.stderr)?;
         }
         Ok(output)
+    }
+}
+
+
+/// A Windows Job Object that contains the execution child and every descendant.
+///
+/// The job is created with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, so closing the
+/// handle terminates any process still in the job. That covers the case the
+/// deadline path cannot: the controller exits abnormally and leaves a worker
+/// descendant behind. Assignment can fail when the runner already placed this
+/// process in a non-nestable job; the caller keeps the `taskkill /T` deadline
+/// path in that case and records the failure.
+#[cfg(windows)]
+struct ProcessJob(windows_sys::Win32::Foundation::HANDLE);
+
+#[cfg(windows)]
+impl ProcessJob {
+    fn create() -> Option<Self> {
+        use windows_sys::Win32::System::JobObjects::{
+            CreateJobObjectW, SetInformationJobObject, JobObjectExtendedLimitInformation,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        };
+        // SAFETY: null attributes/name ask Windows for an unnamed job object
+        // owned by this process; the returned handle is checked before use.
+        unsafe {
+            let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            if job.is_null() {
+                return None;
+            }
+            let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let configured = SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+            if configured == 0 {
+                let _ = windows_sys::Win32::Foundation::CloseHandle(job);
+                return None;
+            }
+            Some(Self(job))
+        }
+    }
+
+    fn assign(&self, pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::JobObjects::AssignProcessToJobObject;
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE,
+        };
+        // SAFETY: the handle is closed on every path; the job handle is owned by
+        // `self` and outlives the call.
+        unsafe {
+            let process = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid);
+            if process.is_null() {
+                return false;
+            }
+            let assigned = AssignProcessToJobObject(self.0, process);
+            let _ = CloseHandle(process);
+            assigned != 0
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for ProcessJob {
+    fn drop(&mut self) {
+        // KILL_ON_JOB_CLOSE terminates every remaining member as a side effect.
+        // SAFETY: `self.0` is a live handle owned by this value.
+        unsafe {
+            let _ = windows_sys::Win32::Foundation::CloseHandle(self.0);
+        }
+    }
+}
+
+
+/// Run one execution child under a whole-process deadline.
+///
+/// Both pipes are drained concurrently, and a deadline kill terminates the
+/// **process tree**, not just the controller: a SCAD property renders and
+/// shrinks in Proptest fork descendants that outlive a killed parent.
+fn supervise(cmd: &mut Command, timeout_ms: u64) -> io::Result<ChildOutput> {
+    // On Windows, containment is established before execution is accepted: an
+    // uncontained controller could exit abnormally and leave descendants
+    // running, which the deadline branch cannot recover. Other platforms have no
+    // job object; they supervise through the deadline kill below.
+    #[cfg(windows)]
+    let job = ProcessJob::create().ok_or_else(|| {
+        io::Error::other("could not create the Windows containment job for a property child")
+    })?;
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    #[cfg(windows)]
+    if !job.assign(child.id()) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(io::Error::other(
+            "could not assign the property child to its containment job; refusing to run it uncontained",
+        ));
+    }
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let stdout_reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        if let Some(mut pipe) = stdout {
+            let _ = pipe.read_to_end(&mut bytes);
+        }
+        bytes
+    });
+    let stderr_reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        if let Some(mut pipe) = stderr {
+            let _ = pipe.read_to_end(&mut bytes);
+        }
+        bytes
+    });
+    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+    let mut timed_out = false;
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status.code();
+        }
+        if Instant::now() >= deadline {
+            timed_out = true;
+            #[cfg(windows)]
+            terminate_tree(child.id());
+            // On every platform, kill the direct child before waiting so a
+            // blocked fixture cannot make `wait` outlive the deadline.
+            let _ = child.kill();
+            let status = child.wait()?;
+            break status.code();
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    };
+    if timed_out {
+        // A descendant that ignored the tree kill must not keep the pipes open.
+        let _ = child.kill();
+    }
+    // Dropping the job closes its handle; with KILL_ON_JOB_CLOSE any descendant
+    // the controller left behind is terminated, including after an abnormal
+    // controller exit that never reached the deadline branch.
+    #[cfg(windows)]
+    drop(job);
+    Ok(ChildOutput {
+        status,
+        stdout: stdout_reader.join().unwrap_or_default(),
+        stderr: stderr_reader.join().unwrap_or_default(),
+        timed_out,
+    })
+}
+
+/// Terminate a child and its descendants.
+///
+/// `taskkill /T` is the supported Windows tree termination; on other platforms
+/// the direct child is killed and its descendants are expected to exit with it.
+fn terminate_tree(pid: u32) {
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/T", "/F", "/PID", &pid.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pid;
     }
 }
 
@@ -282,10 +495,11 @@ fn make_plan(
         kind,
         context_json: None,
         artifact_dir: artifact_dir.to_path_buf(),
+        timeout_ms: None,
     }
 }
 
-fn discovered(output: &Output) -> BTreeSet<String> {
+fn discovered(output: &ChildOutput) -> BTreeSet<String> {
     String::from_utf8_lossy(&output.stdout)
         .lines()
         .filter_map(|line| line.strip_suffix(": test").map(str::to_owned))
@@ -361,7 +575,7 @@ fn launch_checked(
     launcher: &impl ChildLauncher,
     log: &mut ExecutionLog,
     plan: &ChildPlan,
-) -> Result<Output, i32> {
+) -> Result<ChildOutput, i32> {
     let output = log.child(launcher, plan).map_err(|error| {
         let _ = log.message(&format!(
             "property_child_or_log_failure: {} {:?}: {error}",
@@ -369,14 +583,19 @@ fn launch_checked(
         ));
         1
     })?;
-    let code = normalize_status(output.status.code());
-    if code != 0 || !output.status.success() {
+    let code = normalize_status(if output.timed_out { None } else { output.status });
+    if code != 0 || !output.success() {
         return Err(if code == 0 { 1 } else { code });
     }
     Ok(output)
 }
 
-fn valid_evidence(output: &Output, record: &PropertyRecord, context: &Value, tier: Tier) -> bool {
+fn valid_evidence(
+    output: &ChildOutput,
+    record: &PropertyRecord,
+    context: &Value,
+    tier: Tier,
+) -> bool {
     let text = String::from_utf8_lossy(&output.stdout);
     let expected_line = format!("test {} ... ok", record.test_name);
     if !text.lines().any(|line| line.trim() == expected_line) {
@@ -537,6 +756,17 @@ fn execute(
             })?;
             let mut plan = make_plan(record, &features, ChildKind::Run, &dir);
             plan.context_json = Some(json);
+            if record.requires_scad {
+                // Required by registry validation; read it from the selected
+                // profile so each tier's deadline is honoured.
+                plan.timeout_ms = record
+                    .profile(selection.tier)
+                    .map_err(|_| 1)?
+                    .bounds
+                    .get("test_process_timeout_ms")
+                    .copied()
+                    .filter(|value| *value > 0);
+            }
             let output = launch_checked(launcher, &mut log, &plan)?;
             if !valid_evidence(&output, record, &context, selection.tier) {
                 let _ = log.message(&format!(
@@ -694,6 +924,51 @@ mod tests {
             )
             .expect("driver arguments JSON");
             std::process::exit(crate::test::test_command(&root(), &args));
+        }
+        if mode == "exit_with_descendant" {
+            let child = Command::new(std::env::current_exe().expect("current exe"))
+                .args([
+                    "--exact",
+                    "properties::executor::tests::property_child_fixture",
+                    "--nocapture",
+                ])
+                .env("XTASK_PROPERTY_CHILD_MODE", "block_with_descendant")
+                .env("XTASK_PROPERTY_DESCENDANT", "1")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("spawn the descendant fixture");
+            println!("XTASK_PROPERTY_DESCENDANT_PID {}", child.id());
+            // No callback, no deadline: the controller exits abnormally and the
+            // job object must terminate the descendant.
+            std::process::exit(9);
+        }
+        if mode == "block_with_descendant" {
+            // A live descendant proves the deadline kill contains the whole
+            // tree, not just the controller this test binary runs as.
+            if std::env::var_os("XTASK_PROPERTY_DESCENDANT").is_some() {
+                // test-quality: the descendant exists only to be killed by the supervisor
+                std::thread::sleep(Duration::from_secs(60));
+            } else {
+                // The descendant exists only to be killed by the supervisor.
+                #[allow(clippy::zombie_processes)]
+                let child = Command::new(std::env::current_exe().expect("current exe"))
+                    .args([
+                        "--exact",
+                        "properties::executor::tests::property_child_fixture",
+                        "--nocapture",
+                    ])
+                    .env("XTASK_PROPERTY_CHILD_MODE", "block_with_descendant")
+                    .env("XTASK_PROPERTY_DESCENDANT", "1")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .expect("spawn the descendant fixture");
+                println!("XTASK_PROPERTY_DESCENDANT_PID {}", child.id());
+                // test-quality: blocks before any callback so the deadline covers generation
+                std::thread::sleep(Duration::from_secs(60));
+            }
+            return;
         }
         for name in CONTRACT_CONFLICTS {
             assert!(
@@ -969,33 +1244,20 @@ mod tests {
             assert!(error.contains(token), "{args:?}: {error}");
             assert_eq!(crate::test::test_command(&dir, &args), 2, "{args:?}");
         }
-        for (args, token) in [
-            (
-                vec!["--properties", "--property", "UNKNOWN"],
-                "unknown_property_id",
-            ),
-            (
-                vec!["--properties", "--with-scad"],
-                "no_eligible_scad_properties",
-            ),
-        ] {
-            let selection = if token == "unknown_property_id" {
-                PropertySelection {
-                    ids: vec!["UNKNOWN".into()],
-                    ..selection()
-                }
-            } else {
-                PropertySelection {
-                    with_scad: true,
-                    ..selection()
-                }
+        {
+            let selection = PropertySelection {
+                ids: vec!["UNKNOWN".into()],
+                ..selection()
             };
             let error = read_and_select(&dir, &selection)
                 .err()
                 .expect("usage error");
             assert_eq!(error.code, 2);
-            assert!(error.to_string().contains(token));
-            let args: Vec<_> = args.iter().map(|s| (*s).to_owned()).collect();
+            assert!(error.to_string().contains("unknown_property_id"));
+            let args: Vec<String> = ["--properties", "--property", "UNKNOWN"]
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect();
             assert_eq!(crate::test::test_command(&dir, &args), 2);
         }
         fs::write(
@@ -1009,6 +1271,39 @@ mod tests {
             .to_string()
             .contains("empty_property_selection"));
         assert_eq!(crate::test::test_command(&dir, &["--properties".into()]), 2);
+        // The honest selector is still honest for a registry with no SCAD
+        // record: `--with-scad` must say so rather than run an empty lane.
+        let scad_only = PropertySelection {
+            with_scad: true,
+            ..selection()
+        };
+        assert!(read_and_select(&dir, &scad_only)
+            .err()
+            .expect("unavailable SCAD selector")
+            .to_string()
+            .contains("no_eligible_scad_properties"));
+        assert_eq!(
+            crate::test::test_command(&dir, &["--properties".into(), "--with-scad".into()]),
+            2
+        );
+        // Positive control: the live registry now carries the two scripted
+        // records, so the same selector is eligible rather than unavailable.
+        let live_dir = fixture_dir().join("live-scad");
+        fs::create_dir_all(&live_dir).expect("live fixture directory");
+        fs::copy(
+            root().join("test-properties.toml"),
+            live_dir.join("test-properties.toml"),
+        )
+        .expect("live registry copy");
+        let prepared = read_and_select(&live_dir, &scad_only).expect("eligible SCAD selector");
+        let live: Registry = toml::from_str(&prepared.input).expect("live registry");
+        let scad: Vec<_> = live
+            .property
+            .iter()
+            .filter(|record| record.requires_scad)
+            .map(|record| record.id.as_str())
+            .collect();
+        assert_eq!(scad, ["D-SCAD-2D", "D-SCAD-3D"]);
         let mut tier_only = fixture_record("TIER-ONLY", "proptest_fixture");
         tier_only.extended = None;
         let registry = Registry {
@@ -1148,5 +1443,160 @@ mod tests {
             1,
             "directory cannot be a log file"
         );
+    }
+
+    fn descendant_gone(pid: u32) -> bool {
+        for _ in 0..100 {
+            if !process_exists(pid) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        false
+    }
+
+    fn process_exists(pid: u32) -> bool {
+        #[cfg(windows)]
+        {
+            let filter = format!("PID eq {pid}");
+            Command::new("tasklist")
+                .args(["/FI", &filter, "/NH"])
+                .output()
+                .map(|output| {
+                    String::from_utf8_lossy(&output.stdout).contains(&pid.to_string())
+                })
+                .unwrap_or(false)
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = pid;
+            false
+        }
+    }
+
+    #[test]
+    fn property_scad_job_object_cleans_up_after_an_abnormal_controller_exit() {
+        let dir = fixture_dir();
+        let record = live_registry()
+            .property
+            .into_iter()
+            .find(|record| record.id == "D-SCAD-3D")
+            .expect("the scripted solid record must be registered");
+        let log_path = dir.join("scad-job-object.log");
+        let mut log = ExecutionLog {
+            file: File::create(&log_path).expect("job object log"),
+            summary: true,
+        };
+        let launcher = FixtureLauncher::new(std::slice::from_ref(&record), &["exit_with_descendant"]);
+        let mut plan = make_plan(&record, &[], ChildKind::Run, &dir);
+        // A generous deadline proves the cleanup comes from the job handle, not
+        // from the deadline branch.
+        plan.timeout_ms = Some(60_000);
+        let output = log.child(&launcher, &plan).expect("supervised child runs");
+        assert!(
+            !output.timed_out,
+            "the controller exits on its own; the deadline must not fire"
+        );
+        assert_ne!(output.status, Some(0), "the fixture exits abnormally");
+        let text = String::from_utf8_lossy(&output.stdout);
+        let descendant = text
+            .lines()
+            .find_map(|line| line.strip_prefix("XTASK_PROPERTY_DESCENDANT_PID "))
+            .and_then(|value| value.trim().parse::<u32>().ok())
+            .expect("the fixture reports its descendant pid");
+        #[cfg(windows)]
+        {
+            assert!(
+                descendant_gone(descendant),
+                "a descendant of an abnormally exited controller must be terminated"
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            println!("descendant liveness check is Windows-only; pid {descendant}");
+        }
+    }
+
+    #[test]
+    fn property_scad_supervision_covers_generation_shrink_and_descendants() {
+        let dir = fixture_dir();
+        let record = live_registry()
+            .property
+            .into_iter()
+            .find(|record| record.id == "D-SCAD-3D")
+            .expect("the scripted solid record must be registered");
+        let log_path = dir.join("scad-supervision.log");
+        let mut log = ExecutionLog {
+            file: File::create(&log_path).expect("supervision log"),
+            summary: true,
+        };
+
+        // A child that blocks before any callback and keeps a live descendant
+        // must be ended by the whole-process deadline, and the descendant with
+        // it: a controller-only kill would leave the worker running.
+        let launcher = FixtureLauncher::new(std::slice::from_ref(&record), &["block_with_descendant"]);
+        let mut plan = make_plan(&record, &[], ChildKind::Run, &dir);
+        plan.timeout_ms = Some(1500);
+        let start = Instant::now();
+        let output = log.child(&launcher, &plan).expect("supervised child runs");
+        assert!(
+            output.timed_out,
+            "the deadline must end a child blocked before its callback"
+        );
+        assert!(
+            start.elapsed() < Duration::from_secs(30),
+            "the deadline kill must not wait for the blocked fixture: {:?}",
+            start.elapsed()
+        );
+        let text = String::from_utf8_lossy(&output.stdout);
+        let descendant = text
+            .lines()
+            .find_map(|line| line.strip_prefix("XTASK_PROPERTY_DESCENDANT_PID "))
+            .and_then(|value| value.trim().parse::<u32>().ok())
+            .expect("the fixture reports its descendant pid");
+        #[cfg(windows)]
+        {
+            assert!(
+                descendant_gone(descendant),
+                "descendant {descendant} survived the process-tree kill"
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            // `process_exists` cannot answer on this platform, so the descendant
+            // check is not claimed here; the deadline assertion above still holds.
+            println!("descendant liveness check is Windows-only; pid {descendant}");
+        }
+        let log_text = fs::read_to_string(&log_path).expect("supervision log text");
+        assert!(
+            log_text.contains("property_process_timeout"),
+            "a deadline kill must be retained in the combined log:
+{log_text}"
+        );
+        assert!(log_text.contains("timed_out: true"));
+
+        // A real bounded adapter-generated property passes under the same
+        // supervised path, so the test is not only a negative control.
+        let selection = PropertySelection {
+            tier: Tier::Routine,
+            ids: vec!["D-SCAD-3D".to_owned()],
+            seed: Some(7),
+            with_scad: true,
+        };
+        let prepared = read_and_select(&root(), &selection).expect("select D-SCAD-3D");
+        let real_log = dir.join("scad-supervision-real.log");
+        let code = run(&root(), &prepared, &selection, &real_log, true);
+        let real_text = fs::read_to_string(&real_log).expect("real supervision log");
+        assert_eq!(
+            code, 0,
+            "a bounded adapter-generated property must pass under supervision:
+{real_text}"
+        );
+        assert!(
+            real_text.contains("status: Some(0) (timed_out: false)"),
+            "the real property child must report a normal status:
+{real_text}"
+        );
+        assert!(real_text.contains("timeout: Some("));
     }
 }

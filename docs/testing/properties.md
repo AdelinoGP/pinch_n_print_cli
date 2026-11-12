@@ -32,7 +32,7 @@ Per-property keys:
 | `production_path` | string | workspace-relative source path of that entry point |
 | `features` | array of string | owner-scoped Cargo feature specifications (e.g. `"slicer-ir/property_testing"`) |
 | `requires_host_algos` | bool | owner-scoped merge retains `slicer-core/host-algos` when true |
-| `requires_scad` | bool | SCAD-eligible records (none exist yet) |
+| `requires_scad` | bool | record needs the native SCAD engine; its profiles must also carry a positive `test_process_timeout_ms` bound |
 | `generator_version` | positive integer | bumped when the generator semantics change |
 | `charter` | string | workspace-relative Markdown path plus heading anchor (e.g. `docs/testing/properties.md#h-ir-anchors`) |
 | `routine`, `extended` | profile tables | at least one required |
@@ -52,6 +52,13 @@ Per-profile keys:
 | `isolation` | string | `"in_process"` or `"fork"`; a nonzero `timeout_ms` requires `"fork"` |
 | `timeout_ms` | u32 | per-case timeout; `0` disables |
 | `bounds` | table of string to u64 | property-specific domain bounds (e.g. `max_entities`, `max_travels`) |
+
+A `requires_scad = true` record must additionally carry a positive
+`bounds.test_process_timeout_ms`. The executor applies it to the whole libtest
+execution child — recipe generation, candidate rendering, shrink rendering and
+the property callbacks — and terminates the Windows process tree on deadline.
+That is not a substitute for Proptest's per-case `timeout_ms`, and neither one
+substitutes for the other.
 
 The typed parser rejects duplicate IDs and test identities, unknown keys at any level, missing
 profiles, nonexistent package/target/feature claims (checked against Cargo metadata via
@@ -642,6 +649,164 @@ closed-edge incidence and volume.
 sign/swap transform observations and rejection of bad indices, truncated triangle streams,
 nonfinite vertices and degenerate triangles. Each malformed witness is rechecked during actual
 shrink states.
+
+## D-SCAD-2D
+
+Registry record: `test_name = "proptest_scripted_contour_domains"`,
+`target_name = "property_scripted"`, `features = ["slicer-sdk/property_testing_scad"]`,
+`requires_scad = true`, `production_symbol = "slicer_sdk::test_support::property_testing::scripted::scripted_cases"`.
+
+### Contract
+
+The property builds one `ScriptedStrategy` per planar topology class
+(`Convex`, `Concave`, `NonStarShaped`, `Holed`, `Disconnected`, `Thin`,
+`NearDegenerate`, `Empty`) and selects among them with `prop_oneof!`, so a run
+reaches every family rather than sampling one. Every exposed value is a
+`ScriptedCase` whose recipe was emitted, evaluated through the public
+`slicer_scad::evaluate`, and independently validated against its
+`GeometryDomain` before it was exposed.
+
+### Bounds
+
+Both records share exactly these `bounds` keys: `max_abs_units`,
+`max_vertices`, `max_holes`, `max_components`, `max_shrink_candidates`,
+`max_recipe_nodes`, `max_recipe_depth`, `max_facets`, `max_source_bytes`,
+`max_evaluations`, `max_scad_vertices`, `max_scad_triangles`,
+`evaluation_steps`, `worker_stack_bytes`, `test_process_timeout_ms`. The
+geometry keys feed `GeometryBounds`; recipe keys map to their named
+`RecipeBounds` fields; adapter options derive `max_ast_nodes`,
+`max_ast_depth` and `max_geometry_nodes` conservatively from the recipe bound
+(structural estimate, floored by `max_source_bytes`, because a polygon leaf
+contributes one AST node per vertex) and convert `max_abs_units` to
+`max_abs_coordinate_mm`.
+
+### Oracle
+
+Converted contours are checked with `oracles::validate_geometry` plus exact
+point observations of the intended region and exact signed-area agreement for
+explicit polygon leaves. The property itself additionally requires:
+byte-identical re-emission of the retained source, simple rings, positive area,
+and that only an explicitly empty recipe may evaluate to `ScadGeometry::Empty`.
+The engine is never the oracle: a successful render is stimulus.
+
+Both halves of every class are exercised: the direct catalog leaf and the
+scripted family. Family selection is part of the generated value (it is not a
+retry side effect), so `Difference`/`Union`/`Intersection` templates are sampled
+during a passing run. `NearDegenerate` reaches an explicit leaf that carries two
+independent features — a one-unit non-adjacent clearance and an
+almost-collinear vertex (within two canonical units of the line through its
+neighbours, but not on it). `scripted_generator_reaches_every_advertised_family`
+asserts this reachability, and `scripted_rejects_bounds_invalid_output_and_fatal_adapter_diagnostics`
+covers touching converted rings, a collapsed difference, a damaged converted
+mesh, and constructor rejection of too-small adapter capacities.
+
+### Shrinking
+
+`domains::GeometryValueTree` drives explicit polygon leaves (reused, not
+re-implemented); CSG recipes shrink by dropping optional cuts and union members,
+halving dimensions/radii/heights, reducing facet counts and translations, and
+simplifying one-child Booleans. A Boolean **cut** is never translated or replaced
+by its child: moving a cut can change whether it stays inside the base, which
+would turn a shrink proposal into a generator-fatal conversion rejection rather
+than an expected domain rejection. Every accepted candidate strictly decreases
+`RecipeComplexity`, is re-evaluated and re-certified, and keeps required holes
+and components down to their required minimum (the search ends at a fixed
+point). Both the per-tree proposal budget (`max_shrink_candidates`) and the
+evaluation budget (`max_evaluations`) report `shrink_completed = false` when
+reached, and conversion-collapsed candidates are rejected, never exposed.
+
+### Execution
+
+`cargo xtask test --summary --properties --property D-SCAD-2D --tier routine --with-scad`
+(routine) and `--tier extended`. Profiles use `isolation = "fork"` with a
+positive per-case `timeout_ms` plus the whole-process
+`test_process_timeout_ms`. These properties validate helper contracts only and
+are not credits toward host or module SUT coverage.
+
+### Failure record
+
+Retained attempt directories keep `recipe.json`, `recipe-bounds.json`,
+`source.scad`, `options.json`, `engine.json` and `state.json` from before the
+render, then the evaluated geometry/diagnostics/output. Failure metadata names
+the property, tier, seed, profile, features, generator version, source state and
+engine revision/backend/patch digest.
+
+### Acceptance
+
+`scripted_topology_and_solid_witnesses` proves every class witness (including a
+proven empty visibility kernel for `NonStarShaped`, a measured one-unit
+clearance for `NearDegenerate`, and an explicit `Empty`), and rejects
+deliberately lost holes and bodies. `scripted_value_tree_protocol_and_useful_shrinking`
+proves the real `new_tree`/`current`/`simplify`/`complicate` protocol, strict
+complexity decrease, optional hole/body removal and required-witness retention.
+
+## D-SCAD-3D
+
+Registry record: `test_name = "proptest_scripted_solid_domains"`, same target,
+features, bounds keys and profile shape as `D-SCAD-2D`.
+
+### Contract
+
+A solid `ScriptedDomain` describes the **constituent** planar profile domain.
+The bounded solid families build convex rectangular profiles, so any other
+constituent topology (or a hole/component minimum above the convex baseline) is
+rejected as `DomainError::UnsupportedDomain` before sampling rather than being
+silently ignored; both records request `TopologyClass::Convex`.
+
+The property selects among the five `SolidWitness` families
+(`ClosedSolid`, `Cavity`, `Bridge`, `Overhang`, `SeparatedBodies`) with
+`prop_oneof!`. Each case is a typed `Recipe3d` (box, faceted cylinder,
+`linear_extrude` of a planar recipe, translate, quarter turn, union, difference,
+intersection) that evaluates to a checked `ScadGeometry::Mesh`.
+
+### Oracle
+
+Beyond `oracles::validate_indexed_mesh` (closed incidence, finite vertices,
+index range, nonzero triangle area) and `mesh_signed_volume_mm3`, the reference
+model derives an axis-aligned occupancy from the recipe's own dimension and
+boundary intervals — independently of the engine and of the kernel — and checks
+mesh bounds and volume against it inside a documented `1e-5 * M^3` f32 envelope.
+The model then chooses designated probes: an enclosed void centre plus its six
+blocking samples, an unsupported-span point plus its support columns, or two
+separated body centres plus the gap between them. The **converted mesh** must
+agree at exactly those points (inside where the model has material, outside where
+it has none), checked by ray casting only against converted vertices. Volume and
+bounds agreement alone cannot transfer a cavity, span or body separation to the
+output, so it is never accepted as that evidence. These bounded witnesses do not
+claim arbitrary self-intersection freedom.
+
+Every `SolidWitness` has more than one construction variant (box, faceted
+cylinder, extrusion, quarter turn, intersection, union/difference), and
+`scripted_generator_reaches_every_advertised_family` proves they are generated,
+not only emitted by fixed tests.
+
+Two observations are deliberately topology-level rather than aggregate:
+
+- a faceted cylinder has no axis-aligned occupancy model, so it is certified
+  against its regular-polygon area, radius bounds and per-vertex radius instead;
+- separated bodies require the **converted surface** to have more than one
+  edge-connected component (vertices welded by position first). Two occupied
+  probe points and one empty gap point are not enough: a committed counterexample
+  joins two real converted bodies with a thin beam and is rejected even though
+  both centres are inside and the gap is empty.
+
+### Shrinking
+
+Solid recipes shrink by deleting optional cuts and union members, halving box
+dimensions, cylinder radius/height and extrusion height, reducing facets and
+translations, and simplifying one-child Booleans. Certification re-runs after
+every candidate, so a shrink that loses the cavity, span or a separated body is
+rejected rather than exposed.
+
+### Acceptance
+
+`scripted_topology_and_solid_witnesses` pins controlled `8 mm` and `6 mm` box
+scenes with independent mesh point probes: a cavity centre is outside the solid
+while the cavity-lost control is inside, a bridge span is solid with nothing
+below and pillars on both sides, an overhang has no support under its plate,
+and separated bodies are separated by real empty space. Each lost-witness control
+is rejected. `scripted_value_tree_protocol_and_useful_shrinking` proves the
+witness survives structural shrinking with a non-increasing volume.
 
 ## Direct-to-scripted disposition (G-GEOMETRY)
 

@@ -161,6 +161,62 @@ jobs:
             target/property-testing/
           if-no-files-found: ignore
 
+  # Required lane for the scripted SCAD properties (packet
+  # proptest-openrscad_04_pbt-scripted). It runs the same measured routine
+  # profiles as the registry records ship with, through the enabled engine.
+  #
+  # The native Manifold kernel is a C++ CMake build, so CMake and MSVC must be
+  # present before the enabled run; `windows-latest` provides both. Whole-process
+  # supervision (`bounds.test_process_timeout_ms`) bounds every SCAD record's
+  # libtest child, including recipe generation and shrink rendering.
+  properties-scad-windows:
+    name: Scripted SCAD properties (Windows)
+    runs-on: windows-latest
+    # A cold run compiles the vendored engine, its C++ kernel and the guest
+    # WASMs; the selected routine properties themselves are seconds.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-tools
+      - name: Build guest WASMs
+        run: cargo xtask build-guests
+      - name: Run routine scripted SCAD properties
+        shell: pwsh
+        run: |
+          # xtask owns the canonical combined log at target/test-output.log and
+          # fails if it cannot create it; an outer Tee-Object to the same path
+          # holds a sharing lock on Windows and aborts the run before any
+          # property executes.
+          cargo xtask test --summary --properties --tier routine --with-scad
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # An empty or unavailable selector is not acceptance: both records must
+          # have produced a passing execution with completion evidence.
+          if (-not (Select-String -Path target/test-output.log -Pattern 'D-SCAD-2D')) {
+            Write-Host "::error::D-SCAD-2D did not execute"
+            exit 1
+          }
+          if (-not (Select-String -Path target/test-output.log -Pattern 'D-SCAD-3D')) {
+            Write-Host "::error::D-SCAD-3D did not execute"
+            exit 1
+          }
+          exit 0
+      - name: Upload scripted SCAD failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: properties-scad-windows-failure
+          path: |
+            target/test-output.log
+            target/property-testing/
+          if-no-files-found: ignore
+
   # Required lane for the SCAD adapter prerequisite (packet
   # proptest-openrscad_03_scad-adapter). It is self-contained: it does not depend
   # on the property-foundation job existing, and it runs its own feature-off and
