@@ -65,7 +65,7 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use slicer_sdk::host_batch::{clip_polygons_batch, ClipRequest};
+use slicer_sdk::host_batch::{clip_polygons_batch, ClipRequest, OffsetRequest};
 use slicer_sdk::prelude::*;
 
 const DEFAULT_BRANCH_ANGLE_DEG: f32 = 45.0;
@@ -898,6 +898,89 @@ fn inflate_model_occupancy_memoized(
         },
     );
     inflated
+}
+
+/// The emit-time collision volume's raw payload: this object's model occupancy
+/// on one global support layer.
+///
+/// Shared by the serial memo site and the chunk prefetch so both assemble the
+/// byte-identical argument tuple `inflate_model_occupancy` is memoized on; if
+/// the two sites drifted apart the memo would miss and the batch would not
+/// serve the emit-time ask.
+fn layer_occupancy_payload(
+    support_analysis: &SupportAnalysisView,
+    object_id: &str,
+    global_layer_index: u32,
+) -> Vec<ExPolygon> {
+    support_analysis
+        .model_occupancy
+        .iter()
+        .filter(|entry| {
+            entry.object_id == object_id && entry.global_support_layer_index == global_layer_index
+        })
+        .flat_map(|entry| entry.polygons.iter().cloned())
+        .collect()
+}
+
+/// Ticket 135 Stage 2: batch a chunk of layers' occupancy offsets.
+///
+/// Every layer's emit-time collision volume asks for the same
+/// `+support_object_xy_distance` `Miter` offset of that layer's raw model
+/// occupancy (see [`inflate_model_occupancy`]), and the asks are independent
+/// across layers. The emit pass already buffers `EMIT_BATCH_LAYERS` layers for
+/// its role-clip batch, so this issues the chunk's offsets as one
+/// `offset_polygons_batch` call and seeds the memo with every result; both memo
+/// sites then answer from it — the emit-time site by construction, the
+/// role-carve site whenever a single origin's payload assembles to the same
+/// content.
+///
+/// Exactness is by construction rather than tolerance: each request is the same
+/// single clipper operation with the same arguments as the serial path, and the
+/// host returns the i-th result for the i-th request (ADR-0049).
+fn prefetch_occupancy_memo(
+    memo: &mut std::collections::HashMap<u64, OccupancyMemoEntry>,
+    records: &[&LayerRecord],
+    layer_plan: &LayerPlanView,
+    support_analysis: &SupportAnalysisView,
+    object_id: &str,
+    xy_distance_mm: f32,
+) {
+    if xy_distance_mm <= 0.0 {
+        return;
+    }
+    let mut payloads: Vec<Vec<ExPolygon>> = Vec::with_capacity(records.len());
+    let mut keys: Vec<u64> = Vec::with_capacity(records.len());
+    for record in records {
+        let payload = layer_occupancy_payload(
+            support_analysis,
+            object_id,
+            layer_plan.layers[record.layer_rev].global_layer_index,
+        );
+        // Mirrors `inflate_model_occupancy`'s early return: an empty payload is
+        // not a host call, so it is not a batch request either.
+        if payload.is_empty() {
+            continue;
+        }
+        keys.push(occupancy_offset_key(&payload, xy_distance_mm));
+        payloads.push(payload);
+    }
+    if payloads.is_empty() {
+        return;
+    }
+    let requests: Vec<OffsetRequest> = payloads
+        .iter()
+        .map(|payload| OffsetRequest {
+            polygons: payload.clone(),
+            delta_mm: xy_distance_mm,
+            join: OffsetJoinType::Miter,
+            arc_tolerance_mm: 0.0,
+            miter_limit: None,
+        })
+        .collect();
+    let inflated = slicer_sdk::host_batch::offset_polygons_batch(&requests);
+    for ((key, payload), inflated) in keys.into_iter().zip(payloads).zip(inflated) {
+        memo.insert(key, OccupancyMemoEntry { payload, inflated });
+    }
 }
 
 /// Whether two bounding boxes (scaled units) are provably disjoint.
@@ -3693,19 +3776,46 @@ impl SupportPlanner {
             },
         );
         // ── Emit pass (canonical `draw_circles`) ─────────────────────────
-        for record in &layer_records {
+        // Ticket 135 Stage 2: the pass walks a chunk of layers at a time so the
+        // chunk's independent occupancy offsets can be issued as one host
+        // batch. `occupancy_memo` spans the chunk, and `chunk_layers_left`
+        // mirrors the role-clip flush cadence below so the occupancy batch and
+        // the flush share a boundary. Empty layers `continue` before any work
+        // and do not consume a chunk slot.
+        let mut occupancy_memo: std::collections::HashMap<u64, OccupancyMemoEntry> =
+            std::collections::HashMap::new();
+        let mut chunk_layers_left: usize = 0;
+        for (record_index, record) in layer_records.iter().enumerate() {
             let layer_rev = record.layer_rev;
             let active_nodes: Vec<NodeId> = record.active.clone();
             if active_nodes.is_empty() {
                 continue;
             }
-            // Per-layer occupancy memo: the emit-time collision volume and the
-            // per-origin role carve ask for the same `+support_object_xy_distance`
-            // offset of the same layer cross-section, so the second ask is served
-            // from the first. Scoped to this iteration, so retained geometry is
-            // one layer and nothing survives the layer.
-            let mut occupancy_memo: std::collections::HashMap<u64, OccupancyMemoEntry> =
-                std::collections::HashMap::new();
+            if chunk_layers_left == 0 {
+                occupancy_memo.clear();
+                // The current record plus the next `EMIT_BATCH_LAYERS - 1`
+                // non-empty records. The prefix is a plain scan: it reads
+                // `active`, which is already committed for every layer.
+                let mut chunk: Vec<&LayerRecord> = vec![record];
+                for later in &layer_records[record_index + 1..] {
+                    if chunk.len() >= EMIT_BATCH_LAYERS {
+                        break;
+                    }
+                    if !later.active.is_empty() {
+                        chunk.push(later);
+                    }
+                }
+                prefetch_occupancy_memo(
+                    &mut occupancy_memo,
+                    &chunk,
+                    layer_plan,
+                    support_analysis,
+                    &obj.object_id,
+                    self.support_object_xy_distance,
+                );
+                chunk_layers_left = chunk.len();
+            }
+            chunk_layers_left -= 1;
             let current_global_layer_index = layer_plan.layers[layer_rev].global_layer_index;
             let cache_idx = current_global_layer_index as usize;
             let z_current = layer_plan.layers[layer_rev].z;
@@ -3737,15 +3847,11 @@ impl SupportPlanner {
             // support-outline cache remains the compatibility fallback.
             let model_collision: Vec<ExPolygon> = inflate_model_occupancy_memoized(
                 &mut occupancy_memo,
-                support_analysis
-                    .model_occupancy
-                    .iter()
-                    .filter(|entry| {
-                        entry.object_id == obj.object_id
-                            && entry.global_support_layer_index == current_global_layer_index
-                    })
-                    .flat_map(|entry| entry.polygons.iter().cloned())
-                    .collect::<Vec<_>>(),
+                layer_occupancy_payload(
+                    support_analysis,
+                    &obj.object_id,
+                    current_global_layer_index,
+                ),
                 self.support_object_xy_distance,
             );
             // Ticket 19: foreign support territory (grown by the clearance)
@@ -7974,6 +8080,117 @@ mod tests {
             moved_offset,
             inflate_model_occupancy(&moved, 0.35),
             "a differing payload must be recomputed, not answered from the cache"
+        );
+    }
+
+    #[test]
+    fn occupancy_chunk_prefetch_seeds_both_memo_sites() {
+        let object_id = "plate";
+        let layer_plan = default_layer_plan(4, 0.0, 0.2);
+        let payloads = [
+            vec![square_mm(0.0, 0.0, 10.0)],
+            vec![square_mm(20.0, 0.0, 4.0)],
+            vec![square_mm(0.0, 20.0, 6.0)],
+            vec![square_mm(30.0, 30.0, 3.0)],
+        ];
+        let analysis = SupportAnalysisView {
+            model_occupancy: payloads
+                .iter()
+                .enumerate()
+                .map(
+                    |(index, polygons)| slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
+                        global_support_layer_index: index as u32,
+                        object_id: object_id.to_string(),
+                        region_id: "0".to_string(),
+                        variant_chain: Vec::new(),
+                        polygons: polygons.clone(),
+                    },
+                )
+                .collect(),
+            ..tree_analysis(object_id, &["0"])
+        };
+        let records: Vec<LayerRecord> = (0..4)
+            .map(|index| LayerRecord {
+                layer_rev: index,
+                active: vec![NodeId(index)],
+                edges: Vec::new(),
+            })
+            .collect();
+        let chunk: Vec<&LayerRecord> = records.iter().collect();
+
+        let mut memo = std::collections::HashMap::new();
+        prefetch_occupancy_memo(&mut memo, &chunk, &layer_plan, &analysis, object_id, 0.35);
+        assert_eq!(
+            memo.len(),
+            payloads.len(),
+            "one seeded entry per non-empty layer payload"
+        );
+
+        for payload in &payloads {
+            let expected = inflate_model_occupancy(payload, 0.35);
+            // Emit-time site: its payload is exactly the batched one, so it must
+            // be served from the prefetch rather than issuing another offset.
+            let emit_ask = inflate_model_occupancy_memoized(&mut memo, payload.clone(), 0.35);
+            assert_eq!(
+                emit_ask, expected,
+                "a batched entry must hold the serial offset's value byte for byte"
+            );
+            assert_eq!(
+                memo.len(),
+                payloads.len(),
+                "the emit-time ask must not add an entry, i.e. it hit the batch"
+            );
+            // Role-carve site: a single origin assembling the same content.
+            let role_ask = inflate_model_occupancy_memoized(&mut memo, payload.clone(), 0.35);
+            assert_eq!(role_ask, expected);
+            assert_eq!(memo.len(), payloads.len());
+        }
+
+        // A payload outside the chunk is a miss, not a wrong answer.
+        let outside = vec![square_mm(50.0, 50.0, 2.0)];
+        let miss = inflate_model_occupancy_memoized(&mut memo, outside.clone(), 0.35);
+        assert_eq!(
+            miss,
+            inflate_model_occupancy(&outside, 0.35),
+            "a payload the batch never saw must be recomputed"
+        );
+        assert_eq!(memo.len(), payloads.len() + 1);
+    }
+
+    #[test]
+    fn occupancy_chunk_prefetch_skips_empty_layers() {
+        let object_id = "plate";
+        let layer_plan = default_layer_plan(2, 0.0, 0.2);
+        // Layer 1 carries no occupancy at all; only layer 0 is a host call.
+        let analysis = SupportAnalysisView {
+            model_occupancy: vec![slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
+                global_support_layer_index: 0,
+                object_id: object_id.to_string(),
+                region_id: "0".to_string(),
+                variant_chain: Vec::new(),
+                polygons: vec![square_mm(0.0, 0.0, 10.0)],
+            }],
+            ..tree_analysis(object_id, &["0"])
+        };
+        let records: Vec<LayerRecord> = (0..2)
+            .map(|index| LayerRecord {
+                layer_rev: index,
+                active: vec![NodeId(index)],
+                edges: Vec::new(),
+            })
+            .collect();
+        let chunk: Vec<&LayerRecord> = records.iter().collect();
+
+        let mut memo = std::collections::HashMap::new();
+        prefetch_occupancy_memo(&mut memo, &chunk, &layer_plan, &analysis, object_id, 0.35);
+        assert_eq!(
+            memo.len(),
+            1,
+            "an empty layer mirrors `inflate_model_occupancy`'s early return: no request, no entry"
+        );
+        assert!(
+            inflate_model_occupancy_memoized(&mut memo, Vec::new(), 0.35).is_empty(),
+            "the empty payload still resolves to the empty offset"
         );
     }
 
