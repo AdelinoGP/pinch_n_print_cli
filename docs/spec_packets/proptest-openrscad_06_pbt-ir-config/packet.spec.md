@@ -161,6 +161,41 @@ Authoring performed source/docs and locked/offline Cargo metadata inspection onl
 - [FWD] Audit the live config declaration/Eq/Hash field families and existing deterministic coverage at implementation, then record which axes this property's generator varies and which remain covered structurally/example-wise. Do not describe a fixed sampled field list as exhaustive.
 - [FWD] Downstream #8 must exercise actual runtime modifier collision rejection/transactionality; #11 must exercise region-map caller collision/unsupported-parent behavior. H-IDS here certifies the pure helper's bounded namespace/round-trip/assertion contract only, not those callers.
 
+## Deviations
+
+Recorded while implementing; none changes the packet's scope.
+
+1. **The truncating mutant is inside the derived envelope at an exact tie.** §Charter H-COORD and
+   AC-1 say `ir_coord_oracle_and_bound_controls` detects the stated "truncation" mutation. At
+   `m = 1/32 mm` the exact scaled value is `312.5` units, so truncation yields `312` — exactly
+   `0.5` units away and therefore *inside* the packet's own bound `1/2 + e_mul`. The control
+   therefore rejects truncation with the envelope **plus** the derived half-away tie rule
+   (`check_mm_case_with`), and separately asserts that the envelope alone accepts it. The bound
+   was not tightened and no tolerance was tuned; the tie rule is checked independently because
+   the envelope provably cannot see it.
+2. **The minting assertion is observed deterministically, not per generated case.** AC-2 places
+   the `P + 1` / `u64::MAX` minting-assertion and message observation in
+   `ir_id_parent_and_sentinel_rejections` under `I`, and §Charter H-IDS says deterministic
+   `catch_unwind` tests observe it. The `H-IDS` property's unsupported-parent arm therefore
+   asserts only `modifier_sub_region_id_fits(parent) == false`: minting every unsupported sample
+   would emit one panic per case, and `cargo xtask test --summary` reports any `panicked at`
+   line as failure detail, so a passing property would carry a failing verdict line. The
+   contract target owns the assertion text, as the AC already states.
+3. **Registry discovery is all-or-nothing per target.** The executor fails a selected run when
+   *any* registered test for that target is undiscovered, so the three later properties'
+   records were held outside the live registry while their tests did not yet exist and appended
+   as each landed. The committed registry contains all six records plus the preserved
+   `H-IR-ANCHORS` entry, and the combined run reports all seven.
+4. **The prerequisite discovery test's roster is now registry-derived.** Packet 01's
+   `property_registry_validates_and_discovers_exact_tests` (`xtask/src/properties/executor.rs`)
+   asserted that the live `slicer-ir`/`property_ir` discovery listed exactly one test. That
+   target now carries six, so the assertion derives the expected roster from the live registry
+   (every `slicer-ir` record whose target is `property_ir` and whose features include
+   `slicer-ir/property_testing`) and compares it to a sorted live discovery, plus an explicit
+   assertion that the preserved anchor test is still discovered. The check is strictly stronger
+   than the fixed one-element roster and still fails on a registered-but-undiscovered test,
+   which is the condition the executor reports as `missing_property_execution`.
+
 ## Authoring preflight
 
 | # | Check | Result | Evidence / applicability |

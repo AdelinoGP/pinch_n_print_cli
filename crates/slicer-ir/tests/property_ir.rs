@@ -10,11 +10,12 @@ use slicer_ir::{
     is_modifier_namespace_id, mm_to_units, modifier_base_region_id, modifier_sub_region_id,
     modifier_sub_region_id_fits, validate_travel_anchors, ConfigId, ConfigValue,
     EntitySpeedProfile, ExPolygon, ExtrusionRole, LayerCollectionIR, LayerEntityIdGen, PaintValue,
-    Point2, PrintEntity, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SupportEntityIdentity,
-    TravelMove, MODIFIER_FOOTPRINT_REGION_ID, MODIFIER_VARIANT_REGION_ID_STRIDE, UNITS_PER_MM,
+    Point2, Point3WithWidth, PrintEntity, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
+    SupportEntityIdentity, TravelMove, MODIFIER_FOOTPRINT_REGION_ID,
+    MODIFIER_VARIANT_REGION_ID_STRIDE, UNITS_PER_MM,
 };
 use slicer_sdk::coords::SCALING_FACTOR;
-use slicer_sdk::test_support::fixtures::print_entity_base;
+use slicer_sdk::test_support::fixtures::{extrusion_path3d_base, print_entity_base};
 use slicer_sdk::test_support::property_testing::domains::{
     anchor_cases, entity_layers, finite_f32, id_text, nonfinite_f64, rounding_boundary_mm,
     scalar_config_values, AnchorDomain, DomainError, EntityDomain, IdTextKind, ScalarConfigDomain,
@@ -806,69 +807,76 @@ fn serde_cases(
             let mut layers = layers;
             for (index, layer) in layers.iter_mut().enumerate() {
                 let (tools, locks, travels) = choices.get(index).cloned().unwrap_or_default();
-                for (entity_index, entity) in layer.ordered_entities.iter_mut().enumerate() {
-                    let selector = tools.get(entity_index).copied().unwrap_or(0);
-                    entity.path.tool_index = (selector % 2 == 1).then_some(u32::from(selector));
-                    entity.path.order_lock = locks
-                        .get(entity_index)
-                        .filter(|lock| *lock % 2 == 0)
-                        .copied();
-                    entity.tool_index = u32::try_from(entity_index % 3).expect("small selector");
-                }
-                let anchor_ids: Vec<u64> = layer
-                    .ordered_entities
-                    .iter()
-                    .map(|entity| entity.entity_id)
-                    .collect();
-                if !anchor_ids.is_empty() {
-                    layer.travel_moves = travels
-                        .iter()
-                        .enumerate()
-                        .map(|(travel_index, seed)| {
-                            let dyadic = |offset: u8| {
-                                f32::from(i16::from(seed.wrapping_add(offset)) % 64) / 8.0
-                            };
-                            // exhaustive: pins every travel field for the round trip
-                            TravelMove {
-                                entity_id: anchor_ids[(travel_index * 7) % anchor_ids.len()],
-                                x: (seed % 2 == 0).then(|| dyadic(1)),
-                                y: (seed % 3 == 0).then(|| dyadic(5)),
-                                z: (seed % 5 == 0).then(|| dyadic(9)),
-                                f: (seed % 7 == 0).then(|| dyadic(13)),
-                            }
-                        })
-                        .collect();
-                }
-                // Side tables stay keyed to real entity ids and bounded by the
-                // entity's own point count, so a shrink cannot strand a row.
-                layer.speed_profiles = layer
-                    .ordered_entities
-                    .iter()
-                    .enumerate()
-                    .filter(|(entity_index, entity)| {
-                        entity_index % 2 == 0 && !entity.path.points.is_empty()
-                    })
-                    .map(|(_, entity)| EntitySpeedProfile {
-                        entity_id: entity.entity_id,
-                        factors: entity.path.points.iter().map(|point| point.width).collect(),
-                    })
-                    .collect();
-                layer.support_entity_identities = layer
-                    .ordered_entities
-                    .iter()
-                    .enumerate()
-                    .filter(|(entity_index, _)| entity_index % 2 == 1)
-                    .map(|(entity_index, entity)| SupportEntityIdentity {
-                        entity_id: entity.entity_id,
-                        family_id: format!("family-{entity_index}"),
-                        body_id: format!("body-{entity_index}"),
-                        demand_ids: vec![format!("demand-{entity_index}")],
-                    })
-                    .collect();
+                augment_layer(layer, &tools, &locks, &travels);
             }
             (layers, footprint)
         })
         .boxed())
+}
+
+/// Attach the generated tool selectors, ordering locks, travels and side tables
+/// to one layer.
+///
+/// Extracted so the sampled cases and the deterministic non-empty witness share
+/// exactly the same augmentation: the witness would otherwise certify a shape
+/// the generator never produces.
+fn augment_layer(layer: &mut LayerCollectionIR, tools: &[u8], locks: &[u64], travels: &[u8]) {
+    for (entity_index, entity) in layer.ordered_entities.iter_mut().enumerate() {
+        let selector = tools.get(entity_index).copied().unwrap_or(0);
+        entity.path.tool_index = (selector % 2 == 1).then_some(u32::from(selector));
+        entity.path.order_lock = locks
+            .get(entity_index)
+            .filter(|lock| *lock % 2 == 0)
+            .copied();
+        entity.tool_index = u32::try_from(entity_index % 3).expect("small selector");
+    }
+    let anchor_ids: Vec<u64> = layer
+        .ordered_entities
+        .iter()
+        .map(|entity| entity.entity_id)
+        .collect();
+    if !anchor_ids.is_empty() {
+        layer.travel_moves = travels
+            .iter()
+            .enumerate()
+            .map(|(travel_index, seed)| {
+                let dyadic =
+                    |offset: u8| f32::from(i16::from(seed.wrapping_add(offset)) % 64) / 8.0;
+                // exhaustive: pins every travel field for the round trip
+                TravelMove {
+                    entity_id: anchor_ids[(travel_index * 7) % anchor_ids.len()],
+                    x: (seed % 2 == 0).then(|| dyadic(1)),
+                    y: (seed % 3 == 0).then(|| dyadic(5)),
+                    z: (seed % 5 == 0).then(|| dyadic(9)),
+                    f: (seed % 7 == 0).then(|| dyadic(13)),
+                }
+            })
+            .collect();
+    }
+    // Side tables stay keyed to real entity ids and bounded by the entity's own
+    // point count, so a shrink cannot strand a row.
+    layer.speed_profiles = layer
+        .ordered_entities
+        .iter()
+        .enumerate()
+        .filter(|(entity_index, entity)| entity_index % 2 == 0 && !entity.path.points.is_empty())
+        .map(|(_, entity)| EntitySpeedProfile {
+            entity_id: entity.entity_id,
+            factors: entity.path.points.iter().map(|point| point.width).collect(),
+        })
+        .collect();
+    layer.support_entity_identities = layer
+        .ordered_entities
+        .iter()
+        .enumerate()
+        .filter(|(entity_index, _)| entity_index % 2 == 1)
+        .map(|(entity_index, entity)| SupportEntityIdentity {
+            entity_id: entity.entity_id,
+            family_id: format!("family-{entity_index}"),
+            body_id: format!("body-{entity_index}"),
+            demand_ids: vec![format!("demand-{entity_index}")],
+        })
+        .collect();
 }
 
 #[test]
@@ -894,6 +902,64 @@ fn proptest_ir_serialization_and_defaults() {
         max_points,
         max_layers,
     };
+    // A substantive (non-empty, multi-entity, travelling, side-tabled) layer is
+    // round-tripped deterministically on every execution, so an all-empty
+    // sampled population could never be mistaken for coverage of this charter.
+    let mut substantive = LayerCollectionIR {
+        ordered_entities: vec![
+            PrintEntity {
+                entity_id: 1,
+                path: extrusion_path3d_base(ExtrusionRole::OuterWall),
+                ..print_entity_base(ExtrusionRole::OuterWall)
+            },
+            PrintEntity {
+                entity_id: 2,
+                path: extrusion_path3d_base(ExtrusionRole::InnerWall),
+                ..print_entity_base(ExtrusionRole::InnerWall)
+            },
+        ],
+        ..Default::default()
+    };
+    for entity in &mut substantive.ordered_entities {
+        entity.path.points = vec![
+            Point3WithWidth {
+                x: 0.125,
+                y: -0.25,
+                width: 0.5,
+                flow_factor: 1.0,
+                ..Default::default()
+            },
+            Point3WithWidth {
+                x: 1.5,
+                y: 2.25,
+                width: 0.375,
+                flow_factor: 0.875,
+                ..Default::default()
+            },
+        ];
+    }
+    augment_layer(&mut substantive, &[1, 3], &[0, 7], &[0, 1, 2]);
+    assert!(
+        !substantive.travel_moves.is_empty() && !substantive.speed_profiles.is_empty(),
+        "the deterministic witness must carry travels and side-table rows"
+    );
+    let witness_layers = std::slice::from_ref(&substantive);
+    let before = observe_layers(witness_layers);
+    let bytes = postcard::to_allocvec(&substantive).expect("witness is Postcard-encodable");
+    let decoded: LayerCollectionIR = postcard::from_bytes(&bytes).expect("witness decodes");
+    assert_eq!(
+        observe_layers(std::slice::from_ref(&decoded)),
+        before,
+        "the substantive witness must survive Postcard unchanged"
+    );
+    let json = serde_json::to_string(&substantive).expect("witness is JSON-encodable");
+    let decoded: LayerCollectionIR = serde_json::from_str(&json).expect("witness JSON decodes");
+    assert_eq!(
+        observe_layers(std::slice::from_ref(&decoded)),
+        before,
+        "the substantive witness must survive JSON unchanged"
+    );
+
     let cases = serde_cases(domain, max_travels).expect("bounded finite layer domain");
     run.check(&cases, |(layers, footprints), _guard| {
         let before = observe_layers(&layers);
@@ -1042,11 +1108,13 @@ fn config_from_seed(
         } => {
             let depth = (*depth).min(max_list_depth);
             let (depth, breadth) = bounded_extension_shape(depth, *breadth, max_list_len);
-            let mut config = ResolvedConfig::default();
-            config.layer_height = bounded_magnitude(max_abs_value, *layer_height);
-            config.first_layer_height = bounded_magnitude(max_abs_value, line_height.wrapping_add(7));
-            config.line_width = bounded_magnitude(max_abs_value, line_height.wrapping_add(3));
-            config.outer_wall_speed = bounded_magnitude(max_abs_value, *speed) as f32;
+            let mut config = ResolvedConfig {
+                layer_height: bounded_magnitude(max_abs_value, *layer_height),
+                first_layer_height: bounded_magnitude(max_abs_value, line_height.wrapping_add(7)),
+                line_width: bounded_magnitude(max_abs_value, line_height.wrapping_add(3)),
+                outer_wall_speed: bounded_magnitude(max_abs_value, *speed) as f32,
+                ..Default::default()
+            };
             if let Some((value, is_percent)) = percent {
                 config = property_oracles::with_float_or_percent(
                     &config,
@@ -1076,9 +1144,11 @@ fn config_from_seed(
         } => {
             let depth = (*depth).min(max_list_depth);
             let (depth, breadth) = bounded_extension_shape(depth, *breadth, max_list_len);
-            let mut config = ResolvedConfig::default();
-            config.layer_height = f64::from_bits(*layer_height_bits);
-            config.outer_wall_speed = f32::from_bits(*speed_bits);
+            let mut config = ResolvedConfig {
+                layer_height: f64::from_bits(*layer_height_bits),
+                outer_wall_speed: f32::from_bits(*speed_bits),
+                ..Default::default()
+            };
             config = property_oracles::with_option(&config, option_bits.map(f32::from_bits));
             let nodes = breadth.saturating_pow(u32::try_from(depth).unwrap_or(u32::MAX));
             let budget = max_list_len.saturating_sub(nodes);
@@ -1086,8 +1156,10 @@ fn config_from_seed(
             property_oracles::with_extension(&config, depth, breadth)
         }
         ConfigSeed::Scalar(value) => {
-            let mut config = ResolvedConfig::default();
-            config.layer_height = bounded_magnitude(max_abs_value, 3);
+            let mut config = ResolvedConfig {
+                layer_height: bounded_magnitude(max_abs_value, 3),
+                ..Default::default()
+            };
             let applied = config
                 .apply_cli_key("wall_count", value)
                 .expect("the bounded scalar domain keeps wall_count inside u32");
@@ -1095,8 +1167,10 @@ fn config_from_seed(
             config
         }
         ConfigSeed::Holder(text) => {
-            let mut config = ResolvedConfig::default();
-            config.layer_height = bounded_magnitude(max_abs_value, 5);
+            let mut config = ResolvedConfig {
+                layer_height: bounded_magnitude(max_abs_value, 5),
+                ..Default::default()
+            };
             let applied = config
                 .apply_cli_key("top_fill_holder", &ConfigValue::String(text.clone()))
                 .expect("a bounded holder string is accepted");
@@ -1116,6 +1190,7 @@ fn config_cases(
     max_abs_value: f64,
     max_list_len: usize,
     max_list_depth: usize,
+    max_text_bytes: usize,
 ) -> BoxedStrategy<Vec<ResolvedConfig>> {
     let finite = (
         any::<u8>(),
@@ -1169,15 +1244,9 @@ fn config_cases(
             2 => scalar_config_values(ScalarConfigDomain::Int { min: 1, max: 8 })
                 .expect("bounded integer scalar domain")
                 .prop_map(ConfigSeed::Scalar),
-            1 => scalar_config_values(ScalarConfigDomain::StringChoices(vec![
-                "rectilinear-infill".to_string(),
-                "concentric-infill".to_string(),
-            ]))
-            .expect("bounded string-choice domain")
-            .prop_map(|value| match value {
-                ConfigValue::String(text) => ConfigSeed::Holder(text),
-                other => ConfigSeed::Holder(format!("unexpected-{other:?}")),
-            }),
+            1 => id_text(IdTextKind::OtherText, max_text_bytes)
+                .expect("bounded identifier-text domain for the holder field")
+                .prop_map(ConfigSeed::Holder),
             1 => nonfinite_f64().prop_map(|value| ConfigSeed::Raw {
                 layer_height_bits: value.to_bits(),
                 speed_bits: 0x7fc0_0001,
@@ -1219,6 +1288,8 @@ fn proptest_config_equality_hash_and_interning() {
         .expect("list bound must fit usize");
     let max_list_depth = usize::try_from(run.bound("max_list_depth").expect("depth bound"))
         .expect("depth bound must fit usize");
+    let max_text_bytes = usize::try_from(run.bound("max_text_bytes").expect("text bound"))
+        .expect("text bound must fit usize");
     let max_abs_value = run.bound("max_abs_config_value").expect("magnitude bound") as f64;
     assert!(
         max_abs_value > 0.0 && max_abs_value <= 16_777_216.0,
@@ -1261,6 +1332,31 @@ fn proptest_config_equality_hash_and_interning() {
     let percent = property_oracles::with_float_or_percent(&default, 50.0, true);
     let absolute = property_oracles::with_float_or_percent(&default, 50.0, false);
     assert!(!property_oracles::struct_eq(&percent, &absolute));
+    // A bounded nested extension tree participates in equality, hashing and the
+    // canonical representation, so extension-only changes are not invisible.
+    let shallow = property_oracles::with_extension(&default, 1, 2);
+    let deep = property_oracles::with_extension(&default, 2, 2);
+    assert!(
+        !property_oracles::struct_eq(&shallow, &deep),
+        "extension nesting depth must participate in equality"
+    );
+    assert_ne!(
+        property_oracles::representation_key(&shallow),
+        property_oracles::representation_key(&deep),
+        "extension nesting depth must participate in the representation"
+    );
+    let rebuilt_deep: ResolvedConfig =
+        postcard::from_bytes(&property_oracles::representation_key(&deep))
+            .expect("canonical extension bytes decode");
+    assert!(
+        property_oracles::struct_eq(&deep, &rebuilt_deep),
+        "a nested extension tree must survive its canonical representation"
+    );
+    assert_eq!(
+        property_oracles::hash_of(&deep),
+        property_oracles::hash_of(&rebuilt_deep),
+        "equal extension-bearing values must hash equally"
+    );
     // Real interner behaviour, including the default seed.
     let mut map = RegionMapIR::default();
     assert_eq!(map.intern_config(ResolvedConfig::default()), ConfigId(0));
@@ -1289,7 +1385,13 @@ fn proptest_config_equality_hash_and_interning() {
     );
 
     // --- sampled cases -----------------------------------------------------
-    let cases = config_cases(max_configs, max_abs_value, max_list_len, max_list_depth);
+    let cases = config_cases(
+        max_configs,
+        max_abs_value,
+        max_list_len,
+        max_list_depth,
+        max_text_bytes,
+    );
     run.check(&cases, |configs, _guard| {
         let mut map = RegionMapIR::default();
         let ids: Vec<ConfigId> = configs
