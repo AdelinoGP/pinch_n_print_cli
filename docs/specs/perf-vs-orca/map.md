@@ -436,6 +436,39 @@ is **4/8** (supports-on is out of scope). **Frontier:**
 [144](issues/144-brim-anchor-reconstruction.md) (AFK, unblocked); no HITL ticket
 remains open.
 
+**Destination status (2026-11-12,
+[t143](issues/143-union-phase-request-grouping.md)): the planner's union tail is
+banked at buffering depth 12, depth 16 refutes its own merge-4 projection, and
+the benchy fixture swap retires the benchy reference set; the frontier is
+[144](issues/144-brim-anchor-reconstruction.md) and the new
+[145](issues/145-benchy-fixture-rebaseline.md), both AFK.** The planner's union
+phase was one request deep (109 calls × 4.4 requests, 3.73x fan-out); raising
+`EMIT_BATCH_LAYERS` 4 → 12 merges it into 37 calls of ~13 requests and takes the
+probe's union wall **10,093.1 → 4,848.7 ms (−52.0 %)** and the clip core
+**14,158.5 → 8,934.5 ms** on base classic-on. **Depth 16 fails its own
+bracket:** the same 482 requests cost **46.92 s** of thread-time against
+**37.68 s** at depth 4 (+24 %) once sixteen layers of collision sets are live,
+so its union wall is **5,793.2 ms** against the **4,620 ms** LPT bound; depth 8
+lands on the merge-2 floor (5,459.7 vs 5,480.2 ms) and 12 is the measured
+optimum (chosen after the table, disclosed). **Paired A/B (3 interleaved pairs):
+supports-on wall +6.72 / +7.36 / +12.80 / +13.41 %** (benchy classic-on /
+arachne-on, base classic-on / arachne-on) at **8.40x–16.76x** the floor,
+**+9.56 s on base classic-on = 10.3 %** of its 92.5 s required cut and **2.7x**
+the ticket's 3,500 ms DROP bar; supports-off inside the null band and
+structurally inert. **Output byte-identical in 8/8**; base cells reproduce
+t139's set exactly, benchy cells match the take's baseline on the **replacement**
+benchy export. **Disclosed gaps:** the strict CPU-lower clause passes **1/4**
+(−1.26…−1.83 % on the rest, inside the ±1.88–1.91 % null CPU band: a wider
+fan-out burns more CPU to finish sooner), no accelerated timing arm, no Orca arm,
+3 pairs per cell, and today's base classic-on baseline is 74.70 s against
+t139's 126.27 s cell so only paired deltas are claimed. **Fixture swap:** the
+user-supplied `tmp/3dbenchy.stl` was replaced with a different export of the
+same model (240 layers / 48.0 mm); t139's four benchy hashes are retired,
+`base.stl` is byte-identical, and the new benchy baseline is
+`a89e449b…` / `dceb7a48…` / `3286449f…` / `be786718…`. **Frontier:**
+[144](issues/144-brim-anchor-reconstruction.md) (AFK, unblocked) and
+[145](issues/145-benchy-fixture-rebaseline.md) (AFK, unblocked).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -522,7 +555,32 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-12, the t140 take):** the human said
+**Current selection scope (2026-11-12, the t143 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **143 was the first
+unblocked, unclaimed AFK frontier ticket in order** ([144](issues/144-brim-anchor-reconstruction.md)
+is the other) and was claimed and resolved as a **measured KEEP**. Headline:
+**the planner's emit buffering depth is the union phase's width lever, and 12
+layers is the measured optimum — not the pre-declared 16.** The union tail
+(109 calls × 4.4 requests, 3.73x) collapses to 37 calls of ~13 requests at
+depth 12: union wall **10,093.1 → 4,848.7 ms**, clip core **14,158.5 → 8,934.5
+ms**, time-to-first-layer 69.7 → 56.4 s. Depth 16 fails its own bracket
+(5,793.2 ms against the 4,620 ms LPT bound) because the same 482 requests cost
+**+24 %** thread-time once sixteen layers are buffered; 8 lands on the merge-2
+floor. **Paired A/B:** supports-on wall **+6.72 / +7.36 / +12.80 / +13.41 %**
+at 8.40x–16.76x the floor; base classic-on **9.56 s saved (10.3 % of its 92.5 s
+cut, 2.7x the DROP bar)**; supports-off inside the null band and structurally
+inert. **Output byte-identical in 8/8**; base == t139, benchy == the
+replacement-fixture baseline. **Disclosed:** strict CPU-lower 1/4 (a fan-out
+change burns more CPU to finish sooner; inside the null CPU band), no
+accelerated timing arm, no Orca arm, 3 pairs per cell, and the box's base
+classic-on cell is 74.70 s today against t139's 126.27 s so only paired deltas
+are claimed. **Fixture swap surfaced and graduated:** `tmp/3dbenchy.stl` was
+replaced with a different export of the same model, retiring t139's four benchy
+hashes; `base.stl` is intact and t145 carries the re-baseline. **Frontier now:
+[144](issues/144-brim-anchor-reconstruction.md) (AFK, unblocked) and
+[145](issues/145-benchy-fixture-rebaseline.md) (AFK, unblocked, new).**
+
+**Previous selection scope (2026-11-12, the t140 take):** the human said
 "Continue the perf vs orca map" (no ticket named); the first frontier ticket by
 number was the human's HITL
 [Brim anchor](issues/140-brim-contour-input.md), so it was claimed and
@@ -3454,6 +3512,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Union-phase request grouping: batch the planner's union requests across four chunk-batches](issues/143-union-phase-request-grouping.md): **resolved (2026-11-12; measured KEEP — buffering depth 12 collapses the union tail, depth 16 refutes its own merge-4 projection, and base classic-on saves 9.56 s / 12.80 %)** — the planner's union phase was one request deep (109 calls × 4.4 requests, 3.73x fan-out); `EMIT_BATCH_LAYERS` 4 → 12 merges it into **37 calls of ~13 requests** and takes the probe's union wall **10,093.1 → 4,848.7 ms (−52.0 %)** and the clip core **14,158.5 → 8,934.5 ms** on base classic-on, with benchy classic-on **447.9 → 200.3 ms**. **The pre-declared 16-layer form fails its bracket:** the same 482 requests cost **46.92 s** of thread-time against **37.68 s** at depth 4 (+24 %) once sixteen layers of collision sets and the sixteen-way occupancy payload compete for cache/bandwidth, so its union wall is **5,793.2 ms** against the **4,620 ms** LPT bound; depth 8 lands on t136's merge-2 floor (5,459.7 vs 5,480.2 ms) and **12 was measured after the table and chosen** (disclosed, not pre-declared). Peak working set is lower at 8/12 than at 4 on base (−85.8 MiB) and rises only at 16 (+78.6 MiB); time-to-first-layer improves 69.7 → 56.4 s (−19.0 %). **Output byte-identical in 8/8**, byte counts equal, exit 0, shared host binary (`b238d640…`), only the planner guest differs (`68b6f811…` → `f6632de0…`); base cells reproduce t139's set exactly, benchy cells match the take's baseline on the replacement benchy export. **Paired A/B (3 interleaved pairs, 48 runs): supports-on wall +6.72 / +7.36 / +12.80 / +13.41 %** (benchy classic-on / arachne-on, base classic-on / arachne-on) at **8.40x–16.76x** the 0.80 % floor, 11/12 pairs positive; base classic-on **74.70 → 65.13 s = 9.56 s saved = 10.3 %** of its 92.5 s required cut and **2.7x** the ticket's 3,500 ms DROP bar. Supports-off: +2.64 / −0.18 / −1.92 / −3.31 % wall, all inside the same-arm null band (2.10–4.40 % wall, 0.37–4.24 % CPU) and structurally inert; the candidate was faster on both benchy supports-off cells in the single output runs. **Disclosed gaps:** the strict CPU-lower clause passes **1/4** (+0.63 % benchy classic-on; −1.26…−1.83 % on the rest, inside the ±1.88–1.91 % null CPU band — a wider fan-out burns more CPU to finish sooner), no accelerated timing arm, no Orca arm, 3 pairs per cell, and today's base classic-on baseline is 74.70 s against t139's 126.27 s cell so only paired deltas are claimed. Route: a tranche of t135 Stage 2's order, not a destination step; indicative composition t142's 3.695x × (1 − 0.1280) ≈ **3.22x**. **Fixture swap graduated:** the user-supplied `tmp/3dbenchy.stl` was replaced 2026-11-12 with a different export of the same model (240 layers / 48.0 mm), t139's four benchy hashes are retired, and the re-baseline is [t145](issues/145-benchy-fixture-rebaseline.md). Evidence: [`evidence/t143-union-grouping/`](evidence/t143-union-grouping/FINDINGS.md) (`verify.py` 200 checks, 24/24 negative controls).
 - [Brim anchor: feed the slice contour (or reconstruct it) into `skirt-brim`?](issues/140-brim-contour-input.md): **resolved (2026-11-12; human ruling — the anchor gap is real printed geometry, gets its own scoped t81-style exception, and is closed module-side)** — `SkirtBrim::generate` (`modules/core-modules/skirt-brim/src/lib.rs`) anchors the brim on the `ExtrusionRole::OuterWall` **centerline**, 0.20 mm inside canonical `make_brim`'s slice contour, so the brim's inner boundary sits 0.1 mm **inside** the part outline and the innermost bead overlaps the footprint by ~0.2 mm instead of its inner edge touching it; the ring is 0.2 mm inward on every cell. [t139](issues/139-layer-plane-parity.md) measures base supports-off at **−4.3 / −4.4 %** swept and **−5.7 / −6.6 %** outer loop against the 3 % skirt band (brim −5.2 %, inside 12 %); both benchy supports-off cells pass; supports-on is the out-of-scope support engine. The human kept [t138](issues/138-layer0-cross-section-parity.md)'s classification (**not** a [t130](issues/130-brim-matched-settings-ruling.md) setting asymmetry) and granted the **fourth recorded parity exception**, scoped to the `skirt-brim` anchor inputs. Shape: **uniform half-width reconstruction** — offset the filled footprint outward by half the resolved outer-wall width (the loop's modal point width, fallback `line_width`; the repo's own `boundary_offset = 0.5 x width` convention) and the `skirt_height` layer hulls likewise; module-only, no SliceIR/WIT change, staged to a variable-width envelope or the direct contour only if a base Arachne cell still misses. Ceremony: fresh 16-cell reference set, delta audit, four supports-off oracle cells, 3-pair A/B as attribution only, **no** scoreboard re-derivation. Stop rule: t139's fairness-fix form (geometry correctness + bounded audit; the oracle is a measure, not a revert gate). Oracle ceiling **4/8**; route arithmetic unchanged (skirt-brim ~235 ms, no wall claim). Graduated [t144](issues/144-brim-anchor-reconstruction.md). No production edit in this take.
 - [Planner clip-batch fan-out: why is the clip core at 4.81x and what scheduling change reaches 12x?](issues/136-planner-clip-batch-fanout.md): **resolved (2026-11-12; Phase-1 attribution — the carve batches are already at 11.56x and the union phase is one request deep)** — the clip core is **15,841.8 ms** on base classic-on (p2 15,938.2 / p3 15,370.0), splitting additively into **6,587.6 ms** work floor (`thread/12`, 41.6 %), **7,224.0 ms** tail-times-chunking (45.6 %), **144.8 ms** dispatch excess (0.9 %), **1,393.7 ms** marshal+decode (8.8 %) and **491.7 ms** guest CPU (3.1 %); end-to-end fan-out **4.99x**, which is t134's 4.81x from a faster run. **The phase contrast is the finding:** `carve_run` issues **65,233 requests** over 312 calls at the saturated 256-request cap (**p50 256** per call) and runs at **11.56x** (40,977.6 ms thread in 3,544.7 ms); `union_run` issues **482 requests** over 109 calls (**p50 4.4** per call) and runs at **3.66x** (37,237.5 ms in 10,176.2 ms) while owning **64.2 %** of the clip-core wall. Its summed per-call `max(thread/12, longest request)` is **10,168.3 ms** against a **10,176.2 ms** wall — **8 ms** of the phase is anything but each call's longest request — so 7.6 of 12 threads are idle by construction: a **parallelism-width** deficit, not imbalance, and re-ordering cannot help. **Candidates:** the 256 cap has **no headroom** (carve is 11.56x against 12.0x, ≤ 0.13 s), dispatch excess is refuted (**0.14 s**), guest assembly is refuted (**0.49 s**, of which `carve_build` is 305.5 ms), marshal is real but below the tranche bar (**1.4 s**, operand locality). **Chunk size is the lever**, through the *phase's* request count: merging the union phase across 2 / 4 / whole-phase chunk-batches takes its floor from 10,176.2 ms to **5,480.2 / 3,465.0 / 3,103.1 ms**; the 16-layer form recovers **6,711.2 ms = 94.9 %** of the 7,073 ms tail gap, LPT-bounded to a **5,556–6,711 ms** saving = **7.3 %** of base-on's 92.5 s cut = **6.6x** the 1,010 ms floor. Benchy reproduces at 17x smaller scale (910.2 ms clip core, carve 11.18x, union 3.71x, 294.0 ms saving). **GO (narrowed)** for union-phase request grouping under the standing [t137](issues/137-planner-scheduling-gate.md) four-cell form, exact by construction; graduated [t143](issues/143-union-phase-request-grouping.md), whose first check is memory (`EMIT_BATCH_LAYERS` 4 → 16 quadruples the buffered collision sets). **NO-GO** on the ticket's three named mechanisms as the explanation, and **NO-GO** on splitting heavy union requests without its own work-set ruling. No production edit; probe reverted. Evidence: [`evidence/t136-clip-fanout/`](evidence/t136-clip-fanout/FINDINGS.md) (`verify.py` 155 checks, 27/27 negative controls; six probe G-code hashes equal the post-t139 reference set).
 - [Planner scheduling gate: apply the t117 four-cell form to t135/t136?](issues/137-planner-scheduling-gate.md): **resolved (2026-11-12; human ruling — extend the t117 four-cell form to t135 Stage 2 and t136, and generalize it as the standing rule for any representation-safe planner-only candidate where supports-off is structurally inert)** — on the four supports-off cells the whole `PrePass::SupportGeometry` stage is **0.64x–0.81x** the 0.80 % floor and the planner module is **0.32x–0.43x**, so no planner-only change can meet the literal all-8-cell 0.80 % gate. Any representation-safe planner-only candidate (`PrePass::SupportGeometry` / `PrePass::SupportAnalysis` / `com.core.tree-support-planner`) where `enable_support: false` declines before the candidate's work now runs under the standing four-cell form without needing its own gate ticket: positive 0.80 % paired wall/CPU improvement in the four supports-on cells, byte-identical output in all eight against the active reference set ([t139](issues/139-layer-plane-parity.md)'s set), and no median wall/CPU regression in the four supports-off cells. "Require a supports-off leg" and "Park the planner scheduling program" are both declined; the 8/8 destination is unchanged. [t135](issues/135-cross-layer-occupancy-batching.md) Stage 2 and [t136](issues/136-planner-clip-batch-fanout.md) are unblocked on the frontier. No production edit in this take.
@@ -3735,9 +3794,11 @@ Standing decisions for this effort (2026-09-22):
   [136](issues/136-planner-clip-batch-fanout.md) resolved 2026-11-12 with the
   clip core split by phase: carve **11.56x**, union **3.66x** at 4.4 requests
   per call owning 64.2 % of the wall, so the remaining planner scheduling shape
-  is union-phase request grouping — graduated as
-  [143](issues/143-union-phase-request-grouping.md) at 5.6–6.7 s (7.3 % of
-  base-on's cut), with memory as its first check. **t135
+  is union-phase request grouping — **resolved 2026-11-12 as a KEEP at
+  buffering depth 12**: the union wall falls **10,093 → 4,849 ms** on base
+  classic-on (clip core 14,159 → 8,935 ms) and the paired wall saves 9.56 s
+  (12.80 %, 10.3 % of the cell's cut); depth 16 failed its own merge-4 bracket,
+  and the measured optimum is 12, not the pre-declared 16. **t135
   Stage 1 landed 2026-11-10 (the canonical skirt/brim re-take): the
   matched-settings asymmetry is closed and the new reference set (subsequently
   updated by [t139](issues/139-layer-plane-parity.md)) is the

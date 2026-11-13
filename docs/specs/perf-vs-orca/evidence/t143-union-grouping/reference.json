@@ -1,0 +1,15 @@
+{
+  "note": "Base cells are t139's reference set (the original base.stl is intact: base classic-off reproduces ca14d055... exactly). The four benchy cells were re-recorded on the replacement 3dbenchy.stl export restored 2026-11-12 (same model: 240 layers / 48.0 mm; different tessellation, so t139's benchy hashes are retired). Benchy hashes here are this take's BASELINE arm, never t139's set.",
+  "t139_base": {
+    "base-classic-off": "ca14d0554e37eddf27c80b5052b583d6fc6eba5cf7bf551d6bb419fd45a78769",
+    "base-classic-on": "585c6a8edc2fd1de72dd2a86933fdad25c7ed144662dd80bbc68fb7856e4f629",
+    "base-arachne-off": "d8fdc1d990b7763dd592311c333e1f2b0cd7f7beb9885b99abb5c95a7db2cd98",
+    "base-arachne-on": "c9fee59a234212e7868bc600572213c47d6961de1f8963bfe1a34a25cf1f7d06"
+  },
+  "benchy_replacement_fixture": {
+    "benchy-classic-off": "a89e449bd68a45f430de724cade6cb453272b261e5ee7083b5a533c16006b765",
+    "benchy-classic-on": "dceb7a4827d7887aa47357e98b07ffbeb07ccee5e6643f824fad03b36e8b2faf",
+    "benchy-arachne-off": "3286449f99155c7d005d60acc36e93b61d46c70ac2fdd3b01ceb87dc3d0d84eb",
+    "benchy-arachne-on": "be78671855326db46515945ce2ae9c1e391149a41e29713fd50e052725adf6f6"
+  }
+}
