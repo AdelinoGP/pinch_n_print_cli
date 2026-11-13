@@ -18,9 +18,9 @@ use slicer_sdk::test_support::property_testing::PropertyRun;
 mod property_config_oracles;
 
 use property_config_oracles::{
-    bound_values, declaration_sets, describe, expected_accepts, expected_effective,
-    expected_first_invalid_index, in_range_probe, nonfinite_values, out_of_range_probe,
-    present_keys, scalar_bits, ABSENT_KEY,
+    bound_list_values, bound_scalar_values, declaration_sets, derive_probe, describe,
+    expected_accepts, expected_effective, expected_first_invalid_index, present_keys, scalar_bits,
+    PROBE_MODES,
 };
 
 /// How many deterministic cases the population guard samples before the run.
@@ -41,6 +41,21 @@ fn proptest_config_scalar_bounds() {
     assert_mandatory_bounds_witnesses();
 
     let strategy = config_bounds_strategy(max_declarations, max_abs_bound, max_list_len);
+    // Audit the composed strategy. The value shape must survive every real
+    // `simplify()` call, and for witness-derived probes so must the verdict class
+    // and the first-invalid index — the value is re-derived from the shrunk
+    // declarations, so those are stable by construction rather than by luck.
+    property_config_oracles::assert_mode_preserved(&strategy, "H-CONFIG-BOUNDS", |(decls, key, value)| {
+        let family = u8::from(matches!(value, ConfigValue::List(_)));
+        if key == property_config_oracles::WITNESS_KEY {
+            let class = u8::from(!expected_accepts(decls, key, value));
+            let index = expected_first_invalid_index(decls, key, value)
+                .map_or(0, |position| u8::try_from(position.min(2)).expect("bounded") + 1);
+            family * 16 + class * 8 + index
+        } else {
+            family * 16
+        }
+    });
     assert_substantive_population(&strategy);
 
     run.check(&strategy, |(declarations, key, value), _guard| {
@@ -120,90 +135,26 @@ fn config_bounds_strategy(
     max_abs_bound: f64,
     max_list_len: usize,
 ) -> impl Strategy<Value = (Vec<BoundsDeclaration>, String, ConfigValue)> {
-    declaration_sets(max_declarations, max_abs_bound)
-        .expect("declaration domain")
-        .prop_flat_map(move |declarations| {
+    let declarations =
+        declaration_sets(max_declarations, max_abs_bound).expect("declaration domain");
+    let modes = proptest::sample::select(PROBE_MODES.to_vec()).no_shrink();
+    let scalars = bound_scalar_values(max_abs_bound).expect("scalar value domain");
+    let lists = bound_list_values(max_abs_bound, max_list_len).expect("list value domain");
+    let picks = 0_usize..=64;
+    (declarations, modes, scalars, lists, picks).prop_map(
+        move |(mut declarations, mode, general_scalar, general_list, pick)| {
+            property_config_oracles::ensure_bounded_witness(&mut declarations);
             let keys = present_keys(&declarations);
-            let general = bound_values(max_abs_bound, max_list_len).expect("value domain");
-            let shaped = shaped_probes(&declarations);
-            // The probe family is pinned per case: a non-finite witness must not
-            // shrink into a finite scalar, and a declaration-derived shaped probe
-            // must not shrink into the general value domain.
-            // A shaped probe is a deliberate witness: `no_shrink` keeps the
-            // chosen probe instead of shrinking the selection index into a
-            // different (possibly scalar-vs-list) witness.
-            let shaped_keyed: BoxedStrategy<(String, ConfigValue)> =
-                proptest::sample::select(shaped).no_shrink().boxed();
-            let probes = property_config_oracles::mode_locked(
-                vec![0_u8, 1, 2],
-                move |mode| match mode {
-                    0 => (key_strategy(keys.clone()), general.clone()).boxed(),
-                    1 => (key_strategy(keys.clone()), nonfinite_values()).boxed(),
-                    _ => shaped_keyed.clone(),
-                },
-            );
-            (Just(declarations), probes)
-        })
-        .prop_map(|(declarations, (key, value))| (declarations, key, value))
-}
-
-fn key_strategy(keys: Vec<String>) -> BoxedStrategy<String> {
-    let absent = keys.len();
-    (0..=absent)
-        .prop_map(move |pick| {
-            keys.get(pick)
-                .cloned()
-                .unwrap_or_else(|| ABSENT_KEY.to_string())
-        })
-        .boxed()
-}
-
-/// Declaration-derived probe inputs: inclusive edges, both neighbour floats,
-/// empty/flat lists, and lists whose first offending position is 0, 1 or 2.
-///
-/// These choose inputs only. They never certify an outcome.
-fn shaped_probes(declarations: &[BoundsDeclaration]) -> Vec<(String, ConfigValue)> {
-    let mut probes: Vec<(String, ConfigValue)> = Vec::new();
-    for key in present_keys(declarations) {
-        let (min, max) = expected_effective(declarations, &key).expect("present key");
-        for bound in [min, max].into_iter().flatten() {
-            probes.push((key.clone(), ConfigValue::Float(bound)));
-            probes.push((key.clone(), ConfigValue::Float(bound.next_down())));
-            probes.push((key.clone(), ConfigValue::Float(bound.next_up())));
-        }
-        if let Some(inside) = in_range_probe(declarations, &key) {
-            probes.push((
-                key.clone(),
-                ConfigValue::List(vec![ConfigValue::Float(inside)]),
-            ));
-        }
-        if let Some(outside) = out_of_range_probe(declarations, &key) {
-            probes.push((
-                key.clone(),
-                ConfigValue::List(vec![ConfigValue::Float(outside)]),
-            ));
-            probes.push((
-                key.clone(),
-                ConfigValue::List(vec![ConfigValue::Bool(true), ConfigValue::Float(outside)]),
-            ));
-            if let Some(inside) = in_range_probe(declarations, &key) {
-                probes.push((
-                    key.clone(),
-                    ConfigValue::List(vec![
-                        ConfigValue::Float(inside),
-                        ConfigValue::Float(inside),
-                        ConfigValue::Float(outside),
-                    ]),
-                ));
-            }
-        }
-    }
-    probes.push((ABSENT_KEY.to_string(), ConfigValue::Float(1.0)));
-    probes.push((
-        ABSENT_KEY.to_string(),
-        ConfigValue::List(vec![ConfigValue::Float(f64::NAN)]),
-    ));
-    probes
+            let chosen = if pick == 0 {
+                property_config_oracles::ABSENT_KEY.to_string()
+            } else {
+                keys[(pick - 1) % keys.len()].clone()
+            };
+            let key = mode.key_of(&chosen);
+            let value = derive_probe(mode, &declarations, general_scalar, general_list, max_list_len);
+            (declarations, key, value)
+        },
+    )
 }
 
 /// Scalar magnitude production reports for the rejected position.

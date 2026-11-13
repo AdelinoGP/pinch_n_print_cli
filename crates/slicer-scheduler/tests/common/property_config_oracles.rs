@@ -419,6 +419,142 @@ where
         .boxed()
 }
 
+/// Probe families for the bounds property.
+///
+/// The family is pinned per case (`no_shrink` selection) and the value is
+/// **derived from the current declaration set** inside `prop_map` — no
+/// `prop_flat_map` re-draws it. Shrinking the declarations therefore re-derives
+/// a value in the same family, and for the witness families the verdict class and
+/// first-invalid index are re-derived too, so they survive shrinking by
+/// construction.
+#[derive(Debug, Clone, Copy)]
+pub enum ProbeMode {
+    /// Independent scalar on a generated or absent key.
+    GeneralScalar,
+    /// Independent flat list on a generated or absent key.
+    GeneralList,
+    /// A scalar against a key no declaration names.
+    AbsentScalar,
+    /// A flat list against a key no declaration names.
+    AbsentList,
+    /// Exactly the witness interval's inclusive minimum.
+    EdgeMin,
+    /// Exactly the witness interval's inclusive maximum.
+    EdgeMax,
+    /// The witness interval's midpoint.
+    InsideScalar,
+    /// A one-element list holding the midpoint.
+    InsideList,
+    /// One below the witness minimum: rejected.
+    ViolationScalarLow,
+    /// One above the witness maximum: rejected.
+    ViolationScalarHigh,
+    /// A list whose only invalid element is at index 0.
+    ViolationListAt0,
+    /// A list whose only invalid element is at index 1.
+    ViolationListAt1,
+    /// A list whose only invalid element is at index 2.
+    ViolationListAt2,
+    /// A non-finite scalar against the witness key: rejected.
+    NonFiniteScalar,
+    /// A non-finite one-element list against the witness key: rejected.
+    NonFiniteList,
+}
+
+pub const PROBE_MODES: [ProbeMode; 15] = [
+    ProbeMode::GeneralScalar,
+    ProbeMode::GeneralList,
+    ProbeMode::AbsentScalar,
+    ProbeMode::AbsentList,
+    ProbeMode::EdgeMin,
+    ProbeMode::EdgeMax,
+    ProbeMode::InsideScalar,
+    ProbeMode::InsideList,
+    ProbeMode::ViolationScalarLow,
+    ProbeMode::ViolationScalarHigh,
+    ProbeMode::ViolationListAt0,
+    ProbeMode::ViolationListAt1,
+    ProbeMode::ViolationListAt2,
+    ProbeMode::NonFiniteScalar,
+    ProbeMode::NonFiniteList,
+];
+
+impl ProbeMode {
+    /// Scalar (0) or list (1) value shape.
+    #[must_use]
+    pub fn family(self) -> u8 {
+        u8::from(matches!(
+            self,
+            ProbeMode::GeneralList
+                | ProbeMode::AbsentList
+                | ProbeMode::InsideList
+                | ProbeMode::ViolationListAt0
+                | ProbeMode::ViolationListAt1
+                | ProbeMode::ViolationListAt2
+                | ProbeMode::NonFiniteList
+        ))
+    }
+
+    /// A key the value must be derived against: absent, generated, or witness.
+    /// The key the derived value must be checked against.
+    #[must_use]
+    pub fn key_of(self, chosen: &str) -> String {
+        match self {
+            ProbeMode::AbsentScalar | ProbeMode::AbsentList => {
+                ABSENT_KEY.to_string()
+            }
+            ProbeMode::GeneralScalar | ProbeMode::GeneralList => chosen.to_string(),
+            _ => WITNESS_KEY.to_string(),
+        }
+    }
+}
+
+/// A list whose only invalid element sits at `index`.
+fn list_with_violation(
+    index: usize,
+    midpoint: f64,
+    violating: f64,
+    max_list_len: usize,
+) -> ConfigValue {
+    let len = (index + 2).min(max_list_len.max(1));
+    let position = index.min(len - 1);
+    let mut elements = vec![ConfigValue::Float(midpoint); len];
+    elements[position] = ConfigValue::Float(violating);
+    ConfigValue::List(elements)
+}
+
+/// Derive the probe value from the current declarations.
+///
+/// Everything here is a pure function of the declaration set (plus, for the two
+/// general families, an independently generated value). That is what makes the
+/// shape/verdict contract hold under shrinking: the declarations shrink, this
+/// function re-runs, and the same family comes out.
+pub fn derive_probe(
+    mode: ProbeMode,
+    declarations: &[BoundsDeclaration],
+    general_scalar: ConfigValue,
+    general_list: ConfigValue,
+    max_list_len: usize,
+) -> ConfigValue {
+    let (low, high) = witness_interval(declarations);
+    let midpoint = (low + high) / 2.0;
+    match mode {
+        ProbeMode::GeneralScalar | ProbeMode::AbsentScalar => general_scalar,
+        ProbeMode::GeneralList | ProbeMode::AbsentList => general_list,
+        ProbeMode::EdgeMin => ConfigValue::Float(low),
+        ProbeMode::EdgeMax => ConfigValue::Float(high),
+        ProbeMode::InsideScalar => ConfigValue::Float(midpoint),
+        ProbeMode::InsideList => ConfigValue::List(vec![ConfigValue::Float(midpoint)]),
+        ProbeMode::ViolationScalarLow => ConfigValue::Float(low - 1.0),
+        ProbeMode::ViolationScalarHigh => ConfigValue::Float(high + 1.0),
+        ProbeMode::ViolationListAt0 => list_with_violation(0, midpoint, low - 1.0, max_list_len),
+        ProbeMode::ViolationListAt1 => list_with_violation(1, midpoint, low - 1.0, max_list_len),
+        ProbeMode::ViolationListAt2 => list_with_violation(2, midpoint, low - 1.0, max_list_len),
+        ProbeMode::NonFiniteScalar => ConfigValue::Float(f64::NAN),
+        ProbeMode::NonFiniteList => ConfigValue::List(vec![ConfigValue::Float(f64::NAN)]),
+    }
+}
+
 /// Bounded config-value strategy for the bounds surface.
 ///
 /// Produces integer-grid `Int` and `Float` values, arbitrary finite `f64`
@@ -429,6 +565,49 @@ where
 ///
 /// Every numeric magnitude is finite and at most `max_abs_bound`, so shrinking
 /// can only move to another in-domain value.
+/// The list half of [`bound_values`], for probes that must stay a flat list.
+pub fn bound_list_values(
+    max_abs_bound: f64,
+    max_list_len: usize,
+) -> Result<BoxedStrategy<ConfigValue>, DomainError> {
+    validate_value_parameters(max_abs_bound, max_list_len)?;
+    let elements = bound_scalar_values(max_abs_bound)?;
+    Ok(proptest::collection::vec(elements, 0..=max_list_len)
+        .prop_map(ConfigValue::List)
+        .boxed())
+}
+
+/// A declaration key that the generator never produces, used to derive probes
+/// whose expected verdict cannot be perturbed by another declaration.
+pub const WITNESS_KEY: &str = "witness_bound";
+
+/// Append a bounded, non-empty witness declaration unless one is present.
+///
+/// Derived probes (`Edge*`, `Inside*`, `Violation*`) need a key whose effective
+/// interval is known: `WITNESS_KEY` is outside `KEY_ALPHABET`, so no generated
+/// declaration can narrow it. The interval is wide enough to place both an
+/// accepted midpoint and a violating neighbour, and it is re-derived from the
+/// (possibly shrunk) declaration set on every case, so the probe stays
+/// satisfiable under shrinking.
+pub fn ensure_bounded_witness(declarations: &mut Vec<BoundsDeclaration>) {
+    if declarations.iter().any(|entry| entry.key == WITNESS_KEY) {
+        return;
+    }
+    declarations.push(BoundsDeclaration {
+        key: WITNESS_KEY.to_string(),
+        min: Some(-4.0),
+        max: Some(4.0),
+        module_id: "witness".to_string(),
+    });
+}
+
+/// The inclusive interval of [`WITNESS_KEY`] after [`ensure_bounded_witness`].
+pub fn witness_interval(declarations: &[BoundsDeclaration]) -> (f64, f64) {
+    let (min, max) = expected_effective(declarations, WITNESS_KEY)
+        .expect("the witness declaration is always present");
+    (min.expect("witness min"), max.expect("witness max"))
+}
+
 pub fn bound_values(
     max_abs_bound: f64,
     max_list_len: usize,
@@ -475,6 +654,43 @@ pub fn bound_values(
         0 => scalars.clone().boxed(),
         _ => lists.clone().boxed(),
     }))
+}
+
+/// The scalar half of [`bound_values`], for probes that must stay scalar.
+pub fn bound_scalar_values(max_abs_bound: f64) -> Result<BoxedStrategy<ConfigValue>, DomainError> {
+    validate_value_parameters(max_abs_bound, 1)?;
+    let max_int = max_abs_bound as i64;
+    let finite = finite_f64(-max_abs_bound..=max_abs_bound)?;
+    let neighbour = finite.clone();
+    let clamped_down = neighbour
+        .clone()
+        .prop_map(move |value| ConfigValue::Float(value.next_down().max(-max_abs_bound)));
+    let clamped_up =
+        neighbour.prop_map(move |value| ConfigValue::Float(value.next_up().min(max_abs_bound)));
+    Ok(prop_oneof![
+        3 => (-max_int..=max_int).prop_map(ConfigValue::Int),
+        3 => (-max_int..=max_int).prop_map(|value| ConfigValue::Float(value as f64)),
+        4 => finite.clone().prop_map(ConfigValue::Float),
+        1 => clamped_down,
+        1 => clamped_up,
+        1 => proptest::sample::select(subnormal_witnesses(max_abs_bound))
+            .prop_map(ConfigValue::Float),
+        1 => Just(ConfigValue::Float(0.0)),
+        1 => Just(ConfigValue::Float(-0.0)),
+        1 => finite.clone().prop_map(ConfigValue::Percent),
+        1 => finite
+            .clone()
+            .prop_map(|value| ConfigValue::FloatOrPercent { value, is_percent: true }),
+        1 => finite.prop_map(|value| ConfigValue::FloatOrPercent { value, is_percent: false }),
+        1 => any::<bool>().prop_map(ConfigValue::Bool),
+        1 => proptest::sample::select(vec![
+            String::new(),
+            "grid".to_string(),
+            "lines".to_string(),
+        ])
+        .prop_map(ConfigValue::String),
+    ]
+    .boxed())
 }
 
 /// Infinities and distinguishable NaN bit patterns in every numeric variant.
