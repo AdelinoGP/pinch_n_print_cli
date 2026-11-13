@@ -16,11 +16,20 @@ latter defines timing, DAG, and manifest diagnosis.
 cargo build --workspace
 cargo clippy --workspace --all-targets -- -D warnings  # required before committing
 cargo xtask check-literals                              # required before committing
+cargo xtask check-fmt                                   # required before committing; Windows-safe formatting gate
 cargo test -p slicer-scheduler --test scheduler_contract core_module_ir_access_contract_tdd   # narrow run; slicer-runtime's buckets are unit|contract|executor|integration|e2e
 cargo xtask build-guests                             # build all guest WASMs (core-modules + test-guests; needs wasm32 target)
 cargo xtask dist --edition <developer|hybrid|integrated> # build guests + pnp_cli (release), stage into target/dist/<edition>/ (add --debug for debug binary)
 cargo run --bin pnp_cli --release -- slice --input model.stl --output model.gcode
 ```
+
+**Use `cargo xtask check-fmt`, not `cargo fmt --all`.** The aggregate form puts every
+workspace file on one rustfmt command line (~1,200 files here), which exceeds the
+Windows `CreateProcess` limit and fails with `The filename or extension is too long.
+(os error 206)` before rustfmt runs. `check-fmt` runs `cargo fmt -p <package> -- --check`
+once per workspace member — the same packages `cargo fmt --all` covers — and reports
+which packages need formatting; `cargo xtask fmt` applies the fixes. CI runs the same
+command, so both platforms gate identically.
 
 Benchmark commands and the HTML slicer report (`--report`) are rarely needed — read `.agents/aux-commands.md` when you need them.
 

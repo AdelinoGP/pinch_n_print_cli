@@ -16,11 +16,12 @@ use slicer_sdk::test_support::property_testing::domains::{
     BoundaryRule, DomainError, GeometryBounds, GeometryCase, GeometryDomain, TopologyClass,
 };
 use slicer_sdk::test_support::property_testing::oracles::{
-    mesh_signed_volume_mm3, point_in_region, validate_geometry, validate_indexed_mesh, PointLocation,
+    mesh_signed_volume_mm3, point_in_region, validate_geometry, validate_indexed_mesh,
+    PointLocation,
 };
 use slicer_sdk::test_support::property_testing::scripted::{
-    emit_scad, evaluate_recipe, recipe_complexity, scripted_cases, Recipe2d, Recipe3d, RecipeBounds,
-    ScadRecipe, ScriptedCase, ScriptedDomain, ScriptedError, SolidWitness,
+    emit_scad, evaluate_recipe, recipe_complexity, scripted_cases, Recipe2d, Recipe3d,
+    RecipeBounds, ScadRecipe, ScriptedCase, ScriptedDomain, ScriptedError, SolidWitness,
 };
 
 #[path = "support/scripted.rs"]
@@ -70,7 +71,10 @@ fn scripted_feature_isolation_and_union() {
         vec![
             Point2 { x: 0, y: 0 },
             Point2 { x: 20_000, y: 0 },
-            Point2 { x: 20_000, y: 12_345 },
+            Point2 {
+                x: 20_000,
+                y: 12_345
+            },
             Point2 { x: 0, y: 12_345 },
         ],
         "the adapter must return the exact canonical-unit rectangle"
@@ -79,7 +83,8 @@ fn scripted_feature_isolation_and_union() {
 
     // The complete replay-record contract: a new field on ScriptedCase must
     // fail here rather than be silently dropped from the artifact round trip.
-    let case = ScriptedCase { // exhaustive: complete replay-record contract
+    // exhaustive: complete replay-record contract
+    let case = ScriptedCase {
         recipe: recipe.clone(),
         recipe_bounds,
         source,
@@ -164,9 +169,7 @@ fn scripted_rejects_invalid_recipe_bounds_before_sampling() {
 
 #[test]
 fn scripted_recipe_complexity_counts_explicit_leaves() {
-    let rectangle = ScadRecipe::Contours(Recipe2d::Rectangle {
-        size_units: [4, 3],
-    });
+    let rectangle = ScadRecipe::Contours(Recipe2d::Rectangle { size_units: [4, 3] });
     assert_eq!(recipe_complexity(&rectangle).unwrap(), (1, 0, 7));
 
     let polygons = vec![ExPolygon {
@@ -235,8 +238,12 @@ fn evaluate(
     recipe_bounds: &RecipeBounds,
     units: i64,
 ) -> slicer_scad::ScadEvalOutput {
-    evaluate_recipe(recipe, &scenario_options(recipe_bounds, units), recipe_bounds)
-        .unwrap_or_else(|error| panic!("evaluate {recipe:?}: {error}"))
+    evaluate_recipe(
+        recipe,
+        &scenario_options(recipe_bounds, units),
+        recipe_bounds,
+    )
+    .unwrap_or_else(|error| panic!("evaluate {recipe:?}: {error}"))
 }
 
 fn contours_of(output: &slicer_scad::ScadEvalOutput) -> Vec<ExPolygon> {
@@ -255,10 +262,7 @@ fn mesh_of(output: &slicer_scad::ScadEvalOutput) -> slicer_ir::IndexedTriangleSe
 
 fn ring(points: &[(i64, i64)]) -> Polygon {
     Polygon {
-        points: points
-            .iter()
-            .map(|&(x, y)| Point2 { x, y })
-            .collect(),
+        points: points.iter().map(|&(x, y)| Point2 { x, y }).collect(),
     }
 }
 
@@ -556,11 +560,11 @@ fn scripted_topology_and_solid_witnesses() {
                         .new_tree(&mut runner)
                         .expect("a near-degenerate case");
                     almost_collinear = match &candidate.current().output.geometry {
-                        slicer_scad::ScadGeometry::Contours(polygons) => polygons.iter().any(
-                            |component| {
+                        slicer_scad::ScadGeometry::Contours(polygons) => {
+                            polygons.iter().any(|component| {
                                 scripted_support::has_almost_collinear_vertex(&component.contour)
-                            },
-                        ),
+                            })
+                        }
                         _ => false,
                     };
                 }
@@ -595,8 +599,8 @@ fn scripted_topology_and_solid_witnesses() {
         solid_witness: None,
         bounds,
     };
-    let strategy = scripted_cases(empty_domain, scenario_options(&bounds, units))
-        .expect("an empty strategy");
+    let strategy =
+        scripted_cases(empty_domain, scenario_options(&bounds, units)).expect("an empty strategy");
     let tree = strategy
         .new_tree(&mut runner)
         .expect("a certified empty case");
@@ -872,7 +876,6 @@ fn scripted_topology_and_solid_witnesses() {
 include!("support/step3_contracts.rs");
 
 include!("support/step4_contracts.rs");
-
 
 // ---------------------------------------------------------------------------
 // AC-N1 and generator-reachability contracts
@@ -1296,5 +1299,4 @@ fn scripted_generator_reaches_every_advertised_family() {
         kinds.contains("union") && kinds.contains("turn"),
         "the separated strategy must reach its union and turn variants, saw {kinds:?}"
     );
-
 }

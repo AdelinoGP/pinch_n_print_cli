@@ -269,7 +269,11 @@ impl ExecutionLog {
         Ok(())
     }
 
-    fn child(&mut self, launcher: &impl ChildLauncher, plan: &ChildPlan) -> io::Result<ChildOutput> {
+    fn child(
+        &mut self,
+        launcher: &impl ChildLauncher,
+        plan: &ChildPlan,
+    ) -> io::Result<ChildOutput> {
         let mut cmd = launcher.build(plan)?;
         configure_child(&mut cmd, plan);
         writeln!(
@@ -320,7 +324,6 @@ impl ExecutionLog {
     }
 }
 
-
 /// A Windows Job Object that contains the execution child and every descendant.
 ///
 /// The job is created with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, so closing the
@@ -336,7 +339,7 @@ struct ProcessJob(windows_sys::Win32::Foundation::HANDLE);
 impl ProcessJob {
     fn create() -> Option<Self> {
         use windows_sys::Win32::System::JobObjects::{
-            CreateJobObjectW, SetInformationJobObject, JobObjectExtendedLimitInformation,
+            CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
             JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
         };
         // SAFETY: null attributes/name ask Windows for an unnamed job object
@@ -412,9 +415,7 @@ fn resume_main_thread(pid: u32) -> bool {
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
     };
-    use windows_sys::Win32::System::Threading::{
-        OpenThread, ResumeThread, THREAD_SUSPEND_RESUME,
-    };
+    use windows_sys::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
     // SAFETY: the snapshot and thread handles are closed on every path; the
     // entry buffer is initialized before the first API call.
     unsafe {
@@ -726,7 +727,11 @@ fn launch_checked(
         ));
         1
     })?;
-    let code = normalize_status(if output.timed_out { None } else { output.status });
+    let code = normalize_status(if output.timed_out {
+        None
+    } else {
+        output.status
+    });
     if code != 0 || !output.success() {
         return Err(if code == 0 { 1 } else { code });
     }
@@ -1684,7 +1689,8 @@ mod tests {
             file: File::create(&log_path).expect("job object log"),
             summary: true,
         };
-        let launcher = FixtureLauncher::new(std::slice::from_ref(&record), &["exit_with_descendant"]);
+        let launcher =
+            FixtureLauncher::new(std::slice::from_ref(&record), &["exit_with_descendant"]);
         let mut plan = make_plan(&record, &[], ChildKind::Run, &dir);
         // A generous deadline proves the cleanup comes from the job handle, not
         // from the deadline branch.
@@ -1778,8 +1784,7 @@ mod tests {
                 Err(io::Error::other("injected terminal read failure"))
             }
         }
-        let (bytes, complete) =
-            PipeDrain::spawn(Some(FailingPipe { sent_prefix: false })).finish();
+        let (bytes, complete) = PipeDrain::spawn(Some(FailingPipe { sent_prefix: false })).finish();
         assert_eq!(bytes, b"head");
         assert!(
             !complete,
@@ -1872,7 +1877,8 @@ mod tests {
         // A child that blocks before any callback and keeps a live descendant
         // must be ended by the whole-process deadline, and the descendant with
         // it: a controller-only kill would leave the worker running.
-        let launcher = FixtureLauncher::new(std::slice::from_ref(&record), &["block_with_descendant"]);
+        let launcher =
+            FixtureLauncher::new(std::slice::from_ref(&record), &["block_with_descendant"]);
         let mut plan = make_plan(&record, &[], ChildKind::Run, &dir);
         plan.timeout_ms = Some(1500);
         let start = Instant::now();

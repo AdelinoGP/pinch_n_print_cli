@@ -19,7 +19,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt
-      - run: cargo fmt --all -- --check
+      # Per-package formatting rather than `cargo fmt --all`: the aggregate
+      # invocation exceeds the Windows command-line limit on this workspace, so
+      # the two platforms would otherwise run different gates. See
+      # `xtask/src/check_fmt.rs`.
+      - run: cargo xtask check-fmt
 
   docs-guard:
     name: Docs staleness guard

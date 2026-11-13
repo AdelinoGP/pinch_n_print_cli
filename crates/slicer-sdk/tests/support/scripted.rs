@@ -149,9 +149,21 @@ pub fn point_inside_mesh(mesh: &IndexedTriangleSet, point: [f64; 3]) -> bool {
             mesh.vertices[triangle[1] as usize],
             mesh.vertices[triangle[2] as usize],
         ];
-        let a = [f64::from(vertices[0].x), f64::from(vertices[0].y), f64::from(vertices[0].z)];
-        let b = [f64::from(vertices[1].x), f64::from(vertices[1].y), f64::from(vertices[1].z)];
-        let c = [f64::from(vertices[2].x), f64::from(vertices[2].y), f64::from(vertices[2].z)];
+        let a = [
+            f64::from(vertices[0].x),
+            f64::from(vertices[0].y),
+            f64::from(vertices[0].z),
+        ];
+        let b = [
+            f64::from(vertices[1].x),
+            f64::from(vertices[1].y),
+            f64::from(vertices[1].z),
+        ];
+        let c = [
+            f64::from(vertices[2].x),
+            f64::from(vertices[2].y),
+            f64::from(vertices[2].z),
+        ];
         let edge1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
         let edge2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
         let pvec = cross(direction, edge2);
@@ -306,9 +318,9 @@ pub fn empty_kernel_wall_pair(ring: &Polygon) -> bool {
         }
     }
     left_walls.iter().any(|left| {
-        right_walls.iter().any(|right| {
-            right.0 > left.0 && left.1 < right.2 && right.1 < left.2
-        })
+        right_walls
+            .iter()
+            .any(|right| right.0 > left.0 && left.1 < right.2 && right.1 < left.2)
     })
 }
 
@@ -339,7 +351,8 @@ pub fn segment_distance(a: [Point2; 2], b: [Point2; 2]) -> f64 {
 
 fn segments_intersect(a: [Point2; 2], b: [Point2; 2]) -> bool {
     fn orient(p: Point2, q: Point2, r: Point2) -> i128 {
-        i128::from(q.x - p.x) * i128::from(r.y - p.y) - i128::from(q.y - p.y) * i128::from(r.x - p.x)
+        i128::from(q.x - p.x) * i128::from(r.y - p.y)
+            - i128::from(q.y - p.y) * i128::from(r.x - p.x)
     }
     let d1 = orient(a[0], a[1], b[0]);
     let d2 = orient(a[0], a[1], b[1]);
@@ -413,7 +426,14 @@ pub fn ring_bbox(ring: &Polygon) -> (i64, i64, i64, i64) {
 /// Reject emitted programs that would not be self-contained.
 pub fn assert_self_contained(text: &str) {
     for forbidden in [
-        "include", "import", "use<", "surface(", "text(", "rands(", "for (", "function ",
+        "include",
+        "import",
+        "use<",
+        "surface(",
+        "text(",
+        "rands(",
+        "for (",
+        "function ",
     ] {
         assert!(
             !text.contains(forbidden),

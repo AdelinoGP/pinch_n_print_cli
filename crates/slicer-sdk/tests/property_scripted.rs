@@ -141,12 +141,9 @@ fn check_case(case: &ScriptedCase) -> TestCaseResult {
     if let Some(input) = concrete_input(case) {
         // The concrete regression formatter must be able to carry this input
         // without engine or Proptest context.
-        let block = format_regression_fixture(
-            "scripted retained case",
-            "certified scripted case",
-            &input,
-        )
-        .expect("a certified case formats as a concrete fixture");
+        let block =
+            format_regression_fixture("scripted retained case", "certified scripted case", &input)
+                .expect("a certified case formats as a concrete fixture");
         prop_assert!(!block.is_empty());
     }
     match &case.output.geometry {
@@ -191,18 +188,30 @@ fn contour_strategy(run: &PropertyRun) -> Result<impl Strategy<Value = ScriptedC
     let bounds = recipe_bounds(run)?;
     let options = options(run, &bounds)?;
     Ok(prop_oneof![
-        scripted_cases(domain(run, TopologyClass::Convex, None, bounds)?, options.clone())?,
-        scripted_cases(domain(run, TopologyClass::Concave, None, bounds)?, options.clone())?,
+        scripted_cases(
+            domain(run, TopologyClass::Convex, None, bounds)?,
+            options.clone()
+        )?,
+        scripted_cases(
+            domain(run, TopologyClass::Concave, None, bounds)?,
+            options.clone()
+        )?,
         scripted_cases(
             domain(run, TopologyClass::NonStarShaped, None, bounds)?,
             options.clone()
         )?,
-        scripted_cases(domain(run, TopologyClass::Holed, None, bounds)?, options.clone())?,
+        scripted_cases(
+            domain(run, TopologyClass::Holed, None, bounds)?,
+            options.clone()
+        )?,
         scripted_cases(
             domain(run, TopologyClass::Disconnected, None, bounds)?,
             options.clone()
         )?,
-        scripted_cases(domain(run, TopologyClass::Thin, None, bounds)?, options.clone())?,
+        scripted_cases(
+            domain(run, TopologyClass::Thin, None, bounds)?,
+            options.clone()
+        )?,
         scripted_cases(
             domain(run, TopologyClass::NearDegenerate, None, bounds)?,
             options.clone()
@@ -216,19 +225,39 @@ fn solid_strategy(run: &PropertyRun) -> Result<impl Strategy<Value = ScriptedCas
     let options = options(run, &bounds)?;
     Ok(prop_oneof![
         scripted_cases(
-            domain(run, TopologyClass::Convex, Some(SolidWitness::ClosedSolid), bounds)?,
+            domain(
+                run,
+                TopologyClass::Convex,
+                Some(SolidWitness::ClosedSolid),
+                bounds
+            )?,
             options.clone()
         )?,
         scripted_cases(
-            domain(run, TopologyClass::Convex, Some(SolidWitness::Cavity), bounds)?,
+            domain(
+                run,
+                TopologyClass::Convex,
+                Some(SolidWitness::Cavity),
+                bounds
+            )?,
             options.clone()
         )?,
         scripted_cases(
-            domain(run, TopologyClass::Convex, Some(SolidWitness::Bridge), bounds)?,
+            domain(
+                run,
+                TopologyClass::Convex,
+                Some(SolidWitness::Bridge),
+                bounds
+            )?,
             options.clone()
         )?,
         scripted_cases(
-            domain(run, TopologyClass::Convex, Some(SolidWitness::Overhang), bounds)?,
+            domain(
+                run,
+                TopologyClass::Convex,
+                Some(SolidWitness::Overhang),
+                bounds
+            )?,
             options.clone()
         )?,
         scripted_cases(

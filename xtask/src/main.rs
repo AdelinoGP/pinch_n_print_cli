@@ -1,5 +1,6 @@
 mod build_guests;
 mod check_deviations;
+mod check_fmt;
 mod check_literals;
 mod check_test_quality;
 mod compact_specs;
@@ -43,6 +44,11 @@ SUBCOMMANDS:
     build-guests --list   Print every discovered guest (crate name, manifest, expected artifact path).
     check-deviations          Regenerate doc 07 Open Deviation Map + doc 15 config tables.
     check-deviations --check  Exit 1 if doc 07 or doc 15 generated sections are stale.
+    fmt                     Format every workspace member, one `cargo fmt -p`
+                          invocation each. This is the Windows-safe form of
+                          `cargo fmt --all`, which exceeds the Windows
+                          command-line limit on this workspace.
+    check-fmt               Exit 1 if any workspace member needs formatting.
     check-literals          Enforce exhaustive watched-type literal policy.
     check-literals --report Report watched-type literal violations without failing.
     check-literals [PATHS...]  Restrict literal checking to workspace-relative paths.
@@ -148,6 +154,20 @@ fn main() -> ExitCode {
                     ExitCode::from(code as u8)
                 }
             }
+        }
+        Some("fmt") | Some("check-fmt") => {
+            if args.len() > 1 {
+                eprintln!(
+                    "xtask: unknown flag '{}' for {}
+",
+                    args[1], args[0]
+                );
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            }
+            let apply = args[0] == "fmt";
+            let ws = build_guests::workspace_root();
+            ExitCode::from(check_fmt::run(&ws, apply) as u8)
         }
         Some("check-deviations") => {
             let flag = args.get(1).map(String::as_str);
