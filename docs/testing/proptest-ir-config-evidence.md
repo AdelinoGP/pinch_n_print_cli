@@ -182,13 +182,13 @@ registration for these records.
 
 | ID | exact discovered test | libtest wall | single-record xtask wall | verdict |
 |---|---|---:|---:|---|
-| `H-IR-ANCHORS` | `proptest_ir_travel_anchors_membership` | 8.41s | 24s | PASS |
-| `H-COORD` | `proptest_coord_conversion_envelopes` | 0.27s | 12s | PASS |
-| `H-IDS` | `proptest_entity_and_modifier_ids` | 0.31s | 13s | PASS |
-| `H-CONFIG-BOUNDS` | `proptest_config_scalar_bounds` | 1.19s | 15s | PASS |
-| `H-IR-SERDE` | `proptest_ir_serialization_and_defaults` | 5.52s | 17s | PASS |
-| `H-CONFIG-INTERN` | `proptest_config_equality_hash_and_interning` | 1.31s | 13s | PASS |
-| `H-CHAINS` | `proptest_canonical_chain_product` | 0.38s | 12s | PASS |
+| `H-IR-ANCHORS` | `proptest_ir_travel_anchors_membership` | 8.85s | 21s | PASS |
+| `H-COORD` | `proptest_coord_conversion_envelopes` | 0.26s | 12s | PASS |
+| `H-IDS` | `proptest_entity_and_modifier_ids` | 0.31s | 12s | PASS |
+| `H-CONFIG-BOUNDS` | `proptest_config_scalar_bounds` | 1.21s | 13s | PASS |
+| `H-IR-SERDE` | `proptest_ir_serialization_and_defaults` | 6.89s | 19s | PASS |
+| `H-CONFIG-INTERN` | `proptest_config_equality_hash_and_interning` | 1.37s | 13s | PASS |
+| `H-CHAINS` | `proptest_canonical_chain_product` | 0.38s | 14s | PASS |
 
 Every run printed a matching `begin`/`end` controller pair with
 `"outcome":"passed"`, `"completion_eligible":true`, `"call_counts_complete":true` and
@@ -202,8 +202,8 @@ every tier:
 
 | Selection | Tier | Wall | Records at their profile case count | Verdict |
 |---|---|---:|---|---|---|
-| all seven `--property` flags | routine | 18 s | 7 / 7 at 64 | PASS || all seven `--property` flags | extended | 36 s | 7 / 7 at 1024 | PASS |
-| all seven `--property` flags `--seed 37` | routine | 20 s | 7 / 7 at 64 | PASS |
+| all seven `--property` flags | routine | 19 s | 7 / 7 at 64 | PASS || all seven `--property` flags | extended | 37 s | 7 / 7 at 1024 | PASS |
+| all seven `--property` flags `--seed 37` | routine | 18 s | 7 / 7 at 64 | PASS |
 
 Logs: `target/evidence/final-all-routine.log`, `final-all-extended.log`,
 `final-replay-37.log`; the corresponding inner executor logs are the `-inner.log` siblings.
