@@ -20,7 +20,7 @@ mod property_config_oracles;
 
 use property_config_oracles::{
     accept_all, bound_values, declaration_sets, describe, expected_accepts,
-    expected_first_invalid_index, lose_index, off_by_one_bound, respects_bound,
+    expected_first_invalid_index, lose_index, mode_locked, off_by_one_bound, respects_bound,
     union_instead_of_intersection, KEY_ALPHABET, MAX_ABS_BOUND, MODULE_ALPHABET,
 };
 
@@ -64,6 +64,12 @@ fn config_bounds_oracle_counterexamples() {
             describe(&intersected)
         );
         assert!(
+            !expected_accepts(&intersected, "k0", &ConfigValue::Float(value)),
+            "the reference predicate must reject key k0 = Float({value}) against the \
+             intersection [5, 10] of {}; a union-based reference is not the contract",
+            describe(&intersected)
+        );
+        assert!(
             union_instead_of_intersection(&intersected, "k0", &ConfigValue::Float(value)),
             "the union mutant accepts key k0 = Float({value}) against {} although the real API \
              rejects it; intersection [5, 10] is not the union [0, 100]",
@@ -76,6 +82,13 @@ fn config_bounds_oracle_counterexamples() {
             .is_ok(),
         "7 is inside the intersection [5, 10]"
     );
+    // The reference predicate must classify the inside value as accepted too, so
+    // substituting a union-based reference is refuted in both directions.
+    assert!(
+        expected_accepts(&intersected, "k0", &ConfigValue::Float(7.0)),
+        "the reference predicate must accept the inside value 7 for {}",
+        describe(&intersected)
+    );
 
     // off_by_one_bound: the inclusive minimum and maximum are accepted by the
     // real API but rejected by a strict-comparison mutant.
@@ -85,6 +98,14 @@ fn config_bounds_oracle_counterexamples() {
         assert!(
             edged_index.check("k0", &ConfigValue::Float(value)).is_ok(),
             "witness: key k0 = Float({value}) is an inclusive edge and must be accepted"
+        );
+        // The reference predicate itself must agree with the inclusive edge, so
+        // replacing it with a strict-comparison predicate is refuted here rather
+        // than only showing that the mutant disagrees with production.
+        assert!(
+            expected_accepts(&edged, "k0", &ConfigValue::Float(value)),
+            "the reference predicate must accept the inclusive edge Float({value}) for {}",
+            describe(&edged)
         );
         assert!(
             !off_by_one_bound(&edged, "k0", &ConfigValue::Float(value)),
@@ -328,5 +349,64 @@ fn visit_shrinks<S: Strategy>(strategy: &S, cases: usize, mut observe: impl FnMu
     assert!(
         reductions > 0,
         "the shrink walk must actually simplify at least one generated value"
+    );
+}
+
+/// The mode-pinning mechanism behind the scheduler value and probe families.
+///
+/// Proves that a `no_shrink` mode selector fed through `prop_flat_map` keeps the
+/// variant tag fixed across `simplify()` while the payload still shrinks.
+#[test]
+fn mode_lock_preserves_tags_under_simplification() {
+    #[derive(Debug, Clone)]
+    enum Tagged {
+        Scalar(#[allow(dead_code)] f64),
+        NonFinite(#[allow(dead_code)] f64),
+        List(#[allow(dead_code)] usize),
+    }
+
+    fn tag(value: &Tagged) -> u8 {
+        match value {
+            Tagged::Scalar(_) => 0,
+            Tagged::NonFinite(_) => 1,
+            Tagged::List(_) => 2,
+        }
+    }
+
+    let strategy = mode_locked(vec![0_u8, 1, 2], |mode| match mode {
+        0 => (-1000.0_f64..=1000.0).prop_map(Tagged::Scalar).boxed(),
+        1 => Just(f64::NAN).prop_map(Tagged::NonFinite).boxed(),
+        _ => (0_usize..=8).prop_map(Tagged::List).boxed(),
+    });
+    let mut runner = TestRunner::new(Config {
+        cases: 8,
+        rng_seed: RngSeed::Fixed(0x5eed_c0de),
+        failure_persistence: None,
+        ..Config::default()
+    });
+    let mut simplifications = 0_usize;
+    let mut observed = [false; 3];
+    for _ in 0..8 {
+        let mut tree = strategy.new_tree(&mut runner).expect("mode-locked tree");
+        let initial = tag(&tree.current());
+        observed[usize::from(initial)] = true;
+        let mut guard = 0;
+        while guard < 64 && tree.simplify() {
+            guard += 1;
+            simplifications += 1;
+            assert_eq!(
+                tag(&tree.current()),
+                initial,
+                "a mode-locked strategy must not change variant while shrinking"
+            );
+        }
+    }
+    assert!(
+        simplifications > 0,
+        "the probe must actually simplify something, otherwise it certifies nothing"
+    );
+    assert!(
+        observed.iter().filter(|seen| **seen).count() >= 2,
+        "the probe must observe more than one mode: {observed:?}"
     );
 }

@@ -1385,6 +1385,18 @@ values for FRU, but live profiles must supply their measured bounds explicitly;
 `geometry_cases` rejects bounds its bounded catalog cannot satisfy instead of
 narrowing them.
 
+Downstream SUT families consume those helpers directly rather than re-deriving
+input shapes: `H-COORD` consumes `domains::finite_f32` and
+`domains::rounding_boundary_mm`, `H-IDS` consumes `domains::id_text`, and
+`H-IR-SERDE` consumes `domains::entity_layers`. The coordinate family is the SDK's
+own example as well: `slicer_sdk::coords::{mm_to_units, units_to_mm}` and
+`SCALING_FACTOR` are exercised by `H-COORD`, but that agreement is documented as
+**consistency evidence only** — correctness rests on the derived error envelopes,
+not on two implementations of the same shape agreeing. See the
+[property-testing charters](testing/properties.md#h-coord) for the full family set
+(`H-COORD`, `H-IDS`, `H-IR-SERDE`, `H-CONFIG-INTERN`, `H-CONFIG-BOUNDS`,
+`H-CHAINS`).
+
 Validity and shrinking are part of the helper contract. Every value produced or
 retained by `GeometryValueTree::current` passes `oracles::validate_geometry` for the
 requested `GeometryDomain`, must keep its topology class and minimum hole/component

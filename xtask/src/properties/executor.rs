@@ -1296,7 +1296,32 @@ mod tests {
             .lines()
             .filter(|line| line.ends_with(": test"))
             .collect();
-        assert_eq!(names, ["proptest_ir_travel_anchors_membership: test"]);
+        // The expected roster is derived from the live registry, not hardcoded:
+        // every record registered against this target must be discovered by the
+        // real `--list` pass, and discovery must add nothing the registry does
+        // not claim. A registered-but-undiscovered test fails here, which is the
+        // same condition the executor reports as `missing_property_execution`.
+        let mut expected: Vec<String> = registry
+            .property
+            .iter()
+            .filter(|candidate| candidate.package == "slicer-ir")
+            .filter(|candidate| candidate.target_name == "property_ir")
+            .filter(|candidate| {
+                candidate
+                    .features
+                    .iter()
+                    .any(|feature| feature == "slicer-ir/property_testing")
+            })
+            .map(|candidate| format!("{}: test", candidate.test_name))
+            .collect();
+        expected.sort();
+        let mut discovered: Vec<String> = names.iter().map(|name| (*name).to_owned()).collect();
+        discovered.sort();
+        assert_eq!(discovered, expected, "live discovery must match the registry");
+        assert!(
+            names.contains(&"proptest_ir_travel_anchors_membership: test"),
+            "the preserved anchor test must be discovered: {names:?}"
+        );
 
         let input = fs::read_to_string(root().join("test-properties.toml"))
             .expect("live fixture source")

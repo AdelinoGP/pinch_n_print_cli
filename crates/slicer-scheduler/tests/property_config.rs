@@ -126,11 +126,19 @@ fn config_bounds_strategy(
             let keys = present_keys(&declarations);
             let general = bound_values(max_abs_bound, max_list_len).expect("value domain");
             let shaped = shaped_probes(&declarations);
-            let probes = prop_oneof![
-                4 => (key_strategy(keys.clone()), general),
-                1 => (key_strategy(keys), nonfinite_values()),
-                3 => proptest::sample::select(shaped),
-            ];
+            // The probe family is pinned per case: a non-finite witness must not
+            // shrink into a finite scalar, and a declaration-derived shaped probe
+            // must not shrink into the general value domain.
+            let shaped_keyed: BoxedStrategy<(String, ConfigValue)> =
+                proptest::sample::select(shaped).boxed();
+            let probes = property_config_oracles::mode_locked(
+                vec![0_u8, 1, 2],
+                move |mode| match mode {
+                    0 => (key_strategy(keys.clone()), general.clone()).boxed(),
+                    1 => (key_strategy(keys.clone()), nonfinite_values()).boxed(),
+                    _ => shaped_keyed.clone(),
+                },
+            );
             (Just(declarations), probes)
         })
         .prop_map(|(declarations, (key, value))| (declarations, key, value))

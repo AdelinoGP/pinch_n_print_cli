@@ -45,6 +45,19 @@ The current implementations use `f32` at both conversion boundaries:
 a nominal maximum quantization error of half a unit (`0.00005 mm`) when the
 floating-point operations do not add a larger error.
 
+Neither direction is an exact inverse, and no caller may assume one. The derived bounds are
+documented and continuously exercised by the `H-COORD` property charter
+([property-testing charters](testing/properties.md#h-coord)): for exact real `m` with
+`t = 10_000·m`, `|mm_to_units(m) - t| ≤ 1/2 + 2^-24·|t| + 2^-150` units on a domain where
+`0 < 10_000·max_abs_mm ≤ 2^24`, and for integer `n` with
+`|units_to_mm(n) - n/10_000| ≤ 2^-24·|n/10_000| + 2^-150` millimetres on
+`0 < max_abs_units ≤ 2^24`. The exact tie rule (`1/32 mm` → `312.5` units → `313`, symmetric
+for negatives, both zero signs → `0`) is checked separately, because the envelope alone admits
+truncation at a tie. SDK-helper and `Point2` agreement with `mm_to_units` is consistency
+evidence only — correctness rests on the analytical envelopes, not on two implementations
+agreeing. `Point2` integer identity (including `i64::MIN`/`i64::MAX`) never takes a float round
+trip.
+
 ### Checked external-`f64` conversion (Normative)
 
 A conversion boundary that receives millimetres as **`f64`** from outside this
