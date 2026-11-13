@@ -185,13 +185,13 @@ registration for these records.
 
 | ID | exact discovered test | libtest wall | verdict |
 |---|---|---:|---|
-| `H-IR-ANCHORS` | `proptest_ir_travel_anchors_membership` | 9.23s | PASS |
-| `H-COORD` | `proptest_coord_conversion_envelopes` | 0.29s | PASS |
+| `H-IR-ANCHORS` | `proptest_ir_travel_anchors_membership` | 9.90s | PASS |
+| `H-COORD` | `proptest_coord_conversion_envelopes` | 0.27s | PASS |
 | `H-IDS` | `proptest_entity_and_modifier_ids` | 0.32s | PASS |
-| `H-CONFIG-BOUNDS` | `proptest_config_scalar_bounds` | 1.27s | PASS |
-| `H-IR-SERDE` | `proptest_ir_serialization_and_defaults` | 5.83s | PASS |
-| `H-CONFIG-INTERN` | `proptest_config_equality_hash_and_interning` | 1.33s | PASS |
-| `H-CHAINS` | `proptest_canonical_chain_product` | 0.39s | PASS |
+| `H-CONFIG-BOUNDS` | `proptest_config_scalar_bounds` | 1.42s | PASS |
+| `H-IR-SERDE` | `proptest_ir_serialization_and_defaults` | 6.79s | PASS |
+| `H-CONFIG-INTERN` | `proptest_config_equality_hash_and_interning` | 1.32s | PASS |
+| `H-CHAINS` | `proptest_canonical_chain_product` | 0.36s | PASS |
 
 Every run printed a matching `begin`/`end` controller pair with
 `"outcome":"passed"`, `"completion_eligible":true`, `"call_counts_complete":true` and
@@ -206,8 +206,8 @@ every tier:
 | Selection | Tier | Wall | Records at their profile case count | Verdict |
 |---|---|---:|---|---|---|
 | all seven `--property` flags | routine | 19 s | 7 / 7 at 64 | PASS |
-| all seven `--property` flags | extended | 37 s | 7 / 7 at 1024 | PASS |
-| all seven `--property` flags `--seed 37` | routine | 18 s | 7 / 7 at 64 | PASS |
+| all seven `--property` flags | extended | 36 s | 7 / 7 at 1024 | PASS |
+| all seven `--property` flags `--seed 37` | routine | 19 s | 7 / 7 at 64 | PASS |
 
 Logs: `target/evidence/final-all-routine.log`, `final-all-extended.log`,
 `final-replay-37.log`; the corresponding inner executor logs are the `-inner.log` siblings.
@@ -219,16 +219,28 @@ manufactured.
 
 ### Windows CI lane
 
-The prerequisite `properties-windows` job selects records dynamically from
-`test-properties.toml`; these seven records carry both measured profiles and satisfy the schema
-the job validates (`test-properties.toml` schema version 1, per-record features, tier tables,
-non-SCAD records without a process timeout). **Hosted execution is not established by this
-document.** The runs above are local executions of the same `cargo xtask test --properties`
-path the job invokes, and they prove the records are discoverable, selectable and passing on
-Windows — they do not prove a hosted CI run happened. Packet
-`proptest-openrscad_17_pbt-ci-closure` owns the rollout, but the packet text does not permit
-deferring this family's actual execution, so a hosted run with these records remains a blocking
-gap.
+### Hosted Windows execution (required evidence, obtained)
+
+| Field | Value |
+|---|---|
+| Workflow run | https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43513004846 |
+| Commit | `ba807a1` |
+| Job | `Properties (Windows)` — **success** |
+| Step | `Run routine properties` — **success** |
+| Property test binaries | 12 `test result: ok` lines, 0 `FAILED` |
+| Runner verdict | `VERDICT: PASS` |
+
+The `properties-windows` job selects records dynamically from `test-properties.toml` with no
+hand-maintained list, so its `cargo xtask test --summary --properties --tier routine` invocation
+runs every non-SCAD record — the seven families above plus the five `D-*` domain records. Twelve
+passing binaries is exactly that population, and the run reported `PASS`. This satisfies the
+packet's requirement that an actual hosted Windows execution include these records; packet
+`proptest-openrscad_17_pbt-ci-closure` still owns the rollout/manual-dispatch audit, which is a
+separate obligation.
+
+The local runs recorded earlier in this document remain as the per-record timing and
+accepted-case evidence; they are not a substitute for the hosted run above, which is why both are
+recorded.
 
 ## Compile versus execution cost (measured separately)
 

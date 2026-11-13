@@ -214,7 +214,10 @@ Recorded while implementing; none changes the packet's scope.
    which restores the 3.0.0 wire layout; `region_map_versioned_decode_tdd` passes again with the
    frozen fixture and assertion strength unchanged, and no fixture was regenerated. (b) The
    required hosted Windows execution was obtained through the routine `properties-windows` lane
-   on a draft PR (see the evidence document for the run URL and job result).
+   on draft PR #6: workflow run
+   https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43513004846 at commit `ba807a1`,
+   job `Properties (Windows)` = success, step `Run routine properties` = success, 12 property
+   binaries passed with `VERDICT: PASS` and no failures.
 
 ## Authoring preflight
 
