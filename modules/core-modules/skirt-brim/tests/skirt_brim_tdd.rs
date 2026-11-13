@@ -512,12 +512,105 @@ fn brim_quantises_on_the_canonical_flow_spacing() {
         })
         .fold(f32::MIN, f32::max);
     // Outer boundary at gap + quantised width = 0.1 + 11 * 2 * spacing, less
-    // the half-spacing first-line inset; the square footprint's half extent is
-    // 1.0 mm, so the outermost line's max x is 10 + 1 + (boundary - spacing/2).
-    let expected = 10.0 + 1.0 + (0.1 + 11.0 * 2.0 * spacing) - spacing * 0.5;
+    // the half-spacing first-line inset. The anchor is the reconstructed
+    // contour: the wall centerline (half extent 1.0 mm) grown by half the
+    // outer-wall width (0.4 mm), so the outermost line's max x is
+    // 10 + 1.2 + (boundary - spacing/2).
+    let anchor_half_extent = 1.0 + 0.5 * 0.4;
+    let expected =
+        10.0 + anchor_half_extent + (0.1 + 11.0 * 2.0 * spacing) - spacing * 0.5;
     assert!(
         (outer - expected).abs() < 0.05,
         "outermost brim x={outer} should be {expected}"
+    );
+}
+
+#[test]
+fn brim_anchor_is_the_contour_not_the_wall_centerline() {
+    // The IR carries the outer-wall *centerline*; canonical `make_brim`
+    // anchors on the slice contour, half a wall width outside it. The entity's
+    // own point width (0.8 mm here) is wider than the config line width, so a
+    // module that read `line_width` instead would place the brim 0.2 mm too
+    // far in; this pins the point-width reconstruction.
+    let cfg = custom_config(0, 6.0, 1, 8.0, 0.4, true);
+    let sb = SkirtBrim::from_config(&cfg).unwrap();
+    let mut entity = make_loop_at(10.0, 10.0, 1.0, 0.2);
+    for point in &mut entity.path.points {
+        point.width = 0.8;
+    }
+    let mut layers = vec![make_layer_with_entities(0, 0.2, vec![entity])];
+    sb.process(&mut layers).unwrap();
+
+    // The innermost brim line is the smallest ring; its left edge sits
+    // contour + gap + spacing/2 from the part centre.
+    let ring_half_extent = |e: &PrintEntity| -> f32 {
+        let min = e.path.points.iter().map(|p| p.x).fold(f32::MAX, f32::min);
+        let max = e.path.points.iter().map(|p| p.x).fold(f32::MIN, f32::max);
+        (max - min) * 0.5
+    };
+    let inner_ring = layers[0]
+        .ordered_entities
+        .iter()
+        .filter(|e| e.role == ExtrusionRole::Brim)
+        .min_by(|a, b| {
+            ring_half_extent(a)
+                .partial_cmp(&ring_half_extent(b))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .expect("expected brim entities");
+    let brim_min_x = inner_ring
+        .path
+        .points
+        .iter()
+        .map(|p| p.x)
+        .fold(f32::MAX, f32::min);
+
+    // Contour half extent: 1.0 (centerline) + 0.5 * 0.8 = 1.4 mm. The first
+    // concentric line sits gap + spacing/2 outside it, and its inner edge is
+    // half the *printed* width (0.4) back in.
+    let contour_half = 1.4;
+    let line_center = 10.0 - brim_min_x;
+    let spacing = 0.4; // `custom_config` authors no first_layer_height
+    assert!(
+        (line_center - (contour_half + 0.1 + spacing * 0.5)).abs() < 0.03,
+        "innermost brim line center at {line_center} mm from the part, expected {}",
+        contour_half + 0.1 + spacing * 0.5
+    );
+    assert!(
+        line_center - 0.2 > contour_half,
+        "the brim bead's inner edge ({}) must stay outside the part outline ({contour_half})",
+        line_center - 0.2
+    );
+}
+
+#[test]
+fn skirt_hull_reconstructs_the_contour_on_higher_layers() {
+    // `skirt_height = 2`: layer 1 carries wall centerlines only, so its hull
+    // is grown by half its outer-wall width before it joins the final hull.
+    // Not exercised by the matched job (`skirt_height = 1`); this pins the
+    // path so a later change cannot silently drop it.
+    let cfg = custom_config(1, 1.0, 2, 0.0, 0.4, true);
+    let sb = SkirtBrim::from_config(&cfg).unwrap();
+    let mut layers = vec![
+        make_layer_with_entities(0, 0.2, vec![make_loop_at(10.0, 10.0, 1.0, 0.2)]),
+        make_layer_with_entities(1, 0.4, vec![make_loop_at(10.0, 10.0, 2.0, 0.4)]),
+    ];
+    sb.process(&mut layers).unwrap();
+
+    let skirt_max_x = layers[0]
+        .ordered_entities
+        .iter()
+        .filter(|e| e.role == ExtrusionRole::Skirt)
+        .flat_map(|e| e.path.points.iter())
+        .map(|p| p.x)
+        .fold(f32::MIN, f32::max);
+
+    // Layer-1 hull half extent 2.0 + 0.5 * 0.4 = 2.2 mm; one skirt loop sits
+    // skirt_distance + spacing/2 = 1.0 + 0.2 outside it.
+    let expected = 10.0 + 2.2 + 1.2;
+    assert!(
+        (skirt_max_x - expected).abs() < 0.05,
+        "highest-layer skirt loop at x={skirt_max_x}, expected {expected}"
     );
 }
 

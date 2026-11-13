@@ -189,6 +189,34 @@ pub(crate) fn offset(
     host::offset_polygons(polys, delta_mm, join, arc_tolerance_mm)
 }
 
+/// Modal non-zero point width of a wall loop, in mm, with ties broken by the
+/// first occurrence.
+///
+/// The IR stamps one width per point. Canonical `make_brim` anchors on the
+/// slice contour, which is half a wall width outside the wall centerline; the
+/// uniform reconstruction uses the loop's modal width, so a classic (uniform)
+/// wall returns exactly its width and an Arachne wall returns its dominant
+/// width. Returns `None` when every width is zero or non-finite.
+pub(crate) fn modal_non_zero_width(widths: &[f32]) -> Option<f32> {
+    // (bit pattern, count, first index), small enough that a linear scan beats
+    // a hash map and keeps first-occurrence order explicit.
+    let mut groups: Vec<(u32, usize, usize)> = Vec::new();
+    for (index, &width) in widths.iter().enumerate() {
+        if !width.is_finite() || width <= 0.0 {
+            continue;
+        }
+        let bits = width.to_bits();
+        match groups.iter_mut().find(|group| group.0 == bits) {
+            Some(group) => group.1 += 1,
+            None => groups.push((bits, 1, index)),
+        }
+    }
+    groups
+        .into_iter()
+        .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.2.cmp(&a.2)))
+        .map(|(bits, _, _)| f32::from_bits(bits))
+}
+
 /// Area of a polygon ring in mm² (shoelace). Used only to pick the outer
 /// contour of an offset result, never as a geometry input.
 pub(crate) fn ring_area_mm2(contour: &Polygon) -> f32 {

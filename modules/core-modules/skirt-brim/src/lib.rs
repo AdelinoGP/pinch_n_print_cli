@@ -211,6 +211,12 @@ impl SkirtBrim {
         if self.brim_width > 0.0 {
             let mut object_order: Vec<String> = Vec::new();
             let mut footprints: HashMap<String, Vec<ExPolygon>> = HashMap::new();
+            // Per-object outer-wall point widths. Canonical `make_brim` anchors
+            // on the *slice contour*; the IR carries the outer-wall
+            // **centerline**, half a wall width inside it. The contour is
+            // reconstructed by offsetting the filled footprint outward by half
+            // the wall width (the fourth recorded parity exception, t140/t144).
+            let mut anchor_widths: HashMap<String, Vec<f32>> = HashMap::new();
             let mut brim_region_key: Option<RegionKey> = None;
 
             for entity in first.entities {
@@ -233,6 +239,10 @@ impl SkirtBrim {
                 if let Some(slot) = footprints.get_mut(&key) {
                     slot.push(poly);
                 }
+                anchor_widths
+                    .entry(key.clone())
+                    .or_default()
+                    .extend(entity.path.points.iter().map(|p| p.width));
                 if brim_region_key.is_none() {
                     brim_region_key = Some(RegionKey {
                         global_layer_index: first.layer_index,
@@ -328,6 +338,21 @@ impl SkirtBrim {
                             holes: Vec::new(),
                         })
                         .collect();
+                    // Reconstruct the slice contour `make_brim` anchors on:
+                    // the filled wall-centerline footprint grown by half the
+                    // resolved outer-wall width. The uniform form (per-object
+                    // modal width) is the t140-settled approximation on
+                    // Arachne, whose wall width varies per point.
+                    let anchor_width = anchor_widths
+                        .get(&object_id)
+                        .and_then(|widths| geometry::modal_non_zero_width(widths))
+                        .unwrap_or(self.line_width);
+                    let contour = geometry::offset(
+                        &filled,
+                        0.5 * anchor_width,
+                        OffsetJoinType::Round,
+                        geometry::BRIM_ARC_TOLERANCE_MM,
+                    );
                     // Canonical `make_brim` builds the brim *area* (an annulus
                     // between the gap-offset outline and the width-offset
                     // outline), subtracts the no-brim areas, and only then
@@ -336,13 +361,13 @@ impl SkirtBrim {
                     // ring lines — is what carries a support notch inward
                     // through every successive line.
                     let inner = geometry::offset(
-                        &filled,
+                        &contour,
                         self.brim_object_gap,
                         OffsetJoinType::Round,
                         geometry::BRIM_ARC_TOLERANCE_MM,
                     );
                     let outer = geometry::offset(
-                        &filled,
+                        &contour,
                         self.brim_object_gap + quantised,
                         OffsetJoinType::Round,
                         geometry::BRIM_ARC_TOLERANCE_MM,
@@ -409,12 +434,52 @@ impl SkirtBrim {
         // ---- Skirt: convex-hull anchored, `skirt_height` layers -----------
         if self.skirt_loops > 0 && max_layer > 0 {
             let mut hull_points: Vec<(f32, f32)> = Vec::new();
-            for layer in layers.iter().take(max_layer) {
+            for (layer_pos, layer) in layers.iter().take(max_layer).enumerate() {
+                let mut layer_points: Vec<(f32, f32)> = Vec::new();
+                let mut layer_widths: Vec<f32> = Vec::new();
                 for entity in layer.entities {
                     if matches!(entity.role, ExtrusionRole::Skirt | ExtrusionRole::Brim) {
                         continue;
                     }
-                    hull_points.extend(entity.path.points.iter().map(|p| (p.x, p.y)));
+                    layer_points.extend(entity.path.points.iter().map(|p| (p.x, p.y)));
+                    if entity.role == ExtrusionRole::OuterWall {
+                        layer_widths.extend(entity.path.points.iter().map(|p| p.width));
+                    }
+                }
+                // Layer 0 is dominated by the brim footprint (`brim_points`
+                // joins the hull below) and needs no separate contour offset.
+                // Higher layers carry only wall centerlines, so each layer's
+                // hull is reconstructed by half the outer-wall width before it
+                // joins the final hull: the convex hull commutes with a
+                // Minkowski sum, so the hull of the offset contours is the
+                // offset of the hull.
+                if layer_pos == 0 {
+                    hull_points.extend(layer_points);
+                    continue;
+                }
+                let layer_hull = geometry::convex_hull(&layer_points);
+                if layer_hull.len() < 3 {
+                    continue;
+                }
+                let layer_poly = ExPolygon {
+                    contour: slicer_ir::Polygon {
+                        points: layer_hull
+                            .iter()
+                            .map(|&(x, y)| slicer_ir::Point2::from_mm(x, y))
+                            .collect(),
+                    },
+                    holes: Vec::new(),
+                };
+                let anchor_width = geometry::modal_non_zero_width(&layer_widths)
+                    .unwrap_or(self.line_width);
+                let contour = geometry::offset(
+                    std::slice::from_ref(&layer_poly),
+                    0.5 * anchor_width,
+                    OffsetJoinType::Round,
+                    geometry::BRIM_ARC_TOLERANCE_MM,
+                );
+                for ex in &contour {
+                    hull_points.extend(ex.contour.points.iter().map(slicer_ir::Point2::to_mm));
                 }
             }
             hull_points.extend(brim_points);
