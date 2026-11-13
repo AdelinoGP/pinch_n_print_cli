@@ -18,8 +18,8 @@ generalises the bounded scripted domains into unrestricted polygon generality.
 
 | Item | Value |
 |---|---|
-| `source_revision` | the final-run `source-state.json` under `target/property-testing/296007284f258f8e2622e20e4ea24ad0/` records the revision; the tree was dirty with the paths below |
-| Working tree during measurement | dirty: `.github/workflows/ci.yml`, `test-properties.toml`, `xtask/src/properties.rs`, `xtask/src/properties/executor.rs`, `crates/slicer-sdk/Cargo.toml`, `crates/slicer-sdk/src/test_support/property_testing/{mod,run}.rs`, `crates/slicer-sdk/src/test_support/property_testing/scripted/{mod,emit,reference,strategy,artifacts}.rs`, `crates/slicer-sdk/tests/**`, `docs/05_module_sdk.md`, `docs/21_data_defaults_and_fixtures.md`, `docs/scad/windows-feasibility.md`, `docs/testing/properties.md`, this file |
+| Final-run revision | the final extended run's `target/property-testing/907a737cc726704e53360597400b5853/D-SCAD-2D/source-state.json` records revision `9ce1c132a70e390d6cde712ccabb83e95699d78b`; the tree was dirty with the paths below |
+| Working tree during the final runs | dirty: `crates/slicer-sdk/tests/support/step4_contracts.rs`, `xtask/Cargo.toml`, `xtask/src/properties/executor.rs`, `docs/spec_packets/proptest-openrscad_04_pbt-scripted/packet.spec.md`, `docs/testing/proptest-scripted-evidence.md` |
 | OS | Windows 10.0.26300.9711 (x86_64) |
 | Rust | `rustc 1.96.0 (ac68faa20 2026-05-25)` |
 | Cargo | `cargo 1.96.0 (30a34c682 2026-05-25)` |
@@ -122,9 +122,9 @@ The attempt journal is written **before** emission and before any adapter call.
 
 | Run | Record | Cases | Attempt directories | Evaluated | Rejected | Failed |
 |---|---|---|---|---|---|---|
-| routine (`296007284f258f8e2622e20e4ea24ad0`, delivered tree) | `D-SCAD-2D` | 24 | 48 | 48 | 0 | 0 |
+| routine (`8aaacedd1e5f9d2f4d720b4e11d5805f`, final tree) | `D-SCAD-2D` | 24 | 48 | 48 | 0 | 0 |
 | routine (same) | `D-SCAD-3D` | 24 | 48 | 48 | 0 | 0 |
-| extended (`e87fb1fee79fe255ba4ce39d9c9f7787`, delivered tree) | `D-SCAD-2D` | 96 | 192 | 192 | 0 | 0 |
+| extended (`907a737cc726704e53360597400b5853`, final tree) | `D-SCAD-2D` | 96 | 192 | 192 | 0 | 0 |
 | extended (same) | `D-SCAD-3D` | 96 | 192 | 192 | 0 | 0 |
 
 There are two attempt directories per accepted case because `isolation = "fork"`
@@ -221,8 +221,8 @@ solid, bridge solid — and 8 shrink trees).
 | Candidate render alone (`evaluate_recipe`, 100 samples) | ≈ 0.53 ms per recipe in the recorded run (only the recorded run is quoted as evidence) |
 | Structural shrink (8 trees, 170 accepted steps) | ≈ 26 ms per accepted step (4.41 s total); each step re-emits, re-renders and re-certifies across all candidates, so the cost is not per accepted step alone |
 | SDK+engine compilation | the engine edge is the measured cold cost in `docs/scad/windows-feasibility.md` (≈ 4 m 26 s for a full cold `slicer-scad --features openrscad` build); no separate cold figure is claimed here |
-| Selected routine run (delivered tree) | `D-SCAD-2D` 1.52 s, `D-SCAD-3D` 0.34 s |
-| Selected extended run (delivered tree) | `D-SCAD-2D` 8.85 s, `D-SCAD-3D` 1.37 s |
+| Selected routine run (final tree) | `D-SCAD-2D` 1.53 s, `D-SCAD-3D` 0.40 s |
+| Selected extended run (final tree) | `D-SCAD-2D` 10.64 s, `D-SCAD-3D` 1.71 s |
 
 Attribution is measured, not assumed. Fork isolation spawns **one** worker per
 property process, not one per case; the retained journals show a single worker
@@ -258,7 +258,7 @@ Both records use the same finite profile shape. Registry values are in
 | `max_scad_vertices` / `max_scad_triangles` | 200000 / 400000 | 400000 / 800000 | explicit mesh capacity, far below the adapter defaults but finite |
 | `evaluation_steps` | 5000000 | 20000000 | explicit finite fuel; `0`/`u64::MAX` are rejected by the adapter |
 | `worker_stack_bytes` | 268435456 | 268435456 | the adapter's measured safe default (≥ 64 MiB floor) |
-| `test_process_timeout_ms` | 120000 | 600000 | whole libtest child, including generation and shrink rendering; measured selected runs are 2.30 s / 28.99 s |
+| `test_process_timeout_ms` | 120000 | 600000 | whole libtest child, including generation and shrink rendering; the final measured per-property runs are 1.53 s / 0.40 s routine and 10.64 s / 1.71 s extended |
 
 `max_ast_nodes`, `max_ast_depth` and `max_geometry_nodes` are **derived** from
 the recipe bound rather than left permissive: eight AST nodes per recipe node
@@ -272,18 +272,35 @@ a render, so a mis-sized profile fails loudly.
 
 Registered `requires_scad` records must carry a positive
 `bounds.test_process_timeout_ms`; the registry validator rejects a record without
-one. The executor supervises the whole libtest execution child: it drains both
-pipes on reader threads, polls `try_wait`, and on deadline terminates the
-**Windows process tree** with `taskkill /T /F`, then joins the child and reports
-a nonzero status with `property_process_timeout` in the combined log. Killing
-only the controller would leave Proptest worker processes running.
+one. The executor supervises the whole libtest execution child: it creates a
+Windows Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, spawns the child
+**suspended**, assigns it to the job, and only then resumes its main thread, so
+no descendant can be created before assignment. It drains both pipes on reader
+threads with a bounded 2 s grace per pipe; an expired grace is reported as
+`property_child_output_incomplete` instead of silently truncating the tail,
+polls `try_wait`, and on deadline terminates the **Windows process tree** with
+`taskkill /T /F`, then joins the child and reports a nonzero status with
+`property_process_timeout` in the combined log. Killing only the controller
+would leave Proptest worker processes running.
 
-Proven by `property_scad_supervision_covers_generation_shrink_and_descendants`
+Proven by `property_scad_supervision_covers_generation_shrink_and_descendants`,
+`property_scad_job_object_contains_a_descendant_spawned_before_assignment` and
+`property_supervision_captures_finite_child_output_without_truncation`
 (`cargo test -p xtask --bin xtask -- property_`): a fixture that blocks **before
-any callback** and keeps a live descendant process is ended inside its 1500 ms
-deadline, the descendant PID is gone afterwards, the log records
-`property_process_timeout`, and a real bounded `D-SCAD-3D` run passes under the
-same supervised path with `status: Some(0) (timed_out: false)`.
+any callback** and keeps a live descendant process has termination initiated
+when its 1500 ms deadline expires (the test asserts the deadline fired and the
+supervisor returned within 30 s), the descendant PID is gone afterwards, the log
+records `property_process_timeout`, and a real bounded `D-SCAD-3D` run passes
+under the same supervised path with `status: Some(0) (timed_out: false)`. The
+pre-assignment regression deliberately widens the spawn-to-assignment window by
+500 ms and asserts the descendant is still contained; with the suspension
+removed the same test fails on the descendant assertion, so it is not a
+structural no-op. The finite-output probe captures and retains a 1 MiB payload
+end to end, and a test-only failing reader proves a terminal read error is
+reported as incomplete rather than as clean EOF. The liveness check uses
+`OpenProcess`/`WaitForSingleObject`, is wall-clock bounded (15 s), rejects an
+absence observed after the deadline, and fails loudly if the observation cannot
+be made.
 
 ## 11. Full `G-SCAD` closure
 
@@ -304,25 +321,30 @@ property surface. It does not claim unrestricted SCAD program generality, and it
 does not make the engine an oracle.
 
 Unsafe-path evidence includes a directory where a file is expected, a
-non-directory replay root and an oversized file. The probe also attempts a
-directory junction and a file symlink where a regular file is expected; on this
-machine's workspace volume both `mklink` forms are refused by Windows ("Local
-volumes are required", "The specified path is invalid"), so that execution
-witness is **unverified here** — the probe reports both failures instead of
-passing silently. The refusal itself is implemented in `read_checked` (symlink
-metadata plus a canonical-containment check).
+non-directory replay root and an oversized file. It also executes the
+reparse-point refusal: the probe creates a real Windows directory junction where
+`source.scad` is expected and `replay_scripted_case` returns `Artifact`;
+`read_checked` rejects the reparse point from `symlink_metadata` before opening
+it. If junction creation is unavailable the probe falls back to a file symlink
+and fails if neither primitive can be created, so the refusal assertion cannot
+pass silently. The earlier "Local volumes are required" / "The specified path is
+invalid" result was a probe defect: `canonicalize` returns a `\\?\` verbatim path
+that `mklink` rejects. The probe now strips that prefix and passes the `mklink`
+arguments separately, which executes the refusal.
 
 Native-risk fixture and replay bodies run in supervised children of the test
 binary (one child per contract body, deadline-killed on expiry), not on the
 parent thread.
 
 Explicit-seed sequence evidence: the routine `D-SCAD-2D` record ran with seed
-`6892392065927971396` (run token `05be38e61a464da0934e114ebe22c77f`, PASS in
-1.29 s), and the same seed was then replayed through the registry
+`1649947505625941070` (run token `0927ef6c3b10a0b98397596378aeb5a6`, PASS in
+1.48 s), and the same seed was then replayed through the registry
 (`cargo xtask test --summary --properties --property D-SCAD-2D --tier routine
---with-scad --seed 6892392065927971396`; run token
-`84809a1a2af13a9816405faa64e175d5`, PASS in 1.27 s). Both contexts record the
-same seed, `source_state_digest`, profile and feature set; the comparison is in
+--with-scad --seed 1649947505625941070`; run token
+`a10b44e4e724a052844916111762c551`, PASS in 1.66 s). Both contexts record the
+same seed, `source_state_digest`
+(`cabe96617975553703be5803a7afeba78b75931e682bd1bff06c515436534c3a`), profile
+and feature set; the comparison is in
 `target/pbt-scad-seed-replay-evidence.log`.
 
 Reproducibility evidence: `write_scripted_artifacts` followed by

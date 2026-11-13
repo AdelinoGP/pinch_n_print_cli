@@ -57,8 +57,11 @@ A `requires_scad = true` record must additionally carry a positive
 `bounds.test_process_timeout_ms`. The executor applies it to the whole libtest
 execution child — recipe generation, candidate rendering, shrink rendering and
 the property callbacks — and terminates the Windows process tree on deadline.
-That is not a substitute for Proptest's per-case `timeout_ms`, and neither one
-substitutes for the other.
+The child is created suspended, assigned to a kill-on-close Job Object, and only
+then resumed, so a descendant cannot be created before containment is
+established. Pipe capture is bounded and reports an incomplete tail instead of
+silently truncating it. That is not a substitute for Proptest's per-case
+`timeout_ms`, and neither one substitutes for the other.
 
 The typed parser rejects duplicate IDs and test identities, unknown keys at any level, missing
 profiles, nonexistent package/target/feature claims (checked against Cargo metadata via

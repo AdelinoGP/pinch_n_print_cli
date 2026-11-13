@@ -307,18 +307,27 @@ shrink measurements and the eligible profiles in
     `property_scripted_contracts` sets it. It is how a kill is proven to retain a
     real `prepared` attempt rather than a fabricated `evaluated` one.
 11. **Windows containment is a Job Object plus `taskkill /T`.** The supervisor
-    creates a Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and assigns the
-    execution child to it, so a descendant left behind by an abnormal controller
-    exit is terminated when the job handle closes; the deadline path additionally
-    runs `taskkill /T /F`. `windows-sys` 0.59 was already in the workspace lock,
-    so this only adds an `xtask` dependency edge. Assignment can be refused when
-    the runner already holds a non-nestable job; the deadline kill remains the
-    fallback and the job handle is still the abnormal-exit guarantee. Containment
-    is established **before execution is accepted**: a failed job creation or
-    assignment refuses to run the child, and the deadline path kills the direct
-    child on every platform before waiting so a blocked fixture cannot outlive its
-    deadline. Both paths are tested, including a fixture that exits `9` with a
-    live descendant.
+    creates a Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, spawns the
+    execution child with `CREATE_SUSPENDED`, assigns it to the job, and resumes
+    its main thread only after assignment. Assigning a child that is already
+    running leaves a startup window in which the child can create a descendant;
+    that descendant is not retroactively enrolled and survives an abnormal
+    controller exit. The suspended spawn closes that window. The deadline path
+    additionally runs `taskkill /T /F`, and pipe draining has a bounded 2 s
+    grace per pipe; an expired grace is reported as
+    `property_child_output_incomplete` rather than silently treated as a
+    complete capture. `windows-sys` 0.59 was already in the workspace lock, so
+    this only adds an `xtask` dependency edge. Assignment can be refused when the
+    runner already holds a non-nestable job; the supervisor then kills and reaps
+    the child and refuses the run rather than executing it uncontained.
+    Containment is established **before execution is accepted**: a failed job
+    creation, assignment or resume refuses to run the child, and the deadline
+    path kills the direct child on every platform before waiting so a blocked
+    fixture cannot outlive its deadline. Both paths are tested, including a
+    fixture that exits `9` with a live descendant, a regression that deliberately
+    widens the spawn-to-assignment window (with the suspension removed that
+    regression fails on the surviving descendant), and a finite-output capture
+    probe.
 12. **Solid domains accept only convex rectangular constituent profiles.**
     `geometry` on a solid domain describes the bounded constituent planar
     domain. The bounded solid families build convex rectangular profiles, so a
@@ -354,8 +363,9 @@ shrink measurements and the eligible profiles in
     candidate render. Both killed runs retain a `prepared` attempt.
 ## Closure review status
 
-Four independent closure reviews were run. Every substantive finding was fixed
-and re-verified:
+Independent closure reviews were run, including post-fix confirmation passes.
+The post-fix confirmation pass found one blocker and several test-oracle
+weaknesses; every substantive finding was fixed and re-verified:
 
 - shrink progress after a passing candidate (rejection memory keyed by
   transition, plus a committed selective-failure regression);
@@ -372,22 +382,38 @@ and re-verified:
   constituent-domain restriction;
 - `failure.json` attempt links and the `--with-scad` reproduction command;
 - the CI log-ownership collision;
-- Windows Job Object containment (Windows-only, fail-closed, with abnormal-exit
-  and deadline tests) and the non-Windows deadline path;
+- Windows Job Object containment (Windows-only, fail-closed, suspended spawn
+  assigned before resumption, bounded pipe drain, abnormal-exit/deadline tests
+  and a pre-assignment regression) and the non-Windows deadline path;
+- the spawn-before-assignment containment gap, found by the post-fix review and
+  closed with `CREATE_SUSPENDED` plus a resume after job assignment;
+- the process-liveness oracle (now `OpenProcess`/`WaitForSingleObject`,
+  wall-clock bounded and fail-loud) and the pipe-drain join that could outlive
+  the deadline when a descendant inherited a write handle; an expired drain is
+  reported as incomplete capture rather than silently truncating;
+- silent pipe-capture truncation and terminal read errors (the 1 MiB
+  finite-output probe retains its payload end to end, a failing-reader probe
+  reports incomplete capture, and the abnormal-exit/deadline tests assert
+  complete capture);
 - the contract-test process-global context race (attempt journaling is
   thread-local);
 - supervised children for the native-risk fixture/replay bodies.
 
-One witness remains **unverified on this machine**: creating a Windows directory
-junction or file symlink is refused by the workspace volume ("Local volumes are
-required", "The specified path is invalid"). The refusal itself is implemented
-(symlink metadata plus canonical containment) and the probe reports the
-environment limitation instead of silently passing. The final review recorded
-that item plus the completed fixes; the delivered tree's executable gates (SDK
-contracts, reference/fatal-shrink units, xtask property tests, workspace
+The last unverified witness is now executed. The unsafe-path probe creates a
+real Windows directory junction where `source.scad` is expected,
+`replay_scripted_case` returns `Artifact`, and the probe fails if neither a
+junction nor a file symlink can be created. The earlier "Local volumes are
+required" result was a probe defect, not a volume restriction: `canonicalize`
+returns a `\\?\` verbatim path that `mklink` rejects, and the preformatted
+`cmd /C` string made the quoting worse. Stripping the prefix and passing the
+`mklink` arguments separately executes the refusal. Re-verified with the full
+`property_scripted_contracts` target (17 passed, 1 ignored) after the fix.
+
+**Closure review verdict: APPROVED.** The spawn-before-assignment blocker is
+closed by a suspended spawn that is assigned to the job before resumption; the
+new regression fails on the surviving descendant when the suspension is removed,
+and the test-oracle weaknesses now fail loudly instead of reporting a false
+green. The delivered tree's executable gates (SDK contracts,
+reference/fatal-shrink units, xtask property tests, workspace
 clippy/build/check, literals, test-quality, guest freshness, and the full
 incremental routine and extended `--with-scad` runs) are green.
-
-The packet keeps `status: implemented` because the implementation and all
-executable acceptance evidence are delivered; closure review approval is
-recorded here rather than implied.

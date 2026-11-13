@@ -6,6 +6,7 @@ use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -127,6 +128,8 @@ struct ChildOutput {
     stdout: Vec<u8>,
     stderr: Vec<u8>,
     timed_out: bool,
+    stdout_complete: bool,
+    stderr_complete: bool,
 }
 
 impl ChildOutput {
@@ -140,6 +143,8 @@ impl ChildOutput {
             stdout: output.stdout,
             stderr: output.stderr,
             timed_out: false,
+            stdout_complete: true,
+            stderr_complete: true,
         }
     }
 }
@@ -299,6 +304,13 @@ impl ExecutionLog {
             "\n=== property {} {:?} status: {:?} (timed_out: {}) ===",
             plan.property_id, plan.kind, output.status, output.timed_out
         )?;
+        if !output.stdout_complete || !output.stderr_complete {
+            let message = format!(
+                "property_child_output_incomplete: {} {:?} (stdout_complete: {}, stderr_complete: {})",
+                plan.property_id, plan.kind, output.stdout_complete, output.stderr_complete
+            );
+            self.message(&message)?;
+        }
         self.file.flush()?;
         if !self.summary {
             io::stdout().write_all(&output.stdout)?;
@@ -315,8 +327,8 @@ impl ExecutionLog {
 /// handle terminates any process still in the job. That covers the case the
 /// deadline path cannot: the controller exits abnormally and leaves a worker
 /// descendant behind. Assignment can fail when the runner already placed this
-/// process in a non-nestable job; the caller keeps the `taskkill /T` deadline
-/// path in that case and records the failure.
+/// process in a non-nestable job; the supervisor kills and reaps the child and
+/// refuses the run rather than executing it uncontained.
 #[cfg(windows)]
 struct ProcessJob(windows_sys::Win32::Foundation::HANDLE);
 
@@ -381,6 +393,122 @@ impl Drop for ProcessJob {
     }
 }
 
+// Test-only delay between spawning a suspended child and assigning it to the
+// containment job. Widening the startup window on purpose lets a regression
+// prove the child cannot execute before assignment.
+#[cfg(all(test, windows))]
+thread_local! {
+    static TEST_ASSIGN_DELAY_MS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Resume the primary thread of a child created with `CREATE_SUSPENDED`.
+///
+/// A freshly created process has exactly one thread. Enumerate it rather than
+/// relying on std, which does not expose the thread handle. Fail closed: the
+/// caller kills and reaps the child if this returns `false`.
+#[cfg(windows)]
+fn resume_main_thread(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenThread, ResumeThread, THREAD_SUSPEND_RESUME,
+    };
+    // SAFETY: the snapshot and thread handles are closed on every path; the
+    // entry buffer is initialized before the first API call.
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            return false;
+        }
+        let mut entry: THREADENTRY32 = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
+        let mut resumed = false;
+        if Thread32First(snapshot, &mut entry) != 0 {
+            loop {
+                if entry.th32OwnerProcessID == pid {
+                    let thread = OpenThread(THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID);
+                    if !thread.is_null() {
+                        let previous = ResumeThread(thread);
+                        let _ = CloseHandle(thread);
+                        resumed = previous != u32::MAX;
+                    }
+                    break;
+                }
+                if Thread32Next(snapshot, &mut entry) == 0 {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snapshot);
+        resumed
+    }
+}
+
+/// Drain one child pipe into a shared buffer and signal completion.
+///
+/// A descendant that leaks the pipe's inherited write handle can keep a plain
+/// `read_to_end` blocked long after the controller exits, so `finish` waits for
+/// a short grace period and then returns the bytes read so far instead of
+/// joining indefinitely. The reader thread then detaches; it exits when the last
+/// write handle closes.
+struct PipeDrain {
+    bytes: Arc<Mutex<Vec<u8>>>,
+    finished: mpsc::Receiver<bool>,
+}
+
+impl PipeDrain {
+    fn spawn(pipe: Option<impl Read + Send + 'static>) -> Self {
+        let bytes = Arc::new(Mutex::new(Vec::new()));
+        let shared = Arc::clone(&bytes);
+        let (finished, done) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut pipe = pipe;
+            let mut chunk = [0u8; 8192];
+            let mut complete = true;
+            loop {
+                match pipe.as_mut().map(|pipe| pipe.read(&mut chunk)) {
+                    Some(Ok(0)) | None => break,
+                    Some(Ok(read)) => {
+                        if let Ok(mut buffer) = shared.lock() {
+                            buffer.extend_from_slice(&chunk[..read]);
+                        }
+                    }
+                    Some(Err(error)) if error.kind() == io::ErrorKind::Interrupted => continue,
+                    Some(Err(_)) => {
+                        // A terminal read error is not EOF: the tail may be
+                        // missing, so the caller must not report complete capture.
+                        complete = false;
+                        break;
+                    }
+                }
+            }
+            let _ = finished.send(complete);
+        });
+        Self {
+            bytes,
+            finished: done,
+        }
+    }
+
+    fn finish(self) -> (Vec<u8>, bool) {
+        // The child has already exited (or was killed), so a well-behaved pipe
+        // reaches EOF immediately. The bound covers only leaked handles; if it
+        // expires, or the reader reports a terminal error, the caller records
+        // incomplete capture instead of treating a truncated tail as complete.
+        let complete = self
+            .finished
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap_or_default();
+        let bytes = self
+            .bytes
+            .lock()
+            .map(|bytes| bytes.clone())
+            .unwrap_or_default();
+        (bytes, complete)
+    }
+}
 
 /// Run one execution child under a whole-process deadline.
 ///
@@ -396,35 +524,46 @@ fn supervise(cmd: &mut Command, timeout_ms: u64) -> io::Result<ChildOutput> {
     let job = ProcessJob::create().ok_or_else(|| {
         io::Error::other("could not create the Windows containment job for a property child")
     })?;
+    // Create the child suspended on Windows so it cannot execute a single
+    // instruction before it belongs to the containment job. Assigning a running
+    // child leaves a startup window in which a descendant can be created
+    // outside the job and survive an abnormal controller exit.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(windows_sys::Win32::System::Threading::CREATE_SUSPENDED);
+    }
     let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
     #[cfg(windows)]
-    if !job.assign(child.id()) {
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err(io::Error::other(
-            "could not assign the property child to its containment job; refusing to run it uncontained",
-        ));
+    {
+        #[cfg(test)]
+        {
+            let delay = TEST_ASSIGN_DELAY_MS.with(std::cell::Cell::get);
+            if delay > 0 {
+                std::thread::sleep(Duration::from_millis(delay));
+            }
+        }
+        if !job.assign(child.id()) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(io::Error::other(
+                "could not assign the property child to its containment job; refusing to run it uncontained",
+            ));
+        }
+        if !resume_main_thread(child.id()) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(io::Error::other(
+                "could not resume the suspended property child after job assignment; refusing to run it uncontained",
+            ));
+        }
     }
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    let stdout_reader = std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        if let Some(mut pipe) = stdout {
-            let _ = pipe.read_to_end(&mut bytes);
-        }
-        bytes
-    });
-    let stderr_reader = std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        if let Some(mut pipe) = stderr {
-            let _ = pipe.read_to_end(&mut bytes);
-        }
-        bytes
-    });
+    let stdout = PipeDrain::spawn(child.stdout.take());
+    let stderr = PipeDrain::spawn(child.stderr.take());
     let deadline = Instant::now() + Duration::from_millis(timeout_ms);
     let mut timed_out = false;
     let status = loop {
@@ -452,11 +591,15 @@ fn supervise(cmd: &mut Command, timeout_ms: u64) -> io::Result<ChildOutput> {
     // controller exit that never reached the deadline branch.
     #[cfg(windows)]
     drop(job);
+    let (stdout, stdout_complete) = stdout.finish();
+    let (stderr, stderr_complete) = stderr.finish();
     Ok(ChildOutput {
         status,
-        stdout: stdout_reader.join().unwrap_or_default(),
-        stderr: stderr_reader.join().unwrap_or_default(),
+        stdout,
+        stderr,
         timed_out,
+        stdout_complete,
+        stderr_complete,
     })
 }
 
@@ -925,6 +1068,11 @@ mod tests {
             .expect("driver arguments JSON");
             std::process::exit(crate::test::test_command(&root(), &args));
         }
+        if mode == "large_output" {
+            let payload = "x".repeat(1024 * 1024);
+            println!("BEGIN{payload}END");
+            return;
+        }
         if mode == "exit_with_descendant" {
             let child = Command::new(std::env::current_exe().expect("current exe"))
                 .args([
@@ -934,6 +1082,7 @@ mod tests {
                 ])
                 .env("XTASK_PROPERTY_CHILD_MODE", "block_with_descendant")
                 .env("XTASK_PROPERTY_DESCENDANT", "1")
+                .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()
@@ -941,6 +1090,26 @@ mod tests {
             println!("XTASK_PROPERTY_DESCENDANT_PID {}", child.id());
             // No callback, no deadline: the controller exits abnormally and the
             // job object must terminate the descendant.
+            std::process::exit(9);
+        }
+        if mode == "exit_with_descendant_late" {
+            let child = Command::new(std::env::current_exe().expect("current exe"))
+                .args([
+                    "--exact",
+                    "properties::executor::tests::property_child_fixture",
+                    "--nocapture",
+                ])
+                .env("XTASK_PROPERTY_CHILD_MODE", "block_with_descendant")
+                .env("XTASK_PROPERTY_DESCENDANT", "1")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("spawn the descendant fixture");
+            println!("XTASK_PROPERTY_DESCENDANT_PID {}", child.id());
+            // Stay alive while the supervisor assigns this controller, then
+            // exit abnormally. The descendant was created before assignment.
+            std::thread::sleep(Duration::from_secs(1));
             std::process::exit(9);
         }
         if mode == "block_with_descendant" {
@@ -960,6 +1129,7 @@ mod tests {
                     ])
                     .env("XTASK_PROPERTY_CHILD_MODE", "block_with_descendant")
                     .env("XTASK_PROPERTY_DESCENDANT", "1")
+                    .stdin(Stdio::null())
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
                     .spawn()
@@ -1445,32 +1615,59 @@ mod tests {
         );
     }
 
-    fn descendant_gone(pid: u32) -> bool {
-        for _ in 0..100 {
-            if !process_exists(pid) {
-                return true;
+    fn descendant_gone(pid: u32) -> io::Result<bool> {
+        // Bound the observation by wall clock. The query itself is a bounded
+        // Win32 wait, and an absence observed after the deadline is rejected:
+        // a stalled query must never let a natural exit look like containment.
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            let alive = process_exists(pid)?;
+            if !alive {
+                return Ok(Instant::now() <= deadline);
             }
-            std::thread::sleep(Duration::from_millis(50));
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            std::thread::sleep(Duration::from_millis(100));
         }
-        false
     }
 
-    fn process_exists(pid: u32) -> bool {
+    fn process_exists(pid: u32) -> io::Result<bool> {
         #[cfg(windows)]
         {
-            let filter = format!("PID eq {pid}");
-            Command::new("tasklist")
-                .args(["/FI", &filter, "/NH"])
-                .output()
-                .map(|output| {
-                    String::from_utf8_lossy(&output.stdout).contains(&pid.to_string())
-                })
-                .unwrap_or(false)
+            use windows_sys::Win32::Foundation::{
+                CloseHandle, ERROR_INVALID_PARAMETER, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+            };
+            use windows_sys::Win32::System::Threading::{
+                OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+            };
+            // SAFETY: the process handle is closed on every path; a zero timeout
+            // makes the wait a non-blocking liveness observation.
+            unsafe {
+                let process = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
+                if process.is_null() {
+                    let error = io::Error::last_os_error();
+                    if error.raw_os_error() == Some(ERROR_INVALID_PARAMETER as i32) {
+                        return Ok(false);
+                    }
+                    return Err(error);
+                }
+                let waited = WaitForSingleObject(process, 0);
+                let _ = CloseHandle(process);
+                match waited {
+                    WAIT_OBJECT_0 => Ok(false),
+                    WAIT_TIMEOUT => Ok(true),
+                    WAIT_FAILED => Err(io::Error::last_os_error()),
+                    _ => Err(io::Error::other(format!(
+                        "unexpected process wait result {waited}"
+                    ))),
+                }
+            }
         }
         #[cfg(not(windows))]
         {
             let _ = pid;
-            false
+            Ok(false)
         }
     }
 
@@ -1498,6 +1695,10 @@ mod tests {
             "the controller exits on its own; the deadline must not fire"
         );
         assert_ne!(output.status, Some(0), "the fixture exits abnormally");
+        assert!(
+            output.stdout_complete && output.stderr_complete,
+            "job cleanup must close the descendant's inherited pipe handles"
+        );
         let text = String::from_utf8_lossy(&output.stdout);
         let descendant = text
             .lines()
@@ -1507,13 +1708,150 @@ mod tests {
         #[cfg(windows)]
         {
             assert!(
-                descendant_gone(descendant),
+                descendant_gone(descendant).expect("observe the descendant process"),
                 "a descendant of an abnormally exited controller must be terminated"
             );
         }
         #[cfg(not(windows))]
         {
             println!("descendant liveness check is Windows-only; pid {descendant}");
+        }
+    }
+
+    #[test]
+    fn property_supervision_captures_finite_child_output_without_truncation() {
+        let dir = fixture_dir();
+        let record = live_registry()
+            .property
+            .into_iter()
+            .find(|record| record.id == "D-SCAD-3D")
+            .expect("the scripted solid record must be registered");
+        let log_path = dir.join("finite-output.log");
+        let mut log = ExecutionLog {
+            file: File::create(&log_path).expect("finite output log"),
+            summary: true,
+        };
+        let launcher = FixtureLauncher::new(std::slice::from_ref(&record), &["large_output"]);
+        let mut plan = make_plan(&record, &[], ChildKind::Run, &dir);
+        plan.timeout_ms = Some(60_000);
+        let output = log.child(&launcher, &plan).expect("supervised child runs");
+        assert_eq!(
+            output.status,
+            Some(0),
+            "the finite-output fixture exits cleanly"
+        );
+        assert!(!output.timed_out, "the deadline must not fire");
+        assert!(
+            output.stdout_complete,
+            "the full finite stdout must be captured"
+        );
+        assert!(
+            output.stderr_complete,
+            "the full finite stderr must be captured"
+        );
+        let text = String::from_utf8_lossy(&output.stdout);
+        assert!(text.contains("BEGIN"), "the output head must be retained");
+        assert!(
+            text.contains("END"),
+            "the output tail must be retained, got {} bytes",
+            output.stdout.len()
+        );
+        assert!(
+            output.stdout.len() >= 1024 * 1024,
+            "the full payload must be captured, got {} bytes",
+            output.stdout.len()
+        );
+    }
+
+    #[test]
+    fn property_pipe_drain_reports_terminal_read_errors_as_incomplete() {
+        struct FailingPipe {
+            sent_prefix: bool,
+        }
+        impl Read for FailingPipe {
+            fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+                if !self.sent_prefix {
+                    self.sent_prefix = true;
+                    buffer[..4].copy_from_slice(b"head");
+                    return Ok(4);
+                }
+                Err(io::Error::other("injected terminal read failure"))
+            }
+        }
+        let (bytes, complete) =
+            PipeDrain::spawn(Some(FailingPipe { sent_prefix: false })).finish();
+        assert_eq!(bytes, b"head");
+        assert!(
+            !complete,
+            "a terminal read error must be reported as incomplete capture"
+        );
+    }
+
+    /// Deliberately widen the supervisor's spawn-to-assignment window.
+    #[cfg(windows)]
+    struct AssignDelay;
+
+    #[cfg(windows)]
+    impl AssignDelay {
+        fn new(delay: Duration) -> Self {
+            TEST_ASSIGN_DELAY_MS.with(|cell| cell.set(delay.as_millis() as u64));
+            Self
+        }
+    }
+
+    #[cfg(windows)]
+    impl Drop for AssignDelay {
+        fn drop(&mut self) {
+            TEST_ASSIGN_DELAY_MS.with(|cell| cell.set(0));
+        }
+    }
+
+    #[test]
+    fn property_scad_job_object_contains_a_descendant_spawned_before_assignment() {
+        #[cfg(not(windows))]
+        {
+            println!("pre-assignment containment is Windows-only");
+        }
+        #[cfg(windows)]
+        {
+            let dir = fixture_dir();
+            let record = live_registry()
+                .property
+                .into_iter()
+                .find(|record| record.id == "D-SCAD-3D")
+                .expect("the scripted solid record must be registered");
+            let log_path = dir.join("scad-job-object-pre-assignment.log");
+            let mut log = ExecutionLog {
+                file: File::create(&log_path).expect("pre-assignment log"),
+                summary: true,
+            };
+            let launcher = FixtureLauncher::new(
+                std::slice::from_ref(&record),
+                &["exit_with_descendant_late"],
+            );
+            let mut plan = make_plan(&record, &[], ChildKind::Run, &dir);
+            plan.timeout_ms = Some(60_000);
+            // The child is suspended for this delay. Without that suspension the
+            // fixture would spawn its descendant before job assignment, and the
+            // descendant would outlive the controller's abnormal exit.
+            let _delay = AssignDelay::new(Duration::from_millis(500));
+            let output = log.child(&launcher, &plan).expect("supervised child runs");
+            assert!(
+                !output.timed_out,
+                "the controller exits on its own; the deadline must not fire"
+            );
+            assert_ne!(output.status, Some(0), "the fixture exits abnormally");
+            let text = String::from_utf8_lossy(&output.stdout);
+            let descendant = text
+                .lines()
+                .find_map(|line| line.strip_prefix("XTASK_PROPERTY_DESCENDANT_PID "))
+                .and_then(|value| value.trim().parse::<u32>().ok())
+                .expect("the fixture reports its descendant pid");
+            let gone = descendant_gone(descendant).expect("observe the descendant process");
+            assert!(
+                gone,
+                "a descendant created after assignment must stay inside the job"
+            );
         }
     }
 
@@ -1544,6 +1882,10 @@ mod tests {
             "the deadline must end a child blocked before its callback"
         );
         assert!(
+            output.stdout_complete && output.stderr_complete,
+            "the tree kill must close the descendant's inherited pipe handles"
+        );
+        assert!(
             start.elapsed() < Duration::from_secs(30),
             "the deadline kill must not wait for the blocked fixture: {:?}",
             start.elapsed()
@@ -1557,7 +1899,7 @@ mod tests {
         #[cfg(windows)]
         {
             assert!(
-                descendant_gone(descendant),
+                descendant_gone(descendant).expect("observe the descendant process"),
                 "descendant {descendant} survived the process-tree kill"
             );
         }

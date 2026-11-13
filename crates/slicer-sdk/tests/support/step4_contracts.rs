@@ -401,85 +401,130 @@ fn scripted_replay_refusals_body() {
         Err(ScriptedError::Artifact(_))
     ));
 
-    // A Windows directory junction where a file is expected is refused. Junction
-    // creation is available without elevation; if the environment denies it the
-    // probe says so instead of silently passing as if it had run.
+    // A directory junction (Windows) or file symlink (Unix) where a file is
+    // expected is refused. Junction creation is available without elevation; if
+    // the environment denies it the probe falls back to a file symlink and fails
+    // if neither primitive can be exercised.
     let (dir, _) = fresh("junction");
     std::fs::remove_file(dir.join("source.scad")).expect("remove source");
     let outside = dir.join("outside-directory");
     std::fs::create_dir_all(&outside).expect("outside directory");
-    // `mklink` rejects paths containing `..`, so canonicalize both first.
-    let link_path = std::fs::canonicalize(&dir)
-        .expect("canonical replay directory")
-        .join("source.scad");
-    let target_path = std::fs::canonicalize(&outside).expect("canonical outside directory");
-    let command = format!(
-        "mklink /J \"{}\" \"{}\"",
-        link_path.display(),
-        target_path.display()
-    );
-    let junction = Command::new("cmd.exe")
-        .args(["/C", &command])
-        .output();
-    let created = junction
-        .as_ref()
-        .map(|output| output.status.success())
-        .unwrap_or(false);
-    if created {
-        assert!(
-            matches!(
-                replay_scripted_case(&dir),
-                Err(ScriptedError::Artifact(_))
-            ),
-            "a junction where a regular file is expected must be refused"
-        );
-    } else {
-        // Report the actual failure rather than passing silently.
-        match &junction {
-            Ok(output) => println!(
-                "junction probe unavailable (status {:?}):
-stdout: {}
-stderr: {}",
-                output.status,
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            ),
-            Err(error) => println!("junction probe unavailable: {error}"),
+    let mut witnessed;
+    #[cfg(windows)]
+    {
+        // `mklink` rejects paths containing `..`, so canonicalize both first. It
+        // also rejects `\\?\` verbatim paths, which `canonicalize` returns on
+        // Windows, so strip that prefix before passing them to `cmd.exe`.
+        fn cmd_path(path: &Path) -> String {
+            let text = path.display().to_string();
+            if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+                format!(r"\\{rest}")
+            } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+                rest.to_string()
+            } else {
+                text
+            }
         }
-        // A file symlink is the other escape primitive. It needs Developer Mode
-        // or the symlink privilege; if it is available, the same refusal applies.
-        std::fs::write(outside.join("payload.scad"), b"// escape payload
-")
-            .expect("outside payload");
-        let command = format!(
-            "mklink \"{}\" \"{}\"",
-            link_path.display(),
-            target_path.join("payload.scad").display()
-        );
-        let symlink = Command::new("cmd.exe").args(["/C", &command]).output();
-        let created = symlink
+        let link_path = std::fs::canonicalize(&dir)
+            .expect("canonical replay directory")
+            .join("source.scad");
+        let target_path = std::fs::canonicalize(&outside).expect("canonical outside directory");
+        // Pass the mklink arguments separately: one preformatted string would
+        // make `cmd /C` re-parse Rust's escaped quotes and mangle the paths.
+        let junction = Command::new("cmd.exe")
+            .args([
+                "/C",
+                "mklink",
+                "/J",
+                &cmd_path(&link_path),
+                &cmd_path(&target_path),
+            ])
+            .output();
+        witnessed = junction
             .as_ref()
             .map(|output| output.status.success())
             .unwrap_or(false);
-        if created {
+        if witnessed {
             assert!(
                 matches!(
                     replay_scripted_case(&dir),
                     Err(ScriptedError::Artifact(_))
                 ),
-                "a file symlink where a regular file is expected must be refused"
+                "a junction where a regular file is expected must be refused"
             );
         } else {
-            match &symlink {
+            // Report the actual failure rather than silently treating it as a pass.
+            match &junction {
                 Ok(output) => println!(
-                    "symlink probe unavailable (status {:?}): {}",
+                    "junction probe unavailable (status {:?}):
+stdout: {}
+stderr: {}",
                     output.status,
+                    String::from_utf8_lossy(&output.stdout),
                     String::from_utf8_lossy(&output.stderr)
                 ),
-                Err(error) => println!("symlink probe unavailable: {error}"),
+                Err(error) => println!("junction probe unavailable: {error}"),
+            }
+            // A file symlink is the other escape primitive. It needs Developer
+            // Mode or the symlink privilege; if it is available, the same
+            // refusal applies.
+            std::fs::write(outside.join("payload.scad"), b"// escape payload
+")
+                .expect("outside payload");
+            let symlink = Command::new("cmd.exe")
+                .args([
+                    "/C",
+                    "mklink",
+                    &cmd_path(&link_path),
+                    &cmd_path(&target_path.join("payload.scad")),
+                ])
+                .output();
+            witnessed = symlink
+                .as_ref()
+                .map(|output| output.status.success())
+                .unwrap_or(false);
+            if witnessed {
+                assert!(
+                    matches!(
+                        replay_scripted_case(&dir),
+                        Err(ScriptedError::Artifact(_))
+                    ),
+                    "a file symlink where a regular file is expected must be refused"
+                );
+            } else {
+                match &symlink {
+                    Ok(output) => println!(
+                        "symlink probe unavailable (status {:?}): {}",
+                        output.status,
+                        String::from_utf8_lossy(&output.stderr)
+                    ),
+                    Err(error) => println!("symlink probe unavailable: {error}"),
+                }
             }
         }
     }
+    #[cfg(unix)]
+    {
+        let payload = outside.join("payload.scad");
+        std::fs::write(&payload, b"// escape payload
+")
+            .expect("outside payload");
+        std::os::unix::fs::symlink(&payload, dir.join("source.scad"))
+            .expect("create the file symlink");
+        witnessed = true;
+        assert!(
+            matches!(
+                replay_scripted_case(&dir),
+                Err(ScriptedError::Artifact(_))
+            ),
+            "a file symlink where a regular file is expected must be refused"
+        );
+    }
+    assert!(
+        witnessed,
+        "the unsafe-path probe could not exercise a junction or file symlink; \
+         the refusal assertion did not execute"
+    );
 
     // A failed attempt keeps a readable input set but is not a replayable
     // evaluated case.
