@@ -1,0 +1,252 @@
+diff --git a/crates/slicer-wasm-host/Cargo.toml b/crates/slicer-wasm-host/Cargo.toml
+index 91596fa8..a6374d14 100644
+--- a/crates/slicer-wasm-host/Cargo.toml
++++ b/crates/slicer-wasm-host/Cargo.toml
+@@ -23,6 +23,8 @@ slicer-ir = { path = "../slicer-ir" }
+ slicer-scheduler = { path = "../slicer-scheduler" }
+ slicer-schema = { path = "../slicer-schema" }
+ slicer-sdk = { path = "../slicer-sdk" }
++# t147 attribution probe (temporary; removed before landing).
++serde_json = "1.0"
+ 
+ [dev-dependencies]
+ lightning-portability-guest = { path = "test-guests/lightning-portability-guest" }
+diff --git a/crates/slicer-wasm-host/src/support_aggregation.rs b/crates/slicer-wasm-host/src/support_aggregation.rs
+index 5837c299..8bc12700 100644
+--- a/crates/slicer-wasm-host/src/support_aggregation.rs
++++ b/crates/slicer-wasm-host/src/support_aggregation.rs
+@@ -420,6 +420,7 @@ pub fn try_aggregate_support_plans_with_policy(
+     for (object_id, zs) in exact_z_planes {
+         input.exact_z.prefetch_cross_sections(&object_id, &zs);
+     }
++    let mut t147 = T147Probe::new(input.territory);
+     for (plan_index, entry) in entries {
+         // The conflict identity is the full source origin: entries for two
+         // chain-differing regions of one object never collapse into one row.
+@@ -474,8 +475,12 @@ pub fn try_aggregate_support_plans_with_policy(
+             continue;
+         }
+         match validate_entry(&entry, input.exact_z) {
+-            None => result.retained.push(entry),
++            None => {
++                t147.record(&entry, None, input.exact_z, input.territory);
++                result.retained.push(entry)
++            }
+             Some(reason) => {
++                t147.record(&entry, Some(reason), input.exact_z, input.territory);
+                 result.degraded = true;
+                 record_rejection(&mut result, &entry, reason);
+             }
+@@ -1112,3 +1117,212 @@ fn bounds(poly: &ExPolygon) -> Option<(i64, i64, i64, i64)> {
+     }
+     Some(out)
+ }
++
++// ── t147 attribution probe (temporary; removed before landing) ─────────────
++//
++// Enabled only by `PNP_T147_PROBE_DIR`. Dumps every validated plan entry and
++// the committed analysis candidates so a take can classify the `exact-Z
++// occupancy` body rejections: which role and how much area overlaps, and
++// whether the same geometry is disjoint from the *midplane* occupancy the
++// planner carved against.
++
++struct T147Probe {
++    entries: Option<std::fs::File>,
++    window: Option<(i32, i32)>,
++}
++
++impl T147Probe {
++    fn new(territory: Option<&SupportAnalysisIR>) -> Self {
++        let Some(dir) = std::env::var_os("PNP_T147_PROBE_DIR") else {
++            return Self {
++                entries: None,
++                window: None,
++            };
++        };
++        let dir = std::path::PathBuf::from(dir);
++        let _ = std::fs::create_dir_all(&dir);
++        let window = std::env::var("PNP_T147_WINDOW").ok().and_then(|text| {
++            let (lo, hi) = text.split_once(':')?;
++            Some((lo.parse().ok()?, hi.parse().ok()?))
++        });
++        if std::env::var_os("PNP_T147_SKIP_CANDIDATES").is_none() {
++            if let Some(analysis) = territory {
++            let candidates: Vec<serde_json::Value> = analysis
++                .candidates
++                .iter()
++                .map(|candidate| {
++                    serde_json::json!({
++                        "id": candidate.id,
++                        "object_id": candidate.source.object_id,
++                        "region_id": candidate.source.region_id,
++                        "layer": candidate.source.global_layer_index,
++                        "z_units": candidate.source.z_units,
++                        "enforced": candidate.enforced,
++                        "blocked": candidate.blocked,
++                        "geometry": candidate.geometry.iter().map(t147_poly).collect::<Vec<_>>(),
++                    })
++                })
++                .collect();
++            let _ = std::fs::write(
++                dir.join("candidates.json"),
++                serde_json::to_vec(&serde_json::json!({
++                    "candidates": candidates,
++                    "model_occupancy": analysis.model_occupancy.iter().map(|(key, polys)| {
++                        serde_json::json!({
++                            "object_id": key.object_id,
++                            "region_id": key.region_id,
++                            "layer": key.global_support_layer_index,
++                            "variant_chain": key.variant_chain,
++                            "geometry": polys.iter().map(t147_poly).collect::<Vec<_>>(),
++                        })
++                    }).collect::<Vec<_>>(),
++                }))
++                .unwrap_or_default(),
++            );
++            }
++        }
++        let entries = std::fs::OpenOptions::new()
++            .create(true)
++            .append(true)
++            .open(dir.join("entries.jsonl"))
++            .ok();
++        Self { entries, window }
++    }
++
++    fn window_allows(&self, layer: i32) -> bool {
++        match self.window {
++            Some((lo, hi)) => layer >= lo && layer <= hi,
++            None => false,
++        }
++    }
++
++    #[allow(clippy::too_many_arguments)]
++    fn record(
++        &mut self,
++        entry: &SupportPlanEntry,
++        verdict: Option<&str>,
++        exact_z: &ExactZQueryService,
++        territory: Option<&SupportAnalysisIR>,
++    ) {
++        let in_window = self.window_allows(entry.global_layer_index);
++        let Some(sink) = self.entries.as_mut() else {
++            return;
++        };
++        let mut roles = Vec::new();
++        for role in &entry.roles {
++            let area: f64 = role.regions.iter().map(expolygon_area).sum();
++            roles.push(serde_json::json!({
++                "role": format!("{:?}", role.role),
++                "count": role.regions.len(),
++                "area_units2": area,
++                "geometry": if in_window {
++                    serde_json::Value::Array(role.regions.iter().map(t147_poly).collect())
++                } else {
++                    serde_json::Value::Null
++                },
++            }));
++        }
++        let mut record = serde_json::json!({
++            "layer": entry.global_layer_index,
++            "anchor_z_mm": units_to_mm(entry.anchor_z),
++            "object_id": entry.object_id,
++            "region_id": entry.region_id,
++            "family_id": entry.family_id,
++            "body_ids": entry.body_ids,
++            "demand_ids": entry.demand_ids,
++            "declined": entry.decline_reason.is_some(),
++            "verdict": verdict,
++            "roles": roles,
++        });
++        if verdict.is_some() {
++            let query = exact_z.query(
++                &entry.object_id,
++                entry.region_id,
++                &entry.variant_chain,
++                units_to_mm(entry.anchor_z),
++            );
++            let top_occupancy = query.map(|q| q.occupancy.clone()).unwrap_or_default();
++            let mut top_overlap = 0.0_f64;
++            let mut top_overlap_by_role = Vec::new();
++            for role in &entry.roles {
++                let mut overlap = 0.0_f64;
++                for region in &role.regions {
++                    for other in &top_occupancy {
++                        let hit = slicer_core::polygon_ops::intersection(
++                            std::slice::from_ref(region),
++                            std::slice::from_ref(other),
++                        );
++                        overlap += hit.iter().map(expolygon_area).sum::<f64>();
++                    }
++                }
++                top_overlap += overlap;
++                top_overlap_by_role.push(serde_json::json!({
++                    "role": format!("{:?}", role.role),
++                    "overlap_units2": overlap,
++                }));
++            }
++            // The planner carves against `support_analysis.model_occupancy`,
++            // which the host producer fills from `SliceIR` at the layer sample
++            // plane (`layer.z - 0.5 * layer_height`). Recompute the same
++            // object+layer payload here (all regions, exactly as
++            // `layer_occupancy_payload` filters it).
++            let mut mid_overlap = 0.0_f64;
++            let mut mid_polygons = 0_usize;
++            if let Some(analysis) = territory {
++                let mid: Vec<ExPolygon> = analysis
++                    .model_occupancy
++                    .iter()
++                    .filter(|(key, _)| {
++                        key.object_id == entry.object_id
++                            && key.global_support_layer_index == entry.global_layer_index as u32
++                    })
++                    .flat_map(|(_, polys)| polys.iter().cloned())
++                    .collect();
++                mid_polygons = mid.len();
++                for role in &entry.roles {
++                    for region in &role.regions {
++                        for other in &mid {
++                            let hit = slicer_core::polygon_ops::intersection(
++                                std::slice::from_ref(region),
++                                std::slice::from_ref(other),
++                            );
++                            mid_overlap += hit.iter().map(expolygon_area).sum::<f64>();
++                        }
++                    }
++                }
++            }
++            if let Some(object) = record.as_object_mut() {
++                object.insert(
++                    "top_occupancy".into(),
++                    serde_json::json!({
++                        "polygons": top_occupancy.len(),
++                        "area_units2": top_occupancy.iter().map(expolygon_area).sum::<f64>(),
++                        "geometry": if in_window {
++                            serde_json::Value::Array(top_occupancy.iter().map(t147_poly).collect())
++                        } else {
++                            serde_json::Value::Null
++                        },
++                    }),
++                );
++                object.insert("top_overlap_units2".into(), top_overlap.into());
++                object.insert(
++                    "top_overlap_by_role".into(),
++                    serde_json::Value::Array(top_overlap_by_role),
++                );
++                object.insert("mid_occupancy_polygons".into(), mid_polygons.into());
++                object.insert("mid_overlap_units2".into(), mid_overlap.into());
++            }
++        }
++        use std::io::Write as _;
++        let _ = writeln!(sink, "{record}");
++    }
++}
++
++fn t147_poly(poly: &ExPolygon) -> serde_json::Value {
++    serde_json::json!({
++        "contour": poly.contour.points.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>(),
++        "holes": poly.holes.iter().map(|hole| {
++            hole.points.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>()
++        }).collect::<Vec<_>>(),
++    })
++}
