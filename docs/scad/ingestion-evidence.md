@@ -248,7 +248,7 @@ private conversion tests own the executed rejection.
   rejected by the step budget or become timing-dependent. The frontend supervisor
   shares the same `try_wait` → kill → reap structure.
 
-## The CI lane
+## The CI lane (executed)
 
 `.github/workflows/ci.yml` gains `jobs.scad-ingest-windows` (`windows-latest`,
 90-minute timeout). It reuses the adapter lane's native prerequisites and the
@@ -264,18 +264,35 @@ assertions on every step:
 6. `B`;
 7. `CE` through the gated `cargo xtask test` runner;
 8. ordinary STEP/CLI and model-IO regressions;
-9. narrow clippy for both crates in both feature states (default and enabled).
+9. narrow clippy for both crates in both feature states.
 
 Logs and `target/scad-ingest/` are uploaded on failure.
 
-**Not claimed:** that job has not executed yet — it runs on push. Everything in
-this file was measured on the developer machine above with
-`cargo test`/`cargo xtask test`; CI execution is the lane's own evidence, not
-this file's.
+### Hosted execution record
 
-One local-tooling note: `cargo fmt --all -- --check` aborts on this Windows host
-with `The filename or extension is too long. (os error 206)` while walking the
-vendored engine tree. Formatting was verified per package instead —
-`cargo fmt -p pnp-cli -- --check`, `-p slicer-model-io`, `-p slicer-scad` all
-exit `0`. The repository's `fmt` job runs on Ubuntu, where that path-length
-limit does not apply.
+| Field | Value |
+|---|---|
+| Workflow run | [43369601815](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43369601815) |
+| Job | [SCAD ingestion (Windows) 131702024722](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43369601815/job/131702024722) |
+| Head commit | `7f4416607940d66495d2fefbb040a6cc152e92e1` |
+| Job result | `success` |
+| Job window | 2026-11-13T05:04:41Z → 05:27:38Z (22 min 57 s, cold engine + guest build included) |
+| Whole run | `success`, all nine jobs, 2026-11-13T05:04:38Z → 05:56:33Z |
+
+Named executions from that job's own log:
+
+| Step | Result |
+|---|---|
+| `MF` off | `test result: ok. 2 passed; 0 failed`; `scad_model_feature_routing` and `scad_detection_is_case_insensitive_and_not_evaluation` both named `... ok` |
+| `MF` on | `test result: ok. 2 passed; 0 failed` |
+| `ME` | `test result: ok. 5 passed; 0 failed` |
+| `CF` off | `test result: ok. 1 passed; 0 failed` |
+| `CF` on | `test result: ok. 1 passed; 0 failed` (25.18 s) |
+| `B` | `test result: ok. 5 passed; 0 failed; 34 filtered out` |
+| `CE` | `test result: ok. 10 passed; 0 failed` (8.07 s), `VERDICT: PASS`, with `check-literals: 0 violation(s)` and `check-test-quality: 0 finding(s)` in the same gated run |
+| Regressions | `helpers_cli` 9 passed, `cli_tdd` 3 passed, `model_loader_tdd` 44 passed / 1 ignored, `bed_placement_tdd` 8 passed |
+
+The default-versus-enabled graph-isolation step and the narrow clippy step also
+passed; the job's per-step exit checks would have failed the job otherwise.
+This closes the packet's "the required Windows job executes both feature
+states" condition on the hosted runner, not only on the developer machine.
