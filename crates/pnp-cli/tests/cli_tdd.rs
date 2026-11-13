@@ -13,6 +13,7 @@ use pnp_cli::io::write_with_parents;
 use std::path::PathBuf;
 
 #[test]
+#[cfg(feature = "report")]
 fn report_path_creates_parent_dir() {
     use slicer_runtime::report::Collector;
 
