@@ -195,6 +195,26 @@ Recorded while implementing; none changes the packet's scope.
    assertion that the preserved anchor test is still discovered. The check is strictly stronger
    than the fixed one-element roster and still fails on a registered-but-undiscovered test,
    which is the condition the executor reports as `missing_property_execution`.
+5. **[BLOCKING] The `H-CONFIG-BOUNDS` shrink-preservation clause is not met as written.** AC-N1
+   asks that "valid shrinks retain … violation witnesses", and §Charter H-CONFIG-BOUNDS asked
+   for the violating/non-finite/first-invalid-index mode to survive shrinking. The two value
+   domains pin scalar-versus-list inside themselves, but the composed strategy generates the
+   value through a `prop_flat_map` over the declarations, so a shrink of the declarations
+   re-draws the value and a list case can become a scalar case. The independent delta review
+   demonstrated that, and the composed audit was therefore not registered as passing. The
+   charter now states the narrower truth: the value shape, the verdict and the first-invalid
+   index are all re-derived per case by the oracle, and no correctness claim depends on them
+   surviving a shrink. Closing the gap needs a derived-value construction that pins the probe
+   family — a redesign this run did not perform. This narrows an acceptance criterion, so it is
+   recorded as blocking rather than waved through, together with the two external blockers
+   below.
+6. **Two external blockers prevent closure.** (a) `region_map_versioned_decode_tdd`'s frozen
+   3.0.0 fixture fails with `DeserializeBadBool` on this tree; the packet provably did not cause
+   it (no production diff), but the packet also may not present the affected family as complete
+   while a required baseline is red, and the fixture must not be regenerated — an owner
+   disposition is needed. (b) No authorized hosted Windows CI run exists for these records;
+   local execution through the same command is not that evidence, and this run cannot trigger
+   CI. The packet therefore stays `draft`.
 
 ## Authoring preflight
 

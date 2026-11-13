@@ -129,8 +129,11 @@ fn config_bounds_strategy(
             // The probe family is pinned per case: a non-finite witness must not
             // shrink into a finite scalar, and a declaration-derived shaped probe
             // must not shrink into the general value domain.
+            // A shaped probe is a deliberate witness: `no_shrink` keeps the
+            // chosen probe instead of shrinking the selection index into a
+            // different (possibly scalar-vs-list) witness.
             let shaped_keyed: BoxedStrategy<(String, ConfigValue)> =
-                proptest::sample::select(shaped).boxed();
+                proptest::sample::select(shaped).no_shrink().boxed();
             let probes = property_config_oracles::mode_locked(
                 vec![0_u8, 1, 2],
                 move |mode| match mode {

@@ -28,6 +28,49 @@ use slicer_ir::{
 use slicer_sdk::coords::{mm_to_units as sdk_mm_to_units, units_to_mm as sdk_units_to_mm};
 use slicer_sdk::test_support::fixtures::print_entity_base;
 
+
+/// Audit a **composed** owner strategy: generate several cases, run real
+/// `simplify()` calls, and assert the case's mode tag never changes.
+///
+/// The mechanism probe in `property_ir_contracts.rs` covers `mode_locked`
+/// itself; this helper runs inside each property so the actual composed
+/// strategy (payload strategies, `prop_flat_map` and all) is audited on every
+/// registry execution.
+pub fn assert_mode_preserved<S>(strategy: &S, label: &str, tag: impl Fn(&S::Value) -> u8)
+where
+    S: proptest::strategy::Strategy,
+{
+    use proptest::strategy::ValueTree;
+    use proptest::test_runner::{Config, RngAlgorithm, RngSeed, TestRunner};
+    let mut runner = TestRunner::new(Config {
+        cases: 1,
+        max_local_rejects: 0,
+        rng_algorithm: RngAlgorithm::ChaCha,
+        rng_seed: RngSeed::Fixed(0x5eed_c0de),
+        failure_persistence: None,
+        ..Config::default()
+    });
+    let mut simplifications = 0_usize;
+    for _ in 0..4 {
+        let mut tree = strategy.new_tree(&mut runner).expect("composed strategy tree");
+        let initial = tag(&tree.current());
+        let mut guard = 0_usize;
+        while guard < 128 && tree.simplify() {
+            guard += 1;
+            simplifications += 1;
+            assert_eq!(
+                tag(&tree.current()),
+                initial,
+                "{label}: shrinking changed the case mode"
+            );
+        }
+    }
+    assert!(
+        simplifications > 0,
+        "{label}: the composed shrink audit simplified nothing, so it certifies nothing"
+    );
+}
+
 /// A strategy whose *mode* is pinned for each generated case while its payload
 /// still shrinks.
 ///
@@ -143,7 +186,9 @@ impl CoordProfile {
 /// `m * 10_000` commits at most `2^-24 * |t| + 2^-150`, and rounding to the
 /// nearest integer adds at most `1/2`.
 pub fn mm_to_units_allowed_error(profile: &CoordProfile) -> f64 {
-    0.5 + f32_mul_roundoff() * (10_000.0 * profile.max_abs_mm) + f32_subnormal_floor()
+    // Outward-rounded: the comparison must never be tighter than the derivation,
+    // so the last float below the derived value is not used.
+    (0.5 + f32_mul_roundoff() * (10_000.0 * profile.max_abs_mm) + f32_subnormal_floor()).next_up()
 }
 
 /// Integer-safe form of [`mm_to_units_allowed_error`]: the smallest integer
@@ -173,7 +218,8 @@ pub fn mm_bound(profile: &CoordProfile) -> i128 {
 /// `2^-24 * |x| + 2^-150`.
 pub fn units_bound(profile: &CoordProfile) -> f64 {
     let magnitude = profile.max_abs_units as f64 / 10_000.0;
-    (f32_mul_roundoff() + f64_div_roundoff()) * magnitude + f32_subnormal_floor()
+    // Outward-rounded for the same reason as `mm_to_units_allowed_error`.
+    ((f32_mul_roundoff() + f64_div_roundoff()) * magnitude + f32_subnormal_floor()).next_up()
 }
 
 /// f64 division relative rounding bound: one half ulp, `2^-53`.
@@ -623,6 +669,10 @@ pub fn extension_node_count(depth: usize, breadth: usize) -> Option<usize> {
 /// shape from a total-element budget, so the `breadth^depth` leaf miscount cannot
 /// reappear.
 pub fn clamped_extension_shape(depth: usize, breadth: usize, budget: usize) -> (usize, usize) {
+    // `extension_node_count(d, 1) == d`, so clamping the depth to the budget is
+    // always sufficient: an otherwise impossible request such as depth 5 against
+    // a budget of 4 must reduce the depth, not silently allocate 5 elements.
+    let depth = depth.min(budget);
     let mut breadth = breadth.max(1);
     while extension_node_count(depth, breadth).is_none_or(|nodes| nodes > budget) {
         if breadth == 1 {

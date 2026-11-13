@@ -352,6 +352,49 @@ pub fn declaration_sets(
         .boxed())
 }
 
+
+/// Audit a **composed** owner strategy: generate several cases, run real
+/// `simplify()` calls, and assert the case's mode tag never changes.
+///
+/// The mechanism probe in `property_config_contracts.rs` covers `mode_locked`
+/// itself; this helper runs inside the property so the actual composed
+/// strategy (payload strategies, `prop_flat_map` and all) is audited on every
+/// registry execution.
+pub fn assert_mode_preserved<S>(strategy: &S, label: &str, tag: impl Fn(&S::Value) -> u8)
+where
+    S: proptest::strategy::Strategy,
+{
+    use proptest::strategy::ValueTree;
+    use proptest::test_runner::{Config, RngAlgorithm, RngSeed, TestRunner};
+    let mut runner = TestRunner::new(Config {
+        cases: 1,
+        max_local_rejects: 0,
+        rng_algorithm: RngAlgorithm::ChaCha,
+        rng_seed: RngSeed::Fixed(0x5eed_c0de),
+        failure_persistence: None,
+        ..Config::default()
+    });
+    let mut simplifications = 0_usize;
+    for _ in 0..4 {
+        let mut tree = strategy.new_tree(&mut runner).expect("composed strategy tree");
+        let initial = tag(&tree.current());
+        let mut guard = 0_usize;
+        while guard < 128 && tree.simplify() {
+            guard += 1;
+            simplifications += 1;
+            assert_eq!(
+                tag(&tree.current()),
+                initial,
+                "{label}: shrinking changed the case mode"
+            );
+        }
+    }
+    assert!(
+        simplifications > 0,
+        "{label}: the composed shrink audit simplified nothing, so it certifies nothing"
+    );
+}
+
 /// A strategy whose mode is pinned per generated case while its payload still
 /// shrinks.
 ///
@@ -441,7 +484,7 @@ pub fn bound_values(
 /// covered without nesting.
 pub fn nonfinite_values() -> BoxedStrategy<ConfigValue> {
     let exceptional = nonfinite_f64();
-    prop_oneof![
+    let scalars = prop_oneof![
         4 => exceptional.clone().prop_map(ConfigValue::Float),
         2 => exceptional.clone().prop_map(ConfigValue::Percent),
         2 => exceptional
@@ -450,9 +493,20 @@ pub fn nonfinite_values() -> BoxedStrategy<ConfigValue> {
         1 => exceptional
             .clone()
             .prop_map(|value| ConfigValue::FloatOrPercent { value, is_percent: false }),
-        1 => exceptional.prop_map(|value| ConfigValue::List(vec![ConfigValue::Float(value)])),
     ]
-    .boxed()
+    .boxed();
+    let lists = exceptional
+        .prop_map(|value| ConfigValue::List(vec![ConfigValue::Float(value)]))
+        .boxed();
+    // The scalar/list family is pinned so a non-finite list cannot shrink into a
+    // non-finite scalar (which would drop the list path entirely).
+    mode_locked(vec![0_u8, 1], move |mode| {
+        if mode == 0 {
+            scalars.clone()
+        } else {
+            lists.clone()
+        }
+    })
 }
 
 fn validate_declaration_parameters(

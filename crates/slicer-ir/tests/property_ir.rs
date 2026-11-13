@@ -209,6 +209,32 @@ fn mm_bound_f32(max_abs_mm: f64) -> f32 {
     }
 }
 
+fn coord_case_tag(case: &CoordCase) -> u8 {
+    match case {
+        CoordCase::Millimetres(_) => 0,
+        CoordCase::Units(_) => 1,
+        CoordCase::OrderedMillimetres(..) => 2,
+    }
+}
+
+fn id_case_tag(case: &IdCase) -> u8 {
+    match case {
+        IdCase::Allocations(_) => 0,
+        IdCase::SupportedModifier { .. } => 1,
+        IdCase::UnsupportedParent { .. } => 2,
+    }
+}
+
+fn config_seed_tag(seed: &ConfigSeed) -> u8 {
+    match seed {
+        ConfigSeed::Finite { .. } => 0,
+        ConfigSeed::Raw { .. } => 1,
+        ConfigSeed::Repeat => 2,
+        ConfigSeed::Scalar(_) => 3,
+        ConfigSeed::Holder(_) => 4,
+    }
+}
+
 fn coord_cases(
     profile: &property_oracles::CoordProfile,
     boundary_units: i64,
@@ -354,6 +380,7 @@ fn proptest_coord_conversion_envelopes() {
     // leaves a non-empty interval, and 1/32 mm -> 313 units -> 0.0313 mm shows
     // the composition is not the identity.
     let cases = coord_cases(&profile, boundary_units);
+    property_oracles::assert_mode_preserved(&cases, "H-COORD", coord_case_tag);
     run.check(&cases, |case, _guard| {
         let checked = match case {
             CoordCase::Millimetres(millimetres) => {
@@ -497,6 +524,9 @@ fn proptest_entity_and_modifier_ids() {
             "the reserved zero sentinel is never allocated"
         );
     }
+    // test-quality: determinism pin — the protected contract is that two fresh
+    // `LayerEntityIdGen`s issue the identical sequence; the self-comparison is the
+    // assertion, and the 1..=64 loop above independently pins the values.
     assert_eq!(
         allocate(16),
         allocate(16),
@@ -563,6 +593,8 @@ fn proptest_entity_and_modifier_ids() {
                 (1..stride).contains(&remainder),
                 "payload remainder {remainder} must lie in 1..{stride}"
             );
+            // test-quality: determinism pin on `modifier_sub_region_id`; the
+            // namespace/payload/decode assertions above are the independent checks.
             assert_eq!(
                 id,
                 modifier_sub_region_id(parent, object_id, footprint),
@@ -609,6 +641,7 @@ fn proptest_entity_and_modifier_ids() {
         max_footprint_points,
         parent_limit,
     );
+    property_oracles::assert_mode_preserved(&cases, "H-IDS", id_case_tag);
     run.check(&cases, |case, guard| {
         match case {
             IdCase::Allocations(count) => {
@@ -1161,10 +1194,15 @@ fn config_from_seed(
             property_oracles::with_extension(&config, depth, breadth)
         }
         ConfigSeed::Scalar(value) => {
+            // The default `bed_shape` alone is eight list elements, which already
+            // exceeds the routine total budget; every arm that is not the finite
+            // or raw grid must start from an empty-sequence base.
             let mut config = ResolvedConfig {
                 layer_height: bounded_magnitude(max_abs_value, 3),
                 ..Default::default()
             };
+            config = property_oracles::with_sequence(&config, 0);
+            config = property_oracles::with_text_sequence(&config, 0);
             let applied = config
                 .apply_cli_key("wall_count", value)
                 .expect("the bounded scalar domain keeps wall_count inside u32");
@@ -1176,6 +1214,8 @@ fn config_from_seed(
                 layer_height: bounded_magnitude(max_abs_value, 5),
                 ..Default::default()
             };
+            config = property_oracles::with_sequence(&config, 0);
+            config = property_oracles::with_text_sequence(&config, 0);
             let applied = config
                 .apply_cli_key("top_fill_holder", &ConfigValue::String(text.clone()))
                 .expect("a bounded holder string is accepted");
@@ -1183,20 +1223,27 @@ fn config_from_seed(
             config
         }
         ConfigSeed::Repeat => {
-            let previous = previous.cloned().unwrap_or_default();
+            // The first element of a case has no predecessor; its base must also
+            // respect the total list budget, so the sequences start empty rather
+            // than at the default eight-element bed.
+            let previous = previous.cloned().unwrap_or_else(|| {
+                let base = ResolvedConfig::default();
+                let base = property_oracles::with_sequence(&base, 0);
+                property_oracles::with_text_sequence(&base, 0)
+            });
             let bytes = property_oracles::representation_key(&previous);
             postcard::from_bytes(&bytes).expect("canonical config bytes decode")
         }
     }
 }
 
-fn config_cases(
-    max_configs: usize,
+/// The per-configuration seed strategy, mode-locked per element.
+fn config_seed_cases(
     max_abs_value: f64,
     max_list_len: usize,
     max_list_depth: usize,
     max_text_bytes: usize,
-) -> BoxedStrategy<Vec<ResolvedConfig>> {
+) -> BoxedStrategy<ConfigSeed> {
     let finite = (
         any::<u8>(),
         any::<u8>(),
@@ -1241,10 +1288,11 @@ fn config_cases(
                 breadth,
             },
         );
+    let _ = max_abs_value;
     // Each configuration's input mode is pinned per element (`mode_locked`), so a
     // raw-bit fixture cannot shrink into a finite structural fixture or a
     // repeated equal pair into a different family.
-    let seed = property_oracles::mode_locked(vec![0_u8, 1, 2, 3, 4, 5], move |mode| match mode {
+    property_oracles::mode_locked(vec![0_u8, 1, 2, 3, 4, 5], move |mode| match mode {
         0 => finite.clone().boxed(),
         1 => raw.clone().boxed(),
         2 => Just(ConfigSeed::Repeat).boxed(),
@@ -1266,8 +1314,20 @@ fn config_cases(
                 breadth: 1,
             })
             .boxed(),
-    });
-    proptest::collection::vec(seed, 0..=max_configs)
+    })
+}
+
+fn config_cases(
+    max_configs: usize,
+    max_abs_value: f64,
+    max_list_len: usize,
+    max_list_depth: usize,
+    max_text_bytes: usize,
+) -> BoxedStrategy<Vec<ResolvedConfig>> {
+    proptest::collection::vec(
+        config_seed_cases(max_abs_value, max_list_len, max_list_depth, max_text_bytes),
+        0..=max_configs,
+    )
     .prop_map(move |seeds| {
         let mut configs: Vec<ResolvedConfig> = Vec::with_capacity(seeds.len());
         for seed in &seeds {
@@ -1395,6 +1455,8 @@ fn proptest_config_equality_hash_and_interning() {
     );
 
     // --- sampled cases -----------------------------------------------------
+    let seeds = config_seed_cases(max_abs_value, max_list_len, max_list_depth, max_text_bytes);
+    property_oracles::assert_mode_preserved(&seeds, "H-CONFIG-INTERN", config_seed_tag);
     let cases = config_cases(
         max_configs,
         max_abs_value,

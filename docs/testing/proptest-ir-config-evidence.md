@@ -31,15 +31,16 @@ on registry-only evidence: every row above was executed through the registry-bac
   `dirty_paths`, `source_state_digest`). Re-derive the current commit with
   `git log --format=%H -1 --grep proptest-openrscad_06` rather than trusting a frozen copy,
   because an amend or a squash changes it.
-- **Provenance is per run, not per document.** The early per-record pilot runs and the first
-  combined runs were taken while the working tree still carried uncommitted test and
-  documentation edits; their `context.json` files record those `dirty_paths` and a matching
-  `source_state_digest`, and those historical event outcomes are real for the tree they ran on.
-  The **final** measurement batch quoted in every table below was re-run after the remediation
-  pass on the committed tree; its contexts are the authority for the numbers in this document.
-  The `source_revision` and dirty state of the final batch are recorded in
-  `target/evidence/final-provenance.txt`, not restated here, because they change on every
-  amend.
+- **Provenance is per run, not per document, and it is content-addressed.** Every run's
+  `context.json` records `source_revision`, `dirty_paths` and a `source_state_digest` over the
+  measured content. The final batch quoted in the tables below ran at revision
+  `727ba9e9` with the remediation test and documentation files carrying uncommitted edits —
+  the executor lists them in `dirty_paths`, and `source_state_digest = 92de7183…` identifies the
+  exact measured content. That is expected rather than a defect: the files being measured are
+  the property tests themselves, so a "clean HEAD" measurement of a change set that is not yet
+  committed is impossible, and committing first would only move the dirty set to the
+  documentation. The authoritative record is `target/evidence/final-provenance.txt` plus each
+  run's `context.json`; this document does not restate a hash that an amend would invalidate.
 - Toolchain: `rustc 1.96.0 (ac68faa20 2026-05-25)`, Windows `x86_64-pc-windows-msvc`.
 - Proptest: `1.11.0` (`workspace.dependencies` in the root `Cargo.toml`, `chacha` RNG).
 - Features: `slicer-ir/property_testing` for the five `slicer-ir` records,
@@ -87,9 +88,11 @@ fails on this tree with `DeserializeBadBool` while decoding the frozen 3.0.0 Pos
 - The failing test, its frozen fixture and the decoder are byte-identical before and after.
 
 Per the packet's instruction, the independent fixture was **not** regenerated and the assertion
-was **not** weakened. This failure is a pre-existing defect on `master` and remains open; it
-blocks nothing in this packet's scope but must be owned by the packet that changed the
-`RegionMapIR` decode shape.
+was **not** weakened. This failure is a pre-existing defect on `master` and remains **open and
+blocking** for this packet: the packet text requires the affected existing test to pass and
+AC-N2 forbids presenting unresolved larger defects as completed family coverage. It needs an
+owner (the packet that changed the `RegionMapIR` 3.0.0 Postcard layout) and an explicit
+disposition before this packet can be marked implemented.
 
 ## Calibration: substantive populations, not empty-only coverage
 
@@ -180,15 +183,15 @@ registration for these records.
 | `H-CONFIG-INTERN` | `proptest_config_equality_hash_and_interning` | see table below | 1024 | 0 | `null` (unknown) | `target/evidence/final-extended-H-CONFIG-INTERN.log` |
 | `H-CHAINS` | `proptest_canonical_chain_product` | see table below | 1024 | 0 | `null` (unknown) | `target/evidence/final-extended-H-CHAINS.log` |
 
-| ID | exact discovered test | libtest wall | single-record xtask wall | verdict |
-|---|---|---:|---:|---|
-| `H-IR-ANCHORS` | `proptest_ir_travel_anchors_membership` | 8.85s | 21s | PASS |
-| `H-COORD` | `proptest_coord_conversion_envelopes` | 0.26s | 12s | PASS |
-| `H-IDS` | `proptest_entity_and_modifier_ids` | 0.31s | 12s | PASS |
-| `H-CONFIG-BOUNDS` | `proptest_config_scalar_bounds` | 1.21s | 13s | PASS |
-| `H-IR-SERDE` | `proptest_ir_serialization_and_defaults` | 6.89s | 19s | PASS |
-| `H-CONFIG-INTERN` | `proptest_config_equality_hash_and_interning` | 1.37s | 13s | PASS |
-| `H-CHAINS` | `proptest_canonical_chain_product` | 0.38s | 14s | PASS |
+| ID | exact discovered test | libtest wall | verdict |
+|---|---|---:|---|
+| `H-IR-ANCHORS` | `proptest_ir_travel_anchors_membership` | 9.23s | PASS |
+| `H-COORD` | `proptest_coord_conversion_envelopes` | 0.29s | PASS |
+| `H-IDS` | `proptest_entity_and_modifier_ids` | 0.32s | PASS |
+| `H-CONFIG-BOUNDS` | `proptest_config_scalar_bounds` | 1.27s | PASS |
+| `H-IR-SERDE` | `proptest_ir_serialization_and_defaults` | 5.83s | PASS |
+| `H-CONFIG-INTERN` | `proptest_config_equality_hash_and_interning` | 1.33s | PASS |
+| `H-CHAINS` | `proptest_canonical_chain_product` | 0.39s | PASS |
 
 Every run printed a matching `begin`/`end` controller pair with
 `"outcome":"passed"`, `"completion_eligible":true`, `"call_counts_complete":true` and
@@ -202,7 +205,8 @@ every tier:
 
 | Selection | Tier | Wall | Records at their profile case count | Verdict |
 |---|---|---:|---|---|---|
-| all seven `--property` flags | routine | 19 s | 7 / 7 at 64 | PASS || all seven `--property` flags | extended | 37 s | 7 / 7 at 1024 | PASS |
+| all seven `--property` flags | routine | 19 s | 7 / 7 at 64 | PASS |
+| all seven `--property` flags | extended | 37 s | 7 / 7 at 1024 | PASS |
 | all seven `--property` flags `--seed 37` | routine | 18 s | 7 / 7 at 64 | PASS |
 
 Logs: `target/evidence/final-all-routine.log`, `final-all-extended.log`,
@@ -218,10 +222,13 @@ manufactured.
 The prerequisite `properties-windows` job selects records dynamically from
 `test-properties.toml`; these seven records carry both measured profiles and satisfy the schema
 the job validates (`test-properties.toml` schema version 1, per-record features, tier tables,
-non-SCAD records without a process timeout). Packet `proptest-openrscad_17_pbt-ci-closure`
-owns the final rollout and manual-dispatch audit; this packet's obligation — that an actual
-Windows execution includes the records — was met by the runs above, which are the same
-`cargo xtask test --properties` path the CI job invokes.
+non-SCAD records without a process timeout). **Hosted execution is not established by this
+document.** The runs above are local executions of the same `cargo xtask test --properties`
+path the job invokes, and they prove the records are discoverable, selectable and passing on
+Windows — they do not prove a hosted CI run happened. Packet
+`proptest-openrscad_17_pbt-ci-closure` owns the rollout, but the packet text does not permit
+deferring this family's actual execution, so a hosted run with these records remains a blocking
+gap.
 
 ## Compile versus execution cost (measured separately)
 
@@ -266,13 +273,25 @@ assertion was weakened and no tolerance was tuned to obtain a pass.
 
 | Finding | Resolution | Falsifiable evidence |
 |---|---|---|
-| **F1** Shrink claims were false: `prop_oneof!` unions shrink into earlier alternatives, so a "structural variant tag" did not pin the mode | Added `mode_locked` (a `no_shrink` mode selector fed through `prop_flat_map`) to both shared oracle modules and used it for every tagged owner strategy: `coord_cases`, `id_cases`, `config_cases`, the scheduler value family (`bound_values`), and the scheduler probe families. Corrected the `H-CONFIG-BOUNDS` shrinking text: the value family and the in-bound magnitudes are pinned, the accept/reject **verdict is not** — it is re-derived per case and the property never assumes otherwise. | `mode_lock_preserves_tags_under_simplification` in both `property_ir_contracts.rs` and `property_config_contracts.rs` walks real `simplify()` calls on a mode-locked strategy, asserts the tag never changes, and asserts at least one simplification and at least two observed modes so the probe is not vacuous. |
-| **F2** The nested-list budget counted leaves (`b^depth`) instead of total elements (`b + b² + … + b^depth`) | `property_oracles::extension_node_count` counts the true total, `clamped_extension_shape` clamps against it, and `config_from_seed` budgets with it. | Concrete regression in `ir_config_oracle_counterexamples`: `extension_node_count(2, 2) == 6`, a budget of 4 clamps the shape, and a constructed fixture stays at `config_list_elements(..) <= 4`. |
-| **F3** The `units_to_mm` reference-error proof omitted the f64 division's own rounding, claiming it was below `2^-150` | `units_bound` is now `(2^-24 + 2^-53)·|x| + 2^-150`: f32 half-ulp for the conversion **plus** the f64 reference division's `2^-53` relative error, with `2^-150` kept only as the subnormal floor. The derivation comment states the measured counterexample (`n = 1` reference error ≈ `4.8e-21` versus `2^-150` ≈ `7.0e-46`). | The corrected bound is one of the values asserted in the coordinate charter and used by `check_units_case`; no sample-tuned constant exists. |
+| **F1** Shrink claims were false: `prop_oneof!` unions shrink into earlier alternatives, so a "structural variant tag" did not pin the mode | Added `mode_locked` (a `no_shrink` mode selector fed through `prop_flat_map`) to both shared oracle modules and used it for the IR owner strategies (`coord_cases`, `id_cases`, `config_cases`) and for the scheduler value domains (`bound_values`, `nonfinite_values`), plus `no_shrink` on the shaped-probe selection. The IR properties additionally audit their **composed** strategy on every execution (`assert_mode_preserved`). The scheduler **composed** strategy still re-draws its value when declarations shrink (`prop_flat_map`), so the `H-CONFIG-BOUNDS` charter now states plainly that the value shape, verdict and first-invalid index are re-derived per case and **not** preserved under shrink; that AC narrowing is recorded as a blocking deviation. | `mode_lock_preserves_tags_under_simplification` in both contracts targets (simplify and complicate, at least one successful simplification, at least two observed modes); `assert_mode_preserved` inside `proptest_coord_conversion_envelopes`, `proptest_entity_and_modifier_ids` and `proptest_config_equality_hash_and_interning`. The scheduler composed audit is deliberately **not** registered because it reproduces the shape flip. |
+| **F2** The nested-list budget counted leaves (`b^depth`) instead of total elements (`b + b² + … + b^depth`) | `property_oracles::extension_node_count` counts the true total; `clamped_extension_shape` clamps **both** breadth and depth against it (depth is clamped to the budget because `extension_node_count(d, 1) == d`); `config_from_seed` budgets with it, and the `Scalar`, `Holder` and first `Repeat` arms no longer inherit the default eight-element `bed_shape`. | Concrete regression in `ir_config_oracle_counterexamples`: `extension_node_count(2, 2) == 6`, a budget of 4 clamps the shape, and a constructed fixture stays at `config_list_elements(..) <= 4`. The delta review's two extra violations (depth 5 against budget 4; the three non-grid seed arms) are covered by those same assertions and by the sequence clamp. |
+| **F3** The `units_to_mm` reference-error proof omitted the f64 division's own rounding, claiming it was below `2^-150` | `units_bound` is `(2^-24 + 2^-53)·|x| + 2^-150`: f32 half-ulp for the conversion **plus** the f64 reference division's `2^-53` relative error, with `2^-150` kept only as the subnormal floor. Both allowed-error values are outward-rounded (`next_up`) so the comparison can never be tighter than the derivation. The `H-COORD` charter's Oracle and Tolerance headings were corrected to match (the earlier text still quoted the old budget). | The corrected bound is used by `check_units_case` and quoted in `docs/testing/properties.md` §H-COORD; no sample-tuned constant exists. |
 | **F4** Two bounds-oracle mutants were refuted only against production, not against the reference predicate, so substituting the mutant for `expected_accepts` stayed green | `config_bounds_oracle_counterexamples` now asserts the reference predicate's own verdict on the union witnesses (3 and 50 rejected, 7 accepted) and on the inclusive edges (1 and 3 accepted), in addition to the mutant disagreement. | `config_bounds_oracle_counterexamples`; the four mutants now fail the suite if substituted for the reference predicate. |
-| **F8** `Point2::to_mm` was named on the owner surface but never called | `check_mm_case` now builds `Point2::from_mm(m, -m)` and compares `to_mm()` **bitwise** against `units_to_mm` for both coordinates, so the negative and zero-sign directions are covered on every sampled mm case. | `ir_coord_oracle_and_bound_controls` and every `H-COORD` case run through `check_mm_case`. |
+| **F8** `Point2::to_mm` was named on the owner surface but never called | `check_mm_case` now builds `Point2::from_mm(m, -m)` and compares `to_mm()` **bitwise** against `units_to_mm` for both coordinates, covering the negative and zero-sign directions. | `ir_coord_oracle_and_bound_controls` and every sampled `Millimetres` case (plus the deterministic witness loop) run through `check_mm_case`; the `Units` and `OrderedMillimetres` variants intentionally use the unit and monotonicity checkers instead. |
 | **F9** A constant-true `defective_exact_roundtrip_claim` was asserted decoratively | Removed the helper and its assertion; the false universal-inverse claim is falsified only by the concrete `1/32 mm → 313 → 0.0313 mm` and subnormal pairs, which remain. | `ir_coord_oracle_and_bound_controls`. |
 | **F7** Provenance prose contradicted the retained contexts | The provenance section is now explicitly per run and points at each run's `context.json`; the final measurement batch was re-run on the committed tree and only that batch is quoted in the tables. | `target/evidence/final-provenance.txt` plus the per-run `context.json` files. |
+
+### Delta review
+
+A second, delta-scoped review re-ran both contracts targets (9 and 4 tests), both F4 mutant
+substitutions, an old-budget substitution, composed-strategy probes with `simplify()` **and**
+`complicate()`, and the frozen-fixture baseline. It confirmed F4, F8 and the per-run provenance
+as fixed, and found three remaining composition/budget problems and two documentation
+contradictions. Those are now addressed as recorded in the F1/F2/F3 rows above and by removing
+the superseded "blocks nothing"/"obligation was met" prose. The one item it required that this
+run did **not** deliver is a composed scheduler strategy that preserves the value shape under
+shrink; that is recorded as blocking deviation 5 in `packet.spec.md` rather than claimed as
+done.
 
 ### Blocking findings that this packet cannot resolve
 

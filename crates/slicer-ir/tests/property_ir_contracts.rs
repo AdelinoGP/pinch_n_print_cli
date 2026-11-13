@@ -526,6 +526,8 @@ fn ir_id_parent_and_sentinel_rejections() {
             assert_ne!(id, MODIFIER_FOOTPRINT_REGION_ID);
             assert!(is_modifier_namespace_id(id));
             assert_eq!(modifier_base_region_id(id), Some(parent));
+            // test-quality: determinism pin on `modifier_sub_region_id`; the
+            // namespace/payload/decode assertions are the independent checks.
             assert_eq!(
                 id,
                 modifier_sub_region_id(parent, "obj", footprint_geo),
