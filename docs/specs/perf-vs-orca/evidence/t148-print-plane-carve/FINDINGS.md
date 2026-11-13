@@ -181,6 +181,6 @@ fairness fix.
 - [`reduce_t148.py`](reduce_t148.py) — regenerates `census.json` from the raw
   (gitignored) tree; needs `shapely`, and imports t147's parser so both takes
   quote the same metric.
-- [`verify.py`](verify.py) — **347/347 checks**, `--self-test` rejects **8/8**
+- [`verify.py`](verify.py) — **360/360 checks**, `--self-test` rejects **9/9**
   negative controls; stdlib-only, reads only `census.json`.
 - [`REPRODUCE.md`](REPRODUCE.md) — exact commands.

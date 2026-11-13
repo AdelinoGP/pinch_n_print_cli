@@ -77,8 +77,8 @@ pwsh -NoProfile -Command "& 'docs/specs/perf-vs-orca/evidence/matched-pair/run_s
 ```bash
 cd docs/specs/perf-vs-orca/evidence/t148-print-plane-carve
 python reduce_t148.py      # writes census.json from target/t148 + the t148 campaign
-python verify.py           # 347/347 checks
-python verify.py --self-test  # 8/8 negative controls rejected
+python verify.py           # 360/360 checks
+python verify.py --self-test  # 9/9 negative controls rejected
 ```
 
 `reduce_t148.py` also reads t147's in-repo census and the gitignored t147 probe

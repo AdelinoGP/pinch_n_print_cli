@@ -164,6 +164,29 @@ class Checker:
                 f"{cell}: no support in a supports-off cell",
             )
 
+        # The in-repo reference set must name exactly the hashes this census
+        # measured, with the superseded supports-on set genuinely retired.
+        reference = json.loads((OUT / "reference.json").read_text(encoding="utf-8"))
+        for cell in cells:
+            self.check(
+                cells[cell]["after"]["gcode_sha256"] == reference["active_set"][cell],
+                f"{cell}: census hash equals reference.json active_set",
+            )
+            self.check(
+                reference["active_set"][cell] != reference["superseded_set"][cell],
+                f"{cell}: supports-on hash is not the superseded one",
+            )
+        for cell in SUPPORTS_OFF:
+            self.check(
+                self.census["supports_off"][cell]["gcode_sha256"]
+                == reference["active_set"][cell],
+                f"{cell}: census hash equals reference.json active_set",
+            )
+        self.check(
+            reference["supports_off_unchanged"] is True,
+            "reference.json marks supports-off unchanged",
+        )
+
         # The coverage metric is not a PnP criterion: ordinary retained layers
         # show the same near-zero reading, so the recovered layers' reading is
         # not evidence of missing support.
@@ -221,6 +244,9 @@ def negative_controls(census: dict) -> list[str]:
     def control(probe):
         probe["retained_layer_control"]["base-classic-on"][0]["pnp_coverage"] = 0.9
 
+    def reference_hash(probe):
+        probe["cells"]["base-arachne-on"]["after"]["gcode_sha256"] = "0" * 64
+
     for label, mutate in [
         ("after diagnostics", diagnostics),
         ("supports-off identity", off_hash),
@@ -230,6 +256,7 @@ def negative_controls(census: dict) -> list[str]:
         ("wall ratio", ratio),
         ("before coverage", coverage_before),
         ("retained control", control),
+        ("reference active hash", reference_hash),
     ]:
         expect_failure(label, mutate)
     return fired
@@ -239,10 +266,10 @@ def main(argv: list[str]) -> int:
     census = json.loads(CENSUS.read_text(encoding="utf-8"))
     if "--self-test" in argv:
         fired = negative_controls(census)
-        print(f"negative controls rejected: {len(fired)}/8")
+        print(f"negative controls rejected: {len(fired)}/9")
         for label in fired:
             print(f"  rejected: {label}")
-        return 0 if len(fired) == 8 else 1
+        return 0 if len(fired) == 9 else 1
     checks = Checker(census).run()
     print(f"t148 verify: {checks}/{checks} checks passed")
     return 0

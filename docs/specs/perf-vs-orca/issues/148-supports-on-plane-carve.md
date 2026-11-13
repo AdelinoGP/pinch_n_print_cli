@@ -12,7 +12,7 @@ Status: resolved (2026-11-13; fairness fix landed — the planner now carves
   stays byte-identical to the t144 active set (4/4). Ratios of record
   re-derived: **2.705x / 2.829x / 3.356x / 3.248x**, CPU corroborating. See
   ## Answer and [`evidence/t148-print-plane-carve/`](../evidence/t148-print-plane-carve/FINDINGS.md)
-  (`verify.py` 347/347, 8/8 negative controls).
+  (`verify.py` 360/360, 9/9 negative controls).
 Assignee: 2026-11-13 OpenCode wayfinder session — the human said "continue the perf vs orca map, pick an AFK ticket" (t148 was the first unblocked, unclaimed AFK frontier ticket in order; 146 is the human's HITL grilling)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
@@ -91,7 +91,7 @@ carved result. Do not weaken the gate to a tolerance.
 
 Resolved 2026-11-13. Evidence:
 [`evidence/t148-print-plane-carve/`](../evidence/t148-print-plane-carve/FINDINGS.md)
-(`verify.py` 347/347 checks, 8/8 negative controls; `reduce_t148.py`
+(`verify.py` 360/360 checks, 9/9 negative controls; `reduce_t148.py`
 regenerates `census.json`; `reference.json` is the new currency).
 
 ### 1. The payload and the carve
