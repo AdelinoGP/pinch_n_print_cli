@@ -31,6 +31,14 @@ Decide and record, in order:
    them from a local disclosure to the active set, in whatever artifact the map
    treats as the currency ([t139](139-layer-plane-parity.md)'s set is the
    precedent).
+
+   **Update (2026-11-12, [t144](144-brim-anchor-reconstruction.md)):** the
+   active set is now t144's candidate set
+   ([`evidence/t144-brim-anchor/reference.json`](../evidence/t144-brim-anchor/reference.json)),
+   not t143's baseline hashes — the anchor reconstruction moved four of the
+   four benchy cells (`1ae0cfa8…` / `d9fc80ba…` / `8faf02b1…` / `cd7d4a2d…`) and
+   is byte-identical on both build arms. Treat t143's four hashes as the
+   pre-t144 baseline, not the currency. The remaining items (2–5) are unchanged.
 2. **What the swap actually changes.** A delta audit between the old and new
    export cannot be taken directly (the old file is gone); reconstruct it from
    the retained t139 G-code if a copy exists, otherwise from the measured

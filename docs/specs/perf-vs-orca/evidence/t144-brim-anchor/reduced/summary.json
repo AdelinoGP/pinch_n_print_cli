@@ -1,0 +1,1516 @@
+{
+  "ticket": 144,
+  "manifest": {
+    "baseline-ordinary": {
+      "exe_sha256": "5e902c04bea4304dd1b8fedc00929129694c9b868632e00fd2e25c2ccf217c7f",
+      "skirt_brim_wasm_sha256": "92e0d3ed91319e3f38975c8a651f7c58b6286345d9db9204ca27341020596f14",
+      "exe": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t144-baseline\\pnp_cli-ordinary.exe",
+      "module_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t144-baseline\\modules"
+    },
+    "candidate-ordinary": {
+      "exe_sha256": "5e902c04bea4304dd1b8fedc00929129694c9b868632e00fd2e25c2ccf217c7f",
+      "skirt_brim_wasm_sha256": "74ada739164f66ea13efc82df0dc9656cf364f6d404806364457ede67d132b76",
+      "exe": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\release\\pnp_cli.exe",
+      "module_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t144-candidate\\modules"
+    },
+    "candidate-accelerated": {
+      "exe_sha256": "5e902c04bea4304dd1b8fedc00929129694c9b868632e00fd2e25c2ccf217c7f",
+      "skirt_brim_wasm_sha256": "95f0cf252c253132cb1a9977064301928d0a0f116aeae747ae74f8f9bf3a7b8d",
+      "exe": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\release\\pnp_cli.exe",
+      "module_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t144-candidate-accelerated\\modules"
+    }
+  },
+  "output": {
+    "reference_kind": {
+      "benchy-classic-off": "benchy_replacement_fixture",
+      "benchy-classic-on": "benchy_replacement_fixture",
+      "benchy-arachne-off": "benchy_replacement_fixture",
+      "benchy-arachne-on": "benchy_replacement_fixture",
+      "base-classic-off": "t139_base",
+      "base-classic-on": "t139_base",
+      "base-arachne-off": "t139_base",
+      "base-arachne-on": "t139_base"
+    },
+    "reference_note": "Base cells are t139's reference set (the original base.stl is intact: base classic-off reproduces ca14d055... exactly). The four benchy cells were re-recorded on the replacement 3dbenchy.stl export restored 2026-11-12 (same model: 240 layers / 48.0 mm; different tessellation, so t139's benchy hashes are retired). Benchy hashes here are this take's BASELINE arm, never t139's set.",
+    "active_reference": {
+      "base-classic-off": "ca14d0554e37eddf27c80b5052b583d6fc6eba5cf7bf551d6bb419fd45a78769",
+      "base-classic-on": "585c6a8edc2fd1de72dd2a86933fdad25c7ed144662dd80bbc68fb7856e4f629",
+      "base-arachne-off": "d8fdc1d990b7763dd592311c333e1f2b0cd7f7beb9885b99abb5c95a7db2cd98",
+      "base-arachne-on": "c9fee59a234212e7868bc600572213c47d6961de1f8963bfe1a34a25cf1f7d06",
+      "benchy-classic-off": "a89e449bd68a45f430de724cade6cb453272b261e5ee7083b5a533c16006b765",
+      "benchy-classic-on": "dceb7a4827d7887aa47357e98b07ffbeb07ccee5e6643f824fad03b36e8b2faf",
+      "benchy-arachne-off": "3286449f99155c7d005d60acc36e93b61d46c70ac2fdd3b01ceb87dc3d0d84eb",
+      "benchy-arachne-on": "be78671855326db46515945ce2ae9c1e391149a41e29713fd50e052725adf6f6"
+    },
+    "cells": {
+      "benchy-classic-off": {
+        "baseline-ordinary": {
+          "sha256": "a89e449bd68a45f430de724cade6cb453272b261e5ee7083b5a533c16006b765",
+          "gcode_bytes": 4083921,
+          "exit_code": 0,
+          "wall_seconds": 3.3851
+        },
+        "candidate-ordinary": {
+          "sha256": "1ae0cfa84d1b5f59893a2c30ab6ca4afe0bb73ad68249cff2ea8ddc5f09c8c5f",
+          "gcode_bytes": 4085300,
+          "exit_code": 0,
+          "wall_seconds": 3.3688
+        },
+        "candidate-accelerated": {
+          "sha256": "1ae0cfa84d1b5f59893a2c30ab6ca4afe0bb73ad68249cff2ea8ddc5f09c8c5f",
+          "gcode_bytes": 4085300,
+          "exit_code": 0,
+          "wall_seconds": 3.413
+        },
+        "baseline_matches_active_reference": true,
+        "candidate_equal_across_arms": true,
+        "candidate_moved_from_baseline": true
+      },
+      "benchy-classic-on": {
+        "baseline-ordinary": {
+          "sha256": "dceb7a4827d7887aa47357e98b07ffbeb07ccee5e6643f824fad03b36e8b2faf",
+          "gcode_bytes": 8652768,
+          "exit_code": 0,
+          "wall_seconds": 6.3834
+        },
+        "candidate-ordinary": {
+          "sha256": "d9fc80baf6ae1e71e2f1a7df4e907120b6c42c046ec1d8a77b9b53751cab3f78",
+          "gcode_bytes": 8653798,
+          "exit_code": 0,
+          "wall_seconds": 6.476
+        },
+        "candidate-accelerated": {
+          "sha256": "d9fc80baf6ae1e71e2f1a7df4e907120b6c42c046ec1d8a77b9b53751cab3f78",
+          "gcode_bytes": 8653798,
+          "exit_code": 0,
+          "wall_seconds": 6.4902
+        },
+        "baseline_matches_active_reference": true,
+        "candidate_equal_across_arms": true,
+        "candidate_moved_from_baseline": true
+      },
+      "benchy-arachne-off": {
+        "baseline-ordinary": {
+          "sha256": "3286449f99155c7d005d60acc36e93b61d46c70ac2fdd3b01ceb87dc3d0d84eb",
+          "gcode_bytes": 4229255,
+          "exit_code": 0,
+          "wall_seconds": 3.3791
+        },
+        "candidate-ordinary": {
+          "sha256": "8faf02b1b473405c3b24f261ab4e9daa630701b3d0caa78de70468c93453a7cb",
+          "gcode_bytes": 4227096,
+          "exit_code": 0,
+          "wall_seconds": 3.519
+        },
+        "candidate-accelerated": {
+          "sha256": "8faf02b1b473405c3b24f261ab4e9daa630701b3d0caa78de70468c93453a7cb",
+          "gcode_bytes": 4227096,
+          "exit_code": 0,
+          "wall_seconds": 3.5094
+        },
+        "baseline_matches_active_reference": true,
+        "candidate_equal_across_arms": true,
+        "candidate_moved_from_baseline": true
+      },
+      "benchy-arachne-on": {
+        "baseline-ordinary": {
+          "sha256": "be78671855326db46515945ce2ae9c1e391149a41e29713fd50e052725adf6f6",
+          "gcode_bytes": 8794268,
+          "exit_code": 0,
+          "wall_seconds": 6.433
+        },
+        "candidate-ordinary": {
+          "sha256": "cd7d4a2dbd67d8acc5e4c4dd2e371616deaf89e61a2753b9efba6fc4178e6345",
+          "gcode_bytes": 8796050,
+          "exit_code": 0,
+          "wall_seconds": 6.2796
+        },
+        "candidate-accelerated": {
+          "sha256": "cd7d4a2dbd67d8acc5e4c4dd2e371616deaf89e61a2753b9efba6fc4178e6345",
+          "gcode_bytes": 8796050,
+          "exit_code": 0,
+          "wall_seconds": 6.3723
+        },
+        "baseline_matches_active_reference": true,
+        "candidate_equal_across_arms": true,
+        "candidate_moved_from_baseline": true
+      },
+      "base-classic-off": {
+        "baseline-ordinary": {
+          "sha256": "ca14d0554e37eddf27c80b5052b583d6fc6eba5cf7bf551d6bb419fd45a78769",
+          "gcode_bytes": 21184281,
+          "exit_code": 0,
+          "wall_seconds": 28.3314
+        },
+        "candidate-ordinary": {
+          "sha256": "c0b9014f8eff1daee38b4f9f9bf3e1b66c4ef84e75d8b741e46f468dc37fe0ad",
+          "gcode_bytes": 21186923,
+          "exit_code": 0,
+          "wall_seconds": 28.2209
+        },
+        "candidate-accelerated": {
+          "sha256": "c0b9014f8eff1daee38b4f9f9bf3e1b66c4ef84e75d8b741e46f468dc37fe0ad",
+          "gcode_bytes": 21186923,
+          "exit_code": 0,
+          "wall_seconds": 27.978
+        },
+        "baseline_matches_active_reference": true,
+        "candidate_equal_across_arms": true,
+        "candidate_moved_from_baseline": true
+      },
+      "base-classic-on": {
+        "baseline-ordinary": {
+          "sha256": "585c6a8edc2fd1de72dd2a86933fdad25c7ed144662dd80bbc68fb7856e4f629",
+          "gcode_bytes": 38004599,
+          "exit_code": 0,
+          "wall_seconds": 62.4844
+        },
+        "candidate-ordinary": {
+          "sha256": "585c6a8edc2fd1de72dd2a86933fdad25c7ed144662dd80bbc68fb7856e4f629",
+          "gcode_bytes": 38004599,
+          "exit_code": 0,
+          "wall_seconds": 65.1052
+        },
+        "candidate-accelerated": {
+          "sha256": "585c6a8edc2fd1de72dd2a86933fdad25c7ed144662dd80bbc68fb7856e4f629",
+          "gcode_bytes": 38004599,
+          "exit_code": 0,
+          "wall_seconds": 70.3868
+        },
+        "baseline_matches_active_reference": true,
+        "candidate_equal_across_arms": true,
+        "candidate_moved_from_baseline": false
+      },
+      "base-arachne-off": {
+        "baseline-ordinary": {
+          "sha256": "d8fdc1d990b7763dd592311c333e1f2b0cd7f7beb9885b99abb5c95a7db2cd98",
+          "gcode_bytes": 21045270,
+          "exit_code": 0,
+          "wall_seconds": 28.2268
+        },
+        "candidate-ordinary": {
+          "sha256": "17f63e9387bd8d548f7d9df0c4d840742dfe019c22eae4a9e314105bad38e191",
+          "gcode_bytes": 21046723,
+          "exit_code": 0,
+          "wall_seconds": 28.7565
+        },
+        "candidate-accelerated": {
+          "sha256": "17f63e9387bd8d548f7d9df0c4d840742dfe019c22eae4a9e314105bad38e191",
+          "gcode_bytes": 21046723,
+          "exit_code": 0,
+          "wall_seconds": 29.3768
+        },
+        "baseline_matches_active_reference": true,
+        "candidate_equal_across_arms": true,
+        "candidate_moved_from_baseline": true
+      },
+      "base-arachne-on": {
+        "baseline-ordinary": {
+          "sha256": "c9fee59a234212e7868bc600572213c47d6961de1f8963bfe1a34a25cf1f7d06",
+          "gcode_bytes": 37866953,
+          "exit_code": 0,
+          "wall_seconds": 65.7191
+        },
+        "candidate-ordinary": {
+          "sha256": "c9fee59a234212e7868bc600572213c47d6961de1f8963bfe1a34a25cf1f7d06",
+          "gcode_bytes": 37866953,
+          "exit_code": 0,
+          "wall_seconds": 65.232
+        },
+        "candidate-accelerated": {
+          "sha256": "c9fee59a234212e7868bc600572213c47d6961de1f8963bfe1a34a25cf1f7d06",
+          "gcode_bytes": 37866953,
+          "exit_code": 0,
+          "wall_seconds": 65.8683
+        },
+        "baseline_matches_active_reference": true,
+        "candidate_equal_across_arms": true,
+        "candidate_moved_from_baseline": false
+      }
+    },
+    "candidate_set": {
+      "benchy-classic-off": "1ae0cfa84d1b5f59893a2c30ab6ca4afe0bb73ad68249cff2ea8ddc5f09c8c5f",
+      "benchy-classic-on": "d9fc80baf6ae1e71e2f1a7df4e907120b6c42c046ec1d8a77b9b53751cab3f78",
+      "benchy-arachne-off": "8faf02b1b473405c3b24f261ab4e9daa630701b3d0caa78de70468c93453a7cb",
+      "benchy-arachne-on": "cd7d4a2dbd67d8acc5e4c4dd2e371616deaf89e61a2753b9efba6fc4178e6345",
+      "base-classic-off": "c0b9014f8eff1daee38b4f9f9bf3e1b66c4ef84e75d8b741e46f468dc37fe0ad",
+      "base-classic-on": "585c6a8edc2fd1de72dd2a86933fdad25c7ed144662dd80bbc68fb7856e4f629",
+      "base-arachne-off": "17f63e9387bd8d548f7d9df0c4d840742dfe019c22eae4a9e314105bad38e191",
+      "base-arachne-on": "c9fee59a234212e7868bc600572213c47d6961de1f8963bfe1a34a25cf1f7d06"
+    },
+    "moved_cells": 6,
+    "inert_cells": [
+      "base-arachne-on",
+      "base-classic-on"
+    ],
+    "inert_disclosure": "base classic-on / base arachne-on are byte-identical to the baseline: the support footprint clips the whole brim area, so no brim path (and therefore no brim point in the skirt hull) reaches the output; the support clip is out of scope (t138/t139) and unchanged."
+  },
+  "ab": {
+    "benchy-classic-off": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 3.3026,
+          "candidate_wall_s": 3.441,
+          "baseline_cpu_s": 18.4219,
+          "candidate_cpu_s": 18.7188,
+          "wall_delta_pct": 4.1906,
+          "cpu_delta_pct": 1.6117
+        },
+        {
+          "pair": 2,
+          "order": "candidate-ordinary>baseline-ordinary",
+          "baseline_wall_s": 3.2613,
+          "candidate_wall_s": 3.3214,
+          "baseline_cpu_s": 18.6562,
+          "candidate_cpu_s": 18.1406,
+          "wall_delta_pct": 1.8428,
+          "cpu_delta_pct": -2.7637
+        },
+        {
+          "pair": 3,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 3.3103,
+          "candidate_wall_s": 3.2868,
+          "baseline_cpu_s": 18.2344,
+          "candidate_cpu_s": 18.4531,
+          "wall_delta_pct": -0.7099,
+          "cpu_delta_pct": 1.1994
+        }
+      ],
+      "pair_count": 3,
+      "wall_delta_pct_median": 1.8428,
+      "cpu_delta_pct_median": 1.1994,
+      "baseline_wall_median_s": 3.3026,
+      "candidate_wall_median_s": 3.3214
+    },
+    "benchy-classic-on": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 6.6088,
+          "candidate_wall_s": 6.5248,
+          "baseline_cpu_s": 34.8281,
+          "candidate_cpu_s": 34.5781,
+          "wall_delta_pct": -1.271,
+          "cpu_delta_pct": -0.7178
+        },
+        {
+          "pair": 2,
+          "order": "candidate-ordinary>baseline-ordinary",
+          "baseline_wall_s": 6.2848,
+          "candidate_wall_s": 6.1053,
+          "baseline_cpu_s": 34.6406,
+          "candidate_cpu_s": 34.6562,
+          "wall_delta_pct": -2.8561,
+          "cpu_delta_pct": 0.045
+        },
+        {
+          "pair": 3,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 6.23,
+          "candidate_wall_s": 6.0276,
+          "baseline_cpu_s": 34.8125,
+          "candidate_cpu_s": 34.375,
+          "wall_delta_pct": -3.2488,
+          "cpu_delta_pct": -1.2567
+        }
+      ],
+      "pair_count": 3,
+      "wall_delta_pct_median": -2.8561,
+      "cpu_delta_pct_median": -0.7178,
+      "baseline_wall_median_s": 6.2848,
+      "candidate_wall_median_s": 6.1053
+    },
+    "benchy-arachne-off": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 3.5525,
+          "candidate_wall_s": 3.3893,
+          "baseline_cpu_s": 19.6094,
+          "candidate_cpu_s": 19.5938,
+          "wall_delta_pct": -4.5939,
+          "cpu_delta_pct": -0.0796
+        },
+        {
+          "pair": 2,
+          "order": "candidate-ordinary>baseline-ordinary",
+          "baseline_wall_s": 3.287,
+          "candidate_wall_s": 3.3327,
+          "baseline_cpu_s": 19.5156,
+          "candidate_cpu_s": 19.2969,
+          "wall_delta_pct": 1.3903,
+          "cpu_delta_pct": -1.1206
+        },
+        {
+          "pair": 3,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 3.4148,
+          "candidate_wall_s": 3.396,
+          "baseline_cpu_s": 19.2812,
+          "candidate_cpu_s": 19.5156,
+          "wall_delta_pct": -0.5505,
+          "cpu_delta_pct": 1.2157
+        }
+      ],
+      "pair_count": 3,
+      "wall_delta_pct_median": -0.5505,
+      "cpu_delta_pct_median": -0.0796,
+      "baseline_wall_median_s": 3.4148,
+      "candidate_wall_median_s": 3.3893
+    },
+    "benchy-arachne-on": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 6.5938,
+          "candidate_wall_s": 6.4911,
+          "baseline_cpu_s": 36.0,
+          "candidate_cpu_s": 36.2969,
+          "wall_delta_pct": -1.5575,
+          "cpu_delta_pct": 0.8247
+        },
+        {
+          "pair": 2,
+          "order": "candidate-ordinary>baseline-ordinary",
+          "baseline_wall_s": 6.2096,
+          "candidate_wall_s": 6.2363,
+          "baseline_cpu_s": 35.3281,
+          "candidate_cpu_s": 35.3438,
+          "wall_delta_pct": 0.43,
+          "cpu_delta_pct": 0.0444
+        },
+        {
+          "pair": 3,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 6.3587,
+          "candidate_wall_s": 6.5503,
+          "baseline_cpu_s": 36.8438,
+          "candidate_cpu_s": 36.0469,
+          "wall_delta_pct": 3.0132,
+          "cpu_delta_pct": -2.1629
+        }
+      ],
+      "pair_count": 3,
+      "wall_delta_pct_median": 0.43,
+      "cpu_delta_pct_median": 0.0444,
+      "baseline_wall_median_s": 6.3587,
+      "candidate_wall_median_s": 6.4911
+    },
+    "base-classic-off": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 30.7731,
+          "candidate_wall_s": 27.5712,
+          "baseline_cpu_s": 208.8125,
+          "candidate_cpu_s": 207.9688,
+          "wall_delta_pct": -10.4049,
+          "cpu_delta_pct": -0.404
+        },
+        {
+          "pair": 2,
+          "order": "candidate-ordinary>baseline-ordinary",
+          "baseline_wall_s": 27.056,
+          "candidate_wall_s": 27.4119,
+          "baseline_cpu_s": 207.0,
+          "candidate_cpu_s": 207.0,
+          "wall_delta_pct": 1.3154,
+          "cpu_delta_pct": 0.0
+        },
+        {
+          "pair": 3,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 28.8436,
+          "candidate_wall_s": 29.5803,
+          "baseline_cpu_s": 206.4062,
+          "candidate_cpu_s": 206.6562,
+          "wall_delta_pct": 2.5541,
+          "cpu_delta_pct": 0.1211
+        }
+      ],
+      "pair_count": 3,
+      "wall_delta_pct_median": 1.3154,
+      "cpu_delta_pct_median": 0.0,
+      "baseline_wall_median_s": 28.8436,
+      "candidate_wall_median_s": 27.5712
+    },
+    "base-classic-on": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 65.9713,
+          "candidate_wall_s": 67.1092,
+          "baseline_cpu_s": 492.75,
+          "candidate_cpu_s": 496.5312,
+          "wall_delta_pct": 1.7248,
+          "cpu_delta_pct": 0.7674
+        },
+        {
+          "pair": 2,
+          "order": "candidate-ordinary>baseline-ordinary",
+          "baseline_wall_s": 64.3795,
+          "candidate_wall_s": 64.8644,
+          "baseline_cpu_s": 489.4844,
+          "candidate_cpu_s": 492.9062,
+          "wall_delta_pct": 0.7532,
+          "cpu_delta_pct": 0.6991
+        },
+        {
+          "pair": 3,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 65.1564,
+          "candidate_wall_s": 66.2164,
+          "baseline_cpu_s": 494.1094,
+          "candidate_cpu_s": 492.5781,
+          "wall_delta_pct": 1.6269,
+          "cpu_delta_pct": -0.3099
+        }
+      ],
+      "pair_count": 3,
+      "wall_delta_pct_median": 1.6269,
+      "cpu_delta_pct_median": 0.6991,
+      "baseline_wall_median_s": 65.1564,
+      "candidate_wall_median_s": 66.2164
+    },
+    "base-arachne-off": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 28.6983,
+          "candidate_wall_s": 29.0358,
+          "baseline_cpu_s": 211.8594,
+          "candidate_cpu_s": 211.6719,
+          "wall_delta_pct": 1.176,
+          "cpu_delta_pct": -0.0885
+        },
+        {
+          "pair": 2,
+          "order": "candidate-ordinary>baseline-ordinary",
+          "baseline_wall_s": 27.7959,
+          "candidate_wall_s": 28.811,
+          "baseline_cpu_s": 211.9844,
+          "candidate_cpu_s": 213.2031,
+          "wall_delta_pct": 3.652,
+          "cpu_delta_pct": 0.5749
+        },
+        {
+          "pair": 3,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 30.5197,
+          "candidate_wall_s": 29.0687,
+          "baseline_cpu_s": 211.8906,
+          "candidate_cpu_s": 212.4688,
+          "wall_delta_pct": -4.7543,
+          "cpu_delta_pct": 0.2729
+        }
+      ],
+      "pair_count": 3,
+      "wall_delta_pct_median": 1.176,
+      "cpu_delta_pct_median": 0.2729,
+      "baseline_wall_median_s": 28.6983,
+      "candidate_wall_median_s": 29.0358
+    },
+    "base-arachne-on": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 65.8354,
+          "candidate_wall_s": 62.1623,
+          "baseline_cpu_s": 495.0781,
+          "candidate_cpu_s": 494.7188,
+          "wall_delta_pct": -5.5792,
+          "cpu_delta_pct": -0.0726
+        },
+        {
+          "pair": 2,
+          "order": "candidate-ordinary>baseline-ordinary",
+          "baseline_wall_s": 62.3192,
+          "candidate_wall_s": 63.2395,
+          "baseline_cpu_s": 493.4219,
+          "candidate_cpu_s": 495.2812,
+          "wall_delta_pct": 1.4768,
+          "cpu_delta_pct": 0.3768
+        },
+        {
+          "pair": 3,
+          "order": "baseline-ordinary>candidate-ordinary",
+          "baseline_wall_s": 69.7339,
+          "candidate_wall_s": 65.5536,
+          "baseline_cpu_s": 494.9375,
+          "candidate_cpu_s": 494.7656,
+          "wall_delta_pct": -5.9946,
+          "cpu_delta_pct": -0.0347
+        }
+      ],
+      "pair_count": 3,
+      "wall_delta_pct_median": -5.5792,
+      "cpu_delta_pct_median": -0.0347,
+      "baseline_wall_median_s": 65.8354,
+      "candidate_wall_median_s": 63.2395
+    }
+  },
+  "null": {
+    "cells": {
+      "benchy-classic-off": {
+        "pairs": [
+          {
+            "pair": 1,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": -0.3033,
+            "cpu_delta_pct": -1.2522
+          },
+          {
+            "pair": 2,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": 4.7652,
+            "cpu_delta_pct": 0.5073
+          },
+          {
+            "pair": 3,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": 8.8988,
+            "cpu_delta_pct": 3.342
+          }
+        ],
+        "pair_count": 3,
+        "wall_delta_pct_median": 4.7652,
+        "cpu_delta_pct_median": 0.5073,
+        "wall_delta_pct_abs_max": 8.8988,
+        "cpu_delta_pct_abs_max": 3.342
+      },
+      "benchy-arachne-off": {
+        "pairs": [
+          {
+            "pair": 1,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": -11.703,
+            "cpu_delta_pct": -2.502
+          },
+          {
+            "pair": 2,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": -1.5061,
+            "cpu_delta_pct": -1.3523
+          },
+          {
+            "pair": 3,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": -24.8178,
+            "cpu_delta_pct": -1.039
+          }
+        ],
+        "pair_count": 3,
+        "wall_delta_pct_median": -11.703,
+        "cpu_delta_pct_median": -1.3523,
+        "wall_delta_pct_abs_max": 24.8178,
+        "cpu_delta_pct_abs_max": 2.502
+      },
+      "base-classic-off": {
+        "pairs": [
+          {
+            "pair": 1,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": -2.5884,
+            "cpu_delta_pct": -0.3832
+          },
+          {
+            "pair": 2,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": -9.5094,
+            "cpu_delta_pct": -0.4944
+          },
+          {
+            "pair": 3,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": 0.837,
+            "cpu_delta_pct": -0.2031
+          }
+        ],
+        "pair_count": 3,
+        "wall_delta_pct_median": -2.5884,
+        "cpu_delta_pct_median": -0.3832,
+        "wall_delta_pct_abs_max": 9.5094,
+        "cpu_delta_pct_abs_max": 0.4944
+      },
+      "base-arachne-off": {
+        "pairs": [
+          {
+            "pair": 1,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": 4.5173,
+            "cpu_delta_pct": 0.6191
+          },
+          {
+            "pair": 2,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": -0.649,
+            "cpu_delta_pct": 0.3097
+          },
+          {
+            "pair": 3,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": -3.4219,
+            "cpu_delta_pct": 0.4353
+          }
+        ],
+        "pair_count": 3,
+        "wall_delta_pct_median": -0.649,
+        "cpu_delta_pct_median": 0.4353,
+        "wall_delta_pct_abs_max": 4.5173,
+        "cpu_delta_pct_abs_max": 0.6191
+      },
+      "base-classic-on": {
+        "pairs": [
+          {
+            "pair": 1,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": 7.7666,
+            "cpu_delta_pct": 1.0767
+          },
+          {
+            "pair": 2,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": -3.3043,
+            "cpu_delta_pct": 0.0032
+          },
+          {
+            "pair": 3,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": -1.1408,
+            "cpu_delta_pct": -0.2003
+          }
+        ],
+        "pair_count": 3,
+        "wall_delta_pct_median": -1.1408,
+        "cpu_delta_pct_median": 0.0032,
+        "wall_delta_pct_abs_max": 7.7666,
+        "cpu_delta_pct_abs_max": 1.0767
+      },
+      "benchy-classic-on": {
+        "pairs": [
+          {
+            "pair": 1,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": -0.7888,
+            "cpu_delta_pct": -0.9425
+          },
+          {
+            "pair": 2,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": -0.873,
+            "cpu_delta_pct": 1.3716
+          },
+          {
+            "pair": 3,
+            "order": "baseline-ordinary>baseline-ordinary",
+            "wall_delta_pct": 0.0168,
+            "cpu_delta_pct": 4.5165
+          }
+        ],
+        "pair_count": 3,
+        "wall_delta_pct_median": -0.7888,
+        "cpu_delta_pct_median": 1.3716,
+        "wall_delta_pct_abs_max": 0.873,
+        "cpu_delta_pct_abs_max": 4.5165
+      }
+    },
+    "band_pct": {
+      "wall_abs_max_pct": 24.8178,
+      "cpu_abs_max_pct": 4.5165
+    }
+  },
+  "oracle": {
+    "cells": {
+      "benchy-classic-off": {
+        "baseline": {
+          "pnp_swept_area_mm2": 937.34,
+          "pnp_brim_outer_area_mm2": 1441.85,
+          "pnp_skirt_swept_area_mm2": 360.81,
+          "pnp_skirt_outer_area_mm2": 2233.27,
+          "orca_swept_area_mm2": 965.32,
+          "orca_skirt_outer_area_mm2": 2298.88,
+          "brim_swept_area_rel_diff": 2.9,
+          "skirt_swept_area_rel_diff": 1.54,
+          "skirt_outer_loop_area_rel_diff": 2.85,
+          "brim_swept_area_pass": true,
+          "skirt_area_pass": true,
+          "pass": true
+        },
+        "candidate": {
+          "pnp_swept_area_mm2": 948.07,
+          "pnp_brim_outer_area_mm2": 1470.77,
+          "pnp_skirt_swept_area_mm2": 363.96,
+          "pnp_skirt_outer_area_mm2": 2268.47,
+          "orca_swept_area_mm2": 965.32,
+          "orca_skirt_outer_area_mm2": 2298.88,
+          "brim_swept_area_rel_diff": 1.79,
+          "skirt_swept_area_rel_diff": 0.68,
+          "skirt_outer_loop_area_rel_diff": 1.32,
+          "brim_swept_area_pass": true,
+          "skirt_area_pass": true,
+          "pass": true
+        }
+      },
+      "benchy-arachne-off": {
+        "baseline": {
+          "pnp_swept_area_mm2": 936.78,
+          "pnp_brim_outer_area_mm2": 1441.52,
+          "pnp_skirt_swept_area_mm2": 360.62,
+          "pnp_skirt_outer_area_mm2": 2233.05,
+          "orca_swept_area_mm2": 965.32,
+          "orca_skirt_outer_area_mm2": 2298.88,
+          "brim_swept_area_rel_diff": 2.96,
+          "skirt_swept_area_rel_diff": 1.6,
+          "skirt_outer_loop_area_rel_diff": 2.86,
+          "brim_swept_area_pass": true,
+          "skirt_area_pass": true,
+          "pass": true
+        },
+        "candidate": {
+          "pnp_swept_area_mm2": 948.58,
+          "pnp_brim_outer_area_mm2": 1470.49,
+          "pnp_skirt_swept_area_mm2": 363.96,
+          "pnp_skirt_outer_area_mm2": 2268.13,
+          "orca_swept_area_mm2": 965.32,
+          "orca_skirt_outer_area_mm2": 2298.88,
+          "brim_swept_area_rel_diff": 1.73,
+          "skirt_swept_area_rel_diff": 0.68,
+          "skirt_outer_loop_area_rel_diff": 1.34,
+          "brim_swept_area_pass": true,
+          "skirt_area_pass": true,
+          "pass": true
+        }
+      },
+      "base-classic-off": {
+        "baseline": {
+          "pnp_swept_area_mm2": 240.19,
+          "pnp_brim_outer_area_mm2": 237.08,
+          "pnp_skirt_swept_area_mm2": 169.36,
+          "pnp_skirt_outer_area_mm2": 586.47,
+          "orca_swept_area_mm2": 253.29,
+          "orca_skirt_outer_area_mm2": 621.6,
+          "brim_swept_area_rel_diff": 5.17,
+          "skirt_swept_area_rel_diff": 4.28,
+          "skirt_outer_loop_area_rel_diff": 5.65,
+          "brim_swept_area_pass": true,
+          "skirt_area_pass": false,
+          "pass": false
+        },
+        "candidate": {
+          "pnp_swept_area_mm2": 250.4,
+          "pnp_brim_outer_area_mm2": 248.06,
+          "pnp_skirt_swept_area_mm2": 173.06,
+          "pnp_skirt_outer_area_mm2": 603.64,
+          "orca_swept_area_mm2": 253.29,
+          "orca_skirt_outer_area_mm2": 621.6,
+          "brim_swept_area_rel_diff": 1.14,
+          "skirt_swept_area_rel_diff": 2.19,
+          "skirt_outer_loop_area_rel_diff": 2.89,
+          "brim_swept_area_pass": true,
+          "skirt_area_pass": true,
+          "pass": true
+        }
+      },
+      "base-arachne-off": {
+        "baseline": {
+          "pnp_swept_area_mm2": 236.25,
+          "pnp_brim_outer_area_mm2": 233.37,
+          "pnp_skirt_swept_area_mm2": 169.14,
+          "pnp_skirt_outer_area_mm2": 580.48,
+          "orca_swept_area_mm2": 253.29,
+          "orca_skirt_outer_area_mm2": 621.6,
+          "brim_swept_area_rel_diff": 6.73,
+          "skirt_swept_area_rel_diff": 4.41,
+          "skirt_outer_loop_area_rel_diff": 6.62,
+          "brim_swept_area_pass": true,
+          "skirt_area_pass": false,
+          "pass": false
+        },
+        "candidate": {
+          "pnp_swept_area_mm2": 248.57,
+          "pnp_brim_outer_area_mm2": 245.92,
+          "pnp_skirt_swept_area_mm2": 172.3,
+          "pnp_skirt_outer_area_mm2": 600.15,
+          "orca_swept_area_mm2": 253.29,
+          "orca_skirt_outer_area_mm2": 621.6,
+          "brim_swept_area_rel_diff": 1.86,
+          "skirt_swept_area_rel_diff": 2.62,
+          "skirt_outer_loop_area_rel_diff": 3.45,
+          "brim_swept_area_pass": true,
+          "skirt_area_pass": false,
+          "pass": false
+        }
+      },
+      "benchy-classic-on": {
+        "status": "support-engine-limited (out of scope, t138/t139)"
+      },
+      "benchy-arachne-on": {
+        "status": "support-engine-limited (out of scope, t138/t139)"
+      },
+      "base-classic-on": {
+        "status": "support-engine-limited (out of scope, t138/t139)"
+      },
+      "base-arachne-on": {
+        "status": "support-engine-limited (out of scope, t138/t139)"
+      }
+    },
+    "scope": "four supports-off cells vs the Orca reference; supports-on reported as support-engine-limited",
+    "bands": {
+      "brim_swept_area_pct": 12.0,
+      "skirt_outer_loop_area_pct": 3.0
+    }
+  },
+  "audit": {
+    "cells": [
+      {
+        "cell": "benchy-classic-off",
+        "geometry_sections": [
+          {
+            "feature": "Outer wall",
+            "motion_lines": 31290,
+            "identical": true
+          },
+          {
+            "feature": "Inner wall",
+            "motion_lines": 26074,
+            "identical": true
+          },
+          {
+            "feature": "Gap infill",
+            "motion_lines": 602,
+            "identical": true
+          },
+          {
+            "feature": "Bottom surface",
+            "motion_lines": 959,
+            "identical": true
+          },
+          {
+            "feature": "Internal solid infill",
+            "motion_lines": 1081,
+            "identical": true
+          },
+          {
+            "feature": "Bridge",
+            "motion_lines": 463,
+            "identical": true
+          },
+          {
+            "feature": "Sparse infill",
+            "motion_lines": 33265,
+            "identical": true
+          },
+          {
+            "feature": "Top surface",
+            "motion_lines": 2526,
+            "identical": true
+          },
+          {
+            "feature": "Internal Bridge",
+            "motion_lines": 784,
+            "identical": true
+          }
+        ],
+        "e_stats": {
+          "motion_lines_with_e": 94016,
+          "e_changed_lines": 110,
+          "max_abs_delta_mm": 0.00013,
+          "tolerance_mm": 0.001
+        },
+        "line_census": {
+          "Brim": {
+            "removed": 1789,
+            "added": 1865
+          },
+          "Inner wall": {
+            "removed": 31,
+            "added": 31
+          },
+          "Internal solid infill": {
+            "removed": 11,
+            "added": 11
+          },
+          "Outer wall": {
+            "removed": 10,
+            "added": 10
+          },
+          "Skirt": {
+            "removed": 704,
+            "added": 666
+          },
+          "Sparse infill": {
+            "removed": 60,
+            "added": 58
+          },
+          "Top surface": {
+            "removed": 2,
+            "added": 2
+          }
+        },
+        "failures": [],
+        "pass": true
+      },
+      {
+        "cell": "benchy-classic-on",
+        "geometry_sections": [
+          {
+            "feature": "Outer wall",
+            "motion_lines": 31290,
+            "identical": true
+          },
+          {
+            "feature": "Inner wall",
+            "motion_lines": 25974,
+            "identical": true
+          },
+          {
+            "feature": "Gap infill",
+            "motion_lines": 578,
+            "identical": true
+          },
+          {
+            "feature": "Bottom surface",
+            "motion_lines": 957,
+            "identical": true
+          },
+          {
+            "feature": "Support",
+            "motion_lines": 111471,
+            "identical": true
+          },
+          {
+            "feature": "Internal solid infill",
+            "motion_lines": 1081,
+            "identical": true
+          },
+          {
+            "feature": "Bridge",
+            "motion_lines": 455,
+            "identical": true
+          },
+          {
+            "feature": "Sparse infill",
+            "motion_lines": 33053,
+            "identical": true
+          },
+          {
+            "feature": "Top surface",
+            "motion_lines": 2510,
+            "identical": true
+          },
+          {
+            "feature": "Internal Bridge",
+            "motion_lines": 784,
+            "identical": true
+          },
+          {
+            "feature": "Support interface",
+            "motion_lines": 494,
+            "identical": true
+          }
+        ],
+        "e_stats": {
+          "motion_lines_with_e": 200658,
+          "e_changed_lines": 23,
+          "max_abs_delta_mm": 0.00025,
+          "tolerance_mm": 0.001
+        },
+        "line_census": {
+          "Bottom surface": {
+            "removed": 2,
+            "added": 2
+          },
+          "Bridge": {
+            "removed": 3,
+            "added": 3
+          },
+          "Brim": {
+            "removed": 1861,
+            "added": 1890
+          },
+          "Outer wall": {
+            "removed": 7,
+            "added": 7
+          },
+          "Skirt": {
+            "removed": 111,
+            "added": 110
+          },
+          "Support": {
+            "removed": 19,
+            "added": 17
+          },
+          "Top surface": {
+            "removed": 2,
+            "added": 2
+          }
+        },
+        "failures": [],
+        "pass": true
+      },
+      {
+        "cell": "benchy-arachne-off",
+        "geometry_sections": [
+          {
+            "feature": "Outer wall",
+            "motion_lines": 29384,
+            "identical": true
+          },
+          {
+            "feature": "Inner wall",
+            "motion_lines": 29871,
+            "identical": true
+          },
+          {
+            "feature": "Bottom surface",
+            "motion_lines": 974,
+            "identical": true
+          },
+          {
+            "feature": "Internal solid infill",
+            "motion_lines": 1153,
+            "identical": true
+          },
+          {
+            "feature": "Bridge",
+            "motion_lines": 467,
+            "identical": true
+          },
+          {
+            "feature": "Sparse infill",
+            "motion_lines": 34904,
+            "identical": true
+          },
+          {
+            "feature": "Top surface",
+            "motion_lines": 2616,
+            "identical": true
+          },
+          {
+            "feature": "Internal Bridge",
+            "motion_lines": 782,
+            "identical": true
+          }
+        ],
+        "e_stats": {
+          "motion_lines_with_e": 97103,
+          "e_changed_lines": 76,
+          "max_abs_delta_mm": 0.00013,
+          "tolerance_mm": 0.001
+        },
+        "line_census": {
+          "Brim": {
+            "removed": 1840,
+            "added": 1847
+          },
+          "Inner wall": {
+            "removed": 50,
+            "added": 48
+          },
+          "Skirt": {
+            "removed": 717,
+            "added": 658
+          },
+          "Sparse infill": {
+            "removed": 32,
+            "added": 30
+          },
+          "Top surface": {
+            "removed": 2,
+            "added": 2
+          }
+        },
+        "failures": [],
+        "pass": true
+      },
+      {
+        "cell": "benchy-arachne-on",
+        "geometry_sections": [
+          {
+            "feature": "Outer wall",
+            "motion_lines": 29384,
+            "identical": true
+          },
+          {
+            "feature": "Inner wall",
+            "motion_lines": 29807,
+            "identical": true
+          },
+          {
+            "feature": "Bottom surface",
+            "motion_lines": 972,
+            "identical": true
+          },
+          {
+            "feature": "Support",
+            "motion_lines": 111471,
+            "identical": true
+          },
+          {
+            "feature": "Internal solid infill",
+            "motion_lines": 1153,
+            "identical": true
+          },
+          {
+            "feature": "Bridge",
+            "motion_lines": 459,
+            "identical": true
+          },
+          {
+            "feature": "Sparse infill",
+            "motion_lines": 34630,
+            "identical": true
+          },
+          {
+            "feature": "Top surface",
+            "motion_lines": 2602,
+            "identical": true
+          },
+          {
+            "feature": "Internal Bridge",
+            "motion_lines": 782,
+            "identical": true
+          },
+          {
+            "feature": "Support interface",
+            "motion_lines": 494,
+            "identical": true
+          }
+        ],
+        "e_stats": {
+          "motion_lines_with_e": 203745,
+          "e_changed_lines": 44,
+          "max_abs_delta_mm": 0.00025,
+          "tolerance_mm": 0.001
+        },
+        "line_census": {
+          "Bottom surface": {
+            "removed": 6,
+            "added": 6
+          },
+          "Brim": {
+            "removed": 1835,
+            "added": 1880
+          },
+          "Skirt": {
+            "removed": 107,
+            "added": 107
+          },
+          "Sparse infill": {
+            "removed": 1,
+            "added": 1
+          },
+          "Support": {
+            "removed": 35,
+            "added": 33
+          },
+          "Top surface": {
+            "removed": 6,
+            "added": 6
+          }
+        },
+        "failures": [],
+        "pass": true
+      },
+      {
+        "cell": "base-classic-off",
+        "geometry_sections": [
+          {
+            "feature": "Outer wall",
+            "motion_lines": 145743,
+            "identical": true
+          },
+          {
+            "feature": "Gap infill",
+            "motion_lines": 1047,
+            "identical": true
+          },
+          {
+            "feature": "Inner wall",
+            "motion_lines": 124396,
+            "identical": true
+          },
+          {
+            "feature": "Bridge",
+            "motion_lines": 265,
+            "identical": true
+          },
+          {
+            "feature": "Bottom surface",
+            "motion_lines": 175,
+            "identical": true
+          },
+          {
+            "feature": "Sparse infill",
+            "motion_lines": 241448,
+            "identical": true
+          },
+          {
+            "feature": "Top surface",
+            "motion_lines": 478,
+            "identical": true
+          },
+          {
+            "feature": "Internal Bridge",
+            "motion_lines": 35,
+            "identical": true
+          },
+          {
+            "feature": "Internal solid infill",
+            "motion_lines": 10,
+            "identical": true
+          }
+        ],
+        "e_stats": {
+          "motion_lines_with_e": 507473,
+          "e_changed_lines": 170,
+          "max_abs_delta_mm": 0.00098,
+          "tolerance_mm": 0.001
+        },
+        "line_census": {
+          "Brim": {
+            "removed": 1124,
+            "added": 1200
+          },
+          "Inner wall": {
+            "removed": 72,
+            "added": 72
+          },
+          "Outer wall": {
+            "removed": 30,
+            "added": 30
+          },
+          "Skirt": {
+            "removed": 666,
+            "added": 654
+          },
+          "Sparse infill": {
+            "removed": 69,
+            "added": 69
+          }
+        },
+        "failures": [],
+        "pass": true
+      },
+      {
+        "cell": "base-classic-on",
+        "geometry_sections": [
+          {
+            "feature": "Outer wall",
+            "motion_lines": 145743,
+            "identical": true
+          },
+          {
+            "feature": "Gap infill",
+            "motion_lines": 949,
+            "identical": true
+          },
+          {
+            "feature": "Support",
+            "motion_lines": 414706,
+            "identical": true
+          },
+          {
+            "feature": "Inner wall",
+            "motion_lines": 124396,
+            "identical": true
+          },
+          {
+            "feature": "Bridge",
+            "motion_lines": 253,
+            "identical": true
+          },
+          {
+            "feature": "Bottom surface",
+            "motion_lines": 157,
+            "identical": true
+          },
+          {
+            "feature": "Sparse infill",
+            "motion_lines": 240816,
+            "identical": true
+          },
+          {
+            "feature": "Support interface",
+            "motion_lines": 2573,
+            "identical": true
+          },
+          {
+            "feature": "Top surface",
+            "motion_lines": 448,
+            "identical": true
+          },
+          {
+            "feature": "Internal Bridge",
+            "motion_lines": 35,
+            "identical": true
+          },
+          {
+            "feature": "Internal solid infill",
+            "motion_lines": 10,
+            "identical": true
+          }
+        ],
+        "e_stats": {
+          "motion_lines_with_e": 906834,
+          "e_changed_lines": 0,
+          "max_abs_delta_mm": 0.0,
+          "tolerance_mm": 0.001
+        },
+        "line_census": {},
+        "failures": [],
+        "pass": true
+      },
+      {
+        "cell": "base-arachne-off",
+        "geometry_sections": [
+          {
+            "feature": "Outer wall",
+            "motion_lines": 127257,
+            "identical": true
+          },
+          {
+            "feature": "Inner wall",
+            "motion_lines": 131899,
+            "identical": true
+          },
+          {
+            "feature": "Bridge",
+            "motion_lines": 370,
+            "identical": true
+          },
+          {
+            "feature": "Bottom surface",
+            "motion_lines": 185,
+            "identical": true
+          },
+          {
+            "feature": "Sparse infill",
+            "motion_lines": 249545,
+            "identical": true
+          },
+          {
+            "feature": "Top surface",
+            "motion_lines": 567,
+            "identical": true
+          },
+          {
+            "feature": "Internal Bridge",
+            "motion_lines": 35,
+            "identical": true
+          },
+          {
+            "feature": "Internal solid infill",
+            "motion_lines": 10,
+            "identical": true
+          }
+        ],
+        "e_stats": {
+          "motion_lines_with_e": 503811,
+          "e_changed_lines": 219,
+          "max_abs_delta_mm": 0.00049,
+          "tolerance_mm": 0.001
+        },
+        "line_census": {
+          "Brim": {
+            "removed": 1103,
+            "added": 1158
+          },
+          "Inner wall": {
+            "removed": 68,
+            "added": 68
+          },
+          "Outer wall": {
+            "removed": 20,
+            "added": 20
+          },
+          "Skirt": {
+            "removed": 657,
+            "added": 638
+          },
+          "Sparse infill": {
+            "removed": 132,
+            "added": 132
+          }
+        },
+        "failures": [],
+        "pass": true
+      },
+      {
+        "cell": "base-arachne-on",
+        "geometry_sections": [
+          {
+            "feature": "Outer wall",
+            "motion_lines": 127257,
+            "identical": true
+          },
+          {
+            "feature": "Support",
+            "motion_lines": 414706,
+            "identical": true
+          },
+          {
+            "feature": "Inner wall",
+            "motion_lines": 131897,
+            "identical": true
+          },
+          {
+            "feature": "Bridge",
+            "motion_lines": 350,
+            "identical": true
+          },
+          {
+            "feature": "Bottom surface",
+            "motion_lines": 173,
+            "identical": true
+          },
+          {
+            "feature": "Sparse infill",
+            "motion_lines": 248819,
+            "identical": true
+          },
+          {
+            "feature": "Support interface",
+            "motion_lines": 2573,
+            "identical": true
+          },
+          {
+            "feature": "Top surface",
+            "motion_lines": 537,
+            "identical": true
+          },
+          {
+            "feature": "Internal Bridge",
+            "motion_lines": 35,
+            "identical": true
+          },
+          {
+            "feature": "Internal solid infill",
+            "motion_lines": 10,
+            "identical": true
+          }
+        ],
+        "e_stats": {
+          "motion_lines_with_e": 903172,
+          "e_changed_lines": 0,
+          "max_abs_delta_mm": 0.0,
+          "tolerance_mm": 0.001
+        },
+        "line_census": {},
+        "failures": [],
+        "pass": true
+      }
+    ],
+    "pass": true
+  }
+}
