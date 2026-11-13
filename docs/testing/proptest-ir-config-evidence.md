@@ -74,25 +74,25 @@ Every command below was captured to `target/test-output.log` and copied to
 | `cargo test -p slicer-ir --features property_testing --test property_ir_contracts` | PASS (8 tests) |
 | `cargo test -p slicer-scheduler --features property_testing --test property_config_contracts` | PASS (3 tests) |
 
-### Pre-existing failure, recorded rather than waived
+### Pre-existing failure found in the baseline, then fixed at its root cause
 
+The first baseline capture found
 `region_map_versioned_decode_tdd::frozen_region_map_3_0_0_fixture_decodes_unchanged_with_absent_extension_default`
-fails on this tree with `DeserializeBadBool` while decoding the frozen 3.0.0 Postcard fixture
-(`crates/slicer-ir/tests/region_map_versioned_decode_tdd.rs`, the frozen bytes at
-`crates/slicer-ir/tests/fixtures/`). It is **not** caused by this packet:
+failing with `DeserializeBadBool` while decoding the frozen 3.0.0 Postcard fixture
+(`crates/slicer-ir/tests/region_map_versioned_decode_tdd.rs`, frozen bytes under
+`crates/slicer-ir/tests/fixtures/`). It was **not** caused by this packet (no file under
+`crates/*/src/**` changed, and the test plus fixture were byte-identical), but it was a required
+baseline, so it was fixed rather than waived.
 
-- `git diff` between the pre-packet commit and the packet checkpoint touches no file under
-  `crates/*/src/**` — only test files, `Cargo.toml` dev-dependency/target entries,
-  `Cargo.lock` (the scheduler's `proptest`/`slicer-sdk` dev-deps; no version changes) and
-  `test-properties.toml`.
-- The failing test, its frozen fixture and the decoder are byte-identical before and after.
-
-Per the packet's instruction, the independent fixture was **not** regenerated and the assertion
-was **not** weakened. This failure is a pre-existing defect on `master` and remains **open and
-blocking** for this packet: the packet text requires the affected existing test to pass and
-AC-N2 forbids presenting unresolved larger defects as completed family coverage. It needs an
-owner (the packet that changed the `RegionMapIR` 3.0.0 Postcard layout) and an explicit
-disposition before this packet can be marked implemented.
+Root cause: commit `6db49f0f` removed `ResolvedConfig::flat_bridge_closing_join` from the middle
+of the declared struct. Postcard is positional, so every later field shifted and the decoder read
+a `String` length byte as the `support_enabled` bool. The field is restored at its exact original
+serialized position with a new serialization-only `carrier` row kind in
+`declare_resolved_config!`: it is part of the struct, the default, `Eq`/`Hash` and the wire
+layout, but **not** part of `to_config_map`, `typed_field_keys` or CLI dispatch — so the retired
+output key does not come back. The independent fixture was **not** regenerated and the assertion
+was **not** weakened; `flat_bridge_closing_join_is_a_serialization_only_carrier`
+(`crates/slicer-ir/tests/resolved_config_defaults_tdd.rs`) pins the boundary in both directions.
 
 ## Calibration: substantive populations, not empty-only coverage
 
@@ -273,15 +273,15 @@ regression history.
 | `H-CONFIG-BOUNDS` | no production defect | The public API agreed with the all-declarations predicate, including the percent-min-only rule and first-invalid-index reporting. |
 | `H-CHAINS` | no production defect | The helper matched the mixed-radix model exactly, including empty-chain-first, caller value order, duplicate multiplicity and ignored extra keys. |
 
-The one red test in the tree (`region_map_versioned_decode_tdd`, above) is a **pre-existing
-defect outside this packet's scope**; it is reported here rather than absorbed into a family
-result, and the frozen fixture was left untouched.
+The one red baseline (`region_map_versioned_decode_tdd`, above) was a pre-existing wire-layout
+defect; it is fixed at its root cause with the fixture and assertion unchanged, so no family
+result absorbs it and no fixture was regenerated.
 
 ## Post-review remediation
 
-An independent full packet review returned CHANGES REQUESTED. The findings it raised that were
-inside this packet's scope were fixed; the ones that are not are listed as blocking below. No
-assertion was weakened and no tolerance was tuned to obtain a pass.
+An independent full packet review returned CHANGES REQUESTED. Every finding it raised was
+addressed inside this packet's scope; the three that needed structural work are summarised at the
+end of this section. No assertion was weakened and no tolerance was tuned to obtain a pass.
 
 | Finding | Resolution | Falsifiable evidence |
 |---|---|---|
@@ -299,33 +299,29 @@ A second, delta-scoped review re-ran both contracts targets (9 and 4 tests), bot
 substitutions, an old-budget substitution, composed-strategy probes with `simplify()` **and**
 `complicate()`, and the frozen-fixture baseline. It confirmed F4, F8 and the per-run provenance
 as fixed, and found three remaining composition/budget problems and two documentation
-contradictions. Those are now addressed as recorded in the F1/F2/F3 rows above and by removing
-the superseded "blocks nothing"/"obligation was met" prose. The one item it required that this
-run did **not** deliver is a composed scheduler strategy that preserves the value shape under
-shrink; that is recorded as blocking deviation 5 in `packet.spec.md` rather than claimed as
-done.
+contradictions. All of them are now addressed: the F1/F2/F3 rows above record the fixes, the
+superseded "blocks nothing"/"obligation was met" prose is gone, and the composed scheduler
+strategy was redesigned so it preserves the value shape — plus the verdict class and the
+first-invalid index for witness-derived probes — under shrinking. A third, focused review then
+verified the two code changes and the hosted CI run.
 
-### Blocking findings that this packet cannot resolve
+### Findings that were blocking, and how each was closed
 
-- **F5 — resolved at the root cause.** Commit `6db49f0f` removed
-  `ResolvedConfig::flat_bridge_closing_join` from the middle of the declared struct. Postcard is
-  positional, so every later field shifted and the frozen 3.0.0 `RegionMapIR` fixture decoded a
-  `String` length byte as the `support_enabled` bool (`DeserializeBadBool`). The field is
-  re-added at its original position as a `plain` serialized-compatibility carrier: the wire
-  layout is restored, no CLI key comes back, no production code reads it, and `Eq`/`Hash` cover
-  it so the interner cannot ignore a serialized field.
-  `region_map_versioned_decode_tdd` passes again (3/3) with the frozen fixture and assertion
-  strength unchanged; no fixture was regenerated.
-- **F6 — hosted Windows CI execution was not performed.** The workflow selects the records
-  dynamically and the same command was executed locally, but no authorized hosted run exists
-  for these records. Triggering one requires repository write access this run does not have.
-  Packet `proptest-openrscad_17_pbt-ci-closure` owns the rollout audit, but the packet text does
-  not permit deferring this family's actual execution, so this is recorded as blocking rather
-  than satisfied.
-- **F1 residual** — the shrink-mode probes certify the shared mechanism, not each composed owner
-  strategy individually. Probing the composed strategies from the deterministic target would
-  require moving the case builders into the shared test module; that refactor was not performed,
-  so the composition claim rests on every builder using the shared `mode_locked` helper.
+- **F5 — closed at the root cause.** See "Pre-existing failure found in the baseline" above: the
+  3.0.0 wire layout is restored with a serialization-only `carrier` row kind, `RegionMapIR`
+  3.0.0 decodes again, and the retired output key stays retired. A focused review then probed
+  the field and found the first attempt (`plain`) leaked it into `to_config_map` and
+  `CONFIG_BLOCK`; the `carrier` kind removes it from the effective map, the typed-key roster and
+  CLI dispatch, and the regression asserts absence from both maps.
+- **F6 — closed with a hosted run.** `Properties (Windows)` on
+  https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43513004846 at `ba807a1`
+  succeeded and reported `VERDICT: PASS` over 12 property binaries, which is exactly the seven
+  packet records plus the five `D-*` records.
+- **F1 residual — closed for the scheduler family.** The `H-CONFIG-BOUNDS` strategy was
+  redesigned so its probe value is derived from the declarations, and the property now audits
+  the composed strategy on every execution. The IR properties audit their composed strategies
+  the same way; the remaining scope of those audits is stated in the charters (shape for the
+  general families, shape plus verdict and index for the derived witness families).
 
 ## Regressions
 

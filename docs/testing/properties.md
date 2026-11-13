@@ -902,6 +902,7 @@ The generated axes are a deliberate subset, not an exhaustive roster. Dispositio
 | `BTreeMap` extensions | `extensions` | varied depth/breadth/content | `config_map_parity_tests::resolution_extension_reaches_the_config_map_and_participates_in_eq`, `filament_max_volumetric_speed_tests::extension_value_participates_in_equality_and_hash` |
 | `u32` / `String` | `wall_count`, `top_fill_holder` | varied through `apply_cli_key` | `resolved_config_defaults_tdd` |
 | `bool` and enumerated plain fields | `support_enabled`, `wall_generator`, `infill_type`, `support_type` | **not varied here** | read by the handwritten `PartialEq`; covered structurally, not by this property |
+| serialization-only `carrier` field | `flat_bridge_closing_join` | **not varied here** | it exists only to keep the Postcard field order; `flat_bridge_closing_join_is_a_serialization_only_carrier` pins that it is absent from `to_config_map`/`typed_field_keys` and still round-trips |
 | remaining `f32`/`u32`/`Option` support, machine-limit and MMU keys | `support_*`, `machine_max_*`, `mmu_*` | **not varied here** | `machine_limit_config_tests`, `config_map_parity_tests` |
 
 A defect confined to a field family listed as "not varied here" would not be caught by this
@@ -1007,10 +1008,20 @@ centre, `Percent`, both `FloatOrPercent` modes, `Bool`, `String`, and flat `List
 
 ### Strategy
 
-`declaration_sets(max_declarations, max_abs_bound)` and
-`bound_values(max_abs_bound, max_list_len)` from
-`crates/slicer-scheduler/tests/common/property_config_oracles.rs`, unioned with
-`nonfinite_values()`. Mandatory deterministic witnesses run before sampling: absent key → `Ok`;
+A tuple of independently generated pieces, joined by `prop_map` (never `prop_flat_map`, so a
+declaration shrink cannot re-draw the value):
+
+- `declaration_sets(max_declarations, max_abs_bound)`, then
+  `property_config_oracles::ensure_bounded_witness` appends a `[-4, 4]` declaration on
+  `WITNESS_KEY` — a key outside `KEY_ALPHABET`, so no generated declaration can narrow it;
+- a `ProbeMode` chosen by `proptest::sample::select(PROBE_MODES).no_shrink()`;
+- `bound_scalar_values` and `bound_list_values` for the two general families;
+- a key pick that selects a generated key or `ABSENT_KEY`.
+
+`derive_probe` then computes the value from the current declaration set and the pinned mode:
+edges, the midpoint, one-step violations, flat lists whose only invalid element sits at index
+0/1/2, and non-finite scalars/lists. Mandatory deterministic witnesses run before sampling:
+absent key → `Ok`;
 present-but-unbounded declaration → finite passes, NaN/inf rejected; one-sided min and max;
 inclusive edges accepted while `next_down`/`next_up` neighbours are rejected; contradictory
 intersections reject every finite value; empty list → `Ok`; lists failing at index 0 and at
@@ -1059,7 +1070,7 @@ mode's verdict and first-invalid index on a concrete declaration set, and the pr
 its shape plus — for witness keys — its verdict class and first-invalid index, so a shrink that
 changed any of them fails the run.
 
-Shrink limits are profile-bounded (`max_shrink_iters`, `max_shrink_time_ms = 0`).Shrink limits are profile-bounded (`max_shrink_iters`, `max_shrink_time_ms = 0`).
+Shrink limits are profile-bounded (`max_shrink_iters`, `max_shrink_time_ms = 0`).
 
 ### Execution
 

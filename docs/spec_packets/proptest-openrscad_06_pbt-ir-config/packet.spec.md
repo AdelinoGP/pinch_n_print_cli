@@ -203,9 +203,12 @@ Recorded while implementing; none changes the packet's scope.
    mode from a `no_shrink` list and **derives** the value from the current declaration set inside
    `prop_map`, against a bounded witness key outside the generated alphabet
    (`property_config_oracles::WITNESS_KEY`). Shrinking the declarations re-runs the derivation,
-   so the value shape, the verdict class and the first-invalid index all survive. Two checks pin
-   it: `derived_probe_modes_have_their_documented_verdicts` asserts every mode's verdict and
-   index on a concrete set, and the property runs a composed shrink audit on every execution.
+   so the value shape always survives and, for the witness-derived modes, the verdict class and
+   the first-invalid index survive too. The two `General*` families are independent draws, so only
+   their shape is pinned and their verdict is whatever the oracle derives for the current
+   declarations. Two checks pin this: `derived_probe_modes_have_their_documented_verdicts` asserts
+   every mode's verdict and index on a concrete set, and the property runs a composed shrink audit
+   on every execution.
 6. **Both external blockers are resolved.** (a) The frozen `RegionMapIR` 3.0.0 Postcard fixture
    failed with `DeserializeBadBool` because commit `6db49f0f` removed
    `ResolvedConfig::flat_bridge_closing_join` from the middle of the struct; Postcard is
