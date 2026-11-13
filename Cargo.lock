@@ -4198,11 +4198,13 @@ dependencies = [
  "directories",
  "log",
  "pnp-cli-locator",
+ "proptest",
  "serde",
  "serde_json",
  "slicer-config",
  "slicer-ir",
  "slicer-schema",
+ "slicer-sdk",
  "tempfile",
  "toml 0.8.23",
 ]
