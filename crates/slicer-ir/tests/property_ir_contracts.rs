@@ -41,7 +41,7 @@ mod property_oracles;
 use property_oracles::{
     allocation_model, chain_product_model, chain_product_size, check_mm_case, check_mm_case_with,
     check_mm_units_envelope, check_monotonic_pair, check_units_case, decode_model,
-    defective_drop_last_product, defective_duplicate_product, defective_exact_roundtrip_claim,
+    defective_drop_last_product, defective_duplicate_product,
     defective_factor_100, defective_omit_empty_chain, defective_sorted_values,
     defective_swapped_axis_order, defective_truncating, expected_payload_bounds, footprint,
     half_unit_witnesses, hash_of, layer_with_side_table_only_anchor, mm_bound,
@@ -402,17 +402,16 @@ fn ir_coord_oracle_and_bound_controls() {
     );
 
     // --- the universal exact-inverse claim is false ------------------------
-    assert!(defective_exact_roundtrip_claim(half));
+    // The claim is falsified by a concrete pair, not by a constant-true
+    // scaffolding predicate: no helper asserts an always-true value here.
     assert_eq!(mm_to_units(half), 313);
     assert_ne!(
         f64::from(units_to_mm(313)),
         0.031_25_f64,
         "1/32 mm -> 313 units -> 0.0313 mm is not an exact inverse"
     );
-    let exact_inverse_holds = |value: f32| {
-        defective_exact_roundtrip_claim(value)
-            && f64::from(units_to_mm(mm_to_units(value))) == f64::from(value)
-    };
+    let exact_inverse_holds =
+        |value: f32| f64::from(units_to_mm(mm_to_units(value))) == f64::from(value);
     assert!(
         !exact_inverse_holds(half),
         "the false exact-roundtrip claim must be falsified at the 1/32 mm half case"
@@ -885,6 +884,41 @@ fn ir_config_oracle_counterexamples() {
         second.clone(),
         first.clone(),
     ];
+
+    // --- nested-list budget counts total elements, not leaves ---------------
+    // Depth 2, breadth 2 builds 2 + 4 = 6 list elements (the intermediate list
+    // plus its two children), not 4; a budget of 4 must clamp the breadth.
+    assert_eq!(
+        property_oracles::extension_node_count(2, 2),
+        Some(6),
+        "a depth-2 breadth-2 extension tree allocates 2 + 4 list elements"
+    );
+    assert_eq!(
+        property_oracles::extension_node_count(3, 2),
+        Some(14),
+        "depth 3 adds the 8-element level"
+    );
+    let (clamped_depth, clamped_breadth) = property_oracles::clamped_extension_shape(2, 2, 4);
+    assert_eq!(clamped_depth, 2, "the depth bound is separate from the budget");
+    assert!(
+        property_oracles::extension_node_count(clamped_depth, clamped_breadth) <= Some(4),
+        "a budget of 4 must clamp the shape to at most 4 total list elements, got {:?}",
+        property_oracles::extension_node_count(clamped_depth, clamped_breadth)
+    );
+    // Concrete regression: a depth-2 breadth-2 request against a total budget of
+    // 4 previously produced 6 elements. The constructed fixture must stay inside
+    // the budget for both sequence lengths and the extension tree together.
+    let mut budgeted = ResolvedConfig::default();
+    let (depth, breadth) = property_oracles::clamped_extension_shape(2, 2, 4);
+    budgeted = property_oracles::with_sequence(&budgeted, 0);
+    budgeted = property_oracles::with_text_sequence(&budgeted, 0);
+    budgeted = property_oracles::with_extension(&budgeted, depth, breadth);
+    assert!(
+        property_oracles::config_list_elements(&budgeted) <= 4,
+        "the clamped fixture must respect the total budget, got {} elements",
+        property_oracles::config_list_elements(&budgeted)
+    );
+
     let (model_ids, model_pool) = pool_model(&base, &inputs);
 
     let mut map = RegionMapIR::default();
@@ -1435,4 +1469,65 @@ fn ir_config_type_and_integer_range_rejections() {
         .expect("a valid wall count must apply");
     assert!(applied);
     assert_eq!(config.wall_count, 3);
+}
+
+/// The mode-pinning mechanism behind every `mode_locked` owner strategy.
+///
+/// `prop_oneof!` unions shrink into earlier alternatives; this probe proves that
+/// a `no_shrink` mode selector fed through `prop_flat_map` keeps the variant tag
+/// fixed across `simplify()` while the payload still shrinks. It is the mechanism
+/// test for the charters' claim that shrinking preserves a case's mode.
+#[test]
+fn mode_lock_preserves_tags_under_simplification() {
+    #[derive(Debug, Clone)]
+    enum Tagged {
+        A(#[allow(dead_code)] u32),
+        B(#[allow(dead_code)] u32),
+        C(#[allow(dead_code)] u32),
+    }
+
+    fn tag(value: &Tagged) -> u8 {
+        match value {
+            Tagged::A(_) => 0,
+            Tagged::B(_) => 1,
+            Tagged::C(_) => 2,
+        }
+    }
+
+    let strategy = property_oracles::mode_locked(vec![0_u8, 1, 2], |mode| match mode {
+        0 => (0_u32..=1000).prop_map(Tagged::A).boxed(),
+        1 => (0_u32..=1000).prop_map(Tagged::B).boxed(),
+        _ => (0_u32..=1000).prop_map(Tagged::C).boxed(),
+    });
+    let mut runner = TestRunner::new(Config {
+        cases: 8,
+        rng_seed: RngSeed::Fixed(0x5eed_c0de),
+        failure_persistence: None,
+        ..Config::default()
+    });
+    let mut simplifications = 0_usize;
+    let mut observed = [false; 3];
+    for _ in 0..8 {
+        let mut tree = strategy.new_tree(&mut runner).expect("mode-locked tree");
+        let initial = tag(&tree.current());
+        observed[usize::from(initial)] = true;
+        let mut guard = 0;
+        while guard < 64 && tree.simplify() {
+            guard += 1;
+            simplifications += 1;
+            assert_eq!(
+                tag(&tree.current()),
+                initial,
+                "a mode-locked strategy must not change variant while shrinking"
+            );
+        }
+    }
+    assert!(
+        simplifications > 0,
+        "the probe must actually simplify something, otherwise it certifies nothing"
+    );
+    assert!(
+        observed.iter().filter(|seen| **seen).count() >= 2,
+        "the probe must observe more than one mode: {observed:?}"
+    );
 }

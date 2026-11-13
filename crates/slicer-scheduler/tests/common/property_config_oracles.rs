@@ -352,6 +352,30 @@ pub fn declaration_sets(
         .boxed())
 }
 
+/// A strategy whose mode is pinned per generated case while its payload still
+/// shrinks.
+///
+/// `prop_oneof!` unions shrink into earlier alternatives, so a tagged enum built
+/// with `prop_oneof!` can change variant during shrinking. The mode here comes
+/// from a `no_shrink` selection fed through `prop_flat_map`, so the mode tree can
+/// never simplify and the payload shrinks inside the generated mode.
+///
+/// The mechanism is checked by `mode_lock_preserves_tags_under_simplification` in
+/// `crates/slicer-scheduler/tests/property_config_contracts.rs`.
+pub fn mode_locked<M, T>(
+    modes: Vec<M>,
+    build: impl Fn(M) -> BoxedStrategy<T> + 'static,
+) -> BoxedStrategy<T>
+where
+    M: Clone + std::fmt::Debug + 'static,
+    T: std::fmt::Debug + 'static,
+{
+    proptest::sample::select(modes)
+        .no_shrink()
+        .prop_flat_map(move |mode| build(mode))
+        .boxed()
+}
+
 /// Bounded config-value strategy for the bounds surface.
 ///
 /// Produces integer-grid `Int` and `Float` values, arbitrary finite `f64`
@@ -401,7 +425,13 @@ pub fn bound_values(
     ];
     let lists =
         proptest::collection::vec(scalars.clone(), 0..=max_list_len).prop_map(ConfigValue::List);
-    Ok(prop_oneof![5 => scalars, 2 => lists].boxed())
+    // The value family is pinned per case: a list value must not shrink into a
+    // scalar (which would drop the first-invalid-index shape), and a scalar must
+    // not grow into a list.
+    Ok(mode_locked(vec![0_u8, 1], move |mode| match mode {
+        0 => scalars.clone().boxed(),
+        _ => lists.clone().boxed(),
+    }))
 }
 
 /// Infinities and distinguishable NaN bit patterns in every numeric variant.

@@ -28,6 +28,32 @@ use slicer_ir::{
 use slicer_sdk::coords::{mm_to_units as sdk_mm_to_units, units_to_mm as sdk_units_to_mm};
 use slicer_sdk::test_support::fixtures::print_entity_base;
 
+/// A strategy whose *mode* is pinned for each generated case while its payload
+/// still shrinks.
+///
+/// `prop_oneof!` unions shrink into earlier alternatives, so a tagged enum built
+/// with `prop_oneof!` can change variant during shrinking even though the tag is
+/// structural. This helper generates the mode from a `no_shrink` selection and
+/// then builds the payload with `prop_flat_map`: because the mode tree can never
+/// simplify, the payload tree shrinks inside the originally generated mode.
+///
+/// The mechanism is checked by `mode_lock_preserves_tags_under_simplification` in
+/// `crates/slicer-ir/tests/property_ir_contracts.rs`.
+pub fn mode_locked<M, T>(
+    modes: Vec<M>,
+    build: impl Fn(M) -> proptest::strategy::BoxedStrategy<T> + 'static,
+) -> proptest::strategy::BoxedStrategy<T>
+where
+    M: Clone + std::fmt::Debug + 'static,
+    T: std::fmt::Debug + 'static,
+{
+    use proptest::strategy::Strategy;
+    proptest::sample::select(modes)
+        .no_shrink()
+        .prop_flat_map(move |mode| build(mode))
+        .boxed()
+}
+
 // ============================================================================
 // (a) Coordinate envelope oracle — charter H-COORD
 // ============================================================================
@@ -127,13 +153,32 @@ pub fn mm_bound(profile: &CoordProfile) -> i128 {
 }
 
 /// Derived absolute error budget, in millimetres, for `units_to_mm(n)`:
-/// `2^-24 * (max_abs_units / 10_000) + 2^-150`.
+/// `(2^-24 + 2^-53) * (max_abs_units / 10_000) + 2^-150`.
 ///
-/// Derivation: `n as f32` is exact for `|n| <= 2^24`, the f32 division commits
-/// at most `2^-24 * |n / 10_000|`, and the f64 reference `n as f64 / 10_000.0`
-/// commits a relative `2^-53` that is far below the shared `2^-150` floor.
+/// Derivation, with the exact real value `x = n / 10_000`:
+///
+/// - `n as f32` is exact because `|n| <= 2^24`;
+/// - dividing by the exactly-represented `10_000f32` commits at most one half
+///   ulp of the correctly-rounded f32 result, i.e. `2^-24 * |x|` relative;
+/// - the *reference* the oracle compares against is
+///   `n as f64 / 10_000.0`, which is itself a correctly-rounded f64 division
+///   and therefore carries its own `2^-53 * |x|` relative error. That term is
+///   not below `2^-150` (for `n = 1` the reference error is about `4.8e-21`,
+///   while `2^-150` is about `7.0e-46`), so it must be added explicitly rather
+///   than absorbed by the subnormal floor;
+/// - `2^-150` remains only as the floor for subnormal f32 results, where a
+///   relative bound underflows to zero.
+///
+/// The budget is therefore `(2^-24 + 2^-53) * |x| + 2^-150`, not
+/// `2^-24 * |x| + 2^-150`.
 pub fn units_bound(profile: &CoordProfile) -> f64 {
-    f32_mul_roundoff() * (profile.max_abs_units as f64 / 10_000.0) + f32_subnormal_floor()
+    let magnitude = profile.max_abs_units as f64 / 10_000.0;
+    (f32_mul_roundoff() + f64_div_roundoff()) * magnitude + f32_subnormal_floor()
+}
+
+/// f64 division relative rounding bound: one half ulp, `2^-53`.
+fn f64_div_roundoff() -> f64 {
+    2f64.powi(-53)
 }
 
 /// Round a real value to the nearest integer, breaking exact ties away from
@@ -184,12 +229,14 @@ pub fn check_mm_case_with<F: Fn(f32) -> i64>(
 }
 
 /// Check `mm_to_units(m)` against the derived envelope, the exact half-away
-/// tie rule, and the (consistency-only) SDK/`Point2` agreement.
+/// tie rule, and the (consistency-only) SDK/`Point2` round-trip agreement.
 ///
-/// Wrapper and `Point2::from_mm` agreement is consistency evidence, not
-/// correctness evidence: all three delegate to the same arithmetic, so they
-/// agree even when the arithmetic is wrong. The envelope and the half-away tie
-/// are the correctness claim.
+/// Wrapper and `Point2` agreement is consistency evidence, not correctness
+/// evidence: all of them delegate to the same arithmetic, so they agree even
+/// when the arithmetic is wrong. The envelope and the half-away tie are the
+/// correctness claim. `Point2::to_mm` is exercised here so the declared
+/// `Point2::{from_mm, to_mm}` owner surface is covered, and its float bits are
+/// compared against `units_to_mm` exactly.
 pub fn check_mm_case(profile: &CoordProfile, m: f32) -> Result<(), String> {
     check_mm_case_with(profile, m, mm_to_units)?;
     let actual = mm_to_units(m);
@@ -199,10 +246,20 @@ pub fn check_mm_case(profile: &CoordProfile, m: f32) -> Result<(), String> {
             sdk_mm_to_units(m)
         ));
     }
-    let point = Point2::from_mm(m, m);
-    if point.x != actual || point.y != actual {
+    let point = Point2::from_mm(m, -m);
+    if point.x != actual || point.y != -actual {
         return Err(format!(
-            "Point2::from_mm({m:?}, {m:?}) = ({}, {}) disagrees with slicer_ir::mm_to_units = {actual}",
+            "Point2::from_mm({m:?}, {:?}) = ({}, {}) disagrees with slicer_ir::mm_to_units = {actual}",
+            -m, point.x, point.y
+        ));
+    }
+    let (x_mm, y_mm) = point.to_mm();
+    if x_mm.to_bits() != units_to_mm(point.x).to_bits()
+        || y_mm.to_bits() != units_to_mm(point.y).to_bits()
+    {
+        return Err(format!(
+            "Point2::to_mm at {m:?} produced ({x_mm:?}, {y_mm:?}), which disagrees bitwise with \
+             units_to_mm({}, {})",
             point.x, point.y
         ));
     }
@@ -333,13 +390,6 @@ pub fn defective_factor_100(m: f32) -> i64 {
 /// Defective reference: truncate toward zero instead of rounding to nearest.
 pub fn defective_truncating(m: f32) -> i64 {
     (f64::from(m) * 10_000.0).trunc() as i64
-}
-
-/// Defective reference: the false universal claim that `units_to_mm` and
-/// `mm_to_units` are exact inverses.
-pub fn defective_exact_roundtrip_claim(m: f32) -> bool {
-    let _ = m;
-    true
 }
 
 // ============================================================================
@@ -546,13 +596,74 @@ pub fn with_text_sequence(base: &ResolvedConfig, len: usize) -> ResolvedConfig {
     out
 }
 
+/// Total `ConfigValue` list elements produced by a `with_extension` tree of
+/// the requested depth and breadth.
+///
+/// A tree of depth `d` and breadth `b` allocates one list per non-leaf level,
+/// so the count is `b + b^2 + ... + b^d` — **not** `b^d`, which counts only the
+/// innermost leaves. The packet's `max_list_len` bounds *total* generated list
+/// elements, so callers must budget with this sum.
+///
+/// Returns `None` when the sum overflows `usize`.
+pub fn extension_node_count(depth: usize, breadth: usize) -> Option<usize> {
+    let mut total: usize = 0;
+    let mut level: usize = 1;
+    for _ in 0..depth {
+        level = level.checked_mul(breadth)?;
+        total = total.checked_add(level)?;
+    }
+    Some(total)
+}
+
+/// Clamp an extension shape so its **total** list-element count fits `budget`.
+///
+/// Depth is preserved (it is bounded separately by `max_list_depth`); breadth is
+/// reduced until `extension_node_count(depth, breadth) <= budget`, with breadth
+/// never below one. This is the only place a caller should derive an extension
+/// shape from a total-element budget, so the `breadth^depth` leaf miscount cannot
+/// reappear.
+pub fn clamped_extension_shape(depth: usize, breadth: usize, budget: usize) -> (usize, usize) {
+    let mut breadth = breadth.max(1);
+    while extension_node_count(depth, breadth).is_none_or(|nodes| nodes > budget) {
+        if breadth == 1 {
+            break;
+        }
+        breadth -= 1;
+    }
+    (depth, breadth)
+}
+
+/// Count the generated `ConfigValue::List` elements carried by a configuration:
+/// every level of the extension tree plus the two sequence lengths.
+///
+/// The packet's `max_list_len` bounds **total** elements, so a per-node
+/// branching bound is not sufficient; this counter is what the regression
+/// asserts against.
+pub fn config_list_elements(config: &ResolvedConfig) -> usize {
+    fn count_value(value: &ConfigValue) -> usize {
+        match value {
+            ConfigValue::List(elements) => {
+                elements.len() + elements.iter().map(count_value).sum::<usize>()
+            }
+            _ => 0,
+        }
+    }
+    config
+        .extensions
+        .values()
+        .map(count_value)
+        .sum::<usize>()
+        + config.bed_shape.len()
+        + config.fill_authored_coloring.len()
+}
+
 /// Populate `extensions` with a nested list of the requested depth and
 /// breadth.
 ///
 /// `depth` wrapper levels are added around an innermost `ConfigValue::Int(1)`;
 /// each level holds `max(breadth, 1)` copies of the previous level, so the
-/// node count is `breadth^depth`. Callers bound both to keep allocation
-/// explicit. `ResolvedConfig::extensions` is
+/// number of list elements is `b + b^2 + ... + b^depth`
+/// ([`extension_node_count`]). Callers bound both to keep allocation explicit. `ResolvedConfig::extensions` is
 /// `BTreeMap<String, ConfigValue>` (`crates/slicer-ir/src/resolved_config.rs`),
 /// so entry order is canonical and Postcard-stable.
 pub fn with_extension(base: &ResolvedConfig, depth: usize, breadth: usize) -> ResolvedConfig {

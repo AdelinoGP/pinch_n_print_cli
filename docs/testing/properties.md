@@ -525,7 +525,11 @@ separately by `check_mm_case_with` instead of by tightening the envelope. The
 ### Shrinking
 
 Shrinks move within `finite_f32(-M, M)`, `rounding_boundary_mm` and `-U..=U`, so every shrink
-stays inside the declared bounds and preserves the case tag. Boundary and zero-sign witnesses
+stays inside the declared bounds. The case tag is pinned by
+`property_oracles::mode_locked` — a `no_shrink` mode selector fed through `prop_flat_map` — so
+the payload tree shrinks inside the originally generated variant and a unit case cannot become
+a millimetre case mid-shrink (the mechanism is probed by
+`mode_lock_preserves_tags_under_simplification`). Boundary and zero-sign witnesses
 are reachable through the deterministic block regardless of what the random sampler produces;
 the shared `finite_f32` and `rounding_boundary_mm` strategies preserve the finite bound in
 their own value trees. Shrink limits are profile-bounded (`max_shrink_iters`,
@@ -646,8 +650,10 @@ Exact integer comparison throughout; no numeric tolerance exists on this surface
 
 ### Shrinking
 
-Shrinks remove allocations or simplify text/footprint values while preserving the variant tag;
-supported parents stay `≤ P` and unsupported parents stay at `P + 1`/`u64::MAX`. The documented
+Shrinks remove allocations or simplify text/footprint values while preserving the variant tag:
+the tag is pinned by `property_oracles::mode_locked`, so a supported parent stays supported
+(`≤ P`) and an unsupported one stays at `P + 1`/`u64::MAX` instead of shrinking into another
+arm. The mechanism is probed by `mode_lock_preserves_tags_under_simplification`. The documented
 minting assertion is **not** re-triggered per generated case: `modifier_sub_region_id` asserts
 rather than returning a `Result`, and minting every unsupported sample would emit one panic per
 case. The assertion text
@@ -905,9 +911,13 @@ equality. No tolerance exists on this surface.
 ### Shrinking
 
 Shrinks shorten lists, reduce extension depth/breadth, and simplify scalars while staying inside
-`max_abs_config_value`, `max_list_len` and `max_list_depth`, and while preserving the seed's
-structural tag. `Repeat` always shrinks against the shrunk predecessor, so an equal pair stays
-an equal pair.
+`max_abs_config_value`, `max_list_len` and `max_list_depth`. Each configuration's input mode is
+pinned by `property_oracles::mode_locked`, so a raw-bit fixture cannot shrink into a finite
+structural fixture. `Repeat` always rebuilds from its shrunk predecessor, so an equal pair stays
+an equal pair. The extension budget counts **total** list elements
+(`b + b² + … + b^depth`, `property_oracles::extension_node_count`), not only the innermost
+leaves; a depth-2, breadth-2 request against a budget of 4 is clamped and the concrete case is
+asserted in `ir_config_oracle_counterexamples`.
 
 ### Execution
 
@@ -1020,9 +1030,20 @@ are distinguished; `min`/`max` are echoed from the independently computed effect
 
 ### Shrinking
 
-Shrinks reduce declaration count, simplify bounds toward zero and shorten lists, preserving the
-violating/non-violating mode and the first-invalid-index relationship. Nonfinite cases stay in
-their own family. Shrink limits are profile-bounded.
+Shrinks reduce declaration count, simplify bounds toward zero, and shorten lists. Two things are
+pinned and tested:
+
+- the **value family** — scalar, list, or non-finite — is pinned by
+  `property_config_oracles::mode_locked`, so a list value cannot shrink into a scalar (dropping
+  the first-invalid-index shape) and a non-finite value cannot shrink into a finite one;
+- every shrunk value stays inside `max_abs_bound` and every list inside `max_list_len`.
+
+The accept/reject **verdict is deliberately not pinned**: declarations and values shrink
+independently, so a shrink can move a case across an inclusive edge. The per-case oracle
+re-derives the expected verdict from the current declarations and value, and the property
+asserts that agreement, so no correctness claim depends on the verdict being preserved. The
+first-invalid-index relationship is likewise re-derived per case, never assumed stable under
+shrink. Shrink limits are profile-bounded.
 
 ### Execution
 

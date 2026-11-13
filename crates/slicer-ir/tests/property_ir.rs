@@ -226,13 +226,21 @@ fn coord_cases(
             CoordCase::OrderedMillimetres(right, left)
         }
     });
-    prop_oneof![
-        4 => millimetres.prop_map(CoordCase::Millimetres),
-        2 => boundaries.prop_map(CoordCase::Millimetres),
-        3 => units,
-        3 => ordered_pairs,
-    ]
-    .boxed()
+    // The variant is pinned per case (`mode_locked`): a `prop_oneof!` union can
+    // shrink into an earlier alternative, which would let a unit case become a
+    // millimetre case mid-shrink.
+    property_oracles::mode_locked(vec![0_u8, 1, 2, 3], move |mode| match mode {
+        0 | 1 => {
+            let source = if mode == 0 {
+                millimetres.clone()
+            } else {
+                boundaries.clone()
+            };
+            source.prop_map(CoordCase::Millimetres).boxed()
+        }
+        2 => units.clone().boxed(),
+        _ => ordered_pairs.clone().boxed(),
+    })
 }
 
 #[test]
@@ -430,9 +438,12 @@ fn id_cases(
     } else {
         IdTextKind::OtherText
     };
-    prop_oneof![
-        3 => (0..=max_allocations).prop_map(IdCase::Allocations),
-        4 => (
+    // The variant is pinned per case (`mode_locked`): a `prop_oneof!` union can
+    // shrink a supported parent into the allocation arm or into the unsupported
+    // arm, which would silently drop the mode a case was generated for.
+    property_oracles::mode_locked(vec![0_u8, 1, 2], move |mode| match mode {
+        0 => (0..=max_allocations).prop_map(IdCase::Allocations).boxed(),
+        1 => (
             0..=parent_limit,
             id_text(text_kind, max_id_bytes).expect("bounded identifier-text domain"),
             footprint_cases(max_footprint_points),
@@ -441,15 +452,12 @@ fn id_cases(
                 parent,
                 object_id,
                 footprint,
-            }),
-        2 => {
-            // Both entries are outside the representable range, so shrinking
-            // within this strategy keeps the unsupported mode.
-            proptest::sample::select(vec![parent_limit + 1, u64::MAX])
-                .prop_map(|parent| IdCase::UnsupportedParent { parent })
-        }
-    ]
-    .boxed()
+            })
+            .boxed(),
+        _ => proptest::sample::select(vec![parent_limit + 1, u64::MAX])
+            .prop_map(|parent| IdCase::UnsupportedParent { parent })
+            .boxed(),
+    })
 }
 
 #[test]
@@ -1072,19 +1080,14 @@ fn bounded_magnitude(bound: f64, index: u8) -> f64 {
     (bound * steps / 32.0).min(bound)
 }
 
-/// Clamp the extension shape so its node count fits the total list budget.
+/// Clamp the extension shape so its **total** list-element count fits the
+/// budget.
+///
+/// Delegates to `property_oracles::clamped_extension_shape`, which counts
+/// `b + b^2 + ... + b^d` rather than only the innermost leaves: a depth-2,
+/// breadth-2 tree allocates six list elements, not four.
 fn bounded_extension_shape(depth: usize, breadth: usize, budget: usize) -> (usize, usize) {
-    let mut breadth = breadth.max(1);
-    while breadth
-        .checked_pow(u32::try_from(depth).unwrap_or(u32::MAX))
-        .is_none_or(|nodes| nodes > budget)
-    {
-        if breadth == 1 {
-            break;
-        }
-        breadth -= 1;
-    }
-    (depth, breadth)
+    property_oracles::clamped_extension_shape(depth, breadth, budget)
 }
 
 fn config_from_seed(
@@ -1126,7 +1129,8 @@ fn config_from_seed(
                 &config,
                 (*option % 2 == 1).then(|| bounded_magnitude(max_abs_value, *option) as f32),
             );
-            let nodes = breadth.saturating_pow(u32::try_from(depth).unwrap_or(u32::MAX));
+            let nodes = property_oracles::extension_node_count(depth, breadth)
+                .expect("a clamped extension shape cannot overflow");
             let budget = max_list_len.saturating_sub(nodes);
             let seq = sequence % (budget / 2 + 1);
             let txt = text % (budget - seq + 1);
@@ -1150,7 +1154,8 @@ fn config_from_seed(
                 ..Default::default()
             };
             config = property_oracles::with_option(&config, option_bits.map(f32::from_bits));
-            let nodes = breadth.saturating_pow(u32::try_from(depth).unwrap_or(u32::MAX));
+            let nodes = property_oracles::extension_node_count(depth, breadth)
+                .expect("a clamped extension shape cannot overflow");
             let budget = max_list_len.saturating_sub(nodes);
             config = property_oracles::with_sequence(&config, sequence % (budget + 1));
             property_oracles::with_extension(&config, depth, breadth)
@@ -1236,28 +1241,33 @@ fn config_cases(
                 breadth,
             },
         );
-    proptest::collection::vec(
-        prop_oneof![
-            4 => finite,
-            3 => raw,
-            2 => Just(ConfigSeed::Repeat),
-            2 => scalar_config_values(ScalarConfigDomain::Int { min: 1, max: 8 })
-                .expect("bounded integer scalar domain")
-                .prop_map(ConfigSeed::Scalar),
-            1 => id_text(IdTextKind::OtherText, max_text_bytes)
-                .expect("bounded identifier-text domain for the holder field")
-                .prop_map(ConfigSeed::Holder),
-            1 => nonfinite_f64().prop_map(|value| ConfigSeed::Raw {
+    // Each configuration's input mode is pinned per element (`mode_locked`), so a
+    // raw-bit fixture cannot shrink into a finite structural fixture or a
+    // repeated equal pair into a different family.
+    let seed = property_oracles::mode_locked(vec![0_u8, 1, 2, 3, 4, 5], move |mode| match mode {
+        0 => finite.clone().boxed(),
+        1 => raw.clone().boxed(),
+        2 => Just(ConfigSeed::Repeat).boxed(),
+        3 => scalar_config_values(ScalarConfigDomain::Int { min: 1, max: 8 })
+            .expect("bounded integer scalar domain")
+            .prop_map(ConfigSeed::Scalar)
+            .boxed(),
+        4 => id_text(IdTextKind::OtherText, max_text_bytes)
+            .expect("bounded identifier-text domain for the holder field")
+            .prop_map(ConfigSeed::Holder)
+            .boxed(),
+        _ => nonfinite_f64()
+            .prop_map(|value| ConfigSeed::Raw {
                 layer_height_bits: value.to_bits(),
                 speed_bits: 0x7fc0_0001,
                 option_bits: Some(0x7f80_0001),
                 sequence: 0,
                 depth: 0,
                 breadth: 1,
-            }),
-        ],
-        0..=max_configs,
-    )
+            })
+            .boxed(),
+    });
+    proptest::collection::vec(seed, 0..=max_configs)
     .prop_map(move |seeds| {
         let mut configs: Vec<ResolvedConfig> = Vec::with_capacity(seeds.len());
         for seed in &seeds {

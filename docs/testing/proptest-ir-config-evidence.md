@@ -26,14 +26,20 @@ on registry-only evidence: every row above was executed through the registry-bac
 
 ## Source, toolchain and dirty-content provenance
 
-- Source revision for the measured runs: the packet checkpoint commit
-  `wip(proptest-openrscad_06_pbt-ir-config)` (see `git log --grep proptest-openrscad_06`), on
-  branch `master`, with no uncommitted changes under `crates/` or `test-properties.toml` while
-  the runs executed. Documentation edits made after the runs are listed at the end of this
-  document. The exact revision hash is recorded here at close as
-  `source_revision = <checkpoint hash>` — re-derive it with
+- Source revision: the executor records it per run in
+  `target/property-testing/<run-token>/<ID>/context.json` (`source_revision`,
+  `dirty_paths`, `source_state_digest`). Re-derive the current commit with
   `git log --format=%H -1 --grep proptest-openrscad_06` rather than trusting a frozen copy,
   because an amend or a squash changes it.
+- **Provenance is per run, not per document.** The early per-record pilot runs and the first
+  combined runs were taken while the working tree still carried uncommitted test and
+  documentation edits; their `context.json` files record those `dirty_paths` and a matching
+  `source_state_digest`, and those historical event outcomes are real for the tree they ran on.
+  The **final** measurement batch quoted in every table below was re-run after the remediation
+  pass on the committed tree; its contexts are the authority for the numbers in this document.
+  The `source_revision` and dirty state of the final batch are recorded in
+  `target/evidence/final-provenance.txt`, not restated here, because they change on every
+  amend.
 - Toolchain: `rustc 1.96.0 (ac68faa20 2026-05-25)`, Windows `x86_64-pc-windows-msvc`.
 - Proptest: `1.11.0` (`workspace.dependencies` in the root `Cargo.toml`, `chacha` RNG).
 - Features: `slicer-ir/property_testing` for the five `slicer-ir` records,
@@ -176,13 +182,13 @@ registration for these records.
 
 | ID | exact discovered test | libtest wall | single-record xtask wall | verdict |
 |---|---|---:|---:|---|
-| `H-IR-ANCHORS` | `proptest_ir_travel_anchors_membership` | 8.26s | 20s | PASS |
-| `H-COORD` | `proptest_coord_conversion_envelopes` | 0.28s | 12s | PASS |
-| `H-IDS` | `proptest_entity_and_modifier_ids` | 0.31s | 12s | PASS |
-| `H-CONFIG-BOUNDS` | `proptest_config_scalar_bounds` | 1.21s | 12s | PASS |
-| `H-IR-SERDE` | `proptest_ir_serialization_and_defaults` | 5.47s | 16s | PASS |
-| `H-CONFIG-INTERN` | `proptest_config_equality_hash_and_interning` | 1.43s | 13s | PASS |
-| `H-CHAINS` | `proptest_canonical_chain_product` | 0.36s | 11s | PASS |
+| `H-IR-ANCHORS` | `proptest_ir_travel_anchors_membership` | 8.41s | 24s | PASS |
+| `H-COORD` | `proptest_coord_conversion_envelopes` | 0.27s | 12s | PASS |
+| `H-IDS` | `proptest_entity_and_modifier_ids` | 0.31s | 13s | PASS |
+| `H-CONFIG-BOUNDS` | `proptest_config_scalar_bounds` | 1.19s | 15s | PASS |
+| `H-IR-SERDE` | `proptest_ir_serialization_and_defaults` | 5.52s | 17s | PASS |
+| `H-CONFIG-INTERN` | `proptest_config_equality_hash_and_interning` | 1.31s | 13s | PASS |
+| `H-CHAINS` | `proptest_canonical_chain_product` | 0.38s | 12s | PASS |
 
 Every run printed a matching `begin`/`end` controller pair with
 `"outcome":"passed"`, `"completion_eligible":true`, `"call_counts_complete":true` and
@@ -196,8 +202,8 @@ every tier:
 
 | Selection | Tier | Wall | Records at their profile case count | Verdict |
 |---|---|---:|---|---|---|
-| all seven `--property` flags | routine | 19 s | 7 / 7 at 64 | PASS || all seven `--property` flags | extended | 35 s | 7 / 7 at 1024 | PASS |
-| all seven `--property` flags `--seed 37` | routine | 18 s | 7 / 7 at 64 | PASS |
+| all seven `--property` flags | routine | 18 s | 7 / 7 at 64 | PASS || all seven `--property` flags | extended | 36 s | 7 / 7 at 1024 | PASS |
+| all seven `--property` flags `--seed 37` | routine | 20 s | 7 / 7 at 64 | PASS |
 
 Logs: `target/evidence/final-all-routine.log`, `final-all-extended.log`,
 `final-replay-37.log`; the corresponding inner executor logs are the `-inner.log` siblings.
@@ -251,6 +257,41 @@ regression history.
 The one red test in the tree (`region_map_versioned_decode_tdd`, above) is a **pre-existing
 defect outside this packet's scope**; it is reported here rather than absorbed into a family
 result, and the frozen fixture was left untouched.
+
+## Post-review remediation
+
+An independent full packet review returned CHANGES REQUESTED. The findings it raised that were
+inside this packet's scope were fixed; the ones that are not are listed as blocking below. No
+assertion was weakened and no tolerance was tuned to obtain a pass.
+
+| Finding | Resolution | Falsifiable evidence |
+|---|---|---|
+| **F1** Shrink claims were false: `prop_oneof!` unions shrink into earlier alternatives, so a "structural variant tag" did not pin the mode | Added `mode_locked` (a `no_shrink` mode selector fed through `prop_flat_map`) to both shared oracle modules and used it for every tagged owner strategy: `coord_cases`, `id_cases`, `config_cases`, the scheduler value family (`bound_values`), and the scheduler probe families. Corrected the `H-CONFIG-BOUNDS` shrinking text: the value family and the in-bound magnitudes are pinned, the accept/reject **verdict is not** — it is re-derived per case and the property never assumes otherwise. | `mode_lock_preserves_tags_under_simplification` in both `property_ir_contracts.rs` and `property_config_contracts.rs` walks real `simplify()` calls on a mode-locked strategy, asserts the tag never changes, and asserts at least one simplification and at least two observed modes so the probe is not vacuous. |
+| **F2** The nested-list budget counted leaves (`b^depth`) instead of total elements (`b + b² + … + b^depth`) | `property_oracles::extension_node_count` counts the true total, `clamped_extension_shape` clamps against it, and `config_from_seed` budgets with it. | Concrete regression in `ir_config_oracle_counterexamples`: `extension_node_count(2, 2) == 6`, a budget of 4 clamps the shape, and a constructed fixture stays at `config_list_elements(..) <= 4`. |
+| **F3** The `units_to_mm` reference-error proof omitted the f64 division's own rounding, claiming it was below `2^-150` | `units_bound` is now `(2^-24 + 2^-53)·|x| + 2^-150`: f32 half-ulp for the conversion **plus** the f64 reference division's `2^-53` relative error, with `2^-150` kept only as the subnormal floor. The derivation comment states the measured counterexample (`n = 1` reference error ≈ `4.8e-21` versus `2^-150` ≈ `7.0e-46`). | The corrected bound is one of the values asserted in the coordinate charter and used by `check_units_case`; no sample-tuned constant exists. |
+| **F4** Two bounds-oracle mutants were refuted only against production, not against the reference predicate, so substituting the mutant for `expected_accepts` stayed green | `config_bounds_oracle_counterexamples` now asserts the reference predicate's own verdict on the union witnesses (3 and 50 rejected, 7 accepted) and on the inclusive edges (1 and 3 accepted), in addition to the mutant disagreement. | `config_bounds_oracle_counterexamples`; the four mutants now fail the suite if substituted for the reference predicate. |
+| **F8** `Point2::to_mm` was named on the owner surface but never called | `check_mm_case` now builds `Point2::from_mm(m, -m)` and compares `to_mm()` **bitwise** against `units_to_mm` for both coordinates, so the negative and zero-sign directions are covered on every sampled mm case. | `ir_coord_oracle_and_bound_controls` and every `H-COORD` case run through `check_mm_case`. |
+| **F9** A constant-true `defective_exact_roundtrip_claim` was asserted decoratively | Removed the helper and its assertion; the false universal-inverse claim is falsified only by the concrete `1/32 mm → 313 → 0.0313 mm` and subnormal pairs, which remain. | `ir_coord_oracle_and_bound_controls`. |
+| **F7** Provenance prose contradicted the retained contexts | The provenance section is now explicitly per run and points at each run's `context.json`; the final measurement batch was re-run on the committed tree and only that batch is quoted in the tables. | `target/evidence/final-provenance.txt` plus the per-run `context.json` files. |
+
+### Blocking findings that this packet cannot resolve
+
+- **F5 — the frozen `RegionMapIR` fixture failure is pre-existing but still open.** The review
+  confirmed the packet does not cause it (`git diff` over `crates/*/src/**` is empty and the
+  fixture/test bytes are unchanged) and also confirmed it is a required baseline. It is **not**
+  waived here and no fixture was regenerated: it needs an owner (the packet whose change broke
+  `RegionMapIR` 3.0.0 Postcard compatibility) and a decision on whether this packet may close
+  with it red. Until then this packet is PARTIAL.
+- **F6 — hosted Windows CI execution was not performed.** The workflow selects the records
+  dynamically and the same command was executed locally, but no authorized hosted run exists
+  for these records. Triggering one requires repository write access this run does not have.
+  Packet `proptest-openrscad_17_pbt-ci-closure` owns the rollout audit, but the packet text does
+  not permit deferring this family's actual execution, so this is recorded as blocking rather
+  than satisfied.
+- **F1 residual** — the shrink-mode probes certify the shared mechanism, not each composed owner
+  strategy individually. Probing the composed strategies from the deterministic target would
+  require moving the case builders into the shared test module; that refactor was not performed,
+  so the composition claim rests on every builder using the shared `mode_locked` helper.
 
 ## Regressions
 
