@@ -61,7 +61,7 @@ crates/slicer-schema/wit/
     prepass-mesh-analysis/prepass-mesh-analysis.wit                          # package slicer:prepass-mesh-analysis@1.0.0
     prepass-layer-planning/prepass-layer-planning.wit                        # package slicer:prepass-layer-planning@3.0.0
     prepass-seam-planning/prepass-seam-planning.wit                          # package slicer:prepass-seam-planning@1.0.0
-    prepass-support-geometry/prepass-support-geometry.wit                    # package slicer:prepass-support-geometry@2.0.0
+    prepass-support-geometry/prepass-support-geometry.wit                    # package slicer:prepass-support-geometry@2.1.0
     postpass-gcode-postprocess/postpass-gcode-postprocess.wit          # package slicer:postpass-gcode-postprocess@1.0.0
     postpass-text-postprocess/postpass-text-postprocess.wit             # package slicer:postpass-text-postprocess@1.0.0
     finalization-layer-finalization/finalization-layer-finalization.wit  # package slicer:finalization-layer-finalization@1.1.0
@@ -897,7 +897,7 @@ interface contains the single `run` function:
 | `PrePass::MeshAnalysis` | `deps/prepass-mesh-analysis/prepass-mesh-analysis.wit` | `slicer:prepass-mesh-analysis@1.0.0` |
 | `PrePass::LayerPlanning` | `deps/prepass-layer-planning/prepass-layer-planning.wit` | `slicer:prepass-layer-planning@3.0.0` |
 | `PrePass::SeamPlanning` | `deps/prepass-seam-planning/prepass-seam-planning.wit` | `slicer:prepass-seam-planning@1.0.0` |
-| `PrePass::SupportGeometry` | `deps/prepass-support-geometry/prepass-support-geometry.wit` | `slicer:prepass-support-geometry@2.0.0` |
+| `PrePass::SupportGeometry` | `deps/prepass-support-geometry/prepass-support-geometry.wit` | `slicer:prepass-support-geometry@2.1.0` |
 
 The `prepass-support-geometry` identity moved from `1.0.0` to `2.0.0` with the
 full-source-variant-chain migration: six view records carry the ordered

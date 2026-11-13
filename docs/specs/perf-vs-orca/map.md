@@ -13,7 +13,7 @@ wall-clock (process CPU corroborating, never contradicting) in every cell of
 the {benchy, base} × {classic, arachne} × {supports off, on} matrix, under the
 matched-pair protocol with outputs disclosed. 8 of 8 cells won closes the map.
 
-**Benchy reference currency (2026-11-13, [t145](issues/145-benchy-fixture-rebaseline.md)): the benchy fixture was replaced on 2026-11-12T20:48, and every benchy number measured before that boundary is HISTORICAL.** The replacement (`tmp/3dbenchy.stl`, `6ab57f1c…`) is a re-tessellation of the same model — 225,786 → 225,706 triangles, |Δbounds| ≤ 4.05e-7 mm, ten of ten sampled cross-sections equal to the old export's recorded values — but the slice is **not** output-neutral: one internal-bridge layer (L40, z = 8.2, +57.298 mm of path) and the tree-support engine (−1,370.181 mm over 176 layers) move, so all four benchy hashes move. **Active benchy set = t144's** (`1ae0cfa8…` / `d9fc80ba…` / `8faf02b1…` / `cd7d4a2d…`; the currency artifact is [`evidence/t145-benchy-rebaseline/reference.json`](evidence/t145-benchy-rebaseline/reference.json)); **t139's four hashes are retired** (`93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…`); t143's four are the superseded interim set. Rule: **a benchy number is either pre-swap (historical) or post-swap (current); never mixed, never quoted across the boundary.** Retired by that rule: t139's benchy hashes and every comparison built on them; t138's benchy **g-code** figures (its benchy **STL** figures survive — the cross-sections reproduce exactly); t135 Stage 1's benchy oracle numbers; t142's benchy A/B (20.00 / 10.56 / 20.23 / 12.66 %) and every pre-swap benchy A/B pair; every benchy scoreboard median (t121 / t124 / t139) and any composite containing a benchy cell; t126's "benchy classic-off 1.02x at zero prepass" and t134's benchy planner ratios. Post-swap and current: t143's benchy rows (fixture mtime 20:48, depth runs 20:55+), t144's hashes / oracle / A-B, and the t145 scoreboard. **Post-swap scoreboard (t145, 8 cells × 2 tools, one window): 1.853x–3.455x ordinary/Orca, required cut 46.03 %–71.06 % (19.05 %–56.59 % at 1.5x)** — benchy-only 1.853x–2.683x, base-only 1.984x–3.455x; the accelerated arm has no current scoreboard.
+**Benchy reference currency (2026-11-13, [t145](issues/145-benchy-fixture-rebaseline.md)): the benchy fixture was replaced on 2026-11-12T20:48, and every benchy number measured before that boundary is HISTORICAL.** The replacement (`tmp/3dbenchy.stl`, `6ab57f1c…`) is a re-tessellation of the same model — 225,786 → 225,706 triangles, |Δbounds| ≤ 4.05e-7 mm, ten of ten sampled cross-sections equal to the old export's recorded values — but the slice is **not** output-neutral: one internal-bridge layer (L40, z = 8.2, +57.298 mm of path) and the tree-support engine (−1,370.181 mm over 176 layers) move, so all four benchy hashes move. **Active set = t148's** ([`evidence/t148-print-plane-carve/reference.json`](evidence/t148-print-plane-carve/reference.json)): benchy `1ae0cfa8…` / `37788518…` / `8faf02b1…` / `f86d8897…`, base `c0b9014f…` / `eccbd523…` / `17f63e93…` / `1811425f…` (each list is classic-off / classic-on / arachne-off / arachne-on). t145's four supports-on hashes (`d9fc80ba…` / `cd7d4a2d…` / `585c6a8e…` / `c9fee59a…`) are **superseded** because that job printed less support than it demanded; **t139's four benchy hashes are retired** (`93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…`); t143's four are the superseded interim set. Rule: **a benchy number is either pre-swap (historical) or post-swap (current); never mixed, never quoted across the boundary.** Retired by that rule: t139's benchy hashes and every comparison built on them; t138's benchy **g-code** figures (its benchy **STL** figures survive — the cross-sections reproduce exactly); t135 Stage 1's benchy oracle numbers; t142's benchy A/B (20.00 / 10.56 / 20.23 / 12.66 %) and every pre-swap benchy A/B pair; every benchy scoreboard median (t121 / t124 / t139) and any composite containing a benchy cell; t126's "benchy classic-off 1.02x at zero prepass" and t134's benchy planner ratios. Post-swap and current: t143's benchy rows (fixture mtime 20:48, depth runs 20:55+), t144's hashes / oracle / A-B, t145's re-baseline, and t148's supports-on re-record. **Post-t148 scoreboard (4 supports-on cells × 2 tools, one window): 2.705x / 2.829x / 3.356x / 3.248x ordinary/Orca** (benchy classic-on / benchy arachne-on / base classic-on / base arachne-on), CPU corroborating — **required cut 63.0 % / 64.6 % / 70.2 % / 69.2 %**; t145's 8-cell post-swap scoreboard **1.853x–3.455x ordinary/Orca** stands for the four supports-off cells and is historical for the four supports-on cells (that job was support-incomplete). The accelerated arm has no current scoreboard.
 
 **Destination status (2026-11-08, [t128](issues/128-destination-arithmetic-ruling.md)):
 the target is unchanged; the route is re-scoped to an engine rewrite.** 0 of 8
@@ -595,6 +595,39 @@ temporary, non-landing probe). **Frontier:**
 [t146](issues/146-variable-width-anchor-shape.md) (HITL) and
 [t148](issues/148-supports-on-plane-carve.md) (AFK, unblocked, new).
 
+**Destination status (2026-11-13,
+[t148](issues/148-supports-on-plane-carve.md)): the supports-on output is no
+longer support-incomplete, the four supports-on ratios are re-derived, and the
+frontier is the human's [t146](issues/146-variable-width-anchor-shape.md).**
+The planner now carves emitted roles against the print plane the host gate
+validates, published as `SupportAnalysisIR::print_plane_occupancy` (additive
+schema 2.1.0; WIT `print-plane-occupancy`, package `2.1.0`) and batched per
+object from the world mesh at the quantized `anchor_z` plane; the midpoint
+payload is kept as the conservative extra and `validate_entry` still runs
+zero-tolerance on the carved result. **Zero `exact-Z occupancy` diagnostics on
+all four supports-on cells** (101 / 101 / 44,474 / 44,474 → 0), every run
+`degraded: false`, the **33 dropped layers reappear** (32 base + 1 benchy, zero
+lost), and support path rises **+36,700.688 / +36,700.716 mm** (base classic /
+arachne) and **+294.871 mm** (both benchy cells) — base recovery is 36,723.3 mm
+against t147's 36,466.7 mm estimate (+0.70 %). **Supports-off is byte-identical
+in 4/4** to the t144 active set with zero diagnostics. **Ratios of record
+(ordinary, supports-on): 2.705x / 2.829x / 3.356x / 3.248x** (benchy classic-on /
+benchy arachne-on / base classic-on / base arachne-on), CPU corroborating; the
+**active reference set is t148's**
+[`reference.json`](evidence/t148-print-plane-carve/reference.json) and t145's
+four supports-on hashes are superseded (t145's supports-off hashes carry
+forward). **Coverage clause read twice and disclosed:** plane presence is
+**20/20** (every t147 Orca-supported candidate now sits on a plane that prints
+support); polygon coverage on t147's > 5 % metric is **11/19 base, 0/1 benchy**
+and is **not** a pass gate because the retained-layer control reads the same
+0.000–0.021 — a pre-existing tree-interface geometry gap. **No causal wall cost
+claimed:** PnP process CPU rises (base classic-on 492.7 → 588.7 s median) but the
+window's Orca arm moved too (23.414 → 21.598 s), and t145's base arachne-on PnP
+sample was deschedule-skewed. Evidence:
+[`evidence/t148-print-plane-carve/`](evidence/t148-print-plane-carve/FINDINGS.md)
+(`verify.py` 347/347, 8/8 negative controls; `reference.json` is the currency).
+**Frontier:** [t146](issues/146-variable-width-anchor-shape.md) (HITL) only.
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -681,7 +714,27 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-12, the t143 take):** the human said
+**Current selection scope (2026-11-13, the t148 take):** the human said
+"Continue the perf vs orca map, pick an AFK ticket"; **t148 was the first
+unblocked, unclaimed AFK frontier ticket in order** ([146](issues/146-variable-width-anchor-shape.md)
+is the human's HITL grilling) and was claimed and resolved as a **fairness fix
+plus re-record**. Headline: **the exact-Z rejections are gone because the
+planner now carves against the plane the gate validates** — `print_plane_occupancy`
+(additive schema 2.1.0, WIT package 2.1.0), batched per object from the world
+mesh at the quantized `anchor_z`, carved beside the midpoint payload; the
+validator is untouched and still zero-tolerance. **All four supports-on cells:
+diagnostics 101 / 101 / 44,474 / 44,474 → 0, `degraded: false`, 33 layers
+recovered (32 base + 1 benchy), none lost, support path +36,700.688 / +36,700.716
+mm base and +294.871 mm benchy; supports-off byte-identical 4/4.** **Ratios of
+record re-derived: 2.705x / 2.829x / 3.356x / 3.248x**, CPU corroborating; the
+active reference set is t148's and t145's four supports-on hashes are
+superseded. **Disclosed:** the coverage clause's polygon reading is 11/19 base,
+0/1 benchy and is not a PnP criterion (retained-layer control reads the same);
+process CPU rose visibly but no causal wall cost is claimed because Orca's own
+medians moved in the same window. **Frontier now:
+[t146](issues/146-variable-width-anchor-shape.md) (HITL) only.**
+
+**Previous selection scope (2026-11-12, the t143 take):** the human said
 "Continue the perf vs orca map" (no ticket named); **143 was the first
 unblocked, unclaimed AFK frontier ticket in order** ([144](issues/144-brim-anchor-reconstruction.md)
 is the other) and was claimed and resolved as a **measured KEEP**. Headline:
@@ -3638,6 +3691,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Supports-on plane carve: align the planner's collision occupancy with the print plane](issues/148-supports-on-plane-carve.md): **resolved (2026-11-13; fairness fix landed — the planner carves emitted roles against the print plane the host's exact-Z gate validates, published as an additive `print_plane_occupancy` carrier (schema 2.1.0). All four supports-on cells go from 101 / 101 / 44,474 / 44,474 diagnostics to zero, the 33 dropped layers reappear with none lost, support path rises 36.70 m base / 0.295 m benchy, supports-off is byte-identical 4/4, and the re-derived ratios of record are 2.705x / 2.829x / 3.356x / 3.248x.** Coverage clause read twice: plane presence 20/20; polygon coverage 11/19 base, 0/1 benchy, disclosed and not used as a gate because the retained-layer control reads the same near-zero. No causal wall-cost claim (the window's Orca arm moved too). Evidence: `evidence/t148-print-plane-carve/` (`verify.py` 347/347, 8/8 negative controls; `reference.json` is the new currency).
 - [Supports-on output is support-incomplete: what the `exact-Z occupancy` body rejections drop](issues/147-supports-on-body-rejection-attribution.md): **resolved (2026-11-13; Phase-1 attribution — the rejections are a planner/validator plane mismatch, not redundant demand, and the four supports-on ratios are supports-incomplete)** — all 33 rejected entries overlap the **print plane** and **none** overlaps the midpoint payload the planner carved: benchy L170 **5.8342 mm² (2.276 % of the body)**, base 32 entries **8.4e-6–1.4706 mm²** (sum **6.8920 mm²**, median 0.0805 mm², ≤ 0.069 % of body). The 44,474 base diagnostics are **(body, demand) pairs**: **2,892** unique demands and **zero** uniquely dropped. The loss is the layer — each rejected entry is the only entry at its layer, so **32 complete base layers** and **1 benchy layer** are absent from the emitted G-code: **36,466.736 mm (10.2765 %)** of base support path and **192.601 mm (0.233 %)** of benchy path by neighbour interpolation; **19/32** base and **1/1** benchy overhangs above a missing layer have Orca support at that plane and none in PnP (benchy candidate 68: 0 vs 36.85 % at z = 34.2; candidate 76: 0 vs 14.7–32.7 %), 13/32 are unsupported by both tools at that exact plane and are not counted. **Classification (b) defect:** the planner carves `SupportAnalysisIR::model_occupancy` at `layer.z − 0.5 h` while `validate_entry` queries `anchor_z = layer.z`, and the zero-tolerance gate drops the whole body (canonical `draw_circles` would keep 250.5 of 256.3 mm² on benchy and ≥ 99.93 % of every base body). **Ruling:** the four supports-on ratios of record are **not quotable as a matched-settings claim**; they stand only with the disclosure and no new supports-on ratio until [t148](issues/148-supports-on-plane-carve.md) closes the asymmetry. Supports-off cells have zero rejections. Evidence: [`evidence/t147-supports-rejection/`](evidence/t147-supports-rejection/FINDINGS.md) (`verify.py` checks every number from `census.json`; 6/6 negative controls rejected).
 - [Benchy fixture replacement: re-record the benchy reference set and retire cross-swap benchy ratios](issues/145-benchy-fixture-rebaseline.md): **resolved (2026-11-13; measured re-baseline — the replacement is a tessellation-only re-export, the slice is not output-neutral, and the post-swap scoreboard is 1.853x–3.455x)** — the replacement `tmp/3dbenchy.stl` (`6ab57f1c…`, 11,285,384 bytes) is **225,706 triangles against the old export's 225,786 (−80, −0.035 %)**, with byte-identical bounds (|Δ| ≤ 4.05e-7 mm) and the same 240-layer / 48.0 mm schedule; re-cutting t138's five sampled planes (mid and top, inward 0.20 offset, convex hull) reproduces **all ten** old-export areas exactly at 3 decimals, and `tmp/base.stl` is byte-identical to t138's record (`b26c8c79…`). **The printed object does not move but the output does:** against the old export one output-neutral code change apart (all four **base cells byte-identical** across the two takes — the control), the outer wall changes by **−1.591 mm of 31,891.789 (−0.0050 %)** and −1e-6 of loop area with per-layer area median/p95 **0.0** and one layer over 0.1 % (L153, −0.113 %), while **internal bridge moves on L40 (z = 8.2) alone** — 554.316 → 611.614 mm (**+57.298 mm, +7.344 %**), 28.028 → 31.866 mm² (**+13.694 %**), identical in all four cells — and the **tree-support engine** moves **−1,370.181 mm (−2.238 %)** over 176 supports-on layers with its max-loop area **+1.021 %**; bytes classic-off **−812**, classic-on **−79,465**, arachne-off **+118**, arachne-on **−78,773**. **Currency:** t144's four benchy hashes (`1ae0cfa8…` / `d9fc80ba…` / `8faf02b1…` / `cd7d4a2d…`) are the active set and reproduce in **8/8** cells today (one hash across three measured runs per cell; the four base cells reproduce t144's base hashes in the same campaign), recorded in [`evidence/t145-benchy-rebaseline/reference.json`](evidence/t145-benchy-rebaseline/reference.json); t139's four (`93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…`) are **retired**; t143's four are the superseded interim set. **Classification: tessellation-only at the model level, not byte-neutral at the output level** (the falsifier — a systematic cross-section, bounds, layer-schedule or outer-wall displacement — is absent). **Post-swap scoreboard (8 cells × 2 tools, one window): 1.853x–3.455x ordinary/Orca, required cut 46.03 %–71.06 %, 19.05 %–56.59 % at 1.5x** — benchy 2.043x / 2.683x / 1.853x / 2.580x (3.912 / 6.553 / 3.674 / 6.686 s against 1.915 / 2.442 / 1.983 / 2.591 s), base 2.078x / 3.001x / 1.984x / 3.455x; the lowest bars are the two benchy supports-off cells, the highest the two base supports-on cells. **Disclosed:** no accelerated timing arm (`cargo xtask dist --accelerated` still fails today, `c1xx` C1083 on `'\\mimalloc-static.cc'`; a manual-cfg host is barred as a timing artifact by `docs/23`), every PnP supports-on run is `degraded: true` with **101** (benchy) / **44,474** (base) code-1200 `exact-Z occupancy` rejections — identical on both exports, so not swap-caused, graduated as [t147](issues/147-supports-on-body-rejection-attribution.md) — load 9 % / 12 %, three runs per cell (base arachne-on PnP spread 21.2 %), Orca hashes differ per run while bytes are constant, and no causal claim from the cross-take movement. Evidence: [`evidence/t145-benchy-rebaseline/`](evidence/t145-benchy-rebaseline/FINDINGS.md) (`verify.py` 98/98 checks, 25/25 negative controls rejected).
 - [Brim anchor reconstruction: feed `make_brim` the slice contour from the wall path](issues/144-brim-anchor-reconstruction.md): **resolved (2026-11-12; measured fairness fix — the anchor is the reconstructed contour, the matched job moves 6/8 cells, and the adhesion oracle reaches 3/4 supports-off / 3/8 overall)** — `SkirtBrim::generate` (`modules/core-modules/skirt-brim/src/lib.rs`) offsets the filled outer-wall footprint outward by **half the per-object modal non-zero `Point3WithWidth.width`** (Round, 0.0125 mm; every-zero falls back to `line_width`) before the existing 0.1 mm gap / flow-spacing quantisation / `tryExPolygonOffset` steps, and offsets each `skirt_height > 1` layer hull likewise before it joins the skirt hull (convex hull commutes with the Minkowski sum; that path is unit-tested and disclosed as not exercised by the matched job). Module-only, no `SliceIR`/WIT change, support clip untouched; the fourth scoped parity exception covers exactly these inputs. **Reference set:** the baseline reproduces the active pre-t144 set in **8/8**; the candidate is byte-identical on the ordinary and accelerated arms in **8/8** and moves in **6/8** (`1ae0cfa8…` / `d9fc80ba…` / `8faf02b1…` / `cd7d4a2d…` / `c0b9014f…` / `585c6a8e…` / `17f63e93…` / `c9fee59a…`), now the active set in [`evidence/t144-brim-anchor/reference.json`](evidence/t144-brim-anchor/reference.json). **The pre-declared "moves in all eight" is falsified and disclosed:** base classic-on and base arachne-on are byte-identical because the support footprint clips the whole brim annulus, so no brim path (or hull point) reaches the output; their delta audit has **zero** changed `E` lines. **Delta audit 8/8:** no motion outside `Skirt`/`Brim` moves with `E` stripped; max `|dE|` **0.00098 mm**. **A/B (attribution only):** 3 pairs/cell, median wall Δ **+1.84 / −2.86 / −0.55 / +0.43 %** benchy and **+1.32 / +1.63 / +1.18 / −5.58 %** base, CPU within ±1.2 %; every median inside a measured six-cell same-arm null band (**±24.82 % wall / ±4.52 % CPU**), so no wall claim. **Oracle 3/4 supports-off:** base classic-off flips from **−5.65 %** to **+2.89 %** skirt-outer and passes (brim +5.17 → +1.14 %), base Arachne-off remains **+3.45 %** (0.45 points outside the 3 % band), both benchy cells pass (+1.32 / +1.34 %); supports-on is support-engine-limited and byte-identical in this take. The uniform modal width is the pre-declared Arachne approximation, so the miss graduates [t146](issues/146-variable-width-anchor-shape.md) (per-segment envelope vs direct contour vs accept 3/8) rather than reverting the anchor. No scoreboard re-derivation: t139's **2.279x–4.187x ordinary / 2.311x–4.179x accelerated, cut 56.1 %–76.1 %** stand with the adhesion-geometry disclosure. Both freshness gates exit 0; the accelerated host remains unbuildable (`libmimalloc-sys`, t142), so the accelerated output arm ran the ordinary host with the accelerated component tree. Evidence: [`evidence/t144-brim-anchor/`](evidence/t144-brim-anchor/FINDINGS.md) (`verify.py` re-derives every claim; 13/13 negative controls).
@@ -3889,6 +3943,14 @@ Standing decisions for this effort (2026-09-22):
 - [Repair the Orca rig](issues/98-orca-rig-repair.md): **rig measures Orca again on the 2.5.0 install, and the repair falsified the archived Orca side.** OrcaSlicer 2.5 resolves `--load-settings` through a vendor preset bundle (`PresetBundle::resolve_preset_config`: file-identity match, else a `"from": "system"` manifest walk that flattens `inherits`/`include`), and the install ships only `BBL.opc` with no preset JSON tree. The rig now stages a version-gated source-manifest tree from the tag whose `BBL.json` version equals the installed cache stamp (`02.08.00.16` == `2.8.0.16`, fail-closed) and applies the matched keys as CLI overrides, with `enable_arc_fitting` pinned to 0 because 2.5 flipped that default to enabled. Three measured runs of benchy classic-off: **1.978 s** wall / 6.50 s CPU / 4,000,709 bytes, against the archive's 2.787 s / 9.27 s / 3,890,392 — the archived Orca applied its hardcoded **filament** defaults (density 0, max volumetric speed 2, first-layer temp 200) while the process chain resolved in both eras (300 mm/s walls). So the archived Orca under-measured Orca's own work: PnP's recorded multiples are optimistic for PnP and every archived Orca median needs re-derivation (fog). No ratio requoted. Evidence: `evidence/orca-rig-repair/` (`verify.py --self-test` exit 0, 4 claims, 7/7 negative controls rejected).
 
 ## Not yet specified
+
+- **Supports-on completeness is closed (t148, 2026-11-13): the four supports-on
+  cells now print the support they plan, so their ratios are quotable and the
+  required cut is 63.0 % / 64.6 % / 70.2 % / 69.2 % (benchy classic-on /
+  benchy arachne-on / base classic-on / base arachne-on).** The 33 dropped
+  layers are back (32 base + 1 benchy), supports-off is byte-identical, and no
+  route term changed: the four supports-off cells (1.853x / 2.043x / 1.984x /
+  2.078x) and the engine-parity program carry the destination arithmetic.
 
 - **The operand-volume program is the route (t129 → t131, 2026-11-09).** The
   work-set question and the per-op question are both answered: canonical does
@@ -4391,13 +4453,18 @@ Standing decisions for this effort (2026-09-22):
   (re-test before pricing it), or an instrumented Orca build. Re-enter only with one
   of those in hand — otherwise the phase split is the floor of what this rig can see,
   and no substage estimate should be quoted.
-- **Occupancy gate still measures the identity aggregate.**
+- **Occupancy gate: the latent aggregate-drop fired and is closed; the gate
+  itself stays.**
   [Support-correctness repair](issues/14-support-correctness-repair.md)
-  un-widened only the extent bound; `validate_entry`'s exact-Z occupancy check
-  still drops a whole identity entry when any one body cross-section overlaps
-  model occupancy — the same class of aggregate mis-measurement, latent (zero
-  occupancy rejections in the measured failure data). Becomes a ticket the day
-  it fires on a matched cell.
+  un-widened only the extent bound. The exact-Z occupancy check later **did**
+  fire on every supports-on matched run — [t147](issues/147-supports-on-body-rejection-attribution.md)
+  censused 101 benchy / 44,474 base `(body, demand)` rejections — because the
+  planner carved the layer **midpoint** while `validate_entry` queried
+  `anchor_z` = `layer.z`. [t148](issues/148-supports-on-plane-carve.md) closed
+  the plane mismatch planner-side (`print_plane_occupancy`, additive 2.1.0) and
+  kept the host gate at zero tolerance as the tripwire: all four supports-on
+  cells now report zero rejections and print the support they plan. Re-enter
+  only if a future cell fires the gate again; do not weaken it to a tolerance.
 
 - **Dense-infill bridge shortcut and per-extrusion object mass (screened
   2026-10-27, OrcaSlicer

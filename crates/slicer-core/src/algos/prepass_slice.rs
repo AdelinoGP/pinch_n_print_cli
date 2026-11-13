@@ -89,7 +89,12 @@ impl std::error::Error for LayerSliceError {}
 /// (e.g. slicing a translated object at a global-space layer Z would miss the
 /// mesh entirely). For an identity transform this is a vertex-wise copy, so
 /// slice output is bit-identical.
-fn object_world_mesh(object: &ObjectMesh) -> IndexedTriangleSet {
+///
+/// Public because `PrePass::SupportAnalysis` takes the same world-space
+/// cross-section at each layer's print plane for
+/// `SupportAnalysisIR::print_plane_occupancy`; the exact-Z query service the
+/// host gate validates with uses the identical transform.
+pub fn object_world_mesh(object: &ObjectMesh) -> IndexedTriangleSet {
     IndexedTriangleSet {
         vertices: object
             .mesh

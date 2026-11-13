@@ -2999,6 +2999,10 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                 variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
                 polygons: e.polygons.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
             }).collect(),
+            print_plane_occupancy: support_analysis.print_plane_occupancy.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisPlaneEntry {
+                global_support_layer_index: e.global_support_layer_index, object_id: e.object_id.clone(),
+                polygons: e.polygons.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
+            }).collect(),
             termination_surfaces: support_analysis.termination_surfaces.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
                 global_support_layer_index: e.global_support_layer_index, object_id: e.object_id.clone(), region_id: e.region_id.clone(),
                 variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),

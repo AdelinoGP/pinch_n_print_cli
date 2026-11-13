@@ -1605,7 +1605,9 @@ impl WasmRuntimeDispatcher {
                     .as_deref()
                     .map(crate::marshal::in_::project_support_analysis_view)
                     .unwrap_or_else(|| host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportAnalysisView {
-                        candidates: Vec::new(), model_occupancy: Vec::new(), termination_surfaces: Vec::new(),
+                        candidates: Vec::new(), model_occupancy: Vec::new(),
+                        print_plane_occupancy: Vec::new(),
+                        termination_surfaces: Vec::new(),
                         shared_settings: Vec::new(), baseline_feasible_envelope: Vec::new(), family_assignments: Vec::new(),
                         support_territory: Vec::new(),
                     });

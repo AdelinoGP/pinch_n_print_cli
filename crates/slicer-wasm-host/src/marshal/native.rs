@@ -1447,9 +1447,24 @@ pub fn support_analysis_view_from_ir(
             )
             .collect::<Vec<_>>()
     };
+    let mut print_plane_occupancy: Vec<_> = analysis
+        .print_plane_occupancy
+        .iter()
+        .map(|entry| slicer_sdk::prepass_types::SupportAnalysisPlaneEntry {
+            global_support_layer_index: entry.global_support_layer_index,
+            object_id: entry.object_id.clone(),
+            polygons: entry.polygons.clone(),
+        })
+        .collect();
+    print_plane_occupancy.sort_by(|left, right| {
+        left.global_support_layer_index
+            .cmp(&right.global_support_layer_index)
+            .then_with(|| left.object_id.cmp(&right.object_id))
+    });
     SupportAnalysisView {
         candidates,
         model_occupancy: project_geometry(&analysis.model_occupancy),
+        print_plane_occupancy,
         termination_surfaces: project_geometry(&analysis.termination_surfaces),
         shared_settings: analysis
             .shared_settings

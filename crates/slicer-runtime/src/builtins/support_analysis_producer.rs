@@ -157,6 +157,10 @@ pub fn commit_support_analysis_builtin(
                     });
                 }
             }
+            // Ticket 148: publish the print-plane cross-sections the host's
+            // exact-Z occupancy gate validates against. Batched per object, so
+            // this is one mesh walk per object rather than one per layer.
+            ir.print_plane_occupancy = collect_print_plane_occupancy(blackboard.mesh(), slices);
 
             // Angle-thresholded contact detection, layer-major then
             // region-major, mirroring canonical `detect_overhangs`
@@ -420,6 +424,62 @@ pub fn commit_support_analysis_builtin(
         }
     }
     blackboard.commit_support_analysis(Arc::new(ir))
+}
+
+/// Fill `SupportAnalysisIR::print_plane_occupancy` with each object's model
+/// cross-section at every layer's **print plane** (`layer.z`).
+///
+/// The host's `validate_entry` gate queries exact-Z occupancy at
+/// `SupportPlanEntry::anchor_z`, which is `mm_to_units(layer.z)`; the planner's
+/// `model_occupancy` carve is midpoint-sampled instead, so a body that clears
+/// the midpoint can still overlap the print plane. Publishing the validated
+/// plane lets the planner carve against both.
+///
+/// The plane is quantized through `mm_to_units` → `units_to_mm` because that is
+/// the exact argument `validate_entry` passes to the query service; slicing at
+/// the unquantized `layer.z` would leave a sub-unit plane difference and a
+/// sliver overlap the zero-tolerance gate then rejects.
+///
+/// Planes are batched per object (`slice_mesh_ex` takes a plane list) and kept
+/// ascending, so the cost is one mesh walk per object, not one per layer.
+fn collect_print_plane_occupancy(
+    mesh: &slicer_ir::MeshIR,
+    slices: &[slicer_ir::SliceIR],
+) -> Vec<slicer_ir::SupportAnalysisPrintPlaneEntry> {
+    // (object, layer) is the identity: the exact-Z query is object-wide, so a
+    // second region on the same layer must not duplicate the cross-section.
+    let mut layers_by_object: BTreeMap<&str, BTreeMap<u32, f32>> = BTreeMap::new();
+    for slice in slices {
+        let plane_z = slicer_ir::units_to_mm(slicer_ir::mm_to_units(slice.z));
+        for region in &slice.regions {
+            if region.polygons.is_empty() {
+                continue;
+            }
+            layers_by_object
+                .entry(region.object_id.as_str())
+                .or_default()
+                .entry(slice.global_layer_index)
+                .or_insert(plane_z);
+        }
+    }
+
+    let mut entries = Vec::new();
+    for (object_id, layers) in layers_by_object {
+        let Some(object) = mesh.objects.iter().find(|object| object.id == object_id) else {
+            continue;
+        };
+        let world_mesh = slicer_core::algos::prepass_slice::object_world_mesh(object);
+        let planes: Vec<f32> = layers.values().copied().collect();
+        let sections = slicer_core::slice_mesh_ex(&world_mesh, &planes);
+        for ((layer_index, _), polygons) in layers.into_iter().zip(sections) {
+            entries.push(slicer_ir::SupportAnalysisPrintPlaneEntry {
+                global_support_layer_index: layer_index,
+                object_id: object_id.to_string(),
+                polygons,
+            });
+        }
+    }
+    entries
 }
 
 /// Clearance base-family bodies keep from foreign territory: the already
@@ -2058,6 +2118,125 @@ mod tests {
         assert!(
             blackboard.support_analysis().unwrap().candidates.is_empty(),
             "a manual region config must suppress auto detection even under an auto run config"
+        );
+    }
+
+    /// A frustum whose cross-section shrinks with Z: 10x10 mm at z = -1 and
+    /// 4x4 mm at z = +1. A print-plane slice is therefore distinguishable from
+    /// the midpoint slice by area alone.
+    fn tapered_frustum() -> slicer_ir::IndexedTriangleSet {
+        use slicer_ir::{IndexedTriangleSet, Point3};
+        let vertices = [
+            (-5.0_f32, -5.0_f32, -1.0_f32),
+            (5.0, -5.0, -1.0),
+            (5.0, 5.0, -1.0),
+            (-5.0, 5.0, -1.0),
+            (-2.0, -2.0, 1.0),
+            (2.0, -2.0, 1.0),
+            (2.0, 2.0, 1.0),
+            (-2.0, 2.0, 1.0),
+        ]
+        .into_iter()
+        .map(|(x, y, z)| Point3 { x, y, z })
+        .collect();
+        IndexedTriangleSet {
+            vertices,
+            indices: vec![
+                0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 0, 4, 7, 0,
+                7, 3, 1, 2, 6, 1, 6, 5,
+            ],
+        }
+    }
+
+    #[test]
+    fn print_plane_occupancy_is_one_entry_per_object_and_layer_at_the_print_plane() {
+        use slicer_ir::{ObjectMesh, SupportAnalysisPrintPlaneEntry};
+
+        let mesh = MeshIR {
+            objects: vec![ObjectMesh {
+                id: "object".to_string(),
+                mesh: tapered_frustum(),
+                ..ObjectMesh::default()
+            }],
+            ..MeshIR::default()
+        };
+        // Two regions on each layer must not duplicate the object-wide section.
+        let slices = vec![
+            SliceIR {
+                global_layer_index: 0,
+                z: 0.2,
+                regions: vec![
+                    SlicedRegion {
+                        object_id: "object".to_string(),
+                        region_id: 0,
+                        polygons: vec![square(0.0, 0.0, 1.0)],
+                        ..SlicedRegion::default()
+                    },
+                    SlicedRegion {
+                        object_id: "object".to_string(),
+                        region_id: 1,
+                        polygons: vec![square(2.0, 0.0, 1.0)],
+                        ..SlicedRegion::default()
+                    },
+                ],
+                ..SliceIR::default()
+            },
+            SliceIR {
+                global_layer_index: 1,
+                z: 0.4,
+                regions: vec![SlicedRegion {
+                    object_id: "object".to_string(),
+                    region_id: 0,
+                    polygons: vec![square(0.0, 0.0, 1.0)],
+                    ..SlicedRegion::default()
+                }],
+                ..SliceIR::default()
+            },
+        ];
+
+        let entries = collect_print_plane_occupancy(&mesh, &slices);
+        assert_eq!(entries.len(), 2, "one entry per (object, layer), no region copies");
+        assert_eq!(entries[0].global_support_layer_index, 0);
+        assert_eq!(entries[1].global_support_layer_index, 1);
+        assert!(entries.iter().all(|entry| entry.object_id == "object"));
+
+        // The payload is the mesh cross-section at the layer's print plane, not
+        // the per-region midpoint polygons the slice carries.
+        let object = &mesh.objects[0];
+        let world = slicer_core::algos::prepass_slice::object_world_mesh(object);
+        for (index, zone) in [(0, 0.2_f32), (1, 0.4_f32)] {
+            let expected = slicer_core::slice_mesh_ex(&world, &[zone])
+                .into_iter()
+                .next()
+                .unwrap();
+            assert_eq!(
+                entries[index].polygons, expected,
+                "entry {index} must be the exact cross-section at z = {zone}"
+            );
+        }
+        // Areas shrink with Z, so print-plane sampling is distinguishable from
+        // the midpoint sample (which would repeat one of the two areas).
+        let area = |entry: &SupportAnalysisPrintPlaneEntry| {
+            entry
+                .polygons
+                .iter()
+                .map(|polygon| {
+                    let points = &polygon.contour.points;
+                    let mut sum = 0_i128;
+                    for (i, point) in points.iter().enumerate() {
+                        let next = &points[(i + 1) % points.len()];
+                        sum += point.x as i128 * next.y as i128
+                            - next.x as i128 * point.y as i128;
+                    }
+                    (sum as f64 / 2.0 * 1e-8).abs()
+                })
+                .sum::<f64>()
+        };
+        assert!(
+            area(&entries[0]) > area(&entries[1]) + 1.0,
+            "the frustum must narrow between the two print planes: {} vs {}",
+            area(&entries[0]),
+            area(&entries[1])
         );
     }
 }

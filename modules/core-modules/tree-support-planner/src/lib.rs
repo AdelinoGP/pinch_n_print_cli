@@ -922,6 +922,30 @@ fn layer_occupancy_payload(
         .collect()
 }
 
+/// The print-plane model occupancy's raw payload: this object's cross-section
+/// at `global_layer_index`'s print plane (`layer.z`).
+///
+/// `model_occupancy` is midpoint-sampled (canonical `compute_slice_z`), while
+/// the host's `validate_entry` gate queries exact-Z occupancy at
+/// `SupportPlanEntry::anchor_z`, i.e. the print plane. Carving against both
+/// keeps emitted roles disjoint from the validated plane without moving the
+/// gate to the midpoint. Object-wide, matching the query service.
+fn print_plane_occupancy_payload(
+    support_analysis: &SupportAnalysisView,
+    object_id: &str,
+    global_layer_index: u32,
+) -> Vec<ExPolygon> {
+    support_analysis
+        .print_plane_occupancy
+        .iter()
+        .filter(|entry| {
+            entry.object_id == object_id
+                && entry.global_support_layer_index == global_layer_index
+        })
+        .flat_map(|entry| entry.polygons.iter().cloned())
+        .collect()
+}
+
 /// Ticket 135 Stage 2: batch a chunk of layers' occupancy offsets.
 ///
 /// Every layer's emit-time collision volume asks for the same
@@ -951,18 +975,22 @@ fn prefetch_occupancy_memo(
     let mut payloads: Vec<Vec<ExPolygon>> = Vec::with_capacity(records.len());
     let mut keys: Vec<u64> = Vec::with_capacity(records.len());
     for record in records {
-        let payload = layer_occupancy_payload(
-            support_analysis,
-            object_id,
-            layer_plan.layers[record.layer_rev].global_layer_index,
-        );
-        // Mirrors `inflate_model_occupancy`'s early return: an empty payload is
-        // not a host call, so it is not a batch request either.
-        if payload.is_empty() {
-            continue;
+        let global_layer_index = layer_plan.layers[record.layer_rev].global_layer_index;
+        // Both planes the role carve uses: the midpoint payload (canonical
+        // `compute_slice_z`) and the print plane the host gate validates
+        // (ticket 148). Each is an independent offset request; an empty payload
+        // is not a host call in either path, so it is not a batch request
+        // either.
+        for payload in [
+            layer_occupancy_payload(support_analysis, object_id, global_layer_index),
+            print_plane_occupancy_payload(support_analysis, object_id, global_layer_index),
+        ] {
+            if payload.is_empty() {
+                continue;
+            }
+            keys.push(occupancy_offset_key(&payload, xy_distance_mm));
+            payloads.push(payload);
         }
-        keys.push(occupancy_offset_key(&payload, xy_distance_mm));
-        payloads.push(payload);
     }
     if payloads.is_empty() {
         return;
@@ -3851,7 +3879,7 @@ impl SupportPlanner {
             // Host analysis carries the exact per-layer occupancy used by the
             // closure gate. Prefer it for emission checks when present; the
             // support-outline cache remains the compatibility fallback.
-            let model_collision: Vec<ExPolygon> = inflate_model_occupancy_memoized(
+            let mut model_collision: Vec<ExPolygon> = inflate_model_occupancy_memoized(
                 &mut occupancy_memo,
                 layer_occupancy_payload(
                     support_analysis,
@@ -3860,6 +3888,21 @@ impl SupportPlanner {
                 ),
                 self.support_object_xy_distance,
             );
+            // Ticket 148: the host gate validates exact-Z occupancy at
+            // `anchor_z` (the print plane), so the emit-time collision volume
+            // carries that plane too. Both sets are inflated by the same
+            // clearance; the carve below is set-monotone, so the extra plane
+            // can only remove material the gate would have rejected.
+            let print_plane_collision: Vec<ExPolygon> = inflate_model_occupancy_memoized(
+                &mut occupancy_memo,
+                print_plane_occupancy_payload(
+                    support_analysis,
+                    &obj.object_id,
+                    current_global_layer_index,
+                ),
+                self.support_object_xy_distance,
+            );
+            model_collision.extend(print_plane_collision.iter().cloned());
             // Ticket 19: foreign support territory (grown by the clearance)
             // is carved like the model, so no tree role area survives inside
             // the other family's half.
@@ -4325,6 +4368,9 @@ impl SupportPlanner {
                     } else {
                         model_occupancy
                             .into_iter()
+                            // Ticket 148: the print plane the host gate
+                            // validates, beside the midpoint payload.
+                            .chain(print_plane_collision.iter().cloned())
                             .chain(foreign_keepout.iter().cloned())
                             .collect()
                     };

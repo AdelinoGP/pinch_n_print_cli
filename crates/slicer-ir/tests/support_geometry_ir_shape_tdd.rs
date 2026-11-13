@@ -691,3 +691,58 @@ fn support_composite_map_json_rejects_populated_keys() {
         })
     );
 }
+
+/// Wayfinder ticket 148: `print_plane_occupancy` is an additive carrier.
+///
+/// It is a plain `Vec` (no composite-key JSON limitation), defaults empty, and a
+/// payload serialized before 2.1.0 still parses — an absent map must mean "no
+/// extra carve", i.e. exactly the pre-2.1.0 planner behaviour.
+#[test]
+fn print_plane_occupancy_is_additive_and_defaults_empty() {
+    use slicer_ir::SupportAnalysisPrintPlaneEntry;
+
+    assert_eq!(
+        CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION,
+        SemVer {
+            major: 2,
+            minor: 1,
+            patch: 0,
+        },
+        "the carrier is an additive minor bump"
+    );
+    assert!(
+        SupportAnalysisIR::default().print_plane_occupancy.is_empty(),
+        "an owner that publishes no print plane carries no polygons"
+    );
+
+    // A pre-2.1.0 JSON payload (no `print_plane_occupancy`) still deserializes.
+    let mut legacy =
+        serde_json::to_value(SupportAnalysisIR::default()).expect("default analysis serializes");
+    legacy
+        .as_object_mut()
+        .expect("analysis is a JSON object")
+        .remove("print_plane_occupancy");
+    legacy["schema_version"] = serde_json::json!({
+        "major": 2, "minor": 0, "patch": 0
+    });
+    let decoded: SupportAnalysisIR =
+        serde_json::from_value(legacy).expect("pre-2.1.0 payload parses");
+    assert!(decoded.print_plane_occupancy.is_empty());
+
+    // Populated entries survive a round trip with their identity intact.
+    let mut analysis = SupportAnalysisIR::default();
+    analysis
+        .print_plane_occupancy
+        .push(SupportAnalysisPrintPlaneEntry {
+            global_support_layer_index: 7,
+            object_id: "object-a".to_string(),
+            polygons: vec![square(0, 0, 1_000)],
+        });
+    let encoded = serde_json::to_value(&analysis).expect("populated vec serializes");
+    assert_eq!(encoded["print_plane_occupancy"][0]["global_support_layer_index"], 7);
+    assert_eq!(encoded["print_plane_occupancy"][0]["object_id"], "object-a");
+    assert_eq!(encoded["print_plane_occupancy"][0]["polygons"][0].as_object().is_some(), true);
+    let decoded: SupportAnalysisIR =
+        serde_json::from_value(encoded).expect("populated vec deserializes");
+    assert_eq!(decoded.print_plane_occupancy, analysis.print_plane_occupancy);
+}

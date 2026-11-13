@@ -1368,8 +1368,15 @@ the actual layer Z rather than divide by this field.
 **Stage:** Output of `PrePass::SupportAnalysis` (host-owned; committed before
 `SupportGeometryIR` / `SupportPlanIR` within the support prepass chain)
 
-**Current schema_version: 2.0.0** (`CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION`
-in `crates/slicer-ir/src/slice_ir.rs`.) Major bump by packet
+**Current schema_version: 2.1.0** (`CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION`
+in `crates/slicer-ir/src/slice_ir.rs`.) Minor bump by wayfinder ticket 148:
+additive `print_plane_occupancy: Vec<SupportAnalysisPrintPlaneEntry>` carrier
+(object-wide model cross-sections at each layer's print plane `layer.z`, the
+plane the host's `validate_entry` exact-Z occupancy gate queries), published by
+the host built-in beside the midpoint-sampled `model_occupancy` and mirrored on
+the WIT `support-analysis-view` as `print-plane-occupancy` (package
+`2.1.0`). `#[serde(default)]`, so a pre-2.1.0 payload parses and means "no
+extra carve" — the pre-2.1.0 planner behaviour exactly. Major bump by packet
 `layer-module-preparation_01`: the geometry-map keys (`model_occupancy`,
 `cantilever_surfaces`, `termination_surfaces`, `support_territory`) are the
 widened `SupportGeometryKey` (ordered `variant_chain` added; "Field type
@@ -1419,7 +1426,18 @@ sliced region remain the legacy facet-projection shim boundary.
   and their surviving contact geometry is unioned. Enforcer coverage is not
   gated by `support_type`.
 - `model_occupancy: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — model
-  occupancy per `(layer, object, region, ordered variant_chain)` key.
+  occupancy per `(layer, object, region, ordered variant_chain)` key, sampled at
+  the layer **midpoint** (canonical `compute_slice_z`).
+- `print_plane_occupancy: Vec<SupportAnalysisPrintPlaneEntry>` — additive
+  (2.1.0) object-wide model cross-sections at each layer's **print plane**
+  (`layer.z`), one entry per `(global_layer_index, object_id)`. The host
+  built-in slices the object's world mesh at the plane quantized through
+  `mm_to_units → units_to_mm`, which is the exact argument the aggregation
+  gate's exact-Z query receives, and batches all planes per object. Support
+  planners carve emitted roles against the union of this set and
+  `model_occupancy`, so output is disjoint from the validated plane without
+  moving `validate_entry` off it. The exact-Z query is object-wide, so this
+  carrier is too.
 - `cantilever_surfaces: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — additive
   map mirroring `model_occupancy` keying; `#[serde(default)]` and host-only
   until a later packet projects it onto candidate geometry (packet 237 adds the
@@ -1506,7 +1524,7 @@ the host built-in commits `SupportGeometryIR` first within the same stage
 `TreeSupport::detect_overhangs` + `TreeSupport::drop_nodes`).
 
 **WIT producer boundary:** the plan crosses the boundary through the
-`slicer:prepass-support-geometry@2.0.0` package's `support-plan-entry` record
+`slicer:prepass-support-geometry@2.1.0` package's `support-plan-entry` record
 (which carries the exact ordered `variant-chain` field alongside the rest of
 the entry), a breaking in-place migration from the packet-220 shape rather
 than an additive parallel package — see `docs/03_wit_and_manifest.md` and the
@@ -2284,7 +2302,11 @@ spelling is unchanged: `SupportGeometryIR` 1.0.0 → 2.0.0
 and the `u32::MAX` sentinel) and `SupportAnalysisIR` 1.3.0 → 2.0.0 (the
 widened `SupportGeometryKey` geometry maps plus `family_assignments` moving to
 the chain-bearing `SupportSourceKey` at one owner). Each affected owner bumped
-once from its live constant. `CURRENT_SLICE_IR_SCHEMA_VERSION` is unchanged
+once from its live constant. Post-program, wayfinder ticket 148 took
+`SupportAnalysisIR` 2.0.0 → 2.1.0 as an additive minor
+(`print_plane_occupancy`, `#[serde(default)]`, WIT package
+`slicer:prepass-support-geometry@2.1.0`).
+`CURRENT_SLICE_IR_SCHEMA_VERSION` is unchanged
 and so are the global manifest bounds.
 
 **Standalone JSON versus populated-owner postcard coverage.** The committed

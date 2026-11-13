@@ -398,9 +398,24 @@ pub fn project_support_analysis_view(
             })
             .collect::<Vec<_>>()
     };
+    let mut print_plane_occupancy: Vec<_> = analysis
+        .print_plane_occupancy
+        .iter()
+        .map(|entry| types::SupportAnalysisPlaneEntry {
+            global_support_layer_index: entry.global_support_layer_index,
+            object_id: entry.object_id.clone(),
+            polygons: ir_to_wit_expolygons(&entry.polygons),
+        })
+        .collect();
+    print_plane_occupancy.sort_by(|left, right| {
+        left.global_support_layer_index
+            .cmp(&right.global_support_layer_index)
+            .then_with(|| left.object_id.cmp(&right.object_id))
+    });
     host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportAnalysisView {
         candidates,
         model_occupancy: project_geometry(&analysis.model_occupancy),
+        print_plane_occupancy,
         termination_surfaces: project_geometry(&analysis.termination_surfaces),
         shared_settings: analysis
             .shared_settings
