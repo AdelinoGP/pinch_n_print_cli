@@ -1317,7 +1317,10 @@ mod tests {
         expected.sort();
         let mut discovered: Vec<String> = names.iter().map(|name| (*name).to_owned()).collect();
         discovered.sort();
-        assert_eq!(discovered, expected, "live discovery must match the registry");
+        assert_eq!(
+            discovered, expected,
+            "live discovery must match the registry"
+        );
         assert!(
             names.contains(&"proptest_ir_travel_anchors_membership: test"),
             "the preserved anchor test must be discovered: {names:?}"

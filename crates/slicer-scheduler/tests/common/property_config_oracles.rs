@@ -352,7 +352,6 @@ pub fn declaration_sets(
         .boxed())
 }
 
-
 /// Audit a **composed** owner strategy: generate several cases, run real
 /// `simplify()` calls, and assert the case's mode tag never changes.
 ///
@@ -376,7 +375,9 @@ where
     });
     let mut simplifications = 0_usize;
     for _ in 0..4 {
-        let mut tree = strategy.new_tree(&mut runner).expect("composed strategy tree");
+        let mut tree = strategy
+            .new_tree(&mut runner)
+            .expect("composed strategy tree");
         let initial = tag(&tree.current());
         let mut guard = 0_usize;
         while guard < 128 && tree.simplify() {
@@ -500,9 +501,7 @@ impl ProbeMode {
     #[must_use]
     pub fn key_of(self, chosen: &str) -> String {
         match self {
-            ProbeMode::AbsentScalar | ProbeMode::AbsentList => {
-                ABSENT_KEY.to_string()
-            }
+            ProbeMode::AbsentScalar | ProbeMode::AbsentList => ABSENT_KEY.to_string(),
             ProbeMode::GeneralScalar | ProbeMode::GeneralList => chosen.to_string(),
             _ => WITNESS_KEY.to_string(),
         }

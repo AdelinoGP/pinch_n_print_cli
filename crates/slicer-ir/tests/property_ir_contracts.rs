@@ -41,13 +41,13 @@ mod property_oracles;
 use property_oracles::{
     allocation_model, chain_product_model, chain_product_size, check_mm_case, check_mm_case_with,
     check_mm_units_envelope, check_monotonic_pair, check_units_case, decode_model,
-    defective_drop_last_product, defective_duplicate_product,
-    defective_factor_100, defective_omit_empty_chain, defective_sorted_values,
-    defective_swapped_axis_order, defective_truncating, expected_payload_bounds, footprint,
-    half_unit_witnesses, hash_of, layer_with_side_table_only_anchor, mm_bound,
-    mm_to_units_allowed_error, payload_fits_model, pool_model, representable_parent_limit,
-    representation_key, struct_eq, units_bound, with_extension, with_f32_field, with_f64_field,
-    with_float_or_percent, with_option, with_sequence, with_text_sequence, CoordProfile,
+    defective_drop_last_product, defective_duplicate_product, defective_factor_100,
+    defective_omit_empty_chain, defective_sorted_values, defective_swapped_axis_order,
+    defective_truncating, expected_payload_bounds, footprint, half_unit_witnesses, hash_of,
+    layer_with_side_table_only_anchor, mm_bound, mm_to_units_allowed_error, payload_fits_model,
+    pool_model, representable_parent_limit, representation_key, struct_eq, units_bound,
+    with_extension, with_f32_field, with_f64_field, with_float_or_percent, with_option,
+    with_sequence, with_text_sequence, CoordProfile,
 };
 
 /// The real validator's documented panic text when minting an unsupported
@@ -901,7 +901,10 @@ fn ir_config_oracle_counterexamples() {
         "depth 3 adds the 8-element level"
     );
     let (clamped_depth, clamped_breadth) = property_oracles::clamped_extension_shape(2, 2, 4);
-    assert_eq!(clamped_depth, 2, "the depth bound is separate from the budget");
+    assert_eq!(
+        clamped_depth, 2,
+        "the depth bound is separate from the budget"
+    );
     assert!(
         property_oracles::extension_node_count(clamped_depth, clamped_breadth) <= Some(4),
         "a budget of 4 must clamp the shape to at most 4 total list elements, got {:?}",

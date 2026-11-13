@@ -28,7 +28,6 @@ use slicer_ir::{
 use slicer_sdk::coords::{mm_to_units as sdk_mm_to_units, units_to_mm as sdk_units_to_mm};
 use slicer_sdk::test_support::fixtures::print_entity_base;
 
-
 /// Audit a **composed** owner strategy: generate several cases, run real
 /// `simplify()` calls, and assert the case's mode tag never changes.
 ///
@@ -52,7 +51,9 @@ where
     });
     let mut simplifications = 0_usize;
     for _ in 0..4 {
-        let mut tree = strategy.new_tree(&mut runner).expect("composed strategy tree");
+        let mut tree = strategy
+            .new_tree(&mut runner)
+            .expect("composed strategy tree");
         let initial = tag(&tree.current());
         let mut guard = 0_usize;
         while guard < 128 && tree.simplify() {
@@ -698,11 +699,7 @@ pub fn config_list_elements(config: &ResolvedConfig) -> usize {
             _ => 0,
         }
     }
-    config
-        .extensions
-        .values()
-        .map(count_value)
-        .sum::<usize>()
+    config.extensions.values().map(count_value).sum::<usize>()
         + config.bed_shape.len()
         + config.fill_authored_coloring.len()
 }

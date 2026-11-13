@@ -428,31 +428,81 @@ fn derived_probe_modes_have_their_documented_verdicts() {
     let verdict = |mode| {
         let value = derive(mode);
         let key = mode.key_of("k0");
-        (expected_accepts(&declarations, &key, &value), expected_first_invalid_index(&declarations, &key, &value))
+        (
+            expected_accepts(&declarations, &key, &value),
+            expected_first_invalid_index(&declarations, &key, &value),
+        )
     };
 
-    for mode in [ProbeMode::EdgeMin, ProbeMode::EdgeMax, ProbeMode::InsideScalar, ProbeMode::InsideList] {
-        assert_eq!(verdict(mode), (true, None), "{mode:?} must be accepted inside the witness interval");
+    for mode in [
+        ProbeMode::EdgeMin,
+        ProbeMode::EdgeMax,
+        ProbeMode::InsideScalar,
+        ProbeMode::InsideList,
+    ] {
+        assert_eq!(
+            verdict(mode),
+            (true, None),
+            "{mode:?} must be accepted inside the witness interval"
+        );
     }
-    assert_eq!(verdict(ProbeMode::ViolationScalarLow), (false, None), "below the minimum must be rejected");
-    assert_eq!(verdict(ProbeMode::ViolationScalarHigh), (false, None), "above the maximum must be rejected");
-    assert_eq!(verdict(ProbeMode::ViolationListAt0), (false, Some(0)), "index 0 violation");
-    assert_eq!(verdict(ProbeMode::ViolationListAt1), (false, Some(1)), "index 1 violation");
-    assert_eq!(verdict(ProbeMode::ViolationListAt2), (false, Some(2)), "index 2 violation");
-    assert_eq!(verdict(ProbeMode::NonFiniteScalar), (false, None), "NaN against a bounded key is rejected");
-    assert_eq!(verdict(ProbeMode::NonFiniteList), (false, Some(0)), "a NaN list element is rejected at index 0");
+    assert_eq!(
+        verdict(ProbeMode::ViolationScalarLow),
+        (false, None),
+        "below the minimum must be rejected"
+    );
+    assert_eq!(
+        verdict(ProbeMode::ViolationScalarHigh),
+        (false, None),
+        "above the maximum must be rejected"
+    );
+    assert_eq!(
+        verdict(ProbeMode::ViolationListAt0),
+        (false, Some(0)),
+        "index 0 violation"
+    );
+    assert_eq!(
+        verdict(ProbeMode::ViolationListAt1),
+        (false, Some(1)),
+        "index 1 violation"
+    );
+    assert_eq!(
+        verdict(ProbeMode::ViolationListAt2),
+        (false, Some(2)),
+        "index 2 violation"
+    );
+    assert_eq!(
+        verdict(ProbeMode::NonFiniteScalar),
+        (false, None),
+        "NaN against a bounded key is rejected"
+    );
+    assert_eq!(
+        verdict(ProbeMode::NonFiniteList),
+        (false, Some(0)),
+        "a NaN list element is rejected at index 0"
+    );
 
     // The general families are independent draws: only their shape is pinned.
     for mode in [ProbeMode::GeneralScalar, ProbeMode::AbsentScalar] {
         let value = derive(mode);
-        assert!(!matches!(value, ConfigValue::List(_)), "{mode:?} must stay scalar");
+        assert!(
+            !matches!(value, ConfigValue::List(_)),
+            "{mode:?} must stay scalar"
+        );
     }
     for mode in [ProbeMode::GeneralList, ProbeMode::AbsentList] {
         let value = derive(mode);
-        assert!(matches!(value, ConfigValue::List(_)), "{mode:?} must stay a list");
+        assert!(
+            matches!(value, ConfigValue::List(_)),
+            "{mode:?} must stay a list"
+        );
     }
     // An absent key accepts anything, including a non-finite value.
-    assert!(expected_accepts(&declarations, &ProbeMode::AbsentScalar.key_of("k0"), &ConfigValue::Float(f64::NAN)));
+    assert!(expected_accepts(
+        &declarations,
+        &ProbeMode::AbsentScalar.key_of("k0"),
+        &ConfigValue::Float(f64::NAN)
+    ));
 
     // The declared family of every mode matches the value it derives.
     for mode in PROBE_MODES {
