@@ -1,0 +1,38 @@
+{
+  "note": "Active matched-job reference set for the benchy fixture after t145 (2026-11-13). The four benchy hashes are t144's candidate set; they reproduce in this take on the ordinary arm (8 measured runs, one hash per cell). The four base hashes are unchanged by the benchy swap and are carried from t144 at the same values. A benchy number is either pre-swap (historical, retired here) or post-swap (current); never mix them.",
+  "active_set": {
+    "benchy-classic-off": "1ae0cfa84d1b5f59893a2c30ab6ca4afe0bb73ad68249cff2ea8ddc5f09c8c5f",
+    "benchy-classic-on": "d9fc80baf6ae1e71e2f1a7df4e907120b6c42c046ec1d8a77b9b53751cab3f78",
+    "benchy-arachne-off": "8faf02b1b473405c3b24f261ab4e9daa630701b3d0caa78de70468c93453a7cb",
+    "benchy-arachne-on": "cd7d4a2dbd67d8acc5e4c4dd2e371616deaf89e61a2753b9efba6fc4178e6345",
+    "base-classic-off": "c0b9014f8eff1daee38b4f9f9bf3e1b66c4ef84e75d8b741e46f468dc37fe0ad",
+    "base-classic-on": "585c6a8edc2fd1de72dd2a86933fdad25c7ed144662dd80bbc68fb7856e4f629",
+    "base-arachne-off": "17f63e9387bd8d548f7d9df0c4d840742dfe019c22eae4a9e314105bad38e191",
+    "base-arachne-on": "c9fee59a234212e7868bc600572213c47d6961de1f8963bfe1a34a25cf1f7d06"
+  },
+  "benchy_active_set": {
+    "benchy-classic-off": "1ae0cfa84d1b5f59893a2c30ab6ca4afe0bb73ad68249cff2ea8ddc5f09c8c5f",
+    "benchy-classic-on": "d9fc80baf6ae1e71e2f1a7df4e907120b6c42c046ec1d8a77b9b53751cab3f78",
+    "benchy-arachne-off": "8faf02b1b473405c3b24f261ab4e9daa630701b3d0caa78de70468c93453a7cb",
+    "benchy-arachne-on": "cd7d4a2dbd67d8acc5e4c4dd2e371616deaf89e61a2753b9efba6fc4178e6345"
+  },
+  "reproduced_in_this_take": true,
+  "reproduced_runs_per_cell": 3,
+  "retired_pre_swap_set": {
+    "note": "t139's benchy hashes on the lost export (retired 2026-11-12 by t143, formally retired here).",
+    "benchy-classic-off": "93e21fee6d757d37b3ae3b4efbfa2b24da178004f9a568d6647e2343ae005123",
+    "benchy-classic-on": "b3f1ecccc5385f1b807c3418c271bcf57761a183e60c05eefb3294195df3d7a2",
+    "benchy-arachne-off": "3510e8761d65cf3da702b9aa04dd7b0fec64ba2b16996e423bfcd46b72c1fd37",
+    "benchy-arachne-on": "96cdac85437082377b351640019b3b1efe7208f6b77ada0f5b9de87035b07697"
+  },
+  "superseded_interim_set": {
+    "note": "t143's replacement-fixture baseline; superseded by t144's anchor reconstruction. Historical only.",
+    "set": {
+      "benchy-classic-off": "a89e449bd68a45f430de724cade6cb453272b261e5ee7083b5a533c16006b765",
+      "benchy-classic-on": "dceb7a4827d7887aa47357e98b07ffbeb07ccee5e6643f824fad03b36e8b2faf",
+      "benchy-arachne-off": "3286449f99155c7d005d60acc36e93b61d46c70ac2fdd3b01ceb87dc3d0d84eb",
+      "benchy-arachne-on": "be78671855326db46515945ce2ae9c1e391149a41e29713fd50e052725adf6f6"
+    }
+  },
+  "base_unchanged": true
+}
