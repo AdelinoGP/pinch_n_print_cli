@@ -499,11 +499,15 @@ multiplication, the proved error is `e_mul ≤ 2^-24·|t| + 2^-150` **units**, s
 For integer `n` with `|n| ≤ U` the f32 input cast is exact and
 
 ```text
-|units_to_mm(n) - n/10_000| ≤ 2^-24·|n/10_000| + 2^-150  (millimetres)
+|units_to_mm(n) - x| ≤ (2^-24 + 2^-53)·|x| + 2^-150  (millimetres),  x = n/10_000
 ```
 
-The reference arithmetic is f64, not real arithmetic; the `2^-150` terms absorb the underflow
-floor and no additional reference error is silently ignored. `check_mm_case` additionally
+The reference arithmetic is f64, not real arithmetic. The `2^-24·|x|` term is the f32 division's
+half ulp; the `2^-53·|x|` term is the **f64 reference division's own** rounding error, which is
+not below the `2^-150` floor (for `n = 1` it is about `4.8e-21`, while `2^-150` is about
+`7.0e-46`), so it is added explicitly. `2^-150` remains only as the subnormal floor, where a
+relative bound underflows to zero. Both allowed-error values are outward-rounded (`next_up`) so
+the comparison can never be tighter than the derivation. `check_mm_case` additionally
 asserts exact agreement between `slicer_ir::mm_to_units`, `slicer_sdk::coords::mm_to_units`
 and `Point2::from_mm` — explicitly **consistency evidence only**, not correctness evidence,
 because all three share the same implementation shape. Correctness rests on the analytical
@@ -514,7 +518,7 @@ distinguishable from a rounding one.
 ### Tolerance
 
 The tolerance is derived, never tuned: `1/2 + 2^-24·|t| + 2^-150` units and
-`2^-24·|n|/10_000 + 2^-150` mm. The mutation controls in
+`(2^-24 + 2^-53)·|n|/10_000 + 2^-150` mm, both outward-rounded. The mutation controls in
 `ir_coord_oracle_and_bound_controls` (`crates/slicer-ir/tests/property_ir_contracts.rs`)
 prove the bounds falsify a factor-of-100 scaling mutant and a truncating mutant at the exact
 half case, and that the envelope **alone** accepts truncation there (truncation is exactly
@@ -1030,20 +1034,28 @@ are distinguished; `min`/`max` are echoed from the independently computed effect
 
 ### Shrinking
 
-Shrinks reduce declaration count, simplify bounds toward zero, and shorten lists. Two things are
-pinned and tested:
+**This family's shrink behaviour does not preserve the value shape, and no such claim is made.**
+The two *component* value domains are mode-pinned — `property_config_oracles::mode_locked` pins
+scalar-versus-list inside `bound_values`, and again inside `nonfinite_values`, with the mechanism
+probed by `mode_lock_preserves_tags_under_simplification`. The **composed** strategy, however,
+grows the value through a `prop_flat_map` over the generated declarations, so a shrink of the
+declarations re-draws the value and a list case can become a scalar case (the delta review
+demonstrated exactly that, and the composed audit was therefore not registered as passing).
 
-- the **value family** — scalar, list, or non-finite — is pinned by
-  `property_config_oracles::mode_locked`, so a list value cannot shrink into a scalar (dropping
-  the first-invalid-index shape) and a non-finite value cannot shrink into a finite one;
-- every shrunk value stays inside `max_abs_bound` and every list inside `max_list_len`.
+Consequences, stated plainly:
 
-The accept/reject **verdict is deliberately not pinned**: declarations and values shrink
-independently, so a shrink can move a case across an inclusive edge. The per-case oracle
-re-derives the expected verdict from the current declarations and value, and the property
-asserts that agreement, so no correctness claim depends on the verdict being preserved. The
-first-invalid-index relationship is likewise re-derived per case, never assumed stable under
-shrink. Shrink limits are profile-bounded.
+- The accept/reject **verdict**, the **value shape** (scalar/list) and the **first-invalid
+  index** are all re-derived per case by the independent oracle. The property asserts agreement
+  with that re-derivation, so no correctness claim depends on any of them surviving a shrink.
+- Every shrunk value is still checked against the profile bounds by the oracle; magnitudes are
+  not assumed stable either (a non-finite witness and the `next_up`/`next_down` boundary probes
+  are deliberately outside the finite magnitude domain).
+- Closing the shape-preservation gap requires replacing the declaration/value `prop_flat_map`
+  with a derived-value construction that pins the probe family. That redesign is not done here
+  and is recorded as a blocking deviation in the packet, because the packet's AC-N1 asks for
+  violation-witness preservation under shrink.
+
+Shrink limits are profile-bounded (`max_shrink_iters`, `max_shrink_time_ms = 0`).
 
 ### Execution
 
