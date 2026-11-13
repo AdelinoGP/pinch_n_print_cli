@@ -1612,6 +1612,58 @@ macro_rules! __drc {
         }
     };
 
+    // `carrier <field>: <ty> = <default>;` — struct + default only.
+    //
+    // Unlike `plain`, a carrier row is *serialization-only*: it appears in the
+    // struct (so the Postcard field order is preserved) and in `Default`, but not
+    // in `to_config_map`, not in `typed_field_keys`, and not in CLI dispatch.
+    // This exists for deprecated fields that must keep the wire layout without
+    // resurrecting an output key (`flat_bridge_closing_join`).
+    (@parse
+        fields:    { $($sf:tt)* }
+        defaults:  { $($df:tt)* }
+        cli_arms:  { $($arm:tt)* }
+        host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
+        cfg:       $cfg:ident
+        key:       $key:ident
+        value:     $value:ident
+        dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
+        input: {
+            $(#[$m:meta])*
+            carrier $field:ident : $ty:ty = $default:expr ;
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::__drc!(@parse
+            fields: {
+                $($sf)*
+                $(#[$m])*
+                pub $field: $ty,
+            }
+            defaults: {
+                $($df)*
+                $field: $default,
+            }
+            cli_arms:  { $($arm)* }
+            host_keys: { $($hk)* }
+            map_arms:  { $($ma)* }
+            typed_keys: { $($tk)* }
+            cfg:       $cfg
+            key:       $key
+            value:     $value
+            dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
+            input:     { $($rest)* }
+        );
+    };
+
     // `plain <field>: <ty> = <default>;` — struct + default, no CLI dispatch.
     (@parse
         fields:    { $($sf:tt)* }
@@ -2313,11 +2365,13 @@ declare_resolved_config! {
     /// mid-struct field shifts every later field and makes every pre-existing
     /// `RegionMapIR` payload undecodable (a `String` length byte is then read as
     /// the `support_enabled` bool). Keeping the field with its original name,
-    /// position and type restores the 3.0.0 wire layout; no production code
-    /// reads it and it is deliberately `plain` so the retired CLI key does not
-    /// come back. Removing it again requires a schema version bump plus a
+    /// position and type restores the 3.0.0 wire layout. It is declared with the
+    /// serialization-only `carrier` row kind, so it is absent from
+    /// `to_config_map`, from `typed_field_keys` and from CLI dispatch — the
+    /// retired output key does **not** come back, while Postcard field order is
+    /// preserved. Removing it again requires a schema version bump plus a
     /// migration, not a silent reorder.
-    plain                        flat_bridge_closing_join: String = String::from("miter");
+    carrier                      flat_bridge_closing_join: String = String::from("miter");
 
      // Support
      /// Whether support is enabled.
