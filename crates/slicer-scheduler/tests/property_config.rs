@@ -45,17 +45,22 @@ fn proptest_config_scalar_bounds() {
     // `simplify()` call, and for witness-derived probes so must the verdict class
     // and the first-invalid index — the value is re-derived from the shrunk
     // declarations, so those are stable by construction rather than by luck.
-    property_config_oracles::assert_mode_preserved(&strategy, "H-CONFIG-BOUNDS", |(decls, key, value)| {
-        let family = u8::from(matches!(value, ConfigValue::List(_)));
-        if key == property_config_oracles::WITNESS_KEY {
-            let class = u8::from(!expected_accepts(decls, key, value));
-            let index = expected_first_invalid_index(decls, key, value)
-                .map_or(0, |position| u8::try_from(position.min(2)).expect("bounded") + 1);
-            family * 16 + class * 8 + index
-        } else {
-            family * 16
-        }
-    });
+    property_config_oracles::assert_mode_preserved(
+        &strategy,
+        "H-CONFIG-BOUNDS",
+        |(decls, key, value)| {
+            let family = u8::from(matches!(value, ConfigValue::List(_)));
+            if key == property_config_oracles::WITNESS_KEY {
+                let class = u8::from(!expected_accepts(decls, key, value));
+                let index = expected_first_invalid_index(decls, key, value).map_or(0, |position| {
+                    u8::try_from(position.min(2)).expect("bounded") + 1
+                });
+                family * 16 + class * 8 + index
+            } else {
+                family * 16
+            }
+        },
+    );
     assert_substantive_population(&strategy);
 
     run.check(&strategy, |(declarations, key, value), _guard| {
@@ -151,7 +156,13 @@ fn config_bounds_strategy(
                 keys[(pick - 1) % keys.len()].clone()
             };
             let key = mode.key_of(&chosen);
-            let value = derive_probe(mode, &declarations, general_scalar, general_list, max_list_len);
+            let value = derive_probe(
+                mode,
+                &declarations,
+                general_scalar,
+                general_list,
+                max_list_len,
+            );
             (declarations, key, value)
         },
     )

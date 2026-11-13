@@ -799,7 +799,11 @@ fn observe_layers(layers: &[LayerCollectionIR]) -> Vec<LayerObservation> {
                 .map(|profile| {
                     (
                         profile.entity_id,
-                        profile.factors.iter().map(|factor| factor.to_bits()).collect(),
+                        profile
+                            .factors
+                            .iter()
+                            .map(|factor| factor.to_bits())
+                            .collect(),
                     )
                 })
                 .collect(),
@@ -1055,7 +1059,11 @@ fn proptest_ir_serialization_and_defaults() {
         });
         let bytes = postcard::to_allocvec(&exact).expect("integer geometry is Postcard-encodable");
         let decoded: Vec<ExPolygon> = postcard::from_bytes(&bytes).expect("integer bytes decode");
-        prop_assert_eq!(&decoded, &exact, "Postcard must keep integer coordinates exact");
+        prop_assert_eq!(
+            &decoded,
+            &exact,
+            "Postcard must keep integer coordinates exact"
+        );
         let json = serde_json::to_string(&exact).expect("integer geometry is JSON-encodable");
         let decoded: Vec<ExPolygon> = serde_json::from_str(&json).expect("integer JSON decodes");
         prop_assert_eq!(&decoded, &exact, "JSON must keep integer coordinates exact");
@@ -1063,7 +1071,6 @@ fn proptest_ir_serialization_and_defaults() {
     })
     .expect("IR serialization and defaults charter");
 }
-
 
 // ============================================================================
 // H-CONFIG-INTERN: independent equality/hash and interner model
@@ -1256,7 +1263,17 @@ fn config_seed_cases(
         1_usize..=4,
     )
         .prop_map(
-            |(layer_height, line_height, speed, percent, option, sequence, text, depth, breadth)| {
+            |(
+                layer_height,
+                line_height,
+                speed,
+                percent,
+                option,
+                sequence,
+                text,
+                depth,
+                breadth,
+            )| {
                 ConfigSeed::Finite {
                     layer_height,
                     line_height,
@@ -1279,13 +1296,15 @@ fn config_seed_cases(
         1_usize..=4,
     )
         .prop_map(
-            |(layer_height_bits, speed_bits, option_bits, sequence, depth, breadth)| ConfigSeed::Raw {
-                layer_height_bits,
-                speed_bits,
-                option_bits,
-                sequence,
-                depth,
-                breadth,
+            |(layer_height_bits, speed_bits, option_bits, sequence, depth, breadth)| {
+                ConfigSeed::Raw {
+                    layer_height_bits,
+                    speed_bits,
+                    option_bits,
+                    sequence,
+                    depth,
+                    breadth,
+                }
             },
         );
     let _ = max_abs_value;
@@ -1432,8 +1451,16 @@ fn proptest_config_equality_hash_and_interning() {
     assert_eq!(map.intern_config(ResolvedConfig::default()), ConfigId(0));
     let nondefault = property_oracles::with_f32_field(&default, 37.5);
     let id = map.intern_config(nondefault.clone());
-    assert_eq!(id, ConfigId(1), "a nondefault config joins the pool at rank 1");
-    assert_eq!(map.intern_config(nondefault.clone()), id, "interning is idempotent");
+    assert_eq!(
+        id,
+        ConfigId(1),
+        "a nondefault config joins the pool at rank 1"
+    );
+    assert_eq!(
+        map.intern_config(nondefault.clone()),
+        id,
+        "interning is idempotent"
+    );
     assert_eq!(map.configs.len(), 2, "no duplicate pool entry");
     let key = RegionKey {
         global_layer_index: 0,
@@ -1604,9 +1631,8 @@ fn proptest_canonical_chain_product() {
         .expect("use the registry-backed property command");
     let max_semantics = usize::try_from(run.bound("max_semantics").expect("semantic bound"))
         .expect("semantic bound must fit usize");
-    let max_values =
-        usize::try_from(run.bound("max_values_per_semantic").expect("value bound"))
-            .expect("value bound must fit usize");
+    let max_values = usize::try_from(run.bound("max_values_per_semantic").expect("value bound"))
+        .expect("value bound must fit usize");
     let max_chains = run.bound("max_chains").expect("chain bound") as u128;
     let max_text_bytes = usize::try_from(run.bound("max_text_bytes").expect("text bound"))
         .expect("text bound must fit usize");

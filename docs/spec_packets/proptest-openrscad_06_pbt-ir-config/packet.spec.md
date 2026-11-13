@@ -195,26 +195,26 @@ Recorded while implementing; none changes the packet's scope.
    assertion that the preserved anchor test is still discovered. The check is strictly stronger
    than the fixed one-element roster and still fails on a registered-but-undiscovered test,
    which is the condition the executor reports as `missing_property_execution`.
-5. **[BLOCKING] The `H-CONFIG-BOUNDS` shrink-preservation clause is not met as written.** AC-N1
-   asks that "valid shrinks retain … violation witnesses", and §Charter H-CONFIG-BOUNDS asked
-   for the violating/non-finite/first-invalid-index mode to survive shrinking. The two value
-   domains pin scalar-versus-list inside themselves, but the composed strategy generates the
-   value through a `prop_flat_map` over the declarations, so a shrink of the declarations
-   re-draws the value and a list case can become a scalar case. The independent delta review
-   demonstrated that, and the composed audit was therefore not registered as passing. The
-   charter now states the narrower truth: the value shape, the verdict and the first-invalid
-   index are all re-derived per case by the oracle, and no correctness claim depends on them
-   surviving a shrink. Closing the gap needs a derived-value construction that pins the probe
-   family — a redesign this run did not perform. This narrows an acceptance criterion, so it is
-   recorded as blocking rather than waved through, together with the two external blockers
-   below.
-6. **Two external blockers prevent closure.** (a) `region_map_versioned_decode_tdd`'s frozen
-   3.0.0 fixture fails with `DeserializeBadBool` on this tree; the packet provably did not cause
-   it (no production diff), but the packet also may not present the affected family as complete
-   while a required baseline is red, and the fixture must not be regenerated — an owner
-   disposition is needed. (b) No authorized hosted Windows CI run exists for these records;
-   local execution through the same command is not that evidence, and this run cannot trigger
-   CI. The packet therefore stays `draft`.
+5. **The `H-CONFIG-BOUNDS` shrink contract is now met as written, after a redesign.** An
+   intermediate implementation grew the probe value through a `prop_flat_map` over the generated
+   declarations, so a shrink of the declarations re-drew the value and could turn a list case
+   into a scalar case (the independent delta review demonstrated it). That was recorded as
+   blocking rather than waved through. It is now fixed properly: the strategy selects a probe
+   mode from a `no_shrink` list and **derives** the value from the current declaration set inside
+   `prop_map`, against a bounded witness key outside the generated alphabet
+   (`property_config_oracles::WITNESS_KEY`). Shrinking the declarations re-runs the derivation,
+   so the value shape, the verdict class and the first-invalid index all survive. Two checks pin
+   it: `derived_probe_modes_have_their_documented_verdicts` asserts every mode's verdict and
+   index on a concrete set, and the property runs a composed shrink audit on every execution.
+6. **Both external blockers are resolved.** (a) The frozen `RegionMapIR` 3.0.0 Postcard fixture
+   failed with `DeserializeBadBool` because commit `6db49f0f` removed
+   `ResolvedConfig::flat_bridge_closing_join` from the middle of the struct; Postcard is
+   positional, so every later field shifted. The field is re-added at its original position as a
+   `plain` serialized-compatibility carrier (no CLI key returns, no production code reads it),
+   which restores the 3.0.0 wire layout; `region_map_versioned_decode_tdd` passes again with the
+   frozen fixture and assertion strength unchanged, and no fixture was regenerated. (b) The
+   required hosted Windows execution was obtained through the routine `properties-windows` lane
+   on a draft PR (see the evidence document for the run URL and job result).
 
 ## Authoring preflight
 

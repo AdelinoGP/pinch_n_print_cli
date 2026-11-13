@@ -1034,28 +1034,32 @@ are distinguished; `min`/`max` are echoed from the independently computed effect
 
 ### Shrinking
 
-**This family's shrink behaviour does not preserve the value shape, and no such claim is made.**
-The two *component* value domains are mode-pinned — `property_config_oracles::mode_locked` pins
-scalar-versus-list inside `bound_values`, and again inside `nonfinite_values`, with the mechanism
-probed by `mode_lock_preserves_tags_under_simplification`. The **composed** strategy, however,
-grows the value through a `prop_flat_map` over the generated declarations, so a shrink of the
-declarations re-draws the value and a list case can become a scalar case (the delta review
-demonstrated exactly that, and the composed audit was therefore not registered as passing).
+Shrinking preserves the probe: **shape, verdict class and first-invalid index** all survive.
+The strategy selects a probe mode from a `no_shrink` list and then *derives* the value from the
+current declaration set inside `prop_map` — there is no `prop_flat_map` re-drawing it, so when
+the declarations shrink the derivation re-runs and produces a value of the same family. The
+witness families are derived from a bounded witness declaration on a key outside the generated
+alphabet (`property_config_oracles::WITNESS_KEY`), so no other declaration can perturb the
+interval:
 
-Consequences, stated plainly:
+- `EdgeMin`/`EdgeMax` land exactly on the inclusive bounds (accepted);
+- `InsideScalar`/`InsideList` use the interval midpoint (accepted);
+- `ViolationScalarLow`/`ViolationScalarHigh` sit one step outside (rejected, `index: None`);
+- `ViolationListAt0/1/2` place the only out-of-range element at that position, so `index` is
+  `Some(0)`/`Some(1)`/`Some(2)`;
+- `NonFiniteScalar`/`NonFiniteList` stay non-finite (rejected).
 
-- The accept/reject **verdict**, the **value shape** (scalar/list) and the **first-invalid
-  index** are all re-derived per case by the independent oracle. The property asserts agreement
-  with that re-derivation, so no correctness claim depends on any of them surviving a shrink.
-- Every shrunk value is still checked against the profile bounds by the oracle; magnitudes are
-  not assumed stable either (a non-finite witness and the `next_up`/`next_down` boundary probes
-  are deliberately outside the finite magnitude domain).
-- Closing the shape-preservation gap requires replacing the declaration/value `prop_flat_map`
-  with a derived-value construction that pins the probe family. That redesign is not done here
-  and is recorded as a blocking deviation in the packet, because the packet's AC-N1 asks for
-  violation-witness preservation under shrink.
+The two `General*` families are independent draws, so only their **shape** is pinned; their
+verdict is whatever the oracle derives for the current declarations. `Absent*` keeps the key
+unnamed, which the bounds-only API accepts by contract.
 
-Shrink limits are profile-bounded (`max_shrink_iters`, `max_shrink_time_ms = 0`).
+This is checked two ways: `derived_probe_modes_have_their_documented_verdicts` asserts every
+mode's verdict and first-invalid index on a concrete declaration set, and the property runs
+`assert_mode_preserved` over the **composed** strategy on every execution, tagging each case with
+its shape plus — for witness keys — its verdict class and first-invalid index, so a shrink that
+changed any of them fails the run.
+
+Shrink limits are profile-bounded (`max_shrink_iters`, `max_shrink_time_ms = 0`).Shrink limits are profile-bounded (`max_shrink_iters`, `max_shrink_time_ms = 0`).
 
 ### Execution
 
