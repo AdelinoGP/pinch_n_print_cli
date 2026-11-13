@@ -1256,10 +1256,16 @@ const CLIP_BATCH_MAX_REQUESTS: usize = 256;
 
 /// How many layers' emit inputs are buffered before a batch runs.
 ///
-/// Four layers of the matched base job hold a few hundred per-region carves,
-/// well past the host's fan-out threshold at 12 threads, while keeping the
-/// buffered collision sets from stacking up across the whole job.
-const EMIT_BATCH_LAYERS: usize = 4;
+/// The depth sets the width of every phase in [`build_roles_batched`] at once:
+/// the per-region carves, the union rounds, the set-wide differences and the
+/// occupancy batch all inherit the chunk. Ticket 143 measured the trade on the
+/// matched job: 4 layers leave the union phase one request deep (4.4 per call,
+/// 3.73x fan-out), 8 lands on the merge-2 floor, and **12** is the optimum
+/// (9.64x, union wall 10.1 → 4.8 s). Sixteen regresses — the same requests cost
+/// 24 % more thread-time once sixteen layers of collision sets are live — so
+/// the depth is a cache/bandwidth bound, not the RSS bound this comment used to
+/// describe. See `docs/specs/perf-vs-orca/evidence/t143-union-grouping/`.
+const EMIT_BATCH_LAYERS: usize = 12;
 
 /// One buffered [`build_roles`] call.
 ///
