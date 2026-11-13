@@ -488,6 +488,42 @@ Exit codes:
 | 3    | STEP file contains no recognisable geometry          |
 | 4    | Parse error — file is not valid STEP                 |
 
+#### Optional SCAD input (STEP-only flags and STEP's table stay unchanged)
+
+`pnp_cli mesh import` also accepts a self-contained `.scad` script **when the CLI
+is built with `pnp-cli/scad`** (`cargo build -p pnp-cli --features pnp-cli/scad`).
+The branch lives in `crates/pnp-cli/src/helpers_cmd.rs`: `run_import_command`
+detects the format and routes `.scad` to `run_scad_import`, while `run_import`
+itself remains STEP-only and calls `import_step_with_options` exactly as before.
+`slicer-helpers` does **not** own a SCAD evaluator or converter — the branch
+calls `slicer_model_io::load_scad_model`, which owns the strict adapter boundary.
+
+Differences from STEP on this command:
+
+- **One fused object, no repair.** SCAD output is already one checked object, so
+  `--merge-components` and `--no-repair` are rejected with exit `2` and
+  `SCAD_STEP_OPTION_CONFLICT` (the message names the offending flag) rather than
+  silently ignored.
+- **Source coordinates only.** No bed placement and no bed/config option; the
+  written mesh is exactly the script's millimetre geometry.
+- **`--output-format` still selects the writer** (`stl`, `obj`, `3mf`), and each
+  format preserves the evaluated geometry without component splitting or
+  `_<i>` output files.
+- **`--stats` rows:** `start`/`done` keep their shape, with `source_unit: "mm"`,
+  `mesh_count: 1` and `warnings: 0`; each accepted SCAD information diagnostic is
+  emitted once as `{"event":"diagnostic","kind":"scad_information",…}`. Without
+  `--stats` the information is printed as a plain stderr line and no JSON row is
+  emitted.
+
+SCAD exit codes for this command: `0` success, `2` unreadable input or write
+failure, `3` empty evaluated geometry, `4` disabled support / 2D without an
+explicit height / any adapter rejection. `1` is never used for SCAD: accepted
+information is not a warning, and partial SCAD geometry is a failure. Feature-off
+builds do not accept the two SCAD flags and refuse a `.scad` input with
+`SCAD_SUPPORT_DISABLED` (exit `4`) instead of a STEP parse error.
+
+Full contract: [`docs/scad/ingestion.md`](scad/ingestion.md).
+
 ---
 
 ## Error Types (Normative)

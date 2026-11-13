@@ -1,9 +1,11 @@
 //! Host-side model file ingestion and geometry-only writers.
 //!
-//! Parses STL, OBJ, and 3MF into [`slicer_ir::MeshIR`]; writes the geometry-only
-//! 3MF and OBJ formats. Extracted from `slicer-runtime` in packet 81 so the
-//! runtime no longer touches bytes — its slice entry consumes a pre-loaded
-//! [`slicer_ir::MeshIR`] instead of a path.
+//! Parses STL, OBJ, and 3MF into [`slicer_ir::MeshIR`] and, behind the
+//! default-off `scad` feature, evaluates self-contained SCAD text through the
+//! strict `slicer_scad` adapter. Writes the geometry-only 3MF and OBJ formats.
+//! Extracted from `slicer-runtime` in packet 81 so the runtime no longer touches
+//! bytes — its slice entry consumes a pre-loaded [`slicer_ir::MeshIR`] instead
+//! of a path.
 
 #![warn(missing_docs)]
 
@@ -21,5 +23,9 @@ pub use loader::{
     detect_format, load_model, place_bare_mesh_on_bed, read_3mf_project_settings, BedPlacement,
     ModelFormat, ModelLoadError,
 };
+#[cfg(feature = "scad")]
+pub use loader::{load_scad_model, ScadModelLoad};
 pub use sidecar::{parse_3mf_sidecar, ObjectSidecarInfo, PartSubtype};
+#[cfg(feature = "scad")]
+pub use slicer_scad::{ScadDiagnostic, ScadEvalOptions, ScadParameter, ScadProvenance};
 pub use writer::{write_3mf, write_obj};

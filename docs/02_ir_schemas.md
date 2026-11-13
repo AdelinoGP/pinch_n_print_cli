@@ -335,12 +335,23 @@ tie; equal priorities are not themselves an error.
 
 ### `ObjectMesh` Assembly Contract (Normative — Packet 75)
 
-All `ObjectMesh` instances are constructed via
-`slicer_model_io::loader::assemble_object(mesh, id, paint_data, modifiers, config)`.
-Five wrap sites use this single entry point: the STL, OBJ, and 3MF
-loader paths in `load_model`, plus the `mesh convert` split
-re-assembly. `assemble_object` computes `world_z_extent` from the mesh
-and applies the object's transform; for single-component models that
+All `ObjectMesh` instances produced by the model loader are constructed via
+`slicer_model_io::loader::assemble_object(id, mesh, config, modifier_volumes, paint_data)`
+(`crates/slicer-model-io/src/loader.rs`). The argument order above is the real
+signature; an earlier revision of this section listed the arguments in an
+illustrative order that did not match the function.
+
+Producers that route through this single entry point:
+
+- the STL, OBJ and 3MF paths in `load_model` (3MF once per build item);
+- `load_scad_model` (`crates/slicer-model-io/src/loader.rs`), which assembles the
+  one mesh returned by the strict SCAD adapter with an empty `ObjectConfig`, no
+  modifier volumes and no paint data — SCAD colors and `group()`s never become
+  tools, materials or paint;
+- the `mesh convert` split-to-objects re-assembly.
+
+`assemble_object` computes `world_z_extent` from the mesh
+and applies the object's identity transform. For single-component models that
 reuse a parent extent during convert's split re-assembly the recompute
 is identical under identity transform (locked by AC-4.3 regression in
 packet 75). Z-extent logic is centralised here; the convert path's separate
@@ -348,6 +359,11 @@ packet 75). Z-extent logic is centralised here; the convert path's separate
 second implementation. The `assemble_object` symbol (`crates/slicer-model-io/src/loader.rs`)
 was promoted from `pub(crate)` to `pub` in Packet 81 to support the CLI's
 `helpers_cmd.rs` move into `pnp-cli`.
+
+One pre-existing producer does **not** use this seam: the STEP importer
+(`crates/slicer-helpers/src/import/step.rs`) builds its `ObjectMesh` inline with a
+`uuid_v4` id. It is outside the model-loader contract and is not a precedent for
+new loaders.
 
 ### `ObjectConfig.data` Population (Normative — Packet 67)
 

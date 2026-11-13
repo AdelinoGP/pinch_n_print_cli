@@ -17,9 +17,19 @@ name = "integrated_provenance_tdd"
 path = "tests/integrated_provenance_tdd.rs"
 required-features = ["integrated-classic-perimeters"]
 
+# Ungated on purpose: this target must build and report real assertions in BOTH
+# feature configurations.
+[[test]]
+name = "scad_cli_feature_contract"
+
+[[test]]
+name = "scad_cli_ingest"
+required-features = ["scad"]
+
 [features]
 default = ["report"]
 report = ["slicer-runtime/report"]
+scad = ["slicer-model-io/scad"]
 integrated-classic-perimeters = ["slicer-integrated-modules/classic-perimeters"]
 integrated-arachne-perimeters = ["slicer-integrated-modules/arachne-perimeters"]
 integrated-tree-support-planner = ["slicer-integrated-modules/tree-support-planner"]

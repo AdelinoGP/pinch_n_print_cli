@@ -63,6 +63,30 @@ cargo xtask dist --edition <developer|hybrid|integrated>
 cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --output /tmp/out.gcode
 ```
 
+### Opt-in SCAD input
+
+Self-contained OpenSCAD scripts can be sliced or imported when the CLI is built
+with the `scad` feature. The feature is **off by default**, and enabling it
+compiles a native engine (CMake + MSVC required):
+
+```bash
+cargo build -p pnp-cli --features pnp-cli/scad
+
+# Slice a script (placed on the bed, like STL/OBJ)
+cargo run --bin pnp_cli --features pnp-cli/scad -- slice \
+  --model part.scad --output /tmp/part.gcode
+
+# Give a 2D profile an explicit thickness, with a script parameter
+cargo run --bin pnp_cli --features pnp-cli/scad -- mesh import \
+  --input profile.scad --output part.3mf --output-format 3mf \
+  --scad-param width=12 --scad-extrude-height 2
+```
+
+`slice --model` is unchanged for STL, OBJ and 3MF; without the feature a `.scad`
+input is refused with `SCAD_SUPPORT_DISABLED` rather than parsed as a mesh. See
+[docs/scad/ingestion.md](docs/scad/ingestion.md) for the exact flags, exit codes
+and the self-contained-script restriction.
+
 ## Lineage and Acknowledgments
 
 This project would not be possible without the profound legacy of the open-source 3D printing community. We are grateful to the pioneers and developers whose years of dedication have paved the way for modern slicing algorithms. 

@@ -288,3 +288,21 @@ fn read_result(
     Ok(())
 }
 ```
+
+## Consumers: opt-in product ingestion
+
+The adapter is a library boundary; it does not read files, place models or
+decide CLI policy. The product consumer is documented separately:
+
+- [`docs/scad/ingestion.md`](ingestion.md) — the opt-in `pnp_cli slice` /
+  `pnp_cli mesh import` frontend: CLI flags, exit-code table, one-object
+  assembly and source identity, slice-time bed placement versus unplaced
+  `mesh import`, and the strict-error fragments derived from the kinds above.
+
+`slicer_model_io::load_scad_model` (`crates/slicer-model-io/src/loader.rs`) is
+the only caller of `evaluate` in the product path. It reads a bounded UTF-8
+source, calls `evaluate` once, assembles only `ScadGeometry::Mesh` through the
+existing `slicer_model_io::loader::assemble_object` seam, and turns `Contours`
+into an explicit "extrusion height required" error and `Empty` into an
+empty-model error. It forwards diagnostics and provenance unmodified and never
+re-classifies, triangulates or repairs.

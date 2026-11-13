@@ -98,8 +98,10 @@ not establish a full-domain error bound or an accumulated per-layer budget.
 
 For loaded models, 3MF build-item and component transforms are baked into mesh
 vertices and paint-stroke vertices before `assemble_object` constructs the
-`ObjectMesh`. STL and OBJ geometry has no input object transform. All three
-loader paths use `assemble_object` in `crates/slicer-model-io/src/loader.rs`,
+`ObjectMesh`. STL and OBJ geometry has no input object transform, and neither
+does a SCAD script: the adapter emits source-coordinate millimetre vertices, so
+an explicitly loaded SCAD model is baked the same way. Every loader path uses
+`assemble_object` in `crates/slicer-model-io/src/loader.rs`,
 which stores an identity `ObjectMesh.transform`; loaded vertices therefore
 already represent world-space coordinates. See the `ObjectMesh` Assembly
 Contract in `docs/02_ir_schemas.md`.
@@ -132,15 +134,17 @@ Conventions:
   one.
 - **Bed placement:** bare meshes are placed onto the plate at load. `pnp_cli
   slice` calls `place_bare_mesh_on_bed`
-  (`crates/slicer-model-io/src/loader.rs`) for **STL and OBJ only**, which
-  drops the model so its world `z_min` is `0.0 mm` and centres its XY bounding
-  box on the `bed_shape` centre. **3MF is excluded** — it carries authored
-  plate placement that must survive. See the Bed Placement section below.
+  (`crates/slicer-model-io/src/loader.rs`) for **STL, OBJ and explicitly loaded
+  SCAD**, which drops the model so its world `z_min` is `0.0 mm` and centres its
+  XY bounding box on the `bed_shape` centre. **3MF is excluded** — it carries
+  authored plate placement that must survive. `pnp_cli mesh import` never
+  places, including for SCAD. See the Bed Placement section below.
 
 ## Bed Placement (Normative)
 
-An STL or OBJ has **no plate coordinate system**. Its coordinates are whatever
-the authoring tool emitted, so they may sit anywhere relative to the printer
+An STL, OBJ or explicitly loaded SCAD script has **no plate coordinate system**.
+Their coordinates are whatever the authoring tool (or the script) emitted, so
+they may sit anywhere relative to the printer
 bed — arbitrarily far from the origin, and partly or wholly below `z = 0`.
 Nothing downstream corrects for this: `assemble_object` stores an identity
 transform, and the prepass slices those vertices as-is.
@@ -158,10 +162,17 @@ OrcaSlicer's two placement primitives together:
 
 Rules:
 
-- **Applies to STL and OBJ only.** A 3MF's authored placement is preserved
-  untouched.
+- **Applies to STL, OBJ and explicitly loaded SCAD — on `slice` only.** An
+  explicit SCAD load (`load_scad_model`) is placed by `pnp_cli slice` against
+  the same bed; `pnp_cli mesh import` writes source coordinates and never
+  places. A 3MF's authored placement is preserved untouched.
 - **Rigid-body.** All objects receive the same translation, so multi-object
-  scenes keep their relative arrangement.
+  scenes keep their relative arrangement. A SCAD script's disconnected bodies
+  live in one object's single indexed mesh and move together by construction.
+- **Placement refreshes the cached Z extent.** `world_z_extent` is cached at
+  assembly, so `place_model_on_bed` (`crates/pnp-cli/src/main.rs`) recomputes it
+  after translating; otherwise a model loaded below the plate would keep
+  reporting a negative world Z minimum while its vertices rest on the bed.
 - **Bed geometry comes from `bed_shape`** (`ResolvedConfig`), an interleaved
   `[x0, y0, x1, y1, ...]` mm polygon defaulting to a 250 x 250 square. When it
   cannot describe a plate, placement is skipped with a warning rather than

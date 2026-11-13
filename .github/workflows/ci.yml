@@ -354,3 +354,260 @@ jobs:
             target/scad-adapter/
             target/test-output.log
           if-no-files-found: warn
+
+  # Required lane for opt-in SCAD ingestion (packet
+  # proptest-openrscad_05_scad-ingest). It runs real feature-off and enabled
+  # library/import/slice acceptance rather than compile checks: the feature is
+  # default-off, so a green default build alone proves nothing about it.
+  #
+  # The enabled run compiles the same vendored engine as the adapter lane, whose
+  # native Manifold kernel is a C++ CMake build; `windows-latest` provides CMake
+  # and MSVC. Guest WASMs are needed because the slice acceptance runs through
+  # the gated `cargo xtask test` runner against in-tree core modules.
+  scad-ingest-windows:
+    name: SCAD ingestion (Windows)
+    runs-on: windows-latest
+    # A cold run compiles the vendored engine, its C++ kernel and the guest
+    # WASMs; the narrow ingestion runs themselves are seconds.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-tools
+      - name: Build guest WASMs
+        run: cargo xtask build-guests
+
+      - name: Record provenance and native prerequisites
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path target/scad-ingest | Out-Null
+          # Rust/CMake provenance is load-bearing: an enabled run cannot be
+          # interpreted without it, so a failing probe fails the step.
+          rustc -vV 2>&1 | Tee-Object -FilePath target/scad-ingest/rustc.txt
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::rustc -vV failed"; exit $LASTEXITCODE }
+          cargo -V 2>&1 | Tee-Object -FilePath target/scad-ingest/cargo.txt
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::cargo -V failed"; exit $LASTEXITCODE }
+          cmake --version 2>&1 | Tee-Object -FilePath target/scad-ingest/cmake.txt
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::CMake is required by the enabled SCAD engine and is missing"; exit $LASTEXITCODE }
+          git rev-parse HEAD 2>&1 | Tee-Object -FilePath target/scad-ingest/source_revision.txt
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::git rev-parse HEAD failed"; exit $LASTEXITCODE }
+          git status --porcelain 2>&1 | Tee-Object -FilePath target/scad-ingest/dirty-content.txt
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::git status failed"; exit $LASTEXITCODE }
+          "CARGO_TARGET_DIR=$env:CARGO_TARGET_DIR" | Tee-Object -FilePath target/scad-ingest/target-env.txt
+          "RUSTFLAGS=$env:RUSTFLAGS" | Tee-Object -FilePath target/scad-ingest/rustflags.txt
+          # `cl` is normally absent from PATH on a healthy runner because the
+          # developer prompt is what puts it there; its exit status is recorded
+          # rather than enforced, since the enabled build below is the real check.
+          where.exe cl 2>&1 | Tee-Object -FilePath target/scad-ingest/cl.txt
+          "where.exe cl exit=$LASTEXITCODE" | Add-Content target/scad-ingest/cl.txt
+          exit 0
+
+      - name: Dependency graph isolation (default vs enabled)
+        shell: pwsh
+        run: |
+          cargo tree -p pnp-cli -e normal,build,features 2>&1 |
+            Tee-Object -FilePath target/scad-ingest/tree-pnp-cli-default.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo tree -p pnp-cli -e normal,build,features --features scad 2>&1 |
+            Tee-Object -FilePath target/scad-ingest/tree-pnp-cli-scad.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo tree -p slicer-model-io -e normal,build,features 2>&1 |
+            Tee-Object -FilePath target/scad-ingest/tree-model-io-default.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo tree -p slicer-model-io -e normal,build,features --features scad 2>&1 |
+            Tee-Object -FilePath target/scad-ingest/tree-model-io-scad.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $defaultGraphs = @(
+            'target/scad-ingest/tree-pnp-cli-default.txt',
+            'target/scad-ingest/tree-model-io-default.txt')
+          $defaultHits = Select-String -Path $defaultGraphs -Pattern 'slicer-scad|openrscad|manifold|proptest'
+          if ($defaultHits) {
+            Write-Host "::error::a default product graph reached the SCAD engine or Proptest"
+            $defaultHits | Out-String | Write-Host
+            exit 1
+          }
+          $enabledHits = Select-String -Path target/scad-ingest/tree-pnp-cli-scad.txt -Pattern 'proptest'
+          if ($enabledHits) {
+            Write-Host "::error::the enabled product graph reached Proptest"
+            $enabledHits | Out-String | Write-Host
+            exit 1
+          }
+          exit 0
+
+      - name: Feature-off library contract (MF)
+        shell: pwsh
+        run: |
+          cargo test -p slicer-model-io --no-default-features --test scad_ingest_feature_contract 2>&1 |
+            Tee-Object -FilePath target/test-output.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item target/test-output.log target/scad-ingest/MF-off.log
+          if (-not (Select-String -Path target/scad-ingest/MF-off.log -Pattern 'scad_model_feature_routing \.\.\. ok')) {
+            Write-Host "::error::MF-off did not execute scad_model_feature_routing"
+            exit 1
+          }
+          if (-not (Select-String -Path target/scad-ingest/MF-off.log -Pattern 'scad_detection_is_case_insensitive_and_not_evaluation \.\.\. ok')) {
+            Write-Host "::error::MF-off did not execute the detection test"
+            exit 1
+          }
+
+      - name: Feature-off CLI contract (CF)
+        shell: pwsh
+        run: |
+          cargo test -p pnp-cli --no-default-features --test scad_cli_feature_contract 2>&1 |
+            Tee-Object -FilePath target/test-output.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item target/test-output.log target/scad-ingest/CF-off.log
+          if (-not (Select-String -Path target/scad-ingest/CF-off.log -Pattern 'scad_cli_feature_routing \.\.\. ok')) {
+            Write-Host "::error::CF-off did not execute scad_cli_feature_routing"
+            exit 1
+          }
+          if (-not (Select-String -Path target/scad-ingest/CF-off.log -Pattern 'test result: ok\. 1 passed')) {
+            Write-Host "::error::CF-off did not run its single substantive test"
+            exit 1
+          }
+
+      - name: Enabled library contract (MF + ME)
+        shell: pwsh
+        run: |
+          cargo test -p slicer-model-io --features scad --test scad_ingest_feature_contract 2>&1 |
+            Tee-Object -FilePath target/test-output.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item target/test-output.log target/scad-ingest/MF-on.log
+          if (-not (Select-String -Path target/scad-ingest/MF-on.log -Pattern 'scad_model_feature_routing \.\.\. ok')) {
+            Write-Host "::error::MF-on did not execute scad_model_feature_routing"
+            exit 1
+          }
+          cargo test -p slicer-model-io --features scad --test scad_model_ingest 2>&1 |
+            Tee-Object -FilePath target/test-output.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item target/test-output.log target/scad-ingest/ME.log
+          $meTests = @(
+            'scad_model_one_object_source_identity',
+            'scad_model_explicit_holed_extrusion',
+            'scad_model_rejects_dimensions_and_empty',
+            'scad_model_preserves_strict_adapter_errors')
+          foreach ($test in $meTests) {
+            if (-not (Select-String -Path target/scad-ingest/ME.log -Pattern "$test \.\.\. ok")) {
+              Write-Host "::error::ME did not execute $test"
+              exit 1
+            }
+          }
+
+      - name: Enabled CLI contract (CF)
+        shell: pwsh
+        run: |
+          cargo test -p pnp-cli --features scad --test scad_cli_feature_contract 2>&1 |
+            Tee-Object -FilePath target/test-output.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item target/test-output.log target/scad-ingest/CF-on.log
+          if (-not (Select-String -Path target/scad-ingest/CF-on.log -Pattern 'scad_cli_feature_routing \.\.\. ok')) {
+            Write-Host "::error::CF-on did not execute scad_cli_feature_routing"
+            exit 1
+          }
+          if (-not (Select-String -Path target/scad-ingest/CF-on.log -Pattern 'test result: ok\. 1 passed')) {
+            Write-Host "::error::CF-on did not run its single substantive test"
+            exit 1
+          }
+
+      - name: Bare-model placement (B)
+        shell: pwsh
+        run: |
+          cargo test -p pnp-cli --features scad --bin pnp_cli -- scad_placement_ 2>&1 |
+            Tee-Object -FilePath target/test-output.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item target/test-output.log target/scad-ingest/B-placement.log
+          $placementTests = @(
+            'scad_placement_centers_and_drops_to_bed',
+            'scad_placement_preserves_disconnected_offsets',
+            'scad_placement_uses_configured_bed_centre',
+            'scad_placement_leaves_3mf_untouched',
+            'scad_placement_skips_when_bed_shape_is_unusable')
+          foreach ($test in $placementTests) {
+            if (-not (Select-String -Path target/scad-ingest/B-placement.log -Pattern "$test \.\.\. ok")) {
+              Write-Host "::error::B did not execute $test"
+              exit 1
+            }
+          }
+
+      - name: Enabled import and slice acceptance (CE)
+        shell: pwsh
+        run: |
+          # The gated runner owns the combined log, the literal and test-quality
+          # preflights and the guest-freshness check; an outer Tee-Object to the
+          # same path takes a sharing lock on Windows and aborts the run.
+          cargo xtask test --summary -p pnp-cli --features pnp-cli/scad --test scad_cli_ingest -- --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item target/test-output.log target/scad-ingest/CE.log
+          $ceTests = @(
+            'scad_cli_import_preserves_source_coordinates',
+            'scad_cli_holed_extrusion',
+            'scad_cli_holed_extrusion_slices',
+            'scad_cli_parameters_and_config_separation',
+            'scad_cli_information_and_stats',
+            'scad_cli_slice_places_and_emits',
+            'scad_cli_rejects_option_misuse',
+            'scad_cli_failures_do_not_publish',
+            'scad_cli_strict_errors_and_resources',
+            'scad_cli_supervisor_drains_large_stdout')
+          foreach ($test in $ceTests) {
+            if (-not (Select-String -Path target/scad-ingest/CE.log -Pattern "$test \.\.\. ok")) {
+              Write-Host "::error::CE did not execute $test"
+              exit 1
+            }
+          }
+
+      - name: Ordinary STEP and CLI regressions
+        shell: pwsh
+        run: |
+          $regressions = @(
+            @{ Name = 'helpers_cli'; Package = 'pnp-cli'; Test = 'helpers_cli'; Expected = 9 },
+            @{ Name = 'cli_tdd'; Package = 'pnp-cli'; Test = 'cli_tdd'; Expected = 3 },
+            @{ Name = 'model_loader_tdd'; Package = 'slicer-model-io'; Test = 'model_loader_tdd'; Expected = 44 },
+            @{ Name = 'bed_placement_tdd'; Package = 'slicer-model-io'; Test = 'bed_placement_tdd'; Expected = 8 })
+          foreach ($case in $regressions) {
+            cargo test -p $case.Package --test $case.Test 2>&1 |
+              Tee-Object -FilePath target/test-output.log
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $log = "target/scad-ingest/$($case.Name).log"
+            Copy-Item target/test-output.log $log
+            # A green zero-test binary is not a regression pass: the expected
+            # count must appear in the harness summary.
+            if (-not (Select-String -Path $log -Pattern "test result: ok\. $($case.Expected) passed")) {
+              Write-Host "::error::$($case.Name) did not report $($case.Expected) passing tests"
+              exit 1
+            }
+          }
+
+      - name: Narrow check and clippy
+        shell: pwsh
+        run: |
+          # Both crates, both feature states: the cfg'd code has to compile and
+          # lint clean without the feature too.
+          cargo clippy -p slicer-model-io --all-targets -- -D warnings 2>&1 |
+            Tee-Object -FilePath target/scad-ingest/clippy-model-io-default.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy -p slicer-model-io --all-targets --features scad -- -D warnings 2>&1 |
+            Tee-Object -FilePath target/scad-ingest/clippy-model-io-scad.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy -p pnp-cli --all-targets --features scad -- -D warnings 2>&1 |
+            Tee-Object -FilePath target/scad-ingest/clippy-pnp-cli-scad.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy -p pnp-cli --all-targets -- -D warnings 2>&1 |
+            Tee-Object -FilePath target/scad-ingest/clippy-pnp-cli-default.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload ingestion artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scad-ingest-windows-failure
+          path: |
+            target/scad-ingest/
+            target/test-output.log
+          if-no-files-found: warn
