@@ -2306,6 +2306,18 @@ declare_resolved_config! {
     cli "perimeter_arc_tolerance" perimeter_arc_tolerance: f32 = 0.0125 => extract_float;
     /// Slice closing radius in mm (OrcaSlicer: slice_closing_radius).
     cli "slice_closing_radius"   slice_closing_radius: f32 = 0.049 => extract_float;
+    /// **Deprecated serialized-compatibility carrier.** This field previously
+    /// held the morphological-closing join used by the flat-bridge enclosure
+    /// discriminator. Commit `6db49f0f` removed the behaviour and the field, but
+    /// `ResolvedConfig` is serialized positionally with Postcard, so deleting a
+    /// mid-struct field shifts every later field and makes every pre-existing
+    /// `RegionMapIR` payload undecodable (a `String` length byte is then read as
+    /// the `support_enabled` bool). Keeping the field with its original name,
+    /// position and type restores the 3.0.0 wire layout; no production code
+    /// reads it and it is deliberately `plain` so the retired CLI key does not
+    /// come back. Removing it again requires a schema version bump plus a
+    /// migration, not a silent reorder.
+    plain                        flat_bridge_closing_join: String = String::from("miter");
 
      // Support
      /// Whether support is enabled.
@@ -2559,6 +2571,7 @@ impl PartialEq for ResolvedConfig {
             && self.gcode_xy_decimals == other.gcode_xy_decimals
             && self.perimeter_arc_tolerance.to_bits() == other.perimeter_arc_tolerance.to_bits()
             && self.slice_closing_radius.to_bits() == other.slice_closing_radius.to_bits()
+            && self.flat_bridge_closing_join == other.flat_bridge_closing_join
             && self.support_enabled == other.support_enabled
             && self.support_type == other.support_type
             && self.support_threshold_angle.to_bits() == other.support_threshold_angle.to_bits()
@@ -2667,6 +2680,7 @@ impl std::hash::Hash for ResolvedConfig {
         self.gcode_xy_decimals.hash(state);
         self.perimeter_arc_tolerance.to_bits().hash(state);
         self.slice_closing_radius.to_bits().hash(state);
+        self.flat_bridge_closing_join.hash(state);
         self.support_enabled.hash(state);
         self.support_type.hash(state);
         self.support_threshold_angle.to_bits().hash(state);
