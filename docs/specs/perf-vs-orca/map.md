@@ -798,6 +798,35 @@ decline, or re-scope the relocation). Evidence:
 [`evidence/t152-seam-inset-offset/`](evidence/t152-seam-inset-offset/FINDINGS.md)
 (`verify.py` PASS, 4/4 mutations rejected).
 
+**Destination status (2026-11-14,
+[t153](issues/153-seam-loop-relocation-ruling.md)): the relocation is DECLINED
+— structurally impossible and already decided — and the 1,248 ms seam offset
+stays in the fog with its blocker.** The human's instruction was to verify the
+prior attempt before trying it, and the record is decisive. **ADR-0046**
+(status accepted) asks exactly this question and rejects the per-layer
+`seam-placer` as impossible, because per-layer modules are re-instantiated per
+call and run in parallel across layers (ADR-0045), so a per-layer module can
+never see two layers and can never chain anything. **Packet 168** discovered
+the constraint during grounding and recorded it as an architecture constraint,
+not a preference. The ported candidate builder settles the rest:
+`build_seam_candidates`
+(`modules/core-modules/seam-planner-default/src/visibility.rs`) scores **every
+contour vertex of every layer** and its per-layer terms read the **previous**
+layer's contours (`prev_dist`) as well as the current layer's (`curr_dist`), so
+candidate generation and scoring — not just the alignment chaining — are
+cross-layer. The only sanctioned conduit is one-way and prepass-first (ADR-0020:
+`SeamPlanIR` → host-injected `resolved_seam`), so moving generation onto the
+printed loops needs a two-phase pipeline (all per-layer perimeters before seam
+planning) or a host-orchestrated seam pass; both are architecture work past
+this destination's route, and ADR-0046's alternatives already rejected the host
+path. **S3 closes as "not a clean deletion and not relocatable".** No exception
+is spent and nothing moves: `nearest` / `rear` / `random` could in principle
+generate per layer (no chaining), but the matched job is `aligned`, so that
+buys the destination nothing. No production edit, no measurement, no
+reference-set movement. **Frontier: none** — 1–153 are resolved; the next shape
+is the human's pick from the fog (the per-layer program on the benchy cells
+remains the largest unpriced member).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -884,7 +913,22 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-14, the t152 take):** the human said
+**Current selection scope (2026-11-14, the t153 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **153 was the only
+unblocked, unclaimed frontier ticket** (1–152 resolved), a HITL grilling, and
+was claimed and resolved as a **DECLINE**. The human's answer was "Don't think
+that is possible, it was attempted before, verify it before trying it"; the
+verification found **ADR-0046** (accepted) already decides the placement
+question against the per-layer module, **packet 168** discovered the
+cross-layer constraint during grounding, and `build_seam_candidates`'
+per-layer terms read the previous layer's contours — so the relocation fails
+even without the alignment chaining. Headline: **the 1,248 ms seam offset is
+the price of the cross-layer aligned seam in this architecture, not a
+relocatable term.** S3 closes as "not a clean deletion and not relocatable"; no
+exception is spent, no code or output moves. **Frontier now: none** — the next
+shape is the human's pick from the fog.
+
+**Previous selection scope (2026-11-14, the t152 take):** the human said
 "Continue the perf vs orca map" (no ticket named); **1–151 were resolved and no
 AFK ticket was on the frontier**, so the map's route arithmetic graduated the
 last named member of the sweep-volume work-set family from Not yet specified —
@@ -3943,6 +3987,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Seam candidate generation on the printed loops: authorize the per-layer relocation?](issues/153-seam-loop-relocation-ruling.md): **resolved (2026-11-14; human ruling — DECLINED, the relocation is structurally impossible and was already decided)** — the human's instruction was to verify the prior attempt before trying it. **ADR-0046** (status accepted) evaluates the same two candidate homes and rejects the per-layer `seam-placer` as impossible: per-layer modules are re-instantiated per call and run in parallel across layers (ADR-0045, packet 102), so a per-layer module can never see two layers; the only sanctioned cross-layer conduit is one-way and prepass-first (ADR-0020's `SeamPlanIR` → host-injected `resolved_seam`). **Packet 168** discovered the constraint during grounding and recorded it as an architecture constraint ("All cross-layer machinery MUST live in the `PrePass::SeamPlanning` stage; `seam-placer` only consumes"). The take adds the stronger fact: `build_seam_candidates` (`modules/core-modules/seam-planner-default/src/visibility.rs`) scores **every contour vertex of every layer** and its per-layer terms read the **previous** layer's contours (`prev_dist`) as well as the current layer's (`curr_dist`), so candidate generation and scoring — not just the chaining — are cross-layer; the builder is dormant by design because packet 178 moved production candidates to per-region `SliceIR` geometry. Moving generation onto the printed loops is therefore circular (the prepass runs before the loops exist) and needs a two-phase pipeline or a host-orchestrated pass, both already rejected in ADR-0046's alternatives and both architecture work past this route. **S3 closes as "not a clean deletion and not relocatable"; the 1,248 ms is the price of the cross-layer aligned seam and stays in the fog with that blocker.** No exception spent, no `nearest`/`rear`/`random` relocation (the matched job is `aligned`, so it would buy nothing), no production edit, no measurement, no reference-set movement.
 - [Seam inset offset: is the prepass offset redundant with the per-layer loop projection?](issues/152-seam-inset-offset-redundancy.md): **resolved (2026-11-14; Phase-1 + candidate screen — not redundant, S3 is not a clean deletion)** — removing `offset_polygons_batch` + `project_point_onto_inset_boundary` from `run_region_planning_entries` (`modules/core-modules/seam-planner-default/src/lib.rs`) and emitting the raw chosen point moves **456 of 496** base-classic-off layers (+1,177 / −1,149 printed points, 142 layers with a changed total `E`; first difference in the layer-0 **Skirt**) and breaks the module's own tests (**31/0 baseline vs 29/2 candidate**). The baseline reproduces the t151 reference `9bb18f0e…`; the candidate is `4265d619…` (+1,158 bytes / +28 lines). **The offset term is 1,248 ms** (`PrePass::SeamPlanning` **1,779 → 531 ms**, 70.15 %), not t129's 1,587 ms / 92.4 %, and is **5.9x** the 0.80 % floor / **~10.5 %** of base classic-off's current required cut. The per-layer `seam-placer` re-projects onto the wall loops but does **not** preserve the seam because the source point differs; the canonical loop projection needs candidate generation on the printed external-perimeter loops, which exist only in the per-layer phase — a **stage relocation** needing a t81-style exception, graduated [t153](issues/153-seam-loop-relocation-ruling.md). No production change; patch preserved. Evidence: [`evidence/t152-seam-inset-offset/`](evidence/t152-seam-inset-offset/FINDINGS.md) (`verify.py` PASS, 4/4 mutations rejected).
 - [Skirt hull input: fold the brim area's contour, not the bead centreline](issues/151-skirt-hull-brim-contour.md): **resolved (2026-11-14; measured fairness fix — the skirt hull folds the brim area's outer contour, the matched job moves 6/8 cells, the brim is provably untouched, and the supports-off adhesion oracle reaches 4/4 from 3/4)** — `SkirtBrim::generate` (`modules/core-modules/skirt-brim/src/lib.rs`) extends `brim_points` from `area[i].contour` (the `outer − inner [− support]` result already in hand) and drops the fold of the emitted beads' `path.points`, matching canonical `Print::_make_skirt`'s `m_objectBrimAreasByInstance[...]` `area.contour.points` (`make_brim` fills that map after the no-brim subtraction). **Measured radial move: 0.178–0.180 mm on every moving cell** (half the 0.35708 mm flow spacing), brim bbox identical in all six, and the brim→skirt step **4.962–4.965 → 5.140–5.144 mm** against t146's Orca **5.139** and prediction **5.143**. **Output:** baseline reproduces t148's set in **8/8**, candidate moves **6/8** and is byte-identical across the ordinary and accelerated arms in **8/8**; the new 16-cell set is the currency ([`reference.json`](evidence/t151-skirt-hull-contour/reference.json)). **The pre-declared "all eight move" is falsified and disclosed:** the two base supports-on cells are inert because the first-layer support footprint clips the whole brim area (`area` empty ⇒ `brim_points` empty), and the audit proves **zero moved sections / zero changed `E` lines** there rather than relying on hash equality. **Delta audit 8/8:** `Skirt` is the only moved section in the six moving cells and every motion line outside it is identical with `E` stripped; the literal "`|dE|` outside `Skirt` is zero" clause is falsified at **≤ 0.00098 mm on 3–35 of up to 508,651 lines** (accumulator re-rounding, t144's magnitude), disclosed not waived. **Oracle:** benchy classic-off **1.32 → 0.05 %**, benchy arachne-off **1.34 → 0.04 %**, base classic-off **2.89 → 0.37 %**, base arachne-off **3.45 (MISS) → 0.94 %** — **4/4**, 4/8 overall; brim rel-diffs unchanged in all four, residual = the ~0.10 mm brim-extent term plus ≤ 0.04 mm Arachne width, exactly t146's decomposition. **A/B:** 3 interleaved pairs × 8 cells, every median (−4.70 … +6.43 %) inside a **measured ±12.86 % wall / ±6.98 % CPU** same-arm null band, no wall claim (t103's ~235 ms surface). **Falsifier:** `skirt_hull_folds_the_brim_area_contour_not_the_bead_centreline` pins `x_max = 22.5` vs the centreline's `22.3` and was verified red on the pre-change library. **Drive-by, not caused:** `integrated_parity_skirt_brim_tdd` (t142's red) now authors the two declared keys it omitted and passes. No route term moved. Evidence: [`evidence/t151-skirt-hull-contour/`](evidence/t151-skirt-hull-contour/FINDINGS.md) (`verify.py` PASS, 16/16 mutations rejected).
 - [Variable-width anchor: per-segment envelope or the direct contour?](issues/146-variable-width-anchor-shape.md): **resolved (2026-11-13; premise refuted by measurement — the last supports-off oracle miss is a skirt-hull input defect, not a variable-width anchor error, and neither offered shape can pass the cell)** — the oracle's relative difference is `abs(pnp - orca) / orca` (`oracle_skirt_brim.py::rel`) and carries **no direction**: every supports-off cell is an **undershoot** (PnP prints less brim and a smaller skirt), so t144's "−5.65 % → +2.89 %" is a magnitude history, corrected in place. Arachne adds **+0.56 points** on base (2.89 → 3.45 %) and **+0.02** on the benchy (1.32 → 1.34 %), and the dominant term is shared with the classic cell, where the t144 reconstruction is exact by construction. **Mechanism:** canonical `Print::_make_skirt` folds `m_objectBrimAreasByInstance[...]` `area.contour.points` — the brim **area's outer contour** — into the skirt hull, while `SkirtBrim::generate` folds the emitted brim beads' **centrelines**; the ring distance already matches (outermost 4.964 mm both). The gap is half a flow spacing: measured brim→skirt bbox step **5.139 mm** on Orca against **5.143** predicted and **4.963** on PnP (re-derivable from `growth_mm`, now carried by `evidence/t144-brim-anchor/reduced/summary.json`). **Decomposition of the ~0.29 mm radial deficit: ~0.10 mm brim-extent term (inside its 12 % band) + 0.1786 mm skirt-hull term + ≤0.04 mm Arachne width.** Envelope and direct contour are both refuted as cell passes (≤0.04 mm and an anchor that is already exact on classic); graduated [t151](issues/151-skirt-hull-brim-contour.md), read as inside t140's "`skirt_height` layer hulls" exception, estimated to take base classic-off to ~0.4 % and base arachne-off to ~0.9 % and the supports-off oracle **3/4 → 4/4**. No wall claim (~235 ms surface). **Glossary:** "Anchor" added.
@@ -4274,10 +4319,15 @@ Standing decisions for this effort (2026-09-22):
   is **not** redundant — deleting it moves **456/496** base-off layers and
   fails two unit tests — and its measured term is **1,248 ms** (70.15 % of the
   stage, 5.9x the floor, ~10.5 % of base-off's current cut), not t129's
-  1,587 ms / 92.4 %. Its canonical replacement is a **per-layer relocation** of
-  candidate generation onto the printed loops, which needs its own t81-style
-  exception; the human ruling is
-  [t153](issues/153-seam-loop-relocation-ruling.md). The per-layer
+  1,587 ms / 92.4 %. Its canonical replacement is **DECLINED as structurally
+  impossible** ([t153](issues/153-seam-loop-relocation-ruling.md), 2026-11-14):
+  aligned seams are cross-layer (ADR-0046), a per-layer module cannot see two
+  layers, and canonical candidate scoring itself reads the previous layer's
+  contours, so the "per-layer relocation" would need a two-phase pipeline (all
+  per-layer perimeters before seam planning) or a host-orchestrated seam pass —
+  architecture work, not a t81 key exception, and already rejected in
+  ADR-0046's alternatives. **Re-entry requires the destination to be redrawn to
+  include that restructure.** The per-layer
   phase joins the first program on both benchy cells.
 
 - **The bridge wave expansion is a per-layer partition change, and its benchy
