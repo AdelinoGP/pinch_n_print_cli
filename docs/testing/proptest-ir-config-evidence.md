@@ -36,14 +36,14 @@ on registry-only evidence: every row above was executed through the registry-bac
   measured content. The tables below quote runs from more than one revision, because the
   strategies were changed between measurement rounds and re-measuring everything after every
   edit would only produce another mixed batch:
-  - the combined routine table row comes from the run at `89c1e069`;
+  - the combined routine table row comes from the run at `ac9dc0ef` (`dirty_paths: []`);
   - the per-record extended walls and the combined extended / seed-37 rows come from runs at
-    `ba807a18`;
-  - the recorded dirty state differs per run and is reported as recorded: the `ba807a18`
-    extended and replay contexts have `dirty_paths: []`, while the `89c1e069` routine contexts
-    listed production source and documentation paths that were being edited between rounds.
-    Each `source_state_digest` pinpoints the measured content, and this document does not
-    describe a run as clean unless its own context says so.
+    `ba807a18` (also `dirty_paths: []`);
+  - earlier measurement rounds at `727ba9e9` and `89c1e069` carried edited source or
+    documentation in their `dirty_paths`; those rows were superseded by the clean runs above
+    and are not quoted in the tables.
+  Each `source_state_digest` pinpoints the measured content, and this document does not describe
+  a run as clean unless its own context says so.
   `target/evidence/final-provenance.txt` is a summary generated at one moment and is **not**
   authoritative for every table row; the per-run `context.json` files are. This document does not
   restate a hash that an amend would invalidate.
