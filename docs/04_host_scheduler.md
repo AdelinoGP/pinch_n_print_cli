@@ -923,6 +923,30 @@ the scattered resolvers and `overlay_resolved`:
   layer, so both consumers agree by construction — no caller re-derives range
   precedence locally and no runtime path re-parses XML.
 
+### Bounds-only scalar validation (Normative)
+
+Bounds-only scalar validation is a separate, narrower seam from scope admission:
+`ConfigBoundsIndex::{from_declarations, check}` in
+`crates/slicer-scheduler/src/config_resolution.rs` intersects every module's declared
+`[min, max]` per key and rejects a numeric scalar or list element that falls outside the
+intersection, reporting the first offending list index. Its scope is exactly that:
+
+- an entirely absent key returns `Ok(())`;
+- a non-numeric (`Bool`/`String`) value returns `Ok(())` — variant mismatch is
+  `ResolvedConfig::apply_cli_key`'s job, not this API's;
+- a present declaration with neither min nor max still reaches the finiteness check, so
+  NaN/infinity is rejected there;
+- `Percent` and percent-authored `FloatOrPercent` are checked for finiteness and the **min**
+  only, because a declared max is expressed in the key's absolute unit while a raw percentage's
+  absolute equivalent is only known after Phase-B expansion. Absolute `FloatOrPercent` uses the
+  full bounds.
+
+No cross-field or whole-config validity is inferred, and the private `check_scalar` /
+`check_value` helpers stay private. The public behaviour is pinned by the
+[`H-CONFIG-BOUNDS`](testing/properties.md#h-config-bounds) property charter against an
+independent all-declarations predicate, including inclusive edges, empty intersections,
+one-sided bounds, first-invalid-index and percent-versus-absolute distinctions.
+
 ### Config scope admission (Normative — ADR-0069)
 
 Scope eligibility is derived from the registry, not from any manifest-table

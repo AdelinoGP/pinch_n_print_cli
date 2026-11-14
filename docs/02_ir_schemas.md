@@ -81,6 +81,22 @@ Bounds and overflow policy:
   geometry within a single slice.
 - ID collisions are fatal contract errors.
 
+Tested boundaries (property charter
+[`H-IDS`](testing/properties.md#h-ids)): `LayerEntityIdGen::new` starts at `1`, allocates
+strictly monotonically, and never returns the reserved `0` sentinel — for a bounded number of
+allocations, far below `u64::MAX`; allocation exhaustion is not exercised by looping to the
+limit. For modifier sub-regions, with `S = MODIFIER_VARIANT_REGION_ID_STRIDE` and `B = 2^63`,
+`modifier_sub_region_id_fits(parent)` is exactly `parent·S + (S-1) < B-1`, so the documented
+worst-case payload fits iff `parent ≤ floor((B - S - 1)/S)`. Beyond that limit `fits` returns
+`false` and minting asserts (the assertion text is observed deterministically by
+`ir_id_parent_and_sentinel_rejections` in `crates/slicer-ir/tests/property_ir_contracts.rs`).
+Namespace membership is not provenance validation: `is_modifier_namespace_id` accepts any
+high-bit-marked value except `MODIFIER_FOOTPRINT_REGION_ID`, so an arbitrary bit-marked id
+decodes through `modifier_base_region_id` even though it was never minted. Distinct parents
+cannot share an id for identical object/footprint inputs, but distinct inputs **can** collide
+inside the bounded stride — no blanket injectivity or unequal-hash guarantee is claimed, and
+runtime collision rejection remains the caller's obligation.
+
 ---
 
 ## IR 0 — MeshIR
@@ -692,6 +708,16 @@ and their distinct bit patterns would be supplied to hashing, so they intern
 as distinct entries. NaN is already a fatal validation error (see top of this
 doc), so this is theoretical for real prints.
 
+Tested (property charter [`H-CONFIG-INTERN`](testing/properties.md#h-config-intern)): the
+canonical Postcard encoding of the whole `ResolvedConfig` is used as an equality oracle
+independent of the hand-written `PartialEq`/`Hash`, and the property asserts
+`actual_eq(a, b) == (representation(a) == representation(b))` plus the implication
+`actual_eq(a, b) ⇒ hash(a) == hash(b)`. The premise that Postcard preserves scalar float bits
+and ordered `BTreeMap` content is validated first on signed-zero, NaN-payload, option, list and
+extension counterexamples. Unequal hashes are never required for unequal values, and no digest
+is persisted. A defect confined to a field family the generator does not vary (see the
+charter's coverage table) would not be caught by that property alone.
+
 ---
 
 ## IR 4 — RegionMapIR
@@ -749,6 +775,15 @@ No WIT, CLI-output, or manifest schema version changes.
   and `run_slice` injects `slice_has_paint` into every painted job's config
   source, real configs intern at `ConfigId(1)` and above and `configs[0]`
   stays the untouched `ResolvedConfig::default()` placeholder (Packet 207).
+
+Tested (property charter [`H-CONFIG-INTERN`](testing/properties.md#h-config-intern)): the
+interner is compared case by case against an independent first-occurrence rank model over
+canonical Postcard keys, seeded with the serialized default. Equal-but-independently-built
+configs reuse an id, re-interning is idempotent, the pool grows exactly as the model predicts,
+`config_for_raw` returns the interned input, and a real `RegionKey`/`RegionPlan` inserted with
+the returned non-default id resolves through `config_for` to that config rather than to index
+zero. `config_for` panics on broken construction invariants, so indexing an invalid id is not
+treated as a missing-validator finding.
 
 ### `RegionMappingPlanProjection` (Internal Decoupling Type — Packet 87)
 
@@ -1767,6 +1802,22 @@ not a canonical-parity claim; the recorded Gate A/B outcomes remain unchanged.
 
 **Stage:** Output of `Layer::PathOptimization`
 **Current schema_version: 1.4.0** (authoritative source: `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`). Introduced at 1.0.0; packet 244 added the additive `ExtrusionPath3D.order_lock: Option<u64>` field (optional per-path ordering lock tag; `None`/absent preserves pre-1.4.0 behavior; local tags (bit 63 clear) are remapped to layer-unique global tags (bit 63 set) at host output boundaries), bumping 1.3.0→1.4.0; packet 226 added the additive `ExtrusionPath3D.tool_index: Option<u32>` authored-coloring carrier (ADR-0058), bumping 1.2.0→1.3.0 — additive semver-minor, the field is `#[serde(default)]` so pre-1.3.0 serialized fixtures still parse and deserialize to `None` (host-resolved region tool, i.e. unchanged behaviour); packet 125 added the additive `PrintEntity.tool_index: u32` field (region_id↔tool split), bumping 1.0.0→1.1.0; packet 189 added the additive `LayerCollectionIR.speed_profiles: Vec<EntitySpeedProfile>` side table (per-point speed-factor carrier), bumping 1.1.0→1.2.0. Packet 39 earlier renamed `TravelMove.entity_idx: u32` → `entity_id: u64` and added `entity_id: u64` on `PrintEntity`, decoupling travel anchors from positional indices so finalization-stage entity insertion no longer invalidates anchors (these landed without bumping the constant beyond 1.x).
+
+Tested serialization boundary (property charter
+[`H-IR-SERDE`](testing/properties.md#h-ir-serde)): a bounded, finite, dyadic layer slice
+survives both a Postcard and a finite-domain JSON round trip with entity IDs, ordering, roles,
+`RegionKey` identity, `PrintEntity.tool_index`, path `tool_index`/`order_lock`, selected float
+bits, travel anchors and their optional coordinate bits, `speed_profiles` factor bits and
+`support_entity_identities` rows intact; integer `Point2` geometry stays exact through both
+codecs including `i64::MIN`/`i64::MAX`. The actually-defaulted legacy-JSON fields are exactly
+`PrintEntity.tool_index → 0`, `ExtrusionPath3D.tool_index → None`,
+`ExtrusionPath3D.order_lock → None`, `LayerCollectionIR.speed_profiles → []` and
+`LayerCollectionIR.support_entity_identities → []`; omission of the required `entity_id`, a
+mistyped ID, or a JSON `null` in a required numeric field is rejected. Omission defaults are a
+**JSON map-compatibility** guarantee, not a claim that serde can recover an arbitrary truncated
+Postcard sequence. Nonfinite `ConfigValue`/scalar serialization may produce `null` and is never
+credited as a lossless successful JSON round trip; Postcard exceptional-bit coverage is
+representation-only and does not certify such values as valid model input.
 
 **Ownership lifecycle — three phases:**
 
