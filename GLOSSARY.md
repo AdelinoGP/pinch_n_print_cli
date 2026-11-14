@@ -28,3 +28,7 @@ _Avoid_: case, scenario
 **Arm**:
 One of the engines compared in a matched run (PnP or OrcaSlicer).
 _Avoid_: side, tool
+
+**Anchor**:
+The boundary a brim ring and skirt hull are generated from: the object's layer-0 cross-section, approximated from the outer-wall path plus half its wall width.
+_Avoid_: outline, silhouette, footprint (ambiguous: the raw filled region is also a footprint)

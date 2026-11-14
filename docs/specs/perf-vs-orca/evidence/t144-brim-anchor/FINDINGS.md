@@ -18,10 +18,19 @@ whole brim area (measured, disclosed). The delta audit passes **8/8**: no motion
 outside `Skirt`/`Brim` moves with `E` stripped, and the largest **|dE|** is
 **0.00098 mm**. The adhesion oracle reaches **3/4 supports-off** cells
 (**3/8** overall; supports-on stays support-engine-limited): base classic-off
-moves from a **−5.65 %** skirt-outer undershoot to **+2.89 %** and passes, while
+moves the skirt-outer magnitude from **5.65 %** to **+2.89 %** and passes, while
 base Arachne-off remains **+3.45 %**, 0.45 points outside its 3 % band — the
 case the ticket pre-declared as the next shape's entry, graduated as
 [t146](../../issues/146-variable-width-anchor-shape.md).
+
+**Correction (2026-11-13, [t146](../../issues/146-variable-width-anchor-shape.md)).**
+The oracle's relative difference is `abs(pnp - orca) / orca`
+(`oracle_skirt_brim.py::rel`) and carries no direction. **Every supports-off cell
+is an undershoot** — PnP prints a smaller brim and skirt than Orca — before and
+after this change: base classic-off is 586.47 -> 603.64 mm² against a fixed
+621.60 mm². So "−5.65 % → +2.89 %" is a magnitude history, never a direction
+flip; the same correction applies to the ticket's Answer §6 and to its table row
+below.
 
 ## 1. What changed
 

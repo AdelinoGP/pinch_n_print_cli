@@ -287,6 +287,21 @@ def oracle_summary() -> dict:
                 "brim_swept_area_rel_diff": pct("brim_swept_area_rel_diff"),
                 "skirt_swept_area_rel_diff": pct("skirt_swept_area_rel_diff"),
                 "skirt_outer_loop_area_rel_diff": pct("skirt_outer_loop_area_rel_diff"),
+                # t146 added these: the brim->skirt radial step is derived from
+                # them, and the step is what attributes the skirt-hull input
+                # defect without needing the gitignored raw capture tree.
+                "pnp_brim_growth_mm": data["pnp"]["Brim"].get("growth_mm"),
+                "pnp_skirt_growth_mm": data["pnp"]["Skirt"].get("growth_mm"),
+                "orca_brim_growth_mm": data["orca"]["Brim"].get("growth_mm"),
+                "orca_skirt_growth_mm": data["orca"]["Skirt"].get("growth_mm"),
+                "pnp_brim_path_length_mm": data["pnp"]["Brim"].get("path_length_mm"),
+                "pnp_skirt_path_length_mm": data["pnp"]["Skirt"].get("path_length_mm"),
+                "orca_brim_path_length_mm": data["orca"]["Brim"].get("path_length_mm"),
+                "orca_skirt_path_length_mm": data["orca"]["Skirt"].get(
+                    "path_length_mm"
+                ),
+                "pnp_brim_loop_count": data["pnp"]["Brim"].get("loop_count"),
+                "pnp_skirt_loop_count": data["pnp"]["Skirt"].get("loop_count"),
                 "brim_swept_area_pass": checks.get("brim_swept_area_pass"),
                 "skirt_area_pass": checks.get("skirt_area_pass"),
                 "pass": checks.get("pass"),

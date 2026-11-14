@@ -4,10 +4,15 @@ Type: task / fairness fix + measured output campaign
 Label: wayfinder:task
 Status: resolved (2026-11-12; measured fairness fix — the anchor is the
   reconstructed contour, the matched job moves 6/8 cells, and the adhesion
-  oracle reaches **3/4 supports-off** (**3/8** overall). Base classic-off flips
-  from a −5.65 % skirt-outer undershoot to **+2.89 %** and passes; base
+  oracle reaches **3/4 supports-off** (**3/8** overall). Base classic-off's
+  skirt-outer magnitude falls from **5.65 %** to **+2.89 %** and passes; base
   Arachne-off remains **+3.45 %** (0.45 points outside its 3 % band) and
   graduates the next-shape decision [t146](146-variable-width-anchor-shape.md).
+  **Correction (2026-11-13, [t146](146-variable-width-anchor-shape.md)).** The
+  oracle's relative difference is `abs(pnp - orca) / orca` and carries no
+  direction: every supports-off cell is an **undershoot**, so "−5.65 % → +2.89 %"
+  is a magnitude history, never a direction flip. The wording in this file and in
+  `evidence/t144-brim-anchor/FINDINGS.md` is corrected in place.
   The two base supports-on cells are byte-identical because their support
   footprint clips the whole brim area. See ## Answer)
 Assignee: 2026-11-12 OpenCode wayfinder session — the human said "Continue the
@@ -247,14 +252,15 @@ same matched configs, same vendor pin; the prior Orca tree was absent from
 | --- | ---: | ---: | ---: | --- |
 | benchy classic-off | +1.79 % | +0.68 % | +1.32 % | PASS |
 | benchy arachne-off | +1.73 % | +0.68 % | +1.34 % | PASS |
-| base classic-off | +1.14 % | +2.19 % | +2.89 % | **PASS** (was −5.65 %) |
+| base classic-off | +1.14 % | +2.19 % | +2.89 % | **PASS** (magnitude was 5.65 %) |
 | base arachne-off | +1.86 % | +2.62 % | **+3.45 %** | MISS (3 %) |
 
 Baseline for the same cells and Orca reference: benchy classic-off
 +2.90 / +1.54 / +2.85 (pass), benchy arachne-off +2.96 / +1.60 / +2.86 (pass),
 base classic-off +5.17 / +4.28 / **+5.65 (fail)**, base arachne-off +6.73 /
 +4.41 / **+6.62 (fail)**. The uniform reconstruction closes most of a ~4-point
-base gap and flips base classic-off; base Arachne-off lands 0.45 points outside
+base gap and brings base classic-off inside the band; base Arachne-off lands
+0.45 points outside
 the 3 % outer-loop band, exactly the case the design pre-declared. **The next
 shape is a decision, not a revert:** graduated
 [t146](146-variable-width-anchor-shape.md) — per-segment variable-width bead

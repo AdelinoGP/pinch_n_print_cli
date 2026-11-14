@@ -742,6 +742,36 @@
           "brim_swept_area_rel_diff": 2.9,
           "skirt_swept_area_rel_diff": 1.54,
           "skirt_outer_loop_area_rel_diff": 2.85,
+          "pnp_brim_growth_mm": {
+            "xmin": 7.777000000000001,
+            "ymin": 7.772999999999996,
+            "xmax": 7.771999999999991,
+            "ymax": 7.7760000000000105
+          },
+          "pnp_skirt_growth_mm": {
+            "xmin": 12.738,
+            "ymin": 12.739999999999995,
+            "xmax": 12.734999999999985,
+            "ymax": 12.740000000000009
+          },
+          "orca_brim_growth_mm": {
+            "xmin": 7.977000000000004,
+            "ymin": 7.97699999999999,
+            "xmax": 7.978000000000009,
+            "ymax": 7.974000000000018
+          },
+          "orca_skirt_growth_mm": {
+            "xmin": 13.115000000000009,
+            "ymin": 13.120999999999995,
+            "xmax": 13.114000000000004,
+            "ymax": 13.076000000000022
+          },
+          "pnp_brim_path_length_mm": 2625.01,
+          "pnp_skirt_path_length_mm": 1010.45,
+          "orca_brim_path_length_mm": 2703.38,
+          "orca_skirt_path_length_mm": 1026.31,
+          "pnp_brim_loop_count": 22,
+          "pnp_skirt_loop_count": 6,
           "brim_swept_area_pass": true,
           "skirt_area_pass": true,
           "pass": true
@@ -756,6 +786,36 @@
           "brim_swept_area_rel_diff": 1.79,
           "skirt_swept_area_rel_diff": 0.68,
           "skirt_outer_loop_area_rel_diff": 1.32,
+          "pnp_brim_growth_mm": {
+            "xmin": 7.977000000000004,
+            "ymin": 7.975999999999999,
+            "xmax": 7.969999999999999,
+            "ymax": 7.975999999999999
+          },
+          "pnp_skirt_growth_mm": {
+            "xmin": 12.935000000000002,
+            "ymin": 12.939999999999998,
+            "xmax": 12.935000000000002,
+            "ymax": 12.941000000000003
+          },
+          "orca_brim_growth_mm": {
+            "xmin": 7.977000000000004,
+            "ymin": 7.97699999999999,
+            "xmax": 7.978000000000009,
+            "ymax": 7.974000000000018
+          },
+          "orca_skirt_growth_mm": {
+            "xmin": 13.115000000000009,
+            "ymin": 13.120999999999995,
+            "xmax": 13.114000000000004,
+            "ymax": 13.076000000000022
+          },
+          "pnp_brim_path_length_mm": 2655.08,
+          "pnp_skirt_path_length_mm": 1019.27,
+          "orca_brim_path_length_mm": 2703.38,
+          "orca_skirt_path_length_mm": 1026.31,
+          "pnp_brim_loop_count": 22,
+          "pnp_skirt_loop_count": 6,
           "brim_swept_area_pass": true,
           "skirt_area_pass": true,
           "pass": true
@@ -772,6 +832,36 @@
           "brim_swept_area_rel_diff": 2.96,
           "skirt_swept_area_rel_diff": 1.6,
           "skirt_outer_loop_area_rel_diff": 2.86,
+          "pnp_brim_growth_mm": {
+            "xmin": 7.777000000000001,
+            "ymin": 7.777000000000001,
+            "xmax": 7.771999999999991,
+            "ymax": 7.775000000000006
+          },
+          "pnp_skirt_growth_mm": {
+            "xmin": 12.740000000000009,
+            "ymin": 12.741,
+            "xmax": 12.734999999999985,
+            "ymax": 12.739000000000004
+          },
+          "orca_brim_growth_mm": {
+            "xmin": 7.977000000000004,
+            "ymin": 7.97699999999999,
+            "xmax": 8.0,
+            "ymax": 7.974000000000018
+          },
+          "orca_skirt_growth_mm": {
+            "xmin": 13.115000000000009,
+            "ymin": 13.120999999999995,
+            "xmax": 13.135999999999996,
+            "ymax": 13.076000000000022
+          },
+          "pnp_brim_path_length_mm": 2623.44,
+          "pnp_skirt_path_length_mm": 1009.9,
+          "orca_brim_path_length_mm": 2703.38,
+          "orca_skirt_path_length_mm": 1026.31,
+          "pnp_brim_loop_count": 22,
+          "pnp_skirt_loop_count": 6,
           "brim_swept_area_pass": true,
           "skirt_area_pass": true,
           "pass": true
@@ -786,6 +876,36 @@
           "brim_swept_area_rel_diff": 1.73,
           "skirt_swept_area_rel_diff": 0.68,
           "skirt_outer_loop_area_rel_diff": 1.34,
+          "pnp_brim_growth_mm": {
+            "xmin": 7.977000000000004,
+            "ymin": 7.977000000000004,
+            "xmax": 7.972000000000008,
+            "ymax": 7.977000000000004
+          },
+          "pnp_skirt_growth_mm": {
+            "xmin": 12.941000000000003,
+            "ymin": 12.941000000000003,
+            "xmax": 12.935000000000002,
+            "ymax": 12.941000000000003
+          },
+          "orca_brim_growth_mm": {
+            "xmin": 7.977000000000004,
+            "ymin": 7.97699999999999,
+            "xmax": 8.0,
+            "ymax": 7.974000000000018
+          },
+          "orca_skirt_growth_mm": {
+            "xmin": 13.115000000000009,
+            "ymin": 13.120999999999995,
+            "xmax": 13.135999999999996,
+            "ymax": 13.076000000000022
+          },
+          "pnp_brim_path_length_mm": 2656.5,
+          "pnp_skirt_path_length_mm": 1019.26,
+          "orca_brim_path_length_mm": 2703.38,
+          "orca_skirt_path_length_mm": 1026.31,
+          "pnp_brim_loop_count": 22,
+          "pnp_skirt_loop_count": 6,
           "brim_swept_area_pass": true,
           "skirt_area_pass": true,
           "pass": true
@@ -802,6 +922,36 @@
           "brim_swept_area_rel_diff": 5.17,
           "skirt_swept_area_rel_diff": 4.28,
           "skirt_outer_loop_area_rel_diff": 5.65,
+          "pnp_brim_growth_mm": {
+            "xmin": 7.772000000000006,
+            "ymin": 7.771999999999991,
+            "xmax": 7.774000000000001,
+            "ymax": 7.771000000000001
+          },
+          "pnp_skirt_growth_mm": {
+            "xmin": 12.735,
+            "ymin": 12.735,
+            "xmax": 12.736000000000018,
+            "ymax": 12.733999999999995
+          },
+          "orca_brim_growth_mm": {
+            "xmin": 8.063000000000002,
+            "ymin": 7.9680000000000035,
+            "xmax": 8.070999999999998,
+            "ymax": 7.997
+          },
+          "orca_skirt_growth_mm": {
+            "xmin": 13.198999999999998,
+            "ymin": 13.120000000000005,
+            "xmax": 13.201000000000022,
+            "ymax": 13.135000000000005
+          },
+          "pnp_brim_path_length_mm": 672.66,
+          "pnp_skirt_path_length_mm": 474.3,
+          "orca_brim_path_length_mm": 709.34,
+          "orca_skirt_path_length_mm": 495.51,
+          "pnp_brim_loop_count": 22,
+          "pnp_skirt_loop_count": 6,
           "brim_swept_area_pass": true,
           "skirt_area_pass": false,
           "pass": false
@@ -816,6 +966,36 @@
           "brim_swept_area_rel_diff": 1.14,
           "skirt_swept_area_rel_diff": 2.19,
           "skirt_outer_loop_area_rel_diff": 2.89,
+          "pnp_brim_growth_mm": {
+            "xmin": 7.963999999999999,
+            "ymin": 7.975999999999999,
+            "xmax": 7.974000000000018,
+            "ymax": 7.9680000000000035
+          },
+          "pnp_skirt_growth_mm": {
+            "xmin": 12.928000000000011,
+            "ymin": 12.938999999999993,
+            "xmax": 12.936000000000007,
+            "ymax": 12.930999999999997
+          },
+          "orca_brim_growth_mm": {
+            "xmin": 8.063000000000002,
+            "ymin": 7.9680000000000035,
+            "xmax": 8.070999999999998,
+            "ymax": 7.997
+          },
+          "orca_skirt_growth_mm": {
+            "xmin": 13.198999999999998,
+            "ymin": 13.120000000000005,
+            "xmax": 13.201000000000022,
+            "ymax": 13.135000000000005
+          },
+          "pnp_brim_path_length_mm": 701.23,
+          "pnp_skirt_path_length_mm": 484.67,
+          "orca_brim_path_length_mm": 709.34,
+          "orca_skirt_path_length_mm": 495.51,
+          "pnp_brim_loop_count": 22,
+          "pnp_skirt_loop_count": 6,
           "brim_swept_area_pass": true,
           "skirt_area_pass": true,
           "pass": true
@@ -832,6 +1012,36 @@
           "brim_swept_area_rel_diff": 6.73,
           "skirt_swept_area_rel_diff": 4.41,
           "skirt_outer_loop_area_rel_diff": 6.62,
+          "pnp_brim_growth_mm": {
+            "xmin": 7.768000000000001,
+            "ymin": 7.774000000000001,
+            "xmax": 7.772999999999996,
+            "ymax": 7.766999999999996
+          },
+          "pnp_skirt_growth_mm": {
+            "xmin": 12.732,
+            "ymin": 12.736000000000004,
+            "xmax": 12.734999999999985,
+            "ymax": 12.730999999999995
+          },
+          "orca_brim_growth_mm": {
+            "xmin": 8.119000000000014,
+            "ymin": 7.9950000000000045,
+            "xmax": 8.10899999999998,
+            "ymax": 8.024000000000001
+          },
+          "orca_skirt_growth_mm": {
+            "xmin": 13.25500000000001,
+            "ymin": 13.147000000000006,
+            "xmax": 13.239000000000004,
+            "ymax": 13.162000000000006
+          },
+          "pnp_brim_path_length_mm": 661.61,
+          "pnp_skirt_path_length_mm": 473.68,
+          "orca_brim_path_length_mm": 709.34,
+          "orca_skirt_path_length_mm": 495.51,
+          "pnp_brim_loop_count": 22,
+          "pnp_skirt_loop_count": 6,
           "brim_swept_area_pass": true,
           "skirt_area_pass": false,
           "pass": false
@@ -846,6 +1056,36 @@
           "brim_swept_area_rel_diff": 1.86,
           "skirt_swept_area_rel_diff": 2.62,
           "skirt_outer_loop_area_rel_diff": 3.45,
+          "pnp_brim_growth_mm": {
+            "xmin": 8.00500000000001,
+            "ymin": 8.00800000000001,
+            "xmax": 7.996000000000009,
+            "ymax": 7.983999999999995
+          },
+          "pnp_skirt_growth_mm": {
+            "xmin": 12.965000000000003,
+            "ymin": 12.969000000000008,
+            "xmax": 12.960000000000008,
+            "ymax": 12.947000000000003
+          },
+          "orca_brim_growth_mm": {
+            "xmin": 8.119000000000014,
+            "ymin": 7.9950000000000045,
+            "xmax": 8.10899999999998,
+            "ymax": 8.024000000000001
+          },
+          "orca_skirt_growth_mm": {
+            "xmin": 13.25500000000001,
+            "ymin": 13.147000000000006,
+            "xmax": 13.239000000000004,
+            "ymax": 13.162000000000006
+          },
+          "pnp_brim_path_length_mm": 696.11,
+          "pnp_skirt_path_length_mm": 482.53,
+          "orca_brim_path_length_mm": 709.34,
+          "orca_skirt_path_length_mm": 495.51,
+          "pnp_brim_loop_count": 22,
+          "pnp_skirt_loop_count": 6,
           "brim_swept_area_pass": true,
           "skirt_area_pass": false,
           "pass": false
