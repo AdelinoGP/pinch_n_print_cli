@@ -238,6 +238,20 @@ Recorded while implementing; none changes the packet's scope.
    manifest path; `PaintValue` ordering comes from `scan_paint_data`, not the enumerator). No
    acceptance criterion was narrowed and no assertion was weakened to obtain green.
 
+10. **AC-7's hosted execution is recorded.** The foundation's `properties-windows` job ran the
+    dynamic routine selector (`cargo xtask test --summary --properties --tier routine`) on a hosted
+    Windows runner at the reviewed implementation commit `f5c15779`: workflow run
+    <https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43556307245>, job
+    `Properties (Windows)` <https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43556307245/job/132329819467>,
+    concluded `success` with `VERDICT: PASS` over fifteen property binaries, exactly three of which
+    carry the `property_scheduler` target's `2 filtered out` signature (selection order `H-DAG`,
+    `H-CLAIMS`, `H-REGISTRY`). The job uploaded no artifacts because nothing failed; the passing
+    verdict is reachable only when every selected record meets its committed case count, and the
+    per-ID accepted counts remain the local Windows measurements recorded in
+    `docs/testing/proptest-scheduler-evidence.md` §"Hosted routine execution (AC-7)". The hosted
+    digest does not print per-record IDs, so record identification rests on the target signature and
+    the committed registry rather than on per-ID hosted lines.
+
 ## Authoring preflight
 
 | # | Check | Result | Evidence / applicability |

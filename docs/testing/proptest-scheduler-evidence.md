@@ -198,6 +198,32 @@ profile-derived `accepted_cases`, `rejected_test_calls`, `call_counts_complete` 
 produced fifteen passing test binaries, proving the foundation's `properties-windows` job picks the
 new records up dynamically: no hand-maintained roster was edited.
 
+### Hosted routine execution (AC-7)
+
+The foundation's `properties-windows` job executed this implementation on a hosted Windows runner:
+
+- Workflow run: <https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43556307245>
+- Job: `Properties (Windows)` — <https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43556307245/job/132329819467>
+- Head: `f5c1577906f3a7282c59a373e6b1b6b6ee7f20ce` (the reviewed implementation commit), trigger
+  `pull_request` on branch `proptest-openrscad-07-pbt-scheduler`, runner `windows-latest`,
+  concluded `success` at `2026-11-14T04:28:36Z` with every step green (`Build guest WASMs`,
+  `Run routine properties`, upload step skipped because nothing failed).
+- Command: `cargo xtask test --summary --properties --tier routine` — the dynamic selector, no
+  `--property` list, after the job's own `check-test-quality` and `check-literals` preflights.
+- Result: the digest printed fifteen `test result: ok. 1 passed; 0 failed` lines and the final
+  `VERDICT: PASS`. Exactly three of those binaries carry the `2 filtered out` signature of the
+  `property_scheduler` target (three registered tests), at 0.07s / 0.98s / 0.06s, which is the
+  selection order `H-DAG`, `H-CLAIMS`, `H-REGISTRY`.
+
+What this evidence establishes and what it does not: `VERDICT: PASS` is reachable only when every
+selected record completed — the foundation harness turns a missing discovery, an exhausted run, an
+incomplete call journal or `fewer observed accepted calls than required cases` into a non-zero
+exit, so a passing hosted verdict means all three routines met their committed case counts. The
+digest does not echo record IDs or `accepted_cases` per line, and the job uploads no artifacts on
+success, so record identification here relies on the target's unique `2 filtered out` signature
+plus the committed registry, not on a per-ID hosted line. Per-ID accepted counts are recorded from
+the local Windows runs above.
+
 ## Compile versus execution measurements
 
 Compilation and execution are recorded separately; the walls above are execution only.
