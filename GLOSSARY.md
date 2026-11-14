@@ -32,3 +32,7 @@ _Avoid_: side, tool
 **Anchor**:
 The boundary a brim ring and skirt hull are generated from: the object's layer-0 cross-section, approximated from the outer-wall path plus half its wall width.
 _Avoid_: outline, silhouette, footprint (ambiguous: the raw filled region is also a footprint)
+
+**Skirt hull input**:
+The points the skirt's convex-hull envelope is built from: each layer's outline up to `skirt_height` (outer-wall path plus half its width) and the **brim area's outer contour** (canonical `m_objectBrimAreasByInstance[...]` `area.contour.points`) — never the emitted brim beads' centreline, which sits half a flow spacing inside it.
+_Avoid_: brim footprint, brim outline (both name the filled region, not the hull input)

@@ -13,7 +13,7 @@ wall-clock (process CPU corroborating, never contradicting) in every cell of
 the {benchy, base} × {classic, arachne} × {supports off, on} matrix, under the
 matched-pair protocol with outputs disclosed. 8 of 8 cells won closes the map.
 
-**Benchy reference currency (2026-11-13, [t145](issues/145-benchy-fixture-rebaseline.md)): the benchy fixture was replaced on 2026-11-12T20:48, and every benchy number measured before that boundary is HISTORICAL.** The replacement (`tmp/3dbenchy.stl`, `6ab57f1c…`) is a re-tessellation of the same model — 225,786 → 225,706 triangles, |Δbounds| ≤ 4.05e-7 mm, ten of ten sampled cross-sections equal to the old export's recorded values — but the slice is **not** output-neutral: one internal-bridge layer (L40, z = 8.2, +57.298 mm of path) and the tree-support engine (−1,370.181 mm over 176 layers) move, so all four benchy hashes move. **Active set = t148's** ([`evidence/t148-print-plane-carve/reference.json`](evidence/t148-print-plane-carve/reference.json)): benchy `1ae0cfa8…` / `37788518…` / `8faf02b1…` / `f86d8897…`, base `c0b9014f…` / `eccbd523…` / `17f63e93…` / `1811425f…` (each list is classic-off / classic-on / arachne-off / arachne-on). t145's four supports-on hashes (`d9fc80ba…` / `cd7d4a2d…` / `585c6a8e…` / `c9fee59a…`) are **superseded** because that job printed less support than it demanded; **t139's four benchy hashes are retired** (`93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…`); t143's four are the superseded interim set. Rule: **a benchy number is either pre-swap (historical) or post-swap (current); never mixed, never quoted across the boundary.** Retired by that rule: t139's benchy hashes and every comparison built on them; t138's benchy **g-code** figures (its benchy **STL** figures survive — the cross-sections reproduce exactly); t135 Stage 1's benchy oracle numbers; t142's benchy A/B (20.00 / 10.56 / 20.23 / 12.66 %) and every pre-swap benchy A/B pair; every benchy scoreboard median (t121 / t124 / t139) and any composite containing a benchy cell; t126's "benchy classic-off 1.02x at zero prepass" and t134's benchy planner ratios. Post-swap and current: t143's benchy rows (fixture mtime 20:48, depth runs 20:55+), t144's hashes / oracle / A-B, t145's re-baseline, and t148's supports-on re-record. **Post-t148 scoreboard (4 supports-on cells × 2 tools, one window): 2.705x / 2.829x / 3.356x / 3.248x ordinary/Orca** (benchy classic-on / benchy arachne-on / base classic-on / base arachne-on), CPU corroborating — **required cut 63.0 % / 64.6 % / 70.2 % / 69.2 %**; t145's 8-cell post-swap scoreboard **1.853x–3.455x ordinary/Orca** stands for the four supports-off cells and is historical for the four supports-on cells (that job was support-incomplete). The accelerated arm has no current scoreboard.
+**Benchy reference currency (2026-11-13, [t145](issues/145-benchy-fixture-rebaseline.md)): the benchy fixture was replaced on 2026-11-12T20:48, and every benchy number measured before that boundary is HISTORICAL.** The replacement (`tmp/3dbenchy.stl`, `6ab57f1c…`) is a re-tessellation of the same model — 225,786 → 225,706 triangles, |Δbounds| ≤ 4.05e-7 mm, ten of ten sampled cross-sections equal to the old export's recorded values — but the slice is **not** output-neutral: one internal-bridge layer (L40, z = 8.2, +57.298 mm of path) and the tree-support engine (−1,370.181 mm over 176 layers) move, so all four benchy hashes move. **Active set = t151's** ([`evidence/t151-skirt-hull-contour/reference.json`](evidence/t151-skirt-hull-contour/reference.json), 2026-11-14): benchy `3d28d1b3…` / `eb202973…` / `39ad6289…` / `77c3c578…`, base `9bb18f0e…` / `eccbd523…` / `2f249cdb…` / `1811425f…` (each list is classic-off / classic-on / arachne-off / arachne-on; the two base supports-on hashes are unchanged from t148 by measurement because those cells are inert). **t148's set is superseded but was reproduced 8/8 by the t151 baseline arm in the same campaign**: benchy `1ae0cfa8…` / `37788518…` / `8faf02b1…` / `f86d8897…`, base `c0b9014f…` / `eccbd523…` / `17f63e93…` / `1811425f…`. t145's four supports-on hashes (`d9fc80ba…` / `cd7d4a2d…` / `585c6a8e…` / `c9fee59a…`) are **superseded** because that job printed less support than it demanded; **t139's four benchy hashes are retired** (`93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…`); t143's four are the superseded interim set. Rule: **a benchy number is either pre-swap (historical) or post-swap (current); never mixed, never quoted across the boundary.** Retired by that rule: t139's benchy hashes and every comparison built on them; t138's benchy **g-code** figures (its benchy **STL** figures survive — the cross-sections reproduce exactly); t135 Stage 1's benchy oracle numbers; t142's benchy A/B (20.00 / 10.56 / 20.23 / 12.66 %) and every pre-swap benchy A/B pair; every benchy scoreboard median (t121 / t124 / t139) and any composite containing a benchy cell; t126's "benchy classic-off 1.02x at zero prepass" and t134's benchy planner ratios. Post-swap and current: t143's benchy rows (fixture mtime 20:48, depth runs 20:55+), t144's hashes / oracle / A-B, t145's re-baseline, and t148's supports-on re-record. **Post-t148 scoreboard (4 supports-on cells × 2 tools, one window): 2.705x / 2.829x / 3.356x / 3.248x ordinary/Orca** (benchy classic-on / benchy arachne-on / base classic-on / base arachne-on), CPU corroborating — **required cut 63.0 % / 64.6 % / 70.2 % / 69.2 %**; t145's 8-cell post-swap scoreboard **1.853x–3.455x ordinary/Orca** stands for the four supports-off cells and is historical for the four supports-on cells (that job was support-incomplete). The accelerated arm has no current scoreboard.
 
 **Destination status (2026-11-08, [t128](issues/128-destination-arithmetic-ruling.md)):
 the target is unchanged; the route is re-scoped to an engine rewrite.** 0 of 8
@@ -724,6 +724,52 @@ one window, box load not measured. Evidence:
 (`verify.py` 71 checks, 5/5 negative controls). **Frontier:**
 [t151](issues/151-skirt-hull-brim-contour.md) (AFK, unblocked) only.
 
+**Destination status (2026-11-14,
+[t151](issues/151-skirt-hull-brim-contour.md)): the skirt hull now folds the
+canonical brim-area contour, the last supports-off oracle miss closes, and the
+frontier is EMPTY — the map returns to the human for the next shape.** The
+module extends `brim_points` from the brim **area's outer contour**
+(`area[i].contour`, the `outer − inner [− support]` result already in hand),
+matching canonical `Print::_make_skirt`'s `m_objectBrimAreasByInstance[...]`
+`area.contour.points`, and no longer from the emitted beads' `path.points`. The
+measured radial move is the canonical half flow spacing: **0.178–0.180 mm** on
+every moving cell, **brim bbox identical in all six**, and the brim→skirt step
+(`max_x(Skirt) − max_x(Brim)`) closes **4.962–4.965 → 5.140–5.144 mm** against
+t146's Orca **5.139 mm** and **5.143 mm** prediction. **Output:** the baseline
+reproduces t148's set in **8/8**; the candidate moves **6/8** and is
+byte-identical across the ordinary and accelerated arms in **8/8**. **The
+pre-declared "all eight move" is falsified and disclosed:** the two base
+supports-on cells cannot move because the first-layer support footprint clips the
+whole brim area (`area` empty ⇒ `brim_points` empty), and the delta audit proves
+inertness line-by-line — **zero moved sections, zero changed `E` lines** there.
+**Delta audit:** `Skirt` is the only moved section in the six moving cells and
+every motion line outside it is identical with `E` stripped in 8/8; the literal
+"`|dE|` outside `Skirt` is zero" clause is **falsified at ≤ 0.00098 mm on 3–35 of
+up to 508,651 lines** (the accumulator re-rounding t144 measured at the same
+magnitude), disclosed rather than waived. **Oracle (four supports-off cells):
+benchy classic-off 1.32 → 0.05 %, benchy arachne-off 1.34 → 0.04 %, base
+classic-off 2.89 → 0.37 %, base arachne-off 3.45 (MISS) → 0.94 % — 4/4, up from
+3/4** (4/8 overall); brim rel-diffs unchanged in all four, and the residual is
+now the ~0.10 mm brim-extent term plus ≤ 0.04 mm Arachne width, exactly t146's
+decomposition. **A/B (attribution only):** 3 interleaved pairs × 8 cells, every
+median (−4.70 … +6.43 % wall) inside the **measured** same-arm null band
+(**±12.86 % wall / ±6.98 % CPU**), pair spread to +49.77 %, absolute walls ~2x the
+output campaign's — **no wall claim** (the surface is t103's ~235 ms). **The new
+16-cell set is the currency** ([`reference.json`](evidence/t151-skirt-hull-contour/reference.json));
+t148's set is superseded but reproduced 8/8 as the control. No route term moves:
+this is a fairness fix, and the 8/8 destination and every ratio of record stand
+with their disclosures. **Drive-by, not caused:** `integrated_parity_skirt_brim_tdd`
+(t142's pre-existing red) omitted two declared keys and now authors them at their
+registry defaults — it passes and compares native against wasm finalization on
+the changed module. Evidence:
+[`evidence/t151-skirt-hull-contour/`](evidence/t151-skirt-hull-contour/FINDINGS.md)
+(`verify.py` PASS, 16/16 mutations rejected; `audit_delta.py` self-checked;
+`reduce_t151.py` regenerates the summary). **Frontier: none** — 1–151 are
+resolved; the next shape is the human's choice from the fog (below), and the
+largest unpriced members remain the sweep-volume work-set family's **canonical
+loop projection** (t129's S3, 1,587 ms ceiling, 5.7 % of base-off's required cut)
+and the per-layer program on the benchy cells.
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -810,7 +856,29 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-13, the t150 take):** the human said
+**Current selection scope (2026-11-14, the t151 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **151 was the only unblocked,
+unclaimed AFK frontier ticket** (146 was resolved by the t146 take, and no HITL
+ticket was open), and was claimed and resolved as a **measured fairness fix**.
+Headline: **the skirt hull folds the brim area's outer contour instead of the
+beads' centreline, the skirt moves out by the canonical half flow spacing
+(0.178–0.180 mm), the brim is provably untouched, and the supports-off adhesion
+oracle reaches 4/4 (from 3/4)** — base arachne-off 3.45 % → **0.94 %**, base
+classic-off 2.89 % → **0.37 %**, benchy 1.32/1.34 % → **0.05/0.04 %**, against
+t146's ~0.4 / ~0.9 % estimates. Output: baseline 8/8 against t148's set,
+candidate **6/8** and byte-identical across arms 8/8; the two base supports-on
+cells are inert by construction (support clip empties the brim area) and the
+audit proves **zero moved sections / zero E changes** there. Two pre-declared
+items falsified and disclosed, not widened: "all eight move" (six do) and
+"`|dE|` outside `Skirt` is zero" (≤ 0.00098 mm on ≤ 0.007 % of lines). A/B
+attribution-only, every median inside a **measured ±12.86 % wall null band**, no
+wall claim. The new 16-cell set is the currency; no route term moves. A falsifier
+test was added and shown red on the pre-change library (`22.3` vs `22.5`), and
+t142's dead `integrated_parity_skirt_brim_tdd` was revived as a disclosed
+drive-by. **Frontier now: EMPTY — 1–151 resolved; the next shape is the human's
+pick from the fog.**
+
+**Previous selection scope (2026-11-13, the t150 take):** the human said
 "Continue the perf vs orca map" (no ticket named); **150 was the first
 unblocked, unclaimed AFK frontier ticket in order** (151 is the other), and was
 claimed and resolved as a **measured deletion**. Headline: **the MeshAnalysis
@@ -3827,6 +3895,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Skirt hull input: fold the brim area's contour, not the bead centreline](issues/151-skirt-hull-brim-contour.md): **resolved (2026-11-14; measured fairness fix — the skirt hull folds the brim area's outer contour, the matched job moves 6/8 cells, the brim is provably untouched, and the supports-off adhesion oracle reaches 4/4 from 3/4)** — `SkirtBrim::generate` (`modules/core-modules/skirt-brim/src/lib.rs`) extends `brim_points` from `area[i].contour` (the `outer − inner [− support]` result already in hand) and drops the fold of the emitted beads' `path.points`, matching canonical `Print::_make_skirt`'s `m_objectBrimAreasByInstance[...]` `area.contour.points` (`make_brim` fills that map after the no-brim subtraction). **Measured radial move: 0.178–0.180 mm on every moving cell** (half the 0.35708 mm flow spacing), brim bbox identical in all six, and the brim→skirt step **4.962–4.965 → 5.140–5.144 mm** against t146's Orca **5.139** and prediction **5.143**. **Output:** baseline reproduces t148's set in **8/8**, candidate moves **6/8** and is byte-identical across the ordinary and accelerated arms in **8/8**; the new 16-cell set is the currency ([`reference.json`](evidence/t151-skirt-hull-contour/reference.json)). **The pre-declared "all eight move" is falsified and disclosed:** the two base supports-on cells are inert because the first-layer support footprint clips the whole brim area (`area` empty ⇒ `brim_points` empty), and the audit proves **zero moved sections / zero changed `E` lines** there rather than relying on hash equality. **Delta audit 8/8:** `Skirt` is the only moved section in the six moving cells and every motion line outside it is identical with `E` stripped; the literal "`|dE|` outside `Skirt` is zero" clause is falsified at **≤ 0.00098 mm on 3–35 of up to 508,651 lines** (accumulator re-rounding, t144's magnitude), disclosed not waived. **Oracle:** benchy classic-off **1.32 → 0.05 %**, benchy arachne-off **1.34 → 0.04 %**, base classic-off **2.89 → 0.37 %**, base arachne-off **3.45 (MISS) → 0.94 %** — **4/4**, 4/8 overall; brim rel-diffs unchanged in all four, residual = the ~0.10 mm brim-extent term plus ≤ 0.04 mm Arachne width, exactly t146's decomposition. **A/B:** 3 interleaved pairs × 8 cells, every median (−4.70 … +6.43 %) inside a **measured ±12.86 % wall / ±6.98 % CPU** same-arm null band, no wall claim (t103's ~235 ms surface). **Falsifier:** `skirt_hull_folds_the_brim_area_contour_not_the_bead_centreline` pins `x_max = 22.5` vs the centreline's `22.3` and was verified red on the pre-change library. **Drive-by, not caused:** `integrated_parity_skirt_brim_tdd` (t142's red) now authors the two declared keys it omitted and passes. No route term moved. Evidence: [`evidence/t151-skirt-hull-contour/`](evidence/t151-skirt-hull-contour/FINDINGS.md) (`verify.py` PASS, 16/16 mutations rejected).
 - [Variable-width anchor: per-segment envelope or the direct contour?](issues/146-variable-width-anchor-shape.md): **resolved (2026-11-13; premise refuted by measurement — the last supports-off oracle miss is a skirt-hull input defect, not a variable-width anchor error, and neither offered shape can pass the cell)** — the oracle's relative difference is `abs(pnp - orca) / orca` (`oracle_skirt_brim.py::rel`) and carries **no direction**: every supports-off cell is an **undershoot** (PnP prints less brim and a smaller skirt), so t144's "−5.65 % → +2.89 %" is a magnitude history, corrected in place. Arachne adds **+0.56 points** on base (2.89 → 3.45 %) and **+0.02** on the benchy (1.32 → 1.34 %), and the dominant term is shared with the classic cell, where the t144 reconstruction is exact by construction. **Mechanism:** canonical `Print::_make_skirt` folds `m_objectBrimAreasByInstance[...]` `area.contour.points` — the brim **area's outer contour** — into the skirt hull, while `SkirtBrim::generate` folds the emitted brim beads' **centrelines**; the ring distance already matches (outermost 4.964 mm both). The gap is half a flow spacing: measured brim→skirt bbox step **5.139 mm** on Orca against **5.143** predicted and **4.963** on PnP (re-derivable from `growth_mm`, now carried by `evidence/t144-brim-anchor/reduced/summary.json`). **Decomposition of the ~0.29 mm radial deficit: ~0.10 mm brim-extent term (inside its 12 % band) + 0.1786 mm skirt-hull term + ≤0.04 mm Arachne width.** Envelope and direct contour are both refuted as cell passes (≤0.04 mm and an anchor that is already exact on classic); graduated [t151](issues/151-skirt-hull-brim-contour.md), read as inside t140's "`skirt_height` layer hulls" exception, estimated to take base classic-off to ~0.4 % and base arachne-off to ~0.9 % and the supports-off oracle **3/4 → 4/4**. No wall claim (~235 ms surface). **Glossary:** "Anchor" added.
 - [MeshAnalysis work set: which outputs does production read, and what is the unread half worth?](issues/149-meshanalysis-work-set-readers.md): **resolved (2026-11-13; Phase-1 attribution — the stage is 85.68 % a bridge detector with no production reader, and the t129 S2 per-layer-overhang-polygons port is answered as not the lever)** — `classify_object` (`crates/slicer-core/src/algos/mesh_analysis.rs`) makes **4,563.2 ms** of the stage's **5,325.8 ms** on base classic-off in `find_bridge_clusters` + `compute_bridge_metrics`: **7,383,702** directed half-edge insertions into a `HashMap`, **3,199** BFS clusters, one footprint union per cluster, anchor-width/span metrics. The only production-read output is `OverhangRegion::xy_footprint` (**529.1 ms**), via `SliceRegionView::derive_needs_support`; `OverhangRegion::needs_support` is dead (the SDK re-derives), `surface_groups` resolves a `nonplanar_surface` production only writes as `None`, and `bridge_regions`' readers are the blackboard size estimate, visual debug, an undeclared prep `surface_objects` read, and a test guest. Sub-phase base-off: classify 187.0 / footprint 529.1 / eligibility 0.2 / bridge 4,563.2; base-on 4,832.9 with bridge 4,150.2; benchy-off 195.1 with bridge 95.1. **S2 is not the lever:** the port would replace 529.1 ms and leave 762.6 ms before canonical's per-layer diff. Route: **12.95 %** of the base-off cell, **16.18x** the 0.80 % floor, **24.96 %** of its indicative cut (2.078x → 2.387x, cut 51.88 % → 58.11 %); base-on 4.85 % / 6.07x; benchy-off 2.57 % / 3.21x. Graduated [t150](issues/150-meshanalysis-bridge-retirement.md) with a 16-cell byte-identical gate. Evidence: [`evidence/t149-meshanalysis-readers/`](evidence/t149-meshanalysis-readers/FINDINGS.md) (`verify.py` 43 claims, 4/4 negative controls; `probe.patch` non-landing; production restored).
 - [Supports-on plane carve: align the planner's collision occupancy with the print plane](issues/148-supports-on-plane-carve.md): **resolved (2026-11-13; fairness fix landed — the planner carves emitted roles against the print plane the host's exact-Z gate validates, published as an additive `print_plane_occupancy` carrier (schema 2.1.0). All four supports-on cells go from 101 / 101 / 44,474 / 44,474 diagnostics to zero, the 33 dropped layers reappear with none lost, support path rises 36.70 m base / 0.295 m benchy, supports-off is byte-identical 4/4, and the re-derived ratios of record are 2.705x / 2.829x / 3.356x / 3.248x.** Coverage clause read twice: plane presence 20/20; polygon coverage 11/19 base, 0/1 benchy, disclosed and not used as a gate because the retained-layer control reads the same near-zero. No causal wall-cost claim (the window's Orca arm moved too). Evidence: `evidence/t148-print-plane-carve/` (`verify.py` 360/360, 9/9 negative controls; `reference.json` is the new currency).
@@ -4081,6 +4150,14 @@ Standing decisions for this effort (2026-09-22):
 - [Repair the Orca rig](issues/98-orca-rig-repair.md): **rig measures Orca again on the 2.5.0 install, and the repair falsified the archived Orca side.** OrcaSlicer 2.5 resolves `--load-settings` through a vendor preset bundle (`PresetBundle::resolve_preset_config`: file-identity match, else a `"from": "system"` manifest walk that flattens `inherits`/`include`), and the install ships only `BBL.opc` with no preset JSON tree. The rig now stages a version-gated source-manifest tree from the tag whose `BBL.json` version equals the installed cache stamp (`02.08.00.16` == `2.8.0.16`, fail-closed) and applies the matched keys as CLI overrides, with `enable_arc_fitting` pinned to 0 because 2.5 flipped that default to enabled. Three measured runs of benchy classic-off: **1.978 s** wall / 6.50 s CPU / 4,000,709 bytes, against the archive's 2.787 s / 9.27 s / 3,890,392 — the archived Orca applied its hardcoded **filament** defaults (density 0, max volumetric speed 2, first-layer temp 200) while the process chain resolved in both eras (300 mm/s walls). So the archived Orca under-measured Orca's own work: PnP's recorded multiples are optimistic for PnP and every archived Orca median needs re-derivation (fog). No ratio requoted. Evidence: `evidence/orca-rig-repair/` (`verify.py --self-test` exit 0, 4 claims, 7/7 negative controls rejected).
 
 ## Not yet specified
+
+- **The adhesion fairness program is complete (t151, 2026-11-14): the supports-off oracle is
+  4/4 and the last residual is the ~0.10 mm brim-extent term plus ≤ 0.04 mm of Arachne
+  width, both inside their bands.** The 0.1786 mm skirt-hull input term is gone, so no
+  further skirt/brim geometry ticket is implied; the four supports-on cells remain
+  support-engine-limited (t138/t139) and out of scope for adhesion parity. **No ticket
+  graduated from this take**, and with 1–151 resolved the frontier is empty: the next
+  shape is a human pick from this section.
 
 - **Supports-on completeness is closed (t148, 2026-11-13): the four supports-on
   cells now print the support they plan, so their ratios are quotable and the
