@@ -39,9 +39,11 @@ on registry-only evidence: every row above was executed through the registry-bac
   - the combined routine table row comes from the run at `89c1e069`;
   - the per-record extended walls and the combined extended / seed-37 rows come from runs at
     `ba807a18`;
-  - those runs carried the test files they measure as `dirty_paths` (expected: the files under
-    measurement are the property tests), and each `source_state_digest` pinpoints the measured
-    content.
+  - the recorded dirty state differs per run and is reported as recorded: the `ba807a18`
+    extended and replay contexts have `dirty_paths: []`, while the `89c1e069` routine contexts
+    listed production source and documentation paths that were being edited between rounds.
+    Each `source_state_digest` pinpoints the measured content, and this document does not
+    describe a run as clean unless its own context says so.
   `target/evidence/final-provenance.txt` is a summary generated at one moment and is **not**
   authoritative for every table row; the per-run `context.json` files are. This document does not
   restate a hash that an amend would invalidate.
@@ -300,7 +302,7 @@ end of this section. No assertion was weakened and no tolerance was tuned to obt
 | **F4** Two bounds-oracle mutants were refuted only against production, not against the reference predicate, so substituting the mutant for `expected_accepts` stayed green | `config_bounds_oracle_counterexamples` now asserts the reference predicate's own verdict on the union witnesses (3 and 50 rejected, 7 accepted) and on the inclusive edges (1 and 3 accepted), in addition to the mutant disagreement. | `config_bounds_oracle_counterexamples`; the four mutants now fail the suite if substituted for the reference predicate. |
 | **F8** `Point2::to_mm` was named on the owner surface but never called | `check_mm_case` now builds `Point2::from_mm(m, -m)` and compares `to_mm()` **bitwise** against `units_to_mm` for both coordinates, covering the negative and zero-sign directions. | `ir_coord_oracle_and_bound_controls` and every sampled `Millimetres` case (plus the deterministic witness loop) run through `check_mm_case`; the `Units` and `OrderedMillimetres` variants intentionally use the unit and monotonicity checkers instead. |
 | **F9** A constant-true `defective_exact_roundtrip_claim` was asserted decoratively | Removed the helper and its assertion; the false universal-inverse claim is falsified only by the concrete `1/32 mm → 313 → 0.0313 mm` and subnormal pairs, which remain. | `ir_coord_oracle_and_bound_controls`. |
-| **F7** Provenance prose contradicted the retained contexts | The provenance section is now explicitly per run and points at each run's `context.json`; the final measurement batch was re-run on the committed tree and only that batch is quoted in the tables. | `target/evidence/final-provenance.txt` plus the per-run `context.json` files. |
+| **F7** Provenance prose contradicted the retained contexts | The provenance section is now explicitly per run and names the revision behind every quoted table row, and it states the recorded dirty state of each run rather than asserting a clean tree. | The per-run `context.json` files under `target/property-testing/<run>/<ID>/`; `target/evidence/final-provenance.txt` is only a snapshot and is no longer cited as authoritative. |
 
 ### Delta review
 
