@@ -770,6 +770,34 @@ largest unpriced members remain the sweep-volume work-set family's **canonical
 loop projection** (t129's S3, 1,587 ms ceiling, 5.7 % of base-off's required cut)
 and the per-layer program on the benchy cells.
 
+**Destination status (2026-11-14,
+[t152](issues/152-seam-inset-offset-redundancy.md)): S3 is not a clean
+deletion; the prepass seam inset offset is load-bearing, and the frontier is
+the human's per-layer relocation ruling.** Deleting
+`offset_polygons_batch` + `project_point_onto_inset_boundary` from
+`run_region_planning_entries` (`modules/core-modules/seam-planner-default/src/lib.rs`)
+and emitting the raw chosen position moves **456 of 496** base-classic-off
+layers (+1,177 / −1,149 printed points, 142 layers with a changed total `E`),
+with the first difference in the layer-0 **Skirt**; the candidate hash is
+`4265d619…` against the t151 reference `9bb18f0e…` (+1,158 bytes / +28 lines).
+The module's own unit tests falsify it: **31/0 baseline vs 29/2 candidate**
+(`batched_inset_offsets_match_the_serial_reference_per_region`,
+`candidate_less_region_still_emits_one_keyed_plan_entry`). The offset term is
+**1,248 ms** (`PrePass::SeamPlanning` **1,779 → 531 ms**, **70.15 %** of the
+stage), not t129's 1,587 ms / 92.4 %; it is **5.9x** the 0.80 % floor on the
+26.254 s single-run cell and **~10.5 %** of base classic-off's current required
+cut. **The canonical replacement is a per-layer relocation**, not a prepass
+deletion: canonical `SeamPlacer::collect_points` builds candidates from the
+printed external-perimeter loop points, which exist only after per-layer
+perimeter generation, so matching it means moving candidate generation and
+scoring into the per-layer phase — a geometry change there that needs its own
+t81-style exception. The net is the 1,248 ms minus the moved 531 ms residual and
+any loop-collection cost; unmeasured. **Frontier:**
+[153](issues/153-seam-loop-relocation-ruling.md) (HITL, unblocked — authorize,
+decline, or re-scope the relocation). Evidence:
+[`evidence/t152-seam-inset-offset/`](evidence/t152-seam-inset-offset/FINDINGS.md)
+(`verify.py` PASS, 4/4 mutations rejected).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -856,7 +884,27 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-14, the t151 take):** the human said
+**Current selection scope (2026-11-14, the t152 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **1–151 were resolved and no
+AFK ticket was on the frontier**, so the map's route arithmetic graduated the
+last named member of the sweep-volume work-set family from Not yet specified —
+t129's **S3**, the seam inset offset — as
+[t152](issues/152-seam-inset-offset-redundancy.md), following the t149
+precedent. Headline: **the prepass inset offset is not redundant.** Deleting it
+moves **456/496** base-classic-off layers (+1,177 / −1,149 points, 142 layers
+with a changed total `E`, first difference in the layer-0 Skirt) and breaks two
+unit tests (**31/0 → 29/2**); the baseline reproduces t151 (`9bb18f0e…`), the
+candidate is `4265d619…` (+1,158 bytes). The measured offset term is **1,248
+ms** (`PrePass::SeamPlanning` 1,779 → 531 ms, 70.15 %), **5.9x** the 0.80 %
+floor and **~10.5 %** of base classic-off's current cut — but it is not
+bankable without a parity decision. The canonical loop projection is a
+**per-layer relocation** of candidate generation onto the printed loops, which
+needs a t81-style exception; the ruling is graduated as
+[t153](issues/153-seam-loop-relocation-ruling.md) (HITL). No production change;
+the patch is preserved. **Frontier now: [153](issues/153-seam-loop-relocation-ruling.md)
+(HITL, unblocked).**
+
+**Previous selection scope (2026-11-14, the t151 take):** the human said
 "Continue the perf vs orca map" (no ticket named); **151 was the only unblocked,
 unclaimed AFK frontier ticket** (146 was resolved by the t146 take, and no HITL
 ticket was open), and was claimed and resolved as a **measured fairness fix**.
@@ -3895,6 +3943,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Seam inset offset: is the prepass offset redundant with the per-layer loop projection?](issues/152-seam-inset-offset-redundancy.md): **resolved (2026-11-14; Phase-1 + candidate screen — not redundant, S3 is not a clean deletion)** — removing `offset_polygons_batch` + `project_point_onto_inset_boundary` from `run_region_planning_entries` (`modules/core-modules/seam-planner-default/src/lib.rs`) and emitting the raw chosen point moves **456 of 496** base-classic-off layers (+1,177 / −1,149 printed points, 142 layers with a changed total `E`; first difference in the layer-0 **Skirt**) and breaks the module's own tests (**31/0 baseline vs 29/2 candidate**). The baseline reproduces the t151 reference `9bb18f0e…`; the candidate is `4265d619…` (+1,158 bytes / +28 lines). **The offset term is 1,248 ms** (`PrePass::SeamPlanning` **1,779 → 531 ms**, 70.15 %), not t129's 1,587 ms / 92.4 %, and is **5.9x** the 0.80 % floor / **~10.5 %** of base classic-off's current required cut. The per-layer `seam-placer` re-projects onto the wall loops but does **not** preserve the seam because the source point differs; the canonical loop projection needs candidate generation on the printed external-perimeter loops, which exist only in the per-layer phase — a **stage relocation** needing a t81-style exception, graduated [t153](issues/153-seam-loop-relocation-ruling.md). No production change; patch preserved. Evidence: [`evidence/t152-seam-inset-offset/`](evidence/t152-seam-inset-offset/FINDINGS.md) (`verify.py` PASS, 4/4 mutations rejected).
 - [Skirt hull input: fold the brim area's contour, not the bead centreline](issues/151-skirt-hull-brim-contour.md): **resolved (2026-11-14; measured fairness fix — the skirt hull folds the brim area's outer contour, the matched job moves 6/8 cells, the brim is provably untouched, and the supports-off adhesion oracle reaches 4/4 from 3/4)** — `SkirtBrim::generate` (`modules/core-modules/skirt-brim/src/lib.rs`) extends `brim_points` from `area[i].contour` (the `outer − inner [− support]` result already in hand) and drops the fold of the emitted beads' `path.points`, matching canonical `Print::_make_skirt`'s `m_objectBrimAreasByInstance[...]` `area.contour.points` (`make_brim` fills that map after the no-brim subtraction). **Measured radial move: 0.178–0.180 mm on every moving cell** (half the 0.35708 mm flow spacing), brim bbox identical in all six, and the brim→skirt step **4.962–4.965 → 5.140–5.144 mm** against t146's Orca **5.139** and prediction **5.143**. **Output:** baseline reproduces t148's set in **8/8**, candidate moves **6/8** and is byte-identical across the ordinary and accelerated arms in **8/8**; the new 16-cell set is the currency ([`reference.json`](evidence/t151-skirt-hull-contour/reference.json)). **The pre-declared "all eight move" is falsified and disclosed:** the two base supports-on cells are inert because the first-layer support footprint clips the whole brim area (`area` empty ⇒ `brim_points` empty), and the audit proves **zero moved sections / zero changed `E` lines** there rather than relying on hash equality. **Delta audit 8/8:** `Skirt` is the only moved section in the six moving cells and every motion line outside it is identical with `E` stripped; the literal "`|dE|` outside `Skirt` is zero" clause is falsified at **≤ 0.00098 mm on 3–35 of up to 508,651 lines** (accumulator re-rounding, t144's magnitude), disclosed not waived. **Oracle:** benchy classic-off **1.32 → 0.05 %**, benchy arachne-off **1.34 → 0.04 %**, base classic-off **2.89 → 0.37 %**, base arachne-off **3.45 (MISS) → 0.94 %** — **4/4**, 4/8 overall; brim rel-diffs unchanged in all four, residual = the ~0.10 mm brim-extent term plus ≤ 0.04 mm Arachne width, exactly t146's decomposition. **A/B:** 3 interleaved pairs × 8 cells, every median (−4.70 … +6.43 %) inside a **measured ±12.86 % wall / ±6.98 % CPU** same-arm null band, no wall claim (t103's ~235 ms surface). **Falsifier:** `skirt_hull_folds_the_brim_area_contour_not_the_bead_centreline` pins `x_max = 22.5` vs the centreline's `22.3` and was verified red on the pre-change library. **Drive-by, not caused:** `integrated_parity_skirt_brim_tdd` (t142's red) now authors the two declared keys it omitted and passes. No route term moved. Evidence: [`evidence/t151-skirt-hull-contour/`](evidence/t151-skirt-hull-contour/FINDINGS.md) (`verify.py` PASS, 16/16 mutations rejected).
 - [Variable-width anchor: per-segment envelope or the direct contour?](issues/146-variable-width-anchor-shape.md): **resolved (2026-11-13; premise refuted by measurement — the last supports-off oracle miss is a skirt-hull input defect, not a variable-width anchor error, and neither offered shape can pass the cell)** — the oracle's relative difference is `abs(pnp - orca) / orca` (`oracle_skirt_brim.py::rel`) and carries **no direction**: every supports-off cell is an **undershoot** (PnP prints less brim and a smaller skirt), so t144's "−5.65 % → +2.89 %" is a magnitude history, corrected in place. Arachne adds **+0.56 points** on base (2.89 → 3.45 %) and **+0.02** on the benchy (1.32 → 1.34 %), and the dominant term is shared with the classic cell, where the t144 reconstruction is exact by construction. **Mechanism:** canonical `Print::_make_skirt` folds `m_objectBrimAreasByInstance[...]` `area.contour.points` — the brim **area's outer contour** — into the skirt hull, while `SkirtBrim::generate` folds the emitted brim beads' **centrelines**; the ring distance already matches (outermost 4.964 mm both). The gap is half a flow spacing: measured brim→skirt bbox step **5.139 mm** on Orca against **5.143** predicted and **4.963** on PnP (re-derivable from `growth_mm`, now carried by `evidence/t144-brim-anchor/reduced/summary.json`). **Decomposition of the ~0.29 mm radial deficit: ~0.10 mm brim-extent term (inside its 12 % band) + 0.1786 mm skirt-hull term + ≤0.04 mm Arachne width.** Envelope and direct contour are both refuted as cell passes (≤0.04 mm and an anchor that is already exact on classic); graduated [t151](issues/151-skirt-hull-brim-contour.md), read as inside t140's "`skirt_height` layer hulls" exception, estimated to take base classic-off to ~0.4 % and base arachne-off to ~0.9 % and the supports-off oracle **3/4 → 4/4**. No wall claim (~235 ms surface). **Glossary:** "Anchor" added.
 - [MeshAnalysis work set: which outputs does production read, and what is the unread half worth?](issues/149-meshanalysis-work-set-readers.md): **resolved (2026-11-13; Phase-1 attribution — the stage is 85.68 % a bridge detector with no production reader, and the t129 S2 per-layer-overhang-polygons port is answered as not the lever)** — `classify_object` (`crates/slicer-core/src/algos/mesh_analysis.rs`) makes **4,563.2 ms** of the stage's **5,325.8 ms** on base classic-off in `find_bridge_clusters` + `compute_bridge_metrics`: **7,383,702** directed half-edge insertions into a `HashMap`, **3,199** BFS clusters, one footprint union per cluster, anchor-width/span metrics. The only production-read output is `OverhangRegion::xy_footprint` (**529.1 ms**), via `SliceRegionView::derive_needs_support`; `OverhangRegion::needs_support` is dead (the SDK re-derives), `surface_groups` resolves a `nonplanar_surface` production only writes as `None`, and `bridge_regions`' readers are the blackboard size estimate, visual debug, an undeclared prep `surface_objects` read, and a test guest. Sub-phase base-off: classify 187.0 / footprint 529.1 / eligibility 0.2 / bridge 4,563.2; base-on 4,832.9 with bridge 4,150.2; benchy-off 195.1 with bridge 95.1. **S2 is not the lever:** the port would replace 529.1 ms and leave 762.6 ms before canonical's per-layer diff. Route: **12.95 %** of the base-off cell, **16.18x** the 0.80 % floor, **24.96 %** of its indicative cut (2.078x → 2.387x, cut 51.88 % → 58.11 %); base-on 4.85 % / 6.07x; benchy-off 2.57 % / 3.21x. Graduated [t150](issues/150-meshanalysis-bridge-retirement.md) with a 16-cell byte-identical gate. Evidence: [`evidence/t149-meshanalysis-readers/`](evidence/t149-meshanalysis-readers/FINDINGS.md) (`verify.py` 43 claims, 4/4 negative controls; `probe.patch` non-landing; production restored).
@@ -4208,20 +4257,27 @@ Standing decisions for this effort (2026-09-22):
   Stage 1 landed 2026-11-10 (the canonical skirt/brim re-take): the
   matched-settings asymmetry is closed and the new reference set (subsequently
   updated by [t139](issues/139-layer-plane-parity.md)) is the
-  currency, so no future ratio may be quoted against t123's set.** The
-  unpriced fog is the **sweep-volume work-set family**. Its **per-vertex
-  overhang distance** member is now priced, ticketed, and **landed**
+  currency, so no future ratio may be quoted against t123's set.**
+  The **sweep-volume work-set family** is now fully screened. Its **per-vertex
+  overhang distance** member is priced, ticketed, and **landed**
   ([t141](issues/141-overhang-quartile-band-deletion.md) /
   [t142](issues/142-overhang-band-partition-deletion.md): the 4-band partition
   is deleted and the quartile is distance-derived, saving 26.25 % on base
   classic-off with byte-identical G-code in 8/8). **Per-layer overhang
-  polygons** is now priced and **refuted as the lever**
+  polygons** is priced and **refuted as the lever**
   ([t149](issues/149-meshanalysis-work-set-readers.md)): the union that port
   would replace is **529.1 ms** of a **5,325.8 ms** stage, and the **4,563.2
   ms** is a bridge detector with no production reader, graduated for deletion
   as [t150](issues/150-meshanalysis-bridge-retirement.md). **Canonical loop
-  projection** (t129's S3, 1,587 ms ceiling, 5.7 % of base-off's required cut)
-  still needs its own Phase-1 before a candidate can be priced. The per-layer
+  projection** (t129's S3) is priced and **answered**
+  ([t152](issues/152-seam-inset-offset-redundancy.md)): the prepass inset offset
+  is **not** redundant — deleting it moves **456/496** base-off layers and
+  fails two unit tests — and its measured term is **1,248 ms** (70.15 % of the
+  stage, 5.9x the floor, ~10.5 % of base-off's current cut), not t129's
+  1,587 ms / 92.4 %. Its canonical replacement is a **per-layer relocation** of
+  candidate generation onto the printed loops, which needs its own t81-style
+  exception; the human ruling is
+  [t153](issues/153-seam-loop-relocation-ruling.md). The per-layer
   phase joins the first program on both benchy cells.
 
 - **The bridge wave expansion is a per-layer partition change, and its benchy
