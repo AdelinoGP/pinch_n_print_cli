@@ -1,0 +1,117 @@
+diff --git a/modules/core-modules/seam-planner-default/src/lib.rs b/modules/core-modules/seam-planner-default/src/lib.rs
+index ccc18027..62db896d 100644
+--- a/modules/core-modules/seam-planner-default/src/lib.rs
++++ b/modules/core-modules/seam-planner-default/src/lib.rs
+@@ -39,12 +39,10 @@ mod contours;
+ #[allow(dead_code)]
+ mod visibility;
+ 
+-use slicer_sdk::host_batch::{offset_polygons_batch, OffsetRequest};
+ use slicer_sdk::prelude::*;
+ 
+ use crate::comparator::EnforcedBlockedSeamPoint;
+ use crate::comparator::SeamSetup;
+-use crate::contours::project_point_onto_inset_boundary;
+ use crate::visibility::candidate_paint_classification;
+ 
+ /// Default extrusion flow width used for seam scoring. Units: mm.
+@@ -277,10 +275,10 @@ fn fallback_region_position(region: &SeamPlanningRegionInput) -> Option<Point3Wi
+     })
+ }
+ 
+-/// One admitted region whose seam is chosen but not yet projected.
++/// One admitted region whose seam is chosen.
+ ///
+-/// Pass A of [`run_region_planning_entries`] fills these in plan order; the
+-/// inset offset that pass B needs is issued for the whole vector at once.
++/// Pass A of [`run_region_planning_entries`] fills these in plan order; pass B
++/// emits the entries.
+ struct PendingSeamEntry<'a> {
+     /// Region the entry belongs to (key fields and polygon source).
+     region: &'a SeamPlanningRegionInput,
+@@ -288,19 +286,17 @@ struct PendingSeamEntry<'a> {
+     chosen_position: Point3WithWidth,
+     /// Exactly what `region_candidates` produced for this region.
+     scored_candidates: Vec<ScoredSeamCandidate>,
+-    /// Inset distance for this region's toolpath: `-0.5 * width`. Units: mm.
+-    inset_delta_mm: f32,
+ }
+ 
+ /// Build the seam plan for every admitted region of a print.
+ ///
+-/// Two passes with **one** host offset call between them. Every region's inset
+-/// is an independent offset of its own polygons, so the 495-odd requests that
+-/// used to be 495 sequential host round trips (each one serial native clipper
+-/// work on the host thread) are issued as a single `offset_polygons_batch`,
+-/// which the host fans out over its rayon pool in input order. Per-request
+-/// arguments are byte-for-byte what the loop passed: the same polygons, the
+-/// same `-0.5 * width` delta, Miter joins, arc tolerance 0.0, no miter limit.
++/// The chosen point stays on the raw region boundary. The per-layer
++/// `seam-placer` module projects it onto the actual wall loops and rotates the
++/// loop there, which is canonical `SeamPlacer`'s loop projection. The prepass
++/// used to offset every region's polygons inward by half the scoring width and
++/// project the point onto that inset; that offset is a local approximation of a
++/// point the next stage re-projects onto the real geometry, and it is the
++/// dominant cost of this stage.
+ fn run_region_planning_entries(
+     region_input: &SeamPlanningView,
+     mode: SeamPlannerMode,
+@@ -356,7 +352,6 @@ fn run_region_planning_entries(
+         // would sever that indexing. Only the reported `chosen_position` moves.
+         pending.push(PendingSeamEntry {
+             region,
+-            inset_delta_mm: -0.5 * chosen_position.width, // mm
+             chosen_position,
+             scored_candidates,
+         });
+@@ -365,38 +360,16 @@ fn run_region_planning_entries(
+         return Vec::new();
+     }
+ 
+-    // The whole print's insets in one call. One request per pending entry, in
+-    // plan order, so `insets[i]` belongs to `pending[i]` by construction.
+-    let requests: Vec<OffsetRequest> = pending
+-        .iter()
+-        .map(|entry| OffsetRequest {
+-            polygons: entry.region.ex_polygons.clone(),
+-            delta_mm: entry.inset_delta_mm,
+-            join: OffsetJoinType::Miter,
+-            arc_tolerance_mm: 0.0,
+-            miter_limit: None,
+-        })
+-        .collect();
+-    let insets = offset_polygons_batch(&requests);
+-
+-    // Pass B — project each chosen seam onto its own returned inset and emit
+-    // the entry. Field-for-field and order-for-order what the loop emitted.
++    // Pass B — emit each chosen seam on its raw boundary point. The per-layer
++    // `seam-placer` projects it onto the actual wall loop.
+     let mut entries = Vec::with_capacity(pending.len());
+-    for (entry, region_insets) in pending.into_iter().zip(insets) {
+-        let mut chosen_position = entry.chosen_position;
+-        if let Some(projected) = project_point_onto_inset_boundary(
+-            &region_insets,
+-            [chosen_position.x, chosen_position.y],
+-        ) {
+-            chosen_position.x = projected[0];
+-            chosen_position.y = projected[1];
+-        }
++    for entry in pending {
+         entries.push(SeamPlanEntry {
+             global_layer_index: entry.region.global_layer_index,
+             object_id: entry.region.object_id.clone(),
+             region_id: entry.region.region_id.clone(),
+             variant_chain: entry.region.variant_chain.clone(),
+-            chosen_position,
++            chosen_position: entry.chosen_position,
+             chosen_wall_index: 0,
+             scored_candidates: entry.scored_candidates,
+         });
+@@ -500,6 +473,7 @@ impl PrepassModule for SeamPlannerDefault {
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    use crate::contours::project_point_onto_inset_boundary;
+ 
+     /// Square `[x0, y0] .. [x0 + side, y0 + side]` region boundary, in mm.
+     fn square_region(

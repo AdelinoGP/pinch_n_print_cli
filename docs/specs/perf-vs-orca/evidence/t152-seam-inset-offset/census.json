@@ -1,0 +1,21 @@
+{
+ "old": {
+  "path": "target\\t151\\t152-screen\\gcode\\base-classic-off-baseline-ordinary.gcode",
+  "sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+  "bytes": 21187100,
+  "lines": 521108
+ },
+ "new": {
+  "path": "target\\t151\\t152-screen\\gcode\\base-classic-off-candidate-ordinary.gcode",
+  "sha256": "4265d619dbf127ef9440858127b65c151d100ec8073614e6e2fe40bb80ae42d7",
+  "bytes": 21188258,
+  "lines": 521136
+ },
+ "layers": 496,
+ "moved_layers": 456,
+ "added_points": 1177,
+ "removed_points": 1149,
+ "e_total_changed_layers": 142,
+ "first_moved_layer": 1,
+ "first_moved_section": "Skirt"
+}
