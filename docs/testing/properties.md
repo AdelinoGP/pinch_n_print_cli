@@ -187,6 +187,29 @@ The existing `properties-windows` CI job runs `cargo xtask test --summary --prop
 automatically. The routine lane was executed here on Windows; the CI execution itself is not
 claimed from this workstation run.
 
+The six `H-*` records added by packet `proptest-openrscad_06_pbt-ir-config` were calibrated the
+same way and their pilot, routine, extended and retained-seed-replay measurements — per-record
+walls, accepted-case counts, per-record bounds and the reference numeric proofs — are recorded
+in [proptest-ir-config-evidence.md](proptest-ir-config-evidence.md) rather than duplicated
+here. Their committed profiles use the same shape (`cases` 64/1024, zero rejection budgets,
+`max_default_size_range` 32/256, `max_shrink_iters` 64/256, chacha, `in_process`,
+`timeout_ms = 0`) with family-specific bounds; the coordinate pair additionally satisfies
+`0 < 10_000·max_abs_mm ≤ 2^24`, `0 < max_abs_units ≤ 2^24` and
+`min(max_abs_units, 10_000·max_abs_mm) ≤ 1_000_000` so the shared rounding-boundary helper
+receives a legal argument.
+
+The three scheduler records added by packet `proptest-openrscad_07_pbt-scheduler` (`H-DAG`,
+`H-CLAIMS`, `H-REGISTRY`) were calibrated the same way; their pilot, routine, extended and
+retained-seed-replay measurements, per-record walls, accepted-case counts, bounds and
+oracle/control provenance are recorded in
+[proptest-scheduler-evidence.md](proptest-scheduler-evidence.md) rather than duplicated here. Their
+committed profiles use the same shape (`cases` 64/1024, zero local/global/flat-map rejection
+budgets, `max_default_size_range` 32/256, `max_shrink_iters` 64/256, chacha, `in_process`,
+`timeout_ms = 0`) with scheduler-specific bounds. The existing `properties-windows` job runs
+`cargo xtask test --summary --properties --tier routine` with no hand-maintained record list, so it
+selects the three new records automatically; the combined routine selection was executed here on
+Windows and reported `VERDICT: PASS`.
+
 ## Context and event schema
 
 `PNP_PROPERTY_CONTEXT` is one JSON object set on each selected execution child (serialized, never
@@ -328,7 +351,12 @@ Local generator replaced by the shared `anchor_cases`
 witnesses run deterministically inside `proptest_ir_travel_anchors_membership` on every
 execution: empty collection, valid singleton, dangling anchor, multiple missing anchors
 (first-in-travel-order assertion), repeated anchors (valid and dangling), reordered
-`ordered_entities`, and extreme IDs `0` / `u64::MAX` as member and as dangling. Size dimensions
+`ordered_entities`, and extreme IDs `0` / `u64::MAX` as member and as dangling. The
+IR/config packet adds one required witness: an ID that appears only in an unrelated side table
+(`speed_profiles`) is still dangling. A test-local "side-table union" reference (unioning
+`ordered_entities` with the `speed_profiles` and `support_entity_identities` keys) must answer
+`None` on that witness while both the independent oracle and `validate_travel_anchors` report
+the missing id, so the mutation is provably caught rather than merely absent. Size dimensions
 are the two list lengths against the registry bounds. Entities are built with FRU over
 `print_entity_base` (`crates/slicer-sdk/src/test_support/fixtures.rs`); layers and travels use
 `Default` plus the fields under test. Empty paths and other layer fields are immaterial to this
@@ -394,6 +422,1267 @@ existing tests pass (`ir_validation_tdd`, `entity_id_invariants_tdd`, SDK `prope
 Defect outcome for this slice (AC-N4): **no production defect in `validate_travel_anchors` was
 observed**; the synthetic accept-all substitute was rejected by
 `property_anchor_oracle_catches_accept_all`; no regression was manufactured.
+
+## H-COORD
+
+Registry record: `id = "H-COORD"`, `package = "slicer-ir"`, `target_kind = "test"`,
+`target_name = "property_ir"`, `test_name = "proptest_coord_conversion_envelopes"`,
+`production_symbol = "slicer_ir::mm_to_units"`,
+`production_path = "crates/slicer-ir/src/slice_ir.rs"`,
+`features = ["slicer-ir/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-coord"`.
+
+### Stable property ID
+
+`H-COORD` — bounded mm↔unit conversion envelopes for the canonical 100 nm unit.
+
+### Owner
+
+Package `slicer-ir`; test target `property_ir` (integration target with
+`required-features = ["property_testing"]`); test `proptest_coord_conversion_envelopes` in
+`crates/slicer-ir/tests/property_ir.rs`. Production surface: `slicer_ir::mm_to_units`,
+`slicer_ir::units_to_mm`, `Point2::from_mm` / `Point2::to_mm` and `UNITS_PER_MM`
+(`crates/slicer-ir/src/slice_ir.rs`), plus `slicer_sdk::coords::{mm_to_units, units_to_mm,
+SCALING_FACTOR}` (`crates/slicer-sdk/src/coords.rs`) as the module-author wrappers. Shared
+reference models live in `crates/slicer-ir/tests/common/property_oracles.rs`.
+
+### Contract
+
+Per `docs/08_coordinate_system.md` § Conversion & Determinism: one unit is 100 nm
+(`1 unit = 10⁻⁴ mm`), so the factor is `10_000` units per millimetre. The raw helpers perform
+a plain f32 multiply-and-round (mm→units) and a divide (units→mm); they promise **no**
+validation, so non-finite or unbounded inputs are outside this charter. The property certifies
+two things only:
+
+1. a derived absolute-error envelope per direction over a checked finite domain, and
+2. exactness of the documented half-away tie rule at `m = 1/32 mm`.
+
+It does **not** assert a universal f32 inverse. `mm_to_units(units_to_mm(n)) == n` and
+`units_to_mm(mm_to_units(m)) == m` are both false in general (the `1/32 mm → 313 → 0.0313 mm`
+witness shows it), and the test says so in a comment rather than asserting the stronger claim.
+
+### Domain
+
+Profile integers `M = max_abs_mm` and `U = max_abs_units`, constrained by
+`CoordProfile::new` (`crates/slicer-ir/tests/common/property_oracles.rs`) to
+
+- `M` finite and positive, `U > 0`;
+- `0 < 10_000·M ≤ 2^24`, and `U ≤ 2^24`;
+- `min(U, 10_000·M) ≤ 1_000_000`, the cap of the shared
+  `slicer_sdk::test_support::property_testing::domains::rounding_boundary_mm` helper.
+
+These inequalities keep the scaled products finite, keep integer outputs far from cast
+saturation, and keep integer-to-f32 inputs exact. They are safety conditions; they prove
+nothing about inverses. Generated mm inputs are finite f32 in `[-M, M]` from the shared
+`finite_f32` strategy (which reaches both zero signs and subnormal witnesses), plus
+`rounding_boundary_mm(min(U, 10_000·M))` so the half-unit boundaries around
+`(k + 0.5)/10_000 mm` are populated. Unit inputs are integers in `[-U, U]`. Ordered pairs for
+monotonicity are drawn from the same mm domain.
+
+### Strategy
+
+One tagged value type (`CoordCase`) with three structurally distinct variants, so shrinking
+cannot turn a millimetre case into a unit case or into an unordered pair:
+
+- `Millimetres(f32)` — `finite_f32(-M, M)` (weight 4) and the boundary strategy (weight 2);
+- `Units(i64)` — `-U..=U`;
+- `OrderedMillimetres(f32, f32)` — a pair normalised to `left <= right`.
+
+Mandatory deterministic witnesses run before sampling on every execution: `1/32 mm` and its
+negative mirror (`±313`), the three floats around each side of that half case, both zero signs,
+two subnormal witnesses, both interval ends, the unit envelope at
+`{-U, -1, 0, 1, U}`, monotonicity at the interval ends, `UNITS_PER_MM == 10_000` and
+`SCALING_FACTOR == 10_000`, and exact `Point2` integer identity at `i64::MIN` / `i64::MAX`
+through `postcard` (never through a float).
+
+### Oracle
+
+`check_mm_case`, `check_units_case`, `check_monotonic_pair` and `check_mm_case_with` in
+`crates/slicer-ir/tests/common/property_oracles.rs`. For exact real input value `m`
+represented by f32, `t = 10_000·m` is computed exactly in f64 on this domain (a 24-bit
+significand times the integer factor fits f64 precision). With f32 round-to-nearest
+multiplication, the proved error is `e_mul ≤ 2^-24·|t| + 2^-150` **units**, so
+
+```text
+|mm_to_units(m) - t| ≤ 1/2 + e_mul                     (units)
+```
+
+For integer `n` with `|n| ≤ U` the f32 input cast is exact and
+
+```text
+|units_to_mm(n) - x| ≤ (2^-24 + 2^-53)·|x| + 2^-150  (millimetres),  x = n/10_000
+```
+
+The reference arithmetic is f64, not real arithmetic. The `2^-24·|x|` term is the f32 division's
+half ulp; the `2^-53·|x|` term is the **f64 reference division's own** rounding error, which is
+not below the `2^-150` floor (for `n = 1` it is about `4.8e-21`, while `2^-150` is about
+`7.0e-46`), so it is added explicitly. `2^-150` remains only as the subnormal floor, where a
+relative bound underflows to zero. Both allowed-error values are outward-rounded (`next_up`) so
+the comparison can never be tighter than the derivation. `check_mm_case` additionally
+asserts exact agreement between `slicer_ir::mm_to_units`, `slicer_sdk::coords::mm_to_units`
+and `Point2::from_mm` — explicitly **consistency evidence only**, not correctness evidence,
+because all three share the same implementation shape. Correctness rests on the analytical
+envelopes and the half-case derivation. `expected_half_away` re-derives the tie rule from
+`10_000·m` in f64 and half-away-from-zero rounding, so a truncating implementation is
+distinguishable from a rounding one.
+
+### Tolerance
+
+The tolerance is derived, never tuned: `1/2 + 2^-24·|t| + 2^-150` units and
+`(2^-24 + 2^-53)·|n|/10_000 + 2^-150` mm, both outward-rounded. The mutation controls in
+`ir_coord_oracle_and_bound_controls` (`crates/slicer-ir/tests/property_ir_contracts.rs`)
+prove the bounds falsify a factor-of-100 scaling mutant and a truncating mutant at the exact
+half case, and that the envelope **alone** accepts truncation there (truncation is exactly
+`0.5` units off, which the packet's bound admits) — which is why the tie rule is checked
+separately by `check_mm_case_with` instead of by tightening the envelope. The
+"universal exact inverse" claim is falsified by a concrete pair rather than accepted.
+
+### Shrinking
+
+Shrinks move within `finite_f32(-M, M)`, `rounding_boundary_mm` and `-U..=U`, so every shrink
+stays inside the declared bounds. The case tag is pinned by
+`property_oracles::mode_locked` — a `no_shrink` mode selector fed through `prop_flat_map` — so
+the payload tree shrinks inside the originally generated variant and a unit case cannot become
+a millimetre case mid-shrink (the mechanism is probed by
+`mode_lock_preserves_tags_under_simplification`). Boundary and zero-sign witnesses
+are reachable through the deterministic block regardless of what the random sampler produces;
+the shared `finite_f32` and `rounding_boundary_mm` strategies preserve the finite bound in
+their own value trees. Shrink limits are profile-bounded (`max_shrink_iters`,
+`max_shrink_time_ms = 0` = no elapsed-time cutoff). Shrink completion is reported
+`null`/unknown: proptest 1.11 cannot identify it, so a retained case is never claimed minimal.
+
+### Execution
+
+Both tiers. `isolation = "in_process"`, `timeout_ms = 0`, `rng_algorithm = "chacha"`,
+`cases = 64` routine / `1024` extended, `max_default_size_range = 32` / `256`,
+`max_shrink_iters = 64` / `256`, rejection budgets `0` (the domain is total).
+Bounds `max_abs_mm = 25 → 100`, `max_abs_units = 250_000 → 1_000_000`. Every run was executed
+on Windows through `cargo xtask test --summary --properties --property H-COORD --tier
+<routine|extended>`; see `docs/testing/proptest-ir-config-evidence.md` for measured case
+counts, walls and the retained-seed replay.
+
+### Failure record
+
+`failure.json` retains the classification (`sut_or_contract`, `generator`, `oracle`, or
+`contract`), the full context, the concrete/debug input, the tier-bearing reproduction command
+(`cargo xtask test --summary --properties --property H-COORD --tier <tier> --seed <seed>`),
+an executable direct reproduction, captured SDK logs and shrink status. Root-cause regression
+destination for a confirmed defect: a named concrete input in
+`crates/slicer-ir/tests/common/property_oracles.rs`'s controls or a dedicated named test — never
+a seed.
+
+### Acceptance
+
+The target is actually executed with `--exact --nocapture`; the derived envelope and the exact
+half-away pair are checked every execution; the mutation controls reject the scaling,
+truncation and false-inverse claims; `ir_property_domain_rejections` rejects unsafe profiles
+before sampling. Defect outcome: **no production defect in the conversion helpers was
+observed**; no regression was manufactured.
+
+## H-IDS
+
+Registry record: `id = "H-IDS"`, `package = "slicer-ir"`, `target_kind = "test"`,
+`target_name = "property_ir"`, `test_name = "proptest_entity_and_modifier_ids"`,
+`production_symbol = "slicer_ir::LayerEntityIdGen::next"`,
+`production_path = "crates/slicer-ir/src/entity_id.rs"`,
+`features = ["slicer-ir/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-ids"`.
+
+### Stable property ID
+
+`H-IDS` — bounded allocation sequence plus representable modifier-id parents.
+
+### Owner
+
+Package `slicer-ir`; test target `property_ir`; test `proptest_entity_and_modifier_ids` in
+`crates/slicer-ir/tests/property_ir.rs`. Production surface: `LayerEntityIdGen::{new, next}`
+(`crates/slicer-ir/src/entity_id.rs`) and `modifier_sub_region_id`,
+`modifier_sub_region_id_fits`, `is_modifier_namespace_id`, `modifier_base_region_id`,
+`MODIFIER_FOOTPRINT_REGION_ID`, `MODIFIER_VARIANT_REGION_ID_STRIDE`
+(`crates/slicer-ir/src/slice_ir.rs`). The namespace flag itself is private; the charter states
+its documented value `2^63` rather than importing an invented public constant.
+
+### Contract
+
+`LayerEntityIdGen::new` starts at `1`; `next` returns a strictly monotonic allocation and never
+returns the reserved `0` sentinel. The type is intentionally `!Send + !Sync` (`Cell<u64>` plus
+`PhantomData<*const ()>`); that static assertion stays in `entity_id_invariants_tdd` and this
+property does not change concurrency or exhaustion semantics. Allocation exhaustion is **not**
+exercised by looping to `u64::MAX`; the property is explicitly bounded below overflow.
+
+For modifier sub-region ids, with `S = MODIFIER_VARIANT_REGION_ID_STRIDE` (1_000_003),
+`B = 2^63` and `P = floor((B - S - 1)/S)`, the documented worst-case payload
+`parent·S + (S - 1)` fits in the namespace iff `parent ≤ P`. `P` is derived at runtime with
+checked `u128` arithmetic in `representable_parent_limit`, and `payload_fits_model` re-derives
+the same predicate independently of `modifier_sub_region_id_fits`. For a supported parent the
+minted id carries the high-bit namespace marker over `parent·S + hash` with
+`1 ≤ hash ≤ S - 1`; `modifier_base_region_id` recovers `parent`.
+
+The property claims **no universal injectivity**: distinct parents cannot share an id for
+identical object/footprint inputs (the quotient recovers the parent), but distinct
+object/footprint inputs can collide inside the bounded stride of 1_000_003 values. Unequal
+hashes are never required. Repeated identical inputs are determinism evidence, not an
+independent hash oracle. No geometry-validation claim is made: hashing does not certify the
+footprint.
+
+### Domain
+
+- Allocations: `0..=max_allocations` (256 routine / 4096 extended, both far below `u64::MAX`).
+- Parents: `0..=P` sampled for the supported mode; `{P + 1, u64::MAX}` for the unsupported
+  mode.
+- Object text: the shared `slicer_sdk::test_support::property_testing::domains::id_text`
+  domain, bounded by `max_id_bytes` (64 / 256); the UUID family (36 bytes) is used when the
+  bound admits it, otherwise the non-UUID complement family.
+- Footprints: integer-grid `ExPolygon` values with at most `max_footprint_points` (8 / 32)
+  total points, including an empty footprint and a holed footprint.
+
+### Strategy
+
+One tagged `IdCase` with three structural variants — `Allocations(u64)`,
+`SupportedModifier { parent, object_id, footprint }`, `UnsupportedParent { parent }` — so
+shrinking cannot move a supported parent into the unsupported arm nor an allocation length into
+a modifier case. Deterministic mandatory witnesses run before sampling: zero and singleton
+allocations, the full `1..=64` sequence against `1..=n`, two fresh generators agreeing,
+`fits(P)` true, `fits(P + 1)` and `fits(u64::MAX)` false, model/predicate agreement over
+`{0, 1, 2, S-1, S, S+1, P-1, P}` and at `P + 1`, the namespace/payload/decode rules for
+`{0, 1, 2, S, P}`, determinism on identical inputs, distinct ids for distinct parents under
+shared object/footprint inputs, ordinary low-bit ids and the footprint sentinel decoding to
+`None`, and a never-minted bit-marked id still decoding to `Some(7)` (namespace membership is
+not provenance validation).
+
+### Oracle
+
+`property_oracles::{representable_parent_limit, payload_fits_model, expected_payload_bounds,
+decode_model, allocation_model, footprint}`. `decode_model` is a direct quotient/remainder
+decode of the documented payload shape, not a call into the production helpers.
+`allocation_model(n)` is the mathematical sequence `1..=n`. The production
+`modifier_sub_region_id_fits` is compared against `payload_fits_model` rather than trusted.
+
+### Tolerance
+
+Exact integer comparison throughout; no numeric tolerance exists on this surface.
+
+### Shrinking
+
+Shrinks remove allocations or simplify text/footprint values while preserving the variant tag:
+the tag is pinned by `property_oracles::mode_locked`, so a supported parent stays supported
+(`≤ P`) and an unsupported one stays at `P + 1`/`u64::MAX` instead of shrinking into another
+arm. The mechanism is probed by `mode_lock_preserves_tags_under_simplification`. The documented
+minting assertion is **not** re-triggered per generated case: `modifier_sub_region_id` asserts
+rather than returning a `Result`, and minting every unsupported sample would emit one panic per
+case. The assertion text
+(`modifier sub-region id payload exceeds its namespace or reserved sentinel`) is observed
+exactly once per run, deterministically, by `ir_id_parent_and_sentinel_rejections` in
+`crates/slicer-ir/tests/property_ir_contracts.rs` via `catch_unwind`, including a `P + 1` and a
+`u64::MAX` probe. This keeps the retained property log free of panic output while the static
+assertion still has a named, falsifiable observer.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, `cases = 64 / 1024`,
+`max_default_size_range = 32 / 256`, `max_shrink_iters = 64 / 256`, rejection budgets `0`.
+Bounds `max_allocations = 256 → 4096`, `max_id_bytes = 64 → 256`,
+`max_footprint_points = 8 → 32`. Measured on Windows through the registry-backed command; see
+`docs/testing/proptest-ir-config-evidence.md`.
+
+### Failure record
+
+As for `H-COORD`; the direct reproduction carries the same consumed `PNP_PROPERTY_CONTEXT` and
+the tier-bearing registry command. Root-cause regression destination: a named concrete test
+(allocator or modifier-id), never a seed.
+
+### Acceptance
+
+The allocation sequence equals `1..=n` for every generated length, the derived `P` boundary is
+observed from both sides, and namespace/payload/decode/sentinel rules hold for every supported
+parent. Runtime collision detection is explicitly **not** claimed here: it is the obligation of
+`proptest-openrscad_08_pbt-runtime` (`split_modifier_footprints` transactionality) and
+`proptest-openrscad_11_pbt-prepass` (region-map caller behaviour). Defect outcome: **no
+production defect was observed**; no regression was manufactured.
+
+## H-IR-SERDE
+
+Registry record: `id = "H-IR-SERDE"`, `package = "slicer-ir"`, `target_kind = "test"`,
+`target_name = "property_ir"`, `test_name = "proptest_ir_serialization_and_defaults"`,
+`production_symbol = "slicer_ir::LayerCollectionIR"`,
+`production_path = "crates/slicer-ir/src/slice_ir.rs"`,
+`features = ["slicer-ir/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-ir-serde"`.
+
+### Stable property ID
+
+`H-IR-SERDE` — finite-domain serialization of a deliberately selected IR slice.
+
+### Owner
+
+Package `slicer-ir`; test target `property_ir`; test `proptest_ir_serialization_and_defaults`
+in `crates/slicer-ir/tests/property_ir.rs`. Complementary deterministic controls live in
+`ir_serde_defaults_and_nonfinite_policy`
+(`crates/slicer-ir/tests/property_ir_contracts.rs`).
+
+### Contract
+
+For a bounded, finite, dyadic IR slice, a Postcard round trip and a finite-domain JSON round
+trip preserve: entity IDs, entity ordering, `ExtrusionRole` values, `RegionKey` identity,
+`PrintEntity.tool_index`, `ExtrusionPath3D.{role, speed_factor bits, tool_index, order_lock}`,
+point counts and the selected point float bits, travel anchors and their optional coordinate
+bits, `speed_profiles` rows with per-point factor bits, and `support_entity_identities` rows
+with their family/body/demand strings. Integer `Point2` geometry (`ExPolygon`) survives both
+codecs exactly, including `i64::MIN`/`i64::MAX`.
+
+This is a **selected slice**, not certification of every IR type and not a printable-validity
+claim. The observations are captured from the source value before encoding by
+`observe_layers`, which reads fields directly and never calls either codec; the encoder/decoder
+pair is the surface under test, which is why the test carries a `// test-quality:` waiver
+naming the pair.
+
+Nonfinite policy is boundary-specific: JSON correctness properties here admit finite dyadic
+records only, and primitive/`ConfigValue` nonfinite serialization may produce `null` and is
+never credited as a lossless successful JSON round trip. A JSON `null` in a required `f32`/`f64`
+field is rejected on decode. Postcard is separately tested on raw scalar/`ConfigValue` bit
+patterns, including signed zero, infinities and NaN payloads, comparing bits rather than
+native NaN equality — and those cases are explicitly representation-only, never
+production-valid config/model inputs. No blanket IR finite validator is introduced.
+
+The legacy-JSON defaults covered deterministically are exactly the actually-defaulted fields:
+`PrintEntity.tool_index -> 0`, `ExtrusionPath3D.tool_index -> None`,
+`ExtrusionPath3D.order_lock -> None`, `LayerCollectionIR.speed_profiles -> []`,
+`LayerCollectionIR.support_entity_identities -> []`. Omission of required `entity_id` and a
+wrong ID type are rejected. Omission tests are JSON map compatibility, **not** a claim that
+serde defaults recover arbitrary truncated Postcard sequences.
+
+### Domain
+
+`max_entities = 8 / 16`, `max_travels = 16 / 32`, `max_points = 4 / 8`, `max_layers = 4 / 8`
+(each dimension also inside the shared `entity_layers` limits: ≤ 128 per dimension and
+≤ 100 000 points per product). Layers come from
+`slicer_sdk::test_support::property_testing::domains::entity_layers` with the roles
+`{OuterWall, InnerWall, SparseInfill, SupportMaterial}`; augmentation choices (path tool
+selectors, ordering locks, travel counts) and the integer geometry are generated as part of the
+strategy, not sampled inside `prop_map`. Points are dyadic (`i16/8` mm), so the JSON domain is
+finite and exactly representable in both directions.
+
+### Strategy
+
+`(entity_layers, per-layer choices, integer geometry)` mapped into an augmented layer vector:
+odd selectors set `ExtrusionPath3D.tool_index`, even locks set `order_lock`,
+`PrintEntity.tool_index` cycles over `0..3`, travels anchor to real entity ids with dyadic or
+absent coordinates, `speed_profiles` rows are derived from each even-index entity's own points
+(so a shrink cannot strand a row), and `support_entity_identities` rows cover odd-index
+entities. Shrinking removes layers/entities/travels and simplifies values while keeping the
+side-table relationships, because they are computed from the entity set rather than sampled
+independently.
+
+### Oracle
+
+`observe_layers` (field/bit observation) plus `property_oracles::footprint` for the exact
+integer geometry. The property compares `observe_layers(decoded)` against the pre-encode
+observation, and additionally compares the decoded value to the source value; the observation
+is the independent check, the value comparison is the natural round-trip assertion.
+
+### Tolerance
+
+Exact: integer identity, enum identity, string identity and float **bit** identity. No
+tolerance is applied and `null` is never accepted as a lossless value.
+
+### Shrinking
+
+Preserves the finite-dyadic domain and the role/path/side-table relationships described above.
+Shrink limits are profile-bounded; completion is reported unknown.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, `cases = 64 / 1024`,
+`max_default_size_range = 32 / 256`, `max_shrink_iters = 64 / 256`, rejection budgets `0`.
+Measured on Windows; see `docs/testing/proptest-ir-config-evidence.md`.
+
+### Failure record
+
+As for `H-COORD`. The frozen `region_map_versioned_decode_tdd` fixture is **not** regenerated
+by this charter, and the current schema constants are unchanged.
+
+### Acceptance
+
+Both codecs preserve the observed slice for every generated finite case, integer geometry stays
+exact through both, and the deterministic target observes all five named JSON defaults plus the
+absent/mistyped-required-ID and required-null rejections and the representation-only Postcard
+exceptional bits. Defect outcome: **no production defect was observed** in the selected slice.
+
+## H-CONFIG-INTERN
+
+Registry record: `id = "H-CONFIG-INTERN"`, `package = "slicer-ir"`, `target_kind = "test"`,
+`target_name = "property_ir"`, `test_name = "proptest_config_equality_hash_and_interning"`,
+`production_symbol = "slicer_ir::RegionMapIR::intern_config"`,
+`production_path = "crates/slicer-ir/src/slice_ir.rs"`,
+`features = ["slicer-ir/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-config-intern"`.
+
+### Stable property ID
+
+`H-CONFIG-INTERN` — bitwise config equality/hash and the `RegionMapIR` interner contract.
+
+### Owner
+
+Package `slicer-ir`; test target `property_ir`; test
+`proptest_config_equality_hash_and_interning` in `crates/slicer-ir/tests/property_ir.rs`.
+Production surface: `ConfigValue::{PartialEq, Eq, Hash}`, `ResolvedConfig::{PartialEq, Eq,
+Hash}`, `slicer_ir::resolved_config::ResolvedFloatOrPercent` and
+`RegionMapIR::{intern_config, config_for_raw, config_for}`
+(`crates/slicer-ir/src/{slice_ir,resolved_config}.rs`). Deterministic controls live in
+`ir_config_oracle_counterexamples` and `ir_config_type_and_integer_range_rejections`.
+
+### Contract
+
+`ResolvedConfig` and `ConfigValue` compare and hash **float bits** (`to_bits()`), including
+options, sequences and `BTreeMap` extensions, so `Eq` and `Hash` agree by construction —
+`signed zero`, distinct NaN payloads and infinities stay distinct. Equality therefore means
+"same representation", not "numerically close" and not "semantically equivalent after
+resolution". `RegionMapIR::default()` seeds `configs[0]` with `ResolvedConfig::default()`, so
+`ConfigId(0)` is always a valid index; `intern_config` deduplicates by equality (linear scan,
+first occurrence wins) and `config_for` resolves a `RegionKey` through the plan's
+`ConfigId`. `config_for` panics on broken construction invariants; it is not a validating API
+and indexing invalid ids is not tested as a "missing validator".
+
+The property asserts exactly two things per case:
+
+```text
+actual_eq(a, b) == (representation_key(a) == representation_key(b))
+actual_eq(a, b)  =>  hash_with_same_hasher(a) == hash_with_same_hasher(b)
+```
+
+Unequal hashes are **never** required for unequal values, and no digest is persisted.
+
+### Domain
+
+Two clearly labelled input modes per generated item:
+
+1. **Finite compatible owner fixtures** built from `ResolvedConfig::default()` with explicit
+   positive `layer_height`, `first_layer_height` and `line_width`, plus a varied
+   `outer_wall_speed`, `initial_layer_line_width` (percent or absolute),
+   `arachne_min_feature_size` (present/absent), `bed_shape` length, `fill_authored_coloring`
+   length and nested `extensions` shape. These are compatible structural fixtures, not a
+   replacement for the full resolver.
+2. **Raw representation-contract fixtures** with signed zeros, infinities and distinct/same NaN
+   payloads in `layer_height`/`outer_wall_speed`/`arachne_min_feature_size`. These exercise
+   Eq/Hash/serde mechanics only and are never claimed to be valid configs.
+
+`0 < max_abs_config_value ≤ 2^24` (4096 routine / 16384 extended) is checked before narrowing
+into the f32-backed fields; positive/cross-field compatible subsets are chosen explicitly
+rather than inferred from that magnitude bound. `max_list_len` (4 / 8) bounds the **total**
+generated list elements across one config's extension trees (the extension shape is clamped to
+`breadth^depth` nodes plus the two sequence lengths), and `max_list_depth` (2 / 3) bounds
+nesting, so a per-node branching bound cannot hide exponential allocation.
+
+### Strategy
+
+`ConfigSeed::{Finite, Raw, Repeat, Scalar, Holder}` with structural tags. `Repeat` rebuilds the
+previous configuration from its canonical Postcard bytes, so equal pairs come from an
+independent construction path rather than `clone == clone`; unequal pairs arise from real
+field/value/variant/length changes across the finite and raw arms; `Scalar`/`Holder` push
+bounded `ScalarConfigDomain` values through the real `ResolvedConfig::apply_cli_key` seam.
+Mandatory deterministic witnesses run before sampling: `-0.0` vs `0.0`, two distinct NaN
+payloads, percent vs absolute `FloatOrPercent`, an independently reconstructed equal pair
+(equality and hash agree), `ConfigId(0)` for the default seed, rank-1 insertion + idempotence
+for a nondefault config, and a real keyed plan reading the nondefault config.
+
+### Oracle
+
+`property_oracles::{representation_key, struct_eq, hash_of, pool_model, with_*}`.
+`representation_key` is the canonical Postcard encoding of the whole `ResolvedConfig`, used as
+an equality oracle **independent of the handwritten Eq/Hash**. Its premise — that Postcard
+preserves scalar float bits and ordered `BTreeMap` content on these structures — is validated
+first, on deliberate signed-zero / NaN-payload / option / list / extension counterexamples, by
+`ir_config_oracle_counterexamples`. `pool_model` computes first-occurrence ranks over those
+keys, seeded with the serialized default. `hash_of` uses `DefaultHasher`, a within-run
+observation, never a persisted digest.
+
+### Field-family coverage (reviewed against the live declaration)
+
+The generated axes are a deliberate subset, not an exhaustive roster. Dispositions:
+
+| Field family | Examples | This property | Deterministic coverage |
+|---|---|---|---|
+| fixed `f64` | `layer_height`, `first_layer_height`, `line_width` | varied (finite and raw-bit) | `resolved_config_defaults_tdd` |
+| fixed `f32` | `outer_wall_speed` | varied (finite and raw-bit) | `resolved_config_defaults_tdd` |
+| `ResolvedFloatOrPercent` | `initial_layer_line_width` | varied (percent and absolute) | `resolved_config_defaults_tdd` |
+| optional `f32` | `arachne_min_feature_size` | varied (present/absent/raw) | `config_map_parity_tests` in `--lib` |
+| `Vec<f64>` / `Vec<String>` | `bed_shape`, `fill_authored_coloring` | varied length and content | `config_map_parity_tests` |
+| `BTreeMap` extensions | `extensions` | varied depth/breadth/content | `config_map_parity_tests::resolution_extension_reaches_the_config_map_and_participates_in_eq`, `filament_max_volumetric_speed_tests::extension_value_participates_in_equality_and_hash` |
+| `u32` / `String` | `wall_count`, `top_fill_holder` | varied through `apply_cli_key` | `resolved_config_defaults_tdd` |
+| `bool` and enumerated plain fields | `support_enabled`, `wall_generator`, `infill_type`, `support_type` | **not varied here** | read by the handwritten `PartialEq`; covered structurally, not by this property |
+| serialization-only `carrier` field | `flat_bridge_closing_join` | **not varied here** | it exists only to keep the Postcard field order; `flat_bridge_closing_join_is_a_serialization_only_carrier` pins that it is absent from `to_config_map`/`typed_field_keys` and still round-trips |
+| remaining `f32`/`u32`/`Option` support, machine-limit and MMU keys | `support_*`, `machine_max_*`, `mmu_*` | **not varied here** | `machine_limit_config_tests`, `config_map_parity_tests` |
+
+A defect confined to a field family listed as "not varied here" would not be caught by this
+property; the property's claim is scoped to the varied axes plus the representation contract.
+
+### Tolerance
+
+Exact: bitwise equality, byte equality of the canonical representation, and exact `ConfigId`
+equality. No tolerance exists on this surface.
+
+### Shrinking
+
+Shrinks shorten lists, reduce extension depth/breadth, and simplify scalars while staying inside
+`max_abs_config_value`, `max_list_len` and `max_list_depth`. Each configuration's input mode is
+pinned by `property_oracles::mode_locked`, so a raw-bit fixture cannot shrink into a finite
+structural fixture. `Repeat` always rebuilds from its shrunk predecessor, so an equal pair stays
+an equal pair. The extension budget counts **total** list elements
+(`b + b² + … + b^depth`, `property_oracles::extension_node_count`), not only the innermost
+leaves; a depth-2, breadth-2 request against a budget of 4 is clamped and the concrete case is
+asserted in `ir_config_oracle_counterexamples`.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, `cases = 64 / 1024`,
+`max_default_size_range = 32 / 256`, `max_shrink_iters = 64 / 256`, rejection budgets `0`.
+Bounds `max_configs = 4 → 8`, `max_list_len = 4 → 8`, `max_list_depth = 2 → 3`,
+`max_text_bytes = 16 → 32`, `max_abs_config_value = 4096 → 16384`. Measured on Windows; see
+`docs/testing/proptest-ir-config-evidence.md`.
+
+### Failure record
+
+As for `H-COORD`. Root-cause regression destination for a confirmed defect: a named concrete
+config pair in `crates/slicer-ir/tests/region_map_versioned_decode_tdd.rs` or a dedicated named
+test — never a seed, and never a regenerated fixture.
+
+### Acceptance
+
+Equality agrees with the canonical representation on every generated pair, equal values hash
+equally, interning matches the first-occurrence model, `config_for_raw` returns the interned
+input, and a real keyed plan reads its nondefault config. Defect outcome: **no production
+defect was observed** in `Eq`/`Hash`/`intern_config`.
+
+## H-CONFIG-BOUNDS
+
+Registry record: `id = "H-CONFIG-BOUNDS"`, `package = "slicer-scheduler"`,
+`target_kind = "test"`, `target_name = "property_config"`,
+`test_name = "proptest_config_scalar_bounds"`,
+`production_symbol = "slicer_scheduler::config_resolution::ConfigBoundsIndex::check"`,
+`production_path = "crates/slicer-scheduler/src/config_resolution.rs"`,
+`features = ["slicer-scheduler/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-config-bounds"`.
+
+### Stable property ID
+
+`H-CONFIG-BOUNDS` — the public bounds-only config API against an independent
+all-declarations predicate.
+
+### Owner
+
+Package `slicer-scheduler`; standalone test target `property_config` (explicit `[[test]]` entry
+with `required-features = ["property_testing"]`, selected by the new empty
+`slicer-scheduler/property_testing` feature); test `proptest_config_scalar_bounds` in
+`crates/slicer-scheduler/tests/property_config.rs`. Production surface:
+`ConfigBoundsIndex::{from_declarations, check}` and `BoundsDeclaration`
+(`crates/slicer-scheduler/src/config_resolution.rs`), which internally reach the private
+`check_value` / `check_scalar`. Deterministic controls live in
+`crates/slicer-scheduler/tests/property_config_contracts.rs`; the reference model lives in
+`crates/slicer-scheduler/tests/common/property_config_oracles.rs`.
+
+### Contract
+
+`check` merges every declaration for a key by intersection (min = larger, max = smaller) and
+then:
+
+- returns `Ok(())` for a key with no bounds, and for non-numeric (`Bool`/`String`) values —
+  variant mismatch is `apply_cli_key`'s job, not this API's;
+- returns `OutOfRange { key, value, min, max, index }` when a numeric scalar or list element is
+  outside `[min, max]` or is NaN/non-finite against a finite bound, reporting the **first**
+  offending list element index;
+- for `Percent` and `FloatOrPercent { is_percent: true }` enforces finiteness and the **min**
+  side only: a declared max is expressed in the key's absolute unit, and a raw percentage's
+  absolute equivalent is only known after Phase-B expansion. Absolute `FloatOrPercent` uses the
+  full bounds.
+
+This is explicitly a **bounds-only** API: a completely missing key or a non-numeric variant
+passes it. A present declaration with neither min nor max still reaches the finite check, so a
+NaN/infinity is rejected there. No whole-config or cross-field validity is inferred. The
+private `check_scalar`/`check_value` visibility is unchanged.
+
+### Domain
+
+`max_declarations = 4 / 8` (strategy maximum 64), `max_list_len = 4 / 8` (maximum 64),
+`max_abs_bound = 1000 / 100 000` with a construction ceiling of
+`MAX_ABS_BOUND = 2^52` — strictly inside the exactly-representable f64 integer domain
+(`2^53 - 1`), so `Int` magnitudes and integer-grid `Float` values narrow exactly. Declarations
+are drawn over a fixed key alphabet with each shape reachable: one-sided min, one-sided max,
+two-sided, `None`/`None` (present but unbounded), intersected duplicates, and contradictory
+(`min > max`). Values are `Int`/`Float` on the integer grid, arbitrary finite `f64` including
+both zero signs and subnormal witnesses, the `next_down`/`next_up` neighbours of every drawn
+centre, `Percent`, both `FloatOrPercent` modes, `Bool`, `String`, and flat `List`s of length
+`0..=max_list_len`. Nonfinite values are a separate labelled family.
+
+### Strategy
+
+A tuple of independently generated pieces, joined by `prop_map` (never `prop_flat_map`, so a
+declaration shrink cannot re-draw the value):
+
+- `declaration_sets(max_declarations, max_abs_bound)`, then
+  `property_config_oracles::ensure_bounded_witness` appends a `[-4, 4]` declaration on
+  `WITNESS_KEY` — a key outside `KEY_ALPHABET`, so no generated declaration can narrow it;
+- a `ProbeMode` chosen by `proptest::sample::select(PROBE_MODES).no_shrink()`;
+- `bound_scalar_values` and `bound_list_values` for the two general families;
+- a key pick that selects a generated key or `ABSENT_KEY`.
+
+`derive_probe` then computes the value from the current declaration set and the pinned mode:
+edges, the midpoint, one-step violations, flat lists whose only invalid element sits at index
+0/1/2, and non-finite scalars/lists. Mandatory deterministic witnesses run before sampling:
+absent key → `Ok`;
+present-but-unbounded declaration → finite passes, NaN/inf rejected; one-sided min and max;
+inclusive edges accepted while `next_down`/`next_up` neighbours are rejected; contradictory
+intersections reject every finite value; empty list → `Ok`; lists failing at index 0 and at
+index 2; `Bool`/`String` → `Ok`; percent above max but above min → `Ok` while below min →
+`OutOfRange`; absolute `FloatOrPercent` fully bounded; non-finite absolute scalars rejected with
+the declaration's min/max echoed. A bounded pre-sample additionally proves the generated
+population contains accepted cases, rejected cases, at least one list-index case and at least
+one non-finite case — a success-only population fails the run.
+
+### Oracle
+
+`expected_accepts`, `expected_first_invalid_index` and `expected_effective` in the oracle module:
+an independent all-declarations predicate (every present min and every present max of **every**
+matching declaration), with the first-invalid-index reported separately. It never calls
+`NumericBounds::intersect` and never uses `check` to certify the generator.
+
+### Tolerance
+
+Exact. `OutOfRange.value` is compared bitwise (`to_bits()`), so `-0.0`/`0.0` and NaN payloads
+are distinguished; `min`/`max` are echoed from the independently computed effective bounds.
+
+### Shrinking
+
+Shrinking preserves the probe: **shape, verdict class and first-invalid index** all survive.
+The strategy selects a probe mode from a `no_shrink` list and then *derives* the value from the
+current declaration set inside `prop_map` — there is no `prop_flat_map` re-drawing it, so when
+the declarations shrink the derivation re-runs and produces a value of the same family. The
+witness families are derived from a bounded witness declaration on a key outside the generated
+alphabet (`property_config_oracles::WITNESS_KEY`), so no other declaration can perturb the
+interval:
+
+- `EdgeMin`/`EdgeMax` land exactly on the inclusive bounds (accepted);
+- `InsideScalar`/`InsideList` use the interval midpoint (accepted);
+- `ViolationScalarLow`/`ViolationScalarHigh` sit one step outside (rejected, `index: None`);
+- `ViolationListAt0/1/2` place the only out-of-range element at that position, so `index` is
+  `Some(0)`/`Some(1)`/`Some(2)`;
+- `NonFiniteScalar`/`NonFiniteList` stay non-finite (rejected).
+
+The two `General*` families are independent draws, so only their **shape** is pinned; their
+verdict is whatever the oracle derives for the current declarations. `Absent*` keeps the key
+unnamed, which the bounds-only API accepts by contract.
+
+This is checked two ways: `derived_probe_modes_have_their_documented_verdicts` asserts every
+mode's verdict and first-invalid index on a concrete declaration set, and the property runs
+`assert_mode_preserved` over the **composed** strategy on every execution, tagging each case with
+its shape plus — for witness keys — its verdict class and first-invalid index, so a shrink that
+changed any of them fails the run.
+
+Shrink limits are profile-bounded (`max_shrink_iters`, `max_shrink_time_ms = 0`).
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, `cases = 64 / 1024`,
+`max_default_size_range = 32 / 256`, `max_shrink_iters = 64 / 256`, rejection budgets `0`.
+The package gained a default-off empty `property_testing` selection feature and dev-only
+`proptest` / `slicer-sdk` dependencies; no normal dependency, engine edge or default feature
+changed. Measured on Windows; see `docs/testing/proptest-ir-config-evidence.md`.
+
+### Failure record
+
+As for `H-COORD`; the reproduction command is
+`cargo xtask test --summary --properties --property H-CONFIG-BOUNDS --tier <tier> --seed <seed>`.
+Root-cause regression destination: a named concrete case in
+`crates/slicer-scheduler/tests/integration/` (`config_bounds_enforcement_tdd`) — never a seed.
+
+### Acceptance
+
+The real public API agrees with the independent predicate on every generated declaration set
+and value, including inclusive edges, empty intersections, optional bounds, first invalid list
+position, finite/nonfinite and percent/absolute distinctions. The deterministic controls refute
+the accept-all, union-instead-of-intersection, off-by-one-bound and lost-index mutants, and
+`ir_config_type_and_integer_range_rejections` observes the specified `apply_cli_key`
+type/range variants and fields. Existing `config_bounds_enforcement_tdd` and
+`config_resolution_tdd` pass. Defect outcome: **no production defect was observed**.
+
+## H-CHAINS
+
+Registry record: `id = "H-CHAINS"`, `package = "slicer-ir"`, `target_kind = "test"`,
+`target_name = "property_ir"`, `test_name = "proptest_canonical_chain_product"`,
+`production_symbol = "slicer_ir::region_split_registry::enumerate_canonical_chains"`,
+`production_path = "crates/slicer-ir/src/region_split_registry.rs"`,
+`features = ["slicer-ir/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-chains"`.
+
+### Stable property ID
+
+`H-CHAINS` — the complete ordered Cartesian contract of the variant-chain enumerator.
+
+### Owner
+
+Package `slicer-ir`; test target `property_ir`; test `proptest_canonical_chain_product` in
+`crates/slicer-ir/tests/property_ir.rs`. Production surface:
+`enumerate_canonical_chains(&HashMap<String, Vec<PaintValue>>, &[String]) -> Vec<Vec<(String,
+PaintValue)>>` (`crates/slicer-ir/src/region_split_registry.rs`). Deterministic controls live in
+`ir_chain_oracle_order_and_empty_controls`.
+
+### Contract
+
+Per `docs/03_wit_and_manifest.md` § Variant-chain enumeration order, the helper emits every
+subset of `(semantic, value)` pairs: for each axis in `canonical_order`, either omit it or
+include exactly one of its supplied values, in the caller's `Vec` order. Cardinality is
+`∏ (1 + K_i)`, an absent or empty axis contributes a factor of 1, the empty chain is the first
+element, and each chain's pairs follow canonical axis order. The helper performs **no** sorting,
+no deduplication and no duplicate-axis validation; the caller owns the priority/name and
+per-value sorting contract. Scalar region-split declarations and duplicate canonical axes are
+outside the valid caller domain.
+
+### Domain
+
+`max_semantics = 3 / 4`, `max_values_per_semantic = 3 / 4`, `max_chains = 64 / 625`,
+`max_text_bytes = 16 / 32`. With those maxima the largest reachable product is exactly
+`(1 + 3)^3 = 64` routine and `(1 + 4)^4 = 625` extended, so a well-formed case can always be
+compared in full. Axis names are unique and bounded; each axis is drawn as absent, empty, or a
+bounded value list; the value alphabet is `PaintValue::{Flag, ToolIndex, Custom}`; at least one
+map key outside `canonical_order` is always present so "ignore extra keys" is exercised on
+every case.
+
+### Strategy
+
+A `(HashMap<String, Vec<PaintValue>>, Vec<String>)` pair built from tagged axis specs, so
+shrinking removes axes or values without changing the canonical order's meaning. Value order is
+deliberately unsorted (the alphabet interleaves `Flag`/`ToolIndex`/`Custom`). Mandatory
+deterministic witnesses run before sampling: empty map with empty order → exactly `[[]]`; one
+axis with three unsorted values → empty chain first, then caller order verbatim; absent and
+empty axes plus an unrelated key → `[[]]`; duplicate values → multiplicity preserved (three
+chains, two of length one); a 64-axis request → `chain_product_size` refuses before allocating.
+
+### Oracle
+
+`property_oracles::{chain_product_size, chain_product_model}`. The model decodes each ordinal
+`0..product` into mixed-radix digits with the **last** axis changing fastest (least-significant
+digit), digit `0` omitting the axis and digit `d > 0` selecting `values[d - 1]`, then emits the
+selected pairs in `canonical_order`. It is an ordinal decode loop, not a copy of the production
+recursive omit-first traversal.
+
+### Tolerance
+
+Exact `Vec` equality of the whole ordered sequence, plus exact cardinality. Unordered sets are
+never used, because they would erase multiplicity and ordering — the two properties the helper
+is expected to preserve.
+
+### Shrinking
+
+Shrinks remove trailing axes and values and simplify text, staying within
+`max_semantics`/`max_values_per_semantic` and keeping the product inside `max_chains`. The
+nonempty/two-axis witnesses needed for the mode-specific assertions are supplied by the
+deterministic block, so a shrink never needs to preserve them probabilistically.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, `cases = 64 / 1024`,
+`max_default_size_range = 32 / 256`, `max_shrink_iters = 64 / 256`, rejection budgets `0`.
+Measured on Windows; see `docs/testing/proptest-ir-config-evidence.md`.
+
+### Failure record
+
+As for `H-COORD`. Root-cause regression destination: a named concrete case in
+`crates/slicer-ir/tests/region_split_registry_tdd.rs` — never a seed.
+
+### Acceptance
+
+The full ordered output, cardinality and per-chain canonical axis order agree with the
+mixed-radix model on every case; the empty chain is first; caller value order and duplicate
+multiplicities survive; extra map keys and map insertion order do not affect the result.
+`ir_chain_oracle_order_and_empty_controls` refutes the omitted-empty-chain, sorted-values,
+swapped-axis, dropped-product and duplicated-product mutants, and the existing
+`region_split_registry_tdd` still passes. Defect outcome: **no production defect was observed**.
+
+## H-DAG
+
+Registry record: `id = "H-DAG"`, `package = "slicer-scheduler"`, `target_kind = "test"`,
+`target_name = "property_scheduler"`, `test_name = "proptest_scheduler_dag_models"`,
+`production_symbol = "slicer_scheduler::topological_sort"`,
+`production_path = "crates/slicer-scheduler/src/topology.rs"`,
+`features = ["slicer-scheduler/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-dag"`.
+
+### Stable property ID
+
+`H-DAG` — exhaustive lexical-minimum linear extensions for acyclic scheduler graphs and the
+complete blocked remainder for cyclic ones.
+
+### Owner
+
+Package `slicer-scheduler`; standalone test target `property_scheduler` (explicit `[[test]]` entry
+with `required-features = ["property_testing"]`, selected by the empty
+`slicer-scheduler/property_testing` feature); test `proptest_scheduler_dag_models` in
+`crates/slicer-scheduler/tests/property_scheduler.rs`, which mounts the target-private model module
+`crates/slicer-scheduler/tests/common/property_scheduler_dag.rs`. Production surface:
+`slicer_scheduler::topological_sort` (`crates/slicer-scheduler/src/topology.rs`),
+`slicer_scheduler::build_intra_stage_dag` (`crates/slicer-scheduler/src/dag.rs`) and
+`slicer_scheduler::validation::validate_startup_dag` (`crates/slicer-scheduler/src/validation.rs`)
+for the cyclic validator surface. Deterministic controls live in
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/dag_controls.rs` and
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/plan_controls.rs`.
+
+### Contract
+
+For a valid acyclic graph, `topological_sort` returns exactly the declared nodes (a bijection) and
+the lexicographically minimum module-id sequence satisfying every edge — the finite
+linear-extension definition, not a ready-queue traversal. Its `Err` value is the entire blocked
+remainder: every node on a cycle plus every node reachable from a cycle by a nonempty path,
+including an acyclic tail, while independent sortable nodes stay out; the returned `Vec` is
+lexically sorted. `validate_startup_dag`'s private sorter promises no order, so its
+`CycleDetection`/`CyclicDependency.cycle` is compared as a set against the same path model.
+
+**Malformed-model boundary.** A malformed raw graph — a `SmallGraph` with duplicate node entries or
+an edge naming an unknown endpoint — is rejected by the target-private checked adapter `checked_nodes`
+before any production sorter call, and `sort_checked` tags that rejection. There is no promised scheduler
+raw-graph validation API, so this is generator/adapter negative coverage and not SUT-validator
+credit; actual scheduling negatives are cycles, missing dependencies and invalid plan bindings at
+their real validating APIs.
+
+### Domain
+
+`max_nodes` must lie inside the packet's `3..=7` safety ceiling (routine `5`, extended `7`).
+Within it the shared `graphs(GraphKind::Dag, max_nodes)` domain draws `0..=max_nodes` nodes, so
+empty and singleton DAGs are legitimate cases — empty input has the one empty linear extension —
+while `GraphKind::CycleWithTail` requires at least three nodes and constructs a real directed cycle
+plus a downstream acyclic tail. Node values map to fixed-width lexical module ids `com.pbt.NNNNN`
+through `module_id_for`, independently of the input `Vec` order, so lexical and numeric order agree.
+Edges are unique index pairs; the checked adapter gives each one a genuine
+`IrWriteRead { writer_path }` declaration, and a separate robustness mode duplicates a destination
+with a second reason. The exhaustive search is capped at
+`MAX_LINEAR_EXTENSION_NODES = 7` (`7! = 5040` leaves); that ceiling must not be raised to absorb
+extended-case cost.
+
+### Strategy
+
+`sample_strategy` builds a `Vec<SampleMode>` by repeating `DAG_MODE_WEIGHT` (9) `Dag` tags and
+`CYCLE_MODE_WEIGHT` (4) `Cycle` tags, then draws one mode from
+`proptest::sample::select(modes).no_shrink()` and dispatches it through `prop_flat_map`; the 9:4
+weighting comes from list membership, not from a union. A DAG branch pairs the graph with a
+`no_shrink` duplicate-destination flag, then draws a node-index permutation through
+`permutations(...).prop_map`; `verify_dag_case` applies that permutation to the node `Vec` and to
+each `edges_to` list and requires the public order to be unchanged. Cycle branches stay in
+`GraphKind::CycleWithTail`. Mandatory deterministic witnesses run before sampling: a self-cycle
+with a downstream tail (`100 -> 100`, `100 -> 101`, `101 -> 102`) and two disconnected cycles
+(`200 <-> 201`, `202 <-> 203`, `201 -> 204`) with independent sortable node 205; both must match
+the path model on the public sorter and on `CycleDetection`. The 128-case pre-sample population
+guard requires empty, singleton, disconnected multi-node, multi-edge, duplicate-destination and
+cycle-with-tail samples and a nonempty cycle remainder; there is no `prop_assume` and no rejection
+budget.
+
+### Oracle
+
+`minimum_linear_extension` enumerates every node-index permutation, filters by edge precedence and
+keeps the lexicographically smallest id sequence; `check_success_oracle` checks bijection first,
+then exact order, then precedence. `check_cycle_remainder` compares the public blocked `Vec` to
+`slicer_sdk::test_support::property_testing::oracles::graph_cycle_remainder` and additionally
+requires lexical order because only the public `Vec` promises it. `check_validator_cycles` compares
+`CycleDetection`'s cycle set to the same model, with four fixed global fill holders making a
+fill-coverage `MissingDependency` impossible in the cycle-only request. `check_intra_stage_relation`
+derives the expected node, destination, read, write and reason table from the raw graph and asserts
+that the real `build_intra_stage_dag` reproduces it, including the exact
+`IrWriteRead { writer_path }` reason per edge. The oracle never calls `topological_sort`, the
+private validator sorter, or a Kahn loop to certify itself.
+
+### Tolerance
+
+Exact string, `Vec` and set comparison throughout. No numeric tolerance exists on this surface.
+
+### Shrinking
+
+The case mode is drawn from a **non-shrinkable** weighted list
+(`proptest::sample::select(modes).no_shrink()`), not from `prop_oneof!`: a union shrinker would try
+an earlier branch and could turn a `Cycle` case into a `Dag` case. Cycle-plus-tail cases are
+rebuilt from `(cycle_len, tail_len)` inside the domain's `prop_map`, so a shrink keeps a real
+directed cycle and at least one downstream tail node; the duplicate-destination flag is also drawn
+from a `no_shrink` list. DAG cases keep the forward-edge construction and the linear-extension
+oracle is recomputed for the shrunk graph; the node permutation is re-drawn by `prop_flat_map` and
+is re-validated as a complete permutation. `assert_shrink_preserves_modes` audits this on every
+execution: fixed-seed trees are simplified repeatedly and must keep their mode tag, a simplified
+cycle must still have a nonempty blocked remainder, a simplified DAG must stay acyclic and still
+match the exhaustive oracle, and the duplicate-destination *flag* must survive. That last assertion
+is flag preservation, not an exercised duplication check: the audit's shrunk-DAG body never builds
+a duplicate edge, and `verify_dag_case` calls `check_duplicate_destination` only when the flag is
+set and the shrunk graph still has at least one edge, so a shrink that empties the edge list keeps
+the tag while no duplication assertion runs. Shrink limits are
+profile-bounded (`max_shrink_iters` 64/256, `max_shrink_time_ms = 0`); completion is reported
+`null`/unknown because Proptest 1.11 cannot identify it.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, `cases = 64 / 1024`,
+`max_default_size_range = 32 / 256`, `max_shrink_iters = 64 / 256`, rejection budgets `0`,
+`bounds.max_nodes = 5 / 7`. Measured on Windows: routine libtest `0.20s` and extended `1.69s`, each
+at its profile case count (64 / 1024), with `rejected_test_calls = 0`,
+`call_counts_complete = true` and outcome `passed`; the retained routine seed
+`8015297453583596151` replayed to `VERDICT: PASS`. Command, logs and provenance are in
+[proptest-scheduler-evidence.md](proptest-scheduler-evidence.md).
+
+### Failure record
+
+`failure.json` is produced by the foundation harness (packet `proptest-openrscad_01_pbt-foundation`)
+and retains the classification, the full context, the concrete/debug input, the tier-bearing
+reproduction command
+(`cargo xtask test --summary --properties --property H-DAG --tier <routine|extended> --seed <seed>`),
+an executable direct reproduction carrying the exact consumed `PNP_PROPERTY_CONTEXT`, captured SDK
+logs and shrink status. Committed regression history is a named concrete input — never a seed. The
+control homes are
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/dag_controls.rs`,
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/plan_controls.rs` and
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/bound_controls.rs`.
+
+### Acceptance
+
+The target was actually executed through the registry with `--exact --nocapture`, never
+compile-only and never as an unrelated passing test; the exhaustive or path-model oracle is checked
+on every case. Generator and shrink validity are demonstrated by `scheduler_dag_oracle_controls`
+(rejecting FIFO-instead-of-minimum, missing-node, duplicated-node and cycle-only-tail-omission
+mutations), by `scheduler_dag_raw_model_rejections_before_sorter`, and by the pre-sample population
+guard. `scheduler_graph_construction_and_plan_observations` observes real plan assembly, compiled
+module sequence, claims, access masks and host paint-stage insertion with independently derived
+expectations. Existing scheduler baselines `topological_sort_tdd`, `dag_construction_tdd` and
+`execution_plan_tdd` pass. Defect outcome: **no production defect in `topological_sort`,
+`build_intra_stage_dag` or the cycle pass was observed**; no regression was manufactured.
+
+## H-CLAIMS
+
+Registry record: `id = "H-CLAIMS"`, `package = "slicer-scheduler"`, `target_kind = "test"`,
+`target_name = "property_scheduler"`, `test_name = "proptest_scheduler_claim_models"`,
+`production_symbol = "slicer_scheduler::validation::validate_startup_dag"`,
+`production_path = "crates/slicer-scheduler/src/validation.rs"`,
+`features = ["slicer-scheduler/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-claims"`.
+
+### Stable property ID
+
+`H-CLAIMS` — typed claim-scope, write-ordering and effective-universe dependency contract of the
+startup validator.
+
+### Owner
+
+Package `slicer-scheduler`; standalone test target `property_scheduler`; test
+`proptest_scheduler_claim_models` in `crates/slicer-scheduler/tests/property_scheduler.rs`, which
+mounts `crates/slicer-scheduler/tests/common/property_scheduler_claims.rs`. Production surface:
+`slicer_scheduler::validation::validate_startup_dag`
+(`crates/slicer-scheduler/src/validation.rs`). Deterministic controls live in
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/claims_controls.rs` and
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/selection_controls.rs`; the
+object-wide cross-region regression lives in
+`crates/slicer-scheduler/tests/contract/claim_transition_matrix_tdd.rs`.
+
+### Contract
+
+`validate_startup_dag` is driven as the public validator over an effective universe. Claim scopes
+are typed values `(object_id, region_id, Option<layer>)`; the model never concatenates them, so two
+distinct tuples cannot alias. For `ConflictScope::Global`, ordinary holders conflict pairwise and
+duplicate observations of one module collapse; `claim:raft-fill` is ordinary here, not a configured
+fill exception. Exactly the four `FILL_CLAIM_IDS` — `claim:top-fill`, `claim:bottom-fill`,
+`claim:bridge-fill`, `claim:sparse-fill` — allow global multiplicity, and a global absence produces
+`MissingDependency { module: "fill-role-claim:<claim>", requires: "no module holds <claim>" }`; a
+per-region duplicate holder still conflicts. Exactly the four family-support globals
+`support-generator`, `support-planner`, `support-family:traditional` and `support-family:tree` are
+exempt from the global conflict check; an arbitrary `support-family:<suffix>` is not.
+
+The four stable claims `perimeter-generator`, `seam-placer`, `layer-planner` and `mesh-analyzer`
+must keep one holder per object across every region and layer; the reported `ClaimConflict` carries
+the lexically first holder's original region with `global_layer_index = None`.
+`claim:sparse-fill` and `support-generator` are the transition-capable claims in this domain, so
+their cross-layer transitions stay allowed. Per-region observations of other claims compare the
+full typed tuple, layer included.
+
+Write conflicts are decided by exact shared fields: a pair is orderable only when the downstream
+writer declares the shared field in its `ir_reads` and a real `StageDag` path runs from the
+upstream writer to it. Family-support writers are orderable only when both hold one of the four
+family-support globals and the shared path is exactly `SupportPlanIR`/`SupportIR` or a
+dot-descendant; `SupportIRx` and unrelated fields are not exempt. `WriteConflict` comparisons
+normalize the unordered module pair lexically.
+
+Module and capability dependencies are modelled by exact effective membership, and direct and
+transitive stage legality by `STAGE_ORDER` rank and real finite paths. Each
+`TransitiveStageDependency.path` must start at the requesting module, be simple, follow declared
+`requires_modules` edges and end at a later stage; expected existence comes from the model, not a
+particular BFS route.
+
+**Effective-universe semantics.** The production request has no disable flag, so the case builder
+removes locally tagged disabled modules together with their holder observations and stage-DAG nodes
+before constructing the request. A retained consumer still requiring the removed module or
+capability must reject; removing a competing holder must eliminate only its conflict. This tests
+effective-input behaviour, not config parsing or a nonexistent scheduler disable mechanism.
+
+### Domain
+
+`checked_claim_limits` enforces `max_modules 3..=7`, `max_claims 1..=8`,
+`max_observations 2..=16` (variable observations in addition to the fixed four-role fill setup),
+`max_layers 2..=4` and `max_text_bytes 36..=64`. The text ceiling is not widened: `check_text_bound`
+rejects any value outside `36..=64` with a named error, because object ids are UUID syntax and need
+36 bytes, so a lower ceiling cannot be honoured without silently changing the declared profile (the
+packet's 8-byte variable-text floor applies to raw text components, not the UUID object ids).
+Committed values are `max_modules / max_claims / max_observations / max_layers / max_text_bytes`:
+routine `4 / 4 / 8 / 3 / 36`, extended `7 / 8 / 16 / 4 / 64`; `uuid_text` never shortens a UUID.
+Object ids use the shared UUID-syntax domain plus a separate delimiter-rich raw text domain; module
+ids use a bounded prefix with `com.pbt.claim-N-` overhead. Modules carry
+compatible versions, canonical stages (`Layer::Infill`, `PrePass::MeshAnalysis`,
+`PrePass::LayerPlanning`) and placeholder WASM paths. Every unrelated case carries the fixed
+global four-claim fill setup, so an unrelated fill-coverage error can never make a rejection look
+correct; only `FillGlobalAbsent` deliberately drops one.
+
+### Strategy
+
+`claim_case_strategy` draws one mode from `available_modes`, which is `ClaimMode::ALL` filtered
+only by `ClaimMode::is_available`; `StableThreeHolders` is withheld when the accepted
+`max_observations` bound cannot carry its three holder observations on top of the fixed fill setup,
+and every other mode fits every accepted profile. `ClaimMode::ALL` is the source of truth for the
+family inventory: ordinary and raft globals; fill and finite family-support exceptions (global
+multiplicity, global absence, per-region duplicate, non-exempt `support-family:<suffix>`); typed
+region and delimiter scopes; write conflicts; missing universe; disabled universe; direct and
+shared-stage transitive cross-stage legality; stable same-region, cross-region, three-holder,
+same-module-across-layers and distinct-objects shapes; the transition-capable per-layer shape and
+its same-scope counterpart; and the `SelectionPairing` selector ladder. Each case is exactly one
+witness shape. The mode source is a `proptest::sample::select(..).no_shrink()` list, so no union
+shrinker can switch modes. The 512-case pre-sample audit requires every available tagged mode and
+both rejecting and accepting verdicts, and audits up to 32 `simplify()` calls per sample to prove
+the mode and the verdict signature survive shrinking. No `prop_assume` and no rejection budget is
+used.
+
+### Oracle
+
+`expected_diagnostics` recomputes a normalized `BTreeSet<DiagKey>` from the case's enabled modules,
+holders and stage DAGs. It models only the five named passes (`GlobalClaimConflicts`,
+`PerRegionClaimConflicts`, `MissingDependencies`, `WriteConflicts`,
+`CrossStageDependencyLegality`) and compares the validator's exact error fields, not
+`report.is_valid()`. `ScopeModel` is a typed enum, never a serialized key. `assert_fixed_fill_setup`
+proves the four fill obligations are present. `assert_delimiter_witness` proves two distinct typed
+tuples collide under the previous concatenated string key, so the test falsifies the
+delimiter-aliasing shape rather than merely omitting it. `assert_transitive` validates the real
+path shape. The model never calls `compute_reachability` or any private validator pass.
+
+### Tolerance
+
+Exact normalized-set equality of diagnostics, exact string identity for claims/modules/scopes and
+exact enum/stage fields; no numeric tolerance exists on this surface.
+
+### Shrinking
+
+Every case carries its `ClaimMode` tag, selected from a **non-shrinkable** list
+(`proptest::sample::select(available_modes).no_shrink()`) so a union shrinker cannot switch modes.
+`assert_shrink_preserves_witnesses` simplifies fixed-seed trees on every execution and asserts the
+tag and that mode's distinguishing witness survive: two distinct typed identities for the
+claim/region modes, three holders in `r0`/`r1`/`r2` for the object-wide mode, the legacy
+delimiter-colliding pair for the delimiter mode, the conflicting pair for the write mode, the
+same-scope `support-generator` holder pair for the transition same-scope mode, the retained
+consumer's missing module for the disabled mode, and the selector witness (typed
+`wall_generator` value plus `spiral_vase` flag) for the selection/pairing mode. Only the module
+declaration order rotates as a shrinkable dimension there, so the expected kept set cannot change
+identity. The fixed fill setup is re-asserted on every case, so a shrink cannot make an unrelated
+fill error pass for the wrong reason. Shrink limits are profile-bounded; completion is reported
+`null`/unknown.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, `cases = 64 / 1024`,
+`max_default_size_range = 32 / 256`, `max_shrink_iters = 64 / 256`, rejection budgets `0`.
+Measured on Windows: routine libtest `2.27s` and extended `1.92s`, each at its profile case count,
+with `rejected_test_calls = 0`, `call_counts_complete = true` and outcome `passed`; the retained
+routine seed `5053888522409382591` replayed to `VERDICT: PASS`. See
+[proptest-scheduler-evidence.md](proptest-scheduler-evidence.md).
+
+### Failure record
+
+`failure.json` is produced by the foundation harness with the tier-bearing reproduction command
+(`cargo xtask test --summary --properties --property H-CLAIMS --tier <routine|extended> --seed <seed>`),
+the full context, concrete/debug input, direct reproduction, captured logs and shrink status.
+Committed regressions are named concrete inputs, never seeds. Homes:
+`crates/slicer-scheduler/tests/contract/claim_transition_matrix_tdd.rs` for the object-wide
+cross-region stable-claim regression and
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/claims_controls.rs` for the
+`delimiter_rich_object_and_region_ids_never_share_a_claim_scope` witness, with
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/selection_controls.rs` and
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/bound_controls.rs` for the
+remaining selection and bound controls.
+
+### Acceptance
+
+The target was actually executed through the registry with `--exact --nocapture`; the typed
+diagnostic model is checked on every case. Generator and shrink validity are demonstrated by
+`scheduler_claim_scope_and_exception_controls` (including the same-scope `support-generator`
+rejection that `ClaimMode::TransitionSameScope` also generates),
+`delimiter_rich_object_and_region_ids_never_share_a_claim_scope`,
+`scheduler_write_dependency_and_disabled_controls`, `scheduler_claim_model_ceiling_walk_controls`,
+`scheduler_claim_selection_and_pairing_controls`, and the 512-case mode/verdict population audit.
+Selection/pairing is generative as well as deterministic: `ClaimMode::SelectionPairing` drives the
+real `dedup_same_claim_modules_with_typed_wall_generator`, `resolve_held_claims` (with
+`FillHolders`) and `validate_support_family_pairing` seams against an independent selector-table
+model, while `scheduler_claim_selection_and_pairing_controls` remains the hand-computed companion.
+Existing baselines `claim_transition_matrix_tdd`, `holder_matching_tdd`,
+`typed_selector_claim_selection_tdd`, `support_family_selection` and
+`support_family_pairing_rejected` pass. Defect outcome: **two production defects were confirmed
+and fixed** in the validator's claim pass — (1) the scope-keying defect where delimiter-bearing
+object/region ids were serialized into `scope_key_without_layer`, so distinct typed scopes lost
+their identity, and (2) missing object-wide cross-region stable-claim enforcement, where per-region
+grouping never compared two regions of one object. Both are pinned by named concrete regressions:
+`delimiter_rich_object_and_region_ids_never_share_a_claim_scope` and
+`non_transitionable_claim_rejects_holder_change_across_regions_of_one_object`; no seed is
+committed.
+No other defect in the covered passes was observed, and live per-region support aggregation is not
+claimed from synthetic observations.
+
+## H-REGISTRY
+
+Registry record: `id = "H-REGISTRY"`, `package = "slicer-scheduler"`, `target_kind = "test"`,
+`target_name = "property_scheduler"`, `test_name = "proptest_scheduler_region_split_registry"`,
+`production_symbol = "slicer_scheduler::region_split::aggregate_region_splits"`,
+`production_path = "crates/slicer-scheduler/src/region_split.rs"`,
+`features = ["slicer-scheduler/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-registry"`.
+
+### Stable property ID
+
+`H-REGISTRY` — declaration-only region-split aggregation, the separate canonical ordering helper,
+and the explicit first-seen/tied-priority warning modes.
+
+### Owner
+
+Package `slicer-scheduler`; standalone test target `property_scheduler`; test
+`proptest_scheduler_region_split_registry` in `crates/slicer-scheduler/tests/property_scheduler.rs`,
+which mounts `crates/slicer-scheduler/tests/common/property_scheduler_registry.rs`. Production
+surface: `slicer_scheduler::region_split::aggregate_region_splits` and
+`slicer_scheduler::region_split::canonical_variant_chain_order`
+(`crates/slicer-scheduler/src/region_split.rs`), plus the real plan-assembly caller
+`slicer_scheduler::execution_plan::build_execution_plan`
+(`crates/slicer-scheduler/src/execution_plan.rs`). Deterministic controls live in
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/registry_controls.rs` and
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/manifest_controls.rs`.
+
+### Contract
+
+`aggregate_region_splits` is declaration-only. For a semantic repeated compatibly — every
+declaration agrees on `(priority, value_type)` — it produces one entry
+`(priority, value_type, sorted distinct declaring_modules)`, and no `material`/`fuzzy_skin` seed
+exists unless a module declares it. The `BTreeMap` keys iterate in semantic-name order; the
+separate `canonical_variant_chain_order` returns `(priority, name)` order, so raw map keys are not
+that sequence in general. Repeating the same loaded module at the aggregation seam cannot duplicate
+`declaring_modules`.
+
+For incompatible repeats the contract is deliberately order-sensitive: a linear positional scan
+keeps the first-seen declaration and appends exactly one `Warning` for every later incompatible
+declaration, carrying that module's WASM path, `field = Some("region_split")`, the semantic, the
+later `priority=<n>/value_type=<T>` and the earlier contract; the later contract never joins
+`declaring_modules`. No permutation-invariance claim applies to those inputs. Two distinct
+semantics tied at one priority produce exactly one nonfatal warning per tied priority group, with
+the empty `PathBuf` sentinel, `field = Some("region_split")` and a message naming the shared
+priority, each tied semantic with its sorted declaring module ids, and the lexical tiebreaker
+order. Aggregation appends to the caller's diagnostics and never clears or reorders them.
+
+`build_execution_plan` actually calls the aggregator and stores its output in
+`ExecutionPlan.aggregated_region_split`; plan assembly is checked separately from the direct helper
+call. `canonical_variant_chain_order` has no production caller in this tree, so a passing helper
+assertion is **not** evidence that `RegionMapping` uses the helper. Driver-level integration
+remains with the H-REGIONMAP audit and the wording of ADR-0018's amendment.
+
+### Domain
+
+`checked_registry_limits` enforces `max_modules 2..=7`, `max_declarations 2..=16` and
+`max_text_bytes 8..=64`, with `declaration_capacity = max_modules * MAX_SEMANTIC_POOL`. Committed
+values are `max_modules / max_declarations / max_text_bytes`: routine `4 / 8 / 36`, extended
+`7 / 16 / 64`. The finite semantic pool is four generated community
+names plus `material` and `fuzzy_skin` only when a case requests them; core priorities are 100 and
+200, and community priorities sit at or above `COMMUNITY_PRIORITY_FLOOR` (1000). Value types are
+`RegionSplitValueType::{Flag, ToolIndex, CustomString}`. Modules are builder-created with unique
+ids and WASM paths, deliberately bypassing TOML ingestion: this is the positive aggregation
+domain, not manifest-validation coverage (`scheduler_manifest_region_split_rejections` owns raw
+ingestion).
+
+### Strategy
+
+`sample_strategy` derives a guaranteed shape — `Compatible`, `Conflicting`, `TiedSameModule` or
+`TiedCrossModule` — plus a module permutation, per-module declaration permutations, a module index
+to repeat at the seam, and an optional plan-assembly mode. `build_case` re-establishes the requested
+shape from the shrunk parameters and never assumes a shape they no longer support. The 128-case
+pre-sample guard requires all four shapes, at least one same-module tie, one cross-module tie, a
+nonempty aggregate and a tied-priority warning; there is no `prop_assume` and no rejection budget.
+
+### Oracle
+
+`expected_model` derives the relational group model and the first-seen conflict list in linear scan
+order; `raw_keys` is semantic-name order and `helper_order` is the separate `(priority, name)`
+sort. `tie_warning_messages` derives the exact tied-priority messages.
+`check_registry_observation` compares the whole aggregate map, raw key order, the direct
+`canonical_variant_chain_order` output, the preserved sentinel, every conflict warning payload and
+the full tied-priority `LoadDiagnostic` including the empty `PathBuf`. `assert_normative_catalog`
+cross-checks the priority values against `CORE_REGION_SPLIT_PRIORITIES` and
+`COMMUNITY_PRIORITY_FLOOR`. The plan mode builds a real plan from unique bindings through
+`bind_module_config_view` and fails when `aggregated_region_split` is empty, so plan assembly
+stopping its aggregation is observable; it compares that output to the independent model. The
+model is relational and first-seen scanning, not the aggregator's own loop.
+
+### Tolerance
+
+Exact map, sequence and message equality, including the empty `PathBuf` sentinel and the
+`Some("region_split")` field. No tolerance exists on this surface.
+
+### Shrinking
+
+The requested shape and every flag that decides whether a fault exists (tie membership, conflicting
+contract choice, core-semantic inclusion, pool slot) come from a **non-shrinkable** plan selected by
+`proptest::sample::select(...).no_shrink()`. A shrink therefore simplifies only module slots,
+declaration slots, semantic names and permutation orders, and the check compares against the model
+for the current case. `assert_shrink_preserves_faults` simplifies fixed-seed trees on every
+execution and asserts the shape never changes, a conflicting case keeps the same first-seen
+`(priority, value_type)` with exactly one incompatible warning, a tied case keeps exactly one tied
+priority group and warning, and a compatible case acquires no conflicting warning. Compatible cases
+keep equality under permutation because the model is relational; deliberately incompatible cases
+are compared to their own recomputed first-seen model after each permutation rather than to the
+original order. The seam-repeat index is checked against the shrunk module count. Shrink limits are
+profile-bounded; completion is reported `null`/unknown.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, `cases = 64 / 1024`,
+`max_default_size_range = 32 / 256`, `max_shrink_iters = 64 / 256`, rejection budgets `0`.
+Measured on Windows: routine libtest `0.13s` and extended `0.83s`, each at its profile case count,
+with `rejected_test_calls = 0`, `call_counts_complete = true` and outcome `passed`; the retained
+routine seed `2960010196684534321` replayed to `VERDICT: PASS`. See
+[proptest-scheduler-evidence.md](proptest-scheduler-evidence.md).
+
+### Failure record
+
+`failure.json` is produced by the foundation harness with the tier-bearing reproduction command
+(`cargo xtask test --summary --properties --property H-REGISTRY --tier <routine|extended> --seed <seed>`),
+the full context, concrete/debug input, direct reproduction, captured logs and shrink status.
+Committed regressions are named concrete inputs, never seeds. Control homes:
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/registry_controls.rs` for the
+aggregate/ordering/warning witnesses and
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/manifest_controls.rs` for raw
+TOML ingestion, plus
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/bound_controls.rs` for bound and
+shrink rejection.
+
+### Acceptance
+
+The target was actually executed through the registry with `--exact --nocapture`; the relational
+model and the direct helper result are checked on every case. Generator and shrink validity are
+demonstrated by `scheduler_registry_oracle_and_warning_controls` (rejecting raw name order
+substituted for the helper's `(priority, name)` sequence, reversed ties, implicit seeds, an omitted
+declaration, the wrong first-seen contract, a lost warning and a cleared sentinel), by
+`scheduler_manifest_region_split_rejections`, and by the pre-sample population guard. The
+plan-mode check fails if `build_execution_plan` stops
+aggregating or adds seeds. Existing baselines `region_split_manifest_tdd`,
+`region_split_aggregation_tdd` and `region_split_plan_tdd` pass. Defect outcome: **no production
+defect in `aggregate_region_splits`, `canonical_variant_chain_order` or the plan-aggregation call
+was observed**; no regression was manufactured. Neither the helper assertion nor the plan check is
+evidence of RegionMapping integration.
 
 ## Direct-domain charters (packet `proptest-openrscad_02_pbt-domains`)
 

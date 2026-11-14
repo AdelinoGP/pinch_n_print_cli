@@ -324,3 +324,369 @@ rng_algorithm = "chacha"
 isolation = "fork"
 timeout_ms = 60000
 bounds = { max_abs_units = 40000, max_vertices = 96, max_holes = 8, max_components = 8, max_shrink_candidates = 64, max_recipe_nodes = 32, max_recipe_depth = 8, max_facets = 24, max_source_bytes = 32768, max_evaluations = 128, max_scad_vertices = 400000, max_scad_triangles = 800000, evaluation_steps = 20000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 600000 }
+
+# Packet `proptest-openrscad_06_pbt-ir-config`. IR/coordinate/ID/config/chain
+# owners. Profiles below are the pilots recorded in
+# docs/testing/proptest-ir-config-evidence.md; bounds are checked before
+# narrowing and the coordinate pair keeps `10_000 * max_abs_mm` and
+# `max_abs_units` at or below the shared rounding-boundary helper's 1_000_000
+# unit cap.
+[[property]]
+id = "H-COORD"
+package = "slicer-ir"
+target_kind = "test"
+target_name = "property_ir"
+test_name = "proptest_coord_conversion_envelopes"
+production_symbol = "slicer_ir::mm_to_units"
+production_path = "crates/slicer-ir/src/slice_ir.rs"
+features = ["slicer-ir/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-coord"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_mm = 25, max_abs_units = 250000 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_mm = 100, max_abs_units = 1000000 }
+
+[[property]]
+id = "H-IDS"
+package = "slicer-ir"
+target_kind = "test"
+target_name = "property_ir"
+test_name = "proptest_entity_and_modifier_ids"
+production_symbol = "slicer_ir::LayerEntityIdGen::next"
+production_path = "crates/slicer-ir/src/entity_id.rs"
+features = ["slicer-ir/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-ids"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_allocations = 256, max_id_bytes = 64, max_footprint_points = 8 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_allocations = 4096, max_id_bytes = 256, max_footprint_points = 32 }
+
+[[property]]
+id = "H-CONFIG-BOUNDS"
+package = "slicer-scheduler"
+target_kind = "test"
+target_name = "property_config"
+test_name = "proptest_config_scalar_bounds"
+production_symbol = "slicer_scheduler::config_resolution::ConfigBoundsIndex::check"
+production_path = "crates/slicer-scheduler/src/config_resolution.rs"
+features = ["slicer-scheduler/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-config-bounds"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_declarations = 4, max_list_len = 4, max_abs_bound = 1000 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_declarations = 8, max_list_len = 8, max_abs_bound = 100000 }
+
+[[property]]
+id = "H-IR-SERDE"
+package = "slicer-ir"
+target_kind = "test"
+target_name = "property_ir"
+test_name = "proptest_ir_serialization_and_defaults"
+production_symbol = "slicer_ir::LayerCollectionIR"
+production_path = "crates/slicer-ir/src/slice_ir.rs"
+features = ["slicer-ir/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-ir-serde"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_entities = 8, max_travels = 16, max_points = 4, max_layers = 4 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_entities = 16, max_travels = 32, max_points = 8, max_layers = 8 }
+
+[[property]]
+id = "H-CONFIG-INTERN"
+package = "slicer-ir"
+target_kind = "test"
+target_name = "property_ir"
+test_name = "proptest_config_equality_hash_and_interning"
+production_symbol = "slicer_ir::RegionMapIR::intern_config"
+production_path = "crates/slicer-ir/src/slice_ir.rs"
+features = ["slicer-ir/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-config-intern"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_configs = 4, max_list_len = 4, max_list_depth = 2, max_text_bytes = 16, max_abs_config_value = 4096 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_configs = 8, max_list_len = 8, max_list_depth = 3, max_text_bytes = 32, max_abs_config_value = 16384 }
+
+[[property]]
+id = "H-CHAINS"
+package = "slicer-ir"
+target_kind = "test"
+target_name = "property_ir"
+test_name = "proptest_canonical_chain_product"
+production_symbol = "slicer_ir::region_split_registry::enumerate_canonical_chains"
+production_path = "crates/slicer-ir/src/region_split_registry.rs"
+features = ["slicer-ir/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-chains"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_semantics = 3, max_values_per_semantic = 3, max_chains = 64, max_text_bytes = 16 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_semantics = 4, max_values_per_semantic = 4, max_chains = 625, max_text_bytes = 32 }
+
+[[property]]
+id = "H-DAG"
+package = "slicer-scheduler"
+target_kind = "test"
+target_name = "property_scheduler"
+test_name = "proptest_scheduler_dag_models"
+production_symbol = "slicer_scheduler::topological_sort"
+production_path = "crates/slicer-scheduler/src/topology.rs"
+features = ["slicer-scheduler/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-dag"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_nodes = 5 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_nodes = 7 }
+
+[[property]]
+id = "H-CLAIMS"
+package = "slicer-scheduler"
+target_kind = "test"
+target_name = "property_scheduler"
+test_name = "proptest_scheduler_claim_models"
+production_symbol = "slicer_scheduler::validation::validate_startup_dag"
+production_path = "crates/slicer-scheduler/src/validation.rs"
+features = ["slicer-scheduler/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-claims"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_modules = 4, max_claims = 4, max_observations = 8, max_layers = 3, max_text_bytes = 36 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_modules = 7, max_claims = 8, max_observations = 16, max_layers = 4, max_text_bytes = 64 }
+
+[[property]]
+id = "H-REGISTRY"
+package = "slicer-scheduler"
+target_kind = "test"
+target_name = "property_scheduler"
+test_name = "proptest_scheduler_region_split_registry"
+production_symbol = "slicer_scheduler::region_split::aggregate_region_splits"
+production_path = "crates/slicer-scheduler/src/region_split.rs"
+features = ["slicer-scheduler/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-registry"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_modules = 4, max_declarations = 8, max_text_bytes = 36 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_modules = 7, max_declarations = 16, max_text_bytes = 64 }

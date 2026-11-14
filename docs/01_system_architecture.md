@@ -1040,6 +1040,27 @@ Determinism constraints:
 - If two overrides of equal precedence select different holders for the same key, startup validation fails.
 - If no holder remains for a required claim, startup validation fails.
 
+**Tested and enforced boundaries.** `validate_startup_dag`
+(`crates/slicer-scheduler/src/validation.rs`) receives caller-supplied
+`claim_holders`; it has no module-disable input of its own, so the effective
+universe — modules, holder observations and stage DAG nodes — must already have
+removed disabled, shadowed or unloaded modules. A retained consumer that still
+requires a removed module or capability then fails with `MissingDependency`
+rather than resurrecting the disabled candidate. Claim observations are compared
+as typed `(object_id, region_id, global_layer_index)` values; `ConflictScope`
+promises no delimiter grammar, so identity is never reassembled from a
+concatenated key. The validator keys the four non-transitionable rows
+(`perimeter-generator`, `seam-placer`, `layer-planner`, `mesh-analyzer`) on the
+object alone — one holder across every layer **and** region of that object —
+while ordinary and transition-capable claims are compared only inside one typed
+scope. `support-planner` is deliberately not in that stable set: family-scoped
+planners are retained per family and paired with their renderer at dispatch time
+(see `docs/04_host_scheduler.md` § "Planner-Renderer Pairing"). Property
+`H-CLAIMS` (`docs/testing/properties.md#h-claims`, evidence in
+[proptest-scheduler-evidence.md](testing/proptest-scheduler-evidence.md)) models
+these rules independently and pins the negative mutations; it covers the public
+validator contract, not live per-region support aggregation.
+
 Worked example — valid:
 
 - Object A uses `com.core.gyroid-infill` for `claim:sparse-fill` globally.
