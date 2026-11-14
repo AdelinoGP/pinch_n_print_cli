@@ -25,16 +25,14 @@ negative shape is also pinned by a deterministic control that runs under a plain
 
 - Source revision: each run records it per run in
   `target/property-testing/<run-token>/<ID>/context.json` (`source_revision`, `dirty_paths`,
-  `source_state_digest`, `cargo_target_dir`, `completion_eligible`). The runs quoted below were
-  taken on `source_revision = 3cd01be0` **with the packet's files uncommitted**, and their
-  `dirty_paths` listed exactly: `crates/slicer-scheduler/Cargo.toml`,
-  `crates/slicer-scheduler/src/validation.rs`,
-  `crates/slicer-scheduler/tests/contract/claim_transition_matrix_tdd.rs`,
-  `crates/slicer-scheduler/tests/property_scheduler.rs`,
-  `crates/slicer-scheduler/tests/property_scheduler_contracts.rs`,
-  `crates/slicer-scheduler/tests/common/property_scheduler_{dag,claims,registry}.rs`,
-  `crates/slicer-scheduler/tests/common/property_scheduler_contracts/*.rs` and
-  `test-properties.toml`.
+  `source_state_digest`, `cargo_target_dir`, `completion_eligible`). The runs quoted in the tables
+  below were taken on `source_revision = 14fd1776` **with the review-remediation files
+  uncommitted**, and their `dirty_paths` listed the three charter models, the seven control
+  modules, the two aggregation roots, `crates/slicer-scheduler/src/validation.rs` and the docs.
+  That is the final implementation generation. An earlier generation at `source_revision =
+  3cd01be0` produced the first pass of measurements; the independent review rejected that pass on
+  shrink preservation and generative coverage, so those numbers are superseded and are not quoted
+  here.
   Re-derive the current revision with `git log --format=%H -1 --grep proptest-openrscad_07` rather
   than trusting a frozen copy; an amend or squash changes it. The per-run `context.json` files are
   authoritative for what each measurement actually measured, and this document does not restate a
@@ -89,12 +87,13 @@ Committed profiles (identical shape to the earlier families; bounds are the fami
 Zero rejection budgets are honest because every generator is total (no `prop_assume`, no filtering
 of valid cases); a rejection would signal a generator change and abort as `exhausted` rather than
 silently consuming budget. The bounds stay inside the packet's safety ceilings (`3..=7` nodes;
-`3..=7` modules, `1..=8` claims, `2..=16` observations, `2..=4` layers, `8..=64` bytes for claims;
+`3..=7` modules, `1..=8` claims, `2..=16` observations, `2..=4` layers, `36..=64` bytes for claims
+(UUID-syntax object ids; the packet's 8-byte variable-text floor does not carry them);
 `2..=7` modules, `2..=16` declarations, `8..=64` bytes for the registry), enforced before any
 allocation by the target-private `checked_max_nodes` / `checked_claim_limits` /
-`checked_registry_limits` helpers. `max_text_bytes` 36 is the smallest bound that can carry the
-UUID-syntax id family `domains::id_text(IdTextKind::UuidSyntax, ..)` requires; the models widen a
-smaller ceiling to 36 rather than shortening an id.
+`checked_registry_limits` helpers. A claims `max_text_bytes` below 36 is rejected by
+`check_text_bound` (called from `checked_claim_limits`) with a named error rather than widened:
+the UUID-syntax id family `domains::id_text(IdTextKind::UuidSyntax, ..)` needs 36 bytes.
 
 ## Baseline: existing owner tests, captured before the additions
 
@@ -172,7 +171,7 @@ All rows were produced by the registry-backed command; no row is a compile-only 
 |---|---|---|
 | routine | `cargo xtask test --summary --properties --property H-DAG --property H-CLAIMS --property H-REGISTRY --tier routine` | `VERDICT: PASS` |
 | extended | same with `--tier extended` | `VERDICT: PASS` |
-| retained-seed replay | same routine selection with `--seed 1754118437219857720` | `VERDICT: PASS` |
+| retained-seed replay | same routine selection with `--seed 8015297453583596151` | `VERDICT: PASS` |
 | per-record replay | `--property <ID> --tier routine --seed <that record's routine seed>` | PASS for all three |
 | incremental selection | `cargo xtask test --summary --properties --tier routine` (no `--property`) | `VERDICT: PASS`, 15 binaries |
 
@@ -180,14 +179,14 @@ Per-property measurements (libtest wall as printed by the executor's captured ch
 
 | ID | routine wall | routine accepted / rejected | extended wall | extended accepted / rejected | routine seed (retained replay) |
 |---|---:|---|---:|---|---|
-| `H-DAG` | 0.12s | 64 / 0 | 1.91s | 1024 / 0 | 1754118437219857720 |
-| `H-CLAIMS` | 1.85s | 64 / 0 | 3.08s | 1024 / 0 | 3790326088920418405 |
-| `H-REGISTRY` | 0.07s | 64 / 0 | 1.21s | 1024 / 0 | 7693596911828048388 |
+| `H-DAG` | 0.20s | 64 / 0 | 1.69s | 1024 / 0 | 8015297453583596151 |
+| `H-CLAIMS` | 2.27s | 64 / 0 | 1.92s | 1024 / 0 | 5053888522409382591 |
+| `H-REGISTRY` | 0.13s | 64 / 0 | 0.83s | 1024 / 0 | 2960010196684534321 |
 
 Every row reported `call_counts_complete = true`, `accepted_cases == cases`, outcome `passed` and
 `error_kind: null`; `rejected_test_calls` was `0`. The retained-seed replays printed libtest walls
-0.08s / 1.12s / 0.08s for `H-DAG` / `H-CLAIMS` / `H-REGISTRY`, and the combined-retained-seed run
-(routine selection with `--seed 1754118437219857720` applied to all three) also passed — the
+0.07s / 1.07s / 0.07s for `H-DAG` / `H-CLAIMS` / `H-REGISTRY`, and the combined-retained-seed run
+(routine selection with `--seed 8015297453583596151` applied to all three) also passed — the
 shared seed replays the `H-DAG` stream exactly and gives the other two a different stream, so the
 per-record replays above are the authoritative retained-stream evidence.
 
@@ -211,14 +210,14 @@ Compilation and execution are recorded separately; the walls above are execution
   property executed. Subsequent runs relinked in 1.08s–1.37s, so that 3m 34s is a one-off
   workspace relink and is **not** attributed to the new test targets.
 - Deterministic control target: `cargo test -p slicer-scheduler --features property_testing --test
-  property_scheduler_contracts` now runs 15 tests, including the in-process harness-refusal controls
-  in `crates/slicer-scheduler/tests/common/property_scheduler_contracts/bound_controls.rs`, which
+  property_scheduler_contracts` runs the contracts target; its current test count is whatever that
+  command reports. It includes the in-process harness-refusal controls in
+  `crates/slicer-scheduler/tests/common/property_scheduler_contracts/bound_controls.rs`, which
   drive `slicer_sdk::test_support::property_testing::PropertyRun` directly and write temporary
   artifact directories; that binary spawns no nested `cargo` child. The measured walls of 3.23s
-  (4.47s on an earlier, longer-windowed run) belong to the 13-test target recorded before the
-  claims remediation added two controls; this document holds no 15-test wall measurement and none
-  is inferred from them.
-- Execution proper stays cheap at the extended tier (largest wall 3.08s for 1024 `H-CLAIMS` cases),
+  (4.47s on an earlier, longer-windowed run) belong to the earlier 13-test target; this document
+  holds no wall measurement for the expanded target and none is inferred from them.
+- Execution proper stays cheap at the extended tier (largest wall 1.92s for 1024 `H-CLAIMS` cases in the quoted run; an earlier same-head run measured 3.89s / 3.91s / 2.00s, so these walls vary with machine load),
   so the committed bounds are measurable rather than aspirational.
 
 ## Shrinking and exhaustion status
@@ -241,10 +240,10 @@ Shrink behaviour is instead pinned structurally:
 - `H-CLAIMS` selects its `ClaimMode` from a non-shrinkable list and
   `assert_shrink_preserves_witnesses` audits, per mode, that the distinguishing witness survives
   simplification (two distinct typed identities, three holders across `r0`/`r1`/`r2`, the
-  delimiter-colliding pair, the conflicting write pair, the disabled consumer's missing module, and
-  the typed `wall_generator` plus `spiral_vase` selector). Only the module declaration order is a
-  shrinkable dimension in the selection/pairing mode, so the expected kept set cannot change
-  identity.
+  delimiter-colliding pair, the conflicting write pair, the same-scope `support-generator` holder
+  pair, the disabled consumer's missing module, and the typed `wall_generator` plus `spiral_vase`
+  selector). Only the module declaration order is a shrinkable dimension in the selection/pairing
+  mode, so the expected kept set cannot change identity.
 - `H-REGISTRY` selects the requested shape and every fault-deciding flag from a non-shrinkable
   case plan; `assert_shrink_preserves_faults` asserts the shape never changes, a conflicting case
   keeps the same first-seen `(priority, value_type)` and exactly one incompatible warning, a tied
@@ -313,7 +312,8 @@ is deliberately not added to the stable set by this packet.
 ## Mutation controls (what the models provably reject)
 
 The deterministic controls run under `cargo test -p slicer-scheduler --features property_testing
---test property_scheduler_contracts` (15 tests) and each names the mutation it must catch. Every
+--test property_scheduler_contracts`; the target's current test count is whatever that command
+reports, and each control names the mutation it must catch. Every
 control below lives in `crates/slicer-scheduler/tests/common/property_scheduler_contracts/`; the
 citations give the full workspace-relative file path rather than a bare module name.
 
@@ -332,7 +332,12 @@ citations give the full workspace-relative file path rather than a bare module n
   host paint-stage insertion and the non-vacuous `aggregated_region_split` propagation.
 - `crates/slicer-scheduler/tests/common/property_scheduler_contracts/claims_controls.rs::scheduler_claim_scope_and_exception_controls`
   — delimiter aliasing, dropped `claim:raft-fill` conflicts, a blanket `support-family:*` exemption,
-  lost original identity, and every stable-claim direction including the permitted transitions.
+  lost original identity, every stable-claim direction including the permitted transitions, and the
+  same-scope `support-generator` rejection (two distinct holders of the transition-capable claim in
+  one typed `(object, region, layer)` scope still conflict).
+- `crates/slicer-scheduler/tests/common/property_scheduler_contracts/claims_controls.rs::claims_shrink_audit_runs_without_property_context`
+  — the claims shrink audit is callable from a bare bounds profile with no `PNP_PROPERTY_CONTEXT`
+  and no `PropertyRun`, while an unsafe module ceiling still rejects before allocation.
 - `crates/slicer-scheduler/tests/common/property_scheduler_contracts/claims_controls.rs::shared_stage_transitive_only_cross_stage_witness`
   and
   `crates/slicer-scheduler/tests/common/property_scheduler_contracts/claims_controls.rs::stable_claim_scope_is_reported_per_holder_pair`
@@ -363,7 +368,10 @@ citations give the full workspace-relative file path rather than a bare module n
   — unsafe/narrowing bounds rejected before allocation, and
   missing/invalid/identity-mismatched/ineligible contexts, unknown and zero bounds, exhaustion and
   a Proptest override conflict all failing with their named kinds while a two-case passing run
-  writes the promised evidence.
+  writes the promised evidence. The same control drives the three target-private shrink audits
+  directly through `dag_models::run_shrink_audit`, `claim_models::run_shrink_audit` and
+  `registry_models::run_shrink_audit` at both accepted ceiling extremes; that is the control's
+  wiring contract, not a wall-clock measurement, and no timing is claimed for it.
 
 ## What this evidence does not prove
 
@@ -388,7 +396,7 @@ citations give the full workspace-relative file path rather than a bare module n
 cargo test -p slicer-scheduler --features property_testing --test property_scheduler_contracts -- --nocapture
 cargo xtask test --summary --properties --property H-DAG --property H-CLAIMS --property H-REGISTRY --tier routine
 cargo xtask test --summary --properties --property H-DAG --property H-CLAIMS --property H-REGISTRY --tier extended
-cargo xtask test --summary --properties --property H-CLAIMS --tier routine --seed 3790326088920418405
+cargo xtask test --summary --properties --property H-CLAIMS --tier routine --seed 5053888522409382591
 cargo xtask test --summary --properties --tier routine
 ```
 

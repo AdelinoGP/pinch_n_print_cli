@@ -1265,9 +1265,13 @@ extended-case cost.
 
 ### Strategy
 
-`sample_strategy` composes `prop_oneof![9 => dag_samples, 4 => cycle_samples]`. A DAG sample
-carries the graph, a node-index permutation and the duplicate-destination flag; the permutation is
-applied both to the node `Vec` and to each `edges_to` list. Cycle samples stay in
+`sample_strategy` builds a `Vec<SampleMode>` by repeating `DAG_MODE_WEIGHT` (9) `Dag` tags and
+`CYCLE_MODE_WEIGHT` (4) `Cycle` tags, then draws one mode from
+`proptest::sample::select(modes).no_shrink()` and dispatches it through `prop_flat_map`; the 9:4
+weighting comes from list membership, not from a union. A DAG branch pairs the graph with a
+`no_shrink` duplicate-destination flag, then draws a node-index permutation through
+`permutations(...).prop_map`; `verify_dag_case` applies that permutation to the node `Vec` and to
+each `edges_to` list and requires the public order to be unchanged. Cycle branches stay in
 `GraphKind::CycleWithTail`. Mandatory deterministic witnesses run before sampling: a self-cycle
 with a downstream tail (`100 -> 100`, `100 -> 101`, `101 -> 102`) and two disconnected cycles
 (`200 <-> 201`, `202 <-> 203`, `201 -> 204`) with independent sortable node 205; both must match
@@ -1306,7 +1310,11 @@ oracle is recomputed for the shrunk graph; the node permutation is re-drawn by `
 is re-validated as a complete permutation. `assert_shrink_preserves_modes` audits this on every
 execution: fixed-seed trees are simplified repeatedly and must keep their mode tag, a simplified
 cycle must still have a nonempty blocked remainder, a simplified DAG must stay acyclic and still
-match the exhaustive oracle, and a duplicated destination must stay duplicated. Shrink limits are
+match the exhaustive oracle, and the duplicate-destination *flag* must survive. That last assertion
+is flag preservation, not an exercised duplication check: the audit's shrunk-DAG body never builds
+a duplicate edge, and `verify_dag_case` calls `check_duplicate_destination` only when the flag is
+set and the shrunk graph still has at least one edge, so a shrink that empties the edge list keeps
+the tag while no duplication assertion runs. Shrink limits are
 profile-bounded (`max_shrink_iters` 64/256, `max_shrink_time_ms = 0`); completion is reported
 `null`/unknown because Proptest 1.11 cannot identify it.
 
@@ -1314,10 +1322,10 @@ profile-bounded (`max_shrink_iters` 64/256, `max_shrink_time_ms = 0`); completio
 
 Both tiers, `in_process`, `timeout_ms = 0`, chacha, `cases = 64 / 1024`,
 `max_default_size_range = 32 / 256`, `max_shrink_iters = 64 / 256`, rejection budgets `0`,
-`bounds.max_nodes = 5 / 7`. Measured on Windows: routine libtest `0.12s` and extended `1.91s`, each
+`bounds.max_nodes = 5 / 7`. Measured on Windows: routine libtest `0.20s` and extended `1.69s`, each
 at its profile case count (64 / 1024), with `rejected_test_calls = 0`,
 `call_counts_complete = true` and outcome `passed`; the retained routine seed
-`1754118437219857720` replayed to `VERDICT: PASS`. Command, logs and provenance are in
+`8015297453583596151` replayed to `VERDICT: PASS`. Command, logs and provenance are in
 [proptest-scheduler-evidence.md](proptest-scheduler-evidence.md).
 
 ### Failure record
@@ -1416,12 +1424,14 @@ effective-input behaviour, not config parsing or a nonexistent scheduler disable
 
 `checked_claim_limits` enforces `max_modules 3..=7`, `max_claims 1..=8`,
 `max_observations 2..=16` (variable observations in addition to the fixed four-role fill setup),
-`max_layers 2..=4` and `max_text_bytes 8..=64`. Committed values are
-`max_modules / max_claims / max_observations / max_layers / max_text_bytes`:
-routine `4 / 4 / 8 / 3 / 36`, extended `7 / 8 / 16 / 4 / 64`; the 36-byte routine bound is the
-UUID floor, and `uuid_text` never silently shortens a UUID. Object ids use the shared UUID-syntax
-domain plus a separate delimiter-rich raw text domain; module ids use a bounded prefix with
-`com.pbt.claim-N-` overhead. Modules carry
+`max_layers 2..=4` and `max_text_bytes 36..=64`. The text ceiling is not widened: `check_text_bound`
+rejects any value outside `36..=64` with a named error, because object ids are UUID syntax and need
+36 bytes, so a lower ceiling cannot be honoured without silently changing the declared profile (the
+packet's 8-byte variable-text floor applies to raw text components, not the UUID object ids).
+Committed values are `max_modules / max_claims / max_observations / max_layers / max_text_bytes`:
+routine `4 / 4 / 8 / 3 / 36`, extended `7 / 8 / 16 / 4 / 64`; `uuid_text` never shortens a UUID.
+Object ids use the shared UUID-syntax domain plus a separate delimiter-rich raw text domain; module
+ids use a bounded prefix with `com.pbt.claim-N-` overhead. Modules carry
 compatible versions, canonical stages (`Layer::Infill`, `PrePass::MeshAnalysis`,
 `PrePass::LayerPlanning`) and placeholder WASM paths. Every unrelated case carries the fixed
 global four-claim fill setup, so an unrelated fill-coverage error can never make a rejection look
@@ -1429,15 +1439,21 @@ correct; only `FillGlobalAbsent` deliberately drops one.
 
 ### Strategy
 
-`claim_case_strategy` selects one `ClaimMode` from the 37 concrete tagged witnesses in
-`ClaimMode::ALL`, so each case
-is exactly one witness shape: fill multiplicity, absence or region duplicate for each of four ids;
-each family global plus a non-exempt suffix; ordinary and raft globals; region and delimiter
-scopes; writes; missing universe; cross-stage; disabled universe; the same-region and cross-region
-stable witnesses for each of four claims; same-module-across-layers; distinct objects and two
-transition-capable claims. The 512-case pre-sample audit requires every tagged mode and both
-rejecting and accepting verdicts, and audits up to 32 `simplify()` calls per sample to prove the
-mode and the verdict signature survive shrinking. No `prop_assume` and no rejection budget is used.
+`claim_case_strategy` draws one mode from `available_modes`, which is `ClaimMode::ALL` filtered
+only by `ClaimMode::is_available`; `StableThreeHolders` is withheld when the accepted
+`max_observations` bound cannot carry its three holder observations on top of the fixed fill setup,
+and every other mode fits every accepted profile. `ClaimMode::ALL` is the source of truth for the
+family inventory: ordinary and raft globals; fill and finite family-support exceptions (global
+multiplicity, global absence, per-region duplicate, non-exempt `support-family:<suffix>`); typed
+region and delimiter scopes; write conflicts; missing universe; disabled universe; direct and
+shared-stage transitive cross-stage legality; stable same-region, cross-region, three-holder,
+same-module-across-layers and distinct-objects shapes; the transition-capable per-layer shape and
+its same-scope counterpart; and the `SelectionPairing` selector ladder. Each case is exactly one
+witness shape. The mode source is a `proptest::sample::select(..).no_shrink()` list, so no union
+shrinker can switch modes. The 512-case pre-sample audit requires every available tagged mode and
+both rejecting and accepting verdicts, and audits up to 32 `simplify()` calls per sample to prove
+the mode and the verdict signature survive shrinking. No `prop_assume` and no rejection budget is
+used.
 
 ### Oracle
 
@@ -1464,7 +1480,8 @@ Every case carries its `ClaimMode` tag, selected from a **non-shrinkable** list
 tag and that mode's distinguishing witness survive: two distinct typed identities for the
 claim/region modes, three holders in `r0`/`r1`/`r2` for the object-wide mode, the legacy
 delimiter-colliding pair for the delimiter mode, the conflicting pair for the write mode, the
-retained consumer's missing module for the disabled mode, and the selector witness (typed
+same-scope `support-generator` holder pair for the transition same-scope mode, the retained
+consumer's missing module for the disabled mode, and the selector witness (typed
 `wall_generator` value plus `spiral_vase` flag) for the selection/pairing mode. Only the module
 declaration order rotates as a shrinkable dimension there, so the expected kept set cannot change
 identity. The fixed fill setup is re-asserted on every case, so a shrink cannot make an unrelated
@@ -1475,9 +1492,9 @@ fill error pass for the wrong reason. Shrink limits are profile-bounded; complet
 
 Both tiers, `in_process`, `timeout_ms = 0`, chacha, `cases = 64 / 1024`,
 `max_default_size_range = 32 / 256`, `max_shrink_iters = 64 / 256`, rejection budgets `0`.
-Measured on Windows: routine libtest `1.85s` and extended `3.08s`, each at its profile case count,
+Measured on Windows: routine libtest `2.27s` and extended `1.92s`, each at its profile case count,
 with `rejected_test_calls = 0`, `call_counts_complete = true` and outcome `passed`; the retained
-routine seed `3790326088920418405` replayed to `VERDICT: PASS`. See
+routine seed `5053888522409382591` replayed to `VERDICT: PASS`. See
 [proptest-scheduler-evidence.md](proptest-scheduler-evidence.md).
 
 ### Failure record
@@ -1490,20 +1507,24 @@ Committed regressions are named concrete inputs, never seeds. Homes:
 cross-region stable-claim regression and
 `crates/slicer-scheduler/tests/common/property_scheduler_contracts/claims_controls.rs` for the
 `delimiter_rich_object_and_region_ids_never_share_a_claim_scope` witness, with
-`.../selection_controls.rs` and `.../bound_controls.rs` for the remaining selection and bound
-controls.
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/selection_controls.rs` and
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/bound_controls.rs` for the
+remaining selection and bound controls.
 
 ### Acceptance
 
 The target was actually executed through the registry with `--exact --nocapture`; the typed
 diagnostic model is checked on every case. Generator and shrink validity are demonstrated by
-`scheduler_claim_scope_and_exception_controls`,
+`scheduler_claim_scope_and_exception_controls` (including the same-scope `support-generator`
+rejection that `ClaimMode::TransitionSameScope` also generates),
 `delimiter_rich_object_and_region_ids_never_share_a_claim_scope`,
 `scheduler_write_dependency_and_disabled_controls`, `scheduler_claim_model_ceiling_walk_controls`,
 `scheduler_claim_selection_and_pairing_controls`, and the 512-case mode/verdict population audit.
-The selection/pairing control exercises `resolve_held_claims`, `FillHolders` and family pairing
-through their real seams; it is a deterministic control, not part of the generative claim/write
-oracle. Existing baselines `claim_transition_matrix_tdd`, `holder_matching_tdd`,
+Selection/pairing is generative as well as deterministic: `ClaimMode::SelectionPairing` drives the
+real `dedup_same_claim_modules_with_typed_wall_generator`, `resolve_held_claims` (with
+`FillHolders`) and `validate_support_family_pairing` seams against an independent selector-table
+model, while `scheduler_claim_selection_and_pairing_controls` remains the hand-computed companion.
+Existing baselines `claim_transition_matrix_tdd`, `holder_matching_tdd`,
 `typed_selector_claim_selection_tdd`, `support_family_selection` and
 `support_family_pairing_rejected` pass. Defect outcome: **two production defects were confirmed
 and fixed** in the validator's claim pass — (1) the scope-keying defect where delimiter-bearing
@@ -1630,9 +1651,9 @@ profile-bounded; completion is reported `null`/unknown.
 
 Both tiers, `in_process`, `timeout_ms = 0`, chacha, `cases = 64 / 1024`,
 `max_default_size_range = 32 / 256`, `max_shrink_iters = 64 / 256`, rejection budgets `0`.
-Measured on Windows: routine libtest `0.07s` and extended `1.21s`, each at its profile case count,
+Measured on Windows: routine libtest `0.13s` and extended `0.83s`, each at its profile case count,
 with `rejected_test_calls = 0`, `call_counts_complete = true` and outcome `passed`; the retained
-routine seed `7693596911828048388` replayed to `VERDICT: PASS`. See
+routine seed `2960010196684534321` replayed to `VERDICT: PASS`. See
 [proptest-scheduler-evidence.md](proptest-scheduler-evidence.md).
 
 ### Failure record
@@ -1644,7 +1665,9 @@ Committed regressions are named concrete inputs, never seeds. Control homes:
 `crates/slicer-scheduler/tests/common/property_scheduler_contracts/registry_controls.rs` for the
 aggregate/ordering/warning witnesses and
 `crates/slicer-scheduler/tests/common/property_scheduler_contracts/manifest_controls.rs` for raw
-TOML ingestion, plus `.../bound_controls.rs` for bound and shrink rejection.
+TOML ingestion, plus
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/bound_controls.rs` for bound and
+shrink rejection.
 
 ### Acceptance
 

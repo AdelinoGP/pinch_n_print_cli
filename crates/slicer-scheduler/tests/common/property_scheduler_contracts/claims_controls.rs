@@ -538,6 +538,34 @@ fn scheduler_claim_scope_and_exception_controls() {
             claim_conflicts(&report)
         );
     }
+
+    // ── ... but the same claim in ONE typed scope still rejects two holders.
+    // The `support-generator` half is named explicitly by the exception table:
+    // different layers are allowed, the same `(object, region, layer)` is not.
+    let claim = models::TRANSITION_CAPABLE_CLAIM_IDS[1];
+    assert_eq!(
+        claim, "support-generator",
+        "the same-scope witness must name the support-generator exception"
+    );
+    let mut holders = models::fixed_fill_holders(&ids[0]);
+    holders.push(models::region_holder(claim, &ids[0], "cube", "r0", Some(2)));
+    holders.push(models::region_holder(claim, &ids[1], "cube", "r0", Some(2)));
+    let report = validate_startup_dag(&request(modules.clone(), holders));
+    assert_eq!(
+        claim_conflicts(&report),
+        vec![ClaimView {
+            pass: "per-region",
+            claim: claim.to_string(),
+            module_a: ids[0].clone(),
+            module_b: ids[1].clone(),
+            scope: ScopeModel::Region {
+                object_id: String::from("cube"),
+                region_id: String::from("r0"),
+                layer: Some(2),
+            },
+        }],
+        "two distinct {claim} holders in the same typed scope must still conflict"
+    );
 }
 
 /// Root cause: `validate_claim_conflicts` grouped region holders by the
@@ -1091,6 +1119,26 @@ fn stable_claim_scope_is_reported_per_holder_pair() {
         ],
         "each stable-claim pair must retain its own first holder's region"
     );
+}
+
+/// The AC-N3 exposure of the claims shrink audit: the same population and
+/// witness-preservation code `run_property` runs must be callable from a bare
+/// bounds profile, without `PNP_PROPERTY_CONTEXT` or a `PropertyRun`.
+///
+/// The first call proves the checked-bound rejection still fires before any
+/// strategy allocates; the second runs the real audit at the registry's routine
+/// bounds (4 modules, 4 claims, 8 observations, 3 layers, 36 text bytes).
+#[test]
+fn claims_shrink_audit_runs_without_property_context() {
+    let error = models::run_shrink_audit(2, 4, 8, 3, 36)
+        .expect_err("an unsafe module ceiling must be rejected before allocation");
+    assert!(
+        error.contains("max_modules"),
+        "the rejection must name the offending bound, got {error:?}"
+    );
+
+    models::run_shrink_audit(4, 4, 8, 3, 36)
+        .expect("the routine H-CLAIMS audit must run without a property context");
 }
 
 /// The packet's safety-ceiling extremes plus the live registry's routine

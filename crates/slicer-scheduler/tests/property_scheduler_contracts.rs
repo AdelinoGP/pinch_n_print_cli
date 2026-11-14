@@ -3,11 +3,14 @@
 //!
 //! Every test here runs under a plain
 //! `cargo test -p slicer-scheduler --features property_testing --test property_scheduler_contracts`.
-//! Nothing in this file reads `PNP_PROPERTY_CONTEXT`, builds a `PropertyRun`,
-//! or consults the property registry: these are hand-computed witnesses that
-//! prove the reference models can reject the faults the randomized properties
-//! are meant to catch, plus the negative cases that belong to the real
-//! validating APIs.
+//! Most controls are hand-computed witnesses that prove the reference models can
+//! reject the faults the randomized properties are meant to catch, plus the
+//! negative cases that belong to the real validating APIs. `bound_controls`
+//! deliberately drives the real foundation harness in-process instead: it
+//! mutates `PNP_PROPERTY_CONTEXT`, builds and checks
+//! `slicer_sdk::test_support::property_testing::PropertyRun` values, and pins
+//! the harness's named refusals. No control in this binary substitutes for a
+//! registry execution.
 //!
 //! Each control module is mounted explicitly so the file compiles as part of
 //! this one aggregated binary (an unmounted file would silently report zero

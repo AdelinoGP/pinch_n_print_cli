@@ -12,8 +12,9 @@
 //!   one module do not, and the four `FILL_CLAIM_IDS` plus the four finite
 //!   family-support globals are exact exceptions;
 //! * the four stable claims keep one holder per object across every region and
-//!   layer, while `claim:sparse-fill` / `support-generator` transitions stay
-//!   permitted;
+//!   layer, while `claim:sparse-fill` / `support-generator` transitions are
+//!   permitted across layers only — one typed `(object, region, layer)` scope
+//!   still rejects two holders;
 //! * write ordering is decided by exact shared paths, `ir_reads` consumption of
 //!   that same field and a real `StageDag` path, plus the bounded
 //!   `SupportPlanIR`/`SupportIR` family-support roots;
@@ -254,6 +255,10 @@ pub enum ClaimMode {
     StableDistinctObjects,
     /// Declared transition-capable claims may change holder across layers.
     TransitionCapable(&'static str),
+    /// The same transition-capable claim held by two distinct modules in one
+    /// typed `(object, region, layer)` scope must still conflict; only a
+    /// different-layer pair is permitted.
+    TransitionSameScope(&'static str),
     /// Declarative startup selection/pairing domain driven through the real
     /// dedup, held-claim resolver and family-pairing seams.
     SelectionPairing(SelectionWitness),
@@ -328,7 +333,7 @@ impl ClaimMode {
     ///
     /// `ClaimMode::available` filters the variants whose fixed witness cannot fit
     /// a narrow profile; at the packet's full ceilings every variant runs.
-    pub const ALL: [ClaimMode; 48] = [
+    pub const ALL: [ClaimMode; 49] = [
         ClaimMode::FillGlobalMultiplicity(EXPECTED_FILL_CLAIM_IDS[0]),
         ClaimMode::FillGlobalMultiplicity(EXPECTED_FILL_CLAIM_IDS[1]),
         ClaimMode::FillGlobalMultiplicity(EXPECTED_FILL_CLAIM_IDS[2]),
@@ -371,6 +376,10 @@ impl ClaimMode {
         ClaimMode::StableDistinctObjects,
         ClaimMode::TransitionCapable(TRANSITION_CAPABLE_CLAIM_IDS[0]),
         ClaimMode::TransitionCapable(TRANSITION_CAPABLE_CLAIM_IDS[1]),
+        // `claim:sparse-fill`'s same-scope half is already covered by
+        // `FillRegionDuplicate(claim:sparse-fill)`; this mode names the
+        // `support-generator` half the exception table states explicitly.
+        ClaimMode::TransitionSameScope(TRANSITION_CAPABLE_CLAIM_IDS[1]),
         ClaimMode::SelectionPairing(SelectionWitness::Absent),
         ClaimMode::SelectionPairing(SelectionWitness::Classic),
         ClaimMode::SelectionPairing(SelectionWitness::Arachne),
@@ -1319,6 +1328,7 @@ fn mode_strategy(mode: ClaimMode, limits: &ClaimLimits) -> BoxedStrategy<ClaimCa
         ClaimMode::TransitionCapable(claim) => {
             stable_case(mode, claim, StableShape::SameRegionCrossLayer, limits)
         }
+        ClaimMode::TransitionSameScope(claim) => transition_same_scope_case(mode, claim, limits),
         ClaimMode::SelectionPairing(witness) => selection_pairing_case(witness, limits),
     }
 }
@@ -1750,6 +1760,27 @@ fn stable_case(
                 right_region,
                 Some(second),
             ));
+            case(mode, modules, holders, vec![text])
+        })
+        .boxed()
+}
+
+/// Two distinct holders of one declared transition-capable claim in the *same*
+/// `(object, region, layer)` scope. A different-layer pair is already covered by
+/// `ClaimMode::TransitionCapable`; this is the half the exception table says is
+/// still rejected.
+fn transition_same_scope_case(
+    mode: ClaimMode,
+    claim: &'static str,
+    limits: &ClaimLimits,
+) -> BoxedStrategy<ClaimCase> {
+    uuid_text(limits)
+        .prop_map(move |text| {
+            let ids = module_ids(3, &text);
+            let modules = plain_modules(&ids, STAGE_INFILL);
+            let mut holders = fixed_fill_holders(&ids[0]);
+            holders.push(region_holder(claim, &ids[1], &text, "r0", Some(0)));
+            holders.push(region_holder(claim, &ids[2], &text, "r0", Some(0)));
             case(mode, modules, holders, vec![text])
         })
         .boxed()
@@ -2596,93 +2627,98 @@ fn selection_fill_holders(case: &ClaimCase) -> SelectionFillHolders {
 }
 
 /// The independent selector-table model for one selection/pairing case.
+///
+/// This is deliberately **not** a transcription of production's multi-pass
+/// dedup. `slicer_scheduler::execution_plan::dedup_same_claim_modules_typed`
+/// sorts the modules, collects a `(stage, claim) -> candidates` map, resolves a
+/// second `(stage, claim) -> winner` map and then walks the modules in an
+/// explicit keep/drop pass. This model instead evaluates **one predicate per
+/// module** over the controlled declaration table: a module is dropped iff it
+/// declares a deduplicated claim whose selected holder is another module. The
+/// holder is read directly from that claim's same-stage declarers (typed
+/// perimeter preference, otherwise the lexical minimum), so there are no pass
+/// boundaries, no candidate/winner maps, no keep pass and no helper shared with
+/// production. The deterministic selector tables in
+/// `crates/slicer-scheduler/tests/common/property_scheduler_contracts/selection_controls.rs`
+/// stay independently specified; sharing this
+/// derivation with production would make the comparison self-referential.
 fn selection_expectation(case: &ClaimCase) -> SelectionExpectation {
     let witness = match case.mode {
         ClaimMode::SelectionPairing(witness) => witness,
         _ => panic!("the selector model only models ClaimMode::SelectionPairing"),
     };
 
+    let declares = |module: &LoadedModule, claim: &str| {
+        module
+            .claims()
+            .iter()
+            .any(|declared| declared.as_str() == claim)
+    };
+    let family_scoped = |module: &LoadedModule| {
+        module
+            .claims()
+            .iter()
+            .any(|claim| claim.starts_with("support-family:"))
+    };
+
+    // The reviewed selector table's non-deduplicated claims: the four
+    // configured fill roles, every `support-family:*` marker, every
+    // `support-generator` renderer, and a `support-planner` scoped to a family.
+    let deduplicated = |module: &LoadedModule, claim: &str| {
+        !FILL_CLAIM_IDS.contains(&claim)
+            && !claim.starts_with("support-family:")
+            && claim != "support-generator"
+            && !(claim == "support-planner" && family_scoped(module))
+    };
+
+    // Read the selected holder directly from the same-stage declarers. No map is
+    // built and no winner is stored: each predicate evaluation asks the
+    // declaration table who holds this claim.
+    let selected_holder = |claimant: &LoadedModule, claim: &str| -> ModuleId {
+        let mut declarers: Vec<&str> = case
+            .modules
+            .iter()
+            .filter(|module| module.stage() == claimant.stage() && declares(module, claim))
+            .map(LoadedModule::id)
+            .collect();
+        if claim == "perimeter-generator" {
+            let preferred = witness.preferred_perimeter();
+            if declarers.contains(&preferred) {
+                return preferred.to_string();
+            }
+        }
+        if claim == "support-planner" {
+            // Family-scoped planners coexist; only non-family planners resolve
+            // among themselves.
+            declarers.retain(|id| {
+                !case
+                    .modules
+                    .iter()
+                    .any(|module| module.id() == *id && family_scoped(module))
+            });
+        }
+        declarers.sort_unstable();
+        declarers
+            .first()
+            .map(|id| (*id).to_string())
+            .expect("a claimant always declares its own claim")
+    };
+
     let mut sorted: Vec<&LoadedModule> = case.modules.iter().collect();
     sorted.sort_by(|left, right| left.id().cmp(right.id()));
 
-    // Pass 1: (stage, claim) -> lexical candidates, skipping fill claims and
-    // the family scope marker.
-    let mut candidates: BTreeMap<(String, String), Vec<ModuleId>> = BTreeMap::new();
-    for module in &sorted {
-        for claim in module.claims() {
-            if FILL_CLAIM_IDS.contains(&claim.as_str()) || claim.starts_with("support-family:") {
-                continue;
-            }
-            candidates
-                .entry((module.stage().to_string(), claim.clone()))
-                .or_default()
-                .push(module.id().to_string());
-        }
-    }
-
-    let family_scoped: BTreeSet<&str> = sorted
-        .iter()
-        .filter(|module| {
-            module
-                .claims()
-                .iter()
-                .any(|claim| claim.starts_with("support-family:"))
-        })
-        .map(|module| module.id())
-        .collect();
-
-    // Pass 2: resolve one winner per contested (stage, claim).
-    let mut winners: BTreeMap<(String, String), ModuleId> = BTreeMap::new();
-    for ((stage, claim), ids) in &candidates {
-        if ids.len() < 2 {
-            continue;
-        }
-        let winner = if claim == "perimeter-generator" {
-            let preferred = witness.preferred_perimeter();
-            if ids.iter().any(|id| id == preferred) {
-                preferred.to_string()
-            } else {
-                ids[0].clone()
-            }
-        } else if claim == "support-generator" {
-            // Renderers are selected per region at dispatch time.
-            continue;
-        } else if claim == "support-planner" {
-            // Family-scoped planners coexist; only non-family planners resolve
-            // alphabetically.
-            let global: Vec<&ModuleId> = ids
-                .iter()
-                .filter(|id| !family_scoped.contains(id.as_str()))
-                .collect();
-            if global.len() < 2 {
-                continue;
-            }
-            global[0].clone()
-        } else {
-            ids[0].clone()
-        };
-        winners.insert((stage.clone(), claim.clone()), winner);
-    }
-
-    // Pass 3: keep every module whose claims all match their winner.
     let mut kept: Vec<ModuleId> = Vec::new();
     let mut drops: Vec<SelectionDrop> = Vec::new();
-    for module in &sorted {
-        let mut losing: Option<(String, ModuleId)> = None;
-        for claim in module.claims() {
-            if FILL_CLAIM_IDS.contains(&claim.as_str()) || claim == "support-generator" {
-                continue;
+    for module in sorted.iter().copied() {
+        // The whole keep/drop decision is this one predicate. `find_map` keeps
+        // the first losing claim in the module's own declaration order.
+        let losing = module.claims().iter().find_map(|claim| {
+            if !deduplicated(module, claim) {
+                return None;
             }
-            if claim == "support-planner" && family_scoped.contains(module.id()) {
-                continue;
-            }
-            if let Some(winner) = winners.get(&(module.stage().to_string(), claim.clone())) {
-                if winner != module.id() {
-                    losing = Some((claim.clone(), winner.clone()));
-                    break;
-                }
-            }
-        }
+            let winner = selected_holder(module, claim);
+            (winner != module.id()).then(|| (claim.clone(), winner))
+        });
         match losing {
             Some((claim, winner)) => drops.push(SelectionDrop {
                 module: module.id().to_string(),
@@ -2694,7 +2730,8 @@ fn selection_expectation(case: &ClaimCase) -> SelectionExpectation {
         }
     }
 
-    // Pass 4: family pairing over the retained modules only.
+    // Family pairing over the retained modules only, derived independently of
+    // the per-module drop predicate above.
     let kept_set: BTreeSet<&str> = kept.iter().map(String::as_str).collect();
     let mut planners: BTreeSet<String> = BTreeSet::new();
     let mut renderers: BTreeSet<String> = BTreeSet::new();
@@ -3116,6 +3153,43 @@ pub fn assert_shrink_preserves_witnesses(
     }
 }
 
+/// Run the same population and shrink-preservation audits `run_property` runs,
+/// from a bare bounds profile and without any property-registry context.
+///
+/// `Err` is the `checked_claim_limits` rejection for an unsafe or narrowing
+/// profile, returned before any strategy allocates. An audit failure is the same
+/// assertion panic `run_property` raises, because that is the witness the AC-N3
+/// control needs to keep; this function never reads `PNP_PROPERTY_CONTEXT` and
+/// never constructs a `PropertyRun`.
+pub fn run_shrink_audit(
+    max_modules: u64,
+    max_claims: u64,
+    max_observations: u64,
+    max_layers: u64,
+    max_text_bytes: u64,
+) -> Result<(), String> {
+    let limits = checked_claim_limits(
+        max_modules,
+        max_claims,
+        max_observations,
+        max_layers,
+        max_text_bytes,
+    )?;
+    audit_claim_strategy(&limits);
+    Ok(())
+}
+
+/// The shared audit body: run both bounded audits against one tagged strategy.
+/// `run_property` and `run_shrink_audit` both go through here.
+fn audit_strategy_with(strategy: &BoxedStrategy<ClaimCase>, limits: &ClaimLimits) {
+    assert_mode_and_verdict_population(strategy, limits);
+    assert_shrink_preserves_witnesses(strategy, limits);
+}
+
+fn audit_claim_strategy(limits: &ClaimLimits) {
+    audit_strategy_with(&claim_case_strategy(limits), limits);
+}
+
 fn verdict_signature(case: &ClaimCase) -> u8 {
     if matches!(case.mode, ClaimMode::SelectionPairing(_)) {
         return selection_signature(case);
@@ -3203,6 +3277,9 @@ fn witness_present(case: &ClaimCase) -> bool {
             objects.len() >= 2
         }
         ClaimMode::TransitionCapable(claim) => stable_pair_witness(case, claim, false),
+        ClaimMode::TransitionSameScope(claim) => region_holder_groups(case, claim)
+            .values()
+            .any(|modules| modules.len() >= 2),
         ClaimMode::SelectionPairing(_) => selection_witness_present(case),
     }
 }
@@ -3471,8 +3548,7 @@ pub fn run_property() {
     .expect("H-CLAIMS safety ceilings");
 
     let strategy = claim_case_strategy(&limits);
-    assert_mode_and_verdict_population(&strategy, &limits);
-    assert_shrink_preserves_witnesses(&strategy, &limits);
+    audit_strategy_with(&strategy, &limits);
     run.check(&strategy, |case, _guard| check_claim_case(&case, &limits))
         .expect("H-CLAIMS claim, write and dependency contract");
 }

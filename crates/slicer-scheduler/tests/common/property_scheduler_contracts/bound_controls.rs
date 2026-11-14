@@ -4,7 +4,9 @@
 //! The first half calls the target-private checked bound builders exported by
 //! `crates/slicer-scheduler/tests/common/property_scheduler_{dag,claims,registry}.rs`
 //! directly, so an unsafe, narrowing or empty generation request is rejected
-//! before any strategy allocates. The second half drives the real foundation
+//! before any strategy allocates, and then executes each charter's shrink audit
+//! through its `run_shrink_audit` entry point at both accepted ceiling extremes.
+//! The second half drives the real foundation
 //! harness (`slicer_sdk::test_support::property_testing::PropertyRun`,
 //! `crates/slicer-sdk/src/test_support/property_testing/run.rs`) with in-process
 //! `PNP_PROPERTY_CONTEXT` JSON and proves that missing, invalid,
@@ -231,6 +233,22 @@ fn claim_tuple(limits: &claim_models::ClaimLimits) -> [u64; 5] {
     ]
 }
 
+/// Accepted `H-DAG` `max_nodes` extremes (`dag_models::checked_max_nodes`).
+const DAG_LOW_MAX_NODES: u64 = 3;
+const DAG_HIGH_MAX_NODES: u64 = 7;
+
+/// Accepted `H-CLAIMS` bound extremes (`claim_models::checked_claim_limits`):
+/// modules `3..=7`, claims `1..=8`, observations `2..=16`, layers `2..=4` and
+/// variable text `36..=64` (UUID-syntax object ids).
+const CLAIM_LOW: [u64; 5] = [3, 1, 2, 2, 36];
+const CLAIM_HIGH: [u64; 5] = [7, 8, 16, 4, 64];
+
+/// Accepted `H-REGISTRY` bound extremes
+/// (`registry_models::checked_registry_limits`): modules `2..=7`, declarations
+/// `2..=16` and text `8..=64`.
+const REGISTRY_LOW: [u64; 3] = [2, 2, 8];
+const REGISTRY_HIGH: [u64; 3] = [7, 16, 64];
+
 /// Part A: every safety ceiling rejects the unsafe/narrowing request before a
 /// strategy allocates and accepts exactly the documented endpoints.
 fn assert_scheduler_bounds_reject_unsafe_requests() {
@@ -251,7 +269,7 @@ fn assert_scheduler_bounds_reject_unsafe_requests() {
             "the rejection must name the offending value {raw}: {error}"
         );
     }
-    for raw in [3_u64, 7] {
+    for raw in [DAG_LOW_MAX_NODES, DAG_HIGH_MAX_NODES] {
         let checked = dag_models::checked_max_nodes(raw).expect("an in-ceiling node bound");
         assert_eq!(
             checked,
@@ -267,8 +285,6 @@ fn assert_scheduler_bounds_reject_unsafe_requests() {
 
     // ── H-CLAIMS: modules `3..=7`, claims `1..=8`, observations `2..=16`,
     //    layers `2..=4`, variable text `36..=64` (UUID-syntax object ids) ────
-    const CLAIM_LOW: [u64; 5] = [3, 1, 2, 2, 36];
-    const CLAIM_HIGH: [u64; 5] = [7, 8, 16, 4, 64];
     const CLAIM_BOUNDS: [(&str, usize, u64, u64); 5] = [
         ("max_modules", 0, 3, 7),
         ("max_claims", 1, 1, 8),
@@ -382,8 +398,6 @@ fn assert_scheduler_bounds_reject_unsafe_requests() {
     }
 
     // ── H-REGISTRY: modules `2..=7`, declarations `2..=16`, text `8..=64` ──
-    const REGISTRY_LOW: [u64; 3] = [2, 2, 8];
-    const REGISTRY_HIGH: [u64; 3] = [7, 16, 64];
     const REGISTRY_BOUNDS: [(&str, usize, u64, u64); 3] = [
         ("max_modules", 0, 2, 7),
         ("max_declarations", 1, 2, 16),
@@ -444,7 +458,99 @@ fn assert_scheduler_bounds_reject_unsafe_requests() {
     }
 }
 
+/// Part A (continued): the shrink audits each charter's generative
+/// `run_property` executes are reachable from this named control.
+///
+/// Each audit runs at both accepted safety-ceiling extremes (the `H-REGISTRY`
+/// low extreme at its real 8-byte text floor and at the named 36-byte point).
+/// The same entry points then reject one bound just outside each ceiling with
+/// the model's own checked-bound error, so an audit cannot be reached through a
+/// profile the charter has not already accepted. A shrink-audit failure is an
+/// assertion panic inside the model, exactly as it is inside `run_property`;
+/// `unwrap_or_else` surfaces that panic unchanged.
+fn assert_shrink_audits_run_from_bound_control() {
+    // ── H-DAG: both accepted node ceilings ───────────────────────────────
+    for max_nodes in [DAG_LOW_MAX_NODES, DAG_HIGH_MAX_NODES] {
+        dag_models::run_shrink_audit(max_nodes).unwrap_or_else(|error| {
+            panic!(
+                "the H-DAG shrink audit must run at the accepted max_nodes ceiling {max_nodes}: {error}"
+            )
+        });
+    }
+    let dag_outside = DAG_HIGH_MAX_NODES + 1;
+    let dag_error = dag_models::run_shrink_audit(dag_outside)
+        .expect_err("the H-DAG shrink audit must reject a node bound above its ceiling");
+    assert!(
+        dag_error.contains("max_nodes")
+            && dag_error.contains("3..=7")
+            && dag_error.contains(&dag_outside.to_string()),
+        "the H-DAG audit rejection must be checked_max_nodes' own error, got {dag_error:?}"
+    );
+
+    // ── H-CLAIMS: the full accepted profile at both extremes ─────────────
+    for [max_modules, max_claims, max_observations, max_layers, max_text_bytes] in
+        [CLAIM_LOW, CLAIM_HIGH]
+    {
+        claim_models::run_shrink_audit(
+            max_modules,
+            max_claims,
+            max_observations,
+            max_layers,
+            max_text_bytes,
+        )
+        .unwrap_or_else(|error| {
+            panic!(
+                "the H-CLAIMS shrink audit must run at the accepted ceiling ({max_modules}, {max_claims}, {max_observations}, {max_layers}, {max_text_bytes}): {error}"
+            )
+        });
+    }
+    let claim_text_floor = CLAIM_LOW[4] - 1;
+    let claim_error = claim_models::run_shrink_audit(
+        CLAIM_LOW[0],
+        CLAIM_LOW[1],
+        CLAIM_LOW[2],
+        CLAIM_LOW[3],
+        claim_text_floor,
+    )
+    .expect_err("the H-CLAIMS shrink audit must reject a text ceiling below its floor");
+    assert!(
+        claim_error.contains("max_text_bytes")
+            && claim_error.contains("36..=64")
+            && claim_error.contains(&claim_text_floor.to_string())
+            && claim_error.contains("UUID syntax"),
+        "the H-CLAIMS audit rejection must be checked_claim_limits' own error, got {claim_error:?}"
+    );
+
+    // ── H-REGISTRY: the full accepted profile at both extremes, plus the
+    //    named 36-byte text point ────────────────────────────────────────
+    for [max_modules, max_declarations, max_text_bytes] in [REGISTRY_LOW, [2, 2, 36], REGISTRY_HIGH]
+    {
+        registry_models::run_shrink_audit(max_modules, max_declarations, max_text_bytes)
+            .unwrap_or_else(|error| {
+                panic!(
+                    "the H-REGISTRY shrink audit must run at the accepted ceiling ({max_modules}, {max_declarations}, {max_text_bytes}): {error}"
+                )
+            });
+    }
+    let registry_module_floor = REGISTRY_LOW[0] - 1;
+    let registry_error =
+        registry_models::run_shrink_audit(registry_module_floor, REGISTRY_LOW[1], REGISTRY_LOW[2])
+            .expect_err("the H-REGISTRY shrink audit must reject a module bound below its floor");
+    assert!(
+        registry_error.contains("max_modules")
+            && registry_error.contains("2..=7")
+            && registry_error.contains(&registry_module_floor.to_string()),
+        "the H-REGISTRY audit rejection must be checked_registry_limits' own error, got {registry_error:?}"
+    );
+}
+
 /// AC-N3 Part A and Part B in one deterministic control.
+///
+/// Part A calls the checked-bound builders, then executes the `H-DAG`,
+/// `H-CLAIMS` and `H-REGISTRY` shrink audits through each model's
+/// `run_shrink_audit` at both accepted safety-ceiling extremes. The shrink audits
+/// are therefore executed from this named C control, not only from the
+/// generative `run_property` entrypoints. Part B drives the foundation harness.
 ///
 /// This is the only test in this binary that touches `PNP_PROPERTY_CONTEXT` or a
 /// Proptest override variable, so those process-global mutations cannot race
@@ -452,6 +558,7 @@ fn assert_scheduler_bounds_reject_unsafe_requests() {
 #[test]
 fn scheduler_property_bound_and_shrink_rejections() {
     assert_scheduler_bounds_reject_unsafe_requests();
+    assert_shrink_audits_run_from_bound_control();
 
     let env = EnvironmentGuard::clear(&HARNESS_ENV);
     let artifacts = TempArtifactDir::new("scheduler-bound-controls");

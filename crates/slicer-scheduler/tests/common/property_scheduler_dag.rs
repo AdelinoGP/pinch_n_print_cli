@@ -27,7 +27,8 @@
 //! `run_property` audits the composed strategy before `PropertyRun::check`:
 //! the case mode is drawn from a non-shrinkable weighted selector, and a
 //! fixed-seed `simplify()` walk asserts the mode tag, the shrunk body's oracle
-//! invariants and the duplicate-destination flag never change.
+//! invariants and the duplicate-destination flag never change. `run_shrink_audit`
+//! exposes that same audit body to the AC-N3 control without a property context.
 
 #![allow(dead_code)]
 
@@ -1715,6 +1716,31 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     }
 }
 
+/// Build the composed `H-DAG` strategy and run the shrink-preservation audit.
+///
+/// `run_property` and [`run_shrink_audit`] both go through here, so the AC-N3
+/// control cannot certify a different audit body than the generative entrypoint:
+/// the mode selector, both graph domains and
+/// [`assert_shrink_preserves_modes`] are assembled once.
+fn audit_shrink_strategy(max_nodes: u16) -> Result<BoxedStrategy<Sample>, String> {
+    let strategy = sample_strategy(max_nodes)?;
+    assert_shrink_preserves_modes(&strategy);
+    Ok(strategy)
+}
+
+/// Run the same composed-strategy shrink audit `run_property` runs, from a bare
+/// `max_nodes` bound and without any property-registry context.
+///
+/// `Err` is the [`checked_max_nodes`] rejection for a bound outside `3..=7`,
+/// returned before any strategy allocates. An audit failure is the same
+/// assertion panic `run_property` raises, because that is the witness the AC-N3
+/// control needs to keep; this function never reads `PNP_PROPERTY_CONTEXT` and
+/// never constructs a `PropertyRun`.
+pub fn run_shrink_audit(max_nodes: u64) -> Result<(), String> {
+    let max_nodes = checked_max_nodes(max_nodes)?;
+    audit_shrink_strategy(max_nodes).map(|_| ())
+}
+
 /// Run the registry-selected `H-DAG` property.
 pub fn run_property() {
     let run = PropertyRun::new("H-DAG", "proptest_scheduler_dag_models")
@@ -1722,9 +1748,9 @@ pub fn run_property() {
     let raw_max_nodes = run.bound("max_nodes").expect("max_nodes registry bound");
     let max_nodes = checked_max_nodes(raw_max_nodes)
         .expect("max_nodes must be within the H-DAG safety ceiling 3..=7");
-    let strategy = sample_strategy(max_nodes).expect("H-DAG graph strategies");
+    let strategy =
+        audit_shrink_strategy(max_nodes).expect("H-DAG graph strategies and shrink audit");
     assert_substantive_population(&strategy).expect("H-DAG substantive population");
-    assert_shrink_preserves_modes(&strategy);
 
     run.check(&strategy, |sample, _guard| {
         let outcome = match sample {
