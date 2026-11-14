@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_08_pbt-runtime
-status: draft
+status: implemented
 ---
 
 # Pure runtime dispatch, modifier transactions and fill partition properties
@@ -183,3 +183,44 @@ Authoring ran source/docs inspection and locked/offline Cargo metadata only; no 
 | 11 | Completeness | PASS | No placeholder or unowned blocker; measured-profile and source-indicated defect verification remain explicit implementation obligations. |
 
 **Verdict: PREFLIGHT PASS (authoring only; G-FAMILY/Windows/transaction executions unperformed; implementation waits for #2/#6/#7).**
+
+## Deviations
+
+Recorded while implementing; none changes the packet's scope.
+
+1. **The lib property module is a real submodule file, not an inline `mod property_tests { ... }`.**
+   The plan's Step 2 surface said inline with stacked `#[cfg(test)]` /
+   `#[cfg(feature = "property_testing")]` attributes. The stacked attributes are preserved, but a
+   `#[path]` mount inside a nested inline module expands to
+   `region_partition/property_tests/../../..`, which POSIX path resolution rejects because
+   `property_tests` is not a real directory (the hosted `Format` job failed with `ENOENT` on run
+   43628720540). The module body moved to
+   `crates/slicer-runtime/src/region_partition/property_tests.rs`, mounted from
+   `crates/slicer-runtime/tests/common/` with `../../tests/...`; the full libtest names are
+   unchanged and the literal/test-quality scanners still see the module as test-only.
+2. **The modifier generator grew constructed rejection modes.** The design note required actual
+   collision/unsupported-parent/later-failure rejection; implementation makes them generated
+   `no_shrink` modes (`Valid`, `Collision`, `UnsupportedParent`, `LaterFailure`) rather than
+   control-only witnesses, including holed parents and an inert empty footprint. The named
+   deterministic controls remain the concrete-input regressions.
+3. **Test-model corrections found by the strengthened audits.** The dispatch permutation
+   expectation, selection same-parity identity uniqueness, modifier duplicate-footprint identities,
+   the role-precedence structural tag and the carrier split (raw footprint versus parent-claimed
+   cells) were generator/oracle defects and were corrected as such. No production behavior was
+   weakened; the only confirmed SUT defect is the taken-slice loss, fixed with
+   `runtime_modifier_collision_restores_taken_slice` red pre-fix and green post-fix.
+4. **AC-5's hosted execution is recorded.** The foundation's `properties-windows` job ran the
+   dynamic routine selector on hosted Windows at `9c7e059e`: workflow run
+   <https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43629202926>, job
+   `Properties (Windows)`
+   <https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43629202926/job/132551819057>,
+   concluded `success` with all nine jobs green. The per-ID accepted counts remain the local
+   Windows measurements in `docs/testing/proptest-runtime-evidence.md`, because the hosted summary
+   does not echo per-record IDs; the dynamic selector and committed registry identify the executed
+   records.
+
+5. **Closure review.** The final full packet-scope review returned APPROVED WITH NOTES; both notes
+   were documentation-only (the evidence provenance summary now defers to the per-run contexts, and
+   the selection acceptance wording plus the submodule-file layout descriptions are corrected). No
+   code, packet scope or acceptance criterion changed after the reviewed code commit
+   `9c7e059e`.

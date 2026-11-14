@@ -1938,8 +1938,8 @@ This charter maps to AC-2. The property reads exact per-target config markers an
 from committed index authority rather than default, sibling or first-match lookups, and source
 target order survives map insertion permutations. `runtime_selection_exact_key_and_publication_rejections`
 falsifies missing, reversed, sibling-only and object-blind authority, partial publication after
-earlier valid work, raw unknown stages accepted at the runtime seam, and a duplicate publication
-that replaces the original `Arc`. The property adds the same-layer cross-object twin with distinct
+earlier valid work, raw unknown stages accepted by the pure builder instead of being rejected
+there, and a duplicate publication that replaces the original `Arc`. The property adds the same-layer cross-object twin with distinct
 markers. Existing baselines `shared_selection_runtime_tdd`, `source_identity_repair_tdd` and
 `apply_commit_regression_tdd` are recorded in the evidence file; the measured Windows runs all
 passed with 64/512/64 accepted cases and zero rejects.
@@ -1963,9 +1963,10 @@ public prepass.
 
 ### Owner
 
-Package `slicer-runtime`; library target `slicer_runtime`, inline module
-`region_partition::property_tests` in `crates/slicer-runtime/src/region_partition.rs`, test
-`proptest_runtime_modifier_transactions`. The inline module mounts
+Package `slicer-runtime`; library target `slicer_runtime`, submodule
+`region_partition::property_tests`
+(`crates/slicer-runtime/src/region_partition/property_tests.rs`), test
+`proptest_runtime_modifier_transactions`. The submodule mounts
 `crates/slicer-runtime/tests/common/property_runtime_cells.rs` by `#[path]`; the integration
 control target `crates/slicer-runtime/tests/property_runtime_contracts.rs` mounts the same file, so
 both identities share one cell model. Production surfaces are the private
@@ -2085,8 +2086,8 @@ full context, concrete/debug input, direct reproduction and shrink status. Commi
 named concrete inputs, never seeds. `ConcreteInput` supports geometry and mesh payloads only, so
 `SliceIR` and transaction fixtures are explicit finite builders that construct the real arena and
 slice state and then call the private splitter, raw wrapper, public prepass or hook. The
-deterministic control home is the inline `region_partition::property_tests` module in
-`crates/slicer-runtime/src/region_partition.rs`; the shared model lives in
+deterministic control home is the `region_partition::property_tests` submodule in
+`crates/slicer-runtime/src/region_partition/property_tests.rs`; the shared model lives in
 `crates/slicer-runtime/tests/common/property_runtime_cells.rs`.
 
 ### Acceptance
@@ -2123,8 +2124,9 @@ wall inset, exact full-source donor joins, and nonfatal missing-donor preservati
 
 ### Owner
 
-Package `slicer-runtime`; library target `slicer_runtime`, inline module
-`region_partition::property_tests` in `crates/slicer-runtime/src/region_partition.rs`, test
+Package `slicer-runtime`; library target `slicer_runtime`, submodule
+`region_partition::property_tests`
+(`crates/slicer-runtime/src/region_partition/property_tests.rs`), test
 `proptest_runtime_fill_partition`. Production surface:
 `slicer_runtime::region_partition::sync_perimeter_infill_areas_into_slice`
 (`crates/slicer-runtime/src/region_partition.rs`), driven through a real `LayerArena` with staged
@@ -2228,8 +2230,8 @@ tier-bearing reproduction command
 full context, concrete/debug input, direct reproduction and shrink status. Committed regressions are
 named concrete inputs, never seeds. `ConcreteInput` supports geometry and mesh payloads only, so
 `SliceIR`, `PerimeterIR` and prepared-cache fixtures are explicit finite builders that stage a real
-`LayerArena` and call the real hook. The deterministic control home is the inline
-`region_partition::property_tests` module; the shared model is
+`LayerArena` and call the real hook. The deterministic control home is the
+`region_partition::property_tests` submodule; the shared model is
 `crates/slicer-runtime/tests/common/property_runtime_cells.rs`.
 
 ### Acceptance

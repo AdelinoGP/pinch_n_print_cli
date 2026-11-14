@@ -15,19 +15,15 @@ seed. Every number below comes from an archived log under `target/evidence/` and
 
 ## Provenance
 
-- Implementation base revision `599c13625a1b34374f9d3f774cf7bede626690ce` (short `599c1362`). The
-  measurement runs below were made on the working tree that contains the shrink-audit additions,
-  whose nine dirty paths are the model/control files:
-  `crates/slicer-runtime/tests/common/property_runtime_cells.rs`,
-  `.../property_runtime_contracts/{cells,dispatch,selection}_controls.rs`,
-  `.../property_runtime_{dispatch,selection,modifiers,partition}.rs` and
-  `crates/slicer-runtime/tests/property_runtime_contracts.rs`. Per-run `context.json` files are
-  authoritative for what each measurement actually measured and record `source_revision`,
-  `dirty_paths`, `source_state_digest`, `cargo_target_dir` and `completion_eligible`. An amend or
-  squash changes the revision; re-derive it rather than trusting a frozen copy.
-- The runtime wiring, the four records, the charters and the production fix are checkpointed on
-  this packet's branch; the working tree state at measurement is described above rather than
-  frozen as a committed artifact.
+- The local measurements were taken across the packet's implementation checkpoints: the per-run
+  `context.json` files span revisions `599c1362`, `96794b60` and `f9d6163c`, and each records its
+  own `source_revision`, `dirty_paths`, `source_state_digest`, `cargo_target_dir` and
+  `completion_eligible`. The reviewed code is `9c7e059e00449daee42b780f58362f198a473cce`
+  (short `9c7e059e`); the reviewer's final-tree extended rerun context is
+  `target/property-testing/92640c8f023f4816109d79cbb1284c6f/` and lists only the two documentation
+  paths as dirty. The per-run contexts are authoritative for what each measurement actually
+  measured; this document does not freeze a revision or dirty-path count that an amend or squash
+  would invalidate.
 - Toolchain: `rustc 1.96.0 (ac68faa20 2026-05-25)` and
   `cargo 1.96.0 (30a34c682 2026-05-25)` on a Windows host.
 - Proptest `1.11.0` (`Cargo.lock`), chacha RNG, `isolation = "in_process"`, `timeout_ms = 0`,
@@ -112,8 +108,8 @@ records use their `property_runtime` target identity. Exact libtest identities o
 ## Independent models
 
 The shared model file is `crates/slicer-runtime/tests/common/property_runtime_cells.rs`. It is
-mounted by both the library inline module `region_partition::property_tests` in
-`crates/slicer-runtime/src/region_partition.rs` and the integration control target
+mounted by both the library submodule `region_partition::property_tests` in
+`crates/slicer-runtime/src/region_partition/property_tests.rs` and the integration control target
 `crates/slicer-runtime/tests/property_runtime_contracts.rs`, so the generative bodies and the
 deterministic controls use one cell model rather than two divergent copies.
 
@@ -197,11 +193,21 @@ The required foundation `properties-windows` job runs
 was executed locally on this Windows host and passed all nineteen registered records, including the
 two library identities `region_partition::property_tests::proptest_runtime_modifier_transactions`
 and `region_partition::property_tests::proptest_runtime_fill_partition`
-(`target/evidence/step6-incremental-routine-full.log`, 65.0 s wall). A routine run that omits the
-lib targets is not delivery, and registry-only or compile-only evidence is not a substitute. Packet
-#17 audits the hosted delivery; this packet can only record the local Windows execution of the job
-command until a branch push produces a hosted run, and no hosted job id or head SHA is claimed
-here.
+(`target/evidence/step7-incremental-routine-full.log`, 72.966 s wall).
+
+The hosted delivery is recorded. Workflow run
+<https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43629202926> (CI, head
+`9c7e059e00449daee42b780f58362f198a473cce`) concluded `success` with all nine jobs green. The
+`Properties (Windows)` job
+<https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43629202926/job/132551819057> passed in
+13m57s and ran the dynamic routine selector, so the four H-RUNTIME records and both lib identities
+were selected and executed on a hosted Windows runner. A routine run that omits the lib targets is
+not delivery, and registry-only or compile-only evidence is not a substitute. Packet #17 audits the
+delivery; the per-ID accepted counts remain the local Windows measurements above, because the
+hosted summary does not echo per-record IDs. The preceding run
+<https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43628720540> failed only the `Format`
+job on the same code before the POSIX-portable `#[path]` mount fix; it is retained here as the
+reason for that fix, not as delivery evidence.
 
 ## Rejected calls, shrinking and exhaustion
 
