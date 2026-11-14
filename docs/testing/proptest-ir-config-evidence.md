@@ -33,17 +33,22 @@ on registry-only evidence: every row above was executed through the registry-bac
   because an amend or a squash changes it.
 - **Provenance is per run, not per document, and it is content-addressed.** Every run's
   `context.json` records `source_revision`, `dirty_paths` and a `source_state_digest` over the
-  measured content. The final batch quoted in the tables below ran at revision
-  `727ba9e9` with the remediation test and documentation files carrying uncommitted edits —
-  the executor lists them in `dirty_paths`, and `source_state_digest = 92de7183…` identifies the
-  exact measured content. That is expected rather than a defect: the files being measured are
-  the property tests themselves, so a "clean HEAD" measurement of a change set that is not yet
-  committed is impossible, and committing first would only move the dirty set to the
-  documentation. The authoritative record is `target/evidence/final-provenance.txt` plus each
-  run's `context.json`; this document does not restate a hash that an amend would invalidate.
+  measured content. The tables below quote runs from more than one revision, because the
+  strategies were changed between measurement rounds and re-measuring everything after every
+  edit would only produce another mixed batch:
+  - the combined routine table row comes from the run at `89c1e069`;
+  - the per-record extended walls and the combined extended / seed-37 rows come from runs at
+    `ba807a18`;
+  - those runs carried the test files they measure as `dirty_paths` (expected: the files under
+    measurement are the property tests), and each `source_state_digest` pinpoints the measured
+    content.
+  `target/evidence/final-provenance.txt` is a summary generated at one moment and is **not**
+  authoritative for every table row; the per-run `context.json` files are. This document does not
+  restate a hash that an amend would invalidate.
 - Toolchain: `rustc 1.96.0 (ac68faa20 2026-05-25)`, Windows `x86_64-pc-windows-msvc`.
 - Proptest: `1.11.0` (`workspace.dependencies` in the root `Cargo.toml`, `chacha` RNG).
-- Features: `slicer-ir/property_testing` for the five `slicer-ir` records,
+- Features: `slicer-ir/property_testing` for the six `slicer-ir` records (`H-COORD`, `H-IDS`,
+  `H-IR-SERDE`, `H-CONFIG-INTERN`, `H-CHAINS` and the preserved `H-IR-ANCHORS`),
   `slicer-scheduler/property_testing` for `H-CONFIG-BOUNDS`. Both are default-off selection
   features; neither implies an engine, SCAD or host-algorithm feature.
 - `CARGO_TARGET_DIR`: unset — the executor records `cargo_target_dir: null` and the default
@@ -289,8 +294,8 @@ end of this section. No assertion was weakened and no tolerance was tuned to obt
 
 | Finding | Resolution | Falsifiable evidence |
 |---|---|---|
-| **F1** Shrink claims were false: `prop_oneof!` unions shrink into earlier alternatives, so a "structural variant tag" did not pin the mode | Added `mode_locked` (a `no_shrink` mode selector fed through `prop_flat_map`) to both shared oracle modules and used it for the IR owner strategies (`coord_cases`, `id_cases`, `config_cases`) and for the scheduler value domains (`bound_values`, `nonfinite_values`), plus `no_shrink` on the probe selection. The `H-CONFIG-BOUNDS` strategy was then **redesigned** so its value is *derived* from the current declaration set inside `prop_map` (no declaration-level `prop_flat_map`), which preserves value shape, verdict class and first-invalid index under shrinking. All four properties audit their **composed** strategy on every execution (`assert_mode_preserved`). | `mode_lock_preserves_tags_under_simplification` in both contracts targets (simplify and complicate, at least one successful simplification, at least two observed modes); `assert_mode_preserved` inside `proptest_coord_conversion_envelopes`, `proptest_entity_and_modifier_ids`, `proptest_config_equality_hash_and_interning` and `proptest_config_scalar_bounds`; `derived_probe_modes_have_their_documented_verdicts` for the derived modes. |
-| **F2** The nested-list budget counted leaves (`b^depth`) instead of total elements (`b + b² + … + b^depth`) | `property_oracles::extension_node_count` counts the true total; `clamped_extension_shape` clamps **both** breadth and depth against it (depth is clamped to the budget because `extension_node_count(d, 1) == d`); `config_from_seed` budgets with it, and the `Scalar`, `Holder` and first `Repeat` arms no longer inherit the default eight-element `bed_shape`. | Concrete regression in `ir_config_oracle_counterexamples`: `extension_node_count(2, 2) == 6`, a budget of 4 clamps the shape, and a constructed fixture stays at `config_list_elements(..) <= 4`. The delta review's two extra violations (depth 5 against budget 4; the three non-grid seed arms) are covered by those same assertions and by the sequence clamp. |
+| **F1** Shrink claims were false: `prop_oneof!` unions shrink into earlier alternatives, so a "structural variant tag" did not pin the mode | Added `mode_locked` (a `no_shrink` mode selector fed through `prop_flat_map`) to both shared oracle modules and used it for the IR owner strategies (`coord_cases`, `id_cases`, `config_seed_cases`) and for the scheduler value domains (`bound_values`, `nonfinite_values`), plus `no_shrink` on the probe selection. The `H-CONFIG-BOUNDS` strategy was then **redesigned** so its value is *derived* from the current declaration set inside `prop_map` (no declaration-level `prop_flat_map`), which preserves value shape, verdict class and first-invalid index under shrinking. Each property calls `assert_mode_preserved` before sampling. | `mode_lock_preserves_tags_under_simplification` in both contracts targets calls `simplify()` (proptest's shrink direction) and asserts at least one successful simplification and at least two observed modes; `complicate()` was additionally probed by review, not by a committed test. `assert_mode_preserved` runs inside `proptest_coord_conversion_envelopes`, `proptest_entity_and_modifier_ids`, `proptest_config_equality_hash_and_interning` (over the **config-seed** strategy, not the `Vec<ResolvedConfig>` collection) and `proptest_config_scalar_bounds` (over the composed declarations-plus-probe strategy). `derived_probe_modes_have_their_documented_verdicts` pins the derived modes deterministically. |
+| **F2** The nested-list budget counted leaves (`b^depth`) instead of total elements (`b + b² + … + b^depth`) | `property_oracles::extension_node_count` counts the true total; `clamped_extension_shape` clamps **both** breadth and depth against it (depth is clamped to the budget because `extension_node_count(d, 1) == d`); `config_from_seed` budgets with it, and the `Scalar`, `Holder` and first `Repeat` arms no longer inherit the default eight-element `bed_shape`. The generator additionally asserts `config_list_elements(config) <= max_list_len` on every produced configuration, so all five seed arms are covered at runtime rather than by a sampled claim. | Concrete regressions in `ir_config_oracle_counterexamples`: `extension_node_count(2, 2) == 6`; depth-2/breadth-2 against budget 4 clamps and the fixture stays at `config_list_elements <= 4`; depth 5 against budget 4 clamps the depth to 4. |
 | **F3** The `units_to_mm` reference-error proof omitted the f64 division's own rounding, claiming it was below `2^-150` | `units_bound` is `(2^-24 + 2^-53)·|x| + 2^-150`: f32 half-ulp for the conversion **plus** the f64 reference division's `2^-53` relative error, with `2^-150` kept only as the subnormal floor. Both allowed-error values are outward-rounded (`next_up`) so the comparison can never be tighter than the derivation. The `H-COORD` charter's Oracle and Tolerance headings were corrected to match (the earlier text still quoted the old budget). | The corrected bound is used by `check_units_case` and quoted in `docs/testing/properties.md` §H-COORD; no sample-tuned constant exists. |
 | **F4** Two bounds-oracle mutants were refuted only against production, not against the reference predicate, so substituting the mutant for `expected_accepts` stayed green | `config_bounds_oracle_counterexamples` now asserts the reference predicate's own verdict on the union witnesses (3 and 50 rejected, 7 accepted) and on the inclusive edges (1 and 3 accepted), in addition to the mutant disagreement. | `config_bounds_oracle_counterexamples`; the four mutants now fail the suite if substituted for the reference predicate. |
 | **F8** `Point2::to_mm` was named on the owner surface but never called | `check_mm_case` now builds `Point2::from_mm(m, -m)` and compares `to_mm()` **bitwise** against `units_to_mm` for both coordinates, covering the negative and zero-sign directions. | `ir_coord_oracle_and_bound_controls` and every sampled `Millimetres` case (plus the deterministic witness loop) run through `check_mm_case`; the `Units` and `OrderedMillimetres` variants intentionally use the unit and monotonicity checkers instead. |
@@ -329,9 +334,16 @@ verified the two code changes and the hosted CI run.
 
 ## Regressions
 
-None were manufactured, because no production defect was confirmed. The deterministic controls
-that *would* catch a future regression are named in each charter under "Acceptance" and live in
-`crates/slicer-ir/tests/property_ir_contracts.rs` and
+No regression was manufactured for a **newly property-discovered** production defect: no property
+in these seven families falsified the contract it targets. One production defect *was* found —
+by the baseline, not by a property — and is repaired with regressions: the `ResolvedConfig` 3.0.0
+wire-layout break described above, covered by
+`flat_bridge_closing_join_is_a_serialization_only_carrier`
+(`crates/slicer-ir/tests/resolved_config_defaults_tdd.rs`) and
+`config_block_omits_the_serialization_only_carrier`
+(`crates/slicer-config/tests/resolved_config_view_tdd.rs`). The deterministic controls that
+*would* catch a future property regression are named in each charter under "Acceptance" and live
+in `crates/slicer-ir/tests/property_ir_contracts.rs` and
 `crates/slicer-scheduler/tests/property_config_contracts.rs`.
 
 One **test-infrastructure** change was required and is not a production regression:

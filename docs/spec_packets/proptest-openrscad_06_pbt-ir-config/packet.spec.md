@@ -213,8 +213,9 @@ Recorded while implementing; none changes the packet's scope.
    failed with `DeserializeBadBool` because commit `6db49f0f` removed
    `ResolvedConfig::flat_bridge_closing_join` from the middle of the struct; Postcard is
    positional, so every later field shifted. The field is re-added at its original position as a
-   `plain` serialized-compatibility carrier (no CLI key returns, no production code reads it),
-   which restores the 3.0.0 wire layout; `region_map_versioned_decode_tdd` passes again with the
+   serialization-only `carrier` row kind (struct, default, wire position and `Eq`/`Hash` only —
+   no effective-map entry, no typed key, no CLI dispatch), which restores the 3.0.0 wire layout
+   without resurrecting the retired key; `region_map_versioned_decode_tdd` passes again with the
    frozen fixture and assertion strength unchanged, and no fixture was regenerated. (b) The
    required hosted Windows execution was obtained through the routine `properties-windows` lane
    on draft PR #6: workflow run

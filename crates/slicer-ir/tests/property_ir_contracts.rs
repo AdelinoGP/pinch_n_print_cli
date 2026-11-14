@@ -910,6 +910,21 @@ fn ir_config_oracle_counterexamples() {
         "a budget of 4 must clamp the shape to at most 4 total list elements, got {:?}",
         property_oracles::extension_node_count(clamped_depth, clamped_breadth)
     );
+    // An impossible shape must reduce the depth, not silently allocate more than
+    // the budget: `extension_node_count(5, 1)` is 5, so depth 5 against budget 4
+    // has to clamp to depth 4.
+    let (deep_depth, deep_breadth) = property_oracles::clamped_extension_shape(5, 2, 4);
+    assert_eq!(
+        deep_depth, 4,
+        "depth must clamp to the budget when breadth is 1"
+    );
+    assert_eq!(deep_breadth, 1);
+    assert!(
+        property_oracles::extension_node_count(deep_depth, deep_breadth) <= Some(4),
+        "depth 5 against budget 4 must clamp, got {:?}",
+        property_oracles::extension_node_count(deep_depth, deep_breadth)
+    );
+
     // Concrete regression: a depth-2 breadth-2 request against a total budget of
     // 4 previously produced 6 elements. The constructed fixture must stay inside
     // the budget for both sequence lengths and the extension tree together.
