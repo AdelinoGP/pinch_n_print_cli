@@ -570,3 +570,123 @@ rng_algorithm = "chacha"
 isolation = "in_process"
 timeout_ms = 0
 bounds = { max_semantics = 4, max_values_per_semantic = 4, max_chains = 625, max_text_bytes = 32 }
+
+[[property]]
+id = "H-DAG"
+package = "slicer-scheduler"
+target_kind = "test"
+target_name = "property_scheduler"
+test_name = "proptest_scheduler_dag_models"
+production_symbol = "slicer_scheduler::topological_sort"
+production_path = "crates/slicer-scheduler/src/topology.rs"
+features = ["slicer-scheduler/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-dag"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_nodes = 5 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_nodes = 7 }
+
+[[property]]
+id = "H-CLAIMS"
+package = "slicer-scheduler"
+target_kind = "test"
+target_name = "property_scheduler"
+test_name = "proptest_scheduler_claim_models"
+production_symbol = "slicer_scheduler::validation::validate_startup_dag"
+production_path = "crates/slicer-scheduler/src/validation.rs"
+features = ["slicer-scheduler/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-claims"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_modules = 4, max_claims = 4, max_observations = 8, max_layers = 3, max_text_bytes = 36 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_modules = 7, max_claims = 8, max_observations = 16, max_layers = 4, max_text_bytes = 64 }
+
+[[property]]
+id = "H-REGISTRY"
+package = "slicer-scheduler"
+target_kind = "test"
+target_name = "property_scheduler"
+test_name = "proptest_scheduler_region_split_registry"
+production_symbol = "slicer_scheduler::region_split::aggregate_region_splits"
+production_path = "crates/slicer-scheduler/src/region_split.rs"
+features = ["slicer-scheduler/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-registry"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_modules = 4, max_declarations = 8, max_text_bytes = 36 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_modules = 7, max_declarations = 16, max_text_bytes = 64 }

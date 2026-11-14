@@ -143,8 +143,11 @@ file or embedded TOML. `LoadedModule` carries a `ModuleProvenance` marker
 
 When ingestion completes, the scheduler aggregates the
 `[[region_split]]` array entries from every loaded manifest into a single
-canonical `BTreeMap<String, AggregatedRegionSplitEntry>` keyed by
-semantic name and ordered by `(priority, name)`. The aggregate is exactly the
+`BTreeMap<String, AggregatedRegionSplitEntry>` keyed and iterated by
+**semantic name**. The map is not a priority-ordered sequence: the separate
+`slicer_scheduler::region_split::canonical_variant_chain_order` helper returns
+the `(priority, name)` sequence that canonical priority ordering calls for, and
+raw map iteration is not that sequence in general. The aggregate is exactly the
 union of the loaded modules' declarations — no semantics are seeded implicitly.
 `material` and `fuzzy_skin` are present in a real slice because the core
 perimeter and fuzzy-skin manifests declare them. The map is consumed by:
@@ -170,13 +173,42 @@ Per-manifest validation (Packet 92):
    rejected (`LoadErrorKind::PaintOnlyWithoutRegionSplit`); a non-boolean
    `paint_only` is a `Schema` error.
 
-Cross-manifest **tied-priority warning** (non-fatal): if two distinct
-semantics from different manifests declare the same priority, a
-`LoadDiagnostic { level: DiagnosticLevel::Warning, path, field, message }`
-is appended to the diagnostics vec. The message names both semantics,
-both manifest paths, the shared priority, and the lexicographic
-tiebreaker order used to keep aggregation deterministic. Scheduler
-operation continues; this is purely an author-facing nudge.
+Cross-manifest **tied-priority warning** (non-fatal): one
+`LoadDiagnostic { level: DiagnosticLevel::Warning, path, field, message }` is
+appended per priority shared by two or more **distinct semantics** — including
+two semantics declared by the same module. The message names the shared
+priority, the tied semantic names, each semantic's declaring module IDs, and
+the lexicographic tiebreaker order used to keep aggregation deterministic. Its
+`path` is an empty `PathBuf` sentinel (no single manifest is authoritative) and
+its `field` is `Some("region_split")`; it names module IDs, not both manifest
+paths. Scheduler operation continues; this is purely an author-facing nudge.
+
+Cross-manifest **conflicting declaration** (non-fatal): when two manifests
+declare the same semantic with different priority or value type, the first one
+seen wins and one warning is appended per later incompatible declaration,
+carrying that later module's **WASM path** (`LoadedModule::wasm_path` in
+`crates/slicer-scheduler/src/manifest.rs`, the module's built artifact) rather
+than its manifest TOML path; for integrated modules that field carries the
+registration origin label. Declaration-order invariance is therefore claimed
+only for compatible declarations.
+
+**Where the two orders apply.** `build_execution_plan`
+(`crates/slicer-scheduler/src/execution_plan.rs`) calls the aggregator and
+stores its output in `ExecutionPlan.aggregated_region_split`. The RegionMapping
+builtin then passes that map to the kernel, which currently supplies the map's
+**name-ordered keys** to `enumerate_canonical_chains`
+(`crates/slicer-ir/src/region_split_registry.rs`); the enumerator preserves the
+supplied axis order. `canonical_variant_chain_order` has no production caller in
+the current Rust tree. See ADR-0018's clarifying amendment; the driver-level
+audit belongs to a separate pre-pass property packet.
+
+Property coverage: `H-REGISTRY` (`docs/testing/properties.md#h-registry`,
+evidence in
+[proptest-scheduler-evidence.md](testing/proptest-scheduler-evidence.md))
+drives both real functions — the aggregate plus the separate helper sequence —
+on compatible, conflicting and tied declarations, and it asserts the plan-level
+aggregate so a missing plan-to-aggregator call cannot pass. It does **not**
+prove helper integration with RegionMapping.
 
 ### IR Access Path Format (Normative)
 
@@ -454,12 +486,12 @@ active per region at a time.
 ### Validation Passes (in order)
 
 1. **Stage ID validation** — manifest `stage` must exist in `STAGE_ORDER`
-2. **Global claim conflicts** — two enabled modules hold the same claim globally. For the four fill-role claims (`top-fill`, `bottom-fill`, `bridge-fill`, `sparse-fill`, introduced in packet 37) the pass rejects two modules holding the same fill-role claim for the same `(layer, object, region)` triple. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Per-region overrides may transfer a fill-role claim to a different module. **For symmetry, startup module dedup (`dedup_same_claim_modules` in `crates/slicer-scheduler/src/execution_plan.rs`) and the *global* arm of this pass both skip the four fill-role claim IDs (`validation::FILL_CLAIM_IDS`):** multiple modules legitimately declare the same fill claim and per-region resolution at dispatch time picks the active holder. The *per-region* arm (pass 3 below) still flags genuine `(layer, object, region)`-level collisions. See git history (2026-06-09) for the regression history. family-scoped support claims are likewise exempted globally, while family planner writes to `SupportPlanIR` and `SupportIR` are orderable through host aggregation rather than blanket-exempted.
-3. **Per-region claim conflicts** — same claim remains after region-level filtering
+2. **Global claim conflicts** — two effective modules hold the same claim with `ConflictScope::Global`. The four configured fill-role claims (`top-fill`, `bottom-fill`, `bridge-fill`, `sparse-fill`, introduced in packet 37) are exempt from this arm: multiple modules legitimately declare the same fill claim and per-region resolution at dispatch time picks the active holder. `claim:raft-fill` is **ordinary** here — two effective holders conflict. The same exemption covers exactly four family-scoped support claims (`support-generator`, `support-planner`, `support-family:traditional`, `support-family:tree`); it is a finite table, not a `support-family:*` wildcard. Absence of any holder for one of the four fill claims is a `MissingDependency { module: "fill-role-claim:<claim>", requires: "no module holds <claim>" }`. See `FILL_CLAIM_IDS` and `validate_claim_conflicts` in `crates/slicer-scheduler/src/validation.rs`, and property `H-CLAIMS` (`docs/testing/properties.md#h-claims`).
+3. **Per-region claim conflicts** — the same claim with `ConflictScope::Region { object_id, region_id, global_layer_index }`. Holders are grouped by a typed key, never a concatenated string: ordinary and transition-capable claims key on the full `(object, region, layer)` triple, while the four non-transitionable claims (`perimeter-generator`, `seam-placer`, `layer-planner`, `mesh-analyzer`) key on the object alone, because `docs/01_system_architecture.md` §"Allowed Claim Transition Matrix" requires one holder across every layer **and** region of one object. A same-region cross-layer conflict reports the original region with `global_layer_index = None`.
 4. **Incompatibility declarations** — explicit `incompatible-with` pairs
 5. **Missing dependencies** — `requires` modules absent or disabled
 6. **IR version compatibility** — module requires newer IR schema than host provides
-7. **Cycle detection** — Kahn's algorithm per stage DAG
+7. **Cycle detection** — Kahn's algorithm per stage DAG. The reported `CyclicDependency.cycle` is the entire blocked remainder: every node on a cycle plus every node reachable from a cycle, including an acyclic downstream tail, and it excludes independently sortable nodes. It is not a simple-cycle route and the private sorter promises no order, so consumers compare it as a set. Property `H-DAG` compares both this set and the public sorter's lexically sorted `Err` vector to a nonempty-path model.
 8. **Write conflicts** — two modules in the same stage both write the same IR field with no read-after-write ordering edge between them (see below)
 9. **Unfulfilled reads** — module reads a field no upstream module or host writes
 10. **Dead writes** — module writes a field no downstream module reads (warning only)
@@ -467,6 +499,14 @@ active per region at a time.
 12. **Cross-stage dependency legality** — module may not require a module from a later stage
 13. **Transitive dependency legality** — transitive `requires` closure may not include later-stage modules
 14. **Host version compatibility** — module's declared `min-host-version` must be `<=` the running host version (`env!("CARGO_PKG_VERSION")` of `slicer-runtime`). Fatal, same blocking tier as pass 6 (IR version compatibility); see `SchedulerError::HostVersionIncompatible` and `docs/11_operational_governance_and_acceptance_gate.md` §2 "Compatibility Policy" dimension 1. Closes DEV-026 gap (1).
+
+**Production scope today.** `DagValidationRequest` has no module-disable field and production
+constructs only `ConflictScope::Global` claim holders
+(`crates/slicer-runtime/src/run.rs`), so pass 3 always runs on an empty set in the live path.
+Region-scoped uniqueness for support is enforced at the support-plan commit seam (host aggregation
+in `crates/slicer-wasm-host/src/support_aggregation.rs`), not by this pass. Synthetic
+`ConflictScope::Region` observations exercise the public validator contract — the typed-scope
+stability and exception rules — and are **not** evidence of live region-scoped enforcement.
 
 For the `claim:raft-fill` role, duplicate active holders are rejected at the
 applicable scope as `SchedulerError::ClaimConflict`. The resolved holder is
@@ -493,32 +533,31 @@ This dual-layer design prevents privilege escalation through custom bindings whi
 > `docs/01_system_architecture.md` § "Claim System"; the known-claim catalog and
 > manifest `[claims]` syntax live in `docs/03_wit_and_manifest.md`.
 
-Claims are evaluated only over modules that remain enabled after config filtering.
+The validator itself has **no** module-disable input: `DagValidationRequest` carries `modules`,
+`stage_dags`, `host_ir_schema_version`, `host_version`, `claim_holders` and `access_audits`, and
+nothing else. Callers supply the effective universe; a locally disabled module and its holder
+observations must be removed before the request is built, which is what the `H-CLAIMS`
+disabled-mode property models.
 
 ```rust
-// Illustrative. The real claim-conflict validation pass is
-// `validate_claim_conflicts` in `crates/slicer-scheduler/src/validation.rs`.
-fn effective_claim_holders(
-    claim: &ClaimId,
-    modules: &[LoadedModule],
-    cfg: &ResolvedConfig,
-) -> Vec<ModuleId> {
-    modules.iter()
-        .filter(|m| m.claims.contains(claim))
-        .filter(|m| !config_disables_module(cfg, &m.id))
-        .map(|m| m.id.clone())
+// Illustrative. The real claim-conflict pass is `validate_claim_conflicts` in
+// `crates/slicer-scheduler/src/validation.rs`; it groups the caller-supplied
+// effective observations, it does not re-filter modules.
+fn effective_claim_holders(claim: &ClaimId, request: &DagValidationRequest) -> Vec<ModuleId> {
+    request.claim_holders.iter()
+        .filter(|holder| holder.claim == *claim)
+        .map(|holder| holder.module_id.clone())
         .collect()
 }
 ```
 
 Rules:
 
-- Global validation fails only if `effective_claim_holders(claim).len() > 1`.
-- A disabled module does not participate in claim conflicts.
-- Region overrides may disable one holder and enable another; the region-level result must still be unique.
-- If no holder remains for a required claim, this is a configuration error (`MissingDependency`/unfulfilled capability).
-- Claim holder consistency is required per `(object_id, claim)` across all global layers.
-- If region overrides produce claim holder transitions across layers for the same object, validation fails as non-deterministic.
+- Global validation fails only if the effective holder set for a claim in one scope has more than one distinct module.
+- A module removed from the effective universe (disabled, not loaded, or shadowed) does not participate in claim conflicts, and its holder observations must not be retained.
+- If no holder remains for a required claim or fill role, this is a configuration error (`MissingDependency`).
+- Stable claims are the four non-transitionable rows of the Allowed Claim Transition Matrix. Their holder must not change across layers **or regions** of one `(object_id, claim)`; the validator keys those by object alone and reports a conflict with the original object, the first holder's original region, and `global_layer_index = None`.
+- Transition-capable claims (for example `claim:sparse-fill`, `infill-generator`, `support-generator`) may vary per layer, and ordinary claims are compared only inside the same typed `(object, region, layer)` scope. `support-planner` is retained per support family at dispatch time, so family-scoped planners coexist rather than being deduplicated; no blanket cross-layer temporal policy is imposed on other claim ids.
 
 Cross-stage transitive rule:
 
@@ -754,133 +793,54 @@ To avoid tight coupling while keeping determinism:
 
 ### Topological Sort (Kahn's Algorithm)
 
-```rust
-pub fn topological_sort(
-    nodes: &[ModuleNode],
-) -> Result<Vec<ModuleId>, Vec<ModuleId>> {
-    let mut in_degree: BTreeMap<ModuleId, usize> = nodes.iter()
-        .map(|n| (n.module_id.clone(), 0usize))
-        .collect();
+Two different sorts exist, and they promise different things:
 
-    for node in nodes {
-        for dep in &node.edges_to {
-            *in_degree.get_mut(dep).unwrap() += 1;
-        }
-    }
+- **Public sorter.** `slicer_scheduler::topological_sort`
+  (`crates/slicer-scheduler/src/topology.rs`) is Kahn's algorithm over a `BTreeSet` of ready
+  modules and takes `pop_first()` at every step, so the emitted sequence is the
+  **lexicographically minimum** module ID among the currently ready nodes — not FIFO or insertion
+  order. Each node's destinations are collapsed into a `BTreeSet`, so a destination repeated with
+  several reasons increments in-degree once. On success the result is a bijection over the declared
+  nodes that satisfies every edge.
+- **Validator sorter.** `validate_startup_dag` uses its own private Kahn pass (a `VecDeque`
+  in-degree-0 queue) to fill `SchedulerError::CyclicDependency.cycle`. It makes no ordering
+  promise; only the set matters. Consumers must not assume a simple-cycle route or lexical order
+  from it.
 
-    let mut queue: VecDeque<ModuleId> = in_degree.iter()
-        .filter(|(_, &d)| d == 0)
-        .map(|(id, _)| id.clone())
-        .collect();
+**Blocked remainder, not cycle members.** Both sorts return the same set, and it is larger than
+"the cycle": a node never reaches in-degree zero exactly when it lies on a cycle **or** is
+reachable from one. So the reported blocked set is the cycle plus every descendant — including an
+acyclic downstream tail — and it excludes nodes that are independently sortable. The public
+`Err` vector is lexically sorted because it is collected from a `BTreeMap`; the private one is in
+node order.
 
-    let mut sorted = vec![];
-    while let Some(id) = queue.pop_front() {
-        sorted.push(id.clone());
-        let node = nodes.iter().find(|n| n.module_id == id).unwrap();
-        for dep in &node.edges_to {
-            let d = in_degree.get_mut(dep).unwrap();
-            *d -= 1;
-            if *d == 0 { queue.push_back(dep.clone()); }
-        }
-    }
+Property `H-DAG` (`docs/testing/properties.md#h-dag`, evidence in
+[proptest-scheduler-evidence.md](testing/proptest-scheduler-evidence.md)) compares the public
+sequence to an exhaustive lexical-minimum linear extension over all node permutations, and compares
+both the public `Err` set and the `CycleDetection` set to
+`slicer_sdk::test_support::property_testing::oracles::graph_cycle_remainder`, which is a
+nonempty-path reachability model rather than a second sorter.
 
-    if sorted.len() == nodes.len() {
-        Ok(sorted)
-    } else {
-        let visited: BTreeSet<_> = sorted.iter().cloned().collect();
-        Err(nodes.iter()
-            .map(|n| n.module_id.clone())
-            .filter(|id| !visited.contains(id))
-            .collect())
-    }
-}
+### Write Conflicts (validation pass 8)
 
-/// Validation pass 8: detect write conflicts within a stage.
-///
-/// A write conflict exists when modules A and B both write field F in the
-/// same stage, and there is no directed path A→B or B→A in the stage DAG.
-/// Without an ordering edge, the second writer silently overwrites the first
-/// and the result is implementation-defined.
-///
-/// A valid multi-writer scenario: A writes F, B reads F and writes F.
-/// This creates edge A→B (A's write satisfies B's read), establishing a
-/// deterministic transformation chain. This is NOT a conflict.
-fn validate_write_conflicts(
-    nodes: &[ModuleNode],
-    errors: &mut Vec<SchedulerError>,
-    stage: StageId,
-) {
-    // Build a reachability map: can_reach[a][b] = true if there is a
-    // directed path from a to b in the DAG.
-    let reachability = compute_reachability(nodes);
+`validate_write_conflicts` (`crates/slicer-scheduler/src/validation.rs`) compares every unordered
+pair of nodes in one stage DAG, per shared **exact** write path, and skips the pair only when an
+ordering genuinely resolves the shared field:
 
-    // For every pair of distinct modules (A, B) in this stage:
-    for i in 0..nodes.len() {
-        for j in (i + 1)..nodes.len() {
-            let a = &nodes[i];
-            let b = &nodes[j];
+- the other module declares that exact path in its `ir_reads` **and** a directed path exists from
+  the upstream writer to it (a consumed-field transform chain), or
+- both modules are family-support holders and the shared path is exactly `SupportPlanIR` or
+  `SupportIR` (or a dot-descendant of either). `SupportIRx`, unrelated fields and a bare
+  `requires_modules` edge are not exempt: ordering without consumption is not a transform.
 
-            // Find fields written by both A and B.
-            let shared_writes: Vec<IrAccessPath> = a.ir_writes.iter()
-                .filter(|w| b.ir_writes.contains(w))
-                .cloned()
-                .collect();
-
-            for field in shared_writes {
-                // Check if an ordering exists between A and B.
-                let a_before_b = reachability[&a.module_id][&b.module_id];
-                let b_before_a = reachability[&b.module_id][&a.module_id];
-
-                if !a_before_b && !b_before_a {
-                    // No ordering — this is a conflict.
-                    // Determine if it is orderable: would B reading the field
-                    // establish an A→B edge?
-                    let orderable = b.ir_reads.contains(&field)
-                        || a.ir_reads.contains(&field);
-
-                    errors.push(SchedulerError::WriteConflict {
-                        field,
-                        module_a: a.module_id.clone(),
-                        module_b: b.module_id.clone(),
-                        stage,
-                        orderable,
-                    });
-                }
-                // If a_before_b or b_before_a: ordering exists, no conflict.
-                // The later module's write is an intentional transformation
-                // of the earlier module's output.
-            }
-        }
-    }
-}
-
-fn compute_reachability(
-    nodes: &[ModuleNode],
-) -> HashMap<ModuleId, HashMap<ModuleId, bool>> {
-    // Floyd-Warshall over the DAG adjacency list.
-    // O(N³) but N (modules per stage) is always small (< 20 in practice).
-    let mut reach: HashMap<ModuleId, HashMap<ModuleId, bool>> = nodes.iter()
-        .map(|n| {
-            let row = nodes.iter()
-                .map(|m| (m.module_id.clone(), n.edges_to.contains(&m.module_id)))
-                .collect();
-            (n.module_id.clone(), row)
-        })
-        .collect();
-
-    let ids: Vec<ModuleId> = nodes.iter().map(|n| n.module_id.clone()).collect();
-    for k in &ids {
-        for i in &ids {
-            for j in &ids {
-                if reach[i][k] && reach[k][j] {
-                    *reach.get_mut(i).unwrap().get_mut(j).unwrap() = true;
-                }
-            }
-        }
-    }
-    reach
-}
-```
+Everything else is a fatal `WriteConflict { field, module_a, module_b, stage, orderable: false }`,
+reported as a normalized set because request node order can orient the pair. The `orderable` hint
+in the documented enum describes a *possible* repair (declare the read), not an observed
+exemption; the validating pass reports `false` for conflicts it emits. Property `H-CLAIMS`
+(`docs/testing/properties.md#h-claims`) models reachability and exact shared-path consumption
+independently and also pins the negative mutations (ordering without consumption, the `SupportIRx`
+pseudo-exemption, an unordered pair) in
+`scheduler_write_dependency_and_disabled_controls`.
 
 ---
 
@@ -998,10 +958,25 @@ kernel uses it to:
    `RegionMappingError::ScalarInRegionSplitFacetValue` (Packet 93 guard, the
    manifest validator from Packet 92 normally catches it first).
 
-`enumerate_canonical_chains` produces chains deterministically in
-canonical `(priority, name)` semantic order (`canonical_variant_chain_order`), with `PaintValue` ordered as
-`Flag < ToolIndex(0) < ToolIndex(1) < … < Custom(s_lex)`. This order
-is contract — test fixtures and integration tests lock it.
+`enumerate_canonical_chains` produces chains deterministically from the axis order it is
+**given**, and preserves the caller's value vectors verbatim rather than sorting them. The
+`Flag < ToolIndex(0) < ToolIndex(1) < … < Custom(s_lex)` value order is supplied by
+`scan_paint_data` (`crates/slicer-core/src/algos/region_mapping.rs`), which de-duplicates each
+semantic's values through a `BTreeSet` ordered by `paint_value_canonical_cmp` in that file before
+the enumerator sees them.
+
+The scheduler's separate `canonical_variant_chain_order`
+(`crates/slicer-scheduler/src/region_split.rs`) returns the intended `(priority, name)` sequence,
+but it has **no production caller in the current tree**. The RegionMapping driver passes
+`aggregated_region_split` to `execute_region_mapping_inner`
+(`crates/slicer-core/src/algos/region_mapping.rs`), which builds its axis order from the
+aggregate's `BTreeMap` keys — that is, **name order** — and hands that to the enumerator. Actual
+cross-product chain axes are therefore name-ordered even where that differs from the scheduler
+helper's `(priority, name)` sequence. This is a source-observed discrepancy, not a policy
+decision to prefer name order; ADR-0018's amendment records it, and auditing or changing the
+driver needs coordinated fixture work outside this scheduler contract. Property `H-REGISTRY`
+proves the aggregate, the helper sequence and the map's name-ordered keys; it does **not** prove
+helper integration with RegionMapping.
 
 **Cap and overflow:** `DEFAULT_REGION_MAP_CAP = 750_000` (raised from
 `1_000` in Packet 93 to accommodate worst-realistic envelopes of 16

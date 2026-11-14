@@ -66,5 +66,15 @@ name = "property_config_contracts"
 path = "tests/property_config_contracts.rs"
 required-features = ["property_testing"]
 
+[[test]]
+name = "property_scheduler"
+path = "tests/property_scheduler.rs"
+required-features = ["property_testing"]
+
+[[test]]
+name = "property_scheduler_contracts"
+path = "tests/property_scheduler_contracts.rs"
+required-features = ["property_testing"]
+
 [lints]
 workspace = true

@@ -490,6 +490,38 @@ fn validate_stage_ids(
     }
 }
 
+/// Typed identity of a claim-conflict group.
+///
+/// Claim scopes are compared as values, never as a concatenated string:
+/// `ConflictScope` stores object and region ids as opaque text and promises no
+/// delimiter grammar, so `region:{object}:{region}:{layer}` made
+/// `(object "a:b", region "c")` and `(object "a", region "b:c")`
+/// indistinguishable and lost the original identities when the reported scope
+/// was re-parsed.
+///
+/// The four non-transitionable claims use [`ClaimScopeKey::Object`] because
+/// `docs/01_system_architecture.md` §"Allowed Claim Transition Matrix" requires
+/// one holder for an `(object_id, claim)` across every layer **and** region.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum ClaimScopeKey {
+    /// Whole-print scope (global pass).
+    Global,
+    /// Object-wide stability key for the four non-transitionable claims.
+    Object {
+        /// Object identity as supplied by the caller.
+        object_id: String,
+    },
+    /// One typed `(object, region, layer)` observation.
+    Region {
+        /// Object identity as supplied by the caller.
+        object_id: String,
+        /// Region identity as supplied by the caller.
+        region_id: String,
+        /// Optional global layer index.
+        global_layer_index: Option<u32>,
+    },
+}
+
 fn validate_claim_conflicts(
     request: &DagValidationRequest,
     pass: DagValidationPass,
@@ -511,7 +543,8 @@ fn validate_claim_conflicts(
     .into_iter()
     .collect();
 
-    let mut holders_by_claim: BTreeMap<(String, String), Vec<ModuleId>> = BTreeMap::new();
+    let mut holders_by_claim: BTreeMap<(String, ClaimScopeKey), Vec<(ModuleId, ConflictScope)>> =
+        BTreeMap::new();
 
     for holder in &request.claim_holders {
         let is_global = matches!(holder.scope, ConflictScope::Global);
@@ -519,18 +552,36 @@ fn validate_claim_conflicts(
             continue;
         }
 
-        let use_scope_key = if global_only {
-            scope_key(&holder.scope)
+        let scope_key = if global_only {
+            ClaimScopeKey::Global
         } else if non_transitionable_claims.contains(holder.claim.as_str()) {
-            scope_key_without_layer(&holder.scope)
+            match &holder.scope {
+                // Unreachable for the region pass; keeps the match total.
+                ConflictScope::Global => ClaimScopeKey::Global,
+                ConflictScope::Region { object_id, .. } => ClaimScopeKey::Object {
+                    object_id: object_id.clone(),
+                },
+            }
         } else {
-            scope_key(&holder.scope)
+            match &holder.scope {
+                // Unreachable for the region pass; keeps the match total.
+                ConflictScope::Global => ClaimScopeKey::Global,
+                ConflictScope::Region {
+                    object_id,
+                    region_id,
+                    global_layer_index,
+                } => ClaimScopeKey::Region {
+                    object_id: object_id.clone(),
+                    region_id: region_id.clone(),
+                    global_layer_index: *global_layer_index,
+                },
+            }
         };
 
         holders_by_claim
-            .entry((holder.claim.clone(), use_scope_key))
+            .entry((holder.claim.clone(), scope_key))
             .or_default()
-            .push(holder.module_id.clone());
+            .push((holder.module_id.clone(), holder.scope.clone()));
     }
 
     // ── Packet 37 fill-role claim coverage check ────────────────────────
@@ -553,11 +604,14 @@ fn validate_claim_conflicts(
         }
     }
 
-    for ((claim, scope_key_value), modules) in holders_by_claim {
-        let mut sorted_modules = modules;
-        sorted_modules.sort();
-        sorted_modules.dedup();
-        if sorted_modules.len() < 2 {
+    for ((claim, scope_key_value), observations) in holders_by_claim {
+        let mut sorted_observations = observations;
+        // Deduplicate by module id, keeping the first observation of each
+        // holder. The sort is stable, so a holder observed in several scopes
+        // (a permitted transition) deduplicates to its first observation.
+        sorted_observations.sort_by(|left, right| left.0.cmp(&right.0));
+        sorted_observations.dedup_by(|left, right| left.0 == right.0);
+        if sorted_observations.len() < 2 {
             continue;
         }
 
@@ -576,21 +630,43 @@ fn validate_claim_conflicts(
             continue;
         }
 
-        let scope = if global_only {
-            ConflictScope::Global
-        } else {
-            region_scope_from_key(&scope_key_value)
-        };
+        for i in 0..sorted_observations.len() {
+            for j in (i + 1)..sorted_observations.len() {
+                let scope = match &scope_key_value {
+                    ClaimScopeKey::Global => ConflictScope::Global,
+                    ClaimScopeKey::Region {
+                        object_id,
+                        region_id,
+                        global_layer_index,
+                    } => ConflictScope::Region {
+                        object_id: object_id.clone(),
+                        region_id: region_id.clone(),
+                        global_layer_index: *global_layer_index,
+                    },
+                    // An object-wide key has no single region of its own; the
+                    // reported scope names the conflict inside the first
+                    // holder's original region, pinned without a layer.
+                    ClaimScopeKey::Object { object_id } => match &sorted_observations[i].1 {
+                        ConflictScope::Region { region_id, .. } => ConflictScope::Region {
+                            object_id: object_id.clone(),
+                            region_id: region_id.clone(),
+                            global_layer_index: None,
+                        },
+                        ConflictScope::Global => ConflictScope::Region {
+                            object_id: object_id.clone(),
+                            region_id: String::new(),
+                            global_layer_index: None,
+                        },
+                    },
+                };
 
-        for i in 0..sorted_modules.len() {
-            for j in (i + 1)..sorted_modules.len() {
                 report.push_error(
                     pass,
                     SchedulerError::ClaimConflict {
                         claim: claim.clone(),
-                        module_a: sorted_modules[i].clone(),
-                        module_b: sorted_modules[j].clone(),
-                        scope: scope.clone(),
+                        module_a: sorted_observations[i].0.clone(),
+                        module_b: sorted_observations[j].0.clone(),
+                        scope,
                     },
                 );
             }
@@ -1051,51 +1127,6 @@ fn stage_order_index() -> BTreeMap<&'static str, usize> {
 
 fn semver_lt(left: SemVer, right: SemVer) -> bool {
     (left.major, left.minor, left.patch) < (right.major, right.minor, right.patch)
-}
-
-fn scope_key(scope: &ConflictScope) -> String {
-    match scope {
-        ConflictScope::Global => String::from("global"),
-        ConflictScope::Region {
-            object_id,
-            region_id,
-            global_layer_index,
-        } => format!(
-            "region:{object_id}:{region_id}:{}",
-            global_layer_index.map_or_else(|| String::from("none"), |value| value.to_string())
-        ),
-    }
-}
-
-fn scope_key_without_layer(scope: &ConflictScope) -> String {
-    match scope {
-        ConflictScope::Global => String::from("global"),
-        ConflictScope::Region {
-            object_id,
-            region_id,
-            global_layer_index: _,
-        } => format!("region:{object_id}:{region_id}:_"),
-    }
-}
-
-fn region_scope_from_key(key: &str) -> ConflictScope {
-    let mut parts = key.splitn(4, ':');
-    let _ = parts.next();
-    let object_id = parts.next().unwrap_or_default().to_string();
-    let region_id = parts.next().unwrap_or_default().to_string();
-    let global_layer_index = parts.next().and_then(|value| {
-        if value == "none" {
-            None
-        } else {
-            value.parse::<u32>().ok()
-        }
-    });
-
-    ConflictScope::Region {
-        object_id,
-        region_id,
-        global_layer_index,
-    }
 }
 
 fn topological_sort(nodes: &[ModuleNode]) -> Result<Vec<ModuleId>, Vec<ModuleId>> {
