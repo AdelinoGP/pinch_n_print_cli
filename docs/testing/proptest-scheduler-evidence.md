@@ -204,14 +204,16 @@ The foundation's `properties-windows` job executed this implementation on a host
 
 - Workflow run: <https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43556307245>
 - Job: `Properties (Windows)` — <https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43556307245/job/132329819467>
-- Head: `f5c1577906f3a7282c59a373e6b1b6b6ee7f20ce` (the reviewed implementation commit), trigger
-  `pull_request` on branch `proptest-openrscad-07-pbt-scheduler`, runner `windows-latest`,
-  concluded `success` at `2026-11-14T04:28:36Z` with every step green (`Build guest WASMs`,
-  `Run routine properties`, upload step skipped because nothing failed).
+- Head: PR head `f5c1577906f3a7282c59a373e6b1b6b6ee7f20ce`; Actions checked out a synthetic merge
+  (`1587222c2e`) whose Git tree is identical to that head (`55b97202`), so the reviewed source is
+  what was tested. Trigger `pull_request` on branch `proptest-openrscad-07-pbt-scheduler`, runner
+  `windows-latest`, concluded `success` at `2026-11-14T04:28:36Z`, where every executed step
+  succeeded; the failure-artifact upload was skipped because nothing failed.
 - Command: `cargo xtask test --summary --properties --tier routine` — the dynamic selector, no
   `--property` list, after the job's own `check-test-quality` and `check-literals` preflights.
-- Result: the digest printed fifteen `test result: ok. 1 passed; 0 failed` lines and the final
-  `VERDICT: PASS`. Exactly three of those binaries carry the `2 filtered out` signature of the
+- Result: the digest printed fifteen `test result: ok. 1 passed; 0 failed` lines (fifteen exact-test
+  executions across four targets, not fifteen distinct binaries) and the final `VERDICT: PASS`.
+  Exactly three of those executions carry the `2 filtered out` signature of the
   `property_scheduler` target (three registered tests), at 0.07s / 0.98s / 0.06s, which is the
   selection order `H-DAG`, `H-CLAIMS`, `H-REGISTRY`.
 

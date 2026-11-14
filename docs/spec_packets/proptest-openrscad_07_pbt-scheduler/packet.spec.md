@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_07_pbt-scheduler
-status: draft
+status: implemented
 ---
 
 # Tiny independent models for scheduling, claims and declaration aggregation
@@ -240,10 +240,10 @@ Recorded while implementing; none changes the packet's scope.
 
 10. **AC-7's hosted execution is recorded.** The foundation's `properties-windows` job ran the
     dynamic routine selector (`cargo xtask test --summary --properties --tier routine`) on a hosted
-    Windows runner at the reviewed implementation commit `f5c15779`: workflow run
+    Windows runner for PR head `f5c15779` (Actions tested a synthetic merge with an identical source tree): workflow run
     <https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43556307245>, job
     `Properties (Windows)` <https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43556307245/job/132329819467>,
-    concluded `success` with `VERDICT: PASS` over fifteen property binaries, exactly three of which
+    concluded `success` with `VERDICT: PASS` over fifteen property executions, exactly three of which
     carry the `property_scheduler` target's `2 filtered out` signature (selection order `H-DAG`,
     `H-CLAIMS`, `H-REGISTRY`). The job uploaded no artifacts because nothing failed; the passing
     verdict is reachable only when every selected record meets its committed case count, and the
