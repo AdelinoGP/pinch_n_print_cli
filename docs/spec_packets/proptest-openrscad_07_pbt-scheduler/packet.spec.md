@@ -167,6 +167,77 @@ Authoring performed source/document/call-site inspection, `cargo metadata --lock
 - [FWD] #6's planned H-CHAINS tests exercise the IR enumerator's supplied-order contract, not the RegionMapping caller. Its draft currently describes the caller as priority/name-ordered; the #6 owner must recheck ADR-0018 and the live caller when implementing and avoid repeating that integration claim. This coordination is not a #7 prerequisite.
 - [FWD] #8 owns actual selection-index dispatch and modifier transactions; later prepass/support work owns live support aggregation/family-ownership properties. #17 consumes these exact registry IDs and evidence for rollout audit; none are new reusable SDK APIs.
 
+## Deviations
+
+Recorded while implementing; none changes the packet's scope.
+
+1. **Two live SUT defects were confirmed and fixed in `validate_claim_conflicts`.** The packet
+   named string-key scope serialization and object-wide stability as investigation surfaces, not
+   executed claims. Both reproduced with the concrete inputs in
+   [`docs/testing/proptest-scheduler-evidence.md`](../../testing/proptest-scheduler-evidence.md):
+   (a) `claim:infill-link` held at object `a:b`/region `c` and at object `a`/region `b:c` aliased
+   into one group and the reported scope was re-parsed to `object "a"`, `region "b"`;
+   (b) `perimeter-generator` held across `cube/top/layer 0` and `cube/bottom/layer 10` produced no
+   diagnostic. The fix replaces the three string helpers with a typed `ClaimScopeKey` and keys the
+   four non-transitionable claims on the object alone. No public type, error variant, stable-claim
+   set or policy changed. Regressions:
+   `claims_controls::delimiter_rich_object_and_region_ids_never_share_a_claim_scope` and
+   `claim_transition_matrix_tdd::non_transitionable_claim_rejects_holder_change_across_regions_of_one_object`.
+2. **`claim_transition_matrix_tdd` was already green before the fix.** Its four existing tests
+   cover *same-region* cross-layer variance, which the old `scope_key_without_layer` happened to
+   catch (it dropped the layer but kept the region). The packet's wording could be read as implying
+   a pre-existing red test; it was not. The object-wide *cross-region* rule had no test, and the
+   new regression above is the one that failed pre-fix.
+3. **`support-planner` is not in the validator's stable-claim set.** `docs/01_system_architecture.md`
+   marks it non-transitionable, but the reviewed exception table names exactly four ids, and
+   family-scoped planners are retained per family for dispatch-time pairing. The docs now state the
+   distinction (validator stable set versus family-scoped retention) instead of adding a fifth
+   stable id; that is a documentation clarification, not a policy change, and no `support-planner`
+   temporal-policy test was added.
+4. **Profile calibration runs through the registry, not a separate pilot harness, for two
+   families.** `H-DAG` had controlled-context pilots (24 cases at `max_nodes` 3/5/7) before its
+   record landed. `H-CLAIMS` and `H-REGISTRY` were registered inside the safety ceilings and then
+   measured: the first registry run is the pilot, and no bound, case count or reject budget was
+   changed after measurement. The evidence document reports this ordering explicitly rather than
+   presenting the first run as a post-calibration acceptance run.
+5. **One extra named control was kept alongside AC-N1's.** `scheduler_raw_graph_and_plan_rejections`
+   (AC-N1) owns the raw-model negatives, the four real `ExecutionPlanError` cases and the cyclic
+   production input; `scheduler_dag_raw_model_rejections_before_sorter` was written first by the
+   H-DAG step and is retained as a narrower duplicate of the raw-model half. Both run in the same
+   binary; the duplication is deliberate evidence redundancy, not extra scope.
+6. **Each target-private model file is mounted once per test binary.** The contracts aggregator
+   mounts `property_scheduler_{dag,claims,registry}.rs` at its root and the control modules alias
+   them, rather than each control mounting a private copy (`clippy::duplicate_mod`). The property
+   binary mounts one per charter. No shared public SDK export was added, as the packet requires.
+7. **The ADR-0018 amendment heading names the packet directory.** This workstream has no global
+   packet number; the queue row is `07`, so the heading uses
+   `packet proptest-openrscad_07_pbt-scheduler` and the append date (2026-11-13) rather than a bare
+   number that would be ambiguous. The quoted amendment body is otherwise verbatim.
+8. **The helper-versus-driver facts were rechecked immediately before appending the amendment.**
+   `canonical_variant_chain_order` still has no non-test caller, and
+   `commit_region_mapping_builtin` → `execute_region_mapping_inner` still builds its axis order
+   from `aggregated_region_split.keys()`. No concurrent change invalidated the quoted wording.
+
+9. **An independent cold review drove one remediation wave before closure.** It confirmed the
+   production fix and AC-1/AC-6/AC-N1/AC-N2, but rejected the first pass on shrink preservation and
+   generative coverage. Fixes: `H-DAG` now selects its `Dag`/`Cycle` mode from a non-shrinkable
+   weighted list instead of `prop_oneof!` (a union shrinker could switch branches) and audits
+   simplified trees; `H-CLAIMS` selects modes non-shrinkably and audits each mode's witness;
+   `H-REGISTRY` derives shape and every fault-deciding flag from a non-shrinkable case plan and
+   audits the first-seen/tie/compatible witnesses. AC-2's generative half now assembles a real plan
+   from every generated DAG (sequence, claims, masks, requirements, paint-only semantics, paint-stage
+   insertion, plan aggregate), and AC-5's generative half now drives
+   `dedup_same_claim_modules_with_typed_wall_generator`, `resolve_held_claims` and
+   `validate_support_family_pairing` in a tagged mode. AC-4 gained a shared-stage transitive-only
+   witness (`A → B → C` with `A` and `B` in one stage) so a direct-only replacement cannot pass, and
+   the stable-claim oracle now derives the reported region per pair with a three-holder witness.
+   AC-N3 now honours every accepted claim bound: `checked_claim_limits` rejects `max_text_bytes`
+   below the 36-byte UUID-syntax floor instead of widening it, generated cases assert their counts
+   against the accepted limits, and `write_case` sizes its claim set to `max_claims`. Two doc
+   findings were also corrected (the conflict warning carries the module's WASM path, not its
+   manifest path; `PaintValue` ordering comes from `scan_paint_data`, not the enumerator). No
+   acceptance criterion was narrowed and no assertion was weakened to obtain green.
+
 ## Authoring preflight
 
 | # | Check | Result | Evidence / applicability |

@@ -26,8 +26,8 @@
 
 use slicer_ir::SemVer;
 use slicer_scheduler::{
-    build_intra_stage_dag, validate_startup_dag, ClaimHolder, ConflictScope, DagValidationRequest,
-    LoadedModule, LoadedModuleBuilder, Producer, SchedulerError, StageDag,
+    build_intra_stage_dag, validate_startup_dag, ClaimHolder, ConflictScope, DagValidationPass,
+    DagValidationRequest, LoadedModule, LoadedModuleBuilder, Producer, SchedulerError, StageDag,
 };
 use std::path::PathBuf;
 
@@ -72,6 +72,14 @@ fn region_scope_at(layer: u32) -> ConflictScope {
     ConflictScope::Region {
         object_id: String::from("cube"),
         region_id: String::from("shell"),
+        global_layer_index: Some(layer),
+    }
+}
+
+fn region_scope(object: &str, region: &str, layer: u32) -> ConflictScope {
+    ConflictScope::Region {
+        object_id: object.to_string(),
+        region_id: region.to_string(),
         global_layer_index: Some(layer),
     }
 }
@@ -304,6 +312,99 @@ fn stable_holder_across_layers_is_valid_for_non_transitionable_claim() {
         report.is_valid(),
         "stable single-holder-across-layers must NOT trigger a transition \
          violation, but got errors: {:#?}",
+        report.errors
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 5 — object-wide stability across *regions*
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Root cause: `validate_claim_conflicts` grouped per-region holders by the
+// serialized `scope_key_without_layer` string, which still contained the region
+// (`region:{object}:{region}:_`). Two observations of one stable claim at
+// different regions of the same object were therefore placed in different
+// groups and never compared, contradicting the normative object-wide wording of
+// docs/01 §"Allowed Claim Transition Matrix".
+//
+// Previous input: `perimeter-generator` held by `com.example.alpha-perimeters`
+// at object `cube`, region `top`, layer 0, and by
+// `com.example.beta-perimeters` at object `cube`, region `bottom`, layer 10.
+// Before the fix the report was clean; after it the pair conflicts object-wide
+// and reports the first holder's original region with `global_layer_index =
+// None`.
+
+#[test]
+fn non_transitionable_claim_rejects_holder_change_across_regions_of_one_object() {
+    let alpha = loaded_module(
+        "com.example.alpha-perimeters",
+        "Layer::Perimeters",
+        "perimeter-generator",
+    );
+    let beta = loaded_module(
+        "com.example.beta-perimeters",
+        "Layer::Perimeters",
+        "perimeter-generator",
+    );
+
+    let mut claim_holders = vec![
+        ClaimHolder {
+            claim: String::from("perimeter-generator"),
+            module_id: alpha.id().to_string(),
+            scope: region_scope("cube", "top", 0),
+        },
+        ClaimHolder {
+            claim: String::from("perimeter-generator"),
+            module_id: beta.id().to_string(),
+            scope: region_scope("cube", "bottom", 10),
+        },
+    ];
+    // Packet 37 fill-role coverage: keep the unrelated global setup complete so
+    // this test can only fail on the stable-claim witness.
+    for fill in [
+        "claim:top-fill",
+        "claim:bottom-fill",
+        "claim:bridge-fill",
+        "claim:sparse-fill",
+    ] {
+        claim_holders.push(ClaimHolder {
+            claim: fill.to_string(),
+            module_id: alpha.id().to_string(),
+            scope: ConflictScope::Global,
+        });
+    }
+
+    // exhaustive: this regression pins the complete cross-region request payload.
+    let request = DagValidationRequest {
+        modules: vec![alpha.clone(), beta.clone()],
+        stage_dags: vec![stage_dag_for(
+            "Layer::Perimeters",
+            &[alpha.clone(), beta.clone()],
+        )],
+        host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
+        claim_holders,
+        access_audits: Vec::new(),
+    };
+
+    let report = validate_startup_dag(&request);
+
+    let expected = SchedulerError::ClaimConflict {
+        claim: String::from("perimeter-generator"),
+        module_a: alpha.id().to_string(),
+        module_b: beta.id().to_string(),
+        scope: ConflictScope::Region {
+            object_id: String::from("cube"),
+            region_id: String::from("top"),
+            global_layer_index: None,
+        },
+    };
+    assert!(
+        report.errors.iter().any(|diagnostic| diagnostic.pass
+            == DagValidationPass::PerRegionClaimConflicts
+            && diagnostic.detail == expected),
+        "a stable claim must not change holder across regions of one object; \
+         expected {expected:#?}, got: {:#?}",
         report.errors
     );
 }

@@ -198,6 +198,18 @@ here. Their committed profiles use the same shape (`cases` 64/1024, zero rejecti
 `min(max_abs_units, 10_000·max_abs_mm) ≤ 1_000_000` so the shared rounding-boundary helper
 receives a legal argument.
 
+The three scheduler records added by packet `proptest-openrscad_07_pbt-scheduler` (`H-DAG`,
+`H-CLAIMS`, `H-REGISTRY`) were calibrated the same way; their pilot, routine, extended and
+retained-seed-replay measurements, per-record walls, accepted-case counts, bounds and
+oracle/control provenance are recorded in
+[proptest-scheduler-evidence.md](proptest-scheduler-evidence.md) rather than duplicated here. Their
+committed profiles use the same shape (`cases` 64/1024, zero local/global/flat-map rejection
+budgets, `max_default_size_range` 32/256, `max_shrink_iters` 64/256, chacha, `in_process`,
+`timeout_ms = 0`) with scheduler-specific bounds. The existing `properties-windows` job runs
+`cargo xtask test --summary --properties --tier routine` with no hand-maintained record list, so it
+selects the three new records automatically; the combined routine selection was executed here on
+Windows and reported `VERDICT: PASS`.
+
 ## Context and event schema
 
 `PNP_PROPERTY_CONTEXT` is one JSON object set on each selected execution child (serialized, never
@@ -1190,6 +1202,464 @@ multiplicities survive; extra map keys and map insertion order do not affect the
 `ir_chain_oracle_order_and_empty_controls` refutes the omitted-empty-chain, sorted-values,
 swapped-axis, dropped-product and duplicated-product mutants, and the existing
 `region_split_registry_tdd` still passes. Defect outcome: **no production defect was observed**.
+
+## H-DAG
+
+Registry record: `id = "H-DAG"`, `package = "slicer-scheduler"`, `target_kind = "test"`,
+`target_name = "property_scheduler"`, `test_name = "proptest_scheduler_dag_models"`,
+`production_symbol = "slicer_scheduler::topological_sort"`,
+`production_path = "crates/slicer-scheduler/src/topology.rs"`,
+`features = ["slicer-scheduler/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-dag"`.
+
+### Stable property ID
+
+`H-DAG` — exhaustive lexical-minimum linear extensions for acyclic scheduler graphs and the
+complete blocked remainder for cyclic ones.
+
+### Owner
+
+Package `slicer-scheduler`; standalone test target `property_scheduler` (explicit `[[test]]` entry
+with `required-features = ["property_testing"]`, selected by the empty
+`slicer-scheduler/property_testing` feature); test `proptest_scheduler_dag_models` in
+`crates/slicer-scheduler/tests/property_scheduler.rs`, which mounts the target-private model module
+`crates/slicer-scheduler/tests/common/property_scheduler_dag.rs`. Production surface:
+`slicer_scheduler::topological_sort` (`crates/slicer-scheduler/src/topology.rs`),
+`slicer_scheduler::build_intra_stage_dag` (`crates/slicer-scheduler/src/dag.rs`) and
+`slicer_scheduler::validation::validate_startup_dag` (`crates/slicer-scheduler/src/validation.rs`)
+for the cyclic validator surface. Deterministic controls live in
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/dag_controls.rs` and
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/plan_controls.rs`.
+
+### Contract
+
+For a valid acyclic graph, `topological_sort` returns exactly the declared nodes (a bijection) and
+the lexicographically minimum module-id sequence satisfying every edge — the finite
+linear-extension definition, not a ready-queue traversal. Its `Err` value is the entire blocked
+remainder: every node on a cycle plus every node reachable from a cycle by a nonempty path,
+including an acyclic tail, while independent sortable nodes stay out; the returned `Vec` is
+lexically sorted. `validate_startup_dag`'s private sorter promises no order, so its
+`CycleDetection`/`CyclicDependency.cycle` is compared as a set against the same path model.
+
+**Malformed-model boundary.** A malformed raw graph — a `SmallGraph` with duplicate node entries or
+an edge naming an unknown endpoint — is rejected by the target-private checked adapter `checked_nodes`
+before any production sorter call, and `sort_checked` tags that rejection. There is no promised scheduler
+raw-graph validation API, so this is generator/adapter negative coverage and not SUT-validator
+credit; actual scheduling negatives are cycles, missing dependencies and invalid plan bindings at
+their real validating APIs.
+
+### Domain
+
+`max_nodes` must lie inside the packet's `3..=7` safety ceiling (routine `5`, extended `7`).
+Within it the shared `graphs(GraphKind::Dag, max_nodes)` domain draws `0..=max_nodes` nodes, so
+empty and singleton DAGs are legitimate cases — empty input has the one empty linear extension —
+while `GraphKind::CycleWithTail` requires at least three nodes and constructs a real directed cycle
+plus a downstream acyclic tail. Node values map to fixed-width lexical module ids `com.pbt.NNNNN`
+through `module_id_for`, independently of the input `Vec` order, so lexical and numeric order agree.
+Edges are unique index pairs; the checked adapter gives each one a genuine
+`IrWriteRead { writer_path }` declaration, and a separate robustness mode duplicates a destination
+with a second reason. The exhaustive search is capped at
+`MAX_LINEAR_EXTENSION_NODES = 7` (`7! = 5040` leaves); that ceiling must not be raised to absorb
+extended-case cost.
+
+### Strategy
+
+`sample_strategy` composes `prop_oneof![9 => dag_samples, 4 => cycle_samples]`. A DAG sample
+carries the graph, a node-index permutation and the duplicate-destination flag; the permutation is
+applied both to the node `Vec` and to each `edges_to` list. Cycle samples stay in
+`GraphKind::CycleWithTail`. Mandatory deterministic witnesses run before sampling: a self-cycle
+with a downstream tail (`100 -> 100`, `100 -> 101`, `101 -> 102`) and two disconnected cycles
+(`200 <-> 201`, `202 <-> 203`, `201 -> 204`) with independent sortable node 205; both must match
+the path model on the public sorter and on `CycleDetection`. The 128-case pre-sample population
+guard requires empty, singleton, disconnected multi-node, multi-edge, duplicate-destination and
+cycle-with-tail samples and a nonempty cycle remainder; there is no `prop_assume` and no rejection
+budget.
+
+### Oracle
+
+`minimum_linear_extension` enumerates every node-index permutation, filters by edge precedence and
+keeps the lexicographically smallest id sequence; `check_success_oracle` checks bijection first,
+then exact order, then precedence. `check_cycle_remainder` compares the public blocked `Vec` to
+`slicer_sdk::test_support::property_testing::oracles::graph_cycle_remainder` and additionally
+requires lexical order because only the public `Vec` promises it. `check_validator_cycles` compares
+`CycleDetection`'s cycle set to the same model, with four fixed global fill holders making a
+fill-coverage `MissingDependency` impossible in the cycle-only request. `check_intra_stage_relation`
+derives the expected node, destination, read, write and reason table from the raw graph and asserts
+that the real `build_intra_stage_dag` reproduces it, including the exact
+`IrWriteRead { writer_path }` reason per edge. The oracle never calls `topological_sort`, the
+private validator sorter, or a Kahn loop to certify itself.
+
+### Tolerance
+
+Exact string, `Vec` and set comparison throughout. No numeric tolerance exists on this surface.
+
+### Shrinking
+
+The case mode is drawn from a **non-shrinkable** weighted list
+(`proptest::sample::select(modes).no_shrink()`), not from `prop_oneof!`: a union shrinker would try
+an earlier branch and could turn a `Cycle` case into a `Dag` case. Cycle-plus-tail cases are
+rebuilt from `(cycle_len, tail_len)` inside the domain's `prop_map`, so a shrink keeps a real
+directed cycle and at least one downstream tail node; the duplicate-destination flag is also drawn
+from a `no_shrink` list. DAG cases keep the forward-edge construction and the linear-extension
+oracle is recomputed for the shrunk graph; the node permutation is re-drawn by `prop_flat_map` and
+is re-validated as a complete permutation. `assert_shrink_preserves_modes` audits this on every
+execution: fixed-seed trees are simplified repeatedly and must keep their mode tag, a simplified
+cycle must still have a nonempty blocked remainder, a simplified DAG must stay acyclic and still
+match the exhaustive oracle, and a duplicated destination must stay duplicated. Shrink limits are
+profile-bounded (`max_shrink_iters` 64/256, `max_shrink_time_ms = 0`); completion is reported
+`null`/unknown because Proptest 1.11 cannot identify it.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, `cases = 64 / 1024`,
+`max_default_size_range = 32 / 256`, `max_shrink_iters = 64 / 256`, rejection budgets `0`,
+`bounds.max_nodes = 5 / 7`. Measured on Windows: routine libtest `0.12s` and extended `1.91s`, each
+at its profile case count (64 / 1024), with `rejected_test_calls = 0`,
+`call_counts_complete = true` and outcome `passed`; the retained routine seed
+`1754118437219857720` replayed to `VERDICT: PASS`. Command, logs and provenance are in
+[proptest-scheduler-evidence.md](proptest-scheduler-evidence.md).
+
+### Failure record
+
+`failure.json` is produced by the foundation harness (packet `proptest-openrscad_01_pbt-foundation`)
+and retains the classification, the full context, the concrete/debug input, the tier-bearing
+reproduction command
+(`cargo xtask test --summary --properties --property H-DAG --tier <routine|extended> --seed <seed>`),
+an executable direct reproduction carrying the exact consumed `PNP_PROPERTY_CONTEXT`, captured SDK
+logs and shrink status. Committed regression history is a named concrete input — never a seed. The
+control homes are
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/dag_controls.rs`,
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/plan_controls.rs` and
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/bound_controls.rs`.
+
+### Acceptance
+
+The target was actually executed through the registry with `--exact --nocapture`, never
+compile-only and never as an unrelated passing test; the exhaustive or path-model oracle is checked
+on every case. Generator and shrink validity are demonstrated by `scheduler_dag_oracle_controls`
+(rejecting FIFO-instead-of-minimum, missing-node, duplicated-node and cycle-only-tail-omission
+mutations), by `scheduler_dag_raw_model_rejections_before_sorter`, and by the pre-sample population
+guard. `scheduler_graph_construction_and_plan_observations` observes real plan assembly, compiled
+module sequence, claims, access masks and host paint-stage insertion with independently derived
+expectations. Existing scheduler baselines `topological_sort_tdd`, `dag_construction_tdd` and
+`execution_plan_tdd` pass. Defect outcome: **no production defect in `topological_sort`,
+`build_intra_stage_dag` or the cycle pass was observed**; no regression was manufactured.
+
+## H-CLAIMS
+
+Registry record: `id = "H-CLAIMS"`, `package = "slicer-scheduler"`, `target_kind = "test"`,
+`target_name = "property_scheduler"`, `test_name = "proptest_scheduler_claim_models"`,
+`production_symbol = "slicer_scheduler::validation::validate_startup_dag"`,
+`production_path = "crates/slicer-scheduler/src/validation.rs"`,
+`features = ["slicer-scheduler/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-claims"`.
+
+### Stable property ID
+
+`H-CLAIMS` — typed claim-scope, write-ordering and effective-universe dependency contract of the
+startup validator.
+
+### Owner
+
+Package `slicer-scheduler`; standalone test target `property_scheduler`; test
+`proptest_scheduler_claim_models` in `crates/slicer-scheduler/tests/property_scheduler.rs`, which
+mounts `crates/slicer-scheduler/tests/common/property_scheduler_claims.rs`. Production surface:
+`slicer_scheduler::validation::validate_startup_dag`
+(`crates/slicer-scheduler/src/validation.rs`). Deterministic controls live in
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/claims_controls.rs` and
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/selection_controls.rs`; the
+object-wide cross-region regression lives in
+`crates/slicer-scheduler/tests/contract/claim_transition_matrix_tdd.rs`.
+
+### Contract
+
+`validate_startup_dag` is driven as the public validator over an effective universe. Claim scopes
+are typed values `(object_id, region_id, Option<layer>)`; the model never concatenates them, so two
+distinct tuples cannot alias. For `ConflictScope::Global`, ordinary holders conflict pairwise and
+duplicate observations of one module collapse; `claim:raft-fill` is ordinary here, not a configured
+fill exception. Exactly the four `FILL_CLAIM_IDS` — `claim:top-fill`, `claim:bottom-fill`,
+`claim:bridge-fill`, `claim:sparse-fill` — allow global multiplicity, and a global absence produces
+`MissingDependency { module: "fill-role-claim:<claim>", requires: "no module holds <claim>" }`; a
+per-region duplicate holder still conflicts. Exactly the four family-support globals
+`support-generator`, `support-planner`, `support-family:traditional` and `support-family:tree` are
+exempt from the global conflict check; an arbitrary `support-family:<suffix>` is not.
+
+The four stable claims `perimeter-generator`, `seam-placer`, `layer-planner` and `mesh-analyzer`
+must keep one holder per object across every region and layer; the reported `ClaimConflict` carries
+the lexically first holder's original region with `global_layer_index = None`.
+`claim:sparse-fill` and `support-generator` are the transition-capable claims in this domain, so
+their cross-layer transitions stay allowed. Per-region observations of other claims compare the
+full typed tuple, layer included.
+
+Write conflicts are decided by exact shared fields: a pair is orderable only when the downstream
+writer declares the shared field in its `ir_reads` and a real `StageDag` path runs from the
+upstream writer to it. Family-support writers are orderable only when both hold one of the four
+family-support globals and the shared path is exactly `SupportPlanIR`/`SupportIR` or a
+dot-descendant; `SupportIRx` and unrelated fields are not exempt. `WriteConflict` comparisons
+normalize the unordered module pair lexically.
+
+Module and capability dependencies are modelled by exact effective membership, and direct and
+transitive stage legality by `STAGE_ORDER` rank and real finite paths. Each
+`TransitiveStageDependency.path` must start at the requesting module, be simple, follow declared
+`requires_modules` edges and end at a later stage; expected existence comes from the model, not a
+particular BFS route.
+
+**Effective-universe semantics.** The production request has no disable flag, so the case builder
+removes locally tagged disabled modules together with their holder observations and stage-DAG nodes
+before constructing the request. A retained consumer still requiring the removed module or
+capability must reject; removing a competing holder must eliminate only its conflict. This tests
+effective-input behaviour, not config parsing or a nonexistent scheduler disable mechanism.
+
+### Domain
+
+`checked_claim_limits` enforces `max_modules 3..=7`, `max_claims 1..=8`,
+`max_observations 2..=16` (variable observations in addition to the fixed four-role fill setup),
+`max_layers 2..=4` and `max_text_bytes 8..=64`. Committed values are
+`max_modules / max_claims / max_observations / max_layers / max_text_bytes`:
+routine `4 / 4 / 8 / 3 / 36`, extended `7 / 8 / 16 / 4 / 64`; the 36-byte routine bound is the
+UUID floor, and `uuid_text` never silently shortens a UUID. Object ids use the shared UUID-syntax
+domain plus a separate delimiter-rich raw text domain; module ids use a bounded prefix with
+`com.pbt.claim-N-` overhead. Modules carry
+compatible versions, canonical stages (`Layer::Infill`, `PrePass::MeshAnalysis`,
+`PrePass::LayerPlanning`) and placeholder WASM paths. Every unrelated case carries the fixed
+global four-claim fill setup, so an unrelated fill-coverage error can never make a rejection look
+correct; only `FillGlobalAbsent` deliberately drops one.
+
+### Strategy
+
+`claim_case_strategy` selects one `ClaimMode` from the 37 concrete tagged witnesses in
+`ClaimMode::ALL`, so each case
+is exactly one witness shape: fill multiplicity, absence or region duplicate for each of four ids;
+each family global plus a non-exempt suffix; ordinary and raft globals; region and delimiter
+scopes; writes; missing universe; cross-stage; disabled universe; the same-region and cross-region
+stable witnesses for each of four claims; same-module-across-layers; distinct objects and two
+transition-capable claims. The 512-case pre-sample audit requires every tagged mode and both
+rejecting and accepting verdicts, and audits up to 32 `simplify()` calls per sample to prove the
+mode and the verdict signature survive shrinking. No `prop_assume` and no rejection budget is used.
+
+### Oracle
+
+`expected_diagnostics` recomputes a normalized `BTreeSet<DiagKey>` from the case's enabled modules,
+holders and stage DAGs. It models only the five named passes (`GlobalClaimConflicts`,
+`PerRegionClaimConflicts`, `MissingDependencies`, `WriteConflicts`,
+`CrossStageDependencyLegality`) and compares the validator's exact error fields, not
+`report.is_valid()`. `ScopeModel` is a typed enum, never a serialized key. `assert_fixed_fill_setup`
+proves the four fill obligations are present. `assert_delimiter_witness` proves two distinct typed
+tuples collide under the previous concatenated string key, so the test falsifies the
+delimiter-aliasing shape rather than merely omitting it. `assert_transitive` validates the real
+path shape. The model never calls `compute_reachability` or any private validator pass.
+
+### Tolerance
+
+Exact normalized-set equality of diagnostics, exact string identity for claims/modules/scopes and
+exact enum/stage fields; no numeric tolerance exists on this surface.
+
+### Shrinking
+
+Every case carries its `ClaimMode` tag, selected from a **non-shrinkable** list
+(`proptest::sample::select(available_modes).no_shrink()`) so a union shrinker cannot switch modes.
+`assert_shrink_preserves_witnesses` simplifies fixed-seed trees on every execution and asserts the
+tag and that mode's distinguishing witness survive: two distinct typed identities for the
+claim/region modes, three holders in `r0`/`r1`/`r2` for the object-wide mode, the legacy
+delimiter-colliding pair for the delimiter mode, the conflicting pair for the write mode, the
+retained consumer's missing module for the disabled mode, and the selector witness (typed
+`wall_generator` value plus `spiral_vase` flag) for the selection/pairing mode. Only the module
+declaration order rotates as a shrinkable dimension there, so the expected kept set cannot change
+identity. The fixed fill setup is re-asserted on every case, so a shrink cannot make an unrelated
+fill error pass for the wrong reason. Shrink limits are profile-bounded; completion is reported
+`null`/unknown.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, `cases = 64 / 1024`,
+`max_default_size_range = 32 / 256`, `max_shrink_iters = 64 / 256`, rejection budgets `0`.
+Measured on Windows: routine libtest `1.85s` and extended `3.08s`, each at its profile case count,
+with `rejected_test_calls = 0`, `call_counts_complete = true` and outcome `passed`; the retained
+routine seed `3790326088920418405` replayed to `VERDICT: PASS`. See
+[proptest-scheduler-evidence.md](proptest-scheduler-evidence.md).
+
+### Failure record
+
+`failure.json` is produced by the foundation harness with the tier-bearing reproduction command
+(`cargo xtask test --summary --properties --property H-CLAIMS --tier <routine|extended> --seed <seed>`),
+the full context, concrete/debug input, direct reproduction, captured logs and shrink status.
+Committed regressions are named concrete inputs, never seeds. Homes:
+`crates/slicer-scheduler/tests/contract/claim_transition_matrix_tdd.rs` for the object-wide
+cross-region stable-claim regression and
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/claims_controls.rs` for the
+`delimiter_rich_object_and_region_ids_never_share_a_claim_scope` witness, with
+`.../selection_controls.rs` and `.../bound_controls.rs` for the remaining selection and bound
+controls.
+
+### Acceptance
+
+The target was actually executed through the registry with `--exact --nocapture`; the typed
+diagnostic model is checked on every case. Generator and shrink validity are demonstrated by
+`scheduler_claim_scope_and_exception_controls`,
+`delimiter_rich_object_and_region_ids_never_share_a_claim_scope`,
+`scheduler_write_dependency_and_disabled_controls`, `scheduler_claim_model_ceiling_walk_controls`,
+`scheduler_claim_selection_and_pairing_controls`, and the 512-case mode/verdict population audit.
+The selection/pairing control exercises `resolve_held_claims`, `FillHolders` and family pairing
+through their real seams; it is a deterministic control, not part of the generative claim/write
+oracle. Existing baselines `claim_transition_matrix_tdd`, `holder_matching_tdd`,
+`typed_selector_claim_selection_tdd`, `support_family_selection` and
+`support_family_pairing_rejected` pass. Defect outcome: **two production defects were confirmed
+and fixed** in the validator's claim pass — (1) the scope-keying defect where delimiter-bearing
+object/region ids were serialized into `scope_key_without_layer`, so distinct typed scopes lost
+their identity, and (2) missing object-wide cross-region stable-claim enforcement, where per-region
+grouping never compared two regions of one object. Both are pinned by named concrete regressions:
+`delimiter_rich_object_and_region_ids_never_share_a_claim_scope` and
+`non_transitionable_claim_rejects_holder_change_across_regions_of_one_object`; no seed is
+committed.
+No other defect in the covered passes was observed, and live per-region support aggregation is not
+claimed from synthetic observations.
+
+## H-REGISTRY
+
+Registry record: `id = "H-REGISTRY"`, `package = "slicer-scheduler"`, `target_kind = "test"`,
+`target_name = "property_scheduler"`, `test_name = "proptest_scheduler_region_split_registry"`,
+`production_symbol = "slicer_scheduler::region_split::aggregate_region_splits"`,
+`production_path = "crates/slicer-scheduler/src/region_split.rs"`,
+`features = ["slicer-scheduler/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-registry"`.
+
+### Stable property ID
+
+`H-REGISTRY` — declaration-only region-split aggregation, the separate canonical ordering helper,
+and the explicit first-seen/tied-priority warning modes.
+
+### Owner
+
+Package `slicer-scheduler`; standalone test target `property_scheduler`; test
+`proptest_scheduler_region_split_registry` in `crates/slicer-scheduler/tests/property_scheduler.rs`,
+which mounts `crates/slicer-scheduler/tests/common/property_scheduler_registry.rs`. Production
+surface: `slicer_scheduler::region_split::aggregate_region_splits` and
+`slicer_scheduler::region_split::canonical_variant_chain_order`
+(`crates/slicer-scheduler/src/region_split.rs`), plus the real plan-assembly caller
+`slicer_scheduler::execution_plan::build_execution_plan`
+(`crates/slicer-scheduler/src/execution_plan.rs`). Deterministic controls live in
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/registry_controls.rs` and
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/manifest_controls.rs`.
+
+### Contract
+
+`aggregate_region_splits` is declaration-only. For a semantic repeated compatibly — every
+declaration agrees on `(priority, value_type)` — it produces one entry
+`(priority, value_type, sorted distinct declaring_modules)`, and no `material`/`fuzzy_skin` seed
+exists unless a module declares it. The `BTreeMap` keys iterate in semantic-name order; the
+separate `canonical_variant_chain_order` returns `(priority, name)` order, so raw map keys are not
+that sequence in general. Repeating the same loaded module at the aggregation seam cannot duplicate
+`declaring_modules`.
+
+For incompatible repeats the contract is deliberately order-sensitive: a linear positional scan
+keeps the first-seen declaration and appends exactly one `Warning` for every later incompatible
+declaration, carrying that module's WASM path, `field = Some("region_split")`, the semantic, the
+later `priority=<n>/value_type=<T>` and the earlier contract; the later contract never joins
+`declaring_modules`. No permutation-invariance claim applies to those inputs. Two distinct
+semantics tied at one priority produce exactly one nonfatal warning per tied priority group, with
+the empty `PathBuf` sentinel, `field = Some("region_split")` and a message naming the shared
+priority, each tied semantic with its sorted declaring module ids, and the lexical tiebreaker
+order. Aggregation appends to the caller's diagnostics and never clears or reorders them.
+
+`build_execution_plan` actually calls the aggregator and stores its output in
+`ExecutionPlan.aggregated_region_split`; plan assembly is checked separately from the direct helper
+call. `canonical_variant_chain_order` has no production caller in this tree, so a passing helper
+assertion is **not** evidence that `RegionMapping` uses the helper. Driver-level integration
+remains with the H-REGIONMAP audit and the wording of ADR-0018's amendment.
+
+### Domain
+
+`checked_registry_limits` enforces `max_modules 2..=7`, `max_declarations 2..=16` and
+`max_text_bytes 8..=64`, with `declaration_capacity = max_modules * MAX_SEMANTIC_POOL`. Committed
+values are `max_modules / max_declarations / max_text_bytes`: routine `4 / 8 / 36`, extended
+`7 / 16 / 64`. The finite semantic pool is four generated community
+names plus `material` and `fuzzy_skin` only when a case requests them; core priorities are 100 and
+200, and community priorities sit at or above `COMMUNITY_PRIORITY_FLOOR` (1000). Value types are
+`RegionSplitValueType::{Flag, ToolIndex, CustomString}`. Modules are builder-created with unique
+ids and WASM paths, deliberately bypassing TOML ingestion: this is the positive aggregation
+domain, not manifest-validation coverage (`scheduler_manifest_region_split_rejections` owns raw
+ingestion).
+
+### Strategy
+
+`sample_strategy` derives a guaranteed shape — `Compatible`, `Conflicting`, `TiedSameModule` or
+`TiedCrossModule` — plus a module permutation, per-module declaration permutations, a module index
+to repeat at the seam, and an optional plan-assembly mode. `build_case` re-establishes the requested
+shape from the shrunk parameters and never assumes a shape they no longer support. The 128-case
+pre-sample guard requires all four shapes, at least one same-module tie, one cross-module tie, a
+nonempty aggregate and a tied-priority warning; there is no `prop_assume` and no rejection budget.
+
+### Oracle
+
+`expected_model` derives the relational group model and the first-seen conflict list in linear scan
+order; `raw_keys` is semantic-name order and `helper_order` is the separate `(priority, name)`
+sort. `tie_warning_messages` derives the exact tied-priority messages.
+`check_registry_observation` compares the whole aggregate map, raw key order, the direct
+`canonical_variant_chain_order` output, the preserved sentinel, every conflict warning payload and
+the full tied-priority `LoadDiagnostic` including the empty `PathBuf`. `assert_normative_catalog`
+cross-checks the priority values against `CORE_REGION_SPLIT_PRIORITIES` and
+`COMMUNITY_PRIORITY_FLOOR`. The plan mode builds a real plan from unique bindings through
+`bind_module_config_view` and fails when `aggregated_region_split` is empty, so plan assembly
+stopping its aggregation is observable; it compares that output to the independent model. The
+model is relational and first-seen scanning, not the aggregator's own loop.
+
+### Tolerance
+
+Exact map, sequence and message equality, including the empty `PathBuf` sentinel and the
+`Some("region_split")` field. No tolerance exists on this surface.
+
+### Shrinking
+
+The requested shape and every flag that decides whether a fault exists (tie membership, conflicting
+contract choice, core-semantic inclusion, pool slot) come from a **non-shrinkable** plan selected by
+`proptest::sample::select(...).no_shrink()`. A shrink therefore simplifies only module slots,
+declaration slots, semantic names and permutation orders, and the check compares against the model
+for the current case. `assert_shrink_preserves_faults` simplifies fixed-seed trees on every
+execution and asserts the shape never changes, a conflicting case keeps the same first-seen
+`(priority, value_type)` with exactly one incompatible warning, a tied case keeps exactly one tied
+priority group and warning, and a compatible case acquires no conflicting warning. Compatible cases
+keep equality under permutation because the model is relational; deliberately incompatible cases
+are compared to their own recomputed first-seen model after each permutation rather than to the
+original order. The seam-repeat index is checked against the shrunk module count. Shrink limits are
+profile-bounded; completion is reported `null`/unknown.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, `cases = 64 / 1024`,
+`max_default_size_range = 32 / 256`, `max_shrink_iters = 64 / 256`, rejection budgets `0`.
+Measured on Windows: routine libtest `0.07s` and extended `1.21s`, each at its profile case count,
+with `rejected_test_calls = 0`, `call_counts_complete = true` and outcome `passed`; the retained
+routine seed `7693596911828048388` replayed to `VERDICT: PASS`. See
+[proptest-scheduler-evidence.md](proptest-scheduler-evidence.md).
+
+### Failure record
+
+`failure.json` is produced by the foundation harness with the tier-bearing reproduction command
+(`cargo xtask test --summary --properties --property H-REGISTRY --tier <routine|extended> --seed <seed>`),
+the full context, concrete/debug input, direct reproduction, captured logs and shrink status.
+Committed regressions are named concrete inputs, never seeds. Control homes:
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/registry_controls.rs` for the
+aggregate/ordering/warning witnesses and
+`crates/slicer-scheduler/tests/common/property_scheduler_contracts/manifest_controls.rs` for raw
+TOML ingestion, plus `.../bound_controls.rs` for bound and shrink rejection.
+
+### Acceptance
+
+The target was actually executed through the registry with `--exact --nocapture`; the relational
+model and the direct helper result are checked on every case. Generator and shrink validity are
+demonstrated by `scheduler_registry_oracle_and_warning_controls` (rejecting raw name order
+substituted for the helper's `(priority, name)` sequence, reversed ties, implicit seeds, an omitted
+declaration, the wrong first-seen contract, a lost warning and a cleared sentinel), by
+`scheduler_manifest_region_split_rejections`, and by the pre-sample population guard. The
+plan-mode check fails if `build_execution_plan` stops
+aggregating or adds seeds. Existing baselines `region_split_manifest_tdd`,
+`region_split_aggregation_tdd` and `region_split_plan_tdd` pass. Defect outcome: **no production
+defect in `aggregate_region_splits`, `canonical_variant_chain_order` or the plan-aggregation call
+was observed**; no regression was manufactured. Neither the helper assertion nor the plan check is
+evidence of RegionMapping integration.
 
 ## Direct-domain charters (packet `proptest-openrscad_02_pbt-domains`)
 

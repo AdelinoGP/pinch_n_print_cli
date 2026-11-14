@@ -1259,7 +1259,18 @@ Per-region
 overrides flow through `RegionMapIR.entries[*].config` (reused from
 packet 35). At dispatch time the host computes the effective held set per
 region by intersecting each module's manifest `[claims].holds` with the
-configured holders (see `slicer_runtime::resolve_held_claims`).
+configured holders (see
+`slicer_scheduler::validation::resolve_held_claims`).
+
+**Validator boundary.** `ConflictScope` stores `object_id` and `region_id` as
+opaque strings and promises no delimiter grammar, so claim scopes are compared as
+typed values, never as concatenated text. The validator groups global and
+region observations separately; the four non-transitionable claims key on the
+object alone (one holder across every layer and region of one object) while other
+claims key on the full `(object, region, layer)` triple. Property `H-CLAIMS`
+(`docs/testing/properties.md#h-claims`) models this with typed tuples and pins
+delimiter-rich ids as a boundary case. This is validator-contract coverage: live
+per-region support uniqueness is enforced at host aggregation, not by this pass.
 
 The set is exposed across the WIT boundary via
 `slice-region-view.held-claims` and consumed by guest modules through
@@ -1338,9 +1349,11 @@ max-ir-schema     = "2.0.0"      # exclusive upper bound
 # ── Region-split semantics declaration (Normative — Packet 92) ─────────────
 # Each [[region_split]] entry declares one paint semantic this module wants
 # the host to split regions on. The host aggregates entries across all
-# loaded manifests into a canonical BTreeMap ordered by (priority, name),
-# and exposes the resulting semantic set to PrePass::RegionMapping for
-# cross-product expansion of variant_chain.
+# loaded manifests into a BTreeMap keyed and iterated by semantic name. The
+# separate canonical_variant_chain_order helper returns the intended
+# (priority, semantic name) sequence; raw map iteration is not that sequence.
+# See ADR-0018 (including its amendment) and docs/04 §"[[region_split]]
+# Aggregation and Tied-Priority Diagnostic".
 [[region_split]]
 semantic   = "material"        # PaintSemantic name (snake_case)
 priority   = 100               # Core priorities (locked):
@@ -1417,25 +1430,65 @@ The aggregate is declaration-only: `material` and `fuzzy_skin` are present in
 declare them, not because the host seeds them. Removing every declaration
 empties the aggregate. See ADR-0071.
 
-Cross-manifest: distinct semantics from different manifests that share a
-priority emit a non-fatal `LoadDiagnostic { level: Warning, ... }` naming
-both manifests and the lexicographic tiebreaker order; aggregation
-continues.
+Cross-manifest aggregation (`slicer_scheduler::region_split::aggregate_region_splits`):
+
+- **Compatible repeats** (same semantic, same priority and value type, different
+  modules) merge their declaring-module lists and emit no diagnostic. Declaration
+  order is invariant for this case.
+- **Conflicting declaration** (same semantic, different priority or value type):
+  the first declaration seen wins and one `DiagnosticLevel::Warning` is appended
+  per later incompatible declaration, carrying that later module's **WASM path**
+  (`LoadedModule::wasm_path` in `crates/slicer-scheduler/src/manifest.rs`, the
+  module's built artifact) rather than its manifest TOML path, and naming both
+  contracts. For external modules that field is the on-disk `.wasm`; for
+  integrated modules it carries the registration origin label, so it identifies
+  the conflicting module's artifact either way. There is no order-invariance
+  claim for this case.
+- **Tied priority** (two or more *distinct* semantics sharing a priority, including
+  two semantics declared by the same module): one non-fatal
+  `LoadDiagnostic { level: Warning, path, field, message }` per tied priority
+  group. `path` is an empty `PathBuf` sentinel (no single manifest is
+  authoritative), `field` is `Some("region_split")`, and the message names the
+  shared priority, the tied semantic names, each semantic's declaring module IDs
+  and the lexical tiebreaker order. It does not name both manifest paths.
+  Aggregation continues.
+
+Property `H-REGISTRY` (`docs/testing/properties.md#h-registry`) drives both the
+aggregate and the separate `canonical_variant_chain_order` helper against an
+independent relational group model, and asserts the plan-level aggregate produced
+by `build_execution_plan`.
 
 ### Variant-chain enumeration order is contract (Normative — Packet 93)
 
-The canonical order for `variant_chain` enumeration in
-`PrePass::RegionMapping` is deterministic and locked by test fixtures:
+`enumerate_canonical_chains` (`crates/slicer-ir/src/region_split_registry.rs`)
+preserves the axis order it is **given**, and within each semantic it preserves
+the caller's `Vec<PaintValue>` **verbatim** — it does not re-sort those values.
+It does not sort the supplied semantic list. The
+`Flag(false) < Flag(true) < ToolIndex(0) < ToolIndex(1) < ... < Custom(s_lex)`
+value order is an obligation on the **caller**, discharged in production by
+`scan_paint_data` (`crates/slicer-core/src/algos/region_mapping.rs`), which
+de-duplicates each semantic's values through a `BTreeSet` ordered by
+`paint_value_canonical_cmp` in that file (the `OrdPaintValue` wrapper) before
+handing the vectors to the enumerator. Do not infer the value order from the
+enumerator's signature; it is a caller-supplied contract, exactly as the semantic
+axis is.
 
-- **Semantics** are ordered by `canonical_variant_chain_order`, which sorts
-  the aggregated entries by `(priority, semantic name)`. Do not infer the
-  contract from raw `BTreeMap` iteration.
-- **PaintValue** instances within each semantic are ordered:
-  `Flag(false) < Flag(true) < ToolIndex(0) < ToolIndex(1) < ... < Custom(s_lex)`.
+The scheduler's `canonical_variant_chain_order`
+(`crates/slicer-scheduler/src/region_split.rs`) returns the intended
+`(priority, semantic name)` sequence, but it has **no production caller in the
+current tree**. The RegionMapping driver
+(`commit_region_mapping_builtin` → `execute_region_mapping_inner`) builds its axis
+order from `aggregated_region_split`'s `BTreeMap` keys, i.e. **name order**, and
+the enumerator then preserves that order. So the current driver's axes are
+name-ordered even where that differs from the helper's `(priority, name)`
+sequence; ADR-0018's amendment records the distinction and no policy decision
+follows from it. Do not infer the contract from raw `BTreeMap` iteration, and do
+not describe the driver as using the helper.
 
-Reordering breaks every existing region-split test suite. Any change
-to the enumeration order must be a coordinated packet with explicit
-test-fixture updates.
+Reordering breaks every existing region-split test suite. Any change to the
+enumeration order must be a coordinated packet with explicit test-fixture updates
+(the driver-level audit belongs to the pre-pass property packet, not to
+`H-REGISTRY`).
 
 ### Configuration keys added by recent packets
 
