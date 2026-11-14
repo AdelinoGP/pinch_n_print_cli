@@ -615,6 +615,46 @@ fn skirt_hull_reconstructs_the_contour_on_higher_layers() {
 }
 
 #[test]
+fn skirt_hull_folds_the_brim_area_contour_not_the_bead_centreline() {
+    // Canonical `Print::_make_skirt` folds `m_objectBrimAreasByInstance[...]`
+    // `area.contour.points` into the skirt hull — the brim *area's* outer
+    // boundary. Folding the emitted beads' centreline instead sits half a flow
+    // spacing inside it, so the whole skirt ring lands half a spacing too far
+    // in (measured at 0.1786 mm on the matched job, t146; fixed by t151).
+    //
+    // Square footprint half extent 1.0 mm, outer-wall width 0.4 mm, no
+    // `first_layer_height` so the spacing is the 0.4 mm line width:
+    //   contour half extent      = 1.0 + 0.4/2           = 1.2
+    //   brim area outer boundary = 1.2 + gap 0.1 + 8.0   = 9.3
+    //   outermost skirt loop     = hull + 3.0 + 0.4/2    = hull + 3.2
+    // so the loop's max x is 10.0 + 9.3 + 3.2 = 22.5. A centreline hull reads
+    // 9.1 and lands at 22.3 — 0.2 mm short, four times this test's tolerance.
+    let cfg = custom_config(1, 3.0, 1, 8.0, 0.4, true);
+    let sb = SkirtBrim::from_config(&cfg).unwrap();
+    let mut layers = vec![make_layer_with_entities(
+        0,
+        0.2,
+        vec![make_loop_at(10.0, 10.0, 1.0, 0.2)],
+    )];
+    sb.process(&mut layers).unwrap();
+
+    let skirt_max_x = layers[0]
+        .ordered_entities
+        .iter()
+        .filter(|e| e.role == ExtrusionRole::Skirt)
+        .flat_map(|e| e.path.points.iter())
+        .map(|p| p.x)
+        .fold(f32::MIN, f32::max);
+    let expected = 10.0 + 9.3 + 3.2;
+    assert!(
+        (skirt_max_x - expected).abs() < 0.05,
+        "outermost skirt x={skirt_max_x} should be {expected} (the brim area's \
+         contour, not the bead centreline at {})",
+        10.0 + 9.1 + 3.2
+    );
+}
+
+#[test]
 fn non_zero_min_skirt_length_fails_closed() {
     let mut fields = HashMap::new();
     fields.insert("skirt_brim_enabled".to_string(), ConfigValue::Bool(true));

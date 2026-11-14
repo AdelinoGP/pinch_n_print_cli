@@ -388,6 +388,21 @@ impl SkirtBrim {
                         continue;
                     }
 
+                    // The skirt hull's brim input is the **brim area's outer
+                    // contour**, not the emitted beads' centreline: canonical
+                    // `Print::_make_skirt` appends
+                    // `m_objectBrimAreasByInstance[...]` `area.contour.points`
+                    // (holes excluded) to the group's `occupied_points`, and
+                    // `make_brim` fills that map with the brim areas after the
+                    // no-brim subtraction. Folding the centreline instead sat
+                    // half a flow spacing (0.1786 mm at the matched job) inside
+                    // canonical's hull input (t146 measured it, t151 fixes it).
+                    // The contour is already in hand here; it is never
+                    // re-derived from the beads.
+                    for ex in &area {
+                        brim_points.extend(ex.contour.points.iter().map(slicer_ir::Point2::to_mm));
+                    }
+
                     // `tryExPolygonOffset`: the first line sits half a spacing
                     // inside the outer boundary; each successive pass steps one
                     // full spacing inward. Every pass emits both the outer and
@@ -417,7 +432,6 @@ impl SkirtBrim {
                                 ) else {
                                     continue;
                                 };
-                                brim_points.extend(path.points.iter().map(|p| (p.x, p.y)));
                                 brim_entities.push(GeneratedEntity {
                                     layer_pos: 0,
                                     path,
