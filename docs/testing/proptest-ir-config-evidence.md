@@ -374,7 +374,8 @@ registered-but-undiscovered test.
 
 Independent review closed all review findings and approved implementation
 (`item 2 provenance reconciliation` was the last open item; the final signoff returned
-APPROVED). The packet is marked `status: implemented` at `e2f4`-series head; the checkpoint
-commits on the branch are deliberately **not** squashed, because the evidence above cites the
+APPROVED). The packet is marked `status: implemented` on the branch head (re-derive it with
+`git log --format=%H -1 --grep proptest-openrscad_06`); the checkpoint commits on the branch are
+deliberately **not** squashed, because the evidence above cites the
 per-run revisions (`ac9dc0ef` for the routine table, `ba807a18` for the extended/replay tables)
 and squashing would delete those objects and orphan the provenance.
