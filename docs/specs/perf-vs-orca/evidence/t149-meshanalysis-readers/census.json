@@ -1,0 +1,82 @@
+{
+  "schema": "t149-mesh-analysis-readers/1",
+  "captured": "2026-11-13",
+  "host": {
+    "rayon_threads": 12,
+    "binary": "target/release/pnp_cli.exe",
+    "probe_patch": "probe.patch",
+    "note": "One probe run per cell, no warmup, no paired A/B. Sub-phase times are single-run Instant deltas printed by the non-landing probe."
+  },
+  "floor_fraction": 0.008,
+  "cells": [
+    {
+      "cell": "base-classic-off",
+      "fixture": "tmp/base.stl",
+      "config": "docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-classic-supports-off.json",
+      "elapsed_ms": 35244,
+      "layers": 496,
+      "degraded": false,
+      "tris": 2461234,
+      "overhang_facets": 326543,
+      "bridge_regions": 3199,
+      "classify_ms": 187.0,
+      "footprint_ms": 529.1,
+      "needs_support_ms": 0.2,
+      "bridge_ms": 4563.2,
+      "probe_total_ms": 5325.8,
+      "ratio_of_record": 2.078,
+      "ratio_of_record_source": "t145 post-swap scoreboard (supports-off; unaffected by t148)"
+    },
+    {
+      "cell": "base-classic-on",
+      "fixture": "tmp/base.stl",
+      "config": "docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-classic-supports-on.json",
+      "elapsed_ms": 85525,
+      "layers": 496,
+      "degraded": false,
+      "tris": 2461234,
+      "overhang_facets": 326543,
+      "bridge_regions": 3199,
+      "classify_ms": 135.9,
+      "footprint_ms": 510.9,
+      "needs_support_ms": 0.1,
+      "bridge_ms": 4150.2,
+      "probe_total_ms": 4832.9,
+      "ratio_of_record": 3.356,
+      "ratio_of_record_source": "t148 supports-on re-record"
+    },
+    {
+      "cell": "benchy-classic-off",
+      "fixture": "tmp/3dbenchy.stl",
+      "config": "docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-classic-supports-off.json",
+      "elapsed_ms": 3702,
+      "layers": 240,
+      "degraded": false,
+      "tris": 225706,
+      "overhang_facets": 22101,
+      "bridge_regions": 339,
+      "classify_ms": 6.4,
+      "footprint_ms": 91.1,
+      "needs_support_ms": 0.0,
+      "bridge_ms": 95.1,
+      "probe_total_ms": 195.1,
+      "ratio_of_record": 2.043,
+      "ratio_of_record_source": "t145 post-swap scoreboard (supports-off; unaffected by t148)"
+    }
+  ],
+  "profiled_run": {
+    "cell": "base-classic-off",
+    "elapsed_ms": 33913,
+    "classify_ms": 226.6,
+    "footprint_ms": 626.5,
+    "needs_support_ms": 0.2,
+    "bridge_ms": 4006.0,
+    "probe_total_ms": 4914.1,
+    "stage_wall_ms": 5639.4789,
+    "stage_calls": 3248,
+    "note": "Profile wall columns are accumulated span time, not a wall claim; this row is used only to reconcile the probe total against the runtime's own stage accounting."
+  },
+  "cited": {
+    "cell_walls_t144_note": "t143 reports base classic-on at 74.70 s in its window; the cells here are 85.53 s (base-on) and 35.24 s (base-off), so no cross-window wall claim is taken."
+  }
+}
