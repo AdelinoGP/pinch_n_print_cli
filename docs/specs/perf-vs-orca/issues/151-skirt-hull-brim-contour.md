@@ -113,7 +113,8 @@ prediction.
 **Delta audit:** `Skirt` is the only moved section in the six moving cells, and
 outside `Skirt` every motion line is identical with `E` stripped in 8/8. The
 literal "`|dE|` outside `Skirt` is zero" clause is **falsified**: 3–35 lines per
-moving cell (≤ 0.007 % of up to 508,651) carry a re-rounded `E`, max
+moving cell (≤ 0.034 % of the outside-Skirt motion lines; worst is benchy
+classic-off, 33 of 95,859) carry a re-rounded `E`, max
 **0.00098 mm** — the running-accumulator effect t144 measured at the same
 magnitude, not moved geometry.
 

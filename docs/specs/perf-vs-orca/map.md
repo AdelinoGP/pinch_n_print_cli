@@ -870,7 +870,7 @@ candidate **6/8** and byte-identical across arms 8/8; the two base supports-on
 cells are inert by construction (support clip empties the brim area) and the
 audit proves **zero moved sections / zero E changes** there. Two pre-declared
 items falsified and disclosed, not widened: "all eight move" (six do) and
-"`|dE|` outside `Skirt` is zero" (≤ 0.00098 mm on ≤ 0.007 % of lines). A/B
+"`|dE|` outside `Skirt` is zero" (≤ 0.00098 mm on ≤ 0.034 % of lines). A/B
 attribution-only, every median inside a **measured ±12.86 % wall null band**, no
 wall claim. The new 16-cell set is the currency; no route term moves. A falsifier
 test was added and shown red on the pre-change library (`22.3` vs `22.5`), and

@@ -109,8 +109,8 @@ the extrusion field stripped and reports the `E` profile separately.
   supports-on cells have **no moved section at all**.
 - **Outside `Skirt`, every motion line is identical with `E` stripped in 8/8.**
 - **The ticket's literal "`|dE|` outside `Skirt` is zero" clause is falsified and
-  disclosed:** 3–35 lines per moving cell (≤ 0.007 % of 95,859–508,651
-  outside-Skirt motion lines) carry a re-rounded `E`, max **0.00098 mm** on base
+  disclosed:** 3–35 lines per moving cell (≤ 0.034 % of the outside-Skirt motion
+  lines; worst is benchy classic-off, 33 of 95,859) carry a re-rounded `E`, max **0.00098 mm** on base
   classic-off, 0.00025 mm on benchy. The mechanism is the running extrusion
   accumulator re-rounding after the skirt's length changes — t144 measured the
   same effect at the same 0.00098 mm magnitude — and the deltas are *not* a
