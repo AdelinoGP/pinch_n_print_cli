@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_06_pbt-ir-config
-status: draft
+status: implemented
 ---
 
 # Independently oracled IR, coordinates, IDs, config and chain properties
