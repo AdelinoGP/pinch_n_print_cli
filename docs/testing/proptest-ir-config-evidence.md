@@ -369,3 +369,12 @@ registered-but-undiscovered test.
   design, and no cross-field whole-config validity is inferred.
 - No runtime budget or pass-count is predeclared; the numbers above are measurements, and the
   only wall-time claims are the measured ones.
+
+## Closure
+
+Independent review closed all review findings and approved implementation
+(`item 2 provenance reconciliation` was the last open item; the final signoff returned
+APPROVED). The packet is marked `status: implemented` at `e2f4`-series head; the checkpoint
+commits on the branch are deliberately **not** squashed, because the evidence above cites the
+per-run revisions (`ac9dc0ef` for the routine table, `ba807a18` for the extended/replay tables)
+and squashing would delete those objects and orphan the provenance.
