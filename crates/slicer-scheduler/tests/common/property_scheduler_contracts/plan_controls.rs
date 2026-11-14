@@ -21,7 +21,9 @@
 //! `ExecutionModuleBinding`s, then asserts compiled sequences, claims, masks,
 //! explicit requirements, paint-only semantics, stage bucketing and the host
 //! `Layer::PaintRegionAnnotation` insertion. The full region-split registry
-//! witness is owned by `registry_controls.rs`; here the aggregate is only the
+//! witness is owned by
+//! `crates/slicer-scheduler/tests/common/property_scheduler_contracts/registry_controls.rs`;
+//! here the aggregate is only the
 //! single declaration this fixture binds.
 
 #![allow(missing_docs)]

@@ -14,8 +14,10 @@
 //! `slicer_scheduler::validation::ConflictScope::Region` observations or
 //! hand-built `ActiveRegion`s would not prove the runtime support-plan
 //! aggregation seam, so none are used here and no such claim is made.
-//! `claims_controls.rs` owns the typed claim scope/write/disabled rules and
-//! `registry_controls.rs` owns the region-split registry witness.
+//! `crates/slicer-scheduler/tests/common/property_scheduler_contracts/claims_controls.rs`
+//! owns the typed claim scope/write/disabled rules and
+//! `crates/slicer-scheduler/tests/common/property_scheduler_contracts/registry_controls.rs`
+//! owns the region-split registry witness.
 //!
 //! Nothing here reads `PNP_PROPERTY_CONTEXT`, builds a `PropertyRun` or consults
 //! the property registry. The tables below are hand-computed witnesses: every
@@ -59,7 +61,8 @@ const STAGE_POST_PROCESS: &str = "Layer::InfillPostProcess";
 /// The normative catalog from the packet's H-CLAIMS exception table. Written
 /// out so a production `FILL_CLAIM_IDS` that drifts away from the spec (for
 /// example by absorbing `claim:raft-fill`) is caught here; the validator
-/// exception behaviour itself is owned by `claims_controls.rs`.
+/// exception behaviour itself is owned by
+/// `crates/slicer-scheduler/tests/common/property_scheduler_contracts/claims_controls.rs`.
 const CONFIGURED_FILL_IDS: &[&str] = &[TOP_FILL, BOTTOM_FILL, BRIDGE_FILL, SPARSE_FILL];
 
 // ── Shared fixture constructor ────────────────────────────────────────────

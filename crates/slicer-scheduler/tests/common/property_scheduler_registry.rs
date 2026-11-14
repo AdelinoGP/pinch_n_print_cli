@@ -1720,6 +1720,35 @@ fn assert_shrink_preserves_faults(strategy: &BoxedStrategy<RegistryCase>) {
     );
 }
 
+/// Build the composed `H-REGISTRY` case strategy and run the shrink audit.
+///
+/// `run_property` and [`run_shrink_audit`] both go through here, so the AC-N3
+/// control cannot certify a different audit body than the generative entrypoint:
+/// [`case_strategy`] and [`assert_shrink_preserves_faults`] are assembled once.
+fn audit_shrink_strategy(limits: RegistryLimits) -> Result<(), String> {
+    let cases = case_strategy(limits)?;
+    assert_shrink_preserves_faults(&cases);
+    Ok(())
+}
+
+/// Run the same composed case-strategy shrink audit `run_property` runs, from a
+/// bare bounds profile and without any property-registry context.
+///
+/// `Err` is the [`checked_registry_limits`] rejection for a bound outside
+/// `2..=7` modules, `2..=16` declarations or `8..=64` text bytes, returned
+/// before any strategy allocates. An audit failure is the same assertion panic
+/// `run_property` raises, because that is the witness the AC-N3 control needs to
+/// keep; this function never reads `PNP_PROPERTY_CONTEXT` and never constructs a
+/// `PropertyRun`.
+pub fn run_shrink_audit(
+    max_modules: u64,
+    max_declarations: u64,
+    max_text_bytes: u64,
+) -> Result<(), String> {
+    let limits = checked_registry_limits(max_modules, max_declarations, max_text_bytes)?;
+    audit_shrink_strategy(limits)
+}
+
 /// Run the registry-selected `H-REGISTRY` property.
 pub fn run_property() {
     let run = PropertyRun::new(
@@ -1741,9 +1770,8 @@ pub fn run_property() {
     assert_normative_catalog().expect("H-REGISTRY normative priority catalog");
 
     let strategy = sample_strategy(&limits).expect("H-REGISTRY declaration strategy");
-    let cases = case_strategy(limits).expect("H-REGISTRY case strategy");
     assert_substantive_population(&strategy).expect("H-REGISTRY substantive population");
-    assert_shrink_preserves_faults(&cases);
+    audit_shrink_strategy(limits).expect("H-REGISTRY case strategy and shrink audit");
 
     run.check(&strategy, |sample, _guard| {
         check_sample(&sample).map_err(TestCaseError::fail)
