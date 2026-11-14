@@ -827,6 +827,46 @@ reference-set movement. **Frontier: none** — 1–153 are resolved; the next sh
 is the human's pick from the fog (the per-layer program on the benchy cells
 remains the largest unpriced member).
 
+**Destination status (2026-11-14,
+[t154](issues/154-benchy-per-layer-carrier-attribution.md)): the benchy
+per-layer program is margin, not route; the per-layer requirement that remains
+is base classic-on's 1.096 s, and the frontier is the Infill-stage block.** At
+HEAD the split is prepass **63.5–82.4 %**, per-layer **14.4–29.6 %**, postpass
+**2.6–6.5 %**, outside **0.1–5.3 %**, with a per-layer host gap of **0–56 ms
+(≤ 0.65 %)** in every cell. Substituting canonical's measured prepass cost (t110)
+and holding every other phase at its measured share **wins 7 of 8 cells**:
+benchy arachne-off **0.668x**, base arachne-off **0.698x**, benchy classic-off
+**0.740x**, base classic-off **0.743x**, benchy classic-on **0.857x**, benchy
+arachne-on **0.901x**, base arachne-on **0.967x** — and **base classic-on
+1.051x**, needing **1.096 s** (9.6 % of its 11.46 s per-layer phase). The
+required prepass cut is **64.3–84.5 %**, largest on benchy arachne-on (84.5 %),
+base classic-on (83.7 %) and base arachne-on (82.5 %), **not** on benchy
+classic-off. **This supersedes t128/t129's "prepass at canonical cost loses both
+benchy cells (1.053x / 1.075x)"**, which paired t126's per-layer phases with
+t124's Orca walls; the benchy cells are no longer "part of the first program" on
+that arithmetic. **Carriers:** supports-off is carried by the perimeters module
+(**46.8–55.1 %** of per-layer thread, 77–98 % in-module self fuel), the first
+`Layer::Infill` dispatch (**17.6–37.3 %**, stage-shared; t127's
+"prepared-region view" name cannot hold at HEAD because
+`Layer::Perimeters` materialises that view first through
+`ensure_prepared_perimeter_source_regions` and `Layer::Infill` hits the memo)
+and `infill-linker` (**5.3–20.5 %**, 99.8–100 % self fuel); supports-on by
+`tree-support` (**36.7–47.8 %**), which is a **work-set/phase difference**
+against canonical — `PrintObject::_generate_support_material` →
+`TreeSupport::generate` is one whole-object pass, so PnP pays support planning
+and then a per-layer render. The per-op split does not exist at the current
+instrumentation surface (named scopes explain ≤ 22.8 % of a carrier's fuel), and
+that limit is the finding: there is no plumbing fat inside the carriers. The
+t126→t154 per-layer fall (**−21.6 % to −40.1 %** on the benchy cells) is measured
+but **not attributed**. **Frontier:**
+[t155](issues/155-infill-stage-block-base-on-residual.md) (AFK, unblocked, new)
+— identify the first-`Layer::Infill` block (p50 **63 ms**/layer on base
+classic-off against its own nil work) and price it against base classic-on's
+1.096 s. Evidence:
+[`evidence/t154-benchy-per-layer/`](evidence/t154-benchy-per-layer/FINDINGS.md)
+(`summary.json` 8 cells, `arithmetic.json`, `carriers.json`, eight reduced
+`profile-*.json`; `verify.py` PASS, 11/11 negative controls).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -913,7 +953,27 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-14, the t153 take):** the human said
+**Current selection scope (2026-11-14, the t154 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **1–153 were resolved and the
+frontier was empty**, so the map's own signpost graduated the **benchy per-layer
+program** from Not yet specified as
+[154](issues/154-benchy-per-layer-carrier-attribution.md) (AFK, following the
+t152/t149 precedent; no human pick was needed because the ticket is a
+measurement + attribution, not a route commitment). Headline: **the benchy
+per-layer program is margin, not route** — at canonical prepass cost **7/8 cells
+win**, the benchy cells by 9.9–33.2 %, and the only loser is **base classic-on
+at 1.051x**, needing **1.096 s** from the per-layer side. The required prepass
+cut is now **64.3–84.5 %**, largest on benchy arachne-on/base classic-on/base
+arachne-on, and t128/t129's "prepass-only parity loses both benchy cells" is
+superseded. The per-layer carriers are kernel-bound; the requests per-op split
+does not exist at the current instrumentation surface (named scopes ≤ 22.8 % of
+a carrier's fuel). One ledger correction: t127's "prepared-region view" name for
+the first-`Layer::Infill` block cannot hold at HEAD, because `Layer::Perimeters`
+materialises that view first and `Layer::Infill` hits the memo. **Frontier now:
+[t155](issues/155-infill-stage-block-base-on-residual.md)** (AFK, unblocked) —
+identify that block and price it against base classic-on's 1.096 s.
+
+**Previous selection scope (2026-11-14, the t153 take):** the human said
 "Continue the perf vs orca map" (no ticket named); **153 was the only
 unblocked, unclaimed frontier ticket** (1–152 resolved), a HITL grilling, and
 was claimed and resolved as a **DECLINE**. The human's answer was "Don't think
@@ -3987,6 +4047,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Benchy per-layer program: which carrier holds the wall, and what does canonical do differently?](issues/154-benchy-per-layer-carrier-attribution.md): **resolved (2026-11-14; Phase-1 attribution + arithmetic re-derivation — the benchy per-layer program is margin, not route)** — eight instrumented ordinary passes at HEAD (`71c03a3e`, binary `e1b8fa69…`) are clean and byte-identical to t151's active set; the split is prepass 63.5–82.4 %, per-layer 14.4–29.6 %, postpass 2.6–6.5 %, outside 0.1–5.3 %, with a per-layer host gap of 0–56 ms. **At canonical prepass cost 7/8 cells win** (benchy arachne-off 0.668x, base arachne-off 0.698x, benchy classic-off 0.740x, base classic-off 0.743x, benchy classic-on 0.857x, benchy arachne-on 0.901x, base arachne-on 0.967x) and **base classic-on is the only loser at 1.051x, needing 1.096 s = 9.6 % of its per-layer phase**; the required prepass cut is **64.3–84.5 %**, largest on benchy arachne-on/base classic-on/base arachne-on. This **supersedes t128/t129's benchy loss** (those paired t126's per-layer phases with t124's Orca walls) and moves the per-layer requirement to **base classic-on**. **Carriers:** supports-off perimeters **46.8–55.1 %** of per-layer thread (77–98 % in-module self fuel; `offset2_ex` the only scope at 21.8–22.8 %), first `Layer::Infill` dispatch **17.6–37.3 %** (stage-shared; t127's "prepared-region view" name fails at HEAD because `ensure_prepared_perimeter_source_regions` materialises that view in `Layer::Perimeters` and `Layer::Infill` hits the memo), `infill-linker` **4.4–20.5 %** (99.8–100 % self fuel); supports-on by `tree-support` **36.7–47.8 %**, a work-set/phase difference because canonical generates support in `PrintObject::_generate_support_material` (one whole-object pass). **The requested per-op split does not exist at the current instrumentation surface** — named scopes explain ≤ 22.8 % of any carrier's fuel, and that is the finding: no plumbing fat. The t126→t154 per-layer fall (**−21.6 % to −40.1 %** on benchy) is measured but **not attributed**. Graduated [t155](issues/155-infill-stage-block-base-on-residual.md) (AFK). Evidence: [`evidence/t154-benchy-per-layer/`](evidence/t154-benchy-per-layer/FINDINGS.md) (`verify.py` PASS, 11/11 negative controls).
 - [Seam candidate generation on the printed loops: authorize the per-layer relocation?](issues/153-seam-loop-relocation-ruling.md): **resolved (2026-11-14; human ruling — DECLINED, the relocation is structurally impossible and was already decided)** — the human's instruction was to verify the prior attempt before trying it. **ADR-0046** (status accepted) evaluates the same two candidate homes and rejects the per-layer `seam-placer` as impossible: per-layer modules are re-instantiated per call and run in parallel across layers (ADR-0045, packet 102), so a per-layer module can never see two layers; the only sanctioned cross-layer conduit is one-way and prepass-first (ADR-0020's `SeamPlanIR` → host-injected `resolved_seam`). **Packet 168** discovered the constraint during grounding and recorded it as an architecture constraint ("All cross-layer machinery MUST live in the `PrePass::SeamPlanning` stage; `seam-placer` only consumes"). The take adds the stronger fact: `build_seam_candidates` (`modules/core-modules/seam-planner-default/src/visibility.rs`) scores **every contour vertex of every layer** and its per-layer terms read the **previous** layer's contours (`prev_dist`) as well as the current layer's (`curr_dist`), so candidate generation and scoring — not just the chaining — are cross-layer; the builder is dormant by design because packet 178 moved production candidates to per-region `SliceIR` geometry. Moving generation onto the printed loops is therefore circular (the prepass runs before the loops exist) and needs a two-phase pipeline or a host-orchestrated pass, both already rejected in ADR-0046's alternatives and both architecture work past this route. **S3 closes as "not a clean deletion and not relocatable"; the 1,248 ms is the price of the cross-layer aligned seam and stays in the fog with that blocker.** No exception spent, no `nearest`/`rear`/`random` relocation (the matched job is `aligned`, so it would buy nothing), no production edit, no measurement, no reference-set movement.
 - [Seam inset offset: is the prepass offset redundant with the per-layer loop projection?](issues/152-seam-inset-offset-redundancy.md): **resolved (2026-11-14; Phase-1 + candidate screen — not redundant, S3 is not a clean deletion)** — removing `offset_polygons_batch` + `project_point_onto_inset_boundary` from `run_region_planning_entries` (`modules/core-modules/seam-planner-default/src/lib.rs`) and emitting the raw chosen point moves **456 of 496** base-classic-off layers (+1,177 / −1,149 printed points, 142 layers with a changed total `E`; first difference in the layer-0 **Skirt**) and breaks the module's own tests (**31/0 baseline vs 29/2 candidate**). The baseline reproduces the t151 reference `9bb18f0e…`; the candidate is `4265d619…` (+1,158 bytes / +28 lines). **The offset term is 1,248 ms** (`PrePass::SeamPlanning` **1,779 → 531 ms**, 70.15 %), not t129's 1,587 ms / 92.4 %, and is **5.9x** the 0.80 % floor / **~10.5 %** of base classic-off's current required cut. The per-layer `seam-placer` re-projects onto the wall loops but does **not** preserve the seam because the source point differs; the canonical loop projection needs candidate generation on the printed external-perimeter loops, which exist only in the per-layer phase — a **stage relocation** needing a t81-style exception, graduated [t153](issues/153-seam-loop-relocation-ruling.md). No production change; patch preserved. Evidence: [`evidence/t152-seam-inset-offset/`](evidence/t152-seam-inset-offset/FINDINGS.md) (`verify.py` PASS, 4/4 mutations rejected).
 - [Skirt hull input: fold the brim area's contour, not the bead centreline](issues/151-skirt-hull-brim-contour.md): **resolved (2026-11-14; measured fairness fix — the skirt hull folds the brim area's outer contour, the matched job moves 6/8 cells, the brim is provably untouched, and the supports-off adhesion oracle reaches 4/4 from 3/4)** — `SkirtBrim::generate` (`modules/core-modules/skirt-brim/src/lib.rs`) extends `brim_points` from `area[i].contour` (the `outer − inner [− support]` result already in hand) and drops the fold of the emitted beads' `path.points`, matching canonical `Print::_make_skirt`'s `m_objectBrimAreasByInstance[...]` `area.contour.points` (`make_brim` fills that map after the no-brim subtraction). **Measured radial move: 0.178–0.180 mm on every moving cell** (half the 0.35708 mm flow spacing), brim bbox identical in all six, and the brim→skirt step **4.962–4.965 → 5.140–5.144 mm** against t146's Orca **5.139** and prediction **5.143**. **Output:** baseline reproduces t148's set in **8/8**, candidate moves **6/8** and is byte-identical across the ordinary and accelerated arms in **8/8**; the new 16-cell set is the currency ([`reference.json`](evidence/t151-skirt-hull-contour/reference.json)). **The pre-declared "all eight move" is falsified and disclosed:** the two base supports-on cells are inert because the first-layer support footprint clips the whole brim area (`area` empty ⇒ `brim_points` empty), and the audit proves **zero moved sections / zero changed `E` lines** there rather than relying on hash equality. **Delta audit 8/8:** `Skirt` is the only moved section in the six moving cells and every motion line outside it is identical with `E` stripped; the literal "`|dE|` outside `Skirt` is zero" clause is falsified at **≤ 0.00098 mm on 3–35 of up to 508,651 lines** (accumulator re-rounding, t144's magnitude), disclosed not waived. **Oracle:** benchy classic-off **1.32 → 0.05 %**, benchy arachne-off **1.34 → 0.04 %**, base classic-off **2.89 → 0.37 %**, base arachne-off **3.45 (MISS) → 0.94 %** — **4/4**, 4/8 overall; brim rel-diffs unchanged in all four, residual = the ~0.10 mm brim-extent term plus ≤ 0.04 mm Arachne width, exactly t146's decomposition. **A/B:** 3 interleaved pairs × 8 cells, every median (−4.70 … +6.43 %) inside a **measured ±12.86 % wall / ±6.98 % CPU** same-arm null band, no wall claim (t103's ~235 ms surface). **Falsifier:** `skirt_hull_folds_the_brim_area_contour_not_the_bead_centreline` pins `x_max = 22.5` vs the centreline's `22.3` and was verified red on the pre-change library. **Drive-by, not caused:** `integrated_parity_skirt_brim_tdd` (t142's red) now authors the two declared keys it omitted and passes. No route term moved. Evidence: [`evidence/t151-skirt-hull-contour/`](evidence/t151-skirt-hull-contour/FINDINGS.md) (`verify.py` PASS, 16/16 mutations rejected).
@@ -4244,6 +4305,26 @@ Standing decisions for this effort (2026-09-22):
 - [Repair the Orca rig](issues/98-orca-rig-repair.md): **rig measures Orca again on the 2.5.0 install, and the repair falsified the archived Orca side.** OrcaSlicer 2.5 resolves `--load-settings` through a vendor preset bundle (`PresetBundle::resolve_preset_config`: file-identity match, else a `"from": "system"` manifest walk that flattens `inherits`/`include`), and the install ships only `BBL.opc` with no preset JSON tree. The rig now stages a version-gated source-manifest tree from the tag whose `BBL.json` version equals the installed cache stamp (`02.08.00.16` == `2.8.0.16`, fail-closed) and applies the matched keys as CLI overrides, with `enable_arc_fitting` pinned to 0 because 2.5 flipped that default to enabled. Three measured runs of benchy classic-off: **1.978 s** wall / 6.50 s CPU / 4,000,709 bytes, against the archive's 2.787 s / 9.27 s / 3,890,392 — the archived Orca applied its hardcoded **filament** defaults (density 0, max volumetric speed 2, first-layer temp 200) while the process chain resolved in both eras (300 mm/s walls). So the archived Orca under-measured Orca's own work: PnP's recorded multiples are optimistic for PnP and every archived Orca median needs re-derivation (fog). No ratio requoted. Evidence: `evidence/orca-rig-repair/` (`verify.py --self-test` exit 0, 4 claims, 7/7 negative controls rejected).
 
 ## Not yet specified
+
+- **The benchy per-layer program is margin, not route (t154, 2026-11-14).** The
+  canonical-prepass substitution now wins **7 of 8** cells and the benchy cells
+  clear the line by 9.9–33.2 %; the only loser is **base classic-on at 1.051x**,
+  which needs **1.096 s** (9.6 % of its per-layer phase). The residual per-layer
+  terms there are `tree-support` **36.7 %** of per-layer thread (a
+  work-set/phase difference — canonical generates support in one whole-object
+  pass, not per layer), the perimeters module **33.4 %** (kernel-bound: 77 %+
+  in-module self fuel) and the first-`Layer::Infill` block **23.5 %** (identity
+  unmeasured). **Open fog:** (a) the Infill block's identity and whether it is
+  removable — ticketed as
+  [t155](issues/155-infill-stage-block-base-on-residual.md); (b) whether the
+  per-layer `tree-support` render can be folded into the prepass, which is a
+  phase move and architecture work, not a per-op shape — no ticket, and it must
+  not inherit a price from the bracket; (c) the arithmetic's ledger chain
+  (t145/t148 walls × t150 deltas × this take's shares) needs a fresh paired
+  scoreboard before any decision becomes sensitive to ±5 % — today only base
+  arachne-on's **3.3 %** margin is that tight; (d) **no cause is attributed** for
+  the t126→t154 per-layer fall (−21.6 % to −40.1 % on the benchy cells); t139's
+  mid-layer sampling and t142's quartile derivation are candidates, not findings.
 
 - **The adhesion fairness program is complete (t151, 2026-11-14): the supports-off oracle is
   4/4 and the last residual is the ~0.10 mm brim-extent term plus ≤ 0.04 mm of Arachne
