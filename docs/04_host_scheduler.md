@@ -367,34 +367,48 @@ pub fn build_intra_stage_dag(
 
 ### Per-Layer Region-Split Dispatch Filter (Normative — Packet 92, ADR-0071)
 
-After the intra-stage DAG is sorted, each `LoadedModule` carries a
-cached `region_split_semantics: HashSet<String>` on its
-`CompiledModuleStatic` descriptor. The set is populated **only** when the
-module's manifest opted into paint-only dispatch with top-level
-`paint_only = true`, in which case it holds exactly the semantic names
-declared in the module's `[[region_split]]` array. A module that declares
+Each `LoadedModule` carries a cached `region_split_semantics: HashSet<String>`
+on its `CompiledModuleStatic` descriptor
+(`crates/slicer-scheduler/src/execution_plan.rs`). The set is populated **only**
+when the manifest opted into paint-only dispatch with top-level
+`paint_only = true`, in which case it holds exactly the semantic names declared
+in the module's `[[region_split]]` array. A module that declares
 `[[region_split]]` semantics without `paint_only = true` — the core
 `classic-perimeters`, `arachne-perimeters`, and `fuzzy-skin` modules — has an
-**empty** dispatch set and runs on every layer; its declarations still
-register the semantics in the cross-manifest aggregate. The host applies a
-per-layer filter at dispatch time using this set; the granularity is
-per-(module × layer), NOT per-(module × region):
+**empty** dispatch set and runs on every layer; its declarations still register
+the semantics in the cross-manifest aggregate. The runtime passes the declared
+set as `LayerSelectionModuleInput.paint_semantics`
+(`crates/slicer-wasm-host/src/selection.rs`) while building the whole-print
+selection index.
 
-- A module whose `region_split_semantics` is **empty** runs
-  unconditionally (paint-transparent default — preserves pre-packet-92
-  behaviour for every existing module).
-- A module with a non-empty set `S` is **skipped on layer `L`** if NO
-  region in `L`'s `RegionMapIR` entries has a `variant_chain` whose
-  semantic ∈ `S`.
-- **Conservative-allow edge case:** if the slice for `L` is `None`
-  (rare; layer not yet sliced or filter consulted out of order), the
-  filter conservatively allows the module to run rather than skipping
-  it. This is the safe default; missing the run would silently drop
-  output, missing the skip wastes a no-op call.
+The live predicate is
+`paint_allows_layer(&HashSet<String>, Option<&SliceIR>) -> bool`
+(`crates/slicer-wasm-host/src/selection.rs`): a `(module, layer)` pair is
+allowed iff the declared set is empty, the committed slice for the layer is
+absent, or at least one region's ordered `variant_chain` names a declared
+semantic. Granularity is per (module × layer), NOT per (module × region): a
+matching layer selects every candidate region of the module-backed stage, not
+only the regions carrying the matching semantic.
 
-The filter helper is `module_invocation_allowed_on_layer(...)` in `crates/slicer-runtime/src/layer_executor.rs`, consulted at per-layer dispatch. Filter cost is `O(|regions| × |S|)` per
-dispatch decision; the `region_split_semantics` HashSet keeps the
-inner check at O(1).
+`build_and_commit_layer_selection_index`
+(`crates/slicer-runtime/src/layer_executor.rs`) builds the whole-print
+`LayerSelectionIndex` once and publishes it through the write-once Blackboard
+seam. Per-layer executors read
+`LayerSelectionIndex::selection_for(global_layer_index, module_id)` and act on
+`LayerSelection.invoke`; there is no per-region filter and no fallback resolver.
+
+- A module whose `region_split_semantics` is **empty** runs unconditionally
+  (paint-transparent default — preserves pre-packet-92 behaviour for every
+  existing module).
+- **Conservative-allow edge case:** if the slice for `L` is `None` (rare; layer
+  not yet sliced or filter consulted out of order), the predicate allows the
+  module to run rather than skipping it. This is the safe default; missing the
+  run would silently drop output, missing the skip wastes a no-op call.
+
+The absent/empty/match/case/value/order modes and the no-target transparent
+`invoke = true` case are property-tested under the `H-RUNTIME-DISPATCH` charter
+(`docs/testing/properties.md#h-runtime-dispatch`); recorded measurements and
+provenance live in `docs/testing/proptest-runtime-evidence.md`.
 
 ---
 
@@ -1085,6 +1099,15 @@ The index is committed as one immutable
 Blackboard product, with no partial publication. `selection_for(global_layer_index, module_id)`
 is O(1); a missing index or missing bound pair is an internal-consistency fatal, never a fallback resolver.
 The index contains selection metadata only: delivered geometry always comes from current call-local products associated by full `RegionKey`/`OriginId`.
+
+The exact-key marker and insertion-permutation evidence is charted at
+`docs/testing/properties.md#h-runtime-selection` and recorded in
+`docs/testing/proptest-runtime-evidence.md`. A second runtime publication attempt
+is rejected by the write-once `Blackboard::commit_layer_selection_index` seam
+(`crates/slicer-runtime/src/blackboard.rs`), which preserves the originally
+published `Arc<LayerSelectionIndex>`. The builder may construct a candidate
+index before attempting the commit, but the seam rejects the write and the
+committed authority is never rebuilt or replaced as a recovery fallback.
 
 During construction, model authority requires `entries.get(&key)` before `config_for(&key)`
 (the Config Interner Contract in `docs/02_ir_schemas.md`). A missing exact key produces

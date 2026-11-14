@@ -900,32 +900,49 @@ depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 
 After the host runs `sync_perimeter_infill_areas_into_slice` at
 `Layer::Perimeters` commit (see
-`crates/slicer-runtime/src/region_partition.rs`):
+`crates/slicer-runtime/src/region_partition.rs`), the contract is conditional on
+`W = PerimeterIR.regions[i].infill_areas ∩ SlicedRegion.polygons` — the
+effective wall inset, not the donor's whole object geometry:
 
-1. **`bridge_areas`** is claimed directly from the classified
-   `SlicedRegion.bridge_areas` (whole-set classifier, ticket 123) and
-   may extend beyond the wall-inset polygon — at a ceiling layer the
-   perimeter module's infill area can be empty (the whole cross-section is
-   top surface) and the canonical bridge site must survive.
-   **`bottom_solid_fill`**, **`top_solid_fill`**, and
-   **`sparse_infill_area`** are pairwise disjoint subsets of the
-   corresponding `PerimeterIR.regions[i].infill_areas` (the wall-inset
-   polygon). All four sets remain pairwise disjoint from each other via the
-   precedence dedup (`bottom`/`top`/`sparse` are differenced against the
-   bridge claim in `sync_perimeter_infill_areas_into_slice`).
-2. Precedence on overlap is strict: `bridge > bottom > top > sparse`
-   (OrcaSlicer `PrintObject::prepare_infill` parity).
-   An unsupported span is classified in `PrePass::Slice` against the raw
-   previous cross-section (canonical `detect_surfaces_type`); the
-   `ShellClassification` stage does not subtract a second lower layer.
-3. The pre-perimeter values of `top_solid_fill` / `bottom_solid_fill`
-   (committed by `PrePass::ShellClassification`) and `bridge_areas`
-   (committed by `PrePass::Slice`) live unchanged on the **Blackboard**'s
-   `Arc<Vec<SliceIR>>`; the per-layer arena copy is the one that gets
-   clipped + deduped. This preserves the read-only Blackboard contract.
-4. A `SliceIR` region with no matching `PerimeterIR.regions` entry is
-   skipped silently (used by the region_split work in packets 92–95 where
-   variant regions share wall geometry with their base region).
+1. **Nonempty `W`:** `bridge_areas`, `bottom_solid_fill`, `top_solid_fill`, and
+   `sparse_infill_area` are pairwise disjoint subsets of `W`, and their union is
+   `W`, under the strict precedence `bridge > bottom > top > sparse` (OrcaSlicer
+   `PrintObject::prepare_infill` parity). An unsupported span is classified in
+   `PrePass::Slice` against the raw previous cross-section (canonical
+   `detect_surfaces_type`); the `ShellClassification` stage does not subtract a
+   second lower layer.
+2. **Empty `W` with nonempty `PerimeterRegion.walls`:** the walls consumed the
+   cross-section: an empty wall inset yields no canonical bridge or top surface,
+   and all four canonical fill roles are empty. Canonical
+   `LayerRegion::slices_to_fill_surfaces_clipped` builds each typed surface as
+   slice ∩ the perimeters' fill area, so an empty fill area produces no
+   bridge/top surface there.
+3. **Empty `W` with no walls:** the original `bridge_areas` is preserved,
+   `top_solid_fill` becomes the original top minus bridge, and
+   `bottom_solid_fill` / `sparse_infill_area` are empty. This branch makes NO
+   subset claim against the empty `W` — it is not the case that "all roles are
+   subsets".
+4. **Missing donor** for an ordinary, virtual or modifier region is NOT fatal:
+   the four roles stay at their `PrePass` values and a `log::warn!` names the
+   object and source region; a modifier child's warning also names the parent
+   region. The stage-ordering fatals are a missing staged `SliceIR` or
+   `PerimeterIR` (`LayerStageError::FatalModule`, stage `Layer::Perimeters`,
+   module `host:region_partition`); the missing-perimeter path re-stages the
+   taken slice. A rejected modifier split is also fatal, but it restores the
+   entry-state slice first (see item 6).
+5. Donor joins are exact on `(object_id, source region_id, ordered
+   variant_chain)`; modifier children decode only their parent region id for the
+   donor lookup while preserving their own object and ordered chain.
+6. The hook is arena-local and transactional at its own boundary: role sync and
+   the modifier split run on a working copy, and a rejected modifier split
+   (full-identity collision or an unencodable parent id) re-stages the
+   ENTRY-STATE slice, so `arena.slice()` is never left `None` or
+   half-repartitioned. It makes no claim about earlier module commits. The
+   immutable Blackboard `Arc<Vec<SliceIR>>` is unchanged.
+
+These branches are property-tested under the `H-RUNTIME-PARTITION` charter
+(`docs/testing/properties.md#h-runtime-partition`); recorded measurements and
+provenance are in `docs/testing/proptest-runtime-evidence.md`.
 
 Each fill claim holder (`claim:sparse-fill`, `claim:top-fill`,
 `claim:bottom-fill`, `claim:bridge-fill`; see `docs/03_wit_and_manifest.md`)
@@ -1093,6 +1110,22 @@ payload to the parent ID. The infill linker reads only
 For overlapping non-support modifier volumes, priority is applied first and
 document order breaks ties: the first winning modifier owns the footprint, and
 subsequent modifiers intersect only the remaining base area.
+
+**Full-identity collision rejection.** The modifier splitter rejects a collision
+on the full identity `(object_id, minted modifier region_id, ordered
+variant_chain)`; an equal numeric id on a different object or chain is a
+different identity and is not rejected. The splitter works on a copy and assigns
+only on success, so a rejection leaves the input `SliceIR` unchanged; the
+`Layer::Perimeters` hook adds the arena-level rollback described above.
+
+**Child fill carriers.** Modifier children add no `PerimeterIR` walls and keep
+per-polygon `internal_bridge_areas` / `internal_bridge_angles_deg`
+index-aligned; an empty angle Vec falls back to `bridge_orientation_deg` (never
+union the carriers into one angle-ambiguous polygon).
+
+This behavior is property-tested under the `H-RUNTIME-MODIFIERS` charter
+(`docs/testing/properties.md#h-runtime-modifiers`); recorded measurements and
+provenance are in `docs/testing/proptest-runtime-evidence.md`.
 
 `ExPolygon`, `Polygon`, and `Point2` are shared geometry types defined in
 `crates/slicer-ir/src/slice_ir.rs`; polygon contours are counter-clockwise,

@@ -690,3 +690,169 @@ rng_algorithm = "chacha"
 isolation = "in_process"
 timeout_ms = 0
 bounds = { max_modules = 7, max_declarations = 16, max_text_bytes = 64 }
+
+# ── H-RUNTIME (packet `proptest-openrscad_08_pbt-runtime`) ────────────────────
+# Profiles measured on the Windows development machine after the packet's
+# pilots. Values stay inside the written safety ceilings; the evidence file
+# (`docs/testing/proptest-runtime-evidence.md`) records the exact per-tier
+# libtest wall, accepted cases and retained-seed replay.
+
+[[property]]
+id = "H-RUNTIME-DISPATCH"
+package = "slicer-runtime"
+target_kind = "test"
+target_name = "property_runtime"
+test_name = "proptest_runtime_semantic_dispatch"
+production_symbol = "slicer_wasm_host::selection::paint_allows_layer"
+production_path = "crates/slicer-wasm-host/src/selection.rs"
+features = ["slicer-runtime/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-runtime-dispatch"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 3, max_regions = 3, max_semantics = 4, max_chain_len = 3, max_text_bytes = 32 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 4, max_regions = 4, max_semantics = 8, max_chain_len = 4, max_text_bytes = 64 }
+
+[[property]]
+id = "H-RUNTIME-SELECTION"
+package = "slicer-runtime"
+target_kind = "test"
+target_name = "property_runtime"
+test_name = "proptest_runtime_selection_authority"
+production_symbol = "slicer_runtime::layer_executor::build_and_commit_layer_selection_index"
+production_path = "crates/slicer-runtime/src/layer_executor.rs"
+features = ["slicer-runtime/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-runtime-selection"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 3, max_regions = 3, max_modules = 2, max_chain_len = 3 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 4, max_regions = 4, max_modules = 4, max_chain_len = 4 }
+
+[[property]]
+id = "H-RUNTIME-MODIFIERS"
+package = "slicer-runtime"
+target_kind = "lib"
+target_name = "slicer_runtime"
+test_name = "region_partition::property_tests::proptest_runtime_modifier_transactions"
+production_symbol = "slicer_runtime::region_partition::split_regions_by_modifier_footprints"
+production_path = "crates/slicer-runtime/src/region_partition.rs"
+features = ["slicer-runtime/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-runtime-modifiers"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_regions = 3, max_footprints = 3, max_abs_units = 512, max_cells = 512 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_regions = 4, max_footprints = 4, max_abs_units = 4096, max_cells = 2048 }
+
+[[property]]
+id = "H-RUNTIME-PARTITION"
+package = "slicer-runtime"
+target_kind = "lib"
+target_name = "slicer_runtime"
+test_name = "region_partition::property_tests::proptest_runtime_fill_partition"
+production_symbol = "slicer_runtime::region_partition::sync_perimeter_infill_areas_into_slice"
+production_path = "crates/slicer-runtime/src/region_partition.rs"
+features = ["slicer-runtime/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-runtime-partition"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_regions = 3, max_abs_units = 512, max_cells = 512 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_regions = 4, max_abs_units = 4096, max_cells = 2048 }

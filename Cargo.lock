@@ -4128,6 +4128,7 @@ dependencies = [
  "preparation-lifecycle-anchored-guest",
  "preparation-lifecycle-guest",
  "preparation-visual-guest",
+ "proptest",
  "raft-default",
  "rayon",
  "rectilinear-infill",

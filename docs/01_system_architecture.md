@@ -395,15 +395,15 @@ Layer::Perimeters
            wall segment. Sets WallLoop.boundary_type to MaterialBoundary
            where adjacent material semantic regions are detected via
            PaintRegionLayerView.
-           Commit side-effect: the host computes the four canonical
-           pairwise-disjoint fill polygons (`sparse_infill_area`, clipped
-           `top_solid_fill`, `bottom_solid_fill`, `bridge_areas`) into the
-           per-layer arena's `SliceIR` from `perimeter.infill_areas` via
-           `sync_perimeter_infill_areas_into_slice`. Precedence
-           `bridge > bottom > top > sparse` (OrcaSlicer parity). See
-           `crates/slicer-runtime/src/region_partition.rs` and
-           `specs/_OLD/infill-fill-partition-plan.md` (superseded spec,
-           retained for the partition write-up).
+           Commit side-effect: the host partitions the effective wall inset
+           (`perimeter.infill_areas ∩ region.polygons`) into four canonical fill
+           polygons via `sync_perimeter_infill_areas_into_slice`. Nonempty inset
+           obeys `bridge > bottom > top > sparse`; empty inset with walls leaves
+           all four roles empty; empty inset without walls preserves the original
+           bridge and top-minus-bridge; a missing donor warns and keeps the
+           PrePass roles; a rejected modifier split restores the entry-state
+           slice. See `crates/slicer-runtime/src/region_partition.rs` and
+           `docs/testing/properties.md#h-runtime-partition`.
 
 Layer::PerimetersPostProcess
   Input:  PerimeterIR (including feature_flags and boundary_type on WallLoops)

@@ -1684,6 +1684,569 @@ defect in `aggregate_region_splits`, `canonical_variant_chain_order` or the plan
 was observed**; no regression was manufactured. Neither the helper assertion nor the plan check is
 evidence of RegionMapping integration.
 
+## H-RUNTIME-DISPATCH
+
+Registry record: `id = "H-RUNTIME-DISPATCH"`, `package = "slicer-runtime"`,
+`target_kind = "test"`, `target_name = "property_runtime"`,
+`test_name = "proptest_runtime_semantic_dispatch"`,
+`production_symbol = "slicer_wasm_host::selection::paint_allows_layer"`,
+`production_path = "crates/slicer-wasm-host/src/selection.rs"`,
+`features = ["slicer-runtime/property_testing"]`, `requires_host_algos = true`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-runtime-dispatch"`.
+
+### Stable property ID
+
+`H-RUNTIME-DISPATCH` — transparent when the declared semantic set is empty or the slice is
+absent, and match-gated when a declared semantic appears anywhere in a layer's ordered paint
+chains, at `(module, layer)` granularity.
+
+### Owner
+
+Package `slicer-runtime`; integration test target `property_runtime`
+(`crates/slicer-runtime/tests/property_runtime.rs`) with test
+`proptest_runtime_semantic_dispatch`. Production surface:
+`slicer_wasm_host::selection::paint_allows_layer` (`crates/slicer-wasm-host/src/selection.rs`).
+Real runtime consumption is `slicer_runtime::layer_executor::build_and_commit_layer_selection_index`
+(`crates/slicer-runtime/src/layer_executor.rs`), `LayerSelectionIndex::selection_for`
+(`crates/slicer-wasm-host/src/selection.rs`) and the layer executors reading
+`selection_for(...).invoke`. Deterministic control:
+`runtime_semantic_dispatch_oracle_controls` in
+`crates/slicer-runtime/tests/property_runtime_contracts.rs` (target
+`property_runtime_contracts`, run as
+`cargo test -p slicer-runtime --features property_testing --test property_runtime_contracts`).
+The shared domain/oracle control in that target is
+`runtime_property_domain_and_oracle_controls`.
+
+### Contract
+
+`paint_allows_layer(&HashSet<String>, Option<&SliceIR>) -> bool` allows the pair
+iff the declared set is empty, the slice is absent, or at least one region's ordered
+`variant_chain` names a declared semantic. Names are case-sensitive strings; `PaintValue`
+contents and polygon emptiness are irrelevant. Gating is per `(module, layer)`, never per region,
+so a present matching scene selects every candidate region of the neutral module-backed stage, in
+committed slice order, not only the matching regions. An absent-slice scene, or a transparent
+(empty declared set) scene with no regions, keeps `invoke = true` with zero model targets; a
+populated transparent scene keeps `invoke = true` and selects every candidate target; a
+present-empty slice with a nonempty declared set yields `invoke = false`.
+
+### Domain
+
+`slicer-runtime`'s `property_testing` profiles carry `max_layers`, `max_regions`, `max_semantics`,
+`max_chain_len` and `max_text_bytes`, inside the packet's safety ceilings: `2..=4` layers,
+`2..=4` regions, `2..=4` modules, `2..=8` semantic choices, `2..=4` chain length and `8..=64`
+bytes per variable semantic name. Committed profile values are routine
+`3 / 3 / 4 / 3 / 32` and extended `4 / 4 / 8 / 4 / 64` in that key order, with `cases = 64 / 512`
+and `max_default_size_range = 32 / 128`. Every bound is checked from `u64` before narrowing; the
+local domain permits at most 64 input vertices per region-field carrier. A cell-budget exceedance
+is an explicit failed/exhausted diagnostic, never a correctness pass.
+
+### Strategy
+
+The case strategy draws a scene mode from a plan so that absent slice, transparent empty declared
+set, present matching, present nonmatching, present-empty and case-differing scenes are all
+reachable, with generated ordered chains whose region order is permuted by the property. Semantic names, chain length and per-region
+chain order are shrinkable dimensions; the scene mode tag is not. Every generator is total, so the
+zero rejection budgets are honest: any rejection is reported as an exhausted run rather than
+silently consuming budget, and the deterministic control in the companion target covers each
+documented mode explicitly rather than relying on a sampled population.
+
+### Oracle
+
+The oracle evaluates the independent predicate `declared.is_empty() || slice.is_none() ||
+any(region, any(chain, declared.contains(semantic)))` over the generated declared set and ordered
+chains; it never calls `paint_allows_layer`. For each committed scene it derives the expected
+`(invoke, target table)` from the declared set and slice presence: a matching present scene selects
+every candidate region in committed slice order; an absent-slice or present-empty transparent scene
+selects none; a populated transparent scene selects every candidate; and a present-empty slice with
+a nonempty declared set yields `invoke = false`. `PaintValue` and polygon
+fields are deliberately not consulted, so no geometric claim is made here; the shared finite
+cell-label comparator described under `H-RUNTIME-PARTITION` governs the sibling geometric charters,
+not this one.
+
+### Tolerance
+
+Exact boolean and `invoke` equality, exact ordered identifier sequences and case-sensitive string
+identity. No numeric tolerance and no epsilon exist on this surface.
+
+### Shrinking
+
+The scene mode is drawn from a non-shrinkable plan, so a shrink cannot turn an absent-slice case
+into a present-matching one or a transparent case into a gated one. Shrinking may simplify semantic
+names, chain length and per-region chain order, and the check recomputes the independent predicate
+for the shrunk case. The shrink audit asserts that the mode and the verdict signature survive
+simplification. Shrink limits are profile-bounded (`max_shrink_iters` 64/128,
+`max_shrink_time_ms = 0`); completion is reported `null`/unknown because Proptest 1.11 cannot
+identify it.
+
+### Execution
+
+Both tiers run `in_process` with `timeout_ms = 0` and chacha. The registry-backed command is
+`cargo xtask test --summary --properties --property H-RUNTIME-DISPATCH --tier routine|extended`,
+and `--seed <u64>` replays a retained stream. All four H-RUNTIME profiles carry zero rejection
+budgets and total generators. The recorded Windows runs are 0.54 s routine, 0.74 s extended and
+0.55 s retained-seed replay, each with 64/512/64 accepted cases and zero rejected test calls; the
+whole four-record lane took 57.1 s routine, 133.7 s extended and 55.5 s routine replay. Full
+provenance and per-run artifacts are in
+[proptest-runtime-evidence.md](proptest-runtime-evidence.md), which is the only place measured
+values are quoted.
+
+### Failure record
+
+The foundation harness writes the predecessor context/case/failure contract (`PropertyRun`
+artifacts under `target/`): classification, full context, concrete/debug input, the tier-bearing
+reproduction command
+(`cargo xtask test --summary --properties --property H-RUNTIME-DISPATCH --tier <routine|extended> --seed <seed>`),
+direct reproduction and shrink status. Committed regressions are named concrete inputs, never
+seeds. `ConcreteInput` supports geometry and mesh payloads only, so any `SliceIR`, authority or
+transaction fixture is an explicit finite builder plus a real call, not a serialized input enum.
+The deterministic control home is
+`crates/slicer-runtime/tests/property_runtime_contracts.rs`.
+
+### Acceptance
+
+This charter maps to AC-1: the property compares the public predicate and real committed selections
+against the independent semantic-set predicate for absent, empty, matching, nonmatching,
+case-differing and order-differing modes. `runtime_semantic_dispatch_oracle_controls` falsifies
+require-all gating, value-sensitive (`PaintValue`-dependent) gating, per-region filtering and
+absent-slice skip. The existing pure helper baseline `selection::tests` in `slicer-wasm-host` and the
+executor baseline `shared_selection_runtime_tdd` are recorded in the evidence file; the four
+measured Windows runs (routine, extended, seed replay, combined routine) all passed with 64/512/64
+accepted cases and zero rejects.
+
+## H-RUNTIME-SELECTION
+
+Registry record: `id = "H-RUNTIME-SELECTION"`, `package = "slicer-runtime"`,
+`target_kind = "test"`, `target_name = "property_runtime"`,
+`test_name = "proptest_runtime_selection_authority"`,
+`production_symbol = "slicer_runtime::layer_executor::build_and_commit_layer_selection_index"`,
+`production_path = "crates/slicer-runtime/src/layer_executor.rs"`,
+`features = ["slicer-runtime/property_testing"]`, `requires_host_algos = true`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-runtime-selection"`.
+
+### Stable property ID
+
+`H-RUNTIME-SELECTION` — exact per-target config authority in the committed layer selection index,
+and atomic all-or-nothing publication of that index.
+
+### Owner
+
+Package `slicer-runtime`; integration test target `property_runtime` with test
+`proptest_runtime_selection_authority`. Production surfaces:
+`slicer_wasm_host::selection::build_layer_selection_index` and
+`LayerSelectionIndex::selection_for` (`crates/slicer-wasm-host/src/selection.rs`), the runtime seam
+`slicer_runtime::layer_executor::build_and_commit_layer_selection_index`
+(`crates/slicer-runtime/src/layer_executor.rs`), and the write-once
+`Blackboard::commit_layer_selection_index` / `Blackboard::layer_selection_index`
+(`crates/slicer-runtime/src/blackboard.rs`). Deterministic control:
+`runtime_selection_exact_key_and_publication_rejections` in
+`crates/slicer-runtime/tests/property_runtime_contracts.rs`, alongside the shared
+`runtime_property_domain_and_oracle_controls`.
+
+### Contract
+
+The pure builder consumes `LayerSelectionIndexInput` and returns
+`Result<LayerSelectionIndex, LayerSelectionBuildError>`, whose `error` is a
+`SelectionError::{UnknownLayerStage { stage_id }, MissingModelConfig { key }}`.
+Config authority is exact: the map address is the layer, object, source region id and full ordered
+chain. Ordinary empty-chain ids are used verbatim; painted nonmodifier ids with a nonempty chain are
+divided by `PAINT_VARIANT_REGION_ID_STRIDE` only at the map address (the source identity keeps the
+painted id); modifier-namespace ids are used verbatim; the layer, object id and ordered chain are
+exact, never sorted or normalized. A missing exact key fails before any commit and publishes
+nothing. Source target order follows committed slice order and survives map insertion permutations;
+`selection_for` returns `None` for an unbound pair, and consumers must reject that rather than
+reconstruct a selection.
+
+The runtime seam builds the same index from `ExecutionPlan` and `Blackboard` state (committed
+slices, region map and support-plan presence; it supplies no whole-print perimeter product) and
+publishes through the write-once `Blackboard::commit_layer_selection_index`. A duplicate runtime
+publication is rejected by that seam and preserves the original `Arc` identity; `layer_selection_index`
+still returns the first committed index. Raw unknown stage ids fail at the pure builder only: the
+runtime seam filters to layer stages before calling it, and the pure builder rejects an unknown or
+non-WIT stage.
+
+### Domain
+
+Profiles carry `max_layers`, `max_regions`, `max_modules` and `max_chain_len` inside the packet's
+`2..=4` ceilings for each key, with `cases = 64 / 512` and `max_default_size_range = 32 / 128`.
+Committed values are routine `3 / 3 / 2 / 3` and extended `4 / 4 / 4 / 4`, with zero rejection
+budgets. Every bound is checked from `u64` before narrowing. Identity pools are finite, and any
+domain exhaustion is an explicit failed/exhausted diagnostic rather than a pass.
+
+### Strategy
+
+The generator builds committed layers, modules, region-map entries and ordered chains (including a
+same-layer cross-object pair with the same numeric source id and chain), then selects a case mode
+from a non-shrinkable plan: exact match, map insertion permutation, missing exact key, reversed or
+sibling-only authority, and the object-distinction pair. Duplicate runtime publication and raw
+unknown stage ids are deterministic inputs in the companion control, not generated modes: the
+runtime seam filters its roster and is not an unknown-stage validator. The generator is total, so
+any rejection is reported as exhaustion; the fixed-seed shrink audit requires both the positive and
+negative modes.
+
+### Oracle
+
+The oracle builds the exact-key authority table from the generated `RegionMapIR` entries and
+source regions, recomputing the map-space address from the written rule instead of calling
+`region_map_key_for_sliced_region`. It derives expected `(invoke, config identity, ordered target
+keys)` for every module and layer, including the source order after an insertion permutation; it
+never calls `build_layer_selection_index` or `build_and_commit_layer_selection_index` to certify
+itself. It derives the expected `SelectionError` variant and exact key for the generated
+missing/reversed/sibling-only/cross-object modes and asserts that a missing-key failure leaves
+`layer_selection_index()` unchanged. Duplicate publication (`Arc::ptr_eq` on the original index) and
+raw unknown stage rejection at the pure builder are deterministic control claims, because the
+runtime seam filters its roster before calling the builder.
+
+### Tolerance
+
+Exact enum, key, config identity, ordered-key sequence and pointer-identity equality. No tolerance
+and no epsilon exist on this surface.
+
+### Shrinking
+
+The authority mode and every flag that decides whether a fault exists are drawn from a
+non-shrinkable plan, so a shrink cannot turn an exact match into a missing-key case or a
+duplicate-publication case into a first publication. Shrinks may simplify layer, module and chain
+slots and map insertion order; expectations are recomputed for the shrunk case. The shrink audit
+asserts the mode and its distinguishing witness survive. Shrink limits are profile-bounded;
+completion is reported `null`/unknown.
+
+### Execution
+
+Both tiers run `in_process` with `timeout_ms = 0` and chacha, zero rejection budgets and total
+generators. The registry-backed command is
+`cargo xtask test --summary --properties --property H-RUNTIME-SELECTION --tier routine|extended`;
+`--seed <u64>` replays a retained stream. The recorded Windows runs are 2.19 s routine, 2.79 s
+extended and 2.15 s retained-seed replay, each with 64/512/64 accepted cases and zero rejected test
+calls; provenance is in [proptest-runtime-evidence.md](proptest-runtime-evidence.md).
+
+### Failure record
+
+`PropertyRun` writes the predecessor context/case/failure artifacts under `target/`, including the
+tier-bearing reproduction command
+(`cargo xtask test --summary --properties --property H-RUNTIME-SELECTION --tier <routine|extended> --seed <seed>`),
+full context, concrete/debug input, direct reproduction and shrink status. Committed regressions are
+named concrete inputs, never seeds. `ConcreteInput` supports geometry and mesh only, so authority
+and publication fixtures are explicit finite builders that construct real `LayerSelectionIndexInput`
+or `ExecutionPlan`/`Blackboard` state and then call the real seam. The control home is
+`crates/slicer-runtime/tests/property_runtime_contracts.rs`.
+
+### Acceptance
+
+This charter maps to AC-2. The property reads exact per-target config markers and source identities
+from committed index authority rather than default, sibling or first-match lookups, and source
+target order survives map insertion permutations. `runtime_selection_exact_key_and_publication_rejections`
+falsifies missing, reversed, sibling-only and object-blind authority, partial publication after
+earlier valid work, raw unknown stages accepted at the runtime seam, and a duplicate publication
+that replaces the original `Arc`. The property adds the same-layer cross-object twin with distinct
+markers. Existing baselines `shared_selection_runtime_tdd`, `source_identity_repair_tdd` and
+`apply_commit_regression_tdd` are recorded in the evidence file; the measured Windows runs all
+passed with 64/512/64 accepted cases and zero rejects.
+
+## H-RUNTIME-MODIFIERS
+
+Registry record: `id = "H-RUNTIME-MODIFIERS"`, `package = "slicer-runtime"`,
+`target_kind = "lib"`, `target_name = "slicer_runtime"`,
+`test_name = "region_partition::property_tests::proptest_runtime_modifier_transactions"`,
+`production_symbol = "slicer_runtime::region_partition::split_regions_by_modifier_footprints"`,
+`production_path = "crates/slicer-runtime/src/region_partition.rs"`,
+`features = ["slicer-runtime/property_testing"]`, `requires_host_algos = true`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-runtime-modifiers"`.
+
+### Stable property ID
+
+`H-RUNTIME-MODIFIERS` — first-owner modifier cell ownership, full-identity collision rejection and
+all-or-nothing `SliceIR`/arena transactions across the private splitter, raw staging wrapper and
+public prepass.
+
+### Owner
+
+Package `slicer-runtime`; library target `slicer_runtime`, inline module
+`region_partition::property_tests` in `crates/slicer-runtime/src/region_partition.rs`, test
+`proptest_runtime_modifier_transactions`. The inline module mounts
+`crates/slicer-runtime/tests/common/property_runtime_cells.rs` by `#[path]`; the integration
+control target `crates/slicer-runtime/tests/property_runtime_contracts.rs` mounts the same file, so
+both identities share one cell model. Production surfaces are the private
+`split_regions_by_modifier_footprints(&mut SliceIR, impl IntoIterator<Item = (String, Vec<ExPolygon>)>) -> Result<(), String>`,
+the raw staging wrapper `split_modifier_footprints`, the public
+`split_modifier_sub_regions_for_prepass(&mut SliceIR, &MeshIR)` and the arena hook
+`sync_perimeter_infill_areas_into_slice(&mut LayerArena, u32)`, all in
+`crates/slicer-runtime/src/region_partition.rs`.
+
+Deterministic library controls run as
+`cargo test -p slicer-runtime --features property_testing --lib -- region_partition::property_tests::runtime_`:
+`runtime_modifier_ownership_and_angle_controls`,
+`runtime_modifier_identity_and_transaction_rejections` and
+`runtime_modifier_collision_restores_taken_slice`. The shared cross-cutting control in
+`crates/slicer-runtime/tests/property_runtime_contracts.rs` is
+`runtime_property_domain_and_oracle_controls`. The registry-backed lib identity runs with
+`--lib --exact region_partition::property_tests::proptest_runtime_modifier_transactions`.
+
+### Contract
+
+Footprints are applied in supplied order; the first footprint that intersects a cell owns it, and
+later footprints see only the remaining parent area. The private splitter reduces every parent
+field after each split by exact difference. The public prepass derives footprint order as priority
+descending, then original document index, and excludes support enforcer and support blocker kinds.
+Both splitters work on a clone and assign only on success, so a rejected call leaves the full input
+`SliceIR` equal to its pre-call snapshot.
+
+Collision is full identity `(object_id, minted modifier region id, ordered variant_chain)`: an equal
+numeric id on a different object or a different chain is a different identity, not a collision.
+Unsupported parent ids fail with `parent_region_id` context. Children copy parent metadata and the
+ordered chain, clear `segment_annotations`, mint modifier-namespace ids that decode to the parent,
+add no `PerimeterIR` walls, and keep per-polygon internal-bridge angles index-aligned; an empty
+angle vector falls back to `bridge_orientation_deg`. An empty parent `infill_areas` is restored
+from the original polygons before splitting.
+
+**Arena boundary.** `sync_perimeter_infill_areas_into_slice` takes the staged slice, and a rejected
+modifier split must not leave `arena.slice() = None` or a half-repartitioned slice. The required
+contract is hook-local rollback to the entry-state slice: the transaction starts at entry to this
+hook, and this charter makes no claim about earlier perimeter module commits. The named concrete
+regression for this obligation is `runtime_modifier_collision_restores_taken_slice`. Source
+inspection showed the hook taking the slice through `take_slice` and then propagating
+`split_modifier_footprints(...)?` before `set_slice`. Implementation reproduced the loss with a
+concrete rejecting input (pre-fix failure: `the hook took the staged SliceIR and returned the split
+error without re-staging it, leaving the arena without a layer`), fixed it by running role sync and
+the split on a working copy and re-staging the entry-state slice on any rejection, and re-ran the
+named regression green. The focused fix and the red/green evidence are recorded in the evidence
+file.
+
+### Domain
+
+Profiles carry `max_regions`, `max_footprints`, `max_abs_units` and `max_cells`: routine
+`3 / 3 / 512 / 512`, extended `4 / 4 / 4096 / 2048`, with `cases = 64 / 512` and
+`max_default_size_range = 32 / 128`. The safety ceilings are `2..=4` regions, `2..=4` footprints,
+`16 <= max_abs_units <= 2^20` and `16 <= max_cells <= 4096`, with at most 64 input vertices per
+region-field or footprint carrier. Bounds are checked from `u64` before narrowing. Even-coordinate
+grids and bounded orthogonal records keep the cell product small; cell-budget exceedance is an
+explicit failed/exhausted diagnostic, never a pass.
+
+### Strategy
+
+The generator draws region-field carriers (polygons, the four fill roles, internal solid fill, raft
+fill and index-aligned internal-bridge polygons/angles), footprint rectangles or orthogonal
+polygons, object ids, ordered chains and an object-sharing plan so cross-object and cross-chain
+identities are reachable. A non-shrinkable case plan tags ownership, collision, unsupported parent,
+empty `infill_areas` restoration and angle-fallback modes, and constructs the `Valid`, `Collision`,
+`UnsupportedParent` and `LaterFailure` modes plus holed parents, an inert empty footprint, a
+later-footprint overlap and a role-precedence overlap. The fixed-seed shrink audit requires all four
+mode tags and the structural holed/empty/overlap witnesses; the generator is total, so any rejection
+is an exhausted run.
+
+### Oracle
+
+The oracle is a finite cell-label model, not a Clipper call. Boundaries from the inputs and from the
+observed output partition the checked box into elementary open rectangles; a doubled-coordinate
+midpoint in every cell is classified with the independent
+`slicer_sdk::test_support::property_testing::oracles::point_in_region`
+(`crates/slicer-sdk/src/test_support/property_testing/oracles/mod.rs`), and the first-owner truth
+table assigns each cell to the earliest intersecting footprint for the owning parent region, or to
+that region's parent remainder. Ownership, conservation, metadata, annotation clearing, namespace
+decoding and angle association are evaluated from those labels. Output edges must be orthogonal and on the collected
+grid, and output area must equal the independently labelled cell-sum area using absolute
+contour/hole double areas from `signed_area2`. No random interior probes, no Clipper Boolean output
+as oracle and no epsilon are used.
+
+### Tolerance
+
+Geometry is compared on the exact integer grid with no epsilon. Byte equality is required only for
+the modifier-child contained-bridge preservation branch; elsewhere ring start and ring order may
+differ and geometry is compared semantically.
+
+### Shrinking
+
+The case mode and every flag that decides first ownership, collision identity, unsupported parent
+and empty-`infill_areas` restoration come from a non-shrinkable plan. A shrink may simplify
+geometry, footprint count and chain slots, and the oracle is recomputed for the shrunk case. The
+shrink audit requires the four mode tags and the structural holed/empty/later-footprint/role-
+precedence witnesses to survive at every simplification step, and re-runs the same checker on the
+generated and the final simplified tree. Shrink limits are profile-bounded; completion is reported
+`null`/unknown, and an audit endpoint at the 64-step cap is not claimed minimal.
+
+### Execution
+
+Both tiers run `in_process` with `timeout_ms = 0` and chacha, zero rejection budgets and total
+generators. The registry-backed command is
+`cargo xtask test --summary --properties --property H-RUNTIME-MODIFIERS --tier routine|extended`;
+`--seed <u64>` replays a retained stream, and the direct library
+identity is selected with `--lib --exact`. The recorded Windows runs are 22.31 s routine, 64.46 s
+extended and 20.97 s retained-seed replay, each with 64/512/64 accepted cases and zero rejected test
+calls; provenance is in [proptest-runtime-evidence.md](proptest-runtime-evidence.md).
+
+### Failure record
+
+`PropertyRun` writes the predecessor context/case/failure artifacts under `target/` with the
+tier-bearing reproduction command
+(`cargo xtask test --summary --properties --property H-RUNTIME-MODIFIERS --tier <routine|extended> --seed <seed>`),
+full context, concrete/debug input, direct reproduction and shrink status. Committed regressions are
+named concrete inputs, never seeds. `ConcreteInput` supports geometry and mesh payloads only, so
+`SliceIR` and transaction fixtures are explicit finite builders that construct the real arena and
+slice state and then call the private splitter, raw wrapper, public prepass or hook. The
+deterministic control home is the inline `region_partition::property_tests` module in
+`crates/slicer-runtime/src/region_partition.rs`; the shared model lives in
+`crates/slicer-runtime/tests/common/property_runtime_cells.rs`.
+
+### Acceptance
+
+This charter maps to AC-3 and AC-N1. `runtime_modifier_ownership_and_angle_controls` falsifies
+lower-priority overlap theft, cross-object/chain leakage, omission of the raft and
+internal-bridge carriers, and lost angle association. `runtime_modifier_identity_and_transaction_rejections`
+falsifies collision and unsupported-parent failures that do not occur after earlier possible work
+through the private splitter, raw wrapper, public prepass and hook, private and public `SliceIR`
+inputs that differ from their originals after an error, hook failures that do not return the
+specified `FatalModule` or do not retain the original `arena.slice()`, `PerimeterIR`, raw sentinel
+and roles, and a same numeric id with a different full identity treated as a collision.
+`runtime_modifier_collision_restores_taken_slice` is the named regression for the taken-slice loss:
+it fails pre-fix with the loss message and passes post-fix. The generator and oracle are also pinned
+by `runtime_property_domain_and_oracle_controls`; the existing baseline
+`modifier_region_split_tdd` is recorded in the evidence file and stayed 15/15 after the fix. The
+measured Windows runs all passed with 64/512/64 accepted cases and zero rejects.
+
+## H-RUNTIME-PARTITION
+
+Registry record: `id = "H-RUNTIME-PARTITION"`, `package = "slicer-runtime"`,
+`target_kind = "lib"`, `target_name = "slicer_runtime"`,
+`test_name = "region_partition::property_tests::proptest_runtime_fill_partition"`,
+`production_symbol = "slicer_runtime::region_partition::sync_perimeter_infill_areas_into_slice"`,
+`production_path = "crates/slicer-runtime/src/region_partition.rs"`,
+`features = ["slicer-runtime/property_testing"]`, `requires_host_algos = true`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-runtime-partition"`.
+
+### Stable property ID
+
+`H-RUNTIME-PARTITION` — conditional `bridge > bottom > top > sparse` fill-role precedence over the
+wall inset, exact full-source donor joins, and nonfatal missing-donor preservation.
+
+### Owner
+
+Package `slicer-runtime`; library target `slicer_runtime`, inline module
+`region_partition::property_tests` in `crates/slicer-runtime/src/region_partition.rs`, test
+`proptest_runtime_fill_partition`. Production surface:
+`slicer_runtime::region_partition::sync_perimeter_infill_areas_into_slice`
+(`crates/slicer-runtime/src/region_partition.rs`), driven through a real `LayerArena` with staged
+`SliceIR` and `PerimeterIR`. Library controls run as
+`cargo test -p slicer-runtime --features property_testing --lib -- region_partition::property_tests::runtime_`:
+`runtime_partition_precedence_and_identity_controls` and
+`runtime_partition_stage_and_domain_rejections`, with the shared
+`runtime_property_domain_and_oracle_controls` in
+`crates/slicer-runtime/tests/property_runtime_contracts.rs`. The property body mounts
+`crates/slicer-runtime/tests/common/property_runtime_cells.rs`.
+
+### Contract
+
+The partition runs over `W = donor.infill_areas ∩ slice_region.polygons` with the conditional
+precedence `bridge > bottom > top > sparse`. When `W` is nonempty, the four output roles are
+pairwise disjoint and their union equals `W`. When `W` is empty and the region has walls, all four
+roles are empty. When `W` is empty and the region has no walls, the original bridge is preserved,
+top becomes the original top minus bridge, bottom and sparse are empty, and this branch makes no
+subset claim against the empty `W`. The conditional empty-W/no-wall fallback versus the
+nonempty-inset clipping rule is the actual policy; neither is generalized into a universal
+identity.
+
+A missing donor is not fatal: the region's roles are unchanged and a warning names the object and
+region, with the modifier variant also naming the parent. Missing `SliceIR` or missing
+`PerimeterIR` is `LayerStageError::FatalModule` with stage `Layer::Perimeters`, module
+`host:region_partition` and message fragments `no staged SliceIR` / `no staged PerimeterIR`; the
+missing-perimeter path restores the taken slice before returning. Donors join exactly on
+`(object_id, source region id, ordered variant_chain)`; modifier children decode only the parent
+id while preserving object and chain. Immutable `Blackboard` data and `PerimeterIR` are unchanged by
+the arena-only partition; prepared-region caches may invalidate or recompute but must never serve
+stale geometry.
+
+### Domain
+
+Profiles carry `max_regions`, `max_abs_units` and `max_cells`: routine `3 / 512 / 512`, extended
+`4 / 4096 / 2048`, with `cases = 64 / 512` and `max_default_size_range = 32 / 128`. Safety
+ceilings are `2..=4` regions, `16 <= max_abs_units <= 2^20` and `16 <= max_cells <= 4096`, with at
+most 64 input vertices per region-field carrier. Bounds are checked from `u64` before narrowing;
+cell-budget exceedance is an explicit failed/exhausted diagnostic, not a pass.
+
+### Strategy
+
+The generator draws `SliceIR` regions with polygons and per-role carriers, a `PerimeterIR` whose
+donors include exact-key matches, a missing donor, a sibling-only pair collision and a
+exact reverse two-entry chain pair (with distinct donors), plus wall/no-wall and empty/nonempty
+inset modes and a nonempty effective inset with role-precedence overlap. A non-shrinkable case plan
+tags each conditional branch, the missing-donor outcome and the chain-exactness witnesses. Fatal
+stage modes (`no staged SliceIR` / `no staged PerimeterIR`) and the modifier later-failure
+transaction are deterministic control inputs, not generated modes, because they describe staging
+errors rather than partition geometry. The generator is total, so any rejection is an exhausted
+run.
+
+### Oracle
+
+The oracle is the exact finite cell-label model. Boundaries from the generated inputs and the
+observed output partition the checked box into elementary open rectangles; a doubled-coordinate
+midpoint per cell is classified with
+`slicer_sdk::test_support::property_testing::oracles::point_in_region`
+(`crates/slicer-sdk/src/test_support/property_testing/oracles/mod.rs`), independently testing
+membership in the donor inset, the slice-region polygons and each original role carrier. The
+conditional truth table then assigns the expected role: nonempty `W` uses `bridge > bottom > top >
+sparse` over `W`; empty `W` with walls assigns no role; empty `W` without walls assigns original
+bridge, original top minus bridge, no bottom and no sparse. Role/ownership truth tables are
+evaluated per cell, including donor identity from the exact `(object, source region id, ordered
+chain)` key. Output edges must be orthogonal and on the collected grid, and output area must equal
+the independently labelled cell-sum area using absolute contour/hole double areas from
+`signed_area2`. No random interior probes, no Clipper Boolean output as oracle and no epsilon are
+used; a missing-donor case is checked for unchanged roles and the named warning, not as a fatal
+error.
+
+### Tolerance
+
+Geometry is compared on the exact integer grid with no epsilon. Ring start and ring order may
+differ and geometry is compared semantically; byte equality is not claimed on this surface except
+where the modifier-child contained-bridge preservation branch is shared with `H-RUNTIME-MODIFIERS`.
+
+### Shrinking
+
+The case mode and the flags that decide the empty/nonempty inset branch, wall presence, donor
+exactness, chain order and missing-donor outcome come from a non-shrinkable plan. A shrink may
+simplify region geometry, chain slots and role carriers, and the cell oracle is recomputed for the
+shrunk case. The shrink audit requires a nonempty effective inset and a role-precedence overlap tag
+to survive at every step; fatal-stage witnesses are deterministic and therefore have no shrink
+interaction. Shrink limits are profile-bounded; completion is reported `null`/unknown.
+
+### Execution
+
+Both tiers run `in_process` with `timeout_ms = 0` and chacha, zero rejection budgets and total
+generators. The registry-backed command is
+`cargo xtask test --summary --properties --property H-RUNTIME-PARTITION --tier routine|extended`;
+`--seed <u64>` replays a retained stream, and the direct library
+identity is selected with `--lib --exact`. The recorded Windows runs are 13.79 s routine, 48.07 s
+extended and 13.31 s retained-seed replay, each with 64/512/64 accepted cases and zero rejected test
+calls; provenance is in [proptest-runtime-evidence.md](proptest-runtime-evidence.md).
+
+### Failure record
+
+`PropertyRun` writes the predecessor context/case/failure artifacts under `target/` with the
+tier-bearing reproduction command
+(`cargo xtask test --summary --properties --property H-RUNTIME-PARTITION --tier <routine|extended> --seed <seed>`),
+full context, concrete/debug input, direct reproduction and shrink status. Committed regressions are
+named concrete inputs, never seeds. `ConcreteInput` supports geometry and mesh payloads only, so
+`SliceIR`, `PerimeterIR` and prepared-cache fixtures are explicit finite builders that stage a real
+`LayerArena` and call the real hook. The deterministic control home is the inline
+`region_partition::property_tests` module; the shared model is
+`crates/slicer-runtime/tests/common/property_runtime_cells.rs`.
+
+### Acceptance
+
+This charter maps to AC-4 and AC-N2. `runtime_partition_precedence_and_identity_controls` falsifies
+swapped priority, an unclipped nonempty bridge, pair-only donor joins, missing-donor fatal
+conversion, and an unconditional empty-W subset assertion; it also checks that `Blackboard` and
+`PerimeterIR` stay unchanged and that prepared views re-associate current geometry.
+`runtime_partition_stage_and_domain_rejections` observes the missing-slice and missing-perimeter
+`FatalModule` identity and message fragments and the slice restoration on the missing-perimeter
+path, and rejects unsafe domains. Existing baselines `modifier_region_split_tdd` and
+`blackboard_layer_arena_tdd` are recorded in the evidence file. Cross-cutting execution for all
+four records maps to AC-5, and defect disposition maps to AC-N3, both carried by
+[proptest-runtime-evidence.md](proptest-runtime-evidence.md); the measured Windows runs all passed
+with 64/512/64 accepted cases and zero rejects, and the one confirmed SUT defect is fixed with a
+red/green regression.
+
 ## Direct-domain charters (packet `proptest-openrscad_02_pbt-domains`)
 
 These five records certify the shared direct-input helpers in
