@@ -218,9 +218,10 @@ Recorded while implementing; none changes the packet's scope.
    frozen fixture and assertion strength unchanged, and no fixture was regenerated. (b) The
    required hosted Windows execution was obtained through the routine `properties-windows` lane
    on draft PR #6: workflow run
-   https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43513004846 at commit `ba807a1`,
+   https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43523810446 at commit `e157169`,
    job `Properties (Windows)` = success, step `Run routine properties` = success, 12 property
-   binaries passed with `VERDICT: PASS` and no failures.
+   binaries passed with `VERDICT: PASS` and no failures. Two earlier heads of the same branch
+   also passed the lane.
 
 ## Authoring preflight
 

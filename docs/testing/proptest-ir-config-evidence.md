@@ -223,12 +223,16 @@ manufactured.
 
 | Field | Value |
 |---|---|
-| Workflow run | https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43513004846 |
-| Commit | `ba807a1` |
+| Workflow run | https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43523810446 |
+| Commit | `e157169` (includes the `carrier` fix) |
 | Job | `Properties (Windows)` — **success** |
 | Step | `Run routine properties` — **success** |
 | Property test binaries | 12 `test result: ok` lines, 0 `FAILED` |
 | Runner verdict | `VERDICT: PASS` |
+
+Two earlier runs on the same branch also passed this lane (`ba807a1` and `89c1e069`); the table
+cites the head that carries the final production change, so the evidence matches the code that
+would merge.
 
 The `properties-windows` job selects records dynamically from `test-properties.toml` with no
 hand-maintained list, so its `cargo xtask test --summary --properties --tier routine` invocation
@@ -314,7 +318,7 @@ verified the two code changes and the hosted CI run.
   `CONFIG_BLOCK`; the `carrier` kind removes it from the effective map, the typed-key roster and
   CLI dispatch, and the regression asserts absence from both maps.
 - **F6 — closed with a hosted run.** `Properties (Windows)` on
-  https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43513004846 at `ba807a1`
+  https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43523810446 at `e157169`
   succeeded and reported `VERDICT: PASS` over 12 property binaries, which is exactly the seven
   packet records plus the five `D-*` records.
 - **F1 residual — closed for the scheduler family.** The `H-CONFIG-BOUNDS` strategy was
