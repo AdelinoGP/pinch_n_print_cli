@@ -932,3 +932,44 @@ fn host_consumed_keys_survive_the_drop() {
         );
     }
 }
+
+/// Regression: the serialization-only `flat_bridge_closing_join` carrier must not
+/// reappear in `CONFIG_BLOCK`.
+///
+/// The carrier row keeps the Postcard field order of the frozen `RegionMapIR`
+/// 3.0.0 fixture without re-registering the retired key. `to_config_map` and
+/// `typed_field_keys` are checked in
+/// `crates/slicer-ir/tests/resolved_config_defaults_tdd.rs`; this test covers the
+/// **block** map, including the unregistered-typed-key fallback that a plain row
+/// would have fed.
+#[test]
+fn config_block_omits_the_serialization_only_carrier() {
+    const RETIRED_KEY: &str = "flat_bridge_closing_join";
+    let registry = real_registry();
+    let resolved = ResolvedConfig::default();
+
+    let block = registry.config_block_map(&resolved);
+    assert!(
+        !block.contains_key(RETIRED_KEY),
+        "CONFIG_BLOCK must not emit the retired carrier key; got {:?}",
+        block.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        !resolved.to_config_map().contains_key(RETIRED_KEY),
+        "the effective config map must not carry the retired key"
+    );
+
+    // The ordinary plain fields still flow through both channels, so the
+    // exclusion is specific to the carrier row kind rather than a global change.
+    let typed = ResolvedConfig::typed_field_keys();
+    for ordinary in ["wall_generator", "infill_type", "support_type"] {
+        assert!(
+            typed.contains(&ordinary),
+            "{ordinary} must remain a typed field key"
+        );
+        assert!(
+            block.contains_key(ordinary),
+            "{ordinary} must still be emitted into CONFIG_BLOCK"
+        );
+    }
+}

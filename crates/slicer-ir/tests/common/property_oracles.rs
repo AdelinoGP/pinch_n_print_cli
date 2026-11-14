@@ -664,11 +664,11 @@ pub fn extension_node_count(depth: usize, breadth: usize) -> Option<usize> {
 
 /// Clamp an extension shape so its **total** list-element count fits `budget`.
 ///
-/// Depth is preserved (it is bounded separately by `max_list_depth`); breadth is
-/// reduced until `extension_node_count(depth, breadth) <= budget`, with breadth
-/// never below one. This is the only place a caller should derive an extension
-/// shape from a total-element budget, so the `breadth^depth` leaf miscount cannot
-/// reappear.
+/// Depth is first clamped to the budget (`extension_node_count(d, 1) == d`, so a
+/// depth of `budget` is always satisfiable), then breadth is reduced until
+/// `extension_node_count(depth, breadth) <= budget`, never below one. This is the
+/// only place a caller should derive an extension shape from a total-element
+/// budget, so the `breadth^depth` leaf miscount cannot reappear.
 pub fn clamped_extension_shape(depth: usize, breadth: usize, budget: usize) -> (usize, usize) {
     // `extension_node_count(d, 1) == d`, so clamping the depth to the budget is
     // always sufficient: an otherwise impossible request such as depth 5 against

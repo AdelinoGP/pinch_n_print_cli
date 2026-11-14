@@ -1137,7 +1137,7 @@ fn config_from_seed(
     max_list_len: usize,
     max_list_depth: usize,
 ) -> ResolvedConfig {
-    match seed {
+    let config = match seed {
         ConfigSeed::Finite {
             layer_height,
             line_height,
@@ -1241,7 +1241,17 @@ fn config_from_seed(
             let bytes = property_oracles::representation_key(&previous);
             postcard::from_bytes(&bytes).expect("canonical config bytes decode")
         }
-    }
+    };
+    // The packet's `max_list_len` bounds the **total** generated list elements
+    // across sequences and extension trees. Checking it inside the generator
+    // covers every seed arm, including the non-grid ones that start from a
+    // default config and the `Repeat` arm that inherits a predecessor.
+    let elements = property_oracles::config_list_elements(&config);
+    assert!(
+        elements <= max_list_len,
+        "generated config carries {elements} list elements, exceeding the total budget {max_list_len}"
+    );
+    config
 }
 
 /// The per-configuration seed strategy, mode-locked per element.
