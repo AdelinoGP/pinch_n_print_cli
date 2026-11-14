@@ -1,0 +1,4130 @@
+{
+ "raw_dir": "target\\t155-probe",
+ "cells": {
+  "base-classic-off": {
+   "cell": "base-classic-off",
+   "tag": "probe-v3",
+   "raw": "target\\t155-probe\\base-classic-off-ns.jsonl",
+   "exit": 0,
+   "slice_complete": {
+    "elapsed_ms": 22318,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "phase_elapsed_ms": {
+    "validation": 3,
+    "prepass": 15041,
+    "per_layer": 6532,
+    "postpass": 662
+   },
+   "layer_count": 496,
+   "gcode_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+   "reference_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+   "reference_match": true,
+   "probe_rows": 105152,
+   "prep_views_by_stage_module": {
+    "Layer::Perimeters|com.core.classic-perimeters": {
+     "calls": 496,
+     "p50_us": 53001,
+     "sum_us": 26044582
+    },
+    "Layer::PerimetersPostProcess|com.core.fuzzy-skin": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3149
+    },
+    "Layer::PerimetersPostProcess|com.core.seam-placer": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3256
+    },
+    "Layer::Infill|com.core.raft-default": {
+     "calls": 496,
+     "p50_us": 52364,
+     "sum_us": 25986346
+    },
+    "Layer::Infill|com.core.gyroid-infill": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3726
+    },
+    "Layer::Infill|com.core.lightning-infill": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3034
+    },
+    "Layer::Infill|com.core.rectilinear-infill": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3592
+    },
+    "Layer::Infill|com.core.top-surface-ironing": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 4012
+    },
+    "Layer::Infill|com.core.wave-overhangs": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3228
+    },
+    "Layer::InfillPostProcess|com.core.infill-linker": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3194
+    },
+    "Layer::Support|com.core.tree-support": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3823
+    },
+    "Layer::SupportPostProcess|com.core.support-surface-ironing": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3588
+    },
+    "Layer::PathOptimization|com.core.path-optimization-default": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3254
+    }
+   },
+   "module_sites": {
+    "Layer::Perimeters|com.core.classic-perimeters": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 53001,
+      "p90_us": 71037,
+      "sum_us": 26044582
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3319
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 40,
+      "p90_us": 60,
+      "sum_us": 21911
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 140,
+      "p90_us": 215,
+      "sum_us": 81713
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 14,
+      "sum_us": 19407
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 23,
+      "sum_us": 4510
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 22609,
+      "p90_us": 44242,
+      "sum_us": 11516720
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 22973,
+      "p90_us": 44547,
+      "sum_us": 11644142
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 56,
+      "p90_us": 77,
+      "sum_us": 28845
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 23229,
+      "p90_us": 44976,
+      "sum_us": 11815232
+     }
+    },
+    "PrePass::PrepareRegions|host:prepare_regions": {
+     "pr_region_start": {
+      "n": 992,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 17
+     },
+     "pr_needs_support": {
+      "n": 992,
+      "p50_us": 49103,
+      "p90_us": 66352,
+      "sum_us": 49021163
+     },
+     "pr_surface_group": {
+      "n": 992,
+      "p50_us": 5,
+      "p90_us": 8,
+      "sum_us": 7357
+     },
+     "pr_quartile": {
+      "n": 992,
+      "p50_us": 17,
+      "p90_us": 34,
+      "sum_us": 19766
+     },
+     "pr_overhang_areas": {
+      "n": 992,
+      "p50_us": 2654,
+      "p90_us": 5284,
+      "sum_us": 2919843
+     },
+     "pr_prev_boundary": {
+      "n": 992,
+      "p50_us": 19,
+      "p90_us": 31,
+      "sum_us": 30323
+     },
+     "pr_return": {
+      "n": 992,
+      "p50_us": 8,
+      "p90_us": 27,
+      "sum_us": 11939
+     }
+    },
+    "sdk:derive_needs_support|host:sdk": {
+     "ns_call": {
+      "n": 992,
+      "p50_us": 49066,
+      "p90_us": 66315,
+      "sum_us": 48977738
+     }
+    },
+    "Layer::Perimeters|host:region_partition": {
+     "sync_audit": {
+      "n": 1488,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     }
+    },
+    "Layer::PerimetersPostProcess|com.core.fuzzy-skin": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3149
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 12,
+      "sum_us": 3425
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 12,
+      "p90_us": 29,
+      "sum_us": 7696
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 45,
+      "p90_us": 68,
+      "sum_us": 25383
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 10,
+      "sum_us": 4803
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 18,
+      "sum_us": 4475
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 643,
+      "p90_us": 805,
+      "sum_us": 338285
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 745,
+      "p90_us": 926,
+      "sum_us": 390899
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 40,
+      "p90_us": 59,
+      "sum_us": 20099
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 878,
+      "p90_us": 1116,
+      "sum_us": 458802
+     }
+    },
+    "Layer::PerimetersPostProcess|com.core.seam-placer": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3256
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 19,
+      "sum_us": 4046
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 10,
+      "p90_us": 25,
+      "sum_us": 7329
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 41,
+      "p90_us": 65,
+      "sum_us": 22667
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 11,
+      "sum_us": 3979
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 23,
+      "sum_us": 9138
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 674,
+      "p90_us": 859,
+      "sum_us": 330097
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 786,
+      "p90_us": 983,
+      "sum_us": 395087
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 38,
+      "p90_us": 55,
+      "sum_us": 19335
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 918,
+      "p90_us": 1158,
+      "sum_us": 472572
+     }
+    },
+    "Layer::Infill|com.core.raft-default": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 52364,
+      "p90_us": 70626,
+      "sum_us": 25986346
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 15,
+      "sum_us": 4114
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 13,
+      "p90_us": 31,
+      "sum_us": 8411
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 109,
+      "p90_us": 171,
+      "sum_us": 68935
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 12,
+      "sum_us": 4559
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 18,
+      "sum_us": 4307
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 196,
+      "p90_us": 225,
+      "sum_us": 98605
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 83,
+      "p90_us": 109,
+      "sum_us": 47349
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 58,
+      "p90_us": 92,
+      "sum_us": 32559
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 593,
+      "p90_us": 801,
+      "sum_us": 309628
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 25,
+      "p90_us": 41,
+      "sum_us": 14239
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1080,
+      "p90_us": 1387,
+      "sum_us": 562741
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 14,
+      "sum_us": 5247
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1257,
+      "p90_us": 1635,
+      "sum_us": 661521
+     }
+    },
+    "Layer::Infill|com.core.gyroid-infill": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 8,
+      "sum_us": 3726
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 14,
+      "sum_us": 3352
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 14,
+      "p90_us": 23,
+      "sum_us": 8629
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 84,
+      "p90_us": 140,
+      "sum_us": 46505
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 12,
+      "sum_us": 4342
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 27,
+      "sum_us": 6075
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 171,
+      "p90_us": 198,
+      "sum_us": 86263
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 87,
+      "p90_us": 103,
+      "sum_us": 45065
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 47,
+      "p90_us": 77,
+      "sum_us": 25926
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 753,
+      "p90_us": 1065,
+      "sum_us": 367806
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 23,
+      "p90_us": 37,
+      "sum_us": 14436
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1211,
+      "p90_us": 1565,
+      "sum_us": 596040
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 81,
+      "p90_us": 122,
+      "sum_us": 40782
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1434,
+      "p90_us": 1868,
+      "sum_us": 707785
+     }
+    },
+    "Layer::Infill|com.core.lightning-infill": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3034
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 16,
+      "sum_us": 3576
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 13,
+      "p90_us": 31,
+      "sum_us": 11648
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 68,
+      "p90_us": 118,
+      "sum_us": 35789
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 10,
+      "sum_us": 4501
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 20,
+      "sum_us": 4179
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 150,
+      "p90_us": 170,
+      "sum_us": 75477
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 137,
+      "p90_us": 157,
+      "sum_us": 69883
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 45,
+      "p90_us": 75,
+      "sum_us": 24362
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 580,
+      "p90_us": 780,
+      "sum_us": 288888
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 20,
+      "p90_us": 34,
+      "sum_us": 13368
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1061,
+      "p90_us": 1311,
+      "sum_us": 531745
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 15,
+      "sum_us": 6567
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1201,
+      "p90_us": 1504,
+      "sum_us": 605934
+     }
+    },
+    "Layer::Infill|com.core.rectilinear-infill": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 9,
+      "sum_us": 3592
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 19,
+      "sum_us": 3763
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 23,
+      "p90_us": 43,
+      "sum_us": 13530
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 63,
+      "p90_us": 113,
+      "sum_us": 33877
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 13,
+      "sum_us": 4701
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 26,
+      "sum_us": 5725
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 145,
+      "p90_us": 164,
+      "sum_us": 72832
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 86,
+      "p90_us": 103,
+      "sum_us": 44307
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 43,
+      "p90_us": 68,
+      "sum_us": 23823
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 612,
+      "p90_us": 822,
+      "sum_us": 292136
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 21,
+      "p90_us": 30,
+      "sum_us": 13386
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1022,
+      "p90_us": 1293,
+      "sum_us": 501154
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 9,
+      "p90_us": 18,
+      "sum_us": 6201
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1167,
+      "p90_us": 1488,
+      "sum_us": 571449
+     }
+    },
+    "Layer::Infill|com.core.top-surface-ironing": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 8,
+      "sum_us": 4012
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 11,
+      "sum_us": 3376
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 8
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 11,
+      "p90_us": 28,
+      "sum_us": 7905
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 62,
+      "p90_us": 116,
+      "sum_us": 34658
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 11,
+      "sum_us": 4302
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 24,
+      "sum_us": 6626
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 143,
+      "p90_us": 160,
+      "sum_us": 83595
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 82,
+      "p90_us": 99,
+      "sum_us": 42073
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 42,
+      "p90_us": 69,
+      "sum_us": 23397
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 544,
+      "p90_us": 770,
+      "sum_us": 281627
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 19,
+      "p90_us": 27,
+      "sum_us": 12564
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 948,
+      "p90_us": 1207,
+      "sum_us": 500358
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 7,
+      "p90_us": 14,
+      "sum_us": 5590
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1079,
+      "p90_us": 1393,
+      "sum_us": 566312
+     }
+    },
+    "Layer::Infill|com.core.wave-overhangs": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 2
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 8,
+      "sum_us": 3228
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 14,
+      "sum_us": 8884
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 18,
+      "p90_us": 29,
+      "sum_us": 10671
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 58,
+      "p90_us": 107,
+      "sum_us": 31921
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 13,
+      "sum_us": 4548
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 21,
+      "sum_us": 4316
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 140,
+      "p90_us": 160,
+      "sum_us": 70921
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 90,
+      "p90_us": 106,
+      "sum_us": 45892
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 41,
+      "p90_us": 66,
+      "sum_us": 21213
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 584,
+      "p90_us": 792,
+      "sum_us": 285172
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 19,
+      "p90_us": 27,
+      "sum_us": 10905
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 988,
+      "p90_us": 1251,
+      "sum_us": 491600
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 15,
+      "sum_us": 6722
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1114,
+      "p90_us": 1425,
+      "sum_us": 557892
+     }
+    },
+    "Layer::InfillPostProcess|com.core.infill-linker": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3194
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 20,
+      "sum_us": 3693
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 12,
+      "p90_us": 26,
+      "sum_us": 8061
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 58,
+      "p90_us": 104,
+      "sum_us": 31804
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 13,
+      "sum_us": 4607
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 2
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 25,
+      "sum_us": 4623
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 6847,
+      "p90_us": 14888,
+      "sum_us": 3904338
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 7022,
+      "p90_us": 15142,
+      "sum_us": 3993237
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 33,
+      "p90_us": 50,
+      "sum_us": 29911
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 7200,
+      "p90_us": 15463,
+      "sum_us": 4080858
+     }
+    },
+    "Layer::Support|com.core.tree-support": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3823
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 19,
+      "sum_us": 4081
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 20,
+      "p90_us": 29,
+      "sum_us": 11766
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 112,
+      "p90_us": 183,
+      "sum_us": 60200
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 11,
+      "sum_us": 4390
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 18,
+      "sum_us": 4087
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 921,
+      "p90_us": 1209,
+      "sum_us": 451858
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1037,
+      "p90_us": 1350,
+      "sum_us": 508655
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 14,
+      "sum_us": 8300
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1214,
+      "p90_us": 1599,
+      "sum_us": 604531
+     }
+    },
+    "Layer::SupportPostProcess|com.core.support-surface-ironing": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3588
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 24,
+      "sum_us": 4414
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 13,
+      "p90_us": 31,
+      "sum_us": 8380
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 76,
+      "p90_us": 133,
+      "sum_us": 57458
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 12,
+      "sum_us": 4149
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 26,
+      "sum_us": 4480
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 817,
+      "p90_us": 1043,
+      "sum_us": 393768
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 932,
+      "p90_us": 1178,
+      "sum_us": 449196
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 14,
+      "sum_us": 5330
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1062,
+      "p90_us": 1383,
+      "sum_us": 535573
+     }
+    },
+    "Layer::PathOptimization|com.core.path-optimization-default": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 8,
+      "sum_us": 3254
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 10,
+      "sum_us": 3353
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 12,
+      "p90_us": 24,
+      "sum_us": 7712
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 63,
+      "p90_us": 114,
+      "sum_us": 33137
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 12,
+      "sum_us": 4171
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 3
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 20,
+      "sum_us": 4345
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 510,
+      "p90_us": 639,
+      "sum_us": 248372
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 604,
+      "p90_us": 752,
+      "sum_us": 296054
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 14,
+      "sum_us": 5797
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 731,
+      "p90_us": 931,
+      "sum_us": 359913
+     }
+    }
+   },
+   "prepare_regions_segments": {
+    "pr_region_start": {
+     "n": 992,
+     "p50_us": 0,
+     "sum_us": 17
+    },
+    "pr_needs_support": {
+     "n": 992,
+     "p50_us": 49103,
+     "sum_us": 49021163
+    },
+    "pr_surface_group": {
+     "n": 992,
+     "p50_us": 5,
+     "sum_us": 7357
+    },
+    "pr_quartile": {
+     "n": 992,
+     "p50_us": 17,
+     "sum_us": 19766
+    },
+    "pr_overhang_areas": {
+     "n": 992,
+     "p50_us": 2654,
+     "sum_us": 2919843
+    },
+    "pr_prev_boundary": {
+     "n": 992,
+     "p50_us": 19,
+     "sum_us": 30323
+    },
+    "pr_return": {
+     "n": 992,
+     "p50_us": 8,
+     "sum_us": 11939
+    }
+   },
+   "needs_support": {
+    "calls": 992,
+    "p50_us": 49066,
+    "sum_us": 48977738,
+    "footprints_p50": 1,
+    "footprints_max": 1,
+    "bbox_hits_max": 1,
+    "value_true": 992,
+    "value_false": 0
+   },
+   "sync_audit": {
+    "calls": 1488,
+    "changed": 0,
+    "points_p50": 5656
+   },
+   "runs": [
+    {
+     "tag": "preprobe",
+     "raw": "target\\t155-instrumented\\base-classic-off.jsonl",
+     "slice_elapsed_ms": 31964,
+     "per_layer_ms": 8678,
+     "prepass_ms": 22150,
+     "reference_match": true,
+     "gcode_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e"
+    },
+    {
+     "tag": "probe-v1",
+     "raw": "target\\t155-probe\\base-classic-off.jsonl",
+     "slice_elapsed_ms": 21863,
+     "per_layer_ms": 6445,
+     "prepass_ms": 14673,
+     "reference_match": true,
+     "gcode_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e"
+    },
+    {
+     "tag": "probe-v2",
+     "raw": "target\\t155-probe\\base-classic-off-sub.jsonl",
+     "slice_elapsed_ms": 22582,
+     "per_layer_ms": 6201,
+     "prepass_ms": 15614,
+     "reference_match": true,
+     "gcode_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e"
+    },
+    {
+     "tag": "probe-v3",
+     "raw": "target\\t155-probe\\base-classic-off-ns.jsonl",
+     "slice_elapsed_ms": 22318,
+     "per_layer_ms": 6532,
+     "prepass_ms": 15041,
+     "reference_match": true,
+     "gcode_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e"
+    }
+   ]
+  },
+  "base-classic-off-decline": {
+   "cell": "base-classic-off-decline",
+   "tag": "decline",
+   "raw": "target\\t155-probe\\base-classic-off-decline.jsonl",
+   "exit": 0,
+   "slice_complete": {
+    "elapsed_ms": 21736,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "phase_elapsed_ms": {
+    "validation": 3,
+    "prepass": 14856,
+    "per_layer": 6141,
+    "postpass": 658
+   },
+   "layer_count": 496,
+   "gcode_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+   "reference_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+   "reference_match": true,
+   "probe_rows": 95728,
+   "prep_views_by_stage_module": {
+    "Layer::Perimeters|com.core.classic-perimeters": {
+     "calls": 496,
+     "p50_us": 50226,
+     "sum_us": 24749047
+    },
+    "Layer::PerimetersPostProcess|com.core.fuzzy-skin": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3546
+    },
+    "Layer::PerimetersPostProcess|com.core.seam-placer": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3760
+    },
+    "Layer::Infill|com.core.gyroid-infill": {
+     "calls": 496,
+     "p50_us": 50023,
+     "sum_us": 24533074
+    },
+    "Layer::Infill|com.core.lightning-infill": {
+     "calls": 496,
+     "p50_us": 4,
+     "sum_us": 3433
+    },
+    "Layer::Infill|com.core.rectilinear-infill": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3382
+    },
+    "Layer::Infill|com.core.top-surface-ironing": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3118
+    },
+    "Layer::Infill|com.core.wave-overhangs": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3193
+    },
+    "Layer::InfillPostProcess|com.core.infill-linker": {
+     "calls": 496,
+     "p50_us": 4,
+     "sum_us": 2952
+    },
+    "Layer::Support|com.core.tree-support": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3189
+    },
+    "Layer::SupportPostProcess|com.core.support-surface-ironing": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3140
+    },
+    "Layer::PathOptimization|com.core.path-optimization-default": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3471
+    }
+   },
+   "module_sites": {
+    "Layer::Perimeters|com.core.classic-perimeters": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 50226,
+      "p90_us": 65370,
+      "sum_us": 24749047
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3560
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 39,
+      "p90_us": 57,
+      "sum_us": 21389
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 138,
+      "p90_us": 210,
+      "sum_us": 66521
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 12,
+      "sum_us": 4653
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 17,
+      "sum_us": 4105
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 20607,
+      "p90_us": 38679,
+      "sum_us": 10808673
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 20877,
+      "p90_us": 38986,
+      "sum_us": 10936030
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 54,
+      "p90_us": 79,
+      "sum_us": 27257
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 21129,
+      "p90_us": 39305,
+      "sum_us": 11072162
+     }
+    },
+    "PrePass::PrepareRegions|host:prepare_regions": {
+     "pr_region_start": {
+      "n": 992,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 9
+     },
+     "pr_needs_support": {
+      "n": 992,
+      "p50_us": 46675,
+      "p90_us": 61364,
+      "sum_us": 46445766
+     },
+     "pr_surface_group": {
+      "n": 992,
+      "p50_us": 15,
+      "p90_us": 25,
+      "sum_us": 19794
+     },
+     "pr_quartile": {
+      "n": 992,
+      "p50_us": 17,
+      "p90_us": 25,
+      "sum_us": 18530
+     },
+     "pr_overhang_areas": {
+      "n": 992,
+      "p50_us": 2647,
+      "p90_us": 5036,
+      "sum_us": 2744469
+     },
+     "pr_prev_boundary": {
+      "n": 992,
+      "p50_us": 19,
+      "p90_us": 29,
+      "sum_us": 22099
+     },
+     "pr_return": {
+      "n": 992,
+      "p50_us": 7,
+      "p90_us": 23,
+      "sum_us": 12215
+     }
+    },
+    "Layer::Perimeters|host:region_partition": {
+     "sync_audit": {
+      "n": 1488,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     }
+    },
+    "Layer::PerimetersPostProcess|com.core.fuzzy-skin": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 8,
+      "sum_us": 3546
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 25,
+      "sum_us": 4407
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 12,
+      "p90_us": 35,
+      "sum_us": 8638
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 44,
+      "p90_us": 75,
+      "sum_us": 22726
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 12,
+      "sum_us": 4706
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 25,
+      "sum_us": 4672
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 635,
+      "p90_us": 825,
+      "sum_us": 317985
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 722,
+      "p90_us": 926,
+      "sum_us": 363427
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 39,
+      "p90_us": 59,
+      "sum_us": 19954
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 867,
+      "p90_us": 1095,
+      "sum_us": 429449
+     }
+    },
+    "Layer::PerimetersPostProcess|com.core.seam-placer": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3760
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 21,
+      "sum_us": 4029
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 2
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 10,
+      "p90_us": 29,
+      "sum_us": 7247
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 39,
+      "p90_us": 65,
+      "sum_us": 20028
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 10,
+      "sum_us": 4093
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 24,
+      "sum_us": 6532
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 666,
+      "p90_us": 875,
+      "sum_us": 322059
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 761,
+      "p90_us": 992,
+      "sum_us": 373639
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 38,
+      "p90_us": 58,
+      "sum_us": 18846
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 878,
+      "p90_us": 1171,
+      "sum_us": 434637
+     }
+    },
+    "Layer::Infill|com.core.gyroid-infill": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 50023,
+      "p90_us": 65521,
+      "sum_us": 24533074
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 9,
+      "sum_us": 7956
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 2
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 16,
+      "p90_us": 34,
+      "sum_us": 9855
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 107,
+      "p90_us": 171,
+      "sum_us": 60368
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 12,
+      "sum_us": 4621
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 24,
+      "sum_us": 5123
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 197,
+      "p90_us": 229,
+      "sum_us": 99032
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 91,
+      "p90_us": 113,
+      "sum_us": 48127
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 55,
+      "p90_us": 87,
+      "sum_us": 28844
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 792,
+      "p90_us": 1055,
+      "sum_us": 373210
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 26,
+      "p90_us": 41,
+      "sum_us": 14348
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1284,
+      "p90_us": 1642,
+      "sum_us": 623696
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 84,
+      "p90_us": 121,
+      "sum_us": 41743
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1534,
+      "p90_us": 1999,
+      "sum_us": 753477
+     }
+    },
+    "Layer::Infill|com.core.lightning-infill": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 7,
+      "sum_us": 3433
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 15,
+      "sum_us": 3500
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 13,
+      "p90_us": 27,
+      "sum_us": 8532
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 79,
+      "p90_us": 133,
+      "sum_us": 40301
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 10,
+      "sum_us": 4097
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 19,
+      "sum_us": 4243
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 168,
+      "p90_us": 195,
+      "sum_us": 84955
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 135,
+      "p90_us": 161,
+      "sum_us": 68056
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 47,
+      "p90_us": 74,
+      "sum_us": 23940
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 571,
+      "p90_us": 782,
+      "sum_us": 269494
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 20,
+      "p90_us": 33,
+      "sum_us": 12137
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1074,
+      "p90_us": 1332,
+      "sum_us": 513936
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 7,
+      "p90_us": 14,
+      "sum_us": 5574
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1208,
+      "p90_us": 1522,
+      "sum_us": 584990
+     }
+    },
+    "Layer::Infill|com.core.rectilinear-infill": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3382
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 14,
+      "sum_us": 3511
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 23,
+      "p90_us": 38,
+      "sum_us": 13453
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 63,
+      "p90_us": 111,
+      "sum_us": 33133
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 11,
+      "sum_us": 4800
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 20,
+      "sum_us": 4238
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 150,
+      "p90_us": 172,
+      "sum_us": 75391
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 85,
+      "p90_us": 100,
+      "sum_us": 43432
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 42,
+      "p90_us": 64,
+      "sum_us": 21484
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 606,
+      "p90_us": 806,
+      "sum_us": 284367
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 20,
+      "p90_us": 30,
+      "sum_us": 11749
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1028,
+      "p90_us": 1277,
+      "sum_us": 489781
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 9,
+      "p90_us": 16,
+      "sum_us": 5900
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1168,
+      "p90_us": 1456,
+      "sum_us": 557830
+     }
+    },
+    "Layer::Infill|com.core.top-surface-ironing": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3118
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 19,
+      "sum_us": 6222
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 11,
+      "p90_us": 29,
+      "sum_us": 7832
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 59,
+      "p90_us": 103,
+      "sum_us": 31735
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 12,
+      "sum_us": 4291
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 20,
+      "sum_us": 4099
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 146,
+      "p90_us": 163,
+      "sum_us": 72915
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 81,
+      "p90_us": 96,
+      "sum_us": 41835
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 40,
+      "p90_us": 64,
+      "sum_us": 20576
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 553,
+      "p90_us": 762,
+      "sum_us": 263610
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 19,
+      "p90_us": 29,
+      "sum_us": 11855
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 955,
+      "p90_us": 1213,
+      "sum_us": 463914
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 7,
+      "p90_us": 14,
+      "sum_us": 5501
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1079,
+      "p90_us": 1384,
+      "sum_us": 524362
+     }
+    },
+    "Layer::Infill|com.core.wave-overhangs": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3193
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 15,
+      "sum_us": 3657
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 19,
+      "p90_us": 31,
+      "sum_us": 11007
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 54,
+      "p90_us": 97,
+      "sum_us": 28990
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 11,
+      "sum_us": 4338
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 25,
+      "sum_us": 4750
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 142,
+      "p90_us": 157,
+      "sum_us": 72435
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 88,
+      "p90_us": 108,
+      "sum_us": 46100
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 40,
+      "p90_us": 64,
+      "sum_us": 21300
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 586,
+      "p90_us": 783,
+      "sum_us": 277017
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 19,
+      "p90_us": 29,
+      "sum_us": 11083
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 993,
+      "p90_us": 1266,
+      "sum_us": 483870
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 14,
+      "sum_us": 5084
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1105,
+      "p90_us": 1424,
+      "sum_us": 544310
+     }
+    },
+    "Layer::InfillPostProcess|com.core.infill-linker": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 7,
+      "sum_us": 2952
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 26,
+      "sum_us": 4181
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 12,
+      "p90_us": 31,
+      "sum_us": 8307
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 55,
+      "p90_us": 98,
+      "sum_us": 29003
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 12,
+      "sum_us": 4413
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 23,
+      "sum_us": 4136
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 6763,
+      "p90_us": 13768,
+      "sum_us": 3657578
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 6953,
+      "p90_us": 14002,
+      "sum_us": 3748643
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 33,
+      "p90_us": 52,
+      "sum_us": 17432
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 7111,
+      "p90_us": 14353,
+      "sum_us": 3821535
+     }
+    },
+    "Layer::Support|com.core.tree-support": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 8,
+      "sum_us": 3189
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 18,
+      "sum_us": 4699
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 20,
+      "p90_us": 36,
+      "sum_us": 11701
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 111,
+      "p90_us": 184,
+      "sum_us": 53478
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 13,
+      "sum_us": 4601
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 22,
+      "sum_us": 4391
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 931,
+      "p90_us": 1201,
+      "sum_us": 447430
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1054,
+      "p90_us": 1334,
+      "sum_us": 510235
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 16,
+      "sum_us": 6078
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1234,
+      "p90_us": 1599,
+      "sum_us": 597922
+     }
+    },
+    "Layer::SupportPostProcess|com.core.support-surface-ironing": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 5
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3140
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 21,
+      "sum_us": 4208
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 13,
+      "p90_us": 26,
+      "sum_us": 8179
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 75,
+      "p90_us": 124,
+      "sum_us": 38688
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 12,
+      "sum_us": 4931
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 25,
+      "sum_us": 4608
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 821,
+      "p90_us": 1061,
+      "sum_us": 393794
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 930,
+      "p90_us": 1195,
+      "sum_us": 449636
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 16,
+      "sum_us": 5648
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1066,
+      "p90_us": 1382,
+      "sum_us": 519034
+     }
+    },
+    "Layer::PathOptimization|com.core.path-optimization-default": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3471
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 21,
+      "sum_us": 3954
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 12,
+      "p90_us": 26,
+      "sum_us": 8030
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 61,
+      "p90_us": 103,
+      "sum_us": 32033
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 11,
+      "sum_us": 5248
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 21,
+      "sum_us": 4013
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 509,
+      "p90_us": 637,
+      "sum_us": 248349
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 588,
+      "p90_us": 736,
+      "sum_us": 289718
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 13,
+      "sum_us": 5216
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 708,
+      "p90_us": 907,
+      "sum_us": 351010
+     }
+    }
+   },
+   "prepare_regions_segments": {
+    "pr_region_start": {
+     "n": 992,
+     "p50_us": 0,
+     "sum_us": 9
+    },
+    "pr_needs_support": {
+     "n": 992,
+     "p50_us": 46675,
+     "sum_us": 46445766
+    },
+    "pr_surface_group": {
+     "n": 992,
+     "p50_us": 15,
+     "sum_us": 19794
+    },
+    "pr_quartile": {
+     "n": 992,
+     "p50_us": 17,
+     "sum_us": 18530
+    },
+    "pr_overhang_areas": {
+     "n": 992,
+     "p50_us": 2647,
+     "sum_us": 2744469
+    },
+    "pr_prev_boundary": {
+     "n": 992,
+     "p50_us": 19,
+     "sum_us": 22099
+    },
+    "pr_return": {
+     "n": 992,
+     "p50_us": 7,
+     "sum_us": 12215
+    }
+   },
+   "needs_support": {
+    "calls": 0,
+    "p50_us": 0,
+    "sum_us": 0,
+    "footprints_p50": 0,
+    "footprints_max": 0,
+    "bbox_hits_max": 0,
+    "value_true": 0,
+    "value_false": 0
+   },
+   "sync_audit": {
+    "calls": 1488,
+    "changed": 0,
+    "points_p50": 5656
+   },
+   "runs": [
+    {
+     "tag": "decline",
+     "raw": "target\\t155-probe\\base-classic-off-decline.jsonl",
+     "slice_elapsed_ms": 21736,
+     "per_layer_ms": 6141,
+     "prepass_ms": 14856,
+     "reference_match": true,
+     "gcode_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e"
+    }
+   ]
+  },
+  "base-classic-on": {
+   "cell": "base-classic-on",
+   "tag": "probe-v3",
+   "raw": "target\\t155-probe\\base-classic-on-ns.jsonl",
+   "exit": 0,
+   "slice_complete": {
+    "elapsed_ms": 68569,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "phase_elapsed_ms": {
+    "validation": 2,
+    "prepass": 56284,
+    "per_layer": 10112,
+    "postpass": 2092
+   },
+   "layer_count": 496,
+   "gcode_sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+   "reference_sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+   "reference_match": true,
+   "probe_rows": 105648,
+   "prep_views_by_stage_module": {
+    "Layer::Perimeters|com.core.classic-perimeters": {
+     "calls": 496,
+     "p50_us": 53455,
+     "sum_us": 26340944
+    },
+    "Layer::PerimetersPostProcess|com.core.fuzzy-skin": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3354
+    },
+    "Layer::PerimetersPostProcess|com.core.seam-placer": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 2955
+    },
+    "Layer::Infill|com.core.raft-default": {
+     "calls": 496,
+     "p50_us": 53290,
+     "sum_us": 26101248
+    },
+    "Layer::Infill|com.core.gyroid-infill": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3202
+    },
+    "Layer::Infill|com.core.lightning-infill": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 2974
+    },
+    "Layer::Infill|com.core.rectilinear-infill": {
+     "calls": 496,
+     "p50_us": 4,
+     "sum_us": 2919
+    },
+    "Layer::Infill|com.core.top-surface-ironing": {
+     "calls": 496,
+     "p50_us": 4,
+     "sum_us": 3063
+    },
+    "Layer::Infill|com.core.wave-overhangs": {
+     "calls": 496,
+     "p50_us": 4,
+     "sum_us": 3099
+    },
+    "Layer::InfillPostProcess|com.core.infill-linker": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 2786
+    },
+    "Layer::Support|com.core.tree-support": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 3209
+    },
+    "Layer::SupportPostProcess|com.core.support-surface-ironing": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 2906
+    },
+    "Layer::PathOptimization|com.core.path-optimization-default": {
+     "calls": 496,
+     "p50_us": 5,
+     "sum_us": 2961
+    }
+   },
+   "module_sites": {
+    "sdk:derive_needs_support|host:sdk": {
+     "ns_call": {
+      "n": 1488,
+      "p50_us": 48513,
+      "p90_us": 65643,
+      "sum_us": 72811849
+     }
+    },
+    "Layer::Perimeters|com.core.classic-perimeters": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 53455,
+      "p90_us": 72935,
+      "sum_us": 26340944
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 5114
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 36,
+      "p90_us": 45,
+      "sum_us": 19968
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 132,
+      "p90_us": 206,
+      "sum_us": 66919
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 11,
+      "sum_us": 4148
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 9,
+      "sum_us": 3656
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 23145,
+      "p90_us": 42069,
+      "sum_us": 11528147
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 23484,
+      "p90_us": 42518,
+      "sum_us": 11691004
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 53,
+      "p90_us": 75,
+      "sum_us": 27132
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 23771,
+      "p90_us": 42859,
+      "sum_us": 11824578
+     }
+    },
+    "PrePass::PrepareRegions|host:prepare_regions": {
+     "pr_region_start": {
+      "n": 992,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 4
+     },
+     "pr_needs_support": {
+      "n": 992,
+      "p50_us": 49287,
+      "p90_us": 67306,
+      "sum_us": 49465030
+     },
+     "pr_surface_group": {
+      "n": 992,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 6338
+     },
+     "pr_quartile": {
+      "n": 992,
+      "p50_us": 17,
+      "p90_us": 27,
+      "sum_us": 20630
+     },
+     "pr_overhang_areas": {
+      "n": 992,
+      "p50_us": 2684,
+      "p90_us": 5161,
+      "sum_us": 2887738
+     },
+     "pr_prev_boundary": {
+      "n": 992,
+      "p50_us": 18,
+      "p90_us": 28,
+      "sum_us": 27043
+     },
+     "pr_return": {
+      "n": 992,
+      "p50_us": 7,
+      "p90_us": 19,
+      "sum_us": 17509
+     }
+    },
+    "Layer::Perimeters|host:region_partition": {
+     "sync_audit": {
+      "n": 1488,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     }
+    },
+    "Layer::PerimetersPostProcess|com.core.fuzzy-skin": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3354
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 8,
+      "sum_us": 3261
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 12,
+      "p90_us": 18,
+      "sum_us": 6922
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 43,
+      "p90_us": 66,
+      "sum_us": 23169
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 10,
+      "sum_us": 3752
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 12,
+      "sum_us": 4089
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 636,
+      "p90_us": 818,
+      "sum_us": 324194
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 721,
+      "p90_us": 917,
+      "sum_us": 369388
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 38,
+      "p90_us": 55,
+      "sum_us": 23831
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 849,
+      "p90_us": 1086,
+      "sum_us": 436739
+     }
+    },
+    "Layer::PerimetersPostProcess|com.core.seam-placer": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 2955
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 7,
+      "sum_us": 2828
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 10,
+      "p90_us": 20,
+      "sum_us": 6802
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 37,
+      "p90_us": 58,
+      "sum_us": 22174
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 9,
+      "sum_us": 3520
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 8,
+      "sum_us": 3817
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 653,
+      "p90_us": 861,
+      "sum_us": 328290
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 742,
+      "p90_us": 957,
+      "sum_us": 379556
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 37,
+      "p90_us": 54,
+      "sum_us": 18397
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 861,
+      "p90_us": 1114,
+      "sum_us": 439245
+     }
+    },
+    "Layer::Infill|com.core.raft-default": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 53290,
+      "p90_us": 70613,
+      "sum_us": 26101248
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 8,
+      "sum_us": 3338
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 3
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 13,
+      "p90_us": 23,
+      "sum_us": 8231
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 103,
+      "p90_us": 166,
+      "sum_us": 52473
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 10,
+      "sum_us": 5337
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 11,
+      "sum_us": 3869
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 192,
+      "p90_us": 222,
+      "sum_us": 96845
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 81,
+      "p90_us": 101,
+      "sum_us": 52021
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 57,
+      "p90_us": 89,
+      "sum_us": 29425
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 801,
+      "p90_us": 1097,
+      "sum_us": 382857
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 25,
+      "p90_us": 44,
+      "sum_us": 14149
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1283,
+      "p90_us": 1649,
+      "sum_us": 627526
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 13,
+      "sum_us": 5039
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1452,
+      "p90_us": 1865,
+      "sum_us": 709968
+     }
+    },
+    "Layer::Infill|com.core.gyroid-infill": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3202
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 8,
+      "sum_us": 4134
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 14,
+      "p90_us": 22,
+      "sum_us": 8139
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 78,
+      "p90_us": 129,
+      "sum_us": 65516
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 9,
+      "sum_us": 4262
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 8,
+      "sum_us": 3660
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 165,
+      "p90_us": 196,
+      "sum_us": 83674
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 84,
+      "p90_us": 97,
+      "sum_us": 69399
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 46,
+      "p90_us": 70,
+      "sum_us": 24870
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 989,
+      "p90_us": 1350,
+      "sum_us": 464083
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 23,
+      "p90_us": 37,
+      "sum_us": 17122
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1419,
+      "p90_us": 1841,
+      "sum_us": 709609
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 79,
+      "p90_us": 117,
+      "sum_us": 39325
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1635,
+      "p90_us": 2145,
+      "sum_us": 837613
+     }
+    },
+    "Layer::Infill|com.core.lightning-infill": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 2974
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 9,
+      "sum_us": 3120
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 13,
+      "p90_us": 24,
+      "sum_us": 7869
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 64,
+      "p90_us": 114,
+      "sum_us": 33666
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 11,
+      "sum_us": 3989
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 6
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 23,
+      "sum_us": 3992
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 147,
+      "p90_us": 170,
+      "sum_us": 98168
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 135,
+      "p90_us": 154,
+      "sum_us": 74574
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 43,
+      "p90_us": 71,
+      "sum_us": 22778
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 768,
+      "p90_us": 1066,
+      "sum_us": 378470
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 20,
+      "p90_us": 29,
+      "sum_us": 11339
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1237,
+      "p90_us": 1589,
+      "sum_us": 634265
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 7,
+      "p90_us": 12,
+      "sum_us": 4621
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1367,
+      "p90_us": 1777,
+      "sum_us": 694797
+     }
+    },
+    "Layer::Infill|com.core.rectilinear-infill": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 7,
+      "sum_us": 2919
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 7,
+      "sum_us": 2913
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 22,
+      "p90_us": 33,
+      "sum_us": 12350
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 58,
+      "p90_us": 97,
+      "sum_us": 30859
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 8,
+      "sum_us": 5236
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 8,
+      "sum_us": 3429
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 144,
+      "p90_us": 164,
+      "sum_us": 95877
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 83,
+      "p90_us": 98,
+      "sum_us": 42383
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 40,
+      "p90_us": 62,
+      "sum_us": 20656
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 798,
+      "p90_us": 1108,
+      "sum_us": 383419
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 21,
+      "p90_us": 30,
+      "sum_us": 16047
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1183,
+      "p90_us": 1573,
+      "sum_us": 605942
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 15,
+      "sum_us": 5563
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1316,
+      "p90_us": 1756,
+      "sum_us": 670256
+     }
+    },
+    "Layer::Infill|com.core.top-surface-ironing": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 7,
+      "sum_us": 3063
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 7,
+      "sum_us": 3191
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 11,
+      "p90_us": 18,
+      "sum_us": 6650
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 56,
+      "p90_us": 97,
+      "sum_us": 32971
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 8,
+      "sum_us": 3718
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 10,
+      "sum_us": 3550
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 141,
+      "p90_us": 159,
+      "sum_us": 71130
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 79,
+      "p90_us": 95,
+      "sum_us": 41145
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 39,
+      "p90_us": 60,
+      "sum_us": 20308
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 747,
+      "p90_us": 1049,
+      "sum_us": 367715
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 20,
+      "p90_us": 27,
+      "sum_us": 17458
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1119,
+      "p90_us": 1483,
+      "sum_us": 576278
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 7,
+      "p90_us": 12,
+      "sum_us": 4926
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1229,
+      "p90_us": 1643,
+      "sum_us": 634404
+     }
+    },
+    "Layer::Infill|com.core.wave-overhangs": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 7,
+      "sum_us": 3099
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 8,
+      "sum_us": 3019
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 18,
+      "p90_us": 25,
+      "sum_us": 11947
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 54,
+      "p90_us": 92,
+      "sum_us": 33511
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 10,
+      "sum_us": 4136
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 9,
+      "sum_us": 3188
+     },
+     "dl_linker": {
+      "n": 496,
+      "p50_us": 138,
+      "p90_us": 159,
+      "sum_us": 72008
+     },
+     "dl_instantiate": {
+      "n": 496,
+      "p50_us": 87,
+      "p90_us": 104,
+      "sum_us": 44652
+     },
+     "dl_push_regions": {
+      "n": 496,
+      "p50_us": 39,
+      "p90_us": 58,
+      "sum_us": 19828
+     },
+     "dl_call": {
+      "n": 496,
+      "p50_us": 774,
+      "p90_us": 1088,
+      "sum_us": 400162
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 20,
+      "p90_us": 28,
+      "sum_us": 11314
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 1153,
+      "p90_us": 1521,
+      "sum_us": 595607
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 12,
+      "sum_us": 4897
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1266,
+      "p90_us": 1685,
+      "sum_us": 662305
+     }
+    },
+    "Layer::InfillPostProcess|com.core.infill-linker": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 6,
+      "sum_us": 2786
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 12,
+      "sum_us": 3445
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 12,
+      "p90_us": 17,
+      "sum_us": 7886
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 54,
+      "p90_us": 92,
+      "sum_us": 28309
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 11,
+      "sum_us": 3589
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 7,
+      "sum_us": 3306
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 7187,
+      "p90_us": 14873,
+      "sum_us": 3868249
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 7530,
+      "p90_us": 15118,
+      "sum_us": 3983451
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 32,
+      "p90_us": 49,
+      "sum_us": 16883
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 7692,
+      "p90_us": 15306,
+      "sum_us": 4053873
+     }
+    },
+    "Layer::Support|com.core.tree-support": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 3209
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 7,
+      "sum_us": 2989
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 29
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 19,
+      "p90_us": 29,
+      "sum_us": 10794
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 105,
+      "p90_us": 181,
+      "sum_us": 51152
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 11,
+      "sum_us": 12204
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 1
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 9,
+      "sum_us": 3605
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 85400,
+      "p90_us": 150531,
+      "sum_us": 41130210
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 85578,
+      "p90_us": 150718,
+      "sum_us": 41228837
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 164,
+      "p90_us": 277,
+      "sum_us": 79161
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 85937,
+      "p90_us": 151040,
+      "sum_us": 41395986
+     }
+    },
+    "Layer::SupportPostProcess|com.core.support-surface-ironing": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 80
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 7,
+      "sum_us": 2906
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 8,
+      "sum_us": 3137
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 13,
+      "p90_us": 22,
+      "sum_us": 8156
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 120,
+      "p90_us": 178,
+      "sum_us": 55861
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 11,
+      "sum_us": 4501
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 17,
+      "sum_us": 4161
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 870,
+      "p90_us": 1143,
+      "sum_us": 442121
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 979,
+      "p90_us": 1257,
+      "sum_us": 494369
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 13,
+      "sum_us": 23219
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 1146,
+      "p90_us": 1496,
+      "sum_us": 596382
+     }
+    },
+    "Layer::PathOptimization|com.core.path-optimization-default": {
+     "bracket_start": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "prep_views": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 6,
+      "sum_us": 2961
+     },
+     "input_ctor": {
+      "n": 496,
+      "p50_us": 4,
+      "p90_us": 12,
+      "sum_us": 3460
+     },
+     "rs_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "rs_selection": {
+      "n": 496,
+      "p50_us": 13,
+      "p90_us": 28,
+      "sum_us": 8414
+     },
+     "rs_transport": {
+      "n": 496,
+      "p50_us": 87,
+      "p90_us": 157,
+      "sum_us": 45216
+     },
+     "rs_envelope": {
+      "n": 496,
+      "p50_us": 6,
+      "p90_us": 10,
+      "sum_us": 3911
+     },
+     "dl_entry": {
+      "n": 496,
+      "p50_us": 0,
+      "p90_us": 0,
+      "sum_us": 0
+     },
+     "dl_acquire": {
+      "n": 496,
+      "p50_us": 5,
+      "p90_us": 9,
+      "sum_us": 14430
+     },
+     "dl_return": {
+      "n": 496,
+      "p50_us": 575,
+      "p90_us": 715,
+      "sum_us": 289186
+     },
+     "rs_dispatch": {
+      "n": 496,
+      "p50_us": 656,
+      "p90_us": 820,
+      "sum_us": 341888
+     },
+     "rs_commit": {
+      "n": 496,
+      "p50_us": 8,
+      "p90_us": 13,
+      "sum_us": 5272
+     },
+     "run_stage": {
+      "n": 496,
+      "p50_us": 807,
+      "p90_us": 1041,
+      "sum_us": 415975
+     }
+    }
+   },
+   "prepare_regions_segments": {
+    "pr_region_start": {
+     "n": 992,
+     "p50_us": 0,
+     "sum_us": 4
+    },
+    "pr_needs_support": {
+     "n": 992,
+     "p50_us": 49287,
+     "sum_us": 49465030
+    },
+    "pr_surface_group": {
+     "n": 992,
+     "p50_us": 5,
+     "sum_us": 6338
+    },
+    "pr_quartile": {
+     "n": 992,
+     "p50_us": 17,
+     "sum_us": 20630
+    },
+    "pr_overhang_areas": {
+     "n": 992,
+     "p50_us": 2684,
+     "sum_us": 2887738
+    },
+    "pr_prev_boundary": {
+     "n": 992,
+     "p50_us": 18,
+     "sum_us": 27043
+    },
+    "pr_return": {
+     "n": 992,
+     "p50_us": 7,
+     "sum_us": 17509
+    }
+   },
+   "needs_support": {
+    "calls": 1488,
+    "p50_us": 48513,
+    "sum_us": 72811849,
+    "footprints_p50": 1,
+    "footprints_max": 1,
+    "bbox_hits_max": 1,
+    "value_true": 1488,
+    "value_false": 0
+   },
+   "sync_audit": {
+    "calls": 1488,
+    "changed": 0,
+    "points_p50": 5656
+   },
+   "runs": [
+    {
+     "tag": "probe-v1",
+     "raw": "target\\t155-probe\\base-classic-on.jsonl",
+     "slice_elapsed_ms": 70493,
+     "per_layer_ms": 9670,
+     "prepass_ms": 58687,
+     "reference_match": true,
+     "gcode_sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656"
+    },
+    {
+     "tag": "probe-v2",
+     "raw": "target\\t155-probe\\base-classic-on-sub.jsonl",
+     "slice_elapsed_ms": 67910,
+     "per_layer_ms": 9952,
+     "prepass_ms": 55748,
+     "reference_match": true,
+     "gcode_sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656"
+    },
+    {
+     "tag": "probe-v3",
+     "raw": "target\\t155-probe\\base-classic-on-ns.jsonl",
+     "slice_elapsed_ms": 68569,
+     "per_layer_ms": 10112,
+     "prepass_ms": 56284,
+     "reference_match": true,
+     "gcode_sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656"
+    }
+   ]
+  }
+ }
+}

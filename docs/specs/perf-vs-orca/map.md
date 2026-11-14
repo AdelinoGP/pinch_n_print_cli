@@ -867,6 +867,57 @@ classic-off against its own nil work) and price it against base classic-on's
 (`summary.json` 8 cells, `arithmetic.json`, `carriers.json`, eight reduced
 `profile-*.json`; `verify.py` PASS, 11/11 negative controls).
 
+**Destination status (2026-11-14,
+[t155](issues/155-infill-stage-block-base-on-residual.md)): the first
+`Layer::Infill` block is the prepared-region derivation, paid twice per layer,
+and the second payment is redundant with a 2.33 s ceiling on the one cell the
+destination still needs; the frontier is the candidate
+[156](issues/156-prepared-memo-across-fill-sync.md).** The block is
+`prepare_dispatch_region_views` → `prepare_slice_regions` →
+`derive_needs_support`, **97.5 %** of the first-Infill bracket (p50 52.4 ms of
+53.6 ms on base classic-off) and **97.3 %** on base classic-on (p50 53.3 ms of
+54.8 ms). **Marshalling, the instance pool and `LayerStageInput` are falsified**
+at ~0.95 ms total (1.8 %): pool lease 5 µs, linker 196, component instantiation
+83, region push 58, typed export 593, teardown 25. **The arena memo works**:
+every non-first module in a stage reads the prepared slots in 5 µs (3.0–4.0 ms
+per module over 496 calls). **The block is paid twice** because
+`sync_perimeter_infill_areas_into_slice` takes and re-stages the slice after
+every perimeter commit (three per layer: once after `Layer::Perimeters`, once
+per `PerimetersPostProcess` commit), and each `set_slice` clears
+`clear_prepared_regions`. **The second derivation is provably redundant:** the
+sync was audited by hashing the fields `prepare_regions` reads (region order and
+count, `region_id`, `object_id` length, `nonplanar_surface` presence, every
+polygon coordinate) before and after — **0 of 1,488 syncs changed any of them**
+on base-off, base-on and the decline arm. **Stage-sharing re-proven at HEAD:**
+declining `raft-default` moves the whole block to `gyroid-infill`
+(**24,533.1 ms**, p50 50.0 ms), every other Infill module stays under 3.5 ms, and
+the hash does not move (`9bb18f0e…`). **`Layer::Support` is not a host block:**
+`tree-support`'s `prep_views` is 5 µs; its 85.9 ms p50 bracket on base-on is the
+in-module render. **Inside the derivation, 94.3–94.4 % is one
+`intersection_ex(region.polygons, footprint)` per layer** — the object has
+exactly **one** non-empty overhang footprint on every layer (max 1 over 1,488
+calls) and the answer was **true in every measured call**; base-on evaluates it a
+third time in the prepass eligibility pass (1,488 calls, 72.8 s thread). **Price
+(ceilings = thread / t154 parallelism; walls of record carried):** redundant
+Infill-side derivation **25.99 s / 26.10 s** thread, **2.382 s** base-off
+(**12.15x** the 196 ms floor, 21.5 % of the 11.10 s cut) and **2.335 s** base-on
+(**4.20x** the 556 ms floor, **2.13x** the 1.096 s requirement); indicatively
+base-on goes **1.051x → ~0.943x** at canonical prepass cost, a chain not a
+claim. **Verdict:** removable — a proposed candidate (preserve the memo across
+the fill sync, clear on the modifier-footprint path) with its ceiling, **not an
+adopted change**; the standing eight-cell gate is graduated as
+[156](issues/156-prepared-memo-across-fill-sync.md). **Disclosed:** no wall claim
+from any probe or instrumented pass; no ratio of record; box load not sampled;
+no accelerated arm; the pre-probe pass's 63 ms p50 against the later 52.4 ms is
+a slower box state across every phase, not attributed; no design for a cheaper
+`needs_support` predicate (its 94 % share is measured, its replacement is not).
+Evidence: [`evidence/t155-infill-stage-block/`](evidence/t155-infill-stage-block/FINDINGS.md)
+(`probe.json` eight runs, `summary.json`, `probe.patch` reverted and
+`git apply --check` clean, `verify.py` PASS 9/9, `--self-test` 9/9 mutations
+rejected; restored tree `cargo xtask build-guests --check` exit 0 and the
+restored binary reproduces `9bb18f0e…`). **Frontier:**
+[156](issues/156-prepared-memo-across-fill-sync.md) (AFK, unblocked).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -952,6 +1003,33 @@ and [`evidence/t115-post-merge/`](evidence/t115-post-merge/FINDINGS.md), and
 Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
+
+**Current selection scope (2026-11-14, the t155 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **155 was the only unblocked,
+unclaimed frontier ticket** (1–154 resolved; no HITL ticket open), a
+`wayfinder:task`, and was claimed and resolved as a **Phase-1 attribution plus a
+probe** — the ticket's stop rule fires on the removable branch, so no production
+edit. Headline: **the first-`Layer::Infill` block is the prepared-region
+derivation, paid twice per layer, and the second payment is redundant.** A
+five-file env-gated probe splits every bracket: `prep_views` is 97.5 % of the
+first-Infill bracket on base-off (p50 52.4 of 53.6 ms) and 97.3 % on base-on
+(53.3 of 54.8 ms); the entire dispatch path (pool lease, linker,
+instantiation, region marshal, export call, teardown) is ~0.95 ms, and the arena
+memo works (5 µs for every non-first module). The block is paid twice because
+the fill-polygon sync takes and re-stages the slice three times per layer and
+each `set_slice` clears the prepared slots; the second derivation is **provably
+redundant** (0/1,488 syncs changed any field `prepare_regions` reads). Inside
+it, 94.3–94.4 % is one `intersection_ex(region.polygons, footprint)` per layer,
+with exactly one non-empty footprint per object per layer and a true answer in
+every measured call; base-on evaluates it a third time in the prepass
+eligibility pass. `tree-support` is separated and is not a host block (5 µs
+prep; its 85.9 ms p50 bracket on base-on is the render). **Ceilings:** 2.382 s
+base-off (12.15x floor, 21.5 % of the 11.10 s cut) and 2.335 s base-on (4.20x
+floor, **2.13x the 1.096 s requirement**); indicatively base-on goes 1.051x →
+~0.943x. Graduated [156](issues/156-prepared-memo-across-fill-sync.md) (AFK,
+unblocked) with the standing eight-cell gate; the cheaper-predicate shape stays
+in the fog. Disclosed: no wall claim, no ratio of record, no load sample, no
+accelerated arm. **Frontier now: [156](issues/156-prepared-memo-across-fill-sync.md).**
 
 **Current selection scope (2026-11-14, the t154 take):** the human said
 "Continue the perf vs orca map" (no ticket named); **1–153 were resolved and the
@@ -4047,6 +4125,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [The `Layer::Infill` first-dispatch block and base classic-on's 1.096 s residual](issues/155-infill-stage-block-base-on-residual.md): **resolved (2026-11-14; Phase-1 attribution + probe — the block is the prepared-region derivation, paid twice per layer, and the second payment is redundant)** — a five-file env-gated probe splits every module bracket on base classic-off/on. **The block is `prepare_dispatch_region_views` → `prepare_slice_regions` → `derive_needs_support`: 97.5 % of the first-Infill bracket (p50 52.4 ms of 53.6 ms) on base-off and 97.3 % (53.3 of 54.8 ms) on base-on.** All named alternatives are measured out: the whole dispatch path is ~0.95 ms (1.8 %) — pool lease 5 µs, linker 196, instantiation 83, region push 58, export call 593, teardown 25 — and `LayerStageInput` is 5 µs; the arena memo itself works (every non-first module reads the prepared slots in 5 µs, 3.0–4.0 ms per module over 496 calls). **Paid twice** because `sync_perimeter_infill_areas_into_slice` takes and re-stages the slice after every perimeter commit (three per layer) and each `set_slice` clears the memo; **the second derivation is provably redundant** — hashing the fields `prepare_regions` reads (region order/count, `region_id`, `object_id` length, `nonplanar_surface` presence, every polygon coordinate) before and after the sync gives **0 changed of 1,488** on base-off, base-on and the decline arm. **Stage-sharing re-proven at HEAD:** declining `raft-default` moves the block to `gyroid-infill` (24,533.1 ms, p50 50.0 ms), others stay ≤3.5 ms, hash unchanged (`9bb18f0e…`). **`Layer::Support` separated:** `tree-support`'s prep_views is 5 µs; its 85.9 ms p50 bracket on base-on is the in-module render (85.4 ms across linker→call→teardown), a work-set/phase difference, not a host block. **Composition:** 94.3–94.4 % of the derivation is one `intersection_ex(region.polygons, footprint)` per layer; exactly **one** non-empty overhang footprint exists per object per layer (max 1 over 1,488 calls) and the answer was **true in all 992/992 and 1,488/1,488** measured calls; base-on evaluates it a third time in the prepass eligibility pass (1,488 calls, 72.8 s thread), supports-off only twice. The value is delivered (the guest adapter `__slicer_adapt_slice_regions` calls `needs-support()` per region), so deletion is a contract change, not a free win. **Price (ceilings = thread / t154 parallelism; walls of record carried; floor 0.008 × wall):** redundant Infill-side derivation **25,986.3 ms / 26,101.2 ms** thread → **2.382 s** base-off (**12.15x** the 196 ms floor, 36.5 % of the per-layer thread, 21.5 % of the 11.10 s cut) and **2.335 s** base-on (**4.20x** the 556 ms floor, 23.1 % of the phase, **2.13x** the 1.096 s requirement); indicatively base-on moves **1.051x → ~0.943x** at canonical prepass cost (an estimate, not a claim). **Verdict:** removable — proposed candidate, not adopted: preserve the prepared memo across the fill sync, clear on the modifier-footprint path where the region list can change. Graduated [t156](issues/156-prepared-memo-across-fill-sync.md) with the standing eight-cell gate. Disclosed: no wall claim, no ratio of record, no load sample, no accelerated arm, no design for a cheaper predicate, and the pre-probe pass's 63 ms p50 is a slower box state, not a measurement of cause. Evidence: [`evidence/t155-infill-stage-block/`](evidence/t155-infill-stage-block/FINDINGS.md) (`probe.json` eight runs, `summary.json`, `probe.patch` reverted with `git apply --check` clean; `verify.py` PASS 9/9, `--self-test` 9/9 mutations rejected; restored tree's guest freshness exit 0 and the restored binary reproduces `9bb18f0e…`).
 - [Benchy per-layer program: which carrier holds the wall, and what does canonical do differently?](issues/154-benchy-per-layer-carrier-attribution.md): **resolved (2026-11-14; Phase-1 attribution + arithmetic re-derivation — the benchy per-layer program is margin, not route)** — eight instrumented ordinary passes at HEAD (`71c03a3e`, binary `e1b8fa69…`) are clean and byte-identical to t151's active set; the split is prepass 63.5–82.4 %, per-layer 14.4–29.6 %, postpass 2.6–6.5 %, outside 0.1–5.3 %, with a per-layer host gap of 0–56 ms. **At canonical prepass cost 7/8 cells win** (benchy arachne-off 0.668x, base arachne-off 0.698x, benchy classic-off 0.740x, base classic-off 0.743x, benchy classic-on 0.857x, benchy arachne-on 0.901x, base arachne-on 0.967x) and **base classic-on is the only loser at 1.051x, needing 1.096 s = 9.6 % of its per-layer phase**; the required prepass cut is **64.3–84.5 %**, largest on benchy arachne-on/base classic-on/base arachne-on. This **supersedes t128/t129's benchy loss** (those paired t126's per-layer phases with t124's Orca walls) and moves the per-layer requirement to **base classic-on**. **Carriers:** supports-off perimeters **46.8–55.1 %** of per-layer thread (77–98 % in-module self fuel; `offset2_ex` the only scope at 21.8–22.8 %), first `Layer::Infill` dispatch **17.6–37.3 %** (stage-shared; t127's "prepared-region view" name fails at HEAD because `ensure_prepared_perimeter_source_regions` materialises that view in `Layer::Perimeters` and `Layer::Infill` hits the memo), `infill-linker` **4.4–20.5 %** (99.8–100 % self fuel); supports-on by `tree-support` **36.7–47.8 %**, a work-set/phase difference because canonical generates support in `PrintObject::_generate_support_material` (one whole-object pass). **The requested per-op split does not exist at the current instrumentation surface** — named scopes explain ≤ 22.8 % of any carrier's fuel, and that is the finding: no plumbing fat. The t126→t154 per-layer fall (**−21.6 % to −40.1 %** on benchy) is measured but **not attributed**. Graduated [t155](issues/155-infill-stage-block-base-on-residual.md) (AFK). Evidence: [`evidence/t154-benchy-per-layer/`](evidence/t154-benchy-per-layer/FINDINGS.md) (`verify.py` PASS, 11/11 negative controls).
 - [Seam candidate generation on the printed loops: authorize the per-layer relocation?](issues/153-seam-loop-relocation-ruling.md): **resolved (2026-11-14; human ruling — DECLINED, the relocation is structurally impossible and was already decided)** — the human's instruction was to verify the prior attempt before trying it. **ADR-0046** (status accepted) evaluates the same two candidate homes and rejects the per-layer `seam-placer` as impossible: per-layer modules are re-instantiated per call and run in parallel across layers (ADR-0045, packet 102), so a per-layer module can never see two layers; the only sanctioned cross-layer conduit is one-way and prepass-first (ADR-0020's `SeamPlanIR` → host-injected `resolved_seam`). **Packet 168** discovered the constraint during grounding and recorded it as an architecture constraint ("All cross-layer machinery MUST live in the `PrePass::SeamPlanning` stage; `seam-placer` only consumes"). The take adds the stronger fact: `build_seam_candidates` (`modules/core-modules/seam-planner-default/src/visibility.rs`) scores **every contour vertex of every layer** and its per-layer terms read the **previous** layer's contours (`prev_dist`) as well as the current layer's (`curr_dist`), so candidate generation and scoring — not just the chaining — are cross-layer; the builder is dormant by design because packet 178 moved production candidates to per-region `SliceIR` geometry. Moving generation onto the printed loops is therefore circular (the prepass runs before the loops exist) and needs a two-phase pipeline or a host-orchestrated pass, both already rejected in ADR-0046's alternatives and both architecture work past this route. **S3 closes as "not a clean deletion and not relocatable"; the 1,248 ms is the price of the cross-layer aligned seam and stays in the fog with that blocker.** No exception spent, no `nearest`/`rear`/`random` relocation (the matched job is `aligned`, so it would buy nothing), no production edit, no measurement, no reference-set movement.
 - [Seam inset offset: is the prepass offset redundant with the per-layer loop projection?](issues/152-seam-inset-offset-redundancy.md): **resolved (2026-11-14; Phase-1 + candidate screen — not redundant, S3 is not a clean deletion)** — removing `offset_polygons_batch` + `project_point_onto_inset_boundary` from `run_region_planning_entries` (`modules/core-modules/seam-planner-default/src/lib.rs`) and emitting the raw chosen point moves **456 of 496** base-classic-off layers (+1,177 / −1,149 printed points, 142 layers with a changed total `E`; first difference in the layer-0 **Skirt**) and breaks the module's own tests (**31/0 baseline vs 29/2 candidate**). The baseline reproduces the t151 reference `9bb18f0e…`; the candidate is `4265d619…` (+1,158 bytes / +28 lines). **The offset term is 1,248 ms** (`PrePass::SeamPlanning` **1,779 → 531 ms**, 70.15 %), not t129's 1,587 ms / 92.4 %, and is **5.9x** the 0.80 % floor / **~10.5 %** of base classic-off's current required cut. The per-layer `seam-placer` re-projects onto the wall loops but does **not** preserve the seam because the source point differs; the canonical loop projection needs candidate generation on the printed external-perimeter loops, which exist only in the per-layer phase — a **stage relocation** needing a t81-style exception, graduated [t153](issues/153-seam-loop-relocation-ruling.md). No production change; patch preserved. Evidence: [`evidence/t152-seam-inset-offset/`](evidence/t152-seam-inset-offset/FINDINGS.md) (`verify.py` PASS, 4/4 mutations rejected).
@@ -4314,17 +4393,26 @@ Standing decisions for this effort (2026-09-22):
   work-set/phase difference — canonical generates support in one whole-object
   pass, not per layer), the perimeters module **33.4 %** (kernel-bound: 77 %+
   in-module self fuel) and the first-`Layer::Infill` block **23.5 %** (identity
-  unmeasured). **Open fog:** (a) the Infill block's identity and whether it is
-  removable — ticketed as
-  [t155](issues/155-infill-stage-block-base-on-residual.md); (b) whether the
-  per-layer `tree-support` render can be folded into the prepass, which is a
-  phase move and architecture work, not a per-op shape — no ticket, and it must
-  not inherit a price from the bracket; (c) the arithmetic's ledger chain
-  (t145/t148 walls × t150 deltas × this take's shares) needs a fresh paired
+  **answered by [t155](issues/155-infill-stage-block-base-on-residual.md)**:
+  the prepared-region derivation paid twice per layer, 94 % of it one
+  `intersection_ex`; the memo-preserving candidate is
+  [t156](issues/156-prepared-memo-across-fill-sync.md)). **Open fog:**
+  (a) whether the per-layer `tree-support` render can be folded into the prepass,
+  which is a phase move and architecture work, not a per-op shape — no ticket,
+  and it must not inherit a price from the bracket; (b) the arithmetic's ledger
+  chain (t145/t148 walls × t150 deltas × this take's shares) needs a fresh paired
   scoreboard before any decision becomes sensitive to ±5 % — today only base
-  arachne-on's **3.3 %** margin is that tight; (d) **no cause is attributed** for
+  arachne-on's **3.3 %** margin is that tight; (c) **no cause is attributed** for
   the t126→t154 per-layer fall (−21.6 % to −40.1 % on the benchy cells); t139's
-  mid-layer sampling and t142's quartile derivation are candidates, not findings.
+  mid-layer sampling and t142's quartile derivation are candidates, not findings;
+  (d) **the surviving predicate** — after t156 the first derivation still pays
+  one full-polygon `intersection_ex(region.polygons, footprint)` per layer whose
+  answer was true in every measured call (992/992 off, 1,488/1,488 on), and
+  base-on evaluates the same predicate again in the prepass eligibility pass
+  (496 calls, 23.3 s thread): whether an exact cheaper predicate exists, or one
+  evaluation per `(layer, region)` can be shared across the prepass and per-layer
+  stages, is unmeasured and downstream of t156 (a cheaper predicate leaves the
+  memo argument unchanged; a shared evaluation is a schema/lifecycle move).
 
 - **The adhesion fairness program is complete (t151, 2026-11-14): the supports-off oracle is
   4/4 and the last residual is the ~0.10 mm brim-extent term plus ≤ 0.04 mm of Arachne

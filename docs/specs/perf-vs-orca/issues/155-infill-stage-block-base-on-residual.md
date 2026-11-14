@@ -2,8 +2,8 @@
 
 Type: task / Phase-1 attribution + probe
 Label: wayfinder:task
-Status: open (unclaimed)
-Assignee: —
+Status: resolved (2026-11-14)
+Assignee: current OpenCode session (wayfinder), 2026-11-14
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [Benchy per-layer program: which carrier holds the wall, and
@@ -103,3 +103,84 @@ on both benchy supports-on cells 4–5 ms.
   and `ensure_prepared_perimeter_source_regions`.
 - `crates/slicer-wasm-host/src/marshal/prepared.rs` — `prepare_regions` /
   `prepare_slice_regions`.
+
+## Answer
+
+**The block is the prepared-region derivation, paid twice per layer, and the
+second payment is redundant.** `prepare_dispatch_region_views` →
+`ensure_prepared_regions` / `ensure_prepared_perimeter_source_regions` →
+`prepare_slice_regions` → `prepare_regions` accounts for **97.5 %** of the
+first-`Layer::Infill` bracket on base classic-off (p50 **52.4 ms** of **53.6
+ms**) and **97.3 %** on base classic-on (p50 **53.3 ms** of **54.8 ms**). Inside
+it, **94.3–94.4 %** is one `derive_needs_support` call per derivation, and that
+call is a single `intersection_ex(region.polygons, footprint)` — the object has
+**exactly one** non-empty overhang footprint on every layer (max 1 across
+1,488 calls) and the answer was **true in every measured call**.
+
+The named candidates are all falsified, by direct measurement:
+
+- **Marshalling / instance pool / first-dispatch plumbing:** the entire dispatch
+  path is ~0.95 ms p50 (1.8 % of the bracket) — pool lease 5 µs, linker 196 µs,
+  component instantiation 83 µs, region push 58 µs, typed export 593 µs,
+  teardown 25 µs. `LayerStageInput` construction is 5 µs.
+- **The arena memo:** it works. Every non-first module in the stage reads the
+  prepared slots in **5 µs** (3.0–4.0 ms total over 496 calls).
+- **The t127 name ("shared prepared-region view materialisation"):** half right.
+  The materialisation is the derivation, not the marshal; and it is paid
+  **twice** because `sync_perimeter_infill_areas_into_slice` takes and
+  re-stages the slice (three times per layer: once after `Layer::Perimeters`,
+  once per `PerimetersPostProcess` commit), and each `set_slice` clears the
+  arena's prepared slots.
+- **`Layer::Support` is not a host block:** `tree-support`'s `prep_views` is
+  **5 µs**; its 85.9 ms p50 bracket on base classic-on is the in-module render
+  (linker→call→teardown 85.4 ms), a work-set/phase difference, not plumbing.
+
+**Stage-sharing is re-proven at HEAD**, not carried from t127: a probe-only
+decline of `raft-default` moves the whole block to `gyroid-infill`
+(**24,533.1 ms**, p50 50.0 ms) while every other Infill module stays under
+3.5 ms and the output hash does not move (`9bb18f0e…`).
+
+**The second derivation is provably redundant.** The probe hashes the fields
+`prepare_regions` reads (region order and count, `region_id`, `object_id`
+length, `nonplanar_surface` presence, every polygon coordinate) before and
+after the fill sync: **0 of 1,488 syncs changed any of them** on base-off,
+base-on and the decline arm. The sync writes only the four canonical fill
+polygons, which the derivation does not read.
+
+**Pricing** (ceilings = thread / t154's effective parallelism; walls of record
+carried from t154; 0.80 % floor = 0.008 × PnP wall):
+
+| | base classic-off | base classic-on |
+| --- | ---: | ---: |
+| redundant Infill-side derivation (thread) | 25,986.3 ms | 26,101.2 ms |
+| ceiling (÷10.91x / ÷11.18x) | **2.382 s** | **2.335 s** |
+| floor multiple | **12.15x** | **4.20x** |
+| share of the cell's required wall cut | 21.5 % of 11.10 s | 4.9 % of 47.94 s |
+| the destination's per-layer requirement | — | **1.096 s** |
+| ceiling over that requirement | — | **2.13x** |
+
+Indicatively, subtracting the ceiling from t154's canonical-prepass projection
+takes base classic-on from **1.051x to ~0.943x** — the only losing cell in that
+arithmetic would clear the line. That composition is an estimate, not a claim.
+
+**Verdict (stop rule): removable — a proposed candidate with its ceiling, not
+an adopted change.** Preserve the prepared-region memo across the fill-polygon
+sync; clear it explicitly on the modifier-footprint path (which can mint or
+remove regions and change `polygons`; zero footprints on the matched job, so the
+clear never fires there). Exact by construction under the audit above. The
+standing eight-cell gate (0.80 % paired wall/CPU, byte-identical output) is the
+candidate ticket's own, graduated as
+[156](156-prepared-memo-across-fill-sync.md).
+
+**Not claimed:** no wall claim from any instrumented or probe pass; no ratio of
+record; the box load was not sampled; no accelerated arm; no exactness argument
+for a cheaper `needs_support` predicate (its 94 % share is measured, its
+replacement is not designed — that is fog, not a ticket); no cause claim for the
+pre-probe pass's slower p50 (63 ms vs 52.4 ms), whose box state was slower in
+every phase.
+
+Evidence: [`evidence/t155-infill-stage-block/`](../evidence/t155-infill-stage-block/FINDINGS.md)
+— eight runs, `probe.json`, `summary.json`, `probe.patch` (reverted;
+`git apply --check` clean), `verify.py` PASS 9/9 with `--self-test` 9/9
+mutations rejected; the restored tree's `cargo xtask build-guests --check`
+exits **0** and the restored binary reproduces `9bb18f0e…`.
