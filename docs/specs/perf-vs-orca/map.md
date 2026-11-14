@@ -628,6 +628,102 @@ sample was deschedule-skewed. Evidence:
 (`verify.py` 360/360, 9/9 negative controls; `reference.json` is the currency).
 **Frontier:** [t146](issues/146-variable-width-anchor-shape.md) (HITL) only.
 
+**Destination status (2026-11-13,
+[t149](issues/149-meshanalysis-work-set-readers.md)): `PrePass::MeshAnalysis`'s
+work set is a bridge detector nothing reads, and the t129 S2 "per-layer overhang
+polygons" port is answered as not the lever; the frontier is the human's
+[t146](issues/146-variable-width-anchor-shape.md) and the new deletion
+[t150](issues/150-meshanalysis-bridge-retirement.md).** The stage is **5,325.8
+ms** on base classic-off and **85.68 %** of it is `find_bridge_clusters` +
+`compute_bridge_metrics` — 7,383,702 directed half-edge insertions, 3,199 BFS
+clusters, one footprint union per cluster — and **no production reader consumes
+`bridge_regions`**. The only read output is
+`overhang_regions[].xy_footprint` (**529.1 ms**), through
+`SliceRegionView::derive_needs_support`; the producer's `needs_support` flag is
+ignored by that consumer, and `surface_groups` resolves a `nonplanar_surface`
+production never sets. Sub-phase on base classic-off: classify 187.0 /
+overhang footprint 529.1 / eligibility 0.2 / bridge 4,563.2 (sum 5,279.5,
+unaccounted 46.3); base classic-on 4,832.9 with bridge 4,150.2; benchy
+classic-off 195.1 with bridge 95.1; a profiled run reconciles 4,914.1 ms probe
+against 5,639.5 ms `host:mesh_analysis`. **The S2 port would replace 529.1 ms,
+not the stage:** after the unread half goes, **762.6 ms** remains, before
+paying canonical's per-layer diff. Route: **12.95 %** of the base-off cell,
+**16.18x** the 0.80 % floor and **24.96 %** of its indicative cut (2.078x →
+2.387x, cut 51.88 % → 58.11 %); base-on **4.85 % / 6.07x / 6.91 %**; benchy-off
+**2.57 % / 3.21x / 5.03 %**. No production change in this take. **Frontier:**
+[t146](issues/146-variable-width-anchor-shape.md) (HITL) and
+[t150](issues/150-meshanalysis-bridge-retirement.md) (AFK, unblocked, new).
+
+**Destination status (2026-11-13,
+[t146](issues/146-variable-width-anchor-shape.md)): the last supports-off oracle
+miss is a skirt-hull input defect, not a variable-width anchor error; neither
+offered anchor shape can pass the cell, and the fix is graduated as
+[t151](issues/151-skirt-hull-brim-contour.md).** The oracle's relative
+difference is `abs(pnp - orca) / orca` (`oracle_skirt_brim.py::rel`) and carries
+**no direction** — every supports-off cell is an **undershoot**, so t144's
+"−5.65 % → +2.89 %" is a magnitude history, corrected in place in t144, its
+FINDINGS and t146. Against the 3.0 % skirt band: base classic-off **2.89 %**
+(0.11 pt headroom, passes), base arachne-off **3.45 %**, benchy classic-off
+**1.32 %**, benchy arachne-off **1.34 %** — Arachne adds **+0.56 points** on
+base and **+0.02** on the benchy, and the dominant term is shared with the
+classic cell, where the uniform-width reconstruction is exact by construction.
+So at most 0.56 of the 3.45 points can be a width effect. **Mechanism:** the
+ring distance already matches canonical (`Print::_make_skirt`'s
+`skirt_distance - spacing/2` plus `+= spacing` per loop is PnP's
+`skirt_distance + spacing/2 + i * spacing`; outermost **4.964 mm** both) but the
+**hull input** does not — canonical appends
+`m_objectBrimAreasByInstance[...]` `area.contour.points`, the brim **area's
+outer contour**, while `SkirtBrim::generate` extends `brim_points` from the
+emitted beads' `path.points`, the outermost **centreline**. The offset is half a
+flow spacing: measured brim→skirt bbox step **5.136 / 5.130 / 5.152 / 5.138 mm**
+on Orca, **5.143** predicted, **4.962–4.964** on PnP. **Decomposition of the
+~0.29 mm radial deficit: ~0.10 mm brim-extent term (inside its 12 % band) +
+0.1786 mm skirt-hull term + ≤0.04 mm Arachne width.** The per-segment envelope
+can only recover the Arachne increment and the direct contour only the anchor
+term (already exact on classic), so **neither can pass the cell**; the direct
+contour also reverses t140's module-side ruling for a ~235 ms surface. **Ruling:**
+land the canonical fold, read as inside t140's exception ("the layer-0 object
+footprint and the `skirt_height` layer hulls"), module-only, no new clipper
+operation, **no wall claim**; the estimate is base classic-off **~0.4 %** and
+base arachne-off **~0.9 %**, supports-off oracle **3/4 → 4/4**. t148's reference
+set stays the currency until t151's ceremony re-records it. **Frontier:**
+[t151](issues/151-skirt-hull-brim-contour.md) (AFK, unblocked, new) and
+[t150](issues/150-meshanalysis-bridge-retirement.md) (AFK, unblocked).
+
+**Destination status (2026-11-13,
+[t150](issues/150-meshanalysis-bridge-retirement.md)): the MeshAnalysis bridge
+product is retired and banked; the frontier is
+[t151](issues/151-skirt-hull-brim-contour.md).** `classify_object` no longer
+computes `bridge_regions` — the field stays in the IR as an empty vector and the
+clusterer behind it is deleted — so `PrePass::MeshAnalysis` falls **4,445 → 732
+ms (−83.53 %)** on base classic-off and **4,616 → 582 ms (−87.39 %)** on base
+classic-on, and **168 → 95 ms** on benchy classic-off. **Identity is 8/8 cells /
+16/16 runs** against t148's active reference set (`1ae0cfa8…` /
+`37788518229d…` / `8faf02b1…` / `f86d8897…` / `c0b9014f…` / `eccbd523…` /
+`17f63e93…` / `1811425f…`), byte-for-byte in both arms, `degraded: false`, zero
+exact-Z rejections, and every A/B pair carries the same hash on both arms.
+**Paired wall (medians, negative = candidate faster): −12.08 % base
+classic-off (15.09x the 0.80 % floor), −4.06 % base classic-on (5.08x, six
+pairs), −9.37 % / −5.78 % base arachne-off/-on, −1.77 % / −4.95 % / −4.87 % /
+−3.20 % benchy classic-off/-on/arachne-off/-on**; CPU lower or flat in all eight
+(−1.77 … −0.10 %). **The identical-arm null control (6 pairs, base
+classic-off) bounds a pair at ±3.67 % wall / −0.17…+0.50 % CPU**, so base
+classic-off is 3.3x that band, base classic-on only 1.1x (disclosed; 6/6 pairs
+candidate-faster), and benchy classic-off's −1.77 % sits **inside** it — reported
+as the ticket required, not claimed. **Route:** base classic-off **2.078x →
+1.827x**, cut 51.88 % → 45.27 %; base classic-on 3.356x → 3.220x; the remaining
+six move 1.77–9.37 % of their ratios of record. A tranche of t142's order, not
+a destination step, and the 8/8 destination is unchanged. Two ticket
+corrections, both tree-verified: the whole-print-input guest keeps `bridges=1`
+because its surface product is a **literal** (`Product::Literal`), not
+mesh-analysis output, and `algo_mesh_analysis_tdd` had no bridge assertions —
+the eight retired cases are all in `bridge_detector_tdd.rs`. Disclosed: no
+accelerated timing arm (`libmimalloc-sys`, unchanged since t142), one box and
+one window, box load not measured. Evidence:
+[`evidence/t150-meshanalysis-retirement/`](evidence/t150-meshanalysis-retirement/FINDINGS.md)
+(`verify.py` 71 checks, 5/5 negative controls). **Frontier:**
+[t151](issues/151-skirt-hull-brim-contour.md) (AFK, unblocked) only.
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -714,7 +810,47 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-13, the t148 take):** the human said
+**Current selection scope (2026-11-13, the t150 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **150 was the first
+unblocked, unclaimed AFK frontier ticket in order** (151 is the other), and was
+claimed and resolved as a **measured deletion**. Headline: **the MeshAnalysis
+bridge half is gone and the stage falls 4,445 → 732 ms on base classic-off**,
+with all 16 output runs byte-identical to t148's active set. Paired medians
+**−12.08 % / −4.06 %** on the two base cells (15.09x / 5.08x the floor) and
+−1.77 … −9.37 % on the other six, CPU lower or flat everywhere; base
+classic-off's 12.08 % is 3.3x the measured ±3.67 % null wall band, base
+classic-on is only 1.1x it (disclosed), benchy classic-off is inside it
+(reported, not claimed). Route: base classic-off **2.078x → 1.827x**, cut
+51.88 % → 45.27 %; the other seven move 1.77–9.37 %. Two ticket corrections,
+tree-verified: the whole-print-input guest's `bridges=1` is a **literal**
+fixture, not mesh-analysis output, so it stays; `algo_mesh_analysis_tdd` had no
+bridge assertions. Test retirement: AC-1…AC-6 + NEG-3 in
+`bridge_detector_tdd.rs`, with the justification in the file header and the
+file's `#![allow(dead_code)]` removed. No new ticket graduated: the deletion
+answered its own question and opened none. **Frontier now:
+[151](issues/151-skirt-hull-brim-contour.md) (AFK, unblocked).**
+
+**Previous selection scope (2026-11-13, the t149 take):** the human said
+"Continue the perf vs orca map, pick an AFK ticket". **No AFK ticket was on the
+frontier** — 1–148 are resolved and [146](issues/146-variable-width-anchor-shape.md)
+is the human's HITL grilling — so the map's route arithmetic graduated the
+largest remaining unpriced shape of the **sweep-volume work-set family** from
+Not yet specified as [t149](issues/149-meshanalysis-work-set-readers.md), a
+Phase-1 attribution of `PrePass::MeshAnalysis` (t129's S2 row). Headline: **the
+stage is 85.68 % a bridge detector no production code reads** — `bridge_regions`
+costs **4,563.2 ms** of 5,325.8 ms on base classic-off (7,383,702 directed
+half-edge insertions, 3,199 clusters, per-cluster unions), while the only read
+output, `overhang_regions[].xy_footprint`, costs **529.1 ms**. The per-layer
+overhang-polygons port is answered as **not the lever** (it would replace 529.1
+ms and leave 762.6 ms before adding canonical's per-layer diff). Route: 12.95 %
+of the cell, 16.18x the floor, 24.96 % of base-off's indicative cut; **2.078x →
+2.387x** if the half disappears. No production change, no campaign; graduated
+[t150](issues/150-meshanalysis-bridge-retirement.md) with a 16-cell
+byte-identical gate. **Frontier now:**
+[146](issues/146-variable-width-anchor-shape.md) (HITL) and
+[150](issues/150-meshanalysis-bridge-retirement.md) (AFK, unblocked, new).
+
+**Previous selection scope (2026-11-13, the t148 take):** the human said
 "Continue the perf vs orca map, pick an AFK ticket"; **t148 was the first
 unblocked, unclaimed AFK frontier ticket in order** ([146](issues/146-variable-width-anchor-shape.md)
 is the human's HITL grilling) and was claimed and resolved as a **fairness fix
@@ -3691,6 +3827,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Variable-width anchor: per-segment envelope or the direct contour?](issues/146-variable-width-anchor-shape.md): **resolved (2026-11-13; premise refuted by measurement — the last supports-off oracle miss is a skirt-hull input defect, not a variable-width anchor error, and neither offered shape can pass the cell)** — the oracle's relative difference is `abs(pnp - orca) / orca` (`oracle_skirt_brim.py::rel`) and carries **no direction**: every supports-off cell is an **undershoot** (PnP prints less brim and a smaller skirt), so t144's "−5.65 % → +2.89 %" is a magnitude history, corrected in place. Arachne adds **+0.56 points** on base (2.89 → 3.45 %) and **+0.02** on the benchy (1.32 → 1.34 %), and the dominant term is shared with the classic cell, where the t144 reconstruction is exact by construction. **Mechanism:** canonical `Print::_make_skirt` folds `m_objectBrimAreasByInstance[...]` `area.contour.points` — the brim **area's outer contour** — into the skirt hull, while `SkirtBrim::generate` folds the emitted brim beads' **centrelines**; the ring distance already matches (outermost 4.964 mm both). The gap is half a flow spacing: measured brim→skirt bbox step **5.139 mm** on Orca against **5.143** predicted and **4.963** on PnP (re-derivable from `growth_mm`, now carried by `evidence/t144-brim-anchor/reduced/summary.json`). **Decomposition of the ~0.29 mm radial deficit: ~0.10 mm brim-extent term (inside its 12 % band) + 0.1786 mm skirt-hull term + ≤0.04 mm Arachne width.** Envelope and direct contour are both refuted as cell passes (≤0.04 mm and an anchor that is already exact on classic); graduated [t151](issues/151-skirt-hull-brim-contour.md), read as inside t140's "`skirt_height` layer hulls" exception, estimated to take base classic-off to ~0.4 % and base arachne-off to ~0.9 % and the supports-off oracle **3/4 → 4/4**. No wall claim (~235 ms surface). **Glossary:** "Anchor" added.
+- [MeshAnalysis work set: which outputs does production read, and what is the unread half worth?](issues/149-meshanalysis-work-set-readers.md): **resolved (2026-11-13; Phase-1 attribution — the stage is 85.68 % a bridge detector with no production reader, and the t129 S2 per-layer-overhang-polygons port is answered as not the lever)** — `classify_object` (`crates/slicer-core/src/algos/mesh_analysis.rs`) makes **4,563.2 ms** of the stage's **5,325.8 ms** on base classic-off in `find_bridge_clusters` + `compute_bridge_metrics`: **7,383,702** directed half-edge insertions into a `HashMap`, **3,199** BFS clusters, one footprint union per cluster, anchor-width/span metrics. The only production-read output is `OverhangRegion::xy_footprint` (**529.1 ms**), via `SliceRegionView::derive_needs_support`; `OverhangRegion::needs_support` is dead (the SDK re-derives), `surface_groups` resolves a `nonplanar_surface` production only writes as `None`, and `bridge_regions`' readers are the blackboard size estimate, visual debug, an undeclared prep `surface_objects` read, and a test guest. Sub-phase base-off: classify 187.0 / footprint 529.1 / eligibility 0.2 / bridge 4,563.2; base-on 4,832.9 with bridge 4,150.2; benchy-off 195.1 with bridge 95.1. **S2 is not the lever:** the port would replace 529.1 ms and leave 762.6 ms before canonical's per-layer diff. Route: **12.95 %** of the base-off cell, **16.18x** the 0.80 % floor, **24.96 %** of its indicative cut (2.078x → 2.387x, cut 51.88 % → 58.11 %); base-on 4.85 % / 6.07x; benchy-off 2.57 % / 3.21x. Graduated [t150](issues/150-meshanalysis-bridge-retirement.md) with a 16-cell byte-identical gate. Evidence: [`evidence/t149-meshanalysis-readers/`](evidence/t149-meshanalysis-readers/FINDINGS.md) (`verify.py` 43 claims, 4/4 negative controls; `probe.patch` non-landing; production restored).
 - [Supports-on plane carve: align the planner's collision occupancy with the print plane](issues/148-supports-on-plane-carve.md): **resolved (2026-11-13; fairness fix landed — the planner carves emitted roles against the print plane the host's exact-Z gate validates, published as an additive `print_plane_occupancy` carrier (schema 2.1.0). All four supports-on cells go from 101 / 101 / 44,474 / 44,474 diagnostics to zero, the 33 dropped layers reappear with none lost, support path rises 36.70 m base / 0.295 m benchy, supports-off is byte-identical 4/4, and the re-derived ratios of record are 2.705x / 2.829x / 3.356x / 3.248x.** Coverage clause read twice: plane presence 20/20; polygon coverage 11/19 base, 0/1 benchy, disclosed and not used as a gate because the retained-layer control reads the same near-zero. No causal wall-cost claim (the window's Orca arm moved too). Evidence: `evidence/t148-print-plane-carve/` (`verify.py` 360/360, 9/9 negative controls; `reference.json` is the new currency).
 - [Supports-on output is support-incomplete: what the `exact-Z occupancy` body rejections drop](issues/147-supports-on-body-rejection-attribution.md): **resolved (2026-11-13; Phase-1 attribution — the rejections are a planner/validator plane mismatch, not redundant demand, and the four supports-on ratios are supports-incomplete)** — all 33 rejected entries overlap the **print plane** and **none** overlaps the midpoint payload the planner carved: benchy L170 **5.8342 mm² (2.276 % of the body)**, base 32 entries **8.4e-6–1.4706 mm²** (sum **6.8920 mm²**, median 0.0805 mm², ≤ 0.069 % of body). The 44,474 base diagnostics are **(body, demand) pairs**: **2,892** unique demands and **zero** uniquely dropped. The loss is the layer — each rejected entry is the only entry at its layer, so **32 complete base layers** and **1 benchy layer** are absent from the emitted G-code: **36,466.736 mm (10.2765 %)** of base support path and **192.601 mm (0.233 %)** of benchy path by neighbour interpolation; **19/32** base and **1/1** benchy overhangs above a missing layer have Orca support at that plane and none in PnP (benchy candidate 68: 0 vs 36.85 % at z = 34.2; candidate 76: 0 vs 14.7–32.7 %), 13/32 are unsupported by both tools at that exact plane and are not counted. **Classification (b) defect:** the planner carves `SupportAnalysisIR::model_occupancy` at `layer.z − 0.5 h` while `validate_entry` queries `anchor_z = layer.z`, and the zero-tolerance gate drops the whole body (canonical `draw_circles` would keep 250.5 of 256.3 mm² on benchy and ≥ 99.93 % of every base body). **Ruling:** the four supports-on ratios of record are **not quotable as a matched-settings claim**; they stand only with the disclosure and no new supports-on ratio until [t148](issues/148-supports-on-plane-carve.md) closes the asymmetry. Supports-off cells have zero rejections. Evidence: [`evidence/t147-supports-rejection/`](evidence/t147-supports-rejection/FINDINGS.md) (`verify.py` checks every number from `census.json`; 6/6 negative controls rejected).
 - [Benchy fixture replacement: re-record the benchy reference set and retire cross-swap benchy ratios](issues/145-benchy-fixture-rebaseline.md): **resolved (2026-11-13; measured re-baseline — the replacement is a tessellation-only re-export, the slice is not output-neutral, and the post-swap scoreboard is 1.853x–3.455x)** — the replacement `tmp/3dbenchy.stl` (`6ab57f1c…`, 11,285,384 bytes) is **225,706 triangles against the old export's 225,786 (−80, −0.035 %)**, with byte-identical bounds (|Δ| ≤ 4.05e-7 mm) and the same 240-layer / 48.0 mm schedule; re-cutting t138's five sampled planes (mid and top, inward 0.20 offset, convex hull) reproduces **all ten** old-export areas exactly at 3 decimals, and `tmp/base.stl` is byte-identical to t138's record (`b26c8c79…`). **The printed object does not move but the output does:** against the old export one output-neutral code change apart (all four **base cells byte-identical** across the two takes — the control), the outer wall changes by **−1.591 mm of 31,891.789 (−0.0050 %)** and −1e-6 of loop area with per-layer area median/p95 **0.0** and one layer over 0.1 % (L153, −0.113 %), while **internal bridge moves on L40 (z = 8.2) alone** — 554.316 → 611.614 mm (**+57.298 mm, +7.344 %**), 28.028 → 31.866 mm² (**+13.694 %**), identical in all four cells — and the **tree-support engine** moves **−1,370.181 mm (−2.238 %)** over 176 supports-on layers with its max-loop area **+1.021 %**; bytes classic-off **−812**, classic-on **−79,465**, arachne-off **+118**, arachne-on **−78,773**. **Currency:** t144's four benchy hashes (`1ae0cfa8…` / `d9fc80ba…` / `8faf02b1…` / `cd7d4a2d…`) are the active set and reproduce in **8/8** cells today (one hash across three measured runs per cell; the four base cells reproduce t144's base hashes in the same campaign), recorded in [`evidence/t145-benchy-rebaseline/reference.json`](evidence/t145-benchy-rebaseline/reference.json); t139's four (`93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…`) are **retired**; t143's four are the superseded interim set. **Classification: tessellation-only at the model level, not byte-neutral at the output level** (the falsifier — a systematic cross-section, bounds, layer-schedule or outer-wall displacement — is absent). **Post-swap scoreboard (8 cells × 2 tools, one window): 1.853x–3.455x ordinary/Orca, required cut 46.03 %–71.06 %, 19.05 %–56.59 % at 1.5x** — benchy 2.043x / 2.683x / 1.853x / 2.580x (3.912 / 6.553 / 3.674 / 6.686 s against 1.915 / 2.442 / 1.983 / 2.591 s), base 2.078x / 3.001x / 1.984x / 3.455x; the lowest bars are the two benchy supports-off cells, the highest the two base supports-on cells. **Disclosed:** no accelerated timing arm (`cargo xtask dist --accelerated` still fails today, `c1xx` C1083 on `'\\mimalloc-static.cc'`; a manual-cfg host is barred as a timing artifact by `docs/23`), every PnP supports-on run is `degraded: true` with **101** (benchy) / **44,474** (base) code-1200 `exact-Z occupancy` rejections — identical on both exports, so not swap-caused, graduated as [t147](issues/147-supports-on-body-rejection-attribution.md) — load 9 % / 12 %, three runs per cell (base arachne-on PnP spread 21.2 %), Orca hashes differ per run while bytes are constant, and no causal claim from the cross-take movement. Evidence: [`evidence/t145-benchy-rebaseline/`](evidence/t145-benchy-rebaseline/FINDINGS.md) (`verify.py` 98/98 checks, 25/25 negative controls rejected).
@@ -3999,10 +4137,15 @@ Standing decisions for this effort (2026-09-22):
   ([t141](issues/141-overhang-quartile-band-deletion.md) /
   [t142](issues/142-overhang-band-partition-deletion.md): the 4-band partition
   is deleted and the quartile is distance-derived, saving 26.25 % on base
-  classic-off with byte-identical G-code in 8/8). The
-  remaining members — **per-layer overhang polygons** and **canonical loop
-  projection** — each still need their own Phase-1 before a candidate can be
-  priced. The per-layer phase joins the first program on both benchy cells.
+  classic-off with byte-identical G-code in 8/8). **Per-layer overhang
+  polygons** is now priced and **refuted as the lever**
+  ([t149](issues/149-meshanalysis-work-set-readers.md)): the union that port
+  would replace is **529.1 ms** of a **5,325.8 ms** stage, and the **4,563.2
+  ms** is a bridge detector with no production reader, graduated for deletion
+  as [t150](issues/150-meshanalysis-bridge-retirement.md). **Canonical loop
+  projection** (t129's S3, 1,587 ms ceiling, 5.7 % of base-off's required cut)
+  still needs its own Phase-1 before a candidate can be priced. The per-layer
+  phase joins the first program on both benchy cells.
 
 - **The bridge wave expansion is a per-layer partition change, and its benchy
   cost is the blocker (surfaced 2026-11-06 by
