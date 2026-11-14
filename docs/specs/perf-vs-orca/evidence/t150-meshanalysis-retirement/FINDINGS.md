@@ -76,7 +76,8 @@ ticket's change. Every hash equals
 
 Every A/B pair in §4 also carries the same hash on both arms. `degraded:
 false` and **zero** `exact-Z occupancy` lines in all 16 identity runs and all
-48 A/B runs.
+54 A/B runs (27 pairs: the pre-declared 24 plus base classic-on's three extra
+pairs) and the 12 null-control runs.
 
 ## 3. Stage attribution
 
