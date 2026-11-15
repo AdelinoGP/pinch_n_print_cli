@@ -2,8 +2,10 @@
 
 Type: task / measured candidate + standing gate
 Label: wayfinder:task
-Status: open (unclaimed)
-Assignee: —
+Status: resolved (2026-11-15; **DROP** — exact and CPU-lower in 8/8, but the
+  standing wall gate fails on benchy Arachne-on (−2.94 %) and base Arachne-on
+  (+0.17 %); production change and tests reverted, patch preserved)
+Assignee: 2026-11-15 OpenCode wayfinder session — the human said "Continue the perf vs orca map" (no ticket named; 156 was the only unblocked, unclaimed frontier ticket)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [The `Layer::Infill` first-dispatch block and base classic-on's
@@ -93,3 +95,53 @@ The candidate is the second derivation removal only. The first derivation (the
 - `crates/slicer-wasm-host/src/marshal/transport.rs` —
   `assemble_layer_transport_for_stage` (index-zips `prepared` with
   `slice.regions`, which is why a region-list change must clear).
+
+## Answer
+
+**Resolved 2026-11-15: DROP. The candidate is exact and removes the redundant
+derivation — process CPU is lower in all eight cells — but the standing wall
+gate fails, so it is not banked.**
+
+The candidate added
+`LayerArena::mutate_slice_preserving_prepared_regions`
+(`crates/slicer-runtime/src/blackboard.rs`) and routed
+`sync_perimeter_infill_areas_into_slice`
+(`crates/slicer-runtime/src/region_partition.rs`) through it instead of
+`take_slice` + `set_slice`; the modifier-footprint branch still clears the memo.
+Two contract tests pinned the preserved memo and the invalidation path; the
+first is red on the pre-change tree. **Output is byte-identical in 8/8 cells**
+and equal to t151's active set, with every run clean.
+
+The quiet 5-pair paired gate is decisive:
+
+| cell | wall saving | floor multiple | CPU median | pairs faster |
+| --- | ---: | ---: | ---: | ---: |
+| benchy classic-off | +2.146 % | 2.68x | 18.80 → 17.75 s | 4/5 |
+| benchy classic-on | +3.949 % | 4.94x | 39.84 → 39.75 s | 4/5 |
+| benchy arachne-off | +3.239 % | 4.05x | 19.81 → 18.56 s | 4/5 |
+| benchy arachne-on | **−2.938 %** | **−3.67x** | 41.55 → 40.58 s | 1/5 |
+| base classic-off | +3.905 % | 4.88x | 206.39 → 182.97 s | 5/5 |
+| base classic-on | +4.873 % | 6.09x | 594.08 → 570.55 s | 5/5 |
+| base arachne-off | +10.085 % | 12.61x | 211.44 → 187.30 s | 4/5 |
+| base arachne-on | **+0.173 %** | **0.22x** | 601.39 → 577.36 s | 2/5 |
+
+The two failing cells are supports-on Arachne. CPU is lower there (the redundant
+work is gone), but the wall does not follow: the saved derivation was not on
+that cell's critical path. The same-arm null control (3 base cells × 3 pairs)
+measures a wall band of **9.52 % any-pair absolute** (medians −0.15 / +2.33 /
+0.15 %; CPU band 0.75 %), so the passing wall effects are small relative to the
+instrument except base Arachne-off. The quiet window sampled 2 % load before /
+12 % after. A 5-pair extension that began at 85 % load was invalidated and
+preserved as `reduced/loaded-window.json`; it is not the gate.
+
+**Disposition:** production code and tests are reverted to HEAD;
+[`candidate.patch`](../evidence/t156-prepared-memo/candidate.patch) is preserved
+and `git apply --check` succeeds. Final-tree gates pass: guest freshness exit 0,
+`check-literals` 0 violations, `check-test-quality --report` 0 findings, and
+`clippy --workspace --all-targets -- -D warnings` clean. No ratio of record, no
+destination step, no accelerated arm. The map's fog keeps the cheaper
+`needs_support` predicate as the unpriced survivor.
+
+Evidence: [`evidence/t156-prepared-memo/`](../evidence/t156-prepared-memo/FINDINGS.md)
+— `verify.py` PASS (DROP evidence, drop cells re-derived) with 6/6 negative
+controls rejected; `red-test.log` preserves the pre-change red.

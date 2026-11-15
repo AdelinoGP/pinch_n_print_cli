@@ -1,0 +1,39 @@
+   Compiling sdk-finalization-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\sdk-finalization-guest)
+   Compiling sdk-layer-infill-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\sdk-layer-infill-guest)
+   Compiling whole-print-input-support v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\whole-print-input-support)
+   Compiling sdk-postpass-text-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\sdk-postpass-text-guest)
+   Compiling whole-print-input-perimeters v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\whole-print-input-perimeters)
+   Compiling preparation-lifecycle-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\preparation-lifecycle-guest)
+   Compiling sdk-prepass-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\sdk-prepass-guest)
+   Compiling whole-print-input-path v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\whole-print-input-path)
+   Compiling preparation-lifecycle-anchored-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\preparation-lifecycle-anchored-guest)
+   Compiling whole-print-input-anchored v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\whole-print-input-anchored)
+   Compiling whole-print-input-infill v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\whole-print-input-infill)
+   Compiling preparation-visual-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\preparation-visual-guest)
+   Compiling arachne-perimeters v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\arachne-perimeters)
+   Compiling wave-overhangs v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\wave-overhangs)
+   Compiling traditional-support-planner v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\traditional-support-planner)
+   Compiling raft-default v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\raft-default)
+   Compiling tree-support-planner v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\tree-support-planner)
+   Compiling classic-perimeters v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\classic-perimeters)
+   Compiling slicer-runtime v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 39.56s
+warning: the following packages contain code that will be rejected by a future version of Rust: nom v3.2.1, quick-xml v0.22.0
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running tests\contract\main.rs (target\debug\deps\contract-9156b7967f070778.exe)
+
+running 1 test
+
+thread 'region_preparation_sharing_tdd::fill_only_sync_preserves_both_prepared_region_projections' (21720) panicked at crates\slicer-runtime\tests\contract\region_preparation_sharing_tdd.rs:285:10:
+fill-only sync must preserve the ordinary derivation
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test region_preparation_sharing_tdd::fill_only_sync_preserves_both_prepared_region_projections ... FAILED
+
+failures:
+
+failures:
+    region_preparation_sharing_tdd::fill_only_sync_preserves_both_prepared_region_projections
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 316 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p slicer-runtime --test contract`

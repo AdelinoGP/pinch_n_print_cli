@@ -1,0 +1,23 @@
+   Compiling slicer-runtime v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.29s
+warning: the following packages contain code that will be rejected by a future version of Rust: nom v3.2.1, quick-xml v0.22.0
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running tests\unit\main.rs (target\debug\deps\unit-025668fcc0bbca9a.exe)
+
+running 1 test
+
+thread 'blackboard_layer_arena_tdd::layer_arena_prepares_both_region_views_once_and_reuses_them' (24892) panicked at crates\slicer-runtime\tests\unit\blackboard_layer_arena_tdd.rs:324:5:
+assertion `left == right` failed
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test blackboard_layer_arena_tdd::layer_arena_prepares_both_region_views_once_and_reuses_them ... FAILED
+
+failures:
+
+failures:
+    blackboard_layer_arena_tdd::layer_arena_prepares_both_region_views_once_and_reuses_them
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 85 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p slicer-runtime --test unit`
