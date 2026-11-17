@@ -856,3 +856,371 @@ rng_algorithm = "chacha"
 isolation = "in_process"
 timeout_ms = 0
 bounds = { max_regions = 4, max_abs_units = 4096, max_cells = 2048 }
+
+# Packet `proptest-openrscad_09_pbt-geometry`. Direct geometry and mesh owners.
+# Bounds are the measured Windows profiles in
+# docs/testing/proptest-geometry-evidence.md; every bound is read before any
+# strategy is built and an invalid value fails instead of narrowing.
+[[property]]
+id = "H-BOOL-SET"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry"
+test_name = "proptest_boolean_set_algebra"
+production_symbol = "slicer_core::polygon_ops::union"
+production_path = "crates/slicer-core/src/polygon_ops.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-bool-set"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 60000, max_vertices = 32, max_holes = 4, max_components = 3, max_shrink_candidates = 32, max_queries = 64 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 120000, max_vertices = 64, max_holes = 8, max_components = 4, max_shrink_candidates = 64, max_queries = 128 }
+
+[[property]]
+id = "H-BOOL-CLIP"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry"
+test_name = "proptest_clip_polylines_full_segments"
+production_symbol = "slicer_core::polygon_ops::clip_polylines"
+production_path = "crates/slicer-core/src/polygon_ops.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-bool-clip"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 60000, max_vertices = 32, max_holes = 4, max_components = 3, max_shrink_candidates = 32, max_queries = 64, max_polylines = 12 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 120000, max_vertices = 64, max_holes = 8, max_components = 4, max_shrink_candidates = 64, max_queries = 128, max_polylines = 16 }
+
+[[property]]
+id = "H-OFFSET-MITER"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry"
+test_name = "proptest_offset_rectangular_clearance"
+production_symbol = "slicer_core::polygon_ops::offset2_ex"
+production_path = "crates/slicer-core/src/polygon_ops.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-offset-miter"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 120000, max_side_mm = 8, max_offset_mm = 3 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_side_mm = 16, max_offset_mm = 5 }
+
+[[property]]
+id = "H-OFFSET-SMOOTH"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry"
+test_name = "proptest_smooth_outward_safe_families"
+production_symbol = "slicer_core::smooth_outward::smooth_outward_polygon"
+production_path = "crates/slicer-core/src/smooth_outward.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-offset-smooth"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 120000, max_side_units = 40000, max_clip_units = 5000 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_side_units = 80000, max_clip_units = 8000 }
+
+[[property]]
+id = "H-MESH-SLICE"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry"
+test_name = "proptest_slice_analytical_solids"
+production_symbol = "slicer_core::triangle_mesh_slicer::slice_mesh_ex"
+production_path = "crates/slicer-core/src/triangle_mesh_slicer.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-mesh-slice"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_extent_mm = 8, max_translation_mm = 8, max_planes = 6 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_extent_mm = 16, max_translation_mm = 16, max_planes = 10 }
+
+[[property]]
+id = "H-MESH-QUERY"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry"
+test_name = "proptest_mesh_transform_and_aabb"
+production_symbol = "slicer_core::transform_point3"
+production_path = "crates/slicer-core/src/lib.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-mesh-query"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_extent_mm = 8, max_translation_mm = 8, max_queries = 8 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_extent_mm = 16, max_translation_mm = 16, max_queries = 16 }
+
+[[property]]
+id = "H-HELPERS-SPLIT"
+package = "slicer-helpers"
+target_kind = "test"
+target_name = "property_helpers"
+test_name = "proptest_helpers_split_components"
+production_symbol = "slicer_helpers::split_connected_components"
+production_path = "crates/slicer-helpers/src/split.rs"
+features = ["slicer-helpers/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-helpers-split"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_components = 4, max_faces = 12, max_abs_mm = 8 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_components = 8, max_faces = 24, max_abs_mm = 16 }
+
+# Packet `proptest-openrscad_09_pbt-geometry`, scripted enrichment (AC-8).
+# Both records run under whole-process supervision: `isolation = "fork"` with a
+# nonzero callback timeout, and `bounds.test_process_timeout_ms` bounds the
+# libtest child so recipe generation and shrink rendering are supervised too.
+[[property]]
+id = "H-BOOL-SCAD"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry_scad"
+test_name = "proptest_scripted_boolean_membership"
+production_symbol = "slicer_core::polygon_ops::union"
+production_path = "crates/slicer-core/src/polygon_ops.rs"
+features = ["slicer-core/property_testing_scad", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = true
+generator_version = 1
+charter = "docs/testing/properties.md#h-bool-scad"
+
+[property.routine]
+cases = 24
+max_local_rejects = 32
+max_global_rejects = 128
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "fork"
+timeout_ms = 30000
+bounds = { max_abs_units = 20000, max_vertices = 64, max_holes = 4, max_components = 4, max_shrink_candidates = 32, max_recipe_nodes = 24, max_recipe_depth = 6, max_facets = 16, max_source_bytes = 16384, max_evaluations = 48, max_scad_vertices = 200000, max_scad_triangles = 400000, evaluation_steps = 5000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 120000, max_queries = 32, max_planes = 4 }
+
+[property.extended]
+cases = 96
+max_local_rejects = 128
+max_global_rejects = 512
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "fork"
+timeout_ms = 60000
+bounds = { max_abs_units = 40000, max_vertices = 64, max_holes = 8, max_components = 8, max_shrink_candidates = 64, max_recipe_nodes = 32, max_recipe_depth = 8, max_facets = 24, max_source_bytes = 32768, max_evaluations = 128, max_scad_vertices = 400000, max_scad_triangles = 800000, evaluation_steps = 20000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 600000, max_queries = 32, max_planes = 6 }
+
+[[property]]
+id = "H-MESH-SCAD"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry_scad"
+test_name = "proptest_scripted_mesh_cross_sections"
+production_symbol = "slicer_core::triangle_mesh_slicer::slice_mesh_ex"
+production_path = "crates/slicer-core/src/triangle_mesh_slicer.rs"
+features = ["slicer-core/property_testing_scad", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = true
+generator_version = 1
+charter = "docs/testing/properties.md#h-mesh-scad"
+
+[property.routine]
+cases = 24
+max_local_rejects = 32
+max_global_rejects = 128
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "fork"
+timeout_ms = 30000
+bounds = { max_abs_units = 20000, max_vertices = 64, max_holes = 4, max_components = 4, max_shrink_candidates = 32, max_recipe_nodes = 24, max_recipe_depth = 6, max_facets = 16, max_source_bytes = 16384, max_evaluations = 48, max_scad_vertices = 200000, max_scad_triangles = 400000, evaluation_steps = 5000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 120000, max_queries = 32, max_planes = 4 }
+
+[property.extended]
+cases = 96
+max_local_rejects = 128
+max_global_rejects = 512
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "fork"
+timeout_ms = 60000
+bounds = { max_abs_units = 40000, max_vertices = 64, max_holes = 8, max_components = 8, max_shrink_candidates = 64, max_recipe_nodes = 32, max_recipe_depth = 8, max_facets = 24, max_source_bytes = 32768, max_evaluations = 128, max_scad_vertices = 400000, max_scad_triangles = 800000, evaluation_steps = 20000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 600000, max_queries = 32, max_planes = 6 }

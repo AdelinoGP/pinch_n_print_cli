@@ -3987,6 +3987,7 @@ dependencies = [
  "clipper2-rust 1.1.0",
  "criterion",
  "log",
+ "proptest",
  "rayon",
  "rstar",
  "serde",
@@ -3994,7 +3995,9 @@ dependencies = [
  "slicer-config",
  "slicer-ir",
  "slicer-model-io",
+ "slicer-scad",
  "slicer-scheduler",
+ "slicer-sdk",
 ]
 
 [[package]]
@@ -4016,9 +4019,11 @@ dependencies = [
  "criterion",
  "meshopt",
  "nalgebra",
+ "proptest",
  "serde",
  "slicer-ir",
  "slicer-model-io",
+ "slicer-sdk",
  "thiserror 1.0.69",
  "truck-meshalgo",
  "truck-modeling",

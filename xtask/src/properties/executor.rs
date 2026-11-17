@@ -1506,7 +1506,14 @@ mod tests {
             .filter(|record| record.requires_scad)
             .map(|record| record.id.as_str())
             .collect();
-        assert_eq!(scad, ["D-SCAD-2D", "D-SCAD-3D"]);
+        // The live registry's SCAD-gated set. This is deliberately pinned: a
+        // record that gains `requires_scad` without a supervision-capable
+        // profile should not pass silently. Packet
+        // `proptest-openrscad_09_pbt-geometry` added the two geometry records.
+        assert_eq!(
+            scad,
+            ["D-SCAD-2D", "D-SCAD-3D", "H-BOOL-SCAD", "H-MESH-SCAD"]
+        );
         let mut tier_only = fixture_record("TIER-ONLY", "proptest_fixture");
         tier_only.extended = None;
         let registry = Registry {
