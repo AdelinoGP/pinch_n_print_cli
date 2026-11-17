@@ -2677,3 +2677,883 @@ operations/cavities/bridges and engine-conversion fidelity, the **combined** dir
 generality decision, and any broad arbitrary-polygon generator. If that combined feasibility
 result demonstrates a bounded direct-scope gap, the gap is filled there; a general-shrinker
 prerequisite is not declared here and SCAD coverage is not claimed.
+
+## H-BOOL-SET
+
+Registry record: `id = "H-BOOL-SET"`, `package = "slicer-core"`, `target_kind = "test"`,
+`target_name = "property_geometry"`, `test_name = "proptest_boolean_set_algebra"`,
+`production_symbol = "slicer_core::polygon_ops::union"`,
+`production_path = "crates/slicer-core/src/polygon_ops.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-bool-set"`.
+
+### Stable property ID
+
+`H-BOOL-SET` — set algebra for `union`, `intersection`, `difference` and `xor` over bounded
+well-wound empty, convex, concave, holed and disconnected sets, plus whole-millimetre rectangle
+pairs judged by an exact open-cell truth table.
+
+### Owner
+
+Package `slicer-core`; standalone target `property_geometry`, body
+`property_geometry_common::boolean::run_property` in
+`crates/slicer-core/tests/property_geometry_common/boolean.rs`. Production surface: all four
+wrappers in `crates/slicer-core/src/polygon_ops.rs`, called for every ordered pair. Controls run as
+`geometry_controls_boolean_and_clip_mutations` in
+`crates/slicer-core/tests/property_geometry_common/controls_boolean_clip.rs`.
+
+### Contract
+
+For every ordered operand pair the four results are consistent as sets: `|A∪B| + |A∩B| = |A| + |B|`
+when both operands are rectilinear, `|A\B| = |A| - |A∩B|`, `|A⊕B| = |A∪B| - |A∩B|`, `A\A` and
+`A⊕A` are empty, and `A∪A` and `A∩A` reproduce `A` including its holes. Output rings must be valid
+and well wound (contour CCW, holes CW). Ring order and ring start are not part of the contract.
+
+### Domain
+
+Generated operands come from #2 `geometry_cases` for `TopologyClass::{Empty, Convex, Concave,
+Holed, Disconnected}`; `Thin` and `NearDegenerate` are excluded because this row makes no claim
+about lattice-thin geometry. Profiles carry `max_abs_units` 60000/120000, `max_vertices` 32/64,
+`max_holes` 4/8, `max_components` 3/4, `max_shrink_candidates` 32/64 and `max_queries` 64/128
+(routine/extended). Bounds are checked before any strategy is built: `max_abs_units` in
+`20000..=1_000_000`, counts in `1..=64`, `max_queries` at least `2*(max_components+max_holes)+1`.
+Invalid or overflowing values are rejected, never narrowed.
+
+### Strategy
+
+Two families. The rectangle family draws two whole-millimetre rectangles whose clamped edges always
+stay positive, so a shrink cannot collapse an operand. The general family draws two #2 cases, places
+each on a checked offset, and re-validates every realised operand against its tagged class and the
+same absolute bound. A translated copy of the first operand supplies an overlapping pair; the
+same-set identities supply the disjoint extreme.
+
+### Oracle
+
+The rectangle family is the **complete restricted model**: partition at all input X/Y edges, classify
+each open cell's integer midpoint against the Boolean truth table, require every output vertex to lie
+on the edge grid, every output edge to be axis-aligned, and the checked `i128` double-area sum to
+equal the expected cells. The general family is explicitly bounded: a deterministic integer lattice
+at quarter-gaps between distinct vertex coordinates, with points dropped when within 2 units
+(Euclidean, exact `i128`) of any input edge, classified with #2 `point_in_region` on the inputs and on
+all four outputs. A *witness* point (one per component and per hole) may fall back to a 1-unit margin
+when no 2-unit point exists at all — a one-unit catalogue triangle has inradius ≈ 1.72, so the 2-unit
+requirement is unsatisfiable there; a point at distance ≥ 1 from the exact input boundary keeps more
+than 0.29 units of clearance to the ≤ √½-rounded output boundary, so its classification cannot flip.
+No witness at 1 unit remains a hard error, never a skip. Clipper output, self-union, input tags, raw
+ring order and single-midpoint containment are never used as the reference.
+
+### Tolerance
+
+Rectangle comparisons are exact integers; Clipper rounds a crossing vertex by at most half a unit per
+axis (`√½ ≈ 0.71` Euclidean), which the 2-unit sample margin exceeds, so expected membership at a
+sampled cell is exact. General sampling is exact at the sampled points only; no claim is made at
+unobserved points.
+
+General outputs may touch themselves. Clipper's `NonZero` result can legitimately **pinch** at a
+non-consecutive repeated vertex, so a ring passing through the same point twice is a correct
+representation of a self-touching region, not a malformed one. The general family therefore uses a
+**weakly-simple** predicate built on the exact integer oracles (`orientation`, `segment_relation`):
+adjacent edges must meet at their shared endpoint; non-adjacent edges may be disjoint or touch at a
+single point (the pinch); and proper crossings, collinear overlaps of positive length, and
+backtracking spikes (`orientation == 0` with a reversing dot product) are rejected. Consecutive
+duplicates, zero area, fewer than three points and the wrong winding are rejected too. Strict #2
+`validate_ring` is applied only where the expected result is a single simple rectangle.
+
+Whether a general region is semantically right is still decided by the membership oracle, not by ring
+shape — but ring shape is no longer permissive: tightening this predicate is what exposed the real
+`xor` spike defect recorded above, and the regression for that defect now runs in
+`crates/slicer-core/tests/polygon_ops_tdd.rs`.
+
+### Shrinking
+
+The #2 value tree keeps each class's witness through `simplify`, and each exposed value is
+re-validated against its tagged class. Scale and placement are a deterministic map applied to every
+shrunk value, so a shrunk operand never leaves the documented absolute bound.
+
+### Execution
+
+Both tiers run `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets and total generators.
+Recorded Windows runs: 32 cases in 8.92 s, and 64 cases in 1.91 s for the clip sibling, at pilot bounds; accepted cases always equal `cases` and rejected test calls are zero. Provenance is in
+[proptest-geometry-evidence.md](proptest-geometry-evidence.md).
+
+### Failure record
+
+`PropertyRun` writes the context/case/failure artifacts under `target/property-testing/<run-token>/`
+with the tier-bearing reproduction command. Committed regressions are named concrete inputs, never
+seeds. The previously failing `xor` pinch input (repeat vertex at `(120, 8)`, where one operand's
+second hole meets the notch cut by the other's second component) is pinned by a control arm that
+asserts #2 `validate_ring` rejects that ring while the weakly-simple predicate accepts it and the whole
+pair check passes; a bowtie and a collinear backtracking spike are pinned as rejections. The production
+defect that same tightening exposed — `polygon_ops::xor` emitting a backtracking spike — now has its
+own RNG-free regression, `xor_redundant_collinear_vertex_emits_no_backtracking_spike` in
+`crates/slicer-core/tests/polygon_ops_tdd.rs`, asserting the exact analytic double area and a
+nine-point membership truth table. Deterministic control home:
+`geometry_controls_boolean_and_clip_mutations`, which rejects a union returning only operand A and a
+difference that fills a hole, with both the rectangle and the general checker.
+
+### Acceptance
+
+Maps to AC-1 and AC-N1. The property must call all four wrappers, both reference families must
+produce nonempty observation populations, and the control must reject both named wrong results while
+the real SUT passes the same checker.
+
+## H-BOOL-CLIP
+
+Registry record: `id = "H-BOOL-CLIP"`, `package = "slicer-core"`, `target_kind = "test"`,
+`target_name = "property_geometry"`, `test_name = "proptest_clip_polylines_full_segments"`,
+`production_symbol = "slicer_core::polygon_ops::clip_polylines"`,
+`production_path = "crates/slicer-core/src/polygon_ops.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-bool-clip"`.
+
+### Stable property ID
+
+`H-BOOL-CLIP` — full-path retention for `clip_polylines` over inside, outside, crossing,
+boundary-riding, concave and holed clips, with every retained and omitted interval accounted for.
+
+### Owner
+
+Package `slicer-core`; standalone target `property_geometry`, body
+`property_geometry_common::clip::run_property` in
+`crates/slicer-core/tests/property_geometry_common/clip.rs`. Production surface:
+`slicer_core::polygon_ops::clip_polylines`, called once on the whole batch. Controls live in
+`geometry_controls_boolean_and_clip_mutations`.
+
+### Contract
+
+Seven documented guarantees of `clip_polylines`: a fully inside polyline is returned whole; a single
+crossing is clipped to its inside portion with the new endpoint on the boundary; multiple crossings
+yield one sub-polyline per inside span; spans through a hole are removed and split around it; segments
+collinear with a clip edge count as inside; multiple inputs are clipped independently and fully
+outside inputs are dropped; inputs with fewer than two points are skipped. Output order across paths
+is unspecified and never asserted.
+
+### Domain
+
+Scene shapes are a rectangle, an L (concave notch) and a rectangle with a rectangular hole, on a grid
+of `max_abs_units/32`. Edge indices keep every feature wider than `2*(INFLATE+BAND)`. Generated
+segments are bounded nonzero-length draws: a local axis-aligned family plus #2 `line_segments` wrapped
+by a map that turns a zero-length draw into a one-unit segment, so a zero-length segment can never be
+exposed before or after shrinking. Profiles carry the six shared keys plus `max_polylines` 12/16
+(routine/extended), which must be at least 10 because nine deterministic witness paths are always
+present. `max_abs_units` is validated in `512..=1_000_000` and `max_abs_units*max_queries*4` must fit
+`i64`.
+
+### Strategy
+
+Each value is a `(scene, paths)` tuple of ranges, so every generated value is admissible. Nine
+witness paths are rebuilt from the scene on every case and on every shrunk value: fully inside, fully
+outside, crossing once, riding the original bottom edge, through the hole, through the notch, a
+three-vertex polyline, a diagonal crossing, and the short/empty pair.
+
+### Oracle
+
+The clip universe is the documented one: `inflate_paths_64(raw, 1.0, Miter, Polygon, 2.0, 0.0)`, which
+yields an expanded outer rectangle and a contracted hole (`rect::offset_rectilinear`). Axis-aligned
+inputs are partitioned into exact 1D intervals at every input/emitted endpoint and at each
+perpendicular crossing `c` and `c ± BAND`; the emitted multiplicity must equal the input coverage
+inside, zero outside, and be bounded inside the band. Every emitted vertex must lie within
+`offset(R, 3)`. Non-axis-aligned pieces are matched to an input whose line lies within `BAND` of both
+endpoints, must satisfy #2 `segment_in_region` against `offset(R, 3)` inclusively, and their input
+must be sampled at `t = i/max_queries` so a span that certainly stays `offset(R, -1)` inside is
+covered by some matched piece. Result order is never used.
+
+### Tolerance
+
+`BAND = 2` canonical units, matching the documented boundary-endpoint policy, applied to the 1D
+breaks, the input-span extension, the vertex allowance and the perpendicular input match. The
+perpendicular match was pinned by a two-sided control after an initial one-unit test wrongly rejected
+a real 1.41-unit output; see `## Deviations` item 6 of the packet.
+
+### Shrinking
+
+The scene is a tuple of ranges and every element stays valid; the segment vector shrinks by removing
+elements, each element stays nonzero-length through its map, and the nine witness paths cannot be
+shrunk away because they are rebuilt from the scene.
+
+### Execution
+
+Both tiers run `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets. Recorded Windows runs:
+64 cases in 1.91 s at pilot bounds, and a 512-case wide pilot at `max_abs_units = 1_000_000` passed
+after the checker fix. Accepted cases always equal `cases`; rejected test calls are zero.
+
+### Failure record
+
+Artifacts follow the shared `PropertyRun` layout. Named replayable witness: the L clip
+`(-218750,-218750), (187500,-218750), (187500,0), (0,0), (0,187500), (-218750,187500)` with the path
+`[(-55783,146645), (279653,-230017)]`, whose real output is
+`[[(-55783,146645),(0,84004)], [(74811,1),(187501,-126539)]]`.
+
+### Acceptance
+
+Maps to AC-2 and AC-N1. The control must reject a chord shortcut through the notch, a span left
+inside the notch, an omitted interior span, an endpoint outside the allowance, and the
+endpoints-and-midpoint-inside counterexample, while the real SUT passes the same checker.
+
+## H-OFFSET-MITER
+
+Registry record: `id = "H-OFFSET-MITER"`, `package = "slicer-core"`, `target_kind = "test"`,
+`target_name = "property_geometry"`, `test_name = "proptest_offset_rectangular_clearance"`,
+`production_symbol = "slicer_core::polygon_ops::offset2_ex"`,
+`production_path = "crates/slicer-core/src/polygon_ops.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-offset-miter"`.
+
+### Stable property ID
+
+`H-OFFSET-MITER` — one- and two-pass miter offsets of axis-aligned whole-millimetre rectangles and
+rectangular annuli, compared against algebraically expanded bounds and checked double areas.
+
+### Owner
+
+Package `slicer-core`; standalone target `property_geometry`, body
+`property_geometry_common::offset::run_property` in
+`crates/slicer-core/tests/property_geometry_common/offset.rs`. Primary production surface
+`slicer_core::polygon_ops::offset2_ex`; secondary `slicer_core::polygon_ops::offset`. Controls:
+`geometry_controls_offset_and_smooth_mutations`.
+
+### Contract
+
+Within the exact rectangular family: a pass with delta `d` moves the contour bounds outward by `d`
+and the hole bounds the opposite way; a two-pass sequence applies the same rule twice, so a surviving
+pair depends only on `d1 + d2`. A first pass that collapses the shape returns empty. Nothing else is
+claimed: no universal two-pass identity, no monotonicity on arbitrary topology, no byte equivalence
+with canonical.
+
+### Domain
+
+Rectangles with whole-millimetre sides in `1..=max_side_mm` and rectangular annuli with a band and
+hole that keep positive width after **each** pass. Deltas are whole millimetres in
+`[-max_offset_mm, max_offset_mm]`, so the f32 and f64 conversions are exact. Profiles carry
+`max_abs_units` 120000/200000, `max_side_mm` 8/16 and `max_offset_mm` 3/5 (routine/extended), which
+satisfy the placement relation `max_abs_units/10_000 * 2 >= 4*max_offset_mm + max_side_mm`.
+
+### Strategy
+
+A two-branch union. The rectangle branch draws sides and a position, then clamps both cumulative
+deltas into the range that keeps every side positive. The annulus branch draws the cumulative deltas
+first and then sizes the band and hole from them, so a drawn annulus is guaranteed to admit a
+non-degenerate offset. All whole-millimetre values reach canonical units only through checked
+conversion.
+
+### Oracle
+
+`require_clearance` proves the per-pass survivor condition before the SUT runs. `stage` then moves
+the contour bounds to `[x0-c, x1+c]` and the hole bounds to `[hx0+c, hx1-c]` stage by stage, and a
+collapsed first stage yields empty. `check_offset` validates output rings and winding with #2
+`validate_ring` and `signed_area2`, requires exactly one component and the expected hole count,
+canonicalises the rectangle by dropping repeated and exactly collinear vertices, and compares the
+checked `i128` double area. No Clipper call or ring order is part of the reference.
+
+### Tolerance
+
+None — every comparison is an exact integer. Deltas are integers with `|d| <= 2000`, exact in f32 and
+f64, so `d * 10_000` is an exact integer well under `2^53`. Axis-aligned unit normals are exactly
+`±1/0`, the 90-degree miter scale is exactly `delta`, the 90-degree miter ratio `√2` is below the
+limit 2.0, and every cleanup crossing of one horizontal and one vertical integer segment is an
+integer point.
+
+### Shrinking
+
+Every invariant is restored by a `prop_map` on each generated and shrunk value, so a shrunk annulus
+still admits its clearance. The fixed witnesses sit outside the generator and cannot be shrunk away.
+The pass-order witness is deliberately not part of the random family.
+
+### Execution
+
+Both tiers run `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+
+### Failure record
+
+Named witnesses include: the one-millimetre square with `-1` then `+2` mm (empty) versus `+2` then
+`-1` mm (the `[-1,2]²` survivor); annuli at `(-2,+1)`, `(+1,-1)` and `(+1,0)`; empty input for both
+seams; and zero-delta single and two-pass cases. Deterministic control home:
+`geometry_controls_offset_and_smooth_mutations`.
+
+### Acceptance
+
+Maps to AC-3 and AC-N1. The control must reject a reversed sign, the swapped pass order, a lost hole
+and a hole left unmoved, while the real SUT passes the same checker.
+
+## H-OFFSET-SMOOTH
+
+Registry record: `id = "H-OFFSET-SMOOTH"`, `package = "slicer-core"`, `target_kind = "test"`,
+`target_name = "property_geometry"`, `test_name = "proptest_smooth_outward_safe_families"`,
+`production_symbol = "slicer_core::smooth_outward::smooth_outward_polygon"`,
+`production_path = "crates/slicer-core/src/smooth_outward.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-offset-smooth"`.
+
+### Stable property ID
+
+`H-OFFSET-SMOOTH` — preservation for convex rings larger than the chord, and the exact 90-degree
+chamfer geometry of a controlled L, plus a separate tiny-CW deletion witness.
+
+### Owner
+
+Package `slicer-core`; standalone target `property_geometry`, body
+`property_geometry_common::smooth::run_property` in
+`crates/slicer-core/tests/property_geometry_common/smooth.rs`. Production surface
+`slicer_core::smooth_outward::smooth_outward_polygon`; one witness also uses `smooth_outward_ex`.
+Controls: `geometry_controls_offset_and_smooth_mutations`.
+
+### Contract
+
+A convex CCW ring whose every edge is far above the duplicate-prepass epsilon and whose chord is
+smaller than every edge comes back geometrically unchanged. A CCW L with one 90-degree reflex corner,
+long arms and clearance greater than the chord has that reflex vertex replaced by exactly two chamfer
+points, and the other source corners remain. `clip_dist_scaled` is the **chord**, not the per-arm
+setback. No universal containment or superset property is claimed.
+
+### Domain
+
+Profiles carry `max_abs_units` 120000/200000, `max_side_units` 40000/80000 and `max_clip_units`
+5000/8000 (routine/extended). Every feature is at least `chord + 1000` units, comfortably above the
+100-unit duplicate-prepass epsilon, and `max_side_units` is validated against both
+`2*(max_clip_units + 1000)` and the 40000-unit witness side.
+
+### Strategy
+
+A two-branch union sharing the chord and the feature-clearance relation. The convex branch draws CCW
+rectangles with all four ring starts. The L branch draws leg thicknesses and arm lengths, all four
+quarter-turn orientations and all six ring starts.
+
+### Oracle
+
+The convex branch requires validity, CCW winding, the same vertex count, a cyclic rotation of the
+input and an identical double area — the ring start is not part of the contract. The L branch
+requires the reflex vertex gone, the other five corners present, exactly one added vertex, one new
+point strictly inside each arm, a valid CCW ring, a cyclic rotation of the independently built ring,
+and a double area equal to the input's plus `k²`. `k` comes from an exact integer search, never from
+the SUT.
+
+### Tolerance
+
+For the true setback `s* = chord/√2`, production's f64 path has at most five rounded operations after
+an exact `d²/2`, so `|ŝ − s*| <= γ(5)·s*` with `γ(5) ≈ 5.55e-16`. Truncation puts the integer `k` in
+`(s* − 1 − δ, s* + δ]`, and since `chord² = 2k²` has no positive integer solution,
+`|s* − k| >= 1/(2√2·chord)` — at the 10⁶ ceiling that is `>= 3.5e-7` units against `δ <= 3.9e-10`,
+so `k = floor(chord/√2)` exactly. The perpendicular coordinate is exactly zero.
+
+### Shrinking
+
+Every feature stays at least `chord + 1000` through the `prop_map`; turns, ring starts and
+translations stay in range. Fixed witnesses sit outside the generator.
+
+### Execution
+
+Both tiers run `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+
+### Failure record
+
+Named witnesses: `floor_setback(5000) = 3535`; a 30000×20000 convex rectangle; the L with
+20000-unit legs and arms at chord 5000 in all four orientations and six starts; a tiny CW square of
+side 2000 at chord 5000, which is deleted; and `smooth_outward_ex` on a 40000 square with that tiny
+hole centred, where the hole is dropped and the contour unchanged. `DEV-141`'s far/blocked branch is
+never used as a byte oracle and production smoothing is unmodified.
+
+### Acceptance
+
+Maps to AC-3 and AC-N1. The control must reject a setback equal to the chord, a rounded-up setback
+`3536`, a missing chamfer and an unchanged tiny CW ring, while the real SUT passes the same checker.
+
+## H-MESH-SLICE
+
+Registry record: `id = "H-MESH-SLICE"`, `package = "slicer-core"`, `target_kind = "test"`,
+`target_name = "property_geometry"`, `test_name = "proptest_slice_analytical_solids"`,
+`production_symbol = "slicer_core::triangle_mesh_slicer::slice_mesh_ex"`,
+`production_path = "crates/slicer-core/src/triangle_mesh_slicer.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-mesh-slice"`.
+
+### Stable property ID
+
+`H-MESH-SLICE` — axis-aligned boxes and vertical right-triangular prisms sliced at strictly
+increasing finite planes, compared against cross-sections derived from the solid's own dimensions.
+
+### Owner
+
+Package `slicer-core`; standalone target `property_geometry`, body
+`property_geometry_common::mesh_slice::run_property` in
+`crates/slicer-core/tests/property_geometry_common/mesh_slice.rs`. Production surface
+`slicer_core::slice_mesh_ex`. Controls: `geometry_controls_slice_and_query_mutations` and
+`geometry_controls_vertex_plane_and_hole_witnesses`.
+
+### Contract
+
+A box interior cross-section is the rectangle `[x0,x0+w] × [y0,y0+d]`; a prism interior section is
+the XY triangle `(x0,y0), (x0+w,y0), (x0,y0+d)` extruded over `z0..=z0+h`. A plane exactly at the
+bottom is empty (horizontal facets are ignored) and a plane exactly at the top yields the full
+section (upper-edge ownership). Empty `zs` returns an empty layer vector; an empty mesh yields one
+empty layer per plane. Unsorted or duplicate planes, invalid indices and open meshes are outside any
+rejection contract and are never fed.
+
+### Domain
+
+Whole-millimetre solids with extents in `2..=max_extent_mm` and origins within
+`±max_translation_mm`; profiles carry `max_extent_mm` 8/16, `max_translation_mm` 8/16 and
+`max_planes` 6/10 (routine/extended). Planes are whole millimetres generated as a strictly increasing
+arithmetic sequence, and the narrowed `f32` vector is re-checked for strict increase before the SUT
+runs.
+
+### Strategy
+
+`(box-or-prism, w, d, h, x0, y0, z0, count, base, gap)` mapped to a solid plus its plane vector. A
+scene whose planes all fall outside the solid is legitimate and has no nonempty layer; when at least
+one layer is expected nonempty, the sampled population must be real.
+
+### Oracle
+
+Because every side face of both solids is a **vertical** plane, an intersection point's XY is exactly
+a corner coordinate, so the section is exact on the integer grid. `check_slice` requires the exact
+component count, valid rings with contour CCW and holes CW, a checked double area within the derived
+envelope, and membership agreement on a 9×9 lattice restricted to points proved clear of the analytic
+boundary by exact integer arithmetic (an `L∞` margin for the rectangle and a squared signed-distance
+test for the prism hypotenuse). The sample set always also contains one analytically guaranteed
+interior point (rectangle centre, prism centroid) and four points eight units outside the bounding box,
+because a lattice divided across the longest axis can leave a thin prism with no interior candidate at
+all; those points pass through the same exact clearance gates, so they only add checks. `point_in_region`
+classifies the analytic section and the emitted output independently. No second `slice_mesh_ex` or
+Clipper call is used.
+
+### Tolerance
+
+The box section is exact: axis-aligned output edges are input coordinates, so the double area must
+match exactly. The prism has one diagonal edge whose chained vertices pass through an `f32`
+millimetre intersection plus integer rounding; moving every vertex of a convex ring by at most one
+unit changes the double area by at most `2 × perimeter`, and the perimeter is bounded by `2(w+d)` in
+units, so the envelope is `4(w+d)·10_000` squared units (at most `5_120_000`, far below one square
+millimetre of double area). The measured deviation on the failing pilot was 10_000 units².
+
+### Shrinking
+
+Extents, origins and plane bases shrink within their ranges and every value stays admissible; the
+strictly-increasing property is preserved by construction. The boundary-convention and through-vertex
+witnesses are fixed and cannot be shrunk away.
+
+### Execution
+
+Both tiers run `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets. The pilot recorded 16
+accepted cases with zero rejected calls.
+
+### Failure record
+
+Named witnesses: the cube bottom (empty) and top (square), each re-asserted as a real SUT result; an
+exterior plane; an interior prism plane; and the through-vertex tetrahedron at `z = 0.5` whose
+analytic triangle has double area `100_000_000`. Deterministic control home:
+`geometry_controls_slice_and_query_mutations`.
+
+### Acceptance
+
+Maps to AC-4 and AC-N1. The control must detect a filled bottom, an empty top, an omitted interior
+section and a filled exterior section, while the real SUT passes the same checker.
+
+## H-MESH-QUERY
+
+Registry record: `id = "H-MESH-QUERY"`, `package = "slicer-core"`, `target_kind = "test"`,
+`target_name = "property_geometry"`, `test_name = "proptest_mesh_transform_and_aabb"`,
+`production_symbol = "slicer_core::transform_point3"`,
+`production_path = "crates/slicer-core/src/lib.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-mesh-query"`.
+
+### Stable property ID
+
+`H-MESH-QUERY` — quarter-turn-plus-translation transforms against an independent sign/swap oracle,
+and `AabbTree` bounds and ray hits against the box's own dimensions.
+
+### Owner
+
+Package `slicer-core`; standalone target `property_geometry`, body
+`property_geometry_common::mesh_query::run_property` in
+`crates/slicer-core/tests/property_geometry_common/mesh_query.rs`. Production surfaces
+`slicer_core::transform_point3` and `slicer_core::aabb_tree::{AabbTree, RayHit}`. Controls:
+`geometry_controls_slice_and_query_mutations`.
+
+### Contract
+
+An explicit quarter-turn about Z composed with translation is a coordinate sign/swap plus the
+translation. `transform_point3` treats an all-zero matrix as identity and performs a perspective
+divide by `tw` unless it is zero. `AabbTree::bounds` is the component-wise min/max over surviving
+triangles and `None` for an empty tree. `AabbTree::raycast_all_hits` returns hits sorted by distance
+then point, with consecutive hits within `1e-5` deduplicated, and `raycast_first_hit` returns the
+first. No arbitrary rotation and no direction-normalization promise is made.
+
+### Domain
+
+Profiles carry `max_extent_mm` 8/16, `max_translation_mm` 8/16 and `max_queries` 8/16
+(routine/extended). `max_extent_mm` is floored at 4 so a face-interior probe clear of both diagonals
+exists. Transform points lie on an eighth-millimetre grid and are exactly representable in `f32`.
+
+### Strategy
+
+A three-branch union: #2 `analytical_meshes(SolidKind::Box, ...)` for a validated bounds-and-volume
+case, a locally constructed ray-friendly whole-millimetre box, and a #2 `rigid_transforms` case.
+
+### Oracle
+
+`expected_transform` computes the sign/swap and translation directly in `f64`, never through a matrix
+product. Ray probes sit at `(x0+1, y0+2)`, which is provably off both face diagonals:
+`x − x0 = y − y0` needs `1 = 2`, and the other diagonal needs `(w−1)(d−2) = 2`, which has no integer
+solution for `w, d >= 4`. A `+Z` ray must hit the bottom then the top at parametric distances `1` and
+`1+h`; a `−Z` ray mirrors that; a laterally displaced ray must miss; the empty tree must report no
+bounds and no hits. The analytical arm additionally compares
+`mesh_signed_volume_mm3` against the dimension-derived volume.
+
+### Tolerance
+
+Transforms: one rounded operation (the final narrowing to `f32`), since matrix entries are `0/±1`,
+inputs are exact `f32` widened to `f64`, and dyadic translations are exact in `f64`; the envelope is
+`γ(1)·magnitude` from `envelopes::f32_abs_error_envelope`. Rays: sixteen rounded operations in the
+Möller–Trumbore evaluation, giving `γ(16)` times the probe magnitude. Volume: the documented
+`128·f64::EPSILON·M³` mm³ bound. `RayHit::distance` is the parametric `t`, so every ray is unit
+length, which is what makes a millimetre claim meaningful.
+
+### Shrinking
+
+Box dimensions shrink within `4..=max_extent_mm`, translations within their range, and transform cases
+stay on the dyadic domain. The identity, zero-matrix, empty-tree and quarter-turn witnesses are fixed.
+
+### Execution
+
+Both tiers run `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets. The pilot recorded 16
+accepted cases with zero rejected calls.
+
+### Failure record
+
+Deterministic control home: `geometry_controls_slice_and_query_mutations`, which rejects a transposed
+transform (a `−90`-degree matrix against the `+90` sign/swap oracle), a missing exit hit (a box with
+its top face removed) and a fabricated hit (an interior sheet), while the real fixtures pass the same
+checker.
+
+### Acceptance
+
+Maps to AC-5 and AC-N1. The control must reject all three named mutants, explicit zero-matrix and
+identity witnesses must be separate assertions, and the inspected tree contains no non-test
+`AabbTree::new` caller, so this charter claims a library contract rather than pipeline wiring.
+
+## H-HELPERS-SPLIT
+
+Registry record: `id = "H-HELPERS-SPLIT"`, `package = "slicer-helpers"`, `target_kind = "test"`,
+`target_name = "property_helpers"`, `test_name = "proptest_helpers_split_components"`,
+`production_symbol = "slicer_helpers::split_connected_components"`,
+`production_path = "crates/slicer-helpers/src/split.rs"`,
+`features = ["slicer-helpers/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-helpers-split"`.
+
+### Stable property ID
+
+`H-HELPERS-SPLIT` — the connected-component partition of an indexed triangle set, compared against an
+independent pairwise face-reachability model over **oriented** face multisets.
+
+### Owner
+
+Package `slicer-helpers`; standalone target `property_helpers`, body
+`property_helper_common::split::run_property` in
+`crates/slicer-helpers/tests/property_helper_common/split.rs`. Production surface
+`slicer_helpers::split_connected_components`. Controls:
+`helper_controls_edge_adjacency_and_singleton_mutations` and
+`helper_controls_owned_shrink_witnesses`.
+
+### Contract
+
+Adjacency is **index topology only**, and only through a shared **reversed** directed edge: face A
+carrying `(a→b)` joins face B carrying `(b→a)`. Vertex-only contact does not join, and a shared edge
+traversed in the same direction does not join. Components are seeded in ascending first-face order,
+each component's faces appear in ascending original face index, and every component is emitted,
+including a single-triangle fragment. Every input face appears in exactly one output component.
+
+### Domain
+
+Profiles carry `max_components` 4/8, `max_faces` 12/24 and `max_abs_mm` 8/16 (routine/extended). A
+scene is a non-shrinkable plan (nine `SceneKind` variants naming the contact mode and its component
+count) plus shrinkable eighth-millimetre offsets and heights. Parts are laid out on a 2 mm stride with
+1 mm extent, so parts can never overlap and positions can never collide for any admitted parameter.
+
+### Strategy
+
+`SceneKind` covers empty input, a single triangle, one closed tetrahedron, two and three disjoint
+solids, an opposite-direction shared-edge pair (joins), a same-direction shared-edge pair (stays
+separate), a vertex-only shared-index pair (stays separate) and a solid with a lone fragment.
+
+### Oracle
+
+`adjacency_matrix` tests **every unordered face pair with two plain nested loops** over the three
+directed edges of each face, then groups faces with a union-find. It never builds production's
+`(from, to) → faces` map and never runs production's stack DFS. Faces are compared as oriented
+triangles of vertex **positions** (three `f32` bit patterns reduced to the lexicographically smallest
+**cyclic rotation**; reversal is never applied), and each output face is resolved through its own
+component's local vertex table. `check_split` rejects an incomplete or out-of-range output index, a
+wrong component count, a missing/duplicated/foreign face, a non-ascending component first-face order,
+and a per-component face multiset that differs from the model.
+
+### Tolerance
+
+None — exact equality throughout. Comparison uses `u32` bit patterns for positions and exact index
+equality for topology and order; the eighth-millimetre grid keeps every constructed coordinate exactly
+representable in `f32`, and position distinctness is exact bit inequality.
+
+### Shrinking
+
+`SplitSceneValueTree` re-validates every candidate before it becomes `current` and accepts a candidate
+only when the documented simplification weight strictly decreases, so the contact mode cannot move and
+a lost contact witness becomes a rejection rather than a silent pass. `simplify` drops the offset then
+halves the height toward the minimum; `complicate` restores each replaced parameter set from history.
+
+### Execution
+
+Both tiers run `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets. The pilot recorded 64
+accepted cases with zero rejected test calls and all nine scene kinds observed in generation.
+
+### Failure record
+
+Named witnesses: `split_keeps_tiny_fragment` and `split_component_counts` in
+`crates/slicer-helpers/tests/split_tdd.rs` remain the concrete regressions. Deterministic control
+home: `helper_controls_edge_adjacency_and_singleton_mutations`, which rejects a vertex-adjacency
+mutant, a same-direction-edge mutant, a dropped singleton, a wrong component order and an
+extra/missing face.
+
+### Acceptance
+
+Maps to AC-6 and AC-N1. The oracle asserts the **oriented face partition** only: per-component vertex
+compaction and unreferenced-vertex dropping are production implementation choices, not claimed
+contract, so no vertex-array or `concat(split(m)) == m` identity is asserted. No repair or decimation
+geometry-preservation claim is made, and no malformed-index error contract exists.
+
+## H-BOOL-SCAD
+
+Registry record: `id = "H-BOOL-SCAD"`, `package = "slicer-core"`, `target_kind = "test"`,
+`target_name = "property_geometry_scad"`, `test_name = "proptest_scripted_boolean_membership"`,
+`production_symbol = "slicer_core::polygon_ops::union"`,
+`production_path = "crates/slicer-core/src/polygon_ops.rs"`,
+`features = ["slicer-core/property_testing_scad", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = true`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-bool-scad"`.
+
+### Stable property ID
+
+`H-BOOL-SCAD` — the four Boolean wrappers over **actual engine-converted** SCAD contours paired with a
+controlled integer rectangle operand, judged by independent membership.
+
+### Owner
+
+Package `slicer-core`; standalone target `property_geometry_scad`, body
+`property_geometry_common::scad_boolean::run_property` in
+`crates/slicer-core/tests/property_geometry_common/scad_boolean.rs`. The target is gated on
+`slicer-core/property_testing_scad`, and its two modules are mounted behind
+`#[cfg(feature = "property_testing_scad")]` so the direct targets never compile the engine. The
+adapter and engine belong to `proptest-openrscad_03_scad-adapter` and
+`proptest-openrscad_04_pbt-scripted`; this charter uses them as stimulus only.
+
+### Contract
+
+For each certified scripted case, the four operations on `(converted contours, controlled rectangle)`
+agree with the Boolean truth table at every accepted sample, and the output rings are structurally
+valid with the correct winding. Adapter output is never an oracle: the engine says what the operand
+*is*, never what the result *should be*.
+
+### Domain
+
+Three `Union` branches over `TopologyClass::{Convex, Holed, Disconnected}` with
+`solid_witness = None`, `BoundaryRule::Strict`, `min_holes = 0` and
+`min_components = usize::from(class != Empty)`. Profiles carry the 17 scripted keys; routine is
+`max_abs_units` 20000, `max_vertices` 64, `max_holes` 4, `max_components` 4,
+`max_shrink_candidates` 32, `max_recipe_nodes` 24, `max_recipe_depth` 6, `max_facets` 16,
+`max_source_bytes` 16384, `max_evaluations` 48, `max_scad_vertices` 200000,
+`max_scad_triangles` 400000, `evaluation_steps` 5000000, `worker_stack_bytes` 268435456,
+`test_process_timeout_ms` 120000, `max_queries` 32, `max_planes` 4. Extended doubles the
+coordinates and budgets. Every key is read checked; `max_vertices` is capped at 64 because the
+scripted validator rejects more.
+
+### Strategy
+
+`scripted_cases` over the three classes, each value a certified `ScriptedCase` (recipe, exact source
+and adapter output) tagged with the class whose branch produced it. The adapter capacity is
+re-derived locally because `required_adapter_capacity` is `pub(crate)`: `nodes =
+max(8*max_recipe_nodes + 16, max_source_bytes)`, `depth = 2*max_recipe_depth + 8`, geometry nodes
+`= nodes`, and `max_abs_coordinate_mm = max_abs_units/10_000`.
+
+### Oracle
+
+#2 `point_in_region` (exact `BigRational`) over a deterministic pool of quarter points between
+distinct coordinates, a 12-division lattice and padded outer points, compared against the `BoolOp`
+truth table; output rings use the tolerant weakly-simple independent structural check. The controlled rectangle
+spans the right quarter of the operand's bounding box and overhangs by at least one millimetre, so a
+point beyond `max_x` is provably farther than that overhang from every operand edge and a
+rectangle-only population always exists.
+
+### Tolerance
+
+`MARGIN = 2` canonical units. A Clipper intersection vertex moves by at most `√½ ≈ 0.7071` units, so
+every accepted sample is more than `2 − 0.7071 ≈ 1.29` units from any output edge; a `Boundary`
+classification is a failure, not an ambiguity. No tolerance is widened at runtime.
+
+### Shrinking
+
+The value tree is #4's `ScriptedValueTree`: `simplify`/`complicate` delegate to it, every candidate is
+re-emitted, re-evaluated and re-certified, and a candidate is accepted only when `RecipeComplexity`
+strictly decreases within the `max_shrink_candidates`/`max_evaluations` budget. The class tag is
+fixed per branch, so a shrunk case cannot lose its topology witness, and `check_case` re-emits
+`case.source` and compares it byte for byte. Shrink completion is reported `null`/unknown when no
+failure occurs.
+
+### Execution
+
+Routine and extended both run `isolation = "fork"` with nonzero `timeout_ms`, and
+`bounds.test_process_timeout_ms` bounds the whole libtest child, so recipe generation and shrink
+rendering are supervised and not only callbacks. The green pilot recorded 8 accepted cases, 0
+rejected calls, `shrink_completed = null`, 2.14 s, with controller and worker pids journaled.
+
+### Failure record
+
+Artifacts are written before evaluation: `recipe.json`, `recipe-bounds.json`, `source.scad`,
+`options.json`, `engine.json`, `state.json`, then `geometry.json`, `diagnostics.json`,
+`output.json`. Engine provenance recorded by the pilot: backend `manifold_cpp`, engine revision
+`1a45bd33f2886c32bda32fe6e8358a67ab03f5ef`, patch digest `c0297079…`.
+
+### Acceptance
+
+Maps to AC-8. A removed hole, a dropped body or an all-outside answer must be detected. The sample
+vector is built as **every component witness, then every hole witness, in operand order**, followed by
+four mandatory class populations and only then the strided fill; an over-cap selection is an explicit
+error naming forced versus population counts, never truncation. This ordering is load-bearing and was
+measured: with the old tail-first ordering restored, a needle-shaped component placed in the gap
+between two bodies was **accepted** (`accepted: 32, material_witnesses: 3`); with the fix the same
+mutant is rejected at sample `(6252, 2)`.
+
+Deterministic reject-arms run inside the target, each paired with the correct result passing the same
+checker: `filled-hole/<Op>` (holes cleared on every operation that has one — the `difference` output
+of this witness has none, because the rectangle's left edge coincides with the hole's right edge, so
+the arm mutates whichever operation actually carries a hole and names it), `all-outside` (all four
+outputs empty), `dropped-body` and `dropped-unseen-component`. A rejection only counts when it is a
+membership-classification message, so an unrelated fault cannot make an arm pass.
+
+**Classification, not silent skipping:** a converted component whose material contains no integer
+point at the 2-unit margin is enumerated exhaustively over its integer bounding box (bounded at
+65 536 points) and counted as `proved_unobservable`. Per-case populations are asserted nonempty for
+`outside_both` and `inside_rectangle_only` always, and for `inside_operand` only when the case has at
+least one observable component — the charter previously overstated this as unconditional. A
+**run-level** counter proves that at least one checked case observed a real operand component; because
+fork-isolated callbacks cannot update controller memory, the counter is mirrored to a one-line
+`scad-boolean-observability.txt` in the run's artifact directory and the module panics after
+`run.check` if it is zero. Both directions were verified: the positive path reports
+`7 of 8 checked case(s) observed at least one operand component`, and a forced-negative experiment
+panicked with `run-level non-vacuity: none of the 8 checked case(s) observed a single operand
+component`.
+
+Measured in the pilot: 4 of 8 cases had at least one unobservable component and 1 case had all
+components unobservable while 21 rectangle-only and 11 outside-both samples were still checked against
+all four operations. This is #4's catalog scale, not a production defect.
+
+## H-MESH-SCAD
+
+Registry record: `id = "H-MESH-SCAD"`, `package = "slicer-core"`, `target_kind = "test"`,
+`target_name = "property_geometry_scad"`, `test_name = "proptest_scripted_mesh_cross_sections"`,
+`production_symbol = "slicer_core::triangle_mesh_slicer::slice_mesh_ex"`,
+`production_path = "crates/slicer-core/src/triangle_mesh_slicer.rs"`,
+`features = ["slicer-core/property_testing_scad", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = true`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-mesh-scad"`.
+
+### Stable property ID
+
+`H-MESH-SCAD` — `slice_mesh_ex` over **actual converted scripted solids**, compared against a local
+ray-parity model and an independent section-topology model.
+
+### Owner
+
+Package `slicer-core`; standalone target `property_geometry_scad`, body
+`property_geometry_common::scad_mesh::run_property` in
+`crates/slicer-core/tests/property_geometry_common/scad_mesh.rs`.
+
+### Contract
+
+For every certified solid case and every probed plane, the emitted layer's component count, hole
+count, winding and total double area match the independent model, and every accepted sample's
+membership matches the ray-parity reference.
+
+### Domain
+
+A five-branch `Union` over `SolidWitness::{ClosedSolid, Cavity, Bridge, Overhang, SeparatedBodies}`.
+`scripted_cases` requires a solid domain to be `TopologyClass::Convex` with `min_holes = 0` and
+`min_components <= 1`, so the solid structure is carried by `solid_witness` and not by the planar
+class. Preconditions per case: `ScadGeometry::Mesh`, #2 `validate_indexed_mesh(..., true)` and a
+positive `mesh_signed_volume_mm3`. Profiles are the same 17 keys; `max_planes` must be at least 2 and
+`max_queries` at least 4.
+
+### Strategy
+
+`scripted_cases` per witness with a fixed tag. Planes are the midpoints of the largest distinct
+vertex-Z gaps, re-verified finite, distinct, strictly increasing and clear of every vertex Z, so no
+plane is coplanar or through a vertex.
+
+### Oracle
+
+A local ray-parity model over the **input triangles only**: a vertical `+Z` ray counts triangles that
+strictly contain the query in projected XY and whose plane is crossed strictly above `z`; odd means
+inside. Section topology comes from union-find over mesh-edge identities, which yields the exact
+number of closed section curves, and each segment is oriented from the outward normal so per-curve
+signed double areas classify outer curves versus holes. `AabbTree`, `slice_mesh_ex`, Clipper, the
+SDK's solid reference and the slicer's chaining algorithm are all excluded from the reference.
+
+### Tolerance
+
+`EDGE_CLEARANCE_UNITS = 8` from every projected triangle edge; `SECTION_CLEARANCE_UNITS = 8` from every
+model section segment, which exceeds the ≤1-unit per-vertex grid rounding; `COPLANAR_CLEARANCE_MM =
+1e-6` for near-coplanar triangles, which are excluded and counted, never resolved; and
+`PLANE_VERTEX_CLEARANCE_MM = 1e-5` from every vertex Z. Ambiguity is never resolved by widening:
+excluded samples are reported in `PlaneStats::excluded`. The area envelope is derived as
+`2 × perimeter_units`, since moving each vertex of a closed curve by at most one unit moves its double
+area by at most that.
+
+### Shrinking
+
+Identical to `H-BOOL-SCAD`: delegated `ScriptedValueTree`, per-candidate re-emission and
+re-certification, strictly decreasing `RecipeComplexity`, bounded candidate and evaluation budgets,
+and a fixed witness tag per branch.
+
+### Execution
+
+Fork isolation with nonzero `timeout_ms` and whole-process `test_process_timeout_ms` supervision. The
+green pilot recorded 8 accepted cases, 0 rejected calls, `shrink_completed = null`, 0.30 s, with both
+pids journaled.
+
+### Failure record
+
+Measured deterministic witnesses, each through the real adapter: `ClosedSolid` (1 curve, 16 inside +
+16 outside samples), `Cavity` (1 curve, then 2 curves forming 1 component with 1 hole, then 1 curve),
+`Bridge` (2 curves / 2 components, then 1), `Overhang` (1 curve per plane) and `SeparatedBodies`
+(2 curves / 2 components). Witness-implied identities are asserted on the independent model and the
+SUT layer must match it, so a vanished cavity, a dropped body or a filled void each breaks a named
+identity plus the probe samples.
+
+### Acceptance
+
+Maps to AC-8. A filled cavity/hole, a missing body and a fake all-outside answer are all detectable:
+the component and hole counts are model-derived per plane and the probe pairs require both an
+interior and a confirmed exterior sample for every nonempty witness — a plane with only one sample
+side is an **error**, not a classification, so the mesh family has no unobservable case to count.
+
+Deterministic reject-arms run inside the target, each paired with the correct layer passing the same
+checker: `dropped-body z=…` removes one component from the `SeparatedBodies` layer, and
+`filled-cavity z=…` clears the holes on the `Cavity` plane that shows exactly one. Each arm's rejection
+must name `component` or `hole` respectively, so an unrelated fault cannot make the arm pass.
+
+Documented limitations: `f64` parity over `f32` triangles with the stated clearances; ambiguous hits
+are excluded and counted, not resolved; through-vertex and exact top/bottom regimes belong to direct
+`H-MESH-SLICE`; parity proves membership, not boundary location; a consistently outward-oriented
+closed surface is required. The clearances are **proved**, not assumed: with `M = 100` mm (the
+`max_abs_units` cap), `u = 2⁻⁵³` and 15 rounded operations, the barycentric crossing height carries
+`γ₁₅·3M ≈ 5e-13` mm and the edge distance `γ₁₅·2√2M ≈ 4.7e-13` mm (`≈ 4.7e-9` units), so the 8-unit
+edge clearance exceeds the rounding by about `1.7e9`, and the section clearance exceeds the
+1-unit grid rounding plus `1.3e-9` units by about `8×`.
+
+
+

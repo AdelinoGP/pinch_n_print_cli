@@ -631,6 +631,10 @@ repair`, `mesh decimate`, and `mesh import` only.)
 
 Connected-component detection uses OrcaSlicer's `its_split` adjacency model: two triangles belong to the same component if they share an edge **and** their shared-edge windings are opposite (i.e. normal manifold adjacency). No area or volume threshold is applied — a single isolated triangle becomes its own component.
 
+The witness is **index** topology, not coordinate proximity: two faces join only when one carries the directed edge `(a→b)` and the other carries `(b→a)`. A shared edge traversed in the same direction does **not** join, and a vertex-only contact does **not** join even when the two faces share a vertex index. Components are seeded in ascending first-face order, and every component's faces appear in ascending original face index. Vertices are compacted per component in first-seen order and unreferenced vertices are dropped, so concatenating the components does not reproduce the input vertex array; the partition is claimed over faces, not over vertex layout.
+
+This behaviour is covered by one bounded property and two deterministic controls: the property charter [`H-HELPERS-SPLIT`](testing/properties.md#h-helpers-split) compares the output against an independent pairwise face-reachability model over oriented face multisets, `crates/slicer-helpers/tests/property_helper_controls.rs` rejects the corresponding wrong results (a vertex-adjacency mutant, a same-direction-edge mutant, a dropped singleton, a wrong component order and an extra or missing face), and `crates/slicer-helpers/tests/split_tdd.rs` keeps the concrete component-count and tiny-fragment regressions. None of them claims that repair or decimation preserves geometry.
+
 Each input `ObjectMesh`'s triangle set is split into connected components,
 and each component becomes one output `ObjectMesh` (named `<stem>_<i>` for
 multi-component inputs, `<stem>` for single-component ones) inside a single
