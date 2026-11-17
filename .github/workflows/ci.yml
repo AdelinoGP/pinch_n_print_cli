@@ -155,6 +155,27 @@ jobs:
         run: cargo xtask build-guests
       - name: Run routine properties
         run: cargo xtask test --summary --properties --tier routine
+      # A passing exit code does not prove the intended records executed: an
+      # empty or mis-scoped selector exits 0. `cargo xtask test` writes every
+      # record's execution line to target/test-output.log, so assert the IDs
+      # there. This is the same positive check the scripted SCAD lane uses, and
+      # it catches the `--with-scad`-omitted failure mode directly.
+      - name: Assert the geometry records executed
+        shell: pwsh
+        run: |
+          $missing = @()
+          foreach ($id in @(
+            'H-BOOL-SET', 'H-BOOL-CLIP', 'H-OFFSET-MITER', 'H-OFFSET-SMOOTH',
+            'H-MESH-SLICE', 'H-MESH-QUERY', 'H-HELPERS-SPLIT')) {
+            if (-not (Select-String -Path target/test-output.log -Pattern $id -SimpleMatch -Quiet)) {
+              $missing += $id
+            }
+          }
+          if ($missing.Count -gt 0) {
+            Write-Host "::error::property records did not execute: $($missing -join ', ')"
+            exit 1
+          }
+          Write-Host "OK: all seven direct geometry records executed"
       - name: Upload property failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4
@@ -209,6 +230,14 @@ jobs:
           if (-not (Select-String -Path target/test-output.log -Pattern 'D-SCAD-3D')) {
             Write-Host "::error::D-SCAD-3D did not execute"
             exit 1
+          }
+          # Packet proptest-openrscad_09's scripted records: the same positive
+          # check, so a selector that drops them cannot pass silently.
+          foreach ($id in @('H-BOOL-SCAD', 'H-MESH-SCAD')) {
+            if (-not (Select-String -Path target/test-output.log -Pattern $id -SimpleMatch -Quiet)) {
+              Write-Host "::error::$id did not execute"
+              exit 1
+            }
           }
           exit 0
       - name: Upload scripted SCAD failure artifacts
