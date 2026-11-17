@@ -2756,9 +2756,18 @@ representation of a self-touching region, not a malformed one. The general famil
 **weakly-simple** predicate built on the exact integer oracles (`orientation`, `segment_relation`):
 adjacent edges must meet at their shared endpoint; non-adjacent edges may be disjoint or touch at a
 single point (the pinch); and proper crossings, collinear overlaps of positive length, and
-backtracking spikes (`orientation == 0` with a reversing dot product) are rejected. Consecutive
-duplicates, zero area, fewer than three points and the wrong winding are rejected too. Strict #2
-`validate_ring` is applied only where the expected result is a single simple rectangle.
+backtracking spikes (`orientation == 0` with a reversing dot product) are rejected. A vertex visited
+more than once is additionally checked for angular **interleaving**: if another visit's incident edge
+lies strictly between a visit's two edges around that vertex, the strands cross there and the ring is
+rejected, which is the figure-8 a per-edge-pair test cannot see. Consecutive duplicates, duplicates
+across the closing seam, zero area, fewer than three points and the wrong winding are rejected too.
+Strict #2 `validate_ring` is applied only where the expected result is a single simple rectangle.
+
+One limitation is stated rather than implied: a vertex lying on the **interior** of another edge is a
+T-touch, which `segment_relation` reports as an endpoint touch, while the interleave rule only
+inspects repeated vertices. A crossing that occurs exactly at a T-touch is therefore not rejected
+structurally, and the region claim for such a ring rests on the membership oracle alone. Closing it
+needs the edges split at every T-touch before the interleave test.
 
 Whether a general region is semantically right is still decided by the membership oracle, not by ring
 shape — but ring shape is no longer permissive: tightening this predicate is what exposed the real

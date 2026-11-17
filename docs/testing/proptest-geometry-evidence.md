@@ -47,6 +47,10 @@ Every number below comes from an archived log under `target/evidence/` and from 
   `Cargo.toml` bytes and `slicer-core` is in every guest's closure. This is the documented
   rebuild-then-recheck path, not a defect; see `## Deviations` item 3 of the packet for the
   measured consequence of the rejected optional-normal `slicer-scad` edge.
+  **A fresh checkout of this branch therefore reports `STALE` (exit `1`) until `cargo xtask
+  build-guests` runs once.** The closure review reproduced exactly that: exit `1` with 49/49 stale at
+  `2eb60366`, then exit `0` after the rebuild. The `EXIT_FRESH` results recorded elsewhere in this
+  document are post-rebuild results, not a claim that the committed tree is fresh without one.
 - **Dirty paths.** This run is uncommitted; the per-record `context.json` is authoritative for the
   exact dirty set each measurement saw.
 
@@ -95,10 +99,29 @@ per-record compile number would measure cache state rather than the target. The 
 does exist is the gate logs (`s2b-core-check`, `s3-core-check`, `s4-core-check`, `s6-core-check`),
 which each report `Finished` on the whole target.
 
-Extended-tier timings are recorded only where the run was archived: `H-BOOL-SET`
-(`review09-boolset-extended.log`) and both scripted records (`review09-scad-extended.log`). The other
-five direct records passed the extended tier in run token `38b3e4d08b55800c4437fa370e73a06d` with no
-per-record timing archived; that absence is stated rather than filled in with an estimate.
+Extended-tier wall times are now recorded per record from the full 30-record lane
+(`target/evidence/r8-full-extended-scad.log`), in registry order:
+
+| Record | Extended | Record | Extended | Record | Extended |
+|---|---:|---|---:|---|---:|
+| `H-IR-ANCHORS` | 8.74 s | `H-CONFIG-BOUNDS` | 1.44 s | `H-BOOL-SET` | 255.24 s |
+| `D-SCALARS` | 0.48 s | `H-IR-SERDE` | 6.14 s | `H-BOOL-CLIP` | 66.90 s |
+| `D-GRAPHS` | 0.89 s | `H-CONFIG-INTERN` | 1.39 s | `H-OFFSET-MITER` | 0.23 s |
+| `D-IR` | 43.66 s | `H-CHAINS` | 0.36 s | `H-OFFSET-SMOOTH` | 0.19 s |
+| `D-GEOMETRY` | 8.10 s | `H-DAG` | 1.68 s | `H-MESH-SLICE` | 11.51 s |
+| `D-MESH` | 0.46 s | `H-CLAIMS` | 1.91 s | `H-MESH-QUERY` | 0.15 s |
+| `D-SCAD-2D` | 10.70 s | `H-REGISTRY` | 0.96 s | `H-HELPERS-SPLIT` | 0.20 s |
+| `D-SCAD-3D` | 1.54 s | `H-RUNTIME-DISPATCH` | 0.79 s | `H-BOOL-SCAD` | 41.04 s |
+| `H-COORD` | 0.27 s | `H-RUNTIME-SELECTION` | 2.87 s | `H-MESH-SCAD` | 2.55 s |
+| `H-IDS` | 0.32 s | `H-RUNTIME-MODIFIERS` | 77.29 s | `H-RUNTIME-PARTITION` | 50.69 s |
+
+**Granularity limit, stated rather than implied.** Compile, generation and shrink are *not* separated
+per record and cannot be at this granularity: the harness reports one libtest wall time per record,
+which includes the strategy construction and every case, and Proptest exposes no generation-versus-shrink
+split. Compilation is per Cargo target (`property_geometry`, `property_helpers`,
+`property_geometry_scad`), not per record, and a per-record compile figure would measure incremental
+cache state rather than the target. No shrink time appears in the table because no shrink campaign ran
+in any of these lanes.
 
 | Record | Cases | accepted | rejected | shrink_completed | libtest wall | Log |
 |---|---:|---:|---:|---|---:|---|
@@ -133,10 +156,16 @@ production defects, and both were fixed in the test-side checkers:
   regardless of lattice spacing.
 
 **Extended tier, after the fix.** Re-run green: `H-BOOL-SET` 315.81 s and `H-MESH-SLICE` 9.19 s,
-512 cases each, `VERDICT: PASS`. The other five records passed in the first extended run and were
-unaffected by those two test-side changes. No generated case exposed a production defect, so no
-shrink campaign completed; shrinking is exercised deliberately by the two owned-shrink-witness
-controls instead (`geometry_controls_owned_shrink_witnesses`,
+512 cases each, `VERDICT: PASS`, and both later re-measured on the final tree at 255.24 s and 11.51 s
+in the full 30-record lane below. The other five records passed in the same run and were unaffected by
+those two test-side changes.
+
+**This packet did surface one production defect.** The tightened ring predicate is what exposed the
+`xor` collinear-spike defect recorded under "Defects and regressions"; the pre-fix demonstration
+(failing the two new regressions with `polygon_ops.rs` reverted) is in the review log. What did *not*
+happen is a shrink campaign: every failure was a checker or predicate fault rather than a minimised
+SUT input, so `shrink_completed` stayed `null` throughout. Shrinking is exercised deliberately by the
+two owned-shrink-witness controls instead (`geometry_controls_owned_shrink_witnesses`,
 `helper_controls_owned_shrink_witnesses`), which drive the real value trees through `current`,
 successful `simplify`, a `false` `simplify` and repeated `complicate` while re-validating the witness
 at every exposed state.
@@ -144,6 +173,40 @@ at every exposed state.
 Pilot bounds in the harness runs above are the smaller pilot profiles, not the registry profiles;
 the registry profiles are the measured-and-chosen values in `test-properties.toml`. Both are recorded
 so the difference is visible rather than implied.
+
+## Hosted Windows runs
+
+PR [#8](https://github.com/AdelinoGP/pinch_n_print_cli/pull/8) produced the two hosted lanes this
+packet needs. Run `44182873399`, head `2eb60366`:
+
+| Lane | Conclusion | Duration | Records covered |
+|---|---|---|---|
+| `Properties (Windows)` (job `134391555404`) | **pass** | 11m41s | 26 (plain `--tier routine` selector) |
+| `Scripted SCAD properties (Windows)` (job `134391555486`) | **pass** | 13m51s | 30 (`--with-scad`) |
+
+The record counts reconcile exactly with `test-properties.toml`: 30 records total, 4 with
+`requires_scad`, so 26 for the plain selector and 30 once the engine lane is enabled. The earlier run
+on head `3504585f` was also fully green (9 of 9 checks; the same two lanes at 27m33s and 23m58s).
+
+**Attribution is asserted, not inferred.** A green lane exit code does not prove which records ran —
+an empty or mis-scoped selector exits 0, and this packet's own first `--with-scad`-less lane silently
+covered 26 of 30. The per-record execution lines live in the runner's `target/test-output.log`, which
+is uploaded only on failure, so a green run otherwise leaves no attribution in the PR.
+`.github/workflows/ci.yml` therefore now asserts the IDs with the same `Select-String` idiom the SCAD
+lane already used for `D-SCAD-2D`/`D-SCAD-3D`:
+
+- `properties-windows` asserts all seven direct IDs (`H-BOOL-SET`, `H-BOOL-CLIP`, `H-OFFSET-MITER`,
+  `H-OFFSET-SMOOTH`, `H-MESH-SLICE`, `H-MESH-QUERY`, `H-HELPERS-SPLIT`) and fails listing any that are
+  missing;
+- `properties-scad-windows` asserts `H-BOOL-SCAD` and `H-MESH-SCAD` alongside the two older IDs.
+
+Both assertions passed on `2eb60366`, so the hosted logs prove by name that this packet's records
+executed. The guard was validated locally in both directions before it was pushed (exit 0 against a
+real run log, exit 1 naming all seven against a non-property log) rather than discovered in CI.
+
+The `Test` job (workspace suite) was still running when this section was written and is **not**
+claimed here; it passed on the parent head `3504585f`, and the only delta to `2eb60366` is the
+workflow file.
 
 ## Controls and rejected mutations
 
@@ -183,7 +246,8 @@ checker rejects a specific wrong result, naming the reason so a failure identifi
   Fixed by normalising at the single ring-construction funnel (`oriented_ring` inside
   `collect_expolygon_from_tree`, which every tree-based output passes through, so all four wrappers
   and the offset paths share the fix): a vertex is deleted exactly when its neighbour vectors are
-  collinear and reverse; forward collinear vertices and duplicates are kept, the removal iterates to
+  collinear and reverse; forward collinear vertices are kept, consecutive and closing-seam
+  duplicates are removed, and the removal iterates to
   a fixed point bounded by the vertex count, and a fully collapsed ring is dropped rather than emitted
   empty. The region is provably unchanged — the excursion has zero area and creates no vertex — and
   the regression asserts the exact analytic double area (`20096`) plus a nine-point membership truth
@@ -256,12 +320,19 @@ Two limitations are recorded rather than smoothed over:
    deterministically, so `SeparatedBodies` is covered by a named two-component witness regardless of
    the sampled distribution.
 
-The combined G-SCAD / G-GEOMETRY rollout is **not yet claimed as complete**. Both scripted records
-execute locally at routine and extended tier under fork isolation, but two conditions are still open:
-the `properties-scad-windows` PR lane has never run, because nothing in this packet is committed, and
-so no CI log showing these two IDs exists; and the scripted checkers' ability to reject a filled hole,
-a dropped body or an all-outside answer is covered by deterministic control arms rather than by CI
-evidence. The rollout closes when that lane runs on a pushed branch.
+The combined G-SCAD / G-GEOMETRY rollout **is claimed for this packet**, on hosted evidence rather than
+local evidence: `properties-scad-windows` ran and passed on head `2eb60366` (job `134391555486`,
+13m51s) over all 30 records, and its lane now asserts that both scripted IDs executed. Both records
+also pass at extended tier (96 cases each, `VERDICT: PASS`), and the scripted checkers' ability to
+reject a filled hole, a dropped body and an all-outside answer is covered by deterministic control
+arms.
+
+Two attributions are worth stating precisely rather than glossing: hosted attribution comes from the
+`Select-String` assertion over the runner's `target/test-output.log` (a printed per-record line is not
+in the summary digest), and on the mesh side the all-outside case is detected by `check_plane`'s
+component-count comparison rather than by a dedicated arm — an arm exists for the boolean side only.
+That is a coverage note, not a behavioural gap: an empty layer where the model expects curves cannot
+pass.
 
 ## Checks
 

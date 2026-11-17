@@ -491,6 +491,17 @@ pub fn validate_output_rings(label: &str, polygons: &[ExPolygon]) -> Result<(), 
 /// whether the region is semantically right is decided by the membership
 /// oracle, not by ring shape, and this predicate only certifies the listed
 /// shape properties with the demanded winding.
+///
+/// **Known limitation, deliberate and recorded rather than implied:** a vertex
+/// lying on the *interior* of another edge is a T-touch, which
+/// `segment_relation` reports as an endpoint touch, and the vertex-interleave
+/// rule above only inspects vertices the ring visits more than once. A ring
+/// whose crossing happens to sit exactly at such a T-touch is therefore
+/// accepted. Closing it needs the edges split at every T-touch before the
+/// interleave test; until then the guarantee is "no crossing between edges, and
+/// no interleaved crossing at a repeated vertex". Such a ring is not rejected
+/// structurally; whether its region is right is certified only by the
+/// membership oracle.
 pub fn validate_general_output_rings(label: &str, polygons: &[ExPolygon]) -> Result<(), String> {
     /// Zero turn and a reversal at `here`: `cross == 0` and `dot < 0`.
     fn backtracks(prev: Point2, here: Point2, next: Point2) -> Result<bool, String> {
