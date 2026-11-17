@@ -936,6 +936,89 @@ the instrument. The 3-pair first pass was extended only after disclosure; an
 **Frontier: none** — 1–156 are resolved; the next shape is a human pick from the
 fog.
 
+**Destination status (2026-11-16,
+[157](issues/157-needs-support-predicate-attribution.md)): `commit_support_analysis_builtin`
+is the sole production decision consumer of `derive_needs_support`, and an exact
+fast-path boolean predicate inside `SliceRegionView::derive_needs_support`
+collapses all three call sites (`PrePass::SupportAnalysis`, `Layer::Perimeters`,
+`Layer::Infill`) by 91.0x–120.0x with 0 / 3,680 mismatches; the frontier is the
+candidate [158](issues/158-needs-support-fast-predicate.md).** Tracing past
+`__slicer_adapt_slice_regions` (`crates/slicer-macros/src/lib.rs`) to
+`SliceRegionView::needs_support` (`crates/slicer-sdk/src/views.rs`) across the
+entire workspace proves **zero production guest modules** read
+`region.needs_support()`: Packet 224 retired `region.needs_support()` from
+`TreeSupport::run_support` (`modules/core-modules/tree-support/src/lib.rs`)
+because `PrePass::SupportAnalysis` already gates auto-support contact detection
+on `needs_support` when producing `SupportAnalysisIR`, and
+`TraditionalSupport::run_support` never read it. On `3dbenchy.stl` (`240`
+layers, `a_verts_mean = 1,890.1`, `b_polys = 201`, `b_verts = 6,107`),
+`derive_needs_support` costs **3.24–3.39 ms/call** (`1,571.3 ms` thread across 2
+sites on `benchy classic-off`; `2,403.2 ms` across 3 sites on `benchy
+classic-on`), explaining why `t156` (removing only 1 of 3 sites) was sub-noise
+on `benchy`; on `base.stl` (`496` layers, `a_verts_mean = 5,155.7`, `b_polys =
+994`, `b_verts = 26,633`), it costs **49.4–60.9 ms/call** (`51,651.6 ms` across 2
+sites on `base classic-off`; `84,792.0 ms` across 3 sites on `base classic-on`).
+An exact boolean fast path inside `SliceRegionView::derive_needs_support`
+(strict bbox overlap prefilter + strict-interior point-in-`ExPolygon` witness in
+exact `i128` arithmetic, with `intersection_ex` fallback on overlapping pairs
+when no witness is found) produces **0 / 3,680** mismatches across all 4 probed
+cells (`35.7–37.0 µs/call` on `benchy`, **91.0x–92.5x** speedup; `410.2–561.6
+µs/call` on `base`, **113.0x–120.0x** speedup) and **8/8** byte-identical G-code
+runs against t151's active set. Under `PNP_T157_FAST_PREDICATE=1`, combined
+`prep_views_ms` (`Layer::Perimeters` + `Layer::Infill`) drops **−76.0 % to
+−77.1 %** on `benchy` and **−93.0 % to −93.8 %** on `base` (`64,875.1 → 4,011.5
+ms` on `base classic-on`), while `PrePass::SupportAnalysis` eligibility wall on
+`base classic-on` drops **2,100.5 → 41.5 ms (50.6x)**. Priced against `t154`'s
+ledger (`ESTIMATE`, not a ratio of record): **230.6 ms** (`benchy classic-off`,
+**6.00 %** of wall, **7.50x** floor, `2.0068x → 1.8864x`), **237.3 ms** (`benchy
+classic-on`, **3.78 %** of wall, **4.73x** floor, `2.5711x → 2.4739x`),
+**4,692.5 ms** (`base classic-off`, **19.15 %** of wall, **23.94x** floor,
+`1.8270x → 1.4772x`), and **7,414.4 ms** (`base classic-on`, **10.66 %** of
+wall, **13.33x** floor, `3.2197x → 2.8765x`). On `base classic-on`, the **5.346
+s** per-layer wall-equivalent saving alone is **4.88x** `t154`'s **1.096 s**
+non-prepass residual requirement, taking its canonical-prepass projection from
+`1.0508x` to **`0.8033x` (`17.349 s vs 21.598 s`)**. Probe reverted,
+`probe.patch` preserved, `cargo xtask build-guests --check` exits 0, and
+[158](issues/158-needs-support-fast-predicate.md) is graduated. Evidence:
+[`evidence/t157-needs-support-predicate/`](evidence/t157-needs-support-predicate/FINDINGS.md).
+
+**Destination status (2026-11-16; human-amended 2026-11-17,
+[158](issues/158-needs-support-fast-predicate.md)): the exact fast-path boolean
+predicate in `SliceRegionView::derive_needs_support` is KEEP by the human's
+explicit ruling and is landed.** It is byte-identical in **8/8**, lowers process
+CPU by **5.88 %–21.38 %** in **8/8**, and passes all four `base` cells at
+**6.78x–18.58x** the floor (saving **4.23–6.37 s** wall, **20/20** pairs
+candidate-faster). The original mechanical gate remained DROP because
+`benchy-classic-on` recorded **+0.766 %** against the 0.80 % floor and
+`benchy-arachne-off` recorded **−0.076 %**; the human reviewed the complete
+evidence and ruled **“I accept it as a keep.”** The ruling changes the
+disposition, not the measurements.
+
+Landing `expolygons_intersect_area_positive` inside
+`SliceRegionView::derive_needs_support` (`crates/slicer-sdk/src/views.rs`)
+reproduces `t151`'s active reference set in **8/8** cells across 16 output runs,
+80 A/B runs, and 18 null runs (`exit 0`, `degraded=false`, zero diagnostics).
+Over 5 interleaved pairs per cell, process CPU medians fall in **8/8** cells
+(**5.3x–19.1x** the worst-case single-pair CPU null band of `1.117 %`; `39/40`
+pairs candidate-lower). `base-classic-off` saves **4.249 s** (**+14.87 %**),
+`base-classic-on` **4.676 s** (**+5.42 %**), `base-arachne-off` **4.233 s**
+(**+14.64 %**), and `base-arachne-on` **6.369 s** (**+7.52 %**). On the two
+mechanically failing `benchy` cells, median within-pair savings are positive
+(**+2.69 %**, `4/5` wins; **+3.16 %**, `3/5` wins), but the null control covered
+only three `base` cells, so no `benchy` null-band claim is made.
+
+The indicative post-t158 ratio composition is **1.9122x / 2.5514x / 1.7641x /
+2.6482x** on `benchy` and **1.5554x / 3.0452x / 1.5349x / 2.8302x** on `base`
+(classic-off / classic-on / arachne-off / arachne-on). Subtracting the measured
+savings from t154's canonical-prepass projections makes **8/8** projected cells
+win, with `base-classic-on` **1.0508x → 0.8343x**. These are cross-window
+compositions, not a fresh Orca scoreboard or a measured destination close.
+Evidence and the human ruling:
+[`evidence/t158-needs-support-fast-predicate/`](evidence/t158-needs-support-fast-predicate/FINDINGS.md)
+(original campaign `verify.py --self-test` exit 0, 6/6 negative controls rejected;
+route arithmetic re-derived by `route_arithmetic.py`). **Frontier: none** —
+1–158 are resolved; the next shape is the human's pick from the fog.
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -1022,7 +1105,58 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-15, the t156 take):** the human said
+**Current selection scope (2026-11-16, the t158 take):** the human said
+"Continue with the next one" (no ticket named); **158 was the only unblocked,
+unclaimed AFK frontier ticket** (1–157 resolved; no HITL ticket open), a
+`wayfinder:task`, and was claimed and mechanically resolved as **DROP**. On
+2026-11-17 the human explicitly amended that disposition to **KEEP**. Landing
+`expolygons_intersect_area_positive` inside `SliceRegionView::derive_needs_support`
+(`crates/slicer-sdk/src/views.rs`) is byte-identical in **8/8** cells to `t151`'s
+active reference set across 16 output runs, 80 A/B runs, and 18 null runs, lowers
+process CPU in **8/8** cells by **5.88 %–21.38 %** (**5.3x–19.1x** the `1.12 %`
+any-pair CPU null band; `39/40` pairs candidate-lower), and clears the `0.80 %`
+wall floor in **all four `base` cells** (`+5.42 %` to `+14.87 %` wall, `6.78x` to
+`18.58x` floor, `−4.23` to `−6.37 s`, `20/20` pairs candidate-faster), realising
+`90.5 %` of `t157`'s `4.69 s` wall ceiling on `base-classic-off`. However, on
+`benchy` the entire three-site `derive_needs_support` ceiling is only `~231–237
+ms` (`~3.0 %` of `benchy` supports-on wall), so single-run wall jitter puts two
+`benchy` cells below the separate-arm `0.80 %` wall floor over 5 interleaved
+pairs: `benchy-classic-on` **+0.766 %** (`0.96x` floor, about `3 ms` short despite
+winning `4/5` pairs with a **+2.69 %** pairwise median) and `benchy-arachne-off`
+**−0.076 %** (`−0.10x` floor despite winning `3/5` pairs with a **+3.16 %**
+pairwise median). The human's KEEP ruling restores the production code and unit
+tests; the original mechanical failure and missing `benchy` null control remain
+disclosed. `candidate.patch` and `RULING.md` are preserved in
+`evidence/t158-needs-support-fast-predicate/`.
+**No production commit; no fresh Orca scoreboard; no accelerated arm.** **Frontier now:
+none** — 1–158 resolved; next is a human pick from the fog.
+
+**Previous selection scope (2026-11-16, the t157 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **1–156 were resolved and the
+frontier was empty**, so the map's own signpost from Not yet specified (`item
+(d) the surviving predicate`) graduated as
+[157](issues/157-needs-support-predicate-attribution.md) (AFK Phase-1
+attribution + probe, following the t149/t152/t154 precedent) and was claimed and
+resolved. Headline: **`commit_support_analysis_builtin` is the sole production
+decision consumer of `derive_needs_support` in the entire pipeline (after Packet
+224 retired `region.needs_support()` from `TreeSupport::run_support`), and an
+exact fast-path boolean predicate inside `SliceRegionView::derive_needs_support`
+collapses all three call sites (`PrePass::SupportAnalysis`, `Layer::Perimeters`,
+`Layer::Infill`) by 91.0x–120.0x with 0 / 3,680 mismatches.** Under
+`PNP_T157_FAST_PREDICATE=1`, combined `prep_views_ms` falls **−76.0…−77.1 %** on
+`benchy` and **−93.0…−93.8 %** on `base`, and `PrePass::SupportAnalysis`
+eligibility wall on `base classic-on` falls **2,100.5 → 41.5 ms (50.6x)**, with
+**8/8** probe runs byte-identical to t151's active set. Priced against `t154`'s
+ledger (`ESTIMATE`, not a ratio of record): **230.6 ms / 237.3 ms** on `benchy
+classic-off / on` (**7.50x / 4.73x** floor) and **4.693 s / 7.414 s** on `base
+classic-off / on` (**23.94x / 13.33x** floor), where `base classic-on`'s **5.346
+s** per-layer saving is **4.88x** its **1.096 s** non-prepass requirement (`1.0508x
+→ 0.8033x` at canonical prepass). Probe reverted, `probe.patch` preserved,
+`cargo xtask build-guests --check` exit 0, and
+[158](issues/158-needs-support-fast-predicate.md) graduated. **Frontier now:
+[158](issues/158-needs-support-fast-predicate.md) (AFK, unblocked, new).**
+
+**Previous selection scope (2026-11-15, the t156 take):** the human said
 "Continue the perf vs orca map" (no ticket named); **156 was the only unblocked,
 unclaimed frontier ticket** (1–155 resolved; no HITL ticket open), a
 `wayfinder:task`, and was claimed and resolved as **DROP**. The prepared-region
@@ -1039,7 +1173,7 @@ load sample). Production code/tests were reverted; `candidate.patch` and
 accelerated arm.** **Frontier now: none** — 1–156 resolved; next is a human pick
 from the fog (the cheaper `needs_support` predicate remains the unpriced survivor).
 
-**Current selection scope (2026-11-14, the t155 take):** the human said
+**Previous selection scope (2026-11-14, the t155 take):** the human said
 "Continue the perf vs orca map" (no ticket named); **155 was the only unblocked,
 unclaimed frontier ticket** (1–154 resolved; no HITL ticket open), a
 `wayfinder:task`, and was claimed and resolved as a **Phase-1 attribution plus a
@@ -4160,6 +4294,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Exact fast-path boolean predicate in `SliceRegionView::derive_needs_support`](issues/158-needs-support-fast-predicate.md): **resolved 2026-11-16; human-amended 2026-11-17, KEEP** — replacing the unconditional Clipper2 `intersection_ex` inside `SliceRegionView::derive_needs_support` (`crates/slicer-sdk/src/views.rs`) with `expolygons_intersect_area_positive` (strict bbox overlap prefilter + strict-interior point-in-`ExPolygon` witness in `i128`, with `intersection_ex` fallback on overlapping pairs when no witness is found) passes all 72 `layer_module_tdd` tests (including 4 new boundary/hole/`+`-fallback cases), is byte-identical in **8/8** cells against `t151`'s active reference set across 16 output runs, 80 A/B runs, and 18 null runs (`exit 0`, `degraded=false`, zero diagnostics), lowers process CPU in **8/8** cells by **5.88 %–21.38 %** (**5.3x–19.1x** the `1.117 %` any-pair CPU null band; `39/40` pairs candidate-lower), and clears the `0.80 %` wall floor in **all four `base` cells** (`base-classic-off` **+14.87 %** / `−4.25 s` / `18.58x` floor / `−44.63 CPU s`, `base-classic-on` **+5.42 %** / `−4.68 s` / `6.78x` floor / pairwise **+8.67 %** / `−71.08 CPU s`, `base-arachne-off` **+14.64 %** / `−4.23 s` / `18.30x` floor / `−43.64 CPU s`, `base-arachne-on` **+7.52 %** / `−6.37 s` / `9.40x` floor / `−67.84 CPU s`; `20/20` pairs candidate-faster). However, because the entire three-site `derive_needs_support` ceiling on `benchy` is only `~231–237 ms` (`~3.0 %` of `benchy` supports-on wall), single-run wall jitter puts two `benchy` cells below the literal eight-cell separate-arm `0.80 %` wall floor over 5 interleaved pairs (`benchy-classic-on` **+0.766 %**, `0.96x` floor despite **+2.69 %** pairwise median and `4/5` pair wins; `benchy-arachne-off` **−0.076 %**, `−0.10x` floor despite **+3.16 %** pairwise median and `3/5` pair wins). The human explicitly accepted the candidate as KEEP on 2026-11-17; production code and unit tests are landed, with the original mechanical gate failure and missing `benchy` null control disclosed in `RULING.md`; guest freshness green (`cargo xtask build-guests --check` exit 0), `candidate.patch` preserved in [`evidence/t158-needs-support-fast-predicate/`](evidence/t158-needs-support-fast-predicate/FINDINGS.md) (`verify.py --self-test` exit 0, 6/6 negative controls rejected).
+- [The surviving `needs_support` predicate: reader census, three-site cost, and exact fast-path probe](issues/157-needs-support-predicate-attribution.md): **resolved (2026-11-16; Phase-1 attribution + probe — `commit_support_analysis_builtin` is the sole production decision consumer, and an exact fast-path boolean predicate inside `SliceRegionView::derive_needs_support` collapses all three call sites by 91.0x–120.0x with 0 / 3,680 mismatches)** — workspace-wide reader census proves zero guest modules in `modules/` read `SliceRegionView::needs_support()` after Packet 224 retired `region.needs_support()` from `TreeSupport::run_support` (`modules/core-modules/tree-support/src/lib.rs`); only `commit_support_analysis_builtin` (`crates/slicer-runtime/src/builtins/support_analysis_producer.rs`) makes a production decision on `derive_needs_support`, while the two per-layer calls in `prepare_regions` (`crates/slicer-wasm-host/src/marshal/prepared.rs`) marshal a value read only by contract/unit tests. On `3dbenchy.stl` (`240` layers, `a_verts_mean = 1,890.1`, `b_polys = 201`, `b_verts = 6,107`), full `intersection_ex` costs **3.24–3.39 ms/call** (`1,571.3 ms` thread across 2 sites on `benchy classic-off`; `2,403.2 ms` across 3 sites on `benchy classic-on`); on `base.stl` (`496` layers, `a_verts_mean = 5,155.7`, `b_polys = 994`, `b_verts = 26,633`), it costs **49.4–60.9 ms/call** (`51,651.6 ms` across 2 sites on `base classic-off`; `84,792.0 ms` across 3 sites on `base classic-on`). Dual-computing an exact boolean fast path (strict bbox overlap prefilter + strict-interior point-in-`ExPolygon` witness in `i128`, with `intersection_ex` fallback on overlapping pairs when no witness is found) yields **0 / 3,680** mismatches across all 4 probed cells (`35.7–37.0 µs/call` on `benchy`, **91.0x–92.5x**; `410.2–561.6 µs/call` on `base`, **113.0x–120.0x**) and **8/8** byte-identical G-code runs against t151's active set. Under `PNP_T157_FAST_PREDICATE=1`, combined `prep_views_ms` (`Layer::Perimeters` + `Layer::Infill`) falls **−76.0…−77.1 %** on `benchy` and **−93.0…−93.8 %** on `base` (`64,875.1 → 4,011.5 ms` on `base classic-on`), and `PrePass::SupportAnalysis` eligibility wall on `base classic-on` falls **2,100.5 → 41.5 ms (50.6x)**. Priced against `t154`'s ledger (`ESTIMATE`, not a ratio of record): **230.6 ms** (`benchy classic-off`, **6.00 %** of wall, **7.50x** floor, `2.0068x → 1.8864x`), **237.3 ms** (`benchy classic-on`, **3.78 %** of wall, **4.73x** floor, `2.5711x → 2.4739x`), **4,692.5 ms** (`base classic-off`, **19.15 %** of wall, **23.94x** floor, `1.8270x → 1.4772x`), and **7,414.4 ms** (`base classic-on`, **10.66 %** of wall, **13.33x** floor, `3.2197x → 2.8765x`), where `base classic-on`'s **5.346 s** per-layer saving is **4.88x** its **1.096 s** non-prepass requirement (`1.0508x → 0.8033x` at canonical prepass). Probe reverted, `probe.patch` preserved, `cargo xtask build-guests --check` exit 0, and [158](issues/158-needs-support-fast-predicate.md) graduated. Evidence: [`evidence/t157-needs-support-predicate/`](evidence/t157-needs-support-predicate/FINDINGS.md) (`verify.py --self-test` exit 0).
 - [Prepared-region memo across the fill sync](issues/156-prepared-memo-across-fill-sync.md): **resolved 2026-11-15, DROP** — preserving the memo across `sync_perimeter_infill_areas_into_slice` is exact (8/8 byte-identical to t151's active set) and removes the redundant derivation (process CPU lower in 8/8), but the quiet 5-pair wall gate fails: benchy Arachne-on **−2.94 %** and base Arachne-on **+0.17 %** against the 0.80 % floor. The two failing cells are supports-on Arachne, where the saved work was not on the critical path; the same-arm null band is **9.52 % wall / 0.75 % CPU** any-pair absolute, so only base Arachne-off's **+10.09 %** is outside it. A 5-pair extension that began at 85 % load was invalidated and preserved as `reduced/loaded-window.json`; production code/tests reverted, patch preserved.
 - [The `Layer::Infill` first-dispatch block and base classic-on's 1.096 s residual](issues/155-infill-stage-block-base-on-residual.md): **resolved (2026-11-14; Phase-1 attribution + probe — the block is the prepared-region derivation, paid twice per layer, and the second payment is redundant)** — a five-file env-gated probe splits every module bracket on base classic-off/on. **The block is `prepare_dispatch_region_views` → `prepare_slice_regions` → `derive_needs_support`: 97.5 % of the first-Infill bracket (p50 52.4 ms of 53.6 ms) on base-off and 97.3 % (53.3 of 54.8 ms) on base-on.** All named alternatives are measured out: the whole dispatch path is ~0.95 ms (1.8 %) — pool lease 5 µs, linker 196, instantiation 83, region push 58, export call 593, teardown 25 — and `LayerStageInput` is 5 µs; the arena memo itself works (every non-first module reads the prepared slots in 5 µs, 3.0–4.0 ms per module over 496 calls). **Paid twice** because `sync_perimeter_infill_areas_into_slice` takes and re-stages the slice after every perimeter commit (three per layer) and each `set_slice` clears the memo; **the second derivation is provably redundant** — hashing the fields `prepare_regions` reads (region order/count, `region_id`, `object_id` length, `nonplanar_surface` presence, every polygon coordinate) before and after the sync gives **0 changed of 1,488** on base-off, base-on and the decline arm. **Stage-sharing re-proven at HEAD:** declining `raft-default` moves the block to `gyroid-infill` (24,533.1 ms, p50 50.0 ms), others stay ≤3.5 ms, hash unchanged (`9bb18f0e…`). **`Layer::Support` separated:** `tree-support`'s prep_views is 5 µs; its 85.9 ms p50 bracket on base-on is the in-module render (85.4 ms across linker→call→teardown), a work-set/phase difference, not a host block. **Composition:** 94.3–94.4 % of the derivation is one `intersection_ex(region.polygons, footprint)` per layer; exactly **one** non-empty overhang footprint exists per object per layer (max 1 over 1,488 calls) and the answer was **true in all 992/992 and 1,488/1,488** measured calls; base-on evaluates it a third time in the prepass eligibility pass (1,488 calls, 72.8 s thread), supports-off only twice. The value is delivered (the guest adapter `__slicer_adapt_slice_regions` calls `needs-support()` per region), so deletion is a contract change, not a free win. **Price (ceilings = thread / t154 parallelism; walls of record carried; floor 0.008 × wall):** redundant Infill-side derivation **25,986.3 ms / 26,101.2 ms** thread → **2.382 s** base-off (**12.15x** the 196 ms floor, 36.5 % of the per-layer thread, 21.5 % of the 11.10 s cut) and **2.335 s** base-on (**4.20x** the 556 ms floor, 23.1 % of the phase, **2.13x** the 1.096 s requirement); indicatively base-on moves **1.051x → ~0.943x** at canonical prepass cost (an estimate, not a claim). **Verdict:** removable — proposed candidate, not adopted: preserve the prepared memo across the fill sync, clear on the modifier-footprint path where the region list can change. Graduated [t156](issues/156-prepared-memo-across-fill-sync.md) with the standing eight-cell gate. Disclosed: no wall claim, no ratio of record, no load sample, no accelerated arm, no design for a cheaper predicate, and the pre-probe pass's 63 ms p50 is a slower box state, not a measurement of cause. Evidence: [`evidence/t155-infill-stage-block/`](evidence/t155-infill-stage-block/FINDINGS.md) (`probe.json` eight runs, `summary.json`, `probe.patch` reverted with `git apply --check` clean; `verify.py` PASS 9/9, `--self-test` 9/9 mutations rejected; restored tree's guest freshness exit 0 and the restored binary reproduces `9bb18f0e…`).
 - [Benchy per-layer program: which carrier holds the wall, and what does canonical do differently?](issues/154-benchy-per-layer-carrier-attribution.md): **resolved (2026-11-14; Phase-1 attribution + arithmetic re-derivation — the benchy per-layer program is margin, not route)** — eight instrumented ordinary passes at HEAD (`71c03a3e`, binary `e1b8fa69…`) are clean and byte-identical to t151's active set; the split is prepass 63.5–82.4 %, per-layer 14.4–29.6 %, postpass 2.6–6.5 %, outside 0.1–5.3 %, with a per-layer host gap of 0–56 ms. **At canonical prepass cost 7/8 cells win** (benchy arachne-off 0.668x, base arachne-off 0.698x, benchy classic-off 0.740x, base classic-off 0.743x, benchy classic-on 0.857x, benchy arachne-on 0.901x, base arachne-on 0.967x) and **base classic-on is the only loser at 1.051x, needing 1.096 s = 9.6 % of its per-layer phase**; the required prepass cut is **64.3–84.5 %**, largest on benchy arachne-on/base classic-on/base arachne-on. This **supersedes t128/t129's benchy loss** (those paired t126's per-layer phases with t124's Orca walls) and moves the per-layer requirement to **base classic-on**. **Carriers:** supports-off perimeters **46.8–55.1 %** of per-layer thread (77–98 % in-module self fuel; `offset2_ex` the only scope at 21.8–22.8 %), first `Layer::Infill` dispatch **17.6–37.3 %** (stage-shared; t127's "prepared-region view" name fails at HEAD because `ensure_prepared_perimeter_source_regions` materialises that view in `Layer::Perimeters` and `Layer::Infill` hits the memo), `infill-linker` **4.4–20.5 %** (99.8–100 % self fuel); supports-on by `tree-support` **36.7–47.8 %**, a work-set/phase difference because canonical generates support in `PrintObject::_generate_support_material` (one whole-object pass). **The requested per-op split does not exist at the current instrumentation surface** — named scopes explain ≤ 22.8 % of any carrier's fuel, and that is the finding: no plumbing fat. The t126→t154 per-layer fall (**−21.6 % to −40.1 %** on benchy) is measured but **not attributed**. Graduated [t155](issues/155-infill-stage-block-base-on-residual.md) (AFK). Evidence: [`evidence/t154-benchy-per-layer/`](evidence/t154-benchy-per-layer/FINDINGS.md) (`verify.py` PASS, 11/11 negative controls).
@@ -4442,17 +4578,38 @@ Standing decisions for this effort (2026-09-22):
   arachne-on's **3.3 %** margin is that tight; (c) **no cause is attributed** for
   the t126→t154 per-layer fall (−21.6 % to −40.1 % on the benchy cells); t139's
   mid-layer sampling and t142's quartile derivation are candidates, not findings;
-  (d) **the surviving predicate** — t156 dropped, so the first derivation still
-  pays one full-polygon `intersection_ex(region.polygons, footprint)` per layer
-  whose answer was true in every measured call (992/992 off, 1,488/1,488 on),
-  and base-on evaluates the same predicate again in the prepass eligibility
-  pass (496 calls, 23.3 s thread). t156's base classic-on wall saving
-  (**+4.873 %**, 74.714 → 71.073 s) exceeded that cell's **1.096 s** requirement,
-  but the candidate cannot be banked while benchy/base Arachne-on fail. Whether
-  an exact cheaper predicate exists, or one evaluation per `(layer, region)` can
-  be shared across the prepass and per-layer stages, remains unmeasured; a
-  cheaper predicate leaves the memo argument unchanged, while a shared
-  evaluation is a schema/lifecycle move.
+  (d) **the surviving predicate (attributed and priced by
+  [t157](issues/157-needs-support-predicate-attribution.md); candidate
+  [t158](issues/158-needs-support-fast-predicate.md) resolved 2026-11-16; human-amended 2026-11-17, KEEP and landed)** — `t157` proved that
+  `commit_support_analysis_builtin` is the sole production decision consumer of
+  `derive_needs_support` (after Packet 224 retired `region.needs_support()` from
+  `TreeSupport::run_support`), and that an exact boolean fast path inside
+  `SliceRegionView::derive_needs_support` (strict bbox overlap prefilter +
+  strict-interior point-in-`ExPolygon` witness in `i128`, with `intersection_ex`
+  fallback on overlapping pairs) yields **0 / 3,680** mismatches across `benchy`
+  and `base`, speeds up all three call sites (`PrePass::SupportAnalysis`,
+  `Layer::Perimeters`, `Layer::Infill`) by **91.0x–120.0x**, and prices at
+  **230.6–237.3 ms** on `benchy` and **4.693–7.414 s** on `base` (taking `base
+  classic-on`'s canonical-prepass projection from `1.0508x` to **`0.8033x`**).
+  **[t158](issues/158-needs-support-fast-predicate.md) ran the standing eight-cell
+  paired campaign (5 interleaved pairs/cell = 80 runs):** byte-identical 8/8 to
+  `t151`'s active set, process CPU lower in **8/8** by **5.88 %–21.38 %**
+  (`5.3x–19.1x` the `1.12 %` any-pair CPU null band; `39/40` pairs), and all four
+  `base` cells clear the `0.80 %` wall floor in **20/20** pairs (`+5.42 %` to
+  `+14.87 %` wall, `6.78x` to `18.58x` floor, `−4.23` to `−6.37 s`, realising
+  `90.5 %` of `t157`'s `4.69 s` wall ceiling on `base-classic-off`), but two
+  `benchy` cells miss the literal separate-arm `0.80 %` wall floor (`benchy-classic-on`
+  **+0.766 %**, `0.96x` floor despite **+2.69 %** pairwise median and `4/5` wins;
+  `benchy-arachne-off` **−0.076 %**, `−0.10x` floor despite **+3.16 %** pairwise
+  median and `3/5` wins) because the entire three-site `benchy` ceiling (`~231–237
+  ms`, `~3.0 %` of `benchy` supports-on wall) sits inside single-run wall jitter.
+  The human subsequently ruled **KEEP** on 2026-11-17 and the candidate is landed;
+  the original gate failure and missing `benchy` null control remain disclosed.
+  `candidate.patch` and the ruling are preserved in
+  [`evidence/t158-needs-support-fast-predicate/`](evidence/t158-needs-support-fast-predicate/FINDINGS.md).
+  The measured route composition now puts `base classic-on`'s canonical-prepass
+  projection at **0.8343x** and all eight projected cells below 1.0x; this is not
+  a fresh Orca scoreboard or a measured destination close.
 
 - **The adhesion fairness program is complete (t151, 2026-11-14): the supports-off oracle is
   4/4 and the last residual is the ~0.10 mm brim-extent term plus ≤ 0.04 mm of Arachne

@@ -1116,6 +1116,135 @@ fn slice_region_view_derive_needs_support_missing_classification_is_true() {
     assert!(view.derive_needs_support(Some(&SurfaceClassificationIR::default())));
 }
 
+#[test]
+fn slice_region_view_derive_needs_support_edge_and_vertex_touching_zero_area_is_false() {
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_polygons(vec![support_test_square(0.0, 0.0, 1.0)]);
+
+    // Shared vertical edge at x = 1.0 (zero intersection area).
+    let edge_touching = support_test_classification(support_test_square(1.0, 0.0, 1.0));
+    assert!(!view.derive_needs_support(Some(&edge_touching)));
+
+    // Shared corner vertex at (1.0, 1.0) (zero intersection area).
+    let vertex_touching = support_test_classification(support_test_square(1.0, 1.0, 1.0));
+    assert!(!view.derive_needs_support(Some(&vertex_touching)));
+
+    // Shared boundary inside an overlapping bbox (a concave L-shape whose inner
+    // reflex edge touches the footprint's edge without interior overlap).
+    let l_shape = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(3.0, 0.0),
+                Point2::from_mm(3.0, 1.0),
+                Point2::from_mm(1.0, 1.0),
+                Point2::from_mm(1.0, 3.0),
+                Point2::from_mm(0.0, 3.0),
+            ],
+        },
+        holes: vec![],
+    };
+    view.set_polygons(vec![l_shape]);
+    let reflex_touching = support_test_classification(support_test_square(1.0, 1.0, 1.5));
+    assert!(!view.derive_needs_support(Some(&reflex_touching)));
+}
+
+#[test]
+fn slice_region_view_derive_needs_support_footprint_inside_region_hole_is_false() {
+    let annulus = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(10.0, 0.0),
+                Point2::from_mm(10.0, 10.0),
+                Point2::from_mm(0.0, 10.0),
+            ],
+        },
+        holes: vec![Polygon {
+            // CW hole from (2,2) to (8,8)
+            points: vec![
+                Point2::from_mm(2.0, 2.0),
+                Point2::from_mm(2.0, 8.0),
+                Point2::from_mm(8.0, 8.0),
+                Point2::from_mm(8.0, 2.0),
+            ],
+        }],
+    };
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_polygons(vec![annulus]);
+
+    // Strictly inside the hole -> disjoint from the solid annulus.
+    let inside_hole = support_test_classification(support_test_square(3.0, 3.0, 2.0));
+    assert!(!view.derive_needs_support(Some(&inside_hole)));
+
+    // Touching the hole boundary from inside the hole -> still zero-area intersection.
+    let touching_hole_wall = support_test_classification(support_test_square(2.0, 2.0, 6.0));
+    assert!(!view.derive_needs_support(Some(&touching_hole_wall)));
+}
+
+#[test]
+fn slice_region_view_derive_needs_support_region_inside_footprint_hole_is_false() {
+    let footprint_annulus = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(10.0, 0.0),
+                Point2::from_mm(10.0, 10.0),
+                Point2::from_mm(0.0, 10.0),
+            ],
+        },
+        holes: vec![Polygon {
+            points: vec![
+                Point2::from_mm(2.0, 2.0),
+                Point2::from_mm(2.0, 8.0),
+                Point2::from_mm(8.0, 8.0),
+                Point2::from_mm(8.0, 2.0),
+            ],
+        }],
+    };
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_polygons(vec![support_test_square(3.0, 3.0, 2.0)]);
+    let classification = support_test_classification(footprint_annulus);
+    assert!(!view.derive_needs_support(Some(&classification)));
+}
+
+#[test]
+fn slice_region_view_derive_needs_support_crossing_bars_without_interior_vertices_is_true() {
+    // Horizontal bar [0, 10] x [4, 6] crossed by vertical bar [4, 6] x [0, 10]:
+    // neither polygon has a contour vertex inside the other, so the vertex
+    // witness passes find nothing and the Clipper2 fallback decides `true`.
+    let horiz = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 4.0),
+                Point2::from_mm(10.0, 4.0),
+                Point2::from_mm(10.0, 6.0),
+                Point2::from_mm(0.0, 6.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let vert = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(4.0, 0.0),
+                Point2::from_mm(6.0, 0.0),
+                Point2::from_mm(6.0, 10.0),
+                Point2::from_mm(4.0, 10.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_polygons(vec![horiz]);
+    let classification = support_test_classification(vert);
+    assert!(view.derive_needs_support(Some(&classification)));
+}
+
 // =============================================================================
 // Test 11: PerimeterRegionView methods per docs/03_wit_and_manifest.md
 // =============================================================================
