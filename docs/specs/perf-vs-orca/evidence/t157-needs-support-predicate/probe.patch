@@ -1,0 +1,493 @@
+diff --git a/crates/slicer-runtime/src/builtins/support_analysis_producer.rs b/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
+index b64638d1..111f9a94 100644
+--- a/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
++++ b/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
+@@ -84,6 +84,8 @@ pub fn commit_support_analysis_builtin(
+             // the same values in the same order. Values are identical by
+             // construction: the same function, the same inputs, no shared
+             // mutable state.
++            let t157_probe_on = std::env::var_os("PNP_T157_PROBE").is_some();
++            let t_elig = std::time::Instant::now();
+             let eligibility_work: Vec<&slicer_ir::SlicedRegion> = slices
+                 .iter()
+                 .flat_map(|slice| slice.regions.iter())
+@@ -92,10 +94,24 @@ pub fn commit_support_analysis_builtin(
+             let needs_support_by_region: Vec<bool> = eligibility_work
+                 .par_iter()
+                 .map(|region| {
+-                    slicer_sdk::views::SliceRegionView::from_ir(region, 0.0, Vec::new())
+-                        .derive_needs_support(surface_classification.as_deref())
++                    let prev_tag =
++                        slicer_sdk::views::t157_set_caller_tag("PrePass::SupportAnalysis");
++                    let val = slicer_sdk::views::SliceRegionView::from_ir(region, 0.0, Vec::new())
++                        .derive_needs_support(surface_classification.as_deref());
++                    slicer_sdk::views::t157_set_caller_tag(prev_tag);
++                    val
+                 })
+                 .collect();
++            let elig_wall_us = t_elig.elapsed().as_micros();
++            if t157_probe_on {
++                let true_count = needs_support_by_region.iter().filter(|&&b| b).count();
++                eprintln!(
++                    "{{\"t157_probe\":\"sa_eligibility\",\"regions\":{},\"true_count\":{},\"wall_us\":{}}}",
++                    needs_support_by_region.len(),
++                    true_count,
++                    elig_wall_us
++                );
++            }
+             let mut needs_support_index = 0_usize;
+             let mut contact_work: Vec<ContactWork> = Vec::new();
+             for slice in slices.iter() {
+@@ -195,6 +211,7 @@ pub fn commit_support_analysis_builtin(
+                     b.region_id,
+                 ))
+             });
++            let t_contacts = std::time::Instant::now();
+             let contacts: Vec<Contact> = contact_work
+                 .par_iter()
+                 .filter_map(|work| {
+@@ -288,6 +305,14 @@ pub fn commit_support_analysis_builtin(
+                     })
+                 })
+                 .collect();
++            let contacts_wall_us = t_contacts.elapsed().as_micros();
++            if t157_probe_on {
++                eprintln!(
++                    "{{\"t157_probe\":\"sa_contacts\",\"contacts\":{},\"wall_us\":{}}}",
++                    contacts.len(),
++                    contacts_wall_us
++                );
++            }
+ 
+             let mut candidate_addresses: BTreeMap<SupportSourceKey, RegionKey> = BTreeMap::new();
+             for Contact {
+diff --git a/crates/slicer-runtime/src/layer_executor.rs b/crates/slicer-runtime/src/layer_executor.rs
+index 078ec32d..2b7e279a 100644
+--- a/crates/slicer-runtime/src/layer_executor.rs
++++ b/crates/slicer-runtime/src/layer_executor.rs
+@@ -1082,7 +1082,30 @@ fn execute_single_layer_inner(
+             if let Some(entry) = native_entry {
+                 live_module = live_module.with_native_entry(entry);
+             }
++            let t157_probe_on = std::env::var_os("PNP_T157_PROBE").is_some();
++            let t157_caller_tag: &'static str = match stage.stage_id.as_str() {
++                "Layer::Perimeters" => "Layer::Perimeters",
++                "Layer::Infill" => "Layer::Infill",
++                "Layer::InfillPostProcess" => "Layer::InfillPostProcess",
++                "Layer::Support" => "Layer::Support",
++                "Layer::SkirtBrim" => "Layer::SkirtBrim",
++                "Layer::PathOptimization" => "Layer::PathOptimization",
++                _ => "Layer::Other",
++            };
++            let prev_tag = slicer_sdk::views::t157_set_caller_tag(t157_caller_tag);
++            let t_prep = std::time::Instant::now();
+             prepare_dispatch_region_views(&mut arena, &stage.stage_id, blackboard);
++            let prep_us = t_prep.elapsed().as_micros();
++            slicer_sdk::views::t157_set_caller_tag(prev_tag);
++            if t157_probe_on {
++                eprintln!(
++                    "{{\"t157_probe\":\"prep_views\",\"stage_id\":\"{}\",\"module_id\":\"{}\",\"layer\":{},\"prep_us\":{}}}",
++                    stage.stage_id,
++                    module.module_id(),
++                    layer.index,
++                    prep_us
++                );
++            }
+             let prepared_regions = arena.prepared_regions();
+             let prepared_perimeter_source_regions = arena.prepared_perimeter_source_regions();
+             let input = LayerStageInput {
+@@ -1110,7 +1133,18 @@ fn execute_single_layer_inner(
+             // Seam plan consulted by the perimeter arms of `apply` (ADR-0020).
+             let seam_plan_ir_for_commit = blackboard.seam_plan().map(|arc| arc.as_ref());
+ 
++            let t_run = std::time::Instant::now();
+             let run_result = runner.run_stage(&stage.stage_id, layer, &live_module, input);
++            let run_us = t_run.elapsed().as_micros();
++            if t157_probe_on {
++                eprintln!(
++                    "{{\"t157_probe\":\"run_stage\",\"stage_id\":\"{}\",\"module_id\":\"{}\",\"layer\":{},\"run_us\":{}}}",
++                    stage.stage_id,
++                    module.module_id(),
++                    layer.index,
++                    run_us
++                );
++            }
+             // Pull the wasm linear-memory sample for the just-completed call.
+             // Returns (0, 0) for non-wasm runners (test mocks, host built-ins).
+             let (wasm_before, wasm_after) = runner.last_wasm_mem_sample();
+diff --git a/crates/slicer-sdk/src/views.rs b/crates/slicer-sdk/src/views.rs
+index d4be6d11..ab1c5473 100644
+--- a/crates/slicer-sdk/src/views.rs
++++ b/crates/slicer-sdk/src/views.rs
+@@ -379,13 +379,54 @@ impl SliceRegionView {
+             .iter()
+             .filter(|overhang| !overhang.xy_footprint.is_empty());
+ 
++        let probe_on = std::env::var_os("PNP_T157_PROBE").is_some();
++        let fast_only = std::env::var_os("PNP_T157_FAST_PREDICATE").is_some();
++
+         let mut found_non_empty_footprint = false;
+         for overhang in non_empty_footprints {
+             found_non_empty_footprint = true;
+-            if !slicer_core::polygon_ops::intersection_ex(&self.polygons, &overhang.xy_footprint)
+-                .is_empty()
+-            {
+-                return true;
++            if fast_only {
++                let t0 = std::time::Instant::now();
++                let (fast_val, stats) =
++                    t157_expolygons_intersect_fast_with_stats(&self.polygons, &overhang.xy_footprint);
++                let fast_us = t0.elapsed().as_micros();
++                if probe_on {
++                    t157_emit_ns_fast(fast_us, fast_val, &stats);
++                }
++                if fast_val {
++                    return true;
++                }
++            } else if probe_on {
++                let t_fast = std::time::Instant::now();
++                let (fast_val, stats) =
++                    t157_expolygons_intersect_fast_with_stats(&self.polygons, &overhang.xy_footprint);
++                let fast_us = t_fast.elapsed().as_micros();
++                let t_full = std::time::Instant::now();
++                let full_val = !slicer_core::polygon_ops::intersection_ex(
++                    &self.polygons,
++                    &overhang.xy_footprint,
++                )
++                .is_empty();
++                let full_us = t_full.elapsed().as_micros();
++                t157_emit_ns_dual(fast_us, full_us, fast_val, full_val, &stats);
++                if full_val {
++                    return true;
++                }
++            } else {
++                let (fast_val, _stats) =
++                    t157_expolygons_intersect_fast_with_stats(&self.polygons, &overhang.xy_footprint);
++                let full_val = !slicer_core::polygon_ops::intersection_ex(
++                    &self.polygons,
++                    &overhang.xy_footprint,
++                )
++                .is_empty();
++                assert_eq!(
++                    fast_val, full_val,
++                    "t157 fast predicate must match intersection_ex on every call"
++                );
++                if full_val {
++                    return true;
++                }
+             }
+         }
+ 
+@@ -980,3 +1021,312 @@ pub struct OrderedEntityView {
+     /// Optional stable ordering lock carried by the extrusion path.
+     pub order_lock: Option<u64>,
+ }
++
++#[derive(Debug, Clone, Copy, Default)]
++struct T157FastPredicateStats {
++    a_polys: usize,
++    a_verts: usize,
++    b_polys: usize,
++    b_verts: usize,
++    branch: &'static str,
++    pip_tests: usize,
++}
++
++fn t157_poly_bbox(pts: &[slicer_ir::Point2]) -> Option<(i64, i64, i64, i64)> {
++    let first = pts.first()?;
++    let mut min_x = first.x;
++    let mut max_x = first.x;
++    let mut min_y = first.y;
++    let mut max_y = first.y;
++    for p in &pts[1..] {
++        if p.x < min_x {
++            min_x = p.x;
++        }
++        if p.x > max_x {
++            max_x = p.x;
++        }
++        if p.y < min_y {
++            min_y = p.y;
++        }
++        if p.y > max_y {
++            max_y = p.y;
++        }
++    }
++    Some((min_x, min_y, max_x, max_y))
++}
++
++fn t157_bboxes_strictly_overlap(
++    a: (i64, i64, i64, i64),
++    b: (i64, i64, i64, i64),
++) -> bool {
++    a.0 < b.2 && b.0 < a.2 && a.1 < b.3 && b.1 < a.3
++}
++
++/// Returns:
++/// - `1` if `pt` is strictly inside `ring`
++/// - `0` if `pt` is on an edge or vertex of `ring`
++/// - `-1` if `pt` is strictly outside `ring`
++fn t157_point_in_ring(pt: slicer_ir::Point2, ring: &[slicer_ir::Point2]) -> i8 {
++    let n = ring.len();
++    if n < 3 {
++        return -1;
++    }
++    let mut inside = false;
++    let mut j = n - 1;
++    for i in 0..n {
++        let pi = ring[i];
++        let pj = ring[j];
++        if pi.x == pt.x && pi.y == pt.y {
++            return 0;
++        }
++        let min_x = pi.x.min(pj.x);
++        let max_x = pi.x.max(pj.x);
++        let min_y = pi.y.min(pj.y);
++        let max_y = pi.y.max(pj.y);
++        if pt.x >= min_x && pt.x <= max_x && pt.y >= min_y && pt.y <= max_y {
++            let cross = (pj.x as i128 - pi.x as i128) * (pt.y as i128 - pi.y as i128)
++                - (pj.y as i128 - pi.y as i128) * (pt.x as i128 - pi.x as i128);
++            if cross == 0 {
++                return 0;
++            }
++        }
++        if (pi.y > pt.y) != (pj.y > pt.y) {
++            let dy = pj.y as i128 - pi.y as i128;
++            let lhs = (pt.x as i128 - pi.x as i128) * dy;
++            let rhs = (pj.x as i128 - pi.x as i128) * (pt.y as i128 - pi.y as i128);
++            let crosses_right = if dy > 0 { lhs < rhs } else { lhs > rhs };
++            if crosses_right {
++                inside = !inside;
++            }
++        }
++        j = i;
++    }
++    if inside { 1 } else { -1 }
++}
++
++fn t157_point_strictly_inside_expoly(
++    pt: slicer_ir::Point2,
++    expoly: &ExPolygon,
++    bbox: (i64, i64, i64, i64),
++) -> bool {
++    if pt.x <= bbox.0 || pt.x >= bbox.2 || pt.y <= bbox.1 || pt.y >= bbox.3 {
++        return false;
++    }
++    if t157_point_in_ring(pt, &expoly.contour.points) <= 0 {
++        return false;
++    }
++    for hole in &expoly.holes {
++        if t157_point_in_ring(pt, &hole.points) >= 0 {
++            return false;
++        }
++    }
++    true
++}
++
++fn t157_expolygons_intersect_fast_with_stats(
++    a: &[ExPolygon],
++    b: &[ExPolygon],
++) -> (bool, T157FastPredicateStats) {
++    let a_verts: usize = a
++        .iter()
++        .map(|ep| {
++            ep.contour.points.len()
++                + ep.holes.iter().map(|h| h.points.len()).sum::<usize>()
++        })
++        .sum();
++    let b_verts: usize = b
++        .iter()
++        .map(|ep| {
++            ep.contour.points.len()
++                + ep.holes.iter().map(|h| h.points.len()).sum::<usize>()
++        })
++        .sum();
++    let mut stats = T157FastPredicateStats {
++        a_polys: a.len(),
++        a_verts,
++        b_polys: b.len(),
++        b_verts,
++        branch: "empty",
++        pip_tests: 0,
++    };
++    if a.is_empty() || b.is_empty() {
++        return (false, stats);
++    }
++
++    let a_bboxes: Vec<Option<(i64, i64, i64, i64)>> = a
++        .iter()
++        .map(|ep| t157_poly_bbox(&ep.contour.points))
++        .collect();
++    let Some(a_union) = a_bboxes.iter().flatten().copied().reduce(|u, bb| {
++        (u.0.min(bb.0), u.1.min(bb.1), u.2.max(bb.2), u.3.max(bb.3))
++    }) else {
++        return (false, stats);
++    };
++
++    let mut b_candidates: Vec<(usize, (i64, i64, i64, i64))> = Vec::new();
++    for (bi, ep_b) in b.iter().enumerate() {
++        if let Some(bb_b) = t157_poly_bbox(&ep_b.contour.points) {
++            if t157_bboxes_strictly_overlap(a_union, bb_b) {
++                b_candidates.push((bi, bb_b));
++            }
++        }
++    }
++    if b_candidates.is_empty() {
++        stats.branch = "bbox_disjoint";
++        return (false, stats);
++    }
++
++    let mut overlapping_pairs: Vec<(
++        usize,
++        (i64, i64, i64, i64),
++        usize,
++        (i64, i64, i64, i64),
++    )> = Vec::new();
++    for (ai, bb_a_opt) in a_bboxes.iter().enumerate() {
++        let Some(bb_a) = *bb_a_opt else {
++            continue;
++        };
++        for &(bi, bb_b) in &b_candidates {
++            if t157_bboxes_strictly_overlap(bb_a, bb_b) {
++                overlapping_pairs.push((ai, bb_a, bi, bb_b));
++            }
++        }
++    }
++    if overlapping_pairs.is_empty() {
++        stats.branch = "pair_bbox_disjoint";
++        return (false, stats);
++    }
++
++    // Fast witness pass 1: check candidate vertices of B strictly inside A.
++    for &(ai, bb_a, bi, _bb_b) in &overlapping_pairs {
++        let ep_a = &a[ai];
++        let ep_b = &b[bi];
++        let pts = &ep_b.contour.points;
++        if !pts.is_empty() {
++            let step = (pts.len() / 8).max(1);
++            for idx in (0..pts.len()).step_by(step) {
++                stats.pip_tests += 1;
++                if t157_point_strictly_inside_expoly(pts[idx], ep_a, bb_a) {
++                    stats.branch = "b_vertex_in_a_sampled";
++                    return (true, stats);
++                }
++            }
++        }
++    }
++
++    // Fast witness pass 2: check sampled vertices of A strictly inside B.
++    for &(ai, _bb_a, bi, bb_b) in &overlapping_pairs {
++        let ep_a = &a[ai];
++        let ep_b = &b[bi];
++        let pts = &ep_a.contour.points;
++        if !pts.is_empty() {
++            let step = (pts.len() / 8).max(1);
++            for idx in (0..pts.len()).step_by(step) {
++                stats.pip_tests += 1;
++                if t157_point_strictly_inside_expoly(pts[idx], ep_b, bb_b) {
++                    stats.branch = "a_vertex_in_b_sampled";
++                    return (true, stats);
++                }
++            }
++        }
++    }
++
++    // Fast witness pass 3: full scan of remaining vertices of B in A, then A in B.
++    for &(ai, bb_a, bi, _bb_b) in &overlapping_pairs {
++        let ep_a = &a[ai];
++        let ep_b = &b[bi];
++        for &pt in &ep_b.contour.points {
++            stats.pip_tests += 1;
++            if t157_point_strictly_inside_expoly(pt, ep_a, bb_a) {
++                stats.branch = "b_vertex_in_a_full";
++                return (true, stats);
++            }
++        }
++    }
++    for &(ai, _bb_a, bi, bb_b) in &overlapping_pairs {
++        let ep_a = &a[ai];
++        let ep_b = &b[bi];
++        for &pt in &ep_a.contour.points {
++            stats.pip_tests += 1;
++            if t157_point_strictly_inside_expoly(pt, ep_b, bb_b) {
++                stats.branch = "a_vertex_in_b_full";
++                return (true, stats);
++            }
++        }
++    }
++
++    // Fallback: Clipper2 boolean intersection on the overlapping subset only.
++    stats.branch = "clipper_fallback";
++    let mut a_sub: Vec<ExPolygon> = Vec::new();
++    let mut b_sub: Vec<ExPolygon> = Vec::new();
++    let mut a_seen = vec![false; a.len()];
++    let mut b_seen = vec![false; b.len()];
++    for &(ai, _bb_a, bi, _bb_b) in &overlapping_pairs {
++        if !a_seen[ai] {
++            a_seen[ai] = true;
++            a_sub.push(a[ai].clone());
++        }
++        if !b_seen[bi] {
++            b_seen[bi] = true;
++            b_sub.push(b[bi].clone());
++        }
++    }
++    let val = !slicer_core::polygon_ops::intersection_ex(&a_sub, &b_sub).is_empty();
++    (val, stats)
++}
++
++std::thread_local! {
++    static T157_CALLER_TAG: std::cell::Cell<&'static str> = const { std::cell::Cell::new("unknown") };
++}
++
++/// Set the thread-local caller tag for t157 probe attribution.
++#[doc(hidden)]
++pub fn t157_set_caller_tag(tag: &'static str) -> &'static str {
++    T157_CALLER_TAG.with(|c| c.replace(tag))
++}
++
++fn t157_get_caller_tag() -> &'static str {
++    T157_CALLER_TAG.with(|c| c.get())
++}
++
++fn t157_emit_ns_fast(fast_us: u128, fast_val: bool, stats: &T157FastPredicateStats) {
++    let caller = t157_get_caller_tag();
++    eprintln!(
++        "{{\"t157_probe\":\"ns_fast\",\"caller\":\"{}\",\"fast_us\":{},\"val\":{},\"branch\":\"{}\",\"a_polys\":{},\"a_verts\":{},\"b_polys\":{},\"b_verts\":{},\"pip_tests\":{}}}",
++        caller,
++        fast_us,
++        fast_val,
++        stats.branch,
++        stats.a_polys,
++        stats.a_verts,
++        stats.b_polys,
++        stats.b_verts,
++        stats.pip_tests
++    );
++}
++
++fn t157_emit_ns_dual(
++    fast_us: u128,
++    full_us: u128,
++    fast_val: bool,
++    full_val: bool,
++    stats: &T157FastPredicateStats,
++) {
++    let caller = t157_get_caller_tag();
++    eprintln!(
++        "{{\"t157_probe\":\"ns_dual\",\"caller\":\"{}\",\"fast_us\":{},\"full_us\":{},\"fast_val\":{},\"full_val\":{},\"match\":{},\"branch\":\"{}\",\"a_polys\":{},\"a_verts\":{},\"b_polys\":{},\"b_verts\":{},\"pip_tests\":{}}}",
++        caller,
++        fast_us,
++        full_us,
++        fast_val,
++        full_val,
++        fast_val == full_val,
++        stats.branch,
++        stats.a_polys,
++        stats.a_verts,
++        stats.b_polys,
++        stats.b_verts,
++        stats.pip_tests
++    );
++}
++

@@ -1,0 +1,74 @@
+[
+ {
+  "cell": "benchy-classic-off",
+  "mode": "dual",
+  "exit_code": 0,
+  "probe_wall_seconds": 3.358,
+  "gcode_sha256": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+  "reference_sha256": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+  "reference_match": true
+ },
+ {
+  "cell": "benchy-classic-on",
+  "mode": "dual",
+  "exit_code": 0,
+  "probe_wall_seconds": 7.127,
+  "gcode_sha256": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+  "reference_sha256": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+  "reference_match": true
+ },
+ {
+  "cell": "base-classic-off",
+  "mode": "dual",
+  "exit_code": 0,
+  "probe_wall_seconds": 25.476,
+  "gcode_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+  "reference_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+  "reference_match": true
+ },
+ {
+  "cell": "base-classic-on",
+  "mode": "dual",
+  "exit_code": 0,
+  "probe_wall_seconds": 82.568,
+  "gcode_sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+  "reference_sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+  "reference_match": true
+ },
+ {
+  "cell": "benchy-classic-off",
+  "mode": "fast",
+  "exit_code": 0,
+  "probe_wall_seconds": 3.34,
+  "gcode_sha256": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+  "reference_sha256": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+  "reference_match": true
+ },
+ {
+  "cell": "benchy-classic-on",
+  "mode": "fast",
+  "exit_code": 0,
+  "probe_wall_seconds": 6.96,
+  "gcode_sha256": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+  "reference_sha256": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+  "reference_match": true
+ },
+ {
+  "cell": "base-classic-off",
+  "mode": "fast",
+  "exit_code": 0,
+  "probe_wall_seconds": 23.06,
+  "gcode_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+  "reference_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+  "reference_match": true
+ },
+ {
+  "cell": "base-classic-on",
+  "mode": "fast",
+  "exit_code": 0,
+  "probe_wall_seconds": 75.682,
+  "gcode_sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+  "reference_sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+  "reference_match": true
+ }
+]
