@@ -1242,6 +1242,31 @@ arbitrary guest module — the only production consumer is the new
   (`rayon` + `boostvoronoi` are native-only) — see the host-service bridge
   record in `docs/DEVIATION_LOG.md` for the full architecture rationale.
 
+#### Arachne printable lines versus inner-contour markers (packet proptest-openrscad_10)
+
+This subsection clarifies the existing semantics. It changes no field, schema version or WIT
+record.
+
+- **Two kinds of line.** `run_arachne_pipeline` returns `(printable_lines, inner_contour)`. A
+  printable line has a **nonzero first-junction width**. `separate_out_inner_contour`
+  (`crates/slicer-core/src/arachne/separate_inner_contour.rs`) looks only at the **first**
+  junction: a line whose first width is zero is an inner-contour marker, not an extrudable wall.
+- **Later junctions may be zero-width.** A printable line can still have zero-width junctions
+  after its first one. These are the limited strategy's legitimate interior sentinels, so "every
+  printable width is positive" is not part of the contract.
+- **Per-point arrays.** On a `WallLoop`, `path.points`, `width_profile.widths` and
+  `feature_flags` are parallel **by point**, not just equal in length. Entry `i` of each belongs to
+  the same point, so a winding reversal must reverse all three together.
+- **Closure.** `ExtrusionLine::is_closed` is asserted to mean "the endpoint XY repeats" only where
+  the stitcher produced an explicit repeated endpoint. Canonical `WallToolPaths::stitchToolPaths`
+  can set the closure flag without appending that repeat, and legitimately open paths (thin walls,
+  stitched odd chains) exist. Nothing may fabricate closure for an open line.
+
+The property charters
+[`H-ARACHNE-PIPELINE`](testing/properties.md#h-arachne-pipeline) (output roles, markers, closure)
+and [`M-ARACHNE-BUILD`](testing/properties.md#m-arachne-build) (per-point alignment through
+`build_walls`) test these rules.
+
 #### Overhang quartile bucketization (Normative — Packet 57)
 
 The four overhang speed bands map to signed-distance thresholds from

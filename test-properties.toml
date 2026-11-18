@@ -1224,3 +1224,243 @@ rng_algorithm = "chacha"
 isolation = "fork"
 timeout_ms = 60000
 bounds = { max_abs_units = 40000, max_vertices = 64, max_holes = 8, max_components = 8, max_shrink_candidates = 64, max_recipe_nodes = 32, max_recipe_depth = 8, max_facets = 24, max_source_bytes = 32768, max_evaluations = 128, max_scad_vertices = 400000, max_scad_triangles = 800000, evaluation_steps = 20000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 600000, max_queries = 32, max_planes = 6 }
+
+[[property]]
+id = "H-ARACHNE-BEADING"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_arachne"
+test_name = "proptest_arachne_beading_relations"
+production_symbol = "slicer_core::beading::distributed::DistributedBeadingStrategy::compute"
+production_path = "crates/slicer-core/src/beading/distributed.rs"
+features = ["slicer-core/host-algos", "slicer-core/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-arachne-beading"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_beads = 8, max_width_units = 20000, max_excess_units = 8000 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_beads = 16, max_width_units = 40000, max_excess_units = 16000 }
+
+[[property]]
+id = "H-ARACHNE-GRAPH"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_arachne"
+test_name = "proptest_arachne_graph_topology"
+production_symbol = "slicer_core::skeletal_trapezoidation::SkeletalTrapezoidationGraph::from_polygons"
+production_path = "crates/slicer-core/src/skeletal_trapezoidation/graph.rs"
+features = ["slicer-core/host-algos", "slicer-core/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-arachne-graph"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 400000, max_vertices = 24, max_holes = 2, max_components = 3, max_shrink_candidates = 64 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 1000000, max_vertices = 32, max_holes = 3, max_components = 4, max_shrink_candidates = 256 }
+
+[[property]]
+id = "H-ARACHNE-PIPELINE"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_arachne"
+test_name = "proptest_arachne_pipeline_structure"
+production_symbol = "slicer_core::arachne::pipeline::run_arachne_pipeline"
+production_path = "crates/slicer-core/src/arachne/pipeline.rs"
+features = ["slicer-core/host-algos", "slicer-core/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-arachne-pipeline"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 400000, max_vertices = 24, max_holes = 2, max_components = 3, max_shrink_candidates = 64, max_beads = 10 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 1000000, max_vertices = 32, max_holes = 3, max_components = 4, max_shrink_candidates = 256, max_beads = 16 }
+
+[[property]]
+id = "M-ARACHNE-CLASSIFY"
+package = "arachne-perimeters"
+target_kind = "lib"
+target_name = "arachne_perimeters"
+test_name = "property_tests::proptest_module_arachne_classify"
+production_symbol = "arachne_perimeters::classify_line"
+production_path = "modules/core-modules/arachne-perimeters/src/lib.rs"
+features = ["arachne-perimeters/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-arachne-classify"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_inset_idx = 8 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_inset_idx = 32 }
+
+[[property]]
+id = "M-ARACHNE-BUILD"
+package = "arachne-perimeters"
+target_kind = "lib"
+target_name = "arachne_perimeters"
+test_name = "property_tests::proptest_module_arachne_build_walls"
+production_symbol = "arachne_perimeters::ArachnePerimeters::build_walls"
+production_path = "modules/core-modules/arachne-perimeters/src/lib.rs"
+features = ["arachne-perimeters/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-arachne-build"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_junctions = 8, max_abs_mm_units = 20000, max_spacing_units = 2000, max_height_units = 500 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_junctions = 16, max_abs_mm_units = 40000, max_spacing_units = 8000, max_height_units = 2000 }
+
+[[property]]
+id = "M-ARACHNE-SEQUENCE"
+package = "arachne-perimeters"
+target_kind = "lib"
+target_name = "arachne_perimeters"
+test_name = "property_tests::proptest_module_arachne_sequence"
+production_symbol = "arachne_perimeters::commit_wall_sequence"
+production_path = "modules/core-modules/arachne-perimeters/src/lib.rs"
+features = ["arachne-perimeters/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-arachne-sequence"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_walls = 6 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_walls = 12 }

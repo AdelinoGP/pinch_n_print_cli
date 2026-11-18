@@ -210,6 +210,43 @@ budgets, `max_default_size_range` 32/256, `max_shrink_iters` 64/256, chacha, `in
 selects the three new records automatically; the combined routine selection was executed here on
 Windows and reported `VERDICT: PASS`.
 
+The six Arachne records added by packet `proptest-openrscad_10_pbt-arachne` use the same standard
+profile shape: `cases` 64/1024, zero rejection budgets, `max_default_size_range` 32/256,
+`max_shrink_iters` 64/256, chacha, `in_process`, `timeout_ms = 0`. Their family-specific bounds
+are:
+
+- `max_beads`/`max_width_units`/`max_excess_units` 8/20000/8000 → 16/40000/16000 for
+  `H-ARACHNE-BEADING`;
+- the five geometry keys 400000/24/2/3/64 → 1000000/32/3/4/256 for `H-ARACHNE-GRAPH`;
+- the same five keys plus `max_beads` 10 → 16 for `H-ARACHNE-PIPELINE`;
+- `max_inset_idx` 8 → 32;
+- `max_junctions`/`max_abs_mm_units`/`max_spacing_units`/`max_height_units` 8/20000/2000/500 →
+  16/40000/8000/2000;
+- `max_walls` 6 → 12.
+
+Measured on the Windows host (rustc 1.96.0, `dev` profile), per-record libtest walls in registry
+order (BEADING, GRAPH, PIPELINE, CLASSIFY, BUILD, SEQUENCE):
+
+| Lane | Total | Per-record walls |
+|---|---:|---|
+| Six-record routine selection | 23.7 s | 0.03 / 0.23 / 0.34 / 0.03 / 0.12 / 0.05 s |
+| Six-record extended selection | 43.7 s | 0.44 / 7.61 / 8.02 / 0.55 / 3.46 / 0.96 s |
+| Combined incremental routine (32 records) | 5 m 10.6 s | 0.03 / 0.29 / 0.33 / 0.05 / 0.14 / 0.06 s |
+| Combined incremental extended (32 records) | 16 m 04.7 s | 0.31 / 6.43 / 6.65 / 0.31 / 2.08 / 1.06 s |
+
+Every lane passed: the routine selection and both combined lanes reported `VERDICT: PASS`, and in
+the extended selection every record's end event reported `outcome = passed`. In all lanes accepted
+cases equalled `cases`, rejects were 0 and `call_counts_complete = true`. The combined lanes cover 32 records because the four
+`requires_scad` records are skipped without `--with-scad`. The retained-seed replay
+`--property H-ARACHNE-BEADING --tier routine --seed 14268583537219271429` passed 64/64 in a 15.5 s
+total.
+
+Logs are archived under `target/proptest-arachne-evidence/` and per-record contexts under
+`target/property-testing/<run-token>/<ID>/context.json`. Provenance, populations, controls, the
+canonical audit and defects are in [proptest-arachne-evidence.md](proptest-arachne-evidence.md).
+The hosted `properties-windows` job now asserts the six IDs but was **not** run from this
+workstation.
+
 ## Context and event schema
 
 `PNP_PROPERTY_CONTEXT` is one JSON object set on each selected execution child (serialized, never
@@ -3580,6 +3617,616 @@ closed surface is required. The clearances are **proved**, not assumed: with `M 
 `γ₁₅·3M ≈ 5e-13` mm and the edge distance `γ₁₅·2√2M ≈ 4.7e-13` mm (`≈ 4.7e-9` units), so the 8-unit
 edge clearance exceeds the rounding by about `1.7e9`, and the section clearance exceeds the
 1-unit grid rounding plus `1.3e-9` units by about `8×`.
+
+## H-ARACHNE-BEADING
+
+Registry record: `id = "H-ARACHNE-BEADING"`, `package = "slicer-core"`, `target_kind = "test"`,
+`target_name = "property_arachne"`, `test_name = "proptest_arachne_beading_relations"`,
+`production_symbol = "slicer_core::beading::distributed::DistributedBeadingStrategy::compute"`,
+`production_path = "crates/slicer-core/src/beading/distributed.rs"`,
+`features = ["slicer-core/host-algos", "slicer-core/property_testing"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-arachne-beading"`.
+
+### Stable property ID
+
+`H-ARACHNE-BEADING` checks analytic bead and sentinel relations for the three real beading
+strategies (distributed, limited, widening) over bounded dyadic inputs.
+
+### Owner
+
+- **Package and target.** Package `slicer-core`; standalone target `property_arachne`, gated by
+  `#![cfg(feature = "host-algos")]` and `required-features`.
+- **Body.** `property_arachne_common::beading::run_property` in
+  `crates/slicer-core/tests/property_arachne_common/beading.rs`.
+- **Production surface.**
+  - `DistributedBeadingStrategy::{new,compute}` (`crates/slicer-core/src/beading/distributed.rs`)
+  - `LimitedBeadingStrategy::{new,compute}` (`crates/slicer-core/src/beading/limited.rs`)
+  - `WideningBeadingStrategy::{new,compute}` (`crates/slicer-core/src/beading/widening.rs`)
+
+  All three are called through `BeadingStrategy`.
+- **Controls and regressions.** These live in `property_arachne_contracts`
+  (`property_arachne_common::controls_beading`).
+
+### Contract
+
+**Distributed**, with bead width `w` and thickness `t`:
+
+| Bead count | Expected result |
+|---|---|
+| 0 | both arrays empty, `left_over = t` |
+| 1 | one bead of width `t` at `t/2` |
+| 2 | two beads of `t/2` at `t/4` and `3t/4` |
+| `n >= 3`, `t = n*w` | every width `w`, centres `(i + 1/2)w`, `left_over = 0` |
+
+**Limited**, with even cap `2k` over a distributed parent:
+
+- **At the cap** (`t = 2k*w`): `2k` real beads of width `w` at `(i + 1/2)w`, one zero-width
+  sentinel at `k*w`, `left_over = 0`.
+- **Over the cap** (requested `2k + 1`, `t = 2k*w + excess`):
+  - the real beads keep width `w`;
+  - the left-half centres stay `(i + 1/2)w` and the right-half centres mirror them about `t/2`;
+  - two sentinels sit at `k*w` and `t - k*w`;
+  - `left_over = excess`.
+
+**Widening**, using canonical `WideningBeadingStrategy::compute`'s gate
+`bead_count <= 1 && thickness < getTransitionThickness(1)`:
+
+- below `min_input_width`: no beads, `left_over = t`;
+- inside the gate window: one bead of `max(t, min_output_width)` centred at `t/2`;
+- `bead_count >= 2`: the parent's own result, even when `t < optimal_width`.
+
+In every case `bead_widths` and `toolpath_locations` are parallel. `bead_widths.len()` is not
+required to equal the requested count.
+
+### Domain
+
+Bounds and their validation:
+
+- Routine `max_beads`/`max_width_units`/`max_excess_units` = 8/20000/8000; extended
+  16/40000/16000.
+- `validate_limits` requires `max_beads >= 3`, an admissible even cap from `witness_cap`, and
+  `(max_beads + 2)*max_width_units + max_excess_units <= 2^53`. That last condition makes every
+  `n*w`, `2k*w` and `2k*w + excess` exact in binary64.
+- Lengths are dyadic: `units / 2^shift`, with `shift <= 3`.
+- The distribution count is in `1..=4`. Zero and out-of-range bounds are rejected before sampling.
+
+### Strategy
+
+One `BeadingCase` carries the selectors for **every** branch: a dyadic width, a distributed
+`n >= 3` offset, a free thickness for counts 0–2, a distribution count, `cap_half`, an over-cap
+excess and two widening selectors. `check_case` runs every branch on every case, so no branch's
+coverage depends on which values the RNG happens to sample.
+
+### Oracle
+
+The oracle is independent closed-form arithmetic derived from `w`, `t`, `k` and `excess`. It never
+reads back SUT output. Each observed population is compared against its derived size: one bead, two
+beads, `n` beads, or `2k` real beads plus 1 or 2 markers. A branch therefore cannot be "covered" by
+an empty result.
+
+Widening conservation (`sum(widths) = t - left_over`) is **deliberately not asserted**: the clamped
+single bead can be wider than the region. `check_conservation` is applied only where conservation
+is valid, and a control proves it must fail on a real widening output.
+
+### Tolerance
+
+The bound is Higham's `gamma(m)` with round-to-nearest binary64: `|computed - exact| <= gamma(m) *
+magnitude + gamma(m) * |expected|`, implemented as `Envelope::from_operations`. The operation
+budgets are counted from `compute`'s statements and rounded up in `Envelopes::derive`: `max_beads +
+8` for widths and `6*max_beads + 8` for locations. At the extended bounds this gives about 2.0e-9
+units for widths and 8.0e-9 units for locations, both far below one canonical unit. The envelope is
+a derived bound, not a tuned epsilon.
+
+### Shrinking
+
+Every field shrinks inside its own validated range. Each range's lower bound still admits its
+branch, and the branch selectors ride in every case. A shrunk case therefore keeps all branches and
+their boundary witnesses.
+
+### Execution
+
+Both tiers run `in_process` with chacha, `timeout_ms = 0` and zero rejection budgets. Measured on
+Windows:
+
+| Lane | Accepted | libtest wall |
+|---|---:|---:|
+| Routine selection | 64/64 | 0.03 s |
+| Extended selection | 1024/1024 | 0.44 s |
+| Retained-seed replay `--seed 14268583537219271429` | 64/64 | 0.03 s |
+
+Details are in [proptest-arachne-evidence.md](proptest-arachne-evidence.md).
+
+### Failure record
+
+`PropertyRun` artifacts are written under `target/property-testing/<run-token>/H-ARACHNE-BEADING/`.
+Committed regressions are named concrete inputs, never seeds:
+
+- `widening_two_requested_below_optimal_delegates_to_parent`: `w = 4000`, `t = 3000`, count 2.
+  Pre-fix it returned `[3400.0]`; it now expects `[1500.0, 1500.0]`.
+- `widening_transition_propagation_preserves_two_bead_endpoint`: the real factory and population
+  caller. It expects widths `[2450, 1500]` and locations `[1125, 2250]`.
+- `limited_transition_thickness_at_cap_matches_canonical_floor`: cap 4. Pre-fix it returned
+  `18000.0`; canonical gives `19900.0`.
+
+### Acceptance
+
+Maps to AC-1, AC-N1 and AC-N2. `arachne_beading_oracle_controls` rejects a lost sentinel pair, a
+non-parallel width/location pair, and conservation applied to widening, while the real strategies
+pass the same comparator. `arachne_property_domain_rejections` rejects unusable bounds before
+sampling.
+
+## H-ARACHNE-GRAPH
+
+Registry record: `id = "H-ARACHNE-GRAPH"`, `package = "slicer-core"`, `target_kind = "test"`,
+`target_name = "property_arachne"`, `test_name = "proptest_arachne_graph_topology"`,
+`production_symbol = "slicer_core::skeletal_trapezoidation::SkeletalTrapezoidationGraph::from_polygons"`,
+`production_path = "crates/slicer-core/src/skeletal_trapezoidation/graph.rs"`,
+`features = ["slicer-core/host-algos", "slicer-core/property_testing"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-arachne-graph"`.
+
+### Stable property ID
+
+`H-ARACHNE-GRAPH` checks the index and reciprocity relations of graphs built by the real
+`SkeletalTrapezoidationGraph::from_polygons`, over independently validated outlines.
+
+### Owner
+
+Package `slicer-core`; target `property_arachne`. The body is
+`property_arachne_common::graph::run_property` in
+`crates/slicer-core/tests/property_arachne_common/graph.rs`. The controls are
+`arachne_graph_oracle_controls_and_input_errors` (`controls_graph_pipeline.rs`).
+
+### Contract
+
+For every constructed graph:
+
+- every `start_vertex` is `NO_INDEX` or `< vertices.len()`;
+- every non-sentinel `twin`/`next`/`prev` is `< edges.len()`;
+- `twin.twin`, `next.prev` and `prev.next` return the edge whenever the link exists;
+- a twin's `start_vertex` resolves the edge's endpoint;
+- `beading_propagation` and `beading_dist_to_bottom_source` are vertex-parallel at construction
+  stage;
+- finite, nonnegative endpoint radii satisfy `0 <= r_min <= r_max`.
+
+NaN `distance_to_boundary` values are allowed sentinels. Universal twin presence is not claimed.
+
+### Domain
+
+- **Inputs.** #2 `geometry_cases`, scaled by the exact integer `SCALE = 2500` (1 catalog unit =
+  0.25 mm) and re-validated with `validate_geometry` against the realized domain.
+- **Bounds.** Routine `max_abs_units`/`max_vertices`/`max_holes`/`max_components`/
+  `max_shrink_candidates` = 400000/24/2/3/64; extended 1000000/32/3/4/256. Minimums: 100000, 8,
+  1, 2 and 1.
+- **Classes.** `CAMPAIGN_CLASSES` samples `Empty`, `Convex`, `Concave`, `Holed`, `Thin` and
+  `Disconnected`.
+  - `NonStarShaped` is not sampled.
+  - `NearDegenerate` is excluded by derivation: its one-catalog-unit clearance witness does not
+    survive the exact ×2500 map.
+
+### Strategy
+
+The strategy draws one tagged, scaled catalog case per value. An extra branch generates 4–8 mm
+origin-anchored rectangles directly, so the shared guaranteed-output class is non-vacuous by
+construction. The deterministic rectangle, holed and concave witnesses run first.
+
+### Oracle
+
+`check_relations` indexes `vertices` and `edges` itself and never calls the production compactor
+or a mirrored pipeline graph. Each class has a declared outcome that is checked, not assumed:
+
+- `Empty` must return `Err(SktError::EmptyInput)`.
+- Every other sampled class must return `Ok` with nonempty vertex and edge populations.
+
+Measured over 400 cases:
+
+| Class | Cases | Outcome |
+|---|---:|---|
+| `Empty` | 74 | `Err(EmptyInput)` |
+| `Convex` | 68 | `Ok`, nonempty |
+| `Concave` | 70 | `Ok`, nonempty |
+| `Holed` | 49 | `Ok`, nonempty |
+| `Thin` | 70 | `Ok`, nonempty |
+| `Disconnected` | 69 | `Ok`, nonempty |
+
+### Tolerance
+
+Index and reciprocity checks are exact. The radius ordering is checked only where both radii are
+finite and nonnegative.
+
+### Shrinking
+
+The #2 value tree keeps each class's witness through `simplify`. Scaling is an exact integer map
+applied to every shrunk value, so a shrunk case never leaves its tagged class or the absolute bound.
+
+### Execution
+
+Measured libtest walls on Windows: 0.23 s for the routine selection (64/64) and 7.61 s for the
+extended selection (1024/1024), with zero rejects.
+
+### Failure record
+
+Artifacts are written under `target/property-testing/<run-token>/H-ARACHNE-GRAPH/`. The
+deterministic validation-boundary examples are:
+
+- empty input → `SktError::EmptyInput`;
+- a zero-point ring and a two-point ring → `SktError::DegeneratePolygon`.
+
+These are boundary examples, not a promise that arbitrary invalid rings are diagnosed.
+
+### Acceptance
+
+Maps to AC-2. On test-owned copies of a real rectangle graph, `check_relations` rejects broken twin
+reciprocity, an out-of-range `next`, an out-of-range `start_vertex`, and a truncated
+`beading_propagation` or `beading_dist_to_bottom_source`. The unmutated graph still passes.
+
+## H-ARACHNE-PIPELINE
+
+Registry record: `id = "H-ARACHNE-PIPELINE"`, `package = "slicer-core"`, `target_kind = "test"`,
+`target_name = "property_arachne"`, `test_name = "proptest_arachne_pipeline_structure"`,
+`production_symbol = "slicer_core::arachne::pipeline::run_arachne_pipeline"`,
+`production_path = "crates/slicer-core/src/arachne/pipeline.rs"`,
+`features = ["slicer-core/host-algos", "slicer-core/property_testing"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-arachne-pipeline"`.
+
+### Stable property ID
+
+`H-ARACHNE-PIPELINE` checks the structure of real `run_arachne_pipeline` output. It separates
+printable lines from inner-contour markers and declares an outcome mode for each case.
+
+### Owner
+
+Package `slicer-core`; target `property_arachne`. The body is
+`property_arachne_common::pipeline::run_property` in
+`crates/slicer-core/tests/property_arachne_common/pipeline.rs`. The controls are
+`arachne_pipeline_oracle_controls` and `arachne_local_maximum_pre_stitch_is_open`
+(`controls_graph_pipeline.rs`).
+
+### Contract
+
+The pipeline returns `(printable_lines, inner_contour)`. Each printable line has:
+
+- nonempty junctions;
+- finite coordinates and widths, bounded by the profile extent plus the constructor's clamp margin;
+- a first-junction width `> 0`, with later widths finite and `>= 0`;
+- its `inset_idx` carried by at least one endpoint junction (`IndexRule::PipelineEndpoints`).
+
+Every inner-contour line has a first width of exactly `0.0`.
+
+Closure equality (`is_closed` ⇒ the endpoint XY repeats) is asserted only in the explicit-repeat
+domain (`ClosedDomain::ExplicitRepeat`). Legitimate open paths are preserved and closure is never
+manufactured. Containment, a fixed wall count, a universal width cap and rotation invariance are
+not asserted.
+
+### Domain
+
+- **Geometry.** The same five geometry bounds and catalog as `H-ARACHNE-GRAPH`, plus `max_beads`
+  (routine 10, extended 16, minimum 10, which is the `ArachneParams::default` cap).
+- **Parameters.** Built by FRU from `ArachneParams::default`, varying:
+  - an even `max_bead_count` in `2..=max_beads`;
+  - `distribution_count` in `1..=3`;
+  - `wall_transition_length` of 0.2, 0.4 or 0.8 mm;
+  - `print_thin_walls` and `is_initial_layer`, both values each.
+
+### Strategy
+
+Outcome modes:
+
+- A case is `OutcomeMode::Guaranteed` when all of these hold:
+  - its class is `Convex`;
+  - every component's bounding box is at least 3 mm on both axes (`ROBUST_EXTENT_UNITS`);
+  - every ring edge is at least 0.5 mm (`ROBUST_EDGE_UNITS`).
+
+  A guaranteed case must return `Ok` with nonempty printable lines.
+- Every other case may return `Ok` (possibly empty) or `Err(EmptyAfterPreprocess)`. Any other
+  error is a failure.
+
+Four deterministic witnesses run first, each under a fresh `CaseGuard`:
+
+| Witness | Measured outcome |
+|---|---|
+| 10 mm square | `Ok`; 5 closed printable lines plus 1 inner-contour marker; all index-uniform; closed lines repeat their endpoint |
+| tapered wedge | `Ok`; 3 closed printable lines with differing widths |
+| 8 × 0.3 mm strip with `print_thin_walls` | `Ok`; one open, odd, two-junction 0.34 mm line |
+| 5 µm square | `Err(EmptyAfterPreprocess)` |
+
+### Oracle
+
+`check_output` compares each result against the declared mode and does not use the pipeline's own
+closure or index logic. In a 200-case probe:
+
+- 608 printable lines: 608/608 index-uniform, 608/608 satisfy the endpoint rule;
+- 470 closed lines, all with explicit repeats;
+- 29 `EmptyAfterPreprocess` outcomes;
+- 29/29 guaranteed-class cases nonempty.
+
+The 10 mm square, the 5 µm square, the outcome modes and the probe are not canonical output
+goldens.
+
+### Tolerance
+
+Index, closure and the marker's first width of zero are exact checks. Coordinate and width bounds
+are derived from the live profile extent.
+
+### Shrinking
+
+The geometry shrinks through the shared #2 value tree, as in `H-ARACHNE-GRAPH`. The parameter
+choices shrink within their finite sets, which keeps the cap even and inside the profile. The
+outcome mode is re-derived from the shrunk geometry.
+
+### Execution
+
+Measured libtest walls on Windows: 0.34 s for the routine selection (64/64) and 8.02 s for the
+extended selection (1024/1024), with zero rejects.
+
+### Failure record
+
+Artifacts are written under `target/property-testing/<run-token>/H-ARACHNE-PIPELINE/`.
+`arachne_local_maximum_pre_stitch_is_open` pins the canonical pre-stitch local maximum: six
+junctions, odd, `is_closed = false`. Before the fix this was a seven-junction closed line. The
+post-stitch pentagon fixture now measures one open, odd, six-junction inset-1 line.
+
+### Acceptance
+
+Maps to AC-3. `arachne_pipeline_oracle_controls` rejects:
+
+- a falsely closed line with unequal endpoints in the explicit-repeat domain;
+- a corrupted `perimeter_index`;
+- an inset carried by neither endpoint;
+- a nonzero-first-width inner-contour marker;
+- an empty guaranteed output.
+
+Empty and tiny outcomes are never credited as printable coverage.
+
+## M-ARACHNE-CLASSIFY
+
+Registry record: `id = "M-ARACHNE-CLASSIFY"`, `package = "arachne-perimeters"`,
+`target_kind = "lib"`, `target_name = "arachne_perimeters"`,
+`test_name = "property_tests::proptest_module_arachne_classify"`,
+`production_symbol = "arachne_perimeters::classify_line"`,
+`production_path = "modules/core-modules/arachne-perimeters/src/lib.rs"`,
+`features = ["arachne-perimeters/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-arachne-classify"`.
+
+### Stable property ID
+
+`M-ARACHNE-CLASSIFY` checks the role and loop-type table of the private `classify_line`.
+
+### Owner
+
+- **Package and module.** Package `arachne-perimeters`, private unit-test module `property_tests`
+  (`modules/core-modules/arachne-perimeters/src/property_tests.rs`), declared with stacked
+  `#[cfg(test)]` and `#[cfg(feature = "property_testing")]`. See
+  [module-owned property files](../05_module_sdk.md#module-owned-private-kernel-property-files-packet-proptest-openrscad_10).
+- **Controls.** `property_tests::arachne_module_oracle_controls` and
+  `property_tests::arachne_module_domain_rejections`.
+
+### Contract
+
+| Input | Result |
+|---|---|
+| `is_odd`, `inset_idx == 0`, `print_thin_walls` | `(ExtrusionRole::ThinWall, LoopType::ThinWall)` |
+| any other `inset_idx == 0` | `(OuterWall, Outer)` |
+| every positive inset, odd ones included | `(InnerWall, Inner)` |
+
+`is_closed` alone changes no classification. This PnP ThinWall labelling is not claimed as an
+upstream role identity.
+
+### Domain
+
+`max_inset_idx` is 8 for routine and 32 for extended. `checked_classify_limits` rejects zero and
+out-of-range values. Junction count is `0..=3`.
+
+### Strategy
+
+The strategy draws every Boolean mode, plus `inset_idx` from `prop_oneof![Just(0), 1..=max]`.
+
+### Oracle
+
+The oracle is `expected_classification`, an independent truth table. Each case also re-runs
+`classify_line` with `is_closed` toggled and requires the same result.
+
+### Tolerance
+
+Exact enum equality.
+
+### Shrinking
+
+A positive inset shrinks toward 1 and never to 0, so the `InnerWall` row survives every shrink
+path. Zero stays zero.
+
+### Execution
+
+Measured libtest walls on Windows: 0.03 s for the routine selection (64/64) and 0.55 s for the
+extended selection (1024/1024).
+
+### Failure record
+
+Artifacts are written under `target/property-testing/<run-token>/M-ARACHNE-CLASSIFY/`. Run
+plainly, the body fails with `missing_property_context` by design.
+
+### Acceptance
+
+Maps to AC-4. `arachne_module_oracle_controls` tabulates all Boolean modes for both inset classes
+and rejects a mutation that maps a deeper odd wall to GapFill.
+
+## M-ARACHNE-BUILD
+
+Registry record: `id = "M-ARACHNE-BUILD"`, `package = "arachne-perimeters"`,
+`target_kind = "lib"`, `target_name = "arachne_perimeters"`,
+`test_name = "property_tests::proptest_module_arachne_build_walls"`,
+`production_symbol = "arachne_perimeters::ArachnePerimeters::build_walls"`,
+`production_path = "modules/core-modules/arachne-perimeters/src/lib.rs"`,
+`features = ["arachne-perimeters/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-arachne-build"`.
+
+### Stable property ID
+
+`M-ARACHNE-BUILD` checks that `ArachnePerimeters::build_walls` keeps each point, its width, its
+flag and the line topology together.
+
+### Owner
+
+Package `arachne-perimeters`, module `property_tests`. The test calls real `build_walls` with a real
+`SliceRegionViewBuilder` region and `PerimeterSpatialContext::new` built from the same declared
+data.
+
+### Contract
+
+For each nonempty input line, exactly one wall keeps `inset_idx` as `perimeter_index` and has the
+tabulated role and loop type. An empty line produces no wall. At each output index `i`:
+
+- the point maps to its source junction;
+- its width matches the independent real-number value `spacing + height*(1 - π/4)`;
+- `width_profile.widths[i] == path.points[i].width` exactly;
+- the bridge flag belongs to that same point.
+
+With `LoopType::ThinWall`, every flag has `is_thin_wall` set and none has `is_bridge`. `line.is_closed`
+agrees with `path.is_closed()`, and orientation normalization never adds a closing edge to an open
+path.
+
+### Domain
+
+- **Bounds.** `max_junctions`/`max_abs_mm_units`/`max_spacing_units`/`max_height_units` are
+  8/20000/2000/500 for routine and 16/40000/8000/2000 for extended. `checked_build_limits`
+  rejects invalid values before sampling.
+- **Roster.** Each case carries:
+  - an explicit-repeat closed outer and inner rectangle;
+  - two distinct-endpoint open chains in opposite orders;
+  - an odd inset-0 explicit-repeat rectangle;
+  - an empty line.
+
+### Strategy
+
+A `no_shrink` mode word selects four things: contour winding, `g7_reverse`, `print_thin_walls`, and
+whether an asymmetric mixed bridge rectangle is present. This covers both winding branches, and the
+bridge rectangle gives positive and negative flags. The layer height and the base of the unequal
+per-point bead spacings are the only shrinkable fields.
+
+### Oracle
+
+- **Bridge membership.** Predicted by `point_in_region` and analytic rectangle inequalities, never
+  by `PerimeterSpatialContext::is_bridge` or `build_wall_flags`.
+- **Expected winding.** Derived independently by `expected_want_ccw` and the signed area.
+- **Widths.** Compared with the real-number formula above.
+
+### Tolerance
+
+`width_envelope` is derived from the f32 evaluation order `1 - PI_f32/4`, then `h * q`, then
+`s + p`: `E = (s_max + (1 + 2*q_ub)*h_max) * 2^-24`. Index, flag and width-profile equality are
+exact.
+
+### Shrinking
+
+The mode word does not shrink, so the witness survives every shrink step.
+`shrink_retains_geometry_and_mode_witness` drives the real value tree through `simplify`. It
+asserts that the witness is unchanged, the contract still holds, and a nonempty line remains.
+
+### Execution
+
+Measured libtest walls on Windows: 0.12 s for the routine selection (64/64) and 3.46 s for the
+extended selection (1024/1024).
+
+### Failure record
+
+Artifacts are written under `target/property-testing/<run-token>/M-ARACHNE-BUILD/`. The concrete
+regression `property_tests::build_walls_reversed_variable_width_keeps_profiles_and_bridge_flags_attached`
+reproduced the defect before the fix: `build_walls` reversed `path.points` but not
+`width_profile.widths` or `feature_flags`. Its assertion reported `width_profile.widths[1] =
+0.6429204` against `path.points[1].width = 0.84292036`. The test now covers reversal with unequal
+widths and asymmetric bridge flags.
+
+### Acceptance
+
+Maps to AC-5. `arachne_module_oracle_controls` rejects:
+
+- a points-only reversal;
+- a missed spacing → width conversion;
+- fabricated closure on an open path.
+
+The real unmutated result passes the same comparator.
+
+## M-ARACHNE-SEQUENCE
+
+Registry record: `id = "M-ARACHNE-SEQUENCE"`, `package = "arachne-perimeters"`,
+`target_kind = "lib"`, `target_name = "arachne_perimeters"`,
+`test_name = "property_tests::proptest_module_arachne_sequence"`,
+`production_symbol = "arachne_perimeters::commit_wall_sequence"`,
+`production_path = "modules/core-modules/arachne-perimeters/src/lib.rs"`,
+`features = ["arachne-perimeters/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-arachne-sequence"`.
+
+### Stable property ID
+
+`M-ARACHNE-SEQUENCE` checks that the private `commit_wall_sequence` commits walls region-locally
+and loses nothing.
+
+### Owner
+
+Package `arachne-perimeters`, module `property_tests`. The existing `wall_sequence_commit_tdd` (3
+tests, green) separately covers the per-region driver, the layer-dependent sandwich and
+cross-region precedence. No second host-algorithm credit is recorded.
+
+### Contract
+
+In the controlled single-outer batch (exactly one `Outer` wall, at either end), first normalize:
+leave an outer-first input unchanged and reverse an outer-last one. Then:
+
+| Mode | Committed order |
+|---|---|
+| `InnerOuter` | the normalized order |
+| `OuterInner` | the normalized order reversed |
+| `InnerOuterInner` | first inner, outer, remaining inners |
+
+Empty and singleton input are unchanged. A batch without a unique endpoint outer (outer at both
+ends, or no outer) is checked only for being a lossless permutation. Identity covers the whole
+`WallLoop`, including point direction, per-point widths and flags.
+
+### Domain
+
+`max_walls` is 6 for routine and 12 for extended; `checked_sequence_limits` rejects invalid
+values.
+
+### Strategy
+
+The strategy draws a wall count in `0..=max_walls`, a `no_shrink` layout word and a mode. The
+layout word picks outer-first, outer-last, outer at both ends, or no outer. Each wall from
+`sequence_wall` carries a unique `perimeter_index`, coordinates, unequal widths and
+`tool_index`/bridge flags.
+
+### Oracle
+
+`expected_sequence_order` derives the expected identity list independently, and `verify_sequence`
+compares complete `WallLoop` values against it.
+
+### Tolerance
+
+Exact `WallLoop` equality.
+
+### Shrinking
+
+The wall count shrinks, and the expected order is re-derived from the shrunk batch. The layout
+word does not shrink.
+
+### Execution
+
+Measured libtest walls on Windows: 0.05 s for the routine selection (64/64) and 0.96 s for the
+extended selection (1024/1024).
+
+### Failure record
+
+Artifacts are written under `target/property-testing/<run-token>/M-ARACHNE-SEQUENCE/`.
+
+### Acceptance
+
+Maps to AC-6. `arachne_module_oracle_controls` rejects a naive full reversal of an outer-first
+`InnerOuter` batch and a lost feature-flag vector. It also confirms that `OuterInner` on the same
+batch is the full reverse.
 
 
 

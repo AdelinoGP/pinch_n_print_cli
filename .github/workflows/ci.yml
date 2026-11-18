@@ -160,13 +160,15 @@ jobs:
       # record's execution line to target/test-output.log, so assert the IDs
       # there. This is the same positive check the scripted SCAD lane uses, and
       # it catches the `--with-scad`-omitted failure mode directly.
-      - name: Assert the geometry records executed
+      - name: Assert all direct property records executed
         shell: pwsh
         run: |
           $missing = @()
           foreach ($id in @(
             'H-BOOL-SET', 'H-BOOL-CLIP', 'H-OFFSET-MITER', 'H-OFFSET-SMOOTH',
-            'H-MESH-SLICE', 'H-MESH-QUERY', 'H-HELPERS-SPLIT')) {
+            'H-MESH-SLICE', 'H-MESH-QUERY', 'H-HELPERS-SPLIT',
+            'H-ARACHNE-BEADING', 'H-ARACHNE-GRAPH', 'H-ARACHNE-PIPELINE',
+            'M-ARACHNE-CLASSIFY', 'M-ARACHNE-BUILD', 'M-ARACHNE-SEQUENCE')) {
             if (-not (Select-String -Path target/test-output.log -Pattern $id -SimpleMatch -Quiet)) {
               $missing += $id
             }
@@ -175,7 +177,7 @@ jobs:
             Write-Host "::error::property records did not execute: $($missing -join ', ')"
             exit 1
           }
-          Write-Host "OK: all seven direct geometry records executed"
+          Write-Host "OK: all direct property records executed"
       - name: Upload property failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4
