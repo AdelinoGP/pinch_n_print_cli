@@ -990,7 +990,7 @@ impl ArachnePerimeters {
                 pt.width = flow_to_width(pt.width, layer_height_mm);
             }
             let num_points = path.points.len();
-            let widths: Vec<f32> = path.points.iter().map(|p| p.width).collect();
+            let mut widths: Vec<f32> = path.points.iter().map(|p| p.width).collect();
 
             // D-154: Arachne's beading-derived vertices have no index
             // correspondence to `polygons`' original vertex ordering — not
@@ -1098,7 +1098,23 @@ impl ArachnePerimeters {
                 let signed = signed_area_of_points(&path.points);
                 let is_ccw = signed > 0.0;
                 if is_ccw != final_want_ccw {
+                    // Every point-indexed field must move with its point.
+                    // `width_profile.widths[i]` is documented as "one width per
+                    // vertex in path.points" and `feature_flags[i]` is the
+                    // per-vertex bridge/thin/paint flag for that same vertex, so
+                    // reversing the coordinates alone silently attaches each
+                    // width and flag to the wrong geometric point — invisible on
+                    // uniform-width, symmetric-flag fixtures and wrong on real
+                    // variable-width Arachne output. The `widths` snapshot stays
+                    // where it is (above the per-index bridge/overhang loops,
+                    // which consume it while the conversion is still in the
+                    // emission order); reversing it here preserves that
+                    // documented ordering. `ring_pts_units` is deliberately not
+                    // reversed: it is only read before this point, and the
+                    // reversal happens after every per-index query.
                     path.points.reverse();
+                    widths.reverse();
+                    feature_flags.reverse();
                 }
             }
 
@@ -1371,6 +1387,16 @@ fn ex_polygon_min_width_mm(ep: &ExPolygon) -> f32 {
     }
     (max_x - min_x).min(max_y - min_y)
 }
+
+// Owner-local, opt-in properties for the three private kernels above
+// (`classify_line`, `ArachnePerimeters::build_walls`, `commit_wall_sequence`).
+// The two gates stay stacked and separate: `#[cfg(test)]` confines the module to
+// test builds, and `#[cfg(feature = "property_testing")]` makes the properties
+// opt-in. Neither form is a literal-scanner mechanism — see that file's own
+// AC-8 note.
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;
 
 #[cfg(test)]
 mod tests {
