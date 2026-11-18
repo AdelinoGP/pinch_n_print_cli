@@ -43,3 +43,8 @@ fn geometry_controls_vertex_plane_and_hole_witnesses() {
 fn geometry_controls_owned_shrink_witnesses() {
     property_geometry_common::controls_shrink::run();
 }
+
+#[test]
+fn geometry_controls_seeded_fault_is_minimised() {
+    property_geometry_common::controls_seeded_fault::run();
+}

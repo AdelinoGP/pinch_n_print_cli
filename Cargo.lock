@@ -3998,6 +3998,7 @@ dependencies = [
  "slicer-scad",
  "slicer-scheduler",
  "slicer-sdk",
+ "toml 0.8.23",
 ]
 
 [[package]]

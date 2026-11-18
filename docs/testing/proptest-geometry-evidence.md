@@ -51,6 +51,9 @@ Every number below comes from an archived log under `target/evidence/` and from 
   build-guests` runs once.** The closure review reproduced exactly that: exit `1` with 49/49 stale at
   `2eb60366`, then exit `0` after the rebuild. The `EXIT_FRESH` results recorded elsewhere in this
   document are post-rebuild results, not a claim that the committed tree is fresh without one.
+  *Post-closure:* the 49/49 rebuild was genuinely required regardless, because `dc8ac073` changed
+  `crates/slicer-core/src/polygon_ops.rs`, which every guest compiles. The manifest part is gone
+  from fingerprint v3; see "Post-closure follow-ups" below.
 - **Dirty paths.** This run is uncommitted; the per-record `context.json` is authoritative for the
   exact dirty set each measurement saw.
 
@@ -135,7 +138,9 @@ in any of these lanes.
 | `H-HELPERS-SPLIT` | 64 | 64 | 0 | `null` | 0.04 s | `s5-helper-controls.log` (run) and the harness event in the step report |
 
 `shrink_completed` is `null` everywhere because Proptest 1.11 cannot report whether minimization
-finished; this document therefore never calls a retained case minimal.
+finished; this document therefore never calls a retained case minimal. (A seeded SUT failure has
+since been minimised through `PropertyRun`; see "Post-closure follow-ups" below. `shrink_completed`
+itself is still `null`.)
 
 **Extended tier, first run.** The first `--tier extended` run of all seven records reported
 `sut_failure` for `H-BOOL-SET` and `H-MESH-SLICE`. Both were diagnosed as **checker** defects, not
@@ -336,6 +341,59 @@ every probed plane of all five deterministic witnesses, each paired with the rea
 same check, so the mesh-side case is now proven by a firing control rather than by inference. The
 original note still holds as a statement of the code: an empty layer where the model expects curves cannot
 pass.
+
+## Post-closure follow-ups
+
+These closed gaps that the closure report listed. All results are local Windows results; nothing in
+this section was run on a hosted runner.
+
+1. **T-touch crossings are rejected structurally.** `validate_general_output_rings` splits every
+   edge at its T-touches before the interleave test (`split_at_t_touches`). Control arm 6 (a T-touch
+   figure-8) failed before the split with `the checker accepted a wrong result` and is rejected
+   after it; arm 7 (a T-touch pinch) stays accepted. `H-BOOL-SET`, `H-BOOL-SCAD` and `H-MESH-SCAD`
+   pass at routine tier with the stricter predicate.
+2. **Mesh-side all-outside arm.** See the attribution paragraph above.
+3. **A SUT failure has been minimised through the real harness.**
+   `geometry_controls_seeded_fault_is_minimised` (`controls_seeded_fault.rs`) runs the exact
+   `H-BOOL-SET` body and strategy through `PropertyRun`. It reads both of `H-BOOL-SET`'s registry
+   profiles from `test-properties.toml` and runs them in child processes against a seeded fault
+   (`union` drops holes, which no rectangle pair can expose). It then audits `failure.json` and
+   `observations.jsonl`. Measured at seed 37:
+
+   | Tier | shrink calls / `max_shrink_iters` | accepted simplifications | input bytes, initial → reported |
+   |---|---:|---:|---|
+   | routine | 64 / 64 | 64 | 2186 → 1870 |
+   | extended | 197 / 256 | 181 | 3048 → 598 |
+
+   Extended shrinking stopped below its cap. In Proptest 1.11 `TestRunner::shrink` makes one test
+   call per iteration (the harness installs no result cache) and bails only at the cap, so stopping
+   below it means the value tree could neither simplify nor complicate further: the extended
+   counterexample is a local minimum, and the control asserts that.
+
+   **Profile finding, not fixed:** the routine budget of 64 is too small for this fault. With an
+   uncapped budget over the routine profile, seeds 1, 2, 3, 5, 8, 13, 21, 37 and 99 needed 110–167
+   shrink calls to stop on their own, and every one converged to a 550- or 598-byte input. A routine
+   `H-BOOL-SET` failure is therefore minimised but truncated. When the cap is hit, Proptest backs out
+   with `complicate()` until it returns false. At routine seed 37 that left the reported input at
+   attempt 47, an executed failing input, rather than the last failure (attempt 65). The control
+   asserts only that the reported input is one a callback actually failed on. Raising routine
+   `max_shrink_iters` costs nothing on passing runs, because shrinking only runs after a failure. It
+   is still a registry profile decision and was not made here.
+
+   `shrink_completed` remains `null`. That is still true of the harness: deriving it from the
+   journal (shrink-phase calls below `max_shrink_iters` with `max_shrink_time_ms = 0`) would change
+   the `PropertyRun` contract and was not done.
+4. **Guest fingerprint v3.** `xtask/src/build_guests.rs` now hashes each `Cargo.toml` through
+   `manifest_fingerprint_bytes`, which strips dev-dependencies, test/bench/example targets, comments
+   and formatting. Measured on this tree: a dev-only edit to `crates/slicer-core/Cargo.toml` keeps
+   `build-guests --check` at exit `0`, and a normal-dependency edit gives exit `1` with 49 stale.
+   Adding this control's `toml` dev-dependency to `slicer-core` left the check at exit `0`. The move
+   from v2 to v3 makes every existing sidecar stale once.
+5. **Non-Windows execution remains unexercised (deferred).** No Linux run of any geometry record,
+   of `timeout_ms` under load, or of the C++ engine exists. This machine has no usable Linux
+   environment, and packet 17's CI scope is Windows-only by design. Closing it needs a new
+   `ubuntu-latest` properties lane in `.github/workflows/ci.yml`, plus a Linux engine build for the
+   scripted records. That is follow-up scope, not claimed here.
 
 ## Checks
 

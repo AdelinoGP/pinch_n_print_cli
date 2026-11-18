@@ -13,6 +13,7 @@ pub mod bounds;
 pub mod clip;
 pub mod controls_boolean_clip;
 pub mod controls_offset_smooth;
+pub mod controls_seeded_fault;
 pub mod controls_shrink;
 pub mod controls_slice_query;
 pub mod controls_vertex_plane_hole;

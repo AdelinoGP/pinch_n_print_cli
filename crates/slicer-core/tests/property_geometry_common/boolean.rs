@@ -1206,13 +1206,23 @@ pub fn check_identities(
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn check_input(input: &BoolInput, limits: &GeometryLimits) -> Result<(), String> {
+    check_input_with(input, limits, &BoolOutputs::compute)
+}
+
+/// The `H-BOOL-SET` property body against an injectable SUT.
+///
+/// The registry property passes [`BoolOutputs::compute`], i.e. the four real
+/// production wrappers; the seeded-fault control passes a deliberately broken
+/// `compute` so the exact checker the property uses is what fails and what
+/// Proptest minimises.
+pub fn check_input_with(
+    input: &BoolInput,
+    limits: &GeometryLimits,
+    compute: &dyn Fn(&[ExPolygon], &[ExPolygon]) -> BoolOutputs,
+) -> Result<(), String> {
     let (ra, rb) = input.rects;
-    let rect_stats = check_rect_pair(
-        ra,
-        rb,
-        &BoolOutputs::compute(&[ra.to_expolygon()], &[rb.to_expolygon()]),
-    )
-    .map_err(|error| format!("rectangle family: {error}"))?;
+    let rect_stats = check_rect_pair(ra, rb, &compute(&[ra.to_expolygon()], &[rb.to_expolygon()]))
+        .map_err(|error| format!("rectangle family: {error}"))?;
     if rect_stats.inside_cells[0] == 0 {
         return Err(String::from("rectangle union observed no inside cell"));
     }
@@ -1220,13 +1230,13 @@ fn check_input(input: &BoolInput, limits: &GeometryLimits) -> Result<(), String>
     check_general_pair(
         &realized.a,
         &realized.b,
-        &BoolOutputs::compute(&realized.a, &realized.b),
+        &compute(&realized.a, &realized.b),
         limits.max_queries,
     )
     .map_err(|error| format!("general pair: {error}"))?;
     check_identities(
         &realized.a,
-        &BoolOutputs::compute(&realized.a, &realized.a),
+        &compute(&realized.a, &realized.a),
         &realised_domain(input.a.class, limits),
         limits.max_queries,
     )
@@ -1234,7 +1244,7 @@ fn check_input(input: &BoolInput, limits: &GeometryLimits) -> Result<(), String>
     check_general_pair(
         &realized.a,
         &realized.copy,
-        &BoolOutputs::compute(&realized.a, &realized.copy),
+        &compute(&realized.a, &realized.copy),
         limits.max_queries,
     )
     .map_err(|error| format!("translated copy: {error}"))?;

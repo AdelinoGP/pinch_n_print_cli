@@ -2806,6 +2806,16 @@ nine-point membership truth table. Deterministic control home:
 `geometry_controls_boolean_and_clip_mutations`, which rejects a union returning only operand A and a
 difference that fills a hole, with both the rectangle and the general checker.
 
+Seeded-fault minimisation: `geometry_controls_seeded_fault_is_minimised` runs this exact body
+(`check_input_with`) and strategy through `PropertyRun` at both registry tiers. It reads the
+profiles from `test-properties.toml` and runs them against a `union` that drops holes. From the
+retained `failure.json` and `observations.jsonl` it asserts a `sut_or_contract` failure naming
+`Union`, at least one accepted shrink simplification, and a reported counterexample that a callback
+actually failed on and that differs from the initial failure. At the extended tier it also asserts
+that shrinking stopped below `max_shrink_iters`, which makes the result a local minimum. The routine
+budget is measured to truncate this shrink; see `docs/testing/proptest-geometry-evidence.md`,
+"Post-closure follow-ups".
+
 ### Acceptance
 
 Maps to AC-1 and AC-N1. The property must call all four wrappers, both reference families must
