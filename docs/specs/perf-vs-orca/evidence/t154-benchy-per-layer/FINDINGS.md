@@ -178,6 +178,11 @@ Two structural readings:
   per-layer thread). That is a **work-set/phase difference**, not a per-op
   inefficiency, and it is the largest named term on the one cell the destination
   still needs.
+  **Correction (2026-11-17, [t159](../../issues/159-tree-support-render-prepass-fold.md)):**
+  "pay support work twice" is wrong as worded. Canonical `TreeSupport::generate`
+  ends in `generate_toolpaths`, the counterpart of PnP's renderer, and that step
+  is itself a per-layer `tbb::parallel_for`. The difference is where the
+  toolpath step is scheduled, not duplicated work.
 - **The Infill-stage block has no canonical counterpart and its identity is
   open.** t127 proved by declining `raft-default` that the first dispatch of
   `Layer::Infill` pays a stage-shared block and that the cost transfers to

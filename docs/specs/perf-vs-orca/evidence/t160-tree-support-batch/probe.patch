@@ -1,0 +1,590 @@
+diff --git a/crates/slicer-runtime/src/layer_executor.rs b/crates/slicer-runtime/src/layer_executor.rs
+index 078ec32d..fd1e8346 100644
+--- a/crates/slicer-runtime/src/layer_executor.rs
++++ b/crates/slicer-runtime/src/layer_executor.rs
+@@ -753,6 +753,461 @@ pub fn execute_per_layer_with_instrumentation(
+     Ok((layers, audits))
+ }
+ 
++// ---------------------------------------------------------------------------
++// t160 probe: tree-support whole-object placement (env-gated, probe-only)
++//
++// See docs/specs/perf-vs-orca/issues/160-tree-support-prepass-batch-probe.md.
++// `PNP_T160_SUPPORT_BATCH=1` dispatches the unchanged `Layer::Support`
++// renderer for every layer in one parallel pass before the per-layer loop and
++// replays the cached commit; `PNP_T160_SUPPORT_NULL=1` skips the render (a
++// ceiling arm, not output-matched); `PNP_T160_INPUT_HASH=1` prints the
++// read-set digest at both dispatch points. All three default off.
++// ---------------------------------------------------------------------------
++
++const T160_BATCH_ENV: &str = "PNP_T160_SUPPORT_BATCH";
++const T160_NULL_ENV: &str = "PNP_T160_SUPPORT_NULL";
++const T160_HASH_ENV: &str = "PNP_T160_INPUT_HASH";
++
++fn t160_flag(name: &str) -> bool {
++    std::env::var(name).is_ok_and(|value| value == "1")
++}
++
++/// The support-stage commit captured by the whole-object pass, replayed into
++/// the layer's own arena when the per-layer loop reaches `Layer::Support`.
++struct T160CachedSupport {
++    support: Option<SupportIR>,
++    anchored: Vec<slicer_ir::OrderedEventCollection>,
++    audits: Vec<ModuleAccessAudit>,
++}
++
++struct T160Probe {
++    /// `Some` only on the batch arm; one slot per layer, consumed once.
++    batch: Option<Arc<HashMap<u32, std::sync::Mutex<Option<T160CachedSupport>>>>>,
++    null_render: bool,
++    hash: bool,
++}
++
++/// Hash the `Layer::Support` read set: the fields `run_support` reads from the
++/// slice view, plus the committed support-plan rows that feed
++/// `support_plan_entries_for`, plus the region polygons and segment
++/// annotations `paint_policy_for` walks. `infill_areas` is deliberately
++/// excluded — it is written by `Layer::Perimeters`, and the renderer never
++/// reads it.
++fn t160_hash_polygon(hasher: &mut std::collections::hash_map::DefaultHasher, polygon: &Polygon) {
++    use std::hash::Hash;
++    polygon.points.len().hash(hasher);
++    for point in &polygon.points {
++        point.x.hash(hasher);
++        point.y.hash(hasher);
++    }
++}
++
++fn t160_hash_expolygons(
++    hasher: &mut std::collections::hash_map::DefaultHasher,
++    polygons: &[ExPolygon],
++) {
++    use std::hash::Hash;
++    polygons.len().hash(hasher);
++    for expoly in polygons {
++        t160_hash_polygon(hasher, &expoly.contour);
++        expoly.holes.len().hash(hasher);
++        for hole in &expoly.holes {
++            t160_hash_polygon(hasher, hole);
++        }
++    }
++}
++
++/// A `Layer::Support` read-set digest, split so a mismatch names its class:
++/// `plan` = support-plan rows, `view` = region identity/z/height, `paint` =
++/// slice polygons + segment annotations.
++struct T160ReadSet {
++    plan: u64,
++    view: u64,
++    paint: u64,
++}
++
++fn t160_hash_layer(
++    blackboard: &Blackboard,
++    arena: &LayerArena,
++    layer: &GlobalLayer,
++) -> T160ReadSet {
++    use std::hash::{Hash, Hasher};
++    let mut plan_hasher = std::collections::hash_map::DefaultHasher::new();
++    let mut view_hasher = std::collections::hash_map::DefaultHasher::new();
++    let mut paint_hasher = std::collections::hash_map::DefaultHasher::new();
++    layer.index.hash(&mut view_hasher);
++    layer.z.to_bits().hash(&mut view_hasher);
++    if let Some(slice) = arena.slice() {
++        slice.regions.len().hash(&mut view_hasher);
++        for region in &slice.regions {
++            region.object_id.as_str().hash(&mut view_hasher);
++            region.region_id.hash(&mut view_hasher);
++            format!("{:?}", region.variant_chain).hash(&mut view_hasher);
++            region.effective_layer_height.to_bits().hash(&mut view_hasher);
++            t160_hash_expolygons(&mut paint_hasher, &region.polygons);
++            // HashMap iteration order is not stable; sort the semantics by
++            // their debug rendering before hashing.
++            let mut semantics: Vec<String> = region
++                .segment_annotations
++                .keys()
++                .map(|semantic| format!("{semantic:?}"))
++                .collect();
++            semantics.sort();
++            for semantic in semantics {
++                semantic.hash(&mut paint_hasher);
++                if let Some((_, edges)) = region
++                    .segment_annotations
++                    .iter()
++                    .find(|(key, _)| format!("{key:?}") == semantic)
++                {
++                    edges.len().hash(&mut paint_hasher);
++                    for perimeter in edges {
++                        perimeter.len().hash(&mut paint_hasher);
++                        for value in perimeter {
++                            format!("{value:?}").hash(&mut paint_hasher);
++                        }
++                    }
++                }
++            }
++        }
++    }
++    if let Some(plan) = blackboard.support_plan() {
++        let mut entries: Vec<_> = plan
++            .entries
++            .iter()
++            .filter(|entry| entry.anchor_layer_index == layer.index)
++            .collect();
++        entries.sort_by_key(|entry| (entry.anchor_z, entry.global_layer_index));
++        entries.len().hash(&mut plan_hasher);
++        for entry in entries {
++            entry.object_id.as_str().hash(&mut plan_hasher);
++            entry.region_id.hash(&mut plan_hasher);
++            entry.global_layer_index.hash(&mut plan_hasher);
++            entry.anchor_z.hash(&mut plan_hasher);
++            entry.family_id.hash(&mut plan_hasher);
++            format!("{:?}", entry.decline_reason).hash(&mut plan_hasher);
++            format!("{:?}", entry.variant_chain).hash(&mut plan_hasher);
++            entry.roles.len().hash(&mut plan_hasher);
++            for role_region in &entry.roles {
++                format!("{:?}", role_region.role).hash(&mut plan_hasher);
++                t160_hash_expolygons(&mut plan_hasher, &role_region.regions);
++            }
++        }
++    }
++    T160ReadSet {
++        plan: plan_hasher.finish(),
++        view: view_hasher.finish(),
++        paint: paint_hasher.finish(),
++    }
++}
++
++/// Read-only digest pass: prints the prepass-state read set for every layer so
++/// it can be compared against the per-layer dispatch's own digest.
++fn t160_hash_pass(plan: &ExecutionPlan, blackboard: &Blackboard) {
++    let started = std::time::Instant::now();
++    let lines: Vec<Result<String, LayerExecutionError>> = plan
++        .global_layers
++        .par_iter()
++        .map(|layer| {
++            let mut arena = LayerArena::new();
++            hydrate_slice_arena(&mut arena, blackboard, layer)?;
++            let hash = t160_hash_layer(blackboard, &arena, layer);
++            Ok(format!(
++                "t160 input_hash batch layer={} plan={:016x} view={:016x} paint={:016x}",
++                layer.index, hash.plan, hash.view, hash.paint
++            ))
++        })
++        .collect();
++    match lines.into_iter().collect::<Result<Vec<_>, _>>() {
++        Ok(lines) => {
++            for line in lines {
++                eprintln!("{line}");
++            }
++        }
++        Err(error) => eprintln!("t160 input_hash batch failed: {error}"),
++    }
++    eprintln!(
++        "t160 input_hash batch wall_ms={:.3}",
++        started.elapsed().as_secs_f64() * 1000.0
++    );
++}
++
++/// Whole-object `Layer::Support` pass. Builds the same per-layer arena and
++/// `LayerStageInput` the per-layer loop builds at that stage, dispatches the
++/// unchanged module, applies its commit into the throwaway arena, and returns
++/// the resulting support slot plus anchored collections for replay.
++fn t160_run_batch_pass(
++    plan: &ExecutionPlan,
++    blackboard: &Blackboard,
++    runner: &(dyn LayerStageRunner + Sync),
++    instrumentation: &(dyn PipelineInstrumentation + Sync),
++    wasm_handles: &HashMap<
++        ModuleId,
++        (
++            Arc<WasmInstancePool>,
++            Option<Arc<WasmComponent>>,
++            Option<slicer_sdk::native::NativeStageEntry>,
++        ),
++    >,
++) -> Result<HashMap<u32, std::sync::Mutex<Option<T160CachedSupport>>>, LayerExecutionError> {
++    let Some(stage) = plan
++        .per_layer_stages
++        .iter()
++        .find(|stage| stage.stage_id == "Layer::Support")
++    else {
++        return Ok(HashMap::new());
++    };
++    if stage.modules.is_empty() {
++        return Ok(HashMap::new());
++    }
++    // Supports-off cells must stay inert: with `enable_support = false` the
++    // renderer declines on its first line, so batching it would add a
++    // whole-object pass and a per-layer slice clone for no work. Leave those
++    // cells on the production per-layer path.
++    let support_enabled = stage.modules.iter().any(|module| {
++        module
++            .config_view()
++            .get_bool("enable_support")
++            .unwrap_or(false)
++    });
++    if !support_enabled {
++        eprintln!("t160 support_batch skipped enable_support=false");
++        return Ok(HashMap::new());
++    }
++    let started = std::time::Instant::now();
++    let results: Vec<Result<(u32, T160CachedSupport), LayerExecutionError>> = plan
++        .global_layers
++        .par_iter()
++        .map(|layer| {
++            let mut arena = LayerArena::new();
++            hydrate_slice_arena(&mut arena, blackboard, layer)?;
++            let mut audits = Vec::new();
++            instrumentation.on_stage_start(&stage.stage_id, Some(layer.index));
++            for module in &stage.modules {
++                let selection = if is_indexed_module_stage(&stage.stage_id) {
++                    Some(
++                        blackboard
++                            .layer_selection_index()
++                            .ok_or_else(|| LayerExecutionError::FatalLayer {
++                                layer_index: layer.index,
++                                stage_id: stage.stage_id.clone(),
++                                module_id: module.module_id().to_owned(),
++                                message: "t160: layer selection index is not committed".into(),
++                            })
++                            .and_then(|index| {
++                                index
++                                    .selection_for(layer.index, module.module_id())
++                                    .ok_or_else(|| LayerExecutionError::FatalLayer {
++                                        layer_index: layer.index,
++                                        stage_id: stage.stage_id.clone(),
++                                        module_id: module.module_id().to_owned(),
++                                        message: format!(
++                                            "t160: layer selection is missing for layer {}",
++                                            layer.index
++                                        ),
++                                    })
++                            })?,
++                    )
++                } else {
++                    None
++                };
++                if selection
++                    .as_ref()
++                    .is_some_and(|selection| !selection.invoke)
++                {
++                    continue;
++                }
++                let (instance_pool, wasm_component, native_entry) = wasm_handles
++                    .get(module.module_id().as_str())
++                    .map(|(p, c, e)| (Arc::clone(p), c.clone(), *e))
++                    .unwrap_or_else(|| (WasmInstancePool::placeholder(), None, None));
++                let mut live_module = CompiledModuleLive::new(
++                    module.module_id(),
++                    instance_pool,
++                    wasm_component,
++                    module.claims(),
++                    Arc::clone(module.config_view()),
++                );
++                if let Some(entry) = native_entry {
++                    live_module = live_module.with_native_entry(entry);
++                }
++                prepare_dispatch_region_views(&mut arena, &stage.stage_id, blackboard);
++                let input = LayerStageInput {
++                    selection,
++                    mesh: Arc::clone(blackboard.mesh()),
++                    paint_regions: None,
++                    seam_plan: blackboard.seam_plan().cloned(),
++                    support_plan: blackboard.support_plan().cloned(),
++                    region_map: blackboard.region_map().cloned(),
++                    slice: arena.slice(),
++                    perimeter: arena.perimeter(),
++                    layer_collection: arena.layer_collection(),
++                    surface_classification: blackboard
++                        .surface_classification()
++                        .map(|a| a.as_ref()),
++                    prepared_regions: arena.prepared_regions(),
++                    prepared_perimeter_source_regions: arena.prepared_perimeter_source_regions(),
++                    infill: None,
++                };
++                instrumentation.on_module_start(
++                    &stage.stage_id,
++                    Some(layer.index),
++                    module.module_id(),
++                );
++                let run_result = runner.run_stage(&stage.stage_id, layer, &live_module, input);
++                let (wasm_before, wasm_after) = runner.last_wasm_mem_sample();
++                instrumentation.on_module_profile(
++                    &stage.stage_id,
++                    Some(layer.index),
++                    module.module_id(),
++                    &runner.last_profile_marks(),
++                    runner.last_call_fuel(),
++                );
++                instrumentation.on_module_end(
++                    &stage.stage_id,
++                    Some(layer.index),
++                    module.module_id(),
++                    wasm_before,
++                    wasm_after,
++                );
++                let commit = match run_result {
++                    Ok(commit) => commit,
++                    Err(e) => {
++                        let message = e.to_string();
++                        instrumentation.on_module_error(
++                            &stage.stage_id,
++                            Some(layer.index),
++                            module.module_id(),
++                            &message,
++                            true,
++                        );
++                        instrumentation.on_stage_end(&stage.stage_id, Some(layer.index));
++                        return Err(LayerExecutionError::FatalLayer {
++                            layer_index: layer.index,
++                            stage_id: stage.stage_id.clone(),
++                            module_id: module.module_id().to_owned(),
++                            message,
++                        });
++                    }
++                };
++                if let Some(commit) = commit {
++                    let ctx = StageApplyContext {
++                        stage_id: &stage.stage_id,
++                        module_id: module.module_id().as_str(),
++                        layer_index: layer.index,
++                        seam_plan: blackboard.seam_plan().map(|arc| arc.as_ref()),
++                        config_view: Some(module.config_view().as_ref()),
++                        committed_slices: blackboard.slice_ir().map(|slices| slices.as_slice()),
++                    };
++                    if let Err(e) = apply(&mut arena, commit, &ctx) {
++                        let message = e.to_string();
++                        instrumentation.on_module_error(
++                            &stage.stage_id,
++                            Some(layer.index),
++                            module.module_id(),
++                            &message,
++                            true,
++                        );
++                        instrumentation.on_stage_end(&stage.stage_id, Some(layer.index));
++                        return Err(LayerExecutionError::FatalLayer {
++                            layer_index: layer.index,
++                            stage_id: stage.stage_id.clone(),
++                            module_id: module.module_id().to_owned(),
++                            message,
++                        });
++                    }
++                }
++                let writes = ir_path_for_layer_stage(&stage.stage_id)
++                    .map(|path| vec![path])
++                    .unwrap_or_default();
++                let runtime_reads = runner.last_runtime_reads();
++                let batch_calls = runner.last_batch_calls();
++                for (level, message) in runner.last_log_messages() {
++                    instrumentation.on_module_log(
++                        &stage.stage_id,
++                        Some(layer.index),
++                        module.module_id(),
++                        &level,
++                        &message,
++                    );
++                }
++                if !writes.is_empty() || !runtime_reads.is_empty() || !batch_calls.is_empty() {
++                    audits.push(ModuleAccessAudit {
++                        module_id: module.module_id().to_owned(),
++                        runtime_reads,
++                        runtime_writes: writes,
++                        batch_calls,
++                        diagnostics: Vec::new(),
++                    });
++                }
++            }
++            instrumentation.on_stage_end(&stage.stage_id, Some(layer.index));
++            let support = arena.take_support();
++            let anchored = arena.take_anchored_event_collections().unwrap_or_default();
++            Ok((
++                layer.index,
++                T160CachedSupport {
++                    support,
++                    anchored,
++                    audits,
++                },
++            ))
++        })
++        .collect();
++    let mut cache = HashMap::with_capacity(results.len());
++    for result in results {
++        let (index, cached) = result?;
++        cache.insert(index, std::sync::Mutex::new(Some(cached)));
++    }
++    eprintln!(
++        "t160 support_batch wall_ms={:.3} layers={}",
++        started.elapsed().as_secs_f64() * 1000.0,
++        cache.len()
++    );
++    Ok(cache)
++}
++
++fn t160_probe_before_per_layer(
++    plan: &ExecutionPlan,
++    blackboard: &Blackboard,
++    runner: &(dyn LayerStageRunner + Sync),
++    instrumentation: &(dyn PipelineInstrumentation + Sync),
++    wasm_handles: &HashMap<
++        ModuleId,
++        (
++            Arc<WasmInstancePool>,
++            Option<Arc<WasmComponent>>,
++            Option<slicer_sdk::native::NativeStageEntry>,
++        ),
++    >,
++) -> Option<T160Probe> {
++    let batch = t160_flag(T160_BATCH_ENV);
++    let null_render = t160_flag(T160_NULL_ENV);
++    let hash = t160_flag(T160_HASH_ENV);
++    if !batch && !null_render && !hash {
++        return None;
++    }
++    if hash {
++        t160_hash_pass(plan, blackboard);
++    }
++    let batch = if batch {
++        match t160_run_batch_pass(plan, blackboard, runner, instrumentation, wasm_handles) {
++            Ok(cache) => Some(Arc::new(cache)),
++            Err(error) => {
++                eprintln!("t160 support_batch failed: {error}");
++                None
++            }
++        }
++    } else {
++        None
++    };
++    Some(T160Probe {
++        batch,
++        null_render,
++        hash,
++    })
++}
++
+ pub(crate) fn execute_per_layer_with_instrumentation_and_support_tools(
+     plan: &ExecutionPlan,
+     blackboard: &Blackboard,
+@@ -779,6 +1234,13 @@ pub(crate) fn execute_per_layer_with_instrumentation_and_support_tools(
+     LayerExecutionError,
+ > {
+     let global_layers = &plan.global_layers;
++    let t160 = t160_probe_before_per_layer(
++        plan,
++        blackboard,
++        runner,
++        instrumentation,
++        wasm_handles,
++    );
+ 
+     use rayon::iter::ParallelIterator;
+     let results: Result<
+@@ -804,6 +1266,7 @@ pub(crate) fn execute_per_layer_with_instrumentation_and_support_tools(
+                 layer,
+                 wasm_handles,
+                 support_tools,
++                t160.as_ref(),
+                 observer,
+             )
+         })
+@@ -847,6 +1310,7 @@ fn execute_single_layer(
+         ),
+     >,
+     support_tools: SupportToolSelection,
++    t160: Option<&T160Probe>,
+     observer: Option<&dyn crate::preparation_lifecycle::PreparationLifecycleObserver>,
+ ) -> Result<
+     (
+@@ -867,6 +1331,7 @@ fn execute_single_layer(
+         layer,
+         wasm_handles,
+         support_tools,
++        t160,
+         observer,
+     );
+     instrumentation.on_layer_end(layer.index);
+@@ -979,6 +1444,7 @@ fn execute_single_layer_inner(
+         ),
+     >,
+     support_tools: SupportToolSelection,
++    t160: Option<&T160Probe>,
+     observer: Option<&dyn crate::preparation_lifecycle::PreparationLifecycleObserver>,
+ ) -> Result<
+     (
+@@ -1020,8 +1486,77 @@ fn execute_single_layer_inner(
+             support_tools,
+         );
+         instrumentation.on_stage_start(&stage.stage_id, Some(layer.index));
++        // t160 probe: replay the whole-object `Layer::Support` commit instead
++        // of dispatching here, or skip the render on the null-renderer arm.
++        let mut t160_replayed = false;
++        if stage.stage_id == "Layer::Support" {
++            if let Some(probe) = t160 {
++                if probe.hash {
++                    let hash = t160_hash_layer(blackboard, &arena, layer);
++                    eprintln!(
++                        "t160 input_hash per_layer layer={} plan={:016x} view={:016x} paint={:016x}",
++                        layer.index, hash.plan, hash.view, hash.paint
++                    );
++                }
++                if probe.null_render {
++                    t160_replayed = true;
++                } else if let Some(cache) = probe.batch.as_ref() {
++                    if let Some(cached) = cache
++                        .get(&layer.index)
++                        .and_then(|slot| slot.lock().expect("t160 cache poisoned").take())
++                    {
++                        if let Some(support) = cached.support {
++                            let commit = if cached.anchored.is_empty() {
++                                LayerStageCommit::Support(support)
++                            } else {
++                                LayerStageCommit::SupportWithAnchoredEvents {
++                                    support,
++                                    anchored_events: cached.anchored,
++                                }
++                            };
++                            let ctx = StageApplyContext {
++                                stage_id: &stage.stage_id,
++                                module_id: "t160-support-batch",
++                                layer_index: layer.index,
++                                seam_plan: blackboard.seam_plan().map(|arc| arc.as_ref()),
++                                config_view: stage
++                                    .modules
++                                    .first()
++                                    .map(|module| module.config_view().as_ref()),
++                                committed_slices: blackboard
++                                    .slice_ir()
++                                    .map(|slices| slices.as_slice()),
++                            };
++                            if let Err(e) = apply(&mut arena, commit, &ctx) {
++                                let message = e.to_string();
++                                let probe_module_id = "t160-support-batch".to_string();
++                                instrumentation.on_module_error(
++                                    &stage.stage_id,
++                                    Some(layer.index),
++                                    &probe_module_id,
++                                    &message,
++                                    true,
++                                );
++                                instrumentation.on_stage_end(&stage.stage_id, Some(layer.index));
++                                return Err(LayerExecutionError::FatalLayer {
++                                    layer_index: layer.index,
++                                    stage_id: stage.stage_id.clone(),
++                                    module_id: probe_module_id,
++                                    message,
++                                });
++                            }
++                        }
++                        audits.extend(cached.audits);
++                        t160_replayed = true;
++                    }
++                }
++            }
++        }
+         // Execute modules in topological order within each stage
+         for module in &stage.modules {
++            if t160_replayed {
++                break;
++            }
+             // Only module-backed schema Layer stages have indexed selection pairs.
+             let selection = if is_indexed_module_stage(&stage.stage_id) {
+                 Some(

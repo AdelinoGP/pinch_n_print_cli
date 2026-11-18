@@ -1019,6 +1019,46 @@ Evidence and the human ruling:
 route arithmetic re-derived by `route_arithmetic.py`). **Frontier: none** —
 1–158 are resolved; the next shape is the human's pick from the fog.
 
+**Destination status (2026-11-17,
+[159](issues/159-tree-support-render-prepass-fold.md)): the tree-support fold
+is ruled an EXPERIMENT, not adoption; the frontier is
+[160](issues/160-tree-support-prepass-batch-probe.md).** The human picked fog
+item (a) and ruled to measure whether the planner/renderer structure costs wall.
+Canonical `TreeSupport::generate` (`TreeSupport.cpp`) has the same two halves
+(`draw_circles`, then a per-layer `tbb::parallel_for` in `generate_toolpaths`),
+so t154's "pays support work twice" is corrected to a **phase-placement**
+difference. t160 holds the work constant: an env-gated host probe runs the
+unchanged `tree-support` guest for all layers in one whole-object pass after
+`PrePass::SupportGeometry`, plus a null-renderer ceiling arm, judged per
+supports-on cell (hurts = ≥ 0.80 % floor and outside the null band), with
+canonical `generate_toolpaths` timing as the per-op control. Probe only;
+adoption is a separate ruling. **Frontier:**
+[160](issues/160-tree-support-prepass-batch-probe.md) (AFK, unblocked).
+
+**Destination status (2026-11-17,
+[160](issues/160-tree-support-prepass-batch-probe.md)): the fold is a pure
+placement move, output is byte-identical 8/8, and the batch arm is slower in
+every supports-on cell — the per-layer structure is exonerated; the frontier is
+empty (1–160 resolved) and the next shape is a human pick from the fog.** The
+read-set digest (`plan` / `view` / `paint`) matches at both dispatch points on
+**every layer of all eight cells** (496/496 base, 240/240 benchy per side), so
+the renderer reads only prepass-committed state and t160's item-3 stop does not
+fire. The batch arm reproduces t151's active set in **8/8**, all runs clean.
+Paired campaign (5 interleaved pairs/cell, ordinary): the batch arm is slower
+in all eight separate-arm medians, the four supports-on cells at **−1.69 % /
+−1.71 % / −3.13 % / −3.77 %** (pair wins 1/5, 2/5, 0/5, 1/5), with the batch
+pass's own wall **3.9–4.2 s** on the base cells and **0.49 s** on the benchy
+cells, charged inside the per-layer phase bracket. The same-arm null band is
+**9.50 % wall any-pair / 1.91 % median** (CPU 5.89 %) — the deltas sit inside
+it, and no cell is faster, so the null control cannot make any cell "hurts".
+The null-renderer ceiling is **9.16–12.61 %** of cell wall: the renderer's
+cost is the work, not its placement, so a scheduling change cannot recover it.
+Supports-off cells are skipped when `enable_support=false` (no batch dispatch,
+output identical; their ±1.2–4.3 % wall movement is disclosed box drift).
+Probe reverted, `probe.patch` preserved, `build-guests --check` exit 0. Evidence:
+[`evidence/t160-tree-support-batch/`](evidence/t160-tree-support-batch/FINDINGS.md)
+(`verify.py` PASS, `--self-test` 9/9). **Frontier: none** — 1–160 resolved.
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -1105,7 +1145,31 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-16, the t158 take):** the human said
+**Current selection scope (2026-11-17, the t160 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **160 was the only
+unblocked, unclaimed frontier ticket** (1–159 resolved), a `wayfinder:task`.
+It was claimed and resolved as a measured probe: input read set identical
+8/8, output byte-identical 8/8, batch arm slower in every supports-on cell
+(−1.69 % to −3.77 %), null band 9.50 % any-pair, null-renderer ceiling
+9.16–12.61 %, so the per-layer structure is **exonerated**. Probe reverted,
+`probe.patch` preserved, `build-guests --check` exit 0, `verify.py` PASS and
+`--self-test` 9/9. **Frontier now: none** — 1–160 resolved; the next shape is
+a human pick from the fog (the renderer's own per-op work is the remaining
+carrier, and fog item (b) still owns the fresh paired scoreboard).
+
+**Previous selection scope (2026-11-17, the t159 take):** the human said
+"Continue the perf vs orca map" (no ticket named); the frontier was empty
+(1–158 resolved), so the human was asked to pick from the fog and chose item (a)
+(fold the per-layer `tree-support` render into the prepass). It was charted as
+[159](issues/159-tree-support-render-prepass-fold.md) (`wayfinder:grilling`),
+claimed, and resolved by human ruling: **experiment, not adoption**; graduated
+[160](issues/160-tree-support-prepass-batch-probe.md). Before the take, the
+uncommitted t157/t158 work was committed at the human's request after clippy
+`--all-targets`, `check-literals`, `build-guests --check` and `layer_module_tdd`
+(72/72) passed. **Frontier now:**
+[160](issues/160-tree-support-prepass-batch-probe.md) (AFK, unblocked, new).
+
+**Previous selection scope (2026-11-16, the t158 take):** the human said
 "Continue with the next one" (no ticket named); **158 was the only unblocked,
 unclaimed AFK frontier ticket** (1–157 resolved; no HITL ticket open), a
 `wayfinder:task`, and was claimed and mechanically resolved as **DROP**. On
@@ -4294,6 +4358,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Tree-support render placement probe: whole-object batch vs per-layer dispatch](issues/160-tree-support-prepass-batch-probe.md): **resolved 2026-11-17, measured probe — the fold is a pure placement move and the batch arm is slower in every supports-on cell, so the per-layer structure is EXONERATED** — one env-gated host binary, four arms, work held constant. Read-set digest (`plan` / `view` / `paint`) identical at both dispatch points on **every layer of all eight cells** (496/496 base, 240/240 benchy per side); batch arm byte-identical to t151's active set in **8/8**, all runs clean. 5 interleaved pairs/cell: batch slower in all eight separate-arm medians, supports-on **−1.69 % / −1.71 % / −3.13 % / −3.77 %** (pair wins 1/5, 2/5, 0/5, 1/5); batch-pass wall **3.9–4.2 s** base / **0.49 s** benchy inside the per-layer phase bracket. Same-arm null band **9.50 % wall any-pair / 1.91 % median** (CPU 5.89 %); null-renderer ceiling **9.16–12.61 %** of cell wall, so the renderer's cost is the work, not its placement. Supports-off skipped (`enable_support=false`), output identical, wall movement disclosed as box drift. Probe reverted, `probe.patch` preserved, `build-guests --check` exit 0. Evidence: `evidence/t160-tree-support-batch/` (`verify.py` PASS, `--self-test` 9/9).
+- [Tree-support render: fold the per-layer `Layer::Support` render into the prepass?](issues/159-tree-support-render-prepass-fold.md): **resolved 2026-11-17, human ruling — EXPERIMENT, not adoption** — measure whether per-layer renderer placement costs wall with the work held constant: env-gated host batch of the unchanged guest after `PrePass::SupportGeometry` plus a null-renderer ceiling, per-cell verdict on the four supports-on cells (hurts = ≥ 0.80 % floor and outside the null band), canonical `generate_toolpaths` as the per-op control, probe only. Corrects t154's "pays support work twice" to a phase-placement difference (canonical `generate_toolpaths` is also a per-layer `tbb::parallel_for`). Graduated [160](issues/160-tree-support-prepass-batch-probe.md); domain model unchanged.
 - [Exact fast-path boolean predicate in `SliceRegionView::derive_needs_support`](issues/158-needs-support-fast-predicate.md): **resolved 2026-11-16; human-amended 2026-11-17, KEEP** — replacing the unconditional Clipper2 `intersection_ex` inside `SliceRegionView::derive_needs_support` (`crates/slicer-sdk/src/views.rs`) with `expolygons_intersect_area_positive` (strict bbox overlap prefilter + strict-interior point-in-`ExPolygon` witness in `i128`, with `intersection_ex` fallback on overlapping pairs when no witness is found) passes all 72 `layer_module_tdd` tests (including 4 new boundary/hole/`+`-fallback cases), is byte-identical in **8/8** cells against `t151`'s active reference set across 16 output runs, 80 A/B runs, and 18 null runs (`exit 0`, `degraded=false`, zero diagnostics), lowers process CPU in **8/8** cells by **5.88 %–21.38 %** (**5.3x–19.1x** the `1.117 %` any-pair CPU null band; `39/40` pairs candidate-lower), and clears the `0.80 %` wall floor in **all four `base` cells** (`base-classic-off` **+14.87 %** / `−4.25 s` / `18.58x` floor / `−44.63 CPU s`, `base-classic-on` **+5.42 %** / `−4.68 s` / `6.78x` floor / pairwise **+8.67 %** / `−71.08 CPU s`, `base-arachne-off` **+14.64 %** / `−4.23 s` / `18.30x` floor / `−43.64 CPU s`, `base-arachne-on` **+7.52 %** / `−6.37 s` / `9.40x` floor / `−67.84 CPU s`; `20/20` pairs candidate-faster). However, because the entire three-site `derive_needs_support` ceiling on `benchy` is only `~231–237 ms` (`~3.0 %` of `benchy` supports-on wall), single-run wall jitter puts two `benchy` cells below the literal eight-cell separate-arm `0.80 %` wall floor over 5 interleaved pairs (`benchy-classic-on` **+0.766 %**, `0.96x` floor despite **+2.69 %** pairwise median and `4/5` pair wins; `benchy-arachne-off` **−0.076 %**, `−0.10x` floor despite **+3.16 %** pairwise median and `3/5` pair wins). The human explicitly accepted the candidate as KEEP on 2026-11-17; production code and unit tests are landed, with the original mechanical gate failure and missing `benchy` null control disclosed in `RULING.md`; guest freshness green (`cargo xtask build-guests --check` exit 0), `candidate.patch` preserved in [`evidence/t158-needs-support-fast-predicate/`](evidence/t158-needs-support-fast-predicate/FINDINGS.md) (`verify.py --self-test` exit 0, 6/6 negative controls rejected).
 - [The surviving `needs_support` predicate: reader census, three-site cost, and exact fast-path probe](issues/157-needs-support-predicate-attribution.md): **resolved (2026-11-16; Phase-1 attribution + probe — `commit_support_analysis_builtin` is the sole production decision consumer, and an exact fast-path boolean predicate inside `SliceRegionView::derive_needs_support` collapses all three call sites by 91.0x–120.0x with 0 / 3,680 mismatches)** — workspace-wide reader census proves zero guest modules in `modules/` read `SliceRegionView::needs_support()` after Packet 224 retired `region.needs_support()` from `TreeSupport::run_support` (`modules/core-modules/tree-support/src/lib.rs`); only `commit_support_analysis_builtin` (`crates/slicer-runtime/src/builtins/support_analysis_producer.rs`) makes a production decision on `derive_needs_support`, while the two per-layer calls in `prepare_regions` (`crates/slicer-wasm-host/src/marshal/prepared.rs`) marshal a value read only by contract/unit tests. On `3dbenchy.stl` (`240` layers, `a_verts_mean = 1,890.1`, `b_polys = 201`, `b_verts = 6,107`), full `intersection_ex` costs **3.24–3.39 ms/call** (`1,571.3 ms` thread across 2 sites on `benchy classic-off`; `2,403.2 ms` across 3 sites on `benchy classic-on`); on `base.stl` (`496` layers, `a_verts_mean = 5,155.7`, `b_polys = 994`, `b_verts = 26,633`), it costs **49.4–60.9 ms/call** (`51,651.6 ms` across 2 sites on `base classic-off`; `84,792.0 ms` across 3 sites on `base classic-on`). Dual-computing an exact boolean fast path (strict bbox overlap prefilter + strict-interior point-in-`ExPolygon` witness in `i128`, with `intersection_ex` fallback on overlapping pairs when no witness is found) yields **0 / 3,680** mismatches across all 4 probed cells (`35.7–37.0 µs/call` on `benchy`, **91.0x–92.5x**; `410.2–561.6 µs/call` on `base`, **113.0x–120.0x**) and **8/8** byte-identical G-code runs against t151's active set. Under `PNP_T157_FAST_PREDICATE=1`, combined `prep_views_ms` (`Layer::Perimeters` + `Layer::Infill`) falls **−76.0…−77.1 %** on `benchy` and **−93.0…−93.8 %** on `base` (`64,875.1 → 4,011.5 ms` on `base classic-on`), and `PrePass::SupportAnalysis` eligibility wall on `base classic-on` falls **2,100.5 → 41.5 ms (50.6x)**. Priced against `t154`'s ledger (`ESTIMATE`, not a ratio of record): **230.6 ms** (`benchy classic-off`, **6.00 %** of wall, **7.50x** floor, `2.0068x → 1.8864x`), **237.3 ms** (`benchy classic-on`, **3.78 %** of wall, **4.73x** floor, `2.5711x → 2.4739x`), **4,692.5 ms** (`base classic-off`, **19.15 %** of wall, **23.94x** floor, `1.8270x → 1.4772x`), and **7,414.4 ms** (`base classic-on`, **10.66 %** of wall, **13.33x** floor, `3.2197x → 2.8765x`), where `base classic-on`'s **5.346 s** per-layer saving is **4.88x** its **1.096 s** non-prepass requirement (`1.0508x → 0.8033x` at canonical prepass). Probe reverted, `probe.patch` preserved, `cargo xtask build-guests --check` exit 0, and [158](issues/158-needs-support-fast-predicate.md) graduated. Evidence: [`evidence/t157-needs-support-predicate/`](evidence/t157-needs-support-predicate/FINDINGS.md) (`verify.py --self-test` exit 0).
 - [Prepared-region memo across the fill sync](issues/156-prepared-memo-across-fill-sync.md): **resolved 2026-11-15, DROP** — preserving the memo across `sync_perimeter_infill_areas_into_slice` is exact (8/8 byte-identical to t151's active set) and removes the redundant derivation (process CPU lower in 8/8), but the quiet 5-pair wall gate fails: benchy Arachne-on **−2.94 %** and base Arachne-on **+0.17 %** against the 0.80 % floor. The two failing cells are supports-on Arachne, where the saved work was not on the critical path; the same-arm null band is **9.52 % wall / 0.75 % CPU** any-pair absolute, so only base Arachne-off's **+10.09 %** is outside it. A 5-pair extension that began at 85 % load was invalidated and preserved as `reduced/loaded-window.json`; production code/tests reverted, patch preserved.
@@ -4570,9 +4636,17 @@ Standing decisions for this effort (2026-09-22):
   `intersection_ex`; the memo-preserving candidate
   ([t156](issues/156-prepared-memo-across-fill-sync.md)) was exact and CPU-lower
   but **dropped** on supports-on Arachne wall). **Open fog:**
-  (a) whether the per-layer `tree-support` render can be folded into the prepass,
-  which is a phase move and architecture work, not a per-op shape — no ticket,
-  and it must not inherit a price from the bracket; (b) the arithmetic's ledger
+  (a) the per-layer `tree-support` render fold — **ANSWERED by
+  [160](issues/160-tree-support-prepass-batch-probe.md) (2026-11-17):** the
+  read set is identical at both dispatch points on every layer of all eight
+  cells (so it is a pure placement move), but the batch arm is **slower in
+  every supports-on cell** (−1.69 % to −3.77 %) against a 9.50 % any-pair null
+  band, and the null-renderer ceiling is **9.16–12.61 %** of cell wall. The
+  "twice" reading was already corrected (canonical `generate_toolpaths` is also
+  per-layer parallel). What remains is **not placement**: the renderer's cost
+  is the work itself, so a per-op/algorithm reduction or a deletion is the only
+  shape left on this carrier — no ticket is implied until a human picks one;
+  (b) the arithmetic's ledger
   chain (t145/t148 walls × t150 deltas × this take's shares) needs a fresh paired
   scoreboard before any decision becomes sensitive to ±5 % — today only base
   arachne-on's **3.3 %** margin is that tight; (c) **no cause is attributed** for
