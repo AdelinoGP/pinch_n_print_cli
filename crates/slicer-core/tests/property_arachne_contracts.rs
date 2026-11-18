@@ -42,3 +42,23 @@ fn widening_two_requested_below_optimal_delegates_to_parent() {
 fn widening_transition_propagation_preserves_two_bead_endpoint() {
     property_arachne_common::controls_beading::widening_transition_propagation_preserves_two_bead_endpoint();
 }
+
+#[test]
+fn arachne_graph_oracle_controls_and_input_errors() {
+    property_arachne_common::controls_graph_pipeline::graph_controls_and_input_errors();
+}
+
+#[test]
+fn arachne_pipeline_oracle_controls() {
+    property_arachne_common::controls_graph_pipeline::pipeline_controls();
+}
+
+#[test]
+fn arachne_local_maximum_pre_stitch_is_open() {
+    property_arachne_common::controls_graph_pipeline::local_maximum_pre_stitch_is_open();
+}
+
+#[test]
+fn limited_transition_thickness_at_cap_matches_canonical_floor() {
+    property_arachne_common::controls_beading::limited_transition_thickness_at_cap_matches_canonical_floor();
+}

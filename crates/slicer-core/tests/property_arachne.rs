@@ -26,3 +26,13 @@ mod property_arachne_common;
 fn proptest_arachne_beading_relations() {
     property_arachne_common::beading::run_property();
 }
+
+#[test]
+fn proptest_arachne_graph_topology() {
+    property_arachne_common::graph::run_property();
+}
+
+#[test]
+fn proptest_arachne_pipeline_structure() {
+    property_arachne_common::pipeline::run_property();
+}

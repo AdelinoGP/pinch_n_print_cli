@@ -15,6 +15,7 @@ use slicer_core::skeletal_trapezoidation::{
     populate_beading_propagation, STHalfEdge, STVertex, SkeletalTrapezoidationGraph,
 };
 use slicer_core::voronoi::Vertex;
+use slicer_ir::UNITS_PER_MM;
 
 use super::beading::{
     check_case, check_conservation, check_parallel, compare_limited, strategy, to_f64_exact,
@@ -22,6 +23,8 @@ use super::beading::{
     Envelopes, LimitedExpectation, OracleError, RawBeadingBounds, MIDDLE_THRESHOLD,
     WALL_TRANSITION_ANGLE,
 };
+use super::graph::{validate_graph_bounds, RawGraphBounds};
+use super::pipeline::{validate_pipeline_bounds, RawPipelineBounds};
 
 /// Distributed parent with `distribution_count = 2` (the `radius >= 2` weight
 /// branch) and the charter's fixed middle threshold.
@@ -348,6 +351,150 @@ pub fn domain_rejections() {
     );
     assert_eq!(witness_cap(8), Ok((6, 7)));
     assert_eq!(witness_cap(3), Ok((2, 3)));
+
+    // ── H-ARACHNE-GRAPH / H-ARACHNE-PIPELINE profile minimums ──────────────
+    // The same rule applies to the Step 4 charters: prove every mandatory
+    // witness minimum before any strategy exists, and reject impossible or
+    // overflowing profiles instead of narrowing them.
+    // exhaustive: a complete authoring profile, never a helper default
+    let good_graph = RawGraphBounds {
+        max_abs_units: 400_000,
+        max_vertices: 24,
+        max_holes: 2,
+        max_components: 3,
+        max_shrink_candidates: 64,
+    };
+    let graph_limits = validate_graph_bounds(good_graph).expect("reference graph profile");
+    assert!(
+        graph_limits.max_abs_units >= 100_000,
+        "10 mm rectangle witness"
+    );
+    assert!(graph_limits.max_vertices >= 8, "Holed/Thin vertex minimum");
+    assert!(graph_limits.max_holes >= 1, "Holed witness minimum");
+    assert!(
+        graph_limits.max_components >= 2,
+        "Disconnected witness minimum"
+    );
+    assert!(graph_limits.max_shrink_candidates >= 1);
+    assert_eq!(
+        graph_limits.catalog_abs_units, 160,
+        "400_000 / SCALE(2_500) leaves the Thin template's requested half-span"
+    );
+
+    let reject_graph = |label: &str, raw: RawGraphBounds| -> String {
+        match validate_graph_bounds(raw) {
+            Ok(limits) => panic!("{label}: invalid graph profile accepted as {limits:?}"),
+            Err(error) => {
+                assert!(!error.to_string().is_empty(), "{label}: empty diagnostic");
+                error.to_string()
+            }
+        }
+    };
+    assert!(
+        reject_graph(
+            "max_abs_units below the 10 mm witness",
+            RawGraphBounds {
+                max_abs_units: 99_999,
+                ..good_graph
+            }
+        )
+        .contains("max_abs_units"),
+        "the 10 mm square witness must be admitted by the bound"
+    );
+    assert!(reject_graph(
+        "max_vertices below the Holed template",
+        RawGraphBounds {
+            max_vertices: 7,
+            ..good_graph
+        }
+    )
+    .contains("max_vertices"));
+    assert!(reject_graph(
+        "zero max_vertices",
+        RawGraphBounds {
+            max_vertices: 0,
+            ..good_graph
+        }
+    )
+    .contains("max_vertices"));
+    assert!(reject_graph(
+        "zero max_holes",
+        RawGraphBounds {
+            max_holes: 0,
+            ..good_graph
+        }
+    )
+    .contains("max_holes"));
+    assert!(reject_graph(
+        "single max_components",
+        RawGraphBounds {
+            max_components: 1,
+            ..good_graph
+        }
+    )
+    .contains("max_components"));
+    assert!(reject_graph(
+        "zero max_shrink_candidates",
+        RawGraphBounds {
+            max_shrink_candidates: 0,
+            ..good_graph
+        }
+    )
+    .contains("max_shrink_candidates"));
+    assert!(
+        reject_graph(
+            "overflowing max_abs_units",
+            RawGraphBounds {
+                max_abs_units: u64::MAX,
+                ..good_graph
+            }
+        )
+        .contains("max_abs_units"),
+        "an unchecked bound must be rejected, never narrowed"
+    );
+
+    // exhaustive: a complete authoring pipeline profile
+    let good_pipeline = RawPipelineBounds {
+        geometry: good_graph,
+        max_beads: 10,
+    };
+    let pipeline_limits =
+        validate_pipeline_bounds(good_pipeline).expect("reference pipeline profile");
+    assert_eq!(
+        pipeline_limits.max_bead_cap, 10,
+        "the ArachneParams::default cap the square witness runs with"
+    );
+    for bad in [0_u64, 9, 65, u64::MAX] {
+        assert!(
+            validate_pipeline_bounds(RawPipelineBounds {
+                max_beads: bad,
+                ..good_pipeline
+            })
+            .is_err(),
+            "max_beads = {bad} must be rejected before sampling"
+        );
+    }
+    assert_eq!(
+        validate_pipeline_bounds(RawPipelineBounds {
+            max_beads: 11,
+            ..good_pipeline
+        })
+        .expect("odd max_beads is narrowed to the nearest even cap")
+        .max_bead_cap,
+        10,
+        "canonical caps are even; 11 becomes 10, never 12"
+    );
+    assert!(
+        validate_pipeline_bounds(RawPipelineBounds {
+            geometry: RawGraphBounds {
+                max_vertices: 7,
+                ..good_graph
+            },
+            ..good_pipeline
+        })
+        .is_err(),
+        "the pipeline inherits the graph witness minimums"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -580,4 +727,64 @@ pub fn widening_transition_propagation_preserves_two_bead_endpoint() {
             envelope.tolerance(expected)
         );
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AC-N2 residual: canonical cap clamp in `LimitedBeadingStrategy`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Canonical `LimitedBeadingStrategy::getTransitionThickness` clamps at the
+/// cap: below it the parent answers unchanged; at or above it canonical
+/// `assert(false)`s and computes `parent.getOptimalThickness(cap + 1) -
+/// 0.01 mm`. This port saturates that same value.
+///
+/// The regression failed before the fix. The pre-fix implementation delegated
+/// unconditionally, so `get_transition_thickness(cap)` returned the parent's
+/// threshold interpolation instead of canonical's floor. On this fixture
+/// (`width = 4_000`, `cap = 4`, distributed parent, `0.5` add-middle
+/// threshold) that is `16_000 + 4_000 * 0.5 = 18_000` units, while the
+/// canonical floor is `4_000 * 5 - 0.01 * 10_000 = 19_900` units.
+pub fn limited_transition_thickness_at_cap_matches_canonical_floor() {
+    let width = 4_000.0_f64;
+    let cap = 4_usize;
+    let parent = distributed(width);
+    let limited = LimitedBeadingStrategy::new(Box::new(distributed(width)), cap);
+
+    // Below the cap the decorator must be an exact pass-through.
+    for lower in 0..cap {
+        assert_eq!(
+            limited.get_transition_thickness(lower),
+            parent.get_transition_thickness(lower),
+            "lower_bead_count {lower} < cap {cap} must delegate to the parent unchanged"
+        );
+    }
+
+    // Canonical's saturated at-or-above-cap value.
+    let canonical_floor = parent.optimal_thickness(cap + 1) - 0.01 * UNITS_PER_MM;
+    assert_eq!(
+        limited.get_transition_thickness(cap),
+        canonical_floor,
+        "at the cap the clamp must return parent.optimal_thickness(cap + 1) - 0.01 mm"
+    );
+    assert_eq!(
+        limited.get_transition_thickness(cap + 3),
+        canonical_floor,
+        "above the cap the port saturates the same clamped value"
+    );
+
+    // Record, in the regression itself, the value the pre-fix delegation
+    // returned — the assertion above failed with this number.
+    let pre_fix = parent.get_transition_thickness(cap);
+    assert_eq!(
+        pre_fix, 18_000.0,
+        "the distributed parent's transition value at the cap is the 0.5-interpolated 18_000"
+    );
+    assert_ne!(
+        pre_fix, canonical_floor,
+        "the pre-fix delegation must not equal the canonical floor"
+    );
+    assert!(
+        pre_fix < canonical_floor,
+        "the pre-fix delegation returned 18_000, below the canonical floor 19_900"
+    );
 }

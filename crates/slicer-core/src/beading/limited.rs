@@ -126,7 +126,20 @@ impl BeadingStrategy for LimitedBeadingStrategy {
         }
 
         // Over cap: mirror OrcaSlicer's `LimitedBeadingStrategy::compute`
-        // (`LimitedBeadingStrategy.cpp:64-90`). The parent is recomputed at
+        // (`LimitedBeadingStrategy.cpp`).
+        //
+        // Canonical only ever reaches this branch at exactly
+        // `max_bead_count + 1` (its `getOptimalBeadCount` clamps the parent
+        // count there). This port deliberately accepts the whole superset
+        // `bead_count > max_bead_count` and inserts
+        // `bead_count - max_bead_count` sentinel pairs; a
+        // `debug_assert!(bead_count == self.max_bead_count + 1)` would fire
+        // on the retained fixture `crates/slicer-core/tests/beading/limited.rs`
+        // (`limited_inserts_sentinels_at_cap` calls it with `max_bead_count =
+        // 6` and `bead_count = 9`, i.e. cap + 3), so the generalization is
+        // documented here instead of asserted away.
+        //
+        // The parent is recomputed at
         // the *optimal* thickness for `max_bead_count` beads
         // (`max_bead_count * optimal_width`), NOT the full region thickness,
         // so the freshly placed beads are spaced a single `optimal_width`
@@ -244,7 +257,24 @@ impl BeadingStrategy for LimitedBeadingStrategy {
     }
 
     fn get_transition_thickness(&self, lower_bead_count: usize) -> f64 {
-        self.parent.get_transition_thickness(lower_bead_count)
+        // Canonical `LimitedBeadingStrategy::getTransitionThickness`: below
+        // the cap the decorator asks its parent. Canonical then hits
+        // `assert(false)` for any `lower_bead_count >= max_bead_count`,
+        // because `getOptimalBeadCount` saturates at `max_bead_count + 1`, so
+        // a transition above the cap is unreachable in canonical use.
+        //
+        // This port saturates the value canonical's unreachable branch would
+        // return — the cap-plus-one optimum shifted down by canonical's
+        // `scaled<coord_t>(0.01)` (0.01 mm, 100 units at `UNITS_PER_MM`) —
+        // rather than panicking, so `generate_transition_mids` (which calls
+        // the OUTERMOST strategy's method, `crates/slicer-core/src/skeletal_trapezoidation/propagation.rs`)
+        // stays total if a caller ever asks for one. Below the cap the
+        // delegation is unchanged.
+        if lower_bead_count < self.max_bead_count {
+            self.parent.get_transition_thickness(lower_bead_count)
+        } else {
+            self.parent.optimal_thickness(self.max_bead_count + 1) - 0.01 * UNITS_PER_MM
+        }
     }
 
     fn optimal_thickness(&self, bead_count: usize) -> f64 {

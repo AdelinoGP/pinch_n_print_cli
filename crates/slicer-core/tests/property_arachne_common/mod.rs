@@ -10,3 +10,6 @@
 
 pub mod beading;
 pub mod controls_beading;
+pub mod controls_graph_pipeline;
+pub mod graph;
+pub mod pipeline;
