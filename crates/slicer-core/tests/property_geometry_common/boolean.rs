@@ -471,7 +471,8 @@ pub fn validate_output_rings(label: &str, polygons: &[ExPolygon]) -> Result<(), 
 /// Rejected (each is what the strict predicate rejected, kept here):
 /// * a **proper crossing** between two non-adjacent edges (a bowtie), which
 ///   makes the ring traverse a region twice with opposite winding;
-/// * a **vertex crossing**: a vertex visited more than once at which some other
+/// * a **vertex crossing**: a vertex visited more than once — directly, or
+///   after the T-touch split below — at which some other
 ///   visit's incident edge lies strictly between the two edges of a visit in the
 ///   cyclic angular order around that vertex. The strands interleave, which is
 ///   a transverse self-intersection of the boundary **at** the vertex — the
@@ -492,16 +493,17 @@ pub fn validate_output_rings(label: &str, polygons: &[ExPolygon]) -> Result<(), 
 /// oracle, not by ring shape, and this predicate only certifies the listed
 /// shape properties with the demanded winding.
 ///
-/// **Known limitation, deliberate and recorded rather than implied:** a vertex
-/// lying on the *interior* of another edge is a T-touch, which
-/// `segment_relation` reports as an endpoint touch, and the vertex-interleave
-/// rule above only inspects vertices the ring visits more than once. A ring
-/// whose crossing happens to sit exactly at such a T-touch is therefore
-/// accepted. Closing it needs the edges split at every T-touch before the
-/// interleave test; until then the guarantee is "no crossing between edges, and
-/// no interleaved crossing at a repeated vertex". Such a ring is not rejected
-/// structurally; whether its region is right is certified only by the
-/// membership oracle.
+/// **T-touches.** A vertex lying on the *interior* of another edge is a
+/// T-touch, which `segment_relation` reports as an endpoint touch, so the
+/// pairwise loop cannot tell a T-touch that touches from one that crosses.
+/// Before the interleave test the ring is therefore split at every T-touch
+/// (`split_at_t_touches`): the straight-through pass gains the meeting point as
+/// a vertex, the point becomes a repeated vertex, and the interleave rule
+/// judges it exactly like any other pinch. Every meeting point of two
+/// non-adjacent edges is then either a proper crossing (rejected pairwise), a
+/// collinear overlap (rejected pairwise), or a repeated vertex of the split
+/// ring (judged by interleaving), so the guarantee is "no transverse
+/// self-intersection anywhere on the ring".
 pub fn validate_general_output_rings(label: &str, polygons: &[ExPolygon]) -> Result<(), String> {
     /// Zero turn and a reversal at `here`: `cross == 0` and `dot < 0`.
     fn backtracks(prev: Point2, here: Point2, next: Point2) -> Result<bool, String> {
@@ -655,6 +657,64 @@ pub fn validate_general_output_rings(label: &str, polygons: &[ExPolygon]) -> Res
         Ok(())
     }
 
+    /// The ring with every **T-touch** made explicit: each ring vertex that lies
+    /// strictly inside an edge (collinear with it, and strictly between its
+    /// endpoints) is inserted into that edge, in order along the edge.
+    ///
+    /// After the split, a pass that went straight through a point another pass
+    /// turns at visits that point as a vertex, so [`reject_vertex_crossings`]
+    /// sees both passes and decides touch versus crossing by the same
+    /// interleave rule it applies to an ordinary repeated vertex. The split
+    /// changes no area and no edge set as a point set; it only names the
+    /// meeting points. Collinearity is #2 `orientation`'s exact sign and the
+    /// betweenness and ordering are exact `i128` dot products, so the split is
+    /// integer-exact. A ring with no T-touch is returned unchanged.
+    fn split_at_t_touches(points: &[Point2]) -> Result<Vec<Point2>, String> {
+        let n = points.len();
+        let wide = |value: i64| i128::from(value);
+        let mut split = Vec::with_capacity(n);
+        for index in 0..n {
+            let (start, end) = (points[index], points[(index + 1) % n]);
+            let (dx, dy) = (wide(end.x) - wide(start.x), wide(end.y) - wide(start.y));
+            let length2 = dx
+                .checked_mul(dx)
+                .and_then(|x| dy.checked_mul(dy).and_then(|y| x.checked_add(y)))
+                .ok_or_else(|| String::from("T-touch edge length overflow"))?;
+            let mut interior: Vec<(i128, Point2)> = Vec::new();
+            for &probe in points {
+                if probe == start || probe == end {
+                    continue;
+                }
+                // Exact closed bounding-box reject before the orientation test.
+                if probe.x < start.x.min(end.x)
+                    || probe.x > start.x.max(end.x)
+                    || probe.y < start.y.min(end.y)
+                    || probe.y > start.y.max(end.y)
+                {
+                    continue;
+                }
+                if orientation(start, end, probe).map_err(|error| error.to_string())? != 0 {
+                    continue;
+                }
+                let along = (wide(probe.x) - wide(start.x))
+                    .checked_mul(dx)
+                    .and_then(|x| {
+                        (wide(probe.y) - wide(start.y))
+                            .checked_mul(dy)
+                            .and_then(|y| x.checked_add(y))
+                    })
+                    .ok_or_else(|| String::from("T-touch projection overflow"))?;
+                if along > 0 && along < length2 && !interior.iter().any(|&(_, p)| p == probe) {
+                    interior.push((along, probe));
+                }
+            }
+            interior.sort_unstable();
+            split.push(start);
+            split.extend(interior.into_iter().map(|(_, probe)| probe));
+        }
+        Ok(split)
+    }
+
     fn weakly_simple(label: &str, ring: &Polygon, want_positive: bool) -> Result<(), String> {
         let points = &ring.points;
         let n = points.len();
@@ -691,8 +751,10 @@ pub fn validate_general_output_rings(label: &str, polygons: &[ExPolygon]) -> Res
         // Runs before the pairwise loop so that a ring which both crosses at a
         // repeated vertex and (as a consequence) crosses two edges elsewhere is
         // reported for the vertex, which is the defect a per-edge-pair test
-        // cannot see.
-        reject_vertex_crossings(label, points)?;
+        // cannot see. The ring is first split at every T-touch, so a vertex
+        // lying on another edge's interior becomes a repeated vertex and its
+        // crossing or touch is judged by the same interleave rule.
+        reject_vertex_crossings(label, &split_at_t_touches(points)?)?;
         let edge = |index: usize| [points[index], points[(index + 1) % n]];
         // Exact closed bounding-box overlap: a pair that fails it is #2
         // `SegmentRelation::Disjoint`, so skipping it here changes no verdict

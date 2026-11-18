@@ -2763,11 +2763,16 @@ rejected, which is the figure-8 a per-edge-pair test cannot see. Consecutive dup
 across the closing seam, zero area, fewer than three points and the wrong winding are rejected too.
 Strict #2 `validate_ring` is applied only where the expected result is a single simple rectangle.
 
-One limitation is stated rather than implied: a vertex lying on the **interior** of another edge is a
-T-touch, which `segment_relation` reports as an endpoint touch, while the interleave rule only
-inspects repeated vertices. A crossing that occurs exactly at a T-touch is therefore not rejected
-structurally, and the region claim for such a ring rests on the membership oracle alone. Closing it
-needs the edges split at every T-touch before the interleave test.
+A vertex lying on the **interior** of another edge is a T-touch, which `segment_relation` reports as
+an endpoint touch, so the pairwise test cannot tell a touching T from a crossing one. Before the
+interleave test the ring is therefore split at every T-touch (each ring vertex strictly inside an
+edge, by exact `orientation` and `i128` betweenness, is inserted into that edge in order), which turns
+the meeting point into a repeated vertex judged by the same interleave rule. Every meeting point of
+two non-adjacent edges is then a proper crossing, a collinear overlap or a repeated vertex of the split
+ring, so the predicate rejects every transverse self-intersection structurally. Control arms in
+`controls_boolean_clip.rs` pin both directions: a T-touch figure-8 (lobes of double area `+10` and
+`-6`, total `+4`) is rejected as a vertex crossing, and a square notched down to a single point on its
+bottom edge (a T-touch pinch) is accepted.
 
 Whether a general region is semantically right is still decided by the membership oracle, not by ring
 shape — but ring shape is no longer permissive: tightening this predicate is what exposed the real
@@ -3552,8 +3557,10 @@ side is an **error**, not a classification, so the mesh family has no unobservab
 
 Deterministic reject-arms run inside the target, each paired with the correct layer passing the same
 checker: `dropped-body z=…` removes one component from the `SeparatedBodies` layer, and
-`filled-cavity z=…` clears the holes on the `Cavity` plane that shows exactly one. Each arm's rejection
-must name `component` or `hole` respectively, so an unrelated fault cannot make the arm pass.
+`filled-cavity z=…` clears the holes on the `Cavity` plane that shows exactly one, and
+`all-outside <witness> z=…` replaces the layer of every probed plane of all five witnesses with the
+empty answer. Each arm's rejection must name `component`, `hole` or `all-outside` respectively, so an
+unrelated fault cannot make the arm pass.
 
 Documented limitations: `f64` parity over `f32` triangles with the stated clearances; ambiguous hits
 are excluded and counted, not resolved; through-vertex and exact top/bottom regimes belong to direct

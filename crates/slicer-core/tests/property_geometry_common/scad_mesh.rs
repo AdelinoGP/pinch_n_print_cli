@@ -866,6 +866,13 @@ pub fn check_plane(
             "the independent model found no section at z={plane_z} mm inside the mesh's Z range"
         ));
     }
+    if layer.is_empty() {
+        return Err(format!(
+            "z={plane_z} mm: the layer is empty (an all-outside answer) but the input triangles \
+             imply {} material curve(s) and {} hole curve(s)",
+            model.outer_curves, model.hole_curves
+        ));
+    }
     let holes: usize = layer.iter().map(|polygon| polygon.holes.len()).sum();
     if model.hole_curves > 0 && holes == 0 {
         return Err(format!(
@@ -1199,8 +1206,9 @@ fn witness_recipe(witness: SolidWitness, max_abs_units: i64) -> ScadRecipe {
 /// Require `check_plane` to reject a named mutant layer.
 ///
 /// The rejection must name the structural fault the mutation introduces
-/// (`component` for a dropped body, `hole` for a filled cavity), so the arm
-/// cannot pass because of an unrelated model fault. The unmutated layer of the
+/// (`component` for a dropped body, `hole` for a filled cavity, `all-outside`
+/// for an empty layer), so the arm cannot pass because of an unrelated model
+/// fault. The unmutated layer of the
 /// same plane is checked against the same reference in the same arm, which is
 /// what makes the arm non-vacuous.
 fn expect_layer_rejected(
@@ -1225,10 +1233,12 @@ fn expect_layer_rejected(
     }
 }
 
-/// Fault-detection arms on the emitted layers of the structural witnesses.
+/// Fault-detection arms on the emitted layers of the deterministic witnesses.
 ///
-/// `SeparatedBodies` supplies the dropped-body arm and `Cavity` the filled-hole
-/// arm; every other witness returns immediately. Each arm first re-checks the
+/// Every witness runs the all-outside arm on every probed plane (the real layer
+/// replaced by an empty one, rejected by name as `all-outside`).
+/// `SeparatedBodies` additionally supplies the dropped-body arm and `Cavity` the
+/// filled-hole arm. Each arm first re-checks the
 /// real emitted layer with the same [`check_plane`] call, so a passing arm is
 /// always accompanied by a passing correct result on the identical model.
 fn layer_mutant_arms(
@@ -1236,12 +1246,6 @@ fn layer_mutant_arms(
     mesh: &IndexedTriangleSet,
     limits: &MeshLimits,
 ) -> Result<(), String> {
-    if !matches!(
-        witness,
-        SolidWitness::SeparatedBodies | SolidWitness::Cavity
-    ) {
-        return Ok(());
-    }
     let planes = planes(mesh, limits.max_planes)?;
     let layers = slice_mesh_ex(mesh, &planes);
     if layers.len() != planes.len() {
@@ -1250,6 +1254,33 @@ fn layer_mutant_arms(
             layers.len(),
             planes.len()
         ));
+    }
+    if planes.is_empty() {
+        return Err(format!(
+            "H-MESH-SCAD arm 'all-outside' for {witness:?}: the deterministic witness has no \
+             probed plane, so the arm would be vacuous"
+        ));
+    }
+    // All-outside arm, on every witness: replace each probed plane's real layer
+    // with the empty answer an all-outside SUT would emit. Every probed plane
+    // lies inside the solid's Z range, so the model has a section there and the
+    // empty layer must be rejected by name.
+    for (index, plane) in planes.iter().enumerate() {
+        let model = section_model(mesh, f64::from(*plane))?;
+        let arm = format!("all-outside {witness:?} z={plane}");
+        check_plane(mesh, &model, *plane, &layers[index], limits.max_queries)
+            .map_err(|error| format!("H-MESH-SCAD arm '{arm}' unmutated: {error}"))?;
+        expect_layer_rejected(
+            &arm,
+            "all-outside",
+            check_plane(mesh, &model, *plane, &[], limits.max_queries),
+        )?;
+    }
+    if !matches!(
+        witness,
+        SolidWitness::SeparatedBodies | SolidWitness::Cavity
+    ) {
+        return Ok(());
     }
     let mut performed = false;
     for (index, plane) in planes.iter().enumerate() {

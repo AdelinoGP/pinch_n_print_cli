@@ -329,9 +329,12 @@ arms.
 
 Two attributions are worth stating precisely rather than glossing: hosted attribution comes from the
 `Select-String` assertion over the runner's `target/test-output.log` (a printed per-record line is not
-in the summary digest), and on the mesh side the all-outside case is detected by `check_plane`'s
-component-count comparison rather than by a dedicated arm — an arm exists for the boolean side only.
-That is a coverage note, not a behavioural gap: an empty layer where the model expects curves cannot
+in the summary digest), and on the mesh side the all-outside case was originally detected by `check_plane`'s
+component-count comparison rather than by a dedicated arm. Post-closure, `check_plane` names an empty
+layer explicitly (`all-outside`) and `layer_mutant_arms` runs an `all-outside <witness> z=…` arm on
+every probed plane of all five deterministic witnesses, each paired with the real layer passing the
+same check, so the mesh-side case is now proven by a firing control rather than by inference. The
+original note still holds as a statement of the code: an empty layer where the model expects curves cannot
 pass.
 
 ## Checks

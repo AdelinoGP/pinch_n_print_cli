@@ -393,6 +393,64 @@ fn ring_predicate_controls() {
             panic!("{ARM}: a non-interleaved repeated vertex must be accepted: {error}")
         });
     }
+
+    // ── Arm 6: a figure-8 whose crossing is a *T-touch* is rejected ───────
+    // The crossing point `(1,1)` is a vertex of the second pass
+    // (`(4,3) -> (1,1) -> (0,-1)`) but lies on the *interior* of edge 0,
+    // `(-1,3) -> (3,-1)`, so it is not a repeated vertex and every edge pair
+    // that meets there is an endpoint touch to `segment_relation`: neither the
+    // per-edge-pair test nor a repeated-vertex test sees it. The second pass's
+    // directions from `(1,1)` are `(3,2)` and `(-1,-2)`, which lie on opposite
+    // sides of edge 0's line `x + y = 2`, so the boundary crosses there. The two
+    // lobes `(1,1),(3,-1),(4,3)` (double area `+10`) and `(1,1),(0,-1),(-1,3)`
+    // (`-6`) have opposite winding, leaving a total of `+4`, so the area and
+    // winding gates accept the ring and only splitting edge 0 at the T-touch
+    // exposes the interleaving.
+    {
+        const ARM: &str = "N2 arm 6 (T-touch crossing rejected)";
+        let crossing = ring(&[(-1, 3), (3, -1), (4, 3), (1, 1), (0, -1)]);
+        assert_eq!(
+            signed_area2(&crossing),
+            Ok(4),
+            "{ARM}: the crossing must clear the area and winding gates"
+        );
+        assert!(
+            repeated_vertex(&crossing).is_none(),
+            "{ARM}: the crossing must not repeat a vertex, or arm 4 already covers it"
+        );
+        must_reject(
+            ARM,
+            validate_general_output_rings("T-touch crossing", &single(crossing)),
+            "crosses at vertex",
+        );
+    }
+
+    // ── Arm 7: a T-touch that only *touches* is accepted ─────────────────
+    // A square notched from the top down to the single point `(2,0)` on the
+    // interior of its bottom edge: two CCW lobes meeting at one point. The
+    // straight bottom pass uses directions 0 and 180 degrees at `(2,0)`, the
+    // notch pass uses `(1,4)` and `(-1,4)`, both strictly between them, so the
+    // passes do not interleave. This guards the split against over-rejection:
+    // the strict #2 `validate_ring` rejects the non-adjacent touch, the weakly
+    // simple predicate must accept it.
+    {
+        const ARM: &str = "N2 arm 7 (T-touch pinch accepted)";
+        let touch = ring(&[(0, 0), (4, 0), (4, 4), (3, 4), (2, 0), (1, 4), (0, 4)]);
+        assert_eq!(
+            signed_area2(&touch),
+            Ok(24),
+            "{ARM}: the touch must clear the area and winding gates"
+        );
+        assert!(
+            repeated_vertex(&touch).is_none(),
+            "{ARM}: the touch must not repeat a vertex, or arm 5 already covers it"
+        );
+        validate_ring(&touch)
+            .expect_err("the notch tip touches the bottom edge, so #2 `validate_ring` rejects it");
+        validate_general_output_rings("T-touch pinch", &single(touch)).unwrap_or_else(|error| {
+            panic!("{ARM}: a non-interleaved T-touch must be accepted: {error}")
+        });
+    }
 }
 
 /// `[0,1000]²` with the hole `[200,400] x [400,600]` (canonical units).

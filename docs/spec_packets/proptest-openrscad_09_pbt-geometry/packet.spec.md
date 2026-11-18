@@ -205,11 +205,12 @@ Recorded during implementation. Each fix is a packet-text clarification; none ch
      `a → b → a` excursion cannot leave `a, a`), and drop a fully collapsed ring. The region cannot change — a zero-area excursion adds no boundary — and the regression asserts the exact analytic double area plus a nine-point membership truth table. Regression: `xor_redundant_collinear_vertex_emits_no_backtracking_spike` in `crates/slicer-core/tests/polygon_ops_tdd.rs`, RNG-free and engine-free. This defect was invisible while the tolerant predicate was in place; tightening the predicate is what
 exposed it, which is the intended direction of that change. A second regression,
      `needle_excursion_returning_to_its_start_leaves_no_duplicate_vertex`, pins the seam case that
-     `Vec::dedup` alone cannot reach. Stated limitation of the tightened predicate: a vertex lying on the
+     `Vec::dedup` alone cannot reach. The tightened predicate's post-closure follow-up: a vertex lying on the
      **interior** of another edge is a T-touch, which `segment_relation` reports as an endpoint touch,
-     and the angular-interleave rule only inspects repeated vertices, so a crossing that occurs exactly
-     at a T-touch is not rejected structurally — the region claim for such a ring rests on the
-     membership oracle. Closing it needs the edges split at every T-touch before the interleave test.
+     so the predicate as closed accepted a crossing that occurred exactly at a T-touch. It now splits
+     every edge at its T-touches before the angular-interleave test, so such a crossing is rejected
+     structurally (control arm 6, T-touch figure-8) and a T-touch that only touches stays accepted
+     (control arm 7), both in `controls_boolean_clip.rs`.
    - `H-BOOL-SET`'s witness selection demanded a lattice point at Euclidean distance `>= MARGIN = 2` from every input edge. A one-unit catalogue triangle at `SCALE = 8` has inradius `≈ 1.72`, so **no** point could satisfy it and the property failed with `no lattice witness strictly inside ring`. That is unsatisfiable, not unlucky. The general sampled population keeps `MARGIN = 2`; a separate `WITNESS_MARGIN = 1` pool is consulted only when no 2-unit witness exists, with the proof recorded on the constant (a point at distance `>= 1` from the exact input boundary keeps `> 0.29` units of clearance to the `≤ √½`-rounded output boundary, so its classification cannot flip). No witness at 1 unit remains a hard error, never a skip.
    - Both affected extended runs then passed 512/512 at the previously failing seed `9134634193233092803` and at a fresh seed.
    - Known residual gap, disclosed rather than claimed covered: `triangle_mesh_slicer::polygons_to_expolygons` mirrors the tree walk in its own module and does **not** route through `expolygons_from_tree`, so this normalisation does not cover that path. No spike was observed there and its target is green.
