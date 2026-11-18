@@ -1059,6 +1059,53 @@ Probe reverted, `probe.patch` preserved, `build-guests --check` exit 0. Evidence
 [`evidence/t160-tree-support-batch/`](evidence/t160-tree-support-batch/FINDINGS.md)
 (`verify.py` PASS, `--self-test` 9/9). **Frontier: none** — 1–160 resolved.
 
+**Destination status (2026-11-17,
+[161](issues/161-post-t158-scoreboard-refresh.md)): the ratios of record are
+re-measured on the current tree in one window — 1.366x–2.718x, 0 of 8 won — and
+the board records that the Orca arm moved too, so required cuts are no longer
+comparable across windows.** One campaign, 8 cells × {Orca, PnP ordinary},
+1 warmup + 3 measured runs per cell, interleaved, matched keys asserted on all 24
+Orca runs, PnP output **8/8 identical** to t151's active set (`exit 0`,
+`degraded: false`, zero exact-Z diagnostics). **benchy 1.796x / 2.671x / 1.794x /
+2.591x** (4.076 / 8.144 / 3.790 / 7.337 s against 2.269 / 3.050 / 2.113 /
+2.831 s), **base 1.429x / 2.718x / 1.366x / 2.622x** (22.603 / 70.754 / 22.505 /
+71.377 s against 15.812 / 26.030 / 16.474 / 27.219 s); required cut **26.80 %–
+63.21 %**, and the two base supports-off cells carry a **negative 1.5x cut**
+(−4.94 % / −9.80 %). **The tightest cells are now the base supports-off pair**,
+where t145's were the benchy supports-off pair. **The instrument changed:** the
+installed OrcaSlicer is **2.5.1** (binaries dated 2026-11-13 23:59–11-14 00:00,
+`orca-slicer.exe` `5013b1bd…`), not the **2.5.0** the canonical-source pin
+records; the vendor cache stamp is unchanged (`2.08.00.16`), so only the
+executable moved. Orca measured **+5.4…+24.9 %** above t145's medians in
+**8/8** cells while its **CPU** moved only **−2.2…+11.7 %**, and its effective
+parallelism (CPU/wall) fell in **8/8** (−2.2…−17.4 %) while PnP's did not — so
+the movement is efficiency, not work, and the binary is the leading explanation
+(2.5.0 is uninstalled, so box state cannot be excluded; benchy classic-off's
+4,077,463 Orca bytes are t145's exact figure, so at least that job is
+unchanged). So the board **supersedes t145's and t148's as the ratios of
+record** — they are 2.5.0 numbers — and the tracker may not carry a required cut
+across the tool boundary or across windows. Two readings survive the movement: the two benchy supports-on cells moved
+**+24.3 % / +24.9 %** on both arms while their ratio moved **−0.5 % / +0.4 %**
+(the paired ratio absorbs a ~25 % box shift), and the base supports-off
+improvement is independently corroborated (the landed deltas predict −25.2 % /
+−22.6 % of t145's PnP wall; measured −18.9 % / −24.0 %). **benchy classic-off's
+−12.1 % ratio movement is Orca-side** (PnP rose +4.2 %), so it is not banked as
+engine work. Prepass phase shares (63.5–82.4 %) and the route projection remain
+**pre-t158** and are not re-derived here. Disclosed: no accelerated arm — the
+ordinary-only driver skips the accelerated gate, and checking that tree found
+**45 stale guests** (the whole accelerated namespace, pre-existing); they were
+rebuilt after the campaign (`--accelerated --check` now exits 0, ordinary too)
+and `dist --accelerated` still fails at exit 1 in `libmimalloc-sys` (`C1083` on
+`'\\mimalloc-static.cc'`, the t142 MSVC-14.51 verbatim-path failure), so
+accelerated output parity is not re-verified here. Also: one Orca outlier of
+29.807 s kept in the record, load 62 samples
+(2 % / 69.5 % / 100 %), `tree_strong` pin. Evidence:
+[`evidence/t161-scoreboard-refresh/`](evidence/t161-scoreboard-refresh/FINDINGS.md)
+(`verify.py` PASS 226/226, `--self-test` 16/16). **Frontier: none** — 1–161
+resolved; the next shape is a human pick from the fog, and the board's own
+consequence is that the phase split must be re-attributed before any further
+route arithmetic.
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -1079,6 +1126,20 @@ Every number in this tracker is a ledger fact — re-derive at the point of use.
   references allowed are the heavy model fixtures `tmp/3dbenchy.stl` and
   `tmp/base.stl` — user-supplied and licence-encumbered, they must never be
   committed.
+- **OrcaSlicer tool boundary (2026-11-17, [t161](issues/161-post-t158-scoreboard-refresh.md)).**
+  The installed rig binary is **2.5.1** (`%APPDATA%/OrcaSlicer/OrcaSlicer.conf`
+  header `OrcaSlicer 2.5.1`; installed binaries dated 2026-11-13 23:59:44 –
+  2026-11-14 00:00:44; `orca-slicer.exe` sha256 `5013b1bd…`, 292,160 bytes), not
+  the **2.5.0** recorded in the canonical-source-pin note below. The vendor
+  profile cache stamp is unchanged at `02.08.00.16`, so the loaded profile tree
+  and the asserted matched keys are unchanged — **only the executable moved**.
+  Rule: an Orca number is either **pre-2026-11-13 23:59 (2.5.0)** or
+  **post-2026-11-13 23:59 (2.5.1)**; never mixed, and never composed across the
+  boundary. t145's and t148's boards are 2.5.0; t161's board is the first full
+  board on 2.5.1. The rig gates the *profile* version and never records the
+  *application* version, which is how this swap went unnoticed — a future
+  campaign must stamp the executable identity.
+
 - **Canonical source pin (2026-11-08, t128 ruling).** The local checkout
   `D:\slicerProject\Orca(pnp_gui)` is on **`v2.5.0` =
   `40ecc66f78ed72dc368e0c1ebe40d77f00cc8a19`** (2026-11-07, detached HEAD); its
@@ -4358,6 +4419,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Post-t158 eight-cell scoreboard: re-derive the ratios of record on the current tree](issues/161-post-t158-scoreboard-refresh.md): **resolved 2026-11-17, measured board — 1.366x–2.718x and 0 of 8 won in one interleaved window, and the Orca arm itself ran 5.4–24.9 % slower than on t145's board in all eight cells** — 8 cells × {Orca, PnP ordinary}, 1 warmup + 3 measured runs/cell, matched keys asserted on all 24 Orca runs, PnP output **8/8 identical** to t151's active set with `exit 0`, `degraded: false` and zero exact-Z diagnostics. Table: benchy **1.796x / 2.671x / 1.794x / 2.591x** (4.076 / 8.144 / 3.790 / 7.337 s against 2.269 / 3.050 / 2.113 / 2.831 s), base **1.429x / 2.718x / 1.366x / 2.622x** (22.603 / 70.754 / 22.505 / 71.377 s against 15.812 / 26.030 / 16.474 / 27.219 s); required cut **26.80 %–63.21 %**, and the two base supports-off cells carry a **negative 1.5x cut** (−4.94 % / −9.80 %). **The tightest cells changed from the benchy supports-off pair (t145) to the base supports-off pair.** The constraining finding: the installed OrcaSlicer is **2.5.1** (binaries dated 2026-11-13 23:59–11-14 00:00, `5013b1bd…`), not the **2.5.0** the map records, with the profile stamp unchanged (`2.08.00.16`); Orca moved **+5.4…+24.9 %** in wall in 8/8 cells while its CPU moved only **−2.2…+11.7 %** and its effective parallelism fell in 8/8 (−2.2…−17.4 %) while PnP's did not, so the movement is efficiency not work and the binary is the leading explanation, with box state not excludable (2.5.0 uninstalled; benchy classic-off's 4,077,463 bytes equal t145's figure), so **no ratio or required cut may be composed across the tool boundary** — t145's 46.03 %–71.06 % and today's 26.80 %–63.21 % are each correct for their window. Two readings that survive: the benchy supports-on cells moved **+24.3 % / +24.9 %** on both arms while their ratio moved **−0.5 % / +0.4 %** (the paired ratio absorbs a ~25 % box shift), and the base supports-off improvement is independently corroborated (landed deltas predict −25.2 % / −22.6 % of t145's PnP wall; measured −18.9 % / −24.0 %). Prepass phase shares and the route projection were **not** re-derived (pre-t158). Disclosed: no accelerated arm — the ordinary-only driver skips the accelerated gate, and checking that tree found **45 stale guests** (the whole accelerated namespace, pre-existing); rebuilt after the campaign (`--accelerated --check` now exits 0, ordinary too) and `dist --accelerated` still fails at exit 1 in `libmimalloc-sys` (`C1083` on `'\\mimalloc-static.cc'`, t142's MSVC-14.51 verbatim-path failure). Also one Orca outlier 29.807 s on base classic-off m2 (largest of three, disclosed not dropped), load 62 samples min 2 % / median 69.5 % / max 100 %, `tree_strong` pin. Evidence: `evidence/t161-scoreboard-refresh/` (`verify.py` PASS 226/226, `--self-test` 16/16).
 - [Tree-support render placement probe: whole-object batch vs per-layer dispatch](issues/160-tree-support-prepass-batch-probe.md): **resolved 2026-11-17, measured probe — the fold is a pure placement move and the batch arm is slower in every supports-on cell, so the per-layer structure is EXONERATED** — one env-gated host binary, four arms, work held constant. Read-set digest (`plan` / `view` / `paint`) identical at both dispatch points on **every layer of all eight cells** (496/496 base, 240/240 benchy per side); batch arm byte-identical to t151's active set in **8/8**, all runs clean. 5 interleaved pairs/cell: batch slower in all eight separate-arm medians, supports-on **−1.69 % / −1.71 % / −3.13 % / −3.77 %** (pair wins 1/5, 2/5, 0/5, 1/5); batch-pass wall **3.9–4.2 s** base / **0.49 s** benchy inside the per-layer phase bracket. Same-arm null band **9.50 % wall any-pair / 1.91 % median** (CPU 5.89 %); null-renderer ceiling **9.16–12.61 %** of cell wall, so the renderer's cost is the work, not its placement. Supports-off skipped (`enable_support=false`), output identical, wall movement disclosed as box drift. Probe reverted, `probe.patch` preserved, `build-guests --check` exit 0. Evidence: `evidence/t160-tree-support-batch/` (`verify.py` PASS, `--self-test` 9/9).
 - [Tree-support render: fold the per-layer `Layer::Support` render into the prepass?](issues/159-tree-support-render-prepass-fold.md): **resolved 2026-11-17, human ruling — EXPERIMENT, not adoption** — measure whether per-layer renderer placement costs wall with the work held constant: env-gated host batch of the unchanged guest after `PrePass::SupportGeometry` plus a null-renderer ceiling, per-cell verdict on the four supports-on cells (hurts = ≥ 0.80 % floor and outside the null band), canonical `generate_toolpaths` as the per-op control, probe only. Corrects t154's "pays support work twice" to a phase-placement difference (canonical `generate_toolpaths` is also a per-layer `tbb::parallel_for`). Graduated [160](issues/160-tree-support-prepass-batch-probe.md); domain model unchanged.
 - [Exact fast-path boolean predicate in `SliceRegionView::derive_needs_support`](issues/158-needs-support-fast-predicate.md): **resolved 2026-11-16; human-amended 2026-11-17, KEEP** — replacing the unconditional Clipper2 `intersection_ex` inside `SliceRegionView::derive_needs_support` (`crates/slicer-sdk/src/views.rs`) with `expolygons_intersect_area_positive` (strict bbox overlap prefilter + strict-interior point-in-`ExPolygon` witness in `i128`, with `intersection_ex` fallback on overlapping pairs when no witness is found) passes all 72 `layer_module_tdd` tests (including 4 new boundary/hole/`+`-fallback cases), is byte-identical in **8/8** cells against `t151`'s active reference set across 16 output runs, 80 A/B runs, and 18 null runs (`exit 0`, `degraded=false`, zero diagnostics), lowers process CPU in **8/8** cells by **5.88 %–21.38 %** (**5.3x–19.1x** the `1.117 %` any-pair CPU null band; `39/40` pairs candidate-lower), and clears the `0.80 %` wall floor in **all four `base` cells** (`base-classic-off` **+14.87 %** / `−4.25 s` / `18.58x` floor / `−44.63 CPU s`, `base-classic-on` **+5.42 %** / `−4.68 s` / `6.78x` floor / pairwise **+8.67 %** / `−71.08 CPU s`, `base-arachne-off` **+14.64 %** / `−4.23 s` / `18.30x` floor / `−43.64 CPU s`, `base-arachne-on` **+7.52 %** / `−6.37 s` / `9.40x` floor / `−67.84 CPU s`; `20/20` pairs candidate-faster). However, because the entire three-site `derive_needs_support` ceiling on `benchy` is only `~231–237 ms` (`~3.0 %` of `benchy` supports-on wall), single-run wall jitter puts two `benchy` cells below the literal eight-cell separate-arm `0.80 %` wall floor over 5 interleaved pairs (`benchy-classic-on` **+0.766 %**, `0.96x` floor despite **+2.69 %** pairwise median and `4/5` pair wins; `benchy-arachne-off` **−0.076 %**, `−0.10x` floor despite **+3.16 %** pairwise median and `3/5` pair wins). The human explicitly accepted the candidate as KEEP on 2026-11-17; production code and unit tests are landed, with the original mechanical gate failure and missing `benchy` null control disclosed in `RULING.md`; guest freshness green (`cargo xtask build-guests --check` exit 0), `candidate.patch` preserved in [`evidence/t158-needs-support-fast-predicate/`](evidence/t158-needs-support-fast-predicate/FINDINGS.md) (`verify.py --self-test` exit 0, 6/6 negative controls rejected).
@@ -4623,6 +4685,39 @@ Standing decisions for this effort (2026-09-22):
 
 ## Not yet specified
 
+- **The phase split must be re-attributed before any further route arithmetic
+  (surfaced 2026-11-17 by [t161](issues/161-post-t158-scoreboard-refresh.md)).**
+  The map's split — prepass **63.5–82.4 %** of wall, per-layer **14.4–29.6 %**,
+  postpass **2.6–6.5 %**, outside **0.1–5.3 %** — was measured on the **t154**
+  tree, before [t158](issues/158-needs-support-fast-predicate.md) landed a
+  measured **4.23–6.37 s** on the four base cells and t150/t151 moved the benchy
+  cells. Every projection built on those shares therefore mixes a post-t154
+  split with pre-t158 work, and t161's board says the cell walls themselves have
+  moved enough (base supports-off −18.9 % / −24.0 % against t145, with Orca
+  moving the other way) that the shares cannot be assumed. **No ticket is
+  graduated until a human picks it**: the candidate shape is a one-window phase
+  re-split (the same instrument t154 used) run beside a fresh paired scoreboard
+  so shares and walls come from the same window. Until then no route projection
+  may be quoted as current.
+
+- **A single-arm cross-window wall comparison is unsafe, and the instrument is
+  not version-stable (method note, 2026-11-17,
+  [t161](issues/161-post-t158-scoreboard-refresh.md)).** Orca measured
+  **+5.4…+24.9 %** slower than t145's board in all eight cells while its **CPU**
+  moved only **−2.2…+11.7 %**, and the installed binary had changed under the
+  map (2.5.0 → 2.5.1 at 2026-11-13 23:59, see the *OrcaSlicer tool boundary*
+  note). So the movement is efficiency, not work, and it is **not** established
+  as box state: the tool changed, 2.5.0 is gone, and the two cannot be separated.
+  The paired ratio is what absorbs a common shift — the two benchy supports-on
+  cells moved **+24.3 % / +24.9 %** on both arms while their ratio moved
+  **−0.5 % / +0.4 %**. Therefore: quote ratios from one interleaved window or
+  not at all; a delta measured against a prior window's *wall* is not a
+  measurement of the code; "required cut" inherits the same caveat; and any
+  campaign must stamp the Orca **executable** identity, because the rig's
+  profile-stamp gate cannot see a binary swap. The map's history of quoting
+  `t121 → t124 → t139 → t145 → t148` numbers side by side should be read under
+  this note.
+
 - **The benchy per-layer program is margin, not route (t154, 2026-11-14).** The
   canonical-prepass substitution now wins **7 of 8** cells and the benchy cells
   clear the line by 9.9–33.2 %; the only loser is **base classic-on at 1.051x**,
@@ -4647,9 +4742,15 @@ Standing decisions for this effort (2026-09-22):
   is the work itself, so a per-op/algorithm reduction or a deletion is the only
   shape left on this carrier — no ticket is implied until a human picks one;
   (b) the arithmetic's ledger
-  chain (t145/t148 walls × t150 deltas × this take's shares) needs a fresh paired
-  scoreboard before any decision becomes sensitive to ±5 % — today only base
-  arachne-on's **3.3 %** margin is that tight; (c) **no cause is attributed** for
+  chain (t145/t148 walls × t150 deltas × this take's shares) — **ANSWERED by
+  [161](issues/161-post-t158-scoreboard-refresh.md) (2026-11-17):** the fresh
+  paired window gives **1.366x–2.718x** and **0 of 8 won**, required cut
+  **26.80 %–63.21 %**, and it proves the sensitivity was larger than ±5 %: the
+  Orca arm alone moved **+5.4…+24.9 %** in all eight cells against t145's
+  medians, so t145's `46.03 %–71.06 %` and today's `26.80 %–63.21 %` are each
+  correct only for their own window. t145's and t148's ratios are **superseded**
+  as the ratios of record and no required cut may be carried across windows;
+  (c) **no cause is attributed** for
   the t126→t154 per-layer fall (−21.6 % to −40.1 % on the benchy cells); t139's
   mid-layer sampling and t142's quartile derivation are candidates, not findings;
   (d) **the surviving predicate (attributed and priced by
