@@ -191,6 +191,10 @@ identity beside the run; the rig's profile-stamp gate cannot see a binary swap.
   `\\?\` verbatim path, the documented t142 failure. So the accelerated arm
   remains unavailable on the host build, and the stale-artifact obstacle that
   would also have blocked it is now cleared.
+  **Correction (2026-11-18, [t162](../../issues/162-accelerated-host-verbatim-path.md)):
+  that attribution was wrong** — the failure was a verbatim `CARGO_TARGET_DIR`
+  reaching `cl.exe`, not the toolchain, and the accelerated arm builds and is
+  output-identical 16/16 after t162.
 - **Accelerated output parity is *not* re-verified here.** It remains on
   t144/t151's record (8/8 on the accelerated component tree with the ordinary
   host); this take ran the ordinary arm only.

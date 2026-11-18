@@ -179,7 +179,11 @@ skips the accelerated freshness gate, and checking that tree afterwards found
 rebuilt after the campaign (`--accelerated --check` now exit 0, ordinary also
 exit 0) and `dist --accelerated` then still fails at exit 1 in `libmimalloc-sys`
 (`C1083` on `'\\mimalloc-static.cc'`, MSVC 14.51 verbatim path — the t142
-failure), so accelerated output parity is not re-verified here. Also disclosed:
+failure), so accelerated output parity is not re-verified here.
+**Correction (2026-11-18, [162](162-accelerated-host-verbatim-path.md)): that
+attribution was wrong — the failure was a verbatim `CARGO_TARGET_DIR`, not the
+toolchain; the arm builds and is output-identical 16/16 after t162.** Also
+disclosed:
 one Orca outlier of 29.807 s on base classic-off run 2 (excluded by being the
 largest of three, not dropped); box load 62 samples, min 2 % / median 69.5 % /
 max 100 % with saturation samples coinciding with heavy runs; the `tree_strong`

@@ -1,0 +1,185 @@
+{
+ "ticket": 162,
+ "campaign": "t162-accel-parity8",
+ "protocol": {
+  "cells": 8,
+  "tools": [
+   "pnp-ordinary",
+   "pnp-accelerated"
+  ],
+  "runs_per_cell": 1,
+  "warmups": 0,
+  "note": "output parity only; no timing claim"
+ },
+ "reference": "evidence/t151-skirt-hull-contour/reference.json",
+ "rows": [
+  {
+   "cell": "benchy-classic-off",
+   "tool": "pnp-ordinary",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 4085138,
+   "sha256": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+   "reference_sha256": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+   "matches_reference": true
+  },
+  {
+   "cell": "benchy-classic-off",
+   "tool": "pnp-accelerated",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 4085138,
+   "sha256": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+   "reference_sha256": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+   "matches_reference": true
+  },
+  {
+   "cell": "benchy-classic-on",
+   "tool": "pnp-ordinary",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 8673267,
+   "sha256": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+   "reference_sha256": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+   "matches_reference": true
+  },
+  {
+   "cell": "benchy-classic-on",
+   "tool": "pnp-accelerated",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 8673267,
+   "sha256": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+   "reference_sha256": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+   "matches_reference": true
+  },
+  {
+   "cell": "benchy-arachne-off",
+   "tool": "pnp-ordinary",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 4227129,
+   "sha256": "39ad6289b681529e89ed9feb64c5731915e6c384c5f26974b1f14c110501f165",
+   "reference_sha256": "39ad6289b681529e89ed9feb64c5731915e6c384c5f26974b1f14c110501f165",
+   "matches_reference": true
+  },
+  {
+   "cell": "benchy-arachne-off",
+   "tool": "pnp-accelerated",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 4227129,
+   "sha256": "39ad6289b681529e89ed9feb64c5731915e6c384c5f26974b1f14c110501f165",
+   "reference_sha256": "39ad6289b681529e89ed9feb64c5731915e6c384c5f26974b1f14c110501f165",
+   "matches_reference": true
+  },
+  {
+   "cell": "benchy-arachne-on",
+   "tool": "pnp-ordinary",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 8814878,
+   "sha256": "77c3c578aa28382cd398ff007e529804b088668f1a6844ae76bb5950e25464d2",
+   "reference_sha256": "77c3c578aa28382cd398ff007e529804b088668f1a6844ae76bb5950e25464d2",
+   "matches_reference": true
+  },
+  {
+   "cell": "benchy-arachne-on",
+   "tool": "pnp-accelerated",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 8814878,
+   "sha256": "77c3c578aa28382cd398ff007e529804b088668f1a6844ae76bb5950e25464d2",
+   "reference_sha256": "77c3c578aa28382cd398ff007e529804b088668f1a6844ae76bb5950e25464d2",
+   "matches_reference": true
+  },
+  {
+   "cell": "base-classic-off",
+   "tool": "pnp-ordinary",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 21187100,
+   "sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+   "reference_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+   "matches_reference": true
+  },
+  {
+   "cell": "base-classic-off",
+   "tool": "pnp-accelerated",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 21187100,
+   "sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+   "reference_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+   "matches_reference": true
+  },
+  {
+   "cell": "base-classic-on",
+   "tool": "pnp-ordinary",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 39732305,
+   "sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+   "reference_sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+   "matches_reference": true
+  },
+  {
+   "cell": "base-classic-on",
+   "tool": "pnp-accelerated",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 39732305,
+   "sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+   "reference_sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+   "matches_reference": true
+  },
+  {
+   "cell": "base-arachne-off",
+   "tool": "pnp-ordinary",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 21046764,
+   "sha256": "2f249cdb8fd2c570b0a818debfa2340f9925509e9e164abdaaf3e993c6324770",
+   "reference_sha256": "2f249cdb8fd2c570b0a818debfa2340f9925509e9e164abdaaf3e993c6324770",
+   "matches_reference": true
+  },
+  {
+   "cell": "base-arachne-off",
+   "tool": "pnp-accelerated",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 21046764,
+   "sha256": "2f249cdb8fd2c570b0a818debfa2340f9925509e9e164abdaaf3e993c6324770",
+   "reference_sha256": "2f249cdb8fd2c570b0a818debfa2340f9925509e9e164abdaaf3e993c6324770",
+   "matches_reference": true
+  },
+  {
+   "cell": "base-arachne-on",
+   "tool": "pnp-ordinary",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 39594635,
+   "sha256": "1811425ffccda686c9b86448cf30169e6d09859991e1a2d5e7ac9d4cb49b6285",
+   "reference_sha256": "1811425ffccda686c9b86448cf30169e6d09859991e1a2d5e7ac9d4cb49b6285",
+   "matches_reference": true
+  },
+  {
+   "cell": "base-arachne-on",
+   "tool": "pnp-accelerated",
+   "exit_code": 0,
+   "degraded": "false",
+   "gcode_bytes": 39594635,
+   "sha256": "1811425ffccda686c9b86448cf30169e6d09859991e1a2d5e7ac9d4cb49b6285",
+   "reference_sha256": "1811425ffccda686c9b86448cf30169e6d09859991e1a2d5e7ac9d4cb49b6285",
+   "matches_reference": true
+  }
+ ],
+ "all_match": true,
+ "dist": {
+  "command": "cargo xtask dist --accelerated --edition developer",
+  "exit_code": 0,
+  "modules_staged": 24,
+  "module_diagnose_pass": true,
+  "module_provenance": "external"
+ }
+}
