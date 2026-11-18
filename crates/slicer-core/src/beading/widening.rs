@@ -8,22 +8,33 @@
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-//! `WideningBeadingStrategy`: sub-`optimal_width` thin-wall decorator.
+//! `WideningBeadingStrategy`: thin-wall single-bead decorator.
 //!
 //! Faithfully ports OrcaSlicer's `WideningBeadingStrategy::compute` /
 //! `getOptimalBeadCount` / `getTransitionThickness`
-//! (`WideningBeadingStrategy.cpp:48-68,72-91`), including the real 3-way
-//! branch structure:
+//! (`WideningBeadingStrategy.cpp`), including the canonical count-and-transition
+//! gate and its two sub-branches:
 //!
-//! - `thickness >= optimal_width`: delegates to the wrapped strategy
-//!   unmodified (`parent.compute(thickness, bead_count)`).
-//! - `min_input_width <= thickness < optimal_width`: emits a single bead of
-//!   width `thickness.max(min_output_width)` (i.e. the bead is `thickness`
-//!   itself unless that would be narrower than `min_output_width`, in which
-//!   case it is clamped up), with `left_over = 0.0`.
-//! - `thickness < min_input_width`: emits an empty `bead_widths` /
-//!   `toolpath_locations` with `left_over = thickness` — the entire
-//!   thickness goes unprinted.
+//! - `bead_count <= 1 && thickness < get_transition_thickness(1)`: the special
+//!   branch. Inside it,
+//!   - `min_input_width <= thickness`: emits a single bead of width
+//!     `thickness.max(min_output_width)` (i.e. the bead is `thickness` itself
+//!     unless that would be narrower than `min_output_width`, in which case it
+//!     is clamped up), with `left_over = 0.0`;
+//!   - `thickness < min_input_width`: emits an empty `bead_widths` /
+//!     `toolpath_locations` with `left_over = thickness` — the entire
+//!     thickness goes unprinted.
+//! - otherwise: delegates to the wrapped strategy unmodified
+//!   (`parent.compute(thickness, bead_count)`), **including** for
+//!   `bead_count >= 2` at a thickness below `optimal_width`.
+//!
+//! The count condition is canonical, not cosmetic: `optimal_bead_count` below
+//! (and canonical's caller `SkeletalTrapezoidation::generateSegments`,
+//! `SkeletalTrapezoidation.cpp`) use the same `get_transition_thickness(1)`
+//! threshold to choose between one and two beads, so honouring the special
+//! branch for a requested two beads emits a single bead at the full wall
+//! thickness — an over-wide extrusion that shows up as a surface bulge — where
+//! the parent would have split the region into two.
 //!
 //! `optimal_width` is, in upstream C++, inherited from `parent` via
 //! base-class copy-construction at `WideningBeadingStrategy` construction
@@ -39,21 +50,31 @@
 use super::distributed::assert_beading_invariant;
 use super::{Beading, BeadingStrategy};
 
-/// Decorator over another `BeadingStrategy` that intercepts regions whose
-/// `thickness` is below `optimal_width` before delegating: at/above
-/// `min_input_width` (but still below `optimal_width`) it reports a single
-/// bead sized `thickness.max(min_output_width)`; below `min_input_width` it
-/// reports no beads at all (`left_over = thickness`). At/above
-/// `optimal_width`, the wrapped strategy's `compute` result is returned
+/// Decorator over another `BeadingStrategy` that intercepts regions requesting
+/// at most one bead whose `thickness` is below `get_transition_thickness(1)`:
+/// at/above `min_input_width` it reports a single bead sized
+/// `thickness.max(min_output_width)`; below `min_input_width` it reports no
+/// beads at all (`left_over = thickness`). Every other call — including any
+/// `bead_count >= 2` — returns the wrapped strategy's `compute` result
 /// unmodified.
 pub struct WideningBeadingStrategy {
-    /// The wrapped strategy, delegated to unmodified at/above
-    /// `optimal_width`.
+    /// The wrapped strategy, delegated to unmodified outside the single-bead
+    /// window.
     parent: Box<dyn BeadingStrategy>,
     /// The base optimal bead width (slicer units) of the wrapped strategy
-    /// chain. `thickness >= optimal_width` bypasses this decorator entirely.
-    /// See the module doc comment for why this is an explicit field rather
-    /// than inherited from `parent`.
+    /// chain. No longer the branch predicate (the canonical gate is
+    /// `bead_count <= 1 && thickness < get_transition_thickness(1)`); it is the
+    /// width the single-bead window's upper bound and the factory's
+    /// composition are defined against, and it is kept so the caller's
+    /// `optimal_width` contract stays explicit.
+    ///
+    /// Retained (and deliberately unread by `compute`) rather than removed:
+    /// upstream inherits this value from the parent at construction time, so
+    /// dropping it from the Rust constructor would silently change the
+    /// caller-visible contract. Canonical `WideningBeadingStrategy::compute`
+    /// reads only `getTransitionThickness(1)`, `min_input_width` and
+    /// `min_output_width`.
+    #[allow(dead_code)]
     optimal_width: f64,
     /// Threshold (slicer units) below which `thickness` produces no beads at
     /// all (the entire thickness becomes `left_over`).
@@ -101,7 +122,11 @@ impl WideningBeadingStrategy {
 
 impl BeadingStrategy for WideningBeadingStrategy {
     fn compute(&self, thickness: f64, bead_count: usize) -> Beading {
-        if thickness < self.optimal_width {
+        // Canonical `WideningBeadingStrategy::compute`: the special branch is
+        // selected only when the caller asks for at most one bead *and* the
+        // thickness is below the one-to-two-bead transition threshold. Requested
+        // counts of two or more always delegate, even below `optimal_width`.
+        if bead_count <= 1 && thickness < self.get_transition_thickness(1) {
             let beading = if thickness >= self.min_input_width {
                 // Middle regime: a single bead sized to the thickness itself,
                 // clamped up to min_output_width if the thickness is
@@ -126,8 +151,7 @@ impl BeadingStrategy for WideningBeadingStrategy {
             return beading;
         }
 
-        // At/above optimal_width: delegate to the wrapped strategy
-        // unmodified.
+        // Every other call delegates to the wrapped strategy unmodified.
         self.parent.compute(thickness, bead_count)
     }
 

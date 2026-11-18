@@ -138,6 +138,18 @@ required-features = ["property_testing"]
 name = "property_geometry_scad"
 required-features = ["property_testing_scad"]
 
+# Arachne beading property (`H-ARACHNE-BEADING`) and its deterministic
+# controls/regressions. Both need the real `host-algos` beading + skeletal
+# graph code, so a default-feature build never compiles them at all rather
+# than silently running zero tests through a source-level `#![cfg]` alone.
+[[test]]
+name = "property_arachne"
+required-features = ["host-algos", "property_testing"]
+
+[[test]]
+name = "property_arachne_contracts"
+required-features = ["host-algos", "property_testing"]
+
 [[test]]
 name = "flow_tdd"
 
