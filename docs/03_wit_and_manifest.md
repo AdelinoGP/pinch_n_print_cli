@@ -2309,10 +2309,18 @@ There are two independent gates that enforce freshness, each with its own owner 
 
 - **xtask artifact gate** (`cargo xtask build-guests --check` in `xtask/src/build_guests.rs`): artifact verification as above; the fingerprint covers code inputs only, derived per guest from its Cargo path-dependency closure (dependencies, target-specific dependencies, and build-dependencies; never `dev-dependencies`). Version probes (`rustc -vV`, `wasm-tools --version`) and the canonical-WIT parse are memoized once per invocation rather than once per guest. This gate also carries the lock-convergence check described above.
 
-The freshness sidecar uses format/version `v2-`. It is written last, only after
-verification succeeds, and is invalidated on failed verification. Complete v2
-inputs are the workspace `Cargo.toml`, guest `Cargo.lock`, `rustc -vV`,
-`wasm-tools --version`, and the per-guest code-input closure.
+The freshness sidecar uses format/version `v3-` (`FINGERPRINT_VERSION`). It is
+written last, only after verification succeeds, and is invalidated on failed
+verification. Complete v3 inputs are the workspace `Cargo.toml`, guest
+`Cargo.lock`, `rustc -vV`, `wasm-tools --version`, and the per-guest code-input
+closure. v3 differs from v2 only in how every `Cargo.toml` is hashed: through
+`manifest_fingerprint_bytes`, which parses the manifest, strips
+`[dev-dependencies]` (top-level and per-`target.<cfg>`) and the
+`[[test]]`/`[[bench]]`/`[[example]]` arrays, and re-serializes it, so comments,
+formatting and test-only sections cannot mark a guest stale while `package`,
+`lib`, `features`, dependency, build-dependency, `workspace` and profile edits
+still do. An unparseable manifest is hashed raw. Moving from v2 to v3 makes
+every existing sidecar stale once; one `cargo xtask build-guests` refreshes them.
 
 - **host-side contract test** (`crates/slicer-runtime/tests/contract/guest_fixture_freshness_tdd.rs`): independent of xtask and unaffected by packets 229–231. It hardcodes its own guest list (`GUESTS`, 8 entries measured 2026-08-19), applies its own mtime rule (a guest's `src/lib.rs` newer than its artifact is stale), and fails when an expected `.component.wasm` is missing, an artifact is suspiciously small (< 100 bytes — i.e. not a real component), or the mtime rule is violated. The test `build_script_check_mode_reports_freshness` in that file currently asserts nothing — it early-returns when `test-guests/build-test-guests.sh` is absent (which it is). Packet context lives in `docs/spec_packets/_OLD/232-freshness-gate-docs.md`. See that section (heading `## Reported, not fixed`).
 
