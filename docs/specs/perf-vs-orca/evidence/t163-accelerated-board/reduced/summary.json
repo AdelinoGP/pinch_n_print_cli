@@ -1,0 +1,1244 @@
+{
+ "ticket": 163,
+ "generated_by": "reduce_t163.py",
+ "question": "Three-tool eight-cell board: accelerated arm vs ordinary vs Orca, one window.",
+ "raw_sources": {
+  "campaign_csv": "target/matched-pair/t163-accelerated-board/scoreboard-rows.csv",
+  "load_samples": "docs/specs/perf-vs-orca/evidence/t163-accelerated-board/reduced/load-samples.csv"
+ },
+ "currency_artifact": "docs/specs/perf-vs-orca/evidence/t151-skirt-hull-contour/reference.json",
+ "protocol": {
+  "cells": 8,
+  "tools": [
+   "orca",
+   "pnp-ordinary",
+   "pnp-accelerated"
+  ],
+  "runs_per_cell_tool": 3,
+  "warmups_per_cell_tool": 1,
+  "interleaved": true,
+  "measured_rows": 72,
+  "warmup_rows": 24
+ },
+ "cells": {
+  "benchy-classic-off": {
+   "fixture": "benchy",
+   "generator": "classic",
+   "supports": "off",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     2.2315,
+     2.1888,
+     1.9108
+    ],
+    "cpu_s": [
+     6.0312,
+     6.3594,
+     6.125
+    ],
+    "wall_median_s": 2.1888,
+    "cpu_median_s": 6.125,
+    "wall_spread_pct": 14.65,
+    "cpu_spread_pct": 5.36
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     3.9002,
+     4.276,
+     3.7539
+    ],
+    "cpu_s": [
+     17.2031,
+     18.1875,
+     16.7031
+    ],
+    "wall_median_s": 3.9002,
+    "cpu_median_s": 17.2031,
+    "wall_spread_pct": 13.39,
+    "cpu_spread_pct": 8.63
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     3.8463,
+     4.0765,
+     3.7676
+    ],
+    "cpu_s": [
+     17.4375,
+     17.7812,
+     17.0156
+    ],
+    "wall_median_s": 3.8463,
+    "cpu_median_s": 17.4375,
+    "wall_spread_pct": 8.03,
+    "cpu_spread_pct": 4.39
+   },
+   "ratio_ordinary_over_orca": 1.7819,
+   "required_cut_ordinary_pct": 43.88,
+   "ratio_accelerated_over_orca": 1.7573,
+   "required_cut_accelerated_pct": 43.09,
+   "accel_vs_ordinary_wall_pct": -1.38,
+   "accel_vs_ordinary_cpu_pct": 1.36,
+   "identity_ordinary": true,
+   "hash_ordinary": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "identity_accelerated": true,
+   "hash_accelerated": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "reference_hash": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ]
+  },
+  "benchy-classic-on": {
+   "fixture": "benchy",
+   "generator": "classic",
+   "supports": "on",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     3.1262,
+     2.9348,
+     2.9414
+    ],
+    "cpu_s": [
+     11.1875,
+     11.0,
+     11.25
+    ],
+    "wall_median_s": 2.9414,
+    "cpu_median_s": 11.1875,
+    "wall_spread_pct": 6.51,
+    "cpu_spread_pct": 2.23
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     8.2413,
+     8.6057,
+     7.4536
+    ],
+    "cpu_s": [
+     38.5625,
+     38.0469,
+     38.0312
+    ],
+    "wall_median_s": 8.2413,
+    "cpu_median_s": 38.0469,
+    "wall_spread_pct": 13.98,
+    "cpu_spread_pct": 1.4
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     7.9506,
+     7.8834,
+     8.985
+    ],
+    "cpu_s": [
+     37.9219,
+     38.3125,
+     39.0312
+    ],
+    "wall_median_s": 7.9506,
+    "cpu_median_s": 38.3125,
+    "wall_spread_pct": 13.86,
+    "cpu_spread_pct": 2.9
+   },
+   "ratio_ordinary_over_orca": 2.8018,
+   "required_cut_ordinary_pct": 64.31,
+   "ratio_accelerated_over_orca": 2.703,
+   "required_cut_accelerated_pct": 63.0,
+   "accel_vs_ordinary_wall_pct": -3.53,
+   "accel_vs_ordinary_cpu_pct": 0.7,
+   "identity_ordinary": true,
+   "hash_ordinary": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "identity_accelerated": true,
+   "hash_accelerated": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "reference_hash": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ]
+  },
+  "benchy-arachne-off": {
+   "fixture": "benchy",
+   "generator": "arachne",
+   "supports": "off",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     2.4997,
+     2.7243,
+     2.3247
+    ],
+    "cpu_s": [
+     7.6875,
+     8.5,
+     8.5625
+    ],
+    "wall_median_s": 2.4997,
+    "cpu_median_s": 8.5,
+    "wall_spread_pct": 15.99,
+    "cpu_spread_pct": 10.29
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     4.8489,
+     5.0222,
+     4.5806
+    ],
+    "cpu_s": [
+     19.4219,
+     21.2969,
+     19.3594
+    ],
+    "wall_median_s": 4.8489,
+    "cpu_median_s": 19.4219,
+    "wall_spread_pct": 9.11,
+    "cpu_spread_pct": 9.98
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     4.2087,
+     4.5036,
+     4.0629
+    ],
+    "cpu_s": [
+     18.5938,
+     18.4219,
+     18.6094
+    ],
+    "wall_median_s": 4.2087,
+    "cpu_median_s": 18.5938,
+    "wall_spread_pct": 10.47,
+    "cpu_spread_pct": 1.01
+   },
+   "ratio_ordinary_over_orca": 1.9398,
+   "required_cut_ordinary_pct": 48.45,
+   "ratio_accelerated_over_orca": 1.6837,
+   "required_cut_accelerated_pct": 40.61,
+   "accel_vs_ordinary_wall_pct": -13.2,
+   "accel_vs_ordinary_cpu_pct": -4.26,
+   "identity_ordinary": true,
+   "hash_ordinary": "39ad6289b681529e89ed9feb64c5731915e6c384c5f26974b1f14c110501f165",
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "identity_accelerated": true,
+   "hash_accelerated": "39ad6289b681529e89ed9feb64c5731915e6c384c5f26974b1f14c110501f165",
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "reference_hash": "39ad6289b681529e89ed9feb64c5731915e6c384c5f26974b1f14c110501f165",
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ]
+  },
+  "benchy-arachne-on": {
+   "fixture": "benchy",
+   "generator": "arachne",
+   "supports": "on",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     2.9234,
+     2.8141,
+     2.9674
+    ],
+    "cpu_s": [
+     12.5938,
+     12.3438,
+     12.5625
+    ],
+    "wall_median_s": 2.9234,
+    "cpu_median_s": 12.5625,
+    "wall_spread_pct": 5.24,
+    "cpu_spread_pct": 1.99
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     8.0549,
+     8.2694,
+     8.4819
+    ],
+    "cpu_s": [
+     39.2656,
+     39.7031,
+     40.6719
+    ],
+    "wall_median_s": 8.2694,
+    "cpu_median_s": 39.7031,
+    "wall_spread_pct": 5.16,
+    "cpu_spread_pct": 3.54
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     8.1989,
+     7.5036,
+     9.2738
+    ],
+    "cpu_s": [
+     39.4688,
+     39.6562,
+     39.8906
+    ],
+    "wall_median_s": 8.1989,
+    "cpu_median_s": 39.6562,
+    "wall_spread_pct": 21.59,
+    "cpu_spread_pct": 1.06
+   },
+   "ratio_ordinary_over_orca": 2.8287,
+   "required_cut_ordinary_pct": 64.65,
+   "ratio_accelerated_over_orca": 2.8046,
+   "required_cut_accelerated_pct": 64.34,
+   "accel_vs_ordinary_wall_pct": -0.85,
+   "accel_vs_ordinary_cpu_pct": -0.12,
+   "identity_ordinary": true,
+   "hash_ordinary": "77c3c578aa28382cd398ff007e529804b088668f1a6844ae76bb5950e25464d2",
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "identity_accelerated": true,
+   "hash_accelerated": "77c3c578aa28382cd398ff007e529804b088668f1a6844ae76bb5950e25464d2",
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "reference_hash": "77c3c578aa28382cd398ff007e529804b088668f1a6844ae76bb5950e25464d2",
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ]
+  },
+  "base-classic-off": {
+   "fixture": "base",
+   "generator": "classic",
+   "supports": "off",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     18.4119,
+     18.2003,
+     16.7746
+    ],
+    "cpu_s": [
+     34.1875,
+     34.0312,
+     31.8281
+    ],
+    "wall_median_s": 18.2003,
+    "cpu_median_s": 34.0312,
+    "wall_spread_pct": 9.0,
+    "cpu_spread_pct": 6.93
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     25.283,
+     22.7192,
+     25.3769
+    ],
+    "cpu_s": [
+     164.8281,
+     163.2969,
+     164.5156
+    ],
+    "wall_median_s": 25.283,
+    "cpu_median_s": 164.5156,
+    "wall_spread_pct": 10.51,
+    "cpu_spread_pct": 0.93
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     26.7223,
+     26.3908,
+     25.354
+    ],
+    "cpu_s": [
+     161.5469,
+     162.5938,
+     162.2812
+    ],
+    "wall_median_s": 26.3908,
+    "cpu_median_s": 162.2812,
+    "wall_spread_pct": 5.18,
+    "cpu_spread_pct": 0.65
+   },
+   "ratio_ordinary_over_orca": 1.3892,
+   "required_cut_ordinary_pct": 28.02,
+   "ratio_accelerated_over_orca": 1.45,
+   "required_cut_accelerated_pct": 31.03,
+   "accel_vs_ordinary_wall_pct": 4.38,
+   "accel_vs_ordinary_cpu_pct": -1.36,
+   "identity_ordinary": true,
+   "hash_ordinary": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "identity_accelerated": true,
+   "hash_accelerated": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "reference_hash": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ]
+  },
+  "base-classic-on": {
+   "fixture": "base",
+   "generator": "classic",
+   "supports": "on",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     29.1441,
+     28.607,
+     26.6508
+    ],
+    "cpu_s": [
+     104.3281,
+     102.6562,
+     100.7656
+    ],
+    "wall_median_s": 28.607,
+    "cpu_median_s": 102.6562,
+    "wall_spread_pct": 8.72,
+    "cpu_spread_pct": 3.47
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     84.6416,
+     76.6799,
+     77.5366
+    ],
+    "cpu_s": [
+     532.6406,
+     532.2656,
+     533.2188
+    ],
+    "wall_median_s": 77.5366,
+    "cpu_median_s": 532.6406,
+    "wall_spread_pct": 10.27,
+    "cpu_spread_pct": 0.18
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     79.6801,
+     78.6829,
+     76.5398
+    ],
+    "cpu_s": [
+     530.4688,
+     527.7031,
+     528.4844
+    ],
+    "wall_median_s": 78.6829,
+    "cpu_median_s": 528.4844,
+    "wall_spread_pct": 3.99,
+    "cpu_spread_pct": 0.52
+   },
+   "ratio_ordinary_over_orca": 2.7104,
+   "required_cut_ordinary_pct": 63.11,
+   "ratio_accelerated_over_orca": 2.7505,
+   "required_cut_accelerated_pct": 63.64,
+   "accel_vs_ordinary_wall_pct": 1.48,
+   "accel_vs_ordinary_cpu_pct": -0.78,
+   "identity_ordinary": true,
+   "hash_ordinary": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "identity_accelerated": true,
+   "hash_accelerated": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "reference_hash": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ]
+  },
+  "base-arachne-off": {
+   "fixture": "base",
+   "generator": "arachne",
+   "supports": "off",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     17.0528,
+     18.6814,
+     17.7549
+    ],
+    "cpu_s": [
+     40.4844,
+     41.5625,
+     40.8438
+    ],
+    "wall_median_s": 17.7549,
+    "cpu_median_s": 40.8438,
+    "wall_spread_pct": 9.17,
+    "cpu_spread_pct": 2.64
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     24.3339,
+     25.8608,
+     26.8773
+    ],
+    "cpu_s": [
+     169.5,
+     168.0625,
+     170.5625
+    ],
+    "wall_median_s": 25.8608,
+    "cpu_median_s": 169.5,
+    "wall_spread_pct": 9.83,
+    "cpu_spread_pct": 1.47
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     23.1838,
+     25.3544,
+     25.3105
+    ],
+    "cpu_s": [
+     163.8438,
+     164.375,
+     164.5
+    ],
+    "wall_median_s": 25.3105,
+    "cpu_median_s": 164.375,
+    "wall_spread_pct": 8.58,
+    "cpu_spread_pct": 0.4
+   },
+   "ratio_ordinary_over_orca": 1.4565,
+   "required_cut_ordinary_pct": 31.34,
+   "ratio_accelerated_over_orca": 1.4256,
+   "required_cut_accelerated_pct": 29.85,
+   "accel_vs_ordinary_wall_pct": -2.13,
+   "accel_vs_ordinary_cpu_pct": -3.02,
+   "identity_ordinary": true,
+   "hash_ordinary": "2f249cdb8fd2c570b0a818debfa2340f9925509e9e164abdaaf3e993c6324770",
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "identity_accelerated": true,
+   "hash_accelerated": "2f249cdb8fd2c570b0a818debfa2340f9925509e9e164abdaaf3e993c6324770",
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "reference_hash": "2f249cdb8fd2c570b0a818debfa2340f9925509e9e164abdaaf3e993c6324770",
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ]
+  },
+  "base-arachne-on": {
+   "fixture": "base",
+   "generator": "arachne",
+   "supports": "on",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     29.4522,
+     28.7471,
+     29.3102
+    ],
+    "cpu_s": [
+     112.7031,
+     109.4844,
+     113.6562
+    ],
+    "wall_median_s": 29.3102,
+    "cpu_median_s": 112.7031,
+    "wall_spread_pct": 2.41,
+    "cpu_spread_pct": 3.7
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     76.7322,
+     74.6329,
+     76.8311
+    ],
+    "cpu_s": [
+     540.5469,
+     532.7656,
+     535.7656
+    ],
+    "wall_median_s": 76.7322,
+    "cpu_median_s": 535.7656,
+    "wall_spread_pct": 2.86,
+    "cpu_spread_pct": 1.45
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     77.0466,
+     76.5174,
+     74.0424
+    ],
+    "cpu_s": [
+     528.4219,
+     528.625,
+     531.8438
+    ],
+    "wall_median_s": 76.5174,
+    "cpu_median_s": 528.625,
+    "wall_spread_pct": 3.93,
+    "cpu_spread_pct": 0.65
+   },
+   "ratio_ordinary_over_orca": 2.6179,
+   "required_cut_ordinary_pct": 61.8,
+   "ratio_accelerated_over_orca": 2.6106,
+   "required_cut_accelerated_pct": 61.69,
+   "accel_vs_ordinary_wall_pct": -0.28,
+   "accel_vs_ordinary_cpu_pct": -1.33,
+   "identity_ordinary": true,
+   "hash_ordinary": "1811425ffccda686c9b86448cf30169e6d09859991e1a2d5e7ac9d4cb49b6285",
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "identity_accelerated": true,
+   "hash_accelerated": "1811425ffccda686c9b86448cf30169e6d09859991e1a2d5e7ac9d4cb49b6285",
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "reference_hash": "1811425ffccda686c9b86448cf30169e6d09859991e1a2d5e7ac9d4cb49b6285",
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ]
+  }
+ },
+ "ranges": {
+  "ratio_ordinary_over_orca": [
+   1.3892,
+   2.8287
+  ],
+  "ratio_accelerated_over_orca": [
+   1.4256,
+   2.8046
+  ],
+  "accel_vs_ordinary_wall_pct": [
+   -13.2,
+   4.38
+  ],
+  "accel_vs_ordinary_cpu_pct": [
+   -4.26,
+   1.36
+  ]
+ },
+ "identity": {
+  "ordinary_all_eight": true,
+  "accelerated_all_eight": true,
+  "ordinary_missing": [],
+  "accelerated_missing": []
+ },
+ "matched_keys": {
+  "all_eight": true
+ },
+ "box_load_pct": {
+  "samples": 114,
+  "min": 1.0,
+  "median": 76.0,
+  "max": 100.0
+ },
+ "cells_accelerated_faster": 6,
+ "cells_accelerated_slower": 2
+}
