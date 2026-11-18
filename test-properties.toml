@@ -1410,7 +1410,7 @@ max_shrink_time_ms = 0
 rng_algorithm = "chacha"
 isolation = "in_process"
 timeout_ms = 0
-bounds = { max_junctions = 8, max_abs_mm_units = 20000, max_spacing_units = 2000, max_height_units = 500 }
+bounds = { max_junctions = 32, max_abs_mm_units = 20000, max_spacing_units = 2000, max_height_units = 500 }
 
 [property.extended]
 cases = 1024
@@ -1423,7 +1423,7 @@ max_shrink_time_ms = 0
 rng_algorithm = "chacha"
 isolation = "in_process"
 timeout_ms = 0
-bounds = { max_junctions = 16, max_abs_mm_units = 40000, max_spacing_units = 8000, max_height_units = 2000 }
+bounds = { max_junctions = 64, max_abs_mm_units = 40000, max_spacing_units = 8000, max_height_units = 2000 }
 
 [[property]]
 id = "M-ARACHNE-SEQUENCE"

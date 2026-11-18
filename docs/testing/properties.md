@@ -4089,29 +4089,76 @@ With `LoopType::ThinWall`, every flag has `is_thin_wall` set and none has `is_br
 agrees with `path.is_closed()`, and orientation normalization never adds a closing edge to an open
 path.
 
+Winding follows canonical `traverse_extrusions` (`PerimeterGenerator.cpp`):
+
+- An open line keeps its input order.
+- A closed line is reversed only when its input winding disagrees with
+  `want_ccw = (wall_direction == CCW) == (is_contour || region_line_count == 2)`, flipped by
+  `g7_reverse`.
+- `is_contour` is `ExtrusionLine::is_contour` (`ExtrusionLine.cpp`): the line is closed and its input
+  junctions wind clockwise.
+- `region_line_count` is the number of nonempty lines in the batch.
+- Neither `inset_idx` nor `boundary_type` affects winding.
+
 ### Domain
 
 - **Bounds.** `max_junctions`/`max_abs_mm_units`/`max_spacing_units`/`max_height_units` are
-  8/20000/2000/500 for routine and 16/40000/8000/2000 for extended. `checked_build_limits`
-  rejects invalid values before sampling.
+  32/20000/2000/500 for routine and 64/40000/8000/2000 for extended. `checked_build_limits`
+  rejects invalid values before sampling. The two bounds that shape the region are live:
+  `max_junctions` is the upper end of the sampled total junction budget (the five-line roster
+  needs 23), and `max_abs_mm_units` is the upper end of the sampled region half-extent; every
+  roster shape is built as a fraction of that half-extent.
 - **Roster.** Each case carries:
   - an explicit-repeat closed outer and inner rectangle;
   - two distinct-endpoint open chains in opposite orders;
   - an odd inset-0 explicit-repeat rectangle;
   - an empty line.
 
+  The two-line roster keeps only the outer and inner rectangles, plus the empty line. The
+  generated total junction count is sampled in `23..=max_junctions` and extra collinear points are
+  distributed across the roster; the region half-extent is sampled in
+  `10000..=max_abs_mm_units`.
+- `build_walls_bounds_drive_geometry_and_junctions` builds two different bound pairs and asserts
+  both the input and the emitted walls change extent and junction total, so neither bound can
+  silently stop reaching generation. `max_spacing_units` must also be at least
+  `max_junctions`.
+
 ### Strategy
 
-A `no_shrink` mode word selects four things: contour winding, `g7_reverse`, `print_thin_walls`, and
-whether an asymmetric mixed bridge rectangle is present. This covers both winding branches, and the
-bridge rectangle gives positive and negative flags. The layer height and the base of the unequal
-per-point bead spacings are the only shrinkable fields.
+A `no_shrink` mode word selects six things:
+
+- contour winding (`wall_direction`);
+- `g7_reverse`;
+- `print_thin_walls`;
+- whether an asymmetric mixed bridge rectangle is present;
+- whether the roster is the two-line region;
+- whether the closed inner rectangle is wound clockwise (a contour) or counter-clockwise (a hole).
+
+Together these cover open and closed lines, both input windings, both directions, both `g7_reverse`
+values and the two-line term. The bridge rectangle gives positive and negative flags.
+`arachne_module_oracle_controls` also sweeps all 64 mode words through the real kernel, so no
+branch depends on what the sampler draws. The layer height, the base of the unequal per-point bead
+spacings, the junction budget and the region half-extent are shrinkable; the mode word and the
+bridge membership are not.
+
+The deterministic prelude runs three canonical-winding witnesses before the generated campaign,
+each under a fresh `CaseGuard`:
+
+- `build_walls_winding_witness_open_path_keeps_order`;
+- `build_walls_winding_witness_clockwise_inner_is_contour`;
+- `build_walls_winding_witness_two_line_region_inner_is_contour_like`.
+
+Each is also a plain test. All three failed under the former inset-based rule. See
+`docs/testing/proptest-arachne-evidence.md#wall-winding-traverse_extrusions-and-extrusionlineis_contour`.
 
 ### Oracle
 
 - **Bridge membership.** Predicted by `point_in_region` and analytic rectangle inequalities, never
   by `PerimeterSpatialContext::is_bridge` or `build_wall_flags`.
-- **Expected winding.** Derived independently by `expected_want_ccw` and the signed area.
+- **Expected winding.** Derived independently by `expected_want_ccw`, from `is_closed`, the input
+  signed area, the nonempty line count, `wall_direction` and `g7_reverse`, using the canonical
+  formula above. The output-order model is identity for an open line, and for a closed line a
+  reversal exactly when the input winding disagrees with the target.
 - **Widths.** Compared with the real-number formula above.
 
 ### Tolerance
@@ -4138,7 +4185,11 @@ regression `property_tests::build_walls_reversed_variable_width_keeps_profiles_a
 reproduced the defect before the fix: `build_walls` reversed `path.points` but not
 `width_profile.widths` or `feature_flags`. Its assertion reported `width_profile.widths[1] =
 0.6429204` against `path.points[1].width = 0.84292036`. The test now covers reversal with unequal
-widths and asymmetric bridge flags.
+widths and asymmetric bridge flags. After the winding correction, its fixture was moved to a case
+canonical still reverses: a closed CCW inset-1 rectangle in a three-line region under
+`wall_direction = counter_clockwise`. A closed input wound CCW is a hole under
+`ExtrusionLine::is_contour`. The former rule also reversed this fixture, so the test is not a
+falsifier of the winding fix. The three winding witnesses above are.
 
 ### Acceptance
 

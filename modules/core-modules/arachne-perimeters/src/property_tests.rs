@@ -32,9 +32,12 @@
 //! name (re-derived from `crates/*/src/**` `pub` structs with >= 5 named fields)
 //! are `Point3WithWidth`, `ExtrusionPath3D`, `WallFeatureFlags`, `WallLoop`
 //! (`crates/slicer-ir/src/slice_ir.rs`) and `ArachneParams`
-//! (`crates/slicer-core/src/arachne/pipeline.rs`). Every literal of those five
-//! uses a `..` rest; `ExtrusionLine` (4 fields), `ExtrusionJunction` (2) and
-//! `WidthProfile` (1) are below the watch threshold.
+//! (`crates/slicer-sdk/src/host.rs`). The last is the SDK's host-side *mirror*
+//! struct, not `slicer_core::arachne::pipeline::ArachneParams` (which is
+//! `host-algos`-gated and so not nameable from this wasm guest crate). Every
+//! literal of those five uses a `..` rest; `ExtrusionLine` (4 fields),
+//! `ExtrusionJunction` (2) and `WidthProfile` (1) are below the watch
+//! threshold.
 //!
 //! # Registry identity
 //!
@@ -58,7 +61,7 @@ use slicer_ir::{
 use slicer_sdk::host::{ArachneParams, WallSequence};
 use slicer_sdk::test_support::fixtures::{wall_loop_base, SliceRegionViewBuilder};
 use slicer_sdk::test_support::property_testing::oracles::{point_in_region, PointLocation};
-use slicer_sdk::test_support::property_testing::PropertyRun;
+use slicer_sdk::test_support::property_testing::{CaseGuard, PropertyRun};
 use slicer_sdk::views::SliceRegionView;
 
 use super::{classify_line, commit_wall_sequence, ArachnePerimeters};
@@ -169,20 +172,41 @@ struct ClassifyCase {
 fn classify_strategy(max_inset_idx: u32) -> BoxedStrategy<ClassifyCase> {
     (
         any::<bool>(),
-        // Zero stays zero; a positive inset shrinks toward 1 without ever
-        // losing positivity, so the `InnerWall` row survives every shrink path.
-        prop_oneof![Just(0u32), 1u32..=max_inset_idx],
+        // Zero/positive selection without a union alternative. An independent
+        // boolean picks the zero row (`true`) or the positive row (`false`);
+        // the positive component is drawn from `1..=max_inset_idx`, a range
+        // that never contains zero.
+        //
+        // Shrink behaviour: proptest simplifies `bool` only in the `true ->
+        // false` direction, and `false` is the positive row with no further
+        // simplification available. So a positive draw's selector is already
+        // at its shrink floor and its inset can only shrink *inside*
+        // `1..=max_inset_idx`; it can never cross to the zero row. (A
+        // `prop_oneof![Just(0), 1..=max]` union is the opposite: its `simplify`
+        // may switch an accepted positive case to the `Just(0)` alternative.)
+        // A zero draw can shrink into the positive row, which is a legal
+        // classification case in its own right.
+        //
+        // Every expected value is re-derived from the case that is actually
+        // checked (`check_classify_case` rebuilds the line from the shrunk
+        // fields and recomputes `expected_classification`), so neither shrink
+        // direction can leave a stale expectation behind: there is no false
+        // green either way.
+        any::<bool>(),
+        1u32..=max_inset_idx,
         any::<bool>(),
         any::<bool>(),
         0u32..=3,
     )
         .prop_map(
-            |(is_odd, inset_idx, print_thin_walls, is_closed, junction_count)| ClassifyCase {
-                is_odd,
-                inset_idx,
-                print_thin_walls,
-                is_closed,
-                junction_count,
+            |(is_odd, zero_row, positive_inset, print_thin_walls, is_closed, junction_count)| {
+                ClassifyCase {
+                    is_odd,
+                    inset_idx: if zero_row { 0 } else { positive_inset },
+                    print_thin_walls,
+                    is_closed,
+                    junction_count,
+                }
             },
         )
         .boxed()
@@ -243,9 +267,11 @@ fn proptest_module_arachne_classify() {
 // M-ARACHNE-BUILD — point, width, flag and topology correspondence.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Region half-extent: the declared region is the 4 mm square
-/// `[-REGION_HALF_UNITS, +REGION_HALF_UNITS]^2`, in slicer units.
-const REGION_HALF_UNITS: i64 = 20_000;
+/// Fixed half-extent of the deterministic witness and regression scenes, in
+/// slicer units: a 4 mm square. The generated `M-ARACHNE-BUILD` property does
+/// not use this constant; it samples its own half-extent from the
+/// `max_abs_mm_units` bound.
+const WITNESS_HALF_UNITS: i64 = 20_000;
 
 /// Layer height used by the reverse-trigger regression, in mm.
 const REGRESSION_HEIGHT_MM: f32 = 0.2;
@@ -258,65 +284,130 @@ const BRIDGE_FLOW_RATIO: f32 = 0.85;
 /// Region and point Z height, in mm.
 const Z_MM: f32 = 0.2;
 
-/// Junctions the generated roster places across its five nonempty lines.
-const ROSTER_JUNCTIONS: u32 = 23;
 /// Lower end of the generated layer-height range, in slicer units.
 const MIN_GENERATED_HEIGHT_UNITS: u32 = 1_000;
 
+/// Junctions in one closed, explicitly repeated rectangle: four corners plus the
+/// repeated first corner.
+const CLOSED_RECT_JUNCTIONS: usize = 5;
+/// The five-line roster's required junction count: three closed rectangles
+/// (outer, inner, thin-wall) at [`CLOSED_RECT_JUNCTIONS`] each, plus the two
+/// open four-junction chains.
+const ROSTER_JUNCTIONS: usize = 3 * CLOSED_RECT_JUNCTIONS + 2 * 4;
+/// The two-line roster's junction count: the closed outer and inner rectangles
+/// only (the empty line contributes none).
+const TWO_LINE_ROSTER_JUNCTIONS: usize = 2 * CLOSED_RECT_JUNCTIONS;
+
+/// The generated roster, expressed as exact integer-unit fractions of the
+/// sampled region half-extent. Every shape is either on the region boundary or
+/// strictly inside it, and the fractions are strictly ordered, so every accepted
+/// `max_abs_mm_units` yields geometrically valid geometry:
+///
+/// * outer closed rectangle: `±half_units` (the region boundary);
+/// * closed inner rectangle: `±half_units / 2`;
+/// * mixed bridge band: `±3 * half_units / 8`, strictly inside the inner
+///   rectangle;
+/// * both open chains: within `±half_units / 4`, strictly inside the bridge
+///   band;
+/// * thin-wall rectangle: `±half_units / 10`, clear of the open chains.
+///
+/// No generated point has `y == 0`, so no point lies on the overhang band's
+/// `y == 0` boundary (an extra outer point may have `x == 0`, which is an
+/// interior coordinate of that band, not a boundary). The open-chain points lie
+/// strictly inside the bridge band while every inner/outer rectangle corner
+/// lies strictly outside it.
+#[derive(Debug, Clone)]
+struct RosterGeometry {
+    outer: Vec<(i64, i64)>,
+    inner: Vec<(i64, i64)>,
+    inner_ccw: Vec<(i64, i64)>,
+    open_ccw: Vec<(i64, i64)>,
+    open_cw: Vec<(i64, i64)>,
+    thin: Vec<(i64, i64)>,
+}
+
+fn roster_geometry(half_units: i64, extra_outer_junctions: usize) -> RosterGeometry {
+    debug_assert!(half_units >= MIN_ABS_MM_UNITS as i64);
+    let inner = half_units / 2;
+    let open = half_units / 4;
+    let half_open = open / 2;
+    let thin = half_units / 10;
+    let band = 3 * half_units / 8;
+    // Strict ordering over the whole accepted half-extent domain: the thin
+    // rectangle stays clear of the open chains, both stay inside the bridge
+    // band, the band stays inside the inner rectangle, and the inner rectangle
+    // stays inside the region.
+    debug_assert!(0 < thin && thin < half_open && open < band);
+    debug_assert!(band < inner && inner < half_units);
+
+    let inner_rect = vec![
+        (inner, inner),
+        (inner, -inner),
+        (-inner, -inner),
+        (-inner, inner),
+        (inner, inner),
+    ];
+    // The exact point-order reverse: the same closed, explicitly repeated
+    // rectangle wound counter-clockwise. Under canonical
+    // `ExtrusionLine::is_contour` a closed counter-clockwise line is a hole.
+    let inner_ccw: Vec<(i64, i64)> = inner_rect.iter().rev().copied().collect();
+    // Open inner-wall chain, wound counter-clockwise, with distinct endpoints.
+    // It straddles `y == 0` without ever touching it.
+    let open_ccw = vec![
+        (-open, -half_open),
+        (-half_open, -half_open),
+        (-half_open, half_open),
+        (-open, half_open),
+    ];
+    let open_cw: Vec<(i64, i64)> = open_ccw.iter().rev().copied().collect();
+    // Closed, explicitly repeated small rectangle wound counter-clockwise. It
+    // lies strictly inside the bridge band, so the `ThinWall` bridge exclusion
+    // has a non-vacuous positive witness.
+    let thin_rect = vec![
+        (thin, thin),
+        (-thin, thin),
+        (-thin, -thin),
+        (thin, -thin),
+        (thin, thin),
+    ];
+    RosterGeometry {
+        outer: outer_ring(half_units, extra_outer_junctions),
+        inner: inner_rect,
+        inner_ccw,
+        open_ccw,
+        open_cw,
+        thin: thin_rect,
+    }
+}
+
 /// Closed, explicitly repeated outer-wall rectangle on the region boundary,
-/// wound clockwise.
-const OUTER_RECT: [(i64, i64); 5] = [
-    (REGION_HALF_UNITS, REGION_HALF_UNITS),
-    (REGION_HALF_UNITS, -REGION_HALF_UNITS),
-    (-REGION_HALF_UNITS, -REGION_HALF_UNITS),
-    (-REGION_HALF_UNITS, REGION_HALF_UNITS),
-    (REGION_HALF_UNITS, REGION_HALF_UNITS),
-];
-
-/// Closed, explicitly repeated inner-wall rectangle at half the region extent,
-/// wound clockwise.
-const INNER_RECT: [(i64, i64); 5] = [
-    (10_000, 10_000),
-    (10_000, -10_000),
-    (-10_000, -10_000),
-    (-10_000, 10_000),
-    (10_000, 10_000),
-];
-
-/// Open inner-wall chain in the lower-left quadrant, wound counter-clockwise,
-/// with distinct endpoints.
-const OPEN_CCW: [(i64, i64); 4] = [
-    (-15_000, -15_000),
-    (-10_000, -15_000),
-    (-10_000, -10_000),
-    (-15_000, -10_000),
-];
-
-/// The exact point-order reverse of [`OPEN_CCW`]: an open clockwise chain.
-const OPEN_CW: [(i64, i64); 4] = [
-    (-15_000, -10_000),
-    (-10_000, -10_000),
-    (-10_000, -15_000),
-    (-15_000, -15_000),
-];
-
-/// Closed, explicitly repeated small rectangle wound counter-clockwise. Its
-/// first corner (0.5 mm, 0.5 mm) lies strictly inside the mixed bridge area, so
-/// the `ThinWall` exclusion has a non-vacuous positive witness.
-const THIN_RECT: [(i64, i64); 5] = [
-    (5_000, 5_000),
-    (-5_000, 5_000),
-    (-5_000, -5_000),
-    (5_000, -5_000),
-    (5_000, 5_000),
-];
-
-/// The mixed bridge area: strictly inside the region, covering the
-/// `(1 mm, 1 mm)` and `(1 mm, -1 mm)` corners of [`INNER_RECT`] but neither
-/// negative-x corner. Asymmetric on purpose — a points-only reversal changes
-/// which points the flag vector describes.
-const BRIDGE_MIN_UNITS: i64 = 0;
-const BRIDGE_MAX_UNITS: i64 = 15_000;
+/// wound clockwise, with `extra` additional collinear junctions spread over its
+/// bottom and top edges. Subdividing two edges keeps the ring simple and
+/// clockwise, makes it exactly `5 + extra` junctions long, and gives every
+/// added point `y == ±half`, so none lands on the overhang band boundary. The
+/// integer interpolation never reproduces an existing corner: the accepted
+/// half-extent floor is 1 mm and the extra count is below the junction ceiling.
+fn outer_ring(half: i64, extra: usize) -> Vec<(i64, i64)> {
+    let bottom = extra / 2;
+    let top = extra - bottom;
+    let mut ring = Vec::with_capacity(CLOSED_RECT_JUNCTIONS + extra);
+    ring.push((half, half));
+    ring.push((half, -half));
+    // Bottom edge, from `(+half, -half)` toward `(-half, -half)`.
+    for index in 1..=bottom {
+        let x = half - 2 * half * index as i64 / (bottom as i64 + 1);
+        ring.push((x, -half));
+    }
+    ring.push((-half, -half));
+    ring.push((-half, half));
+    // Top edge, from `(-half, half)` toward `(+half, half)`.
+    for index in 1..=top {
+        let x = -half + 2 * half * index as i64 / (top as i64 + 1);
+        ring.push((x, half));
+    }
+    ring.push((half, half));
+    ring
+}
 
 /// An axis-aligned rectangle in canonical units, wound counter-clockwise.
 fn rect_units(x0: i64, y0: i64, x1: i64, y1: i64) -> ExPolygon {
@@ -333,36 +424,39 @@ fn rect_units(x0: i64, y0: i64, x1: i64, y1: i64) -> ExPolygon {
     }
 }
 
-fn region_rect() -> ExPolygon {
-    rect_units(
-        -REGION_HALF_UNITS,
-        -REGION_HALF_UNITS,
-        REGION_HALF_UNITS,
-        REGION_HALF_UNITS,
-    )
+/// The region: the square `[-half_units, +half_units]^2` derived from the
+/// scene's own sampled half-extent.
+fn region_rect(half_units: i64) -> ExPolygon {
+    rect_units(-half_units, -half_units, half_units, half_units)
 }
 
-fn mixed_bridge_rect() -> ExPolygon {
-    rect_units(
-        BRIDGE_MIN_UNITS,
-        -BRIDGE_MAX_UNITS,
-        BRIDGE_MAX_UNITS,
-        BRIDGE_MAX_UNITS,
-    )
+/// The mixed bridge band: the central square `±3 * half / 8`, strictly inside
+/// the inner rectangle. It contains every open-chain junction (at `±half/4` or
+/// less) and no inner/outer rectangle corner (at `±half/2` or `±half`).
+fn bridge_band_rect(half_units: i64) -> ExPolygon {
+    let band = 3 * half_units / 8;
+    rect_units(-band, -band, band, band)
 }
 
-/// Overhang band covering the region's lower half (`y < 0`). Every generated
-/// point's y coordinate is a nonzero multiple of 0.5 mm, so no point sits on the
-/// band boundary.
-fn lower_half_band() -> QuartileBand {
+/// The right half of the region. Used only by the deterministic
+/// reverse-trigger regression: it contains the closed inner rectangle's two
+/// positive-x corners and neither negative-x corner, so that fixture exercises
+/// asymmetric bridge flags.
+fn right_half_rect(half_units: i64) -> ExPolygon {
+    rect_units(0, -half_units, half_units, half_units)
+}
+
+/// Overhang band covering the region's lower half (`y < 0`), extended well past
+/// the region on the other three sides so every point with `y < 0` lies
+/// *strictly* inside it. The only band boundary is then `y == 0`, which no
+/// generated point ever touches (every y coordinate is a nonzero fraction of
+/// the half-extent), so the predicted quartile never depends on how the
+/// point-in-polygon test resolves a boundary.
+fn lower_half_band(half_units: i64) -> QuartileBand {
+    let reach = 2 * half_units;
     QuartileBand {
         quartile: 2,
-        polygons: vec![rect_units(
-            -REGION_HALF_UNITS,
-            -REGION_HALF_UNITS,
-            REGION_HALF_UNITS,
-            0,
-        )],
+        polygons: vec![rect_units(-reach, -reach, reach, 0)],
     }
 }
 
@@ -408,14 +502,17 @@ fn make_line(
     }
 }
 
-/// Written ceiling for `max_junctions`; `MIN_JUNCTIONS` is the smallest bound
-/// that still admits the repeated-endpoint rectangle witness.
-const MIN_JUNCTIONS: u64 = 5;
+/// The smallest `max_junctions` bound that can admit the five-line roster; a
+/// lower bound is rejected before sampling. A higher bound is sampled up to and
+/// the difference becomes extra collinear junctions on the outer rectangle.
+const MIN_JUNCTIONS: u64 = ROSTER_JUNCTIONS as u64;
+/// Written ceiling for `max_junctions`.
 const MAX_JUNCTIONS_CEILING: u64 = 64;
 /// `max_abs_mm_units` is the absolute coordinate bound of the generated geometry
-/// in slicer units (1 unit = 1e-4 mm). `MIN_ABS_MM_UNITS` admits the interior
-/// rectangle witness; the ceiling is 100 mm.
-const MIN_ABS_MM_UNITS: u64 = 20_000;
+/// in slicer units (1 unit = 1e-4 mm). `MIN_ABS_MM_UNITS` is a 1 mm half-extent,
+/// the smallest region the roster's fractions stay nondegenerate in; the
+/// ceiling is 100 mm.
+const MIN_ABS_MM_UNITS: u64 = 10_000;
 const MAX_ABS_MM_UNITS_CEILING: u64 = 1_000_000;
 /// `max_spacing_units` bounds one junction's bead spacing in slicer units.
 const MIN_SPACING_UNITS: u64 = 1;
@@ -432,7 +529,7 @@ const WIDTH_DOMAIN_MM_CEILING: f64 = 10.0;
 /// Checked generation bounds for `M-ARACHNE-BUILD`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct BuildLimits {
-    /// Maximum junctions in one generated line.
+    /// Maximum junctions across the whole generated roster.
     max_junctions: usize,
     /// Absolute coordinate bound, in slicer units (1 unit = 1e-4 mm).
     max_abs_mm_units: i64,
@@ -452,15 +549,15 @@ fn checked_build_limits(
 ) -> Result<BuildLimits, String> {
     if !(MIN_JUNCTIONS..=MAX_JUNCTIONS_CEILING).contains(&max_junctions) {
         return Err(format!(
-            "max_junctions must be in {MIN_JUNCTIONS}..={MAX_JUNCTIONS_CEILING} \
-             (the repeated-endpoint rectangle witness needs {MIN_JUNCTIONS} junctions), \
-             got {max_junctions}"
+            "max_junctions must be in {MIN_JUNCTIONS}..={MAX_JUNCTIONS_CEILING} (the five-line \
+             roster needs {MIN_JUNCTIONS} junctions: three closed lines at \
+             {CLOSED_RECT_JUNCTIONS} each plus two open chains at four each), got {max_junctions}"
         ));
     }
     if !(MIN_ABS_MM_UNITS..=MAX_ABS_MM_UNITS_CEILING).contains(&max_abs_mm_units) {
         return Err(format!(
             "max_abs_mm_units must be in {MIN_ABS_MM_UNITS}..={MAX_ABS_MM_UNITS_CEILING} \
-             (the {REGION_HALF_UNITS}-unit interior rectangle witness must fit), \
+             (a {MIN_ABS_MM_UNITS}-unit, 1 mm half-extent must fit the roster), \
              got {max_abs_mm_units}"
         ));
     }
@@ -474,6 +571,17 @@ fn checked_build_limits(
         return Err(format!(
             "max_height_units must be in {MIN_HEIGHT_UNITS}..={MAX_HEIGHT_UNITS_CEILING}, \
              got {max_height_units}"
+        ));
+    }
+    // The roster hands out one strictly increasing integer spacing per junction,
+    // and every one must stay within the declared spacing bound. This holds for
+    // every sampled total at or below `max_junctions` exactly when the bound
+    // itself is at least one unit per junction.
+    if max_spacing_units < max_junctions {
+        return Err(format!(
+            "max_spacing_units {max_spacing_units} is smaller than max_junctions \
+             {max_junctions}: the roster needs one strictly increasing unit spacing per junction \
+             inside the declared spacing bound"
         ));
     }
     // Bead/geometry domain: a bead and a layer must each fit twice inside the
@@ -533,6 +641,12 @@ struct BuildWitness {
     thin_enabled: bool,
     contour_ccw: bool,
     g7_reverse: bool,
+    /// The roster is the two-line region (outer + closed inner), so canonical
+    /// `traverse_extrusions`' `pg_extrusions.size() == 2` term applies.
+    two_line_region: bool,
+    /// The closed inner rectangle is wound counter-clockwise (a hole under
+    /// `ExtrusionLine::is_contour`) instead of clockwise (a contour).
+    inner_ccw: bool,
 }
 
 /// One generated `build_walls` case.
@@ -544,55 +658,117 @@ struct BuildScene {
     g7_reverse: bool,
     print_thin_walls: bool,
     layer_height_mm: f32,
+    /// The sampled region half-extent, in slicer units. The region, every roster
+    /// shape and the mixed bridge band are fractions of it.
+    half_units: i64,
+    /// The junction total this case asked for, in `MIN_JUNCTIONS..=max_junctions`.
+    /// The comparator asserts the emitted roster matches it exactly.
+    junction_total: usize,
     witness: BuildWitness,
 }
 
-/// Build the roster. Its structure is derived entirely from the `no_shrink` mode
-/// word; only the layer height and the bead-spacing base are shrinkable, and
-/// neither changes the witness.
-fn build_scene(
+/// One draw of the generated `M-ARACHNE-BUILD` domain.
+///
+/// `mode` is `no_shrink` because it selects the contract branch; the layer
+/// height and bead-spacing base are shrinkable without changing that branch.
+/// `half_units` and `junction_total` are the bound-driven draws: they come from
+/// `max_abs_mm_units` and `max_junctions` respectively, not from fixed
+/// constants, and shrinking them changes only geometry and roster length.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BuildDraw {
     mode: u32,
     height_units: u32,
     spacing_base_units: u32,
-    limits: &BuildLimits,
-) -> BuildScene {
+    half_units: i64,
+    junction_total: usize,
+}
+
+/// The bead-spacing base range shared by the strategy and the deterministic
+/// controls: `Spacings` hands out one strictly increasing integer unit spacing
+/// per junction, and the widest base still leaves room for every junction the
+/// bound can generate inside `max_spacing_units`.
+fn spacing_base_band(limits: &BuildLimits) -> (u32, u32) {
+    let headroom = limits.max_junctions as u32 + 1;
+    let step = (limits.max_spacing_units / (2 * headroom)).max(1);
+    let widest = limits
+        .max_spacing_units
+        .saturating_sub(step.saturating_mul(headroom))
+        .max(step);
+    (step, widest)
+}
+
+/// Build the roster. Its structure is derived entirely from the `no_shrink` mode
+/// word, while the region half-extent and the junction total are derived from
+/// the accepted bounds: every shape is a fraction of the sampled half-extent
+/// (see [`roster_geometry`]), and the shortfall between the mode's roster count
+/// and the sampled total becomes extra collinear junctions on the outer
+/// rectangle, so the emitted total is exactly the sampled one.
+fn build_scene(draw: BuildDraw, limits: &BuildLimits) -> BuildScene {
+    let BuildDraw {
+        mode,
+        height_units,
+        spacing_base_units,
+        half_units,
+        junction_total,
+    } = draw;
     let contour_should_be_ccw = mode & 1 != 0;
     let g7_reverse = mode & 2 != 0;
     let print_thin_walls = mode & 4 != 0;
     let bridge_present = mode & 8 != 0;
+    let two_line_region = mode & 16 != 0;
+    let inner_ccw = mode & 32 != 0;
 
-    let step_units = (limits.max_spacing_units / 64).max(1);
+    let (step_units, widest_base_units) = spacing_base_band(limits);
     let mut spacings = Spacings {
-        next_units: spacing_base_units.min(limits.max_spacing_units),
+        next_units: spacing_base_units.min(widest_base_units),
         step_units,
     };
 
-    let lines = vec![
-        // Explicitly closed outer wall on the region boundary, clockwise.
-        make_line(&OUTER_RECT, 0, false, true, &mut spacings),
-        // Explicitly closed inner wall, clockwise; two of its five points sit
-        // strictly inside the mixed bridge area.
-        make_line(&INNER_RECT, 1, false, true, &mut spacings),
-        // Open inner chain, counter-clockwise, distinct endpoints.
-        make_line(&OPEN_CCW, 2, false, false, &mut spacings),
-        // Open inner chain, the point-order reverse of the previous one.
-        make_line(&OPEN_CW, 3, false, false, &mut spacings),
-        // Odd inset-0 line: `ThinWall` when thin walls are enabled, otherwise an
-        // ordinary `OuterWall`. Its first corner is inside the bridge area.
-        make_line(&THIN_RECT, 0, true, true, &mut spacings),
-        // Empty line: a legitimate Arachne input that must produce no wall.
-        ExtrusionLine {
-            junctions: Vec::new(),
-            inset_idx: 4,
-            is_odd: false,
-            is_closed: false,
-        },
+    let roster_base = if two_line_region {
+        TWO_LINE_ROSTER_JUNCTIONS
+    } else {
+        ROSTER_JUNCTIONS
+    };
+    let geometry = roster_geometry(half_units, junction_total.saturating_sub(roster_base));
+    let inner_rect: &[(i64, i64)] = if inner_ccw {
+        &geometry.inner_ccw
+    } else {
+        &geometry.inner
+    };
+    let mut lines = vec![
+        // Explicitly closed outer wall on the region boundary, clockwise, with
+        // the bound-derived extra junctions on its horizontal edges.
+        make_line(&geometry.outer, 0, false, true, &mut spacings),
+        // Explicitly closed inner wall, clockwise or counter-clockwise per the
+        // mode word.
+        make_line(inner_rect, 1, false, true, &mut spacings),
     ];
+    if !two_line_region {
+        lines.extend([
+            // Open inner chain, counter-clockwise, distinct endpoints, strictly
+            // inside the bridge band.
+            make_line(&geometry.open_ccw, 2, false, false, &mut spacings),
+            // Open inner chain, the point-order reverse of the previous one.
+            make_line(&geometry.open_cw, 3, false, false, &mut spacings),
+            // Odd inset-0 line: `ThinWall` when thin walls are enabled,
+            // otherwise an ordinary `OuterWall`. It lies inside the bridge band,
+            // so the ThinWall bridge exclusion has a non-vacuous witness.
+            make_line(&geometry.thin, 0, true, true, &mut spacings),
+        ]);
+    }
+    // Empty line: a legitimate Arachne input that must produce no wall and does
+    // not count toward the region's line total.
+    lines.push(ExtrusionLine {
+        junctions: Vec::new(),
+        inset_idx: 4,
+        is_odd: false,
+        is_closed: false,
+    });
 
     BuildScene {
         lines,
         bridge_areas: if bridge_present {
-            vec![mixed_bridge_rect()]
+            vec![bridge_band_rect(half_units)]
         } else {
             Vec::new()
         },
@@ -600,31 +776,49 @@ fn build_scene(
         g7_reverse,
         print_thin_walls,
         layer_height_mm: mm(i64::from(height_units.min(limits.max_height_units))),
+        half_units,
+        junction_total,
         witness: BuildWitness {
             bridge_present,
             thin_enabled: print_thin_walls,
             contour_ccw: contour_should_be_ccw,
             g7_reverse,
+            two_line_region,
+            inner_ccw,
         },
     }
 }
 
 fn build_strategy(limits: &BuildLimits) -> BoxedStrategy<BuildScene> {
     let limits = *limits;
-    let step_units = (limits.max_spacing_units / 64).max(1);
-    let widest_base = limits
-        .max_spacing_units
-        .saturating_sub(step_units.saturating_mul(ROSTER_JUNCTIONS + 1))
-        .max(step_units);
+    let (step_units, widest_base) = spacing_base_band(&limits);
     let lowest_height = MIN_GENERATED_HEIGHT_UNITS.min(limits.max_height_units);
     (
         any::<u32>().no_shrink(),
         lowest_height..=limits.max_height_units,
         step_units..=widest_base,
+        // The region half-extent comes from the coordinate bound instead of a
+        // fixed constant, so every accepted profile samples its own coordinate
+        // domain: 1 mm up to `max_abs_mm_units`.
+        (MIN_ABS_MM_UNITS as i64)..=limits.max_abs_mm_units,
+        // The roster's total junction count likewise comes from the bound: the
+        // smallest total that admits the five-line roster up to `max_junctions`.
+        (MIN_JUNCTIONS as usize)..=limits.max_junctions,
     )
-        .prop_map(move |(mode, height_units, spacing_base_units)| {
-            build_scene(mode, height_units, spacing_base_units, &limits)
-        })
+        .prop_map(
+            move |(mode, height_units, spacing_base_units, half_units, junction_total)| {
+                build_scene(
+                    BuildDraw {
+                        mode,
+                        height_units,
+                        spacing_base_units,
+                        half_units,
+                        junction_total,
+                    },
+                    &limits,
+                )
+            },
+        )
         .boxed()
 }
 
@@ -633,10 +827,10 @@ fn region_for(scene: &BuildScene) -> SliceRegionView {
         .object_id("obj-arachne-property")
         .region_id(1)
         .z(Z_MM)
-        .add_polygon(region_rect())
+        .add_polygon(region_rect(scene.half_units))
         .bridge_areas(scene.bridge_areas.clone())
-        .previous_layer_boundary(vec![region_rect()])
-        .overhang_quartile_polygons(vec![lower_half_band()])
+        .previous_layer_boundary(vec![region_rect(scene.half_units)])
+        .overhang_quartile_polygons(vec![lower_half_band(scene.half_units)])
         .build()
 }
 
@@ -681,26 +875,38 @@ fn run_build_walls(scene: &BuildScene, region: &SliceRegionView) -> Result<Vec<W
         .map_err(|error| error.to_string())
 }
 
-/// The winding the emitted loop must end up with, from the documented contract:
-/// contours follow `wall_direction` (counter-clockwise here), holes wind
-/// opposite, and `overhang_reverse` flips both on the layers it applies to. This
-/// is an independent statement of the G1 contract, not the production
+/// The winding a CLOSED emitted loop must end up with, restated from canonical
+/// `traverse_extrusions` (`PerimeterGenerator.cpp`):
+///
+/// ```text
+/// if ((wall_direction == CounterClockwise) ==
+///     (pg_extrusion.is_contour || pg_extrusions.size() == 2))
+///     make_counter_clockwise(); else make_clockwise();
+/// ```
+///
+/// where `is_contour` is `ExtrusionLine::is_contour` (`ExtrusionLine.cpp`):
+/// `is_closed && polygon(junctions).is_clockwise()`. Contour/hole therefore
+/// comes from the line's own input winding, never from `inset_idx`, and
+/// `region_line_count` is the region's nonempty line total. `g7_reverse`
+/// (`overhang_reverse` on the layers it applies to) flips the result. Open
+/// lines are never reoriented by canonical, so callers consult this only for
+/// closed lines. This is an independent statement, not the production
 /// expression.
-fn expected_want_ccw(inset_idx: u32, contour_should_be_ccw: bool, g7_reverse: bool) -> bool {
-    let base_want_ccw = if inset_idx == 0 {
-        contour_should_be_ccw
-    } else {
-        !contour_should_be_ccw
-    };
-    if g7_reverse {
-        !base_want_ccw
-    } else {
-        base_want_ccw
-    }
+fn expected_want_ccw(
+    is_closed: bool,
+    input_clockwise: bool,
+    region_line_count: usize,
+    contour_should_be_ccw: bool,
+    g7_reverse: bool,
+) -> bool {
+    let is_contour = is_closed && input_clockwise;
+    let base_want_ccw = contour_should_be_ccw == (is_contour || region_line_count == 2);
+    base_want_ccw != g7_reverse
 }
 
 /// Boundary type when the region carries no paint annotations: the documented
-/// `build_wall_flags` fallback keys off `is_outer` alone.
+/// `build_wall_flags` fallback keys off `is_outer` alone. This is the PnP paint
+/// classification only; it plays no part in the winding model.
 fn expected_boundary_type(inset_idx: u32) -> WallBoundaryType {
     if inset_idx == 0 {
         WallBoundaryType::ExteriorSurface
@@ -781,15 +987,16 @@ fn predicted_bridge_membership(
 }
 
 /// Exact signed distance to the axis-aligned region boundary for a point inside
-/// it, derived analytically from the square's geometry.
-fn expected_signed_distance_mm(x_mm: f32, y_mm: f32) -> f64 {
-    let half_mm = f64::from(units_to_mm(REGION_HALF_UNITS));
+/// it, derived analytically from the square's own half-extent.
+fn expected_signed_distance_mm(x_mm: f32, y_mm: f32, half_units: i64) -> f64 {
+    let half_mm = f64::from(units_to_mm(half_units));
     let nearest_edge = f64::from(x_mm.abs()).max(f64::from(y_mm.abs()));
     -(half_mm - nearest_edge)
 }
 
 /// Verify every nonempty input line against an independent model of the
-/// conversion, and confirm the empty line produced nothing.
+/// conversion, confirm the empty line produced nothing, and confirm the
+/// bound-driven parts of the draw actually reached the roster.
 fn verify_build_walls(
     scene: &BuildScene,
     limits: &BuildLimits,
@@ -805,6 +1012,44 @@ fn verify_build_walls(
             "expected one wall per nonempty input line ({} walls), observed {}",
             nonempty.len(),
             walls.len()
+        ));
+    }
+
+    // Bound-driven roster length: the observed input total must equal the
+    // sampled total and stay inside the declared junction bound.
+    let input_total: usize = scene.lines.iter().map(|line| line.junctions.len()).sum();
+    if input_total != scene.junction_total {
+        return Err(format!(
+            "the generated roster carries {input_total} junctions but the draw asked for {}",
+            scene.junction_total
+        ));
+    }
+    if input_total > limits.max_junctions {
+        return Err(format!(
+            "the generated roster carries {input_total} junctions, above the max_junctions \
+             bound {}",
+            limits.max_junctions
+        ));
+    }
+
+    // Bound-driven coordinate extent: the outer rectangle must reach exactly
+    // ±half_units and nothing may exceed it.
+    let observed_half = scene
+        .lines
+        .iter()
+        .flat_map(|line| line.junctions.iter())
+        .map(|junction| {
+            mm_to_units(junction.p.x)
+                .abs()
+                .max(mm_to_units(junction.p.y).abs())
+        })
+        .max()
+        .unwrap_or(0);
+    if observed_half != scene.half_units {
+        return Err(format!(
+            "the generated geometry reaches {observed_half} units but the draw sampled a \
+             {} unit half-extent",
+            scene.half_units
         ));
     }
 
@@ -873,20 +1118,25 @@ fn verify_build_walls(
             ));
         }
 
-        // Which way the loop ends up, from the documented winding contract.
-        let input_ccw = signed_area(
+        // Output order, from the canonical winding contract: an open line keeps
+        // its input order; a closed line is reversed iff its input winding
+        // disagrees with the canonical target.
+        let input_area = signed_area(
             &line
                 .junctions
                 .iter()
                 .map(|junction| (f64::from(junction.p.x), f64::from(junction.p.y)))
                 .collect::<Vec<_>>(),
-        ) > 0.0;
+        );
+        let input_ccw = input_area > 0.0;
         let want_ccw = expected_want_ccw(
-            line.inset_idx,
+            line.is_closed,
+            input_area < 0.0,
+            nonempty.len(),
             scene.contour_should_be_ccw,
             scene.g7_reverse,
         );
-        let reversed = count >= 3 && input_ccw != want_ccw;
+        let reversed = line.is_closed && count >= 3 && input_ccw != want_ccw;
 
         for index in 0..count {
             let source_index = if reversed { count - 1 - index } else { index };
@@ -982,8 +1232,8 @@ fn verify_build_walls(
                     "{where_}: a nonempty previous-layer boundary must stamp a distance"
                 ));
             };
-            let expected_distance =
-                expected_signed_distance_mm(point.x, point.y) + 0.5 * f64::from(point.width);
+            let expected_distance = expected_signed_distance_mm(point.x, point.y, scene.half_units)
+                + 0.5 * f64::from(point.width);
             if (f64::from(distance) - expected_distance).abs() > 1.0e-4 {
                 return Err(format!(
                     "{where_}: overhang distance {distance} does not equal the analytical \
@@ -993,16 +1243,43 @@ fn verify_build_walls(
         }
     }
 
-    if scene.bridge_areas.is_empty() {
+    // Total output points equal the roster's junction total: no junction is
+    // dropped or duplicated across the batch.
+    let output_total: usize = walls.iter().map(|wall| wall.path.points.len()).sum();
+    if output_total != input_total {
+        return Err(format!(
+            "the batch emitted {output_total} points for {input_total} input junctions"
+        ));
+    }
+
+    // Bridge population, predicted from the roster's own coordinates before any
+    // flag is read. A non-empty band must produce both populations exactly when
+    // it contains an Outer/Inner roster junction. The two-line roster has no
+    // such junction inside the band (its only corners are at ±half/2 and
+    // ±half), so there a non-empty band must leave every flag false.
+    let mut expected_positive = false;
+    for line in &nonempty {
+        let (_, loop_type) =
+            expected_classification(line.is_odd, line.inset_idx, scene.print_thin_walls);
+        if !matches!(loop_type, LoopType::Outer | LoopType::Inner) {
+            continue;
+        }
+        for junction in &line.junctions {
+            if predicted_bridge_membership(junction.p.x, junction.p.y, &scene.bridge_areas)? {
+                expected_positive = true;
+            }
+        }
+    }
+    if !expected_positive {
         if saw_bridge_true {
             return Err(String::from(
-                "an empty bridge view must leave every is_bridge flag false",
+                "no Outer/Inner roster junction lies inside a bridge area, so every is_bridge \
+                 flag must be false",
             ));
         }
     } else if !(saw_bridge_true && saw_bridge_false) {
         return Err(format!(
-            "the mixed bridge area must produce both populations, observed positive={} \
-             negative={}",
+            "the bridge band must produce both populations, observed positive={} negative={}",
             saw_bridge_true, saw_bridge_false
         ));
     }
@@ -1036,6 +1313,11 @@ fn proptest_module_arachne_build_walls() {
             .expect("max_height_units bound"),
     )
     .expect("M-ARACHNE-BUILD safety ceilings");
+    // Deterministic prelude: the canonical-winding witnesses and the
+    // bounds-reach-generation control run before the generated campaign, each
+    // under its own fresh `CaseGuard`.
+    build_winding_witnesses();
+    build_bounds_drive_geometry_and_junctions();
     let strategy = build_strategy(&limits);
     run.check(&strategy, |scene, _guard| {
         check_build_scene(&scene, &limits)
@@ -1294,6 +1576,365 @@ fn proptest_module_arachne_sequence() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Deterministic winding witnesses: canonical `traverse_extrusions` orientation.
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Canonical `traverse_extrusions` (`PerimeterGenerator.cpp`) reorients only
+// closed lines, toward `(wall_direction == CCW) == (is_contour ||
+// pg_extrusions.size() == 2)`, with `is_contour` from `ExtrusionLine::is_contour`
+// (`ExtrusionLine.cpp`): closed and clockwise. Each witness below is a case the
+// former inset-based rule (inset 0 = contour, inset > 0 = hole, open lines
+// reoriented too) got wrong by reversing a line canonical leaves alone.
+
+/// Fixed, strictly increasing witness spacings (0.40 mm upward, 0.01 mm steps).
+fn witness_spacings() -> Spacings {
+    Spacings {
+        next_units: 4_000,
+        step_units: 100,
+    }
+}
+
+/// The fixed witness roster: the same fractional shapes the generated property
+/// uses, evaluated at [`WITNESS_HALF_UNITS`] with no extra outer junctions.
+fn witness_geometry() -> RosterGeometry {
+    roster_geometry(WITNESS_HALF_UNITS, 0)
+}
+
+/// A bridge-free, thin-wall-off, `g7_reverse`-off scene over `lines`.
+fn winding_scene(
+    lines: Vec<ExtrusionLine>,
+    contour_should_be_ccw: bool,
+    inner_ccw: bool,
+) -> BuildScene {
+    let two_line_region = lines
+        .iter()
+        .filter(|line| !line.junctions.is_empty())
+        .count()
+        == 2;
+    let junction_total = lines.iter().map(|line| line.junctions.len()).sum();
+    BuildScene {
+        lines,
+        bridge_areas: Vec::new(),
+        contour_should_be_ccw,
+        g7_reverse: false,
+        print_thin_walls: false,
+        layer_height_mm: REGRESSION_HEIGHT_MM,
+        half_units: WITNESS_HALF_UNITS,
+        junction_total,
+        witness: BuildWitness {
+            bridge_present: false,
+            thin_enabled: false,
+            contour_ccw: contour_should_be_ccw,
+            g7_reverse: false,
+            two_line_region,
+            inner_ccw,
+        },
+    }
+}
+
+/// Run `build_walls` on `scene`, assert the `inset_idx` wall kept its input
+/// point order exactly, then run the full comparator. Returns the emitted
+/// wall's signed area.
+fn expect_input_order_kept(scene: &BuildScene, inset_idx: u32, witness: &str) -> f64 {
+    let region = region_for(scene);
+    let walls = run_build_walls(scene, &region)
+        .unwrap_or_else(|error| panic!("{witness}: build_walls rejected the scene: {error}"));
+    let line = scene
+        .lines
+        .iter()
+        .find(|line| line.inset_idx == inset_idx)
+        .unwrap_or_else(|| panic!("{witness}: fixture has no inset {inset_idx} line"));
+    let wall = walls
+        .iter()
+        .find(|wall| wall.perimeter_index == inset_idx)
+        .unwrap_or_else(|| panic!("{witness}: no wall for inset {inset_idx}"));
+    let input: Vec<(f32, f32)> = line.junctions.iter().map(|j| (j.p.x, j.p.y)).collect();
+    let observed: Vec<(f32, f32)> = wall.path.points.iter().map(|p| (p.x, p.y)).collect();
+    assert_eq!(
+        observed, input,
+        "{witness}: canonical traverse_extrusions keeps this line's input order, but build_walls \
+         emitted a different order"
+    );
+    verify_build_walls(scene, &valid_build_limits(), &walls)
+        .unwrap_or_else(|error| panic!("{witness}: full comparator rejected the result: {error}"));
+    signed_area(&points_as_f64(&wall.path.points))
+}
+
+/// Witness (a): an open counter-clockwise chain in a three-line region under
+/// `wall_direction = counter_clockwise`. Canonical never reorients an open line.
+fn winding_witness_open_path_keeps_order() {
+    let _guard = CaseGuard::new();
+    let geometry = witness_geometry();
+    let mut spacings = witness_spacings();
+    let scene = winding_scene(
+        vec![
+            make_line(&geometry.outer, 0, false, true, &mut spacings),
+            make_line(&geometry.open_ccw, 1, false, false, &mut spacings),
+            make_line(&geometry.thin, 2, false, true, &mut spacings),
+        ],
+        true,
+        false,
+    );
+    expect_input_order_kept(
+        &scene,
+        1,
+        "winding witness (a) open CCW path, 3-line region, wall_direction=CCW",
+    );
+}
+
+/// Witness (b): a closed clockwise inner line in a three-line region under
+/// `wall_direction = clockwise`. It is a contour by `ExtrusionLine::is_contour`,
+/// so canonical wants it clockwise and leaves it alone.
+fn winding_witness_clockwise_inner_is_contour() {
+    let _guard = CaseGuard::new();
+    let geometry = witness_geometry();
+    let mut spacings = witness_spacings();
+    let scene = winding_scene(
+        vec![
+            make_line(&geometry.outer, 0, false, true, &mut spacings),
+            make_line(&geometry.inner, 1, false, true, &mut spacings),
+            make_line(&geometry.open_ccw, 2, false, false, &mut spacings),
+        ],
+        false,
+        false,
+    );
+    let witness = "winding witness (b) closed CW inner line is a contour, 3-line region, \
+                   wall_direction=CW";
+    let area = expect_input_order_kept(&scene, 1, witness);
+    assert!(
+        area < 0.0,
+        "{witness}: the wall must stay clockwise, signed area {area}"
+    );
+}
+
+/// Witness (c): a two-line region whose closed inner line is counter-clockwise
+/// (a hole by `ExtrusionLine::is_contour`) under `wall_direction =
+/// counter_clockwise`. `pg_extrusions.size() == 2` makes it contour-like, so
+/// canonical wants it counter-clockwise and leaves it alone.
+fn winding_witness_two_line_region_inner_is_contour_like() {
+    let _guard = CaseGuard::new();
+    let geometry = witness_geometry();
+    let mut spacings = witness_spacings();
+    let scene = winding_scene(
+        vec![
+            make_line(&geometry.outer, 0, false, true, &mut spacings),
+            make_line(&geometry.inner_ccw, 1, false, true, &mut spacings),
+        ],
+        true,
+        true,
+    );
+    let witness = "winding witness (c) closed CCW inner line in a 2-line region, \
+                   wall_direction=CCW";
+    let area = expect_input_order_kept(&scene, 1, witness);
+    assert!(
+        area > 0.0,
+        "{witness}: the wall must stay counter-clockwise, signed area {area}"
+    );
+}
+
+/// The `M-ARACHNE-BUILD` winding prelude.
+fn build_winding_witnesses() {
+    winding_witness_open_path_keeps_order();
+    winding_witness_clockwise_inner_is_contour();
+    winding_witness_two_line_region_inner_is_contour_like();
+}
+
+/// Deterministic proof that the bounds reach generation rather than decorating
+/// a fixed fixture.
+///
+/// Two accepted bound pairs are turned into scenes with the same mode and the
+/// same bead-spacing base. Only the bound-driven draw components differ:
+/// `max_abs_mm_units` sets `half_units` and `max_junctions` sets the junction
+/// total. Both scenes must run the real kernel and pass the full comparator,
+/// and their observed coordinate extents and junction counts must differ. A
+/// junction bound below the roster minimum must still fail closed before any
+/// sampling.
+fn build_bounds_drive_geometry_and_junctions() {
+    let _guard = CaseGuard::new();
+
+    let small_limits = checked_build_limits(MIN_JUNCTIONS, MIN_ABS_MM_UNITS, 4_000, 500)
+        .expect("the smallest accepted profile must be a valid bound pair");
+    let large_limits = checked_build_limits(MIN_JUNCTIONS + 9, 6 * MIN_ABS_MM_UNITS, 4_000, 500)
+        .expect("a larger accepted profile must be a valid bound pair");
+
+    let mode = 0b1000; // five-line roster with the bridge band present
+    let draw_for = |limits: &BuildLimits, junction_total: usize| BuildDraw {
+        mode,
+        height_units: 500,
+        spacing_base_units: spacing_base_band(limits).1,
+        half_units: limits.max_abs_mm_units,
+        junction_total,
+    };
+    let small = build_scene(
+        draw_for(&small_limits, MIN_JUNCTIONS as usize),
+        &small_limits,
+    );
+    let large = build_scene(
+        draw_for(&large_limits, (MIN_JUNCTIONS + 9) as usize),
+        &large_limits,
+    );
+
+    let small_junctions: usize = small.lines.iter().map(|line| line.junctions.len()).sum();
+    let large_junctions: usize = large.lines.iter().map(|line| line.junctions.len()).sum();
+    assert_eq!(
+        small_junctions, MIN_JUNCTIONS as usize,
+        "the small profile's roster must carry exactly its sampled junction total"
+    );
+    assert_eq!(
+        large_junctions,
+        (MIN_JUNCTIONS + 9) as usize,
+        "the large profile's roster must carry exactly its sampled junction total"
+    );
+    assert_ne!(
+        small_junctions, large_junctions,
+        "two different max_junctions bounds must reach generation"
+    );
+
+    let small_extent = scene_extent_units(&small);
+    let large_extent = scene_extent_units(&large);
+    assert_eq!(
+        small_extent, MIN_ABS_MM_UNITS as i64,
+        "the small profile's extent must be its own max_abs_mm_units"
+    );
+    assert_eq!(
+        large_extent,
+        (6 * MIN_ABS_MM_UNITS) as i64,
+        "the large profile's extent must be its own max_abs_mm_units"
+    );
+    assert_ne!(
+        small_extent, large_extent,
+        "two different max_abs_mm_units bounds must reach generation"
+    );
+
+    // Both scenes are real kernel inputs, not just fixture arithmetic: the
+    // emitted walls must report the same extent and the same junction total.
+    for (scene, limits) in [(&small, &small_limits), (&large, &large_limits)] {
+        let region = region_for(scene);
+        let walls = run_build_walls(scene, &region)
+            .expect("the bounds control scene must be accepted by build_walls");
+        verify_build_walls(scene, limits, &walls)
+            .expect("the bounds control scene must satisfy the full comparator");
+        let emitted_extent = walls
+            .iter()
+            .flat_map(|wall| wall.path.points.iter())
+            .map(|point| mm_to_units(point.x).abs().max(mm_to_units(point.y).abs()))
+            .max()
+            .unwrap_or(0);
+        assert_eq!(
+            emitted_extent, scene.half_units,
+            "the emitted walls must reach the bound-derived half-extent"
+        );
+        let emitted_junctions: usize = walls.iter().map(|wall| wall.path.points.len()).sum();
+        assert_eq!(
+            emitted_junctions, scene.junction_total,
+            "the emitted walls must carry the bound-derived junction total"
+        );
+    }
+
+    // Representative accepted profiles across the whole declared domain, with a
+    // sample of mode words and both ends of each profile's junction range. This
+    // is the shape of what the registry campaign will draw once the profile
+    // bounds are raised to the new roster minimum.
+    for (junctions, abs_units, spacing_units, height_units) in [
+        (MIN_JUNCTIONS, MIN_ABS_MM_UNITS, 4_000, 500),
+        (MIN_JUNCTIONS + 9, 6 * MIN_ABS_MM_UNITS, 4_000, 500),
+        (
+            MAX_JUNCTIONS_CEILING,
+            MAX_ABS_MM_UNITS_CEILING,
+            8_000,
+            3_000,
+        ),
+    ] {
+        let limits = checked_build_limits(junctions, abs_units, spacing_units, height_units)
+            .expect("the domain-sweep profile must be a valid bound pair");
+        for total in [MIN_JUNCTIONS as usize, limits.max_junctions] {
+            for mode in [
+                0b000000u32,
+                0b000001,
+                0b001000,
+                0b010000,
+                0b101010,
+                0b111111,
+            ] {
+                let scene = build_scene(
+                    BuildDraw {
+                        mode,
+                        height_units: height_units as u32,
+                        spacing_base_units: spacing_base_band(&limits).1,
+                        half_units: limits.max_abs_mm_units,
+                        junction_total: total,
+                    },
+                    &limits,
+                );
+                let region = region_for(&scene);
+                let walls = run_build_walls(&scene, &region).unwrap_or_else(|error| {
+                    panic!(
+                        "profile {junctions}/{abs_units}, mode {mode:#08b}, {total} junctions: \
+                         build_walls rejected: {error}"
+                    )
+                });
+                verify_build_walls(&scene, &limits, &walls).unwrap_or_else(|error| {
+                    panic!(
+                        "profile {junctions}/{abs_units}, mode {mode:#08b}, {total} junctions: \
+                         comparator rejected: {error}"
+                    )
+                });
+            }
+        }
+    }
+
+    // A bound below the roster minimum still fails closed before sampling.
+    let error = checked_build_limits(MIN_JUNCTIONS - 1, MIN_ABS_MM_UNITS, 4_000, 500)
+        .expect_err("a junction bound below the roster minimum must be rejected");
+    assert!(
+        error.contains("max_junctions"),
+        "the rejection must name the junction bound, got {error}"
+    );
+    let error = checked_build_limits(MIN_JUNCTIONS, MIN_ABS_MM_UNITS - 1, 4_000, 500)
+        .expect_err("a coordinate bound below the half-extent floor must be rejected");
+    assert!(
+        error.contains("max_abs_mm_units"),
+        "the rejection must name the coordinate bound, got {error}"
+    );
+}
+
+/// The observed coordinate extent of a generated scene: the largest absolute
+/// junction coordinate, in slicer units.
+fn scene_extent_units(scene: &BuildScene) -> i64 {
+    scene
+        .lines
+        .iter()
+        .flat_map(|line| line.junctions.iter())
+        .map(|junction| {
+            mm_to_units(junction.p.x)
+                .abs()
+                .max(mm_to_units(junction.p.y).abs())
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+#[test]
+fn build_walls_winding_witness_open_path_keeps_order() {
+    winding_witness_open_path_keeps_order();
+}
+
+#[test]
+fn build_walls_winding_witness_clockwise_inner_is_contour() {
+    winding_witness_clockwise_inner_is_contour();
+}
+
+#[test]
+fn build_walls_winding_witness_two_line_region_inner_is_contour_like() {
+    winding_witness_two_line_region_inner_is_contour_like();
+}
+
+#[test]
+fn build_walls_bounds_drive_geometry_and_junctions() {
+    build_bounds_drive_geometry_and_junctions();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Deterministic regression: the reverse-trigger case with unequal widths.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1303,12 +1944,21 @@ fn proptest_module_arachne_sequence() {
 /// vector. On this concrete unequal-width, asymmetric-bridge, closed rectangle
 /// the winding branch fires and every index-aligned width/flag was attached to
 /// the wrong geometric point.
+///
+/// The fixture is a closed counter-clockwise inner rectangle in a three-line
+/// region under `wall_direction = counter_clockwise`, which canonical
+/// `traverse_extrusions` reverses (see the scene comment). It also reversed
+/// under the former inset-based winding rule, so it is not a falsifier of the
+/// winding correction; the three `build_walls_winding_witness_*` tests are.
 #[test]
 fn build_walls_reversed_variable_width_keeps_profiles_and_bridge_flags_attached() {
-    // Clockwise closed inner wall at half the region extent, with an explicit
-    // repeated endpoint and four unequal bead spacings on the distinct corners.
+    let geometry = witness_geometry();
+    // Counter-clockwise closed inner wall at half the witness region extent,
+    // with an explicit repeated endpoint and four unequal bead spacings on the
+    // distinct corners.
     let spacings = [0.50_f32, 0.60, 0.70, 0.80, 0.50];
-    let junctions: Vec<ExtrusionJunction> = INNER_RECT
+    let junctions: Vec<ExtrusionJunction> = geometry
+        .inner_ccw
         .iter()
         .zip(spacings)
         .map(|((x, y), spacing)| ExtrusionJunction {
@@ -1322,49 +1972,67 @@ fn build_walls_reversed_variable_width_keeps_profiles_and_bridge_flags_attached(
         is_odd: false,
         is_closed: true,
     };
+    // Two companion lines make this a three-line region, so canonical's
+    // `pg_extrusions.size() == 2` term does not apply.
+    let mut companion_spacings = witness_spacings();
+    let lines = vec![
+        make_line(&geometry.outer, 0, false, true, &mut companion_spacings),
+        line,
+        make_line(&geometry.open_cw, 2, false, false, &mut companion_spacings),
+    ];
+    let junction_total: usize = lines.iter().map(|line| line.junctions.len()).sum();
 
     let scene = BuildScene {
-        lines: vec![line],
-        // The bridge covers the (1 mm, 1 mm) and (1 mm, -1 mm) corners only.
-        bridge_areas: vec![mixed_bridge_rect()],
-        // `wall_direction = clockwise`: the contour winds clockwise and an inner
-        // wall is a hole, so it must wind counter-clockwise. This clockwise input
-        // therefore has to be reversed.
-        contour_should_be_ccw: false,
+        lines,
+        // The bridge band is the region's right half for this fixture: it
+        // covers the two positive-x corners of the closed inner rectangle and
+        // neither negative-x corner.
+        bridge_areas: vec![right_half_rect(WITNESS_HALF_UNITS)],
+        // `wall_direction = counter_clockwise`. A closed input wound CCW is a
+        // hole under canonical `ExtrusionLine::is_contour`, and with three lines
+        // in the region `traverse_extrusions` makes it clockwise. This
+        // counter-clockwise input therefore has to be reversed.
+        contour_should_be_ccw: true,
         g7_reverse: false,
         print_thin_walls: false,
         layer_height_mm: REGRESSION_HEIGHT_MM,
+        half_units: WITNESS_HALF_UNITS,
+        junction_total,
         witness: BuildWitness {
             bridge_present: true,
             thin_enabled: false,
-            contour_ccw: false,
+            contour_ccw: true,
             g7_reverse: false,
+            two_line_region: false,
+            inner_ccw: true,
         },
     };
-    let limits = BuildLimits {
-        max_junctions: 8,
-        max_abs_mm_units: REGION_HALF_UNITS,
-        max_spacing_units: 10_000,
-        max_height_units: 3_000,
-    };
+    let limits = valid_build_limits();
 
     let region = region_for(&scene);
     let walls =
         run_build_walls(&scene, &region).expect("the concrete reverse-trigger case is valid");
-    assert_eq!(walls.len(), 1, "one nonempty line yields exactly one wall");
-    let wall = &walls[0];
+    assert_eq!(
+        walls.len(),
+        3,
+        "three nonempty lines yield exactly three walls"
+    );
+    let wall = walls
+        .iter()
+        .find(|wall| wall.perimeter_index == 1)
+        .expect("the inset-1 target line must have produced a wall");
     assert_eq!(
         wall.path.points.len(),
-        INNER_RECT.len(),
+        geometry.inner_ccw.len(),
         "the wall must preserve every input junction, including the repeated endpoint"
     );
 
-    // The winding branch really fired: the emitted rectangle is counter-clockwise
-    // while the input was clockwise.
+    // The winding branch really fired: the emitted rectangle is clockwise while
+    // the input was counter-clockwise.
     let emitted_area = signed_area(&points_as_f64(&wall.path.points));
     assert!(
-        emitted_area > 0.0,
-        "the clockwise input must be reversed into a counter-clockwise inner wall, got signed \
+        emitted_area < 0.0,
+        "the counter-clockwise (hole) input must be reversed into a clockwise wall, got signed \
          area {emitted_area}"
     );
 
@@ -1374,8 +2042,8 @@ fn build_walls_reversed_variable_width_keeps_profiles_and_bridge_flags_attached(
     for (index, point) in wall.path.points.iter().enumerate() {
         // Independent prediction of the point order: the reversal applied to a
         // five-junction closed rectangle maps output index `i` to input index
-        // `INNER_RECT.len() - 1 - i`.
-        let source = &scene.lines[0].junctions[INNER_RECT.len() - 1 - index];
+        // `geometry.inner_ccw.len() - 1 - i`.
+        let source = &scene.lines[1].junctions[geometry.inner_ccw.len() - 1 - index];
 
         assert_eq!(
             (point.x, point.y),
@@ -1429,12 +2097,8 @@ fn build_walls_reversed_variable_width_keeps_profiles_and_bridge_flags_attached(
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn valid_build_limits() -> BuildLimits {
-    BuildLimits {
-        max_junctions: 8,
-        max_abs_mm_units: REGION_HALF_UNITS,
-        max_spacing_units: 10_000,
-        max_height_units: 3_000,
-    }
+    checked_build_limits(MIN_JUNCTIONS, WITNESS_HALF_UNITS as u64, 10_000, 3_000)
+        .expect("the deterministic witness profile is a valid bound pair")
 }
 
 fn classify_controls() {
@@ -1495,16 +2159,104 @@ fn classify_controls() {
         (ExtrusionRole::InnerWall, LoopType::Inner),
         "a deeper odd line is an inner wall, never a gap fill"
     );
+
+    classify_shrink_retains_positivity();
+}
+
+/// Shrink control for the zero/positive inset selector.
+///
+/// The strategy's zero row is a `bool` (`true` = zero) beside a positive range
+/// `1..=max_inset_idx`. Proptest simplifies `bool` only `true -> false`, and
+/// `false` selects the positive component, so a case that starts positive can
+/// only ever shrink its inset inside `1..=max_inset_idx`. This walks real
+/// strategy trees to show that no simplification crosses from a positive inset
+/// to zero, and that a zero start is allowed to become positive (a legal case
+/// whose expectation is re-derived).
+fn classify_shrink_retains_positivity() {
+    let max_inset_idx = 8u32;
+    let strategy = classify_strategy(max_inset_idx);
+    let mut runner = proptest::test_runner::TestRunner::new(proptest::test_runner::Config {
+        cases: 1,
+        max_local_rejects: 0,
+        max_global_rejects: 0,
+        max_flat_map_regens: 0,
+        rng_algorithm: proptest::test_runner::RngAlgorithm::ChaCha,
+        rng_seed: proptest::test_runner::RngSeed::Fixed(0x5eed_c1a5),
+        failure_persistence: None,
+        ..proptest::test_runner::Config::default()
+    });
+    let mut saw_positive_start = false;
+    let mut saw_simplification = false;
+    for _ in 0..16 {
+        let mut tree = strategy
+            .new_tree(&mut runner)
+            .expect("a classify shrink-audit tree must be generated");
+        let start = tree.current().inset_idx;
+        saw_positive_start |= start > 0;
+        let mut previous = start;
+        for _ in 0..16 {
+            if !tree.simplify() {
+                break;
+            }
+            saw_simplification = true;
+            let current = tree.current().inset_idx;
+            assert!(
+                current <= max_inset_idx,
+                "shrinking left the declared inset range: {current} > {max_inset_idx}"
+            );
+            if previous > 0 {
+                assert!(
+                    current > 0,
+                    "a positive inset case shrank to zero: {previous} -> {current}"
+                );
+            }
+            previous = current;
+        }
+        if start > 0 {
+            assert!(
+                tree.current().inset_idx > 0,
+                "the final simplified tree lost the positive inset"
+            );
+        }
+    }
+    assert!(
+        saw_positive_start,
+        "the shrink audit never drew a positive-inset case, so it certifies nothing"
+    );
+    assert!(
+        saw_simplification,
+        "the shrink audit simplified nothing, so it certifies nothing"
+    );
 }
 
 fn build_controls() {
+    let limits = valid_build_limits();
+    let draw_for = |mode: u32| BuildDraw {
+        mode,
+        height_units: 2_000,
+        spacing_base_units: spacing_base_band(&limits).1,
+        half_units: limits.max_abs_mm_units,
+        junction_total: MIN_JUNCTIONS as usize,
+    };
     // Mode 0b1101: counter-clockwise contour, thin walls enabled, bridge present.
-    let scene = build_scene(0b1101, 2_000, 4_000, &valid_build_limits());
+    let scene = build_scene(draw_for(0b1101), &limits);
     let region = region_for(&scene);
     let walls = run_build_walls(&scene, &region).expect("the control scene must be accepted");
-    let limits = valid_build_limits();
     verify_build_walls(&scene, &limits, &walls)
         .expect("the comparator must accept the real, unmutated result");
+
+    // Every mode word the roster distinguishes (both wall directions, both
+    // `g7_reverse` values, thin walls, bridge, the two-line region and both
+    // closed-inner windings) is accepted by the comparator on the real kernel,
+    // so no branch depends on the sampler happening to draw it.
+    for mode in 0..64u32 {
+        let swept = build_scene(draw_for(mode), &limits);
+        let swept_region = region_for(&swept);
+        let swept_walls = run_build_walls(&swept, &swept_region)
+            .unwrap_or_else(|error| panic!("mode {mode:#08b}: build_walls rejected: {error}"));
+        verify_build_walls(&swept, &limits, &swept_walls)
+            .unwrap_or_else(|error| panic!("mode {mode:#08b}: comparator rejected: {error}"));
+    }
 
     // Mutation 1: points-only reversal — reverse the coordinates and leave the
     // parallel width/flag arrays alone. Every per-point check in the comparator
@@ -1633,10 +2385,10 @@ fn classify_domain_rejections() {
 }
 
 fn build_domain_rejections() {
-    let valid = (8u64, REGION_HALF_UNITS as u64, 10_000u64, 3_000u64);
+    let valid = (MIN_JUNCTIONS, MIN_ABS_MM_UNITS, 4_000u64, 500u64);
     assert!(
         checked_build_limits(valid.0, valid.1, valid.2, valid.3).is_ok(),
-        "the measured profile must be accepted"
+        "the smallest accepted profile must be accepted"
     );
 
     // Overflow / narrowing and zero bounds.
@@ -1656,15 +2408,15 @@ fn build_domain_rejections() {
         );
     }
 
-    // Impossible witness bounds: the repeated-endpoint rectangle needs five
-    // junctions, and the interior rectangle needs its own coordinate extent.
+    // Impossible witness bounds: the five-line roster needs its own junction
+    // count, and the sampled half-extent needs its own coordinate floor.
     assert!(
         checked_build_limits(MIN_JUNCTIONS - 1, valid.1, valid.2, valid.3).is_err(),
-        "fewer than {MIN_JUNCTIONS} junctions cannot carry the closed-rectangle witness"
+        "fewer than {MIN_JUNCTIONS} junctions cannot carry the five-line roster"
     );
     assert!(
         checked_build_limits(valid.0, MIN_ABS_MM_UNITS - 1, valid.2, valid.3).is_err(),
-        "a coordinate bound below {MIN_ABS_MM_UNITS} units cannot hold the interior witness"
+        "a coordinate bound below {MIN_ABS_MM_UNITS} units cannot hold a 1 mm half-extent"
     );
     for ceiling in [
         (MAX_JUNCTIONS_CEILING + 1, valid.1, valid.2, valid.3),
@@ -1677,6 +2429,12 @@ fn build_domain_rejections() {
             "out-of-ceiling tuple {ceiling:?} must be rejected"
         );
     }
+
+    // A spacing bound must still fit one increasing integer unit per junction.
+    assert!(
+        checked_build_limits(valid.0, valid.1, valid.0 - 1, valid.3).is_err(),
+        "a spacing bound below one unit per junction cannot hold the roster's spacings"
+    );
 
     // Invalid bead/geometry domains: a bead or a layer that cannot fit twice
     // inside the declared coordinate box, and a width domain that could leave
@@ -1718,8 +2476,13 @@ fn sequence_domain_rejections() {
 
 /// Every shrink must keep the case's geometry and mode witness, and the finally
 /// reported simplified tree must still satisfy the contract.
+///
+/// The profile deliberately has a junction range (`23..=32`) and a coordinate
+/// range (`10_000..=60_000` units) so shrinking exercises the bound-driven draws
+/// as well as the layer height and spacing base.
 fn shrink_retains_geometry_and_mode_witness() {
-    let limits = valid_build_limits();
+    let limits = checked_build_limits(MIN_JUNCTIONS + 9, 6 * MIN_ABS_MM_UNITS, 4_000, 500)
+        .expect("the shrink-audit profile is a valid bound pair");
     let strategy = build_strategy(&limits);
     let mut runner = proptest::test_runner::TestRunner::new(proptest::test_runner::Config {
         cases: 1,

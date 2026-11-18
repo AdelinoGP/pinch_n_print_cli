@@ -620,8 +620,12 @@ pub fn widening_two_requested_below_optimal_delegates_to_parent() {
 ///   `0.5 * 3400 + 0.5 * 1500 = 2450` at `0.5 * 1500 + 0.5 * 750 = 1125`, while
 ///   index 1 stays 1500 at 2250.
 ///
-/// The expectation is unaffected by the widening gate fix, so this test must
-/// pass before and after it; it pins the real caller's two-bead endpoint.
+/// The widening gate fix is load-bearing here: before it, the stack's
+/// `compute(3000, 2)` took the single-bead branch (the old thickness-only
+/// gate), so the blend had only one bead and this test observed `[3400]`
+/// instead of the derived `[2450, 1500]`. It now pins both the count-two
+/// delegation and the real caller's two-bead endpoint; it failed before the
+/// fix and passes after it.
 pub fn widening_transition_propagation_preserves_two_bead_endpoint() {
     let params = BeadingFactoryParams {
         print_thin_walls: true,

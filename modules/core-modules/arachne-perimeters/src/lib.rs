@@ -74,8 +74,7 @@ use slicer_core::polygon_ops::{
 };
 use slicer_ir::{
     extrusion_line_to_extrusion_path3d, mm_to_units, units_to_mm, ConfigView, ExPolygon,
-    ExtrusionLine, ExtrusionRole, LoopType, Point2, Polygon, WallBoundaryType, WallLoop,
-    WidthProfile,
+    ExtrusionLine, ExtrusionRole, LoopType, Point2, Polygon, WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -961,12 +960,21 @@ impl ArachnePerimeters {
         let overhang_bands = region.overhang_quartile_polygons();
         let prev_layer_boundary = region.prev_layer_boundary();
         let mut walls: Vec<WallLoop> = Vec::with_capacity(lines.len());
+        // Canonical `traverse_extrusions`' `pg_extrusions.size()`: the region
+        // batch's nonempty lines (empty lines are skipped below and never
+        // become walls).
+        let region_line_count = lines.iter().filter(|l| !l.junctions.is_empty()).count();
         for line in lines {
             let (role, loop_type) = classify_line(line, params.print_thin_walls);
             let mut path = extrusion_line_to_extrusion_path3d(line, role);
             if path.points.is_empty() {
                 continue;
             }
+            // Source-junction XY winding, measured before any per-point
+            // mutation (local positive shoelace = CCW). Consumed by the G1
+            // winding normalization below; nothing between here and there
+            // moves a point's XY.
+            let input_signed_area = signed_area_of_points(&path.points);
             for pt in &mut path.points {
                 pt.z = z;
                 // Beading junction widths are Flow SPACING values, not extrusion
@@ -1080,24 +1088,46 @@ impl ArachnePerimeters {
                 }
             }
 
-            // G1 (packet 151, Step 2): normalize loop winding to
-            // wall_direction. Holes (non-ExteriorSurface) wind opposite the
-            // contour.
-            let is_hole = boundary_type != WallBoundaryType::ExteriorSurface;
-            let base_want_ccw = if is_hole {
-                !contour_should_be_ccw
-            } else {
-                contour_should_be_ccw
-            };
-            let final_want_ccw = if g7_reverse {
-                !base_want_ccw
-            } else {
-                base_want_ccw
-            };
-            if path.points.len() >= 3 {
-                let signed = signed_area_of_points(&path.points);
-                let is_ccw = signed > 0.0;
-                if is_ccw != final_want_ccw {
+            // G1 (packet 151, Step 2): normalize CLOSED loop winding to
+            // wall_direction, per canonical `traverse_extrusions`
+            // (`PerimeterGenerator.cpp`):
+            //
+            //   if (extrusion->is_closed) {
+            //       if ((wall_direction == CounterClockwise) ==
+            //           (pg_extrusion.is_contour || pg_extrusions.size() == 2))
+            //           make_counter_clockwise(); else make_clockwise();
+            //   } else { /* open line: no reorientation */ }
+            //
+            // `pg_extrusion.is_contour` is `ExtrusionLine::is_contour`
+            // (`ExtrusionLine.cpp`): the line is closed AND its junction polygon
+            // is clockwise ("Arachne produces contour with clockwise orientation
+            // and holes with counterclockwise orientation"). Contour/hole is
+            // therefore the line's own INPUT winding, measured before any
+            // mutation (local positive shoelace = CCW). `pg_extrusions` is the
+            // region's ordered nonempty line list, so a two-line region (one
+            // outer + one inner) winds both lines like contours.
+            //
+            // This replaced a rule keyed off `boundary_type`
+            // (`ExteriorSurface` = contour, anything else = hole — in practice
+            // inset 0 = contour, every inset > 0 = hole) and applied to every
+            // >= 3-point line. It was wrong twice over: it reoriented open
+            // lines, which canonical never does, and it classified by inset
+            // rather than winding — inner insets of the outer contour were
+            // wound as holes, a hole's own inset-0 wall as a contour, and the
+            // two-line term was absent. `boundary_type` stays a PnP paint
+            // concept (`build_wall_flags`) and plays no part in winding.
+            //
+            // `g7_reverse` (overhang_reverse) flips the target on the layers it
+            // applies to.
+            let input_clockwise = input_signed_area < 0.0;
+            let is_contour_line = line.is_closed && input_clockwise;
+            let wants_ccw = (contour_should_be_ccw == (is_contour_line || region_line_count == 2))
+                != g7_reverse;
+            // Only closed lines are reoriented; an open line keeps its input
+            // order and is never given a synthesized closing edge.
+            if line.is_closed && path.points.len() >= 3 {
+                let is_ccw = input_signed_area > 0.0;
+                if is_ccw != wants_ccw {
                     // Every point-indexed field must move with its point.
                     // `width_profile.widths[i]` is documented as "one width per
                     // vertex in path.points" and `feature_flags[i]` is the

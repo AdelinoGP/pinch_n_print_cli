@@ -169,6 +169,26 @@ Implementation-time records. Each is a code fact verified against the tree at th
 - **Local-maximum closure confirmed as a behavioural deviation.** The canonical audit (two checkouts) shows `generateLocalMaximaSingleBeads` emits six junctions with `is_closed = false`, and `ExtrusionLine`'s constructor starts open. The former local 7-junction closed line also bypassed `stitch_extrusions` entirely (already-closed lines are passed through), so it could never be absorbed like canonical's. The producer is fixed and `arachne_local_maximum_pre_stitch_is_open` locks the six-junction open shape. The post-stitch pentagon fixture was updated to the measured canonical-correct open shape (the tiny-poly gate rejects closing it), not to preserve the former closed expectation.
 - **`populate_beading_propagation` diagnostic not added.** Canonical additionally asserts `total_thickness == 2 * distance_to_boundary`; the local port checks array-length parallelism instead. This is a diagnostic difference with no behavioural consequence and is recorded in the evidence file rather than changed.
 - **AC-8 scanner scope re-derived on the implementation tree.** `collect_enforced_files` (`xtask/src/check_literals.rs`) still collects `crates/*/src` in `CfgTestOnly` mode and `modules/core-modules/*/tests` whole-file, and `LiteralVisitor::visit_item_mod` still delegates to `syn::visit::visit_item_mod` without reading an out-of-line module. `modules/core-modules/arachne-perimeters/src/property_tests.rs` is therefore still outside `cargo xtask check-literals`; the manual FRU/waiver review in the evidence file remains the required evidence.
+- **AC-5 winding divergence found and fixed.** The design notes required an audit before
+  asserting open-path direction. The audit of canonical `traverse_extrusions`
+  (`PerimeterGenerator.cpp`) and `ExtrusionLine::is_contour` (`ExtrusionLine.cpp`) showed that
+  canonical reorients only closed lines, toward
+  `(wall_direction == CCW) == (is_contour || pg_extrusions.size() == 2)`, where `is_contour` means
+  the line is closed and its input winds clockwise.
+  - **Divergence.** `ArachnePerimeters::build_walls` reoriented every line with three or more
+    points, open lines included, and took contour/hole from `boundary_type`, which in practice
+    meant inset 0 versus inset above 0.
+  - **Fix.** Production now implements the canonical predicate on the measured input winding and
+    reverses only closed lines. `M-ARACHNE-BUILD`'s winding model was rewritten to match.
+  - **Witnesses.** Three deterministic prelude witnesses failed before the fix and pass after it:
+    `build_walls_winding_witness_open_path_keeps_order`,
+    `build_walls_winding_witness_clockwise_inner_is_contour` and
+    `build_walls_winding_witness_two_line_region_inner_is_contour_like`.
+  - **Regression fixture.** The reverse-trigger regression's fixture was moved to a closed CCW
+    hole that canonical reverses.
+  - **Remaining approximation.** `region_line_count` is counted per `build_walls` batch rather
+    than per canonical `Surface` or merged one-wall-top list.
+  - **Evidence.** `docs/testing/proptest-arachne-evidence.md`, Canonical audit.
 - **AC-7 split.** The six routine/extended selections and a retained-seed replay are executed on this Windows host and archived. The hosted `properties-windows` execution requires a push/PR, which this run does not perform; the job gains the six IDs so the hosted lane asserts them when run. This is reported as the packet's remaining closure action, not claimed as executed evidence.
 
 ## Open questions

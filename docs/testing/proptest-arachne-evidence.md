@@ -78,7 +78,7 @@ Family bounds (committed in `test-properties.toml`):
 | `H-ARACHNE-GRAPH` | `max_abs_units = 400000`, `max_vertices = 24`, `max_holes = 2`, `max_components = 3`, `max_shrink_candidates = 64` | `1000000`, `32`, `3`, `4`, `256` |
 | `H-ARACHNE-PIPELINE` | the five graph keys at routine values plus `max_beads = 10` | the five graph keys at extended values plus `max_beads = 16` |
 | `M-ARACHNE-CLASSIFY` | `max_inset_idx = 8` | `32` |
-| `M-ARACHNE-BUILD` | `max_junctions = 8`, `max_abs_mm_units = 20000`, `max_spacing_units = 2000`, `max_height_units = 500` | `16`, `40000`, `8000`, `2000` |
+| `M-ARACHNE-BUILD` | `max_junctions = 32`, `max_abs_mm_units = 20000`, `max_spacing_units = 2000`, `max_height_units = 500` | `64`, `40000`, `8000`, `2000` |
 | `M-ARACHNE-SEQUENCE` | `max_walls = 6` | `12` |
 
 The zero rejection budgets are honest because every generator is construction-first and total. A
@@ -86,6 +86,68 @@ rejection would show that a generator changed, and the run would abort as `exhau
 validates its bounds before it builds a strategy and rejects zero, non-representable, overflowing
 and impossible-witness values. Those checks are pinned by `arachne_property_domain_rejections` and
 `property_tests::arachne_module_domain_rejections`.
+
+**`M-ARACHNE-BUILD` bounds.** The five-line roster needs **23** junctions before sampling, so the
+committed `max_junctions` values are `32` routine and `64` extended: above the generator's minimum
+and at or below its `23..=64` accepted range. The table above, `test-properties.toml` and the
+charter in `docs/testing/properties.md` agree. Both the junction budget and the coordinate extent
+drive generation rather than sitting unused; see
+[M-ARACHNE-BUILD generated domain](#m-arachne-build-generated-domain).
+
+## M-ARACHNE-BUILD generated domain
+
+Both coordinate and junction bounds now drive generation; neither is a fixed fixture constant.
+
+- **Half-extent.** `half_units` is sampled from `10_000..=max_abs_mm_units` (1 mm up to the declared
+  bound). Every roster shape is an exact integer-unit fraction of it: the closed outer rectangle is
+  `±half_units`, the closed inner rectangle `±half_units / 2`, the mixed bridge band
+  `±3 * half_units / 8` (strictly inside the inner rectangle), both open chains within
+  `±half_units / 4` (strictly inside the band), and the thin-wall rectangle `±half_units / 10`.
+  `MIN_ABS_MM_UNITS` is `10_000` units (1 mm); the smallest shape coordinate is therefore 1 000
+  units (0.1 mm), the thin-wall rectangle's `half_units / 10`. The comparator asserts at every case
+  that the observed coordinate extent is exactly the sampled `half_units`.
+- **Junction total.** The five-line roster needs 23 junctions (three closed lines at four corners
+  plus an explicit repeat = 15, and two open four-junction chains = 8). `max_junctions` is
+  therefore accepted only in **23..=64**. Each case samples a total from `23..=max_junctions`; the
+  shortfall between that total and the mode's roster count becomes extra collinear junctions on
+  the outer rectangle's bottom and top edges, and the comparator asserts the input total equals the
+  sampled total, equals the emitted point total, and stays within the bound.
+- **Emitted counts.** For an accepted profile with bound `N`, every case emits a total in
+  `23..=N`; the minimum is always 23, the maximum is the profile's own `max_junctions`. The
+  deterministic control `property_tests::build_walls_bounds_drive_geometry_and_junctions` measures
+  the two extremes it constructs directly: **23** junctions at `max_junctions = 23` and
+  `half_units = 10_000`, and **32** junctions at `max_junctions = 32` and
+  `half_units = 60_000`. The same control sweeps `max_junctions` 23, 32 and 64 at half-extents
+  10 000, 60 000 and 1 000 000 units and both ends of each junction range.
+- **Measured runs (synthetic context, not a registry lane).** With a hand-fed
+  `PNP_PROPERTY_CONTEXT`, the build property passed 64/64 accepted cases at
+  `max_junctions = 26`, `max_abs_mm_units = 40_000` (`target/logs/bounds/property-build-manual.log`)
+  and 256/256 at the ceilings `max_junctions = 64`, `max_abs_mm_units = 1_000_000` with zero
+  rejects (`target/logs/bounds/property-build-extended-manual.log`). The same harness rejects the
+  committed routine and extended `max_junctions` values before sampling
+  (`target/logs/bounds/property-below-roster.log`,
+  `target/logs/bounds/property-extended-below-roster.log`). Registry timings on the final tree are
+  0.32 s routine selected, 0.30 s combined routine, 9.14 s extended selected and 10.11 s combined
+  extended (Measurements).
+- **Roster minimum fixture.** `valid_build_limits()` now derives from the real validator at
+  `max_junctions = 23`, `max_abs_mm_units = 20_000`, `max_spacing_units = 10_000`,
+  `max_height_units = 3_000`, so the deterministic witnesses cannot drift out of the accepted
+  domain. The reverse-trigger regression keeps its `(2 outside, 3 inside)` bridge population by
+  using a right-half bridge band, because the roster's central band now sits strictly inside the
+  inner rectangle.
+
+### `M-ARACHNE-CLASSIFY` shrink behaviour
+
+The zero/positive inset choice is a tuple, not a union: `(bool, 1u32..=max_inset_idx)` maps the
+boolean `true` to inset 0 and `false` to the positive draw. Proptest simplifies `bool` only
+`true -> false`, and `false` is the positive row, so a positive-inset case's selector is already at
+its shrink floor and its inset can only shrink inside `1..=max_inset_idx`. A `prop_oneof!` union
+would instead be free to simplify an accepted positive case onto its `Just(0)` alternative. The
+deterministic control `classify_shrink_retains_positivity` (inside
+`property_tests::arachne_module_oracle_controls`) walks real strategy trees and asserts that no
+positive inset ever crosses to zero and that a zero start may become positive. Expected
+classifications are re-derived from the case that is actually checked, so no stale expectation can
+survive either shrink direction.
 
 ## Canonical audit
 
@@ -114,6 +176,60 @@ and impossible-witness values. Those checks are pinned by `arachne_property_doma
 - **Not adjudicated.** `WallToolPaths::getRegionOrder` differs between the two checkouts. No
   property here depends on it: `M-ARACHNE-SEQUENCE` covers only the controlled single-outer batch.
 
+### Wall winding: `traverse_extrusions` and `ExtrusionLine::is_contour`
+
+Audited because AC-5 asserts open-path direction. Sources: `traverse_extrusions`
+(`PerimeterGenerator.cpp`) and `ExtrusionLine::is_contour` (`Arachne/utils/ExtrusionLine.cpp`),
+read in the local `OrcaSlicerDocumented` snapshot.
+
+- **Canonical predicates.**
+  - Only a closed line is reoriented. In the `extrusion->is_closed` branch,
+    `(wall_direction == CounterClockwise) == (pg_extrusion.is_contour || pg_extrusions.size() == 2)`
+    selects `make_counter_clockwise()`, otherwise `make_clockwise()`. The open-line branch builds
+    `ExtrusionMultiPath`s in input order and never reorients.
+  - `is_contour` is `ExtrusionLine::is_contour`: `false` for an open line, otherwise
+    `Polygon(junctions).is_clockwise()` ("Arachne produces contour with clockwise orientation and
+    holes with counterclockwise orientation"). It is computed in the
+    `ordered_extrusions` construction inside `process_arachne` (`PerimeterGenerator.cpp`) from the
+    line's own input junctions, and stored on each `PerimeterGeneratorArachneExtrusion`.
+  - `pg_extrusions` is the ordered per-surface list. `process_arachne` skips empty
+    `VariableWidthLines` and `WallToolPaths` already removed empty lines with
+    `removeEmptyToolPaths`.
+- **Measured PnP input winding.** A temporary native probe (removed again) ran
+  `generate_arachne_walls` on a 20 mm square with a 6 mm square hole. The outer-contour family
+  came out clockwise (signed areas −324.0, −353.4, −384.2 mm²) and the hole family
+  counter-clockwise (+63.1, +51.5, +40.9 mm²). PnP's Arachne output therefore has the winding
+  that canonical `is_contour` assumes.
+- **PnP divergence found.** `ArachnePerimeters::build_walls`
+  (`modules/core-modules/arachne-perimeters/src/lib.rs`) reoriented every line with three or more
+  points, open lines included, toward a target taken from `boundary_type`. In practice inset 0
+  was treated as the contour and every inset above 0 as a hole. As a result, open lines were
+  reoriented, inner insets of the outer contour were wound as holes, a hole's inset-0 wall was
+  wound as a contour, and the two-line term was missing.
+- **Fix.** `build_walls` takes the input winding from the source junction XY before any
+  mutation, sets `is_contour_line = line.is_closed && input_clockwise` and
+  `region_line_count` = the batch's nonempty lines, and computes
+  `wants_ccw = (contour_should_be_ccw == (is_contour_line || region_line_count == 2)) != g7_reverse`.
+  It reverses `path.points`, `widths` and `feature_flags` together, and only when `line.is_closed`
+  and the line has three or more points. `boundary_type` stays PnP's paint classification and no
+  longer affects winding.
+- **Witnesses.** These run in the `M-ARACHNE-BUILD` deterministic prelude, each under its own
+  `CaseGuard`, and also as plain tests. All three failed before the fix and pass after it:
+  - `build_walls_winding_witness_open_path_keeps_order`: an open CCW chain in a three-line region
+    under `wall_direction = counter_clockwise` keeps its input order. Before the fix it was
+    reversed.
+  - `build_walls_winding_witness_clockwise_inner_is_contour`: a closed clockwise inset-1 line in a
+    three-line region under `wall_direction = clockwise` is a contour and stays clockwise. Before
+    the fix it was treated as a hole and reversed.
+  - `build_walls_winding_witness_two_line_region_inner_is_contour_like`: a closed CCW inset-1 line
+    in a two-line region under `wall_direction = counter_clockwise` stays counter-clockwise
+    because of `pg_extrusions.size() == 2`. Before the fix it was reversed.
+- **Remaining approximation, not fixed.** `region_line_count` counts one `build_walls` batch,
+  which may differ from canonical's `pg_extrusions`. A PnP region can hold several ExPolygons,
+  while canonical orders and traverses each `Surface` separately. The `only_one_wall_top` second
+  pass calls `build_walls` once for the top lines and once for the remainder, while canonical
+  merges `perimeters` with the inner-pass lines before ordering.
+
 ## Independent oracles and their limits
 
 | Record | Reference | Independent of | Explicit limit |
@@ -122,7 +238,7 @@ and impossible-witness values. Those checks are pinned by `arachne_property_doma
 | `H-ARACHNE-GRAPH` | indexed relation checker `check_relations` | the production compactor | relations checked at construction stage only; NaN radii are allowed sentinels |
 | `H-ARACHNE-PIPELINE` | `check_output` per declared outcome mode | the pipeline's own closure and index logic | closure equality only in the explicit-repeat domain; no wall count, containment or golden output |
 | `M-ARACHNE-CLASSIFY` | `expected_classification` truth table | `classify_line` | PnP ThinWall labelling, not an upstream role identity |
-| `M-ARACHNE-BUILD` | real-number `spacing + height*(1-π/4)` with derived f32 envelope `width_envelope`; bridge membership from `point_in_region` / analytic inequalities | `PerimeterSpatialContext::is_bridge`, `build_wall_flags` | the controlled rectangle scenes only |
+| `M-ARACHNE-BUILD` | real-number `spacing + height*(1-π/4)` with derived f32 envelope `width_envelope`; bridge membership from `point_in_region` / analytic inequalities; winding from canonical `traverse_extrusions` / `ExtrusionLine::is_contour` (`expected_want_ccw`); observed extent and junction total against the sampled draw | `PerimeterSpatialContext::is_bridge`, `build_wall_flags`, the production winding expression | rectangle-and-chain roster at a sampled half-extent; no arbitrary polygon shapes |
 | `M-ARACHNE-SEQUENCE` | `expected_sequence_order` identity mapping | `commit_wall_sequence` | exact mode order only for a unique endpoint outer; otherwise a lossless permutation only |
 
 ## Measurements
@@ -133,37 +249,62 @@ records share one compile unit (`property_arachne`) and the three module records
 measure cache state, not the target. Proptest exposes no generation-versus-shrink split, and no
 shrink campaign ran, so the table has no shrink time.
 
+**Separate compilation measurement.** Compilation is measured per compile unit, in the workspace
+`dev` profile, by cleaning only the package under test and timing `cargo test --no-run`:
+
+| Compile unit | Command | Cold build | Log |
+|---|---|---:|---|
+| Host `property_arachne` | `cargo clean -p slicer-core`; `cargo test -p slicer-core --features host-algos,property_testing --test property_arachne --no-run` | 27.7 s | `compile-host-property.log` |
+| Module `arachne_perimeters` lib | `cargo clean -p arachne-perimeters`; `cargo test -p arachne-perimeters --features arachne-perimeters/property_testing --lib --no-run` | 11.5 s | `compile-module-lib.log` |
+
+Each figure includes the cleaned package's own rebuild and does not include a `pnp_cli` relink or a
+guest rebuild. The host figure rebuilt `slicer-core` and `slicer-sdk` because `cargo clean -p`
+removed them from that feature graph; the module figure was taken while those dependencies were
+warm, so it measures the module crate and its test binary only.
+
 | Record | Selected routine | Selected extended | Combined routine | Combined extended |
 |---|---:|---:|---:|---:|
-| `H-ARACHNE-BEADING` | 0.03 s | 0.44 s | 0.03 s | 0.31 s |
-| `H-ARACHNE-GRAPH` | 0.23 s | 7.61 s | 0.29 s | 6.43 s |
-| `H-ARACHNE-PIPELINE` | 0.34 s | 8.02 s | 0.33 s | 6.65 s |
-| `M-ARACHNE-CLASSIFY` | 0.03 s | 0.55 s | 0.05 s | 0.31 s |
-| `M-ARACHNE-BUILD` | 0.12 s | 3.46 s | 0.14 s | 2.08 s |
-| `M-ARACHNE-SEQUENCE` | 0.05 s | 0.96 s | 0.06 s | 1.06 s |
-| Log | `routine-six.log` | `extended-six-full.log` | `combined-routine-full.log` | `combined-extended-full.log` |
+| `H-ARACHNE-BEADING` | 0.02 s | 0.35 s | 0.06 s | 0.49 s |
+| `H-ARACHNE-GRAPH` | 0.35 s | 6.03 s | 0.24 s | 9.19 s |
+| `H-ARACHNE-PIPELINE` | 0.26 s | 7.27 s | 0.24 s | 9.01 s |
+| `M-ARACHNE-CLASSIFY` | 0.03 s | 0.39 s | 0.03 s | 0.39 s |
+| `M-ARACHNE-BUILD` | 0.32 s | 9.14 s | 0.30 s | 10.11 s |
+| `M-ARACHNE-SEQUENCE` | 0.05 s | 1.29 s | 0.04 s | 1.23 s |
+| Log | `routine-six.log` | `extended-six-summary.log` | `combined-routine-summary.log` | `combined-extended-summary.log` |
+
+All four columns were re-measured on the final tree after the AC-5 winding correction and after
+the `M-ARACHNE-BUILD` bounds were raised, so the row shares one source state; the superseded
+pre-fix figures are not carried forward. `M-ARACHNE-BUILD` is the slowest module record in every
+lane (0.32 / 9.14 / 0.30 / 10.11 s) because each case now builds a five-line region with 23 to 64
+junctions and a sampled 1–2 mm (routine) or 1–4 mm (extended) half-extent, then checks the emitted
+extent and junction total. Totals: 25.701 s routine and 50.692 s extended for the six-record
+selections; 6m7.339 s routine and 16m59.198 s extended for the 32-record combined lanes. The
+retained-seed replay below covers `H-ARACHNE-BEADING` only and was taken before the `M-ARACHNE-BUILD`
+changes, which cannot affect that record.
 
 All logs are under `target/proptest-arachne-evidence/`. Per lane:
 
 - **Six-record routine selection**
   (`cargo xtask test --summary --properties --property H-ARACHNE-BEADING … --property
   M-ARACHNE-SEQUENCE --tier routine`):
-  - Total `real 0m23.678s`, recorded in the archived digest.
+  - Total `real 0m25.701s`, recorded in the archived digest `routine-six.log`.
   - `VERDICT: PASS`.
   - 64/64 accepted per record, 0 rejects, `call_counts_complete = true`,
     `completion_eligible = true`, `shrink_completed = null`.
-  - The archived file is the `--summary` digest. It keeps the six `test result:` lines and the
-    verdict but not the per-record event lines. `VERDICT: PASS` is emitted only after the runner's
-    evidence check requires a controller begin/end pair per record with
-    `accepted_cases >= profile.cases` and `completion_eligible == true`, so the 64/64 claim is
-    enforced by the runner, not asserted from this table.
+  - Run token `a268ff0226056d4afde47416822da5c2`; `routine-six-full.log` is the matching full
+    output with the per-record begin/end events. The summary digest keeps the verdict and the six
+    `test result:` lines. `VERDICT: PASS` is emitted only after the runner's evidence check
+    requires a controller begin/end pair per record with `accepted_cases >= profile.cases` and
+    `completion_eligible == true`, so the 64/64 claim is enforced by the runner, not asserted from
+    this table.
 - **Six-record extended selection** (same command, `--tier extended`, run token
-  `ccdbdbf653748fb44d20fbb7b60ee03e`):
+  `aab8b098c90994b71e3f4bb5e75b82c0`):
   - Six matching controller `begin`/`end` events.
   - Every `end` event: `accepted_cases = 1024`, `rejected_test_calls = 0`,
     `call_counts_complete = true`, `completion_eligible = true`, `shrink_completed = null`,
     `outcome = passed`.
-  - Total `real 0m43.704s`, archived in `extended-six-summary.log`.
+  - Total `real 0m50.692s`, archived in `extended-six-summary.log`; `extended-six-full.log` is the
+    matching full output.
 - **Retained-seed replay** (`--property H-ARACHNE-BEADING --tier routine --seed
   14268583537219271429`, run token `29d43e1e20aa98fce6670d40b9413df3`):
   - `outcome = passed`, 64/64 accepted, 0 rejects, libtest 0.03 s.
@@ -171,17 +312,20 @@ All logs are under `target/proptest-arachne-evidence/`. Per lane:
   - The archived log is `replay-beeding-routine.log`. That filename is the real one on disk,
     misspelling included.
 - **Combined incremental routine** (`cargo xtask test --summary --properties --tier routine`, run
-  token `da9e43a45ded39e150265d4ae5d518a1`):
+  token `93ef4634a8b0bc3d0b8c78ef388002a5`):
   - 32 records. The four `requires_scad` records are skipped without `--with-scad`.
   - 32 `begin` and 32 `end` events. The six Arachne `end` events report 64 accepted and 0
     rejected.
-  - `VERDICT: PASS` and a total of `real 5m10.607s`, archived in `combined-routine-summary.log`.
+  - `VERDICT: PASS` and a total of `real 6m7.339s`, archived in
+    `combined-routine-summary.log`; `combined-routine-full.log` holds the per-record lines and
+    events.
 - **Combined incremental extended** (`--tier extended`, run token
-  `84cd58e0a7bde2f90b466e58efb81869`):
+  `42eb7e65b35d62605f6b5f85c8060433`):
   - 32 records, 32 `begin` and 32 `end` events. The six Arachne `end` events report 1024 accepted
     and 0 rejected.
-  - `VERDICT: PASS` and a total of `real 16m4.651s`, archived in
-    `combined-extended-summary.log`.
+  - `VERDICT: PASS` and a total of `real 16m59.198s`, archived in
+    `combined-extended-summary.log`; `combined-extended-full.log` holds the per-record lines and
+    events.
 - **First gated command after the production edits.**
   - 6 m 48.9 s total.
   - That includes 49 stale guest rebuilds, measured at 272.1 s as the artifact-write span, and an
@@ -246,9 +390,16 @@ specific wrong result.
   - fabricated closure on an open path;
   - a naive full reversal of an outer-first `InnerOuter` batch;
   - a lost feature-flag vector.
+- **`property_tests::build_walls_bounds_drive_geometry_and_junctions`.** Builds the same mode and
+  spacing base under two accepted bound pairs and asserts the observed coordinate extent
+  (`10_000` vs `60_000` units) and junction total (`23` vs `32`) both differ and match the emitted
+  walls, sweeps `max_junctions` 23/32/64 at half-extents 10 000/60 000/1 000 000 units with both
+  ends of each junction range, and asserts a bound below the roster minimum (`22` junctions) and a
+  half-extent below 1 mm are rejected before sampling.
 - **Domain rejections and shrink witnesses.** `arachne_property_domain_rejections` and
   `property_tests::arachne_module_domain_rejections` reject unusable bounds before sampling. The
-  latter also runs `shrink_retains_geometry_and_mode_witness`.
+  latter also runs `shrink_retains_geometry_and_mode_witness` and
+  `classify_shrink_retains_positivity`.
 
 Archived results:
 
@@ -313,10 +464,15 @@ struct bodies on the implementation tree:
 | `ExtrusionPath3D` | `crates/slicer-ir/src/slice_ir.rs` | 5 | yes |
 | `WallFeatureFlags` | `crates/slicer-ir/src/slice_ir.rs` | 6 | yes |
 | `WallLoop` | `crates/slicer-ir/src/slice_ir.rs` | 6 | yes |
-| `ArachneParams` | `crates/slicer-core/src/arachne/pipeline.rs` | 23 | yes |
+| `ArachneParams` | `crates/slicer-sdk/src/host.rs` | 23 | yes |
 | `ExtrusionLine` | `crates/slicer-ir/src/slice_ir.rs` | 4 | no |
 | `ExtrusionJunction` | `crates/slicer-ir/src/slice_ir.rs` | 2 | no |
 | `WidthProfile` | `crates/slicer-ir/src/slice_ir.rs` | 1 | no |
+
+`ArachneParams` here is `slicer_sdk::host::ArachneParams`, the SDK's host-side mirror struct, not
+`slicer_core::arachne::pipeline::ArachneParams` (which is `host-algos`-gated and so not nameable
+from this wasm guest crate). The mirror has the same 23 named fields; only the path is different.
+The earlier version of this table named the core path, which this file never imports.
 
 Inspected sites in `property_tests.rs`:
 

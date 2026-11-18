@@ -733,10 +733,12 @@ fn generate_local_maxima_single_beads(
         // Emit a 6-segment hexagonal micro-loop. Canonical
         // `SkeletalTrapezoidation::generateLocalMaximaSingleBeads` builds a
         // fresh `ExtrusionLine` (whose constructor starts it open) and pushes
-        // exactly six junctions; it never re-appends the first junction. An
-        // `is_closed` flag with a repeated endpoint is produced later, by the
-        // stitcher, when the open loop's own gap falls within its snap
-        // distance — not here. This loop skips stitch, so it stays open.
+        // exactly six junctions; it never re-appends the first junction. The
+        // closed flag and any repeated endpoint are produced later, by the
+        // stitcher, if the open loop's own gap is accepted as a closure — not
+        // here. `run_arachne_pipeline` does run `stitch_extrusions` over this
+        // bucket, so this producer must stay open for the stitcher's decision
+        // to be the one that matters.
         let mid_bead = n_beads / 2;
         let width = beading.bead_widths[mid_bead];
         let r = width / 8.0; // radius in slicer units
