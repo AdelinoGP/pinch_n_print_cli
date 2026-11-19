@@ -220,8 +220,8 @@ are:
 - the five geometry keys 400000/24/2/3/64 → 1000000/32/3/4/256 for `H-ARACHNE-GRAPH`;
 - the same five keys plus `max_beads` 10 → 16 for `H-ARACHNE-PIPELINE`;
 - `max_inset_idx` 8 → 32;
-- `max_junctions`/`max_abs_mm_units`/`max_spacing_units`/`max_height_units` 8/20000/2000/500 →
-  16/40000/8000/2000;
+- `max_junctions`/`max_abs_mm_units`/`max_spacing_units`/`max_height_units` 32/20000/2000/500 →
+  64/40000/8000/2000;
 - `max_walls` 6 → 12.
 
 Measured on the Windows host (rustc 1.96.0, `dev` profile), per-record libtest walls in registry
@@ -229,13 +229,15 @@ order (BEADING, GRAPH, PIPELINE, CLASSIFY, BUILD, SEQUENCE):
 
 | Lane | Total | Per-record walls |
 |---|---:|---|
-| Six-record routine selection | 23.7 s | 0.03 / 0.23 / 0.34 / 0.03 / 0.12 / 0.05 s |
-| Six-record extended selection | 43.7 s | 0.44 / 7.61 / 8.02 / 0.55 / 3.46 / 0.96 s |
-| Combined incremental routine (32 records) | 5 m 10.6 s | 0.03 / 0.29 / 0.33 / 0.05 / 0.14 / 0.06 s |
-| Combined incremental extended (32 records) | 16 m 04.7 s | 0.31 / 6.43 / 6.65 / 0.31 / 2.08 / 1.06 s |
+| Six-record routine selection | 19.3 s | 0.02 / 0.22 / 0.23 / 0.03 / 0.33 / 0.03 s |
+| Six-record extended selection | 35.7 s | 0.28 / 5.32 / 5.39 / 0.24 / 5.90 / 0.75 s |
+| Combined incremental routine (32 records) | 2 m 35.0 s | 0.02 / 0.25 / 0.24 / 0.02 / 0.33 / 0.04 s |
+| Combined incremental extended (32 records) | 10 m 10.9 s | 0.31 / 5.61 / 5.64 / 0.31 / 5.18 / 0.84 s |
 
 Every lane passed: the routine selection and both combined lanes reported `VERDICT: PASS`, and in
-the extended selection every record's end event reported `outcome = passed`. In all lanes accepted
+the extended selection every record's end event reported `outcome = passed`. The combined-lane
+totals are warm-cache executions with all 32 record binaries already linked; the per-record walls
+are unaffected by that. In all lanes accepted
 cases equalled `cases`, rejects were 0 and `call_counts_complete = true`. The combined lanes cover 32 records because the four
 `requires_scad` records are skipped without `--with-scad`. The retained-seed replay
 `--property H-ARACHNE-BEADING --tier routine --seed 14268583537219271429` passed 64/64 in a 15.5 s
@@ -3731,8 +3733,8 @@ Windows:
 
 | Lane | Accepted | libtest wall |
 |---|---:|---:|
-| Routine selection | 64/64 | 0.03 s |
-| Extended selection | 1024/1024 | 0.44 s |
+| Routine selection | 64/64 | 0.02 s |
+| Extended selection | 1024/1024 | 0.28 s |
 | Retained-seed replay `--seed 14268583537219271429` | 64/64 | 0.03 s |
 
 Details are in [proptest-arachne-evidence.md](proptest-arachne-evidence.md).
@@ -3842,7 +3844,7 @@ applied to every shrunk value, so a shrunk case never leaves its tagged class or
 
 ### Execution
 
-Measured libtest walls on Windows: 0.23 s for the routine selection (64/64) and 7.61 s for the
+Measured libtest walls on Windows: 0.22 s for the routine selection (64/64) and 5.32 s for the
 extended selection (1024/1024), with zero rejects.
 
 ### Failure record
@@ -3958,7 +3960,7 @@ outcome mode is re-derived from the shrunk geometry.
 
 ### Execution
 
-Measured libtest walls on Windows: 0.34 s for the routine selection (64/64) and 8.02 s for the
+Measured libtest walls on Windows: 0.23 s for the routine selection (64/64) and 5.39 s for the
 extended selection (1024/1024), with zero rejects.
 
 ### Failure record
@@ -4040,7 +4042,7 @@ path. Zero stays zero.
 
 ### Execution
 
-Measured libtest walls on Windows: 0.03 s for the routine selection (64/64) and 0.55 s for the
+Measured libtest walls on Windows: 0.03 s for the routine selection (64/64) and 0.24 s for the
 extended selection (1024/1024).
 
 ### Failure record
@@ -4175,7 +4177,7 @@ asserts that the witness is unchanged, the contract still holds, and a nonempty 
 
 ### Execution
 
-Measured libtest walls on Windows: 0.12 s for the routine selection (64/64) and 3.46 s for the
+Measured libtest walls on Windows: 0.33 s for the routine selection (64/64) and 5.90 s for the
 extended selection (1024/1024).
 
 ### Failure record
@@ -4266,7 +4268,7 @@ word does not shrink.
 
 ### Execution
 
-Measured libtest walls on Windows: 0.05 s for the routine selection (64/64) and 0.96 s for the
+Measured libtest walls on Windows: 0.03 s for the routine selection (64/64) and 0.75 s for the
 extended selection (1024/1024).
 
 ### Failure record

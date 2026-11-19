@@ -305,17 +305,20 @@ const TWO_LINE_ROSTER_JUNCTIONS: usize = 2 * CLOSED_RECT_JUNCTIONS;
 ///
 /// * outer closed rectangle: `±half_units` (the region boundary);
 /// * closed inner rectangle: `±half_units / 2`;
-/// * mixed bridge band: `±3 * half_units / 8`, strictly inside the inner
-///   rectangle;
-/// * both open chains: within `±half_units / 4`, strictly inside the bridge
-///   band;
-/// * thin-wall rectangle: `±half_units / 10`, clear of the open chains.
+/// * mixed bridge band: `x` in `[-3 * half_units / 8, +5 * half_units / 8]`,
+///   `y` in `±5 * half_units / 8`; it contains the thin-wall rectangle and both
+///   open chains whole, and covers the inner rectangle's two positive-x
+///   corners but neither negative-x corner, so a closed line's bridge flags
+///   are not all identical;
+/// * both open chains: within `±half_units / 4`, inside the bridge band;
+/// * thin-wall rectangle: `±half_units / 10`, inside the bridge band and clear
+///   of the open chains.
 ///
 /// No generated point has `y == 0`, so no point lies on the overhang band's
 /// `y == 0` boundary (an extra outer point may have `x == 0`, which is an
-/// interior coordinate of that band, not a boundary). The open-chain points lie
-/// strictly inside the bridge band while every inner/outer rectangle corner
-/// lies strictly outside it.
+/// interior coordinate of that band, not a boundary). Every roster coordinate
+/// is strictly off the bridge band's edges, and every inner/outer rectangle
+/// corner lies on the same side of the band that its own coordinates put it.
 #[derive(Debug, Clone)]
 struct RosterGeometry {
     outer: Vec<(i64, i64)>,
@@ -332,13 +335,19 @@ fn roster_geometry(half_units: i64, extra_outer_junctions: usize) -> RosterGeome
     let open = half_units / 4;
     let half_open = open / 2;
     let thin = half_units / 10;
-    let band = 3 * half_units / 8;
+    let band_left = -3 * half_units / 8;
+    let band_right = 5 * half_units / 8;
+    let band_top = 5 * half_units / 8;
     // Strict ordering over the whole accepted half-extent domain: the thin
     // rectangle stays clear of the open chains, both stay inside the bridge
-    // band, the band stays inside the inner rectangle, and the inner rectangle
-    // stays inside the region.
-    debug_assert!(0 < thin && thin < half_open && open < band);
-    debug_assert!(band < inner && inner < half_units);
+    // band, the band splits the inner rectangle (its left edge falls between
+    // the negative and positive corners, its right edge and top lie beyond the
+    // positive corners), and the inner rectangle stays inside the region.
+    debug_assert!(0 < thin && thin < half_open && open < inner);
+    debug_assert!(band_left < -open && band_right > open && band_top > open);
+    debug_assert!(band_left < -thin && band_right > thin && band_top > thin);
+    debug_assert!(-inner < band_left && band_right > inner && band_top > inner);
+    debug_assert!(inner < half_units);
 
     let inner_rect = vec![
         (inner, inner),
@@ -430,12 +439,17 @@ fn region_rect(half_units: i64) -> ExPolygon {
     rect_units(-half_units, -half_units, half_units, half_units)
 }
 
-/// The mixed bridge band: the central square `±3 * half / 8`, strictly inside
-/// the inner rectangle. It contains every open-chain junction (at `±half/4` or
-/// less) and no inner/outer rectangle corner (at `±half/2` or `±half`).
+/// The mixed bridge band: `x` from `-3 * half / 8` to `+5 * half / 8`, `y`
+/// within `±5 * half / 8`. Deliberately asymmetric: it contains the thin-wall
+/// rectangle and both open chains whole, but of the closed inner rectangle it
+/// covers only the two positive-x corners. A closed line therefore carries both
+/// `is_bridge` values, and reversing its points without also reversing its
+/// flags is observable at an index whose coordinate says the other value.
 fn bridge_band_rect(half_units: i64) -> ExPolygon {
-    let band = 3 * half_units / 8;
-    rect_units(-band, -band, band, band)
+    let left = -3 * half_units / 8;
+    let right = 5 * half_units / 8;
+    let vertical = 5 * half_units / 8;
+    rect_units(left, -vertical, right, vertical)
 }
 
 /// The right half of the region. Used only by the deterministic

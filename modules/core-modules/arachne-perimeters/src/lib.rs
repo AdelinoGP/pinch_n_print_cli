@@ -960,9 +960,13 @@ impl ArachnePerimeters {
         let overhang_bands = region.overhang_quartile_polygons();
         let prev_layer_boundary = region.prev_layer_boundary();
         let mut walls: Vec<WallLoop> = Vec::with_capacity(lines.len());
-        // Canonical `traverse_extrusions`' `pg_extrusions.size()`: the region
-        // batch's nonempty lines (empty lines are skipped below and never
-        // become walls).
+        // Canonical `traverse_extrusions` tests `pg_extrusions.size()`, which
+        // counts every line in the region's inset vector. This port counts
+        // nonempty lines: an empty line never becomes a wall, and the two-line
+        // term only has behavioural meaning for nonempty lines. The counts
+        // differ only when an empty `ExtrusionLine` shares a batch with nonempty
+        // ones; the pipeline does not emit such a batch, and the property
+        // roster's explicit empty line is a defensive input.
         let region_line_count = lines.iter().filter(|l| !l.junctions.is_empty()).count();
         for line in lines {
             let (role, loop_type) = classify_line(line, params.print_thin_walls);
@@ -1137,11 +1141,12 @@ impl ArachnePerimeters {
                     // uniform-width, symmetric-flag fixtures and wrong on real
                     // variable-width Arachne output. The `widths` snapshot stays
                     // where it is (above the per-index bridge/overhang loops,
-                    // which consume it while the conversion is still in the
-                    // emission order); reversing it here preserves that
-                    // documented ordering. `ring_pts_units` is deliberately not
-                    // reversed: it is only read before this point, and the
-                    // reversal happens after every per-index query.
+                    // which read each point's own `path.points[i].width` while
+                    // the points are still in the emission order); reversing it
+                    // here preserves that documented ordering. `ring_pts_units`
+                    // is deliberately not reversed: it is only read before this
+                    // point, and the reversal happens after every per-index
+                    // query.
                     path.points.reverse();
                     widths.reverse();
                     feature_flags.reverse();

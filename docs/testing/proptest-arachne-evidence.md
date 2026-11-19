@@ -51,9 +51,10 @@ archived. Each table says which. No hosted CI run is claimed.
   Defects item 2.
 - **Guest freshness.** The first gated command after the production edits rebuilt the stale guests.
   See Measurements. A following `cargo xtask build-guests --check` returned exit `0`
-  (`EXIT_FRESH`), judged by exit code, and later runs did not rebuild. The closure gate log
-  `target/proptest-arachne-evidence/closure-xtask-gates.log` records `build-guests --check`
-  `EXIT=0`.
+  (`EXIT_FRESH`), judged by exit code, and later runs did not rebuild. The final closure gate log
+  `target/proptest-arachne-evidence/closure-final-guests.log` records `build-guests --check`
+  `GUESTS_EXIT=0`; the gate logs for build, check, clippy, formatting, literals, test quality and
+  the owner-feature checks all record exit `0`.
 
 ## Profiles
 
@@ -100,9 +101,13 @@ Both coordinate and junction bounds now drive generation; neither is a fixed fix
 
 - **Half-extent.** `half_units` is sampled from `10_000..=max_abs_mm_units` (1 mm up to the declared
   bound). Every roster shape is an exact integer-unit fraction of it: the closed outer rectangle is
-  `±half_units`, the closed inner rectangle `±half_units / 2`, the mixed bridge band
-  `±3 * half_units / 8` (strictly inside the inner rectangle), both open chains within
-  `±half_units / 4` (strictly inside the band), and the thin-wall rectangle `±half_units / 10`.
+  `±half_units`, the closed inner rectangle `±half_units / 2`, the mixed bridge band spans `x` from
+  `-3 * half_units / 8` to `+5 * half_units / 8` and `y` within `±5 * half_units / 8`, both open
+  chains sit within `±half_units / 4` (inside the band), and the thin-wall rectangle is
+  `±half_units / 10` (inside the band). The band is deliberately asymmetric: it contains the thin
+  rectangle and both open chains whole, but of the closed inner rectangle it covers the two
+  positive-x corners and neither negative-x corner, so a single closed line carries both
+  `is_bridge` values.
   `MIN_ABS_MM_UNITS` is `10_000` units (1 mm); the smallest shape coordinate is therefore 1 000
   units (0.1 mm), the thin-wall rectangle's `half_units / 10`. The comparator asserts at every case
   that the observed coordinate extent is exactly the sampled `half_units`.
@@ -123,18 +128,24 @@ Both coordinate and junction bounds now drive generation; neither is a fixed fix
   `PNP_PROPERTY_CONTEXT`, the build property passed 64/64 accepted cases at
   `max_junctions = 26`, `max_abs_mm_units = 40_000` (`target/logs/bounds/property-build-manual.log`)
   and 256/256 at the ceilings `max_junctions = 64`, `max_abs_mm_units = 1_000_000` with zero
-  rejects (`target/logs/bounds/property-build-extended-manual.log`). The same harness rejects the
-  committed routine and extended `max_junctions` values before sampling
-  (`target/logs/bounds/property-below-roster.log`,
+  rejects (`target/logs/bounds/property-build-extended-manual.log`). The same harness rejects
+  below-roster `max_junctions` values before sampling (`target/logs/bounds/property-below-roster.log`,
   `target/logs/bounds/property-extended-below-roster.log`). Registry timings on the final tree are
-  0.32 s routine selected, 0.30 s combined routine, 9.14 s extended selected and 10.11 s combined
+  0.33 s routine selected, 0.33 s combined routine, 5.90 s extended selected and 5.18 s combined
   extended (Measurements).
+- **Flag-desync witness.** With `feature_flags.reverse()` removed from `build_walls`, the generated
+  `M-ARACHNE-BUILD` property fails on the asymmetric band:
+  `inset_idx=1 is_odd=false is_closed=true point 1 (source junction 3): is_bridge = false, but this
+  point's own coordinates say true` (`target/logs/bounds/postfix-band-mutant-full.log`). The same
+  tree passes after the reversal is restored
+  (`target/logs/bounds/postfix-band-registry-restored.log`). This detection comes from the
+  generated property, not from the deterministic regression.
 - **Roster minimum fixture.** `valid_build_limits()` now derives from the real validator at
   `max_junctions = 23`, `max_abs_mm_units = 20_000`, `max_spacing_units = 10_000`,
   `max_height_units = 3_000`, so the deterministic witnesses cannot drift out of the accepted
-  domain. The reverse-trigger regression keeps its `(2 outside, 3 inside)` bridge population by
-  using a right-half bridge band, because the roster's central band now sits strictly inside the
-  inner rectangle.
+  domain. The reverse-trigger regression keeps its own right-half bridge band, which fixes the
+  closed inner rectangle's population at `(2 outside, 3 inside)`; the generated band is asymmetric
+  in the same two-corner way, but its extent follows the sampled half-extent.
 
 ### `M-ARACHNE-CLASSIFY` shrink behaviour
 
@@ -264,46 +275,48 @@ warm, so it measures the module crate and its test binary only.
 
 | Record | Selected routine | Selected extended | Combined routine | Combined extended |
 |---|---:|---:|---:|---:|
-| `H-ARACHNE-BEADING` | 0.02 s | 0.35 s | 0.06 s | 0.49 s |
-| `H-ARACHNE-GRAPH` | 0.35 s | 6.03 s | 0.24 s | 9.19 s |
-| `H-ARACHNE-PIPELINE` | 0.26 s | 7.27 s | 0.24 s | 9.01 s |
-| `M-ARACHNE-CLASSIFY` | 0.03 s | 0.39 s | 0.03 s | 0.39 s |
-| `M-ARACHNE-BUILD` | 0.32 s | 9.14 s | 0.30 s | 10.11 s |
-| `M-ARACHNE-SEQUENCE` | 0.05 s | 1.29 s | 0.04 s | 1.23 s |
+| `H-ARACHNE-BEADING` | 0.02 s | 0.28 s | 0.02 s | 0.31 s |
+| `H-ARACHNE-GRAPH` | 0.22 s | 5.32 s | 0.25 s | 5.61 s |
+| `H-ARACHNE-PIPELINE` | 0.23 s | 5.39 s | 0.24 s | 5.64 s |
+| `M-ARACHNE-CLASSIFY` | 0.03 s | 0.24 s | 0.02 s | 0.31 s |
+| `M-ARACHNE-BUILD` | 0.33 s | 5.90 s | 0.33 s | 5.18 s |
+| `M-ARACHNE-SEQUENCE` | 0.03 s | 0.75 s | 0.04 s | 0.84 s |
 | Log | `routine-six.log` | `extended-six-summary.log` | `combined-routine-summary.log` | `combined-extended-summary.log` |
 
-All four columns were re-measured on the final tree after the AC-5 winding correction and after
-the `M-ARACHNE-BUILD` bounds were raised, so the row shares one source state; the superseded
-pre-fix figures are not carried forward. `M-ARACHNE-BUILD` is the slowest module record in every
-lane (0.32 / 9.14 / 0.30 / 10.11 s) because each case now builds a five-line region with 23 to 64
-junctions and a sampled 1–2 mm (routine) or 1–4 mm (extended) half-extent, then checks the emitted
-extent and junction total. Totals: 25.701 s routine and 50.692 s extended for the six-record
-selections; 6m7.339 s routine and 16m59.198 s extended for the 32-record combined lanes. The
-retained-seed replay below covers `H-ARACHNE-BEADING` only and was taken before the `M-ARACHNE-BUILD`
-changes, which cannot affect that record.
+All four columns were re-measured on the final tree after the AC-5 winding correction, after the
+`M-ARACHNE-BUILD` bounds were raised, and after its bridge band became asymmetric, so the row
+shares one source state; the superseded figures are not carried forward. `M-ARACHNE-BUILD` is the
+slowest of the three module records in every lane (0.33 / 5.90 / 0.33 / 5.18 s) because each case
+builds a five-line region with 23 to 64 junctions and a sampled 1–2 mm (routine) or 1–4 mm
+(extended) half-extent, then checks the emitted extent and junction total. Totals: 19.342 s routine
+and 35.708 s extended for the six-record selections; 2m34.964 s routine and 10m10.932 s extended
+for the 32-record combined lanes. The combined lanes ran with all 32 record binaries already
+linked, so their totals are warm-cache execution times and exclude first-run linking. The
+retained-seed replay below covers `H-ARACHNE-BEADING` only and was taken before the
+`M-ARACHNE-BUILD` changes, which cannot affect that record.
 
 All logs are under `target/proptest-arachne-evidence/`. Per lane:
 
 - **Six-record routine selection**
   (`cargo xtask test --summary --properties --property H-ARACHNE-BEADING … --property
   M-ARACHNE-SEQUENCE --tier routine`):
-  - Total `real 0m25.701s`, recorded in the archived digest `routine-six.log`.
+  - Total `real 0m19.342s`, recorded in the archived digest `routine-six.log`.
   - `VERDICT: PASS`.
   - 64/64 accepted per record, 0 rejects, `call_counts_complete = true`,
     `completion_eligible = true`, `shrink_completed = null`.
-  - Run token `a268ff0226056d4afde47416822da5c2`; `routine-six-full.log` is the matching full
+  - Run token `ed88fc5037adaae5a7f44366edcc8c88`; `routine-six-full.log` is the matching full
     output with the per-record begin/end events. The summary digest keeps the verdict and the six
     `test result:` lines. `VERDICT: PASS` is emitted only after the runner's evidence check
     requires a controller begin/end pair per record with `accepted_cases >= profile.cases` and
     `completion_eligible == true`, so the 64/64 claim is enforced by the runner, not asserted from
     this table.
 - **Six-record extended selection** (same command, `--tier extended`, run token
-  `aab8b098c90994b71e3f4bb5e75b82c0`):
+  `87f1ec238c6ce82930c53c669a59acad`):
   - Six matching controller `begin`/`end` events.
   - Every `end` event: `accepted_cases = 1024`, `rejected_test_calls = 0`,
     `call_counts_complete = true`, `completion_eligible = true`, `shrink_completed = null`,
     `outcome = passed`.
-  - Total `real 0m50.692s`, archived in `extended-six-summary.log`; `extended-six-full.log` is the
+  - Total `real 0m35.708s`, archived in `extended-six-summary.log`; `extended-six-full.log` is the
     matching full output.
 - **Retained-seed replay** (`--property H-ARACHNE-BEADING --tier routine --seed
   14268583537219271429`, run token `29d43e1e20aa98fce6670d40b9413df3`):
@@ -312,20 +325,20 @@ All logs are under `target/proptest-arachne-evidence/`. Per lane:
   - The archived log is `replay-beeding-routine.log`. That filename is the real one on disk,
     misspelling included.
 - **Combined incremental routine** (`cargo xtask test --summary --properties --tier routine`, run
-  token `93ef4634a8b0bc3d0b8c78ef388002a5`):
+  token `883cc94987301d99f3e443273c5b51ea`):
   - 32 records. The four `requires_scad` records are skipped without `--with-scad`.
   - 32 `begin` and 32 `end` events. The six Arachne `end` events report 64 accepted and 0
     rejected.
-  - `VERDICT: PASS` and a total of `real 6m7.339s`, archived in
+  - `VERDICT: PASS` and a total of `real 2m34.964s`, archived in
     `combined-routine-summary.log`; `combined-routine-full.log` holds the per-record lines and
-    events.
+    events. This lane is warm-cache: every record binary was already linked.
 - **Combined incremental extended** (`--tier extended`, run token
-  `42eb7e65b35d62605f6b5f85c8060433`):
+  `e45ac9033a51744597c0b66d67e092ad`):
   - 32 records, 32 `begin` and 32 `end` events. The six Arachne `end` events report 1024 accepted
     and 0 rejected.
-  - `VERDICT: PASS` and a total of `real 16m59.198s`, archived in
+  - `VERDICT: PASS` and a total of `real 10m10.932s`, archived in
     `combined-extended-summary.log`; `combined-extended-full.log` holds the per-record lines and
-    events.
+    events. This lane is warm-cache too.
 - **First gated command after the production edits.**
   - 6 m 48.9 s total.
   - That includes 49 stale guest rebuilds, measured at 272.1 s as the artifact-write span, and an
@@ -522,14 +535,14 @@ evidence. Running the hosted job is the packet's remaining closure action.
 | `rg -n 'H-ARACHNE\|M-ARACHNE\|inner.contour' docs/02_ir_schemas.md` | matches the new printable-versus-marker subsection and its two charter links |
 | `rg -n 'M-ARACHNE\|property_testing\|host-algos\|check-literals' docs/05_module_sdk.md` | every alternative matches |
 | Every `charter` anchor in `test-properties.toml` for `h-arachne-*`/`m-arachne-*` | all six resolve to `## ` headings in `docs/testing/properties.md` |
-| `cargo build --workspace` | `BUILD_EXIT=0` (`closure-build-check-clippy.log`) |
-| `cargo check --workspace --all-targets` | `CHECK_EXIT=0` (`closure-build-check-clippy.log`) |
-| `cargo clippy --workspace --all-targets -- -D warnings` | `CLIPPY_EXIT=0` (`closure-build-check-clippy.log`) |
-| `cargo check`/`clippy -p slicer-core --all-targets --features host-algos,property_testing` | both exit 0 (`closure-prereq-owner-gates.log`) |
-| `cargo check`/`clippy -p arachne-perimeters --all-targets --features property_testing` | both exit 0 (`closure-prereq-owner-gates.log`) |
-| `cargo test -p slicer-sdk --features property_testing --test property_domain_contracts` | 11 passed, 0 failed (`closure-prereq-owner-gates.log`) |
-| `cargo test -p xtask --bin xtask -- property_` | 23 passed, 0 failed (`closure-prereq-owner-gates.log`) |
-| `cargo xtask check-literals` | 0 violations (`closure-xtask-gates.log`); not evidence for `src/property_tests.rs` |
-| `cargo xtask check-test-quality --report` | 0 findings (`closure-xtask-gates.log`) |
-| `cargo xtask check-fmt` | 62 packages clean (`closure-xtask-gates.log`) |
-| `cargo xtask build-guests --check` | exit `0`, `EXIT_FRESH` (`closure-xtask-gates.log`) |
+| `cargo build --workspace` | `BUILD_EXIT=0` (`closure-final-build.log`) |
+| `cargo check --workspace --all-targets` | `CHECK_EXIT=0` (`closure-final-check.log`) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | `CLIPPY_EXIT=0` (`closure-final-clippy.log`) |
+| `cargo check`/`clippy -p slicer-core --all-targets --features host-algos,property_testing` | `CORE_CHECK_EXIT=0`, `CORE_CLIPPY_EXIT=0` (`closure-final-owner-gates.log`) |
+| `cargo check`/`clippy -p arachne-perimeters --all-targets --features property_testing` | `MOD_CHECK_EXIT=0`, `MOD_CLIPPY_EXIT=0` (`closure-final-owner-gates.log`) |
+| `cargo test -p slicer-sdk --features property_testing --test property_domain_contracts` | 11 passed, 0 failed, `SDK_TEST_EXIT=0` (`closure-final-owner-gates.log`) |
+| `cargo test -p xtask --bin xtask -- property_` | 23 passed, 0 failed, `XTASK_TEST_EXIT=0` (`closure-final-owner-gates.log`) |
+| `cargo xtask check-literals` | 0 violations, `LITERALS_EXIT=0` (`closure-final-literals.log`); not evidence for `src/property_tests.rs` |
+| `cargo xtask check-test-quality --report` | 0 findings, `TEST_QUALITY_EXIT=0` (`closure-final-test-quality.log`) |
+| `cargo xtask check-fmt` | 62 packages clean, `FMT_EXIT=0` (`closure-final-fmt.log`) |
+| `cargo xtask build-guests --check` | `GUESTS_EXIT=0`, `EXIT_FRESH` (`closure-final-guests.log`) |
