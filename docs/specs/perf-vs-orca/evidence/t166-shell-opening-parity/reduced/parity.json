@@ -1,0 +1,597 @@
+{
+  "schema": 1,
+  "cells": {
+    "benchy-classic-off": {
+      "sections": {
+        "Top surface": {
+          "baseline_mm": 3092.587629276126,
+          "candidate_mm": 3208.3044607158267,
+          "delta_mm": 115.71683143970085,
+          "delta_pct": 3.741747860085258,
+          "layers_compared": 40,
+          "layers_more": 13,
+          "layers_less": 12,
+          "layers_equal": 15,
+          "largest_decrease": {
+            "layer": 33,
+            "baseline_mm": 150.6439270869567,
+            "candidate_mm": 145.97662462607263,
+            "delta_mm": -4.667302460884059
+          }
+        },
+        "Bottom surface": {
+          "baseline_mm": 2163.6860065968226,
+          "candidate_mm": 2869.9818615284994,
+          "delta_mm": 706.2958549316768,
+          "delta_pct": 32.64317709585699,
+          "layers_compared": 7,
+          "layers_more": 5,
+          "layers_less": 1,
+          "layers_equal": 1,
+          "largest_decrease": {
+            "layer": 185,
+            "baseline_mm": 487.97680678505503,
+            "candidate_mm": 487.35725570663226,
+            "delta_mm": -0.6195510784227736
+          }
+        },
+        "Internal solid infill": {
+          "baseline_mm": 2060.985198405877,
+          "candidate_mm": 1261.086608775266,
+          "delta_mm": -799.8985896306108,
+          "delta_pct": -38.8114669745961,
+          "layers_compared": 13,
+          "layers_more": 1,
+          "layers_less": 8,
+          "layers_equal": 4,
+          "largest_decrease": {
+            "layer": 2,
+            "baseline_mm": 657.9511199413602,
+            "candidate_mm": 0.0,
+            "delta_mm": -657.9511199413602
+          }
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1092.1418455328342,
+          "candidate_mm": 1099.945884907133,
+          "delta_mm": 7.804039374298782,
+          "delta_pct": 0.7145628020956698,
+          "layers_compared": 11,
+          "layers_more": 7,
+          "layers_less": 3,
+          "layers_equal": 1,
+          "largest_decrease": {
+            "layer": 191,
+            "baseline_mm": 13.24619150692091,
+            "candidate_mm": 10.38851573975596,
+            "delta_mm": -2.8576757671649506
+          }
+        }
+      },
+      "first_differing_layer": {
+        "layer": 2,
+        "section": "Bottom surface",
+        "baseline_mm": 0.0,
+        "candidate_mm": 657.9511199413602
+      }
+    },
+    "benchy-classic-on": {
+      "sections": {
+        "Top surface": {
+          "baseline_mm": 3092.587629276126,
+          "candidate_mm": 3208.3044607158267,
+          "delta_mm": 115.71683143970085,
+          "delta_pct": 3.741747860085258,
+          "layers_compared": 40,
+          "layers_more": 13,
+          "layers_less": 12,
+          "layers_equal": 15,
+          "largest_decrease": {
+            "layer": 33,
+            "baseline_mm": 150.6439270869567,
+            "candidate_mm": 145.97662462607263,
+            "delta_mm": -4.667302460884059
+          }
+        },
+        "Bottom surface": {
+          "baseline_mm": 2163.6860065968226,
+          "candidate_mm": 2869.9818615284994,
+          "delta_mm": 706.2958549316768,
+          "delta_pct": 32.64317709585699,
+          "layers_compared": 7,
+          "layers_more": 5,
+          "layers_less": 1,
+          "layers_equal": 1,
+          "largest_decrease": {
+            "layer": 185,
+            "baseline_mm": 487.97680678505503,
+            "candidate_mm": 487.35725570663226,
+            "delta_mm": -0.6195510784227736
+          }
+        },
+        "Internal solid infill": {
+          "baseline_mm": 2060.985198405877,
+          "candidate_mm": 1261.086608775266,
+          "delta_mm": -799.8985896306108,
+          "delta_pct": -38.8114669745961,
+          "layers_compared": 13,
+          "layers_more": 1,
+          "layers_less": 8,
+          "layers_equal": 4,
+          "largest_decrease": {
+            "layer": 2,
+            "baseline_mm": 657.9511199413602,
+            "candidate_mm": 0.0,
+            "delta_mm": -657.9511199413602
+          }
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1092.1418455328342,
+          "candidate_mm": 1099.945884907133,
+          "delta_mm": 7.804039374298782,
+          "delta_pct": 0.7145628020956698,
+          "layers_compared": 11,
+          "layers_more": 7,
+          "layers_less": 3,
+          "layers_equal": 1,
+          "largest_decrease": {
+            "layer": 191,
+            "baseline_mm": 13.24619150692091,
+            "candidate_mm": 10.38851573975596,
+            "delta_mm": -2.8576757671649506
+          }
+        }
+      },
+      "first_differing_layer": {
+        "layer": 2,
+        "section": "Bottom surface",
+        "baseline_mm": 0.0,
+        "candidate_mm": 657.9511199413602
+      }
+    },
+    "benchy-arachne-off": {
+      "sections": {
+        "Top surface": {
+          "baseline_mm": 3236.090786939802,
+          "candidate_mm": 3371.409683344608,
+          "delta_mm": 135.31889640480586,
+          "delta_pct": 4.1815543912094535,
+          "layers_compared": 44,
+          "layers_more": 18,
+          "layers_less": 8,
+          "layers_equal": 18,
+          "largest_decrease": {
+            "layer": 33,
+            "baseline_mm": 150.6439270869567,
+            "candidate_mm": 145.97662462607263,
+            "delta_mm": -4.667302460884059
+          }
+        },
+        "Bottom surface": {
+          "baseline_mm": 2220.16267200294,
+          "candidate_mm": 3003.8006801138695,
+          "delta_mm": 783.6380081109296,
+          "delta_pct": 35.29642300507482,
+          "layers_compared": 7,
+          "layers_more": 4,
+          "layers_less": 1,
+          "layers_equal": 2,
+          "largest_decrease": {
+            "layer": 185,
+            "baseline_mm": 487.97680678505503,
+            "candidate_mm": 487.35725570663226,
+            "delta_mm": -0.6195510784227736
+          }
+        },
+        "Internal solid infill": {
+          "baseline_mm": 2184.981633834221,
+          "candidate_mm": 1293.8828882292491,
+          "delta_mm": -891.098745604972,
+          "delta_pct": -40.78289408965263,
+          "layers_compared": 13,
+          "layers_more": 1,
+          "layers_less": 8,
+          "layers_equal": 4,
+          "largest_decrease": {
+            "layer": 2,
+            "baseline_mm": 735.950256228329,
+            "candidate_mm": 0.0,
+            "delta_mm": -735.950256228329
+          }
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1092.1418455328342,
+          "candidate_mm": 1099.945884907133,
+          "delta_mm": 7.804039374298782,
+          "delta_pct": 0.7145628020956698,
+          "layers_compared": 11,
+          "layers_more": 7,
+          "layers_less": 3,
+          "layers_equal": 1,
+          "largest_decrease": {
+            "layer": 191,
+            "baseline_mm": 13.24619150692091,
+            "candidate_mm": 10.38851573975596,
+            "delta_mm": -2.8576757671649506
+          }
+        }
+      },
+      "first_differing_layer": {
+        "layer": 2,
+        "section": "Bottom surface",
+        "baseline_mm": 0.0,
+        "candidate_mm": 735.9772581198748
+      }
+    },
+    "benchy-arachne-on": {
+      "sections": {
+        "Top surface": {
+          "baseline_mm": 3236.090786939802,
+          "candidate_mm": 3371.409683344608,
+          "delta_mm": 135.31889640480586,
+          "delta_pct": 4.1815543912094535,
+          "layers_compared": 44,
+          "layers_more": 18,
+          "layers_less": 8,
+          "layers_equal": 18,
+          "largest_decrease": {
+            "layer": 33,
+            "baseline_mm": 150.6439270869567,
+            "candidate_mm": 145.97662462607263,
+            "delta_mm": -4.667302460884059
+          }
+        },
+        "Bottom surface": {
+          "baseline_mm": 2220.16267200294,
+          "candidate_mm": 3003.8006801138695,
+          "delta_mm": 783.6380081109296,
+          "delta_pct": 35.29642300507482,
+          "layers_compared": 7,
+          "layers_more": 4,
+          "layers_less": 1,
+          "layers_equal": 2,
+          "largest_decrease": {
+            "layer": 185,
+            "baseline_mm": 487.97680678505503,
+            "candidate_mm": 487.35725570663226,
+            "delta_mm": -0.6195510784227736
+          }
+        },
+        "Internal solid infill": {
+          "baseline_mm": 2184.981633834221,
+          "candidate_mm": 1293.8828882292491,
+          "delta_mm": -891.098745604972,
+          "delta_pct": -40.78289408965263,
+          "layers_compared": 13,
+          "layers_more": 1,
+          "layers_less": 8,
+          "layers_equal": 4,
+          "largest_decrease": {
+            "layer": 2,
+            "baseline_mm": 735.950256228329,
+            "candidate_mm": 0.0,
+            "delta_mm": -735.950256228329
+          }
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1092.1418455328342,
+          "candidate_mm": 1099.945884907133,
+          "delta_mm": 7.804039374298782,
+          "delta_pct": 0.7145628020956698,
+          "layers_compared": 11,
+          "layers_more": 7,
+          "layers_less": 3,
+          "layers_equal": 1,
+          "largest_decrease": {
+            "layer": 191,
+            "baseline_mm": 13.24619150692091,
+            "candidate_mm": 10.38851573975596,
+            "delta_mm": -2.8576757671649506
+          }
+        }
+      },
+      "first_differing_layer": {
+        "layer": 2,
+        "section": "Bottom surface",
+        "baseline_mm": 0.0,
+        "candidate_mm": 735.9772581198748
+      }
+    },
+    "base-classic-off": {
+      "sections": {
+        "Top surface": {
+          "baseline_mm": 208.90062960688806,
+          "candidate_mm": 214.65618531376157,
+          "delta_mm": 5.755555706873508,
+          "delta_pct": 2.755164365806072,
+          "layers_compared": 70,
+          "layers_more": 37,
+          "layers_less": 29,
+          "layers_equal": 4,
+          "largest_decrease": {
+            "layer": 41,
+            "baseline_mm": 4.0021843157790595,
+            "candidate_mm": 2.5189693773053152,
+            "delta_mm": -1.4832149384737443
+          }
+        },
+        "Bottom surface": {
+          "baseline_mm": 62.37041285324028,
+          "candidate_mm": 67.26575765465337,
+          "delta_mm": 4.8953448014130885,
+          "delta_pct": 7.8488253924693465,
+          "layers_compared": 40,
+          "layers_more": 24,
+          "layers_less": 14,
+          "layers_equal": 2,
+          "largest_decrease": {
+            "layer": 43,
+            "baseline_mm": 2.5250904951323565,
+            "candidate_mm": 0.9347951647286379,
+            "delta_mm": -1.5902953304037186
+          }
+        },
+        "Internal solid infill": {
+          "baseline_mm": 2.9140673640971126,
+          "candidate_mm": 0.0,
+          "delta_mm": -2.9140673640971126,
+          "delta_pct": -100.0,
+          "layers_compared": 2,
+          "layers_more": 0,
+          "layers_less": 2,
+          "layers_equal": 0,
+          "largest_decrease": {
+            "layer": 144,
+            "baseline_mm": 2.238073281282771,
+            "candidate_mm": 0.0,
+            "delta_mm": -2.238073281282771
+          }
+        },
+        "Internal Bridge": {
+          "baseline_mm": 9.527193279531476,
+          "candidate_mm": 10.862357279779832,
+          "delta_mm": 1.3351640002483567,
+          "delta_pct": 14.014242821302528,
+          "layers_compared": 4,
+          "layers_more": 2,
+          "layers_less": 2,
+          "layers_equal": 0,
+          "largest_decrease": {
+            "layer": 100,
+            "baseline_mm": 0.9422340473576688,
+            "candidate_mm": 0.5422361109332368,
+            "delta_mm": -0.39999793642443204
+          }
+        }
+      },
+      "first_differing_layer": {
+        "layer": 4,
+        "section": "Bottom surface",
+        "baseline_mm": 5.708588523141465,
+        "candidate_mm": 6.591356277059652
+      }
+    },
+    "base-classic-on": {
+      "sections": {
+        "Top surface": {
+          "baseline_mm": 208.90062960688806,
+          "candidate_mm": 214.65618531376157,
+          "delta_mm": 5.755555706873508,
+          "delta_pct": 2.755164365806072,
+          "layers_compared": 70,
+          "layers_more": 37,
+          "layers_less": 29,
+          "layers_equal": 4,
+          "largest_decrease": {
+            "layer": 41,
+            "baseline_mm": 4.0021843157790595,
+            "candidate_mm": 2.5189693773053152,
+            "delta_mm": -1.4832149384737443
+          }
+        },
+        "Bottom surface": {
+          "baseline_mm": 62.37041285324028,
+          "candidate_mm": 67.26575765465337,
+          "delta_mm": 4.8953448014130885,
+          "delta_pct": 7.8488253924693465,
+          "layers_compared": 40,
+          "layers_more": 24,
+          "layers_less": 14,
+          "layers_equal": 2,
+          "largest_decrease": {
+            "layer": 43,
+            "baseline_mm": 2.5250904951323565,
+            "candidate_mm": 0.9347951647286379,
+            "delta_mm": -1.5902953304037186
+          }
+        },
+        "Internal solid infill": {
+          "baseline_mm": 2.9140673640971126,
+          "candidate_mm": 0.0,
+          "delta_mm": -2.9140673640971126,
+          "delta_pct": -100.0,
+          "layers_compared": 2,
+          "layers_more": 0,
+          "layers_less": 2,
+          "layers_equal": 0,
+          "largest_decrease": {
+            "layer": 144,
+            "baseline_mm": 2.238073281282771,
+            "candidate_mm": 0.0,
+            "delta_mm": -2.238073281282771
+          }
+        },
+        "Internal Bridge": {
+          "baseline_mm": 9.527193279531476,
+          "candidate_mm": 10.862357279779832,
+          "delta_mm": 1.3351640002483567,
+          "delta_pct": 14.014242821302528,
+          "layers_compared": 4,
+          "layers_more": 2,
+          "layers_less": 2,
+          "layers_equal": 0,
+          "largest_decrease": {
+            "layer": 100,
+            "baseline_mm": 0.9422340473576688,
+            "candidate_mm": 0.5422361109332368,
+            "delta_mm": -0.39999793642443204
+          }
+        }
+      },
+      "first_differing_layer": {
+        "layer": 4,
+        "section": "Bottom surface",
+        "baseline_mm": 5.708588523141465,
+        "candidate_mm": 6.591356277059652
+      }
+    },
+    "base-arachne-off": {
+      "sections": {
+        "Top surface": {
+          "baseline_mm": 257.3777031165799,
+          "candidate_mm": 269.0593610386657,
+          "delta_mm": 11.681657922085833,
+          "delta_pct": 4.538721800930284,
+          "layers_compared": 78,
+          "layers_more": 41,
+          "layers_less": 27,
+          "layers_equal": 10,
+          "largest_decrease": {
+            "layer": 41,
+            "baseline_mm": 6.757301240989581,
+            "candidate_mm": 5.1244734816675175,
+            "delta_mm": -1.6328277593220637
+          }
+        },
+        "Bottom surface": {
+          "baseline_mm": 69.70668003428601,
+          "candidate_mm": 74.68372593234511,
+          "delta_mm": 4.977045898059103,
+          "delta_pct": 7.139984138695297,
+          "layers_compared": 43,
+          "layers_more": 28,
+          "layers_less": 15,
+          "layers_equal": 0,
+          "largest_decrease": {
+            "layer": 43,
+            "baseline_mm": 2.5095342604540534,
+            "candidate_mm": 1.2664289989494502,
+            "delta_mm": -1.2431052615046032
+          }
+        },
+        "Internal solid infill": {
+          "baseline_mm": 3.0610723592076208,
+          "candidate_mm": 0.0,
+          "delta_mm": -3.0610723592076208,
+          "delta_pct": -100.0,
+          "layers_compared": 2,
+          "layers_more": 0,
+          "layers_less": 2,
+          "layers_equal": 0,
+          "largest_decrease": {
+            "layer": 144,
+            "baseline_mm": 2.3886134385291946,
+            "candidate_mm": 0.0,
+            "delta_mm": -2.3886134385291946
+          }
+        },
+        "Internal Bridge": {
+          "baseline_mm": 10.745723372161873,
+          "candidate_mm": 11.447043495253522,
+          "delta_mm": 0.7013201230916497,
+          "delta_pct": 6.526504533966566,
+          "layers_compared": 4,
+          "layers_more": 1,
+          "layers_less": 3,
+          "layers_equal": 0,
+          "largest_decrease": {
+            "layer": 100,
+            "baseline_mm": 0.9422340473576688,
+            "candidate_mm": 0.5422361109332368,
+            "delta_mm": -0.39999793642443204
+          }
+        }
+      },
+      "first_differing_layer": {
+        "layer": 3,
+        "section": "Bottom surface",
+        "baseline_mm": 0.3478965363437745,
+        "candidate_mm": 0.35496760415565365
+      }
+    },
+    "base-arachne-on": {
+      "sections": {
+        "Top surface": {
+          "baseline_mm": 257.3777031165799,
+          "candidate_mm": 269.0593610386657,
+          "delta_mm": 11.681657922085833,
+          "delta_pct": 4.538721800930284,
+          "layers_compared": 78,
+          "layers_more": 41,
+          "layers_less": 27,
+          "layers_equal": 10,
+          "largest_decrease": {
+            "layer": 41,
+            "baseline_mm": 6.757301240989581,
+            "candidate_mm": 5.1244734816675175,
+            "delta_mm": -1.6328277593220637
+          }
+        },
+        "Bottom surface": {
+          "baseline_mm": 69.70668003428601,
+          "candidate_mm": 74.68372593234511,
+          "delta_mm": 4.977045898059103,
+          "delta_pct": 7.139984138695297,
+          "layers_compared": 43,
+          "layers_more": 28,
+          "layers_less": 15,
+          "layers_equal": 0,
+          "largest_decrease": {
+            "layer": 43,
+            "baseline_mm": 2.5095342604540534,
+            "candidate_mm": 1.2664289989494502,
+            "delta_mm": -1.2431052615046032
+          }
+        },
+        "Internal solid infill": {
+          "baseline_mm": 3.0610723592076208,
+          "candidate_mm": 0.0,
+          "delta_mm": -3.0610723592076208,
+          "delta_pct": -100.0,
+          "layers_compared": 2,
+          "layers_more": 0,
+          "layers_less": 2,
+          "layers_equal": 0,
+          "largest_decrease": {
+            "layer": 144,
+            "baseline_mm": 2.3886134385291946,
+            "candidate_mm": 0.0,
+            "delta_mm": -2.3886134385291946
+          }
+        },
+        "Internal Bridge": {
+          "baseline_mm": 10.745723372161873,
+          "candidate_mm": 11.447043495253522,
+          "delta_mm": 0.7013201230916497,
+          "delta_pct": 6.526504533966566,
+          "layers_compared": 4,
+          "layers_more": 1,
+          "layers_less": 3,
+          "layers_equal": 0,
+          "largest_decrease": {
+            "layer": 100,
+            "baseline_mm": 0.9422340473576688,
+            "candidate_mm": 0.5422361109332368,
+            "delta_mm": -0.39999793642443204
+          }
+        }
+      },
+      "first_differing_layer": {
+        "layer": 3,
+        "section": "Bottom surface",
+        "baseline_mm": 0.3478965363437745,
+        "candidate_mm": 0.35496760415565365
+      }
+    }
+  }
+}

@@ -4,9 +4,10 @@
 //! 1. **Pass 1 (depth 0)** — per-region polygon `diff` against the next
 //!    active layer (for top exposure) and previous active layer (for bottom
 //!    exposure) in that region's own timeline. The diff polygons become the
-//!    layer-0 `top_solid_fill` / `bottom_solid_fill` AFTER a morphological
-//!    opening (offset(-r) -> offset(+r)) that strips sub-extrusion-width
-//!    slivers produced by coincident-edge subtraction.
+//!    layer-0 `top_solid_fill` / `bottom_solid_fill` AFTER canonical's opening,
+//!    `opening_ex(diff, external_perimeter_width / 10)` with `jtMiter` and miter
+//!    limit 3, which strips the slivers that coincident-edge subtraction
+//!    produces without deleting real narrow surfaces.
 //! 2. **Pass 2 (depths 1..k-1)** — shrinking-shadow projection. For each
 //!    region layer marked as depth-0, walk outward through the region's
 //!    timeline (backward for top, forward for bottom) and `intersection` the
@@ -55,8 +56,12 @@ use std::sync::Arc;
 
 use rayon::prelude::*;
 use slicer_core::algos::prepass_slice::update_external_bridge_orientation;
-use slicer_core::polygon_ops::{difference, intersection, offset, opening, union, OffsetJoinType};
-use slicer_ir::{ConfigValue, ExPolygon, ObjectId, RegionId, RegionKey, RegionMapIR, SliceIR};
+use slicer_core::polygon_ops::{
+    difference, intersection, offset, opening, opening_ex, union, OffsetJoinType,
+};
+use slicer_ir::{
+    ConfigValue, ExPolygon, ObjectId, RegionId, RegionKey, RegionMapIR, ResolvedConfig, SliceIR,
+};
 
 use slicer_ir::BlackboardError;
 
@@ -148,10 +153,16 @@ pub fn commit_shell_classification_builtin(
         .map(|((object_id, region_id), timeline)| {
             let (k_top, k_bot) =
                 resolve_shell_counts(region_map.as_ref(), object_id, *region_id, timeline);
-            let opening_r =
-                resolve_opening_radius(region_map.as_ref(), object_id, *region_id, timeline);
+            let params =
+                resolve_opening_params(region_map.as_ref(), object_id, *region_id, timeline);
             compute_region_updates(
-                &new_vec, object_id, *region_id, timeline, k_top, k_bot, opening_r,
+                &new_vec,
+                object_id,
+                *region_id,
+                timeline,
+                k_top,
+                k_bot,
+                params,
             )
         })
         .collect();
@@ -366,11 +377,16 @@ fn compute_region_updates(
     timeline: &[usize],
     k_top: u8,
     k_bot: u8,
-    opening_r: f32,
+    params: ShellClassificationParams,
 ) -> Vec<RegionEdit> {
-    // Pass 2 shrinks the shell shadow by one complete extrusion line width;
-    // `opening_r` is the half-width used only by Pass 1's anti-sliver opening.
-    let shell_width_mm = opening_r * 2.0;
+    // Pass 2 shrinks the shell shadow by one complete extrusion line width.
+    // That width and Pass 1's opening radius are two different canonical
+    // quantities (see `ShellClassificationParams`) and are resolved
+    // separately so this parity fix cannot move the shadow cascade.
+    let ShellClassificationParams {
+        opening_radius_mm,
+        shell_width_mm,
+    } = params;
     // Pass 1: depth-0 classification.
     //
     // A pure map over the timeline: position `pos` reads only the immutable
@@ -378,9 +394,8 @@ fn compute_region_updates(
     // never a neighbour's. Rayon's ordered `collect` keeps the produced order
     // equal to plan order, and each `slice_idx` is produced by exactly one
     // iteration, so the resulting map is identical to the previous sequential
-    // build. This pass performs two `difference` calls
-    // and up to four round-join `offset`s (via `apply_opening`) per layer, on
-    // full-layer geometry.
+    // build. This pass performs two `difference` calls and one canonical
+    // `opening_ex` per exposed side, on full-layer geometry.
     let pass1: Vec<(usize, RegionUpdate)> = timeline
         .par_iter()
         .enumerate()
@@ -401,7 +416,8 @@ fn compute_region_updates(
             let mut touched = false;
 
             if k_top > 0 {
-                let top_diff = apply_opening(&difference(&r_polys, &upper_polys), opening_r);
+                let top_diff =
+                    apply_opening(&difference(&r_polys, &upper_polys), opening_radius_mm);
                 if !top_diff.is_empty() {
                     update.top_shell_index = Some(0);
                     update.top_solid_seed = Some(top_diff.clone());
@@ -411,7 +427,8 @@ fn compute_region_updates(
             }
 
             if k_bot > 0 {
-                let bot_diff = apply_opening(&difference(&r_polys, &lower_polys), opening_r);
+                let bot_diff =
+                    apply_opening(&difference(&r_polys, &lower_polys), opening_radius_mm);
                 if !bot_diff.is_empty() {
                     update.bottom_shell_index = Some(0);
                     update.bottom_solid_fill = Some(bot_diff);
@@ -531,50 +548,131 @@ fn compute_region_updates(
 }
 
 // ============================================================================
-// Anti-sliver opening
+// Canonical top/bottom opening
 // ============================================================================
 
-/// OrcaSlicer fallback radius (mm) when no per-region `line_width` is known.
-/// Half of the 0.4 mm nominal extrusion width.
-const FALLBACK_OPENING_RADIUS_MM: f32 = 0.2;
+/// Fallback extrusion width (mm) when no per-region `line_width` is known.
+/// The 0.4 mm nominal width; both the opening radius and the shadow step derive
+/// from it.
+const FALLBACK_LINE_WIDTH_MM: f32 = 0.4;
 
-/// Morphological opening: `offset(-r)` followed by `offset(+r)`. Removes
-/// features narrower than `2r` (sub-extrusion-width slivers) while leaving
-/// wider geometry essentially unchanged. Mirrors
-/// `slicer_core::triangle_mesh_slicer::apply_slice_closing_radius` but with
-/// reversed offset order.
-fn apply_opening(polys: &[ExPolygon], r: f32) -> Vec<ExPolygon> {
-    if polys.is_empty() || r <= 0.0 {
-        return polys.to_vec();
-    }
-    let eroded = offset(polys, -r, OffsetJoinType::Round, 0.0);
-    offset(&eroded, r, OffsetJoinType::Round, 0.0)
+/// Canonical `detect_surfaces_type` divides the external-perimeter width by
+/// this to get the opening radius: `opening_ex(diff, fw / 10)`.
+const OPENING_RADIUS_DIVISOR: f32 = 10.0;
+
+/// Canonical's `DefaultMiterLimit` (`ClipperUtils.hpp`), also used for the
+/// bridge opening in `classify_unsupported_bridge_areas`.
+const OPENING_MITER_LIMIT: f64 = 3.0;
+
+/// The two widths Pass 1 and Pass 2 consume, both in millimetres.
+///
+/// They are **not** the same quantity, and the pre-t166 code happened to make
+/// them equal (`opening_radius = line_width / 2`, `shell_width = 2 × that`):
+///
+/// * `opening_radius_mm` is canonical `PrintObject::detect_surfaces_type`'s
+///   `opening_ex(diff, flow(frExternalPerimeter).scaled_width() / 10)` — a
+///   tenth of the external-perimeter width, i.e. an anti-sliver opening that
+///   strips features narrower than a fifth of an extrusion line.
+/// * `shell_width_mm` is canonical `discover_horizontal_shells`' shrinking-shadow
+///   step, one full extrusion line width.
+///
+/// Splitting them is deliberate: t166 ports only the Pass-1 opening, so the
+/// Pass-2 cascade keeps the width it had (`line_width`).
+struct ShellClassificationParams {
+    opening_radius_mm: f32,
+    shell_width_mm: f32,
 }
 
-/// Resolve the opening radius from the region's `line_width` (half-width =
-/// removes any feature narrower than one extrusion line). Falls back to the
-/// 0.2 mm constant when no `RegionPlan` entry exists for this region.
-fn resolve_opening_radius(
+impl Default for ShellClassificationParams {
+    fn default() -> Self {
+        Self {
+            opening_radius_mm: FALLBACK_LINE_WIDTH_MM / OPENING_RADIUS_DIVISOR,
+            shell_width_mm: FALLBACK_LINE_WIDTH_MM,
+        }
+    }
+}
+
+/// Canonical morphological opening, `opening_ex(diff, radius)` with
+/// `jtMiter` and miter limit 3 — the same call
+/// `classify_unsupported_bridge_areas` makes for canonical's bridge opening,
+/// and the same parameters canonical uses for the top/bottom surfaces.
+///
+/// The pre-t166 code used `offset(-r, Round)` then `offset(+r, Round)` with
+/// `r = line_width / 2`, about 5x canonical's radius, which classified narrow
+/// top/bottom features as non-solid where canonical keeps them.
+fn apply_opening(polys: &[ExPolygon], r: f32) -> Vec<ExPolygon> {
+    if polys.is_empty() || !(r > 0.0) {
+        return polys.to_vec();
+    }
+    opening_ex(polys, r as f64, OffsetJoinType::Miter, OPENING_MITER_LIMIT)
+}
+
+/// Resolve the external-perimeter extrusion width (mm) that canonical's
+/// `flow(frExternalPerimeter).scaled_width()` would report for this region.
+///
+/// The matched job authors `outer_wall_line_width = 0`, which is canonical's
+/// **auto sentinel**, not a zero-width wall: `Flow` resolves it to the
+/// profile's `line_width` before either classifier sees it. A resolver that
+/// returns the literal `0.0` therefore does not "use canonical's width", it
+/// disables the opening entirely — measured: with the literal value the
+/// opening is a no-op (5,201,451 points in, 5,201,451 out, 6.8 ms for 974
+/// calls) and every layer carries a depth-0 seed.
+///
+/// Precedence is the one `resolve_contact_params`
+/// (`crates/slicer-runtime/src/builtins/support_analysis_producer.rs`) and
+/// `resolve_line_width_mm` (`crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs`)
+/// already use: a positive absolute `outer_wall_line_width`, else the typed
+/// `line_width`, else 0.4 mm. A percentage form is left to the perimeter
+/// modules (they resolve it against the nozzle) and falls back here.
+fn resolve_shell_external_width_mm(config: &ResolvedConfig) -> f32 {
+    let typed_line_width = if config.line_width > 0.0 {
+        config.line_width as f32
+    } else {
+        FALLBACK_LINE_WIDTH_MM
+    };
+    match config.extensions.get("outer_wall_line_width") {
+        Some(ConfigValue::Float(value)) if *value > 0.0 => *value as f32,
+        Some(ConfigValue::FloatOrPercent {
+            value,
+            is_percent: false,
+        }) if *value > 0.0 => *value as f32,
+        _ => typed_line_width,
+    }
+}
+
+/// Resolve both widths from the region's `ResolvedConfig`. The opening radius
+/// is a tenth of the external-perimeter width; the shadow width is the typed
+/// `line_width` with the same 0.4 mm fallback. A region with no `RegionPlan`
+/// entry takes both fallbacks.
+fn resolve_opening_params(
     region_map: &RegionMapIR,
     object_id: &ObjectId,
     region_id: RegionId,
     timeline: &[usize],
-) -> f32 {
-    if let Some(&first_idx) = timeline.first() {
-        let key = RegionKey {
-            global_layer_index: first_idx as u32,
-            object_id: object_id.clone(),
-            region_id,
-            variant_chain: Vec::new(),
-        };
-        if region_map.entries.contains_key(&key) {
-            let lw = region_map.config_for(&key).line_width as f32;
-            if lw > 0.0 {
-                return lw * 0.5;
-            }
-        }
+) -> ShellClassificationParams {
+    let Some(&first_idx) = timeline.first() else {
+        return ShellClassificationParams::default();
+    };
+    let key = RegionKey {
+        global_layer_index: first_idx as u32,
+        object_id: object_id.clone(),
+        region_id,
+        variant_chain: Vec::new(),
+    };
+    if !region_map.entries.contains_key(&key) {
+        return ShellClassificationParams::default();
     }
-    FALLBACK_OPENING_RADIUS_MM
+    let config = region_map.config_for(&key);
+    let external_width_mm = resolve_shell_external_width_mm(config);
+    let shell_width_mm = if config.line_width > 0.0 {
+        config.line_width as f32
+    } else {
+        FALLBACK_LINE_WIDTH_MM
+    };
+    ShellClassificationParams {
+        opening_radius_mm: external_width_mm / OPENING_RADIUS_DIVISOR,
+        shell_width_mm,
+    }
 }
 
 // ============================================================================
@@ -1511,7 +1609,20 @@ mod tests {
         ];
         let object_id = String::from("o");
 
-        let edits = compute_region_updates(&snapshot, &object_id, 0, &[0, 1, 2, 3], 0, 3, 0.0);
+        // Zero widths keep the fixture about propagation depth, not geometry:
+        // no opening is applied and the shadow never shrinks.
+        let edits = compute_region_updates(
+            &snapshot,
+            &object_id,
+            0,
+            &[0, 1, 2, 3],
+            0,
+            3,
+            ShellClassificationParams {
+                opening_radius_mm: 0.0,
+                shell_width_mm: 0.0,
+            },
+        );
 
         let l3 = edits
             .iter()
@@ -1636,12 +1747,26 @@ mod tests {
                 .collect::<Vec<_>>()
         };
 
+        // Production widths: the canonical opening runs on every layer here, so
+        // a scheduling-dependent result would show up.
         let baseline = normalize(compute_region_updates(
-            &snapshot, &object_id, 0, &timeline, 3, 3, 0.0,
+            &snapshot,
+            &object_id,
+            0,
+            &timeline,
+            3,
+            3,
+            ShellClassificationParams::default(),
         ));
         for _ in 0..8 {
             let again = normalize(compute_region_updates(
-                &snapshot, &object_id, 0, &timeline, 3, 3, 0.0,
+                &snapshot,
+                &object_id,
+                0,
+                &timeline,
+                3,
+                3,
+                ShellClassificationParams::default(),
             ));
             assert_eq!(baseline, again, "shell classification output is not stable");
         }
@@ -1708,6 +1833,92 @@ mod tests {
         assert!(
             upper_convertible_surfaces(&all_top).is_empty(),
             "no stInternal/stInternalSolid surface means nothing to convert"
+        );
+    }
+
+    /// Canonical's opening keeps a surface that the pre-t166 `line_width / 2`
+    /// round opening deleted. This is the parity statement the stage now
+    /// implements: the strip is 0.3 mm wide, so `2 × 0.04 mm` cannot remove it
+    /// while the legacy `2 × 0.2 mm` must.
+    #[test]
+    fn canonical_opening_keeps_a_sub_line_width_surface_the_legacy_opening_deleted() {
+        let strip = vec![rect(0.0, 0.3)];
+        let kept = apply_opening(&strip, 0.04);
+        assert!(
+            !kept.is_empty(),
+            "canonical opening (radius = external_perimeter_width / 10) must keep a \
+             0.3 mm wide surface; the pre-t166 radius deleted it"
+        );
+
+        // The control: the legacy radius really does delete this fixture, or the
+        // assertion above proves nothing.
+        let eroded = offset(&strip, -0.2, OffsetJoinType::Round, 0.0);
+        let legacy = offset(&eroded, 0.2, OffsetJoinType::Round, 0.0);
+        assert!(
+            legacy.is_empty(),
+            "the fixture must fail under the legacy 0.2 mm round opening"
+        );
+    }
+
+    /// `outer_wall_line_width = 0` is canonical's **auto** sentinel, not a
+    /// zero-width wall. Resolving it literally disables the opening, which was
+    /// the t166 defect: measured as a no-op (5,201,451 points in and out).
+    #[test]
+    fn opening_widths_resolve_the_auto_sentinel_and_split_the_two_widths() {
+        let mut region_map = RegionMapIR::default();
+        let mut auto = slicer_ir::ResolvedConfig {
+            line_width: 0.4,
+            ..Default::default()
+        };
+        auto.extensions
+            .insert("outer_wall_line_width".into(), ConfigValue::Float(0.0));
+        let auto_id = region_map.intern_config(auto);
+        let mut explicit = slicer_ir::ResolvedConfig {
+            line_width: 0.4,
+            ..Default::default()
+        };
+        explicit
+            .extensions
+            .insert("outer_wall_line_width".into(), ConfigValue::Float(0.62));
+        let explicit_id = region_map.intern_config(explicit);
+
+        for (object, config_id) in [("auto", auto_id), ("explicit", explicit_id)] {
+            region_map.entries.insert(
+                RegionKey {
+                    global_layer_index: 0,
+                    object_id: object.into(),
+                    region_id: 0,
+                    variant_chain: Vec::new(),
+                },
+                slicer_ir::RegionPlan {
+                    config: config_id,
+                    ..Default::default()
+                },
+            );
+        }
+
+        let auto_params = resolve_opening_params(&region_map, &"auto".into(), 0, &[0]);
+        assert!(
+            (auto_params.opening_radius_mm - 0.04).abs() < 1e-6,
+            "auto sentinel must resolve to line_width / 10 = 0.04, got {}",
+            auto_params.opening_radius_mm
+        );
+        assert!(
+            (auto_params.shell_width_mm - 0.4).abs() < 1e-6,
+            "Pass 2's shadow width is line_width, got {}",
+            auto_params.shell_width_mm
+        );
+
+        let explicit_params = resolve_opening_params(&region_map, &"explicit".into(), 0, &[0]);
+        assert!(
+            (explicit_params.opening_radius_mm - 0.062).abs() < 1e-6,
+            "an absolute outer_wall_line_width must win, got {}",
+            explicit_params.opening_radius_mm
+        );
+        assert!(
+            (explicit_params.shell_width_mm - 0.4).abs() < 1e-6,
+            "the opening radius must not leak into Pass 2, got {}",
+            explicit_params.shell_width_mm
         );
     }
 
