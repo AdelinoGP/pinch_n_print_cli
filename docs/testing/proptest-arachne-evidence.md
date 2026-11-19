@@ -50,8 +50,9 @@ claimed.
   (`target/proptest-arachne-acceptance/C-base-*.log`) with identical pass counts. The
   `arachne_local_maxima_single_beads` count stays at 1, but its fixture expectation changed. See
   Defects item 2.
-- **Guest freshness.** The first gated command after the production edits rebuilt 49 stale guests;
-  subsequent runs did not rebuild until the final comment-only edits. The final `slicer-core`
+- **Guest freshness.** The first gated command after the production edits rebuilt 49 stale guests.
+  Later runs rebuilt only one guest after each deliberate mutation edit, and finally all 49 after
+  the `slicer-core` comment edit. The final `slicer-core`
   comment edit (`LimitedBeadingStrategy::get_transition_thickness`) touches a dependency of every
   guest, so `cargo xtask build-guests` rebuilt 49 guests
   (`closure-final-guests-rebuild.log`: 49 `STALE:` lines, `built 49 guest(s)`,
@@ -145,8 +146,10 @@ Both coordinate and junction bounds now drive generation; neither is a fixed fix
     (`runner_statistics` records `successes: 1`):
     `inset_idx=1 is_odd=false is_closed=true point 1 (source junction 3): is_bridge = true, but this
     point's own coordinates say false`
-    (`target/logs/bounds/postfix-band-campaign-mutant.log`). This is the generated property's own
-    detection.
+    (`target/logs/bounds/postfix-band-campaign-mutant.log` is the verdict digest; the
+    `runner_statistics` and message quoted here are in
+    `target/logs/bounds/postfix-band-campaign-mutant-full.log`). This is the generated property's
+    own detection.
   - **With the prelude enabled.** The same production mutation is also caught earlier by the
     prelude's `build_bounds_drive_geometry_and_junctions` sweep at `profile 23/10000, mode
     0b101010`: `is_bridge = false, but this point's own coordinates say true`
@@ -357,8 +360,9 @@ All logs are under `target/proptest-arachne-evidence/`. Per lane:
   - 6 m 48.9 s total.
   - That includes 49 stale guest rebuilds, measured at 272.1 s as the artifact-write span, and an
     87 s `pnp_cli` relink.
-  - The following `cargo xtask build-guests --check` returned exit `0`, and later runs did not
-    rebuild.
+  - The following `cargo xtask build-guests --check` returned exit `0`; later runs rebuilt only
+    after the deliberate mutation edits (one guest each) and after the final comment-only edits
+    (49 guests).
 
 **Measured outcome populations (host).**
 
