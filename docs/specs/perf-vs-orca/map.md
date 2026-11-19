@@ -1142,6 +1142,45 @@ accelerated arm is now available as corroboration for any candidate** and should
 be checked for every future candidate, since it can move a cell by −13…+4 %.
 **Frontier: none** — 1–163 resolved.
 
+**Destination status (2026-11-18,
+[164](issues/164-phase-re-attribution.md)): the split is re-attributed on one
+window, the prepass now owns 67.0–87.2 % of every cell, and at canonical prepass
+cost **all eight cells win (0.396x–0.890x) — but the two benchy supports-on cells
+are the binding ones and they rest on a 1.53x/1.59x slack in canonical's own
+prepass cost.** One window, two tools (OrcaSlicer 2.5.1 `5013b1bd…`, PnP ordinary
+`2c44d38f…` at HEAD `c83d253b`), 8 cells × 1 warmup + 3 measured, 64 rows,
+matched keys asserted on all 24 Orca runs, **8/8 output identity** to t151's set,
+every run clean; plus **24 instrumented passes** (3 per cell) also **24/24**
+identical. Load 99 samples, min 6.8 % / median 66.6 % (45.9 % during the scoreboard window) / max 100 %. **Split at
+HEAD: prepass 67.0–87.2 % (was 63.5–82.4 %), per-layer 9.3–26.3 % (was
+14.4–29.6 %), postpass 3.2–6.8 %, outside 0.1–2.3 %**, repeat spread 0.72–3.91 pp,
+per-layer host gap 0–1 ms. The prepass share **rose on all eight cells**: base
+classic-off **+14.85 pp** and base arachne-off **+11.51 pp** (t158's predicate took
+**4.25 / 4.23 s** out of the per-layer phase of 22 s cells), base supports-on
+**+4.81 / +5.23 pp** (4.68 / 6.37 s against 69–71 s walls), benchy **+1.07…+6.00
+pp**. `MeshAnalysis` is 687–697 ms base / 86 ms benchy; the prepass brackets are
+`host:shell_classification` (11.2 s, 68.4 % of base-off's prepass),
+`SupportGeometry` (34.9 s, 54.9 % of base-on's) and `SupportAnalysis` (12.7 s,
+20.0 %). **Board: 1.379x–2.884x, 0/8 won, required cut 27.5 %–65.3 %** — the same
+order as t163's 24-hour-old board, cited as corroboration and never composed.
+**Arithmetic (estimate): benchy 0.611x / 0.874x / 0.649x / 0.890x, base 0.400x /
+0.786x / 0.396x / 0.718x; no cell needs anything from the non-prepass phases.** The
+binding cell **moves from `base classic-on`** (t154's 1.051x, needing 1.096 s from
+the per-layer phase) **to `benchy arachne-on` at 0.890x**; `base classic-on` is now
+**0.786x** because t158 removed 4.68 s of per-layer wall there. The constraint is
+the **input**, not the result: the four supports-on cells have 1.50x–1.75x slack
+between their prepass budget and canonical's prepass cost, and the benchy
+supports-on cells have the least (0.840 s and 0.874 s of budget against 0.550 s);
+the substitution implies a prepass cut of 82.6 %–98.1 %. Disclosed: an instrumented
+wall is never a wall claim (shares are multiplied by the scoreboard wall, never
+substituted), the shares and walls are one window, the single external input is
+t110's tap value held fixed, and no null band is claimed because nothing was
+adopted. Graduated [165](issues/165-canonical-prepass-cost.md) to verify that input
+on 2.5.1. Evidence:
+[`evidence/t164-phase-re-attribution/`](evidence/t164-phase-re-attribution/FINDINGS.md)
+(`verify.py` PASS, every number re-derived; `--self-test` 16/16).
+**Frontier:** [165](issues/165-canonical-prepass-cost.md) (AFK, unblocked, new).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -1254,7 +1293,22 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-17, the t160 take):** the human said
+**Current selection scope (2026-11-18, the t164 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **1–163 were resolved and the
+frontier was empty**, so the two live fog items were put to the human and the
+human picked **phase re-attribution at HEAD**. It was charted as
+[164](issues/164-phase-re-attribution.md) (`wayfinder:task`), claimed, and
+resolved as a measured board + instrumented split + arithmetic. Headline: **the
+prepass is 67.0–87.2 % of every cell and at canonical prepass cost all eight
+cells win (0.396x–0.890x); `base classic-on` stops being the loser and the
+binding cell becomes `benchy arachne-on` at 0.890x.** 8/8 board identity, 24/24
+instrumented identity, every run clean. The route's residual risk is now a
+**bound on one input**: the four supports-on cells have 1.50x–1.75x slack on
+t110's canonical prepass cost, so [165](issues/165-canonical-prepass-cost.md) was
+graduated to verify it on 2.5.1. No production change. **Frontier now:
+[165](issues/165-canonical-prepass-cost.md) (AFK, unblocked, new).**
+
+**Previous selection scope (2026-11-17, the t160 take):** the human said
 "Continue the perf vs orca map" (no ticket named); **160 was the only
 unblocked, unclaimed frontier ticket** (1–159 resolved), a `wayfinder:task`.
 It was claimed and resolved as a measured probe: input read set identical
@@ -4467,6 +4521,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Phase re-attribution at HEAD: shares, walls and route arithmetic in one window](issues/164-phase-re-attribution.md): **resolved 2026-11-18, measured board + instrumented split + arithmetic — the prepass is now 67.0–87.2 % of every cell, all eight cells win at canonical prepass cost (0.396x–0.890x), and the binding cell moves to `benchy arachne-on` at 0.890x** — one window, two tools (OrcaSlicer 2.5.1 `5013b1bd…`, PnP ordinary `2c44d38f…` at HEAD `c83d253b`), 8 cells × 1 warmup + 3 measured, 64 rows, matched keys on all 24 Orca runs, **8/8 output identity** to t151's set and every run clean; **24 instrumented passes** (3/cell) also **24/24** identical; load 99 samples 6.8/66.6/100 % (45.9 % in the scoreboard window). **Split:** prepass **67.0–87.2 %**, per-layer **9.3–26.3 %**, postpass **3.2–6.8 %**, outside **0.1–2.3 %**, repeat spread 0.72–3.91 pp, per-layer host gap 0–1 ms; the prepass share rose on **all eight** cells (**+14.85 pp** base classic-off, **+11.51 pp** base arachne-off, **+4.81/+5.23 pp** base supports-on, **+1.07…+6.00 pp** benchy) exactly where t158's 4.23–6.37 s of per-layer removal landed. `MeshAnalysis` 687–697 ms base / 86 ms benchy; base-off's prepass is 68.4 % `host:shell_classification`, base-on's 54.9 % `SupportGeometry` + 20.0 % `SupportAnalysis`. **Board: 1.379x–2.884x, 0/8 won, required cut 27.5 %–65.3 %**, corroborating t163 without composing with it. **Arithmetic (estimate): benchy 0.611x/0.874x/0.649x/0.890x, base 0.400x/0.786x/0.396x/0.718x; `needed_from_other = 0` everywhere**, so the prepass alone suffices — the reversal of t154's shape. **The binding cell is `benchy arachne-on` (0.890x)**, and the constraint is the input: the four supports-on cells carry **1.50x–1.75x** slack on t110's canonical prepass cost, the benchy pair only **1.53x/1.59x**; the substitution implies a prepass cut of **82.6 %–98.1 %**. Graduated [165](issues/165-canonical-prepass-cost.md) to verify that input on 2.5.1. Disclosed: instrumented walls are never wall claims, shares × scoreboard walls only, one window, one external input, no null band. Evidence: `evidence/t164-phase-re-attribution/` (`verify.py` PASS, every number re-derived; `--self-test` 16/16).
 - [Accelerated timing arm: three-tool eight-cell board on the current tree](issues/163-accelerated-timing-board.md): **resolved 2026-11-18, measured board — the accelerated arm is output-exact 8/8 and worth −13.2…+4.4 % wall (median cell −1.1 %), so it is real but not a route lever** — one window, three tools (OrcaSlicer 2.5.1, PnP ordinary, PnP accelerated), 8 cells × 1 warmup + 3 measured runs, 96 rows. **Both PnP arms byte-identical to t151's active set in 8/8** (`exit 0`, `degraded: false`, matched keys on all 24 Orca runs). Board: benchy **1.782x/1.757x, 2.802x/2.703x, 1.940x/1.684x, 2.829x/2.805x** and base **1.389x/1.450x, 2.710x/2.751x, 1.456x/1.426x, 2.618x/2.611x** (ordinary/accelerated). **0 of 8 won on either arm**; required cut 28.0–64.7 % ordinary, 29.9–64.3 % accelerated. Wall deltas **−13.2 / −3.5 / −2.1 / −1.4 / −0.8 / −0.3 / +1.5 / +4.4 %**, median **−1.1 %**, mean −1.9 %, against per-cell spreads 2.9–21.6 % — only `benchy arachne-off` (−13.2 %) and `base classic-off` (+4.4 %) exceed their own spread; **process CPU is the tight channel and is lower in 6/8** (−0.8…−4.3 %). **On the tightest cell the arm is worse** (`base classic-off` 1.389x → 1.450x). Unplanned cross-window control: both arms moved together against t161 and the paired ratio stayed intact (benchy-off −0.8 % for 3.5–4.3 % movement; base-off −2.8 % for 11.8–15.1 %), independently confirming t161's method claim; no absolute wall is compared with t161's. Disclosed: no null band (board not candidate), load 114 samples 1/76/100 %, one window only. Evidence: `evidence/t163-accelerated-board/` (`verify.py` PASS 366/366, `--self-test` 14/14).
 - [Accelerated host build: the `libmimalloc-sys` C1083 is a verbatim-path bug, not the wrapper](issues/162-accelerated-host-verbatim-path.md): **resolved 2026-11-18, defect fix — the accelerated host builds again (exit 0, 1 binary + 24 modules) and the map's ten-ticket attribution was wrong** — `build_guests::workspace_root()` returns `cwd.canonicalize()`, which on Windows is the verbatim `\\?\D:\...` spelling; `dist.rs` set `CARGO_TARGET_DIR` from it, cargo propagated it into every build script's `OUT_DIR`, and `cc-rs` 1.2.59 (no verbatim handling at all) passed it unchanged into `cl.exe`, which read `-c \\?\D:\...\out\mimalloc-static.cc` as the UNC path `\\mimalloc-static.cc`. **Four builds separate the hypotheses:** fresh-dir no-wrapper **green** (5.2 s); fresh-dir + the driver's shim as `RUSTC` + `PNP_ACCELERATED`/`PNP_ACCELERATED_MODE`/`PNP_XTASK_*` **green** (6.2 s); ordinary `CARGO_TARGET_DIR` **green**; verbatim `CARGO_TARGET_DIR` **red in ~5 s with the dist's exact error**. So the wrapper, MSVC 14.51 and `libmimalloc-sys` were never involved. **Fix:** flatten the root with the existing `rustc_driver::strip_verbatim_prefix` (which gained `\\?\UNC\` handling) before it becomes `CARGO_TARGET_DIR`; a **second bug** surfaced — `relative_input_path` compared raw spellings, so a flattened root against `canonicalize`d closure manifests leaked absolute paths into every guest fingerprint and made all 60 guests read stale, now flattened on both sides (and spelling-independent, which is what packet 71 wanted). **Verified:** dist exit 0, `module diagnose` pass with 24 modules provenance `external`, **8 cells × 2 arms output identity 16/16** against t151's active set (all `exit 0`, `degraded: false`), both freshness gates 0/0, clippy clean, three regression tests each red before the fix. **Corrected:** every accelerated disclosure from t142 to t161. **Not claimed:** no accelerated timing number — the arm is available, not measured. Evidence: `evidence/t162-accelerated-host-verbatim-path/` (`verify.py` PASS 139/139, `--self-test` 12/12).
 - [Post-t158 eight-cell scoreboard: re-derive the ratios of record on the current tree](issues/161-post-t158-scoreboard-refresh.md): **resolved 2026-11-17, measured board — 1.366x–2.718x and 0 of 8 won in one interleaved window, and the Orca arm itself ran 5.4–24.9 % slower than on t145's board in all eight cells** — 8 cells × {Orca, PnP ordinary}, 1 warmup + 3 measured runs/cell, matched keys asserted on all 24 Orca runs, PnP output **8/8 identical** to t151's active set with `exit 0`, `degraded: false` and zero exact-Z diagnostics. Table: benchy **1.796x / 2.671x / 1.794x / 2.591x** (4.076 / 8.144 / 3.790 / 7.337 s against 2.269 / 3.050 / 2.113 / 2.831 s), base **1.429x / 2.718x / 1.366x / 2.622x** (22.603 / 70.754 / 22.505 / 71.377 s against 15.812 / 26.030 / 16.474 / 27.219 s); required cut **26.80 %–63.21 %**, and the two base supports-off cells carry a **negative 1.5x cut** (−4.94 % / −9.80 %). **The tightest cells changed from the benchy supports-off pair (t145) to the base supports-off pair.** The constraining finding: the installed OrcaSlicer is **2.5.1** (binaries dated 2026-11-13 23:59–11-14 00:00, `5013b1bd…`), not the **2.5.0** the map records, with the profile stamp unchanged (`2.08.00.16`); Orca moved **+5.4…+24.9 %** in wall in 8/8 cells while its CPU moved only **−2.2…+11.7 %** and its effective parallelism fell in 8/8 (−2.2…−17.4 %) while PnP's did not, so the movement is efficiency not work and the binary is the leading explanation, with box state not excludable (2.5.0 uninstalled; benchy classic-off's 4,077,463 bytes equal t145's figure), so **no ratio or required cut may be composed across the tool boundary** — t145's 46.03 %–71.06 % and today's 26.80 %–63.21 % are each correct for their window. Two readings that survive: the benchy supports-on cells moved **+24.3 % / +24.9 %** on both arms while their ratio moved **−0.5 % / +0.4 %** (the paired ratio absorbs a ~25 % box shift), and the base supports-off improvement is independently corroborated (landed deltas predict −25.2 % / −22.6 % of t145's PnP wall; measured −18.9 % / −24.0 %). Prepass phase shares and the route projection were **not** re-derived (pre-t158). Disclosed: no accelerated arm — the ordinary-only driver skips the accelerated gate, and checking that tree found **45 stale guests** (the whole accelerated namespace, pre-existing); rebuilt after the campaign (`--accelerated --check` now exits 0, ordinary too) and `dist --accelerated` still fails at exit 1 in `libmimalloc-sys` (`C1083` on `'\\mimalloc-static.cc'`, t142's MSVC-14.51 verbatim-path failure). **Corrected 2026-11-18 by [162](issues/162-accelerated-host-verbatim-path.md): a verbatim `CARGO_TARGET_DIR`, not the toolchain; the arm builds again.** Also one Orca outlier 29.807 s on base classic-off m2 (largest of three, disclosed not dropped), load 62 samples min 2 % / median 69.5 % / max 100 %, `tree_strong` pin. Evidence: `evidence/t161-scoreboard-refresh/` (`verify.py` PASS 226/226, `--self-test` 16/16).
@@ -4751,20 +4806,24 @@ Standing decisions for this effort (2026-09-22):
   work) — a design problem, not a tuning one. **No ticket until a human picks
   one**; the arm is not the route either way.
 
-- **The phase split must be re-attributed before any further route arithmetic
-  (surfaced 2026-11-17 by [t161](issues/161-post-t158-scoreboard-refresh.md)).**
-  The map's split — prepass **63.5–82.4 %** of wall, per-layer **14.4–29.6 %**,
-  postpass **2.6–6.5 %**, outside **0.1–5.3 %** — was measured on the **t154**
-  tree, before [t158](issues/158-needs-support-fast-predicate.md) landed a
-  measured **4.23–6.37 s** on the four base cells and t150/t151 moved the benchy
-  cells. Every projection built on those shares therefore mixes a post-t154
-  split with pre-t158 work, and t161's board says the cell walls themselves have
-  moved enough (base supports-off −18.9 % / −24.0 % against t145, with Orca
-  moving the other way) that the shares cannot be assumed. **No ticket is
-  graduated until a human picks it**: the candidate shape is a one-window phase
-  re-split (the same instrument t154 used) run beside a fresh paired scoreboard
-  so shares and walls come from the same window. Until then no route projection
-  may be quoted as current.
+- **The phase split is re-attributed (ANSWERED 2026-11-18 by
+  [t164](issues/164-phase-re-attribution.md): prepass **67.0–87.2 %** of wall,
+  per-layer **9.3–26.3 %**, postpass **3.2–6.8 %**, outside **0.1–2.3 %**, from
+  three instrumented passes per cell on the same tree and in the same window as
+  the paired board).** The old split — prepass 63.5–82.4 %, per-layer 14.4–29.6 %,
+  postpass 2.6–6.5 %, outside 0.1–5.3 % — was measured on the **t154** tree,
+  before [t158](issues/158-needs-support-fast-predicate.md) landed a measured
+  4.23–6.37 s on the four base cells; the prepass share rose on **all eight**
+  cells (+14.85 pp on base classic-off, +11.51 pp on base arachne-off, +4.81 /
+  +5.23 pp on the base supports-on pair, +1.07…+6.00 pp on benchy), exactly where
+  the landed per-layer work moved. Every projection built on the old shares is
+  stale, and route arithmetic may now be quoted from this split **inside this
+  window only**. The re-derivation also moves the route's binding cell: all
+  eight cells win at canonical prepass cost (0.396x–0.890x), `base classic-on` is
+  no longer the loser (0.786x), and the two benchy supports-on cells carry the
+  constraint at 0.890x / 0.874x with **1.53x / 1.59x** slack on t110's canonical
+  prepass input — that input is now the frontier's open question,
+  [165](issues/165-canonical-prepass-cost.md).
 
 - **A single-arm cross-window wall comparison is unsafe, and the instrument is
   not version-stable (method note, 2026-11-17,

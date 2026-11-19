@@ -1,0 +1,205 @@
+{
+ "note": "Share deltas in percentage points, t164 minus t154. Attribution only: the takes are on different trees and in different windows, so a share movement is not a wall claim and the instrumented walls are not comparable.",
+ "cells": {
+  "benchy-classic-off": {
+   "t154_slice_complete_ms": 3726,
+   "t164_slice_complete_ms": 3189,
+   "t154_shares": {
+    "prepass": 0.6447,
+    "per_layer": 0.2606,
+    "postpass": 0.0413,
+    "validation": 0.0008,
+    "outside": 0.0526
+   },
+   "t164_shares": {
+    "prepass": 0.7046,
+    "per_layer": 0.2251,
+    "postpass": 0.0485,
+    "validation": 0.0009,
+    "outside": 0.0229
+   },
+   "delta_pp": {
+    "prepass": 6.0,
+    "per_layer": -3.55,
+    "postpass": 0.71,
+    "validation": 0.01,
+    "outside": -2.97
+   }
+  },
+  "benchy-classic-on": {
+   "t154_slice_complete_ms": 7439,
+   "t164_slice_complete_ms": 6790,
+   "t154_shares": {
+    "prepass": 0.7541,
+    "per_layer": 0.1734,
+    "postpass": 0.0612,
+    "validation": 0.0004,
+    "outside": 0.0109
+   },
+   "t164_shares": {
+    "prepass": 0.7711,
+    "per_layer": 0.1517,
+    "postpass": 0.066,
+    "validation": 0.0004,
+    "outside": 0.0108
+   },
+   "delta_pp": {
+    "prepass": 1.7,
+    "per_layer": -2.17,
+    "postpass": 0.48,
+    "validation": 0.0,
+    "outside": -0.01
+   }
+  },
+  "benchy-arachne-off": {
+   "t154_slice_complete_ms": 3709,
+   "t164_slice_complete_ms": 3344,
+   "t154_shares": {
+    "prepass": 0.6352,
+    "per_layer": 0.2958,
+    "postpass": 0.045,
+    "validation": 0.0008,
+    "outside": 0.0232
+   },
+   "t164_shares": {
+    "prepass": 0.67,
+    "per_layer": 0.2632,
+    "postpass": 0.0485,
+    "validation": 0.0009,
+    "outside": 0.0212
+   },
+   "delta_pp": {
+    "prepass": 3.47,
+    "per_layer": -3.25,
+    "postpass": 0.35,
+    "validation": 0.01,
+    "outside": -0.2
+   }
+  },
+  "benchy-arachne-on": {
+   "t154_slice_complete_ms": 7426,
+   "t164_slice_complete_ms": 7034,
+   "t154_shares": {
+    "prepass": 0.7441,
+    "per_layer": 0.1802,
+    "postpass": 0.0648,
+    "validation": 0.0005,
+    "outside": 0.0104
+   },
+   "t164_shares": {
+    "prepass": 0.7548,
+    "per_layer": 0.1629,
+    "postpass": 0.0682,
+    "validation": 0.0004,
+    "outside": 0.0107
+   },
+   "delta_pp": {
+    "prepass": 1.07,
+    "per_layer": -1.72,
+    "postpass": 0.35,
+    "validation": -0.01,
+    "outside": 0.03
+   }
+  },
+  "base-classic-off": {
+   "t154_slice_complete_ms": 26332,
+   "t164_slice_complete_ms": 19826,
+   "t154_shares": {
+    "prepass": 0.6789,
+    "per_layer": 0.2915,
+    "postpass": 0.0263,
+    "validation": 0.0001,
+    "outside": 0.0032
+   },
+   "t164_shares": {
+    "prepass": 0.8275,
+    "per_layer": 0.1324,
+    "postpass": 0.0343,
+    "validation": 0.0002,
+    "outside": 0.004
+   },
+   "delta_pp": {
+    "prepass": 14.85,
+    "per_layer": -15.91,
+    "postpass": 0.8,
+    "validation": 0.0,
+    "outside": 0.09
+   }
+  },
+  "base-classic-on": {
+   "t154_slice_complete_ms": 79585,
+   "t164_slice_complete_ms": 71705,
+   "t154_shares": {
+    "prepass": 0.8238,
+    "per_layer": 0.144,
+    "postpass": 0.031,
+    "validation": 0.0,
+    "outside": 0.0011
+   },
+   "t164_shares": {
+    "prepass": 0.872,
+    "per_layer": 0.0927,
+    "postpass": 0.0338,
+    "validation": 0.0,
+    "outside": 0.0011
+   },
+   "delta_pp": {
+    "prepass": 4.81,
+    "per_layer": -5.14,
+    "postpass": 0.29,
+    "validation": 0.0,
+    "outside": 0.0
+   }
+  },
+  "base-arachne-off": {
+   "t154_slice_complete_ms": 31031,
+   "t164_slice_complete_ms": 20911,
+   "t154_shares": {
+    "prepass": 0.6905,
+    "per_layer": 0.2791,
+    "postpass": 0.0276,
+    "validation": 0.0001,
+    "outside": 0.0027
+   },
+   "t164_shares": {
+    "prepass": 0.8056,
+    "per_layer": 0.1557,
+    "postpass": 0.0347,
+    "validation": 0.0001,
+    "outside": 0.0039
+   },
+   "delta_pp": {
+    "prepass": 11.51,
+    "per_layer": -12.34,
+    "postpass": 0.71,
+    "validation": 0.0,
+    "outside": 0.12
+   }
+  },
+  "base-arachne-on": {
+   "t154_slice_complete_ms": 83383,
+   "t164_slice_complete_ms": 69537,
+   "t154_shares": {
+    "prepass": 0.8163,
+    "per_layer": 0.1563,
+    "postpass": 0.0264,
+    "validation": 0.0,
+    "outside": 0.001
+   },
+   "t164_shares": {
+    "prepass": 0.8686,
+    "per_layer": 0.0983,
+    "postpass": 0.0319,
+    "validation": 0.0,
+    "outside": 0.0013
+   },
+   "delta_pp": {
+    "prepass": 5.23,
+    "per_layer": -5.8,
+    "postpass": 0.55,
+    "validation": 0.0,
+    "outside": 0.03
+   }
+  }
+ }
+}
