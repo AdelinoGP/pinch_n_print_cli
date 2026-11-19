@@ -2,8 +2,9 @@
 
 Type: task / measurement (canonical side)
 Label: wayfinder:task
-Status: open
-Assignee: unclaimed
+Status: resolved
+Resolved: 2026-11-19 — **input verified.** Canonical prepass on 2.5.1 (`5013b1bd…`) is 104.7 ms (bound) / 569.7 / 2,172.4 / 10,368.1 ms (points) for benchy-off / benchy-on / base-off / base-on. That is −0.7…+3.6 % of t110 on the three points; benchy supports-on is 1.036x t110, inside the 1.53x asked about. t164's 8/8 at canonical prepass stands, binding cell `benchy arachne-on` 0.890x → 0.898x, slack 1.53x → 1.47x.
+Assignee: 2026-11-18 Claude Code wayfinder session — the human said "pick up the first ticket"; 165 is first on the frontier.
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [Phase re-attribution at HEAD](164-phase-re-attribution.md) — at
@@ -73,4 +74,25 @@ budget, t164's 8/8 stops holding and the destination needs per-layer work again.
 
 ## Answer
 
-_(pending)_
+**Verified: the input holds and the projection does not flip.** One window,
+OrcaSlicer 2.5.1 `5013b1bd…` stamped on all 24 rows, 4 classes × (1 warmup + 3
+measured) plus `--info` controls in the same rounds. Every slice run asserts the
+current matched job from its resolved appendix, and the tap wall agrees with
+`GetProcessTimes` within 0.861 % on every run.
+
+| class | t165 (2.5.1) | t110 (2.5.0) | label |
+| --- | ---: | ---: | --- |
+| benchy-off | 104.7 ms | 50.5 ms | bound (< 3 × 56.8 ms gap) |
+| benchy-on | 569.7 ms | 549.8 ms | point |
+| base-off | 2,172.4 ms | 2,103.0 ms | point |
+| base-on | 10,368.1 ms | 10,444.8 ms | point |
+
+Re-run through t164's own arithmetic, with only this input changed: **8/8 still
+win** (0.400x–0.898x). The binding cell is `benchy arachne-on` at 0.898x, slack
+1.47x; next are `benchy classic-on` 0.882x (1.53x) and `base classic-on` 0.783x
+(1.51x). A window-scaled sensitivity check (worst 0.906x) flips nothing.
+Disclosed: `timeBeginPeriod(1)` did not improve the poll gap (16.6–56.8 ms). The
+base prepass carries the 416 ms `--info` spread. The arachne cells reuse the
+classic tap, as t164 did. Evidence:
+[`evidence/t165-canonical-prepass-cost/`](../evidence/t165-canonical-prepass-cost/FINDINGS.md)
+(`verify.py` PASS, `--self-test` 11/11).
