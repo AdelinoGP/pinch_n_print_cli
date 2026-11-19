@@ -521,22 +521,36 @@ const SAFETY_OFFSET_ARC_TOLERANCE_MM: f32 = 0.05;
 const DEFAULT_LINE_WIDTH_MM: f32 = 0.4;
 
 /// Resolve the external-perimeter extrusion width (mm) the way canonical's
-/// `flow(frExternalPerimeter).scaled_width()` resolves it, mirroring
-/// `resolve_contact_params` exactly: the `outer_wall_line_width` extension when
-/// it carries an absolute width, else the typed `line_width`, else
+/// `flow(frExternalPerimeter).scaled_width()` resolves it: a **positive**
+/// absolute `outer_wall_line_width`, else the typed `line_width`, else
 /// [`DEFAULT_LINE_WIDTH_MM`].
-fn resolve_external_perimeter_width_mm(config: &ResolvedConfig) -> f32 {
+///
+/// The positivity test is load-bearing, not defensive. Canonical's "auto" form
+/// is spelled as a literal `0` (`outer_wall_line_width = 0`), and `Flow`
+/// resolves it to the profile's `line_width` before any classifier sees it. A
+/// resolver that returned the literal zero would not "use canonical's width",
+/// it would disable every consumer's opening: both this crate's bridge opening
+/// (`0.1 x width`) and `PrePass::ShellClassification`'s top/bottom opening run
+/// at radius zero and delete nothing (measured on the shell side at t166:
+/// 5,201,451 points in, 5,201,451 out, 6.8 ms for 974 calls).
+///
+/// **This is the single resolution policy for both call sites** — the bridge
+/// classifier here and `resolve_opening_params`
+/// (`crates/slicer-runtime/src/slice_postprocess_prepass.rs`). A percentage
+/// form is left to the perimeter modules (they resolve it against the nozzle)
+/// and falls back here, matching `resolve_contact_params`.
+pub fn resolve_external_perimeter_width_mm(config: &ResolvedConfig) -> f32 {
     let typed_line_width = if config.line_width > 0.0 {
         config.line_width as f32
     } else {
         DEFAULT_LINE_WIDTH_MM
     };
     match config.extensions.get("outer_wall_line_width") {
-        Some(ConfigValue::Float(value)) => *value as f32,
+        Some(ConfigValue::Float(value)) if *value > 0.0 => *value as f32,
         Some(ConfigValue::FloatOrPercent {
             value,
             is_percent: false,
-        }) => *value as f32,
+        }) if *value > 0.0 => *value as f32,
         _ => typed_line_width,
     }
 }
@@ -867,5 +881,45 @@ mod tests {
         let config = ResolvedConfig::default();
         assert_eq!(config.line_width, 0.0, "fixture precondition");
         assert_eq!(resolve_external_perimeter_width_mm(&config), 0.4);
+    }
+
+    /// The matched job authors `outer_wall_line_width = 0`, canonical's **auto**
+    /// sentinel. Reading it literally is not "using canonical's width": the
+    /// bridge opening runs at `0.1 x 0 = 0` and deletes every unsupported
+    /// sliver it exists to strip (t168). The resolver must fall through to the
+    /// typed width, and the resulting opening radius must be positive.
+    #[test]
+    fn external_perimeter_width_treats_zero_extension_as_auto() {
+        let mut config = ResolvedConfig {
+            line_width: 0.4,
+            ..ResolvedConfig::default()
+        };
+        config
+            .extensions
+            .insert("outer_wall_line_width".to_owned(), ConfigValue::Float(0.0));
+        let width = resolve_external_perimeter_width_mm(&config);
+        assert_eq!(width, 0.4, "the zero sentinel must fall through to line_width");
+        assert!(
+            0.1 * width > 0.0,
+            "the bridge opening radius must be positive for the auto sentinel"
+        );
+    }
+
+    /// A zero-literal in the `FloatOrPercent` absolute form is the same
+    /// sentinel and takes the same fallback.
+    #[test]
+    fn external_perimeter_width_treats_zero_percent_form_as_auto() {
+        let mut config = ResolvedConfig {
+            line_width: 0.42,
+            ..ResolvedConfig::default()
+        };
+        config.extensions.insert(
+            "outer_wall_line_width".to_owned(),
+            ConfigValue::FloatOrPercent {
+                value: 0.0,
+                is_percent: false,
+            },
+        );
+        assert_eq!(resolve_external_perimeter_width_mm(&config), 0.42);
     }
 }

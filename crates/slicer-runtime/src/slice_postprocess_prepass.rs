@@ -618,26 +618,13 @@ fn apply_opening(polys: &[ExPolygon], r: f32) -> Vec<ExPolygon> {
 /// opening is a no-op (5,201,451 points in, 5,201,451 out, 6.8 ms for 974
 /// calls) and every layer carries a depth-0 seed.
 ///
-/// Precedence is the one `resolve_contact_params`
-/// (`crates/slicer-runtime/src/builtins/support_analysis_producer.rs`) and
-/// `resolve_line_width_mm` (`crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs`)
-/// already use: a positive absolute `outer_wall_line_width`, else the typed
-/// `line_width`, else 0.4 mm. A percentage form is left to the perimeter
-/// modules (they resolve it against the nozzle) and falls back here.
+/// The policy lives in one place,
+/// [`slicer_core::algos::prepass_slice::resolve_external_perimeter_width_mm`],
+/// because `classify_unsupported_bridge_areas` resolves the same canonical
+/// quantity for the bridge opening. Two copies drifted once (t168: the bridge
+/// copy returned the literal zero and its opening was a no-op); there is one.
 fn resolve_shell_external_width_mm(config: &ResolvedConfig) -> f32 {
-    let typed_line_width = if config.line_width > 0.0 {
-        config.line_width as f32
-    } else {
-        FALLBACK_LINE_WIDTH_MM
-    };
-    match config.extensions.get("outer_wall_line_width") {
-        Some(ConfigValue::Float(value)) if *value > 0.0 => *value as f32,
-        Some(ConfigValue::FloatOrPercent {
-            value,
-            is_percent: false,
-        }) if *value > 0.0 => *value as f32,
-        _ => typed_line_width,
-    }
+    slicer_core::algos::prepass_slice::resolve_external_perimeter_width_mm(config)
 }
 
 /// Resolve both widths from the region's `ResolvedConfig`. The opening radius
