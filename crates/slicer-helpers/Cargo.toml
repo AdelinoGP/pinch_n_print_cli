@@ -13,6 +13,13 @@ meshopt = { workspace = true }
 truck-stepio = { workspace = true }
 truck-meshalgo = { workspace = true }
 
+[features]
+default = []
+# Default-off owner feature for the direct helper property targets. It enables
+# no engine, SCAD or host-algorithm feature: `H-HELPERS-SPLIT` needs only the
+# native SDK property harness, which is a dev-dependency.
+property_testing = []
+
 [dev-dependencies]
 truck-modeling = { workspace = true }
 truck-topology = "0.6"
@@ -20,10 +27,23 @@ criterion = { workspace = true }
 # Bench fixtures are loaded through the production model loader so the
 # benches exercise the same STL path as `pnp_cli mesh repair|decimate`.
 slicer-model-io = { path = "../slicer-model-io" }
+# Property-test harness and independent mesh predicate. Both edges are
+# dev-only: this crate must keep no normal `slicer-core` or `slicer-sdk`
+# dependency (`docs/13_slicer_helpers_crate.md` § Dependency Rules).
+proptest = { workspace = true }
+slicer-sdk = { path = "../slicer-sdk", features = ["property_testing"] }
 
 [[bench]]
 name = "mesh_ops"
 harness = false
+
+[[test]]
+name = "property_helpers"
+required-features = ["property_testing"]
+
+[[test]]
+name = "property_helper_controls"
+required-features = ["property_testing"]
 
 [lints]
 workspace = true

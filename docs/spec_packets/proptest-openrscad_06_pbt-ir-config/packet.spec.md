@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_06_pbt-ir-config
-status: draft
+status: implemented
 ---
 
 # Independently oracled IR, coordinates, IDs, config and chain properties
@@ -160,6 +160,69 @@ Authoring performed source/docs and locked/offline Cargo metadata inspection onl
 - [FWD] Measure Windows pilot counts, size/rejection/shrink limits and routine/extended profiles within the proven numeric domains; select exact reference-arithmetic implementation and prove its error/overflow bounds before acceptance. No runtime budget is supplied by authoring.
 - [FWD] Audit the live config declaration/Eq/Hash field families and existing deterministic coverage at implementation, then record which axes this property's generator varies and which remain covered structurally/example-wise. Do not describe a fixed sampled field list as exhaustive.
 - [FWD] Downstream #8 must exercise actual runtime modifier collision rejection/transactionality; #11 must exercise region-map caller collision/unsupported-parent behavior. H-IDS here certifies the pure helper's bounded namespace/round-trip/assertion contract only, not those callers.
+
+## Deviations
+
+Recorded while implementing; none changes the packet's scope.
+
+1. **The truncating mutant is inside the derived envelope at an exact tie.** §Charter H-COORD and
+   AC-1 say `ir_coord_oracle_and_bound_controls` detects the stated "truncation" mutation. At
+   `m = 1/32 mm` the exact scaled value is `312.5` units, so truncation yields `312` — exactly
+   `0.5` units away and therefore *inside* the packet's own bound `1/2 + e_mul`. The control
+   therefore rejects truncation with the envelope **plus** the derived half-away tie rule
+   (`check_mm_case_with`), and separately asserts that the envelope alone accepts it. The bound
+   was not tightened and no tolerance was tuned; the tie rule is checked independently because
+   the envelope provably cannot see it.
+2. **The minting assertion is observed deterministically, not per generated case.** AC-2 places
+   the `P + 1` / `u64::MAX` minting-assertion and message observation in
+   `ir_id_parent_and_sentinel_rejections` under `I`, and §Charter H-IDS says deterministic
+   `catch_unwind` tests observe it. The `H-IDS` property's unsupported-parent arm therefore
+   asserts only `modifier_sub_region_id_fits(parent) == false`: minting every unsupported sample
+   would emit one panic per case, and `cargo xtask test --summary` reports any `panicked at`
+   line as failure detail, so a passing property would carry a failing verdict line. The
+   contract target owns the assertion text, as the AC already states.
+3. **Registry discovery is all-or-nothing per target.** The executor fails a selected run when
+   *any* registered test for that target is undiscovered, so the three later properties'
+   records were held outside the live registry while their tests did not yet exist and appended
+   as each landed. The committed registry contains all six records plus the preserved
+   `H-IR-ANCHORS` entry, and the combined run reports all seven.
+4. **The prerequisite discovery test's roster is now registry-derived.** Packet 01's
+   `property_registry_validates_and_discovers_exact_tests` (`xtask/src/properties/executor.rs`)
+   asserted that the live `slicer-ir`/`property_ir` discovery listed exactly one test. That
+   target now carries six, so the assertion derives the expected roster from the live registry
+   (every `slicer-ir` record whose target is `property_ir` and whose features include
+   `slicer-ir/property_testing`) and compares it to a sorted live discovery, plus an explicit
+   assertion that the preserved anchor test is still discovered. The check is strictly stronger
+   than the fixed one-element roster and still fails on a registered-but-undiscovered test,
+   which is the condition the executor reports as `missing_property_execution`.
+5. **The `H-CONFIG-BOUNDS` shrink contract is now met as written, after a redesign.** An
+   intermediate implementation grew the probe value through a `prop_flat_map` over the generated
+   declarations, so a shrink of the declarations re-drew the value and could turn a list case
+   into a scalar case (the independent delta review demonstrated it). That was recorded as
+   blocking rather than waved through. It is now fixed properly: the strategy selects a probe
+   mode from a `no_shrink` list and **derives** the value from the current declaration set inside
+   `prop_map`, against a bounded witness key outside the generated alphabet
+   (`property_config_oracles::WITNESS_KEY`). Shrinking the declarations re-runs the derivation,
+   so the value shape always survives and, for the witness-derived modes, the verdict class and
+   the first-invalid index survive too. The two `General*` families are independent draws, so only
+   their shape is pinned and their verdict is whatever the oracle derives for the current
+   declarations. Two checks pin this: `derived_probe_modes_have_their_documented_verdicts` asserts
+   every mode's verdict and index on a concrete set, and the property runs a composed shrink audit
+   on every execution.
+6. **Both external blockers are resolved.** (a) The frozen `RegionMapIR` 3.0.0 Postcard fixture
+   failed with `DeserializeBadBool` because commit `6db49f0f` removed
+   `ResolvedConfig::flat_bridge_closing_join` from the middle of the struct; Postcard is
+   positional, so every later field shifted. The field is re-added at its original position as a
+   serialization-only `carrier` row kind (struct, default, wire position and `Eq`/`Hash` only —
+   no effective-map entry, no typed key, no CLI dispatch), which restores the 3.0.0 wire layout
+   without resurrecting the retired key; `region_map_versioned_decode_tdd` passes again with the
+   frozen fixture and assertion strength unchanged, and no fixture was regenerated. (b) The
+   required hosted Windows execution was obtained through the routine `properties-windows` lane
+   on draft PR #6: workflow run
+   https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/43523810446 at commit `e157169`,
+   job `Properties (Windows)` = success, step `Run routine properties` = success, 12 property
+   binaries passed with `VERDICT: PASS` and no failures. Two earlier heads of the same branch
+   also passed the lane.
 
 ## Authoring preflight
 

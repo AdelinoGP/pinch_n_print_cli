@@ -1385,6 +1385,18 @@ values for FRU, but live profiles must supply their measured bounds explicitly;
 `geometry_cases` rejects bounds its bounded catalog cannot satisfy instead of
 narrowing them.
 
+Downstream SUT families consume those helpers directly rather than re-deriving
+input shapes: `H-COORD` consumes `domains::finite_f32` and
+`domains::rounding_boundary_mm`, `H-IDS` consumes `domains::id_text`, and
+`H-IR-SERDE` consumes `domains::entity_layers`. The coordinate family is the SDK's
+own example as well: `slicer_sdk::coords::{mm_to_units, units_to_mm}` and
+`SCALING_FACTOR` are exercised by `H-COORD`, but that agreement is documented as
+**consistency evidence only** — correctness rests on the derived error envelopes,
+not on two implementations of the same shape agreeing. See the
+[property-testing charters](testing/properties.md#h-coord) for the full family set
+(`H-COORD`, `H-IDS`, `H-IR-SERDE`, `H-CONFIG-INTERN`, `H-CONFIG-BOUNDS`,
+`H-CHAINS`).
+
 Validity and shrinking are part of the helper contract. Every value produced or
 retained by `GeometryValueTree::current` passes `oracles::validate_geometry` for the
 requested `GeometryDomain`, must keep its topology class and minimum hole/component
@@ -1473,6 +1485,54 @@ provenance is `ReplayMismatch`, missing/damaged/oversized or escaping files are
 `Artifact`. See
 [`docs/testing/proptest-scripted-evidence.md`](testing/proptest-scripted-evidence.md)
 for the measured Windows profiles and the combined geometry disposition.
+
+### Module-owned private-kernel property files (packet proptest-openrscad_10)
+
+A module that property-tests its own **private** kernels (functions that `tests/**` integration
+tests cannot see) keeps those properties in a crate-internal unit-test module.
+`arachne-perimeters` is the reference layout:
+
+- **Declaration.** `src/lib.rs` declares the module with two stacked, separate gates:
+
+  ```rust
+  #[cfg(test)]
+  #[cfg(feature = "property_testing")]
+  mod property_tests;
+  ```
+
+  `#[cfg(test)]` confines the module to test builds. `#[cfg(feature = "property_testing")]` makes
+  the properties opt-in. The body lives in `src/property_tests.rs`. Production visibility is never
+  widened for tests.
+- **Owner feature.** The module's `Cargo.toml` declares `property_testing = []`, an empty,
+  default-off selection feature. It enables no dependency and never enters a production or guest
+  graph.
+- **Dev-only edges.** `slicer-sdk` (features `test`, `property_testing`) and `proptest` appear
+  only under `[dev-dependencies]`.
+- **Registry paths.** Records use `target_kind = "lib"`, the Cargo lib target name, and the exact
+  libtest path. For example, `target_name = "arachne_perimeters"` and
+  `test_name = "property_tests::proptest_module_arachne_build_walls"`, with
+  `features = ["arachne-perimeters/property_testing"]` and `requires_host_algos = false`. Run them
+  through `cargo xtask test --properties`. Run bare, a `proptest_` body fails with
+  `missing_property_context` by design.
+- **Deterministic controls.** These run under plain
+  `cargo test -p <module> --features property_testing --lib -- property_tests::<name> --exact`.
+
+**Literal-gate blind spot.** `modules/core-modules/*/src` is outside `cargo xtask check-literals`
+scope:
+
+- `collect_enforced_files` (`xtask/src/check_literals.rs`) does not collect that tree.
+- `LiteralVisitor::visit_item_mod` does not follow an out-of-line `mod property_tests;`.
+
+A green `check-literals` therefore says nothing about such a file. Before committing, review it
+manually per `docs/21_data_defaults_and_fixtures.md` §§1, 3, 4: re-derive the watched types, then
+give every watched-type literal a `..` rest (FRU) or an `// exhaustive: <reason>` waiver. Record
+the review in the packet's evidence file.
+
+The worked examples are [`M-ARACHNE-BUILD`](testing/properties.md#m-arachne-build) and
+[`M-ARACHNE-SEQUENCE`](testing/properties.md#m-arachne-sequence). The manual review is recorded in
+[`docs/testing/proptest-arachne-evidence.md`](testing/proptest-arachne-evidence.md). Host-side
+Arachne properties, which need `slicer-core/host-algos`, stay standalone `slicer-core` test
+targets and are not module files.
 
 ### Mock Host
 

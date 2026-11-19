@@ -24,5 +24,9 @@ property_testing = []
 name = "property_ir"
 required-features = ["property_testing"]
 
+[[test]]
+name = "property_ir_contracts"
+required-features = ["property_testing"]
+
 [lints]
 workspace = true

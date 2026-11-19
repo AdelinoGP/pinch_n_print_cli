@@ -154,6 +154,7 @@ dependencies = [
 name = "arachne-perimeters"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
@@ -3987,6 +3988,7 @@ dependencies = [
  "clipper2-rust 1.1.0",
  "criterion",
  "log",
+ "proptest",
  "rayon",
  "rstar",
  "serde",
@@ -3994,7 +3996,10 @@ dependencies = [
  "slicer-config",
  "slicer-ir",
  "slicer-model-io",
+ "slicer-scad",
  "slicer-scheduler",
+ "slicer-sdk",
+ "toml 0.8.23",
 ]
 
 [[package]]
@@ -4016,9 +4021,11 @@ dependencies = [
  "criterion",
  "meshopt",
  "nalgebra",
+ "proptest",
  "serde",
  "slicer-ir",
  "slicer-model-io",
+ "slicer-sdk",
  "thiserror 1.0.69",
  "truck-meshalgo",
  "truck-modeling",
@@ -4128,6 +4135,7 @@ dependencies = [
  "preparation-lifecycle-anchored-guest",
  "preparation-lifecycle-guest",
  "preparation-visual-guest",
+ "proptest",
  "raft-default",
  "rayon",
  "rectilinear-infill",
@@ -4198,11 +4206,13 @@ dependencies = [
  "directories",
  "log",
  "pnp-cli-locator",
+ "proptest",
  "serde",
  "serde_json",
  "slicer-config",
  "slicer-ir",
  "slicer-schema",
+ "slicer-sdk",
  "tempfile",
  "toml 0.8.23",
 ]

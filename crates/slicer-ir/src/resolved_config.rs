@@ -1612,6 +1612,58 @@ macro_rules! __drc {
         }
     };
 
+    // `carrier <field>: <ty> = <default>;` — struct + default only.
+    //
+    // Unlike `plain`, a carrier row is *serialization-only*: it appears in the
+    // struct (so the Postcard field order is preserved) and in `Default`, but not
+    // in `to_config_map`, not in `typed_field_keys`, and not in CLI dispatch.
+    // This exists for deprecated fields that must keep the wire layout without
+    // resurrecting an output key (`flat_bridge_closing_join`).
+    (@parse
+        fields:    { $($sf:tt)* }
+        defaults:  { $($df:tt)* }
+        cli_arms:  { $($arm:tt)* }
+        host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
+        cfg:       $cfg:ident
+        key:       $key:ident
+        value:     $value:ident
+        dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
+        input: {
+            $(#[$m:meta])*
+            carrier $field:ident : $ty:ty = $default:expr ;
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::__drc!(@parse
+            fields: {
+                $($sf)*
+                $(#[$m])*
+                pub $field: $ty,
+            }
+            defaults: {
+                $($df)*
+                $field: $default,
+            }
+            cli_arms:  { $($arm)* }
+            host_keys: { $($hk)* }
+            map_arms:  { $($ma)* }
+            typed_keys: { $($tk)* }
+            cfg:       $cfg
+            key:       $key
+            value:     $value
+            dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
+            input:     { $($rest)* }
+        );
+    };
+
     // `plain <field>: <ty> = <default>;` — struct + default, no CLI dispatch.
     (@parse
         fields:    { $($sf:tt)* }
@@ -2306,6 +2358,20 @@ declare_resolved_config! {
     cli "perimeter_arc_tolerance" perimeter_arc_tolerance: f32 = 0.0125 => extract_float;
     /// Slice closing radius in mm (OrcaSlicer: slice_closing_radius).
     cli "slice_closing_radius"   slice_closing_radius: f32 = 0.049 => extract_float;
+    /// **Deprecated serialized-compatibility carrier.** This field previously
+    /// held the morphological-closing join used by the flat-bridge enclosure
+    /// discriminator. Commit `6db49f0f` removed the behaviour and the field, but
+    /// `ResolvedConfig` is serialized positionally with Postcard, so deleting a
+    /// mid-struct field shifts every later field and makes every pre-existing
+    /// `RegionMapIR` payload undecodable (a `String` length byte is then read as
+    /// the `support_enabled` bool). Keeping the field with its original name,
+    /// position and type restores the 3.0.0 wire layout. It is declared with the
+    /// serialization-only `carrier` row kind, so it is absent from
+    /// `to_config_map`, from `typed_field_keys` and from CLI dispatch — the
+    /// retired output key does **not** come back, while Postcard field order is
+    /// preserved. Removing it again requires a schema version bump plus a
+    /// migration, not a silent reorder.
+    carrier                      flat_bridge_closing_join: String = String::from("miter");
 
      // Support
      /// Whether support is enabled.
@@ -2559,6 +2625,7 @@ impl PartialEq for ResolvedConfig {
             && self.gcode_xy_decimals == other.gcode_xy_decimals
             && self.perimeter_arc_tolerance.to_bits() == other.perimeter_arc_tolerance.to_bits()
             && self.slice_closing_radius.to_bits() == other.slice_closing_radius.to_bits()
+            && self.flat_bridge_closing_join == other.flat_bridge_closing_join
             && self.support_enabled == other.support_enabled
             && self.support_type == other.support_type
             && self.support_threshold_angle.to_bits() == other.support_threshold_angle.to_bits()
@@ -2667,6 +2734,7 @@ impl std::hash::Hash for ResolvedConfig {
         self.gcode_xy_decimals.hash(state);
         self.perimeter_arc_tolerance.to_bits().hash(state);
         self.slice_closing_radius.to_bits().hash(state);
+        self.flat_bridge_closing_join.hash(state);
         self.support_enabled.hash(state);
         self.support_type.hash(state);
         self.support_threshold_angle.to_bits().hash(state);

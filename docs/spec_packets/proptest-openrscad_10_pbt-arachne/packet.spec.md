@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_10_pbt-arachne
-status: draft
+status: implemented
 ---
 
 # Arachne host and perimeter-kernel property contracts
@@ -156,6 +156,40 @@ These are implementation obligations, not authoring-time results. For every plai
 - New `docs/testing/proptest-arachne-evidence.md`: canonical audit, baseline/fix classification, complete G-FAMILY Windows profiles and actual execution, provenance, shrink/replay, artifact locations, and the AC-8 manual FRU/waiver review. Check: `rg -n 'G-FAMILY|Windows|source_revision|canonical|regression|FRU|exhaustive' docs/testing/proptest-arachne-evidence.md`.
 - `docs/02_ir_schemas.md` § Arachne extrusion-line geometry: link the charters and clarify printable versus inner-contour markers and the per-point alignment/explicit XY closure contract, without changing WIT/IR representation. Check: `rg -n 'H-ARACHNE|M-ARACHNE|inner.contour' docs/02_ir_schemas.md`.
 - `docs/05_module_sdk.md` § Test Support: link the private native-kernel property placement and required feature/discovery workflow, and state that module `src/**` test files are outside `cargo xtask check-literals` scope and require the manual FRU/waiver review. Check: `rg -n 'M-ARACHNE|property_testing|host-algos|check-literals' docs/05_module_sdk.md`. No agent-instruction edit or new ADR/deviation ID is planned.
+
+## Deviations
+
+Implementation-time records. Each is a code fact verified against the tree at the cited symbol, not a quoted ledger value.
+
+- **Prerequisites realised.** Both prerequisites are `status: implemented` on disk at implementation time, not draft; their actual exports (`PropertyRun`, `CaseGuard`, `domains::{geometry_cases, GeometryDomain, GeometryBounds, TopologyClass}`, `oracles::{validate_geometry, point_in_region}`) were rechecked before use. No planned name was assumed.
+- **Step 2 reduced for `slicer-core`.** `slicer-core/property_testing`, the workspace `proptest` dev-dependency and the `slicer-sdk` `property_testing` dev-edge already existed from packet 09. Step 2's core half therefore added only the two `[[test]]` targets. No default build or guest graph gained a Proptest edge.
+- **Widening field retention.** After the canonical gate fix, `WideningBeadingStrategy::optimal_width` is no longer read by `compute`. It is retained (with `#[allow(dead_code)]` and a corrected doc comment) because canonical inherits the value at construction and removing the constructor parameter would change the caller-visible contract. `initial_layer_min_bead_width` has no canonical counterpart and is also unread; it is retained for the same reason and is outside this packet's focused-fix scope.
+- **`LimitedBeadingStrategy::get_transition_thickness` added to the fix set.** The canonical audit confirmed the missing at-cap return as a live deviation: canonical returns `parent->getOptimalThickness(lower_bead_count + 1)` minus 0.01 mm at exactly `max_bead_count`, and asserts only above it (the method is queried on the outermost strategy by `generate_transition_mids`). No AC named it, so it is fixed under AC-N2 with `limited_transition_thickness_at_cap_matches_canonical_floor`, which failed pre-fix with `18000.0` against the derived `19900.0`.
+- **Over-cap limited superset retained.** `LimitedBeadingStrategy::compute` generalises canonical's single sentinel pair to `bead_count - max_bead_count` pairs. Canonical only reaches `max_bead_count + 1`, but the retained `limited_inserts_sentinels_at_cap` fixture calls cap + 3, so a `debug_assert!` would fire. The superset is behaviourally unreachable through `optimal_bead_count` and is documented in the function comment instead of asserted away.
+- **Local-maximum closure confirmed as a behavioural deviation.** The canonical audit (two checkouts) shows `generateLocalMaximaSingleBeads` emits six junctions with `is_closed = false`, and `ExtrusionLine`'s constructor starts open. The former local 7-junction closed line also bypassed `stitch_extrusions` entirely (already-closed lines are passed through), so it could never be absorbed like canonical's. The producer is fixed and `arachne_local_maximum_pre_stitch_is_open` locks the six-junction open shape. The post-stitch pentagon fixture was updated to the measured canonical-correct open shape (the tiny-poly gate rejects closing it), not to preserve the former closed expectation.
+- **`populate_beading_propagation` diagnostic not added.** Canonical additionally asserts `total_thickness == 2 * distance_to_boundary`; the local port checks array-length parallelism instead. This is a diagnostic difference with no behavioural consequence and is recorded in the evidence file rather than changed.
+- **AC-8 scanner scope re-derived on the implementation tree.** `collect_enforced_files` (`xtask/src/check_literals.rs`) still collects `crates/*/src` in `CfgTestOnly` mode and `modules/core-modules/*/tests` whole-file, and `LiteralVisitor::visit_item_mod` still delegates to `syn::visit::visit_item_mod` without reading an out-of-line module. `modules/core-modules/arachne-perimeters/src/property_tests.rs` is therefore still outside `cargo xtask check-literals`; the manual FRU/waiver review in the evidence file remains the required evidence.
+- **AC-5 winding divergence found and fixed.** The design notes required an audit before
+  asserting open-path direction. The audit of canonical `traverse_extrusions`
+  (`PerimeterGenerator.cpp`) and `ExtrusionLine::is_contour` (`ExtrusionLine.cpp`) showed that
+  canonical reorients only closed lines, toward
+  `(wall_direction == CCW) == (is_contour || pg_extrusions.size() == 2)`, where `is_contour` means
+  the line is closed and its input winds clockwise.
+  - **Divergence.** `ArachnePerimeters::build_walls` reoriented every line with three or more
+    points, open lines included, and took contour/hole from `boundary_type`, which in practice
+    meant inset 0 versus inset above 0.
+  - **Fix.** Production now implements the canonical predicate on the measured input winding and
+    reverses only closed lines. `M-ARACHNE-BUILD`'s winding model was rewritten to match.
+  - **Witnesses.** Three deterministic prelude witnesses failed before the fix and pass after it:
+    `build_walls_winding_witness_open_path_keeps_order`,
+    `build_walls_winding_witness_clockwise_inner_is_contour` and
+    `build_walls_winding_witness_two_line_region_inner_is_contour_like`.
+  - **Regression fixture.** The reverse-trigger regression's fixture was moved to a closed CCW
+    hole that canonical reverses.
+  - **Remaining approximation.** `region_line_count` is counted per `build_walls` batch rather
+    than per canonical `Surface` or merged one-wall-top list.
+  - **Evidence.** `docs/testing/proptest-arachne-evidence.md`, Canonical audit.
+- **AC-7 hosted execution completed.** The six routine/extended selections and a retained-seed replay are executed on this Windows host and archived. The hosted `properties-windows` PR job then ran head `6b340919` in run [`44434672409`](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/44434672409): the job passed in 17m08s, the routine step reported `VERDICT: PASS`, and the 13-ID assertion printed `OK: all 13 asserted geometry and Arachne records executed`. The job log is archived in `docs/testing/proptest-arachne-evidence.md` (Measurements).
 
 ## Open questions
 

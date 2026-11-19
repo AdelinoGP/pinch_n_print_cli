@@ -3,6 +3,9 @@
 use slicer_core::polygon_ops::{clip_polylines, PreparedPolylineClip};
 use slicer_core::{difference, intersection, offset, union, xor, OffsetJoinType};
 use slicer_ir::{ExPolygon, Point2, Polygon};
+use slicer_sdk::test_support::property_testing::oracles::{
+    point_in_region, signed_area2, validate_ring, PointLocation,
+};
 
 fn square(min_x_mm: f32, min_y_mm: f32, max_x_mm: f32, max_y_mm: f32) -> ExPolygon {
     ExPolygon {
@@ -455,4 +458,382 @@ fn result_order_is_deterministic_for_same_input() {
     let second = union(&[a], &[b]);
 
     assert_eq!(shape_signature(&first), shape_signature(&second));
+}
+
+// ---------------------------------------------------------------------------
+// Zero-width excursion (collinear backtracking spike) regression
+// ---------------------------------------------------------------------------
+
+/// Ring from explicit integer units (1 unit = 100 nm).
+fn units_ring(points: &[(i64, i64)]) -> Polygon {
+    Polygon {
+        points: points.iter().map(|&(x, y)| Point2 { x, y }).collect(),
+    }
+}
+
+/// Solid component from explicit integer units (no holes).
+fn units_component(points: &[(i64, i64)]) -> ExPolygon {
+    ExPolygon {
+        contour: units_ring(points),
+        holes: Vec::new(),
+    }
+}
+
+/// `Some(dot)` when `a -> b -> c` is a collinear **backtracking spike**: zero
+/// turn (`cross == 0`) and a reversal (`dot < 0`), i.e. the boundary runs out to
+/// `b` and comes straight back over itself. `None` for any other vertex,
+/// including a forward collinear vertex (`dot > 0`), which is a legitimate
+/// straight-run vertex.
+fn backtracking_spike_dot(a: Point2, b: Point2, c: Point2) -> Option<i128> {
+    let sub = |to: i64, from: i64| i128::from(to) - i128::from(from);
+    let (in_x, in_y) = (sub(b.x, a.x), sub(b.y, a.y));
+    let (out_x, out_y) = (sub(c.x, b.x), sub(c.y, b.y));
+    let cross = in_x * out_y - in_y * out_x;
+    if cross != 0 {
+        return None;
+    }
+    let dot = in_x * out_x + in_y * out_y;
+    (dot < 0).then_some(dot)
+}
+
+/// Render an `i128` double area as exact integer text (never a float).
+fn describe_area(twice_area: i128) -> String {
+    format!("{twice_area} (double area, squared units)")
+}
+
+/// Regression: `xor` emitted a **zero-width excursion** when one operand had a
+/// redundant collinear vertex on a boundary segment coincident with the other
+/// operand, and a component gap forced the boundary to split there.
+///
+/// Measured fixture (integer units, 1 unit = 100 nm):
+///
+/// * subject A = this chamfered octagon
+///   ```text
+///   (-95848,-88869) (-95840,-88869) (-95632,-88869) (-95632,-88669)
+///   (-95640,-88661) (-95840,-88661) (-95848,-88669)
+///   ```
+///   in which `(-95840,-88869)` is a **redundant collinear** vertex of the
+///   bottom edge, plus a detached `8 x 208` component
+///   `[-95624,-95616] x [-88869,-88661]`;
+/// * clip B = the enclosing rectangle `[-95880,-95608] x [-88869,-88661]`.
+///
+/// A is a strict subset of B sharing B's whole y band, so `xor(A, B) = B \ A`
+/// and the expected result is **analytic**, not captured: the band is
+/// `272 x 208 = 56576` units^2, the octagon is `216 x 208` minus two 8x8
+/// corner chamfers `= 44864`, the detached 8x208 component is `1664`, so
+/// `xor` encloses exactly `56576 - 44864 - 1664 = 10048` units^2, a double
+/// area of `20096`. Because the octagon and the detached component both span
+/// the band's full height, the result is exactly three disjoint slivers (no
+/// holes): left `x in [-95880,-95848]`, gap `x in [-95632,-95624]`, right
+/// `x in [-95616,-95608]`, with the two octagon corner chamfers cut out of the
+/// gap's and the left sliver's top edges.
+///
+/// Pre-fix the gap sliver closed
+/// `... (-95632,-88869) -> (-95840,-88869) -> (-95624,-88869)`, retracing
+/// `x in [-95840,-95632]` at `y = -88869`: three consecutive output vertices
+/// with zero orientation and a negative dot product. That ring fails the strict
+/// `validate_ring` ("ring edges intersect beyond their shared endpoint": the
+/// retraced span is a positive-length collinear overlap) and the
+/// weakly-simple predicate that the H-BOOL-SET property uses. Removing the
+/// redundant input vertex makes the output clean, which is what pins the
+/// trigger.
+#[test]
+fn xor_redundant_collinear_vertex_emits_no_backtracking_spike() {
+    let subject = vec![
+        units_component(&[
+            (-95848, -88869),
+            (-95840, -88869),
+            (-95632, -88869),
+            (-95632, -88669),
+            (-95640, -88661),
+            (-95840, -88661),
+            (-95848, -88669),
+        ]),
+        units_component(&[
+            (-95624, -88869),
+            (-95616, -88869),
+            (-95616, -88661),
+            (-95624, -88661),
+        ]),
+    ];
+    let clip = vec![units_component(&[
+        (-95880, -88869),
+        (-95608, -88869),
+        (-95608, -88661),
+        (-95880, -88661),
+    ])];
+
+    let result = xor(&subject, &clip);
+
+    // 1. Every ring is a genuine simple closed ring, and none backtracks.
+    for (index, polygon) in result.iter().enumerate() {
+        let labelled = std::iter::once((String::from("contour"), &polygon.contour)).chain(
+            polygon
+                .holes
+                .iter()
+                .enumerate()
+                .map(|(hole_index, hole)| (format!("hole[{hole_index}]"), hole)),
+        );
+        for (name, ring) in labelled {
+            let label = format!("result[{index}].{name}");
+            validate_ring(ring).unwrap_or_else(|error| {
+                panic!("{label} fails the strict ring validation: {error}; ring {ring:?}")
+            });
+            let points = &ring.points;
+            let n = points.len();
+            for vertex in 0..n {
+                let (prev, here, next) = (
+                    points[(vertex + n - 1) % n],
+                    points[vertex],
+                    points[(vertex + 1) % n],
+                );
+                if let Some(dot) = backtracking_spike_dot(prev, here, next) {
+                    panic!(
+                        "{label} backtracks at vertex {here:?}: the boundary runs out to a \
+                         collinear spike and returns over itself (dot {dot}); ring {ring:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    // 2. The region is unchanged: exactly three components, no holes, and the
+    //    analytic double area of `B \ A`.
+    assert_eq!(
+        result.len(),
+        3,
+        "xor must split into three slivers, got {result:?}"
+    );
+    for (index, polygon) in result.iter().enumerate() {
+        assert!(
+            polygon.holes.is_empty(),
+            "result[{index}] must have no holes, got {:?}",
+            polygon.holes
+        );
+    }
+    let double_area: i128 = result
+        .iter()
+        .flat_map(|polygon| std::iter::once(&polygon.contour).chain(polygon.holes.iter()))
+        .map(|ring| signed_area2(ring).expect("ring double area"))
+        .sum();
+    assert_eq!(
+        double_area,
+        2 * (272 * 208 - (216 * 208 - 2 * 32) - 8 * 208),
+        "xor double area must equal the analytic B \\ A area; result {result:?}"
+    );
+    assert_eq!(
+        double_area, 20_096,
+        "analytic double area recomputed by hand"
+    );
+
+    // 2 (continued). Membership truth table at integer points that are clear of
+    //    every operand edge and of every output edge, so the classification is
+    //    exact and `Boundary` is a failure, not a skip.
+    let truth = [
+        // Inside B, outside A: the three slivers.
+        ((-95860, -88700), true, "left sliver"),
+        (
+            (-95628, -88760),
+            true,
+            "gap between octagon and detached component",
+        ),
+        ((-95612, -88700), true, "right sliver"),
+        ((-95847, -88662), true, "octagon's top-left chamfer notch"),
+        // Inside A, so outside the xor.
+        ((-95700, -88700), false, "inside the octagon"),
+        ((-95620, -88700), false, "inside the detached component"),
+        // Outside B, so outside the xor.
+        ((-95870, -88600), false, "above the band"),
+        ((-95600, -88700), false, "right of the band"),
+        ((-95890, -88700), false, "left of the band"),
+    ];
+    for &((x, y), want, what) in truth.iter() {
+        let point = Point2 { x, y };
+        let got = point_in_region(point, &result).expect("point classification");
+        assert!(
+            matches!(
+                (want, got),
+                (true, PointLocation::Inside) | (false, PointLocation::Outside)
+            ),
+            "{what}: point {point:?} classified {got:?}, expected {}; result {result:?}",
+            if want { "Inside" } else { "Outside" }
+        );
+    }
+
+    // 3. Winding: contours CCW, holes CW.
+    for (index, polygon) in result.iter().enumerate() {
+        let contour_area = signed_area2(&polygon.contour).expect("contour double area");
+        assert!(
+            contour_area > 0,
+            "result[{index}] contour must be counter-clockwise, double area {}",
+            describe_area(contour_area)
+        );
+        for (hole_index, hole) in polygon.holes.iter().enumerate() {
+            let hole_area = signed_area2(hole).expect("hole double area");
+            assert!(
+                hole_area < 0,
+                "result[{index}].hole[{hole_index}] must be clockwise, double area {}",
+                describe_area(hole_area)
+            );
+        }
+    }
+
+    // 4. The normalisation removes only reversals. A *forward* collinear vertex
+    //    is a legitimate straight-run vertex: `(5,0)` sits on the bottom edge of
+    //    a 10x10 square, Clipper2 re-emits it, and it must survive untouched.
+    let straight_run = units_component(&[(0, 0), (5, 0), (10, 0), (10, 10), (0, 10)]);
+    let kept = union(&[straight_run], &[]);
+    assert_eq!(kept.len(), 1, "union of one square must yield one ring");
+    let ring = &kept[0].contour;
+    assert!(
+        ring.points.contains(&Point2 { x: 5, y: 0 }),
+        "a forward collinear vertex must not be removed; ring {ring:?}"
+    );
+    assert_eq!(
+        ring.points.len(),
+        5,
+        "a forward collinear vertex must not be removed as a spike; ring {ring:?}"
+    );
+    assert_eq!(
+        signed_area2(ring).expect("square double area"),
+        200,
+        "removing a forward collinear vertex must not change the area; ring {ring:?}"
+    );
+}
+
+/// Regression: the zero-width-excursion normalisation left a **consecutive
+/// duplicate** behind when the excursion closed exactly on its own start,
+/// `a -> b -> a`.
+///
+/// Measured fixture (`difference`, integer units, 1 unit = 100 nm):
+///
+/// * subject A = `[2,5] x [2,3]` together with `[1,4] x [1,4]`;
+/// * clip B = `[2,4] x [1,2]`, which lies inside A's second block.
+///
+/// Clipper2 emits the raw ring
+/// `(4,2) (5,2) (5,3) (4,3) (4,4) (1,4) (1,1) (2,1) (2,2) (4,2) (4,1)`:
+/// `(4,1)` is B's bottom-right corner, reached from `(4,2)` and followed by
+/// `(4,2)` again, so it is the apex of a **needle** whose base is the single
+/// point `(4,2)` — the `a -> b -> a` shape (`a = (4,2)`, `b = (4,1)`). Deleting
+/// the apex leaves `(4,2), (4,2)` adjacent, which is a consecutive duplicate,
+/// not an edge: pre-fix the ring has ten vertices and fails the strict
+/// `validate_ring` with `a ring cannot repeat a vertex`, even though the needle
+/// encloses no area and the region is correct. The fix drops the duplicate
+/// inside the same fixed-point pass, with the same rule as `remove_duplicates`.
+///
+/// In this witness the duplicate lands **on the seam** (the raw path starts at
+/// `(4,2)`, the needle's base), so `Vec::dedup` alone cannot see it and neither
+/// can a `windows(2)` scan: the normalisation must apply the duplicate rule to
+/// the `last -> first` pair as well, which is why the seam pair is handled
+/// explicitly rather than left to `remove_duplicates`.
+///
+/// The region is analytic, not captured. `|A| = 3 + 9 - 2`, because the
+/// `3 x 1` bar and the `3 x 3` block overlap in `[2,4] x [2,3]` (area 2);
+/// `B` lies inside the block, so `|A \ B| = 10 - 2 = 8` units^2, a double area
+/// of `16`, as one component with no hole.
+#[test]
+fn needle_excursion_returning_to_its_start_leaves_no_duplicate_vertex() {
+    let subject = vec![
+        units_component(&[(2, 3), (2, 2), (5, 2), (5, 3)]),
+        units_component(&[(4, 1), (4, 4), (1, 4), (1, 1)]),
+    ];
+    let clip = vec![units_component(&[(2, 1), (4, 1), (4, 2), (2, 2)])];
+
+    let result = difference(&subject, &clip);
+
+    // 1. One ring, no hole: the needle encloses nothing, so removing it cannot
+    //    change the component structure.
+    assert_eq!(result.len(), 1, "one component, got {result:?}");
+    assert_eq!(result[0].holes.len(), 0, "no hole, got {result:?}");
+    let ring = &result[0].contour;
+    assert_eq!(
+        ring.points.len(),
+        9,
+        "the needle apex is the only vertex the normalisation removes; ring {ring:?}"
+    );
+
+    // 2. No consecutive duplicate, including across the seam (which the needle
+    //    apex sat on before the fix: the raw ring ended `... (2,2) (4,2) (4,1)`).
+    let points = &ring.points;
+    let n = points.len();
+    for index in 0..n {
+        let next = points[(index + 1) % n];
+        assert_ne!(
+            points[index], next,
+            "ring repeats a vertex consecutively at index {index}: {ring:?}"
+        );
+    }
+    assert!(
+        !ring.points.contains(&Point2 { x: 4, y: 1 }),
+        "the needle apex must be gone; ring {ring:?}"
+    );
+
+    // 3. No backtracking spike anywhere, and the ring is strictly simple.
+    for vertex in 0..n {
+        let (prev, here, next) = (
+            points[(vertex + n - 1) % n],
+            points[vertex],
+            points[(vertex + 1) % n],
+        );
+        if let Some(dot) = backtracking_spike_dot(prev, here, next) {
+            panic!(
+                "ring backtracks at vertex {here:?}: the boundary runs out to a collinear \
+                 spike and returns over itself (dot {dot}); ring {ring:?}"
+            );
+        }
+    }
+    validate_ring(ring).unwrap_or_else(|error| {
+        panic!("the normalised ring must be strictly simple: {error}; ring {ring:?}")
+    });
+
+    // 4. The same region: the analytic double area, and membership on both
+    //    sides of every boundary the needle touched.
+    let double_area: i128 = std::iter::once(ring)
+        .chain(result[0].holes.iter())
+        .map(|ring| signed_area2(ring).expect("ring double area"))
+        .sum();
+    assert_eq!(
+        double_area,
+        2 * (3 + 9 - 2 - 2),
+        "difference double area must equal the analytic |A \\ B|; result {result:?}"
+    );
+    assert_eq!(
+        double_area, 16,
+        "analytic double area recomputed by hand (8 units^2)"
+    );
+    let truth = [
+        ((3, 1), false, "inside the clipped-away corner of B"),
+        ((3, 3), true, "inside the bar/block overlap"),
+        ((2, 3), true, "inside the block above B"),
+        ((6, 0), false, "outside the subject"),
+    ];
+    for &((x, y), want, what) in truth.iter() {
+        let point = Point2 { x, y };
+        let got = point_in_region(point, &result).expect("point classification");
+        assert!(
+            matches!(
+                (want, got),
+                (true, PointLocation::Inside) | (false, PointLocation::Outside)
+            ),
+            "{what}: point {point:?} classified {got:?}, expected {}; result {result:?}",
+            if want { "Inside" } else { "Outside" }
+        );
+    }
+
+    // 5. The needle is B's, not the subject's: `A` alone unions into one ring of
+    //    its own eight corners and the analytic double area `2 * |A| = 20`, so
+    //    nothing here is a normalisation of the subject.
+    let untouched = union(&subject, &[]);
+    assert_eq!(untouched.len(), 1, "union of the subject: {untouched:?}");
+    assert_eq!(
+        untouched[0].contour.points.len(),
+        8,
+        "the subject's own ring has eight vertices and no needle: {:?}",
+        untouched[0].contour
+    );
+    assert_eq!(
+        signed_area2(&untouched[0].contour).expect("subject double area"),
+        2 * (3 + 9 - 2),
+        "the subject is `|A| = 10` units^2: 3 + 9 minus the 2-unit overlap"
+    );
 }

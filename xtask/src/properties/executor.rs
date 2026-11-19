@@ -1296,7 +1296,35 @@ mod tests {
             .lines()
             .filter(|line| line.ends_with(": test"))
             .collect();
-        assert_eq!(names, ["proptest_ir_travel_anchors_membership: test"]);
+        // The expected roster is derived from the live registry, not hardcoded:
+        // every record registered against this target must be discovered by the
+        // real `--list` pass, and discovery must add nothing the registry does
+        // not claim. A registered-but-undiscovered test fails here, which is the
+        // same condition the executor reports as `missing_property_execution`.
+        let mut expected: Vec<String> = registry
+            .property
+            .iter()
+            .filter(|candidate| candidate.package == "slicer-ir")
+            .filter(|candidate| candidate.target_name == "property_ir")
+            .filter(|candidate| {
+                candidate
+                    .features
+                    .iter()
+                    .any(|feature| feature == "slicer-ir/property_testing")
+            })
+            .map(|candidate| format!("{}: test", candidate.test_name))
+            .collect();
+        expected.sort();
+        let mut discovered: Vec<String> = names.iter().map(|name| (*name).to_owned()).collect();
+        discovered.sort();
+        assert_eq!(
+            discovered, expected,
+            "live discovery must match the registry"
+        );
+        assert!(
+            names.contains(&"proptest_ir_travel_anchors_membership: test"),
+            "the preserved anchor test must be discovered: {names:?}"
+        );
 
         let input = fs::read_to_string(root().join("test-properties.toml"))
             .expect("live fixture source")
@@ -1478,7 +1506,14 @@ mod tests {
             .filter(|record| record.requires_scad)
             .map(|record| record.id.as_str())
             .collect();
-        assert_eq!(scad, ["D-SCAD-2D", "D-SCAD-3D"]);
+        // The live registry's SCAD-gated set. This is deliberately pinned: a
+        // record that gains `requires_scad` without a supervision-capable
+        // profile should not pass silently. Packet
+        // `proptest-openrscad_09_pbt-geometry` added the two geometry records.
+        assert_eq!(
+            scad,
+            ["D-SCAD-2D", "D-SCAD-3D", "H-BOOL-SCAD", "H-MESH-SCAD"]
+        );
         let mut tier_only = fixture_record("TIER-ONLY", "proptest_fixture");
         tier_only.extended = None;
         let registry = Registry {

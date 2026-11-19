@@ -695,9 +695,11 @@ fn connect_junctions(
 ///
 /// For each vertex whose beading has an odd `bead_widths` count,
 /// `is_local_maximum` (strict — matching canonical `isLocalMaximum(true)`),
-/// and no central incident edge, emits a closed `ExtrusionLine` hexagon
-/// (radius `width/8` where `width` is the middle bead's width, `is_odd = true`)
-/// so isolated thick spots get their center dot.
+/// and no central incident edge, emits an open six-junction `ExtrusionLine`
+/// hexagon (radius `width/8` where `width` is the middle bead's width,
+/// `is_odd = true`, `is_closed = false`, matching canonical
+/// `generateLocalMaximaSingleBeads`) so isolated thick spots get their center
+/// dot; the stitcher may close it later.
 fn generate_local_maxima_single_beads(
     graph: &SkeletalTrapezoidationGraph,
     buckets: &mut BTreeMap<u32, Vec<ExtrusionLine>>,
@@ -728,7 +730,15 @@ fn generate_local_maxima_single_beads(
             continue;
         }
 
-        // Emit a 6-segment hexagonal micro-loop.
+        // Emit a 6-segment hexagonal micro-loop. Canonical
+        // `SkeletalTrapezoidation::generateLocalMaximaSingleBeads` builds a
+        // fresh `ExtrusionLine` (whose constructor starts it open) and pushes
+        // exactly six junctions; it never re-appends the first junction. The
+        // closed flag and any repeated endpoint are produced later, by the
+        // stitcher, if the open loop's own gap is accepted as a closure — not
+        // here. `run_arachne_pipeline` does run `stitch_extrusions` over this
+        // bucket, so this producer must stay open for the stitcher's decision
+        // to be the one that matters.
         let mid_bead = n_beads / 2;
         let width = beading.bead_widths[mid_bead];
         let r = width / 8.0; // radius in slicer units
@@ -738,12 +748,7 @@ fn generate_local_maxima_single_beads(
         let r_mm = (r / UNITS_PER_MM) as f32;
         let width_mm = (width / UNITS_PER_MM) as f32;
 
-        // 6 hexagon vertices plus a 7th duplicating the first. A closed
-        // `ExtrusionLine` in this crate carries `first.xy == last.xy` (the
-        // convention `stitch_extrusions` produces and `ExtrusionPath3D::is_closed`
-        // documents), and `simplify_toolpaths`' closed-polygon walk relies on it.
-        // This loop skips stitch (AC-6), so it must close itself.
-        let mut junctions = Vec::with_capacity(7);
+        let mut junctions = Vec::with_capacity(6);
         for seg in 0..6usize {
             let angle = TAU * seg as f64 / 6.0;
             let jx = cx as f32 + r_mm * angle.cos() as f32;
@@ -762,8 +767,6 @@ fn generate_local_maxima_single_beads(
                 perimeter_index: mid_bead as u32,
             });
         }
-        // Close the loop: duplicate the start junction onto the end.
-        junctions.push(junctions[0].clone());
 
         buckets
             .entry(mid_bead as u32)
@@ -772,7 +775,7 @@ fn generate_local_maxima_single_beads(
                 junctions,
                 inset_idx: mid_bead as u32,
                 is_odd: true,
-                is_closed: true,
+                is_closed: false,
             });
     }
 }

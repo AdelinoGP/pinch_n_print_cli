@@ -87,3 +87,45 @@ fn resolved_line_width_retains_f64_precision_in_config_map() {
         "line_width must not narrow to f32 while crossing the resolved-config map"
     );
 }
+
+/// Regression: `flat_bridge_closing_join` is a serialization-only carrier.
+///
+/// Commit `6db49f0f` removed the field from the middle of `ResolvedConfig`, which
+/// shifted every later Postcard field and broke the frozen `RegionMapIR` 3.0.0
+/// fixture (`DeserializeBadBool`). Restoring it must not resurrect the retired
+/// configuration key, so the field is declared with the `carrier` row kind: it
+/// participates in the struct, the default, `Eq`/`Hash` and the wire layout, but
+/// not in the effective config map, the typed-key roster or CLI dispatch.
+#[test]
+fn flat_bridge_closing_join_is_a_serialization_only_carrier() {
+    const RETIRED_KEY: &str = "flat_bridge_closing_join";
+    let mut config = ResolvedConfig::default();
+
+    assert_eq!(
+        config.flat_bridge_closing_join, "miter",
+        "the carrier keeps the original default so the decoded layout is unchanged"
+    );
+    assert!(
+        !config.to_config_map().contains_key(RETIRED_KEY),
+        "the retired key must not reappear in the effective config map"
+    );
+    assert!(
+        !ResolvedConfig::typed_field_keys().contains(&RETIRED_KEY),
+        "the retired key must not reappear in the typed field roster"
+    );
+    assert_eq!(
+        config.apply_cli_key(RETIRED_KEY, &ConfigValue::String("round".into())),
+        Ok(false),
+        "no CLI dispatch may be rebound for a retired key"
+    );
+
+    // It is still a serialized field, so the wire layout is what the frozen
+    // fixture carries.
+    let bytes = postcard::to_allocvec(&config).expect("config is Postcard-encodable");
+    let decoded: ResolvedConfig = postcard::from_bytes(&bytes).expect("config bytes decode");
+    assert_eq!(
+        decoded.flat_bridge_closing_join, "miter",
+        "the carrier must round-trip through Postcard"
+    );
+    assert_eq!(decoded, config, "the carrier must not disturb equality");
+}

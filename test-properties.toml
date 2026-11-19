@@ -324,3 +324,1143 @@ rng_algorithm = "chacha"
 isolation = "fork"
 timeout_ms = 60000
 bounds = { max_abs_units = 40000, max_vertices = 96, max_holes = 8, max_components = 8, max_shrink_candidates = 64, max_recipe_nodes = 32, max_recipe_depth = 8, max_facets = 24, max_source_bytes = 32768, max_evaluations = 128, max_scad_vertices = 400000, max_scad_triangles = 800000, evaluation_steps = 20000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 600000 }
+
+# Packet `proptest-openrscad_06_pbt-ir-config`. IR/coordinate/ID/config/chain
+# owners. Profiles below are the pilots recorded in
+# docs/testing/proptest-ir-config-evidence.md; bounds are checked before
+# narrowing and the coordinate pair keeps `10_000 * max_abs_mm` and
+# `max_abs_units` at or below the shared rounding-boundary helper's 1_000_000
+# unit cap.
+[[property]]
+id = "H-COORD"
+package = "slicer-ir"
+target_kind = "test"
+target_name = "property_ir"
+test_name = "proptest_coord_conversion_envelopes"
+production_symbol = "slicer_ir::mm_to_units"
+production_path = "crates/slicer-ir/src/slice_ir.rs"
+features = ["slicer-ir/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-coord"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_mm = 25, max_abs_units = 250000 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_mm = 100, max_abs_units = 1000000 }
+
+[[property]]
+id = "H-IDS"
+package = "slicer-ir"
+target_kind = "test"
+target_name = "property_ir"
+test_name = "proptest_entity_and_modifier_ids"
+production_symbol = "slicer_ir::LayerEntityIdGen::next"
+production_path = "crates/slicer-ir/src/entity_id.rs"
+features = ["slicer-ir/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-ids"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_allocations = 256, max_id_bytes = 64, max_footprint_points = 8 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_allocations = 4096, max_id_bytes = 256, max_footprint_points = 32 }
+
+[[property]]
+id = "H-CONFIG-BOUNDS"
+package = "slicer-scheduler"
+target_kind = "test"
+target_name = "property_config"
+test_name = "proptest_config_scalar_bounds"
+production_symbol = "slicer_scheduler::config_resolution::ConfigBoundsIndex::check"
+production_path = "crates/slicer-scheduler/src/config_resolution.rs"
+features = ["slicer-scheduler/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-config-bounds"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_declarations = 4, max_list_len = 4, max_abs_bound = 1000 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_declarations = 8, max_list_len = 8, max_abs_bound = 100000 }
+
+[[property]]
+id = "H-IR-SERDE"
+package = "slicer-ir"
+target_kind = "test"
+target_name = "property_ir"
+test_name = "proptest_ir_serialization_and_defaults"
+production_symbol = "slicer_ir::LayerCollectionIR"
+production_path = "crates/slicer-ir/src/slice_ir.rs"
+features = ["slicer-ir/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-ir-serde"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_entities = 8, max_travels = 16, max_points = 4, max_layers = 4 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_entities = 16, max_travels = 32, max_points = 8, max_layers = 8 }
+
+[[property]]
+id = "H-CONFIG-INTERN"
+package = "slicer-ir"
+target_kind = "test"
+target_name = "property_ir"
+test_name = "proptest_config_equality_hash_and_interning"
+production_symbol = "slicer_ir::RegionMapIR::intern_config"
+production_path = "crates/slicer-ir/src/slice_ir.rs"
+features = ["slicer-ir/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-config-intern"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_configs = 4, max_list_len = 4, max_list_depth = 2, max_text_bytes = 16, max_abs_config_value = 4096 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_configs = 8, max_list_len = 8, max_list_depth = 3, max_text_bytes = 32, max_abs_config_value = 16384 }
+
+[[property]]
+id = "H-CHAINS"
+package = "slicer-ir"
+target_kind = "test"
+target_name = "property_ir"
+test_name = "proptest_canonical_chain_product"
+production_symbol = "slicer_ir::region_split_registry::enumerate_canonical_chains"
+production_path = "crates/slicer-ir/src/region_split_registry.rs"
+features = ["slicer-ir/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-chains"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_semantics = 3, max_values_per_semantic = 3, max_chains = 64, max_text_bytes = 16 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_semantics = 4, max_values_per_semantic = 4, max_chains = 625, max_text_bytes = 32 }
+
+[[property]]
+id = "H-DAG"
+package = "slicer-scheduler"
+target_kind = "test"
+target_name = "property_scheduler"
+test_name = "proptest_scheduler_dag_models"
+production_symbol = "slicer_scheduler::topological_sort"
+production_path = "crates/slicer-scheduler/src/topology.rs"
+features = ["slicer-scheduler/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-dag"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_nodes = 5 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_nodes = 7 }
+
+[[property]]
+id = "H-CLAIMS"
+package = "slicer-scheduler"
+target_kind = "test"
+target_name = "property_scheduler"
+test_name = "proptest_scheduler_claim_models"
+production_symbol = "slicer_scheduler::validation::validate_startup_dag"
+production_path = "crates/slicer-scheduler/src/validation.rs"
+features = ["slicer-scheduler/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-claims"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_modules = 4, max_claims = 4, max_observations = 8, max_layers = 3, max_text_bytes = 36 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_modules = 7, max_claims = 8, max_observations = 16, max_layers = 4, max_text_bytes = 64 }
+
+[[property]]
+id = "H-REGISTRY"
+package = "slicer-scheduler"
+target_kind = "test"
+target_name = "property_scheduler"
+test_name = "proptest_scheduler_region_split_registry"
+production_symbol = "slicer_scheduler::region_split::aggregate_region_splits"
+production_path = "crates/slicer-scheduler/src/region_split.rs"
+features = ["slicer-scheduler/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-registry"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_modules = 4, max_declarations = 8, max_text_bytes = 36 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_modules = 7, max_declarations = 16, max_text_bytes = 64 }
+
+# ── H-RUNTIME (packet `proptest-openrscad_08_pbt-runtime`) ────────────────────
+# Profiles measured on the Windows development machine after the packet's
+# pilots. Values stay inside the written safety ceilings; the evidence file
+# (`docs/testing/proptest-runtime-evidence.md`) records the exact per-tier
+# libtest wall, accepted cases and retained-seed replay.
+
+[[property]]
+id = "H-RUNTIME-DISPATCH"
+package = "slicer-runtime"
+target_kind = "test"
+target_name = "property_runtime"
+test_name = "proptest_runtime_semantic_dispatch"
+production_symbol = "slicer_wasm_host::selection::paint_allows_layer"
+production_path = "crates/slicer-wasm-host/src/selection.rs"
+features = ["slicer-runtime/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-runtime-dispatch"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 3, max_regions = 3, max_semantics = 4, max_chain_len = 3, max_text_bytes = 32 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 4, max_regions = 4, max_semantics = 8, max_chain_len = 4, max_text_bytes = 64 }
+
+[[property]]
+id = "H-RUNTIME-SELECTION"
+package = "slicer-runtime"
+target_kind = "test"
+target_name = "property_runtime"
+test_name = "proptest_runtime_selection_authority"
+production_symbol = "slicer_runtime::layer_executor::build_and_commit_layer_selection_index"
+production_path = "crates/slicer-runtime/src/layer_executor.rs"
+features = ["slicer-runtime/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-runtime-selection"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 3, max_regions = 3, max_modules = 2, max_chain_len = 3 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 4, max_regions = 4, max_modules = 4, max_chain_len = 4 }
+
+[[property]]
+id = "H-RUNTIME-MODIFIERS"
+package = "slicer-runtime"
+target_kind = "lib"
+target_name = "slicer_runtime"
+test_name = "region_partition::property_tests::proptest_runtime_modifier_transactions"
+production_symbol = "slicer_runtime::region_partition::split_regions_by_modifier_footprints"
+production_path = "crates/slicer-runtime/src/region_partition.rs"
+features = ["slicer-runtime/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-runtime-modifiers"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_regions = 3, max_footprints = 3, max_abs_units = 512, max_cells = 512 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_regions = 4, max_footprints = 4, max_abs_units = 4096, max_cells = 2048 }
+
+[[property]]
+id = "H-RUNTIME-PARTITION"
+package = "slicer-runtime"
+target_kind = "lib"
+target_name = "slicer_runtime"
+test_name = "region_partition::property_tests::proptest_runtime_fill_partition"
+production_symbol = "slicer_runtime::region_partition::sync_perimeter_infill_areas_into_slice"
+production_path = "crates/slicer-runtime/src/region_partition.rs"
+features = ["slicer-runtime/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-runtime-partition"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_regions = 3, max_abs_units = 512, max_cells = 512 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_regions = 4, max_abs_units = 4096, max_cells = 2048 }
+
+# Packet `proptest-openrscad_09_pbt-geometry`. Direct geometry and mesh owners.
+# Bounds are the measured Windows profiles in
+# docs/testing/proptest-geometry-evidence.md; every bound is read before any
+# strategy is built and an invalid value fails instead of narrowing.
+[[property]]
+id = "H-BOOL-SET"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry"
+test_name = "proptest_boolean_set_algebra"
+production_symbol = "slicer_core::polygon_ops::union"
+production_path = "crates/slicer-core/src/polygon_ops.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-bool-set"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 60000, max_vertices = 32, max_holes = 4, max_components = 3, max_shrink_candidates = 32, max_queries = 64 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 120000, max_vertices = 64, max_holes = 8, max_components = 4, max_shrink_candidates = 64, max_queries = 128 }
+
+[[property]]
+id = "H-BOOL-CLIP"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry"
+test_name = "proptest_clip_polylines_full_segments"
+production_symbol = "slicer_core::polygon_ops::clip_polylines"
+production_path = "crates/slicer-core/src/polygon_ops.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-bool-clip"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 60000, max_vertices = 32, max_holes = 4, max_components = 3, max_shrink_candidates = 32, max_queries = 64, max_polylines = 12 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 120000, max_vertices = 64, max_holes = 8, max_components = 4, max_shrink_candidates = 64, max_queries = 128, max_polylines = 16 }
+
+[[property]]
+id = "H-OFFSET-MITER"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry"
+test_name = "proptest_offset_rectangular_clearance"
+production_symbol = "slicer_core::polygon_ops::offset2_ex"
+production_path = "crates/slicer-core/src/polygon_ops.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-offset-miter"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 120000, max_side_mm = 8, max_offset_mm = 3 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_side_mm = 16, max_offset_mm = 5 }
+
+[[property]]
+id = "H-OFFSET-SMOOTH"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry"
+test_name = "proptest_smooth_outward_safe_families"
+production_symbol = "slicer_core::smooth_outward::smooth_outward_polygon"
+production_path = "crates/slicer-core/src/smooth_outward.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-offset-smooth"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 120000, max_side_units = 40000, max_clip_units = 5000 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_side_units = 80000, max_clip_units = 8000 }
+
+[[property]]
+id = "H-MESH-SLICE"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry"
+test_name = "proptest_slice_analytical_solids"
+production_symbol = "slicer_core::triangle_mesh_slicer::slice_mesh_ex"
+production_path = "crates/slicer-core/src/triangle_mesh_slicer.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-mesh-slice"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_extent_mm = 8, max_translation_mm = 8, max_planes = 6 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_extent_mm = 16, max_translation_mm = 16, max_planes = 10 }
+
+[[property]]
+id = "H-MESH-QUERY"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry"
+test_name = "proptest_mesh_transform_and_aabb"
+production_symbol = "slicer_core::transform_point3"
+production_path = "crates/slicer-core/src/lib.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-mesh-query"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_extent_mm = 8, max_translation_mm = 8, max_queries = 8 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_extent_mm = 16, max_translation_mm = 16, max_queries = 16 }
+
+[[property]]
+id = "H-HELPERS-SPLIT"
+package = "slicer-helpers"
+target_kind = "test"
+target_name = "property_helpers"
+test_name = "proptest_helpers_split_components"
+production_symbol = "slicer_helpers::split_connected_components"
+production_path = "crates/slicer-helpers/src/split.rs"
+features = ["slicer-helpers/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-helpers-split"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_components = 4, max_faces = 12, max_abs_mm = 8 }
+
+[property.extended]
+cases = 512
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_components = 8, max_faces = 24, max_abs_mm = 16 }
+
+# Packet `proptest-openrscad_09_pbt-geometry`, scripted enrichment (AC-8).
+# Both records run under whole-process supervision: `isolation = "fork"` with a
+# nonzero callback timeout, and `bounds.test_process_timeout_ms` bounds the
+# libtest child so recipe generation and shrink rendering are supervised too.
+[[property]]
+id = "H-BOOL-SCAD"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry_scad"
+test_name = "proptest_scripted_boolean_membership"
+production_symbol = "slicer_core::polygon_ops::union"
+production_path = "crates/slicer-core/src/polygon_ops.rs"
+features = ["slicer-core/property_testing_scad", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = true
+generator_version = 1
+charter = "docs/testing/properties.md#h-bool-scad"
+
+[property.routine]
+cases = 24
+max_local_rejects = 32
+max_global_rejects = 128
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "fork"
+timeout_ms = 30000
+bounds = { max_abs_units = 20000, max_vertices = 64, max_holes = 4, max_components = 4, max_shrink_candidates = 32, max_recipe_nodes = 24, max_recipe_depth = 6, max_facets = 16, max_source_bytes = 16384, max_evaluations = 48, max_scad_vertices = 200000, max_scad_triangles = 400000, evaluation_steps = 5000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 120000, max_queries = 32, max_planes = 4 }
+
+[property.extended]
+cases = 96
+max_local_rejects = 128
+max_global_rejects = 512
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "fork"
+timeout_ms = 60000
+bounds = { max_abs_units = 40000, max_vertices = 64, max_holes = 8, max_components = 8, max_shrink_candidates = 64, max_recipe_nodes = 32, max_recipe_depth = 8, max_facets = 24, max_source_bytes = 32768, max_evaluations = 128, max_scad_vertices = 400000, max_scad_triangles = 800000, evaluation_steps = 20000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 600000, max_queries = 32, max_planes = 6 }
+
+[[property]]
+id = "H-MESH-SCAD"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_geometry_scad"
+test_name = "proptest_scripted_mesh_cross_sections"
+production_symbol = "slicer_core::triangle_mesh_slicer::slice_mesh_ex"
+production_path = "crates/slicer-core/src/triangle_mesh_slicer.rs"
+features = ["slicer-core/property_testing_scad", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = true
+generator_version = 1
+charter = "docs/testing/properties.md#h-mesh-scad"
+
+[property.routine]
+cases = 24
+max_local_rejects = 32
+max_global_rejects = 128
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "fork"
+timeout_ms = 30000
+bounds = { max_abs_units = 20000, max_vertices = 64, max_holes = 4, max_components = 4, max_shrink_candidates = 32, max_recipe_nodes = 24, max_recipe_depth = 6, max_facets = 16, max_source_bytes = 16384, max_evaluations = 48, max_scad_vertices = 200000, max_scad_triangles = 400000, evaluation_steps = 5000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 120000, max_queries = 32, max_planes = 4 }
+
+[property.extended]
+cases = 96
+max_local_rejects = 128
+max_global_rejects = 512
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "fork"
+timeout_ms = 60000
+bounds = { max_abs_units = 40000, max_vertices = 64, max_holes = 8, max_components = 8, max_shrink_candidates = 64, max_recipe_nodes = 32, max_recipe_depth = 8, max_facets = 24, max_source_bytes = 32768, max_evaluations = 128, max_scad_vertices = 400000, max_scad_triangles = 800000, evaluation_steps = 20000000, worker_stack_bytes = 268435456, test_process_timeout_ms = 600000, max_queries = 32, max_planes = 6 }
+
+[[property]]
+id = "H-ARACHNE-BEADING"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_arachne"
+test_name = "proptest_arachne_beading_relations"
+production_symbol = "slicer_core::beading::distributed::DistributedBeadingStrategy::compute"
+production_path = "crates/slicer-core/src/beading/distributed.rs"
+features = ["slicer-core/host-algos", "slicer-core/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-arachne-beading"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_beads = 8, max_width_units = 20000, max_excess_units = 8000 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_beads = 16, max_width_units = 40000, max_excess_units = 16000 }
+
+[[property]]
+id = "H-ARACHNE-GRAPH"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_arachne"
+test_name = "proptest_arachne_graph_topology"
+production_symbol = "slicer_core::skeletal_trapezoidation::SkeletalTrapezoidationGraph::from_polygons"
+production_path = "crates/slicer-core/src/skeletal_trapezoidation/graph.rs"
+features = ["slicer-core/host-algos", "slicer-core/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-arachne-graph"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 400000, max_vertices = 24, max_holes = 2, max_components = 3, max_shrink_candidates = 64 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 1000000, max_vertices = 32, max_holes = 3, max_components = 4, max_shrink_candidates = 256 }
+
+[[property]]
+id = "H-ARACHNE-PIPELINE"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_arachne"
+test_name = "proptest_arachne_pipeline_structure"
+production_symbol = "slicer_core::arachne::pipeline::run_arachne_pipeline"
+production_path = "crates/slicer-core/src/arachne/pipeline.rs"
+features = ["slicer-core/host-algos", "slicer-core/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-arachne-pipeline"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 400000, max_vertices = 24, max_holes = 2, max_components = 3, max_shrink_candidates = 64, max_beads = 10 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 1000000, max_vertices = 32, max_holes = 3, max_components = 4, max_shrink_candidates = 256, max_beads = 16 }
+
+[[property]]
+id = "M-ARACHNE-CLASSIFY"
+package = "arachne-perimeters"
+target_kind = "lib"
+target_name = "arachne_perimeters"
+test_name = "property_tests::proptest_module_arachne_classify"
+production_symbol = "arachne_perimeters::classify_line"
+production_path = "modules/core-modules/arachne-perimeters/src/lib.rs"
+features = ["arachne-perimeters/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-arachne-classify"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_inset_idx = 8 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_inset_idx = 32 }
+
+[[property]]
+id = "M-ARACHNE-BUILD"
+package = "arachne-perimeters"
+target_kind = "lib"
+target_name = "arachne_perimeters"
+test_name = "property_tests::proptest_module_arachne_build_walls"
+production_symbol = "arachne_perimeters::ArachnePerimeters::build_walls"
+production_path = "modules/core-modules/arachne-perimeters/src/lib.rs"
+features = ["arachne-perimeters/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-arachne-build"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_junctions = 32, max_abs_mm_units = 20000, max_spacing_units = 2000, max_height_units = 500 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_junctions = 64, max_abs_mm_units = 40000, max_spacing_units = 8000, max_height_units = 2000 }
+
+[[property]]
+id = "M-ARACHNE-SEQUENCE"
+package = "arachne-perimeters"
+target_kind = "lib"
+target_name = "arachne_perimeters"
+test_name = "property_tests::proptest_module_arachne_sequence"
+production_symbol = "arachne_perimeters::commit_wall_sequence"
+production_path = "modules/core-modules/arachne-perimeters/src/lib.rs"
+features = ["arachne-perimeters/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-arachne-sequence"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_walls = 6 }
+
+[property.extended]
+cases = 1024
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 256
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_walls = 12 }

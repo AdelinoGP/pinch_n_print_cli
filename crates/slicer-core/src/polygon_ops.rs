@@ -184,14 +184,139 @@ fn collect_expolygon_from_tree(
 
 /// Orients a Clipper ring to the Slic3r convention: `want_ccw` forces CCW
 /// (positive signed area) for outer contours, else CW (negative area) for
-/// holes.
+/// holes. Zero-width excursions are normalised away first, so no emitted ring
+/// can contain a collinear backtracking spike (see
+/// [`remove_zero_width_excursions`]); a ring that consisted only of excursions
+/// comes back empty and the tree walk drops it.
 fn oriented_ring(path: &[Point64], want_ccw: bool) -> Vec<Point2> {
     let mut points: Vec<Point2> = path.iter().map(|p| Point2 { x: p.x, y: p.y }).collect();
+    remove_zero_width_excursions(&mut points);
     let is_ccw = signed_area_points(&points) > 0.0;
     if is_ccw != want_ccw {
         points.reverse();
     }
     points
+}
+
+/// `a -> b -> c` is a **zero-width excursion**: `a`, `b`, `c` are exactly
+/// collinear and the path reverses at `b` (`(b-a)·(c-b) < 0`), so the boundary
+/// runs out to `b` and returns over itself. Exact integer arithmetic.
+///
+/// A *forward* collinear vertex (`(b-a)·(c-b) > 0`) is a legitimate straight-run
+/// vertex and is deliberately **not** a zero-width excursion.
+///
+/// The `i128` products are exact for every coordinate a slicer produces: the
+/// same `|coordinate| <= 2^30` bound the exact test oracles rely on keeps every
+/// delta below `2^31` and every cross/dot product below `2^63` (see
+/// `point_clears_segment` in `tests/property_geometry_common/envelopes.rs`).
+fn is_zero_width_excursion(a: Point2, b: Point2, c: Point2) -> bool {
+    let sub = |to: i64, from: i64| i128::from(to) - i128::from(from);
+    let (in_x, in_y) = (sub(b.x, a.x), sub(b.y, a.y));
+    let (out_x, out_y) = (sub(c.x, b.x), sub(c.y, b.y));
+    in_x * out_y - in_y * out_x == 0 && in_x * out_x + in_y * out_y < 0
+}
+
+/// Normalises a ring by deleting every zero-width excursion, to a fixed point.
+///
+/// An excursion encloses no area and contributes no boundary: the path out to
+/// `b` and back covers the same points twice, so removing `b` leaves the
+/// enclosed region, the winding and every other vertex exactly as they were.
+/// This is a normalisation, not a behavioural change.
+///
+/// Clipper2 can emit such an excursion when a redundant collinear input vertex
+/// sits on a boundary segment coincident with the other operand and a component
+/// gap forces the boundary to split at that vertex; the excursion then fails the
+/// strict `validate_ring` ("ring edges intersect beyond their shared endpoint")
+/// and the weakly-simple predicate the H-BOOL-SET property uses. See
+/// `xor_redundant_collinear_vertex_emits_no_backtracking_spike` in
+/// `tests/polygon_ops_tdd.rs`.
+///
+/// An excursion can close exactly on its own start, `a -> b -> a`. Deleting the
+/// apex `b` then leaves `a, a` adjacent, which is a consecutive duplicate, not
+/// a ring vertex: it carries no edge, so the ring fails both the strict
+/// `validate_ring` and the weakly-simple predicate the H-BOOL-SET property
+/// uses. The same pass therefore drops consecutive duplicates with the same
+/// rule as the public [`remove_duplicates`], plus the seam pair
+/// (`last -> first`) that `Vec::dedup` cannot see on a closed ring, so no
+/// excursion shape Clipper2 emits can leave a duplicate behind. See
+/// `needle_excursion_returning_to_its_start_leaves_no_duplicate_vertex` in
+/// `tests/polygon_ops_tdd.rs`.
+///
+/// Removing one excursion (or one duplicate) can expose another, so the pass
+/// repeats until nothing changes. Every pass removes at least one vertex, no
+/// vertex is ever created, and the loop is additionally bounded by the original
+/// vertex count, so a pathological ring cannot loop. A ring that collapses
+/// entirely bounds no region and is cleared, which the tree walk already treats
+/// as "drop".
+fn remove_zero_width_excursions(points: &mut Vec<Point2>) {
+    let mut budget = points.len();
+    while points.len() >= 3 && budget > 0 {
+        let before = points.len();
+        remove_interior_zero_width_excursions(points);
+        remove_seam_zero_width_excursion(points);
+        remove_duplicates(points);
+        // The same duplicate rule across the seam, which `Vec::dedup` cannot
+        // reach. After `remove_duplicates` at most one seam pair can survive.
+        if points.len() >= 2 && points[0] == points[points.len() - 1] {
+            points.pop();
+        }
+        let removed = before - points.len();
+        if removed == 0 {
+            break;
+        }
+        budget = budget.saturating_sub(removed);
+    }
+    if points.len() < 3 {
+        points.clear();
+    }
+}
+
+/// Removes every zero-width excursion whose three vertices are consecutive in
+/// the linear order, in one `O(n)` in-place pass (no second buffer: the write
+/// cursor never overtakes the read cursor).
+///
+/// The written prefix acts as a stack: after pushing a vertex, the last three
+/// are re-checked, and deleting the middle one pulls the tail down over it and
+/// re-examines that new triple. This reaches the fixed point for the linear
+/// sequence; only triples straddling the seam (last, first, second vertices)
+/// remain for [`remove_seam_zero_width_excursion`].
+fn remove_interior_zero_width_excursions(points: &mut Vec<Point2>) {
+    let mut written = 0usize;
+    for read in 0..points.len() {
+        let point = points[read];
+        points[written] = point;
+        written += 1;
+        while written >= 3
+            && is_zero_width_excursion(
+                points[written - 3],
+                points[written - 2],
+                points[written - 1],
+            )
+        {
+            // Drop the middle vertex: the tail slides down over it.
+            points[written - 2] = points[written - 1];
+            written -= 1;
+        }
+    }
+    points.truncate(written);
+}
+
+/// Removes a zero-width excursion straddling the ring's seam, i.e. one whose
+/// apex is the first or the last vertex. Both are checked, index 0 first; a
+/// removal that exposes another seam excursion is caught by the caller's next
+/// pass. Interior excursions are already gone before this runs.
+fn remove_seam_zero_width_excursion(points: &mut Vec<Point2>) {
+    let n = points.len();
+    if n < 3 {
+        return;
+    }
+    if is_zero_width_excursion(points[n - 1], points[0], points[1]) {
+        points.remove(0);
+    }
+    let n = points.len();
+    if n >= 3 && is_zero_width_excursion(points[n - 2], points[n - 1], points[0]) {
+        points.pop();
+    }
 }
 
 /// Converts an open polyline (integer units) to a clipper2 open path.
