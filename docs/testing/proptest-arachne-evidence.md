@@ -8,8 +8,8 @@ G-FAMILY disposition for the Arachne family (G-ARACHNE below).
 Every number below comes from an archived log under `target/proptest-arachne-evidence/`,
 `target/proptest-arachne-baseline/`, `target/proptest-arachne-acceptance/` or
 `target/logs/bounds/`, from a per-record `context.json`, or from the run report of this packet's
-Step 7 where a figure was measured but not archived. Each table says which. No hosted CI run is
-claimed.
+Step 7 where a figure was measured but not archived. Each table says which. The hosted
+`properties-windows` execution is recorded in Measurements (run `44434672409`).
 
 ## Provenance
 
@@ -357,6 +357,13 @@ All logs are under `target/proptest-arachne-evidence/`. Per lane:
   - `VERDICT: PASS` and a total of `real 10m10.932s`, archived in
     `combined-extended-summary.log`; `combined-extended-full.log` holds the per-record lines and
     events. This lane is warm-cache too.
+- **Hosted `properties-windows`** (run
+  [`44434672409`](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/44434672409), head
+  `6b340919`, job `135260421098`):
+  - Job passed in 17m08s (2026-11-19 01:09:07–01:26:15 UTC).
+  - The routine step reported `VERDICT: PASS`, and the step "Assert the 13 geometry and Arachne
+    records executed" printed `OK: all 13 asserted geometry and Arachne records executed`.
+  - Log archived at `target/proptest-arachne-evidence/ci-run-44434672409-properties.log`.
 - **First gated command after the production edits.**
   - 6 m 48.9 s total.
   - That includes 49 stale guest rebuilds, measured at 272.1 s as the artifact-write span, and an
@@ -537,18 +544,17 @@ Locally, every G-FAMILY obligation for the Arachne family is met:
 - Rejected test calls are zero, and `call_counts_complete = true`.
 - A retained seed replays green.
 
-The hosted `properties-windows` job in `.github/workflows/ci.yml` now asserts the six IDs. It was
-**not** executed from this workstation, because it needs a push or PR. The local lanes above are the
-evidence. Running the hosted job is the packet's remaining closure action.
+The hosted `properties-windows` job in `.github/workflows/ci.yml` asserts the six IDs and executed
+them on head `6b340919` in run `44434672409`: the job passed, the routine step reported
+`VERDICT: PASS`, and the 13-ID assertion printed its success line (Measurements). That closes the
+last AC-7 item.
 
 ## Post-closure follow-ups
 
-1. **Hosted execution.** Run the `properties-windows` PR job and record its run ID, head and the
-   six-ID assertion result here.
-2. **Region order.** `WallToolPaths::getRegionOrder` differs between the two inspected checkouts.
+1. **Region order.** `WallToolPaths::getRegionOrder` differs between the two inspected checkouts.
    Any future property that depends on odd-line region ordering must first establish which
    reference applies.
-3. **Scanner scope.** If `collect_enforced_files` ever collects `modules/core-modules/*/src` and
+2. **Scanner scope.** If `collect_enforced_files` ever collects `modules/core-modules/*/src` and
    follows out-of-line modules, replace the AC-8 manual review with the scanner result.
 
 ## Checks

@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_10_pbt-arachne
-status: draft
+status: implemented
 ---
 
 # Arachne host and perimeter-kernel property contracts
@@ -189,7 +189,7 @@ Implementation-time records. Each is a code fact verified against the tree at th
   - **Remaining approximation.** `region_line_count` is counted per `build_walls` batch rather
     than per canonical `Surface` or merged one-wall-top list.
   - **Evidence.** `docs/testing/proptest-arachne-evidence.md`, Canonical audit.
-- **AC-7 split.** The six routine/extended selections and a retained-seed replay are executed on this Windows host and archived. The hosted `properties-windows` execution requires a push/PR, which this run does not perform; the job gains the six IDs so the hosted lane asserts them when run. This is reported as the packet's remaining closure action, not claimed as executed evidence.
+- **AC-7 hosted execution completed.** The six routine/extended selections and a retained-seed replay are executed on this Windows host and archived. The hosted `properties-windows` PR job then ran head `6b340919` in run [`44434672409`](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/44434672409): the job passed in 17m08s, the routine step reported `VERDICT: PASS`, and the 13-ID assertion printed `OK: all 13 asserted geometry and Arachne records executed`. The job log is archived in `docs/testing/proptest-arachne-evidence.md` (Measurements).
 
 ## Open questions
 

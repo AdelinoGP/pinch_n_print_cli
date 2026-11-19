@@ -246,8 +246,9 @@ total.
 Logs are archived under `target/proptest-arachne-evidence/` and per-record contexts under
 `target/property-testing/<run-token>/<ID>/context.json`. Provenance, populations, controls, the
 canonical audit and defects are in [proptest-arachne-evidence.md](proptest-arachne-evidence.md).
-The hosted `properties-windows` job now asserts the six IDs but was **not** run from this
-workstation.
+The hosted `properties-windows` job ran head `6b340919` in run `44434672409` and passed, including
+the assertion that all six Arachne IDs executed (see
+[proptest-arachne-evidence.md](proptest-arachne-evidence.md#measurements)).
 
 ## Context and event schema
 
