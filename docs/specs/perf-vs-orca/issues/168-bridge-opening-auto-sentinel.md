@@ -2,8 +2,9 @@
 
 Type: task / measured candidate (canonical-parity fix + standing gate)
 Label: wayfinder:task
-Status: open
-Assignee: unclaimed
+Status: resolved
+Resolved: 2026-11-19 — the auto sentinel is resolved through one shared policy (`outer_wall_line_width` → `line_width` → 0.4 mm), the bridge opening is live, and the parity fix lands on correctness grounds: bridge path falls 8/8, process CPU is lower 8/8 on both build arms, but no cell's wall effect clears the measured null band, so the standing gate fails on wall (0/4 `base`) and no speed is banked.
+Assignee: 2026-11-19 deepseek wayfinder session — the human said "Continue the perf vs orca map" (no ticket named); 168 is first on the frontier.
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: the [t166 take](../evidence/t166-shell-opening-parity/FINDINGS.md),
@@ -90,4 +91,47 @@ sliver therefore survives as a bridge.
 
 ## Answer
 
-_(pending)_
+**The sentinel was the defect; the fix is canonical and lands, but it buys no
+measurable wall.** `resolve_external_perimeter_width_mm`
+(`crates/slicer-core/src/algos/prepass_slice.rs`) now requires a **positive**
+absolute `outer_wall_line_width` (both `Float` and absolute `FloatOrPercent`)
+and falls through to `line_width`, then 0.4 mm; the shell stage's copy is now a
+one-line delegate to it, so the two openings share one policy and cannot drift
+again. On the matched job the radius moves `0.1 x 0` → `0.1 x 0.4 = 0.04 mm`, so
+the bridge opening is live for the first time.
+
+**Output:** the baseline reproduces t166's active set in **8/8**; the candidate
+moves **8/8** (`d6cb4acd…` / `21c6969f…` / `5c0f846e…` / `6fe4b09b…` /
+`9e360450…` / `f77cf265…` / `cd896bab…` / `3044c4d6…`, bytes −2,373 / −2,327 /
+−2,112 / −2,218 / +24,435 / +24,313 / −5,288 / −5,328), and the accelerated arm
+is byte-identical to the ordinary arm in **16/16**. All 286 runs are clean
+(`degraded: false`, zero code-1200).
+
+**Delta audit:** bridge path falls in **8/8** (−10.5 / −10.5 / −5.0 / −5.0 /
+−11.4 / −11.4 / −8.1 / −8.1 mm), internal bridge rises in 8/8 (+3.6 / +2.0 mm),
+`Gap infill` is inert, and sparse infill **rises only on `base classic`**
+(+490.2 mm, +0.28 %) while falling by 0.01–0.02 % on the other six cells — a
+partial reversal of the expected direction, reported. The per-layer census
+(19–26 layers gain bridge path, 27–33 lose it on base) says the opening
+relabels the bottom set rather than shrinking it monotonically. The bridge
+anchor direction proxy (dominant bridge segment angle, not the IR field) moves
+by ≥ 45° on 12/48 / 13/61 / 2/7 bridge layers — a real re-derivation, as
+canonical's own post-opening area implies.
+
+**Paired wall (10 interleaved pairs/cell, ordinary):** benchy **+1.99 / +1.29 /
++1.17 / +1.71 %**, base **+4.09 / −0.14 / +4.15 / +0.73 %**; null bands are
+4.89–9.86 % any-pair on the wall. **Gate FAILED on wall, 0/4 `base` cells**:
+both supports-off base medians sit inside their null band and both supports-on
+medians are at zero. The benchy clause passes (no median regression).
+**Process CPU is lower in 8/8** cells (10/10 pairs in five of them) and on the
+accelerated arm (8/8, 3 pairs/cell), which is the one consistent channel and is
+reported as such, not as a wall win.
+
+**Ruling left open:** the ticket pre-authorized landing a parity fix whose cell
+effect is sub-floor, and this take changes no ratio of record, so the change is
+landed and the map's route arithmetic is unchanged. Whether to bank it as speed
+is the human's call and is not needed for anything downstream. Evidence:
+[`evidence/t168-bridge-opening/`](../evidence/t168-bridge-opening/FINDINGS.md)
+(`verify.py` PASS, `--self-test` 8/8 negative controls; `audit_t168.py
+--self-test` 5/5; `reduce_t168.py` re-derives every paired number from the raw
+rows).
