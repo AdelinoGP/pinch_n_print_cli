@@ -51,10 +51,11 @@ claimed.
   `arachne_local_maxima_single_beads` count stays at 1, but its fixture expectation changed. See
   Defects item 2.
 - **Guest freshness.** The first gated command after the production edits rebuilt 49 stale guests.
-  Later runs rebuilt only one guest after each deliberate mutation edit, and finally all 49 after
-  the `slicer-core` comment edit. The final `slicer-core`
-  comment edit (`LimitedBeadingStrategy::get_transition_thickness`) touches a dependency of every
-  guest, so `cargo xtask build-guests` rebuilt 49 guests
+  Later rebuilds tracked guest-input changes: 49 after the review-round `slicer-core` edits
+  (`target/logs/registry/arachne-six-routine-final.log`), one (`arachne-perimeters-guest`) after the
+  bridge-band production edit and after each mutation apply/revert, and 49 after the final
+  `slicer-core` comment edit (`LimitedBeadingStrategy::get_transition_thickness`), which touches a
+  dependency of every guest. `cargo xtask build-guests` rebuilt those 49
   (`closure-final-guests-rebuild.log`: 49 `STALE:` lines, `built 49 guest(s)`,
   `REBUILD_EXIT=0`) before `closure-final-guests.log` recorded `GUESTS_EXIT=0`. The gate logs for
   build, check, clippy, formatting, literals, test quality and the owner-feature checks all record
@@ -360,9 +361,9 @@ All logs are under `target/proptest-arachne-evidence/`. Per lane:
   - 6 m 48.9 s total.
   - That includes 49 stale guest rebuilds, measured at 272.1 s as the artifact-write span, and an
     87 s `pnp_cli` relink.
-  - The following `cargo xtask build-guests --check` returned exit `0`; later runs rebuilt only
-    after the deliberate mutation edits (one guest each) and after the final comment-only edits
-    (49 guests).
+  - The following `cargo xtask build-guests --check` returned exit `0`. Later rebuilds tracked
+    guest-input changes: 49 after the review-round `slicer-core` edits, one after the bridge-band
+    production edit and each mutation apply/revert, and 49 after the final comment-only edits.
 
 **Measured outcome populations (host).**
 
