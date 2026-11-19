@@ -258,18 +258,20 @@ impl BeadingStrategy for LimitedBeadingStrategy {
 
     fn get_transition_thickness(&self, lower_bead_count: usize) -> f64 {
         // Canonical `LimitedBeadingStrategy::getTransitionThickness`: below
-        // the cap the decorator asks its parent. Canonical then hits
-        // `assert(false)` for any `lower_bead_count >= max_bead_count`,
-        // because `getOptimalBeadCount` saturates at `max_bead_count + 1`, so
-        // a transition above the cap is unreachable in canonical use.
+        // the cap the decorator asks its parent; at exactly
+        // `max_bead_count` canonical returns
+        // `parent->getOptimalThickness(lower_bead_count + 1)` shifted down by
+        // `scaled<coord_t>(0.01)` (0.01 mm, 100 units at `UNITS_PER_MM`); above
+        // `max_bead_count` it hits `assert(false)`, because
+        // `getOptimalBeadCount` saturates at `max_bead_count + 1` and a
+        // transition above the cap is unreachable in canonical use.
         //
-        // This port saturates the value canonical's unreachable branch would
-        // return — the cap-plus-one optimum shifted down by canonical's
-        // `scaled<coord_t>(0.01)` (0.01 mm, 100 units at `UNITS_PER_MM`) —
-        // rather than panicking, so `generate_transition_mids` (which calls
-        // the OUTERMOST strategy's method, `crates/slicer-core/src/skeletal_trapezoidation/propagation.rs`)
-        // stays total if a caller ever asks for one. Below the cap the
-        // delegation is unchanged.
+        // This port returns the same cap-plus-one formula at and above the
+        // cap rather than panicking above it, so `generate_transition_mids`
+        // (which calls the OUTERMOST strategy's method,
+        // `crates/slicer-core/src/skeletal_trapezoidation/propagation.rs`) stays
+        // total if a caller ever asks for one. Below the cap the delegation is
+        // unchanged.
         if lower_bead_count < self.max_bead_count {
             self.parent.get_transition_thickness(lower_bead_count)
         } else {

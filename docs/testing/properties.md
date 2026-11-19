@@ -4118,7 +4118,7 @@ Winding follows canonical `traverse_extrusions` (`PerimeterGenerator.cpp`):
 
   The two-line roster keeps only the outer and inner rectangles, plus the empty line. The
   generated total junction count is sampled in `23..=max_junctions` and extra collinear points are
-  distributed across the roster; the region half-extent is sampled in
+  placed on the outer rectangle's bottom and top edges; the region half-extent is sampled in
   `10000..=max_abs_mm_units`.
 - `build_walls_bounds_drive_geometry_and_junctions` builds two different bound pairs and asserts
   both the input and the emitted walls change extent and junction total, so neither bound can
@@ -4143,12 +4143,13 @@ branch depends on what the sampler draws. The layer height, the base of the uneq
 spacings, the junction budget and the region half-extent are shrinkable; the mode word and the
 bridge membership are not.
 
-The deterministic prelude runs three canonical-winding witnesses before the generated campaign,
-each under a fresh `CaseGuard`:
+The deterministic prelude runs three canonical-winding witnesses and the bounds-reach-generation
+control before the generated campaign, each under a fresh `CaseGuard`:
 
 - `build_walls_winding_witness_open_path_keeps_order`;
 - `build_walls_winding_witness_clockwise_inner_is_contour`;
-- `build_walls_winding_witness_two_line_region_inner_is_contour_like`.
+- `build_walls_winding_witness_two_line_region_inner_is_contour_like`;
+- `build_walls_bounds_drive_geometry_and_junctions`.
 
 Each is also a plain test. All three failed under the former inset-based rule. See
 `docs/testing/proptest-arachne-evidence.md#wall-winding-traverse_extrusions-and-extrusionlineis_contour`.

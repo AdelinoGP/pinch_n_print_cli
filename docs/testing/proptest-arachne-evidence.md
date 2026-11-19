@@ -54,7 +54,9 @@ archived. Each table says which. No hosted CI run is claimed.
   (`EXIT_FRESH`), judged by exit code, and later runs did not rebuild. The final closure gate log
   `target/proptest-arachne-evidence/closure-final-guests.log` records `build-guests --check`
   `GUESTS_EXIT=0`; the gate logs for build, check, clippy, formatting, literals, test quality and
-  the owner-feature checks all record exit `0`.
+  the owner-feature checks all record exit `0`. The final comment-only edit to the module source
+  marked six dependent guests stale; `cargo xtask build-guests` rebuilt them
+  (`closure-final-guests-rebuild.log`, `REBUILD_EXIT=0`) before that check returned exit `0`.
 
 ## Profiles
 
@@ -124,8 +126,10 @@ Both coordinate and junction bounds now drive generation; neither is a fixed fix
   `half_units = 10_000`, and **32** junctions at `max_junctions = 32` and
   `half_units = 60_000`. The same control sweeps `max_junctions` 23, 32 and 64 at half-extents
   10 000, 60 000 and 1 000 000 units and both ends of each junction range.
-- **Measured runs (synthetic context, not a registry lane).** With a hand-fed
-  `PNP_PROPERTY_CONTEXT`, the build property passed 64/64 accepted cases at
+- **Measured runs (synthetic context, not a registry lane; historical).** These were recorded
+  before the bridge band became asymmetric, so they pin the bounds path and the below-roster
+  validator, not the final band geometry; the final registry lanes above are the timed evidence.
+  With a hand-fed `PNP_PROPERTY_CONTEXT`, the build property passed 64/64 accepted cases at
   `max_junctions = 26`, `max_abs_mm_units = 40_000` (`target/logs/bounds/property-build-manual.log`)
   and 256/256 at the ceilings `max_junctions = 64`, `max_abs_mm_units = 1_000_000` with zero
   rejects (`target/logs/bounds/property-build-extended-manual.log`). The same harness rejects
@@ -133,13 +137,20 @@ Both coordinate and junction bounds now drive generation; neither is a fixed fix
   `target/logs/bounds/property-extended-below-roster.log`). Registry timings on the final tree are
   0.33 s routine selected, 0.33 s combined routine, 5.90 s extended selected and 5.18 s combined
   extended (Measurements).
-- **Flag-desync witness.** With `feature_flags.reverse()` removed from `build_walls`, the generated
-  `M-ARACHNE-BUILD` property fails on the asymmetric band:
-  `inset_idx=1 is_odd=false is_closed=true point 1 (source junction 3): is_bridge = false, but this
-  point's own coordinates say true` (`target/logs/bounds/postfix-band-mutant-full.log`). The same
-  tree passes after the reversal is restored
-  (`target/logs/bounds/postfix-band-registry-restored.log`). This detection comes from the
-  generated property, not from the deterministic regression.
+- **Flag-desync witness.** Two mutant runs, each on a restored tree afterwards:
+  - **Generated campaign alone.** With `feature_flags.reverse()` removed and the deterministic
+    prelude disabled, the 64-case campaign fails after two successful cases:
+    `inset_idx=1 is_odd=false is_closed=true point 1 (source junction 3): is_bridge = true, but this
+    point's own coordinates say false`
+    (`target/logs/bounds/postfix-band-campaign-mutant.log`). This is the generated property's own
+    detection.
+  - **With the prelude enabled.** The same production mutation is also caught earlier by the
+    prelude's `build_bounds_drive_geometry_and_junctions` sweep at `profile 23/10000, mode
+    0b101010`: `is_bridge = false, but this point's own coordinates say true`
+    (`target/logs/bounds/postfix-band-mutant-full.log`). That earlier log therefore evidences the
+    prelude, not the campaign.
+  - Restoring the reversal makes the lane pass
+    (`target/logs/bounds/postfix-band-registry-restored2.log`).
 - **Roster minimum fixture.** `valid_build_limits()` now derives from the real validator at
   `max_junctions = 23`, `max_abs_mm_units = 20_000`, `max_spacing_units = 10_000`,
   `max_height_units = 3_000`, so the deterministic witnesses cannot drift out of the accepted
@@ -414,11 +425,15 @@ specific wrong result.
   latter also runs `shrink_retains_geometry_and_mode_witness` and
   `classify_shrink_retains_positivity`.
 
-Archived results:
+Archived results at HEAD:
 
-- `target/proptest-arachne-acceptance/C-contracts-step4.log`: `property_arachne_contracts`, 9
-  passed, 0 failed.
-- The three `M-*.log` files there: 1 passed, 0 failed each.
+- `target/proptest-arachne-evidence/C-contracts-final.log`: `property_arachne_contracts`, 9
+  passed, 0 failed, `C_CONTRACTS_EXIT=0`.
+- `target/proptest-arachne-evidence/M-nonproperty-final.log`: the module's non-property tests, 8
+  passed, 0 failed, `M_NONPROPERTY_EXIT=0` (the three proptest bodies are filtered out because
+  they need the registry context).
+- The four `M-*.log` files in `target/proptest-arachne-acceptance/` predate the asymmetric band
+  and are historical; the final registry lanes and `M-nonproperty-final.log` supersede them.
 
 ## Defects and regressions
 
@@ -441,9 +456,11 @@ that need no `PNP_PROPERTY_CONTEXT`:
      odd, six-junction inset-1 line, because the tiny-poly gate rejects closing it.
    - That fixture was updated only to this measured canonical-correct shape, not to keep the former
      closed expectation.
-3. **`LimitedBeadingStrategy::get_transition_thickness` lacked the
-   `lower_bead_count >= max_bead_count` clamp.** At cap 4 it returned 18000.0 against canonical's
-   19900.0 before the fix. Regression: `limited_transition_thickness_at_cap_matches_canonical_floor`.
+3. **`LimitedBeadingStrategy::get_transition_thickness` lacked canonical's at-cap return.**
+   Canonical returns `parent->getOptimalThickness(lower_bead_count + 1)` minus 0.01 mm at exactly
+   `max_bead_count`, and asserts above it. At cap 4 the port returned 18000.0 against canonical's
+   19900.0 before the fix. Regression:
+   `limited_transition_thickness_at_cap_matches_canonical_floor`.
 4. **`ArachnePerimeters::build_walls` reversed `path.points` without reversing
    `width_profile.widths` / `feature_flags`.**
    - Before the fix, the regression

@@ -1268,9 +1268,10 @@ fn verify_build_walls(
 
     // Bridge population, predicted from the roster's own coordinates before any
     // flag is read. A non-empty band must produce both populations exactly when
-    // it contains an Outer/Inner roster junction. The two-line roster has no
-    // such junction inside the band (its only corners are at ±half/2 and
-    // ±half), so there a non-empty band must leave every flag false.
+    // it contains an Outer/Inner roster junction. The asymmetric band splits the
+    // closed inner rectangle, so both the five-line and the two-line rosters
+    // contain such junctions; only a band that misses every Outer/Inner point
+    // may leave all flags false.
     let mut expected_positive = false;
     for line in &nonempty {
         let (_, loop_type) =

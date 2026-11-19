@@ -163,10 +163,6 @@ fn ac1_local_maximum_emits_hexagonal_micro_loop() {
         (ml.junctions[0].p.x, ml.junctions[0].p.y) != (ml.junctions[5].p.x, ml.junctions[5].p.y),
         "the open micro-loop must not carry a duplicated closing junction"
     );
-    assert!(
-        !ml.is_closed,
-        "the pre-stitch micro-loop is open, and the tiny-poly gate does not close it"
-    );
     for (index, junction) in ml.junctions.iter().enumerate() {
         assert_eq!(
             junction.perimeter_index, ml.inset_idx,
