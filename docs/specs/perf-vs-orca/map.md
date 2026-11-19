@@ -13,7 +13,7 @@ wall-clock (process CPU corroborating, never contradicting) in every cell of
 the {benchy, base} × {classic, arachne} × {supports off, on} matrix, under the
 matched-pair protocol with outputs disclosed. 8 of 8 cells won closes the map.
 
-**Benchy reference currency (2026-11-13, [t145](issues/145-benchy-fixture-rebaseline.md)): the benchy fixture was replaced on 2026-11-12T20:48, and every benchy number measured before that boundary is HISTORICAL.** The replacement (`tmp/3dbenchy.stl`, `6ab57f1c…`) is a re-tessellation of the same model — 225,786 → 225,706 triangles, |Δbounds| ≤ 4.05e-7 mm, ten of ten sampled cross-sections equal to the old export's recorded values — but the slice is **not** output-neutral: one internal-bridge layer (L40, z = 8.2, +57.298 mm of path) and the tree-support engine (−1,370.181 mm over 176 layers) move, so all four benchy hashes move. **Active set = t151's** ([`evidence/t151-skirt-hull-contour/reference.json`](evidence/t151-skirt-hull-contour/reference.json), 2026-11-14): benchy `3d28d1b3…` / `eb202973…` / `39ad6289…` / `77c3c578…`, base `9bb18f0e…` / `eccbd523…` / `2f249cdb…` / `1811425f…` (each list is classic-off / classic-on / arachne-off / arachne-on; the two base supports-on hashes are unchanged from t148 by measurement because those cells are inert). **t148's set is superseded but was reproduced 8/8 by the t151 baseline arm in the same campaign**: benchy `1ae0cfa8…` / `37788518…` / `8faf02b1…` / `f86d8897…`, base `c0b9014f…` / `eccbd523…` / `17f63e93…` / `1811425f…`. t145's four supports-on hashes (`d9fc80ba…` / `cd7d4a2d…` / `585c6a8e…` / `c9fee59a…`) are **superseded** because that job printed less support than it demanded; **t139's four benchy hashes are retired** (`93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…`); t143's four are the superseded interim set. Rule: **a benchy number is either pre-swap (historical) or post-swap (current); never mixed, never quoted across the boundary.** Retired by that rule: t139's benchy hashes and every comparison built on them; t138's benchy **g-code** figures (its benchy **STL** figures survive — the cross-sections reproduce exactly); t135 Stage 1's benchy oracle numbers; t142's benchy A/B (20.00 / 10.56 / 20.23 / 12.66 %) and every pre-swap benchy A/B pair; every benchy scoreboard median (t121 / t124 / t139) and any composite containing a benchy cell; t126's "benchy classic-off 1.02x at zero prepass" and t134's benchy planner ratios. Post-swap and current: t143's benchy rows (fixture mtime 20:48, depth runs 20:55+), t144's hashes / oracle / A-B, t145's re-baseline, and t148's supports-on re-record. **Post-t148 scoreboard (4 supports-on cells × 2 tools, one window): 2.705x / 2.829x / 3.356x / 3.248x ordinary/Orca** (benchy classic-on / benchy arachne-on / base classic-on / base arachne-on), CPU corroborating — **required cut 63.0 % / 64.6 % / 70.2 % / 69.2 %**; t145's 8-cell post-swap scoreboard **1.853x–3.455x ordinary/Orca** stands for the four supports-off cells and is historical for the four supports-on cells (that job was support-incomplete). The accelerated arm has no current scoreboard.
+**Benchy reference currency (2026-11-13, [t145](issues/145-benchy-fixture-rebaseline.md)): the benchy fixture was replaced on 2026-11-12T20:48, and every benchy number measured before that boundary is HISTORICAL.** The replacement (`tmp/3dbenchy.stl`, `6ab57f1c…`) is a re-tessellation of the same model — 225,786 → 225,706 triangles, |Δbounds| ≤ 4.05e-7 mm, ten of ten sampled cross-sections equal to the old export's recorded values — but the slice is **not** output-neutral: one internal-bridge layer (L40, z = 8.2, +57.298 mm of path) and the tree-support engine (−1,370.181 mm over 176 layers) move, so all four benchy hashes move. **Active set = t166's** ([`evidence/t166-shell-opening-parity/reference.json`](evidence/t166-shell-opening-parity/reference.json), 2026-11-19: benchy `276782a7…` / `44564d29…` / `46111bb0…` / `12c5e45c…`, base `0a1ee3df…` / `bc5cb5e1…` / `cadebffa…` / `77f2b655…`). t151's set is superseded (reproduced **8/8** by the t166 baseline arm in the same campaign); for the history, t151's (2026-11-14) was benchy `3d28d1b3…` / `eb202973…` / `39ad6289…` / `77c3c578…`, base `9bb18f0e…` / `eccbd523…` / `2f249cdb…` / `1811425f…` (each list is classic-off / classic-on / arachne-off / arachne-on; the two base supports-on hashes are unchanged from t148 by measurement because those cells are inert). **t148's set is superseded but was reproduced 8/8 by the t151 baseline arm in the same campaign**: benchy `1ae0cfa8…` / `37788518…` / `8faf02b1…` / `f86d8897…`, base `c0b9014f…` / `eccbd523…` / `17f63e93…` / `1811425f…`. t145's four supports-on hashes (`d9fc80ba…` / `cd7d4a2d…` / `585c6a8e…` / `c9fee59a…`) are **superseded** because that job printed less support than it demanded; **t139's four benchy hashes are retired** (`93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…`); t143's four are the superseded interim set. Rule: **a benchy number is either pre-swap (historical) or post-swap (current); never mixed, never quoted across the boundary.** Retired by that rule: t139's benchy hashes and every comparison built on them; t138's benchy **g-code** figures (its benchy **STL** figures survive — the cross-sections reproduce exactly); t135 Stage 1's benchy oracle numbers; t142's benchy A/B (20.00 / 10.56 / 20.23 / 12.66 %) and every pre-swap benchy A/B pair; every benchy scoreboard median (t121 / t124 / t139) and any composite containing a benchy cell; t126's "benchy classic-off 1.02x at zero prepass" and t134's benchy planner ratios. Post-swap and current: t143's benchy rows (fixture mtime 20:48, depth runs 20:55+), t144's hashes / oracle / A-B, t145's re-baseline, and t148's supports-on re-record. **Post-t148 scoreboard (4 supports-on cells × 2 tools, one window): 2.705x / 2.829x / 3.356x / 3.248x ordinary/Orca** (benchy classic-on / benchy arachne-on / base classic-on / base arachne-on), CPU corroborating — **required cut 63.0 % / 64.6 % / 70.2 % / 69.2 %**; t145's 8-cell post-swap scoreboard **1.853x–3.455x ordinary/Orca** stands for the four supports-off cells and is historical for the four supports-on cells (that job was support-incomplete). The accelerated arm has no current scoreboard.
 
 **Destination status (2026-11-08, [t128](issues/128-destination-arithmetic-ruling.md)):
 the target is unchanged; the route is re-scoped to an engine rewrite.** 0 of 8
@@ -1232,6 +1232,59 @@ within −1.3…+0.9 % of t110's 2.5.0 walls, which weakens t161's reading that 
 [166](issues/166-shell-opening-canonical-parity.md),
 [167](issues/167-canonical-clipperutils-replay.md).
 
+**Destination status (2026-11-19,
+[166](issues/166-shell-opening-canonical-parity.md)): the top/bottom opening is
+canonical and the benchy cluster gains 8-21 % wall, but the change is a benchy
+lever and the speed claim is DEGRADED; the frontier is
+[167](issues/167-canonical-clipperutils-replay.md) and the new
+[168](issues/168-bridge-opening-auto-sentinel.md).** Pass 1 now opens its
+neighbour diff with canonical `detect_surfaces_type`'s own call,
+`opening_ex(diff, external_perimeter_width / 10)` with `jtMiter` and miter limit
+3, instead of `line_width / 2` with `Round` joins; Pass 2's shadow width is
+carried separately (`ShellClassificationParams`) so the cascade cannot move.
+**Two defects surfaced.** The region config authors `outer_wall_line_width = 0`,
+canonical's **auto** sentinel, and resolving it literally disables the opening
+entirely (measured no-op: 5,201,451 points in and out, 6.8 ms for 974 calls), so
+`resolve_shell_external_width_mm` resolves it the way `Flow` does (0.4 mm ->
+radius 0.04 mm); the same sentinel reaches the **bridge** classifier, where
+canonical's `0.1 x fw` opening has therefore been a no-op on a path with live
+readers, graduated as [168](issues/168-bridge-opening-auto-sentinel.md).
+**Rejected on measurement:** also porting canonical's `ApplySafetyOffset` (one
+workspace unit at this quantisation) made base classic-off slower (20.2 vs
+19.2 s) and moved output; the radius-only arm reproduces the t166 probe's hash
+`0a1ee3df...` exactly. **Campaign:** 80 paired runs, 5 interleaved pairs/cell,
+every exit 0. Wall saved benchy **+20.435 / +7.915 / +21.395 / +9.277 %**
+(**25.5x / 9.9x / 26.7x / 11.6x** the floor, 5/5 pairs faster each), base
+**+3.448 / +2.468 / +0.310 / +0.734 %** (**4.31x / 3.09x / 0.39x / 0.92x**);
+**process CPU lower in 8/8** (+2.340... +10.938 %). Null control (3 pairs x 3
+cells): wall bands 6.09-11.54 % any-pair and 0.50-5.35 % median, CPU bands
+0.74-1.74 % any-pair. So the benchy cluster is decisive, `base classic-on`
+passes, `base classic-off` clears the floor but sits inside this window's
+3.17 % null median band (DEGRADED), and the two base Arachne cells are
+**sub-floor on wall while CPU-lower - unresolved by this instrument, not proven
+neutral** (5/8 PASS, 1 DEGRADED, 2 sub-floor). **Parity:** top/bottom solid path
+grows in all eight cells (+5.8...+783.6 mm) but the ticket's "never less" is
+**falsified per layer** (12-29 top and 1-15 bottom layers lose path in every
+cell) because Pass 1 classifies each layer against its neighbours - a
+relabelling, not monotone growth (depth-0 seeds 361/311 -> 481/451 on base
+classic-off). **Output:** all eight baselines reproduce t151's active set
+exactly, all eight candidates move, and **t166's set is the new currency**
+([`reference.json`](evidence/t166-shell-opening-parity/reference.json)).
+**Route (estimate, cross-window):** composing the paired medians with t164's
+board takes the benchy supports-off required cuts **49.45 % -> 36.47 %** and
+**47.21 % -> 32.84 %**, the supports-on pair **65.33 % -> 62.35 %** and
+**64.08 % -> 60.40 %**, and moves the `base` cells 0.3-3.4 %; **0 of 8 cells are
+won** and the binding constraint (canonical prepass cost, t164/t165) is
+untouched. **Gap:** no accelerated arm (two full `dist --accelerated` builds plus
+its own campaign); t163 bounds that arm at -13.2...+4.4 % wall, which cannot
+overturn the benchy numbers but could matter for the two sub-floor base Arachne
+cells. Evidence:
+[`evidence/t166-shell-opening-parity/`](evidence/t166-shell-opening-parity/FINDINGS.md)
+(`verify.py` PASS with 7 negative controls; `parity_delta.py` PASS with 5).
+**Frontier:** [167](issues/167-canonical-clipperutils-replay.md) (AFK,
+unblocked) and [168](issues/168-bridge-opening-auto-sentinel.md) (AFK,
+unblocked, new).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -1344,7 +1397,23 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-19, the t165 take):** after a re-route
+**Current selection scope (2026-11-19, the t166 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **166 was first on the
+frontier** (165 had just resolved, leaving 166 and 167), so it was claimed and
+resolved as a **measured candidate: parity fix lands, speed claim DEGRADED**.
+Headline: the top/bottom opening is now canonical `detect_surfaces_type`'s
+`opening_ex(diff, external_perimeter_width / 10)` with `jtMiter` / 3, the benchy
+cluster saves **7.9–21.4 %** wall (25.5x / 9.9x / 26.7x / 11.6x the floor), the
+`base` cells save **0.3–3.4 %**, **process CPU is lower in 8/8**, and the strict
+wall gate reads **5/8 PASS, 1 DEGRADED, 2 sub-floor**. Output moves in 8/8 and
+t166's set is the currency. Two auto-sentinel defects surfaced: the shell-side
+one is fixed here, and the bridge-side one is graduated as
+[168](issues/168-bridge-opening-auto-sentinel.md). The safety-offset variant was
+measured and rejected. **No accelerated arm** (a disclosed gap). **Frontier:**
+[167](issues/167-canonical-clipperutils-replay.md) and
+[168](issues/168-bridge-opening-auto-sentinel.md), both AFK and unblocked.**
+
+**Previous selection scope (2026-11-19, the t165 take):** after a re-route
 session that graduated [166](issues/166-shell-opening-canonical-parity.md) and
 [167](issues/167-canonical-clipperutils-replay.md), the human said "pick up
 the first ticket", and 165 was first on the frontier. It was claimed and
@@ -4581,6 +4650,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Port canonical's top/bottom opening into ShellClassification Pass 1](issues/166-shell-opening-canonical-parity.md): **resolved 2026-11-19, measured candidate — the opening is canonical, the benchy cluster saves 7.9–21.4 % wall, the speed claim is DEGRADED (5/8) with process CPU lower in 8/8, and two auto-sentinel defects surfaced** — Pass 1 now runs canonical `detect_surfaces_type`'s `opening_ex(diff, external_perimeter_width / 10)` with `jtMiter` / miter limit 3 instead of `line_width / 2` with `Round`; `ShellClassificationParams` carries the opening radius and Pass 2's shadow width separately so the cascade cannot move. **Defect 1:** `outer_wall_line_width = 0` is canonical's auto sentinel, not a zero-width wall — resolving it literally disables the opening (measured no-op: 5,201,451 points in and out, 6.8 ms / 974 calls), so `resolve_shell_external_width_mm` resolves it as `Flow` does (0.4 mm → 0.04 mm). **Defect 2:** the same sentinel reaches `classify_unsupported_bridge_areas`, so canonical's bridge opening has been a no-op on a path with live readers — graduated [168](issues/168-bridge-opening-auto-sentinel.md). **Rejected:** also porting `ApplySafetyOffset` (20.2 vs 19.2 s on base classic-off, output moved). **Campaign (80 paired runs, 5 pairs/cell):** benchy **+20.435 / +7.915 / +21.395 / +9.277 %** (25.5x / 9.9x / 26.7x / 11.6x floor, 5/5 pairs each), base **+3.448 / +2.468 / +0.310 / +0.734 %** (4.31x / 3.09x / 0.39x / 0.92x); CPU lower 8/8; null bands 6.09–11.54 % wall any-pair / 0.50–5.35 % median, 0.74–1.74 % CPU any-pair, so `base classic-off` is DEGRADED and the two base Arachne cells are sub-floor on wall and unresolved by the instrument. **Parity:** top/bottom solid path grows in 8/8 cells but the “never less” clause is falsified per layer (12–29 top / 1–15 bottom layers lose path); the change is a relabelling across neighbours. **Output:** baselines reproduce t151 8/8, all eight candidates move, t166's set is the new currency. **Route (estimate):** benchy required cuts 49.45 → 36.47 % and 47.21 → 32.84 %, supports-on 65.33 → 62.35 % and 64.08 → 60.40 %, base 0.3–3.4 %; 0/8 won, binding constraint untouched. Gap: no accelerated arm. Evidence: `evidence/t166-shell-opening-parity/`.
 - [Verify canonical's prepass cost on 2.5.1](issues/165-canonical-prepass-cost.md): **verified (2026-11-19)** — canonical prepass 104.7 ms (bound) / 569.7 / 2,172.4 / 10,368.1 ms, within −0.7…+3.6 % of t110 on the points; 8/8 still win at canonical prepass, binding `benchy arachne-on` 0.898x with 1.47x slack.
 - [Phase re-attribution at HEAD: shares, walls and route arithmetic in one window](issues/164-phase-re-attribution.md): **resolved 2026-11-18, measured board + instrumented split + arithmetic — the prepass is now 67.0–87.2 % of every cell, all eight cells win at canonical prepass cost (0.396x–0.890x), and the binding cell moves to `benchy arachne-on` at 0.890x** — one window, two tools (OrcaSlicer 2.5.1 `5013b1bd…`, PnP ordinary `2c44d38f…` at HEAD `c83d253b`), 8 cells × 1 warmup + 3 measured, 64 rows, matched keys on all 24 Orca runs, **8/8 output identity** to t151's set and every run clean; **24 instrumented passes** (3/cell) also **24/24** identical; load 99 samples 6.8/66.6/100 % (45.9 % in the scoreboard window). **Split:** prepass **67.0–87.2 %**, per-layer **9.3–26.3 %**, postpass **3.2–6.8 %**, outside **0.1–2.3 %**, repeat spread 0.72–3.91 pp, per-layer host gap 0–1 ms; the prepass share rose on **all eight** cells (**+14.85 pp** base classic-off, **+11.51 pp** base arachne-off, **+4.81/+5.23 pp** base supports-on, **+1.07…+6.00 pp** benchy) exactly where t158's 4.23–6.37 s of per-layer removal landed. `MeshAnalysis` 687–697 ms base / 86 ms benchy; base-off's prepass is 68.4 % `host:shell_classification`, base-on's 54.9 % `SupportGeometry` + 20.0 % `SupportAnalysis`. **Board: 1.379x–2.884x, 0/8 won, required cut 27.5 %–65.3 %**, corroborating t163 without composing with it. **Arithmetic (estimate): benchy 0.611x/0.874x/0.649x/0.890x, base 0.400x/0.786x/0.396x/0.718x; `needed_from_other = 0` everywhere**, so the prepass alone suffices — the reversal of t154's shape. **The binding cell is `benchy arachne-on` (0.890x)**, and the constraint is the input: the four supports-on cells carry **1.50x–1.75x** slack on t110's canonical prepass cost, the benchy pair only **1.53x/1.59x**; the substitution implies a prepass cut of **82.6 %–98.1 %**. Graduated [165](issues/165-canonical-prepass-cost.md) to verify that input on 2.5.1. Disclosed: instrumented walls are never wall claims, shares × scoreboard walls only, one window, one external input, no null band. Evidence: `evidence/t164-phase-re-attribution/` (`verify.py` PASS, every number re-derived; `--self-test` 16/16).
 - [Accelerated timing arm: three-tool eight-cell board on the current tree](issues/163-accelerated-timing-board.md): **resolved 2026-11-18, measured board — the accelerated arm is output-exact 8/8 and worth −13.2…+4.4 % wall (median cell −1.1 %), so it is real but not a route lever** — one window, three tools (OrcaSlicer 2.5.1, PnP ordinary, PnP accelerated), 8 cells × 1 warmup + 3 measured runs, 96 rows. **Both PnP arms byte-identical to t151's active set in 8/8** (`exit 0`, `degraded: false`, matched keys on all 24 Orca runs). Board: benchy **1.782x/1.757x, 2.802x/2.703x, 1.940x/1.684x, 2.829x/2.805x** and base **1.389x/1.450x, 2.710x/2.751x, 1.456x/1.426x, 2.618x/2.611x** (ordinary/accelerated). **0 of 8 won on either arm**; required cut 28.0–64.7 % ordinary, 29.9–64.3 % accelerated. Wall deltas **−13.2 / −3.5 / −2.1 / −1.4 / −0.8 / −0.3 / +1.5 / +4.4 %**, median **−1.1 %**, mean −1.9 %, against per-cell spreads 2.9–21.6 % — only `benchy arachne-off` (−13.2 %) and `base classic-off` (+4.4 %) exceed their own spread; **process CPU is the tight channel and is lower in 6/8** (−0.8…−4.3 %). **On the tightest cell the arm is worse** (`base classic-off` 1.389x → 1.450x). Unplanned cross-window control: both arms moved together against t161 and the paired ratio stayed intact (benchy-off −0.8 % for 3.5–4.3 % movement; base-off −2.8 % for 11.8–15.1 %), independently confirming t161's method claim; no absolute wall is compared with t161's. Disclosed: no null band (board not candidate), load 114 samples 1/76/100 %, one window only. Evidence: `evidence/t163-accelerated-board/` (`verify.py` PASS 366/366, `--self-test` 14/14).
@@ -4850,6 +4920,18 @@ Standing decisions for this effort (2026-09-22):
 - [Repair the Orca rig](issues/98-orca-rig-repair.md): **rig measures Orca again on the 2.5.0 install, and the repair falsified the archived Orca side.** OrcaSlicer 2.5 resolves `--load-settings` through a vendor preset bundle (`PresetBundle::resolve_preset_config`: file-identity match, else a `"from": "system"` manifest walk that flattens `inherits`/`include`), and the install ships only `BBL.opc` with no preset JSON tree. The rig now stages a version-gated source-manifest tree from the tag whose `BBL.json` version equals the installed cache stamp (`02.08.00.16` == `2.8.0.16`, fail-closed) and applies the matched keys as CLI overrides, with `enable_arc_fitting` pinned to 0 because 2.5 flipped that default to enabled. Three measured runs of benchy classic-off: **1.978 s** wall / 6.50 s CPU / 4,000,709 bytes, against the archive's 2.787 s / 9.27 s / 3,890,392 — the archived Orca applied its hardcoded **filament** defaults (density 0, max volumetric speed 2, first-layer temp 200) while the process chain resolved in both eras (300 mm/s walls). So the archived Orca under-measured Orca's own work: PnP's recorded multiples are optimistic for PnP and every archived Orca median needs re-derivation (fog). No ratio requoted. Evidence: `evidence/orca-rig-repair/` (`verify.py --self-test` exit 0, 4 claims, 7/7 negative controls rejected).
 
 ## Not yet specified
+
+- **The two base Arachne cells' t166 effect is unresolved by the wall
+  instrument (2026-11-19, [t166](issues/166-shell-opening-canonical-parity.md)).**
+  The opening saves **+0.310 %** and **+0.734 %** there — below the 0.80 % floor —
+  while process CPU falls **+7.081 %** and **+2.340 %** against a 0.74–1.54 %
+  CPU null band, and the same change reads **+20.4 % / +21.4 %** on the two
+  benchy supports-off cells. The wall null median on `base-classic-off` alone was
+  **3.17 %** in this window, so a sub-1 % effect cannot be read there without a
+  longer window or the accelerated arm. Two unticketed shapes: (a) an
+  accelerated-arm corroboration (needs two `dist --accelerated` builds, the
+  baseline included); (b) a quiet-window re-take of just those two cells with
+  more pairs. Neither is a route lever until a human picks one.
 
 - **The accelerated arm's headroom is bounded by the perimeters module's wall
   share, and it already harvests two thirds of that module's own work (profiled
