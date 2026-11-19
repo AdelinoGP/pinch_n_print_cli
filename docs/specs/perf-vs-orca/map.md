@@ -4735,6 +4735,22 @@ Standing decisions for this effort (2026-09-22):
 
 ## Not yet specified
 
+- **The accelerated arm's headroom is bounded by the perimeters module's wall
+  share, and it already harvests two thirds of that module's own work (profiled
+  2026-11-18, [t163](issues/163-accelerated-timing-board.md) §7).** On base
+  classic-off the accelerated build cuts `classic-perimeters` self fuel
+  **109.995 B → 37.191 B (−66.2 %)** and total wasm fuel **190.753 B → 117.949 B
+  (−38.2 %)** with byte-identical output, yet the module accumulates only
+  **12.90 s** of thread-time against a 21.2 s run — which is why the board reads
+  −1.1 % median and **+4.4 %** on that cell. Two shapes remain, neither ticketed:
+  (a) the indexed path costs **43 % more wall per unit of fuel** (0.0896 →
+  0.1285 s/B), the signature of memory-latency-bound index traversal — a tuning
+  shape bounded by the module's share (≈3 % on base); (b) **widen the cfg's
+  scope** to the host Clipper work that owns the base cells' wall
+  (`host:shell_classification` = 104.2 s accumulated thread-time, 73 % of native
+  work) — a design problem, not a tuning one. **No ticket until a human picks
+  one**; the arm is not the route either way.
+
 - **The phase split must be re-attributed before any further route arithmetic
   (surfaced 2026-11-17 by [t161](issues/161-post-t158-scoreboard-refresh.md)).**
   The map's split — prepass **63.5–82.4 %** of wall, per-layer **14.4–29.6 %**,

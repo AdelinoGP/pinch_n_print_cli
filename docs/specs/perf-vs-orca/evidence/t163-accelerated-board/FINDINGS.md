@@ -103,3 +103,58 @@ this take may be compared with t161's**, and none is.
   clear it here.
 - The arm itself is not worth pursuing as a route term: it is worth ≈0.5 % on the
   median cell, and it costs wall on the tightest one.
+
+## 7. Can the arm be improved? A profile answer
+
+Asked after the board: the arm buys ~1 %, so is there headroom in it? Both
+binaries were run on **base classic-off** with `--profile` (fuel is deterministic
+and exact; the wall columns are accumulated thread-time and are indicative only,
+and profiling costs throughput, so nothing here is a timing claim).
+
+| quantity | ordinary | accelerated | delta |
+| --- | ---: | ---: | ---: |
+| total wasm fuel | 190.753 B | 117.949 B | **−38.2 %** |
+| `classic-perimeters` total fuel | 142.545 B | 69.740 B | −51.1 % |
+| `classic-perimeters` **self** fuel | 109.995 B | 37.191 B | **−66.2 %** |
+| `classic-perimeters` self wall | 9.855 s | 4.777 s | −51.5 % |
+| `offset2_ex` (host Clipper call) | 32.549 B | 32.549 B | +0.00004 % |
+| wall per unit of self fuel | 0.0896 s/B | 0.1285 s/B | **+43.4 %** |
+| G-code | `9bb18f0e…` | `9bb18f0e…` | identical |
+
+**1. The arm already does its job.** Two thirds of the module's own work is
+gone — 110.0 B → 37.2 B fuel — with byte-identical output. Whatever the arm was
+designed to remove, it removes.
+
+**2. It buys little wall because the module is not where the cell's wall is.**
+`classic-perimeters` accumulates 12.90 s of thread-time against a 21.2 s
+profiled run; after the pipeline's worker concurrency that is a few percent of
+wall, which is exactly the board's median (−1.1 %) — and on `base classic-off`,
+where the arm measured **+4.4 %**, the saving never reaches the critical path at
+all. The module's remaining large term is a *host* call (`offset2_ex`, 32.5 B
+fuel, unchanged by the cfg).
+
+**3. There is one measured inefficiency inside the arm.** The indexed path
+spends **43 % more wall per unit of fuel** (0.0896 → 0.1285 s per billion), so a
+66 % fuel cut becomes only a 52 % wall cut inside the module. That is the
+signature of memory-latency-bound work — an R-tree traversal and index build
+against a cache-resident scan — and it is the only place a tuning change could
+pay.
+
+**4. The cells where the arm pays are the ones where the module owns more of the
+cell.** `benchy arachne-off` is **−13.2 %** in the board. Same mechanism, more
+module share — not a counter-example, and it bounds the ceiling by composition
+rather than by any property of the index.
+
+**5. What would actually improve it, and what that costs.**
+(a) Narrow the per-fuel regression (index layout, build-vs-query amortization) —
+bounded by the module's wall share, so the base-cell ceiling is ~3 %.
+(b) Widen what the cfg covers to the **host** Clipper work that owns the base
+cells' wall — `host:shell_classification` is 104.2 s of accumulated thread-time
+in this same profile, 73 % of all native work. That is a different design
+problem (it is the operand-volume route), not a tuning change, and no ticket is
+implied here.
+
+**Conclusion: the arm is not the route, and optimizing it cannot make it the
+route.** It is already within roughly a factor of two of its own ceiling on the
+base cells, and the remaining wall sits in host Clipper work the cfg does not
+reach.

@@ -55,3 +55,17 @@ stdlib-only and reads only `reduced/summary.json` plus
 ## 4. Restore
 
 Nothing to restore: no production change. Both freshness gates exit 0.
+
+## 5. The profile pair (section 7 of FINDINGS)
+
+Attribution only — `--profile` meters wasmtime fuel and costs throughput, so no
+wall number from it is a claim.
+
+```bash
+RAYON_NUM_THREADS=12 target/release/pnp_cli.exe slice --model tmp/base.stl   --output target/t163-profile/ord.gcode   --config docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-classic-supports-off.json   --module-dir modules/core-modules --profile 2> target/t163-profile/ord.txt
+
+RAYON_NUM_THREADS=12 target/dist-accelerated/developer/pnp_cli.exe slice --model tmp/base.stl   --output target/t163-profile/acc.gcode   --config docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-classic-supports-off.json   --module-dir target/dist-accelerated/developer/modules --profile 2> target/t163-profile/acc.txt
+```
+
+Both write `9bb18f0e…`; the `profile_summary` JSON line in each stderr carries
+the per-module fuel and the scope table used above.

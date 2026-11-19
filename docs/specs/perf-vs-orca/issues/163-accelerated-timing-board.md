@@ -105,3 +105,16 @@ wall in this take is compared with t161's.
 Disclosed: no null band (board, not candidate); box load 114 samples, min 1 % /
 median 76 % / max 100 %; one window only, so no cross-window or cross-tool-version
 composition.
+
+### Follow-up (2026-11-18): can the arm be improved?
+
+Profiled both binaries on base classic-off (`--profile`, attribution only). The
+accelerated build cuts `classic-perimeters` **self fuel 66.2 %** (109.995 B →
+37.191 B) and total wasm fuel **38.2 %** with byte-identical output, so the arm
+already removes two thirds of the work it can reach. It buys little wall because
+that module is not the cell's wall (12.90 s of accumulated thread-time against a
+21.2 s run), and the indexed path costs **43 % more wall per unit of fuel**
+(memory-latency-bound index traversal). Headroom is therefore (a) that per-fuel
+regression — a tuning change bounded by the module's share, ≈3 % on base — or
+(b) widening the cfg to host Clipper work, which is a design problem. Neither is
+ticketed. Details: `evidence/t163-accelerated-board/FINDINGS.md` §7.
