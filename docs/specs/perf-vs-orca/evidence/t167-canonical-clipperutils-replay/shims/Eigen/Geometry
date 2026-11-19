@@ -1,0 +1,44 @@
+#pragma once
+// Minimal standalone compatibility shim for <Eigen/Geometry> providing only the
+// 2D matrix type used by OrcaSlicerDocumented/deps_src/clipper/clipper.hpp.
+#include <type_traits>
+
+namespace Eigen {
+
+static constexpr int DontAlign = 0;
+
+template <typename Scalar, int Rows, int Cols, int Options = 0>
+struct Matrix {
+    static_assert(Rows == 2 && Cols == 1, "Minimal shim supports 2x1 vectors only");
+    Scalar v[2];
+
+    Matrix() : v{Scalar(0), Scalar(0)} {}
+    Matrix(Scalar a, Scalar b) : v{a, b} {}
+
+    Scalar& x() { return v[0]; }
+    Scalar& y() { return v[1]; }
+    const Scalar& x() const { return v[0]; }
+    const Scalar& y() const { return v[1]; }
+
+    Scalar& operator()(int i) { return v[i]; }
+    const Scalar& operator()(int i) const { return v[i]; }
+    Scalar& operator[](int i) { return v[i]; }
+    const Scalar& operator[](int i) const { return v[i]; }
+
+    template <typename Other>
+    bool operator==(const Matrix<Other, 2, 1, Options>& o) const { return v[0] == o.v[0] && v[1] == o.v[1]; }
+    template <typename Other>
+    bool operator!=(const Matrix<Other, 2, 1, Options>& o) const { return !(*this == o); }
+    Matrix operator+(const Matrix& o) const { return Matrix(v[0] + o.v[0], v[1] + o.v[1]); }
+    Matrix operator-(const Matrix& o) const { return Matrix(v[0] - o.v[0], v[1] - o.v[1]); }
+    Matrix operator-() const { return Matrix(-v[0], -v[1]); }
+    Matrix& operator+=(const Matrix& o) { v[0] += o.v[0]; v[1] += o.v[1]; return *this; }
+    Matrix& operator-=(const Matrix& o) { v[0] -= o.v[0]; v[1] -= o.v[1]; return *this; }
+
+    template <typename U>
+    Matrix<U, 2, 1, Options> cast() const {
+        return Matrix<U, 2, 1, Options>(static_cast<U>(v[0]), static_cast<U>(v[1]));
+    }
+};
+
+} // namespace Eigen

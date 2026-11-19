@@ -1285,6 +1285,66 @@ cells. Evidence:
 unblocked) and [168](issues/168-bridge-opening-auto-sentinel.md) (AFK,
 unblocked, new).
 
+**Destination status (2026-11-19,
+[t167](issues/167-canonical-clipperutils-replay.md)): Branch A fires
+(`canonical_ge_3x_faster_on_hot_offset_sites`) — canonical `v2.5.0` is
+3.0x–12.8x faster on every hot offset site and 2.5x–3.3x faster on canonical
+shell openings, falsifying `t70`'s "kernel at parity" reading on offsets (while
+confirming it on booleans) and graduating a wrapper + Clipper2 2.0.1 port as
+the prepass route.** **Premise correction at the `v2.5.0` pin (`40ecc66f78`,
+2026-11-07):** OrcaSlicer already migrated `ClipperUtils.cpp` completely off
+Clipper1 onto **Clipper2 2.0.1** on 2026-10-02 (`222c6a2df5`, `#15969`,
+deleting `deps_src/clipper/`); the ticket's Clipper1 premise came from the
+older `OrcaSlicerDocumented` checkout (`3e1daccd7c`). All four engines
+(`rust_pnp` `vendor/clipper2-rust` 1.1.0 + `mimalloc`, `cpp_c2_1_5_2` t69 twin,
+`orca_v2_5_0` canonical Clipper2 2.0.1 + `ClipperUtils.cpp`, `orca_clipper1`
+pre-2.5.0 ClipperLib 6.2.6 + `ClipperUtils.cpp`) were replayed on 413 cases
+(295 `t69` + 118 newly captured `ShellClassification` Pass 1 `apply_opening`
+and `gate_internal_bridge_sites` operands from `base classic-off`,
+output-verified byte-identical to `t166`'s `0a1ee3df...` reference; capture
+probe reverted and preserved as `probe-t167-dump.patch`; zero PnP production
+change). **Single-thread (fresh process/case, 1 warmup + 5 repeats, fwd/rev,
+405 unique cases):** booleans stay at parity (`rust_pnp / orca_v2_5_0`:
+`difference` **0.79x/0.78x**, `intersection` **1.24x/1.24x**, `union`
+**1.39x/1.41x**; `cpp_c2_1_5_2 / orca_v2_5_0` **0.95x–1.00x**), whereas
+**`offset` is 4.96x/5.02x faster** in `orca_v2_5_0` (**4.00x** vs `t69`'s own
+bare C++ Clipper2 1.5.2 twin): `IB_DEEP_NEG` **12.76x/12.28x**, `IB_DEEP_POS`
+**4.56x/4.64x**, `t69`'s `base-t68sites` **3.92x/3.97x** (every site `A0`–`K`
+**3.02x–6.08x**), `benchy-t68sites` **3.11x/3.13x**; `opening_ex` is
+**2.49x/2.55x** (`SH_OPEN_TOP_CANON` **2.45x/2.57x**, `SH_OPEN_BOT_CANON`
+**2.45x/2.56x**). **12-way concurrent loaded (320 base cases × 12 staggered
+workers, fwd/rev):** whole-corpus wall `rust_pnp` **77.13/64.36 s** vs
+`orca_v2_5_0` **23.09/21.75 s** (**3.34x/2.96x**; fwd `rust_pnp` began at 57 %
+host load, rev at 1 %); load widens canonical's lead (`rust_pnp` degrades
+1.54x–1.75x vs 1.27x–1.46x for `orca_v2_5_0`): `opcode/offset` **5.78x/5.16x**,
+`base-t68sites` **5.12x/4.87x**, `SH_OPEN_TOP_CANON` **3.26x/2.91x**,
+`SH_OPEN_BOT_CANON` **3.00x/2.79x**, `IB_DEEP_POS` **5.19x/4.49x**,
+`IB_DEEP_NEG` **12.62x/11.36x**. **Allocator disclosure:** `rust_pnp` uses
+`mimalloc` while the C++ shims use MinGW CRT `malloc` (not Orca's `tbbmalloc`),
+making C++ speedups conservative lower bounds. **3-way ablation
+(`ablation_decimation.json`, 118 prepass cases, 10 repeats):** (1)
+`append_offset_path` edge decimation (`0.005 * |delta|`) alone delivers
+**8.27x** (`IB_DEEP_NEG`), **3.56x** (`IB_DEEP_POS`), **2.04x–2.10x** (`0.20 mm`
+legacy openings), **1.26x–1.29x** (`0.04 mm` canonical openings); (2) Clipper2
+`1.5.2 -> 2.0.1` + flat-path `offset2_ex` pass 1 (zero decimation) alone
+delivers **1.72x–1.76x** on `SH_OPEN_*_CANON`; (3) Rust 1.1 -> C++ 1.5.2 is
+**1.09x–1.47x**. **Geometry & Clipper1 ruling:** `orca_v2_5_0` has **0 empty
+mismatches** and **0.0044 %** median Δarea across 405 unique cases (`IB_DEEP_NEG`
++6.44 % median Δarea is canonical collapsing ~5 µm pinholes instead of
+inflating them into 3.2 mm craters — so edge decimation is a non-output-neutral
+canonical-parity change); **Clipper1 is ruled out** (`orca_v2_5_0` beats
+`orca_clipper1` on `offset`, `base-t68sites`, `union`, and `SH_OPEN_*_CANON`,
+and Clipper1 has a hairline-sliver inversion bug on `IB_DEEP_NEG` L133/L493).
+Evidence: [`evidence/t167-canonical-clipperutils-replay/`](evidence/t167-canonical-clipperutils-replay/FINDINGS.md)
+(`verify.py --self-test` PASS, 6/6 negative controls rejected). **Active
+reference set unchanged (t166's set).** **Frontier:**
+[168](issues/168-bridge-opening-auto-sentinel.md) (AFK, unblocked),
+[169](issues/169-canonical-offset-edge-decimation-and-flat-opening.md) (AFK,
+unblocked, new — wrapper port of edge decimation + flat-path `offset2_ex` and
+re-pricing of t129's shapes), and
+[170](issues/170-clipper2-2-0-1-kernel-port-screen.md) (AFK, unblocked, new —
+Clipper2 `1.1.0 -> 2.0.1` kernel upgrade screen).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -1397,7 +1457,26 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-19, the t166 take):** the human said
+**Current selection scope (2026-11-19, the t167 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **167 was first on the
+frontier** (leaving 168 unclaimed), so it was claimed and resolved as a
+**canonical-side measurement (zero PnP production change): Branch A fires
+(`canonical_ge_3x_faster_on_hot_offset_sites`)**. Headline: OrcaSlicer `v2.5.0`
+(`40ecc66f78`) already migrated off Clipper1 onto Clipper2 2.0.1 (`222c6a2df5`)
+and is **4.96x–5.02x** faster on `offset` (**5.16x–5.78x** 12-way loaded;
+`IB_DEEP_NEG` **12.28–12.76x**, `IB_DEEP_POS` **4.56–4.64x**, `base-t68sites`
+**3.92–3.97x** single / **4.87–5.12x** loaded) and **2.45x–2.59x** faster on
+`opening_ex` (**2.79x–3.26x** loaded on canonical `0.04 mm Miter 3`), while
+booleans remain at parity (**0.79x–1.41x**). 3-way ablation isolates
+`append_offset_path` edge decimation (`0.005 * |delta|`, **3.56x–8.27x** on
+`IB_DEEP_*`) plus Clipper2 2.0.1 / flat-path `offset2_ex` (**1.72x–1.76x** on
+`SH_OPEN_*_CANON`) and rules out Clipper1 (slower on offsets/booleans + sliver
+inversion bug on L133/L493). Active reference set unchanged (`t166`).
+**Frontier:** [168](issues/168-bridge-opening-auto-sentinel.md),
+[169](issues/169-canonical-offset-edge-decimation-and-flat-opening.md), and
+[170](issues/170-clipper2-2-0-1-kernel-port-screen.md) (all AFK, unblocked).
+
+**Previous selection scope (2026-11-19, the t166 take):** the human said
 "Continue the perf vs orca map" (no ticket named); **166 was first on the
 frontier** (165 had just resolved, leaving 166 and 167), so it was claimed and
 resolved as a **measured candidate: parity fix lands, speed claim DEGRADED**.
@@ -4650,6 +4729,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Canonical-kernel replay: how fast are Orca's own ClipperUtils ops on PnP's prepass operands?](issues/167-canonical-clipperutils-replay.md): **resolved 2026-11-19, canonical-side measurement (zero PnP production change) — Branch A fires (`canonical_ge_3x_faster_on_hot_offset_sites`): canonical `v2.5.0` migrated to Clipper2 2.0.1 (`222c6a2df5`), is 4.96x–5.02x faster on `offset` (5.16x–5.78x 12-way loaded) and 2.45x–3.26x faster on `opening_ex`, while booleans remain at parity (0.79x–1.41x)** — premise correction: at the `v2.5.0` pin (`40ecc66f78`), OrcaSlicer deleted Clipper1 (`deps_src/clipper/`) and runs Clipper2 2.0.1 + `ClipperUtils.cpp` (`append_offset_path` edge decimation `0.005 * |delta|`, flat-path pass-1 `offset2_ex`, `PreserveCollinear(false)` booleans, 1 nm ×100). Replayed 413 cases (295 `t69` + 118 newly captured `ShellClassification` Pass 1 `apply_opening` + `gate_internal_bridge_sites` operands on `base classic-off`, output-verified byte-identical to `t166`'s `0a1ee3df…` reference; probe reverted and saved as `probe-t167-dump.patch`) across four engines (`rust_pnp` `vendor/clipper2-rust` 1.1.0 + `mimalloc`, `cpp_c2_1_5_2` t69 twin, `orca_v2_5_0`, `orca_clipper1`). Single-thread (fresh process/case, 1 warmup + 5 repeats, fwd/rev, 405 unique): `difference` **0.79/0.78x**, `intersection` **1.24/1.24x**, `union` **1.39/1.41x** (booleans at parity, confirming `t70`), vs `offset` **4.96/5.02x** (**4.00x** vs `t69`'s bare C++ 1.5.2 twin; `IB_DEEP_NEG` **12.76/12.28x**, `IB_DEEP_POS` **4.56/4.64x**, `base-t68sites` **3.92/3.97x**, `benchy-t68sites` **3.11/3.13x**), `opening_ex` **2.49/2.55x** (`SH_OPEN_*_CANON` **2.45–2.57x**). 12-way concurrent loaded (320 base cases × 12 workers, fwd/rev): whole-batch wall `rust_pnp` **77.13/64.36 s** vs `orca_v2_5_0` **23.09/21.75 s** (**3.34/2.96x**); load widens canonical's lead (`opcode/offset` **5.78/5.16x**, `base-t68sites` **5.12/4.87x**, `SH_OPEN_TOP_CANON` **3.26/2.91x**, `SH_OPEN_BOT_CANON` **3.00/2.79x**, `IB_DEEP_POS` **5.19/4.49x**, `IB_DEEP_NEG` **12.62/11.36x**). Allocator disclosure: `rust_pnp` uses `mimalloc` vs MinGW CRT `malloc` on C++ shims, so C++ speedups are conservative lower bounds vs Orca's `tbbmalloc`. 3-way ablation (`ablation_decimation.json`, 118 cases, 10 repeats): `append_offset_path` edge decimation (`0.005 * |delta|`) delivers **8.27x** (`IB_DEEP_NEG`), **3.56x** (`IB_DEEP_POS`), **2.04–2.10x** (`0.20 mm` openings), **1.26–1.29x** (`0.04 mm` openings); Clipper2 `1.5.2 → 2.0.1` + flat-path `offset2_ex` pass 1 (no decimation) delivers **1.72–1.76x** on `SH_OPEN_*_CANON`; Rust 1.1 → C++ 1.5.2 is **1.09–1.47x**. Geometry: `orca_v2_5_0` has **0 empty mismatches** and **0.0044 %** median Δarea (`IB_DEEP_NEG` +6.44 % median Δarea is canonical collapsing ~5 µm pinholes rather than inflating them into 3.2 mm craters — non-output-neutral canonical parity); **Clipper1 is ruled out** (slower on offsets/booleans + degenerate hairline-sliver inversion bug on `IB_DEEP_NEG` L133/L493). Graduated [169](issues/169-canonical-offset-edge-decimation-and-flat-opening.md) and [170](issues/170-clipper2-2-0-1-kernel-port-screen.md). Evidence: `evidence/t167-canonical-clipperutils-replay/` (`verify.py --self-test` PASS, 6/6 negative controls rejected).
 - [Port canonical's top/bottom opening into ShellClassification Pass 1](issues/166-shell-opening-canonical-parity.md): **resolved 2026-11-19, measured candidate — the opening is canonical, the benchy cluster saves 7.9–21.4 % wall, the speed claim is DEGRADED (5/8) with process CPU lower in 8/8, and two auto-sentinel defects surfaced** — Pass 1 now runs canonical `detect_surfaces_type`'s `opening_ex(diff, external_perimeter_width / 10)` with `jtMiter` / miter limit 3 instead of `line_width / 2` with `Round`; `ShellClassificationParams` carries the opening radius and Pass 2's shadow width separately so the cascade cannot move. **Defect 1:** `outer_wall_line_width = 0` is canonical's auto sentinel, not a zero-width wall — resolving it literally disables the opening (measured no-op: 5,201,451 points in and out, 6.8 ms / 974 calls), so `resolve_shell_external_width_mm` resolves it as `Flow` does (0.4 mm → 0.04 mm). **Defect 2:** the same sentinel reaches `classify_unsupported_bridge_areas`, so canonical's bridge opening has been a no-op on a path with live readers — graduated [168](issues/168-bridge-opening-auto-sentinel.md). **Rejected:** also porting `ApplySafetyOffset` (20.2 vs 19.2 s on base classic-off, output moved). **Campaign (80 paired runs, 5 pairs/cell):** benchy **+20.435 / +7.915 / +21.395 / +9.277 %** (25.5x / 9.9x / 26.7x / 11.6x floor, 5/5 pairs each), base **+3.448 / +2.468 / +0.310 / +0.734 %** (4.31x / 3.09x / 0.39x / 0.92x); CPU lower 8/8; null bands 6.09–11.54 % wall any-pair / 0.50–5.35 % median, 0.74–1.74 % CPU any-pair, so `base classic-off` is DEGRADED and the two base Arachne cells are sub-floor on wall and unresolved by the instrument. **Parity:** top/bottom solid path grows in 8/8 cells but the “never less” clause is falsified per layer (12–29 top / 1–15 bottom layers lose path); the change is a relabelling across neighbours. **Output:** baselines reproduce t151 8/8, all eight candidates move, t166's set is the new currency. **Route (estimate):** benchy required cuts 49.45 → 36.47 % and 47.21 → 32.84 %, supports-on 65.33 → 62.35 % and 64.08 → 60.40 %, base 0.3–3.4 %; 0/8 won, binding constraint untouched. Gap: no accelerated arm. Evidence: `evidence/t166-shell-opening-parity/`.
 - [Verify canonical's prepass cost on 2.5.1](issues/165-canonical-prepass-cost.md): **verified (2026-11-19)** — canonical prepass 104.7 ms (bound) / 569.7 / 2,172.4 / 10,368.1 ms, within −0.7…+3.6 % of t110 on the points; 8/8 still win at canonical prepass, binding `benchy arachne-on` 0.898x with 1.47x slack.
 - [Phase re-attribution at HEAD: shares, walls and route arithmetic in one window](issues/164-phase-re-attribution.md): **resolved 2026-11-18, measured board + instrumented split + arithmetic — the prepass is now 67.0–87.2 % of every cell, all eight cells win at canonical prepass cost (0.396x–0.890x), and the binding cell moves to `benchy arachne-on` at 0.890x** — one window, two tools (OrcaSlicer 2.5.1 `5013b1bd…`, PnP ordinary `2c44d38f…` at HEAD `c83d253b`), 8 cells × 1 warmup + 3 measured, 64 rows, matched keys on all 24 Orca runs, **8/8 output identity** to t151's set and every run clean; **24 instrumented passes** (3/cell) also **24/24** identical; load 99 samples 6.8/66.6/100 % (45.9 % in the scoreboard window). **Split:** prepass **67.0–87.2 %**, per-layer **9.3–26.3 %**, postpass **3.2–6.8 %**, outside **0.1–2.3 %**, repeat spread 0.72–3.91 pp, per-layer host gap 0–1 ms; the prepass share rose on **all eight** cells (**+14.85 pp** base classic-off, **+11.51 pp** base arachne-off, **+4.81/+5.23 pp** base supports-on, **+1.07…+6.00 pp** benchy) exactly where t158's 4.23–6.37 s of per-layer removal landed. `MeshAnalysis` 687–697 ms base / 86 ms benchy; base-off's prepass is 68.4 % `host:shell_classification`, base-on's 54.9 % `SupportGeometry` + 20.0 % `SupportAnalysis`. **Board: 1.379x–2.884x, 0/8 won, required cut 27.5 %–65.3 %**, corroborating t163 without composing with it. **Arithmetic (estimate): benchy 0.611x/0.874x/0.649x/0.890x, base 0.400x/0.786x/0.396x/0.718x; `needed_from_other = 0` everywhere**, so the prepass alone suffices — the reversal of t154's shape. **The binding cell is `benchy arachne-on` (0.890x)**, and the constraint is the input: the four supports-on cells carry **1.50x–1.75x** slack on t110's canonical prepass cost, the benchy pair only **1.53x/1.59x**; the substitution implies a prepass cut of **82.6 %–98.1 %**. Graduated [165](issues/165-canonical-prepass-cost.md) to verify that input on 2.5.1. Disclosed: instrumented walls are never wall claims, shares × scoreboard walls only, one window, one external input, no null band. Evidence: `evidence/t164-phase-re-attribution/` (`verify.py` PASS, every number re-derived; `--self-test` 16/16).
