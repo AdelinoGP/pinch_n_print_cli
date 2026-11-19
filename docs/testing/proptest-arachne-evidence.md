@@ -6,9 +6,10 @@ module-owned records (`M-ARACHNE-CLASSIFY`, `M-ARACHNE-BUILD`, `M-ARACHNE-SEQUEN
 G-FAMILY disposition for the Arachne family (G-ARACHNE below).
 
 Every number below comes from an archived log under `target/proptest-arachne-evidence/`,
-`target/proptest-arachne-baseline/` or `target/proptest-arachne-acceptance/`, from a per-record
-`context.json`, or from the run report of this packet's Step 7 where a figure was measured but not
-archived. Each table says which. No hosted CI run is claimed.
+`target/proptest-arachne-baseline/`, `target/proptest-arachne-acceptance/` or
+`target/logs/bounds/`, from a per-record `context.json`, or from the run report of this packet's
+Step 7 where a figure was measured but not archived. Each table says which. No hosted CI run is
+claimed.
 
 ## Provenance
 
@@ -49,14 +50,14 @@ archived. Each table says which. No hosted CI run is claimed.
   (`target/proptest-arachne-acceptance/C-base-*.log`) with identical pass counts. The
   `arachne_local_maxima_single_beads` count stays at 1, but its fixture expectation changed. See
   Defects item 2.
-- **Guest freshness.** The first gated command after the production edits rebuilt the stale guests.
-  See Measurements. A following `cargo xtask build-guests --check` returned exit `0`
-  (`EXIT_FRESH`), judged by exit code, and later runs did not rebuild. The final closure gate log
-  `target/proptest-arachne-evidence/closure-final-guests.log` records `build-guests --check`
-  `GUESTS_EXIT=0`; the gate logs for build, check, clippy, formatting, literals, test quality and
-  the owner-feature checks all record exit `0`. The final comment-only edit to the module source
-  marked six dependent guests stale; `cargo xtask build-guests` rebuilt them
-  (`closure-final-guests-rebuild.log`, `REBUILD_EXIT=0`) before that check returned exit `0`.
+- **Guest freshness.** The first gated command after the production edits rebuilt 49 stale guests;
+  subsequent runs did not rebuild until the final comment-only edits. The final `slicer-core`
+  comment edit (`LimitedBeadingStrategy::get_transition_thickness`) touches a dependency of every
+  guest, so `cargo xtask build-guests` rebuilt 49 guests
+  (`closure-final-guests-rebuild.log`: 49 `STALE:` lines, `built 49 guest(s)`,
+  `REBUILD_EXIT=0`) before `closure-final-guests.log` recorded `GUESTS_EXIT=0`. The gate logs for
+  build, check, clippy, formatting, literals, test quality and the owner-feature checks all record
+  exit `0`.
 
 ## Profiles
 
@@ -128,7 +129,8 @@ Both coordinate and junction bounds now drive generation; neither is a fixed fix
   10 000, 60 000 and 1 000 000 units and both ends of each junction range.
 - **Measured runs (synthetic context, not a registry lane; historical).** These were recorded
   before the bridge band became asymmetric, so they pin the bounds path and the below-roster
-  validator, not the final band geometry; the final registry lanes above are the timed evidence.
+  validator, not the final band geometry; the final registry lanes in Measurements are the timed
+  evidence.
   With a hand-fed `PNP_PROPERTY_CONTEXT`, the build property passed 64/64 accepted cases at
   `max_junctions = 26`, `max_abs_mm_units = 40_000` (`target/logs/bounds/property-build-manual.log`)
   and 256/256 at the ceilings `max_junctions = 64`, `max_abs_mm_units = 1_000_000` with zero
@@ -139,7 +141,8 @@ Both coordinate and junction bounds now drive generation; neither is a fixed fix
   extended (Measurements).
 - **Flag-desync witness.** Two mutant runs, each on a restored tree afterwards:
   - **Generated campaign alone.** With `feature_flags.reverse()` removed and the deterministic
-    prelude disabled, the 64-case campaign fails after two successful cases:
+    prelude disabled, the 64-case campaign fails after one successful case
+    (`runner_statistics` records `successes: 1`):
     `inset_idx=1 is_odd=false is_closed=true point 1 (source junction 3): is_bridge = true, but this
     point's own coordinates say false`
     (`target/logs/bounds/postfix-band-campaign-mutant.log`). This is the generated property's own

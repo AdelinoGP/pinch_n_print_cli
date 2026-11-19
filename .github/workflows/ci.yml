@@ -158,7 +158,7 @@ jobs:
       # A passing exit code does not prove the intended records executed: an
       # empty or mis-scoped selector exits 0. `cargo xtask test` writes every
       # record's execution line to target/test-output.log, so assert the IDs
-      # there. The assertion covers the 13 records the packet's ACs name; the
+      # there. The assertion covers the 13 records the property packets' ACs name; the
       # lane still executes every other selected record. This is the same
       # positive check the scripted SCAD lane uses, and it catches the
       # `--with-scad`-omitted failure mode directly.
