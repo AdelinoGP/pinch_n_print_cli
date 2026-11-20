@@ -1,0 +1,195 @@
+{
+  "source_dir": "evidence/t169-offset-decimation-flat-opening/reduced",
+  "source_sha256": {
+    "profile.json": "1c3c2476d35d4a6d02ce1b0a903ff8515b9ceba70a2adea4b2e3df3497afa109",
+    "ab.json": "f9e74262a1b5f6147e6f79986519069911c9cc96943faff85c38e2a88b907bbc"
+  },
+  "cells": {
+    "benchy-classic-off": {
+      "wall_s": {
+        "t169_baseline": 2.438227,
+        "t169_candidate": 2.244946
+      },
+      "self_s": {
+        "polygon_ops::offset": 3.182,
+        "polygon_ops::clip_polygons": 2.425,
+        "polygon_ops::offset2_ex": 1.207,
+        "polygon_ops::closing_ex": 0.311
+      },
+      "self_baseline_s": {
+        "polygon_ops::offset": 5.393,
+        "polygon_ops::offset2_ex": 1.459,
+        "polygon_ops::clip_polygons": 2.365,
+        "polygon_ops::closing_ex": 0.312
+      },
+      "guest_fuel_s": {
+        "polygon_ops::clip_polygons": 0.004,
+        "polygon_ops::offset2_ex": 2.544
+      },
+      "required_cut_pct": 39.0
+    },
+    "benchy-classic-on": {
+      "wall_s": {
+        "t169_baseline": 5.928573,
+        "t169_candidate": 5.023656
+      },
+      "self_s": {
+        "polygon_ops::clip_polygons": 10.824,
+        "polygon_ops::offset": 7.605,
+        "polygon_ops::offset2_ex": 1.162,
+        "polygon_ops::closing_ex": 0.331
+      },
+      "self_baseline_s": {
+        "polygon_ops::clip_polygons": 11.279,
+        "polygon_ops::offset": 13.861,
+        "polygon_ops::offset2_ex": 1.552,
+        "polygon_ops::closing_ex": 0.326
+      },
+      "guest_fuel_s": {
+        "polygon_ops::clip_polygons": 1.334,
+        "polygon_ops::offset": 0.076,
+        "polygon_ops::offset2_ex": 2.544
+      },
+      "required_cut_pct": 57.9
+    },
+    "benchy-arachne-off": {
+      "wall_s": {
+        "t169_baseline": 2.462594,
+        "t169_candidate": 2.30913
+      },
+      "self_s": {
+        "polygon_ops::offset": 2.904,
+        "polygon_ops::clip_polygons": 2.369,
+        "polygon_ops::offset2_ex": 1.211,
+        "polygon_ops::closing_ex": 0.31
+      },
+      "self_baseline_s": {
+        "polygon_ops::offset": 5.222,
+        "polygon_ops::offset2_ex": 1.493,
+        "polygon_ops::clip_polygons": 2.38,
+        "polygon_ops::closing_ex": 0.311
+      },
+      "guest_fuel_s": {
+        "polygon_ops::clip_polygons": 0.005,
+        "polygon_ops::offset": 0.331
+      },
+      "required_cut_pct": 45.3
+    },
+    "benchy-arachne-on": {
+      "wall_s": {
+        "t169_baseline": 6.017863,
+        "t169_candidate": 5.136657
+      },
+      "self_s": {
+        "polygon_ops::clip_polygons": 10.864,
+        "polygon_ops::offset": 7.512,
+        "polygon_ops::offset2_ex": 1.208,
+        "polygon_ops::closing_ex": 0.348
+      },
+      "self_baseline_s": {
+        "polygon_ops::clip_polygons": 11.35,
+        "polygon_ops::offset": 13.693,
+        "polygon_ops::offset2_ex": 1.493,
+        "polygon_ops::closing_ex": 0.313
+      },
+      "guest_fuel_s": {
+        "polygon_ops::clip_polygons": 1.335,
+        "polygon_ops::offset": 0.407
+      },
+      "required_cut_pct": 58.5
+    },
+    "base-classic-off": {
+      "wall_s": {
+        "t169_baseline": 18.362516,
+        "t169_candidate": 13.729956
+      },
+      "self_s": {
+        "polygon_ops::offset": 40.251,
+        "polygon_ops::clip_polygons": 22.96,
+        "polygon_ops::offset2_ex": 13.003,
+        "polygon_ops::closing_ex": 2.51
+      },
+      "self_baseline_s": {
+        "polygon_ops::offset": 82.061,
+        "polygon_ops::offset2_ex": 15.64,
+        "polygon_ops::clip_polygons": 23.684,
+        "polygon_ops::closing_ex": 2.534
+      },
+      "guest_fuel_s": {
+        "polygon_ops::offset2_ex": 25.54,
+        "polygon_ops::clip_polygons": 0.001
+      },
+      "required_cut_pct": 3.9
+    },
+    "base-classic-on": {
+      "wall_s": {
+        "t169_baseline": 63.183467,
+        "t169_candidate": 49.33561
+      },
+      "self_s": {
+        "polygon_ops::clip_polygons": 198.098,
+        "polygon_ops::offset": 110.348,
+        "polygon_ops::offset2_ex": 12.739,
+        "polygon_ops::closing_ex": 2.555
+      },
+      "self_baseline_s": {
+        "polygon_ops::clip_polygons": 201.784,
+        "polygon_ops::offset": 247.894,
+        "polygon_ops::offset2_ex": 15.948,
+        "polygon_ops::closing_ex": 2.543
+      },
+      "guest_fuel_s": {
+        "polygon_ops::clip_polygons": 11.731,
+        "polygon_ops::offset": 0.989,
+        "polygon_ops::offset2_ex": 25.54
+      },
+      "required_cut_pct": 52.7
+    },
+    "base-arachne-off": {
+      "wall_s": {
+        "t169_baseline": 18.843081,
+        "t169_candidate": 14.396486
+      },
+      "self_s": {
+        "polygon_ops::offset": 39.337,
+        "polygon_ops::clip_polygons": 24.101,
+        "polygon_ops::offset2_ex": 13.303,
+        "polygon_ops::closing_ex": 2.525
+      },
+      "self_baseline_s": {
+        "polygon_ops::offset": 80.454,
+        "polygon_ops::offset2_ex": 15.92,
+        "polygon_ops::clip_polygons": 23.62,
+        "polygon_ops::closing_ex": 2.505
+      },
+      "guest_fuel_s": {
+        "polygon_ops::offset": 2.484,
+        "polygon_ops::clip_polygons": 0.001
+      },
+      "required_cut_pct": 10.3
+    },
+    "base-arachne-on": {
+      "wall_s": {
+        "t169_baseline": 63.620724,
+        "t169_candidate": 49.832083
+      },
+      "self_s": {
+        "polygon_ops::clip_polygons": 200.357,
+        "polygon_ops::offset": 115.228,
+        "polygon_ops::offset2_ex": 13.472,
+        "polygon_ops::closing_ex": 2.475
+      },
+      "self_baseline_s": {
+        "polygon_ops::clip_polygons": 201.224,
+        "polygon_ops::offset": 245.847,
+        "polygon_ops::offset2_ex": 15.416,
+        "polygon_ops::closing_ex": 2.476
+      },
+      "guest_fuel_s": {
+        "polygon_ops::clip_polygons": 11.732,
+        "polygon_ops::offset": 3.474
+      },
+      "required_cut_pct": 50.8
+    }
+  }
+}
