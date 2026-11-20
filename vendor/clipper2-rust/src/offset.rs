@@ -1,3 +1,13 @@
+// -----------------------------------------------------------------------------
+// Portions of this file are derived from OrcaSlicer, Bambu Studio, PrusaSlicer,
+// and Slic3r, which are licensed under the GNU Affero General Public License,
+// version 3 (AGPLv3).
+//
+// Original C++ source path: src/clipper2/Clipper2Lib/src/clipper.offset.cpp
+//
+// This file is an LLM-generated Rust port of the original C++ implementation,
+// adapted for the Pinch 'n Print architecture.
+// -----------------------------------------------------------------------------
 /*******************************************************************************
 * Author    :  Angus Johnson (original C++), Rust port                        *
 * Date      :  2025                                                           *
@@ -13,9 +23,9 @@
 //! Provides `ClipperOffset` for inflating/shrinking paths by a specified delta.
 
 use crate::core::{
-    area, constants, cross_product_two_vectors, dot_product_two_vectors, ellipse_point64,
-    get_segment_intersect_pt_d, reflect_point, strip_duplicates_path, translate_point, Path64,
-    PathD, Paths64, Point64, PointD, Rect64,
+    area, constants, cross_product_two_vectors, distance_sqr, dot_product_two_vectors,
+    ellipse_point64, get_segment_intersect_pt_d, reflect_point, strip_duplicates_path,
+    translate_point, Path64, PathD, Paths64, Point64, PointD, Rect64,
 };
 use crate::engine::ClipType;
 use crate::engine_public::{Clipper64, PolyTree64};
@@ -744,6 +754,36 @@ impl ClipperOffset {
         }
     }
 
+    /// Orca v2.5.0 (Clipper2 2.0.1 fork): join concave corners at the crossing
+    /// of both edge offsets where safe. 3-point loops make dense inward offsets
+    /// slow because every loop is later clipped away. Ported from
+    /// `clipper.offset.cpp::OffsetConcaveCrossing`.
+    fn offset_concave_crossing(
+        &self,
+        path: &Path64,
+        j: usize,
+        k: usize,
+        next: usize,
+    ) -> Option<Point64> {
+        let sin_a = cross_product_two_vectors(self.norms[j], self.norms[k]);
+        let cos_a = dot_product_two_vectors(self.norms[j], self.norms[k]);
+        if cos_a <= -0.999 || sin_a * self.group_delta >= 0.0 {
+            return None;
+        }
+        let x = (self.group_delta * sin_a).abs() / (1.0 + cos_a);
+        if 4.0 * x * x > distance_sqr(path[k], path[j])
+            || 4.0 * x * x > distance_sqr(path[j], path[next])
+        {
+            return None;
+        }
+        let q = self.group_delta / (1.0 + cos_a);
+        // C++ `Point64`'s constructor rounds floating-point arguments.
+        Some(Point64::new(
+            (path[j].x as f64 + (self.norms[k].x + self.norms[j].x) * q).round() as i64,
+            (path[j].y as f64 + (self.norms[k].y + self.norms[j].y) * q).round() as i64,
+        ))
+    }
+
     /// Offset a closed polygon.
     /// Direct port from ClipperOffset::OffsetPolygon (clipper.offset.cpp line 372-378).
     fn offset_polygon(&mut self, group_idx: usize, path: &Path64) {
@@ -754,7 +794,16 @@ impl ClipperOffset {
         }
         let mut k = len - 1;
         for j in 0..len {
-            self.offset_point(group_idx, path, j, k);
+            let next = if j + 1 == len { 0 } else { j + 1 };
+            let crossing = if self.delta_callback.is_none() && path[j] != path[k] {
+                self.offset_concave_crossing(path, j, k, next)
+            } else {
+                None
+            };
+            match crossing {
+                Some(pt) => self.path_out.push(pt),
+                None => self.offset_point(group_idx, path, j, k),
+            }
             k = j;
         }
         let path_out = std::mem::take(&mut self.path_out);
