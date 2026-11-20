@@ -2265,6 +2265,7 @@ dependencies = [
 name = "lightning-infill"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
@@ -4251,6 +4252,7 @@ dependencies = [
  "preparation-pilot-path",
  "preparation-transport-path",
  "preparation-visual-guest",
+ "proptest",
  "rayon",
  "sdk-finalization-guest",
  "sdk-infill-postprocess-view-guest",

@@ -4284,5 +4284,989 @@ Maps to AC-6. `arachne_module_oracle_controls` rejects a naive full reversal of 
 `InnerOuter` batch and a lost feature-flag vector. It also confirms that `OuterInner` on the same
 batch is the full reverse.
 
+## H-REGIONMAP
 
+Registry record: `id = "H-REGIONMAP"`, `package = "slicer-core"`, `target_kind = "test"`,
+`target_name = "property_prepass"`, `test_name = "proptest_region_mapping_expansion"`,
+`production_symbol = "slicer_core::algos::region_mapping::execute_region_mapping_with_cap"`,
+`production_path = "crates/slicer-core/src/algos/region_mapping.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-regionmap"`.
 
+### Stable property ID
+
+`H-REGIONMAP` — the complete ordered `(layer, object, region) × variant_chain` expansion of
+`PrePass::RegionMapping`, including the per-key config authority and the cap boundary.
+
+### Owner
+
+Package `slicer-core`; test target `property_prepass`; test
+`proptest_region_mapping_expansion` in `crates/slicer-core/tests/property_prepass.rs`. Production
+surface: `execute_region_mapping_with_cap` (`crates/slicer-core/src/algos/region_mapping.rs`).
+Deterministic controls live in `crates/slicer-core/tests/property_prepass_common/controls.rs`
+(`prepass_model_controls`, `prepass_regionmap_order_and_cap_controls`,
+`prepass_regionmap_rejection_controls`, `prepass_owned_shrink_and_bound_controls`). The
+cross-stage join (committed map → paint segmentation → `build_layer_selection_index`) is
+`prepass_paint_map_identity_integration` in
+`crates/slicer-runtime/tests/property_prepass_controls.rs`; the wrapper-only chain assertion is
+`prepass_regionmap_runtime_wrapper` in the same target.
+
+### Contract
+
+Per ADR-0018 § Shared priority/name chain identity and `docs/03_wit_and_manifest.md`
+§ Variant-chain enumeration order: for every active `(layer, object, region)` parent the map
+holds exactly the chains produced by choosing, per canonical axis, either no value or exactly one
+of the object's distinct values. The canonical axis sequence is ascending
+`(declared priority, semantic name)`; each chain is a subsequence of that sequence, and its
+pairs appear in it. Cardinality per parent is `∏ (1 + K_i)` and the empty chain occurs exactly
+once per parent. `RegionKey` equality includes the ordered vector.
+
+Each entry's config is the compatibility authority: the parent's base config, then the declared
+paint-config overlays in **lexical semantic namespace order** (wholesale replacement, lexically
+last present wins), then the tool overlay last. Chain order does not drive overlay order. The
+interner holds exactly the distinct expected configs, once each.
+
+### Domain
+
+`max_layers`, `max_objects`, `max_regions`, `max_semantics`, `max_values_per_semantic` and
+`max_chains` are required profile bounds. The strategy is total (no `prop_assume`, zero rejection
+budget). Axes are drawn from the five legal fixture declarations — `material` (100),
+`fuzzy_skin` (200), `com.example.zeta` (1000), `com.example.alpha` (1100) and
+`com.example.beta` (1100) — so both `priority`-beats-name and lexical-tie cases are reachable.
+Per object, each axis is absent or carries a nonempty subset of its declared value family
+(`Flag`, `ToolIndex` or `Custom`). Objects and layers are enumerated explicitly, so absent paint,
+one object, two objects, one layer and multiple layers are all reachable.
+
+### Strategy
+
+Axis declarations, layer/object/region counts and, per `(object, axis)`, a 4-bit value mask.
+The mask keeps one uniform element strategy across the three value families; bits beyond an
+axis's alphabet are ignored. Values are sorted by an independently implemented canonical
+`PaintValue` comparator before use. Before sampling, the property runs the four named
+material/fuzzy chains through the same checker, so a broken checker cannot be masked by a lucky
+draw.
+
+### Oracle
+
+`crates/slicer-core/tests/property_prepass_common/model.rs`. The expected chain set is an
+**ordinal decode** over the mixed radix `1 + K_i` (digit 0 omits an axis, digit `d > 0` selects
+`values[d - 1]`), not the production recursive enumerator. The expected config is computed from
+the declared base config and the declared overlay table by sorting overlay names lexically. The
+model never calls `execute_region_mapping_with_cap`'s sorter, enumerator, interner, `config_for`
+or `paint_variant_region_id` to build an expectation.
+
+### Tolerance
+
+Exact equality throughout: full `RegionKey` sets (including ordered chains), exact
+`config_for`/`config_for_raw` values, exact distinct-config pool membership and cardinality, and
+exact `CapExceeded { entry_count, cap }` at `cap = total - 1`. No unordered comparison is used for
+a chain, and no float tolerance is needed because every declared width and density is dyadic.
+
+### Shrinking
+
+Proptest shrinks masks toward zero (fewer painted axes and values), object/layer/region counts
+toward one, and axes toward an empty declaration. The rare modes the contract names — the empty
+chain, the combined chain, a tied priority, a nonempty painted object — are supplied by the
+deterministic witnesses in the controls and by the pre-sampling witness, so a shrink never needs
+to preserve them probabilistically.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, zero rejection budgets. Measured on Windows
+on 2026-11-19: routine `cases = 64` in 0.10 s, extended `cases = 256` in 0.99 s (libtest walls,
+after the build was warm). Bounds: routine
+`max_layers = 2`, `max_objects = 2`, `max_regions = 2`, `max_semantics = 3`,
+`max_values_per_semantic = 3`, `max_chains = 64`; extended
+`max_layers = 2`, `max_objects = 3`, `max_regions = 2`, `max_semantics = 4`,
+`max_values_per_semantic = 3`, `max_chains = 256`. Both are the exact widest reachable products
+for their declared maxima, so a well-formed case is always compared in full.
+
+### Failure record
+
+Artifacts are written under `target/property-testing/<run-token>/H-REGIONMAP/`; a failure keeps
+`context.json`, `observations.jsonl`, `case.txt` and `failure.json` with the reproduction
+command. Root-cause regression destination: `prepass_paint_map_identity_integration`
+(`crates/slicer-runtime/tests/property_prepass_controls.rs`) — a named, RNG-independent scene,
+never a seed.
+
+### Acceptance
+
+Every generated case's full key set, per-key config, config pool and cap boundary agree with the
+independent model. `prepass_model_controls` rejects a dropped empty chain, a dropped combined
+chain, a name-order substitution, a substituted value, a duplicated key, a wrong config, a
+non-idempotent pool, a truncated pool and a cap success. `prepass_regionmap_order_and_cap_controls`
+pins the four named chains, the community `1000 → 1100/1100` order with its lexical tie, the
+lexical overlay width `0.75` and the tool-last width `1.0`, the exact/one-below cap boundary, the
+zero-count/zero-cap mode and a unique top contributor. `prepass_regionmap_rejection_controls`
+covers the declared-scalar error fields, a duplicated full active identity,
+identical-footprint modifier grouping, an unsupported base parent, a real
+distinct-footprint `modifier_sub_region_id` collision, and both halves of the
+painted-id contract;
+`prepass_owned_shrink_and_bound_controls` rejects a narrowing bound.
+`prepass_paint_map_identity_integration` proves the real map → paint → selection join, both
+negative mutations returning `SelectionError::MissingModelConfig` with the exact map-space key.
+Defect outcome for this family: **no production defect was confirmed**; the ordering change is an
+approved identity correction authorized by the source plan, recorded in ADR-0018's 2026-11-19
+amendment and DEV-199.
+
+## H-PAINT-COMPOSE
+
+Registry record: `id = "H-PAINT-COMPOSE"`, `package = "slicer-core"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_paint_composition_cells"`,
+`production_symbol = "slicer_core::algos::paint_segmentation::compose_variants::compose_variants"`,
+`production_path = "crates/slicer-core/src/algos/paint_segmentation/compose_variants.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-paint-compose"`.
+
+### Stable property ID
+
+`H-PAINT-COMPOSE` — the geometric partition, coverage and ordered chain identity
+of the paint-compilation composer.
+
+### Owner
+
+Package `slicer-core`; target `property_prepass`; test
+`proptest_paint_composition_cells` in `crates/slicer-core/tests/property_prepass.rs`.
+Production surface: `compose_variants` in
+`crates/slicer-core/src/algos/paint_segmentation/compose_variants.rs`. The model is
+`crates/slicer-core/tests/property_prepass_common/paint.rs`; deterministic controls are
+`prepass_paint_partition_and_driver_controls` in
+`crates/slicer-core/tests/property_prepass_common/controls_paint.rs`.
+
+### Contract
+
+Per ADR-0018 § Shared priority/name chain identity and `docs/02_ir_schemas.md` IR 6/IR 9a, the
+composer emits one key per subset of the supplied semantic outputs — the caller supplies one
+output per `(declared axis, declared value)` in canonical `(priority, semantic name)` order — and
+assigns every point of the layer total to exactly one chain: the subset of semantics covering it,
+in that same axis order, with the empty chain holding the unpainted residual. Chains are pairwise
+disjoint, their union is the total, no chain extends outside it, and longer chains claim their
+intersection before shorter ones. The key vector order is the caller's axis order; it is never
+re-sorted.
+
+### Domain
+
+`max_layers = 2 / 2`, `max_semantics = 2 / 3`, `max_cells = 16 / 16`,
+`max_abs_units = 64 / 128`. The grid is built on an **even** coordinate lattice (outer edges and
+every interior cut are even), so each cell midpoint is an integer point that can never lie on a
+boundary. Axes are drawn from `material` (100, two tool values), `fuzzy_skin` (200, one flag) and
+`com.example.alpha` (1100, one custom value), so priority order, multi-value axes, disjoint areas
+of one semantic, partial and full overlap, and BASE-only cells are all reachable.
+
+### Strategy
+
+Layer count, a `columns x rows` grid with even interior cuts, a declared axis subset, and one label
+choice per `(layer, cell, axis)`: unpainted, or one of that axis's declared values. A layer whose
+draw is entirely unpainted is promoted to one painted cell so the painted half of the checker is
+never vacuous; the fully-BASE mode keeps its own deterministic witness.
+
+### Oracle
+
+`property_prepass_common::paint` enumerates the expected key set as the exact cross-product
+`∏ (1 + K_i)` over the supplied outputs, derives each cell's chain from the declared labels and
+the independently sorted `(priority, name)` axis order, then classifies each returned chain with
+`oracles::point_in_region` at the cell midpoint. It never calls Clipper, `compose_variants` or any
+production sorter to build an expectation.
+
+### Tolerance
+
+Exact. Cell midpoints are integer points; membership is `Inside`/`Outside` with `Boundary`
+rejected outright. Areas, counts and `Vec` key equality are exact; no float geometry is involved.
+
+### Shrinking
+
+Removes layers, axes, values, cells and labels. The model is re-derived for every shrink, and the
+rare BASE-only and single-axis shapes are covered by deterministic witnesses.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on Windows
+on 2026-11-19: routine `cases = 64` in 0.05-0.64 s across runs, extended
+`cases = 256` in 0.20-0.21 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-PAINT-COMPOSE/`. Root-cause regression
+destination: `prepass_paint_partition_and_driver_controls`
+(`crates/slicer-core/tests/property_prepass_common/controls_paint.rs`), never a seed.
+
+### Acceptance
+
+Every cell of every layer is owned by exactly its expected chain; the key set is the full supplied
+cross-product; no chain leaves the total extent. The controls refute a lost BASE chain, a filled
+(unpainted) cell, a name-ordered key, a false all-empty result and swapped ownership, and confirm a
+live combined material/fuzzy cell plus a BASE residual.
+
+## H-PAINT-OVERHANG
+
+Registry record: `id = "H-PAINT-OVERHANG"`, `package = "slicer-core"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_overhang_adjacent_layer_bands"`,
+`production_symbol = "slicer_core::algos::overhang_annotation::annotate_overhangs"`,
+`production_path = "crates/slicer-core/src/algos/overhang_annotation.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-paint-overhang"`.
+
+### Stable property ID
+
+`H-PAINT-OVERHANG` — the four-band distance partition of one object's adjacent
+layer footprints.
+
+### Owner
+
+Package `slicer-core`; target `property_prepass`; test
+`proptest_overhang_adjacent_layer_bands`. Production surface: `annotate_overhangs`
+(`crates/slicer-core/src/algos/overhang_annotation.rs`). Model:
+`crates/slicer-core/tests/property_prepass_common/overhang.rs`. Controls:
+`prepass_overhang_band_controls` in
+`crates/slicer-core/tests/property_prepass_common/controls_paint.rs`.
+
+### Contract
+
+For one object's consecutive footprints, `current \ previous` is partitioned into
+four bands: band 1 within `0.5 x line_width` of the previous boundary, band 2 up
+to `1.0 x`, band 3 up to `1.5 x`, and band 4 the remaining strip — **not** capped
+at `2.0 x`. Layers with no overhang have **no key** in either returned map; an
+overhang's previous-boundary map holds the actual previous footprint. A single
+layer, identical consecutive footprints and an empty current slice are the
+no-overhang modes. The first layer has no predecessor and never overhangs.
+
+### Domain
+
+`max_layers = 2 / 2`, `max_abs_units = 200000 / 200000`,
+`max_band_width_units = 12000 / 24000`, `max_cells = 32 / 64`. The scene is the
+packet's X-strip fixture: two rectangles with the same Y extent, the current one
+wider by `shift > 2 x line_width`, so all four bands are observable. Line widths
+are `0.4`, `0.5` or `0.6` mm and the classification row sits far from the
+rounded corners, where the band boundaries are exact X intervals.
+
+### Strategy
+
+A `(line width, shift)` pair; the grid is derived from the thresholds and the
+strip edges with quarter-point cuts, so at least one cell lies strictly inside
+each band whenever the band is wide enough.
+
+### Oracle
+
+`property_prepass_common::overhang` derives each cell's band from its X midpoint
+and the declared `0.5 / 1.0 / 1.5 x line_width` thresholds, then classifies the
+returned bands with `oracles::point_in_region`. `Boundary` is rejected. The
+offset's `0.01 mm` arc tolerance cannot flip a midpoint because every cell is at
+least a quarter band away from a threshold.
+
+### Tolerance
+
+Exact cell ownership plus a `0.01 mm`-clearance argument for the offset
+boundaries. Areas are compared through cell counts, not float sums.
+
+### Shrinking
+
+Shrinks the line width and the shift; the grid is re-derived from the shrunk
+thresholds, and the four-band positive witness is deterministic, so shrinking
+never needs to preserve it probabilistically.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.33 s, extended
+`cases = 256` in 1.24 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-PAINT-OVERHANG/`. Root
+cause regression destination: `prepass_overhang_band_controls`, never a seed.
+
+### Acceptance
+
+Every classified cell lies in exactly its analytic band; the quartile set equals
+the scene's observable set; band 4 extends past `2.0 x line width`; both maps
+hold the actual previous footprint; and the three no-overhang modes leave both
+maps without the layer key. The controls refute swapped quartiles, a substituted
+previous footprint and a fourth band capped at `2.0 x`. The runtime
+object-delivery half of AC-2 (`prepass_overhang_object_delivery`) is not yet
+implemented; it is recorded as remaining work in the evidence file.
+
+## H-PAINT-DRIVER
+
+Registry record: `id = "H-PAINT-DRIVER"`, `package = "slicer-core"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_paint_driver_source_isolation"`,
+`production_symbol = "slicer_core::algos::paint_segmentation::execute_paint_segmentation"`,
+`production_path = "crates/slicer-core/src/algos/paint_segmentation/mod.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-paint-driver"`.
+
+### Stable property ID
+
+`H-PAINT-DRIVER` — the paint driver's source isolation, axis ownership and
+documented painted-region identity.
+
+### Owner
+
+Package `slicer-core`; target `property_prepass`; test
+`proptest_paint_driver_source_isolation`. Production surface:
+`execute_paint_segmentation` (`crates/slicer-core/src/algos/paint_segmentation/mod.rs`).
+Model: `crates/slicer-core/tests/property_prepass_common/driver.rs`. The
+cross-stage selection join is `prepass_paint_map_identity_integration` in
+`crates/slicer-runtime/tests/property_prepass_controls.rs`.
+
+### Contract
+
+For each object the driver emits one region per chain that owns geometry, plus
+a BASE region. A region may only contain geometry from its own object; a
+neighbour's axes never appear in its chains; BASE and the painted chain must
+never claim the same point; and the region ids follow the documented scheme —
+the empty chain keeps the parent's base id, and the material `ToolIndex(0)` fast
+path mints payload 1. Empty mesh, absent paint and an empty map are
+unchanged-input paths that return the caller's `Arc` unchanged. A same-object
+synthesized-id collision is a hard error.
+
+### Domain
+
+`max_layers = 1 / 1`, `max_objects = 2 / 3`, `max_regions = 1 / 1`,
+`max_abs_units = 200000 / 200000`, `max_facets = 16 / 16`. Objects are
+axis-aligned 2 mm square tubes on a 1 mm pitch, so their footprints are disjoint
+by construction. Each object paints a drawn subset of `material`
+(`ToolIndex(0)`, 100) and `fuzzy_skin` (`Flag(true)`, 200) on every wall facet;
+the paint-layer order is a rotation of the axes in use. An object with no axes
+is the unpainted-object mode.
+
+### Strategy
+
+Object count, one axis subset per object, and a paint-order rotation. The
+deterministic block runs the three unchanged-input paths and the colliding-chain
+error before sampling.
+
+### Oracle
+
+`property_prepass_common::driver` derives each object's widest chain from its
+own axes in independently sorted `(priority, name)` order, checks every output
+point against that object's square, samples a 4x4 interior grid to prove BASE
+and the painted chain are disjoint, and classifies the widest chain's coverage
+with `oracles::point_in_region`. It never calls Clipper or the driver's own
+partition to build an expectation.
+
+### Tolerance
+
+Exact for ids, chain vectors and point containment; the BASE/painted
+disjointness check is a point grid rather than an exact area so a Clipper sliver
+cannot make it flaky, while "BASE is the whole contour" still fails.
+
+### Shrinking
+
+Removes objects and axes, and rotates the paint order toward the identity. The
+unchanged-input and collision-error modes are deterministic.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.22 s, extended
+`cases = 256` in 1.05 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-PAINT-DRIVER/`. Root
+cause regression destination: the unchanged-path and collision assertions in
+`property_prepass_common::driver`, never a seed.
+
+### Acceptance
+
+No region leaves its own object's square; each object's chain set is exactly its
+own widest chain plus BASE; the widest chain covers the square's centre; BASE
+and the painted chain are disjoint; ids follow the documented scheme; repeated
+runs agree; and the three unchanged-input paths return the input `Arc`.
+`colliding_chain_error` proves the real `PaintVariantRegionIdCollision` path with
+`material`/`ToolIndex(0)` and `ToolIndex(999_999)`.
+
+## H-SUPPORT-SCHEDULE
+
+Registry record: `id = "H-SUPPORT-SCHEDULE"`, `package = "slicer-core"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_support_schedule_and_sources"`,
+`production_symbol = "slicer_core::algos::support_geometry::execute_support_geometry"`,
+`production_path = "crates/slicer-core/src/algos/support_geometry.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-support-schedule"`.
+
+### Stable property ID
+
+`H-SUPPORT-SCHEDULE` — the per-object support emission schedule and the exact
+source-geometry entries the stage publishes.
+
+### Owner
+
+Package `slicer-core`; target `property_prepass`; test
+`proptest_support_schedule_and_sources`. Production surfaces:
+`build_emit_schedule` and `execute_support_geometry`
+(`crates/slicer-core/src/algos/support_geometry.rs`). Model:
+`crates/slicer-core/tests/property_prepass_common/support.rs`. Controls:
+`prepass_support_schedule_controls` in
+`crates/slicer-core/tests/property_prepass_common/controls_paint.rs`.
+
+### Contract
+
+Each object accumulates its effective layer height and emits on the layer where
+the declared `support_layer_height_mm` target is reached, resetting the
+accumulator; a target of `0` emits on every active layer and an object with no
+active region never accumulates. Each emitted `(layer, object, region, chain)`
+carries the committed source polygons for that exact region and chain; a
+scheduled region with **no** committed source is a present key with an empty
+polygon vector and the empty chain, which is not the same as an absent key. The
+intermediate-model pass adds the same geometry under the `u32::MAX` sentinel for
+every layer within `support_top_z_distance` of that object's column top. The
+IR-wide `support_layer_height_mm` / `support_top_z_distance_mm` come from the
+first active region of the plan.
+
+### Domain
+
+`max_layers = 4 / 4`, `max_objects = 2 / 3`, `max_regions = 1 / 1`,
+`max_abs_units = 200000 / 200000`. Layer indices are unique and never the
+sentinel; `z = 0.2 * (index + 1)`. Heights are `0.1`, `0.2` or `0.25` mm and
+targets are `0`, one step, two steps or three steps, so the threshold comparison
+is exact in `f32`. Chains alternate between empty and
+`material`/`ToolIndex(0)`, and some scheduled layers deliberately carry no
+source.
+
+### Strategy
+
+Layer count, object count, target choice per object, height choice, and a source
+presence/chain selector. The deterministic block covers the empty plan (no
+schedule, no entries) and the controls cover an empty-source scheduled key.
+
+### Oracle
+
+`property_prepass_common::support` re-derives the schedule with its own
+accumulator, re-derives each object's column top, and rebuilds the expected key
+map from the declared fixture. It never calls `build_emit_schedule` or the
+collector to build an expectation.
+
+### Tolerance
+
+Exact. Keys, chain vectors, polygon counts and the IR-wide settings are compared
+with `==`; all fixture coordinates are integers and all heights/targets are
+dyadic.
+
+### Shrinking
+
+Removes layers and objects and simplifies the target choice. The empty-plan and
+empty-source modes are deterministic.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.03 s, extended
+`cases = 256` in 0.31 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-SUPPORT-SCHEDULE/`. Root
+cause regression destination: `prepass_support_schedule_controls`, never a seed.
+
+### Acceptance
+
+The schedule, the full key set, the empty-source present keys, the sentinel
+entries and the IR-wide settings all agree with the model. The controls refute a
+dropped emission, a wrong object, a wrong chain and a false empty map, and they
+confirm the live source-less scheduled key. Not covered here: the runtime
+wrapper's `NoLayerPlan` / `MissingSliceIR` errors
+(`prepass_support_wrapper_absence_controls`) and any planner output.
+
+## H-SUPPORT-ROLES
+
+Registry record: `id = "H-SUPPORT-ROLES"`, `package = "slicer-core"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_support_role_partition"`,
+`production_symbol = "slicer_core::support_regularize::regularize_entry_roles"`,
+`production_path = "crates/slicer-core/src/support_regularize.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-support-roles"`.
+
+### Stable property ID
+
+`H-SUPPORT-ROLES` — the disjoint top/bottom/body/raft role partition of one
+support entry in grid style.
+
+### Owner
+
+Package `slicer-core`; target `property_prepass`; test
+`proptest_support_role_partition`. Production surface: `regularize_entry_roles`
+(`crates/slicer-core/src/support_regularize.rs`) with `smooth_supports = false`.
+Model: `crates/slicer-core/tests/property_prepass_common/roles.rs`. Controls:
+`prepass_support_contact_role_controls`.
+
+### Contract
+
+In grid style the regularizer is set algebra over the declared role polygons:
+`layer_area = top ∪ bottom ∪ body`, `iface_top = top ∩ layer_area`,
+`iface_bottom = (bottom ∩ layer_area) − iface_top`, and the body remainder is
+`layer_area − (iface_top ∪ iface_bottom)`. Raft geometry is passed through
+untouched and is **not** part of `layer_area`. Output roles follow the input's
+first-appearance order, with `SupportBody` appended last when it was absent from
+the input and owns geometry. `None` means "unchanged": a nonpositive flow
+spacing, a body-only entry, or no interface input. `TopInterface` and
+`BaseInterface` alias onto the same output role; the aliasing is pinned
+separately and deliberately kept out of the disjoint partition.
+
+### Domain
+
+`max_cells = 8 / 16`, `max_abs_units = 200000`. One row of cells on an even
+lattice (the grid is derived from the label count), each labelled absent, top,
+bottom, body or raft; the input roster is a rotation of the labels actually
+present, so the fixture and the model always agree about which interfaces exist.
+
+### Strategy
+
+Cell count and a role rotation; each cell's label is drawn independently. The
+deterministic block drives a top-over-body witness and the three `None` modes.
+
+### Oracle
+
+`property_prepass_common::roles` re-derives the partition with its own set
+algebra and classifies each cell midpoint with `oracles::point_in_region`. It
+never calls the regularizer or Clipper to build an expectation.
+
+### Tolerance
+
+Exact cell ownership and exact role order. `Boundary` classification is rejected
+outright; all coordinates are integers and all cells are at least two units wide.
+
+### Shrinking
+
+Removes cells and simplifies labels; the `None` and aliasing modes are
+deterministic.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.14 s, extended
+`cases = 256` in 0.27 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-SUPPORT-ROLES/`. Root
+cause regression destination: `prepass_support_contact_role_controls`, never a
+seed.
+
+### Acceptance
+
+Every cell is owned by exactly the role its label names (or by none), the role
+order matches the input order plus the appended body, every emitted role is
+nonempty, and the three `None` modes return `None`. Top/base aliasing emits both
+roles. No area monotonicity across layers and no universal nonempty support is
+asserted.
+
+## H-SUPPORT-CONTACT
+
+Registry record: `id = "H-SUPPORT-CONTACT"`, `package = "slicer-core"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_support_contact_rectangles"`,
+`production_symbol = "slicer_core::algos::overhang_annotation::detect_support_contacts"`,
+`production_path = "crates/slicer-core/src/algos/overhang_annotation.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-support-contact"`.
+
+### Stable property ID
+
+`H-SUPPORT-CONTACT` — the enforced-layer plain-difference support contact set.
+
+### Owner
+
+Package `slicer-core`; target `property_prepass`; test
+`proptest_support_contact_rectangles`. Production surface:
+`detect_support_contacts` (`crates/slicer-core/src/algos/overhang_annotation.rs`).
+Model: `crates/slicer-core/tests/property_prepass_common/contact.rs`. Controls:
+`prepass_support_contact_role_controls`.
+
+### Contract
+
+On the enforced-layer plain-difference branch (`layer_id` inside
+`[raft_layers, raft_layers + enforce_support_layers)`) the contact set is
+`upper − lower − blockers`, with no offset, no expand-back, no sharp-tail
+bypass, no bridge margin and zero XY expansion, then filtered by the tiny-spot
+erosion of `−0.1 × external_perimeter_width` and unioned. A fully supported
+column, a blocker-covered contact and a sub-threshold sliver produce no contact;
+an empty upper region is the no-work mode.
+
+### Domain
+
+`max_abs_units = 200000`, `max_cells = 4`. A 2 × 1 cell lattice at
+millimetre scale (each cell 4 mm × 8 mm) with independent upper/lower/blocker
+cell flags, so supported cells, blocker-covered cells and genuine contacts are
+all reachable.
+
+### Strategy
+
+Two independent boolean triples (upper/lower/blocker) on the fixed lattice. The
+deterministic block runs the sliver, supported-column, blocker and empty-upper
+modes and a positive witness.
+
+### Oracle
+
+`property_prepass_common::contact` derives the expected contact cells as
+`upper ∧ ¬lower ∧ ¬blocker` and classifies the returned polygons at each cell
+midpoint with `oracles::point_in_region`. It never calls `difference_ex` to
+build an expectation. Cell geometry is millimetre-scale so the tiny-spot filter
+cannot silently empty a legitimately printable contact.
+
+### Tolerance
+
+Exact cell ownership; `Boundary` is rejected. Coordinates are integers and
+cells are 4 mm wide, far above the `0.04 mm` erosion.
+
+### Shrinking
+
+Flips cell flags toward the no-contact configuration; the sliver and supported
+modes are deterministic.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.03 s, extended
+`cases = 256` in 0.09 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-SUPPORT-CONTACT/`. Root
+cause regression destination: `prepass_support_contact_role_controls`, never a
+seed.
+
+### Acceptance
+
+Every cell's contact membership equals `upper ∧ ¬lower ∧ ¬blocker`; contacts
+stay inside the upper extent; the sliver, supported-column, blocker-covered and
+empty-upper modes produce no contact. The controls refute a substituted lower
+layer, a lost blocker and a false empty result. This is not `annotate_overhangs`
+(whose contract differs) and it makes no claim about planner routing.
+
+## H-SUPPORT-TERRITORY
+
+Registry record: `id = "H-SUPPORT-TERRITORY"`, `package = "slicer-wasm-host"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_support_territory_clearance"`,
+`production_symbol = "slicer_wasm_host::support_territory::TerritoryClipper::clip"`,
+`production_path = "crates/slicer-wasm-host/src/support_territory.rs"`,
+`features = ["slicer-wasm-host/property_testing"]`, `requires_host_algos = true`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-support-territory"`.
+
+### Stable property ID
+
+`H-SUPPORT-TERRITORY` — the host territory own/foreign clip and its clearance.
+
+### Owner
+
+Package `slicer-wasm-host`; target `property_prepass`; test
+`proptest_support_territory_clearance`. Production surface:
+`TerritoryClipper::{from_ir, clip}` (`crates/slicer-wasm-host/src/support_territory.rs`).
+Model: `crates/slicer-wasm-host/tests/property_prepass_common/territory.rs`.
+Controls: `prepass_support_analysis_territory_controls` (runtime target).
+
+### Contract
+
+A query naming an exact minted sub-region origin `(object, layer, region_id,
+ordered chain)` keeps `polygons ∩ own territory`. A base region keeps
+`polygons − inflate(foreign, clearance)`, and keeps `polygons` unchanged when no
+foreign territory exists. `inflate` is the miter offset by the
+`support_territory_clearance_mm` shared setting. `from_ir` returns `None` when
+the analysis carries no territory, and `clip` returns `None` when the layer
+carries no territory — both are no-clipping outcomes, not empty successes. The
+`region_id` is the IR integer rendered as a decimal `&str`, so a distinct id is
+a distinct origin.
+
+### Domain
+
+`max_objects = 1`, `max_regions = 3`, `max_abs_units = 200000`,
+`max_clearance_units = 8000`, `max_cells = 16 / 32`. One to three territory
+rectangles on a whole-millimetre lattice with clearances `0`, `0.2` or `0.4` mm;
+the query body is a separate rectangle and the query is either a minted
+sub-region or a base region.
+
+### Strategy
+
+Rectangle count, one rectangle per entry, a clearance choice and a sub-region
+flag. Region ids are the entry index + 1 and families alternate, so own and
+foreign territory always coexist.
+
+### Oracle
+
+`property_prepass_common::territory` re-derives membership analytically
+(`body ∩ own` for a minted origin; `body` minus every inflated foreign rectangle
+otherwise) and classifies sample points with `oracles::point_in_region`. Sample
+coordinates are offset by 2500 units from every edge, so a `Boundary` outcome is
+impossible by construction rather than tolerated.
+
+### Tolerance
+
+Exact point membership on a lattice where every edge is a multiple of 1000 units
+and every clearance is 2000 or 4000 units. No float geometry is compared.
+
+### Shrinking
+
+Removes entries and simplifies the clearance; the absence and foreign-only modes
+are deterministic.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.48 s, extended
+`cases = 256` in 2.13 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-SUPPORT-TERRITORY/`. Root
+cause regression destination: `prepass_support_analysis_territory_controls`,
+never a seed.
+
+### Acceptance
+
+Every sample point's membership equals the analytic model; `from_ir` on an
+empty analysis is `None`; a layer with no territory clips to `None`; a distinct
+region id does not match a minted entry. This checks the host clipping seam, not
+planner routing, aggregation ownership or whole-print support, and it is a PnP
+territory rule (DEV-165), not an OrcaSlicer parity claim.
+
+## H-SUPPORT-ANALYSIS
+
+Registry record: `id = "H-SUPPORT-ANALYSIS"`, `package = "slicer-runtime"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_support_analysis_layered_scenes"`,
+`production_symbol = "slicer_runtime::builtins::support_analysis_producer::commit_support_analysis_builtin"`,
+`production_path = "crates/slicer-runtime/src/builtins/support_analysis_producer.rs"`,
+`features = ["slicer-runtime/property_testing"]`, `requires_host_algos = true`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-support-analysis"`.
+
+### Stable property ID
+
+`H-SUPPORT-ANALYSIS` — the host-owned layered support analysis: occupancy, the
+feasible envelope, termination surfaces and the territory clearance.
+
+### Owner
+
+Package `slicer-runtime`; target `property_prepass`; test
+`proptest_support_analysis_layered_scenes`. Production surface:
+`commit_support_analysis_builtin`
+(`crates/slicer-runtime/src/builtins/support_analysis_producer.rs`). Model:
+`crates/slicer-runtime/tests/property_prepass_common/analysis.rs`.
+
+### Contract
+
+With support enabled, `model_occupancy` holds exactly one entry per nonempty
+committed region, keyed by the full `(layer, object, region_id, ordered chain)`
+identity and carrying that region's polygons verbatim. Each object with a
+nonempty bound contributes exactly one `baseline_feasible_envelope` rectangle —
+its full XY bounds. Every occupancy key at that object's highest active layer
+carries a `termination_surfaces` entry holding the top footprint plus the plate;
+non-top keys carry none. `support_territory_clearance_mm` is the resolved
+positive support line width; in the literal mode the property declares it is
+that literal, and the percent mode is the documented percentage of the fallback
+line width. A disabled analysis publishes the settings and no occupancy,
+envelope or candidates.
+
+### Domain
+
+`max_layers = 3`, `max_objects = 2`, `max_regions = 2`, `max_abs_units = 200000`,
+`max_cells = 16 / 32`. One to three layers of whole-millimetre rectangles, one
+or two objects, two chain spellings, and an enabled/disabled flag. Every layer
+carries at least one region so each object's top layer is well defined.
+
+### Strategy
+
+Layer count, object count, six region specs (rectangle, chain, presence) and the
+enabled flag.
+
+### Oracle
+
+`property_prepass_common::analysis` rebuilds occupancy, bounds, the envelope
+rectangles and the termination sets from the declared fixture, and re-derives
+the literal clearance. It never calls the producer's own collectors.
+
+### Tolerance
+
+Exact key sets, exact polygon equality for occupancy, exact envelope rectangles
+(compared as bounds), exact termination counts and exact `f32` clearance.
+
+### Shrinking
+
+Removes layers, objects, regions and the enabled flag; both witnesses are
+deterministic.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.04 s, extended
+`cases = 256` in 0.12 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-SUPPORT-ANALYSIS/`. Root
+cause regression destination: `prepass_support_analysis_territory_controls`,
+never a seed.
+
+### Acceptance
+
+Occupancy, envelope, termination and clearance agree with the model in both
+enabled modes and the disabled mode publishes nothing. Candidate selection and
+contact-layer eligibility are **not** asserted here; they depend on surface
+classification this property does not fabricate. A candidate is not a printed
+support plan, and no planner feasibility is claimed.
+
+## H-LIGHTNING-SEEDS
+
+Registry record: `id = "H-LIGHTNING-SEEDS"`, `package = "lightning-infill"`,
+`target_kind = "lib"`, `target_name = "lightning_infill"`,
+`test_name = "kernel::property_tests::proptest_lightning_seed_regions"`,
+`production_symbol = "lightning_infill::kernel::generator::generate_initial_internal_overhangs"`,
+`production_path = "modules/core-modules/lightning-infill/src/kernel/generator.rs"`,
+`features = ["lightning-infill/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-lightning-seeds"`.
+
+### Stable property ID
+
+`H-LIGHTNING-SEEDS` — the per-layer internal-overhang seed regions of the
+module-private lightning kernel.
+
+### Owner
+
+Package `lightning-infill` (a **lib** test, not a standalone binary); module
+`kernel::property_tests`. Production surface:
+`generate_initial_internal_overhangs`
+(`modules/core-modules/lightning-infill/src/kernel/generator.rs`).
+
+### Contract
+
+Walking from the top layer down, each layer's seed regions are
+`erode(current) − above`, where `erode` is the miter offset by the wall
+supporting radius and `above` is the next-higher layer's **un-eroded** outline.
+An empty layer above resets `above` to nothing. Radius zero degenerates to a
+plain difference, and a layer fully covered by the layer above has no seed.
+
+### Domain
+
+`max_layers = 3`, `max_abs_units = 200000`, `max_radius_units = 20000`,
+`max_cells = 32 / 64`. Layer outlines are axis-aligned rectangles of 1-5 mm on a
+whole-millimetre lattice, one to three layers, some layers deliberately absent.
+
+### Strategy
+
+Layer count, square size and a presence vector; the radius is half a millimetre
+bounded by the profile.
+
+### Oracle
+
+The model computes the expected region analytically (rectangle inset by the
+radius minus the un-eroded layer above) and classifies the kernel's **flat ring
+list** with an even-odd ray-crossing test written in the test module. It never
+calls the kernel's offset or difference helpers.
+
+### Tolerance
+
+Exact point membership on samples offset 2500 units from every edge and from the
+erosion ring, so a boundary sample is impossible by construction.
+
+### Shrinking
+
+Removes layers and presences; the empty-above, empty-layer-reset, zero-radius and
+fully-covered witnesses are deterministic.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.03 s, extended
+`cases = 256` in 0.08 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-LIGHTNING-SEEDS/`.
+Controls: `kernel::property_tests::lightning_model_controls` and
+`lightning_seed_tree_controls`.
+
+### Acceptance
+
+Every sample's membership equals the analytic model, and the four deterministic
+witnesses hold. Hole preservation is covered only through the eroded-outline
+case (the fixture's `above` rectangle is the only inner boundary); a general
+polygon-with-holes fixture is not claimed.
+
+## H-LIGHTNING-TREES
+
+Registry record: `id = "H-LIGHTNING-TREES"`, `package = "lightning-infill"`,
+`target_kind = "lib"`, `target_name = "lightning_infill"`,
+`test_name = "kernel::property_tests::proptest_lightning_tree_structure"`,
+`production_symbol = "lightning_infill::kernel::generator::Generator::generate_trees"`,
+`production_path = "modules/core-modules/lightning-infill/src/kernel/generator.rs"`,
+`features = ["lightning-infill/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-lightning-trees"`.
+
+### Stable Property ID
+
+`H-LIGHTNING-TREES` — the structural integrity and determinism of the generated
+lightning forest.
+
+### Owner
+
+Package `lightning-infill` (lib test); module `kernel::property_tests`.
+Production surface: `Generator::{new, generate_trees, get_trees_for_layer}`
+(`modules/core-modules/lightning-infill/src/kernel/generator.rs`).
+
+### Contract
+
+Every node reachable from `tree_roots` reports `is_root()` exactly when it is a
+root, is reached exactly once (no shared child, no cycle), and the traversal
+terminates. The walk reports an exceeded `max_tree_nodes` budget as an
+incomplete case rather than certifying a prefix. Two identical runs produce the
+same forest. Points stay inside the fixture's declared bounded domain.
+
+### Domain
+
+`max_layers = 3`, `max_objects = 1`, `max_regions = 1`, `max_abs_units = 200000`,
+`max_tree_nodes = 20000`. Narrowing stacks of 1-3 layers, 1-4 mm wide, shrinking
+by 1-3 mm per layer.
+
+### Strategy
+
+Layer count, base width and per-layer shrink; the node budget is a profile bound.
+
+### Oracle
+
+A pointer-identity visited set over `Rc::as_ptr`, plus a declared domain box (the
+union of the layer rectangles grown by 20 mm). Trees legitimately branch outside
+their outline, so containment is a bounded-domain check, not an outline check.
+
+### Tolerance
+
+Exact. Structure and point equality only; no numeric tolerance is involved.
+
+### Shrinking
+
+Fewer layers, a smaller base and a smaller shrink; determinism is checked inside
+every case, so a shrink that changes the forest fails rather than silently
+passing.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.05 s, extended
+`cases = 256` in 0.17 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-LIGHTNING-TREES/`.
+Controls: `lightning_model_controls`, `lightning_seed_tree_controls`,
+`lightning_owned_shrink_controls`.
+
+### Acceptance
+
+Roots, ownership, termination and determinism hold on every case; the node-budget
+and duplicate-root mutants fail. Repeated-run equality is a determinism pin, not
+a correctness or parity claim; no snapshot is treated as canonical evidence.

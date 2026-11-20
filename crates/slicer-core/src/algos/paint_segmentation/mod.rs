@@ -210,8 +210,14 @@ pub fn paint_variant_region_id(
     }
     // Keep the historical values for the common material fast path (for
     // example, ToolIndex(1) remains payload 2) while bounding arbitrary hash
-    // values below the paint stride. The region-map/segmentation callers
-    // reject duplicate synthesized ids when distinct chains collide.
+    // values below the paint stride. The payload is deliberately finite, so
+    // distinct chains *can* share an id: `ToolIndex(0)` and `ToolIndex(999_999)`
+    // both yield payload 1. The two callers handle that differently and neither
+    // gives hash injectivity. `RegionMapping` keys entries by the full chain, so
+    // both chains coexist as distinct `RegionKey`s. `execute_paint_segmentation`
+    // is the caller that rejects a same-object collision, through
+    // `register_paint_variant_region_id`. Do not restate this as a region-map
+    // rejection; `prepass_regionmap_rejection_controls` pins both behaviours.
     let hash = ((paint_variant_hash(chain_key) - 1) % (PAINT_VARIANT_REGION_ID_STRIDE - 1)) + 1;
     base_region_id
         .checked_mul(PAINT_VARIANT_REGION_ID_STRIDE)
@@ -608,6 +614,56 @@ fn segments_to_expolygons(
         .collect()
 }
 
+/// Ordered semantic axis names for every pre-paint parent, keyed by
+/// `(global layer index, object id)`.
+///
+/// The committed `RegionMapIR` is the authority for chain identity. For a real
+/// `RegionMapping` cross-product every maximal-length non-modifier chain under
+/// one object carries the same semantic sequence, in `(region-split priority,
+/// semantic name)` order, so one object-level order serves all of that object's
+/// parents without borrowing another object's axes — and without rescanning the
+/// map inside the per-region loop (which would be `O(regions × entries)` on a
+/// production-sized map).
+///
+/// Chains are visited longest-first with a deterministic tie-break on the chain
+/// vector, so the recovered order never depends on `HashMap` iteration. Shorter
+/// chains follow, which keeps every declared axis the map knows about
+/// observable. An object with no committed chain has no entry, and the caller
+/// falls back to its own deterministic discovery order; a valid production map
+/// always names the axes.
+fn parent_axis_orders(
+    region_map: &slicer_ir::RegionMapIR,
+) -> std::collections::HashMap<(u32, String), Vec<String>> {
+    let mut grouped: std::collections::HashMap<
+        (u32, String),
+        Vec<&Vec<(String, slicer_ir::PaintValue)>>,
+    > = std::collections::HashMap::new();
+    for key in region_map.entries.keys() {
+        if key.variant_chain.is_empty() || slicer_ir::is_modifier_namespace_id(key.region_id) {
+            continue;
+        }
+        grouped
+            .entry((key.global_layer_index, key.object_id.clone()))
+            .or_default()
+            .push(&key.variant_chain);
+    }
+    grouped
+        .into_iter()
+        .map(|(identity, mut chains)| {
+            chains.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
+            let mut order: Vec<String> = Vec::new();
+            for chain in chains {
+                for (name, _) in chain {
+                    if !order.iter().any(|existing| existing == name) {
+                        order.push(name.clone());
+                    }
+                }
+            }
+            (identity, order)
+        })
+        .collect()
+}
+
 /// Execute the full paint-segmentation v2 pipeline.
 ///
 /// # Short-circuit rules (AC-N2)
@@ -713,11 +769,40 @@ pub fn execute_paint_segmentation(
             semantic_runs.push((semantic.clone(), output));
         }
 
+        // Recover each object's canonical axis sequence once, before the
+        // per-region loop, so the join is `O(entries)` rather than
+        // `O(regions x entries)`.
+        let axis_orders = parent_axis_orders(&region_map);
+
         for (i, layer) in working.iter_mut().enumerate() {
             let mut regions = Vec::new();
             for original in &layer.regions {
                 let mut inputs = Vec::new();
-                for (semantic, output) in &semantic_runs {
+                let axis_order = axis_orders
+                    .get(&(layer.global_layer_index, original.object_id.clone()))
+                    .cloned()
+                    .unwrap_or_default();
+                // Project the parent's canonical axis sequence onto the
+                // semantic outputs this parent actually carries. Semantics the
+                // order does not name (a non-production map) follow in the
+                // deterministic per-semantic discovery order.
+                let mut ordered: Vec<usize> = Vec::new();
+                for name in &axis_order {
+                    if let Some(index) = semantic_runs.iter().position(|(semantic, _)| {
+                        compose_variants::semantic_name(semantic) == *name
+                    }) {
+                        if !ordered.contains(&index) {
+                            ordered.push(index);
+                        }
+                    }
+                }
+                for index in 0..semantic_runs.len() {
+                    if !ordered.contains(&index) {
+                        ordered.push(index);
+                    }
+                }
+                for index in ordered {
+                    let (semantic, output) = &semantic_runs[index];
                     let name = compose_variants::semantic_name(semantic);
                     let mut by_value: std::collections::BTreeMap<_, Vec<_>> =
                         std::collections::BTreeMap::new();
@@ -2317,10 +2402,14 @@ mod driver_v2_tests {
             .collect();
         let material = |tool| vec![("material".to_owned(), PaintValue::ToolIndex(tool))];
         let fuzzy = vec![("fuzzy_skin".to_owned(), PaintValue::Flag(true))];
+        // Approved shared identity: a chain is ordered by
+        // `(region-split priority, semantic name)`, so `material` (100) comes
+        // before `fuzzy_skin` (200) even though "fuzzy_skin" sorts first by
+        // name. See ADR-0018 § Shared priority/name chain identity.
         let overlap = |tool| {
             vec![
-                ("fuzzy_skin".to_owned(), PaintValue::Flag(true)),
                 ("material".to_owned(), PaintValue::ToolIndex(tool)),
+                ("fuzzy_skin".to_owned(), PaintValue::Flag(true)),
             ]
         };
         let expected_mixed = BTreeMap::from([
@@ -2528,10 +2617,17 @@ mod driver_v2_tests {
                 "no duplicate chains"
             );
             for region in &result[0].regions {
+                // Independently declared `(priority, name)` roster: chain pairs
+                // must ascend by that order, never by raw name.
+                let rank = |name: &str| match name {
+                    "material" => 100_u32,
+                    "fuzzy_skin" => 200,
+                    other => panic!("undeclared axis {other}"),
+                };
                 assert!(region
                     .variant_chain
                     .windows(2)
-                    .all(|pair| pair[0].0 < pair[1].0));
+                    .all(|pair| rank(&pair[0].0) < rank(&pair[1].0)));
                 if annotations && region.variant_chain.is_empty() {
                     for semantic in [PaintSemantic::SupportEnforcer, seam_semantic.clone()] {
                         assert_eq!(

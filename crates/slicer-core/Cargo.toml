@@ -138,6 +138,19 @@ required-features = ["property_testing"]
 name = "property_geometry_scad"
 required-features = ["property_testing_scad"]
 
+# Pre-pass charters (`H-REGIONMAP` and the families added by packet
+# `proptest-openrscad_11_pbt-prepass`). Both need the real `host-algos`
+# region-mapping/paint kernel, so a default-feature build never compiles them
+# and a `-p slicer-core` run without both features cannot report a green
+# zero-test pass.
+[[test]]
+name = "property_prepass"
+required-features = ["property_testing", "host-algos"]
+
+[[test]]
+name = "property_prepass_controls"
+required-features = ["property_testing", "host-algos"]
+
 # Arachne beading property (`H-ARACHNE-BEADING`) and its deterministic
 # controls/regressions. Both need the real `host-algos` beading + skeletal
 # graph code, so a default-feature build never compiles them at all rather

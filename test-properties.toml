@@ -1464,3 +1464,450 @@ rng_algorithm = "chacha"
 isolation = "in_process"
 timeout_ms = 0
 bounds = { max_walls = 12 }
+
+# ---------------------------------------------------------------------------
+# Pre-pass family (packet `proptest-openrscad_11_pbt-prepass`).
+# Records are added one family at a time as that family's exact test and
+# deterministic controls land; the packet's remaining families are not listed
+# here until they exist.
+# ---------------------------------------------------------------------------
+
+[[property]]
+id = "H-REGIONMAP"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_prepass"
+test_name = "proptest_region_mapping_expansion"
+production_symbol = "slicer_core::algos::region_mapping::execute_region_mapping_with_cap"
+production_path = "crates/slicer-core/src/algos/region_mapping.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-regionmap"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 2, max_objects = 2, max_regions = 2, max_semantics = 3, max_values_per_semantic = 3, max_chains = 64 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 2, max_objects = 3, max_regions = 2, max_semantics = 4, max_values_per_semantic = 3, max_chains = 256 }
+
+[[property]]
+id = "H-PAINT-COMPOSE"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_prepass"
+test_name = "proptest_paint_composition_cells"
+production_symbol = "slicer_core::algos::paint_segmentation::compose_variants::compose_variants"
+production_path = "crates/slicer-core/src/algos/paint_segmentation/compose_variants.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-paint-compose"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 2, max_abs_units = 64, max_semantics = 2, max_cells = 16 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 2, max_abs_units = 128, max_semantics = 3, max_cells = 16 }
+
+[[property]]
+id = "H-PAINT-OVERHANG"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_prepass"
+test_name = "proptest_overhang_adjacent_layer_bands"
+production_symbol = "slicer_core::algos::overhang_annotation::annotate_overhangs"
+production_path = "crates/slicer-core/src/algos/overhang_annotation.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-paint-overhang"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 2, max_abs_units = 200000, max_band_width_units = 12000, max_cells = 32 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 2, max_abs_units = 200000, max_band_width_units = 24000, max_cells = 64 }
+
+[[property]]
+id = "H-PAINT-DRIVER"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_prepass"
+test_name = "proptest_paint_driver_source_isolation"
+production_symbol = "slicer_core::algos::paint_segmentation::execute_paint_segmentation"
+production_path = "crates/slicer-core/src/algos/paint_segmentation/mod.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-paint-driver"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 1, max_objects = 2, max_regions = 1, max_abs_units = 200000, max_facets = 16 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 1, max_objects = 3, max_regions = 1, max_abs_units = 200000, max_facets = 16 }
+
+[[property]]
+id = "H-SUPPORT-SCHEDULE"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_prepass"
+test_name = "proptest_support_schedule_and_sources"
+production_symbol = "slicer_core::algos::support_geometry::execute_support_geometry"
+production_path = "crates/slicer-core/src/algos/support_geometry.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-support-schedule"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 4, max_objects = 2, max_regions = 1, max_abs_units = 200000 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 4, max_objects = 3, max_regions = 1, max_abs_units = 200000 }
+
+[[property]]
+id = "H-SUPPORT-ROLES"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_prepass"
+test_name = "proptest_support_role_partition"
+production_symbol = "slicer_core::support_regularize::regularize_entry_roles"
+production_path = "crates/slicer-core/src/support_regularize.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-support-roles"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_cells = 8 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_cells = 16 }
+
+[[property]]
+id = "H-SUPPORT-CONTACT"
+package = "slicer-core"
+target_kind = "test"
+target_name = "property_prepass"
+test_name = "proptest_support_contact_rectangles"
+production_symbol = "slicer_core::algos::overhang_annotation::detect_support_contacts"
+production_path = "crates/slicer-core/src/algos/overhang_annotation.rs"
+features = ["slicer-core/property_testing", "slicer-core/host-algos"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-support-contact"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_cells = 4 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_cells = 4 }
+
+[[property]]
+id = "H-SUPPORT-TERRITORY"
+package = "slicer-wasm-host"
+target_kind = "test"
+target_name = "property_prepass"
+test_name = "proptest_support_territory_clearance"
+production_symbol = "slicer_wasm_host::support_territory::TerritoryClipper::clip"
+production_path = "crates/slicer-wasm-host/src/support_territory.rs"
+features = ["slicer-wasm-host/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-support-territory"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_objects = 1, max_regions = 3, max_abs_units = 200000, max_clearance_units = 8000, max_cells = 16 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_objects = 1, max_regions = 3, max_abs_units = 200000, max_clearance_units = 8000, max_cells = 32 }
+
+[[property]]
+id = "H-SUPPORT-ANALYSIS"
+package = "slicer-runtime"
+target_kind = "test"
+target_name = "property_prepass"
+test_name = "proptest_support_analysis_layered_scenes"
+production_symbol = "slicer_runtime::builtins::support_analysis_producer::commit_support_analysis_builtin"
+production_path = "crates/slicer-runtime/src/builtins/support_analysis_producer.rs"
+features = ["slicer-runtime/property_testing"]
+requires_host_algos = true
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-support-analysis"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 3, max_objects = 2, max_regions = 2, max_abs_units = 200000, max_cells = 16 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 3, max_objects = 2, max_regions = 2, max_abs_units = 200000, max_cells = 32 }
+
+[[property]]
+id = "H-LIGHTNING-SEEDS"
+package = "lightning-infill"
+target_kind = "lib"
+target_name = "lightning_infill"
+test_name = "kernel::property_tests::proptest_lightning_seed_regions"
+production_symbol = "lightning_infill::kernel::generator::generate_initial_internal_overhangs"
+production_path = "modules/core-modules/lightning-infill/src/kernel/generator.rs"
+features = ["lightning-infill/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-lightning-seeds"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 3, max_abs_units = 200000, max_radius_units = 20000, max_cells = 32 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 3, max_abs_units = 200000, max_radius_units = 20000, max_cells = 64 }
+
+[[property]]
+id = "H-LIGHTNING-TREES"
+package = "lightning-infill"
+target_kind = "lib"
+target_name = "lightning_infill"
+test_name = "kernel::property_tests::proptest_lightning_tree_structure"
+production_symbol = "lightning_infill::kernel::generator::Generator::generate_trees"
+production_path = "modules/core-modules/lightning-infill/src/kernel/generator.rs"
+features = ["lightning-infill/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-lightning-trees"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 3, max_objects = 1, max_regions = 1, max_abs_units = 200000, max_tree_nodes = 20000 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 128
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 3, max_objects = 1, max_regions = 1, max_abs_units = 200000, max_tree_nodes = 20000 }

@@ -2177,3 +2177,17 @@ first dispatch. The stage packages are additive-safe per stage — a change to
 the perimeters module the monolithic-world era's all-or-nothing contract
 used to sweep in. See `docs/adr/0045-per-stage-versioned-interfaces-over-monolithic-tier-worlds.md`
 for the reasoning.
+
+### Owner-private module properties
+
+A module may keep its own property tests inside its crate instead of a shared SDK
+target. `lightning-infill` is the worked example: the
+`lightning-infill/property_testing` selection feature gates a private
+`kernel::property_tests` lib module (`modules/core-modules/lightning-infill/src/kernel/property_tests.rs`)
+behind `#[cfg(all(test, feature = "property_testing"))]`, so the guest build and a
+default native test run never compile it, and only
+`cargo test -p lightning-infill --features property_testing --lib` (or the
+registry's `--features lightning-infill/property_testing`) reaches it. The crate's
+existing SDK dev edge carries the `property_testing` feature; no new public API is
+exposed for testing. See `docs/testing/properties.md#h-lightning-seeds` and
+`#h-lightning-trees`.

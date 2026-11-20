@@ -5,6 +5,11 @@ edition.workspace = true
 authors.workspace = true
 description = "Lightning-style branching sparse infill generator implementing LayerModule for Layer::Infill stage"
 
+[features]
+# Opt-in gate for the module-private kernel properties. Empty on purpose: the
+# normal build and the guest graph stay Proptest-free.
+property_testing = []
+
 [dependencies]
 slicer-sdk = { path = "../../../crates/slicer-sdk" }
 slicer-schema = { path = "../../../crates/slicer-schema" }
@@ -12,7 +17,8 @@ slicer-ir = { path = "../../../crates/slicer-ir" }
 slicer-core = { path = "../../../crates/slicer-core" }
 
 [dev-dependencies]
-slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }
+slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test", "property_testing"] }
+proptest = { workspace = true }
 
 # Required by the `#[slicer_module]` macro's wasm32-only component export
 # glue. On native builds the emitted `wit_bindgen::generate!` call is

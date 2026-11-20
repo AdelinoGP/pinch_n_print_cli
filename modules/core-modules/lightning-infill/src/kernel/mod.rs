@@ -33,6 +33,13 @@ mod tree_node;
 #[cfg(test)]
 mod tests;
 
+// Module-private kernel properties. Stacked gates: `cfg(test)` keeps them out
+// of the guest build and the feature keeps them out of a default native test
+// run, so the registry's explicit `--features property_testing` is required.
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;
+
 pub(crate) use plan::{KernelPlan, PlanEntry};
 
 const DEFAULT_NOZZLE_DIAMETER_MM: f32 = 0.4;

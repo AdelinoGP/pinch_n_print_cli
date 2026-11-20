@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_11_pbt-prepass
-status: draft
+status: implemented
 ---
 
 # Independent properties for region mapping, paint, support and lightning
@@ -218,3 +218,29 @@ Authoring performed source/document inspection, static packet checks and locked/
 | 11 | Completeness | PASS | The source-plan ordering decision, exact oracle, authorized production/doc scope, integration negatives and #7 sequencing are explicit. Remaining [FWD] items are owned implementation coordination, collision investigation, measurements and handoffs, not an unresolved authoring policy choice. |
 
 **Verdict: AUTHOR SELF-PREFLIGHT PASS (authoring only; prerequisites, implementation, properties and Windows runs remain unexecuted).**
+
+## Deviations
+
+Recorded during implementation. Each is a scope-preserving adjustment, not a policy change.
+
+1. **`H-SUPPORT-TERRITORY` is registered under `slicer-wasm-host`.** The spec's registry-section
+   rule pairs runtime rows with `package = "slicer-runtime"`, but the named SUT —
+   `slicer_wasm_host::support_territory::TerritoryClipper::clip` — lives in `slicer-wasm-host`, and
+   `slicer-runtime` reaches it only through its normal dependency. The record therefore uses
+   `package = "slicer-wasm-host"`, `target_kind = "test"`, `target_name = "property_prepass"` and
+   `features = ["slicer-wasm-host/property_testing"]`, with a new feature-gated
+   `crates/slicer-wasm-host/tests/property_prepass.rs` target. `requires_host_algos` stays `true`
+   because the host crate depends on `slicer-core` with `host-algos`. No other record moved.
+2. **The paint-map identity fixture is an open square tube, not a closed box.** A closed box's cap
+   facets carry the default-tool projection, which perturbs the paint scene the regression needs;
+   the open tube is the same fixture shape `declared_region_split_composition_preserves_ordered_chains`
+   already uses for the declared multi-semantic path. The positive path still runs the real
+   `commit_region_mapping_builtin` → `execute_paint_segmentation` → `build_layer_selection_index`
+   join, and no map is hand-built for it.
+3. **`H-LIGHTNING-SEEDS` models axis-aligned rectangles** (including the erosion-inside-outline and
+   empty-layer-reset cases) rather than general polygons with holes. Ring-order and hole-grouping
+   behaviour of the kernel's flat `Polygons` convention is therefore not claimed by that property.
+4. **The modifier collision witness is pinned after a one-time search.** The birthday search over
+   real sliced footprints is replaced by the concrete pair it found (two 0.5 mm cubes at x = 20.87
+   and x = 24.32 mm, both minting `9_223_372_036_862_427_507` for base region 7), so the control is
+   a retained witness rather than a re-derivation.

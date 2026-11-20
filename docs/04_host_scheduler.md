@@ -194,13 +194,16 @@ only for compatible declarations.
 
 **Where the two orders apply.** `build_execution_plan`
 (`crates/slicer-scheduler/src/execution_plan.rs`) calls the aggregator and
-stores its output in `ExecutionPlan.aggregated_region_split`. The RegionMapping
-builtin then passes that map to the kernel, which currently supplies the map's
-**name-ordered keys** to `enumerate_canonical_chains`
+stores its output in `ExecutionPlan.aggregated_region_split`; that aggregate is
+**name-keyed**. The RegionMapping builtin then passes that map to the kernel,
+which derives the ascending `(priority, name)` axis sequence locally and supplies
+it to `enumerate_canonical_chains`
 (`crates/slicer-ir/src/region_split_registry.rs`); the enumerator preserves the
-supplied axis order. `canonical_variant_chain_order` has no production caller in
-the current Rust tree. See ADR-0018's clarifying amendment; the driver-level
-audit belongs to a separate pre-pass property packet.
+caller's order. `canonical_variant_chain_order` returns the same sequence but has
+no production caller in the current Rust tree. Selection and exact-chain config
+lookup preserve the ordered vector without sorting or fallback. See ADR-0018's
+2026-11-19 amendment; the property that proves the driver ordering is
+`H-REGIONMAP` (`docs/testing/properties.md#h-regionmap`).
 
 Property coverage: `H-REGISTRY` (`docs/testing/properties.md#h-registry`,
 evidence in
@@ -979,18 +982,17 @@ kernel uses it to:
 semantic's values through a `BTreeSet` ordered by `paint_value_canonical_cmp` in that file before
 the enumerator sees them.
 
-The scheduler's separate `canonical_variant_chain_order`
-(`crates/slicer-scheduler/src/region_split.rs`) returns the intended `(priority, name)` sequence,
-but it has **no production caller in the current tree**. The RegionMapping driver passes
-`aggregated_region_split` to `execute_region_mapping_inner`
-(`crates/slicer-core/src/algos/region_mapping.rs`), which builds its axis order from the
-aggregate's `BTreeMap` keys — that is, **name order** — and hands that to the enumerator. Actual
-cross-product chain axes are therefore name-ordered even where that differs from the scheduler
-helper's `(priority, name)` sequence. This is a source-observed discrepancy, not a policy
-decision to prefer name order; ADR-0018's amendment records it, and auditing or changing the
-driver needs coordinated fixture work outside this scheduler contract. Property `H-REGISTRY`
-proves the aggregate, the helper sequence and the map's name-ordered keys; it does **not** prove
-helper integration with RegionMapping.
+The aggregate is name-keyed. The RegionMapping driver passes `aggregated_region_split` to
+`execute_region_mapping_inner` (`crates/slicer-core/src/algos/region_mapping.rs`), which derives
+the ascending `(priority, name)` axis sequence locally and hands that to the enumerator; the
+enumerator preserves the caller's order. The scheduler's separate `canonical_variant_chain_order`
+(`crates/slicer-scheduler/src/region_split.rs`) returns the same sequence, but it has **no
+production caller in the current tree**; the kernel does not call it, and `slicer-core` has no
+`slicer-scheduler` dependency. Selection and exact-chain config lookup preserve the ordered
+vector without sorting or fallback. ADR-0018's 2026-11-19 amendment records this shared identity.
+Property `H-REGISTRY` proves the aggregate, the helper sequence and the map's name-ordered keys;
+the property that proves the driver ordering is `H-REGIONMAP`
+(`docs/testing/properties.md#h-regionmap`).
 
 **Cap and overflow:** `DEFAULT_REGION_MAP_CAP = 750_000` (raised from
 `1_000` in Packet 93 to accommodate worst-realistic envelopes of 16
@@ -1115,7 +1117,9 @@ During construction, model authority requires `entries.get(&key)` before `config
 to `LayerStageError::FatalModule`, naming stage, module and exact key before any Layer invocation.
 Default, sibling and first-match config authority are forbidden.
 
-`variant_chain` is ordered and is never sorted or regenerated. `SelectedLayerTarget`'s
+`variant_chain` is ordered and is never sorted or regenerated: it is the shared ascending
+`(priority, semantic name)` vector emitted by RegionMapping and paint composition, matched exactly
+(covered by `H-REGIONMAP`, `docs/testing/properties.md#h-regionmap`). `SelectedLayerTarget`'s
 `LayerTargetSource::Model { key, members }` retains the base plus matching merged modifier
 sources; config authority is the base's exact key. This section owns the painted-id encoding:
 `RegionMapIR.entries` keys painted variants by BASE region id plus ordered chain, whereas

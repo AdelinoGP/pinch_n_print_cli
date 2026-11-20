@@ -761,7 +761,22 @@ pub fn execute_region_mapping_inner(
     // `scan_paint_data` produces the per-object value sets and rejects
     // `Scalar` values for opted-in semantics (AC-N3).
     let painting_variants_per_object = scan_paint_data(objects, aggregated_region_split)?;
-    let canonical_order: Vec<String> = aggregated_region_split.keys().cloned().collect();
+    // Canonical axis sequence is ascending `(declared priority, semantic name)`
+    // — the same sequence `canonical_variant_chain_order`
+    // (`crates/slicer-scheduler/src/region_split.rs`) returns. The aggregate is
+    // a semantic-name-keyed `BTreeMap`, so its raw iteration order is *name*
+    // order and differs whenever declared priority disagrees with the name.
+    // Compute the sequence locally: `slicer-core` must not depend on
+    // `slicer-scheduler`, and this is not a call to that helper.
+    let mut canonical_pairs: Vec<(u32, &String)> = aggregated_region_split
+        .iter()
+        .map(|(name, entry)| (entry.priority, name))
+        .collect();
+    canonical_pairs.sort();
+    let canonical_order: Vec<String> = canonical_pairs
+        .into_iter()
+        .map(|(_, name)| name.clone())
+        .collect();
     let empty_variants: HashMap<String, Vec<PaintValue>> = HashMap::new();
 
     // --- Build entries ------------------------------------------------
@@ -934,10 +949,9 @@ pub fn execute_region_mapping_inner(
                 .unwrap_or(&empty_variants);
             let chains = enumerate_canonical_chains(variants_for_obj, &canonical_order);
 
-            // Sorted list of `paint_semantic_configs` keys, used for the
-            // semantic-name → `PaintSemantic` lookup inside the chain fold.
-            // (Reused per region, but rebuilt once outside the hot inner loop
-            // would require restructuring; the map is tiny so cloning is fine.)
+            // `paint_semantic_configs` is keyed by `PaintSemantic`; the chain
+            // fold below matches a chain's semantic *name* against
+            // `paint_semantic_namespace_key` in lexical namespace order.
             for chain in chains {
                 // Modifier deltas are bound to the spatial child entries
                 // below. Keeping every parent chain pure prevents a modifier
@@ -965,22 +979,32 @@ pub fn execute_region_mapping_inner(
                 // per-tool config can be overlaid LAST (highest precedence), after
                 // the paint overlays below.
                 let mut chain_tool_index: Option<u32> = None;
-                for (sem_name, value) in &chain {
-                    // Match the canonical semantic name against the existing
-                    // `paint_semantic_configs` keys via
-                    // `paint_semantic_namespace_key`, mirroring the idiom in
-                    // `slicer-scheduler::config_resolution::resolve_paint_overrides`.
-                    let matched_key = paint_semantic_configs
-                        .keys()
-                        .find(|sem| &paint_semantic_namespace_key(sem) == sem_name);
-                    if let Some(sem_key) = matched_key {
-                        if let Some(sem_cfg) = paint_semantic_configs.get(sem_key) {
-                            paint_overrides.insert(sem_key.clone(), sem_cfg.clone());
-                            if host_config.is_none() {
-                                effective = sem_cfg.clone();
-                            }
+                // Compatibility overlays are applied in **lexical semantic
+                // namespace order**, not chain order. `docs/02_ir_schemas.md`
+                // § Config Key Namespaces mandates that precedence, and chain
+                // order is priority/name order, which is a different sequence.
+                // The two rules must stay independent: the chain vector is the
+                // region identity, the overlay order is a config rule.
+                let mut configured: Vec<(&PaintSemantic, String)> = paint_semantic_configs
+                    .keys()
+                    .map(|sem| (sem, paint_semantic_namespace_key(sem)))
+                    .collect();
+                configured.sort_by(|a, b| a.1.cmp(&b.1));
+                // One key per namespace spelling: the first in `BTreeMap` order,
+                // matching the pre-change `find` behaviour for aliased variants.
+                configured.dedup_by(|a, b| a.1 == b.1);
+                for (sem_key, namespace) in &configured {
+                    if !chain.iter().any(|(sem_name, _)| sem_name == namespace) {
+                        continue;
+                    }
+                    if let Some(sem_cfg) = paint_semantic_configs.get(*sem_key) {
+                        paint_overrides.insert((*sem_key).clone(), sem_cfg.clone());
+                        if host_config.is_none() {
+                            effective = sem_cfg.clone();
                         }
                     }
+                }
+                for (sem_name, value) in &chain {
                     // A material chain entry carries the region's tool selector.
                     if sem_name == "material" {
                         if let PaintValue::ToolIndex(n) = value {

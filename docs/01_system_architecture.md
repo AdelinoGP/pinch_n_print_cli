@@ -309,6 +309,12 @@ variant chain via per-semantic Voronoi passes and geometric composition
 `SlicedRegion.variant_chain` field definitions, and `docs/03_wit_and_manifest.md`
 for the `[[region_split]]` manifest declaration schema.
 
+The chain order is the shared ascending `(priority, semantic name)` sequence:
+`PrePass::RegionMapping` and paint composition both emit it, and selection and
+exact-chain config lookup match it exactly, never re-sorting it. `H-REGIONMAP`
+(`docs/testing/properties.md#h-regionmap`) covers it; ADR-0018's 2026-11-19
+amendment records the decision.
+
 #### Catch-Up Layer Semantics (Authoritative)
 
 When objects have different layer heights, global layer planning uses sync points so all

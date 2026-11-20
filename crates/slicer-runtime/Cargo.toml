@@ -205,6 +205,21 @@ name = "property_runtime_contracts"
 path = "tests/property_runtime_contracts.rs"
 required-features = ["property_testing"]
 
+# Pre-pass runtime controls (packet `proptest-openrscad_11_pbt-prepass`). The
+# cross-stage map → paint → selection regression drives the real
+# `build_layer_selection_index` (`slicer-wasm-host`, already a normal
+# dependency of this crate). The target is property-feature gated like the
+# H-RUNTIME records so a default build never compiles it.
+[[test]]
+name = "property_prepass"
+path = "tests/property_prepass.rs"
+required-features = ["property_testing"]
+
+[[test]]
+name = "property_prepass_controls"
+path = "tests/property_prepass_controls.rs"
+required-features = ["property_testing"]
+
 [[bench]]
 name = "pipeline"
 harness = false
