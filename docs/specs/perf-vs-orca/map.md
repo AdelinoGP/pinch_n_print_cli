@@ -13,7 +13,7 @@ wall-clock (process CPU corroborating, never contradicting) in every cell of
 the {benchy, base} × {classic, arachne} × {supports off, on} matrix, under the
 matched-pair protocol with outputs disclosed. 8 of 8 cells won closes the map.
 
-**Active reference set (2026-11-20, [t169](issues/169-canonical-offset-edge-decimation-and-flat-opening.md)): t169's set is the currency — benchy `f505910c…` / `9b40bf51…` / `224fb6f0…` / `f32047c3…`, base `33468ea9…` / `661b9a51…` / `e861766a…` / `2124b5f5…` (classic-off / classic-on / arachne-off / arachne-on), byte-identical on the ordinary and accelerated arms; the baseline arm of the same campaign reproduced t168's set 8/8, and t168's set is now superseded. Every hash below this sentence that predates it is historical for comparison purposes and must be re-recorded before use.**
+**Active reference set (2026-11-20, [t172](issues/172-port-offset-concave-crossing.md)): t172's set is the currency — benchy `4c67ef0b…` / `fdca4e2d…` / `fd631384…` / `2869186c…`, base `02ffa2d6…` / `0e13ff7b…` / `e806296f…` / `adf87012…` (classic-off / classic-on / arachne-off / arachne-on), byte-identical on the ordinary and accelerated arms; the baseline arm of the same campaign reproduced t169's set 8/8, and t169's set (`f505910c…` / `9b40bf51…` / `224fb6f0…` / `f32047c3…`, `33468ea9…` / `661b9a51…` / `e861766a…` / `2124b5f5…`) is now superseded. Every hash below this sentence that predates it is historical for comparison purposes and must be re-recorded before use.**
 
 **Benchy reference currency (2026-11-13, [t145](issues/145-benchy-fixture-rebaseline.md)): the benchy fixture was replaced on 2026-11-12T20:48, and every benchy number measured before that boundary is HISTORICAL.** The replacement (`tmp/3dbenchy.stl`, `6ab57f1c…`) is a re-tessellation of the same model — 225,786 → 225,706 triangles, |Δbounds| ≤ 4.05e-7 mm, ten of ten sampled cross-sections equal to the old export's recorded values — but the slice is **not** output-neutral: one internal-bridge layer (L40, z = 8.2, +57.298 mm of path) and the tree-support engine (−1,370.181 mm over 176 layers) move, so all four benchy hashes move. **Superseded active set = t168's** ([`evidence/t168-bridge-opening/reduced/output.json`](evidence/t168-bridge-opening/reduced/output.json), 2026-11-19: benchy `d6cb4acd…` / `21c6969f…` / `5c0f846e…` / `6fe4b09b…`, base `9e360450…` / `f77cf265…` / `cd896bab…` / `3044c4d6…`, byte-identical on the ordinary and accelerated arms). t166's set is superseded but was reproduced **8/8** by the t168 baseline arm in the same campaign (benchy `276782a7…` / `44564d29…` / `46111bb0…` / `12c5e45c…`, base `0a1ee3df…` / `bc5cb5e1…` / `cadebffa…` / `77f2b655…`); t151's set is superseded (reproduced **8/8** by both the t166 and t168 baseline arms); for the history, t151's (2026-11-14) was benchy `3d28d1b3…` / `eb202973…` / `39ad6289…` / `77c3c578…`, base `9bb18f0e…` / `eccbd523…` / `2f249cdb…` / `1811425f…` (each list is classic-off / classic-on / arachne-off / arachne-on; the two base supports-on hashes are unchanged from t148 by measurement because those cells are inert). **t148's set is superseded but was reproduced 8/8 by the t151 baseline arm in the same campaign**: benchy `1ae0cfa8…` / `37788518…` / `8faf02b1…` / `f86d8897…`, base `c0b9014f…` / `eccbd523…` / `17f63e93…` / `1811425f…`. t145's four supports-on hashes (`d9fc80ba…` / `cd7d4a2d…` / `585c6a8e…` / `c9fee59a…`) are **superseded** because that job printed less support than it demanded; **t139's four benchy hashes are retired** (`93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…`); t143's four are the superseded interim set. Rule: **a benchy number is either pre-swap (historical) or post-swap (current); never mixed, never quoted across the boundary.** Retired by that rule: t139's benchy hashes and every comparison built on them; t138's benchy **g-code** figures (its benchy **STL** figures survive — the cross-sections reproduce exactly); t135 Stage 1's benchy oracle numbers; t142's benchy A/B (20.00 / 10.56 / 20.23 / 12.66 %) and every pre-swap benchy A/B pair; every benchy scoreboard median (t121 / t124 / t139) and any composite containing a benchy cell; t126's "benchy classic-off 1.02x at zero prepass" and t134's benchy planner ratios. Post-swap and current: t143's benchy rows (fixture mtime 20:48, depth runs 20:55+), t144's hashes / oracle / A-B, t145's re-baseline, and t148's supports-on re-record. **Post-t148 scoreboard (4 supports-on cells × 2 tools, one window): 2.705x / 2.829x / 3.356x / 3.248x ordinary/Orca** (benchy classic-on / benchy arachne-on / base classic-on / base arachne-on), CPU corroborating — **required cut 63.0 % / 64.6 % / 70.2 % / 69.2 %**; t145's 8-cell post-swap scoreboard **1.853x–3.455x ordinary/Orca** stands for the four supports-off cells and is historical for the four supports-on cells (that job was support-incomplete). The accelerated arm has no current scoreboard.
 
@@ -1494,6 +1494,54 @@ move; all 24 instrumented passes reproduce t169's set byte-for-byte. Evidence:
 [172](issues/172-port-offset-concave-crossing.md) (HITL ruling first, then the
 standing gate) and
 [173](issues/173-support-geometry-boolean-volume.md) (AFK, unblocked, new).
+
+**Destination status (2026-11-20,
+[t172](issues/172-port-offset-concave-crossing.md)): canonical
+`OffsetConcaveCrossing` lands under the sixth recorded t81-style exception —
+strict gate PASSED 8/8 (+14.9…+23.0 % wall, 5/5 pairs and CPU corroborating in
+every cell), both base supports-off cells are now estimated to beat OrcaSlicer
+(~0.82x and ~0.89x), and the Clipper2 kernel route is exhausted for the six
+remaining cells; the frontier is 173 and the new scoreboard refresh 174.**
+`ClipperOffset::offset_polygon` (`vendor/clipper2-rust/src/offset.rs`) now
+ports OrcaSlicer `v2.5.0` (`40ecc66f78`) `clipper.offset.cpp::OffsetConcaveCrossing`
+with `.round()` integer conversion and the AGPLv3 attribution header (excluding
+`DoRound`, `GetLineIntersectPt`, `c2_offset_as_group`, and any `polygon_ops`
+changes per the human's Q1 ruling). **Falsifiers:** two new unit tests in
+`vendor/clipper2-rust/src/offset_tests.rs` were watched failing before the patch
+(`96 != 32` raw pre-union vertices on a 32-gon inward offset) and green after
+(**405/405** + 3 doc-tests); the pre-patch self-captured fixture
+`crates/slicer-core/tests/fixtures/clip_polylines_prepared_reference.json` was
+updated for two inflated rings (`hole_and_island` cyclic rotation by 1,
+`dense_ring` ≤ 100 nm on concave corners; all clipped polylines identical).
+**Campaign & output:** four arms staged (`b2e8261e…` / `9f3fcba8…` /
+`f56c9271…` / `490c6dc2…`, module trees `9c1da3bf…` / `bd132f43…` / `9504e039…`
+/ `91821d61…`); baseline reproduces t169 **8/8** on both arms (`16/16`),
+candidate moves **8/8**, accelerated candidate is byte-identical to ordinary
+**8/8** (`16/16`); active currency is now
+[`reference.json`](evidence/t172-offset-concave-crossing/reference.json) (t169
+superseded). **Paired wall (5 interleaved pairs/cell, ordinary):** benchy
+**+23.01 / +18.41 / +21.49 / +17.37 %**, base **+21.41 / +14.89 / +19.88 /
++15.00 %** (**5/5** wins in every cell, **18.6x–28.8x** the 0.80 % floor,
+strictly outside every cell's same-window any-pair wall null band of
+2.29–13.69 %); **CPU +19.20…+30.67 %** (**5/5** in every cell); **accelerated
+corroboration (3 pairs/cell):** wall **+14.19…+22.63 %** and CPU
+**+19.33…+30.93 %** (**3/3** in every cell). Both base supports-off cells beat
+t169's estimated required cuts (**+21.41 % vs 3.9 %**, **+19.88 % vs 10.3 %**).
+**Delta audit:** total extruding path **−0.745…+0.007 %** with no feature loss
+(`Outer wall` ≤ 0.0012 %, `Inner wall` ≤ 0.042 %; `Support` −1.57 % benchy /
+−0.69 % base, reported not rationalised). **Route (estimate, cross-window, not
+a ratio of record):** composing with t169 × t163 puts `base classic-off` at
+**~0.82x** (−18.2 %) and `base arachne-off` at **~0.89x** (−10.6 %), while six
+cells stay above 1.0x (benchy ~1.26 / ~1.94 / ~1.44 / **~1.99x** binding cell
+at 49.8 % cut; base supports-on ~1.80 / ~1.73x). **Kernel route exhausted:**
+with t169 + t172 landed, only 1.04–1.30x per-call offset overhead remains
+(t170), so no further Clipper2 kernel work can close the six remaining cells.
+Evidence:
+[`evidence/t172-offset-concave-crossing/`](evidence/t172-offset-concave-crossing/FINDINGS.md)
+(`verify.py` PASS, `--self-test` 8/8; `audit_t172.py --self-test` 4/4).
+**Frontier:** [173](issues/173-support-geometry-boolean-volume.md) (AFK,
+unblocked) and [174](issues/174-post-t172-scoreboard-refresh.md) (AFK,
+unblocked, new — verify 2/8 cells won on a same-window two-tool board).
 
 ## Notes
 
@@ -4920,6 +4968,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Port Orca's `OffsetConcaveCrossing` into `vendor/clipper2-rust`](issues/172-port-offset-concave-crossing.md): **resolved 2026-11-20, measured candidate — strict Q2 gate PASSED 8/8 (+14.89…+23.01 % wall, 5/5 pairs and +19.20…+30.67 % CPU in every cell), landed under the sixth recorded t81-style exception; `base classic-off` (~0.82x est) and `base arachne-off` (~0.89x est) are projected to beat OrcaSlicer, and the Clipper2 kernel route is exhausted for the six non-winning cells** — human granted the sixth scoped t81-style exception (Q1) and strict landing gate (Q2) before production edits. Ported canonical `v2.5.0` (`40ecc66f78`) `clipper.offset.cpp::OffsetConcaveCrossing` (≈30 lines, `.round()` conversion, AGPLv3 attribution header; `DoRound` / `GetLineIntersectPt` / `c2_offset_as_group` excluded) into `vendor/clipper2-rust/src/offset.rs` (`ClipperOffset::offset_polygon`). Falsifiers in `offset_tests.rs` watched failing pre-patch (`96 != 32` raw pre-union vertices on a 32-gon inward offset) and green after (**405/405** + 3 doc-tests); `clip_polylines_prepared_reference.json` updated for two pre-patch inflated rings (`hole_and_island` cyclic start shift by 1, `dense_ring` ≤ 100 nm on concave corners; all clipped polylines identical). Four staged arms (`b2e8261e…` / `9f3fcba8…` / `f56c9271…` / `490c6dc2…`): baseline reproduces t169 **8/8** on both arms (`16/16`), candidate moves **8/8** and is byte-identical between ordinary and accelerated (**8/8**); active currency is now [`evidence/t172-offset-concave-crossing/reference.json`](evidence/t172-offset-concave-crossing/reference.json) (t169 superseded). Paired ordinary medians (5 pairs/cell): benchy **+23.01 / +18.41 / +21.49 / +17.37 %**, base **+21.41 / +14.89 / +19.88 / +15.00 %** (**18.6x–28.8x** the 0.80 % floor, strictly outside per-cell any-pair wall null bands of 2.29–13.69 %; both base supports-off cells beat their t169 estimated cuts of 3.9 % and 10.3 %); CPU **+19.20…+30.67 %** (5/5 every cell); accelerated corroboration (3 pairs/cell) wall **+14.19…+22.63 %** / CPU **+19.33…+30.93 %** (3/3 every cell). Delta audit: total extruding path **−0.745…+0.007 %**, no feature loss (`Outer wall` ≤ 0.0012 %, `Inner wall` ≤ 0.042 %, `Support` −1.57 % benchy / −0.69 % base). Cross-window route composition (t163 × t169 × t172, estimate only): `base classic-off` **~0.82x**, `base arachne-off` **~0.89x**, benchy ~1.26 / ~1.94 / ~1.44 / **~1.99x** (binding cell, 49.8 % cut), base supports-on ~1.80 / ~1.73x. Disclosed: 30-min timeout pause between rows 75 and 76 of `ab` (`p5 base-classic-on` spans pause; other 39 pairs back-to-back); no `--profile` pass. Graduated [174](issues/174-post-t172-scoreboard-refresh.md). Evidence: [`evidence/t172-offset-concave-crossing/FINDINGS.md`](evidence/t172-offset-concave-crossing/FINDINGS.md) (`verify.py` PASS, `--self-test` 8/8; `audit_t172.py --self-test` 4/4).
 - [Re-price the prepass work-set, the phase split and S5/S6 after t169](issues/171-post-t169-prepass-reprice.md): **resolved 2026-11-20, attribution + re-price (no production edit) — the split re-derives on the post-t169 tree and the route re-aims: the supports-off cluster is offset-bound and is t172's, the supports-on cluster is boolean-bound, and S5/S6 are landed keeps with no residual worth a ticket** — phase split (median of three instrumented passes, definitions unchanged from t164): prepass **55.9–83.7 %** (was 67.0–87.2 %), per-layer **12.0–34.7 %** (was 9.3–26.3 %), postpass 4.0–8.3 %, outside 0.2–3.3 %; the prepass share fell **3.5–12.3 pp** and the per-layer share rose **2.7–9.9 pp** on all eight cells, tracking each cell's t169 saving (base −21.9…−25.1 %, benchy −5.7…−15.2 %). Stage split: `ShellClassification` **32.2–44.0 %** of the supports-off cells (57.4–58.6 % of the prepass), `SupportGeometry` **38.9–54.9 %** of the supports-on cells (55.6–66.1 %). Expressed as the fraction of the largest stage the cut needs: base classic-off **8.9 %** and base arachne-off **24.2 %** of `ShellClassification` (zeroing it leaves 0.58x / 0.64x), base classic-on **96.0 %** and base arachne-on **92.4 %** of `SupportGeometry` (0.95x / 0.92x), and **no benchy cell has a sufficient single stage** (114.5 / 140.7 / 143.1 / 150.3 % of its largest; 1.08x / 1.24x / 1.41x / 1.47x at zero). Per-op census (`--profile`, thread-time attribution): host clipper work is **offset**-dominated on the supports-off cells (**42.9–51.2 %** offset, 29.5–34.4 % clip, 16.1–18.3 % `offset2_ex`) and **clip**-dominated on the supports-on cells (**53.1–60.9 %** clip, 34.1–39.4 % offset, 4.2–6.0 % `offset2_ex`); host clipper thread-time is 7.2–88.8 s on the supports-off cells and 20.6–**343.4 s** on the supports-on cells, where `host:native` (the tool's unattributed bucket) holds **236.3 s of 343.4 s** on base classic-on (169,586 calls: clip 186.6 s, offset 49.7 s) and `host:support_analysis` holds 35.7 s (offset 32.6 s) — `host:native`'s 8.6x thread-to-wall ratio fits `SupportGeometry` (27.6 s) and cannot fit the per-layer phase (5.94 s), a **labelled inference** on which no quoted number depends. Guest fuel splits the same way: `tree-support` **57.7–68.0 %** plus `tree-support-planner` **10.4–10.7 %** on the supports-on cells, `classic-perimeters` 65.0 % / `arachne-perimeters` 56.0 % on the supports-off ones. **S5** (landed t133) rescales by ×0.4451–0.5901 to a **9.01 %** landed win on base classic-off with a **0.83 %** residual (91.6 % of the whole-layer cost already harvested; 0.41 % / 0.22 % elsewhere) — at the floor, not a lever. **S6** (landed t132) rescales to **5.86 %** of base classic-on's wall with a **5.89 %** residual (**11 %** of that cell's cut), and is **inert on the four supports-off cells by construction** (`enable_support: false`), so it can never satisfy an 8-cell gate. **Premise corrections:** there is no `PrePass::InternalBridges` stage (the internal-bridge work runs inside `PrePass::ShellClassification` via `commit_shell_classification_builtin` → `compute_internal_bridge_layer`), and S5/S6 are landed, so neither can be re-measured by ablation. No production edit, no reference move; all 24 instrumented passes reproduce t169's set byte-for-byte and the exe sha256 `b2e8261e…` equals t169's candidate build. Graduated [173](issues/173-support-geometry-boolean-volume.md). Evidence: [`evidence/t171-post-t169-reprice/`](evidence/t171-post-t169-reprice/FINDINGS.md) (`verify.py` PASS, `--self-test` 8/8).
 - [Clipper2 1.1.0 → 2.0.1 kernel upgrade screen](issues/170-clipper2-2-0-1-kernel-port-screen.md): **resolved 2026-11-20, attribution + screen (no production change) — the kernel premise is falsified: the remaining offset gap is one missing Orca fork patch, `clipper.offset.cpp::OffsetConcaveCrossing`, worth 2.95–4.57x → 1.07–1.27x on the Rust port's classic-perimeter offsets and 2.38–2.70x → 1.04–1.30x on the canonical openings, and it wins the first two cells on paper** — the vendored crate is version 1.1.0 but a **1.5.4** port; upstream 1.2.0 is still 1.5.4 and has no patch, and there is no 2.x. Applying the patch to bare Clipper2 1.5.2 reproduces canonical 2.0.1 **byte-for-byte on 87/87** IB + `0.04 mm Miter 3` opening cases, while without it 2.0.1 is **0.78–0.87x** of 1.5.2 on those openings — the version contributes nothing. Ported into a scratch `vendor/clipper2-rust` it captures **81–97 %** of the remaining per-call gap (prepass IB **1.86x**, `SH_OPEN_*` **1.63x**, `t68sites` base **3.17x** / benchy **2.56x**), vertex totals converge on canonical (`A0` 1.082 → 1.007, `A1` 1.073 → 0.998), booleans are untouched (0.61–0.94x), and the scratch crate passes **403/403** tests. **Price (post-t169, two-step estimate):** central **+16.4 %** on `base classic-off` (required **3.9 %**) and **+15.3 %** on `base arachne-off` (required **10.3 %**), **5.2–11.4 %** elsewhere; conservative host-only clears the 0.80 % floor in **8/8** (5.2x–16.3x). **But the kernel route is bounded:** even at zero cost for every host and guest offset, six cells stay short (`base classic-on` 23.3 % vs 52.7 %; `base arachne-on` 21.6 % vs 50.8 %; the four benchy cells 10.7–26.1 % vs 39.0–58.5 %), so those six need a second phase. **Sub-factors:** flat-path pass-1 is already in every driver and PnP (Arm 1 landed 2026-07-11); `PreserveCollinear(false)` is not a factor on offsets (both sides pass `false`; Rust's boolean default `true` is a parity residual with booleans already faster); `c2_offset_expolygons` groups all 118 prepass cases (`stray_holes = 0`) and the per-path fallback fires on only 6/170 `t68sites` cases. **Exception:** the patch moves per-layer geometry and needs a **t81-style ruling** (the sixth, if granted) plus a fresh reference set. Graduated [172](issues/172-port-offset-concave-crossing.md) (HITL ruling first, then the standing gate). Evidence: [`evidence/t170-clipper2-201-screen/`](evidence/t170-clipper2-201-screen/FINDINGS.md) (`verify.py` PASS, `--self-test` 6/6).
 - [Port canonical `append_offset_path` edge decimation into `polygon_ops`](issues/169-canonical-offset-edge-decimation-and-flat-opening.md): **resolved 2026-11-20, measured candidate — the gate PASSES in 8/8 cells, the base cluster gains 21.9–25.1 % wall and `base classic-off` lands within an estimated 3.9 % of Orca, and it is the route's first banked multi-cell win since t158** — `polygon_ops` harvests its rings exactly as canonical `v2.5.0` (`40ecc66f78`) `ClipperUtils.cpp::append_offset_path` does: wrap-around trim, collapse against the **last kept** vertex, `< 3` drop, canonical's asymmetric degenerate-contour branch (`delta < 0` drops, `delta >= 0` keeps), hole and winding normalisation; `offset_paths` serves `offset` / `offset_with_miter_limit` / `opening` / `closing_ex` / pass 1 of `offset2_ex`, and `offset_paths_flat` decimates **pass 2** at `|delta2| * 0.005` (not pass 1's threshold), because canonical's `c2_offset2_closed` harvests both passes. The factor is dimensionless and transfers to PnP's 100 nm grid without rescaling. **Arm 1 is not a delta:** flat-path pass-1 `offset2_ex` landed 2026-07-11 (`a5433f93`) and was extracted into `offset2_ex_first_pass` by `b56f429a`, so t167's `f2` was partly already banked and the whole measured effect is Arm 2 plus pass-2 decimation. **One window, four arms** (`e7b67146…` ordinary baseline / `b2e8261e…` candidate / `0784a754…` / `f56c9271…`), module trees `6899f824…` / `9c1da3bf…` / `82d74609…` / `9504e039…` — the trees move because `classic-perimeters` (`offset2_ex`, `opening_ex`) and `arachne-perimeters` (`offset2_ex`, `offset_with_miter_limit`) call the decimated helpers **in-process**, so the port is not host-only. **Output:** baseline reproduces t168 **8/8**, candidate moves **8/8**, accelerated arms byte-identical to ordinary **16/16**; t169's set is the new currency and t168's is superseded. **Paired wall (5 interleaved pairs/cell):** benchy **+7.98 / +15.21 / +5.74 / +14.76 %**, base **+25.08 / +21.91 / +23.43 / +22.41 %**, 5/5 pairs faster in every cell; null band **3.06 %** any-pair / **1.99 %** median wall, so all eight cells clear the 0.80 % floor (base at **27.4x–31.4x**) and sit outside their own band; **process CPU lower 8/8**, 5/5 pairs in every cell. **Accelerated corroboration (3 pairs/cell):** wall **+7.11 / +15.37 / +6.22 / +13.93 / +25.18 / +22.71 / +24.25 / +21.91 %**, 3/3 every cell, CPU 3/3 every cell. **Audit:** every section moves somewhere in every cell, total path **−0.029…+0.616 %**; `Internal Bridge` **−72.0 / −73.2 %** (−9.25 / −9.84 mm) on the two base supports-off cells is the expected pinhole collapse at the `−1.6069 mm` offsets' 8.03 µm threshold, while `Support` **+0.42 / +1.13 %** (+345.61 / +4,383.20 mm) on the supports-on cells is a direction the port does not predict and is reported, not rationalised. **Attribution (`--profile`, never a wall claim):** `polygon_ops::offset` self wall **−41.0…−55.5 %**, `offset2_ex` **−12.6…−25.1 %**; guest fuel (deterministic) falls **13.5–21.5 %** on the classic cells but **rises 1.4–3.1 %** on the three Arachne cells — the scan costs more than the sweep saves on already-sparse geometry, disclosed, and those cells still win on their host-side prepass offsets. **Route (estimate, cross-window):** composing the paired medians with t163's ordinary board gives `base classic-off` **1.389x → ~1.04x** (3.9 % short — the first single-digit gap in this map), `base arachne-off` ~1.12x, `base classic-on` ~2.12x, `base arachne-on` ~2.03x, benchy ~1.64 / ~2.38 / ~1.83 / **~2.41x**; the binding cell moves to **`benchy arachne-on` at 58.5 % required cut**, so t128's "benchy classic-off cannot be won by prepass deletion alone" survives in the stronger form that neither can benchy arachne-on. **Exception:** landed under the **fifth recorded t81-style exception** (per-layer geometry), granted in-session on these numbers; without it the change would have been preserved as a proposal per t152's precedent. **Falsifiers watched red before the fix:** the 4 µm pinhole test (a ~2 mm crater without the arm) and the wrap-trim unit test (5 vertices instead of 4). **Not ported, pre-existing, disclosed:** canonical `c2_offset_as_group`'s per-path fallback, `c2_offset_setup`'s miter/arc clamps, and the zero-delta conventions. Evidence: [`evidence/t169-offset-decimation-flat-opening/`](evidence/t169-offset-decimation-flat-opening/FINDINGS.md) (`verify.py` PASS, `--self-test` 6/6; `audit_t169.py --self-test` 4/4).
@@ -5196,26 +5245,28 @@ Standing decisions for this effort (2026-09-22):
 
 ## Not yet specified
 
-- **The kernel route is measured and bounded: six cells need a non-offset phase
+- **The Clipper2 kernel route is now EXHAUSTED for the six non-winning cells
   (2026-11-20, [t170](issues/170-clipper2-2-0-1-kernel-port-screen.md),
-  [t171](issues/171-post-t169-prepass-reprice.md)).** Porting Orca's
-  `OffsetConcaveCrossing` is estimated to win the two base supports-off cells,
-  and [t172](issues/172-port-offset-concave-crossing.md) is the live execution
-  ticket. But even at **zero cost** for every host and guest `offset` /
-  `offset2_ex` second, the other six cells stay short of their required cut
-  (`base classic-on` 23.3 % vs 52.7 %, `base arachne-on` 21.6 % vs 50.8 %, the
-  four benchy cells 10.7–26.1 % vs 39.0–58.5 %). **t171 answered where the
-  supports-on half of that gap lives:** `clip_polygons` is **53.1–60.9 %** of
-  those cells' host clipper thread-time (against 34.1–39.4 % offset), the
-  `host:native` bucket holds **236.3 s of 343.4 s** on base classic-on, and the
-  whole `SupportGeometry` stage would have to shed **92.4–96.0 %** of itself.
+  [t171](issues/171-post-t169-prepass-reprice.md),
+  [t172](issues/172-port-offset-concave-crossing.md)).** Both t169's edge
+  decimation and [t172](issues/172-port-offset-concave-crossing.md)'s
+  `OffsetConcaveCrossing` have landed, putting `base classic-off` (~0.82x est)
+  and `base arachne-off` (~0.89x est) below 1.0x (pending official two-tool
+  verification in [174](issues/174-post-t172-scoreboard-refresh.md)) and
+  leaving `vendor/clipper2-rust` at 1.04–1.30x of canonical C++ on hot offsets
+  and 0.61–0.94x (faster) on booleans. The other six cells stay above 1.0x
+  (benchy ~1.26x / ~1.94x / ~1.44x / ~1.99x; base supports-on ~1.80x / ~1.73x)
+  and cannot be closed by further Clipper2 kernel tuning. **t171 answered where
+  the supports-on half of that gap lives:** `clip_polygons` is **53.1–60.9 %**
+  of those cells' host clipper thread-time (against 34.1–39.4 % offset), the
+  `host:native` bucket holds **236.3 s of 343.4 s** on base classic-on, and
   [173](issues/173-support-geometry-boolean-volume.md) is the live attribution
-  ticket for that volume. **Still fog:** the four **benchy** cells, where no
-  single stage is sufficient — the largest is **114.5–150.3 %** of what the cell
-  needs, the top two leave 0.93x / 1.08x / 1.06x / 1.12x and the top three
-  0.83x / 0.97x / 0.90x / 0.96x — so a benchy route is a named combination that
-  does not exist yet. It cannot be sharpened until 173 says whether the
-  supports-on benchy pair rides the same boolean program.
+  ticket for that volume. **Still fog:** the four **benchy** cells (now
+  estimated ~1.26x / ~1.94x / ~1.44x / ~1.99x — remaining cuts 20.8–49.8 %,
+  down from 39.0–58.5 % pre-t172), where no single stage is sufficient; a
+  benchy route cannot be sharpened until 173 says whether the supports-on
+  benchy pair rides the same boolean program and 174 replaces the two-step
+  cross-window estimates with fresh ratios of record.
 
 - **t129's operand-volume shapes are ANSWERED and both were already landed
   ([t171](issues/171-post-t169-prepass-reprice.md), 2026-11-20).** The map had
@@ -6007,7 +6058,7 @@ Standing decisions for this effort (2026-09-22):
 - **OrcaSlicer geometry-parity work.** The repo's parity program runs as spec
   packets; this map treats output as disclosed evidence only (the fairness
   contract), not as a parity target.
-  **Five recorded exceptions.** (1) **2026-10-23:** the human ruled that ticket
+  **Six recorded exceptions.** (1) **2026-10-23:** the human ruled that ticket
   81's `resolution` port be carried in-map end to end, because the fairness
   contract needed the key implemented rather than merely disclosed. That
   exception is scoped to that key. (2) **2026-11-03:** [ticket
@@ -6071,6 +6122,21 @@ Standing decisions for this effort (2026-09-22):
    which call the helpers in-process. It is **not** a licence for `c2_offset_as_group`,
    the `c2_offset_setup` clamps, or any further per-layer port: those still return
    to the human. The t111/t128 prepass exception is unchanged.
+   **(6) 2026-11-20:** [Port Orca's `OffsetConcaveCrossing` into
+   `vendor/clipper2-rust`](issues/172-port-offset-concave-crossing.md) grants a
+   **t81-style exception** scoped strictly to porting canonical `v2.5.0`
+   (`40ecc66f78`) `clipper.offset.cpp::OffsetConcaveCrossing` (with `.round()`
+   integer conversion and the AGPLv3 attribution header) into
+   `vendor/clipper2-rust/src/offset.rs` (`ClipperOffset::offset_polygon`),
+   covering all downstream host and guest `polygon_ops` offset callers
+   (prepass, per-layer `classic-perimeters` / `arachne-perimeters`, off-matrix
+   `lightning-infill` / `wave-overhangs`, and host-bridged offset callers).
+   Granted by the human before production edits (Q1 ruling) and landed after
+   passing the strict Q2 gate in 8/8 (+14.89…+23.01 % wall, 5/5 pairs and CPU
+   corroborating in every cell). Explicitly **excludes** `DoRound`
+   (`std::round` vs `ceil`), `GetLineIntersectPt`, `c2_offset_as_group`, and
+   any other `clipper2-rust` or `polygon_ops` wrapper changes; those still
+   return to the human.
 - **Making the resolved-config-less fallback block satisfy Orca's viewer gate.**
   Ticket 34's residual — the test/legacy path's `CONFIG_BLOCK` cannot reach 80
   *loadable* pairs because the remainder are PnP's own key names — is past this
