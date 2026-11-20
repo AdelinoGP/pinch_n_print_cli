@@ -2,8 +2,11 @@
 
 Type: task / attribution + re-price (instrumented, no candidate)
 Label: wayfinder:task
-Status: open
-Assignee: unclaimed
+Status: **resolved 2026-11-20** — the split re-derives, the route re-aims (the
+supports-on cluster is boolean-bound, the supports-off cluster is t172's), and
+S5/S6 are landed with no residual worth a ticket. No production edit.
+Assignee: 2026-11-20 OpenCode wayfinder session — the human said "Continue the
+perf vs orca map" (no ticket named); 171 was first on the frontier
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [t169 offset edge decimation](169-canonical-offset-edge-decimation-and-flat-opening.md)
@@ -91,4 +94,103 @@ Concretely:
 
 ## Answer
 
-_(pending)_
+**Resolved 2026-11-20: the split re-derives and the route re-aims. The
+supports-off cluster is offset-bound and is t172's; the supports-on cluster is
+**boolean**-bound (`clip_polygons` 53.1–60.9 % of host clipper thread-time) and
+needs its own program, charted as [t173](173-support-geometry-boolean-volume.md);
+S5 and S6 are landed keeps with no residual worth a ticket. No production edit,
+no reference move.**
+
+**Two premise corrections first.** (a) There is no `PrePass::InternalBridges`
+stage on any cell and there was none at t164: the internal-bridge work runs inside
+`PrePass::ShellClassification` (`commit_shell_classification_builtin` →
+`compute_internal_bridge_layer`, `crates/slicer-runtime/src/slice_postprocess_prepass.rs`).
+(b) **S5 and S6 are landed**, not candidates: `internal_bridge_offset_window` and
+`inflate_model_occupancy_memoized` are in the production path since t133/t132, so
+neither can be re-measured by ablation without reverting a keep; what can be
+re-priced is what each is worth today and what it still costs after landing.
+
+**Phase split** (median of three instrumented passes per cell; shares, never
+walls):
+
+| cell | prepass | per-layer | postpass | outside | Δprepass vs t164 |
+| --- | --- | --- | --- | --- | --- |
+| benchy classic off | 58.2 % | 32.4 % | 6.0 % | 3.3 % | −12.3 pp |
+| benchy classic on | 71.7 % | 18.5 % | 8.3 % | 1.4 % | −5.4 pp |
+| benchy arachne off | 55.9 % | 34.7 % | 6.2 % | 3.1 % | −11.1 pp |
+| benchy arachne on | 70.0 % | 20.4 % | 8.1 % | 1.3 % | −5.5 pp |
+| base classic off | 76.0 % | 18.6 % | 5.0 % | 0.5 % | −6.7 pp |
+| base classic on | 83.7 % | 12.0 % | 4.2 % | 0.2 % | −3.5 pp |
+| base arachne off | 74.4 % | 20.3 % | 4.8 % | 0.6 % | −6.2 pp |
+| base arachne on | 83.1 % | 12.6 % | 4.0 % | 0.2 % | −3.8 pp |
+
+The prepass share fell and the per-layer share rose on **all eight** cells, by an
+amount that tracks each cell's t169 saving — the decimation cut the phase that
+owned the offset work.
+
+**Stage split, as "what fraction of the largest stage would have to go".** Required
+cuts are t169's §9 estimate (3.9 / 10.3 / 52.8 / 50.8 % on the base cells, 39.0 /
+45.3 / 57.9 / 58.5 % on benchy):
+
+| cell | largest stage | share of cell | needs this much of it | ratio if the stage were free |
+| --- | --- | --- | --- | --- |
+| base classic off | `ShellClassification` | 44.0 % | **8.9 %** | 0.58x |
+| base arachne off | `ShellClassification` | 42.7 % | **24.2 %** | 0.64x |
+| base classic on | `SupportGeometry` | 54.9 % | **96.0 %** | 0.95x |
+| base arachne on | `SupportGeometry` | 54.9 % | **92.4 %** | 0.92x |
+| benchy classic off | `ShellClassification` | 34.1 % | **114.5 %** | 1.08x |
+| benchy arachne off | `ShellClassification` | 32.2 % | **140.7 %** | 1.24x |
+| benchy classic on | `SupportGeometry` | 40.5 % | **143.1 %** | 1.41x |
+| benchy arachne on | `SupportGeometry` | 38.9 % | **150.3 %** | 1.47x |
+
+So each **base** cell has a single sufficient stage — a *fraction* of one on the
+supports-off pair (t172's cluster), nearly *all* of one on the supports-on pair —
+and **no benchy cell has one**: the largest stage cannot cover its own cut, and
+the benchy cells need combinations (top two leave 0.93x / 1.08x / 1.06x / 1.12x;
+top three 0.83x / 0.97x / 0.90x / 0.96x). Zeroing the per-layer phase leaves
+1.11x–1.94x on the four benchy cells; zeroing the postpass leaves 1.54x–2.22x.
+
+**Per-op census (`--profile`, thread-time attribution only).** The surviving
+clipper mass is a *different op* on each cluster:
+
+| cluster | `offset` | `clip_polygons` | `offset2_ex` | `closing_ex` |
+| --- | --- | --- | --- | --- |
+| supports-off (4 cells) | **42.9–51.2 %** | 29.5–34.4 % | 16.1–18.3 % | 3.2–4.7 % |
+| supports-on (4 cells) | 34.1–39.4 % | **53.1–60.9 %** | 4.2–6.0 % | 0.8–1.6 % |
+
+Host clipper thread-time is 7.2–7.6 s on the benchy supports-off cells, 20.6–21.3 s
+on the benchy supports-on cells, 82.5–88.8 s on the base supports-off cells and
+**343.4 s** on both base supports-on cells. On base classic-on the owner split is
+`host:native` **236.3 s** (169,586 calls: clip 186.6 s, offset 49.7 s),
+`host:shell_classification` 53.9 s (100 % marked clipper work, `<module self>` =
+0.000 s), `host:support_analysis` 35.7 s (offset 32.6 s), `host:slice` 12.7 s.
+`host:native` is the tool's *unattributed* bucket; its 8.6x thread-to-wall ratio
+fits `SupportGeometry` (27.6 s) and cannot fit the per-layer phase (5.94 s), so
+the consistent reading is prepass-tier native work that no built-in bracket
+claims — **a labelled inference, disclosed**, on which no number here depends.
+Guest fuel agrees: the supports-on cells are a support-engine cluster
+(`tree-support` 57.7–68.0 % of fuel), the supports-off cells the
+perimeters/infill-linker cluster.
+
+**S5 re-price.** t131's census rescaled by t169's measured `polygon_ops::offset`
+ratio (×0.4905 / ×0.5901 / ×0.4451) and by t131's 8.34x stage parallelism: the
+landed win is worth **9.01 %** of base classic-off's wall today (1,237 ms), the
+residual windowed erosion **0.83 %** (950.3 ms thread) — at the 0.80 % floor and
+0.41 % / 0.22 % on the other two cells. The window already harvests **91.6 %** of
+the whole-layer cost, so no further localization of that mechanism can pay.
+
+**S6 re-price.** The `+0.35 mm` occupancy family (864 calls / 433 distinct on
+base classic-on, 365 / 186 on benchy classic-on) rescaled by ×0.4451 / ×0.5486 and
+by 2.19x parallelism: the landed win is **5.86 %** of base classic-on's wall
+(2,892 ms), the residual distinct-payload work **5.89 %** — **11 %** of that
+cell's 52.8 % cut. And S6 is **inert on the four supports-off cells by
+construction** (`enable_support: false` returns before either memo site), so it
+can never satisfy an all-eight-cell gate at any price.
+
+**What graduated.** [t173](173-support-geometry-boolean-volume.md) — attribute
+and price the support path's boolean volume, the supports-on cluster's only
+carrier. The benchy combination stays in the map's **Not yet specified** with its
+numbers: no single stage covers a benchy cut.
+
+Evidence: [`evidence/t171-post-t169-reprice/`](../evidence/t171-post-t169-reprice/FINDINGS.md)
+(`verify.py` PASS, `--self-test` 8/8 negative controls rejected).

@@ -1,0 +1,130 @@
+{
+  "schema": 1,
+  "tag": "clean",
+  "exe": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\release\\pnp_cli.exe",
+  "cells": {
+    "benchy-classic-off": {
+      "exit_code": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::clip_polygons": 4062158,
+          "polygon_ops::offset2_ex": 2544220136
+        },
+        "wall": {
+          "polygon_ops::offset": 3383100000,
+          "polygon_ops::clip_polygons": 2513300000,
+          "polygon_ops::offset2_ex": 1307500000,
+          "polygon_ops::closing_ex": 353700000
+        }
+      }
+    },
+    "benchy-classic-on": {
+      "exit_code": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::clip_polygons": 1334501423,
+          "polygon_ops::offset": 76100245,
+          "polygon_ops::offset2_ex": 2543985837
+        },
+        "wall": {
+          "polygon_ops::clip_polygons": 11019800000,
+          "polygon_ops::offset": 7968900000,
+          "polygon_ops::offset2_ex": 1243000000,
+          "polygon_ops::closing_ex": 335300000
+        }
+      }
+    },
+    "benchy-arachne-off": {
+      "exit_code": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::clip_polygons": 4694259,
+          "polygon_ops::offset": 331104045
+        },
+        "wall": {
+          "polygon_ops::offset": 3076900000,
+          "polygon_ops::clip_polygons": 2467400000,
+          "polygon_ops::offset2_ex": 1314400000,
+          "polygon_ops::closing_ex": 321800000
+        }
+      }
+    },
+    "benchy-arachne-on": {
+      "exit_code": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::clip_polygons": 1334895617,
+          "polygon_ops::offset": 407205576
+        },
+        "wall": {
+          "polygon_ops::clip_polygons": 11338100000,
+          "polygon_ops::offset": 8402000000,
+          "polygon_ops::offset2_ex": 1262000000,
+          "polygon_ops::closing_ex": 331300000
+        }
+      }
+    },
+    "base-classic-off": {
+      "exit_code": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::offset2_ex": 25539530947,
+          "polygon_ops::clip_polygons": 787839
+        },
+        "wall": {
+          "polygon_ops::offset": 45502000000,
+          "polygon_ops::clip_polygons": 26197000000,
+          "polygon_ops::offset2_ex": 14300000000,
+          "polygon_ops::closing_ex": 2847000000
+        }
+      }
+    },
+    "base-classic-on": {
+      "exit_code": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::clip_polygons": 11730668382,
+          "polygon_ops::offset": 988850273,
+          "polygon_ops::offset2_ex": 25539902927
+        },
+        "wall": {
+          "polygon_ops::clip_polygons": 208785000000,
+          "polygon_ops::offset": 117304000000,
+          "polygon_ops::offset2_ex": 14545000000,
+          "polygon_ops::closing_ex": 2749000000
+        }
+      }
+    },
+    "base-arachne-off": {
+      "exit_code": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::offset": 2484170591,
+          "polygon_ops::clip_polygons": 821871
+        },
+        "wall": {
+          "polygon_ops::offset": 40630000000,
+          "polygon_ops::clip_polygons": 24930000000,
+          "polygon_ops::offset2_ex": 14328300000,
+          "polygon_ops::closing_ex": 2614000000
+        }
+      }
+    },
+    "base-arachne-on": {
+      "exit_code": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::clip_polygons": 11731167023,
+          "polygon_ops::offset": 3473611263
+        },
+        "wall": {
+          "polygon_ops::clip_polygons": 209131000000,
+          "polygon_ops::offset": 117255000000,
+          "polygon_ops::offset2_ex": 14294600000,
+          "polygon_ops::closing_ex": 2736000000
+        }
+      }
+    }
+  },
+  "notes": "attribution only; --profile inflates wall and sums concurrent spans"
+}
