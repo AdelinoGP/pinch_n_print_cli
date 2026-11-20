@@ -480,8 +480,11 @@ removed:
   an optional concentric bore of uniform wall thickness; the analytic miter model insets the outer
   ring, grows the hole, and treats a bore that swallows the eroded wall as no material (with
   uniform walls the grown hole crosses either no wall or all four, so empty is the only partial
-  outcome). The sample grid covers both raw and eroded hole rings and skips any point on any
-  shape's boundary, where the clipper and the even-odd oracle may legitimately disagree.
+  outcome). The sample grid covers both raw and eroded hole rings, is spaced at half the erosion
+  radius so at least one lattice line always falls strictly inside the erosion band, and skips any
+  point on any shape's boundary, where the clipper and the even-odd oracle may legitimately
+  disagree. A control feeds the un-eroded outline at the smallest generated radius and requires the
+  model to reject it, so a fixed offset that matched a radius cannot mask a skipped erosion.
   Deterministic witnesses cover a bored top layer (the bore is not material, the ring beside it is
   an overhang), a bored layer under a solid cover (no overhang), and a bore that swallows the wall.
   The generated strategy now varies the erosion radius, narrows the stack, and bores a

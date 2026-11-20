@@ -260,7 +260,14 @@ fn rings_contain(rings: &Polygons, x: i64, y: i64) -> bool {
 /// Verify the seed model for one scene.
 pub fn verify_seeds(case: &SeedCase) -> Result<(), String> {
     let overhangs = generate_initial_internal_overhangs(&case.outlines(), case.radius);
+    verify_observation(case, &overhangs)
+}
 
+/// Verify an arbitrary observed overhang set against the model.
+///
+/// The deterministic controls feed wrong answers here to prove the sampler
+/// can reject them.
+fn verify_observation(case: &SeedCase, overhangs: &[Polygons]) -> Result<(), String> {
     if overhangs.len() != case.layers.len() {
         return Err(format!(
             "overhang layers {} != declared {}",
@@ -269,9 +276,16 @@ pub fn verify_seeds(case: &SeedCase) -> Result<(), String> {
         ));
     }
 
-    // Sample every raw and eroded rectangle edge, offset by 2500 units so the
-    // sample cannot land on that edge (cross-layer collisions are filtered by
-    // `any_boundary`).
+    // Sample every raw and eroded rectangle edge. The offset is half the
+    // erosion radius (or 2500 units with no erosion), so at least one lattice
+    // line always falls strictly inside the erosion band: a fixed offset that
+    // happened to equal a generated radius would leave the band unsampled and
+    // let a kernel that skips erosion agree with the model on every point.
+    let offset = if case.radius > 0 {
+        (case.radius / 2).max(1)
+    } else {
+        2500
+    };
     let mut xs: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
     let mut ys: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
     for shape in case.layers.iter().flatten() {
@@ -287,12 +301,12 @@ pub fn verify_seeds(case: &SeedCase) -> Result<(), String> {
         }
         for rect in rects {
             for x in [rect.x0, rect.x1] {
-                xs.insert(x - 2500);
-                xs.insert(x + 2500);
+                xs.insert(x - offset);
+                xs.insert(x + offset);
             }
             for y in [rect.y0, rect.y1] {
-                ys.insert(y - 2500);
-                ys.insert(y + 2500);
+                ys.insert(y - offset);
+                ys.insert(y + offset);
             }
         }
     }
@@ -897,6 +911,27 @@ fn lightning_model_controls() {
 fn lightning_seed_tree_controls() {
     // The seed model's positive witness.
     seed_witnesses().expect("the seed witnesses must pass");
+
+    // The sampler must catch a kernel that skips erosion even at the smallest
+    // generated radius (0.25 mm). Feeding the un-eroded outline as the
+    // observation must be rejected; at a fixed 2500-unit offset this radius
+    // left the 0..2500 band unsampled and the wrong answer passed.
+    let uneroded_case = SeedCase {
+        layers: vec![Some(LayerShape::solid(LayerRect {
+            x0: 0,
+            y0: 0,
+            x1: 10 * MM,
+            y1: 10 * MM,
+        }))],
+        radius: MM / 4,
+    };
+    let Some(shape) = uneroded_case.layers[0] else {
+        panic!("the witness must declare a layer");
+    };
+    assert!(
+        verify_observation(&uneroded_case, &[vec![ring(shape.outer)]]).is_err(),
+        "an un-eroded answer must fail at radius MM/4"
+    );
 
     // A model that erodes the *above* layer would disagree with the kernel, so
     // the checker must reject a case where the two differ: here the layer above
