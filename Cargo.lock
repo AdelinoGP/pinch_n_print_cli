@@ -1688,6 +1688,7 @@ dependencies = [
 name = "gyroid-infill"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
@@ -2002,6 +2003,7 @@ dependencies = [
 name = "infill-linker"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
@@ -3518,6 +3520,7 @@ checksum = "03251193000f4bd3b042892be858ee50e8b3719f2b08e5833ac4353724632430"
 name = "rectilinear-infill"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
@@ -4629,6 +4632,7 @@ checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
 name = "top-surface-ironing"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -5533,6 +5537,7 @@ dependencies = [
 name = "wave-overhangs"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",

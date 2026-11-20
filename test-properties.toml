@@ -2111,3 +2111,363 @@ rng_algorithm = "chacha"
 isolation = "in_process"
 timeout_ms = 0
 bounds = { max_abs_mm_units = 20000, max_thickness_units = 3000, max_point_distance_units = 8000, max_points = 8 }
+
+[[property]]
+id = "M-IRONING-ZIGZAG"
+package = "top-surface-ironing"
+target_kind = "lib"
+target_name = "top_surface_ironing"
+test_name = "property_tests::proptest_ironing_full_paths"
+production_symbol = "top_surface_ironing::generate_zigzag_strokes_for_polygon"
+production_path = "modules/core-modules/top-surface-ironing/src/lib.rs"
+features = ["top-surface-ironing/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-ironing-zigzag"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 80000, max_vertices = 16, max_holes = 2, max_components = 1, max_shrink_candidates = 16, max_spacing_units = 15000, max_rows = 64 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 80000, max_vertices = 16, max_holes = 2, max_components = 1, max_shrink_candidates = 16, max_spacing_units = 15000, max_rows = 64 }
+
+[[property]]
+id = "M-RECTILINEAR-SCAN"
+package = "rectilinear-infill"
+target_kind = "lib"
+target_name = "rectilinear_infill"
+test_name = "property_tests::proptest_rectilinear_scan_intervals"
+production_symbol = "rectilinear_infill::scan_expolygon"
+production_path = "modules/core-modules/rectilinear-infill/src/lib.rs"
+features = ["rectilinear-infill/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-rectilinear-scan"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_vertices = 8, max_holes = 1, max_components = 1, max_shrink_candidates = 16, max_spacing_units = 20000, max_rows = 32 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_vertices = 8, max_holes = 1, max_components = 1, max_shrink_candidates = 16, max_spacing_units = 20000, max_rows = 32 }
+
+[[property]]
+id = "M-RECTILINEAR-SPACING"
+package = "rectilinear-infill"
+target_kind = "lib"
+target_name = "rectilinear_infill"
+test_name = "property_tests::proptest_rectilinear_solid_spacing"
+production_symbol = "rectilinear_infill::adjust_solid_spacing"
+production_path = "modules/core-modules/rectilinear-infill/src/lib.rs"
+features = ["rectilinear-infill/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-rectilinear-spacing"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_width_units = 200000, max_spacing_units = 20000 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_width_units = 200000, max_spacing_units = 20000 }
+
+[[property]]
+id = "M-GYROID-PHASE"
+package = "gyroid-infill"
+target_kind = "lib"
+target_name = "gyroid_infill"
+test_name = "property_tests::proptest_gyroid_phase_and_grid"
+production_symbol = "gyroid_infill::gyroid_f"
+production_path = "modules/core-modules/gyroid-infill/src/lib.rs"
+features = ["gyroid-infill/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-gyroid-phase"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_phase_milliradians = 6284, max_grid_units = 512 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_phase_milliradians = 6284, max_grid_units = 512 }
+
+[[property]]
+id = "M-GYROID-CLIP"
+package = "gyroid-infill"
+target_kind = "lib"
+target_name = "gyroid_infill"
+test_name = "property_tests::proptest_gyroid_raw_wave_clipping"
+production_symbol = "gyroid_infill::GyroidInfill::fill_expolygon"
+production_path = "modules/core-modules/gyroid-infill/src/lib.rs"
+features = ["gyroid-infill/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-gyroid-clip"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 524288, max_vertices = 32, max_holes = 4, max_components = 2, max_shrink_candidates = 32, max_width_units = 6000, min_density_ppm = 100000, max_phase_milliradians = 6284, max_wave_points = 65536 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 524288, max_vertices = 32, max_holes = 4, max_components = 2, max_shrink_candidates = 32, max_width_units = 6000, min_density_ppm = 100000, max_phase_milliradians = 6284, max_wave_points = 65536 }
+
+[[property]]
+id = "M-WAVE-TRIM"
+package = "wave-overhangs"
+target_kind = "lib"
+target_name = "wave_overhangs"
+test_name = "property_tests::proptest_wave_trim_and_coverage"
+production_symbol = "wave_overhangs::generator::generate"
+production_path = "modules/core-modules/wave-overhangs/src/generator.rs"
+features = ["wave-overhangs/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-wave-trim"
+
+[property.routine]
+cases = 32
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 120000, max_spacing_units = 6000, max_width_units = 12500, max_iterations = 3, max_cells = 9216 }
+
+[property.extended]
+cases = 128
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 120000, max_spacing_units = 6000, max_width_units = 12500, max_iterations = 3, max_cells = 9216 }
+
+[[property]]
+id = "M-LINKER-GRAPH"
+package = "infill-linker"
+target_kind = "lib"
+target_name = "infill_linker"
+test_name = "property_tests::proptest_linker_ring_walks"
+production_symbol = "infill_linker::graph::contour_connector"
+production_path = "modules/core-modules/infill-linker/src/graph.rs"
+features = ["infill-linker/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-linker-graph"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_vertices = 16, max_holes = 2, max_components = 2, max_shrink_candidates = 4096 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_vertices = 16, max_holes = 2, max_components = 2, max_shrink_candidates = 4096 }
+
+[[property]]
+id = "M-LINKER-CONNECT"
+package = "infill-linker"
+target_kind = "lib"
+target_name = "infill_linker"
+test_name = "property_tests::proptest_linker_connection_compatibility"
+production_symbol = "infill_linker::connect::connect_infill"
+production_path = "modules/core-modules/infill-linker/src/connect.rs"
+features = ["infill-linker/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-linker-connect"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_paths = 4, max_points = 5, max_anchor_units = 100000 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_paths = 4, max_points = 5, max_anchor_units = 100000 }
+
+[[property]]
+id = "M-LINKER-CHAIN"
+package = "infill-linker"
+target_kind = "lib"
+target_name = "infill_linker"
+test_name = "property_tests::proptest_linker_chain_and_origins"
+production_symbol = "infill_linker::connect::chain_or_connect_infill"
+production_path = "modules/core-modules/infill-linker/src/connect.rs"
+features = ["infill-linker/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-linker-chain"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 400000, max_paths = 4, max_points = 4, max_regions = 4, max_anchor_units = 100000 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 400000, max_paths = 4, max_points = 4, max_regions = 4, max_anchor_units = 100000 }

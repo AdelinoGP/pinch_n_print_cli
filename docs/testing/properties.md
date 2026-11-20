@@ -5683,3 +5683,909 @@ derivation; classify SUT, generator/oracle or contract.
 Generated displacement and longitudinal checks pass; the deterministic closing edge has
 positive displacement; over-thickness, beyond-span and wrong-segment mutations are rejected;
 the tolerance derivation is recorded.
+
+## M-RECTILINEAR-SCAN
+
+Registry record: `id = "M-RECTILINEAR-SCAN"`, `package = "rectilinear-infill"`, `target_kind = "lib"`,
+`target_name = "rectilinear_infill"`, `test_name = "property_tests::proptest_rectilinear_scan_intervals"`,
+`features = ["rectilinear-infill/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-RECTILINEAR-SCAN` — semantic (complete scan-interval coverage of the rectilinear emitter),
+independent of packet numbers.
+
+### Owner
+
+Package `rectilinear-infill`; lib target `rectilinear_infill`; test module `property_tests` in
+`modules/core-modules/rectilinear-infill/src/property_tests.rs`; production symbol
+`scan_expolygon` at `modules/core-modules/rectilinear-infill/src/lib.rs`. The kernel is private,
+so the properties are a crate-internal unit-test module gated by `#[cfg(test)]` +
+`#[cfg(feature = "property_testing")]`; production visibility is not widened. Module-source tests
+are outside the `check-literals` and `check-test-quality` scanners
+(`docs/21_data_defaults_and_fixtures.md` §7.1), so the file carries a manual FRU/waiver ledger.
+
+### Contract
+
+`scan_expolygon` scans one `ExPolygon` (contour + holes) with parallel lines at a positive
+integer spacing, half-open in Y (include at `min_y`, exclude at `max_y`), and emits one two-point
+`ExtrusionPath3D` per interior X interval per row. The property restricts itself to the exact
+axis-aligned model: unit rotation (`cos_a = 1`, `sin_a = 0`), an integer `x_shift`,
+`adjust_for_solid` both false and true, positive spacing and finite metadata. Rotation,
+tangential vertex contact and the `align_to_grid` anchor are outside this exact model and are
+observed separately by the degenerate/tangential controls.
+
+### Domain
+
+Construction-first integer fixtures on the canonical grid (1 unit = 100 nm): axis-aligned
+rectangles, L-notches, U-notches and rectangles with one rectangular hole, plus a sub-spacing
+rectangle whose positive height is below the passed spacing. Classes are selected with
+`prop::sample::select(..).no_shrink()`; dimensions, origin, spacing, Z, speed factor, flow
+factor, line width and solid/sparse/shift modes are generated. Every class is independently
+validated with `oracles::validate_geometry` against a matching `GeometryDomain`, with coordinates
+derived from the fixture edges rather than the scanner. Negative XY is a required sub-case.
+Bounds are `max_abs_units`, `max_vertices`, `max_holes`, `max_components`,
+`max_shrink_candidates`, `max_spacing_units`, `max_rows`; each is read through
+`PropertyRun::bound`, so a missing or zero bound is an error, never a default.
+
+### Strategy
+
+One parameter draw produces a suite of cases (rectangle, sub-spacing rectangle, L-notch, U-notch,
+holed rectangle, each with its solid/sparse and shift modes), so every class and mode is
+exercised on every accepted call; per-class segment counters are asserted positive after `check`.
+The half-open row grid is enumerated arithmetically from the bbox and cross-checked against an
+independent `ceil(height / spacing)` count. Modes never switch during shrinking because they come
+from non-shrinking selectors.
+
+### Oracle
+
+Independent of the SUT: rows are enumerated from the fixture bbox arithmetic, and each row's
+interior X intervals are derived by probing the open cells of a **doubled** copy of the region
+with `oracles::point_in_region`, so no probe can land on an edge (a boundary probe would be a
+fixture error, not a silent Inside). The expected interval multiset, including omitted spans and
+the translated region under `x_shift`, is compared element-wise against the emitted intervals;
+every emitted segment is additionally checked with the boundary-inclusive
+`oracles::segment_in_region`. The expected solid spacing comes from the
+`M-RECTILINEAR-SPACING` reference, never from a call to the SUT. Role, both endpoints, Z, width,
+flow, speed and `None` tool/lock are compared bit-exactly.
+
+### Tolerance
+
+Exact. All fixtures are on the canonical integer grid and the endpoint check requires
+`mm_to_units(units_to_mm(x)) == x` bit-exactly, so no numeric tolerance applies. A non-grid
+endpoint fails the property rather than being rounded into the model.
+
+### Shrinking
+
+`rect_shrink_bounds` probes the real local strategy with `TestRunner::deterministic` /
+`Strategy::new_tree`, driving `current`, `simplify` and `complicate`, including a false simplify
+return, repeated complicate calls until exhaustion, and revalidation of every exposed input and
+retained fixture at every state. A false-only probe, a missing reduction from a nonminimal start,
+or a lost class fails.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 14.05 s of libtest (routine) and
+256 cases = 53.85 s (extended). Every accepted call checks a suite covering all five shape classes and the shifted, solid and negative-XY modes.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+`failure.json` retains the classification, the full context, the concrete/debug case, the
+tier-bearing reproduction command, the direct cargo reproduction with the consumed
+`PNP_PROPERTY_CONTEXT`, captured SDK logs and the shrink status. A confirmed SUT defect belongs
+in `modules/core-modules/rectilinear-infill/tests/rectilinear_raw_emit_tdd.rs` as a named
+concrete no-RNG regression, never a seed.
+
+### Acceptance
+
+The exact test is discovered and executed with `--exact --nocapture`; every expected interval and
+every whole emitted segment is checked; per-class counters are positive; the exact
+hole/notch/sub-spacing/empty/tangential controls pass; the mutation controls (removed interval,
+filled hole, and a concavity or hole chord whose endpoints and midpoint are in material) are
+rejected by the same checker. Defect outcome: **none confirmed** for the scanner by this
+property.
+
+## M-RECTILINEAR-SPACING
+
+Registry record: `id = "M-RECTILINEAR-SPACING"`, `package = "rectilinear-infill"`,
+`target_kind = "lib"`, `target_name = "rectilinear_infill"`,
+`test_name = "property_tests::proptest_rectilinear_solid_spacing"`,
+`features = ["rectilinear-infill/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-RECTILINEAR-SPACING` — semantic (canonical solid-spacing interval and cap arithmetic).
+
+### Owner
+
+Same package, target and module as `M-RECTILINEAR-SCAN`; production symbol
+`adjust_solid_spacing` at `modules/core-modules/rectilinear-infill/src/lib.rs`.
+
+### Contract
+
+Canonical `Fill::_adjust_solid_spacing` (`src/libslic3r/Fill/FillBase.cpp`) computes
+`number_of_intervals = coord_t((width - EPSILON) / distance)`, then
+`distance_new = coord_t((width - EPSILON) / number_of_intervals)` (or `distance` when that count
+is zero), and caps an over-limit interval when `distance_new / distance > 1.2` by returning
+`coord_t(floor(distance * 1.2 + 0.5))`, with `EPSILON = 1e-4`. The kernel is non-validating:
+`distance > 0` and `width >= 0` are caller contracts, so no division-by-zero branch is added.
+
+### Domain
+
+Positive `distance`, nonnegative bounded `width`, checked i64 arithmetic. Zero and too-large
+bounds are rejected by the test-domain builder, never by the kernel. The generator draws four
+named pair families per accepted call — width below distance, an exact interval boundary
+(`width` an exact multiple of `distance`), a general truncation interval, and an over-cap pair —
+with non-shrinking labels.
+
+### Strategy
+
+The four pair families come from checked bounds (`max_width_units`, `max_spacing_units`); the
+over-cap family requires `distance` in
+`MIN_CAP_DISTANCE_UNITS..=min(max_spacing_units, max_width_units / 2)` so the band is
+admissible. Because all four families are present in one parameter draw, the property never
+depends on a randomly selected mode.
+
+### Oracle
+
+An independent canonical reference on the integer grid: `adjusted = width - 1` (the exact integer
+form of `width - EPSILON` for any `0 < epsilon < 1` unit), truncated interval count, truncated
+interval distance, and the over-cap branch expressed exactly as
+`distance_new * 5 > distance * 6` and `(distance * 12 + 5) / 10`. The equivalence of the integer
+epsilon form to the source's `1e-4` is proved in the file header and was swept exhaustively over
+`distance in 1..400`, `width in 0..200000` with zero divergences. The oracle never calls the SUT.
+
+### Tolerance
+
+Exact integer comparison; no tolerance.
+
+### Shrinking
+
+Probed with a real value tree over the four pair families, with simplify/complicate alternation
+and revalidation of every pair at every state, plus explicit rejection of a pair outside the
+checked profile and of `distance = 0`.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 0.04 s of libtest (routine) and
+256 cases = 0.13 s (extended). Every accepted call checks the below-distance, exact-multiple, truncation-interval and over-cap pair families.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+As `M-RECTILINEAR-SCAN`. Exact canonical cases asserted in `rect_controls`:
+`(15000,10000) -> 12000`, `(12000,10000) -> 11999`, `(12001,10000) -> 12000`,
+`(12002,10000) -> 12000`, `(10000,10000) -> 10000`, `(5000,10000) -> 10000`,
+`(100000,4200) -> 4347`, `(100000,5000) -> 5263`, plus the additional boundary pairs listed in
+the packet evidence.
+
+### Acceptance
+
+The exact test runs; all four families are nonempty at both tiers; the canonical over-cap witness
+is reproduced and pinned. **Confirmed defect and focused fix:** the pre-fix kernel used bare
+`width`, `.round()` and returned the requested `distance` on the over-cap branch. It now matches
+the canonical arithmetic, and the no-RNG regression
+`solid_spacing_over_cap_uses_canonical_1_2_factor`
+(`modules/core-modules/rectilinear-infill/tests/rectilinear_raw_emit_tdd.rs`) pins the
+1.5 mm / 1.0 mm grid change. `D-209-ADJUST-SOLID-SPACING-DIVERGENCE` is closed.
+
+## M-GYROID-PHASE
+
+Registry record: `id = "M-GYROID-PHASE"`, `package = "gyroid-infill"`, `target_kind = "lib"`,
+`target_name = "gyroid_infill"`, `test_name = "property_tests::proptest_gyroid_phase_and_grid"`,
+`features = ["gyroid-infill/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-GYROID-PHASE` — semantic (gyroid branch evaluation and grid floor semantics).
+
+### Owner
+
+Package `gyroid-infill`; lib target `gyroid_infill`; module `property_tests` in
+`modules/core-modules/gyroid-infill/src/property_tests.rs`; production symbols `gyroid_f`
+(private) and `align_to_grid` (public) at `modules/core-modules/gyroid-infill/src/lib.rs`.
+
+### Contract
+
+`gyroid_f(x, z_sin, z_cos, vertical, flip)` inverts the gyroid implicit surface in normalized
+units. Both `asin` terms are clamped into `[-pi/2, pi/2]`, so the vertical branch returns a value
+in `[0, 2pi]` and the horizontal branch in `[-pi/2, 3pi/2]`; the `r < 1e-15` degenerate case
+returns `PI` and `FRAC_PI_2` respectively. `align_to_grid(val, grid) = floor(val / grid) * grid`.
+
+### Domain
+
+Bounded finite `x` and phase `z` within one gyroid period (`max_phase_milliradians = 6284`);
+`z_sin`/`z_cos` are derived from that same phase and the branch is the fill caller's own rule
+`abs(sin) <= abs(cos)`, not a free choice. Positive finite grids and safe ratios
+(`max_grid_units = 512`). Both orientation branches, both flip branches, positive and negative
+phases, and periodic observations are required sub-cases. Reachability is recorded: with a
+consistent phase and the caller's rule the unused component is at least `1/sqrt(2)`, so the
+singular return is unreachable from generated cases and is covered by explicit controls instead.
+
+### Strategy
+
+Non-shrinking phase-band and flip selectors plus generated phase/x values and exact integer grid
+cases. Periodicity is asserted only when `r >= 0.25` and the two compared arguments satisfy
+`|u| <= 0.75`, which keeps the check off the clamp plateaus and off the singular early return.
+
+### Oracle
+
+Mathematical, not SUT-derived: the branch range from the clamped-`asin` argument, and for the
+grid the exact integer model `val.div_euclid(grid) * grid` compared **bit-exactly** against
+`align_to_grid` (bit-exactness argument: `grid <= 16384`, `|val/grid| <= 65`, and `1/grid` is far
+above the f64 division error, so the quotient cannot cross an integer). The
+truncation-toward-zero mutant is rejected by the same checker.
+
+### Tolerance
+
+`1e-12` for the phase range, over 500x the derived term-wise error (two clamped-`asin` terms at at
+most 2 ulps each plus one addition), and `4e-12` for periodic observations against a derived
+`~4e-13` bound. No observed-output epsilon. No implicit-surface residual is asserted: the file
+records that no meaningful residual subdomain is proved, because the emitter's
+swapped/offset/clamped coordinates, f32 stamp and grid expansion make the emitted-to-source
+mapping non-injective.
+
+### Shrinking
+
+`gyroid_shrink_bounds` probes eight phase cases (both bands, both flips, grid cases) and five clip
+cases with real `simplify`/`complicate` alternation, repeated complicate calls and revalidation;
+the non-shrinking selectors are asserted to reject both directions.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 0.04 s of libtest (routine) and
+256 cases = 0.11 s (extended). Both orientation branches and both flip branches are required sub-cases; periodicity is asserted only away from the clamp plateaus.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+As the rectilinear records; the reproduction command and the direct cargo argv are retained in
+`failure.json`. A confirmed defect's regression home is
+`modules/core-modules/gyroid-infill/tests/gyroid_infill_tdd.rs`.
+
+### Acceptance
+
+The exact test runs; both branches and both flips are nonempty; the exact dyadic floor witnesses
+(`-3 -> -4`, `-2 -> -2`, `+3 -> 2` at grid 2; `-9 -> -12`, `-8 -> -8`, `7 -> 4` at grid 4) are
+bit-exact; the truncation mutant and the out-of-range/NaN phase mutants are rejected.
+
+Recorded limitation: the generated phase cases check the output range and the periodic identity
+against the SUT's own values, so a `gyroid_f` that always returned `PI` would pass every generated
+case. The deterministic controls are what pin the actual branch values (`PI` and `FRAC_PI_2` at
+the singular inputs, and the near-singular clamp), which is why they are mandatory rather than
+decorative. Defect
+outcome: **none confirmed**; no production change.
+
+## M-GYROID-CLIP
+
+Registry record: `id = "M-GYROID-CLIP"`, `package = "gyroid-infill"`, `target_kind = "lib"`,
+`target_name = "gyroid_infill"`,
+`test_name = "property_tests::proptest_gyroid_raw_wave_clipping"`,
+`features = ["gyroid-infill/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-GYROID-CLIP` — semantic (raw wave emission plus the linker's prepared batch clip seam).
+
+### Owner
+
+Same package and module as `M-GYROID-PHASE`; primary production symbol
+`GyroidInfill::fill_expolygon` (private) at `modules/core-modules/gyroid-infill/src/lib.rs`,
+composed with `PreparedPolylineClip::{new,clip_batched}` at `crates/slicer-core/src/polygon_ops.rs`.
+
+### Contract
+
+`fill_expolygon` deliberately emits **raw, unclipped** waves (ADR-0025): clipping and connecting
+belong to the linker. Raw output may extend beyond the outline, so this property never asserts
+hole exclusion on the raw paths. It does assert finite coordinates, copied Z/speed, the
+`SparseInfill` role, `None` tool/lock, and the source-stamped point width, which is the module's
+`line_width`, **not** the per-call spacing width. The clipping half composes the real emitter
+output with the real batch clip primitive the linker calls; it is not an end-to-end dispatch
+claim (`M-LINKER-*` own that).
+
+### Domain
+
+`0 < density <= 1` (`min_density_ppm = 100000`), positive finite width
+(`max_width_units = 6000`), bounded finite Z and controlled angles, controlled axis-aligned
+rectangles with rectangular holes, plus rotated and dense modes (`max_abs_units`,
+`max_vertices`, `max_holes`, `max_components`, `max_shrink_candidates`,
+`max_phase_milliradians`, `max_wave_points`). The profile also carries a derived worst-case wave
+envelope check, so an impossible `max_wave_points` fails at bound construction instead of during
+generation.
+
+### Strategy
+
+Non-shrinking topology and rotation selectors with generated density, width, Z, speed factor and
+angle. Legitimate empty modes (empty contour, nonpositive density or width) are separate
+deterministic controls, as is a real wave set clipped against a far-away boundary, which
+legitimately yields an empty result.
+
+### Oracle
+
+For the raw half: fixture arithmetic and source-stamped metadata only. For the clip half: the clip
+universe is each contour inflated by exactly 1 unit and each hole contracted by 1 unit; each
+subject segment's critical parameters (where `x` or `y` hits any inflated contour or contracted
+hole edge) partition it, every open subinterval is classified at its exact `i128` rational
+midpoint, and kept intervals are merged. Returned per-subject spans are mapped back to subject
+parameter space and compared in **both** directions per segment, so a retained span the model does
+not expect and a missing span the model expects are both failures. Every surviving segment is
+additionally checked directly: no point outside contour + 4 units, and no segment entering a hole
+deeper than `inflation + band`. No SUT clipper, offset or union routine contributes to the
+expected result, and no flat output order is assumed.
+
+### Tolerance
+
+Linear allowance `CLIP_BAND_UNITS = 1.0` unit. The model already computes its expected intervals
+on the inflated edge, and for these axis-aligned integer fixtures the pre-inflation lands exactly one
+unit out, so the only deviation of a reported coordinate from the modelled edge is the clipper's
+±1-unit integer intersection rounding. There is no separate f32 quantization term: the property
+converts the raw waves to an integer `Point2` subject and the model consumes that same integer
+subject. The returned-point projection onto the subject has a separate derived 2-unit tolerance used
+only for attribution, never as a boundary allowance. The parameter
+allowance is **per expected-interval endpoint and derived from the local crossing geometry**, not a
+single uniform `band / length`:
+
+- a subject endpoint (no clip-edge crossing) uses `band / length`;
+- a crossing of a vertical or horizontal clip edge uses `band / |Δnormal|` for that edge
+  (`|Δx|` on a vertical edge, `|Δy|` on a horizontal one).
+
+The derivation: any displacement within the band of the modelled edge has a component
+perpendicular to that edge and one along it. The perpendicular component `d_perp` moves the subject
+parameter by at most `d_perp / |Δnormal|`, and the along-edge component `d_par` by at most
+`d_par·cos θ / |Δnormal|`; the perpendicular bound dominates, so the term is `band / |Δnormal|`.
+A perpendicular crossing (`|Δnormal| = length`) reduces exactly to `band / length`, and a shallow
+crossing grows as `1/sin θ`. An earlier `(band/length)·max(1, cot θ)` form bounded only the
+along-edge slide and missed the perpendicular component by `cos θ`; a shallow-crossing control
+caught the ~0.008-unit shortfall. The term saturates at one full segment: beyond that the band
+alone accounts for the whole segment, so the interval carries no discriminating power and is
+excluded from the coverage direction; the file counts those saturated endpoints and the docstring
+records why. Returned cut points are attributed to the **nearest** subject segment within a bounded
+window of the first in-band hit, not to the first segment within the band, because near a vertex
+that first hit is the incoming segment clamped at its endpoint and fabricates a vertex start.
+Coverage is required outside each expected interval eroded by its own endpoint terms and
+containment allows a returned span only inside each interval dilated by its own terms. A negative
+control in `gyroid_controls` proves the term is finite: a shallow crossing accepts a cut exactly at
+the derived term and still rejects one 5 units short through the coverage direction.
+
+### Shrinking
+
+`gyroid_shrink_bounds` covers the clip domain across density/width classes and clip topologies
+with real simplify/complicate alternation (measured 19-22 simplifications and 13-16 repeated
+complicate calls) and revalidation, plus the bound-rejection matrix.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 0.46 s of libtest (routine) and
+256 cases = 0.98 s (extended). The clip half requires a nonempty raw-wave witness, retained interior observations and at least one hole-crossing split; saturated endpoints are counted and printed.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+As the other records. A confirmed clip-stage defect's regression home is `crates/slicer-core/tests/`
+for the primitive and `modules/core-modules/infill-linker/tests/` for the driver; the emitter's own
+regressions stay in `modules/core-modules/gyroid-infill/tests/gyroid_infill_tdd.rs`.
+
+### Acceptance
+
+The exact test runs; a nonempty raw-wave witness with out-of-outline points is observed; every raw
+segment's metadata is checked; the full retained/missing subinterval comparison runs on real
+clipped output with nonempty interior observations and at least one hole-crossing split; an
+all-empty clip, an omitted interior span and a fabricated hole-crossing span are each rejected
+through the intended mechanism. Defect outcome: **none confirmed**; no production change.
+
+## M-LINKER-GRAPH
+
+Registry record: `id = "M-LINKER-GRAPH"`, `package = "infill-linker"`, `target_kind = "lib"`,
+`target_name = "infill_linker"`, `test_name = "property_tests::proptest_linker_ring_walks"`,
+`features = ["infill-linker/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-LINKER-GRAPH` — semantic (boundary-graph ring geometry and connector/stub walks).
+
+### Owner
+
+Package `infill-linker`; lib target `infill_linker`; module `property_tests` in
+`modules/core-modules/infill-linker/src/property_tests.rs`; production symbols
+`BoundaryInfillGraph`, `BoundaryRing::directed_distance`, `contour_connector` and
+`contour_stub` at `modules/core-modules/infill-linker/src/graph.rs`. The linker's submodules
+are already `pub mod`, so the properties call the same seams the driver calls without widening
+any API.
+
+### Contract
+
+`BoundaryInfillGraph::new` builds one closed ring per contour and per hole, contour first, with
+global start positions tiling `[0, total_len)`. `BoundaryRing::directed_distance(from, to)`
+returns the **shorter** forward or backward arc and its direction, ties resolving to `Forward`.
+`contour_connector` returns only the intermediate points of a ring walk between two arc
+positions, with Z and width lerped by arc fraction; `contour_stub` returns a walk of at most
+`budget.min(ring.length)` from a position in a direction, with every point inheriting the
+anchor's attributes.
+
+### Domain
+
+Rectangles, a concave notch, a rectangular hole and two separated components, with endpoints
+constructed **on** known ring edges at least 3 units from any vertex (`VERTEX_MARGIN_UNITS`,
+because production deliberately merges arc positions within `ARC_EPSILON_UNITS = 1`). An empty
+graph is a distinct mode. Bounds: `max_abs_units`, `max_vertices`, `max_holes`,
+`max_components`, `max_shrink_candidates`.
+
+### Strategy
+
+Non-shrinking shape-class selectors (rectangle, notch, hole, two components, empty) over an
+axis-aligned integer `RingModel`, with generated cell sizes, origins and arc positions on ring
+edges.
+
+### Oracle
+
+A small `RingModel` computes every expected value in exact `i64` arithmetic: perimeter, ring
+start positions, the shortest forward/backward arc (tie to `Forward`), the corners a walk passes
+and a stub's corners and end point. Hand-derived literal witnesses pin the model first — a
+320,000-unit rectangle with one strictly shorter arc each way and one tie, a notch walk through
+both reflex corners, a clockwise hole ring starting at 400,000, a second component at 120,000,
+and an empty graph — and the real `BoundaryInfillGraph` structure, `directed_distance`,
+`contour_connector` and `contour_stub` are then compared against it. Every connector and stub
+segment must lie on a single expected ring edge, and endpoints are additionally checked with the
+shared SDK `oracles::point_in_region`. `project`, `vertices_between` and the code's own walks are
+never used to build an expected value. `BoundaryInfillGraph::project` is compared to the model as
+well, but it is a public boundary-graph API with no production caller inside the linker, so that
+comparison is API-surface evidence rather than driver-path evidence.
+
+### Tolerance
+
+Grid and interpolation envelopes derived from the operation sequence, not observed:
+grid `2·(max_abs+1)·2⁻²⁴` and stub interpolation `16·(max_abs+1)·2⁻²⁴`.
+
+### Shrinking
+
+`linker_shrink_bounds` probes every ring class, connect class and chain/lock class with real
+`simplify`/`complicate` alternation, repeated complicate calls, exhaustion, and revalidation of
+the constructed ring and the real output at every state.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 0.08 s of libtest (routine) and
+256 cases = 0.24 s (extended). Every accepted call performs at least one query or empty-graph case and at least one stub check.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+`failure.json` keeps the classification, context, concrete case, reproduction command, direct
+cargo argv and SDK logs. A confirmed defect's regression home is
+`modules/core-modules/infill-linker/tests/graph_tdd.rs`.
+
+### Acceptance
+
+The exact test runs; shorter forward and backward arcs, a tie, reflex corner traversal, hole and
+second-component walks, stubs and the empty graph are all exercised (deterministic witnesses
+assert them nonzero on every run); a notch walk replaced by a chord, a same-length shortcut that
+skips the reflex corners, a hole connector judged against the outer ring, outer-ring corners
+offered as a hole connector, a stub missing its corner, and a nonempty model against the empty
+graph are each rejected. Defect outcome: **none confirmed**; no production change.
+
+## M-LINKER-CONNECT
+
+Registry record: `id = "M-LINKER-CONNECT"`, `package = "infill-linker"`, `target_kind = "lib"`,
+`target_name = "infill_linker"`,
+`test_name = "property_tests::proptest_linker_connection_compatibility"`,
+`features = ["infill-linker/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-LINKER-CONNECT` — semantic (source-path preservation and independent metadata compatibility at
+the connector).
+
+### Owner
+
+Same package and module as `M-LINKER-GRAPH`; production symbol `connect_infill` at
+`modules/core-modules/infill-linker/src/connect.rs`.
+
+### Contract
+
+`connect_infill(paths, graph, anchor)` keeps every eligible source path as a contiguous
+ordered-or-reversed point/metadata subsequence of exactly one output, and joins two paths only
+when they are on the same ring, their four compatibility clauses hold, and the shorter arc is
+strictly shorter than `anchor_length_max`. The predicate is equal `role`, bit-equal
+`speed_factor`, equal `tool_index`, and both corresponding first/last endpoint width differences
+at most `0.000001` mm. Paths with fewer than two points are dropped only in the connecting branch;
+`AnchorParams::dont_connect()` early-returns the input untouched. Ordinary interior endpoints are
+not unanchorable: the live boundary-position search selects the nearest ring, so exact ring-walk
+claims are restricted to constructed on-ring endpoints. `DEV-110`'s stub-residual algorithm is not
+reproduced in the oracle.
+
+### Domain
+
+Distinguishable, nonzero, at-least-two-point paths with endpoints on known rings and widths on
+both sides of the `1e-6` boundary; outer/hole and disconnected pairs; strict-anchor and
+`dont_connect` modes; one-, two- and three-path classes. Bounds: `max_abs_units`, `max_paths`,
+`max_points`, `max_anchor_units`.
+
+### Strategy
+
+Non-shrinking class selectors (merge, separated, cross-ring, mismatch family, strict anchor,
+identity, short path, multi) over constructed rings and paths.
+
+### Oracle
+
+Each output path is scanned for every eligible source, matched point-for-point **bitwise**,
+forward or reversed; every source must appear exactly once and no output may consist only of
+added points. Points between two matched sources are a connector and must satisfy four
+independent checks: both ends on the same ring in the `RingModel`; the two sources pass the
+independently computed compatibility predicate (with widths compared exactly in `f64`, which is
+exact in this width domain); the joining arc is strictly shorter than the anchor; and the points
+equal the model's corner walk. Leading or trailing added points are stubs, checked on-ring and no
+longer than the anchor (their exact length is deliberately not predicted because of `DEV-110`).
+For two-path cases the model independently decides "must merge across distance `d`" or "must stay
+separate". The SUT's own `project` result is compared to the model, never used to build it.
+
+### Tolerance
+
+Widths are compared exactly; the `1e-6` boundary is exercised at exactly `1e-6` (merge), 33 ulps
+(merge) and `next_up(2c)` (reject). Grid and walk tolerances are the same derived envelopes as
+`M-LINKER-GRAPH`.
+
+### Shrinking
+
+Covered by `linker_shrink_bounds` across the connect classes with revalidation of every
+source/output at every state.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 0.09 s of libtest (routine) and
+256 cases = 0.31 s (extended). Every accepted call carries at least one eligible source path; per-mode populations are asserted by the deterministic witness.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+As `M-LINKER-GRAPH`; the regression home for a confirmed connector defect is
+`modules/core-modules/infill-linker/tests/connect_tdd.rs` (or `anchor_length_tdd.rs` for anchor
+arithmetic).
+
+### Acceptance
+
+The exact test runs; merges, separated pairs, cross-ring pairs, mismatch families, strict-anchor,
+identity and short-path modes are all nonempty; a dropped source, an unmerged compatible pair, an
+interior connector chord, fabricated role/speed/tool/first-width/last-width merges, a fabricated
+outer-to-hole merge and a `dont_connect` output with its 1-point path removed are each rejected;
+the real code passes the positive counterparts (exactly `1e-6` and 33 ulps merge, the 1-point path
+survives `dont_connect` and is dropped when connecting, interior endpoints are still anchored).
+Defect outcome: **none confirmed**; no production change.
+
+## M-LINKER-CHAIN
+
+Registry record: `id = "M-LINKER-CHAIN"`, `package = "infill-linker"`, `target_kind = "lib"`,
+`target_name = "infill_linker"`, `test_name = "property_tests::proptest_linker_chain_and_origins"`,
+`features = ["infill-linker/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-LINKER-CHAIN` — semantic (chain-only behaviour and ordered-region provenance at the real
+orchestration seam).
+
+### Owner
+
+Same package and module; production symbols `chain_or_connect_infill` at
+`modules/core-modules/infill-linker/src/connect.rs` and `orchestrate_infill` at
+`modules/core-modules/infill-linker/src/orchestrate.rs`.
+
+### Contract
+
+`chain_or_connect_infill` reorders and reverses paths to minimize travel but must never add
+connector geometry in chain-only mode (`dont_connect`). `orchestrate_infill` matches a prior
+`InfillRegion` to a view on the exact ordered triple `(object_id, region_id, variant_chain)`; an
+unmatched region passes its bucket through unchanged, an empty chain is a real value and not a
+wildcard, wall groups are keyed by wall source plus the borrower's ordered chain, `order_lock`
+paths bypass clip/link and are emitted first while their swept footprint is subtracted from the
+boundary, and a union link additionally needs same object, same tool, same chain, same wall group
+and pairwise path compatibility. The region tool and the authored path tool are separate checks.
+
+### Domain
+
+Nonempty at-least-two-point paths, both sides of `dont_connect`, full `(object_id, region_id,
+ordered variant_chain)` identities, same-object/same-wall-group and separate-region/tool/role/width
+fixtures, a legal priority/name-ordered `material` then `fuzzy_skin` chain and a distinct chain, a
+deliberately mismatched and a deliberately reversed lookup, locked and unlocked paths, and
+unequal plus tied source lengths. Bounds: `max_abs_units`, `max_paths`, `max_points`,
+`max_regions`, `max_anchor_units`.
+
+### Strategy
+
+Non-shrinking mode selectors (chain-only, chain-connect, orchestrate union/separated, locked
+bypass) with generated ring geometry, path roles/tools/widths and region identities. Every test
+row has its own height and owning region, so provenance and majority ownership are measurable
+without inferring from the first point.
+
+### Oracle
+
+Chain-only output must be a permutation of the inputs, each possibly reversed, with nothing added
+or lost; chain-connect output goes through the `M-LINKER-CONNECT` checker. For `orchestrate_infill`
+the test builds its own compatibility/ownership table (exact view match plus same object, region
+tool, ordered chain, wall source, role, speed, authored tool and width) and checks four things:
+each output's full identity exists and outputs come out in prior-region order; unmatched regions
+pass through bit-identical; locked paths appear exactly once and are emitted first; each linked
+path contains only rows from its own group, with only axis-aligned connectors inside the group's
+area, and its owner is the group member with the most independently measured row length (ties to
+the lower region id). Every row must be covered exactly once. Adjacency in the returned list is
+never treated as extrusion between paths, and no global route optimality is asserted.
+
+### Tolerance
+
+Derived grid/interpolation envelopes as above; lengths and ownership compared from measured `i64`
+row lengths, never from the first point. Orchestrate connectors are checked as axis-aligned and
+inside the group area rather than as exact walks, because the offset boundary ring is not modelled
+independently.
+
+### Shrinking
+
+Covered by `linker_shrink_bounds` across chain-only, chain-connect, orchestrate union/separated and
+locked classes, revalidating every input and output at every state.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 0.16 s of libtest (routine) and
+256 cases = 0.37 s (extended). Every accepted case takes exactly one chain mode; per-mode populations are asserted by the deterministic witness.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+As `M-LINKER-GRAPH`; the regression home for a confirmed orchestration defect is
+`modules/core-modules/infill-linker/tests/orchestrate_tdd.rs`.
+
+### Acceptance
+
+The exact test runs; chain-only reordering adds no connector geometry; connect-mode output passes
+the full compatibility checker; every orchestrate row is covered exactly once with its owning
+region's identity; locked paths bypass linking and are emitted first; pass-through regions are
+bit-identical. Mutations rejected: a connector point added in chain-only mode, two outputs merged
+in chain-only mode, an origin with the chain reversed or emptied, a merged path re-attributed to
+the minority owner, and an altered reversed-chain pass-through region. Defect outcome: **none
+confirmed**; no production change.
+
+## M-WAVE-TRIM
+
+Registry record: `id = "M-WAVE-TRIM"`, `package = "wave-overhangs"`, `target_kind = "lib"`,
+`target_name = "wave_overhangs"`,
+`test_name = "property_tests::proptest_wave_trim_and_coverage"`,
+`features = ["wave-overhangs/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-WAVE-TRIM` — semantic (deposited-footprint trim containment and sampled coverage of the wave
+generator).
+
+### Owner
+
+Package `wave-overhangs`; lib target `wave_overhangs`; module `property_tests` in
+`modules/core-modules/wave-overhangs/src/property_tests.rs`; production symbol `generate` in the
+private `crate::generator` module at `modules/core-modules/wave-overhangs/src/generator.rs`.
+`WaveParams`, `WaveOutput`, `FallbackReason` and `EPSILON_MM` are `pub(crate)`, so the properties
+are a crate-internal unit-test module and no API is widened.
+
+### Contract
+
+For the declared positive-flow domain, let `r = (flow_width * flow_ratio) / 2` be the deposited
+radius (required `>= EPSILON_MM`), `P` the independently derived original rectangular wave piece
+before the first trim, and `T = P minus disk(r)` the centerline trim. Every output centerline
+endpoint must lie in `T`, and every whole deposited capsule (both endcaps included, radius `r`)
+must lie in `P`. The capsule is **never** required to fit in `T`; doing so applies the inset
+twice and false-rejects a legitimate boundary-tangent output. Because `T` is rectangular and
+therefore convex, endpoint containment proves the whole straight centerline lies in `T`. `filled`
+is a regularized union and is never used as a footprint. Fallback reasons are a repeatable vector
+and coexist with nonempty `paths`; fallback is not equivalent to empty output.
+
+### Domain
+
+A controlled axis-aligned bridge rectangle with analytically specified supporting bands,
+`perimeter_overlap = 0`, `minimum_width = 0` (no narrow split), `min_length = 0` and an unbounded
+iteration class, with generated line spacing, flow width, flow ratio, pattern and iteration bound.
+Every parameter that would change `P` (`perimeter_overlap`, `minimum_width`, `min_length`,
+`base_spacing`) is held fixed inside the property. Bounds are `max_abs_units`,
+`max_spacing_units`, `max_width_units`, `max_iterations`, `max_cells`.
+
+### Strategy
+
+The fixture is the existing seam geometry adapted to a direct `generate` call: `P = [0,6] x [0,6]`
+mm with support bands extended 0.5 mm into the bridge (the plan's edge-flush translation produces
+no wave because `generate` clips `lower` to the fill bbox before deriving anchors; measured in the
+packet evidence). `r = (0.4 * 1.875) / 2 = 0.375` mm and `T = [0.375, 5.625]^2` mm. The nonempty
+no-fallback witness was established by execution before any neighborhood was generalized. Pattern,
+iteration class and full/capped modes are non-shrinking selectors.
+
+### Oracle
+
+`P` and `T` are derived analytically from the fixture and the input parameters, never from the
+SUT. Containment checks the centerline against `T` and the radius-`r` capsule against `P` with
+exact segment-to-boundary distance arithmetic. Coverage is an independently computed
+point-to-segment/capsule-distance lattice over `P` (96x96 cell centres, 0.0625 mm pitch, 9,216
+cells) with a boundary-connected empty-cell model: a cell farther than `r + 0.1` mm from every
+centerline is empty, and only empty cells not 4-connected to the lattice border count as interior
+gaps. `0.1` mm is half the existing seam fixture's 0.2 mm defect width. This is labelled sampled
+coverage, never a proof of arbitrary continuous area; guaranteed detection is for axis-aligned
+voids at least 0.2625 mm wide and one pitch long. The determinism half calls `generate` twice on
+identical inputs and compares every point, filled contour/hole and fallback in order as an
+explicit `docs/22_test_quality.md` determinism pin, not a correctness oracle.
+
+### Tolerance
+
+`CLIP_BAND_UNITS = 2` (documented `PreparedPolylineClip` ±2-unit band) + `TRIM_QUANTIZATION_UNITS
+= 2` (integer snap of the integer-unit trim offset) = 4 units = 0.0004 mm, plus a `1e-9` mm
+rational comparison epsilon and the same 4-unit outward band on the capsule. The derived total is
+625x smaller than the 0.25 mm gap the nominal-radius negative control relies on, so it cannot mask
+that control, and the exact tangent control proves the checker is not double-inset.
+
+### Shrinking
+
+`wave_shrink_bounds` probes six mode x pattern combinations with real `simplify`/`complicate`
+alternation (measured 26-32 simplifications with matching restores, `exhausted = true`),
+revalidating every exposed input and the generated output at every state, plus the
+bound-rejection matrix.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 32 cases = 21.12 s of libtest (routine) and
+128 cases = 95.28 s (extended). This is the expensive record in the family (lattice coverage over every emitted segment), which is why its case counts are lower than the other eight.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+`failure.json` retains the classification, context, concrete case, reproduction command, direct
+cargo argv and captured SDK logs. Confirmed defects belong in
+`modules/core-modules/wave-overhangs/tests/wave_overhangs_tdd.rs` as named no-RNG regressions.
+
+### Acceptance
+
+The exact test runs; every positive-run centerline is checked against `T` and every whole capsule
+against `P`; the exact `P = [0,10]^2`, `r = 1`, `T = [1,9]^2`, `(1,2) -> (1,8)` tangent case is
+accepted while a `capsule subset T` checker rejects it; the nominal-width `(0.75,2) -> (0.75,8)`
+case is rejected at the deposited radius and accepted at the mistaken nominal radius; a changed
+repeat, a removed central wave (692 and 39 interior gap cells in the two controls) and a false
+fallback are each detected; the empty-area, min-length, missing-anchor and one-iteration fallback
+fixtures are observed with `paths`/`filled`/`fallbacks` coexisting where specified. Defect
+outcome: **none confirmed**; no production change.
+
+## M-IRONING-ZIGZAG
+
+Registry record: `id = "M-IRONING-ZIGZAG"`, `package = "top-surface-ironing"`,
+`target_kind = "lib"`, `target_name = "top_surface_ironing"`,
+`test_name = "property_tests::proptest_ironing_full_paths"`,
+`features = ["top-surface-ironing/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-IRONING-ZIGZAG` — semantic (complete scan-interval coverage plus whole-path containment of the
+ironing emitter).
+
+### Owner
+
+Package `top-surface-ironing`; lib target `top_surface_ironing`; module `property_tests` in
+`modules/core-modules/top-surface-ironing/src/property_tests.rs`; production symbol
+`generate_zigzag_strokes_for_polygon` (private) at
+`modules/core-modules/top-surface-ironing/src/lib.rs`. `bbox_of_expoly`, `BBox2D` and the
+`IRONING_LINE_WIDTH` constant are crate-visible, so the property checks the same values the
+module stamps.
+
+### Contract
+
+For each scan row at a positive spacing, the kernel derives the row's interior X intervals from
+the contour and every hole with a half-open Y rule (`[y_lo, y_hi)`), drops intervals of width
+`<= 1e-4`, and emits `Ironing` paths at planar Z with `flow_factor = ironing_flow / 100`,
+`speed_factor = ironing_speed / 50`, the module's fixed `IRONING_LINE_WIDTH`, and `None`
+tool/lock. Consecutive scan rows alternate direction. A path continues across rows, and between a
+row's intervals, only while the joining move stays inside the region (exact segment-in-region
+test); a move that would leave the material — across a hole, a notch, or a concave/slanted
+boundary — starts a new path instead. **Every consecutive point pair of every returned path is an
+extruded segment**, including the implicit joins between intervals in one row and between rows;
+evaluating only `chunks(2)` misses exactly those joins.
+
+### Domain
+
+Independently validated axis-aligned rectangles, U-notches and rectangles with one rectangular
+hole on an exact 0.25 mm fixture grid, so every generated coordinate and spacing converts to
+`f32` millimetres without rounding and `y_min + i * spacing` stays exact. Spacings are 0.5-1.5 mm;
+the cut's bottom edge is placed exactly on an interior scan row, so every generated hole or notch
+case really splits a row. Empty contour, zero-height, zero-width, nonpositive spacing and a
+positive sub-spacing span are separate deterministic modes. Bounds are `max_abs_units`,
+`max_vertices`, `max_holes`, `max_components`, `max_shrink_candidates`, `max_spacing_units`,
+`max_rows`; `max_rows` is constrained to `4..=64`, because the derived `f32` envelope assumes at
+most 64 rows and at least four rows are needed to place a gap that a scan row crosses.
+
+### Strategy
+
+Non-shrinking shape selector with generated dimensions, origin, cut placement, spacing, Z, flow
+and speed. Each accepted call checks the complete point sequence against the independent interval
+model, so a missing row, an extra segment or a reordering is a failure. Per-shape counters
+(rect/notch/hole), whole-path segment counters and a split-row counter are asserted positive after
+`check`.
+
+### Oracle
+
+The expected row grid is `floor(span / spacing) + 1` half-open rows from the bbox, and the expected
+X intervals are derived analytically from the fixture edges and the cut (rect: one interval; notch
+from `y >= notch_y`: two; hole for `hole_y0 <= y < hole_y1`: two), reversed on odd rows. The full
+expected point sequence is compared element-wise with a derived envelope. Every consecutive
+segment of every returned path is additionally checked with the boundary-inclusive
+`oracles::segment_in_region` against the real `ExPolygon`, which is what catches an implicit join
+crossing a gap. Metadata is compared bit-exactly (Z, width, flow, speed, role, `None` tool/lock).
+
+### Tolerance
+
+`64 * f32::EPSILON * (max_abs_mm + span_mm + 1.0)` for the point comparison, derived from the
+documented operation sequence (one unit-to-mm rounding plus at most 64 exact-grid row additions)
+and twice the largest allowed row count; the fixtures are exact, so the observed deviation is
+zero. Containment is exact integer arithmetic through `Point2::from_mm`.
+
+### Shrinking
+
+`ironing_shrink_bounds` probes all three shapes with real `simplify`/`complicate` alternation
+(measured 154 simplifications per shape), revalidating geometry, the expected model and the real
+output at every state, then exercises a false simplify return and repeated complicate calls to a
+stable false state, and asserts a real reduction from a nonminimal start. The shape selector is
+asserted to reject both directions.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 0.53 s of libtest (routine) and
+256 cases = 1.98 s (extended). Every accepted call checks the complete point sequence and every whole-path segment.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+`failure.json` retains the classification, context, concrete case, reproduction command, direct
+cargo argv and captured SDK logs. A confirmed defect's regression home is
+`modules/core-modules/top-surface-ironing/tests/top_surface_ironing_emission_tdd.rs` as a named
+concrete no-RNG test.
+
+### Acceptance
+
+The exact test runs; the deterministic 8 mm square with hole `[3,5] x [2,6]` mm at 1 mm spacing
+produces nonempty rows on both sides of the hole with no segment through its interior; a U-notch
+retains both arms; every segment of every path is in-region; a gap-connector merge, a dropped row,
+a false-empty output and a mutated flow factor are rejected by the same checker. Two slanted
+controls pin the join rule: a right triangle keeps a single snake (the joins lie on the
+hypotenuse), and a concave notch whose kink sits inside one row spacing splits into more than one
+path, both with every segment in-region. **Confirmed
+defect and focused fix:** the pre-fix kernel emitted one `ExtrusionPath3D` per polygon by
+concatenating all rows' intervals, so the join `(5,3) -> (3,3)` mm (both endpoints on material)
+crossed the hole. The kernel now starts a new path whenever the next interval does not start at
+the x the previous interval ended on, so every implicit join is a vertical move at a shared x on
+the outer boundary. The no-RNG regression
+`hole_crossing_regression_no_ironing_segment_enters_the_hole` fails on the old kernel. A
+determinism-pin exception is not used by this property (its checks are independent), and the
+current one-path-per-polygon shape is no longer pinned by any test.

@@ -158,11 +158,12 @@ jobs:
       # A passing exit code does not prove the intended records executed: an
       # empty or mis-scoped selector exits 0. `cargo xtask test` writes every
       # record's execution line to target/test-output.log, so assert the IDs
-      # there. The assertion covers the 13 records the property packets' ACs name; the
+      # there. The assertion covers the 22 records the property packets' ACs name
+      # (13 geometry/Arachne plus the 9 infill/linker/wave/ironing records); the
       # lane still executes every other selected record. This is the same
       # positive check the scripted SCAD lane uses, and it catches the
       # `--with-scad`-omitted failure mode directly.
-      - name: Assert the 13 geometry and Arachne records executed
+      - name: Assert the 22 required property records executed
         shell: pwsh
         run: |
           $missing = @()
@@ -170,7 +171,11 @@ jobs:
             'H-BOOL-SET', 'H-BOOL-CLIP', 'H-OFFSET-MITER', 'H-OFFSET-SMOOTH',
             'H-MESH-SLICE', 'H-MESH-QUERY', 'H-HELPERS-SPLIT',
             'H-ARACHNE-BEADING', 'H-ARACHNE-GRAPH', 'H-ARACHNE-PIPELINE',
-            'M-ARACHNE-CLASSIFY', 'M-ARACHNE-BUILD', 'M-ARACHNE-SEQUENCE')) {
+            'M-ARACHNE-CLASSIFY', 'M-ARACHNE-BUILD', 'M-ARACHNE-SEQUENCE',
+            'M-RECTILINEAR-SCAN', 'M-RECTILINEAR-SPACING',
+            'M-GYROID-PHASE', 'M-GYROID-CLIP',
+            'M-LINKER-GRAPH', 'M-LINKER-CONNECT', 'M-LINKER-CHAIN',
+            'M-WAVE-TRIM', 'M-IRONING-ZIGZAG')) {
             if (-not (Select-String -Path target/test-output.log -Pattern $id -SimpleMatch -Quiet)) {
               $missing += $id
             }
@@ -179,7 +184,7 @@ jobs:
             Write-Host "::error::property records did not execute: $($missing -join ', ')"
             exit 1
           }
-          Write-Host "OK: all 13 asserted geometry and Arachne records executed"
+          Write-Host "OK: all 22 asserted property records executed"
       - name: Upload property failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4

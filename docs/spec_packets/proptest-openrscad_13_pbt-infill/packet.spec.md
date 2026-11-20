@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_13_pbt-infill
-status: draft
+status: implemented
 ---
 
 # Independent properties for infill, linking, waves and ironing
@@ -178,3 +178,127 @@ These are implementation obligations, **not authoring-time test results**. Plain
 | 11 | Completeness | PASS | No unresolved scope-changing question or template placeholder; measurements, source-revision reconciliation and unexecuted candidate classification are bounded forward implementation obligations. |
 
 **Verdict: AUTHOR SELF-PREFLIGHT PASS (authoring only; prerequisite implementation, property tests, Windows runs and candidate-defect reproduction have not been performed).**
+
+## Deviations
+
+Recorded during implementation (`/swarm implement proptest-openrscad_13_pbt-infill`).
+
+1. **Plan Step 6 fixture defect — edge-flush support bands produce no wave.**
+   The plan directed translating the existing `seam_fixture` into a direct
+   `generate` call with the same support bands. Measured, that input returns
+   `paths = []` with `[MissingAnchors, EmptyOutput]`, because `generate` clips
+   `lower` to the fill bbox before deriving anchors, so edge-touching bands leave
+   only the degenerate 1-unit clip strip. This is a fixture-authoring defect, not
+   a production defect: `run_infill` always passes `external_bridge ∪ anchor_band`.
+   Resolved by extending each support band 0.5 mm into the bridge; the derived
+   `P = [0,6] × [0,6]`, `r = 0.375` and `T = [0.375, 5.625]²` are unchanged and are
+   pinned in `wave_controls`. Evidence: `docs/testing/proptest-infill-evidence.md`
+   § Step 6.
+
+2. **`M-RECTILINEAR-SPACING` confirmed defect and focused fix.**
+   The pre-fix `adjust_solid_spacing` reset an over-cap interval to the requested
+   `distance` (measured 10,000 units for width 15,000 / distance 10,000) instead
+   of canonical `floor(distance × 1.2 + 0.5)` (12,000 units), and used bare `width`
+   with `.round()`. Fixed to the canonical arithmetic; regression
+   `solid_spacing_over_cap_uses_canonical_1_2_factor`; deviation
+   `D-209-ADJUST-SOLID-SPACING-DIVERGENCE` closed.
+
+3. **Fixture re-baselines forced by the canonical fix (canonical-correct, not weakened).**
+   `solid_spacing_adjusted_for_solid_role`: 23 rows at spacing 4348 → **24 rows at
+   4347**. `solid_surfaces_use_full_density_and_role_width`: first-layer 0.7 mm
+   14 → **15** rows, internal 0.6 mm 16 → **17** rows. The plan anticipated one
+   fixture change; the second was found by running the affected binary.
+
+4. **`M-IRONING-ZIGZAG` confirmed defect and focused fix.**
+   The pre-fix kernel concatenated every row's intervals into one
+   `ExtrusionPath3D` per polygon, so the implicit join between two disjoint
+   intervals became an extruded segment through the gap. Measured: the segment
+   `(5,3) → (3,3)` mm on the 8 mm square with hole `[3,5] × [2,6]` mm at 1 mm
+   spacing leaves the region (both endpoints are on material). The kernel now
+   continues a path across rows, and between a row's intervals, only while the
+   joining move stays inside the region (`segment_stays_inside`), so straight and
+   convex boundaries keep a single snake and only a move that would leave the
+   material starts a new path. Recorded in `D-209-IRONING-FILL-BEHAVIOUR-CHANGE`;
+   no-RNG regression
+   `hole_crossing_regression_no_ironing_segment_enters_the_hole`, plus slanted
+   triangle and kinked-notch controls that pin the rule itself.
+
+5. **`M-WAVE-TRIM` case counts.** Measured 21.73 s at 32 cases and 86.80 s at 128
+   (the coverage lattice dominates), so the record ships `32` routine / `128`
+   extended rather than the 64 / 256 used by the cheaper records. The packet
+   requires measured profiles, not a fixed count.
+
+6. **Plan-note correction (not a packet defect).** The plan's brief-derived claim
+   that the 1.5 mm / 1.0 mm solid-spacing regression would show "15 rows at 1000
+   units" was wrong: that input produces **two** rows under both the old and the
+   canonical arithmetic. What changes is the row grid — `{0, 10000}` before the
+   fix, `{0, 12000}` after — and the regression pins the grid.
+
+7. **`M-GYROID-CLIP` oracle repair after the first registry runs.** Both registry
+   tiers initially failed this record (routine seed `13981270879620051270`,
+   extended seeds `3088738101425906196` and `18422929474420911803`). Both causes
+   were in the oracle, not the SUT: (a) returned cut points were attributed to the
+   **first** subject segment within the clip band, which near a vertex is the
+   incoming segment clamped at its endpoint, fabricating a vertex start; (b) the
+   uniform `band / length` parameter allowance is only the perpendicular-crossing
+   case, because a cut point that stays on a clip edge can slide along it by
+   `(band / length) · cot θ` — **superseded**; the final derived term is the
+   perpendicular worst case `band / |Δnormal|`, which reduces to the old one at a
+   perpendicular crossing and is never smaller. Fixed with nearest-segment attribution and
+   per-endpoint, boundary-axis-tagged allowance terms; the band constant was
+   *lowered* from 3.0 to 1.0 after review showed that the model already contains the
+   1-unit pre-inflation, so the only deviation from the modelled edge is the
+   clipper's ±1-unit integer intersection rounding. Deriving the term properly also
+   exposed a small under-bound at shallow crossings, so the endpoint term is the
+   perpendicular worst case `band / |Δnormal|` (which reduces to the old term at a
+   perpendicular crossing), the returned-point projection onto the subject carries
+   its own 2-unit tolerance, and the term's saturation at one full segment is
+   counted and documented. A near-tangential negative control keeps the term
+   finite. The three retained
+   contexts and the three retained seeds now pass, and three fresh seeds per tier
+   pass. Evidence: `docs/testing/proptest-infill-evidence.md` § Step 4. A separate
+   measured observation (single-subject `clip` versus `clip_batched` differing in
+   the along-edge cut coordinate while both stay on the inflated boundary) is
+   recorded there and flagged to the `polygon_ops.rs` owner, not claimed as a
+   retention defect.
+
+8. **CI roster extended, not replaced.** The Windows `properties-windows` job runs
+   `cargo xtask test --summary --properties --tier routine` and therefore
+   discovers the nine new records dynamically. After independent review flagged
+   that a silently dropped record would not turn the lane red (the job's own
+   comment says a zero exit does not prove execution), the *existing* hard-coded
+   assertion list was extended from 13 to 22 IDs rather than replaced with a new
+   roster; the lane still executes every other selected record.
+
+9. **Coverage narrowings recorded (not silently dropped).**
+   - `M-LINKER-GRAPH`/`M-LINKER-CONNECT` exact ring-walk claims cover only
+     endpoints constructed at least 3 units from a vertex, because production
+     deliberately merges arc positions within 1 unit.
+   - `M-LINKER-CHAIN` checks `orchestrate_infill` connectors as axis-aligned and
+     inside the group area rather than as exact ring walks, because the offset
+     boundary ring is not modelled independently; row coverage and owner identity
+     are still checked exactly.
+   - `M-LINKER-GRAPH`'s `max_vertices`, `max_holes` and `max_components` are
+     admissibility minima for its fixed fixture catalog rather than sampling
+     dimensions; `max_abs_units` and `max_shrink_candidates` are the sampling
+     bounds. The packet mandates those three keys, so they stay registered.
+   - `M-GYROID-PHASE`'s generated cases check range and periodicity against the
+     SUT's own values, so the deterministic branch controls are what pin the
+     actual values; the charter records that limitation.
+
+10. **`M-LINKER-CONNECT` oracle repair at the anchor boundary.** An extended-tier
+    seed failed with the model expecting a stub while production joined across a
+    3110-unit arc against a 3110-unit anchor. Measured: the model's exact arc was
+    3110 and production's `directed_distance` was `3109.999999999998` — a 2e-12
+    unit difference from `project_on_ring`'s f64 quotient/product. That is twelve
+    orders below a whole unit, so the comparison is an equality tolerance for
+    off-by-one arc rounding rather than a continuation of
+    `ARC_EPSILON_UNITS = 1` (which governs walk vertex inclusion, a different
+    question); it is recorded as such rather than as a derived snap. An
+    off-by-one-unit join in the SUT would not be distinguished at the boundary,
+    which is the accepted, openly recorded residual. The oracle uses a one-unit
+    band around the anchor
+    (`Below` / `WithinBand` / `Above`); strictly closer arcs must join, strictly
+    farther arcs must separate, and both branches are accepted inside the band
+    with every per-branch walk/metadata check unchanged. The retained case is a
+    deterministic control.

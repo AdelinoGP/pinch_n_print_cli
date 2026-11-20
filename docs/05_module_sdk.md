@@ -1544,6 +1544,16 @@ oracle is exported. The `src/**` scanner blind spot and required manual FRU/waiv
 unchanged; see
 [`docs/testing/proptest-walls-evidence.md`](testing/proptest-walls-evidence.md).
 
+Packet `proptest-openrscad_13_pbt-infill` extends the same layout to five infill-owner modules:
+`rectilinear-infill`, `gyroid-infill`, `infill-linker`, `wave-overhangs` and
+`top-surface-ironing`. Each carries an empty, default-off `property_testing` feature, a
+`src/property_tests.rs` with the stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`
+declaration, and a manual watched-type ledger; `M-RECTILINEAR-SCAN`, `M-RECTILINEAR-SPACING`,
+`M-GYROID-PHASE`, `M-GYROID-CLIP`, `M-LINKER-GRAPH`, `M-LINKER-CONNECT`, `M-LINKER-CHAIN`,
+`M-WAVE-TRIM` and `M-IRONING-ZIGZAG` are their charters, and the manual review plus measured
+Windows profiles are recorded in
+[`docs/testing/proptest-infill-evidence.md`](testing/proptest-infill-evidence.md).
+
 ### Mock Host
 
 ```rust
