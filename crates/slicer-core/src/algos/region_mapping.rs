@@ -1028,6 +1028,12 @@ pub fn execute_region_mapping_inner(
                 // retain the chain on the child key, so the later prepass
                 // splitter and config lookup address the same region.
                 if !chain.is_empty() && !modifier_groups.is_empty() {
+                    // Infallible by ordering: the modifier guard above runs
+                    // for the same modifier groups, and its limit is strictly
+                    // stricter than this mint's (a larger stride over the same
+                    // 2^63 namespace), so any base that reaches here fits.
+                    // `painted_variant_id_at_modifier_parent_limit_never_becomes_sentinel`
+                    // pins that boundary.
                     let parent_region_id = paint_variant_region_id(region.region_id, &chain);
                     if !modifier_sub_region_id_fits(parent_region_id) {
                         return Err(RegionMappingError::ModifierParentRegionIdOutOfRange {

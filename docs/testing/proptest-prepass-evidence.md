@@ -471,14 +471,38 @@ All were addressed:
    `prepass_paint_map_identity_integration`, with the root-cause description in its doc comment.
 7. **Collision witness** — the found pair is now pinned with retained coordinates (deviation 4).
 
+## Post-closure gap closure (2026-11-20)
+
+The limits recorded at closure were closed, and the reviewer-flagged panic path was classified and
+removed:
+
+- **`H-LIGHTNING-SEEDS` now models rectangular bores.** `LayerShape` carries an outer rectangle and
+  an optional strictly-inside hole; the analytic miter model insets the outer ring, grows the hole,
+  and treats a hole that swallows the eroded wall as no material. The sample grid covers both raw
+  and eroded hole rings and skips any point on any shape's boundary, where the clipper and the
+  even-odd oracle may legitimately disagree. Deterministic witnesses cover a bored top layer (the
+  bore is not material, the ring beside it is an overhang), a bored layer under a solid cover (no
+  overhang), and a hole that swallows the wall. `packet.spec.md` deviation 3 records the narrowed
+  fixture domain.
+- **`H-LIGHTNING-TREES` no longer accepts an empty forest.** `verify_trees` fails when a narrowing
+  stack seeds no roots, the generated strategy is restricted to well-formed stacks (6–10 mm outer,
+  1–2 mm shrink, 1–3 layers, innermost ≥ 2 mm), the strategy honours the registry's `max_layers`
+  bound, and a bored layer joins the deterministic witness. The domain margin is 5 mm, so the bound
+  still measures coordinate sanity.
+- **The painted-id panic is gone from input-driven paths.** `try_paint_variant_region_id` returns
+  `PaintedRegionIdOutOfRange`; `execute_paint_segmentation` maps it to
+  `PaintSegmentationError::PaintVariantRegionIdOutOfRange`, and the runtime's parent lookup uses
+  the checked form as an exact non-match. The region-mapping call site keeps the panicking wrapper
+  with an ordering proof (the modifier guard is strictly stricter than the paint mint), pinned by
+  `painted_variant_id_at_modifier_parent_limit_never_becomes_sentinel`.
+- **`docs/02_ir_schemas.md` retired-lightning section** was rewritten for consistent wrapping and
+  now links both charters explicitly.
+
 ## Remaining caveats
 
-The packet is closed on the evidence above. Two limitations are recorded rather than hidden:
-
-- `H-LIGHTNING-SEEDS` models axis-aligned rectangles (including the erosion-inside-outline and
-  empty-above reset cases), not general polygons with holes; see `packet.spec.md` deviation 3.
-- `docs/02_ir_schemas.md` carries the `H-SUPPORT-*` / `H-LIGHTNING-*` links; a deeper editorial
-  pass over the retired-lightning section is not done.
+- `H-LIGHTNING-SEEDS`'s exactness argument covers rectangles with at most one rectangular bore per
+  layer. Arbitrary polygonal rings are outside it, so the flat-`Polygons` ring-order/hole-grouping
+  convention is claimed only for the rectangular class.
 
 The per-run artifacts are retained under `target/property-testing/<run-token>/<ID>/`
 (`context.json`, `observations.jsonl`, `case.txt`, controller events) and the tier logs as

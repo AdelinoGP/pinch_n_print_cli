@@ -514,10 +514,11 @@ pub fn painted_id_contract_controls() {
         }],
         ..SliceIR::default()
     };
+    let mesh = std::sync::Arc::new(mesh);
     let error = execute_paint_segmentation(
-        std::sync::Arc::new(mesh),
-        std::sync::Arc::new(vec![slice]),
-        std::sync::Arc::new(map),
+        std::sync::Arc::clone(&mesh),
+        std::sync::Arc::new(vec![slice.clone()]),
+        std::sync::Arc::new(map.clone()),
     )
     .expect_err("the segmentation caller must reject the colliding painted ids");
     match error {
@@ -541,4 +542,66 @@ pub fn painted_id_contract_controls() {
         }
         other => panic!("expected PaintVariantRegionIdCollision, got {other:?}"),
     }
+
+    // --- Segmentation reports an out-of-namespace base ---------------------
+    // The base region id is input IR: a module can emit any u64, so the driver
+    // must return a typed error instead of panicking in the mint.
+    const PAINT_STRIDE: u64 =
+        slicer_core::algos::paint_segmentation::PAINT_VARIANT_REGION_ID_STRIDE;
+    let huge_base = ((1u64 << 63) - 2) / PAINT_STRIDE + 1;
+    let mut huge_map = map;
+    huge_map.entries.clear();
+    huge_map.entries.insert(
+        slicer_ir::RegionKey {
+            global_layer_index: 0,
+            object_id: "obj_0".to_owned(),
+            region_id: huge_base,
+            variant_chain: vec![("material".to_owned(), PaintValue::ToolIndex(0))],
+        },
+        slicer_ir::RegionPlan::default(),
+    );
+    let mut huge_slice = slice;
+    huge_slice.regions[0].region_id = huge_base;
+    let error = execute_paint_segmentation(
+        mesh,
+        std::sync::Arc::new(vec![huge_slice]),
+        std::sync::Arc::new(huge_map),
+    )
+    .expect_err("an out-of-namespace painted base must be rejected");
+    match error {
+        PaintSegmentationError::PaintVariantRegionIdOutOfRange {
+            object_id,
+            base_region_id,
+            variant_chain,
+        } => {
+            assert_eq!(object_id, "obj_0");
+            assert_eq!(base_region_id, huge_base);
+            assert_eq!(
+                variant_chain,
+                vec![("material".to_owned(), PaintValue::ToolIndex(0))]
+            );
+        }
+        other => panic!("expected PaintVariantRegionIdOutOfRange, got {other:?}"),
+    }
+
+    // --- The checked mint's own boundary -----------------------------------
+    use slicer_core::algos::paint_segmentation::{
+        try_paint_variant_region_id, PaintedRegionIdOutOfRange,
+    };
+    let chain = vec![("material".to_owned(), PaintValue::ToolIndex(1))];
+    // `2^63 / stride` is the last base whose product still fits; one more
+    // crosses the namespace ceiling for every payload.
+    let paint_limit = (1u64 << 63) / PAINT_STRIDE;
+    assert!(try_paint_variant_region_id(paint_limit, &chain).is_ok());
+    assert_eq!(
+        try_paint_variant_region_id(paint_limit + 1, &chain),
+        Err(PaintedRegionIdOutOfRange {
+            base_region_id: paint_limit + 1,
+        })
+    );
+    assert_eq!(
+        try_paint_variant_region_id(u64::MAX, &[]),
+        Ok(u64::MAX),
+        "the empty chain is the identity and cannot overflow"
+    );
 }

@@ -68,6 +68,17 @@ pub enum PaintSegmentationError {
     /// mirroring canonical `MultiMaterialSegmentation.cpp`'s uncaught
     /// `FlowErrorNegativeSpacing` throw from `layer_color_stat`.
     NegativeSpacing(crate::flow::NegativeSpacingError),
+    /// A painted variant id would leave the non-modifier namespace. Minting it
+    /// would alias the chain onto a modifier or reserved id, so the
+    /// segmentation is rejected instead of panicking.
+    PaintVariantRegionIdOutOfRange {
+        /// Object whose painted chain was minted.
+        object_id: String,
+        /// Base region id the chain was minted from.
+        base_region_id: u64,
+        /// Chain whose synthesized id does not fit.
+        variant_chain: Vec<(String, slicer_ir::PaintValue)>,
+    },
     /// Two distinct painted variant chains mapped to the same synthesized
     /// region id. Continuing would collapse their perimeter and dispatch
     /// identities, so the segmentation is rejected instead.
@@ -93,6 +104,15 @@ impl std::fmt::Display for PaintSegmentationError {
                 write!(f, "invalid Phase 5 config: {key} = {value}")
             }
             Self::NegativeSpacing(e) => write!(f, "{e}"),
+            Self::PaintVariantRegionIdOutOfRange {
+                object_id,
+                base_region_id,
+                variant_chain,
+            } => write!(
+                f,
+                "painted variant region id for object '{object_id}' base region \
+                 {base_region_id} chain {variant_chain:?} exceeds the non-modifier namespace"
+            ),
             Self::PaintVariantRegionIdCollision {
                 object_id,
                 region_id,
@@ -205,8 +225,40 @@ pub fn paint_variant_region_id(
     base_region_id: u64,
     chain_key: &[(String, slicer_ir::PaintValue)],
 ) -> u64 {
+    try_paint_variant_region_id(base_region_id, chain_key)
+        .expect("painted variant region id exceeds the non-modifier namespace")
+}
+
+/// The synthesized painted id would leave the non-modifier namespace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PaintedRegionIdOutOfRange {
+    /// Base region id the chain was minted from.
+    pub base_region_id: u64,
+}
+
+impl std::fmt::Display for PaintedRegionIdOutOfRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "painted variant region id from base {} exceeds the non-modifier namespace",
+            self.base_region_id
+        )
+    }
+}
+
+impl std::error::Error for PaintedRegionIdOutOfRange {}
+
+/// Checked form of [`paint_variant_region_id`].
+///
+/// Paths that mint from input IR use this form. The panicking wrapper remains
+/// for call sites where a preceding guard proves the base fits (the
+/// region-mapping modifier guard) and for tests that pin historical values.
+pub fn try_paint_variant_region_id(
+    base_region_id: u64,
+    chain_key: &[(String, slicer_ir::PaintValue)],
+) -> Result<u64, PaintedRegionIdOutOfRange> {
     if chain_key.is_empty() {
-        return base_region_id;
+        return Ok(base_region_id);
     }
     // Keep the historical values for the common material fast path (for
     // example, ToolIndex(1) remains payload 2) while bounding arbitrary hash
@@ -223,7 +275,7 @@ pub fn paint_variant_region_id(
         .checked_mul(PAINT_VARIANT_REGION_ID_STRIDE)
         .and_then(|payload| payload.checked_add(hash))
         .filter(|id| *id < (1u64 << 63) && *id != u64::MAX)
-        .expect("painted variant region id exceeds the non-modifier namespace")
+        .ok_or(PaintedRegionIdOutOfRange { base_region_id })
 }
 
 /// Reject a synthesized painted id that is already owned by another chain for
@@ -848,7 +900,14 @@ pub fn execute_paint_segmentation(
                             &modifier_vol_per_layer,
                         );
                     } else {
-                        region.region_id = paint_variant_region_id(original.region_id, chain);
+                        region.region_id = try_paint_variant_region_id(original.region_id, chain)
+                            .map_err(|_| {
+                            PaintSegmentationError::PaintVariantRegionIdOutOfRange {
+                                object_id: original.object_id.clone(),
+                                base_region_id: original.region_id,
+                                variant_chain: chain.clone(),
+                            }
+                        })?;
                         register_paint_variant_region_id(
                             &mut seen_variant_ids,
                             &region.object_id,
@@ -1257,7 +1316,14 @@ pub fn execute_paint_segmentation(
 
                 if matching_keys.is_empty() {
                     if let Some(existing) = working[i].regions.first() {
-                        let region_id = paint_variant_region_id(existing.region_id, &chain_key);
+                        let region_id = try_paint_variant_region_id(existing.region_id, &chain_key)
+                            .map_err(|_| {
+                                PaintSegmentationError::PaintVariantRegionIdOutOfRange {
+                                    object_id: existing.object_id.clone(),
+                                    base_region_id: existing.region_id,
+                                    variant_chain: chain_key.clone(),
+                                }
+                            })?;
                         register_paint_variant_region_id(
                             &mut seen_variant_ids,
                             &existing.object_id,
@@ -1290,7 +1356,14 @@ pub fn execute_paint_segmentation(
                         if own_polys.is_empty() {
                             continue;
                         }
-                        let region_id = paint_variant_region_id(rk.region_id, &chain_key);
+                        let region_id = try_paint_variant_region_id(rk.region_id, &chain_key)
+                            .map_err(|_| {
+                                PaintSegmentationError::PaintVariantRegionIdOutOfRange {
+                                    object_id: rk.object_id.clone(),
+                                    base_region_id: rk.region_id,
+                                    variant_chain: chain_key.clone(),
+                                }
+                            })?;
                         register_paint_variant_region_id(
                             &mut seen_variant_ids,
                             &rk.object_id,

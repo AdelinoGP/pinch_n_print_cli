@@ -82,11 +82,96 @@ fn ring(rect: LayerRect) -> Vec<Point2> {
     ]
 }
 
-/// One generated seed scene: per layer, an optional rectangle.
+/// One layered outline: an outer rectangle, optionally bored by a rectangular
+/// hole.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LayerShape {
+    /// Material boundary.
+    pub outer: LayerRect,
+    /// Rectangular hole, strictly inside `outer`.
+    pub hole: Option<LayerRect>,
+}
+
+impl LayerShape {
+    /// A solid rectangle.
+    pub fn solid(outer: LayerRect) -> Self {
+        Self { outer, hole: None }
+    }
+
+    /// A rectangle bored by a strictly smaller rectangle.
+    pub fn bored(outer: LayerRect, hole: LayerRect) -> Self {
+        debug_assert!(
+            hole.x0 > outer.x0 && hole.y0 > outer.y0 && hole.x1 < outer.x1 && hole.y1 < outer.y1,
+            "a hole must be strictly inside its outer rectangle"
+        );
+        Self {
+            outer,
+            hole: Some(hole),
+        }
+    }
+
+    /// Material erosion by `by` under a miter join.
+    ///
+    /// For axis-aligned rectangles a miter offset is exact: the outer ring
+    /// insets and the hole ring grows into the material. `None` means the
+    /// eroded material is empty, so no overhang of this layer can survive.
+    fn erode(self, by: i64) -> Option<Self> {
+        let outer = self.outer.inset(by)?;
+        let Some(hole) = self.hole else {
+            return Some(Self { outer, hole: None });
+        };
+        let grown = LayerRect {
+            x0: hole.x0 - by,
+            y0: hole.y0 - by,
+            x1: hole.x1 + by,
+            y1: hole.y1 + by,
+        };
+        if grown.x0 <= outer.x0
+            || grown.y0 <= outer.y0
+            || grown.x1 >= outer.x1
+            || grown.y1 >= outer.y1
+        {
+            // The hole swallowed the eroded wall; the polygon has no material.
+            return None;
+        }
+        Some(Self {
+            outer,
+            hole: Some(grown),
+        })
+    }
+
+    fn contains(self, x: i64, y: i64) -> bool {
+        self.outer.contains(x, y) && !self.hole.is_some_and(|hole| hole.contains(x, y))
+    }
+
+    /// Whether `(x, y)` lies exactly on one of this shape's axis-aligned edges.
+    fn on_edge(self, x: i64, y: i64) -> bool {
+        fn rect_edge(rect: LayerRect, x: i64, y: i64) -> bool {
+            let on_vertical = (x == rect.x0 || x == rect.x1) && y >= rect.y0 && y <= rect.y1;
+            let on_horizontal = (y == rect.y0 || y == rect.y1) && x >= rect.x0 && x <= rect.x1;
+            on_vertical || on_horizontal
+        }
+        rect_edge(self.outer, x, y) || self.hole.is_some_and(|hole| rect_edge(hole, x, y))
+    }
+}
+
+/// The rings the kernel consumes for one shape: outer counter-clockwise, hole
+/// clockwise (the flat `Polygons` convention the kernel groups by signed area).
+fn shape_rings(shape: LayerShape) -> Polygons {
+    let mut rings = vec![ring(shape.outer)];
+    if let Some(hole) = shape.hole {
+        let mut hole_ring = ring(hole);
+        hole_ring.reverse();
+        rings.push(hole_ring);
+    }
+    rings
+}
+
+/// One generated seed scene: per layer, an optional shape.
 #[derive(Debug, Clone)]
 pub struct SeedCase {
     /// Layer outlines, bottom-first (`per_layer_outlines` order).
-    pub layers: Vec<Option<LayerRect>>,
+    pub layers: Vec<Option<LayerShape>>,
     /// Miter erosion radius in canonical units.
     pub radius: i64,
 }
@@ -96,7 +181,7 @@ impl SeedCase {
         self.layers
             .iter()
             .map(|layer| match layer {
-                Some(rect) => vec![ring(*rect)],
+                Some(shape) => shape_rings(*shape),
                 None => Vec::new(),
             })
             .collect()
@@ -104,13 +189,13 @@ impl SeedCase {
 
     /// Independent membership oracle for one layer.
     ///
-    /// `above` is the next-higher layer's **un-eroded** rectangle; walking
+    /// `above` is the next-higher layer's **un-eroded** material; walking
     /// top-down, the layer above the top one is empty.
     fn expected_contains(&self, layer: usize, x: i64, y: i64) -> bool {
-        let Some(rect) = self.layers[layer] else {
+        let Some(shape) = self.layers[layer] else {
             return false;
         };
-        let Some(eroded) = rect.inset(self.radius) else {
+        let Some(eroded) = shape.erode(self.radius) else {
             return false;
         };
         if !eroded.contains(x, y) {
@@ -118,6 +203,15 @@ impl SeedCase {
         }
         let above = self.layers.get(layer + 1).and_then(|above| *above);
         !above.is_some_and(|above| above.contains(x, y))
+    }
+
+    /// Whether `(x, y)` is a boundary point of any raw or eroded shape. The
+    /// clipper and the even-odd oracle can legitimately disagree on a boundary,
+    /// so the sampled grid skips those points.
+    fn any_boundary(&self, x: i64, y: i64) -> bool {
+        self.layers.iter().flatten().any(|shape| {
+            shape.on_edge(x, y) || shape.erode(self.radius).is_some_and(|e| e.on_edge(x, y))
+        })
     }
 }
 
@@ -164,28 +258,31 @@ pub fn verify_seeds(case: &SeedCase) -> Result<(), String> {
         ));
     }
 
-    // Sample every rectangle edge plus the erosion ring, offset by 2500 units
-    // so no sample can land on a boundary.
+    // Sample every raw and eroded rectangle edge, offset by 2500 units so the
+    // sample cannot land on that edge (cross-layer collisions are filtered by
+    // `any_boundary`).
     let mut xs: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
     let mut ys: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
-    for rect in case.layers.iter().flatten() {
-        for x in [
-            rect.x0,
-            rect.x1,
-            rect.x0 + case.radius,
-            rect.x1 - case.radius,
-        ] {
-            xs.insert(x - 2500);
-            xs.insert(x + 2500);
+    for shape in case.layers.iter().flatten() {
+        let mut rects = vec![shape.outer];
+        if let Some(hole) = shape.hole {
+            rects.push(hole);
         }
-        for y in [
-            rect.y0,
-            rect.y1,
-            rect.y0 + case.radius,
-            rect.y1 - case.radius,
-        ] {
-            ys.insert(y - 2500);
-            ys.insert(y + 2500);
+        if let Some(eroded) = shape.erode(case.radius) {
+            rects.push(eroded.outer);
+            if let Some(hole) = eroded.hole {
+                rects.push(hole);
+            }
+        }
+        for rect in rects {
+            for x in [rect.x0, rect.x1] {
+                xs.insert(x - 2500);
+                xs.insert(x + 2500);
+            }
+            for y in [rect.y0, rect.y1] {
+                ys.insert(y - 2500);
+                ys.insert(y + 2500);
+            }
         }
     }
     if xs.is_empty() || ys.is_empty() {
@@ -199,6 +296,9 @@ pub fn verify_seeds(case: &SeedCase) -> Result<(), String> {
     for (layer, rings) in overhangs.iter().enumerate() {
         for x in &xs {
             for y in &ys {
+                if case.any_boundary(*x, *y) {
+                    continue;
+                }
                 let inside = rings_contain(rings, *x, *y);
                 let want = case.expected_contains(layer, *x, *y);
                 if inside != want {
@@ -216,12 +316,12 @@ pub fn verify_seeds(case: &SeedCase) -> Result<(), String> {
 pub fn seed_witnesses() -> Result<(), String> {
     // Top layer has no above layer, so its whole eroded area is an overhang.
     verify_seeds(&SeedCase {
-        layers: vec![Some(LayerRect {
+        layers: vec![Some(LayerShape::solid(LayerRect {
             x0: 0,
             y0: 0,
             x1: 10 * MM,
             y1: 10 * MM,
-        })],
+        }))],
         radius: 2 * MM,
     })?;
 
@@ -229,12 +329,12 @@ pub fn seed_witnesses() -> Result<(), String> {
     // fully unsupported again.
     verify_seeds(&SeedCase {
         layers: vec![
-            Some(LayerRect {
+            Some(LayerShape::solid(LayerRect {
                 x0: 0,
                 y0: 0,
                 x1: 10 * MM,
                 y1: 10 * MM,
-            }),
+            })),
             None,
         ],
         radius: MM,
@@ -243,18 +343,18 @@ pub fn seed_witnesses() -> Result<(), String> {
     // Radius zero is a plain difference.
     verify_seeds(&SeedCase {
         layers: vec![
-            Some(LayerRect {
+            Some(LayerShape::solid(LayerRect {
                 x0: 0,
                 y0: 0,
                 x1: 10 * MM,
                 y1: 10 * MM,
-            }),
-            Some(LayerRect {
+            })),
+            Some(LayerShape::solid(LayerRect {
                 x0: 0,
                 y0: 0,
                 x1: 10 * MM,
                 y1: 10 * MM,
-            }),
+            })),
         ],
         radius: 0,
     })?;
@@ -262,18 +362,18 @@ pub fn seed_witnesses() -> Result<(), String> {
     // A fully covered lower layer has no overhang.
     let covered = SeedCase {
         layers: vec![
-            Some(LayerRect {
+            Some(LayerShape::solid(LayerRect {
                 x0: 2 * MM,
                 y0: 2 * MM,
                 x1: 8 * MM,
                 y1: 8 * MM,
-            }),
-            Some(LayerRect {
+            })),
+            Some(LayerShape::solid(LayerRect {
                 x0: 0,
                 y0: 0,
                 x1: 10 * MM,
                 y1: 10 * MM,
-            }),
+            })),
         ],
         radius: MM,
     };
@@ -284,6 +384,92 @@ pub fn seed_witnesses() -> Result<(), String> {
             "a layer fully covered by the layer above must have no overhang",
         ));
     }
+
+    // A bored top layer: erosion grows the hole, and the ring around it is a
+    // genuine internal overhang while the bore itself is not material.
+    let bored = SeedCase {
+        layers: vec![Some(LayerShape::bored(
+            LayerRect {
+                x0: 0,
+                y0: 0,
+                x1: 10 * MM,
+                y1: 10 * MM,
+            },
+            LayerRect {
+                x0: 4 * MM,
+                y0: 4 * MM,
+                x1: 6 * MM,
+                y1: 6 * MM,
+            },
+        ))],
+        radius: MM,
+    };
+    verify_seeds(&bored)?;
+    let overhangs = generate_initial_internal_overhangs(&bored.outlines(), bored.radius);
+    if rings_contain(&overhangs[0], 5 * MM, 5 * MM) {
+        return Err(String::from(
+            "the hole interior must not be an internal overhang",
+        ));
+    }
+    if !rings_contain(&overhangs[0], MM, 5 * MM) {
+        return Err(String::from(
+            "the eroded rim beside the hole must be an internal overhang",
+        ));
+    }
+
+    // A bored lower layer under a solid cover: the cover fills the bore, so
+    // neither the rim nor the bore is exposed.
+    let plugged = SeedCase {
+        layers: vec![
+            Some(LayerShape::bored(
+                LayerRect {
+                    x0: 0,
+                    y0: 0,
+                    x1: 10 * MM,
+                    y1: 10 * MM,
+                },
+                LayerRect {
+                    x0: 4 * MM,
+                    y0: 4 * MM,
+                    x1: 6 * MM,
+                    y1: 6 * MM,
+                },
+            )),
+            Some(LayerShape::solid(LayerRect {
+                x0: 0,
+                y0: 0,
+                x1: 10 * MM,
+                y1: 10 * MM,
+            })),
+        ],
+        radius: MM,
+    };
+    verify_seeds(&plugged)?;
+    let overhangs = generate_initial_internal_overhangs(&plugged.outlines(), plugged.radius);
+    if !overhangs[0].is_empty() {
+        return Err(String::from(
+            "a solid cover must plug the bored layer below",
+        ));
+    }
+
+    // A hole that swallows the eroded wall erodes to nothing, not to a sliver.
+    verify_seeds(&SeedCase {
+        layers: vec![Some(LayerShape::bored(
+            LayerRect {
+                x0: 0,
+                y0: 0,
+                x1: 2 * MM,
+                y1: 2 * MM,
+            },
+            LayerRect {
+                x0: MM / 2,
+                y0: MM / 2,
+                x1: 3 * MM / 2,
+                y1: 3 * MM / 2,
+            },
+        ))],
+        radius: MM / 2,
+    })?;
     Ok(())
 }
 
@@ -292,13 +478,28 @@ pub fn seed_witnesses() -> Result<(), String> {
 pub struct TreeCase {
     /// Layer outlines, bottom-first.
     pub layers: Vec<LayerRect>,
+    /// Optional rectangular hole per layer (empty means none declared).
+    pub holes: Vec<Option<LayerRect>>,
     /// Maximum nodes the structural walk may visit.
     pub max_tree_nodes: usize,
 }
 
 impl TreeCase {
     fn outlines(&self) -> Vec<Polygons> {
-        self.layers.iter().map(|rect| vec![ring(*rect)]).collect()
+        self.layers
+            .iter()
+            .enumerate()
+            .map(|(index, rect)| {
+                let mut rings = vec![ring(*rect)];
+                if let Some(hole) = self.holes.get(index).copied().flatten() {
+                    // Clockwise, the flat `Polygons` hole convention.
+                    let mut hole_ring = ring(hole);
+                    hole_ring.reverse();
+                    rings.push(hole_ring);
+                }
+                rings
+            })
+            .collect()
     }
 
     fn generator(&self) -> Generator {
@@ -372,7 +573,7 @@ pub fn verify_trees(case: &TreeCase) -> Result<(), String> {
     }
     // Trees root on overhangs and branch outward, so points are not confined to
     // the outline. They must stay inside the fixture's declared bounded domain:
-    // the union of the layer rectangles grown by 20 mm.
+    // the union of the layer rectangles grown by 5 mm.
     let mut bx0 = i64::MAX;
     let mut by0 = i64::MAX;
     let mut bx1 = i64::MIN;
@@ -383,7 +584,7 @@ pub fn verify_trees(case: &TreeCase) -> Result<(), String> {
         bx1 = bx1.max(rect.x1);
         by1 = by1.max(rect.y1);
     }
-    const DOMAIN_MARGIN: i64 = 200_000;
+    const DOMAIN_MARGIN: i64 = 5 * MM;
     for (x, y) in &all_points {
         if *x < bx0 - DOMAIN_MARGIN
             || *x > bx1 + DOMAIN_MARGIN
@@ -406,20 +607,25 @@ pub fn verify_trees(case: &TreeCase) -> Result<(), String> {
     if all_points != second_points {
         return Err(String::from("repeated runs produced different forests"));
     }
-    let _ = total_roots;
+    if total_roots == 0 {
+        return Err(String::from(
+            "a narrowing stack must seed at least one tree; an all-empty forest is not a pass",
+        ));
+    }
     Ok(())
 }
 
 /// Strategy for one generated forest scene.
-pub fn tree_strategy() -> impl Strategy<Value = TreeCase> {
+pub fn tree_strategy(max_layers: usize) -> impl Strategy<Value = TreeCase> {
     (
-        1..=3usize,
-        proptest::sample::select(vec![1i64, 2, 3, 4]),
-        proptest::sample::select(vec![1i64, 2, 3]),
+        1..=max_layers.clamp(1, 3),
+        proptest::sample::select(vec![6i64, 8, 10]),
+        proptest::sample::select(vec![1i64, 2]),
     )
         .prop_map(|(layers, width_mm, shrink_mm)| {
             // A stack that narrows going up, so every lower layer exposes a
-            // rim of internal overhang for the generator to seed.
+            // rim of internal overhang for the generator to seed. The bounds
+            // keep the innermost layer at least 2 mm wide (no inverted rings).
             let mut rects = Vec::new();
             for layer in 0..layers {
                 let inset = (layer as i64) * shrink_mm * MM;
@@ -432,6 +638,7 @@ pub fn tree_strategy() -> impl Strategy<Value = TreeCase> {
             }
             TreeCase {
                 layers: rects,
+                holes: Vec::new(),
                 max_tree_nodes: 20_000,
             }
         })
@@ -456,26 +663,50 @@ pub fn run_seed_property() -> Result<(), String> {
 
     let generated = (
         1..=max_layers.clamp(1, 3),
-        proptest::sample::select(vec![1i64, 2, 3, 4, 5]),
+        proptest::sample::select(vec![2i64, 3, 4, 5, 6]),
         proptest::collection::vec(any::<bool>(), 1..=3),
+        proptest::collection::vec(
+            proptest::option::of(proptest::sample::select(vec![3i64, 4, 5])),
+            1..=3,
+        ),
     )
-        .prop_map(move |(layers, size_mm, present)| {
+        .prop_map(move |(layers, size_mm, present, holes)| {
+            let size = size_mm * MM;
+            let radius = (MM / 2).min(max_radius.max(0));
             let mut rects = Vec::new();
             for layer in 0..layers {
-                if present[layer % present.len()] {
-                    rects.push(Some(LayerRect {
-                        x0: 0,
-                        y0: 0,
-                        x1: size_mm * MM,
-                        y1: size_mm * MM,
-                    }));
-                } else {
+                if !present[layer % present.len()] {
                     rects.push(None);
+                    continue;
                 }
+                let outer = LayerRect {
+                    x0: 0,
+                    y0: 0,
+                    x1: size,
+                    y1: size,
+                };
+                // A proportional bore: `1/d` of each side. Small parts erode
+                // to nothing around it, which the model treats as no overhang.
+                let shape = match holes[layer % holes.len()] {
+                    Some(denominator) => {
+                        let inset = (size / denominator).max(1);
+                        LayerShape::bored(
+                            outer,
+                            LayerRect {
+                                x0: outer.x0 + inset,
+                                y0: outer.y0 + inset,
+                                x1: outer.x1 - inset,
+                                y1: outer.y1 - inset,
+                            },
+                        )
+                    }
+                    None => LayerShape::solid(outer),
+                };
+                rects.push(Some(shape));
             }
             SeedCase {
                 layers: rects,
-                radius: (MM / 2).min(max_radius.max(0)),
+                radius,
             }
         });
     run.check(&generated, |case: SeedCase, _guard: &mut CaseGuard| {
@@ -493,7 +724,9 @@ pub fn run_tree_property() -> Result<(), String> {
     .map_err(|error| error.to_string())?;
     let max_nodes = usize::try_from(run.bound("max_tree_nodes").map_err(|e| e.to_string())?)
         .map_err(|_| String::from("max_tree_nodes does not fit a usize"))?;
-    for bound in ["max_layers", "max_objects", "max_regions", "max_abs_units"] {
+    let max_layers = usize::try_from(run.bound("max_layers").map_err(|e| e.to_string())?)
+        .map_err(|_| String::from("max_layers does not fit a usize"))?;
+    for bound in ["max_objects", "max_regions", "max_abs_units"] {
         run.bound(bound).map_err(|error| error.to_string())?;
     }
 
@@ -524,10 +757,16 @@ pub fn run_tree_property() -> Result<(), String> {
                 y1: 3 * MM,
             },
         ],
+        holes: vec![Some(LayerRect {
+            x0: 3 * MM / 2,
+            y0: 3 * MM / 2,
+            x1: 2 * MM,
+            y1: 2 * MM,
+        })],
         max_tree_nodes: max_nodes,
     })?;
 
-    let generated = tree_strategy().prop_map(move |mut case| {
+    let generated = tree_strategy(max_layers).prop_map(move |mut case| {
         case.max_tree_nodes = max_nodes;
         case
     });
@@ -561,18 +800,18 @@ fn lightning_model_controls() {
     // the answer on a narrowing stack, so the checker must reject that model.
     let case = SeedCase {
         layers: vec![
-            Some(LayerRect {
+            Some(LayerShape::solid(LayerRect {
                 x0: 0,
                 y0: 0,
                 x1: 10 * MM,
                 y1: 10 * MM,
-            }),
-            Some(LayerRect {
+            })),
+            Some(LayerShape::solid(LayerRect {
                 x0: 4 * MM,
                 y0: 4 * MM,
                 x1: 6 * MM,
                 y1: 6 * MM,
-            }),
+            })),
         ],
         radius: MM,
     };
@@ -593,18 +832,21 @@ fn lightning_model_controls() {
             x1: 4 * MM,
             y1: 4 * MM,
         }],
+        holes: Vec::new(),
         max_tree_nodes: 20_000,
     }
     .generator();
     generator.generate_trees(&|| ());
     let roots = generator.get_trees_for_layer(0).tree_roots.clone();
     let duplicated: Vec<NodeRef> = roots.iter().chain(roots.iter()).cloned().collect();
-    if !roots.is_empty() {
-        assert!(
-            walk_forest(&duplicated, 20_000).is_err(),
-            "a duplicated root must fail the structural walk"
-        );
-    }
+    assert!(
+        !roots.is_empty(),
+        "the 4 mm single-layer witness must seed a root"
+    );
+    assert!(
+        walk_forest(&duplicated, 20_000).is_err(),
+        "a duplicated root must fail the structural walk"
+    );
 }
 
 /// `lightning_seed_tree_controls` — the models reject their named mutations.
@@ -618,18 +860,18 @@ fn lightning_seed_tree_controls() {
     // is smaller than the current one, so eroding `above` changes the result.
     let case = SeedCase {
         layers: vec![
-            Some(LayerRect {
+            Some(LayerShape::solid(LayerRect {
                 x0: 0,
                 y0: 0,
                 x1: 10 * MM,
                 y1: 10 * MM,
-            }),
-            Some(LayerRect {
+            })),
+            Some(LayerShape::solid(LayerRect {
                 x0: 4 * MM,
                 y0: 4 * MM,
                 x1: 6 * MM,
                 y1: 6 * MM,
-            }),
+            })),
         ],
         radius: MM,
     };
@@ -653,6 +895,7 @@ fn lightning_seed_tree_controls() {
             x1: 4 * MM,
             y1: 4 * MM,
         }],
+        holes: Vec::new(),
         max_tree_nodes: 20_000,
     }
     .generator();
@@ -662,16 +905,18 @@ fn lightning_seed_tree_controls() {
     // walking the same root twice through the public API.
     let duplicated: Vec<NodeRef> = roots.iter().chain(roots.iter()).cloned().collect();
     assert!(
+        !roots.is_empty(),
+        "the 4 mm single-layer witness must seed a root"
+    );
+    assert!(
         walk_forest(&duplicated, 20_000).is_err(),
         "a duplicated root must fail the structural walk"
     );
     // And a zero node budget reports an incomplete case rather than a pass.
-    if !roots.is_empty() {
-        assert!(
-            walk_forest(&roots, 0).is_err(),
-            "an exceeded node budget must fail rather than certify a prefix"
-        );
-    }
+    assert!(
+        walk_forest(&roots, 0).is_err(),
+        "an exceeded node budget must fail rather than certify a prefix"
+    );
 }
 
 /// `lightning_owned_shrink_controls` — the real forest value tree survives
@@ -686,7 +931,7 @@ fn lightning_owned_shrink_controls() {
         cases: 1,
         ..Config::default()
     });
-    let mut tree = tree_strategy()
+    let mut tree = tree_strategy(3)
         .new_tree(&mut runner)
         .expect("the forest strategy must build a tree");
     let mut simplifications = 0usize;

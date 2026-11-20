@@ -1857,20 +1857,32 @@ a contract error, never a best-effort drop.
 
 ### Lightning legacy IR retirement
 
-The legacy path is retired.
-Lightning planning runs inside the selected `com.core.lightning-infill` artifact during `prepare_print`,
-from typed committed regions, region configs, and layer plan.
-One module-private `lightning-layer-{global_layer_index}` piece is published per schedule layer;
-ordinary `Layer::Infill` consumers require and decode their own layer's piece with the module's decoder.
-The host `commit_lightning_tree_ir_builtin` producer, `PrePass::LightningTreeGen` and its `STAGE_ORDER` entry,
-`BlackboardPrepassSlot::LightningTreeIR`, and `BlackboardError::LightningTreeGeneration` are deleted.
-So are public `LightningTreeIR`/`LightningTreeEntry`/`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION`,
-the `lightning-tree-segments` WIT method and whole `slicer:lightning-queries` package,
-and SDK `lightning_tree_segments_for`/`with_lightning_tree_ir` accessors.
-Plan types live only as module-private `KernelPlan`/`PlanEntry`, never public IR; IR 9d is retired.
-The `H-LIGHTNING-*` properties live in the `lightning-infill` module-private kernel (`modules/core-modules/lightning-infill/src/kernel/`) and are delegated coverage, not a host prepass.
-This records behavioural equivalence to the pre-migration producer: ownership moves with no intended output change,
-not a canonical-parity claim; the recorded Gate A/B outcomes remain unchanged.
+The legacy host path is retired. Lightning planning runs inside the selected
+`com.core.lightning-infill` artifact during `prepare_print`, from typed committed
+regions, region configs, and the layer plan. One module-private
+`lightning-layer-{global_layer_index}` piece is published per schedule layer;
+ordinary `Layer::Infill` consumers require and decode their own layer's piece
+with the module's decoder.
+
+The host `commit_lightning_tree_ir_builtin` producer, `PrePass::LightningTreeGen`
+and its `STAGE_ORDER` entry, `BlackboardPrepassSlot::LightningTreeIR`, and
+`BlackboardError::LightningTreeGeneration` are deleted. So are public
+`LightningTreeIR`/`LightningTreeEntry`/`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION`,
+the `lightning-tree-segments` WIT method and the whole `slicer:lightning-queries`
+package, and the SDK `lightning_tree_segments_for`/`with_lightning_tree_ir`
+accessors. Plan types live only as module-private `KernelPlan`/`PlanEntry`, never
+public IR; IR 9d is retired.
+
+The [`H-LIGHTNING-SEEDS`](testing/properties.md#h-lightning-seeds) and
+[`H-LIGHTNING-TREES`](testing/properties.md#h-lightning-trees) properties live in
+the `lightning-infill` module-private kernel
+(`modules/core-modules/lightning-infill/src/kernel/`), gated by the module's
+`property_testing` feature and executed through `cargo xtask test --properties`.
+They are delegated module coverage, not a host prepass.
+
+This records behavioural equivalence to the pre-migration producer: ownership
+moves with no intended output change, not a canonical-parity claim. The recorded
+Gate A/B outcomes remain unchanged.
 
 ---
 
