@@ -3,8 +3,12 @@
 Type: task / attribution + shape pricing (instrumented probe; no candidate in
 this take unless a shape is measured on the standing gate)
 Label: wayfinder:task
-Status: open
-Assignee: unclaimed
+Status: **resolved 2026-11-20** — the support-path clip mass is
+`tree-support-planner` phase 1 + phase 3; no single boolean shape clears either
+base supports-on cell, and the benchy pair is not a boolean program.
+Assignee: 2026-11-20 OpenCode wayfinder session — the human said "Continue
+the perf vs orca map" (no ticket named); 173 was first on the frontier
+(leaving 174 unclaimed).
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [t171 post-t169 re-price](171-post-t169-prepass-reprice.md)
@@ -109,4 +113,53 @@ Concretely:
 
 ## Answer
 
-_(pending)_
+**The 186.6 s `host:native` clip bucket on `base classic-on` is
+`com.core.tree-support-planner`, and two batched sites own 98.8 % of it:
+phase 1's per-region carve (`68,381` calls, `142.7 s` thread / `12.41 s` wall,
+fan-out `11.5x`) and phase 3's role union (`480` calls, `51.6 s` / `5.21 s`,
+`9.9x`).** The operand is a few huge polygons — a mean `6,241` clip points over
+`4.34` paths against a `98.7`-point subject — so a polygon-level bbox filter is
+exact but removes only `28.5 %`; only `285,368 of 426,868,700` clip points
+(`0.0669 %`) lie inside the subject bbox. The stage is **62.2 % host clip,
+3.3 % host offset and 34.5 % remainder** on the base cells (same-window
+decomposition), against **38.8 % host clip and 56.1 % remainder** on
+`benchy classic-on`; the planner is 10.8 % of cell guest fuel.
+
+Attribution only: the probe's thread-time is inflated by its own bookkeeping and
+`--profile` inflates wall, so no number here is a wall claim or a ratio of
+record. The question's **52.8 % / 50.8 %** are t171's pre-t172 cuts; t172 moved
+them to **44.5 % / 42.1 %**, and every price below uses the current route.
+
+**Shape prices (ceilings, fraction of the cell's required cut):**
+
+| shape | base classic on | base arachne on | benchy classic on | benchy arachne on |
+| --- | ---: | ---: | ---: | ---: |
+| phase-1 bbox/tile window | **12.21 s, 60.8 %, 1.150x** | **11.49 s, 61.6 %, 1.120x** | 0.48 s, 23.2 %, 1.298x | 0.47 s, 21.8 %, 1.317x |
+| phase-1 polygon-bbox filter | 3.54 s, 17.6 %, 1.454x | 3.33 s, 17.8 %, 1.398x | 0.28 s, 13.6 % | 0.28 s, 12.8 % |
+| phase-3 union free (no shape) | 5.21 s, 26.0 %, 1.395x | 5.12 s, 27.4 %, 1.337x | 0.18 s, 8.8 % | 0.19 s, 8.8 % |
+| all planner clip free | 18.00 s, 89.7 %, **0.948x** | 17.18 s, 92.1 %, **0.926x** | 0.73 s, 35.2 % | 0.73 s, 33.7 % |
+| all planner clip + offset free | 19.01 s, 94.7 %, **0.913x** | 18.19 s, 97.6 %, **0.891x** | 0.83 s, 39.9 % | 0.83 s, 38.5 % |
+
+Every ceiling clears the **0.80 % floor** by **8.0x–52.7x** (phase-1 window
+**33.8x / 32.4x**); the floor is not the binding gate, the destination cut is.
+
+**No single boolean-volume shape clears either base cell.** The phase-1
+window is the only large named shape and stops at `1.150x / 1.120x`; the cheap
+exact polygon filter is a sixth of that. A **combination** of the phase-1
+window and a phase-3 union that reaches zero is **0.969x / 0.945x** — the first
+projected crossing — but phase 3 is a ceiling, not a shape. The benchy pair
+gets only `23.2 % / 21.8 %` from phase 1 and `35 % / 34 %` from all clip free,
+so it does **not** ride this program; more than half of its stage is outside the
+host clipper. The base supports-off control is inert (`0 ms`, stage `0.21 s`,
+estimated `0.82x`); no shape applies.
+
+**Re-aim:** the base supports-on cluster is a combination, not a deletion;
+[`175`](175-tiled-collision-carve.md) carries the exact phase-1 tiling
+candidate and its gate, while the phase-3 union shape has no named mechanism
+and stays in the map's fog. The 8/8 destination and t172's reference set are
+unchanged.
+
+Evidence:
+[`evidence/t173-support-boolean-volume/`](../evidence/t173-support-boolean-volume/FINDINGS.md)
+(`verify.py` PASS, `--self-test` 8/8; five probe runs + fifteen instrumented
+passes reproduce t172's active set; `probe.patch` reverted and preserved).

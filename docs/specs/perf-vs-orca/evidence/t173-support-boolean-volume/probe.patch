@@ -1,0 +1,1074 @@
+diff --git a/crates/slicer-core/src/lib.rs b/crates/slicer-core/src/lib.rs
+index 0ac2d6a3..3b1afea9 100644
+--- a/crates/slicer-core/src/lib.rs
++++ b/crates/slicer-core/src/lib.rs
+@@ -44,6 +44,7 @@ pub mod skeletal_trapezoidation;
+ pub mod smooth_outward;
+ pub mod stage_io;
+ pub mod support_regularize;
++pub mod t173_probe;
+ pub mod top_surface_split;
+ pub mod triangle_mesh_slicer;
+ #[cfg(feature = "host-algos")]
+diff --git a/crates/slicer-core/src/polygon_ops.rs b/crates/slicer-core/src/polygon_ops.rs
+index b55bb888..3dae63da 100644
+--- a/crates/slicer-core/src/polygon_ops.rs
++++ b/crates/slicer-core/src/polygon_ops.rs
+@@ -641,6 +641,10 @@ pub fn clip_polygons(
+     // as `top_surface_split::split_top_surfaces`, for free.
+     let _profile = crate::profile::scope(crate::profile::ScopeId::CLIP_POLYGONS);
+ 
++    // t173 probe (env-gated; reverted with `probe.patch`).
++    #[cfg(not(target_arch = "wasm32"))]
++    let t173_timer = crate::t173_probe::timer();
++
+     // Flatten all polygons (contours + holes) into separate paths — clipper2
+     // boolean ops work on flat path lists as input regardless of hierarchy.
+     let subject_paths: Vec<Vec<Point64>> = subject.iter().flat_map(expolygon_to_paths).collect();
+@@ -662,7 +666,33 @@ pub fn clip_polygons(
+         &mut tree,
+     );
+ 
+-    expolygons_from_tree(&tree)
++    #[cfg(not(target_arch = "wasm32"))]
++    let t173_elapsed_ns = t173_timer.map(|t0| t0.elapsed().as_nanos() as u64);
++    let out = expolygons_from_tree(&tree);
++    #[cfg(not(target_arch = "wasm32"))]
++    if let Some(elapsed_ns) = t173_elapsed_ns {
++        let (out_points, out_paths) = crate::t173_probe::expolygon_counts(&out);
++        let (near_points, near_polys, in_bbox_points) =
++            crate::t173_probe::clip_locality(subject, clip);
++        crate::t173_probe::record(
++            match op {
++                ClipOperation::Union => "union",
++                ClipOperation::Intersection => "intersection",
++                ClipOperation::Difference => "difference",
++                ClipOperation::Xor => "xor",
++            },
++            subject_paths.iter().map(|p| p.len() as u64).sum(),
++            clip_paths.iter().map(|p| p.len() as u64).sum(),
++            (subject_paths.len() + clip_paths.len()) as u64,
++            out_points,
++            out_paths,
++            near_points,
++            near_polys,
++            in_bbox_points,
++            elapsed_ns,
++        );
++    }
++    out
+ }
+ 
+ /// Computes the union of polygon sets.
+@@ -945,6 +975,13 @@ fn inflate_once(
+ ) -> Vec<ExPolygon> {
+     use clipper2_rust::{ClipperOffset, EndType, JoinType, PolyTree64};
+ 
++    // t173 probe (env-gated; reverted with `probe.patch`).
++    #[cfg(not(target_arch = "wasm32"))]
++    let t173 = crate::t173_probe::timer();
++    #[cfg(not(target_arch = "wasm32"))]
++    let t173_in_points =
++        t173.map(|_| crate::t173_probe::expolygon_counts(polygons).0);
++
+     // Convert delta from mm to scaled units (1 unit = 100nm = 10^-4mm)
+     let delta_units = (delta_mm as f64) * slicer_ir::UNITS_PER_MM;
+     if delta_units == 0.0 {
+@@ -960,6 +997,21 @@ fn inflate_once(
+     // winding. See [`offset_paths`].
+     let paths = offset_paths(polygons, delta_units);
+     if paths.is_empty() {
++        #[cfg(not(target_arch = "wasm32"))]
++        if let Some(t0) = t173 {
++            crate::t173_probe::record(
++                "offset",
++                t173_in_points.unwrap_or(0),
++                0,
++                0,
++                0,
++                0,
++                0,
++                0,
++                0,
++                t0.elapsed().as_nanos() as u64,
++            );
++        }
+         return Vec::new();
+     }
+ 
+@@ -981,7 +1033,26 @@ fn inflate_once(
+     let mut tree = PolyTree64::new();
+     clip_offset.execute_tree(delta_units, &mut tree);
+ 
+-    expolygons_from_tree(&tree)
++    #[cfg(not(target_arch = "wasm32"))]
++    let t173_elapsed_ns = t173.map(|t0| t0.elapsed().as_nanos() as u64);
++    let out = expolygons_from_tree(&tree);
++    #[cfg(not(target_arch = "wasm32"))]
++    if let Some(elapsed_ns) = t173_elapsed_ns {
++        let (out_points, out_paths) = crate::t173_probe::expolygon_counts(&out);
++        crate::t173_probe::record(
++            "offset",
++            t173_in_points.unwrap_or(0),
++            0,
++            paths.len() as u64,
++            out_points,
++            out_paths,
++            0,
++            0,
++            0,
++            elapsed_ns,
++        );
++    }
++    out
+ }
+ 
+ /// Union of all subject ExPolygons with each other (no separate clip set).
+@@ -1086,6 +1157,13 @@ pub fn offset2_ex(
+     // it forwards straight here, and marking it would double-count.
+     let _profile = crate::profile::scope(crate::profile::ScopeId::OFFSET2_EX);
+ 
++    // t173 probe (env-gated; reverted with `probe.patch`).
++    #[cfg(not(target_arch = "wasm32"))]
++    let t173 = crate::t173_probe::timer();
++    #[cfg(not(target_arch = "wasm32"))]
++    let t173_in_points =
++        t173.map(|_| crate::t173_probe::expolygon_counts(polys).0);
++
+     // Pass 1: delta1 (typically negative / erode). Flat paths only — hole
+     // nesting is re-derived once, from pass 2's PolyTree below. Clipper2's
+     // offset cleanup pass always emits correctly-wound rings regardless of
+@@ -1094,6 +1172,21 @@ pub fn offset2_ex(
+     let intermediate = offset2_ex_first_pass(polys, delta1_mm, join, miter_limit);
+ 
+     if intermediate.is_empty() {
++        #[cfg(not(target_arch = "wasm32"))]
++        if let Some(t0) = t173 {
++            crate::t173_probe::record(
++                "offset2_ex",
++                t173_in_points.unwrap_or(0),
++                0,
++                0,
++                0,
++                0,
++                0,
++                0,
++                0,
++                t0.elapsed().as_nanos() as u64,
++            );
++        }
+         return Vec::new();
+     }
+ 
+@@ -1114,7 +1207,26 @@ pub fn offset2_ex(
+     let mut tree = PolyTree64::new();
+     clip_offset.execute_tree(delta2_units, &mut tree);
+ 
+-    expolygons_from_tree(&tree)
++    #[cfg(not(target_arch = "wasm32"))]
++    let t173_elapsed_ns = t173.map(|t0| t0.elapsed().as_nanos() as u64);
++    let out = expolygons_from_tree(&tree);
++    #[cfg(not(target_arch = "wasm32"))]
++    if let Some(elapsed_ns) = t173_elapsed_ns {
++        let (out_points, out_paths) = crate::t173_probe::expolygon_counts(&out);
++        crate::t173_probe::record(
++            "offset2_ex",
++            t173_in_points.unwrap_or(0),
++            0,
++            (pass2_paths.len()) as u64,
++            out_points,
++            out_paths,
++            0,
++            0,
++            0,
++            elapsed_ns,
++        );
++    }
++    out
+ }
+ 
+ /// Pass 1 of [`offset2_ex`], shared by the two-pass entry point and the
+diff --git a/crates/slicer-core/src/t173_probe.rs b/crates/slicer-core/src/t173_probe.rs
+new file mode 100644
+index 00000000..29e73193
+--- /dev/null
++++ b/crates/slicer-core/src/t173_probe.rs
+@@ -0,0 +1,460 @@
++//! TEMPORARY probe for wayfinder ticket 173 — support-path boolean volume.
++//!
++//! Reverted before the take closes (`probe.patch` in the ticket's evidence
++//! directory is the only artifact). Compiled into the host binary only; the
++//! wasm guest build sees an empty module via the `cfg` below.
++//!
++//! Enabled at runtime by `PNP_T173_PROBE=1`. When disabled every entry point is
++//! one relaxed atomic load, so the same binary can take uninstrumented runs.
++//!
++//! # What it measures
++//!
++//! Every `slicer_core::polygon_ops` primitive (`clip_polygons`, `offset`,
++//! `offset2_ex`) is tagged with the module and stage that issued it. Guest
++//! callers set the module through their WIT import; the runtime brackets each
++//! `run_stage` with a stage guard; host built-ins additionally claim a
++//! process-wide owner (they run one at a time). A guest may tag its next call's
++//! source site with a `t173:<site>` log line; the wasm-host `log` import
++//! intercepts it and the primitive consumes it.
++//!
++//! For boolean calls it also counts the clip operand that could matter to the
++//! subject: points inside the subject's bounding box (the ceiling for any
++//! bbox-windowed/tiled operand) and points in bbox-overlapping clip polygons.
++//! These are counters, not decisions: no call changes its arguments.
++//!
++//! Rows are accumulated thread-time, never wall. Batch calls additionally emit
++//! a wall row (`t173-batch`) because a fanned-out batch's thread-time and wall
++//! are different quantities.
++
++#![cfg(not(target_arch = "wasm32"))]
++
++use std::cell::RefCell;
++use std::collections::BTreeMap;
++use std::sync::{Mutex, OnceLock};
++use std::time::Instant;
++
++static ON: OnceLock<bool> = OnceLock::new();
++
++/// Whether the probe is enabled (`PNP_T173_PROBE`).
++pub fn enabled() -> bool {
++    *ON.get_or_init(|| std::env::var_os("PNP_T173_PROBE").is_some())
++}
++
++#[derive(Default, Clone)]
++struct Ctx {
++    module: Option<String>,
++    stage: Option<String>,
++    site: Option<String>,
++    entry: Option<&'static str>,
++    sticky_site: bool,
++}
++
++thread_local! {
++    static CTX: RefCell<Ctx> = const { RefCell::new(Ctx {
++        module: None,
++        stage: None,
++        site: None,
++        entry: None,
++        sticky_site: false,
++    }) };
++}
++
++/// Process-wide owner for host built-ins. Built-ins run one at a time (the
++/// same assumption `NativeOwnerGuard` documents), so a single slot is correct
++/// and lets their rayon workers inherit the owner.
++static BUILTIN: Mutex<Option<String>> = Mutex::new(None);
++
++#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
++struct Key {
++    module: String,
++    stage: String,
++    site: String,
++    entry: String,
++    op: String,
++}
++
++#[derive(Default, Clone)]
++struct Stats {
++    calls: u64,
++    empty_calls: u64,
++    empty_thread_ns: u64,
++    in_points: u64,
++    in_paths: u64,
++    subj_points: u64,
++    clip_points: u64,
++    out_points: u64,
++    out_paths: u64,
++    near_points: u64,
++    near_polys: u64,
++    in_bbox_points: u64,
++    thread_ns: u64,
++    max_ns: u64,
++    max_in_points: u64,
++}
++
++static ACC: Mutex<BTreeMap<Key, Stats>> = Mutex::new(BTreeMap::new());
++
++#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
++struct BatchKey {
++    module: String,
++    stage: String,
++    site: String,
++    entry: String,
++}
++
++#[derive(Default, Clone)]
++struct BatchStats {
++    batches: u64,
++    requests: u64,
++    wall_ns: u64,
++    max_wall_ns: u64,
++}
++
++static BATCH_ACC: Mutex<BTreeMap<BatchKey, BatchStats>> = Mutex::new(BTreeMap::new());
++
++/// RAII stage bracket for one runtime `run_stage` / built-in.
++#[must_use]
++pub struct StageGuard {
++    prev: Option<Option<String>>,
++}
++
++impl Drop for StageGuard {
++    fn drop(&mut self) {
++        if let Some(prev) = self.prev.take() {
++            CTX.with(|cell| cell.borrow_mut().stage = prev);
++        }
++    }
++}
++
++/// Bracket a stage on the current thread.
++pub fn enter_stage(stage: &str) -> StageGuard {
++    if !enabled() {
++        return StageGuard { prev: None };
++    }
++    let prev = CTX.with(|cell| {
++        let mut ctx = cell.borrow_mut();
++        let prev = ctx.stage.take();
++        ctx.stage = Some(stage.to_owned());
++        Some(prev)
++    });
++    StageGuard { prev }
++}
++
++/// RAII module/entry bracket for one WASM host import call.
++#[must_use]
++pub struct CallGuard {
++    prev: Option<Ctx>,
++}
++
++impl Drop for CallGuard {
++    fn drop(&mut self) {
++        if let Some(prev) = self.prev.take() {
++            CTX.with(|cell| *cell.borrow_mut() = prev);
++        }
++    }
++}
++
++/// Bracket a guest import: module, optional stage, site, entry kind, sticky site.
++///
++/// `sticky_site` is for batch calls, where one tag covers every request the
++/// host fans out to this worker.
++pub fn enter_call(
++    module: &str,
++    stage: Option<&str>,
++    site: Option<&str>,
++    entry: &'static str,
++    sticky_site: bool,
++) -> CallGuard {
++    if !enabled() {
++        return CallGuard { prev: None };
++    }
++    let prev = CTX.with(|cell| {
++        let mut ctx = cell.borrow_mut();
++        let prev = ctx.clone();
++        ctx.module = Some(module.to_owned());
++        // Batch workers do not inherit the module thread's stage guard.
++        if let Some(stage) = stage {
++            ctx.stage = Some(stage.to_owned());
++        }
++        // `None` preserves a site tag already left by the log interceptor.
++        if let Some(site) = site {
++            ctx.site = Some(site.to_owned());
++        }
++        ctx.entry = Some(entry);
++        ctx.sticky_site = sticky_site;
++        Some(prev)
++    });
++    CallGuard { prev }
++}
++
++/// The stage currently bracketed on this thread (batch call capture).
++pub fn current_stage() -> Option<String> {
++    if !enabled() {
++        return None;
++    }
++    CTX.with(|cell| cell.borrow().stage.clone())
++}
++
++/// Set the source site the next primitive call will be recorded under.
++pub fn set_site(site: &str) {
++    if !enabled() {
++        return;
++    }
++    CTX.with(|cell| cell.borrow_mut().site = Some(site.to_owned()));
++}
++
++/// Take the pending site tag (batch calls spread one tag over many requests).
++pub fn take_pending_site() -> Option<String> {
++    if !enabled() {
++        return None;
++    }
++    CTX.with(|cell| cell.borrow_mut().site.take())
++}
++
++/// RAII process-wide built-in owner (host built-ins only).
++#[must_use]
++pub struct BuiltinGuard {
++    active: bool,
++}
++
++impl Drop for BuiltinGuard {
++    fn drop(&mut self) {
++        if self.active {
++            *BUILTIN.lock().expect("t173 builtin poisoned") = None;
++        }
++    }
++}
++
++/// Claim the process-wide built-in owner.
++pub fn enter_builtin(module: &str) -> BuiltinGuard {
++    if !enabled() {
++        return BuiltinGuard { active: false };
++    }
++    *BUILTIN.lock().expect("t173 builtin poisoned") = Some(module.to_owned());
++    BuiltinGuard { active: true }
++}
++
++fn context() -> (String, String, String, String) {
++    CTX.with(|cell| {
++        let mut ctx = cell.borrow_mut();
++        let builtin = BUILTIN.lock().expect("t173 builtin poisoned").clone();
++        let module = ctx
++            .module
++            .clone()
++            .or(builtin)
++            .unwrap_or_else(|| "<unknown>".to_owned());
++        let stage = ctx
++            .stage
++            .clone()
++            .unwrap_or_else(|| "<unknown>".to_owned());
++        let site = if ctx.sticky_site {
++            ctx.site.clone()
++        } else {
++            ctx.site.take()
++        }
++        .unwrap_or_else(|| "<untagged>".to_owned());
++        let entry = ctx.entry.unwrap_or("native");
++        (module, stage, site, entry.to_owned())
++    })
++}
++
++/// Record one completed primitive call. `near_*` / `in_bbox_points` are
++/// clip-only counters and may be 0 for offsets.
++#[allow(clippy::too_many_arguments)]
++pub fn record(
++    op: &'static str,
++    subj_points: u64,
++    clip_points: u64,
++    in_paths: u64,
++    out_points: u64,
++    out_paths: u64,
++    near_points: u64,
++    near_polys: u64,
++    in_bbox_points: u64,
++    elapsed_ns: u64,
++) {
++    if !enabled() {
++        return;
++    }
++    let (module, stage, site, entry) = context();
++    let key = Key {
++        module,
++        stage,
++        site,
++        entry,
++        op: op.to_owned(),
++    };
++    let in_points = subj_points + clip_points;
++    let mut acc = ACC.lock().expect("t173 acc poisoned");
++    let row = acc.entry(key).or_default();
++    row.calls += 1;
++    if out_points == 0 {
++        row.empty_calls += 1;
++        row.empty_thread_ns += elapsed_ns;
++    }
++    row.in_points += in_points;
++    row.in_paths += in_paths;
++    row.subj_points += subj_points;
++    row.clip_points += clip_points;
++    row.out_points += out_points;
++    row.out_paths += out_paths;
++    row.near_points += near_points;
++    row.near_polys += near_polys;
++    row.in_bbox_points += in_bbox_points;
++    row.thread_ns += elapsed_ns;
++    row.max_ns = row.max_ns.max(elapsed_ns);
++    row.max_in_points = row.max_in_points.max(in_points);
++}
++
++/// Record one fanned-out batch's wall (the calling thread's blocked span).
++pub fn record_batch(requests: u64, wall_ns: u64) {
++    if !enabled() {
++        return;
++    }
++    let (module, stage, site, entry) = context();
++    let key = BatchKey {
++        module,
++        stage,
++        site,
++        entry,
++    };
++    let mut acc = BATCH_ACC.lock().expect("t173 batch acc poisoned");
++    let row = acc.entry(key).or_default();
++    row.batches += 1;
++    row.requests += requests;
++    row.wall_ns += wall_ns;
++    row.max_wall_ns = row.max_wall_ns.max(wall_ns);
++}
++
++/// Print every accumulated row. Called once at the end of a probe run.
++pub fn emit_all() {
++    if !enabled() {
++        return;
++    }
++    let acc = ACC.lock().expect("t173 acc poisoned");
++    let mut rows: Vec<(&Key, &Stats)> = acc.iter().collect();
++    rows.sort_by(|a, b| b.1.thread_ns.cmp(&a.1.thread_ns));
++    let total_ns: u64 = rows.iter().map(|(_, s)| s.thread_ns).sum();
++    eprintln!("t173-probe rows={} total_thread_ns={}", rows.len(), total_ns);
++    for (key, s) in rows {
++        eprintln!(
++            "t173-row module={} stage={} site={} entry={} op={} calls={} empty_calls={} empty_thread_ns={} subj_points={} clip_points={} in_points={} in_paths={} out_points={} out_paths={} near_points={} near_polys={} in_bbox_points={} thread_ns={} max_ns={} max_in_points={}",
++            key.module,
++            key.stage,
++            key.site,
++            key.entry,
++            key.op,
++            s.calls,
++            s.empty_calls,
++            s.empty_thread_ns,
++            s.subj_points,
++            s.clip_points,
++            s.in_points,
++            s.in_paths,
++            s.out_points,
++            s.out_paths,
++            s.near_points,
++            s.near_polys,
++            s.in_bbox_points,
++            s.thread_ns,
++            s.max_ns,
++            s.max_in_points,
++        );
++    }
++    let batch = BATCH_ACC.lock().expect("t173 batch acc poisoned");
++    let mut brows: Vec<(&BatchKey, &BatchStats)> = batch.iter().collect();
++    brows.sort_by(|a, b| b.1.wall_ns.cmp(&a.1.wall_ns));
++    for (key, s) in brows {
++        eprintln!(
++            "t173-batch module={} stage={} site={} entry={} batches={} requests={} wall_ns={} max_wall_ns={}",
++            key.module,
++            key.stage,
++            key.site,
++            key.entry,
++            s.batches,
++            s.requests,
++            s.wall_ns,
++            s.max_wall_ns,
++        );
++    }
++}
++
++/// Count points and rings in an expolygon set (probe helper).
++pub fn expolygon_counts(polys: &[slicer_ir::ExPolygon]) -> (u64, u64) {
++    let mut points = 0u64;
++    let mut paths = 0u64;
++    for poly in polys {
++        points += poly.contour.points.len() as u64;
++        paths += 1;
++        for hole in &poly.holes {
++            points += hole.points.len() as u64;
++            paths += 1;
++        }
++    }
++    (points, paths)
++}
++
++fn ring_points<'a>(
++    polys: &'a [slicer_ir::ExPolygon],
++) -> impl Iterator<Item = &'a slicer_ir::Point2> + 'a {
++    polys.iter().flat_map(|poly| {
++        poly.contour
++            .points
++            .iter()
++            .chain(poly.holes.iter().flat_map(|hole| hole.points.iter()))
++    })
++}
++
++/// Clip-operand locality counters for one boolean call.
++///
++/// - `near_points` / `near_polys`: clip points and polygons whose bounding box
++///   intersects the subject's bounding box (polygon granularity).
++/// - `in_bbox_points`: clip points that lie inside the subject's bounding box
++///   (the ceiling for a bbox-windowed or tiled operand — points outside the
++///   subject bbox cannot affect a difference or intersection).
++pub fn clip_locality(subject: &[slicer_ir::ExPolygon], clip: &[slicer_ir::ExPolygon]) -> (u64, u64, u64) {
++    let mut bbox = (i64::MAX, i64::MAX, i64::MIN, i64::MIN);
++    for p in ring_points(subject) {
++        bbox.0 = bbox.0.min(p.x);
++        bbox.1 = bbox.1.min(p.y);
++        bbox.2 = bbox.2.max(p.x);
++        bbox.3 = bbox.3.max(p.y);
++    }
++    if bbox.0 == i64::MAX {
++        return (0, 0, 0);
++    }
++    let mut near_points = 0u64;
++    let mut near_polys = 0u64;
++    let mut in_bbox = 0u64;
++    for poly in clip {
++        let mut poly_bbox = (i64::MAX, i64::MAX, i64::MIN, i64::MIN);
++        let mut points = 0u64;
++        for p in std::iter::once(&poly.contour).chain(poly.holes.iter()) {
++            points += p.points.len() as u64;
++            for q in &p.points {
++                poly_bbox.0 = poly_bbox.0.min(q.x);
++                poly_bbox.1 = poly_bbox.1.min(q.y);
++                poly_bbox.2 = poly_bbox.2.max(q.x);
++                poly_bbox.3 = poly_bbox.3.max(q.y);
++                if q.x >= bbox.0 && q.x <= bbox.2 && q.y >= bbox.1 && q.y <= bbox.3 {
++                    in_bbox += 1;
++                }
++            }
++        }
++        if poly_bbox.0 != i64::MAX
++            && poly_bbox.0 <= bbox.2
++            && poly_bbox.2 >= bbox.0
++            && poly_bbox.1 <= bbox.3
++            && poly_bbox.3 >= bbox.1
++        {
++            near_polys += 1;
++            near_points += points;
++        }
++    }
++    (near_points, near_polys, in_bbox)
++}
++
++/// Start a probe timer when enabled.
++pub fn timer() -> Option<Instant> {
++    enabled().then(Instant::now)
++}
+diff --git a/crates/slicer-runtime/src/layer_executor.rs b/crates/slicer-runtime/src/layer_executor.rs
+index 078ec32d..7a629b91 100644
+--- a/crates/slicer-runtime/src/layer_executor.rs
++++ b/crates/slicer-runtime/src/layer_executor.rs
+@@ -1110,6 +1110,8 @@ fn execute_single_layer_inner(
+             // Seam plan consulted by the perimeter arms of `apply` (ADR-0020).
+             let seam_plan_ir_for_commit = blackboard.seam_plan().map(|arc| arc.as_ref());
+ 
++            // t173 probe: per-layer stage attribution for guest clipper calls.
++            let _t173_stage = slicer_core::t173_probe::enter_stage(&stage.stage_id);
+             let run_result = runner.run_stage(&stage.stage_id, layer, &live_module, input);
+             // Pull the wasm linear-memory sample for the just-completed call.
+             // Returns (0, 0) for non-wasm runners (test mocks, host built-ins).
+@@ -2128,6 +2130,8 @@ pub fn execute_captured_stages_with_support_tools(
+                     };
+                     let seam_plan_ir_for_commit = blackboard.seam_plan().map(|arc| arc.as_ref());
+ 
++                    // t173 probe: per-layer stage attribution for guest clipper calls.
++                    let _t173_stage = slicer_core::t173_probe::enter_stage(&stage.stage_id);
+                     let commit = runner
+                         .run_stage(&stage.stage_id, layer, &live_module, input)
+                         .map_err(|e| {
+diff --git a/crates/slicer-runtime/src/postpass.rs b/crates/slicer-runtime/src/postpass.rs
+index c8b86a62..96d61468 100644
+--- a/crates/slicer-runtime/src/postpass.rs
++++ b/crates/slicer-runtime/src/postpass.rs
+@@ -372,6 +372,8 @@ pub fn execute_postpass_with_owned_capture(
+                     mesh: std::sync::Arc::clone(blackboard.mesh()),
+                     _phantom: std::marker::PhantomData,
+                 };
++                // t173 probe: postpass stage attribution for guest clipper calls.
++                let _t173_stage = slicer_core::t173_probe::enter_stage(&stage.stage_id);
+                 let res = runner.run_gcode_postprocess(
+                     &stage.stage_id,
+                     &live_module,
+@@ -508,6 +510,8 @@ pub fn execute_postpass_with_owned_capture(
+                 mesh: std::sync::Arc::clone(blackboard.mesh()),
+                 _phantom: std::marker::PhantomData,
+             };
++            // t173 probe: postpass stage attribution for guest clipper calls.
++            let _t173_stage = slicer_core::t173_probe::enter_stage(&stage.stage_id);
+             let res = runner.run_text_postprocess(&stage.stage_id, &live_module, input, text);
+             drain_postpass_profile(runner, instrumentation, &stage.stage_id, module.module_id());
+             instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
+diff --git a/crates/slicer-runtime/src/prepass.rs b/crates/slicer-runtime/src/prepass.rs
+index 6dd5f2db..8ac1fdb4 100644
+--- a/crates/slicer-runtime/src/prepass.rs
++++ b/crates/slicer-runtime/src/prepass.rs
+@@ -286,6 +286,8 @@ fn execute_prepass_with_instrumentation_collecting(
+ 
+     for stage in &plan.prepass_stages {
+         ensure_stage_prerequisites(&stage.stage_id, blackboard)?;
++        // t173 probe: stage attribution for guest-issued clipper calls.
++        let _t173_stage = slicer_core::t173_probe::enter_stage(&stage.stage_id);
+         let mut support_plans = Vec::new();
+         // Kept index-parallel with `support_plans`: element `i` is the audit
+         // that belongs to the module which produced `support_plans[i]`, so an
+@@ -1153,6 +1155,9 @@ fn run_builtin_stage(
+         // single owner is both sufficient and correct. Costs one relaxed atomic
+         // load when profiling is off.
+         let _native_owner = crate::profiling_report::NativeOwnerGuard::new(module_id);
++        // t173 probe: stage + built-in owner for native clipper calls.
++        let _t173_stage = slicer_core::t173_probe::enter_stage(stage_id);
++        let _t173_builtin = slicer_core::t173_probe::enter_builtin(module_id);
+         execute(blackboard)?;
+         guard.finish(blackboard.estimated_size());
+     }
+diff --git a/crates/slicer-runtime/src/run.rs b/crates/slicer-runtime/src/run.rs
+index 0d33bbb0..357ddb6d 100644
+--- a/crates/slicer-runtime/src/run.rs
++++ b/crates/slicer-runtime/src/run.rs
+@@ -1398,14 +1398,17 @@ pub fn run_slice_with_runtime_extensions(
+     opts: SliceRunOptions,
+     extensions: crate::preparation_lifecycle::SliceRuntimeExtensions,
+ ) -> Result<SliceOutcome, SliceRunError> {
+-    match run_slice_shared(opts, None, extensions, SliceCompletion::FullSlice)
++    let result = match run_slice_shared(opts, None, extensions, SliceCompletion::FullSlice)
+         .map_err(into_slice_run_error)?
+     {
+         SliceRunResult::FullSlice(outcome) => Ok(*outcome),
+         SliceRunResult::PreparationOnly(_) | SliceRunResult::PreparationVisual(_) => {
+             unreachable!("full slice requested")
+         }
+-    }
++    };
++    // t173 probe: emit the clipper census at the end of the run.
++    slicer_core::t173_probe::emit_all();
++    result
+ }
+ 
+ /// Run the full validated startup and committed preparation prefix, snapshot
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index f73b4680..e513ec76 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -2592,6 +2592,14 @@ fn ir_bounds_to_layer(bounds: slicer_ir::BoundingBox3) -> BoundingBox3 {
+ 
+ impl hs::Host for HostExecutionContext {
+     fn log(&mut self, level: hs::LogLevel, message: String) -> wasmtime::Result<()> {
++        // t173 probe: a `t173:<site>` trace tags the next clip call's source
++        // site. Suppressed from the event stream while the probe is on.
++        if let Some(site) = message.strip_prefix("t173:") {
++            slicer_core::t173_probe::set_site(site);
++            if slicer_core::t173_probe::enabled() {
++                return Ok(());
++            }
++        }
+         let level_str = match level {
+             hs::LogLevel::Trace => "trace",
+             hs::LogLevel::Debug => "debug",
+@@ -2635,6 +2643,14 @@ impl hs::Host for HostExecutionContext {
+         clip: Vec<ExPolygon>,
+         op: hs::ClipOperation,
+     ) -> wasmtime::Result<Vec<ExPolygon>> {
++        // t173 probe: attribute this call to the invoking guest (env-gated).
++        let _t173 = slicer_core::t173_probe::enter_call(
++            &self.module_id,
++            None,
++            None,
++            "wit-serial",
++            false,
++        );
+         let ir_subject = wit_to_ir_expolygons(&subject);
+         let ir_clip = wit_to_ir_expolygons(&clip);
+         let result = slicer_core::polygon_ops::clip_polygons(&ir_subject, &ir_clip, ir_clip_op(op));
+@@ -2649,6 +2665,14 @@ impl hs::Host for HostExecutionContext {
+         arc_tolerance_mm: f32,
+         miter_limit: Option<f32>,
+     ) -> wasmtime::Result<Vec<ExPolygon>> {
++        // t173 probe: attribute this offset to the invoking guest.
++        let _t173 = slicer_core::t173_probe::enter_call(
++            &self.module_id,
++            None,
++            None,
++            "wit-serial",
++            false,
++        );
+         let ir_polys = wit_to_ir_expolygons(&polygons);
+         let result = match miter_limit {
+             Some(miter_limit) => slicer_core::polygon_ops::offset_with_miter_limit(
+@@ -2708,10 +2732,22 @@ impl hs::Host for HostExecutionContext {
+         &mut self,
+         requests: Vec<hs::OffsetRequest>,
+     ) -> wasmtime::Result<Vec<Vec<ExPolygon>>> {
++        // t173 probe: batch context + wall (env-gated).
++        let t173_module = self.module_id.clone();
++        let t173_stage = slicer_core::t173_probe::current_stage();
++        let t173_site = slicer_core::t173_probe::take_pending_site();
++        let t173_t0 = slicer_core::t173_probe::timer();
+         let (results, _mode) = crate::batch::map_batch(
+             &requests,
+             |r| expolygon_vertex_count(&r.polygons),
+             |r| {
++                let _t173 = slicer_core::t173_probe::enter_call(
++                    &t173_module,
++                    t173_stage.as_deref(),
++                    t173_site.as_deref(),
++                    "wit-batch",
++                    true,
++                );
+                 let ir_polys = wit_to_ir_expolygons(&r.polygons);
+                 let result = match r.miter_limit {
+                     Some(miter_limit) => slicer_core::polygon_ops::offset_with_miter_limit(
+@@ -2731,6 +2767,19 @@ impl hs::Host for HostExecutionContext {
+                 ir_to_wit_expolygons(&result)
+             },
+         );
++        if let Some(t0) = t173_t0 {
++            let _t173 = slicer_core::t173_probe::enter_call(
++                &t173_module,
++                t173_stage.as_deref(),
++                t173_site.as_deref(),
++                "wit-batch-call",
++                true,
++            );
++            slicer_core::t173_probe::record_batch(
++                requests.len() as u64,
++                t0.elapsed().as_nanos() as u64,
++            );
++        }
+         Ok(results)
+     }
+ 
+@@ -2738,10 +2787,23 @@ impl hs::Host for HostExecutionContext {
+         &mut self,
+         requests: Vec<hs::ClipRequest>,
+     ) -> wasmtime::Result<Vec<Vec<ExPolygon>>> {
++        // t173 probe: one guest tag covers every request in the batch; the
++        // site stays sticky on each fan-out worker (env-gated).
++        let t173_module = self.module_id.clone();
++        let t173_stage = slicer_core::t173_probe::current_stage();
++        let t173_site = slicer_core::t173_probe::take_pending_site();
++        let t173_t0 = slicer_core::t173_probe::timer();
+         let (results, _mode) = crate::batch::map_batch(
+             &requests,
+             |r| expolygon_vertex_count(&r.subject) + expolygon_vertex_count(&r.clip),
+             |r| {
++                let _t173 = slicer_core::t173_probe::enter_call(
++                    &t173_module,
++                    t173_stage.as_deref(),
++                    t173_site.as_deref(),
++                    "wit-batch",
++                    true,
++                );
+                 let ir_subject = wit_to_ir_expolygons(&r.subject);
+                 let ir_clip = wit_to_ir_expolygons(&r.clip);
+                 let result = slicer_core::polygon_ops::clip_polygons(
+@@ -2752,6 +2814,19 @@ impl hs::Host for HostExecutionContext {
+                 ir_to_wit_expolygons(&result)
+             },
+         );
++        if let Some(t0) = t173_t0 {
++            let _t173 = slicer_core::t173_probe::enter_call(
++                &t173_module,
++                t173_stage.as_deref(),
++                t173_site.as_deref(),
++                "wit-batch-call",
++                true,
++            );
++            slicer_core::t173_probe::record_batch(
++                requests.len() as u64,
++                t0.elapsed().as_nanos() as u64,
++            );
++        }
+         Ok(results)
+     }
+ 
+diff --git a/modules/core-modules/tree-support-planner/Cargo.toml b/modules/core-modules/tree-support-planner/Cargo.toml
+index 0917e956..0bac2bfa 100644
+--- a/modules/core-modules/tree-support-planner/Cargo.toml
++++ b/modules/core-modules/tree-support-planner/Cargo.toml
+@@ -5,6 +5,11 @@ edition.workspace = true
+ authors.workspace = true
+ description = "Emits SupportPlanIR from coarse SupportGeometryIR inside PrePass::SupportGeometry"
+ 
++[features]
++# t173 probe only: `log`-tag each clip call site. Reverted with `probe.patch`.
++default = ["t173-probe"]
++t173-probe = []
++
+ [dependencies]
+ slicer-sdk = { path = "../../../crates/slicer-sdk" }
+ slicer-schema = { path = "../../../crates/slicer-schema" }
+diff --git a/modules/core-modules/tree-support-planner/src/lib.rs b/modules/core-modules/tree-support-planner/src/lib.rs
+index a98dfa6f..ba3ceba5 100644
+--- a/modules/core-modules/tree-support-planner/src/lib.rs
++++ b/modules/core-modules/tree-support-planner/src/lib.rs
+@@ -68,6 +68,21 @@
+ use slicer_sdk::host_batch::{clip_polygons_batch, ClipRequest, OffsetRequest};
+ use slicer_sdk::prelude::*;
+ 
++/// t173 probe: tag the next host clip call with its source site. The host
++/// `log` import intercepts `t173:` messages and the clipper records the tag;
++/// the message is suppressed while `PNP_T173_PROBE=1`. Compiled out unless the
++/// temporary `t173-probe` feature is on.
++#[cfg(all(target_arch = "wasm32", feature = "t173-probe"))]
++macro_rules! t173_tag {
++    ($site:literal) => {
++        slicer_sdk::host::log_trace(concat!("t173:", $site))
++    };
++}
++#[cfg(not(all(target_arch = "wasm32", feature = "t173-probe")))]
++macro_rules! t173_tag {
++    ($site:literal) => {};
++}
++
+ const DEFAULT_BRANCH_ANGLE_DEG: f32 = 45.0;
+ /// Canonical `support_line_width` (`PrintConfig.cpp`, `coFloatOrPercent`).
+ /// Canonical derives the support extrusion width from
+@@ -1111,6 +1126,7 @@ fn carve_emitted_regions_with_bbox_gate(
+             carved.push(region.clone());
+             continue;
+         }
++        t173_tag!("planner::carve_emitted_regions_with_bbox_gate");
+         carved.extend(largest_part(host::clip_polygons(
+             std::slice::from_ref(region),
+             collision_polys,
+@@ -1145,6 +1161,7 @@ pub fn carve_emitted_regions(
+         regions
+             .iter()
+             .filter_map(|region| {
++                t173_tag!("planner::carve_emitted_regions_unconditional");
+                 largest_part(host::clip_polygons(
+                     std::slice::from_ref(region),
+                     collision_polys,
+@@ -1224,6 +1241,7 @@ pub fn build_roles(
+                 // Simplification may move a boundary back into collision. The
+                 // per-circle largest-part selection already happened above, so
+                 // this is canonical's plain set-wide difference.
++                t173_tag!("planner::build_roles_with_areas_set_difference");
+                 host::clip_polygons(&regions, collision_polys, ClipOperation::Difference)
+             }
+         };
+@@ -1236,6 +1254,7 @@ pub fn build_roles(
+     let mut carved = body;
+     for cut in [&roof, &base, &floor] {
+         if !carved.is_empty() && !cut.is_empty() {
++            t173_tag!("planner::build_roles_body_minus_cut");
+             carved = host::clip_polygons(&carved, cut, ClipOperation::Difference);
+         }
+     }
+@@ -1343,10 +1362,19 @@ fn role_regions(input: &RoleBuildInput, role: usize) -> Vec<ExPolygon> {
+     regions
+ }
+ 
++/// t173 probe: dynamic site tag (one allocation per batch chunk).
++#[cfg(all(target_arch = "wasm32", feature = "t173-probe"))]
++fn t173_tag_dynamic(site: &'static str) {
++    slicer_sdk::host::log_trace(&format!("t173:{site}"));
++}
++#[cfg(not(all(target_arch = "wasm32", feature = "t173-probe")))]
++fn t173_tag_dynamic(_site: &'static str) {}
++
+ /// Issue a batch in bounded slices, preserving input order across slices.
+-fn run_clip_batches(requests: &[ClipRequest]) -> Vec<Vec<ExPolygon>> {
++fn run_clip_batches(site: &'static str, requests: &[ClipRequest]) -> Vec<Vec<ExPolygon>> {
+     let mut results = Vec::with_capacity(requests.len());
+     for slice in requests.chunks(CLIP_BATCH_MAX_REQUESTS) {
++        t173_tag_dynamic(site);
+         results.extend(clip_polygons_batch(slice));
+     }
+     results
+@@ -1417,7 +1445,8 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             slot_lists[i][role] = slots;
+         }
+     }
+-    let mut carve_results: Vec<Option<ExPolygon>> = run_clip_batches(&carve_requests)
++    let mut carve_results: Vec<Option<ExPolygon>> =
++        run_clip_batches("planner::batched_phase1_carve", &carve_requests)
+         .into_iter()
+         .map(largest_part)
+         .collect();
+@@ -1454,7 +1483,7 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             }
+         }
+     }
+-    let lone_results = run_clip_batches(&lone_requests);
++    let lone_results = run_clip_batches("planner::batched_phase2_lone_gated", &lone_requests);
+     for ((i, role), result) in lone_slots.into_iter().zip(lone_results) {
+         carved[i][role] = largest_part(result).into_iter().collect();
+     }
+@@ -1476,7 +1505,7 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             union_slots.push((i, role));
+         }
+     }
+-    let union_results = run_clip_batches(&union_requests);
++    let union_results = run_clip_batches("planner::batched_phase3_union", &union_requests);
+     for ((i, role), result) in union_slots.into_iter().zip(union_results) {
+         carved[i][role] = result;
+     }
+@@ -1509,7 +1538,7 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             set_slots.push((i, role));
+         }
+     }
+-    let set_results = run_clip_batches(&set_requests);
++    let set_results = run_clip_batches("planner::batched_phase5_set_difference", &set_requests);
+     for ((i, role), result) in set_slots.into_iter().zip(set_results) {
+         carved[i][role] = result;
+     }
+@@ -1533,7 +1562,7 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             });
+             slots.push(i);
+         }
+-        let results = run_clip_batches(&requests);
++        let results = run_clip_batches("planner::batched_phase6_body_minus_cut", &requests);
+         for (i, result) in slots.into_iter().zip(results) {
+             body[i] = result;
+         }
+@@ -1561,7 +1590,8 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             territory_slots.push((i, role));
+         }
+     }
+-    let territory_results = run_clip_batches(&territory_requests);
++    let territory_results =
++        run_clip_batches("planner::batched_phase7_territory", &territory_requests);
+     for ((i, role), result) in territory_slots.into_iter().zip(territory_results) {
+         carved[i][role] = result;
+     }
+@@ -1971,6 +2001,7 @@ fn expolygons_simplify_union(polys: &[ExPolygon], tolerance_units: f64) -> Vec<E
+         return simplified;
+     }
+     let (head, tail) = simplified.split_at(1);
++    t173_tag!("planner::expolygons_simplify_union");
+     host::clip_polygons(head, tail, ClipOperation::Union)
+ }
+ 
+@@ -1980,6 +2011,7 @@ fn union_expolys(polys: Vec<ExPolygon>) -> Vec<ExPolygon> {
+         return polys;
+     }
+     let (head, tail) = polys.split_at(1);
++    t173_tag!("planner::union_expolys");
+     host::clip_polygons(head, tail, ClipOperation::Union)
+ }
+ 
+@@ -2131,6 +2163,7 @@ impl TreeVolumes {
+                 below = if below.is_empty() {
+                     union_expolys(outlines.clone())
+                 } else {
++                    t173_tag!("planner::volumes_layer_outlines_below_union");
+                     host::clip_polygons(&below, outlines, ClipOperation::Union)
+                 };
+             }
+@@ -2306,6 +2339,7 @@ impl TreeVolumes {
+                 } else if collision.is_empty() {
+                     eroded
+                 } else {
++                    t173_tag!("planner::ensure_avoidance_union");
+                     host::clip_polygons(&eroded, &collision, ClipOperation::Union)
+                 }
+             };
+@@ -2814,6 +2848,7 @@ impl SupportPlanner {
+             for (layer_idx, polygons) in polygons_by_layer {
+                 let polygons = if polygons.len() > 1 {
+                     let (first, rest) = polygons.split_at(1);
++                    t173_tag!("planner::plan_for_object_contact_union");
+                     host::clip_polygons(first, rest, ClipOperation::Union)
+                 } else {
+                     polygons
