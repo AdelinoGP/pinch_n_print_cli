@@ -1426,8 +1426,8 @@ numbers. Evidence:
 [`evidence/t169-offset-decimation-flat-opening/`](evidence/t169-offset-decimation-flat-opening/FINDINGS.md)
 (`verify.py` PASS, `--self-test` 6/6; `audit_t169.py --self-test` 4/4).
 **Frontier:** [170](issues/170-clipper2-2-0-1-kernel-port-screen.md) (AFK,
-unblocked) and the post-decimation re-price of t129's operand-volume shapes
-(fog, below).
+unblocked) and
+[171](issues/171-post-t169-prepass-reprice.md) (AFK, unblocked, new).
 
 ## Notes
 
@@ -1550,8 +1550,8 @@ cells, +5.7…+15.2 % on benchy, 5/5 pairs each, CPU lower 8/8 on both arms, and
 output moving 8/8 by design. The per-layer fence (t128) was put to the human
 in-session with these numbers and the **fifth t81-style exception** was granted;
 the change is committed as `9c3125d5`. t169's set is the currency.
-**Frontier:** [170](issues/170-clipper2-2-0-1-kernel-port-screen.md) (AFK,
-unblocked).
+**Frontier:** [170](issues/170-clipper2-2-0-1-kernel-port-screen.md) and
+[171](issues/171-post-t169-prepass-reprice.md) (both AFK, unblocked).
 
 **Previous selection scope (2026-11-19, the t168 take):** the human said
 "Continue the perf vs orca map" (no ticket named); **168 was first on the
@@ -5112,8 +5112,9 @@ Standing decisions for this effort (2026-09-22):
 
 ## Not yet specified
 
-- **t129's operand-volume shapes need a post-decimation re-price before any of
-  them is revived (2026-11-20, [t169](issues/169-canonical-offset-edge-decimation-and-flat-opening.md)).**
+- **t129's operand-volume shapes are re-priced by
+  [171](issues/171-post-t169-prepass-reprice.md) (graduated 2026-11-20,
+  [t169](issues/169-canonical-offset-edge-decimation-and-flat-opening.md)).**
   The two shapes the map priced on the pre-t169 tree —
   **S6** (exact occupancy memo, 14,227.7 ms thread / 6,504 ms wall on
   `base classic-on`) and **S5** (bounded-delta windowed internal-bridge offsets,
@@ -5121,15 +5122,11 @@ Standing decisions for this effort (2026-09-22):
   `offset` primitive that this take cut by **41.0–55.5 %** of its own self wall
   and a `offset2_ex` primitive cut by **12.6–25.1 %**. S5's operand is precisely
   the internal-bridge offset whose section path already fell **72–73 %** on the
-  two base supports-off cells, so its 21.0 s thread ceiling is now smaller by an
-  unknown amount; S6's occupancy offsets run through the same decimated harvest.
-  Neither ticket exists and neither may be graduated from t131's numbers.
-  Re-price on a fresh instrumented pass (the `polygon_ops::offset` self-wall
-  totals per cell are now 40.3 / 110.3 / 39.3 / 115.2 s for
-  base classic-off / classic-on / arachne-off / arachne-on against
-  82.1 / 247.9 / 80.5 / 245.8 s before) **and** re-derive the prepass stage split,
-  which was last measured on the pre-t169 tree by
-  [t164](issues/164-phase-re-attribution.md).
+  two base supports-off cells, and S6's occupancy offsets run through the same
+  decimated harvest. Neither number may be quoted again. The re-price must also
+  re-derive the prepass **stage** split, last measured pre-t169 by
+  [t164](issues/164-phase-re-attribution.md), because a 22–25 % whole-cell cut
+  moves every phase share.
 
 - **The two base Arachne cells' t166 effect is unresolved by the wall
   instrument (2026-11-19, [t166](issues/166-shell-opening-canonical-parity.md)).**
