@@ -1,0 +1,204 @@
+{
+  "benchy-classic-off": {
+    "wall": {
+      "pairs": 5,
+      "median_saving_pct": 7.977568083025706,
+      "mean_saving_pct": 8.04957462820737,
+      "min_saving_pct": 7.042420317496068,
+      "max_saving_pct": 9.156571832977164,
+      "wins": 5,
+      "baseline_median_s": 2.438227,
+      "candidate_median_s": 2.244946,
+      "floor_multiple": 9.971960103782132
+    },
+    "cpu": {
+      "pairs": 5,
+      "median_saving_pct": 16.359447004608295,
+      "mean_saving_pct": 16.08040312516372,
+      "min_saving_pct": 14.17233560090703,
+      "max_saving_pct": 18.340611353711793,
+      "wins": 5,
+      "baseline_median_s": 13.78125,
+      "candidate_median_s": 11.703125,
+      "floor_multiple": 20.449308755760367
+    }
+  },
+  "benchy-classic-on": {
+    "wall": {
+      "pairs": 5,
+      "median_saving_pct": 15.207577781209633,
+      "mean_saving_pct": 15.038064112374991,
+      "min_saving_pct": 14.304526293178682,
+      "max_saving_pct": 15.320958981422992,
+      "wins": 5,
+      "baseline_median_s": 5.928573,
+      "candidate_median_s": 5.023656,
+      "floor_multiple": 19.009472226512038
+    },
+    "cpu": {
+      "pairs": 5,
+      "median_saving_pct": 18.061271147690903,
+      "mean_saving_pct": 18.122309037126872,
+      "min_saving_pct": 14.788732394366196,
+      "max_saving_pct": 20.970614425645593,
+      "wins": 5,
+      "baseline_median_s": 34.1875,
+      "candidate_median_s": 28.0,
+      "floor_multiple": 22.57658893461363
+    }
+  },
+  "benchy-arachne-off": {
+    "wall": {
+      "pairs": 5,
+      "median_saving_pct": 5.7350280893309895,
+      "mean_saving_pct": 5.683801347554256,
+      "min_saving_pct": 2.000731254875722,
+      "max_saving_pct": 7.972394452035836,
+      "wins": 5,
+      "baseline_median_s": 2.462594,
+      "candidate_median_s": 2.30913,
+      "floor_multiple": 7.168785111663737
+    },
+    "cpu": {
+      "pairs": 5,
+      "median_saving_pct": 15.3028692879915,
+      "mean_saving_pct": 15.332067853931173,
+      "min_saving_pct": 14.181438998957246,
+      "max_saving_pct": 16.259298618490966,
+      "wins": 5,
+      "baseline_median_s": 14.828125,
+      "candidate_median_s": 12.46875,
+      "floor_multiple": 19.128586609989373
+    }
+  },
+  "benchy-arachne-on": {
+    "wall": {
+      "pairs": 5,
+      "median_saving_pct": 14.756332632019637,
+      "mean_saving_pct": 14.80351071084981,
+      "min_saving_pct": 13.900643088446207,
+      "max_saving_pct": 15.55038401709172,
+      "wins": 5,
+      "baseline_median_s": 6.017863,
+      "candidate_median_s": 5.136657,
+      "floor_multiple": 18.445415790024544
+    },
+    "cpu": {
+      "pairs": 5,
+      "median_saving_pct": 19.70770593445527,
+      "mean_saving_pct": 19.021737386210173,
+      "min_saving_pct": 14.417989417989418,
+      "max_saving_pct": 20.781451266638044,
+      "wins": 5,
+      "baseline_median_s": 35.765625,
+      "candidate_median_s": 28.78125,
+      "floor_multiple": 24.634632418069085
+    }
+  },
+  "base-classic-off": {
+    "wall": {
+      "pairs": 5,
+      "median_saving_pct": 25.0817184531263,
+      "mean_saving_pct": 25.144607619539958,
+      "min_saving_pct": 24.667203651939094,
+      "max_saving_pct": 25.451144016637965,
+      "wins": 5,
+      "baseline_median_s": 18.362516,
+      "candidate_median_s": 13.729956,
+      "floor_multiple": 31.352148066407874
+    },
+    "cpu": {
+      "pairs": 5,
+      "median_saving_pct": 30.27592976333297,
+      "mean_saving_pct": 30.332410029687605,
+      "min_saving_pct": 29.990188596969368,
+      "max_saving_pct": 30.715759748017813,
+      "wins": 5,
+      "baseline_median_s": 143.8125,
+      "candidate_median_s": 100.296875,
+      "floor_multiple": 37.844912204166214
+    }
+  },
+  "base-classic-on": {
+    "wall": {
+      "pairs": 5,
+      "median_saving_pct": 21.91351726391312,
+      "mean_saving_pct": 22.16063028294525,
+      "min_saving_pct": 21.88567145262858,
+      "max_saving_pct": 23.019148608630317,
+      "wins": 5,
+      "baseline_median_s": 63.183467,
+      "candidate_median_s": 49.33561,
+      "floor_multiple": 27.3918965798914
+    },
+    "cpu": {
+      "pairs": 5,
+      "median_saving_pct": 27.65690887978977,
+      "mean_saving_pct": 27.524322344636055,
+      "min_saving_pct": 27.261561137382547,
+      "max_saving_pct": 27.731169908730525,
+      "wins": 5,
+      "baseline_median_s": 508.453125,
+      "candidate_median_s": 367.71875,
+      "floor_multiple": 34.57113609973721
+    }
+  },
+  "base-arachne-off": {
+    "wall": {
+      "pairs": 5,
+      "median_saving_pct": 23.429915660709725,
+      "mean_saving_pct": 22.257154384313075,
+      "min_saving_pct": 18.496181367393923,
+      "max_saving_pct": 24.35781069985318,
+      "wins": 5,
+      "baseline_median_s": 18.843081,
+      "candidate_median_s": 14.396486,
+      "floor_multiple": 29.287394575887156
+    },
+    "cpu": {
+      "pairs": 5,
+      "median_saving_pct": 29.182961631962794,
+      "mean_saving_pct": 29.16723632230468,
+      "min_saving_pct": 28.57896402574111,
+      "max_saving_pct": 29.822522712867105,
+      "wins": 5,
+      "baseline_median_s": 147.90625,
+      "candidate_median_s": 104.84375,
+      "floor_multiple": 36.47870203995349
+    }
+  },
+  "base-arachne-on": {
+    "wall": {
+      "pairs": 5,
+      "median_saving_pct": 22.407052456680628,
+      "mean_saving_pct": 22.435879727825508,
+      "min_saving_pct": 21.362182048738674,
+      "max_saving_pct": 24.030545644974172,
+      "wins": 5,
+      "baseline_median_s": 63.620724,
+      "candidate_median_s": 49.832083,
+      "floor_multiple": 28.008815570850782
+    },
+    "cpu": {
+      "pairs": 5,
+      "median_saving_pct": 26.963446634527372,
+      "mean_saving_pct": 27.040608535509826,
+      "min_saving_pct": 26.529548798430604,
+      "max_saving_pct": 27.6946926864855,
+      "wins": 5,
+      "baseline_median_s": 513.140625,
+      "candidate_median_s": 374.015625,
+      "floor_multiple": 33.704308293159215
+    }
+  },
+  "_gate": {
+    "benchy-classic-off": "PASS",
+    "benchy-classic-on": "PASS",
+    "benchy-arachne-off": "PASS",
+    "benchy-arachne-on": "PASS",
+    "base-classic-off": "PASS",
+    "base-classic-on": "PASS",
+    "base-arachne-off": "PASS",
+    "base-arachne-on": "PASS"
+  }
+}

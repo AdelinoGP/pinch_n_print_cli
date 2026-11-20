@@ -23,6 +23,31 @@ whose 3-way ablation isolated a `1.72x–1.76x` (`f2`) non-decimated speedup fro
   - Note: on `SH_OPEN_*_LEGACY` (`0.20 mm Round`), `f2` is `0.92x–0.98x` — the `1.72x–1.76x` jump is **specific to Miter `opening_ex` / `c2_offset_expolygons` / flat pass-1 `Paths64` / `PreserveCollinear(false)` / Clipper2 2.0.1 `ClipperOffset`**.
 - **12-way concurrent scaling gap:** under 12-way concurrency, `rust_pnp` slows down `1.54x–1.75x` vs `1.27x–1.46x` for `orca_v2_5_0` on `base-t68sites` and `SH_OPEN_*_CANON`, suggesting larger allocation / memory-footprint working sets in `vendor/clipper2-rust` 1.1.0.
 
+## What t169 settled (2026-11-20)
+
+- **Flat-path pass-1 `offset2_ex` was already production** (landed 2026-07-11
+  `a5433f93`, extracted into `offset2_ex_first_pass` by `b56f429a`), so this
+  screen's premise "after edge decimation and flat-path `offset2_ex` are
+  accounted for" is now: **Arm 1 banked before the map, Arm 2 banked by t169.**
+- **`append_offset_path` decimation is ported and measured**
+  ([t169](169-canonical-offset-edge-decimation-and-flat-opening.md)): the ring
+  harvest now runs at `0.005 * |delta|` in `offset_paths` and at
+  `|delta2| * 0.005` in `offset_paths_flat` for `offset2_ex`'s second pass.
+  Whole-cell wall fell **+21.91…+25.08 %** on the four `base` cells and
+  **+5.74…+15.21 %** on the four benchy cells; `polygon_ops::offset` self wall
+  fell **41.0–55.5 %** and `offset2_ex` **12.6–25.1 %** on the same tree.
+- **So the remaining canonical offset gap is `f1` plus the 2.0.1 kernel diff**:
+  t167's `f1` (`rust_pnp` 1.1.0 → C++ 1.5.2) is **1.40x–1.41x** on
+  `SH_OPEN_*_CANON`, and `f2`'s non-decimation half
+  (`1.5.2 → 2.0.1` + wrapper, `1.72x–1.76x`) is what this screen is for. The
+  decimation factor `f3` is no longer available as a lever — it is in the tree.
+- **Two things the port did not take**, both pre-existing and out of scope here
+  but worth pricing alongside a kernel upgrade: canonical's
+  `c2_offset_as_group` per-path fallback (`ClipperUtils.cpp`) and
+  `c2_offset_setup`'s `MiterLimit >= 2` / `ArcTolerance <= |delta| / 4` clamps.
+  Neither is touched by t169; if a 2.0.1 port lands without them, the wrapper
+  remains non-canonical even when the kernel matches.
+
 ## Scope
 
 1. **Diff & micro-ablate `f2` (`1.72x–1.76x`) on `SH_OPEN_*_CANON`:** separate (a) flat-path pass-1 `offset2_ex` (no intermediate `PolyTree64`), (b) `PreserveCollinear(false)` in `Clipper64` / `ClipperOffset`, (c) `Clipper2 1.5.2 → 2.0.1` diff in `clipper.offset.cpp` and `clipper.engine.cpp` (`git show 222c6a2df5 -- deps_src/clipper2/`), and (d) `c2_offset_expolygons` single-group offsetting.

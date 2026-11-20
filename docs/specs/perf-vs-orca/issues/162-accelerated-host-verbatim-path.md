@@ -2,7 +2,7 @@
 
 Type: task / defect fix
 Label: wayfinder:task
-Status: active
+Status: resolved 2026-11-20 (status line reconciled with the map entry; the take closed on 2026-11-18)
 Assignee: 2026-11-18 OpenCode wayfinder session — the human said "push harder on
   the Accelerated path, it might have broken a few tickets ago and we pushed
   forward without it".
