@@ -1534,6 +1534,16 @@ The worked examples are [`M-ARACHNE-BUILD`](testing/properties.md#m-arachne-buil
 Arachne properties, which need `slicer-core/host-algos`, stay standalone `slicer-core` test
 targets and are not module files.
 
+Packet `proptest-openrscad_12_pbt-walls` applies the same layout to
+`modules/core-modules/classic-perimeters/src/property_tests.rs` and
+`modules/core-modules/fuzzy-skin/src/property_tests.rs`. Their `property_testing` features are
+empty, default-off selectors; the SDK `test`/`property_testing` support and workspace Proptest
+remain dev-only edges, and production visibility is unchanged. The fuzzy file additionally keeps
+the ordered span matcher and widened-f64 displacement oracle local because no shared wall/fuzzy
+oracle is exported. The `src/**` scanner blind spot and required manual FRU/waiver review apply
+unchanged; see
+[`docs/testing/proptest-walls-evidence.md`](testing/proptest-walls-evidence.md).
+
 ### Mock Host
 
 ```rust

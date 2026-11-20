@@ -1275,6 +1275,31 @@ The property charters
 and [`M-ARACHNE-BUILD`](testing/properties.md#m-arachne-build) (per-point alignment through
 `build_walls`) test these rules.
 
+#### Classic-wall closure and fuzzy-skin span semantics (packet proptest-openrscad_12)
+
+This subsection clarifies existing IR semantics. It changes no field, schema version or WIT
+record.
+
+- **Classic ordinary walls.** On the tested native no-medial-axis path, an ordinary
+  `Outer`/`Inner` wall carries one point per offset-ring vertex plus an explicit closing repeat.
+  `path.points`, `width_profile.widths` and `feature_flags` are parallel by point, the closing
+  width/flag mirror the first entry, and the `perimeter_index` is the band that produced the wall.
+  The requested wall count is an upper bound, not a promised emitted count; tiny or degenerate
+  shapes may emit fewer bands or nothing.
+- **Fuzzy-skin spans.** `apply_fuzzy_skin` consumes every input point, flag and profile width
+  once in order. An unselected segment, or a selected zero-length segment, copies its endpoint
+  exactly and inserts nothing. A selected nonzero segment inserts at least one synthetic sample.
+  Inserted sample metadata is synthetic: flag/profile width come from the segment start, while
+  point width/flow interpolate and overhang annotations reset. The retained contract is exact
+  preservation of unselected spans and original endpoints plus a measured displacement envelope
+  for inserted samples, not universal metadata preservation.
+
+The property charters
+[`M-CLASSIC-WALL-STRUCTURE`](testing/properties.md#m-classic-wall-structure),
+[`M-CLASSIC-BAND-SELECTION`](testing/properties.md#m-classic-band-selection),
+[`M-FUZZY-SPAN-PRESERVATION`](testing/properties.md#m-fuzzy-span-preservation) and
+[`M-FUZZY-DISPLACEMENT`](testing/properties.md#m-fuzzy-displacement) test these rules.
+
 #### Overhang quartile bucketization (Normative — Packet 57)
 
 The four overhang speed bands map to signed-distance thresholds from

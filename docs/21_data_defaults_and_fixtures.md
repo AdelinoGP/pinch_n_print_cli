@@ -190,7 +190,10 @@ WIT adapter shims remain compiler-enforced.
 
 An out-of-line `#[cfg(test)]` module declaration is not followed into its
 separately declared module file; only inline `#[cfg(test)]` subtrees are
-scanned.
+scanned. In particular, `modules/core-modules/*/src/property_tests.rs` files
+(such as the classic-perimeter and fuzzy-skin property modules) are outside the
+scanner and require the manual FRU/waiver review recorded in their evidence.
+A green `check-literals` run is not evidence for those files.
 
 1. **Macro range expressions.** A macro token tree with a top-level range
    expression (`field: 0..2`) reads the `..` as an FRU rest, suppressing

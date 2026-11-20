@@ -529,6 +529,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 name = "classic-perimeters"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-gcode",
  "slicer-ir",
@@ -1438,6 +1439,7 @@ dependencies = [
 name = "fuzzy-skin"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",

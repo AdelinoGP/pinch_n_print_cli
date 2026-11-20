@@ -5270,3 +5270,416 @@ Controls: `lightning_model_controls`, `lightning_seed_tree_controls`,
 Roots, ownership, termination and determinism hold on every case; the node-budget
 and duplicate-root mutants fail. Repeated-run equality is a determinism pin, not
 a correctness or parity claim; no snapshot is treated as canonical evidence.
+
+### Classic-perimeter and fuzzy-skin pilots (packet `proptest-openrscad_12_pbt-walls`)
+
+Measured on Windows 11, rustc 1.96.0, Proptest 1.11.0, `dev` profile, workspace `target/`,
+`generator_version = 1`, source revision `7fc9c2b4` plus the Step 7 registry/doc worktree.
+Selected runs used seed `17102094542611295699` (routine) and `5869198346882150039` (extended);
+the retained replay reused seed `17102094542611295699`. All records had
+`accepted_cases == cases`, zero rejected callbacks, zero local/global rejects and
+`shrink_completed = null`.
+
+| Property | routine libtest | extended libtest | routine accepted | extended accepted |
+|---|---:|---:|---:|---:|
+| `M-CLASSIC-WALL-STRUCTURE` | 0.11 s | 0.39 s | 64 | 256 |
+| `M-CLASSIC-BAND-SELECTION` | 0.10 s | 0.38 s | 64 | 256 |
+| `M-FUZZY-REPEATABILITY` | 0.04 s | 0.12 s | 64 | 256 |
+| `M-FUZZY-SPAN-PRESERVATION` | 0.04 s | 0.13 s | 64 | 256 |
+| `M-FUZZY-DISPLACEMENT` | 0.04 s | 0.12 s | 64 | 256 |
+
+Bounds are `max_abs_units=2048`, `max_vertices=16`, `max_holes=2`, `max_components=3`,
+`max_shrink_candidates=32`, `max_wall_count=4`, `max_width_units=8`,
+`max_layer_height_units=4` for both classic records; and `max_abs_mm_units=20000`,
+`max_thickness_units=3000`, `max_point_distance_units=8000`, `max_points=8` for all fuzzy
+records. Both selected and combined lanes reported `VERDICT: PASS`. The final measured
+artifacts and exact logs are retained under `target/proptest-walls-evidence/review-fix/`.
+
+## M-CLASSIC-WALL-STRUCTURE
+
+Registry record: `id = "M-CLASSIC-WALL-STRUCTURE"`, `package = "classic-perimeters"`,
+`target_kind = "lib"`, `target_name = "classic_perimeters"`,
+`test_name = "property_tests::proptest_classic_wall_structure"`,
+`production_symbol = "classic_perimeters::ClassicPerimeters::emit_walls"`,
+`production_path = "modules/core-modules/classic-perimeters/src/lib.rs"`,
+`features = ["classic-perimeters/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-classic-wall-structure"`.
+
+### Stable property ID
+
+`M-CLASSIC-WALL-STRUCTURE` checks ordinary wall role, closure and metadata alignment for the
+selected no-medial-axis path.
+
+### Owner
+
+- **Package and module.** `classic-perimeters`, private `property_tests`
+  (`modules/core-modules/classic-perimeters/src/property_tests.rs`), with stacked `#[cfg(test)]`
+  and `#[cfg(feature = "property_testing")]` gates. See
+  [module-owned property files](../05_module_sdk.md#module-owned-private-kernel-property-files-packet-proptest-openrscad_10).
+- **Controls.** `classic_required_witnesses_are_nonempty`,
+  `classic_structure_oracle_rejects_mutations`,
+  `classic_shrink_preserves_emit_mode_and_topology`.
+
+### Contract
+
+Every emitted ordinary `Outer`/`Inner` wall has a `perimeter_index` below the requested wall
+count; band 0 is `LoopType::Outer` / `ExtrusionRole::OuterWall` with the outer speed/width, and
+band > 0 is `LoopType::Inner` / `ExtrusionRole::InnerWall` with the inner speed/width. Points,
+width-profile entries and flags are parallel; the path is closed with an explicit repeat; at
+least four points exist; consecutive XY are distinct; copied z/width/flow/default annotations,
+closing width/flag and absent tool/order-lock values match the fixture. The emitted count is
+never compared with `wall_count`.
+
+### Domain
+
+The shared `geometry_cases` constructions for `Convex`, `Concave`, `Holed` and `Disconnected`
+are prebuilt for `max_abs_units = 2048`, `max_vertices = 16`, `max_holes = 2`,
+`max_components = 3`, `max_shrink_candidates = 32`; every case is certified by
+`validate_geometry` before the SUT runs. `wall_count` is `1..=4`, widths are
+`width_floor(4)..=8` canonical units, layer height is `1..=4` units, and z spans
+0.05..=0.35 mm. Both emit gates and both `variant_fuzzy` values are selected. Empty geometry
+output is valid; an aggregate nonempty counter and the deterministic 20 mm witness make the
+population non-vacuous.
+
+### Strategy
+
+The no-shrink topology `ClassTag` selector feeds `prop_ind_flat_map` into the matching prebuilt
+domain. Wall count, both widths, layer height and z stay shrinkable. Emit mode and
+`variant_fuzzy` use `prop::sample::select(...).no_shrink()`, never a union of `Just` arms. The
+fixture calls the real private `emit_walls` with empty annotations, an empty spatial context,
+`PathAnnotationMode::Unconsumed`, `detect_thin_wall = false` and `medial_axis_enabled = false`,
+and a fresh `PerimeterOutputBuilder` per invocation.
+
+### Oracle
+
+`classic_structure_oracle` is local and independent. It does not call a production validator or
+reconstruct the offset. It checks finite coordinates/width/flow first, then exact bits for
+copied z, widths, flow and closing point, exact default annotations/flags, band/role/loop/speed
+mapping, closure, distinct consecutive XY and parallel lengths.
+
+### Tolerance
+
+Exact f32 equality for copied values and structural metadata; no numeric epsilon.
+
+### Shrinking
+
+The class and both mode selectors cannot flip. Geometry shrinking preserves its declared
+topology and every current case remains `validate_geometry`-valid; wall count and ordinary
+scalars may shrink. The probe exercises both simplify and complicate for every class and fails
+on a false-only walk.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets. Registry routine
+(64 cases) measured 0.11 s with 43 nonempty generated cases (Convex/Concave/Holed/Disconnected
+= 7/11/12/13); extended (256 cases) measured 0.39 s with 160 nonempty (42/27/44/47). Both had
+zero rejects and every class had a nonempty population. The 128-case controlled pilot measured
+0.20 s and 78 nonempty cases.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/M-CLASSIC-WALL-STRUCTURE/`; retain geometry,
+wall/band index and the first failing field. A confirmed SUT defect requires a named concrete
+RNG/context-independent regression.
+
+### Acceptance
+
+Every ordinary wall satisfies the structure contract; the deterministic 20 mm/3-band witness is
+nonempty with bands `{0,1,2}` in both fuzzy modes; the generated nonempty counter is positive;
+all named oracle mutations are rejected.
+
+## M-CLASSIC-BAND-SELECTION
+
+Registry record: `id = "M-CLASSIC-BAND-SELECTION"`, `package = "classic-perimeters"`,
+`target_kind = "lib"`, `target_name = "classic_perimeters"`,
+`test_name = "property_tests::proptest_classic_band_selection"`,
+`production_symbol = "classic_perimeters::ClassicPerimeters::emit_walls"`,
+`production_path = "modules/core-modules/classic-perimeters/src/lib.rs"`,
+`features = ["classic-perimeters/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-classic-band-selection"`.
+
+### Stable property ID
+
+`M-CLASSIC-BAND-SELECTION` checks the emit gates, calculated allowed-prefix band set, capacity,
+degenerate inputs and fatal spacing.
+
+### Owner
+
+Same owner module and controls file as the structure record. Controls are
+`classic_band_oracle_and_degenerate_cases`, `classic_negative_spacing_is_fatal`,
+`classic_property_domains_reject_unsafe_bounds` and the structure controls rerun after shared
+helper changes.
+
+### Contract
+
+`emit_outer`/`emit_inner` select exactly their ordinary roles. For nonempty output the emitted
+band set is the gate-filtered prefix through the maximum computed band; a missing allowed index
+is a failure. No outer output means no seam candidates; no inner output means no infill areas.
+The requested wall count is only an upper bound. Degenerate contours emit nothing, and a
+nonpositive spacing is fatal `ERR_NEGATIVE_SPACING`, never a clamp.
+
+### Domain
+
+The structure geometry and scalar domain, all three emit modes, and `wall_count == 1`. The
+deterministic controls add a 1 mm square requesting ten bands, 2-point and collinear contours,
+an empty polygon list, and a width below the positive-spacing threshold. Bounds are supplied
+explicitly; missing/invalid/overflow values are rejected before sampling.
+
+### Strategy
+
+Reuses the construction-first class strategy and the single no-shrink emit selector, and keeps
+ordinary scalars shrinkable.
+
+### Oracle
+
+`classic_band_oracle` runs `classic_structure_oracle` first, then checks gates, the allowed
+prefix and side-output implications over the real builder's walls, infill and seams. It never
+compares emitted wall/band count with `wall_count`.
+
+### Tolerance
+
+Exact integer band indices and booleans; no geometry tolerance.
+
+### Shrinking
+
+Modes cannot flip; smaller requests may legitimately emit fewer bands, but may not introduce a
+band outside the request or break the allowed prefix.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Registry routine
+(64 cases) measured 0.10 s with 38 nonempty cases, every class nonempty (Convex/Concave/Holed/
+Disconnected = 11/7/12/8), modes 28/19/17 and 10 single-band cases; extended (256 cases) measured
+0.38 s with 145 nonempty (30/44/45/26), modes 77/94/85 and 52 single-band cases. Both had zero
+rejects. The capacity witness emitted exactly band `{0}`.
+
+### Failure record
+
+Retain the requested count, emit mode, actual band set and first violating index. Capacity
+differences are documented, not failures unless the prefix/gate contract breaks.
+
+### Acceptance
+
+Generated mode/wall-count coverage, capacity, degenerates, fatal spacing, exact domain errors
+and all gate/gap mutations pass; no universal wall count is claimed.
+
+## M-FUZZY-REPEATABILITY
+
+Registry record: `id = "M-FUZZY-REPEATABILITY"`, `package = "fuzzy-skin"`,
+`target_kind = "lib"`, `target_name = "fuzzy_skin"`,
+`test_name = "property_tests::proptest_fuzzy_repeatability"`,
+`production_symbol = "fuzzy_skin::apply_fuzzy_skin"`,
+`production_path = "modules/core-modules/fuzzy-skin/src/lib.rs"`,
+`features = ["fuzzy-skin/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-fuzzy-repeatability"`.
+
+### Stable property ID
+
+`M-FUZZY-REPEATABILITY` is a determinism pin for identical `apply_fuzzy_skin` arguments, not a
+geometric correctness claim.
+
+### Owner
+
+`fuzzy-skin`, private `property_tests`
+(`modules/core-modules/fuzzy-skin/src/property_tests.rs`), with the same stacked default-off
+gates as the classic records. Controls: `fuzzy_repeatability_control` and
+`fuzzy_shrink_preserves_modes_and_fixed_prefix`.
+
+### Contract
+
+Two calls with identical path, flags, profile, modes, parameters and layer/wall indices return
+bit-identical points, flags and widths. The SUT seed derives from layer/wall indices; the
+Proptest seed samples cases.
+
+### Domain
+
+Canonical-grid points with a fixed selected leading nonzero segment, a fixed unselected
+following segment when `apply_to_all=false`, a shrinkable tail (including duplicate points),
+parallel flags/widths, positive thickness/point distance and arbitrary u32 indices. Bounds:
+`max_abs_mm_units = 20000`, `max_thickness_units = 3000`,
+`max_point_distance_units = 8000`, `max_points = 8`.
+
+### Strategy
+
+Construction-first tail vectors; `apply_to_all` and open/closed topology are separate no-shrink
+`prop::sample::select` strategies. A closed path carries its explicit final repeat.
+
+### Oracle
+
+Every point field, flag and width is compared by float bits, including signed zero. A changed
+bit fails.
+
+### Tolerance
+
+None; bitwise equality.
+
+### Shrinking
+
+Modes cannot flip; generated tail flags/points/widths and ordinary parameters shrink as valid
+inputs. The deterministic mixed witness carries the specific selected/unselected contrast.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`. Registry routine (64 cases) measured 0.04 s
+and extended (256 cases) 0.12 s, with zero rejects. The 128-case pilot passed in 0.07 s; every
+case called the SUT twice.
+
+### Failure record
+
+Retain both argument tuples and the first differing point/flag/width. Do not relax to
+approximate equality.
+
+### Acceptance
+
+Repeatability property, one-bit mutation rejection, changed-layer sensitivity and seed-repeat
+control pass. The `// test-quality:` determinism waiver is present.
+
+## M-FUZZY-SPAN-PRESERVATION
+
+Registry record: `id = "M-FUZZY-SPAN-PRESERVATION"`, `package = "fuzzy-skin"`,
+`target_kind = "lib"`, `target_name = "fuzzy_skin"`,
+`test_name = "property_tests::proptest_fuzzy_span_preservation"`,
+`production_symbol = "fuzzy_skin::apply_fuzzy_skin"`,
+`production_path = "modules/core-modules/fuzzy-skin/src/lib.rs"`,
+`features = ["fuzzy-skin/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-fuzzy-span-preservation"`.
+
+### Stable property ID
+
+`M-FUZZY-SPAN-PRESERVATION` checks ordered span consumption and exact preservation of unselected
+spans and original endpoint metadata.
+
+### Owner
+
+Same fuzzy owner file. Controls: `fuzzy_required_witnesses_are_nonempty`,
+`fuzzy_span_oracle_rejects_mutations`, `fuzzy_disabled_parameters_are_identity`,
+`fuzzy_property_domains_reject_unsafe_bounds` and the shrink probe.
+
+### Contract
+
+Every input entry is consumed once in order. An unselected segment and a selected zero-length
+segment add no sample and copy endpoint point/flag/profile width exactly. A selected nonzero
+segment adds at least one sample. Output arrays are parallel. Synthetic inserted overhang/flow
+metadata is not claimed preserved.
+
+### Domain
+
+The repeatability domain with mixed, all-selected and all-unselected deterministic witnesses.
+The five-point square uses flags `[true,false,true,true,true]`, widths `[0.4,0.5,0.4,0.45,0.4]`,
+thickness 0.3 mm and point distance 0.8 mm; segment 1 is unselected and segment 3 closes.
+
+### Strategy
+
+Fixed `Just` selected/unselected prefixes survive shrinking; generated tail values remain
+shrinkable. Modes are no-shrink selectors.
+
+### Oracle
+
+`match_fuzzy_output` is a memoized full-tail parser. It requires the first point exactly, then
+for every segment either a direct endpoint (unselected/zero) or at least one inserted sample
+followed by the endpoint (selected nonzero). Inserted flags/profile widths must equal a source
+endpoint; endpoints and unselected metadata are bit-exact. Full-tail parsing disambiguates a
+sample that rounds onto an endpoint.
+
+### Tolerance
+
+Bitwise equality for original endpoints/flags/widths and inserted flag/profile selection; no
+width epsilon.
+
+### Shrinking
+
+Modes and fixed prefixes cannot flip in the shrink probe; ordinary tail length/points/widths
+shrink and every state remains parseable with its closure invariant.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`. Registry routine (64 cases) measured 0.04 s
+and extended (256 cases) 0.13 s; every case inserted samples on the fixed leading segment. A
+selected zero-length segment was exercised in 33 routine and 130 extended cases. Both tiers had
+zero rejects. The 128-case pilot passed in 0.07 s.
+
+### Failure record
+
+Retain the input path, flags, widths and first mismatched output index; classify SUT versus
+matcher.
+
+### Acceptance
+
+Mixed/all-selected/all-unselected witnesses, unselected-point insertion/removal mutations,
+disabled parameters and bound rejection pass.
+
+## M-FUZZY-DISPLACEMENT
+
+Registry record: `id = "M-FUZZY-DISPLACEMENT"`, `package = "fuzzy-skin"`,
+`target_kind = "lib"`, `target_name = "fuzzy_skin"`,
+`test_name = "property_tests::proptest_fuzzy_displacement"`,
+`production_symbol = "fuzzy_skin::apply_fuzzy_skin"`,
+`production_path = "modules/core-modules/fuzzy-skin/src/lib.rs"`,
+`features = ["fuzzy-skin/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-fuzzy-displacement"`.
+
+### Stable property ID
+
+`M-FUZZY-DISPLACEMENT` independently measures each inserted sample against its source segment.
+
+### Owner
+
+Same fuzzy owner file. Control: `fuzzy_displacement_oracle_rejects_mutations`.
+
+### Contract
+
+Each inserted sample lies on the perpendicular offset of its source segment with magnitude at
+most `thickness` within the derived envelope, and its longitudinal projection lies in the
+source span within the derived envelope. Source identity comes from output order.
+
+### Domain
+
+The span-preservation domain with finite positive thickness/distance, all coordinates bounded
+by `max_abs_mm_units`, the fixed selected leading nonzero segment and both no-shrink mode
+selectors. Selected zero-length segments are excluded from displacement assertions.
+
+### Strategy
+
+Construction-first path/parameter families; the oracle widens f32 inputs to f64 so the SUT's
+f32 arithmetic is the only source of the envelope.
+
+### Oracle
+
+`match_fuzzy_output` returns `InsertedSample { segment_index, output_index, point }`.
+`fuzzy_measure_displacement` computes perpendicular distance and projection in f64.
+`check_inserted_displacement` requires finite nonnegative distance, bounded magnitude and
+projection in `[-tol_t, 1+tol_t]` with `tol_t = tolerance/segment_length + 8*f64::EPSILON`.
+
+### Tolerance
+
+`fuzzy_displacement_tolerance = K * f32::EPSILON * (max_abs_mm + thickness_mm + 1.0)` with
+`K = 32`, derived from the actual f32 subtraction/squared-length/sqrt/normalize/base/displace/add
+sequence and the f64 measurement. The derivation is recorded in the packet evidence; no
+observed-output epsilon is used.
+
+### Shrinking
+
+The fixed leading selected segment and both mode selectors survive simplify/complicate. The
+Step 5 shrink probe covers the same case family and retains closure and parseability.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`. Registry routine (64 cases) measured 0.04 s
+and 1,221 inserted samples; extended (256 cases) measured 0.12 s and 8,460 samples; both had
+zero rejects. The 128-case pilot passed in 0.07 s with 6,871 samples.
+
+### Failure record
+
+Retain input points, segment/output indices, measured distance/projection, tolerance and
+derivation; classify SUT, generator/oracle or contract.
+
+### Acceptance
+
+Generated displacement and longitudinal checks pass; the deterministic closing edge has
+positive displacement; over-thickness, beyond-span and wrong-segment mutations are rejected;
+the tolerance derivation is recorded.

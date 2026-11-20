@@ -1911,3 +1911,203 @@ rng_algorithm = "chacha"
 isolation = "in_process"
 timeout_ms = 0
 bounds = { max_layers = 3, max_objects = 1, max_regions = 1, max_abs_units = 200000, max_tree_nodes = 20000 }
+
+[[property]]
+id = "M-CLASSIC-WALL-STRUCTURE"
+package = "classic-perimeters"
+target_kind = "lib"
+target_name = "classic_perimeters"
+test_name = "property_tests::proptest_classic_wall_structure"
+production_symbol = "classic_perimeters::ClassicPerimeters::emit_walls"
+production_path = "modules/core-modules/classic-perimeters/src/lib.rs"
+features = ["classic-perimeters/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-classic-wall-structure"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 2048, max_vertices = 16, max_holes = 2, max_components = 3, max_shrink_candidates = 32, max_wall_count = 4, max_width_units = 8, max_layer_height_units = 4 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 2048, max_vertices = 16, max_holes = 2, max_components = 3, max_shrink_candidates = 32, max_wall_count = 4, max_width_units = 8, max_layer_height_units = 4 }
+
+[[property]]
+id = "M-CLASSIC-BAND-SELECTION"
+package = "classic-perimeters"
+target_kind = "lib"
+target_name = "classic_perimeters"
+test_name = "property_tests::proptest_classic_band_selection"
+production_symbol = "classic_perimeters::ClassicPerimeters::emit_walls"
+production_path = "modules/core-modules/classic-perimeters/src/lib.rs"
+features = ["classic-perimeters/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-classic-band-selection"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 2048, max_vertices = 16, max_holes = 2, max_components = 3, max_shrink_candidates = 32, max_wall_count = 4, max_width_units = 8, max_layer_height_units = 4 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 2048, max_vertices = 16, max_holes = 2, max_components = 3, max_shrink_candidates = 32, max_wall_count = 4, max_width_units = 8, max_layer_height_units = 4 }
+
+[[property]]
+id = "M-FUZZY-REPEATABILITY"
+package = "fuzzy-skin"
+target_kind = "lib"
+target_name = "fuzzy_skin"
+test_name = "property_tests::proptest_fuzzy_repeatability"
+production_symbol = "fuzzy_skin::apply_fuzzy_skin"
+production_path = "modules/core-modules/fuzzy-skin/src/lib.rs"
+features = ["fuzzy-skin/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-fuzzy-repeatability"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_mm_units = 20000, max_thickness_units = 3000, max_point_distance_units = 8000, max_points = 8 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_mm_units = 20000, max_thickness_units = 3000, max_point_distance_units = 8000, max_points = 8 }
+
+[[property]]
+id = "M-FUZZY-SPAN-PRESERVATION"
+package = "fuzzy-skin"
+target_kind = "lib"
+target_name = "fuzzy_skin"
+test_name = "property_tests::proptest_fuzzy_span_preservation"
+production_symbol = "fuzzy_skin::apply_fuzzy_skin"
+production_path = "modules/core-modules/fuzzy-skin/src/lib.rs"
+features = ["fuzzy-skin/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-fuzzy-span-preservation"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_mm_units = 20000, max_thickness_units = 3000, max_point_distance_units = 8000, max_points = 8 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_mm_units = 20000, max_thickness_units = 3000, max_point_distance_units = 8000, max_points = 8 }
+
+[[property]]
+id = "M-FUZZY-DISPLACEMENT"
+package = "fuzzy-skin"
+target_kind = "lib"
+target_name = "fuzzy_skin"
+test_name = "property_tests::proptest_fuzzy_displacement"
+production_symbol = "fuzzy_skin::apply_fuzzy_skin"
+production_path = "modules/core-modules/fuzzy-skin/src/lib.rs"
+features = ["fuzzy-skin/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-fuzzy-displacement"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_mm_units = 20000, max_thickness_units = 3000, max_point_distance_units = 8000, max_points = 8 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_mm_units = 20000, max_thickness_units = 3000, max_point_distance_units = 8000, max_points = 8 }
