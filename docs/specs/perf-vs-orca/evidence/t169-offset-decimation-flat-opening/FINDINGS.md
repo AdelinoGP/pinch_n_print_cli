@@ -253,7 +253,7 @@ helpers; `infill-linker`, `lightning-infill`, `tree-support-planner`,
 ## 9. Route arithmetic (estimate, not a scoreboard)
 
 Applying each cell's paired saving to the last full board
-([t163's accelerated board](../t163-accelerated-board/reduced/ab.json), ordinary
+([t163's accelerated board](../t163-accelerated-board/reduced/summary.json), ordinary
 arm) gives an **estimate** — the saving is paired and measured, the board is a
 different window, and the product is not a ratio of record:
 
@@ -265,7 +265,7 @@ different window, and the product is not a ratio of record:
 | benchy arachne on | 2.829x | 0.8524 | **2.41x** | 58.5 % |
 | base classic off | 1.389x | 0.7492 | **1.04x** | 3.9 % |
 | base classic on | 2.710x | 0.7809 | **2.12x** | 52.7 % |
-| base arachne off | 1.456x | 0.7657 | **1.12x** | 10.3 % |
+| base arachne off | 1.457x | 0.7657 | **1.12x** | 10.3 % |
 | base arachne on | 2.618x | 0.7759 | **2.03x** | 50.8 % |
 
 Two things follow. `base classic-off` moves from "1.5x short" to **3.9 % short**
