@@ -794,6 +794,143 @@ pub fn offset_with_miter_limit(
     )
 }
 
+/// OrcaSlicer `ClipperOffsetShortestEdgeFactor` (`ClipperUtils.hpp`): the
+/// pre-offset edge-decimation threshold as a fraction of `|delta|`.
+///
+/// Canonical applies it in `append_offset_path` (`ClipperUtils.cpp`), which
+/// every `ClipperOffset` call in `ClipperUtils` feeds its rings through. The
+/// factor is dimensionless, so it transfers unchanged between canonical's
+/// 1 nm x 100 grid and PnP's 100 nm grid.
+pub const OFFSET_SHORTEST_EDGE_FACTOR: f64 = 0.005;
+
+/// Vertex distance, in grid units, below which `append_offset_path` drops a
+/// vertex: `0.005 * |delta|`.
+fn shortest_edge_units(delta_units: f64) -> f64 {
+    delta_units.abs() * OFFSET_SHORTEST_EDGE_FACTOR
+}
+
+/// Signed doubled area of a ring in grid units² (positive = CCW).
+///
+/// Doubled, because `append_offset_path`'s caller only ever asks whether the
+/// area is zero or which sign it has; `i128` keeps the shoelace sum exact for
+/// any ring length this pipeline produces.
+fn ring_double_area(path: &[Point64]) -> i128 {
+    if path.len() < 3 {
+        return 0;
+    }
+    let mut acc: i128 = 0;
+    for (a, b) in path.iter().zip(path.iter().cycle().skip(1)) {
+        acc += i128::from(a.x) * i128::from(b.y) - i128::from(b.x) * i128::from(a.y);
+    }
+    acc
+}
+
+/// OrcaSlicer `append_offset_path` (`ClipperUtils.cpp`), for closed rings.
+///
+/// Drops vertices closer than `shortest` to the **last kept** vertex — not
+/// merely the previous one, so a run of near-duplicates collapses to a single
+/// vertex — after trimming trailing vertices that sit within `shortest` of the
+/// first (the wrap-around edge of a closed ring). A ring left with fewer than
+/// three vertices is dropped entirely and `false` is returned.
+///
+/// `shortest == 0` degrades to exact-duplicate comparison, which is canonical's
+/// behaviour at a zero offset.
+fn append_offset_path(out: &mut Vec<Vec<Point64>>, path: &[Point64], shortest: f64) -> bool {
+    let Some(first) = path.first() else {
+        return false;
+    };
+    let mut high = path.len() - 1;
+    let shortest2 = shortest * shortest;
+    let same = |a: &Point64, b: &Point64| -> bool {
+        let dx = (a.x - b.x) as f64;
+        let dy = (a.y - b.y) as f64;
+        if shortest2 > 0.0 {
+            dx * dx + dy * dy < shortest2
+        } else {
+            dx == 0.0 && dy == 0.0
+        }
+    };
+    while high > 0 && same(&path[high], first) {
+        high -= 1;
+    }
+    let mut dst: Vec<Point64> = Vec::with_capacity(high + 1);
+    dst.push(*first);
+    let mut last = 0;
+    for i in 1..=high {
+        if !same(&path[i], &path[last]) {
+            dst.push(path[i]);
+            last = i;
+        }
+    }
+    if dst.len() < 3 {
+        return false;
+    }
+    out.push(dst);
+    true
+}
+
+/// Canonical `c2_offset_expolygons`' ring harvest (`ClipperUtils.cpp`): one
+/// decimated path per contour, then one per hole, with the degeneracy and
+/// winding normalisation canonical applies before `ClipperOffset::AddPaths`.
+///
+/// A contour that decimates to zero area is kept when `delta_units >= 0` and
+/// dropped otherwise (canonical: "a degenerate contour vanishes when shrunk and
+/// encloses no hole when grown"); a zero-area **hole** is always dropped. Both
+/// are canonical's branches verbatim.
+///
+/// The winding reversal is inert under [`ExPolygon`]'s invariant (contour CCW,
+/// holes CW) — it exists so a caller that violates it converges on canonical's
+/// behaviour instead of on Clipper2's grouped-mode guess.
+fn offset_paths(polys: &[ExPolygon], delta_units: f64) -> Vec<Vec<Point64>> {
+    let shortest = shortest_edge_units(delta_units);
+    let mut out: Vec<Vec<Point64>> = Vec::with_capacity(polys.len() * 2);
+    for exp in polys {
+        let contour = polygon_to_path(&exp.contour);
+        let contour_index = out.len();
+        if !append_offset_path(&mut out, &contour, shortest) {
+            continue;
+        }
+        let contour_area = ring_double_area(&out[contour_index]);
+        if contour_area == 0 {
+            if delta_units < 0.0 {
+                out.pop();
+            }
+            continue;
+        }
+        if contour_area < 0 {
+            out[contour_index].reverse();
+        }
+        for hole in &exp.holes {
+            let path = polygon_to_path(hole);
+            let hole_index = out.len();
+            if append_offset_path(&mut out, &path, shortest) {
+                let area = ring_double_area(&out[hole_index]);
+                if area == 0 {
+                    out.pop();
+                } else if area > 0 {
+                    out[hole_index].reverse();
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Canonical `c2_offset_closed`'s ring harvest for an already-flat path list —
+/// the **second** pass of `offset2_ex`, whose input is pass 1's output and whose
+/// threshold is `0.005 * |delta2|` (a different threshold from pass 1's).
+///
+/// Canonical filters degeneracy and winding in the first pass only, so this
+/// stage is decimation alone.
+fn offset_paths_flat(paths: &[Vec<Point64>], delta_units: f64) -> Vec<Vec<Point64>> {
+    let shortest = shortest_edge_units(delta_units);
+    let mut out: Vec<Vec<Point64>> = Vec::with_capacity(paths.len());
+    for path in paths {
+        append_offset_path(&mut out, path, shortest);
+    }
+    out
+}
+
 /// Single inflate pass with every Clipper2 knob explicit. All offset-shaped
 /// wrappers in this module route through here. Uses `ClipperOffset::execute_tree`
 /// (rather than the `inflate_paths_64` free function, which only returns a flat
@@ -818,8 +955,10 @@ fn inflate_once(
         return polygons.to_vec();
     }
 
-    // Convert polygons to paths
-    let paths: Vec<Vec<Point64>> = polygons.iter().flat_map(expolygon_to_paths).collect();
+    // Harvest the rings exactly as canonical `c2_offset_expolygons` does:
+    // decimate against `0.005 * |delta|`, drop degenerate rings, normalise
+    // winding. See [`offset_paths`].
+    let paths = offset_paths(polygons, delta_units);
     if paths.is_empty() {
         return Vec::new();
     }
@@ -966,10 +1105,12 @@ pub fn offset2_ex(
 
     // Pass 2: delta2 (typically positive / dilate). Capture the PolyTree so
     // the two-pass result's hole/island nesting survives — see
-    // [`expolygons_from_tree`].
+    // [`expolygons_from_tree`]. The intermediate is decimated at pass 2's own
+    // threshold, exactly as canonical's `c2_offset2_closed` does.
     let delta2_units = delta2_mm * slicer_ir::UNITS_PER_MM;
+    let pass2_paths = offset_paths_flat(&intermediate, delta2_units);
     let mut clip_offset = ClipperOffset::new(miter_limit, 0.0, false, false);
-    clip_offset.add_paths(&intermediate, join_type, EndType::Polygon);
+    clip_offset.add_paths(&pass2_paths, join_type, EndType::Polygon);
     let mut tree = PolyTree64::new();
     clip_offset.execute_tree(delta2_units, &mut tree);
 
@@ -980,10 +1121,10 @@ pub fn offset2_ex(
 /// emptiness predicate so both observe **byte-identical** erosion output.
 ///
 /// Flat paths only (the caller re-derives nesting from pass 2's tree). The
-/// conversion and Clipper2 parameters are exactly `offset2_ex`'s: same
-/// `flat_map(expolygon_to_paths)` order, same mm→unit delta, same join type,
-/// same `EndType::Polygon`, same caller-supplied `miter_limit`, same zero arc
-/// tolerance.
+/// rings are harvested exactly as canonical `c2_offset_expolygons` harvests
+/// them — decimated, degenerate rings dropped, winding normalised — and then
+/// handed to the same primitive with the same mm→unit delta, join type,
+/// `EndType::Polygon`, caller-supplied `miter_limit` and zero arc tolerance.
 fn offset2_ex_first_pass(
     polys: &[ExPolygon],
     delta1_mm: f64,
@@ -997,8 +1138,8 @@ fn offset2_ex_first_pass(
         OffsetJoinType::Round => JoinType::Round,
         OffsetJoinType::Square => JoinType::Square,
     };
-    let paths1: Vec<Vec<Point64>> = polys.iter().flat_map(expolygon_to_paths).collect();
     let delta1_units = delta1_mm * slicer_ir::UNITS_PER_MM;
+    let paths1 = offset_paths(polys, delta1_units);
     inflate_paths_64(
         &paths1,
         delta1_units,
@@ -1323,6 +1464,104 @@ mod tests {
         Polygon {
             points: pts.iter().map(|&(x, y)| Point2 { x, y }).collect(),
         }
+    }
+
+    // --- t169: canonical `append_offset_path` --------------------------------
+    //
+    // These pin the helper's three distinctive rules — the wrap-around trim,
+    // comparison against the *last kept* vertex, and the `< 3` drop — each of
+    // which is invisible in a square's offset output but not in a pinhole's.
+
+    fn ring(pts: &[(i64, i64)]) -> Vec<Point64> {
+        pts.iter()
+            .map(|&(x, y)| Point64 { x, y })
+            .collect::<Vec<_>>()
+    }
+
+    #[test]
+    fn append_offset_path_trims_a_wrap_around_near_duplicate() {
+        // The trailing vertex sits 1 unit from the first, inside a 50-unit
+        // threshold. Canonical trims it with the wrap loop; a port that only
+        // deduplicates forward (against the previous vertex) keeps it and
+        // returns 5 vertices here.
+        let path = ring(&[(0, 0), (1000, 0), (1000, 1000), (0, 1000), (1, 1)]);
+        let mut out = Vec::new();
+        assert!(append_offset_path(&mut out, &path, 50.0));
+        assert_eq!(out[0].len(), 4);
+        assert_eq!(out[0][3], Point64 { x: 0, y: 1000 });
+    }
+
+    #[test]
+    fn append_offset_path_collapses_a_run_against_the_last_kept_vertex() {
+        // Four vertices spaced 10 units apart, threshold 50. Because `same`
+        // compares against the last *kept* vertex, the whole run collapses to
+        // the first one; comparing against the previous vertex alone would keep
+        // (0,0), (20,0) and (40,0) and return 6 vertices.
+        let path = ring(&[
+            (0, 0),
+            (10, 0),
+            (20, 0),
+            (30, 0),
+            (40, 0),
+            (1000, 0),
+            (1000, 1000),
+            (0, 1000),
+        ]);
+        let mut out = Vec::new();
+        assert!(append_offset_path(&mut out, &path, 50.0));
+        assert_eq!(out[0].len(), 4);
+        assert_eq!(out[0][1], Point64 { x: 1000, y: 0 });
+    }
+
+    #[test]
+    fn append_offset_path_drops_a_ring_left_with_two_vertices() {
+        // A 20-unit triangle under a 50-unit threshold collapses to one kept
+        // vertex; the ring must be dropped, not handed on degenerate.
+        let path = ring(&[(0, 0), (20, 0), (0, 20)]);
+        let mut out = Vec::new();
+        assert!(!append_offset_path(&mut out, &path, 50.0));
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn append_offset_path_keeps_a_ring_that_decimates_to_exactly_three() {
+        // The `< 3` boundary: three kept vertices survive.
+        let path = ring(&[(0, 0), (10, 0), (1000, 0), (0, 1000)]);
+        let mut out = Vec::new();
+        assert!(append_offset_path(&mut out, &path, 50.0));
+        assert_eq!(out[0].len(), 3);
+    }
+
+    #[test]
+    fn append_offset_path_compares_exactly_at_a_zero_threshold() {
+        // At `shortest == 0` canonical falls back to exact equality: the leading
+        // duplicate and the closing repeat are removed, the corners are not.
+        let path = ring(&[(0, 0), (0, 0), (1000, 0), (1000, 1000), (0, 1000), (0, 0)]);
+        let mut out = Vec::new();
+        assert!(append_offset_path(&mut out, &path, 0.0));
+        assert_eq!(out[0].len(), 4);
+    }
+
+    #[test]
+    fn offset_paths_drops_a_degenerate_contour_only_when_eroding() {
+        // Canonical keeps a zero-area contour on a non-negative offset ("encloses
+        // no hole when grown") and drops it when shrinking; the hole branch always
+        // drops. A 4-vertex ring of zero area, plus a zero-area hole.
+        let degenerate = ExPolygon {
+            contour: make_polygon(&[(0, 0), (100, 0), (0, 0), (100, 0)]),
+            holes: vec![make_polygon(&[(10, 0), (20, 0), (10, 0), (20, 0)])],
+        };
+        let erode = offset_paths(std::slice::from_ref(&degenerate), -10_000.0);
+        assert!(
+            erode.is_empty(),
+            "a zero-area contour must vanish when shrunk, and its zero-area hole always"
+        );
+        let grow = offset_paths(std::slice::from_ref(&degenerate), 10_000.0);
+        assert_eq!(
+            grow.len(),
+            1,
+            "a zero-area contour survives a non-negative offset; its hole does not"
+        );
     }
 
     #[test]
