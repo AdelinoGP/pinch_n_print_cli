@@ -477,18 +477,22 @@ The limits recorded at closure were closed, and the reviewer-flagged panic path 
 removed:
 
 - **`H-LIGHTNING-SEEDS` now models rectangular bores.** `LayerShape` carries an outer rectangle and
-  an optional strictly-inside hole; the analytic miter model insets the outer ring, grows the hole,
-  and treats a hole that swallows the eroded wall as no material. The sample grid covers both raw
-  and eroded hole rings and skips any point on any shape's boundary, where the clipper and the
-  even-odd oracle may legitimately disagree. Deterministic witnesses cover a bored top layer (the
-  bore is not material, the ring beside it is an overhang), a bored layer under a solid cover (no
-  overhang), and a hole that swallows the wall. `packet.spec.md` deviation 3 records the narrowed
-  fixture domain.
+  an optional concentric bore of uniform wall thickness; the analytic miter model insets the outer
+  ring, grows the hole, and treats a bore that swallows the eroded wall as no material (with
+  uniform walls the grown hole crosses either no wall or all four, so empty is the only partial
+  outcome). The sample grid covers both raw and eroded hole rings and skips any point on any
+  shape's boundary, where the clipper and the even-odd oracle may legitimately disagree.
+  Deterministic witnesses cover a bored top layer (the bore is not material, the ring beside it is
+  an overhang), a bored layer under a solid cover (no overhang), and a bore that swallows the wall.
+  The generated strategy now varies the erosion radius, narrows the stack, and bores a
+  proportional fraction of each layer. `packet.spec.md` deviation 3 records the narrowed fixture
+  domain.
 - **`H-LIGHTNING-TREES` no longer accepts an empty forest.** `verify_trees` fails when a narrowing
-  stack seeds no roots, the generated strategy is restricted to well-formed stacks (6–10 mm outer,
-  1–2 mm shrink, 1–3 layers, innermost ≥ 2 mm), the strategy honours the registry's `max_layers`
-  bound, and a bored layer joins the deterministic witness. The domain margin is 5 mm, so the bound
-  still measures coordinate sanity.
+  stack seeds no roots; `tree_strategy` clamps the shrink so the innermost side is at least 2 mm
+  (the previous 6 mm/2 mm and 8 mm/2 mm three-layer combinations produced inverted and zero-area
+  rings), honours the registry's `max_layers` bound, and now emits a concentric bore on generated
+  layers. A bored layer also joins the deterministic witness, and the domain margin is 5 mm, so the
+  bound still measures coordinate sanity.
 - **The painted-id panic is gone from input-driven paths.** `try_paint_variant_region_id` returns
   `PaintedRegionIdOutOfRange`; `execute_paint_segmentation` maps it to
   `PaintSegmentationError::PaintVariantRegionIdOutOfRange`, and the runtime's parent lookup uses
@@ -500,9 +504,11 @@ removed:
 
 ## Remaining caveats
 
-- `H-LIGHTNING-SEEDS`'s exactness argument covers rectangles with at most one rectangular bore per
-  layer. Arbitrary polygonal rings are outside it, so the flat-`Polygons` ring-order/hole-grouping
-  convention is claimed only for the rectangular class.
+- `H-LIGHTNING-SEEDS`'s exactness argument covers a rectangle with one concentric rectangular bore
+  of uniform wall thickness per layer. An off-centre bore can erode to a C or U shape, which the
+  single-hole model cannot represent, and arbitrary polygonal rings are outside the analytic
+  rectangle inset. The flat-`Polygons` ring-order/hole-grouping convention is therefore claimed for
+  the concentric-bore class only.
 
 The per-run artifacts are retained under `target/property-testing/<run-token>/<ID>/`
 (`context.json`, `observations.jsonl`, `case.txt`, controller events) and the tier logs as

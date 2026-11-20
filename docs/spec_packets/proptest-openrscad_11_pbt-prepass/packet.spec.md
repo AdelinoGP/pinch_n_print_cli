@@ -237,12 +237,14 @@ Recorded during implementation. Each is a scope-preserving adjustment, not a pol
    already uses for the declared multi-semantic path. The positive path still runs the real
    `commit_region_mapping_builtin` → `execute_paint_segmentation` → `build_layer_selection_index`
    join, and no map is hand-built for it.
-3. **`H-LIGHTNING-SEEDS`'s exactness argument covers rectangles with at most one rectangular bore
-   per layer** (including the erosion-inside-outline, bore-swallows-wall and empty-layer-reset
-   cases), not arbitrary polygonal rings. Ring-order and hole-grouping behaviour of the kernel's
-   flat `Polygons` convention is claimed for the rectangular class, including the clockwise hole
-   ring, and is exercised by the deterministic bore witnesses. General polygonal rings are outside
-   the analytic model: their miter offset is not a rectangle inset.
+3. **`H-LIGHTNING-SEEDS`'s exactness argument covers a rectangle with one concentric rectangular
+   bore of uniform wall thickness per layer** (including the erosion-inside-outline,
+   bore-swallows-wall and empty-layer-reset cases), not arbitrary polygonal rings or off-centre
+   bores. Ring-order and hole-grouping behaviour of the kernel's flat `Polygons` convention is
+   claimed for that class, including the clockwise hole ring, and is exercised by the deterministic
+   bore witnesses. An off-centre bore can erode to a C or U shape, which the single-hole model
+   cannot represent; general polygonal rings are outside it because their miter offset is not a
+   rectangle inset.
 4. **The modifier collision witness is pinned after a one-time search.** The birthday search over
    real sliced footprints is replaced by the concrete pair it found (two 0.5 mm cubes at x = 20.87
    and x = 24.32 mm, both minting `9_223_372_036_862_427_507` for base region 7), so the control is

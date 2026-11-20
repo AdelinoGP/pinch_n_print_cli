@@ -98,11 +98,20 @@ impl LayerShape {
         Self { outer, hole: None }
     }
 
-    /// A rectangle bored by a strictly smaller rectangle.
+    /// A rectangle bored by a concentric rectangle of uniform wall thickness.
+    ///
+    /// Uniform walls are the exactness condition for [`LayerShape::erode`]: if
+    /// the grown hole crosses one wall it crosses all four, so the eroded
+    /// material is either an annulus or empty. An off-centre bore can erode to
+    /// a C or U shape, which this single-hole model cannot represent.
     pub fn bored(outer: LayerRect, hole: LayerRect) -> Self {
-        debug_assert!(
-            hole.x0 > outer.x0 && hole.y0 > outer.y0 && hole.x1 < outer.x1 && hole.y1 < outer.y1,
-            "a hole must be strictly inside its outer rectangle"
+        let left = hole.x0 - outer.x0;
+        let bottom = hole.y0 - outer.y0;
+        let right = outer.x1 - hole.x1;
+        let top = outer.y1 - hole.y1;
+        assert!(
+            left > 0 && left == right && bottom > 0 && bottom == top && left == bottom,
+            "the analytic erosion model requires a concentric bore with uniform walls"
         );
         Self {
             outer,
@@ -113,8 +122,10 @@ impl LayerShape {
     /// Material erosion by `by` under a miter join.
     ///
     /// For axis-aligned rectangles a miter offset is exact: the outer ring
-    /// insets and the hole ring grows into the material. `None` means the
-    /// eroded material is empty, so no overhang of this layer can survive.
+    /// insets and the hole ring grows into the material. With a uniform-wall
+    /// bore the grown hole crosses either no wall or all four, so `None`
+    /// (empty material) is the only partial outcome; an off-centre bore could
+    /// erode to a C or U shape instead.
     fn erode(self, by: i64) -> Option<Self> {
         let outer = self.outer.inset(by)?;
         let Some(hole) = self.hole else {
@@ -411,7 +422,7 @@ pub fn seed_witnesses() -> Result<(), String> {
             "the hole interior must not be an internal overhang",
         ));
     }
-    if !rings_contain(&overhangs[0], MM, 5 * MM) {
+    if !rings_contain(&overhangs[0], 2 * MM, 5 * MM) {
         return Err(String::from(
             "the eroded rim beside the hole must be an internal overhang",
         ));
@@ -621,24 +632,44 @@ pub fn tree_strategy(max_layers: usize) -> impl Strategy<Value = TreeCase> {
         1..=max_layers.clamp(1, 3),
         proptest::sample::select(vec![6i64, 8, 10]),
         proptest::sample::select(vec![1i64, 2]),
+        any::<bool>(),
     )
-        .prop_map(|(layers, width_mm, shrink_mm)| {
+        .prop_map(|(layers, width_mm, requested_shrink, bore)| {
             // A stack that narrows going up, so every lower layer exposes a
-            // rim of internal overhang for the generator to seed. The bounds
-            // keep the innermost layer at least 2 mm wide (no inverted rings).
+            // rim of internal overhang for the generator to seed. The shrink
+            // is clamped so the innermost side stays at least 2 mm: with `L`
+            // layers the total inset is `2 * (L-1) * shrink`.
+            let shrink = if layers <= 1 {
+                requested_shrink
+            } else {
+                ((width_mm - 2) / (2 * (layers as i64 - 1))).clamp(1, requested_shrink)
+            };
             let mut rects = Vec::new();
+            let mut holes = Vec::new();
             for layer in 0..layers {
-                let inset = (layer as i64) * shrink_mm * MM;
-                rects.push(LayerRect {
+                let inset = (layer as i64) * shrink * MM;
+                let rect = LayerRect {
                     x0: inset,
                     y0: inset,
                     x1: width_mm * MM - inset,
                     y1: width_mm * MM - inset,
-                });
+                };
+                // A concentric quarter-side bore on every layer, so generated
+                // scenes exercise the flat `Polygons` hole convention too.
+                holes.push(bore.then(|| {
+                    let margin = (rect.x1 - rect.x0) / 4;
+                    LayerRect {
+                        x0: rect.x0 + margin,
+                        y0: rect.y0 + margin,
+                        x1: rect.x1 - margin,
+                        y1: rect.y1 - margin,
+                    }
+                }));
+                rects.push(rect);
             }
             TreeCase {
                 layers: rects,
-                holes: Vec::new(),
+                holes,
                 max_tree_nodes: 20_000,
             }
         })
@@ -669,27 +700,39 @@ pub fn run_seed_property() -> Result<(), String> {
             proptest::option::of(proptest::sample::select(vec![3i64, 4, 5])),
             1..=3,
         ),
+        proptest::sample::select(vec![MM / 4, MM / 2]),
+        any::<bool>(),
     )
-        .prop_map(move |(layers, size_mm, present, holes)| {
+        .prop_map(move |(layers, size_mm, present, holes, radius, narrow)| {
             let size = size_mm * MM;
-            let radius = (MM / 2).min(max_radius.max(0));
+            let radius = radius.min(max_radius.max(0));
+            // Narrowing stacks expose rims on all four sides; the shrink is
+            // clamped so the innermost side stays at least 1 mm.
+            let shrink = if narrow && layers > 1 {
+                ((size_mm - 1) / (2 * (layers as i64 - 1))).max(0)
+            } else {
+                0
+            };
             let mut rects = Vec::new();
             for layer in 0..layers {
                 if !present[layer % present.len()] {
                     rects.push(None);
                     continue;
                 }
+                let layer_inset = (layer as i64) * shrink * MM;
                 let outer = LayerRect {
-                    x0: 0,
-                    y0: 0,
-                    x1: size,
-                    y1: size,
+                    x0: layer_inset,
+                    y0: layer_inset,
+                    x1: size - layer_inset,
+                    y1: size - layer_inset,
                 };
-                // A proportional bore: `1/d` of each side. Small parts erode
-                // to nothing around it, which the model treats as no overhang.
+                let side = outer.x1 - outer.x0;
+                // A concentric bore: `1/d` of each side, so the walls are
+                // uniform. Small parts erode to nothing around it, which the
+                // model treats as no overhang.
                 let shape = match holes[layer % holes.len()] {
                     Some(denominator) => {
-                        let inset = (size / denominator).max(1);
+                        let inset = (side / denominator).max(1);
                         LayerShape::bored(
                             outer,
                             LayerRect {
