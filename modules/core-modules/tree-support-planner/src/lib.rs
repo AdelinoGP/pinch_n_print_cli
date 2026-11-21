@@ -65,6 +65,12 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
+mod collision_tile_index;
+
+use collision_tile_index::{
+    count_expolygon_points, CollisionTileIndex, WindowedCollision, DEFAULT_COLLISION_TILE_UNITS,
+    MIN_INDEXED_COLLISION_VERTICES,
+};
 use slicer_sdk::host_batch::{clip_polygons_batch, ClipRequest, OffsetRequest};
 use slicer_sdk::prelude::*;
 
@@ -1383,8 +1389,8 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
         .collect();
     let mut gated_any: Vec<[bool; ROLE_COUNT]> = vec![[false; ROLE_COUNT]; inputs.len()];
 
-    // Phase 1: collect the per-region carves, applying the ticket-32 gate in
-    // the guest (it is a pure bounding-box predicate, not geometry).
+    // Phase 1: collect the per-region carves, applying the ticket-32 gate and
+    // the ticket-175 per-layer exact collision tile index in the guest.
     let mut carve_requests: Vec<ClipRequest> = Vec::new();
     let mut slot_lists: Vec<[Vec<CarveSlot>; ROLE_COUNT]> = inputs
         .iter()
@@ -1392,6 +1398,9 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
         .collect();
     for (i, input) in inputs.iter().enumerate() {
         let collision_bbox = expolygons_bbox(&input.collision_polys);
+        let use_tile_index =
+            count_expolygon_points(&input.collision_polys) >= MIN_INDEXED_COLLISION_VERTICES;
+        let mut tile_index: Option<Option<CollisionTileIndex<'_>>> = None;
         for role in 0..ROLE_COUNT {
             let regions = role_regions(input, role);
             if input.collision_polys.is_empty() || regions.is_empty() {
@@ -1400,12 +1409,54 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
             }
             let mut slots = Vec::with_capacity(regions.len());
             for region in regions {
-                if region_has_canonical_winding(&region)
-                    && bboxes_disjoint(region_bbox(&region), collision_bbox)
-                {
+                let rbbox = region_bbox(&region);
+                let canonical = region_has_canonical_winding(&region);
+                if canonical && bboxes_disjoint(rbbox, collision_bbox) {
                     gated_any[i][role] = true;
                     slots.push(CarveSlot::Kept(region));
                     continue;
+                }
+                if use_tile_index {
+                    if let Some(rb) = rbbox {
+                        let idx_opt = tile_index.get_or_insert_with(|| {
+                            CollisionTileIndex::build(
+                                &input.collision_polys,
+                                DEFAULT_COLLISION_TILE_UNITS,
+                            )
+                        });
+                        if let Some(idx) = idx_opt.as_mut() {
+                            match idx.window_for_bbox(rb) {
+                                WindowedCollision::Empty => {
+                                    if canonical {
+                                        gated_any[i][role] = true;
+                                        slots.push(CarveSlot::Kept(region));
+                                        continue;
+                                    }
+                                    slots.push(CarveSlot::Clip(carve_requests.len()));
+                                    carve_requests.push(ClipRequest {
+                                        subject: vec![region],
+                                        clip: Vec::new(),
+                                        op: ClipOperation::Difference,
+                                    });
+                                    continue;
+                                }
+                                WindowedCollision::Covered => {
+                                    // Subject lies strictly inside collision_polys:
+                                    // Difference is provably empty (`largest_part == None`).
+                                    continue;
+                                }
+                                WindowedCollision::Polys(windowed_clip) => {
+                                    slots.push(CarveSlot::Clip(carve_requests.len()));
+                                    carve_requests.push(ClipRequest {
+                                        subject: vec![region],
+                                        clip: windowed_clip,
+                                        op: ClipOperation::Difference,
+                                    });
+                                    continue;
+                                }
+                            }
+                        }
+                    }
                 }
                 slots.push(CarveSlot::Clip(carve_requests.len()));
                 carve_requests.push(ClipRequest {
@@ -7478,6 +7529,83 @@ mod tests {
                 got,
                 &serial_roles(input),
                 "item {index}: batched roles must equal the serial build_roles result"
+            );
+        }
+    }
+
+    /// Ticket 175: when `collision_polys` crosses `MIN_INDEXED_COLLISION_VERTICES`,
+    /// `build_roles_batched` phase 1 routes through `CollisionTileIndex` (empty
+    /// fast-skip, covered fast-drop, and exact homotopic window contraction) and
+    /// must produce the exact same roles as serial `build_roles` across every
+    /// topological region (outside, inside a hole, inside solid, straddling).
+    #[test]
+    fn build_roles_batched_tiled_matches_serial_path_on_dense_collision() {
+        let make_ngon = |cx_mm: f64, cy_mm: f64, r_mm: f64, n: usize, ccw: bool| -> Polygon {
+            let mut pts = Vec::with_capacity(n);
+            for i in 0..n {
+                let idx = if ccw { i } else { (n - i) % n };
+                let a = (idx as f64 / n as f64) * std::f64::consts::TAU;
+                let r = r_mm * (1.0 + 0.08 * (a * 5.0).sin());
+                pts.push(Point2::from_mm(
+                    (cx_mm + r * a.cos()) as f32,
+                    (cy_mm + r * a.sin()) as f32,
+                ));
+            }
+            Polygon { points: pts }
+        };
+        // Dense collision (192 + 128 = 320 verts > MIN_INDEXED_COLLISION_VERTICES)
+        // with an interior hole and a second overlapping plane.
+        let collision = vec![
+            ExPolygon {
+                contour: make_ngon(0.0, 0.0, 20.0, 192, true),
+                holes: vec![make_ngon(0.0, 0.0, 8.0, 128, false)],
+            },
+            ExPolygon {
+                contour: make_ngon(0.5, 0.2, 20.0, 192, true),
+                holes: vec![make_ngon(0.5, 0.2, 7.5, 128, false)],
+            },
+        ];
+        // Regions hitting every branch:
+        // - inside hole (Empty -> local gate)
+        // - deep inside solid (Covered -> fast drop)
+        // - straddling hole edge (Polys contraction with w_const = +2)
+        // - straddling outer edge (Polys contraction with w_const = 0)
+        // - outside global bbox (ticket-32 outer bbox gate)
+        let mixed = role_input(
+            vec![
+                build_roles_square(-1.0, -1.0, 2.0),
+                build_roles_square(12.0, -1.0, 2.0),
+                build_roles_square(6.5, -1.0, 3.0),
+                build_roles_square(18.5, -1.0, 3.0),
+                build_roles_square(30.0, 30.0, 2.0),
+            ],
+            vec![build_roles_square(7.0, -0.5, 2.0)],
+            collision.clone(),
+            None,
+        );
+        // Lone region inside the hole under active simplify tolerance must still
+        // trigger Phase-2 lone-gated repair identically to serial.
+        let mut lone_in_hole = role_input(
+            vec![build_roles_square(-1.0, -1.0, 2.0)],
+            Vec::new(),
+            collision,
+            None,
+        );
+        lone_in_hole.avg_node_per_layer = COARSE_CIRCLE_NODE_THRESHOLD + 1;
+
+        let items = [mixed, lone_in_hole];
+        let refs: Vec<&RoleBuildInput> = items.iter().collect();
+        let batched = build_roles_batched(&refs);
+        assert_eq!(batched.len(), items.len());
+        assert!(
+            batched.iter().all(|roles| !roles.is_empty()),
+            "fixture items must produce non-empty roles"
+        );
+        for (index, (input, got)) in items.iter().zip(&batched).enumerate() {
+            assert_eq!(
+                got,
+                &serial_roles(input),
+                "dense tiled item {index} diverged from serial build_roles"
             );
         }
     }
