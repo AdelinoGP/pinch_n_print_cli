@@ -8,10 +8,27 @@ of the 2026-09-22 session (grilling decisions Q1–Q8).
 
 ## Destination
 
-PNP beats OrcaSlicer on matched settings: lower median uninstrumented
-wall-clock (process CPU corroborating, never contradicting) in every cell of
-the {benchy, base} × {classic, arachne} × {supports off, on} matrix, under the
-matched-pair protocol with outputs disclosed. 8 of 8 cells won closes the map.
+PNP beats OrcaSlicer on matched settings: **lower median uninstrumented
+wall-clock** (`< 1.0x`) on the **binding arm** (`pnp-ordinary`, the current
+production default; `pnp-accelerated` measured and disclosed beside it) in
+every cell of the `{benchy, base} × {classic, arachne} × {supports off, on}`
+matrix, under the matched-pair protocol with outputs disclosed. **Amended
+2026-11-21 ([t176](issues/176-destination-cpu-corroboration-ruling.md), Option
+C):** cross-engine process CPU serves as a **CPU integrity guard** (tight
+process CPU, unstarved `cpu/wall`, matched non-degraded output) paired with a
+separate **PnP/Orca CPU efficiency disclosure** beside every cell (within-PnP
+**candidate A/B CPU corroboration** rules remain unchanged). **Cell closure:**
+a wide-margin cell (`ratio <= 0.85x`) closes **provisionally** on a quiet `n=3`
+strict-separation board with zero starvation flags; a close cell
+(`0.85x < ratio < 1.00x`) requires `>= 4` retained unstarved runs per arm with
+strict separation (starved outliers `< 0.75 × group best` excludable per
+`SCOREBOARD.md` while `>= 4` unstarved runs remain); provisional wins carry
+forward across later commits that pass their own paired non-regression gate
+(re-opened only by a later Orca board `>= 1.0x` or an unwaived regression).
+**8 of 8 cells won on one final single-HEAD `n >= 4` closing board closes the
+map** (a follow-on `<= 0.50x` / 2× faster effort is planned as a fresh map
+afterward, while high-leverage speedup tracks that push cells toward `0.50x`
+are prioritized now).
 
 **Active reference set (2026-11-21, [t175](issues/175-tiled-collision-carve.md)): t175's set is the currency — benchy `4c67ef0b…` / `fdca4e2d…` / `fd631384…` / `2869186c…` (all four unchanged from t172), base `02ffa2d6…` / `7b90e749…` / `e806296f…` / `f77633af…` (classic-off / classic-on / arachne-off / arachne-on; only `base-classic-on` `0e13ff7b…` and `base-arachne-on` `adf87012…` superseded from t172 by explicit human KEEP ruling for 1 µm Clipper2 distant-scanbeam unclamping strictly in Support/Support interface), byte-identical on the ordinary and accelerated arms (16/16); the baseline arm of the same campaign reproduced t172's set 16/16 (`4c67ef0b…` / `fdca4e2d…` / `fd631384…` / `2869186c…`, `02ffa2d6…` / `0e13ff7b…` / `e806296f…` / `adf87012…`), and t169's set remains superseded. Every hash below this sentence that predates it is historical for comparison purposes and must be re-recorded before use.**
 
@@ -1678,6 +1695,47 @@ ord/acc (71.6 % of cut closed vs t173's 60.8 % ceiling), `base-arachne-on`
 **Frontier:** [176](issues/176-destination-cpu-corroboration-ruling.md) (HITL
 grilling, unblocked); phase-3 companion remains unnamed in **Not yet specified**.
 
+**Destination status (2026-11-21,
+[t176](issues/176-destination-cpu-corroboration-ruling.md)): Destination ruling
+settled — official running tally moves `0/8 → 2/8` provisionally won
+(`base-classic-off` 0.769x, `base-arachne-off` 0.792x), Destination wording
+amended to wall-clock win + CPU integrity guard + efficiency disclosure, bar
+kept at `< 1.0x` (fresh `<= 0.50x` effort planned afterward), and four AFK
+speedup-discovery tickets graduate (`177`, `178` unblocked; `179`, `180` blocked
+by `177`).** Zero production code edits (tracker + [`GLOSSARY.md`](../../../GLOSSARY.md)
+only). Human rulings: (1) **Option C** — cross-engine Destination cell closure
+uses lower median uninstrumented wall clock guarded by the **CPU integrity
+guard** (tight CPU, unstarved `cpu/wall`, matched non-degraded output), with
+PnP/Orca CPU ratio disclosed beside every cell as a separate efficiency metric
+(within-PnP **candidate A/B CPU corroboration** unchanged); (2) **`pnp-ordinary`
+is the binding arm** (`pnp-accelerated` disclosed alongside; swaps only if
+formally adopted as production default); (3) **margin-tiered provisional
+closure + final `n >= 4` closing board** — quiet `n=3` strict separation with
+`0` starvation closes provisionally when `ratio <= 0.85x`, close cells
+(`0.85x < ratio < 1.00x`) and the final single-HEAD 8-of-8 closing board
+require `>= 4` retained unstarved runs per arm with strict separation (starved
+outliers excludable per `SCOREBOARD.md` if `>= 4` unstarved runs remain); (4)
+provisional wins **carry forward** across later commits passing paired
+non-regression gates (re-opened only by a later Orca board `>= 1.0x` or an
+unwaived regression); (5) Destination stays **`< 1.0x` in 8/8** as a closeable
+milestone with a fresh `<= 0.50x` effort afterward, prioritizing high-leverage
+speedups now. Under this ruling, [t174](issues/174-post-t172-scoreboard-refresh.md)'s
+quiet-window wins on `base-classic-off` (**0.7687x** ord, 3.66 s sep, 0
+starvation, CPU `2.126x` disclosed) and `base-arachne-off` (**0.7921x** ord,
+2.37 s sep, 0 starvation, CPU `1.844x` disclosed) — both structurally inert and
+byte-identical under [t175](issues/175-tiled-collision-carve.md) — close
+provisionally (**2/8**). Added four canonical terms to `GLOSSARY.md` (**CPU
+integrity guard**, **Candidate CPU corroboration**, **Binding arm**,
+**Provisional cell win**). **Frontier:**
+[177](issues/177-post-t175-full-matrix-attribution.md) (AFK, unblocked —
+post-t175 8-cell attribution + `0.50x` headroom map),
+[178](issues/178-planner-phase3-union-attribution.md) (AFK, unblocked —
+planner Phase-3 union mechanism screen toward 4/8),
+[179](issues/179-per-layer-tree-support-and-infill-linker-screen.md) (AFK,
+blocked by `177` — `tree-support` renderer & `infill-linker` guest screen), and
+[180](issues/180-shell-classification-post-t172-residual-screen.md) (AFK,
+blocked by `177` — `ShellClassification` post-t172 residual screen).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -1790,7 +1848,31 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-21, the t175 take):** the human said
+**Current selection scope (2026-11-21, the t176 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **176 was the sole open
+frontier ticket**, so it was claimed and resolved as a **HITL grilling ruling
+(zero production code edits; tracker + `GLOSSARY.md` only)**. Result: Option C
+amends `## Destination` so cross-engine cell closure uses unstarved median wall
+clock on the **binding arm** (`pnp-ordinary`, production default;
+`pnp-accelerated` disclosed beside it) guarded by the **CPU integrity guard**
+plus a separate PnP/Orca CPU efficiency disclosure (within-PnP **candidate A/B
+CPU corroboration** unchanged); margin-tiered provisional closure (`n=3` strict
+separation with 0 starvation at `ratio <= 0.85x`, `>= 4` retained unstarved
+runs with strict separation for close cells and the final single-HEAD 8/8
+closing board, allowing starved-outlier exclusion per `SCOREBOARD.md` while
+`>= 4` unstarved runs remain); provisional wins carry forward unless regressed
+or reversed by a later Orca board; running tally moves **0/8 → 2/8 provisionally
+won** (`base-classic-off` 0.769x, `base-arachne-off` 0.792x); Destination stays
+`< 1.0x` (8/8) with a fresh `<= 0.50x` (2× faster) effort planned afterward.
+Added 4 terms to `GLOSSARY.md` and graduated four structured AFK tickets.
+**Frontier:** [177](issues/177-post-t175-full-matrix-attribution.md)
+(AFK, unblocked), [178](issues/178-planner-phase3-union-attribution.md) (AFK,
+unblocked), [179](issues/179-per-layer-tree-support-and-infill-linker-screen.md)
+(AFK, blocked by `177`), and
+[180](issues/180-shell-classification-post-t172-residual-screen.md) (AFK,
+blocked by `177`).
+
+**Previous selection scope (2026-11-21, the t175 take):** the human said
 "Continue the perf vs orca map" (no ticket named); **175 was first on the
 frontier** (leaving 176 unclaimed), so it was claimed and resolved as a
 **measured planner candidate (guest-only exact per-layer collision tile index,
@@ -4621,8 +4703,16 @@ Standing decisions for this effort (2026-09-22):
   implementation experiment sessions — deliberate override of wayfinder's
   "plan, don't do" default.
 - **Verdict metric**: median uninstrumented wall-clock; process CPU must
-  corroborate (never contradict). cpu/wall ratio quoted per sample, starved
-  samples excluded (§10.3 trap).
+  corroborate (never contradict) on within-PnP **candidate A/B gates**.
+  **Amended 2026-11-21 ([t176](issues/176-destination-cpu-corroboration-ruling.md)):**
+  on cross-engine **Destination cell closure** (PnP vs OrcaSlicer on the
+  binding arm `pnp-ordinary`), process CPU serves as a **CPU integrity guard**
+  (tight CPU, unstarved `cpu/wall`) with PnP/Orca CPU ratio disclosed as a
+  separate efficiency metric rather than requiring `CPU_pnp <= CPU_orca`.
+  `cpu/wall` ratio quoted per sample, starved samples (`< 0.75 × group best`)
+  excluded (§10.3 trap; `0` starvation required on `n=3` wide-margin provisional
+  wins, `>= 4` retained unstarved runs required on close cells and the final
+  8/8 closing board).
 - **Fairness contract**: matched settings define the job (nozzle, layer height,
   wall and infill counts, wall generator, supports). Every comparison discloses
   output stats (bytes, TYPE counts, degraded flag); a known work-skipping
@@ -5144,6 +5234,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Destination ruling: CPU-corroboration semantics and sample count for cell closure](issues/176-destination-cpu-corroboration-ruling.md): **resolved 2026-11-21, human ruling (zero production edits) — Option C amends `## Destination` to unstarved wall-clock wins + CPU integrity guard + separate efficiency disclosure (`pnp-ordinary` binding arm, margin-tiered provisional closure + final single-HEAD `n>=4` 8/8 board), moving the official running tally `0/8 → 2/8` provisionally won (`base-classic-off` 0.769x, `base-arachne-off` 0.792x), keeping `< 1.0x` (8/8) with a fresh `<= 0.50x` effort afterward, and graduating `177`, `178`, `179`, `180`** — separates cross-engine **CPU integrity guard** (tight CPU, unstarved `cpu/wall`, matched non-degraded output, plus PnP/Orca CPU ratio disclosed as efficiency — accounting for Orca's ~10.0 s serial STL import vs PnP's ~5.2x-core slicing) from unchanged within-PnP **candidate A/B CPU corroboration**. **`pnp-ordinary`** (production default) binds cell closure (`pnp-accelerated` disclosed alongside; swaps only if adopted as production default). Wide-margin cells (`ratio <= 0.85x`) close provisionally on quiet `n=3` strict separation with 0 starvation flags (`base-classic-off` 0.7687x / 3.66 s sep and `base-arachne-off` 0.7921x / 2.37 s sep from `t174`, structurally inert under `t175`); close cells (`0.85x < ratio < 1.00x`) and the final single-HEAD 8/8 closing board require `>= 4` retained unstarved runs per arm with strict separation (starved outliers `< 0.75 × best` excludable per `SCOREBOARD.md` while `>= 4` unstarved runs remain); provisional wins carry forward across later commits passing paired non-regression gates. Destination bar stays `< 1.0x` (8/8) with a follow-on `<= 0.50x` (2× faster) effort planned as a fresh map afterward, prioritizing high-leverage speedup tracks now. Added 4 canonical terms to [`GLOSSARY.md`](../../../GLOSSARY.md) (**CPU integrity guard**, **Candidate CPU corroboration**, **Binding arm**, **Provisional cell win**) and graduated [177](issues/177-post-t175-full-matrix-attribution.md) (unblocked), [178](issues/178-planner-phase3-union-attribution.md) (unblocked), [179](issues/179-per-layer-tree-support-and-infill-linker-screen.md) (blocked by `177`), and [180](issues/180-shell-classification-post-t172-residual-screen.md) (blocked by `177`).
 - [Tiled collision operand for the planner's phase-1 carve](issues/175-tiled-collision-carve.md): **resolved 2026-11-21, measured candidate — standing `t137` 4-cell planner gate PASSED (4/4 supports-on PASS: +31.32 / +30.90 % base, +16.06 / +16.62 % benchy, 5/5 wins, CPU +25.36…+40.86 %, acc +15.84…+31.53 %; 4/4 supports-off INERT-PASS), landed by explicit human KEEP ruling updating only the 2 `base` supports-on hashes for 1 µm Clipper2 distant-scanbeam unclamping** — guest-only exact non-perturbing per-layer tile index (`modules/core-modules/tree-support-planner/src/collision_tile_index.rs::CollisionTileIndex`, wired into `lib.rs::build_roles_batched` Phase 1 only; zero host/WIT/schema edits). Sweep on `base-classic-on` (`1 / 2 / 5 / 10 mm`, 3 alternating rounds, load `1.43 → 5.2 %`): `baseline` 41.024 s, `1 mm` 28.336 s (+30.93 %), **`2 mm` 28.311 s (+30.99 %, chosen by lowest wall)**, `5 mm` 28.587 s (+30.32 %), `10 mm` 29.124 s (+29.01 %); all four tiled sizes share SHA-256 `7b90e749…`. Attribution (`--profile`, `probe.patch` reverted): on `base-classic-on`, `tile_index_build` **45.9 ms** (1.44 B fuel, 430 layers) + `tile_index_query` **84.6 ms** (1.55 B, 68,381 queries) = **130.5 ms** collapses `phase1_clip_batches` **12,436.6 → 174.4 ms (−98.6 %)**, sent requests **68,381 → 30,639** (37,742 empty-gated, 23,468 cache hits), Phase-1 clip points **426,868,700 → 3,629,342 (−99.15 %**, 0.85 % remaining vs t173's 1.62 % estimate), net planner fuel **62.27 → 48.58 B (−22.0 %)**, and `host:native` clip thread **173.90 → 56.02 s** (`benchy-classic-on`: 17.9 ms build+query, clip points `28.23 M → 251.5 k` = **−99.11 %**). Paired A/B (5 pairs/cell, load `1 → 3 %`, null 3 pairs `1 → 0 %`, acc 3 pairs `2 → 6 %`; 208/208 runs clean `exit=0`, `degraded=false`, `0` code-1200): `benchy-classic-on` **+16.06 %** (20.1× floor, null 2.02 %, CPU +26.75 %, acc +16.42 / +25.20 %), `benchy-arachne-on` **+16.62 %** (20.8×, null 2.29 %, CPU +25.36 %, acc +15.84 / +27.06 %), `base-classic-on` **+31.32 %** (39.2×, null 1.10 %, CPU +40.86 %, acc +31.39 / +40.97 %), `base-arachne-on` **+30.90 %** (38.6×, null 1.08 %, CPU +40.10 %, acc +31.53 / +40.39 %); supports-off −0.58…+0.74 % ord (−0.73…+0.55 % acc). Output: baseline reproduces t172 **16/16**, candidate ord ≡ acc **16/16**, **6/8 byte-identical** (all 4 supports-off + both benchy supports-on); only `base-classic-on` (−1 B, 7/976,781 lines, −0.00071 mm) and `base-arachne-on` (−1 B, 5/972,259 lines, −0.00071 mm) move by **1 µm** on 4 XY vertices strictly in `Support` / `Support interface` (0 part movement), exhaustively proven 9/9 caused by `vendor/clipper2-rust/src/engine.rs::add_new_intersect_node` clamping to unrelated distant vertices' global `scanline_list` Y coordinates (`8/9` bulk + 9th isolated `full_eq_win_with_dummy_far_y = true`). Cross-window route estimate vs t174 quiet board: `base-classic-on` **~1.221x / ~1.169x** (71.6 % of cut closed vs t173's 60.8 % ceiling), `base-arachne-on` **~1.201x / ~1.153x** (72.8 % vs 61.6 %), `benchy-arachne-on` **~1.389x / ~1.409x** (41.6 % vs 21.8 %), `benchy-classic-on` (binding) **~1.570x / ~1.602x** (34.5 % vs 23.2 %); Phase-3 union is now **~92.1 %** of remaining `host:native` clip thread on `base-classic-on` and remains unnamed in fog. Active currency: [`evidence/t175-tiled-collision-carve/reference.json`](evidence/t175-tiled-collision-carve/reference.json). Evidence: [`evidence/t175-tiled-collision-carve/FINDINGS.md`](evidence/t175-tiled-collision-carve/FINDINGS.md) (`verify.py` PASS, `--self-test` 13/13; `audit_t175.py --self-test` 6/6).
 - [Post-t172 eight-cell two-tool scoreboard refresh](issues/174-post-t172-scoreboard-refresh.md): **resolved 2026-11-21, measured board (zero production edits) — official ratios of record are 0.769x–1.870x ordinary / 0.766x–1.916x accelerated (16/16 byte-identical to t172's currency), with 2/8 decisive unstarved wall-clock wins (`base classic-off` 0.769x / 0.766x, `base arachne-off` 0.792x / 0.774x, strict separation on all 3 runs) but 0/8 under literal `CPU <= Orca` (1.81x–2.13x CPU via ~5.2x vs ~1.9–2.2x concurrency); tally stays 0/8 pending HITL [176](issues/176-destination-cpu-corroboration-ruling.md), and `benchy classic-on` becomes the binding cell (1.870x / 46.54 % cut)** — stamped at HEAD `0ce4be39` (code `48a5e583`, both guest freshness gates exit 0; OrcaSlicer **2.5.1** `5013b1bd…` vendor `02.08.00.16` `tree_strong`, PnP ord `06b05b6b…` / `e75be5c0…`, PnP acc `490c6dc2…` / `481ff759…`). Quiet-box interleaved board (`t174-quiet-board`, 8 cells × 3 tools × 1 warmup + 3 measured = 96 rows, `RAYON_NUM_THREADS=12`, **0/72** starvation flags, 85 load samples 14/79/100 % CPU, steady 10.8–14.1 GB free RAM, **10/10** matched Orca keys on 32/32 Orca runs, **0** code-1200 diagnostics, `degraded: false`): benchy **1.1438x / 1.1179x** (cut 12.57 / 10.55 %), **1.8704x / 1.9162x** (cut **46.54 / 47.81 %**, binding), **1.1548x / 1.0640x** (cut 13.40 / 6.01 %; acc 0.15 s from parity), **1.6652x / 1.6743x** (cut 39.95 / 40.27 %); base **0.7687x / 0.7656x** (−23.13 / −23.44 % wall, strict sep 3.66 / 3.26 s, CPU 2.126x / 2.066x), **1.7773x / 1.7041x** (cut 43.73 / 41.32 %), **0.7921x / 0.7739x** (−20.79 / −22.61 % wall, strict sep 2.37 / 2.15 s, CPU 1.844x / 1.810x), **1.7382x / 1.6843x** (cut 42.47 / 40.63 %). Accelerated beats ordinary in **6/8** wall (−7.86…+2.45 %, median **−2.28 %**; faster in all 4 base cells) and **7/8** CPU (−2.91…+0.52 %, median **−1.16 %**). Explains benchy surprise vs t172 estimates (t169's chain had omitted t166's +7.9…+21.4 % benchy gains); confirms t173's base supports-on cuts; all four supports-off cells cross the ~1.5x below-fold park bound. Disclosed: initial loaded-box campaign (`t174-post-t172-scoreboard`, external ~10 GB load ending mid-`base-arachne-on` with +10.44 GB RAM release, 4 starvation flags, 64–98 % spreads) invalidated as primary and preserved as `reduced/loaded-window.json` + `reduced/loaded-window-load-samples.csv` (`t156` precedent; still 16/16 identity and 2/8 wall wins at 0.832x / 0.863x); no null band, no `--profile`. Graduated [176](issues/176-destination-cpu-corroboration-ruling.md). Evidence: [`evidence/t174-post-t172-scoreboard/`](evidence/t174-post-t172-scoreboard/FINDINGS.md) (`verify.py` PASS 1280/1280, `--self-test` 18/18).
 - [Port Orca's `OffsetConcaveCrossing` into `vendor/clipper2-rust`](issues/172-port-offset-concave-crossing.md): **resolved 2026-11-20, measured candidate — strict Q2 gate PASSED 8/8 (+14.89…+23.01 % wall, 5/5 pairs and +19.20…+30.67 % CPU in every cell), landed under the sixth recorded t81-style exception; `base classic-off` (~0.82x est) and `base arachne-off` (~0.89x est) are projected to beat OrcaSlicer, and the Clipper2 kernel route is exhausted for the six non-winning cells** — human granted the sixth scoped t81-style exception (Q1) and strict landing gate (Q2) before production edits. Ported canonical `v2.5.0` (`40ecc66f78`) `clipper.offset.cpp::OffsetConcaveCrossing` (≈30 lines, `.round()` conversion, AGPLv3 attribution header; `DoRound` / `GetLineIntersectPt` / `c2_offset_as_group` excluded) into `vendor/clipper2-rust/src/offset.rs` (`ClipperOffset::offset_polygon`). Falsifiers in `offset_tests.rs` watched failing pre-patch (`96 != 32` raw pre-union vertices on a 32-gon inward offset) and green after (**405/405** + 3 doc-tests); `clip_polylines_prepared_reference.json` updated for two pre-patch inflated rings (`hole_and_island` cyclic start shift by 1, `dense_ring` ≤ 100 nm on concave corners; all clipped polylines identical). Four staged arms (`b2e8261e…` / `9f3fcba8…` / `f56c9271…` / `490c6dc2…`): baseline reproduces t169 **8/8** on both arms (`16/16`), candidate moves **8/8** and is byte-identical between ordinary and accelerated (**8/8**); active currency is now [`evidence/t172-offset-concave-crossing/reference.json`](evidence/t172-offset-concave-crossing/reference.json) (t169 superseded). Paired ordinary medians (5 pairs/cell): benchy **+23.01 / +18.41 / +21.49 / +17.37 %**, base **+21.41 / +14.89 / +19.88 / +15.00 %** (**18.6x–28.8x** the 0.80 % floor, strictly outside per-cell any-pair wall null bands of 2.29–13.69 %; both base supports-off cells beat their t169 estimated cuts of 3.9 % and 10.3 %); CPU **+19.20…+30.67 %** (5/5 every cell); accelerated corroboration (3 pairs/cell) wall **+14.19…+22.63 %** / CPU **+19.33…+30.93 %** (3/3 every cell). Delta audit: total extruding path **−0.745…+0.007 %**, no feature loss (`Outer wall` ≤ 0.0012 %, `Inner wall` ≤ 0.042 %, `Support` −1.57 % benchy / −0.69 % base). Cross-window route composition (t163 × t169 × t172, estimate only): `base classic-off` **~0.82x**, `base arachne-off` **~0.89x**, benchy ~1.26 / ~1.94 / ~1.44 / **~1.99x** (binding cell, 49.8 % cut), base supports-on ~1.80 / ~1.73x. Disclosed: 30-min timeout pause between rows 75 and 76 of `ab` (`p5 base-classic-on` spans pause; other 39 pairs back-to-back); no `--profile` pass. Graduated [174](issues/174-post-t172-scoreboard-refresh.md). Evidence: [`evidence/t172-offset-concave-crossing/FINDINGS.md`](evidence/t172-offset-concave-crossing/FINDINGS.md) (`verify.py` PASS, `--self-test` 8/8; `audit_t172.py --self-test` 4/4).
@@ -5424,63 +5515,37 @@ Standing decisions for this effort (2026-09-22):
 
 ## Not yet specified
 
-- **The Clipper2 kernel route is now EXHAUSTED for the six non-winning cells
+- **The Clipper2 kernel route is now EXHAUSTED for the six non-winning cells;
+  the post-t175 speedup discovery tracks are graduated
   (2026-11-20 → 2026-11-21, [t170](issues/170-clipper2-2-0-1-kernel-port-screen.md),
   [t171](issues/171-post-t169-prepass-reprice.md),
   [t172](issues/172-port-offset-concave-crossing.md),
-  [t174](issues/174-post-t172-scoreboard-refresh.md)).** Both t169's edge
-  decimation and [t172](issues/172-port-offset-concave-crossing.md)'s
-  `OffsetConcaveCrossing` have landed, and
-  [t174](issues/174-post-t172-scoreboard-refresh.md)'s quiet-box board replaces
-  the cross-window estimates with official ratios of record: `base classic-off`
-  (**0.769x / 0.766x** ord/acc) and `base arachne-off` (**0.792x / 0.774x**)
-  decisively beat OrcaSlicer on unstarved wall clock (while burning 1.81–2.13x
-  CPU; closure awaits the human ruling in
-  [176](issues/176-destination-cpu-corroboration-ruling.md)), leaving
-  `vendor/clipper2-rust` at 1.04–1.30x of canonical C++ on hot offsets and
-  0.61–0.94x (faster) on booleans. The other six cells stay above 1.0x on
-  official ratios of record — benchy **1.144x / 1.870x / 1.155x / 1.665x**
-  ordinary (**1.118x / 1.916x / 1.064x / 1.674x** accelerated; required cuts
-  **12.6 / 46.5 / 13.4 / 40.0 %** ord, **10.6 / 47.8 / 6.0 / 40.3 %** acc;
-  **`benchy classic-on` is the new binding cell**) and base supports-on
-  **1.777x / 1.738x** ordinary (**1.704x / 1.684x** accelerated; cuts **43.7 /
-  42.5 %** ord, **41.3 / 40.6 %** acc) — and cannot be closed by further
-  Clipper2 kernel tuning. **t171→t173 answered where the supports-on half of
-  that gap lives:** `clip_polygons` is **53.1–60.9 %** of those cells' host
-  clipper thread-time, the `host:native` bucket holds **236.3 s of 343.4 s** on
-  base classic-on, and [t173](issues/173-support-geometry-boolean-volume.md)
-  located it in `tree-support-planner`'s phase-1 carve and phase-3 union
-  (**98.8 %** of planner clip thread). **The base supports-on pair is now a
-  combination, and its phase-1 half is BANKED
-  ([t175](issues/175-tiled-collision-carve.md), 2026-11-21):** t174 confirmed
-  t173's base supports-on cuts (43.7 / 42.5 % vs 44.5 / 42.1 % est), and t175's
-  exact 2 mm per-layer collision tile index **beat t173's host-only ceiling** on
-  every supports-on cell: **+31.32 / +30.90 %** wall on `base` supports-on
-  (closing **71.6 / 72.8 %** of t174's required cuts vs t173's 60.8 / 61.6 %
-  ceiling; est **~1.221x / ~1.201x** ord, **~1.169x / ~1.153x** acc — crossing
-  below the ~1.5x park bound) and **+16.06 / +16.62 %** on `benchy` supports-on
-  (closing **34.5 / 41.6 %** vs 23.2 / 21.8 %; est `benchy-arachne-on` **~1.389x**
-  below park, `benchy-classic-on` still binding at **~1.570x / ~1.602x**) at a
-  **130.5 ms** build+query cost (`−99.15 %` clip points, `−22.0 %` planner guest
-  fuel). Remaining `host:native` clip thread on `base-classic-on` fell **173.90
-  → 56.02 s**. **Fog — the phase-3 companion (still unnamed):** the batched role
-  union (`planner::batched_phase3_union`, 480 calls, **51.6 s** thread / **5.21 s**
-  wall) is now **~92.1 %** of remaining `host:native` clip thread on
-  `base-classic-on` (**~89.6 %** on `base-arachne-on`) and still has **no named
-  reduction shape** (union cannot drop outside-bbox geometry); cutting it would
-  push both `base` supports-on cells across 1.0x (~0.98x–1.01x est), so a
-  phase-3 mechanism remains the missing term for the base supports-on pair.
-  **Fog — the benchy supports-on pair still needs non-clip work:** even after
-  t175's +16.1 / +16.6 % win (exceeding t173's host-only ceiling via guest
-  marshal/clone removal), `benchy-classic-on` stays binding at est **~1.570x**
-  (**~36.3 %** remaining cut) with only **2.93 s** of `host:native` clip thread
-  left — its primary lever remains the per-layer/guest program, not boolean
-  volume. **Fog — the
-  benchy supports-off pair is now within striking distance:** `benchy
-  classic-off` needs **12.6 % / 10.6 %** (+0.30 / +0.24 s) and `benchy
-  arachne-off` needs **13.4 % / 6.0 %** (+0.36 / +0.15 s), with both cells
-  (and both base supports-off cells) now well inside the ~1.5x below-fold park
-  bound.
+  [t174](issues/174-post-t172-scoreboard-refresh.md),
+  [t175](issues/175-tiled-collision-carve.md),
+  [t176](issues/176-destination-cpu-corroboration-ruling.md)).** Both `t169`'s
+  edge decimation and `t172`'s `OffsetConcaveCrossing` have landed, `t174`'s
+  quiet-box board plus `t176`'s Destination ruling moved the running tally to
+  **2/8 provisionally won** (`base-classic-off` **0.769x / 0.766x** ord/acc,
+  `base-arachne-off` **0.792x / 0.774x**), and `t175`'s exact 2 mm phase-1
+  collision tile index banked **+31.32 / +30.90 %** wall on `base` supports-on
+  (est. **~1.221x / ~1.201x** ord) and **+16.06 / +16.62 %** on `benchy`
+  supports-on (est. `benchy-arachne-on` **~1.389x**, binding `benchy-classic-on`
+  **~1.570x**). The four immediate discovery tracks have graduated out of fog
+  into live tickets:
+  [177](issues/177-post-t175-full-matrix-attribution.md) (post-t175 8-cell
+  attribution + `0.50x` headroom map),
+  [178](issues/178-planner-phase3-union-attribution.md) (planner Phase-3 union
+  mechanism screen, ~92 % of remaining `host:native` clip thread on `base`
+  supports-on),
+  [179](issues/179-per-layer-tree-support-and-infill-linker-screen.md)
+  (per-layer `tree-support` renderer & `infill-linker` guest screen, blocked by
+  `177`), and
+  [180](issues/180-shell-classification-post-t172-residual-screen.md)
+  (`ShellClassification` post-t172 residual screen, blocked by `177`).
+  **Remaining fog:** (a) timing of the next official three-tool Orca scoreboard
+  refresh (once candidates from `177`–`180` land and push additional cells
+  across `< 1.0x`), and (b) the planned follow-on **2× faster (`<= 0.50x`)**
+  fresh map once this map closes at 8/8 `< 1.0x`.
 
 - **t129's operand-volume shapes are ANSWERED and both were already landed
   ([t171](issues/171-post-t169-prepass-reprice.md), 2026-11-20).** The map had
@@ -5981,16 +6046,6 @@ Standing decisions for this effort (2026-09-22):
   reconstruction: current + `; support_overhang_angle = 30` == the t47 refs).
   For ticket 45 (next chain link), the fresh-baseline gate may proceed against
   the current references; it is not map-wide authorization.
-- **Renderer skeleton-containment reduction (second-ranked by t64, 2026-10-14).**
-  [Tree-support renderer attribution](issues/64-tree-support-renderer-attribution.md)
-  ranked `skeleton_wall_count`'s containment second at 6.921 B (15.9% of
-  renderer fuel), of which the per-point 4× bbox min/max scans in
-  `point_in_expolygon` walk 377,682,312 ring lengths per supports-on Benchy
-  slice. A per-expoly precomputed bounding box (or per-entry skeleton memo) is
-  the cheap shape, but its ceiling (~2–4 B ≈ 5–9% of renderer fuel) and the
-  renderer's small wall occupancy do not yet justify a separate experiment; it
-  graduates only with its own measured reason, independently of ticket 66's
-  paint-walk take.
 - **Painted-wall performance work.** No representative painted workload exists,
   so the painted path of `build_wall_flags` (nearest-original reprojection
   reuse) is not even selectable as a candidate. Needs a fixture/scenario before
