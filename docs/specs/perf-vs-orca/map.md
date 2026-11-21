@@ -13,7 +13,7 @@ wall-clock (process CPU corroborating, never contradicting) in every cell of
 the {benchy, base} × {classic, arachne} × {supports off, on} matrix, under the
 matched-pair protocol with outputs disclosed. 8 of 8 cells won closes the map.
 
-**Active reference set (2026-11-20, [t172](issues/172-port-offset-concave-crossing.md)): t172's set is the currency — benchy `4c67ef0b…` / `fdca4e2d…` / `fd631384…` / `2869186c…`, base `02ffa2d6…` / `0e13ff7b…` / `e806296f…` / `adf87012…` (classic-off / classic-on / arachne-off / arachne-on), byte-identical on the ordinary and accelerated arms; the baseline arm of the same campaign reproduced t169's set 8/8, and t169's set (`f505910c…` / `9b40bf51…` / `224fb6f0…` / `f32047c3…`, `33468ea9…` / `661b9a51…` / `e861766a…` / `2124b5f5…`) is now superseded. Every hash below this sentence that predates it is historical for comparison purposes and must be re-recorded before use.**
+**Active reference set (2026-11-21, [t175](issues/175-tiled-collision-carve.md)): t175's set is the currency — benchy `4c67ef0b…` / `fdca4e2d…` / `fd631384…` / `2869186c…` (all four unchanged from t172), base `02ffa2d6…` / `7b90e749…` / `e806296f…` / `f77633af…` (classic-off / classic-on / arachne-off / arachne-on; only `base-classic-on` `0e13ff7b…` and `base-arachne-on` `adf87012…` superseded from t172 by explicit human KEEP ruling for 1 µm Clipper2 distant-scanbeam unclamping strictly in Support/Support interface), byte-identical on the ordinary and accelerated arms (16/16); the baseline arm of the same campaign reproduced t172's set 16/16 (`4c67ef0b…` / `fdca4e2d…` / `fd631384…` / `2869186c…`, `02ffa2d6…` / `0e13ff7b…` / `e806296f…` / `adf87012…`), and t169's set remains superseded. Every hash below this sentence that predates it is historical for comparison purposes and must be re-recorded before use.**
 
 **Benchy reference currency (2026-11-13, [t145](issues/145-benchy-fixture-rebaseline.md)): the benchy fixture was replaced on 2026-11-12T20:48, and every benchy number measured before that boundary is HISTORICAL.** The replacement (`tmp/3dbenchy.stl`, `6ab57f1c…`) is a re-tessellation of the same model — 225,786 → 225,706 triangles, |Δbounds| ≤ 4.05e-7 mm, ten of ten sampled cross-sections equal to the old export's recorded values — but the slice is **not** output-neutral: one internal-bridge layer (L40, z = 8.2, +57.298 mm of path) and the tree-support engine (−1,370.181 mm over 176 layers) move, so all four benchy hashes move. **Superseded active set = t168's** ([`evidence/t168-bridge-opening/reduced/output.json`](evidence/t168-bridge-opening/reduced/output.json), 2026-11-19: benchy `d6cb4acd…` / `21c6969f…` / `5c0f846e…` / `6fe4b09b…`, base `9e360450…` / `f77cf265…` / `cd896bab…` / `3044c4d6…`, byte-identical on the ordinary and accelerated arms). t166's set is superseded but was reproduced **8/8** by the t168 baseline arm in the same campaign (benchy `276782a7…` / `44564d29…` / `46111bb0…` / `12c5e45c…`, base `0a1ee3df…` / `bc5cb5e1…` / `cadebffa…` / `77f2b655…`); t151's set is superseded (reproduced **8/8** by both the t166 and t168 baseline arms); for the history, t151's (2026-11-14) was benchy `3d28d1b3…` / `eb202973…` / `39ad6289…` / `77c3c578…`, base `9bb18f0e…` / `eccbd523…` / `2f249cdb…` / `1811425f…` (each list is classic-off / classic-on / arachne-off / arachne-on; the two base supports-on hashes are unchanged from t148 by measurement because those cells are inert). **t148's set is superseded but was reproduced 8/8 by the t151 baseline arm in the same campaign**: benchy `1ae0cfa8…` / `37788518…` / `8faf02b1…` / `f86d8897…`, base `c0b9014f…` / `eccbd523…` / `17f63e93…` / `1811425f…`. t145's four supports-on hashes (`d9fc80ba…` / `cd7d4a2d…` / `585c6a8e…` / `c9fee59a…`) are **superseded** because that job printed less support than it demanded; **t139's four benchy hashes are retired** (`93e21fee…` / `b3f1eccc…` / `3510e876…` / `96cdac85…`); t143's four are the superseded interim set. Rule: **a benchy number is either pre-swap (historical) or post-swap (current); never mixed, never quoted across the boundary.** Retired by that rule: t139's benchy hashes and every comparison built on them; t138's benchy **g-code** figures (its benchy **STL** figures survive — the cross-sections reproduce exactly); t135 Stage 1's benchy oracle numbers; t142's benchy A/B (20.00 / 10.56 / 20.23 / 12.66 %) and every pre-swap benchy A/B pair; every benchy scoreboard median (t121 / t124 / t139) and any composite containing a benchy cell; t126's "benchy classic-off 1.02x at zero prepass" and t134's benchy planner ratios. Post-swap and current: t143's benchy rows (fixture mtime 20:48, depth runs 20:55+), t144's hashes / oracle / A-B, t145's re-baseline, and t148's supports-on re-record. **Post-t148 scoreboard (4 supports-on cells × 2 tools, one window): 2.705x / 2.829x / 3.356x / 3.248x ordinary/Orca** (benchy classic-on / benchy arachne-on / base classic-on / base arachne-on), CPU corroborating — **required cut 63.0 % / 64.6 % / 70.2 % / 69.2 %**; t145's 8-cell post-swap scoreboard **1.853x–3.455x ordinary/Orca** stands for the four supports-off cells and is historical for the four supports-on cells (that job was support-incomplete). The accelerated arm has no current scoreboard.
 
@@ -1622,6 +1622,62 @@ wall wins at 0.832x / 0.863x). Evidence:
 [176](issues/176-destination-cpu-corroboration-ruling.md) (HITL grilling,
 unblocked, new — CPU-corroboration & `n=3` vs `n>=4` cell-closure ruling).
 
+**Destination status (2026-11-21,
+[t175](issues/175-tiled-collision-carve.md)): the planner's phase-1 collision
+carve is tiled and banked (+31.3 / +30.9 % wall on `base` supports-on, +16.1 /
++16.6 % on `benchy` supports-on, CPU corroborating, beating t173's host-only
+ceiling on every supports-on cell), landed by explicit human KEEP ruling with
+6/8 cells byte-identical and 2 `base` supports-on hashes updated for 1 µm
+Clipper2 distant-scanbeam unclamping; `base` supports-on drops to est ~1.22x /
+~1.20x (crossing below ~1.5x park), phase-3 union is now ~92 % of remaining
+`host:native` clip thread, and the sole open ticket on the frontier is the
+human's [176](issues/176-destination-cpu-corroboration-ruling.md).**
+Guest-only exact non-perturbing per-layer tile index (`CollisionTileIndex` in
+`modules/core-modules/tree-support-planner/src/collision_tile_index.rs`, wired
+into `build_roles_batched` Phase 1 in `lib.rs`; zero host/WIT/schema edits,
+identical host exes on both arms). **Sweep (`base-classic-on`, 1 / 2 / 5 / 10 mm,
+3 alternating rounds, load 1.43 → 5.2 %):** `baseline` 41.024 s, `1 mm` 28.336 s
+(+30.93 %), **`2 mm` 28.311 s (+30.99 %, chosen by lowest wall)**, `5 mm`
+28.587 s (+30.32 %), `10 mm` 29.124 s (+29.01 %); all four tiled arms emit the
+exact same SHA-256 `7b90e749…`. **Measured partition cost & operand reduction
+(`--profile`, `probe.patch` reverted):** on `base-classic-on`, `tile_index_build`
+**45.9 ms** (1.44 B fuel, 430 layers) + `tile_index_query` **84.6 ms** (1.55 B,
+68,381 queries) = **130.5 ms** collapses `phase1_clip_batches` **12,436.6 →
+174.4 ms (−98.6 %)**, sent requests **68,381 → 30,639** (37,742 empty-gated,
+23,468 cache hits), Phase-1 clip points **426,868,700 → 3,629,342 (−99.15 %**,
+0.85 % remaining vs t173's 1.62 % estimate), net planner guest fuel **62.27 →
+48.58 B (−22.0 %)**, and `host:native` clip thread **173.90 → 56.02 s**;
+`benchy-classic-on` build + query **17.9 ms**, clip points **28,230,127 →
+251,534 (−99.11 %)**. **Standing `t137` gate (5 interleaved pairs/cell ordinary,
+3-pair null, 3-pair accelerated; load 0–6 %; 208/208 runs clean `exit=0`,
+`degraded=false`, `0` code-1200):** `benchy-classic-on` **+16.06 %** wall (5/5,
+20.1× floor, null 2.02 %) / **+26.75 %** CPU (acc +16.42 / +25.20 %);
+`benchy-arachne-on` **+16.62 %** (5/5, 20.8×, null 2.29 %) / **+25.36 %** (acc
++15.84 / +27.06 %); `base-classic-on` **+31.32 %** (5/5, 39.2×, null 1.10 %) /
+**+40.86 %** (acc +31.39 / +40.97 %); `base-arachne-on` **+30.90 %** (5/5,
+38.6×, null 1.08 %) / **+40.10 %** (acc +31.53 / +40.39 %); four supports-off
+cells −0.58…+0.74 % ord (−0.73…+0.55 % acc), structurally inert (**4/4
+INERT-PASS**). **Output & Clipper2 proof:** baseline reproduces t172 **16/16**,
+candidate ord ≡ acc **16/16**, **6/8 cells byte-identical** (all four
+supports-off + both benchy supports-on); only `base-classic-on` (−1 B, 7/976,781
+lines, −0.00071 mm) and `base-arachne-on` (−1 B, 5/972,259 lines, −0.00071 mm)
+move by **1 µm** on four XY vertices strictly in `Support` / `Support interface`
+(zero part-geometry movement). Exhaustive 68,381-call audit proved **0**
+`Empty`/`Covered` mismatches and **9/9 (100 %)** single-vertex differences
+caused by `vendor/clipper2-rust/src/engine.rs::add_new_intersect_node` clamping
+shallow intersections to global `scanline_list` Y coordinates injected by
+unrelated distant collision vertices 14–36 mm away (`8/9` bulk + 9th isolated
+`full_eq_win_with_dummy_far_y = true`). **Cross-window route estimate vs t174
+quiet board (not a ratio of record):** `base-classic-on` **~1.221x / ~1.169x**
+ord/acc (71.6 % of cut closed vs t173's 60.8 % ceiling), `base-arachne-on`
+**~1.201x / ~1.153x** (72.8 % vs 61.6 %), `benchy-arachne-on` **~1.389x /
+~1.409x** (41.6 % vs 21.8 %), `benchy-classic-on` (still binding) **~1.570x /
+~1.602x** (34.5 % vs 23.2 %). Evidence:
+[`evidence/t175-tiled-collision-carve/`](evidence/t175-tiled-collision-carve/FINDINGS.md)
+(`verify.py` PASS, `--self-test` 13/13; `audit_t175.py --self-test` 6/6).
+**Frontier:** [176](issues/176-destination-cpu-corroboration-ruling.md) (HITL
+grilling, unblocked); phase-3 companion remains unnamed in **Not yet specified**.
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -1734,7 +1790,27 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-21, the t174 take):** the human said
+**Current selection scope (2026-11-21, the t175 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **175 was first on the
+frontier** (leaving 176 unclaimed), so it was claimed and resolved as a
+**measured planner candidate (guest-only exact per-layer collision tile index,
+`2 mm` chosen by sweep), landed by explicit human KEEP ruling**. Result: clears
+the standing `t137` 4-cell planner gate in **4/4 supports-on** (**+31.32 /
++30.90 %** base, **+16.06 / +16.62 %** benchy, 5/5 wins, 20.1–39.2× floor, CPU
++25.36…+40.86 %, acc +15.84…+31.53 %; **4/4 supports-off INERT-PASS**), beating
+t173's host-only ceiling on every supports-on cell at a **130.5 ms** build+query
+cost (`−99.15 %` clip points, `−22.0 %` planner guest fuel). Output: **6/8
+byte-identical** to t172 (including both benchy supports-on); only the 2 `base`
+supports-on cells move by **1 µm** on 4 XY vertices in Support/Support interface
+(−1 B, 7 and 5 lines, 0 part movement), exhaustively proven 9/9 caused by
+Clipper2 `add_new_intersect_node` distant-scanbeam clamping; active reference
+set updated for those two hashes only (`t175/reference.json`, ordinary ≡
+accelerated 16/16). Phase-3 union (~92 % of remaining `host:native` clip thread)
+stays unnamed in **Not yet specified**.
+**Frontier:** [176](issues/176-destination-cpu-corroboration-ruling.md) (HITL
+grilling, unblocked).
+
+**Previous selection scope (2026-11-21, the t174 take):** the human said
 "Continue the perf vs orca map" (no ticket named); **174 was first on the
 frontier** (leaving 175 unclaimed), so it was claimed and resolved as a
 **measured three-tool eight-cell scoreboard refresh: zero production edits,
@@ -5068,6 +5144,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Tiled collision operand for the planner's phase-1 carve](issues/175-tiled-collision-carve.md): **resolved 2026-11-21, measured candidate — standing `t137` 4-cell planner gate PASSED (4/4 supports-on PASS: +31.32 / +30.90 % base, +16.06 / +16.62 % benchy, 5/5 wins, CPU +25.36…+40.86 %, acc +15.84…+31.53 %; 4/4 supports-off INERT-PASS), landed by explicit human KEEP ruling updating only the 2 `base` supports-on hashes for 1 µm Clipper2 distant-scanbeam unclamping** — guest-only exact non-perturbing per-layer tile index (`modules/core-modules/tree-support-planner/src/collision_tile_index.rs::CollisionTileIndex`, wired into `lib.rs::build_roles_batched` Phase 1 only; zero host/WIT/schema edits). Sweep on `base-classic-on` (`1 / 2 / 5 / 10 mm`, 3 alternating rounds, load `1.43 → 5.2 %`): `baseline` 41.024 s, `1 mm` 28.336 s (+30.93 %), **`2 mm` 28.311 s (+30.99 %, chosen by lowest wall)**, `5 mm` 28.587 s (+30.32 %), `10 mm` 29.124 s (+29.01 %); all four tiled sizes share SHA-256 `7b90e749…`. Attribution (`--profile`, `probe.patch` reverted): on `base-classic-on`, `tile_index_build` **45.9 ms** (1.44 B fuel, 430 layers) + `tile_index_query` **84.6 ms** (1.55 B, 68,381 queries) = **130.5 ms** collapses `phase1_clip_batches` **12,436.6 → 174.4 ms (−98.6 %)**, sent requests **68,381 → 30,639** (37,742 empty-gated, 23,468 cache hits), Phase-1 clip points **426,868,700 → 3,629,342 (−99.15 %**, 0.85 % remaining vs t173's 1.62 % estimate), net planner fuel **62.27 → 48.58 B (−22.0 %)**, and `host:native` clip thread **173.90 → 56.02 s** (`benchy-classic-on`: 17.9 ms build+query, clip points `28.23 M → 251.5 k` = **−99.11 %**). Paired A/B (5 pairs/cell, load `1 → 3 %`, null 3 pairs `1 → 0 %`, acc 3 pairs `2 → 6 %`; 208/208 runs clean `exit=0`, `degraded=false`, `0` code-1200): `benchy-classic-on` **+16.06 %** (20.1× floor, null 2.02 %, CPU +26.75 %, acc +16.42 / +25.20 %), `benchy-arachne-on` **+16.62 %** (20.8×, null 2.29 %, CPU +25.36 %, acc +15.84 / +27.06 %), `base-classic-on` **+31.32 %** (39.2×, null 1.10 %, CPU +40.86 %, acc +31.39 / +40.97 %), `base-arachne-on` **+30.90 %** (38.6×, null 1.08 %, CPU +40.10 %, acc +31.53 / +40.39 %); supports-off −0.58…+0.74 % ord (−0.73…+0.55 % acc). Output: baseline reproduces t172 **16/16**, candidate ord ≡ acc **16/16**, **6/8 byte-identical** (all 4 supports-off + both benchy supports-on); only `base-classic-on` (−1 B, 7/976,781 lines, −0.00071 mm) and `base-arachne-on` (−1 B, 5/972,259 lines, −0.00071 mm) move by **1 µm** on 4 XY vertices strictly in `Support` / `Support interface` (0 part movement), exhaustively proven 9/9 caused by `vendor/clipper2-rust/src/engine.rs::add_new_intersect_node` clamping to unrelated distant vertices' global `scanline_list` Y coordinates (`8/9` bulk + 9th isolated `full_eq_win_with_dummy_far_y = true`). Cross-window route estimate vs t174 quiet board: `base-classic-on` **~1.221x / ~1.169x** (71.6 % of cut closed vs t173's 60.8 % ceiling), `base-arachne-on` **~1.201x / ~1.153x** (72.8 % vs 61.6 %), `benchy-arachne-on` **~1.389x / ~1.409x** (41.6 % vs 21.8 %), `benchy-classic-on` (binding) **~1.570x / ~1.602x** (34.5 % vs 23.2 %); Phase-3 union is now **~92.1 %** of remaining `host:native` clip thread on `base-classic-on` and remains unnamed in fog. Active currency: [`evidence/t175-tiled-collision-carve/reference.json`](evidence/t175-tiled-collision-carve/reference.json). Evidence: [`evidence/t175-tiled-collision-carve/FINDINGS.md`](evidence/t175-tiled-collision-carve/FINDINGS.md) (`verify.py` PASS, `--self-test` 13/13; `audit_t175.py --self-test` 6/6).
 - [Post-t172 eight-cell two-tool scoreboard refresh](issues/174-post-t172-scoreboard-refresh.md): **resolved 2026-11-21, measured board (zero production edits) — official ratios of record are 0.769x–1.870x ordinary / 0.766x–1.916x accelerated (16/16 byte-identical to t172's currency), with 2/8 decisive unstarved wall-clock wins (`base classic-off` 0.769x / 0.766x, `base arachne-off` 0.792x / 0.774x, strict separation on all 3 runs) but 0/8 under literal `CPU <= Orca` (1.81x–2.13x CPU via ~5.2x vs ~1.9–2.2x concurrency); tally stays 0/8 pending HITL [176](issues/176-destination-cpu-corroboration-ruling.md), and `benchy classic-on` becomes the binding cell (1.870x / 46.54 % cut)** — stamped at HEAD `0ce4be39` (code `48a5e583`, both guest freshness gates exit 0; OrcaSlicer **2.5.1** `5013b1bd…` vendor `02.08.00.16` `tree_strong`, PnP ord `06b05b6b…` / `e75be5c0…`, PnP acc `490c6dc2…` / `481ff759…`). Quiet-box interleaved board (`t174-quiet-board`, 8 cells × 3 tools × 1 warmup + 3 measured = 96 rows, `RAYON_NUM_THREADS=12`, **0/72** starvation flags, 85 load samples 14/79/100 % CPU, steady 10.8–14.1 GB free RAM, **10/10** matched Orca keys on 32/32 Orca runs, **0** code-1200 diagnostics, `degraded: false`): benchy **1.1438x / 1.1179x** (cut 12.57 / 10.55 %), **1.8704x / 1.9162x** (cut **46.54 / 47.81 %**, binding), **1.1548x / 1.0640x** (cut 13.40 / 6.01 %; acc 0.15 s from parity), **1.6652x / 1.6743x** (cut 39.95 / 40.27 %); base **0.7687x / 0.7656x** (−23.13 / −23.44 % wall, strict sep 3.66 / 3.26 s, CPU 2.126x / 2.066x), **1.7773x / 1.7041x** (cut 43.73 / 41.32 %), **0.7921x / 0.7739x** (−20.79 / −22.61 % wall, strict sep 2.37 / 2.15 s, CPU 1.844x / 1.810x), **1.7382x / 1.6843x** (cut 42.47 / 40.63 %). Accelerated beats ordinary in **6/8** wall (−7.86…+2.45 %, median **−2.28 %**; faster in all 4 base cells) and **7/8** CPU (−2.91…+0.52 %, median **−1.16 %**). Explains benchy surprise vs t172 estimates (t169's chain had omitted t166's +7.9…+21.4 % benchy gains); confirms t173's base supports-on cuts; all four supports-off cells cross the ~1.5x below-fold park bound. Disclosed: initial loaded-box campaign (`t174-post-t172-scoreboard`, external ~10 GB load ending mid-`base-arachne-on` with +10.44 GB RAM release, 4 starvation flags, 64–98 % spreads) invalidated as primary and preserved as `reduced/loaded-window.json` + `reduced/loaded-window-load-samples.csv` (`t156` precedent; still 16/16 identity and 2/8 wall wins at 0.832x / 0.863x); no null band, no `--profile`. Graduated [176](issues/176-destination-cpu-corroboration-ruling.md). Evidence: [`evidence/t174-post-t172-scoreboard/`](evidence/t174-post-t172-scoreboard/FINDINGS.md) (`verify.py` PASS 1280/1280, `--self-test` 18/18).
 - [Port Orca's `OffsetConcaveCrossing` into `vendor/clipper2-rust`](issues/172-port-offset-concave-crossing.md): **resolved 2026-11-20, measured candidate — strict Q2 gate PASSED 8/8 (+14.89…+23.01 % wall, 5/5 pairs and +19.20…+30.67 % CPU in every cell), landed under the sixth recorded t81-style exception; `base classic-off` (~0.82x est) and `base arachne-off` (~0.89x est) are projected to beat OrcaSlicer, and the Clipper2 kernel route is exhausted for the six non-winning cells** — human granted the sixth scoped t81-style exception (Q1) and strict landing gate (Q2) before production edits. Ported canonical `v2.5.0` (`40ecc66f78`) `clipper.offset.cpp::OffsetConcaveCrossing` (≈30 lines, `.round()` conversion, AGPLv3 attribution header; `DoRound` / `GetLineIntersectPt` / `c2_offset_as_group` excluded) into `vendor/clipper2-rust/src/offset.rs` (`ClipperOffset::offset_polygon`). Falsifiers in `offset_tests.rs` watched failing pre-patch (`96 != 32` raw pre-union vertices on a 32-gon inward offset) and green after (**405/405** + 3 doc-tests); `clip_polylines_prepared_reference.json` updated for two pre-patch inflated rings (`hole_and_island` cyclic start shift by 1, `dense_ring` ≤ 100 nm on concave corners; all clipped polylines identical). Four staged arms (`b2e8261e…` / `9f3fcba8…` / `f56c9271…` / `490c6dc2…`): baseline reproduces t169 **8/8** on both arms (`16/16`), candidate moves **8/8** and is byte-identical between ordinary and accelerated (**8/8**); active currency is now [`evidence/t172-offset-concave-crossing/reference.json`](evidence/t172-offset-concave-crossing/reference.json) (t169 superseded). Paired ordinary medians (5 pairs/cell): benchy **+23.01 / +18.41 / +21.49 / +17.37 %**, base **+21.41 / +14.89 / +19.88 / +15.00 %** (**18.6x–28.8x** the 0.80 % floor, strictly outside per-cell any-pair wall null bands of 2.29–13.69 %; both base supports-off cells beat their t169 estimated cuts of 3.9 % and 10.3 %); CPU **+19.20…+30.67 %** (5/5 every cell); accelerated corroboration (3 pairs/cell) wall **+14.19…+22.63 %** / CPU **+19.33…+30.93 %** (3/3 every cell). Delta audit: total extruding path **−0.745…+0.007 %**, no feature loss (`Outer wall` ≤ 0.0012 %, `Inner wall` ≤ 0.042 %, `Support` −1.57 % benchy / −0.69 % base). Cross-window route composition (t163 × t169 × t172, estimate only): `base classic-off` **~0.82x**, `base arachne-off` **~0.89x**, benchy ~1.26 / ~1.94 / ~1.44 / **~1.99x** (binding cell, 49.8 % cut), base supports-on ~1.80 / ~1.73x. Disclosed: 30-min timeout pause between rows 75 and 76 of `ab` (`p5 base-classic-on` spans pause; other 39 pairs back-to-back); no `--profile` pass. Graduated [174](issues/174-post-t172-scoreboard-refresh.md). Evidence: [`evidence/t172-offset-concave-crossing/FINDINGS.md`](evidence/t172-offset-concave-crossing/FINDINGS.md) (`verify.py` PASS, `--self-test` 8/8; `audit_t172.py --self-test` 4/4).
 - [Support-path boolean volume](issues/173-support-geometry-boolean-volume.md): **resolved 2026-11-20, attribution + shape pricing (no production edit) — the support path's clip mass is `tree-support-planner`'s phase-1 carve and phase-3 union, and no single boolean-volume shape clears either base supports-on cell; the base pair needs a combination and the benchy pair is not a boolean program** — the `host:native` clip bucket on `base classic-on` is the planner (**196.6 s** thread / **18.00 s** wall, **85.2 %** of all clip thread), with `planner::batched_phase1_carve` at **68,381** calls / **142.7 s** / **12.41 s** / **11.5x** fan-out and `planner::batched_phase3_union` at **480** / **51.6 s** / **5.21 s** / **9.9x**; the two sites are **98.8 %** of planner clip thread. Operand: **426.9 M** clip points (mean **6,241/call** over **4.34** paths) against **98.7** subject points, but only **285,368** clip points (**0.0669 %**) lie inside the subject bbox; a polygon-level bbox filter removes **28.5 %**. Stage decomposition (same window, base classic-on): **62.2 %** host clip / **3.3 %** host offset / **34.5 %** remainder; benchy classic-on is **38.8 %** host clip / **56.1 %** remainder; planner fuel is 10.8 % of cell fuel. Prices (ceilings, fraction of required cut): phase-1 bbox/tile window **60.8 % / 61.6 %** (1.150x / 1.120x), polygon-bbox filter **17.6 % / 17.8 %**, phase-3 union free **26.0 % / 27.4 %** (no shape), all planner clip free **89.7 % / 92.1 %** (**0.948x / 0.926x**), all planner clip+offset free **94.7 % / 97.6 %** (**0.913x / 0.891x**); phase-1 window + phase-3 free is **0.969x / 0.945x** but phase 3 is a ceiling. Benchy: phase-1 window **23.2 % / 21.8 %**, all clip free **35 % / 34 %**. Re-aim: base pair = phase-1 tiling + a phase-3 companion; benchy pair = per-layer/guest program. Disclosed: one probe pass/cell, identical operands read 134–216 s across takes (box state), probe thread/wall inflated, route is t172's estimate (t174 is the board); no accelerated arm; all 5 probe + 15 instrumented runs reproduce t172's set; probe reverted. Graduated [175](issues/175-tiled-collision-carve.md). Evidence: [`evidence/t173-support-boolean-volume/FINDINGS.md`](evidence/t173-support-boolean-volume/FINDINGS.md) (`verify.py` PASS, `--self-test` 8/8).
@@ -5374,19 +5451,31 @@ Standing decisions for this effort (2026-09-22):
   base classic-on, and [t173](issues/173-support-geometry-boolean-volume.md)
   located it in `tree-support-planner`'s phase-1 carve and phase-3 union
   (**98.8 %** of planner clip thread). **The base supports-on pair is now a
-  combination, not a deletion:** t174 confirms t173's base supports-on cuts
-  (43.7 / 42.5 % vs 44.5 / 42.1 % est); the phase-1 bbox/tile window is
-  **60.8 % / 61.6 %** of the cut and is ticketed as
-  [175](issues/175-tiled-collision-carve.md); it cannot win alone. **Fog — the
-  phase-3 companion:** the batched role union is **26.0 % / 27.4 %** of the same
-  cuts at zero and has **no named reduction shape** (union cannot drop
-  outside-bbox geometry); phase-1 window + phase-3 free is the first projected
-  crossing (**0.969x / 0.945x**), so a phase-3 mechanism is the missing term.
-  **Fog — the benchy supports-on pair does NOT ride the same program:** its
-  whole planner clip wall is **0.73 / 0.72 s** against cuts of **2.36 / 2.11 s**
-  (t174 quiet board), phase-1 window covers ~20–24 %, all clip free ~31–35 %,
-  and **56.1 %** of its `SupportGeometry` stage is outside the host clipper —
-  its lever is the per-layer/guest program, not boolean volume. **Fog — the
+  combination, and its phase-1 half is BANKED
+  ([t175](issues/175-tiled-collision-carve.md), 2026-11-21):** t174 confirmed
+  t173's base supports-on cuts (43.7 / 42.5 % vs 44.5 / 42.1 % est), and t175's
+  exact 2 mm per-layer collision tile index **beat t173's host-only ceiling** on
+  every supports-on cell: **+31.32 / +30.90 %** wall on `base` supports-on
+  (closing **71.6 / 72.8 %** of t174's required cuts vs t173's 60.8 / 61.6 %
+  ceiling; est **~1.221x / ~1.201x** ord, **~1.169x / ~1.153x** acc — crossing
+  below the ~1.5x park bound) and **+16.06 / +16.62 %** on `benchy` supports-on
+  (closing **34.5 / 41.6 %** vs 23.2 / 21.8 %; est `benchy-arachne-on` **~1.389x**
+  below park, `benchy-classic-on` still binding at **~1.570x / ~1.602x**) at a
+  **130.5 ms** build+query cost (`−99.15 %` clip points, `−22.0 %` planner guest
+  fuel). Remaining `host:native` clip thread on `base-classic-on` fell **173.90
+  → 56.02 s**. **Fog — the phase-3 companion (still unnamed):** the batched role
+  union (`planner::batched_phase3_union`, 480 calls, **51.6 s** thread / **5.21 s**
+  wall) is now **~92.1 %** of remaining `host:native` clip thread on
+  `base-classic-on` (**~89.6 %** on `base-arachne-on`) and still has **no named
+  reduction shape** (union cannot drop outside-bbox geometry); cutting it would
+  push both `base` supports-on cells across 1.0x (~0.98x–1.01x est), so a
+  phase-3 mechanism remains the missing term for the base supports-on pair.
+  **Fog — the benchy supports-on pair still needs non-clip work:** even after
+  t175's +16.1 / +16.6 % win (exceeding t173's host-only ceiling via guest
+  marshal/clone removal), `benchy-classic-on` stays binding at est **~1.570x**
+  (**~36.3 %** remaining cut) with only **2.93 s** of `host:native` clip thread
+  left — its primary lever remains the per-layer/guest program, not boolean
+  volume. **Fog — the
   benchy supports-off pair is now within striking distance:** `benchy
   classic-off` needs **12.6 % / 10.6 %** (+0.30 / +0.24 s) and `benchy
   arachne-off` needs **13.4 % / 6.0 %** (+0.36 / +0.15 s), with both cells
@@ -6220,7 +6309,13 @@ Standing decisions for this effort (2026-09-22):
   0.80 % paired wall/CPU improvement gate, requires byte-identical output in all
   eight against the active reference set, and requires no median wall/CPU
   regression in the four supports-off cells. This is not a parity exception and
-  leaves the 8/8 destination unchanged.
+  leaves the 8/8 destination unchanged. *(Note, 2026-11-21,
+  [t175](issues/175-tiled-collision-carve.md): Clipper2's
+  `vendor/clipper2-rust/src/engine.rs::add_new_intersect_node` clamps shallow
+  intersections to global `scanline_list` Y coordinates contributed by unrelated
+  distant `clip` vertices; any Clipper2 clip-operand reduction on `base.stl`
+  therefore unclamps those ~1 µm intersections and requires an explicit human
+  KEEP ruling on the moved hashes rather than literal 8/8 byte-identity.)*
    **(3) 2026-11-09:** [Matched settings vs the 8 mm brim](issues/130-brim-matched-settings-ruling.md)
    rules that parity work is licensed **to close matched-settings asymmetries**:
    when the arms diverge on a job-affecting setting, the divergence is closed —

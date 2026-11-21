@@ -1,0 +1,804 @@
+{
+  "schema": 1,
+  "note": "Attribution only (`--profile --instrument-stderr` with `probe.patch`). Fuel is deterministic executed guest instructions; wall under --profile is inflated by mark overhead and `host:native` sums concurrent worker threads. Never treat --profile wall as a gate measurement.",
+  "cells": {
+    "base-classic-on": {
+      "baseline": {
+        "tile_units": 20000,
+        "tiling": false,
+        "batches": 37,
+        "degraded": false,
+        "fatal_error_count": 0,
+        "slice_elapsed_ms": 41467,
+        "planner_elapsed_ms": 22991,
+        "counters": {
+          "layers_indexed": 0,
+          "regions_total": 136477,
+          "outer_gated": 68096,
+          "empty_gated": 0,
+          "covered_dropped": 0,
+          "clip_requests": 68381,
+          "cache_hits": 0,
+          "orig_clip_pts": 426868700,
+          "win_clip_pts": 426868700,
+          "sent_subj_pts": 6748388,
+          "grid_cells": 0,
+          "cell_entries": 0,
+          "row_entries": 0
+        },
+        "derived": {
+          "phase1_queries_after_outer_gate": 68381,
+          "clip_point_reduction_pct": 0.0,
+          "clip_point_remaining_pct": 100.0,
+          "request_reduction_pct": 0.0,
+          "mean_orig_clip_pts_per_query": 6242.504496863164,
+          "mean_win_clip_pts_per_query": 6242.504496863164,
+          "mean_win_clip_pts_per_sent_req": 6242.504496863164
+        },
+        "profile": {
+          "fuel_total": 577630124673,
+          "wall_total_ns": 245304663500,
+          "planner": {
+            "total_fuel": 62273856217,
+            "self_fuel": 52365598378,
+            "total_wall_ns": 22454190000,
+            "self_wall_ns": 10017557600,
+            "scopes": {
+              "t175::phase1_clip_batches": {
+                "calls": 37,
+                "fuel": 9908257839,
+                "wall_ns": 12436632400
+              }
+            }
+          },
+          "host_native": {
+            "calls": 172305,
+            "total_wall_ns": 190048796100,
+            "scopes": {
+              "polygon_ops::clip_polygons": {
+                "calls": 112933,
+                "wall_ns": 173904814900
+              },
+              "polygon_ops::offset": {
+                "calls": 59372,
+                "wall_ns": 16139109700
+              }
+            }
+          }
+        }
+      },
+      "tile-1mm": {
+        "tile_units": 10000,
+        "tiling": true,
+        "batches": 37,
+        "degraded": false,
+        "fatal_error_count": 0,
+        "slice_elapsed_ms": 28228,
+        "planner_elapsed_ms": 10165,
+        "counters": {
+          "layers_indexed": 430,
+          "regions_total": 136477,
+          "outer_gated": 68096,
+          "empty_gated": 49735,
+          "covered_dropped": 0,
+          "clip_requests": 18646,
+          "cache_hits": 8502,
+          "orig_clip_pts": 426868700,
+          "win_clip_pts": 1480816,
+          "sent_subj_pts": 1837720,
+          "grid_cells": 852655,
+          "cell_entries": 2594747,
+          "row_entries": 77540
+        },
+        "derived": {
+          "phase1_queries_after_outer_gate": 68381,
+          "clip_point_reduction_pct": 99.65309801351094,
+          "clip_point_remaining_pct": 0.3469019864890539,
+          "request_reduction_pct": 72.73219169067431,
+          "mean_orig_clip_pts_per_query": 6242.504496863164,
+          "mean_win_clip_pts_per_query": 21.655372106286833,
+          "mean_win_clip_pts_per_sent_req": 79.41735492867103
+        },
+        "profile": {
+          "fuel_total": 563372497326,
+          "wall_total_ns": 126809987900,
+          "planner": {
+            "total_fuel": 48017509514,
+            "self_fuel": 45155966335,
+            "total_wall_ns": 9645460000,
+            "self_wall_ns": 9422271400,
+            "scopes": {
+              "t175::tile_index_build": {
+                "calls": 430,
+                "fuel": 1478546159,
+                "wall_ns": 49520500
+              },
+              "t175::tile_index_query": {
+                "calls": 68381,
+                "fuel": 1164649612,
+                "wall_ns": 69433500
+              },
+              "t175::phase1_clip_batches": {
+                "calls": 37,
+                "fuel": 218347408,
+                "wall_ns": 104234600
+              }
+            }
+          },
+          "host_native": {
+            "calls": 122570,
+            "total_wall_ns": 71738519700,
+            "scopes": {
+              "polygon_ops::clip_polygons": {
+                "calls": 63198,
+                "wall_ns": 55595891500
+              },
+              "polygon_ops::offset": {
+                "calls": 59372,
+                "wall_ns": 16139271400
+              }
+            }
+          }
+        }
+      },
+      "tile-2mm": {
+        "tile_units": 20000,
+        "tiling": true,
+        "batches": 37,
+        "degraded": false,
+        "fatal_error_count": 0,
+        "slice_elapsed_ms": 28251,
+        "planner_elapsed_ms": 10288,
+        "counters": {
+          "layers_indexed": 430,
+          "regions_total": 136477,
+          "outer_gated": 68096,
+          "empty_gated": 37742,
+          "covered_dropped": 0,
+          "clip_requests": 30639,
+          "cache_hits": 23468,
+          "orig_clip_pts": 426868700,
+          "win_clip_pts": 3629342,
+          "sent_subj_pts": 3018288,
+          "grid_cells": 219035,
+          "cell_entries": 2473606,
+          "row_entries": 38736
+        },
+        "derived": {
+          "phase1_queries_after_outer_gate": 68381,
+          "clip_point_reduction_pct": 99.14977556330552,
+          "clip_point_remaining_pct": 0.8502244366944683,
+          "request_reduction_pct": 55.19369415480908,
+          "mean_orig_clip_pts_per_query": 6242.504496863164,
+          "mean_win_clip_pts_per_query": 53.07529869408169,
+          "mean_win_clip_pts_per_sent_req": 118.45497568458501
+        },
+        "profile": {
+          "fuel_total": 563936748878,
+          "wall_total_ns": 127037147900,
+          "planner": {
+            "total_fuel": 48583766981,
+            "self_fuel": 45205731278,
+            "total_wall_ns": 9777500100,
+            "self_wall_ns": 9472552600,
+            "scopes": {
+              "t175::tile_index_query": {
+                "calls": 68381,
+                "fuel": 1550484628,
+                "wall_ns": 84635300
+              },
+              "t175::tile_index_build": {
+                "calls": 430,
+                "fuel": 1436249737,
+                "wall_ns": 45939600
+              },
+              "t175::phase1_clip_batches": {
+                "calls": 37,
+                "fuel": 391301338,
+                "wall_ns": 174372600
+              }
+            }
+          },
+          "host_native": {
+            "calls": 134563,
+            "total_wall_ns": 71974306600,
+            "scopes": {
+              "polygon_ops::clip_polygons": {
+                "calls": 75191,
+                "wall_ns": 56024265200
+              },
+              "polygon_ops::offset": {
+                "calls": 59372,
+                "wall_ns": 15946370600
+              }
+            }
+          }
+        }
+      },
+      "tile-5mm": {
+        "tile_units": 50000,
+        "tiling": true,
+        "batches": 37,
+        "degraded": false,
+        "fatal_error_count": 0,
+        "slice_elapsed_ms": 28476,
+        "planner_elapsed_ms": 10487,
+        "counters": {
+          "layers_indexed": 430,
+          "regions_total": 136477,
+          "outer_gated": 68096,
+          "empty_gated": 18354,
+          "covered_dropped": 0,
+          "clip_requests": 50027,
+          "cache_hits": 45711,
+          "orig_clip_pts": 426868700,
+          "win_clip_pts": 13201448,
+          "sent_subj_pts": 4934072,
+          "grid_cells": 37798,
+          "cell_entries": 2402477,
+          "row_entries": 15894
+        },
+        "derived": {
+          "phase1_queries_after_outer_gate": 68381,
+          "clip_point_reduction_pct": 96.90737503124497,
+          "clip_point_remaining_pct": 3.0926249687550293,
+          "request_reduction_pct": 26.840789108085577,
+          "mean_orig_clip_pts_per_query": 6242.504496863164,
+          "mean_win_clip_pts_per_query": 193.0572527456457,
+          "mean_win_clip_pts_per_sent_req": 263.8864613108921
+        },
+        "profile": {
+          "fuel_total": 565438665883,
+          "wall_total_ns": 128716328100,
+          "planner": {
+            "total_fuel": 50083981642,
+            "self_fuel": 45249018042,
+            "total_wall_ns": 9973465100,
+            "self_wall_ns": 9416941700,
+            "scopes": {
+              "t175::tile_index_query": {
+                "calls": 68381,
+                "fuel": 2609661206,
+                "wall_ns": 127579800
+              },
+              "t175::tile_index_build": {
+                "calls": 430,
+                "fuel": 1419438967,
+                "wall_ns": 44497600
+              },
+              "t175::phase1_clip_batches": {
+                "calls": 37,
+                "fuel": 805863427,
+                "wall_ns": 384446000
+              }
+            }
+          },
+          "host_native": {
+            "calls": 153951,
+            "total_wall_ns": 72942016700,
+            "scopes": {
+              "polygon_ops::clip_polygons": {
+                "calls": 94579,
+                "wall_ns": 56948672300
+              },
+              "polygon_ops::offset": {
+                "calls": 59372,
+                "wall_ns": 15989138700
+              }
+            }
+          }
+        }
+      },
+      "tile-10mm": {
+        "tile_units": 100000,
+        "tiling": true,
+        "batches": 37,
+        "degraded": false,
+        "fatal_error_count": 0,
+        "slice_elapsed_ms": 28714,
+        "planner_elapsed_ms": 10965,
+        "counters": {
+          "layers_indexed": 430,
+          "regions_total": 136477,
+          "outer_gated": 68096,
+          "empty_gated": 4231,
+          "covered_dropped": 0,
+          "clip_requests": 64150,
+          "cache_hits": 56714,
+          "orig_clip_pts": 426868700,
+          "win_clip_pts": 33394758,
+          "sent_subj_pts": 6328816,
+          "grid_cells": 10798,
+          "cell_entries": 2380961,
+          "row_entries": 10164
+        },
+        "derived": {
+          "phase1_queries_after_outer_gate": 68381,
+          "clip_point_reduction_pct": 92.1768079974006,
+          "clip_point_remaining_pct": 7.823192002599394,
+          "request_reduction_pct": 6.187391234407218,
+          "mean_orig_clip_pts_per_query": 6242.504496863164,
+          "mean_win_clip_pts_per_query": 488.3631125605066,
+          "mean_win_clip_pts_per_sent_req": 520.5730007794232
+        },
+        "profile": {
+          "fuel_total": 567034370278,
+          "wall_total_ns": 130941648300,
+          "planner": {
+            "total_fuel": 51680218979,
+            "self_fuel": 45304301917,
+            "total_wall_ns": 10461371800,
+            "self_wall_ns": 9469741300,
+            "scopes": {
+              "t175::tile_index_query": {
+                "calls": 68381,
+                "fuel": 3568705810,
+                "wall_ns": 164242500
+              },
+              "t175::tile_index_build": {
+                "calls": 430,
+                "fuel": 1415368861,
+                "wall_ns": 43411100
+              },
+              "t175::phase1_clip_batches": {
+                "calls": 37,
+                "fuel": 1391842391,
+                "wall_ns": 783976900
+              }
+            }
+          },
+          "host_native": {
+            "calls": 168074,
+            "total_wall_ns": 75996852400,
+            "scopes": {
+              "polygon_ops::clip_polygons": {
+                "calls": 108702,
+                "wall_ns": 60144627700
+              },
+              "polygon_ops::offset": {
+                "calls": 59372,
+                "wall_ns": 15847620000
+              }
+            }
+          }
+        }
+      }
+    },
+    "base-arachne-on": {
+      "baseline": {
+        "tile_units": 20000,
+        "tiling": false,
+        "batches": 37,
+        "degraded": false,
+        "fatal_error_count": 0,
+        "slice_elapsed_ms": 41137,
+        "planner_elapsed_ms": 23046,
+        "counters": {
+          "layers_indexed": 0,
+          "regions_total": 136477,
+          "outer_gated": 68096,
+          "empty_gated": 0,
+          "covered_dropped": 0,
+          "clip_requests": 68381,
+          "cache_hits": 0,
+          "orig_clip_pts": 426868700,
+          "win_clip_pts": 426868700,
+          "sent_subj_pts": 6748388,
+          "grid_cells": 0,
+          "cell_entries": 0,
+          "row_entries": 0
+        },
+        "derived": {
+          "phase1_queries_after_outer_gate": 68381,
+          "clip_point_reduction_pct": 0.0,
+          "clip_point_remaining_pct": 100.0,
+          "request_reduction_pct": 0.0,
+          "mean_orig_clip_pts_per_query": 6242.504496863164,
+          "mean_win_clip_pts_per_query": 6242.504496863164,
+          "mean_win_clip_pts_per_sent_req": 6242.504496863164
+        },
+        "profile": {
+          "fuel_total": 566902469238,
+          "wall_total_ns": 245380915300,
+          "planner": {
+            "total_fuel": 62273856473,
+            "self_fuel": 52365598634,
+            "total_wall_ns": 22520769700,
+            "self_wall_ns": 10104129500,
+            "scopes": {
+              "t175::phase1_clip_batches": {
+                "calls": 37,
+                "fuel": 9908257839,
+                "wall_ns": 12416640200
+              }
+            }
+          },
+          "host_native": {
+            "calls": 169868,
+            "total_wall_ns": 190056522900,
+            "scopes": {
+              "polygon_ops::clip_polygons": {
+                "calls": 113428,
+                "wall_ns": 174353125100
+              },
+              "polygon_ops::offset": {
+                "calls": 55944,
+                "wall_ns": 15589452200
+              },
+              "polygon_ops::offset2_ex": {
+                "calls": 496,
+                "wall_ns": 109256700
+              }
+            }
+          }
+        }
+      },
+      "tile-2mm": {
+        "tile_units": 20000,
+        "tiling": true,
+        "batches": 37,
+        "degraded": false,
+        "fatal_error_count": 0,
+        "slice_elapsed_ms": 28625,
+        "planner_elapsed_ms": 10261,
+        "counters": {
+          "layers_indexed": 430,
+          "regions_total": 136477,
+          "outer_gated": 68096,
+          "empty_gated": 37742,
+          "covered_dropped": 0,
+          "clip_requests": 30639,
+          "cache_hits": 23468,
+          "orig_clip_pts": 426868700,
+          "win_clip_pts": 3629342,
+          "sent_subj_pts": 3018288,
+          "grid_cells": 219035,
+          "cell_entries": 2473606,
+          "row_entries": 38736
+        },
+        "derived": {
+          "phase1_queries_after_outer_gate": 68381,
+          "clip_point_reduction_pct": 99.14977556330552,
+          "clip_point_remaining_pct": 0.8502244366944683,
+          "request_reduction_pct": 55.19369415480908,
+          "mean_orig_clip_pts_per_query": 6242.504496863164,
+          "mean_win_clip_pts_per_query": 53.07529869408169,
+          "mean_win_clip_pts_per_sent_req": 118.45497568458501
+        },
+        "profile": {
+          "fuel_total": 553211640516,
+          "wall_total_ns": 126871086200,
+          "planner": {
+            "total_fuel": 48583767893,
+            "self_fuel": 45205732190,
+            "total_wall_ns": 9750255200,
+            "self_wall_ns": 9443524200,
+            "scopes": {
+              "t175::tile_index_query": {
+                "calls": 68381,
+                "fuel": 1550484628,
+                "wall_ns": 86131100
+              },
+              "t175::tile_index_build": {
+                "calls": 430,
+                "fuel": 1436249737,
+                "wall_ns": 45871900
+              },
+              "t175::phase1_clip_batches": {
+                "calls": 37,
+                "fuel": 391301338,
+                "wall_ns": 174728000
+              }
+            }
+          },
+          "host_native": {
+            "calls": 132126,
+            "total_wall_ns": 71605913200,
+            "scopes": {
+              "polygon_ops::clip_polygons": {
+                "calls": 75686,
+                "wall_ns": 56065107700
+              },
+              "polygon_ops::offset": {
+                "calls": 55944,
+                "wall_ns": 15433129200
+              },
+              "polygon_ops::offset2_ex": {
+                "calls": 496,
+                "wall_ns": 104104100
+              }
+            }
+          }
+        }
+      }
+    },
+    "benchy-classic-on": {
+      "baseline": {
+        "tile_units": 20000,
+        "tiling": false,
+        "batches": 18,
+        "degraded": false,
+        "fatal_error_count": 0,
+        "slice_elapsed_ms": 4147,
+        "planner_elapsed_ms": 1542,
+        "counters": {
+          "layers_indexed": 0,
+          "regions_total": 22062,
+          "outer_gated": 11462,
+          "empty_gated": 0,
+          "covered_dropped": 0,
+          "clip_requests": 10600,
+          "cache_hits": 0,
+          "orig_clip_pts": 28230127,
+          "win_clip_pts": 28230127,
+          "sent_subj_pts": 1048408,
+          "grid_cells": 0,
+          "cell_entries": 0,
+          "row_entries": 0
+        },
+        "derived": {
+          "phase1_queries_after_outer_gate": 10600,
+          "clip_point_reduction_pct": 0.0,
+          "clip_point_remaining_pct": 100.0,
+          "request_reduction_pct": 0.0,
+          "mean_orig_clip_pts_per_query": 2663.219528301887,
+          "mean_win_clip_pts_per_query": 2663.219528301887,
+          "mean_win_clip_pts_per_sent_req": 2663.219528301887
+        },
+        "profile": {
+          "fuel_total": 69580852557,
+          "wall_total_ns": 13204213500,
+          "planner": {
+            "total_fuel": 6688973252,
+            "self_fuel": 5935394069,
+            "total_wall_ns": 1495550000,
+            "self_wall_ns": 868652000,
+            "scopes": {
+              "t175::phase1_clip_batches": {
+                "calls": 18,
+                "fuel": 753579183,
+                "wall_ns": 626898000
+              }
+            }
+          },
+          "host_native": {
+            "calls": 47157,
+            "total_wall_ns": 9308554300,
+            "scopes": {
+              "polygon_ops::clip_polygons": {
+                "calls": 29126,
+                "wall_ns": 7894437200
+              },
+              "polygon_ops::offset": {
+                "calls": 18031,
+                "wall_ns": 1412855000
+              }
+            }
+          }
+        }
+      },
+      "tile-2mm": {
+        "tile_units": 20000,
+        "tiling": true,
+        "batches": 18,
+        "degraded": false,
+        "fatal_error_count": 0,
+        "slice_elapsed_ms": 3464,
+        "planner_elapsed_ms": 877,
+        "counters": {
+          "layers_indexed": 193,
+          "regions_total": 22062,
+          "outer_gated": 11462,
+          "empty_gated": 5435,
+          "covered_dropped": 0,
+          "clip_requests": 5165,
+          "cache_hits": 3396,
+          "orig_clip_pts": 28230127,
+          "win_clip_pts": 251534,
+          "sent_subj_pts": 509864,
+          "grid_cells": 47721,
+          "cell_entries": 459889,
+          "row_entries": 16162
+        },
+        "derived": {
+          "phase1_queries_after_outer_gate": 10600,
+          "clip_point_reduction_pct": 99.10898735949718,
+          "clip_point_remaining_pct": 0.8910126405028217,
+          "request_reduction_pct": 51.27358490566037,
+          "mean_orig_clip_pts_per_query": 2663.219528301887,
+          "mean_win_clip_pts_per_query": 23.729622641509433,
+          "mean_win_clip_pts_per_sent_req": 48.69970958373669
+        },
+        "profile": {
+          "fuel_total": 68743457936,
+          "wall_total_ns": 8202743300,
+          "planner": {
+            "total_fuel": 5851751084,
+            "self_fuel": 5410446273,
+            "total_wall_ns": 835359100,
+            "self_wall_ns": 789031500,
+            "scopes": {
+              "t175::tile_index_build": {
+                "calls": 193,
+                "fuel": 262630443,
+                "wall_ns": 8681800
+              },
+              "t175::tile_index_query": {
+                "calls": 10600,
+                "fuel": 121967588,
+                "wall_ns": 9249200
+              },
+              "t175::phase1_clip_batches": {
+                "calls": 18,
+                "fuel": 56706780,
+                "wall_ns": 28396600
+              }
+            }
+          },
+          "host_native": {
+            "calls": 41722,
+            "total_wall_ns": 4343750100,
+            "scopes": {
+              "polygon_ops::clip_polygons": {
+                "calls": 23691,
+                "wall_ns": 2931941900
+              },
+              "polygon_ops::offset": {
+                "calls": 18031,
+                "wall_ns": 1410684700
+              }
+            }
+          }
+        }
+      }
+    },
+    "benchy-arachne-on": {
+      "baseline": {
+        "tile_units": 20000,
+        "tiling": false,
+        "batches": 18,
+        "degraded": false,
+        "fatal_error_count": 0,
+        "slice_elapsed_ms": 4176,
+        "planner_elapsed_ms": 1519,
+        "counters": {
+          "layers_indexed": 0,
+          "regions_total": 22062,
+          "outer_gated": 11462,
+          "empty_gated": 0,
+          "covered_dropped": 0,
+          "clip_requests": 10600,
+          "cache_hits": 0,
+          "orig_clip_pts": 28230127,
+          "win_clip_pts": 28230127,
+          "sent_subj_pts": 1048408,
+          "grid_cells": 0,
+          "cell_entries": 0,
+          "row_entries": 0
+        },
+        "derived": {
+          "phase1_queries_after_outer_gate": 10600,
+          "clip_point_reduction_pct": 0.0,
+          "clip_point_remaining_pct": 100.0,
+          "request_reduction_pct": 0.0,
+          "mean_orig_clip_pts_per_query": 2663.219528301887,
+          "mean_win_clip_pts_per_query": 2663.219528301887,
+          "mean_win_clip_pts_per_sent_req": 2663.219528301887
+        },
+        "profile": {
+          "fuel_total": 69784550177,
+          "wall_total_ns": 13158168600,
+          "planner": {
+            "total_fuel": 6688973601,
+            "self_fuel": 5935394418,
+            "total_wall_ns": 1472643300,
+            "self_wall_ns": 842880200,
+            "scopes": {
+              "t175::phase1_clip_batches": {
+                "calls": 18,
+                "fuel": 753579183,
+                "wall_ns": 629763100
+              }
+            }
+          },
+          "host_native": {
+            "calls": 45944,
+            "total_wall_ns": 9294079100,
+            "scopes": {
+              "polygon_ops::clip_polygons": {
+                "calls": 29339,
+                "wall_ns": 7904343400
+              },
+              "polygon_ops::offset": {
+                "calls": 16365,
+                "wall_ns": 1371695800
+              },
+              "polygon_ops::offset2_ex": {
+                "calls": 240,
+                "wall_ns": 16810400
+              }
+            }
+          }
+        }
+      },
+      "tile-2mm": {
+        "tile_units": 20000,
+        "tiling": true,
+        "batches": 18,
+        "degraded": false,
+        "fatal_error_count": 0,
+        "slice_elapsed_ms": 3551,
+        "planner_elapsed_ms": 873,
+        "counters": {
+          "layers_indexed": 193,
+          "regions_total": 22062,
+          "outer_gated": 11462,
+          "empty_gated": 5435,
+          "covered_dropped": 0,
+          "clip_requests": 5165,
+          "cache_hits": 3396,
+          "orig_clip_pts": 28230127,
+          "win_clip_pts": 251534,
+          "sent_subj_pts": 509864,
+          "grid_cells": 47721,
+          "cell_entries": 459889,
+          "row_entries": 16162
+        },
+        "derived": {
+          "phase1_queries_after_outer_gate": 10600,
+          "clip_point_reduction_pct": 99.10898735949718,
+          "clip_point_remaining_pct": 0.8910126405028217,
+          "request_reduction_pct": 51.27358490566037,
+          "mean_orig_clip_pts_per_query": 2663.219528301887,
+          "mean_win_clip_pts_per_query": 23.729622641509433,
+          "mean_win_clip_pts_per_sent_req": 48.69970958373669
+        },
+        "profile": {
+          "fuel_total": 68947491387,
+          "wall_total_ns": 8212768900,
+          "planner": {
+            "total_fuel": 5851751170,
+            "self_fuel": 5410446359,
+            "total_wall_ns": 830747000,
+            "self_wall_ns": 787777100,
+            "scopes": {
+              "t175::tile_index_build": {
+                "calls": 193,
+                "fuel": 262630443,
+                "wall_ns": 8528400
+              },
+              "t175::tile_index_query": {
+                "calls": 10600,
+                "fuel": 121967588,
+                "wall_ns": 9051600
+              },
+              "t175::phase1_clip_batches": {
+                "calls": 18,
+                "fuel": 56706780,
+                "wall_ns": 25389900
+              }
+            }
+          },
+          "host_native": {
+            "calls": 40509,
+            "total_wall_ns": 4296822300,
+            "scopes": {
+              "polygon_ops::clip_polygons": {
+                "calls": 23904,
+                "wall_ns": 2937361500
+              },
+              "polygon_ops::offset": {
+                "calls": 16365,
+                "wall_ns": 1340881300
+              },
+              "polygon_ops::offset2_ex": {
+                "calls": 240,
+                "wall_ns": 17479800
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
