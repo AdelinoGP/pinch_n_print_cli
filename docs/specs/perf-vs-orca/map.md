@@ -1581,6 +1581,47 @@ reproduce t172's set; `probe.patch` reverted). **Frontier:**
 [175](issues/175-tiled-collision-carve.md) (AFK, unblocked, new — exact phase-1
 tiling candidate + standing gate; not a destination step alone).
 
+**Destination status (2026-11-21,
+[t174](issues/174-post-t172-scoreboard-refresh.md)): official ratios of record
+are now 0.769x–1.870x ordinary (0.766x–1.916x accelerated) in one quiet
+interleaved window; PnP decisively wins 2 of 8 cells on unstarved wall clock
+with strict separation (`base classic-off` 0.769x / 0.766x, `base arachne-off`
+0.792x / 0.774x), but burns 1.81x–2.13x Orca's process CPU via ~5.2x vs
+~1.9–2.2x thread concurrency, so the official Destination tally stays 0 of 8
+pending a human ruling ([176](issues/176-destination-cpu-corroboration-ruling.md));
+the binding cell shifts to `benchy classic-on` (1.870x / 46.5 % cut).** Zero
+production edits; both freshness gates exit 0; stamped identities at HEAD
+`0ce4be39` (code `48a5e583`): OrcaSlicer **2.5.1** (`5013b1bd…`, vendor
+`02.08.00.16`, `tree_strong`), PnP ordinary `06b05b6b…` / tree `e75be5c0…`, PnP
+accelerated `490c6dc2…` / tree `481ff759…`. Quiet board
+(`t174-quiet-board`, 96 rows, 0/72 starvation flags, steady 10.8–14.1 GB free
+RAM, load 85 samples 14/79/100 %): **16/16** cell × arm outputs byte-identical
+to t172's active currency (`degraded: false`, **0** code-1200 diagnostics),
+**10/10** matched Orca keys on all 32 Orca runs. **Official ratios of record
+(ord / acc, wall):** benchy **1.144x / 1.118x** (cut 12.6 / 10.6 %), **1.870x /
+1.916x** (cut **46.5 / 47.8 %**, binding), **1.155x / 1.064x** (cut 13.4 /
+6.0 %; acc only 0.15 s behind Orca), **1.665x / 1.674x** (cut 40.0 / 40.3 %);
+base **0.769x / 0.766x** (−23.1 / −23.4 % wall, strict sep 3.66 / 3.26 s, CPU
+**2.126x / 2.066x**), **1.777x / 1.704x** (cut 43.7 / 41.3 %), **0.792x /
+0.774x** (−20.8 / −22.6 % wall, strict sep 2.37 / 2.15 s, CPU **1.844x /
+1.810x**), **1.738x / 1.684x** (cut 42.5 / 40.6 %). **Accelerated vs ordinary:**
+faster in **6/8** wall (−7.86…+2.45 %, median **−2.28 %**; faster in all 4 base
+cells, reversing t163's +4.4 % `base classic-off`), lower CPU in **7/8**
+(−2.91…+0.52 %, median **−1.16 %**). **Why benchy beat t172's estimates:**
+t169's cross-window chain had omitted t166's landed benchy shell-opening gains
+(+7.9…+21.4 %); `base` supports-on confirms t173's cuts (43.7 / 42.5 % vs
+44.5 / 42.1 % est). **Below-fold ~1.5x park bound crossed** by all four
+supports-off cells. **Disclosed:** an initial loaded-box take
+(`t174-post-t172-scoreboard`, external ~10 GB load exiting mid-`base-arachne-on`,
+4 starvation flags, 64–98 % spreads) is invalidated as primary and preserved as
+`reduced/loaded-window.json` (`t156` precedent; still 16/16 identity and 2/8
+wall wins at 0.832x / 0.863x). Evidence:
+[`evidence/t174-post-t172-scoreboard/`](evidence/t174-post-t172-scoreboard/FINDINGS.md)
+(`verify.py` PASS 1280/1280, `--self-test` 18/18). **Frontier:**
+[175](issues/175-tiled-collision-carve.md) (AFK, unblocked) and
+[176](issues/176-destination-cpu-corroboration-ruling.md) (HITL grilling,
+unblocked, new — CPU-corroboration & `n=3` vs `n>=4` cell-closure ruling).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -1693,7 +1734,28 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-11-20, the t171 take):** the human said
+**Current selection scope (2026-11-21, the t174 take):** the human said
+"Continue the perf vs orca map" (no ticket named); **174 was first on the
+frontier** (leaving 175 unclaimed), so it was claimed and resolved as a
+**measured three-tool eight-cell scoreboard refresh: zero production edits,
+no reference move**. Result: on a clean quiet-box interleaved board
+(`t174-quiet-board`, 96 rows, 0/72 starvation flags, 16/16 byte-identical to
+t172's currency, 10/10 matched Orca keys), PnP sits at **0.769x–1.870x**
+ordinary (**0.766x–1.916x** accelerated) and decisively beats OrcaSlicer on
+wall clock in **2 of 8** cells with strict separation (`base classic-off`
+0.769x / 0.766x, `base arachne-off` 0.792x / 0.774x), while burning
+**1.81x–2.13x** Orca's process CPU via ~5.2x vs ~1.9–2.2x concurrency — so the
+official Destination tally stays **0/8** pending a human ruling. The binding
+cell shifts to `benchy classic-on` (**1.870x / 46.5 % cut** ord, **1.916x /
+47.8 %** acc); all four supports-off cells cross the ~1.5x below-fold park
+bound; an earlier loaded-box take is disclosed and preserved as
+`reduced/loaded-window.json`. Graduated
+[176](issues/176-destination-cpu-corroboration-ruling.md).
+**Frontier:** [175](issues/175-tiled-collision-carve.md) (AFK, unblocked) and
+[176](issues/176-destination-cpu-corroboration-ruling.md) (HITL grilling,
+unblocked).
+
+**Previous selection scope (2026-11-20, the t171 take):** the human said
 "Continue the perf vs orca map" (no ticket named); **171 was first on the
 frontier** (leaving 172, which needs a human ruling first, unclaimed), so it was
 claimed and resolved as a **re-price: no production edit, no candidate, no
@@ -5006,6 +5068,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Post-t172 eight-cell two-tool scoreboard refresh](issues/174-post-t172-scoreboard-refresh.md): **resolved 2026-11-21, measured board (zero production edits) — official ratios of record are 0.769x–1.870x ordinary / 0.766x–1.916x accelerated (16/16 byte-identical to t172's currency), with 2/8 decisive unstarved wall-clock wins (`base classic-off` 0.769x / 0.766x, `base arachne-off` 0.792x / 0.774x, strict separation on all 3 runs) but 0/8 under literal `CPU <= Orca` (1.81x–2.13x CPU via ~5.2x vs ~1.9–2.2x concurrency); tally stays 0/8 pending HITL [176](issues/176-destination-cpu-corroboration-ruling.md), and `benchy classic-on` becomes the binding cell (1.870x / 46.54 % cut)** — stamped at HEAD `0ce4be39` (code `48a5e583`, both guest freshness gates exit 0; OrcaSlicer **2.5.1** `5013b1bd…` vendor `02.08.00.16` `tree_strong`, PnP ord `06b05b6b…` / `e75be5c0…`, PnP acc `490c6dc2…` / `481ff759…`). Quiet-box interleaved board (`t174-quiet-board`, 8 cells × 3 tools × 1 warmup + 3 measured = 96 rows, `RAYON_NUM_THREADS=12`, **0/72** starvation flags, 85 load samples 14/79/100 % CPU, steady 10.8–14.1 GB free RAM, **10/10** matched Orca keys on 32/32 Orca runs, **0** code-1200 diagnostics, `degraded: false`): benchy **1.1438x / 1.1179x** (cut 12.57 / 10.55 %), **1.8704x / 1.9162x** (cut **46.54 / 47.81 %**, binding), **1.1548x / 1.0640x** (cut 13.40 / 6.01 %; acc 0.15 s from parity), **1.6652x / 1.6743x** (cut 39.95 / 40.27 %); base **0.7687x / 0.7656x** (−23.13 / −23.44 % wall, strict sep 3.66 / 3.26 s, CPU 2.126x / 2.066x), **1.7773x / 1.7041x** (cut 43.73 / 41.32 %), **0.7921x / 0.7739x** (−20.79 / −22.61 % wall, strict sep 2.37 / 2.15 s, CPU 1.844x / 1.810x), **1.7382x / 1.6843x** (cut 42.47 / 40.63 %). Accelerated beats ordinary in **6/8** wall (−7.86…+2.45 %, median **−2.28 %**; faster in all 4 base cells) and **7/8** CPU (−2.91…+0.52 %, median **−1.16 %**). Explains benchy surprise vs t172 estimates (t169's chain had omitted t166's +7.9…+21.4 % benchy gains); confirms t173's base supports-on cuts; all four supports-off cells cross the ~1.5x below-fold park bound. Disclosed: initial loaded-box campaign (`t174-post-t172-scoreboard`, external ~10 GB load ending mid-`base-arachne-on` with +10.44 GB RAM release, 4 starvation flags, 64–98 % spreads) invalidated as primary and preserved as `reduced/loaded-window.json` + `reduced/loaded-window-load-samples.csv` (`t156` precedent; still 16/16 identity and 2/8 wall wins at 0.832x / 0.863x); no null band, no `--profile`. Graduated [176](issues/176-destination-cpu-corroboration-ruling.md). Evidence: [`evidence/t174-post-t172-scoreboard/`](evidence/t174-post-t172-scoreboard/FINDINGS.md) (`verify.py` PASS 1280/1280, `--self-test` 18/18).
 - [Port Orca's `OffsetConcaveCrossing` into `vendor/clipper2-rust`](issues/172-port-offset-concave-crossing.md): **resolved 2026-11-20, measured candidate — strict Q2 gate PASSED 8/8 (+14.89…+23.01 % wall, 5/5 pairs and +19.20…+30.67 % CPU in every cell), landed under the sixth recorded t81-style exception; `base classic-off` (~0.82x est) and `base arachne-off` (~0.89x est) are projected to beat OrcaSlicer, and the Clipper2 kernel route is exhausted for the six non-winning cells** — human granted the sixth scoped t81-style exception (Q1) and strict landing gate (Q2) before production edits. Ported canonical `v2.5.0` (`40ecc66f78`) `clipper.offset.cpp::OffsetConcaveCrossing` (≈30 lines, `.round()` conversion, AGPLv3 attribution header; `DoRound` / `GetLineIntersectPt` / `c2_offset_as_group` excluded) into `vendor/clipper2-rust/src/offset.rs` (`ClipperOffset::offset_polygon`). Falsifiers in `offset_tests.rs` watched failing pre-patch (`96 != 32` raw pre-union vertices on a 32-gon inward offset) and green after (**405/405** + 3 doc-tests); `clip_polylines_prepared_reference.json` updated for two pre-patch inflated rings (`hole_and_island` cyclic start shift by 1, `dense_ring` ≤ 100 nm on concave corners; all clipped polylines identical). Four staged arms (`b2e8261e…` / `9f3fcba8…` / `f56c9271…` / `490c6dc2…`): baseline reproduces t169 **8/8** on both arms (`16/16`), candidate moves **8/8** and is byte-identical between ordinary and accelerated (**8/8**); active currency is now [`evidence/t172-offset-concave-crossing/reference.json`](evidence/t172-offset-concave-crossing/reference.json) (t169 superseded). Paired ordinary medians (5 pairs/cell): benchy **+23.01 / +18.41 / +21.49 / +17.37 %**, base **+21.41 / +14.89 / +19.88 / +15.00 %** (**18.6x–28.8x** the 0.80 % floor, strictly outside per-cell any-pair wall null bands of 2.29–13.69 %; both base supports-off cells beat their t169 estimated cuts of 3.9 % and 10.3 %); CPU **+19.20…+30.67 %** (5/5 every cell); accelerated corroboration (3 pairs/cell) wall **+14.19…+22.63 %** / CPU **+19.33…+30.93 %** (3/3 every cell). Delta audit: total extruding path **−0.745…+0.007 %**, no feature loss (`Outer wall` ≤ 0.0012 %, `Inner wall` ≤ 0.042 %, `Support` −1.57 % benchy / −0.69 % base). Cross-window route composition (t163 × t169 × t172, estimate only): `base classic-off` **~0.82x**, `base arachne-off` **~0.89x**, benchy ~1.26 / ~1.94 / ~1.44 / **~1.99x** (binding cell, 49.8 % cut), base supports-on ~1.80 / ~1.73x. Disclosed: 30-min timeout pause between rows 75 and 76 of `ab` (`p5 base-classic-on` spans pause; other 39 pairs back-to-back); no `--profile` pass. Graduated [174](issues/174-post-t172-scoreboard-refresh.md). Evidence: [`evidence/t172-offset-concave-crossing/FINDINGS.md`](evidence/t172-offset-concave-crossing/FINDINGS.md) (`verify.py` PASS, `--self-test` 8/8; `audit_t172.py --self-test` 4/4).
 - [Support-path boolean volume](issues/173-support-geometry-boolean-volume.md): **resolved 2026-11-20, attribution + shape pricing (no production edit) — the support path's clip mass is `tree-support-planner`'s phase-1 carve and phase-3 union, and no single boolean-volume shape clears either base supports-on cell; the base pair needs a combination and the benchy pair is not a boolean program** — the `host:native` clip bucket on `base classic-on` is the planner (**196.6 s** thread / **18.00 s** wall, **85.2 %** of all clip thread), with `planner::batched_phase1_carve` at **68,381** calls / **142.7 s** / **12.41 s** / **11.5x** fan-out and `planner::batched_phase3_union` at **480** / **51.6 s** / **5.21 s** / **9.9x**; the two sites are **98.8 %** of planner clip thread. Operand: **426.9 M** clip points (mean **6,241/call** over **4.34** paths) against **98.7** subject points, but only **285,368** clip points (**0.0669 %**) lie inside the subject bbox; a polygon-level bbox filter removes **28.5 %**. Stage decomposition (same window, base classic-on): **62.2 %** host clip / **3.3 %** host offset / **34.5 %** remainder; benchy classic-on is **38.8 %** host clip / **56.1 %** remainder; planner fuel is 10.8 % of cell fuel. Prices (ceilings, fraction of required cut): phase-1 bbox/tile window **60.8 % / 61.6 %** (1.150x / 1.120x), polygon-bbox filter **17.6 % / 17.8 %**, phase-3 union free **26.0 % / 27.4 %** (no shape), all planner clip free **89.7 % / 92.1 %** (**0.948x / 0.926x**), all planner clip+offset free **94.7 % / 97.6 %** (**0.913x / 0.891x**); phase-1 window + phase-3 free is **0.969x / 0.945x** but phase 3 is a ceiling. Benchy: phase-1 window **23.2 % / 21.8 %**, all clip free **35 % / 34 %**. Re-aim: base pair = phase-1 tiling + a phase-3 companion; benchy pair = per-layer/guest program. Disclosed: one probe pass/cell, identical operands read 134–216 s across takes (box state), probe thread/wall inflated, route is t172's estimate (t174 is the board); no accelerated arm; all 5 probe + 15 instrumented runs reproduce t172's set; probe reverted. Graduated [175](issues/175-tiled-collision-carve.md). Evidence: [`evidence/t173-support-boolean-volume/FINDINGS.md`](evidence/t173-support-boolean-volume/FINDINGS.md) (`verify.py` PASS, `--self-test` 8/8).
 - [Re-price the prepass work-set, the phase split and S5/S6 after t169](issues/171-post-t169-prepass-reprice.md): **resolved 2026-11-20, attribution + re-price (no production edit) — the split re-derives on the post-t169 tree and the route re-aims: the supports-off cluster is offset-bound and is t172's, the supports-on cluster is boolean-bound, and S5/S6 are landed keeps with no residual worth a ticket** — phase split (median of three instrumented passes, definitions unchanged from t164): prepass **55.9–83.7 %** (was 67.0–87.2 %), per-layer **12.0–34.7 %** (was 9.3–26.3 %), postpass 4.0–8.3 %, outside 0.2–3.3 %; the prepass share fell **3.5–12.3 pp** and the per-layer share rose **2.7–9.9 pp** on all eight cells, tracking each cell's t169 saving (base −21.9…−25.1 %, benchy −5.7…−15.2 %). Stage split: `ShellClassification` **32.2–44.0 %** of the supports-off cells (57.4–58.6 % of the prepass), `SupportGeometry` **38.9–54.9 %** of the supports-on cells (55.6–66.1 %). Expressed as the fraction of the largest stage the cut needs: base classic-off **8.9 %** and base arachne-off **24.2 %** of `ShellClassification` (zeroing it leaves 0.58x / 0.64x), base classic-on **96.0 %** and base arachne-on **92.4 %** of `SupportGeometry` (0.95x / 0.92x), and **no benchy cell has a sufficient single stage** (114.5 / 140.7 / 143.1 / 150.3 % of its largest; 1.08x / 1.24x / 1.41x / 1.47x at zero). Per-op census (`--profile`, thread-time attribution): host clipper work is **offset**-dominated on the supports-off cells (**42.9–51.2 %** offset, 29.5–34.4 % clip, 16.1–18.3 % `offset2_ex`) and **clip**-dominated on the supports-on cells (**53.1–60.9 %** clip, 34.1–39.4 % offset, 4.2–6.0 % `offset2_ex`); host clipper thread-time is 7.2–88.8 s on the supports-off cells and 20.6–**343.4 s** on the supports-on cells, where `host:native` (the tool's unattributed bucket) holds **236.3 s of 343.4 s** on base classic-on (169,586 calls: clip 186.6 s, offset 49.7 s) and `host:support_analysis` holds 35.7 s (offset 32.6 s) — `host:native`'s 8.6x thread-to-wall ratio fits `SupportGeometry` (27.6 s) and cannot fit the per-layer phase (5.94 s), a **labelled inference** on which no quoted number depends. Guest fuel splits the same way: `tree-support` **57.7–68.0 %** plus `tree-support-planner` **10.4–10.7 %** on the supports-on cells, `classic-perimeters` 65.0 % / `arachne-perimeters` 56.0 % on the supports-off ones. **S5** (landed t133) rescales by ×0.4451–0.5901 to a **9.01 %** landed win on base classic-off with a **0.83 %** residual (91.6 % of the whole-layer cost already harvested; 0.41 % / 0.22 % elsewhere) — at the floor, not a lever. **S6** (landed t132) rescales to **5.86 %** of base classic-on's wall with a **5.89 %** residual (**11 %** of that cell's cut), and is **inert on the four supports-off cells by construction** (`enable_support: false`), so it can never satisfy an 8-cell gate. **Premise corrections:** there is no `PrePass::InternalBridges` stage (the internal-bridge work runs inside `PrePass::ShellClassification` via `commit_shell_classification_builtin` → `compute_internal_bridge_layer`), and S5/S6 are landed, so neither can be re-measured by ablation. No production edit, no reference move; all 24 instrumented passes reproduce t169's set byte-for-byte and the exe sha256 `b2e8261e…` equals t169's candidate build. Graduated [173](issues/173-support-geometry-boolean-volume.md). Evidence: [`evidence/t171-post-t169-reprice/`](evidence/t171-post-t169-reprice/FINDINGS.md) (`verify.py` PASS, `--self-test` 8/8).
@@ -5285,37 +5348,50 @@ Standing decisions for this effort (2026-09-22):
 ## Not yet specified
 
 - **The Clipper2 kernel route is now EXHAUSTED for the six non-winning cells
-  (2026-11-20, [t170](issues/170-clipper2-2-0-1-kernel-port-screen.md),
+  (2026-11-20 → 2026-11-21, [t170](issues/170-clipper2-2-0-1-kernel-port-screen.md),
   [t171](issues/171-post-t169-prepass-reprice.md),
-  [t172](issues/172-port-offset-concave-crossing.md)).** Both t169's edge
+  [t172](issues/172-port-offset-concave-crossing.md),
+  [t174](issues/174-post-t172-scoreboard-refresh.md)).** Both t169's edge
   decimation and [t172](issues/172-port-offset-concave-crossing.md)'s
-  `OffsetConcaveCrossing` have landed, putting `base classic-off` (~0.82x est)
-  and `base arachne-off` (~0.89x est) below 1.0x (pending official two-tool
-  verification in [174](issues/174-post-t172-scoreboard-refresh.md)) and
-  leaving `vendor/clipper2-rust` at 1.04–1.30x of canonical C++ on hot offsets
-  and 0.61–0.94x (faster) on booleans. The other six cells stay above 1.0x
-  (benchy ~1.26x / ~1.94x / ~1.44x / ~1.99x; base supports-on ~1.80x / ~1.73x)
-  and cannot be closed by further Clipper2 kernel tuning. **t171→t173 answered
-  where the supports-on half of that gap lives:** `clip_polygons` is
-  **53.1–60.9 %** of those cells' host clipper thread-time, the `host:native`
-  bucket holds **236.3 s of 343.4 s** on base classic-on, and
-  [t173](issues/173-support-geometry-boolean-volume.md) located it in
-  `tree-support-planner`'s phase-1 carve and phase-3 union (**98.8 %** of
-  planner clip thread). **The base supports-on pair is now a combination, not a
-  deletion:** the phase-1 bbox/tile window is **60.8 % / 61.6 %** of the cut
-  and is ticketed as [175](issues/175-tiled-collision-carve.md); it cannot win
-  alone. **Fog — the phase-3 companion:** the batched role union is **26.0 % /
-  27.4 %** of the same cuts at zero and has **no named reduction shape**
-  (union cannot drop outside-bbox geometry); phase-1 window + phase-3 free is
-  the first projected crossing (**0.969x / 0.945x**), so a phase-3 mechanism is
-  the missing term. **Fog — the benchy supports-on pair does NOT ride the same
-  program:** its whole planner clip wall is **0.73 / 0.72 s** against cuts of
-  **2.08 / 2.15 s**, phase-1 window covers **23.2 % / 21.8 %**, all clip free
-  **35 % / 34 %**, and **56.1 %** of its `SupportGeometry` stage is outside the
-  host clipper — its lever is the per-layer/guest program, not boolean volume.
-  The four benchy cells stay estimated ~1.26x / ~1.94x / ~1.44x / ~1.99x
-  (remaining cuts 20.8–49.8 %) until [174](issues/174-post-t172-scoreboard-refresh.md)
-  replaces the cross-window estimates with fresh ratios of record.
+  `OffsetConcaveCrossing` have landed, and
+  [t174](issues/174-post-t172-scoreboard-refresh.md)'s quiet-box board replaces
+  the cross-window estimates with official ratios of record: `base classic-off`
+  (**0.769x / 0.766x** ord/acc) and `base arachne-off` (**0.792x / 0.774x**)
+  decisively beat OrcaSlicer on unstarved wall clock (while burning 1.81–2.13x
+  CPU; closure awaits the human ruling in
+  [176](issues/176-destination-cpu-corroboration-ruling.md)), leaving
+  `vendor/clipper2-rust` at 1.04–1.30x of canonical C++ on hot offsets and
+  0.61–0.94x (faster) on booleans. The other six cells stay above 1.0x on
+  official ratios of record — benchy **1.144x / 1.870x / 1.155x / 1.665x**
+  ordinary (**1.118x / 1.916x / 1.064x / 1.674x** accelerated; required cuts
+  **12.6 / 46.5 / 13.4 / 40.0 %** ord, **10.6 / 47.8 / 6.0 / 40.3 %** acc;
+  **`benchy classic-on` is the new binding cell**) and base supports-on
+  **1.777x / 1.738x** ordinary (**1.704x / 1.684x** accelerated; cuts **43.7 /
+  42.5 %** ord, **41.3 / 40.6 %** acc) — and cannot be closed by further
+  Clipper2 kernel tuning. **t171→t173 answered where the supports-on half of
+  that gap lives:** `clip_polygons` is **53.1–60.9 %** of those cells' host
+  clipper thread-time, the `host:native` bucket holds **236.3 s of 343.4 s** on
+  base classic-on, and [t173](issues/173-support-geometry-boolean-volume.md)
+  located it in `tree-support-planner`'s phase-1 carve and phase-3 union
+  (**98.8 %** of planner clip thread). **The base supports-on pair is now a
+  combination, not a deletion:** t174 confirms t173's base supports-on cuts
+  (43.7 / 42.5 % vs 44.5 / 42.1 % est); the phase-1 bbox/tile window is
+  **60.8 % / 61.6 %** of the cut and is ticketed as
+  [175](issues/175-tiled-collision-carve.md); it cannot win alone. **Fog — the
+  phase-3 companion:** the batched role union is **26.0 % / 27.4 %** of the same
+  cuts at zero and has **no named reduction shape** (union cannot drop
+  outside-bbox geometry); phase-1 window + phase-3 free is the first projected
+  crossing (**0.969x / 0.945x**), so a phase-3 mechanism is the missing term.
+  **Fog — the benchy supports-on pair does NOT ride the same program:** its
+  whole planner clip wall is **0.73 / 0.72 s** against cuts of **2.36 / 2.11 s**
+  (t174 quiet board), phase-1 window covers ~20–24 %, all clip free ~31–35 %,
+  and **56.1 %** of its `SupportGeometry` stage is outside the host clipper —
+  its lever is the per-layer/guest program, not boolean volume. **Fog — the
+  benchy supports-off pair is now within striking distance:** `benchy
+  classic-off` needs **12.6 % / 10.6 %** (+0.30 / +0.24 s) and `benchy
+  arachne-off` needs **13.4 % / 6.0 %** (+0.36 / +0.15 s), with both cells
+  (and both base supports-off cells) now well inside the ~1.5x below-fold park
+  bound.
 
 - **t129's operand-volume shapes are ANSWERED and both were already landed
   ([t171](issues/171-post-t169-prepass-reprice.md), 2026-11-20).** The map had
@@ -5916,6 +5992,13 @@ Standing decisions for this effort (2026-09-22):
   [post-resolution-port refresh](issues/87-scoreboard-refresh-post-resolution-port.md):
   the best cell is 2.71x (benchy classic-off accelerated) and no cell is within
   ~1.5x — still binding, with the release bound moved 3.30x → 2.71x.**
+  **Re-derived 2026-11-21 on
+  [t174](issues/174-post-t172-scoreboard-refresh.md): the ~1.5x release bound is
+  now CROSSED in all four supports-off cells — `base classic-off` 0.769x /
+  0.766x, `base arachne-off` 0.792x / 0.774x, `benchy classic-off` 1.144x /
+  1.118x, and `benchy arachne-off` 1.155x / 1.064x (ordinary / accelerated) — so
+  the below-fold park is lifted for the benchy supports-off tail (the four
+  supports-on cells remain 1.665x–1.916x and still need structural cuts).**
   **Base refresh (2026-10-18):** the fresh base split graduated three
   tickets — [supports-on finalization view
   cost](issues/74-layerfinalization-supports-on-view-cost.md) (**resolved
