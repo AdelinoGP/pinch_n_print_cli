@@ -1736,6 +1736,56 @@ blocked by `177` — `tree-support` renderer & `infill-linker` guest screen), an
 [180](issues/180-shell-classification-post-t172-residual-screen.md) (AFK,
 blocked by `177` — `ShellClassification` post-t172 residual screen).
 
+**Destination status (2026-11-21,
+[Post-t175 full-matrix attribution and 0.50x headroom map](issues/177-post-t175-full-matrix-attribution.md)):
+full post-t175 attribution is re-derived (zero production edits, 32/32 runs
+byte-identical to `t175` currency) — all 8 cells are now `clip_polygons`-dominated,
+5 of the 6 open cells are single-stage `< 1.0x`-winnable (leaving ONLY binding
+`benchy-classic-on` at ~1.570x est. needing a 3–4 track combination), NO
+`benchy` cell can reach `<= 0.50x` via prepass deletion alone, and two new
+bottlenecks surfaced (`SupportGeometry` 6.1–7.8 % post-planner host tail
+graduated as [`SupportGeometry` post-planner host tail attribution and reduction screen](issues/181-support-geometry-post-planner-host-tail.md),
+plus `benchy` `L2` `infill-linker` 5.8–7.9 % idle-core straggler tail fed into
+unblocked [Per-layer `tree-support` renderer and `infill-linker` guest-fuel screen](issues/179-per-layer-tree-support-and-infill-linker-screen.md)).**
+Stamped ordinary arm at HEAD `24848d9e` (code `5b138f5c`, `cargo xtask build-guests --check`
+exit `0`, `pnp_cli.exe` `f3075232…`, 24 core `.wasm` tree `b46eb4cf…`),
+`RAYON_NUM_THREADS=12`, unsandboxed (initial sandboxed capture inflated
+`per-layer` ~2.8× on `benchy` and was discarded). **Phase split (3 passes/cell,
+spread `0.65–5.04 pp`, reconciliation `<= 4.09 %` prepass / `<= 2.04 %`
+postpass):** prepass **53.5–77.7 %** (−2.4 to −7.5 pp vs `t171`), per-layer
+**14.3–34.3 %**, postpass **6.8–11.8 %** (highest on `benchy` supports-on at
+**11.8 %**), outside **0.3–4.1 %**. **Per-op census (`--profile`, attribution
+only):** host Clipper thread-time dropped **−36.8…−40.3 %** supports-off and
+**−58.4…−59.7 %** supports-on (`base-classic-on` `343.38 → 140.34 s`), flipping
+**8/8** cells to `clip_polygons`-dominant (**46.5–51.6 %** off, **54.0–58.6 %**
+on vs `offset` **30.8–37.8 %**). **Route (`ESTIMATE ONLY`, `t174 × t175`):**
+`base` supports-on (`~1.221x / ~1.201x`, 18.1 / 16.7 % cut) closes via
+`PrePass::SupportGeometry` (**44.4 / 43.4 %** → **0.678x / 0.679x**); `benchy`
+supports-off (`1.144x / 1.155x`, 12.6 / 13.4 % cut) is now single-stage
+winnable via `PrePass::ShellClassification` (**27.9 / 27.0 %** → **0.825x /
+0.843x**, running at only **4.5×** concurrency on `benchy` vs **8.1–8.6×** on
+`base`) OR `per-layer` (**32.4 / 34.3 %**, where `L2` `infill-linker` alone
+causes a **134 / 104 ms = 7.9 / 5.8 % cell** 11-idle-core straggler tail, while
+`perimeters` outranks `infill-linker` in elapsed thread-time); `benchy-arachne-on`
+(`~1.389x`, 28.0 % cut) crosses marginally at zero `SupportGeometry` (30.4 % →
+0.966x) and closes cleanly multi-track; binding `benchy-classic-on` (`~1.570x`,
+36.3 % cut) cannot close from any single stage (`SupportGeometry` 31.7 % →
+1.071x) nor from `ShellClassification + per-layer` (33.1 % → 1.051x) and needs
+`SupportGeometry` + `ShellClassification` + `tree-support` (+ `SupportAnalysis`).
+**`<= 0.50x` headroom:** zeroing all of `prepass` leaves `benchy` at
+**0.501x–0.537x** (all 4 short), proving the follow-on 2× faster map requires
+BOTH prepass and per-layer cuts across `benchy` (and `ShellClassification +
+per-layer` = 58.2–59.5 % → 0.321x on `base` supports-off). **New bottleneck:**
+`2,293 / 2,017 ms` (**7.8 / 7.0 %** cell, `base-on`) and `215 / 216 ms`
+(**6.2 / 6.1 %** cell, `benchy-on`) elapse in `PrePass::SupportGeometry` *after*
+`tree-support-planner::module_complete`. Evidence:
+[`evidence/t177-post-t175-attribution/FINDINGS.md`](evidence/t177-post-t175-attribution/FINDINGS.md)
+(`verify.py` PASS 5/5, `--self-test` 12/12). **Frontier (all 4 AFK, unblocked):**
+[Planner Phase-3 batched union attribution and mechanism screen](issues/178-planner-phase3-union-attribution.md),
+[Per-layer `tree-support` renderer and `infill-linker` guest-fuel screen](issues/179-per-layer-tree-support-and-infill-linker-screen.md),
+[`ShellClassification` post-t172 residual attribution and speedup screen](issues/180-shell-classification-post-t172-residual-screen.md),
+and [`SupportGeometry` post-planner host tail attribution and reduction screen](issues/181-support-geometry-post-planner-host-tail.md).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -5234,6 +5284,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Post-t175 full-matrix attribution and 0.50x headroom map](issues/177-post-t175-full-matrix-attribution.md): **resolved 2026-11-21, attribution + headroom pricing (zero production edits; 32/32 runs byte-identical to `t175`, `verify.py --self-test` 12/12) — all 8 cells are now `clip_polygons`-dominated, 5/6 open cells have a single-stage `< 1.0x` ceiling (only binding `benchy-classic-on` ~1.570x requires a 3–4 track combination), NO `benchy` cell can hit `<= 0.50x` from prepass alone, unblocks `179` & `180`, and graduates `181`** — prepass fell −2.4…−7.5 pp vs `t171` to **53.5–77.7 %**, per-layer **14.3–34.3 %**, postpass **6.8–11.8 %** (`11.8 %` on `benchy-on`), outside **0.3–4.1 %** (3 unsandboxed passes/cell; discarded sandboxed first capture that inflated `per-layer` ~2.8× on `benchy`). `--profile` host Clipper thread-time dropped −36.8…−40.3 % off (`base-classic-off` `88.85 → 53.40 s`) and −58.4…−59.7 % on (`base-classic-on` `343.38 → 140.34 s`), flipping **8/8** cells to `clip_polygons`-dominant (**46.5–58.6 %** vs `offset` **30.8–37.8 %**). `ESTIMATE ONLY` route (`t174 × t175`): `base-on` (`~1.221x / ~1.201x`) closes via `SupportGeometry` (**44.4 / 43.4 %** → 0.678x / 0.679x); `benchy-off` (`1.144x / 1.155x`) is now single-stage winnable via `ShellClassification` (**27.9 / 27.0 %** → 0.825x / 0.843x, only **4.5×** concurrency on `benchy` vs **8.1–8.6×** on `base`) or `per-layer` (**32.4 / 34.3 %**); `benchy-arachne-on` (`~1.389x`) needs multi-track (`SupportGeometry + ShellClassification + tree-support` = 53.3 % → 0.648x); binding `benchy-classic-on` (`~1.570x`, 36.3 % cut) cannot close from any single stage (`SupportGeometry` 31.7 % → 1.071x) or from `ShellClassification + per-layer` (33.1 % → 1.051x) and needs `SupportGeometry + ShellClassification + tree-support (+ SupportAnalysis)`. `<= 0.50x` theorem: zeroing all of `prepass` leaves `benchy` at **0.501x–0.537x** (all 4 short), so the follow-on 2× map structurally requires both prepass and per-layer cuts. Two new bottlenecks: (1) **graduated [`SupportGeometry` post-planner host tail attribution and reduction screen](issues/181-support-geometry-post-planner-host-tail.md)** (`2,293 / 2,017 ms` = **7.8 / 7.0 %** `base-on`, `215 / 216 ms` = **6.2 / 6.1 %** `benchy-on` elapsing *after* `tree-support-planner::module_complete`); (2) **sharpened [Per-layer `tree-support` renderer and `infill-linker` guest-fuel screen](issues/179-per-layer-tree-support-and-infill-linker-screen.md)** with the **`L2` `infill-linker` single-layer straggler tail** (`134 / 104 ms` = **7.9 / 5.8 %** cell with 11/12 cores idle on `benchy-off`) plus the supports-off fuel-vs-wall inversion (`perimeters` #1 in elapsed thread-time ahead of `infill-linker`). Evidence: [`evidence/t177-post-t175-attribution/FINDINGS.md`](evidence/t177-post-t175-attribution/FINDINGS.md).
 - [Destination ruling: CPU-corroboration semantics and sample count for cell closure](issues/176-destination-cpu-corroboration-ruling.md): **resolved 2026-11-21, human ruling (zero production edits) — Option C amends `## Destination` to unstarved wall-clock wins + CPU integrity guard + separate efficiency disclosure (`pnp-ordinary` binding arm, margin-tiered provisional closure + final single-HEAD `n>=4` 8/8 board), moving the official running tally `0/8 → 2/8` provisionally won (`base-classic-off` 0.769x, `base-arachne-off` 0.792x), keeping `< 1.0x` (8/8) with a fresh `<= 0.50x` effort afterward, and graduating `177`, `178`, `179`, `180`** — separates cross-engine **CPU integrity guard** (tight CPU, unstarved `cpu/wall`, matched non-degraded output, plus PnP/Orca CPU ratio disclosed as efficiency — accounting for Orca's ~10.0 s serial STL import vs PnP's ~5.2x-core slicing) from unchanged within-PnP **candidate A/B CPU corroboration**. **`pnp-ordinary`** (production default) binds cell closure (`pnp-accelerated` disclosed alongside; swaps only if adopted as production default). Wide-margin cells (`ratio <= 0.85x`) close provisionally on quiet `n=3` strict separation with 0 starvation flags (`base-classic-off` 0.7687x / 3.66 s sep and `base-arachne-off` 0.7921x / 2.37 s sep from `t174`, structurally inert under `t175`); close cells (`0.85x < ratio < 1.00x`) and the final single-HEAD 8/8 closing board require `>= 4` retained unstarved runs per arm with strict separation (starved outliers `< 0.75 × best` excludable per `SCOREBOARD.md` while `>= 4` unstarved runs remain); provisional wins carry forward across later commits passing paired non-regression gates. Destination bar stays `< 1.0x` (8/8) with a follow-on `<= 0.50x` (2× faster) effort planned as a fresh map afterward, prioritizing high-leverage speedup tracks now. Added 4 canonical terms to [`GLOSSARY.md`](../../../GLOSSARY.md) (**CPU integrity guard**, **Candidate CPU corroboration**, **Binding arm**, **Provisional cell win**) and graduated [177](issues/177-post-t175-full-matrix-attribution.md) (unblocked), [178](issues/178-planner-phase3-union-attribution.md) (unblocked), [179](issues/179-per-layer-tree-support-and-infill-linker-screen.md) (blocked by `177`), and [180](issues/180-shell-classification-post-t172-residual-screen.md) (blocked by `177`).
 - [Tiled collision operand for the planner's phase-1 carve](issues/175-tiled-collision-carve.md): **resolved 2026-11-21, measured candidate — standing `t137` 4-cell planner gate PASSED (4/4 supports-on PASS: +31.32 / +30.90 % base, +16.06 / +16.62 % benchy, 5/5 wins, CPU +25.36…+40.86 %, acc +15.84…+31.53 %; 4/4 supports-off INERT-PASS), landed by explicit human KEEP ruling updating only the 2 `base` supports-on hashes for 1 µm Clipper2 distant-scanbeam unclamping** — guest-only exact non-perturbing per-layer tile index (`modules/core-modules/tree-support-planner/src/collision_tile_index.rs::CollisionTileIndex`, wired into `lib.rs::build_roles_batched` Phase 1 only; zero host/WIT/schema edits). Sweep on `base-classic-on` (`1 / 2 / 5 / 10 mm`, 3 alternating rounds, load `1.43 → 5.2 %`): `baseline` 41.024 s, `1 mm` 28.336 s (+30.93 %), **`2 mm` 28.311 s (+30.99 %, chosen by lowest wall)**, `5 mm` 28.587 s (+30.32 %), `10 mm` 29.124 s (+29.01 %); all four tiled sizes share SHA-256 `7b90e749…`. Attribution (`--profile`, `probe.patch` reverted): on `base-classic-on`, `tile_index_build` **45.9 ms** (1.44 B fuel, 430 layers) + `tile_index_query` **84.6 ms** (1.55 B, 68,381 queries) = **130.5 ms** collapses `phase1_clip_batches` **12,436.6 → 174.4 ms (−98.6 %)**, sent requests **68,381 → 30,639** (37,742 empty-gated, 23,468 cache hits), Phase-1 clip points **426,868,700 → 3,629,342 (−99.15 %**, 0.85 % remaining vs t173's 1.62 % estimate), net planner fuel **62.27 → 48.58 B (−22.0 %)**, and `host:native` clip thread **173.90 → 56.02 s** (`benchy-classic-on`: 17.9 ms build+query, clip points `28.23 M → 251.5 k` = **−99.11 %**). Paired A/B (5 pairs/cell, load `1 → 3 %`, null 3 pairs `1 → 0 %`, acc 3 pairs `2 → 6 %`; 208/208 runs clean `exit=0`, `degraded=false`, `0` code-1200): `benchy-classic-on` **+16.06 %** (20.1× floor, null 2.02 %, CPU +26.75 %, acc +16.42 / +25.20 %), `benchy-arachne-on` **+16.62 %** (20.8×, null 2.29 %, CPU +25.36 %, acc +15.84 / +27.06 %), `base-classic-on` **+31.32 %** (39.2×, null 1.10 %, CPU +40.86 %, acc +31.39 / +40.97 %), `base-arachne-on` **+30.90 %** (38.6×, null 1.08 %, CPU +40.10 %, acc +31.53 / +40.39 %); supports-off −0.58…+0.74 % ord (−0.73…+0.55 % acc). Output: baseline reproduces t172 **16/16**, candidate ord ≡ acc **16/16**, **6/8 byte-identical** (all 4 supports-off + both benchy supports-on); only `base-classic-on` (−1 B, 7/976,781 lines, −0.00071 mm) and `base-arachne-on` (−1 B, 5/972,259 lines, −0.00071 mm) move by **1 µm** on 4 XY vertices strictly in `Support` / `Support interface` (0 part movement), exhaustively proven 9/9 caused by `vendor/clipper2-rust/src/engine.rs::add_new_intersect_node` clamping to unrelated distant vertices' global `scanline_list` Y coordinates (`8/9` bulk + 9th isolated `full_eq_win_with_dummy_far_y = true`). Cross-window route estimate vs t174 quiet board: `base-classic-on` **~1.221x / ~1.169x** (71.6 % of cut closed vs t173's 60.8 % ceiling), `base-arachne-on` **~1.201x / ~1.153x** (72.8 % vs 61.6 %), `benchy-arachne-on` **~1.389x / ~1.409x** (41.6 % vs 21.8 %), `benchy-classic-on` (binding) **~1.570x / ~1.602x** (34.5 % vs 23.2 %); Phase-3 union is now **~92.1 %** of remaining `host:native` clip thread on `base-classic-on` and remains unnamed in fog. Active currency: [`evidence/t175-tiled-collision-carve/reference.json`](evidence/t175-tiled-collision-carve/reference.json). Evidence: [`evidence/t175-tiled-collision-carve/FINDINGS.md`](evidence/t175-tiled-collision-carve/FINDINGS.md) (`verify.py` PASS, `--self-test` 13/13; `audit_t175.py --self-test` 6/6).
 - [Post-t172 eight-cell two-tool scoreboard refresh](issues/174-post-t172-scoreboard-refresh.md): **resolved 2026-11-21, measured board (zero production edits) — official ratios of record are 0.769x–1.870x ordinary / 0.766x–1.916x accelerated (16/16 byte-identical to t172's currency), with 2/8 decisive unstarved wall-clock wins (`base classic-off` 0.769x / 0.766x, `base arachne-off` 0.792x / 0.774x, strict separation on all 3 runs) but 0/8 under literal `CPU <= Orca` (1.81x–2.13x CPU via ~5.2x vs ~1.9–2.2x concurrency); tally stays 0/8 pending HITL [176](issues/176-destination-cpu-corroboration-ruling.md), and `benchy classic-on` becomes the binding cell (1.870x / 46.54 % cut)** — stamped at HEAD `0ce4be39` (code `48a5e583`, both guest freshness gates exit 0; OrcaSlicer **2.5.1** `5013b1bd…` vendor `02.08.00.16` `tree_strong`, PnP ord `06b05b6b…` / `e75be5c0…`, PnP acc `490c6dc2…` / `481ff759…`). Quiet-box interleaved board (`t174-quiet-board`, 8 cells × 3 tools × 1 warmup + 3 measured = 96 rows, `RAYON_NUM_THREADS=12`, **0/72** starvation flags, 85 load samples 14/79/100 % CPU, steady 10.8–14.1 GB free RAM, **10/10** matched Orca keys on 32/32 Orca runs, **0** code-1200 diagnostics, `degraded: false`): benchy **1.1438x / 1.1179x** (cut 12.57 / 10.55 %), **1.8704x / 1.9162x** (cut **46.54 / 47.81 %**, binding), **1.1548x / 1.0640x** (cut 13.40 / 6.01 %; acc 0.15 s from parity), **1.6652x / 1.6743x** (cut 39.95 / 40.27 %); base **0.7687x / 0.7656x** (−23.13 / −23.44 % wall, strict sep 3.66 / 3.26 s, CPU 2.126x / 2.066x), **1.7773x / 1.7041x** (cut 43.73 / 41.32 %), **0.7921x / 0.7739x** (−20.79 / −22.61 % wall, strict sep 2.37 / 2.15 s, CPU 1.844x / 1.810x), **1.7382x / 1.6843x** (cut 42.47 / 40.63 %). Accelerated beats ordinary in **6/8** wall (−7.86…+2.45 %, median **−2.28 %**; faster in all 4 base cells) and **7/8** CPU (−2.91…+0.52 %, median **−1.16 %**). Explains benchy surprise vs t172 estimates (t169's chain had omitted t166's +7.9…+21.4 % benchy gains); confirms t173's base supports-on cuts; all four supports-off cells cross the ~1.5x below-fold park bound. Disclosed: initial loaded-box campaign (`t174-post-t172-scoreboard`, external ~10 GB load ending mid-`base-arachne-on` with +10.44 GB RAM release, 4 starvation flags, 64–98 % spreads) invalidated as primary and preserved as `reduced/loaded-window.json` + `reduced/loaded-window-load-samples.csv` (`t156` precedent; still 16/16 identity and 2/8 wall wins at 0.832x / 0.863x); no null band, no `--profile`. Graduated [176](issues/176-destination-cpu-corroboration-ruling.md). Evidence: [`evidence/t174-post-t172-scoreboard/`](evidence/t174-post-t172-scoreboard/FINDINGS.md) (`verify.py` PASS 1280/1280, `--self-test` 18/18).
@@ -5530,22 +5581,35 @@ Standing decisions for this effort (2026-09-22):
   collision tile index banked **+31.32 / +30.90 %** wall on `base` supports-on
   (est. **~1.221x / ~1.201x** ord) and **+16.06 / +16.62 %** on `benchy`
   supports-on (est. `benchy-arachne-on` **~1.389x**, binding `benchy-classic-on`
-  **~1.570x**). The four immediate discovery tracks have graduated out of fog
-  into live tickets:
-  [177](issues/177-post-t175-full-matrix-attribution.md) (post-t175 8-cell
-  attribution + `0.50x` headroom map),
-  [178](issues/178-planner-phase3-union-attribution.md) (planner Phase-3 union
-  mechanism screen, ~92 % of remaining `host:native` clip thread on `base`
+  **~1.570x**). [Post-t175 full-matrix attribution and 0.50x headroom map](issues/177-post-t175-full-matrix-attribution.md)
+  is now **resolved** (2026-11-21), leaving four unblocked AFK discovery tickets
+  on the frontier:
+  [Planner Phase-3 batched union attribution and mechanism screen](issues/178-planner-phase3-union-attribution.md)
+  (Phase-3 union, ~51.6 s of 59.3 s `host:native` clip thread on `base`
   supports-on),
-  [179](issues/179-per-layer-tree-support-and-infill-linker-screen.md)
-  (per-layer `tree-support` renderer & `infill-linker` guest screen, blocked by
-  `177`), and
-  [180](issues/180-shell-classification-post-t172-residual-screen.md)
-  (`ShellClassification` post-t172 residual screen, blocked by `177`).
-  **Remaining fog:** (a) timing of the next official three-tool Orca scoreboard
-  refresh (once candidates from `177`–`180` land and push additional cells
-  across `< 1.0x`), and (b) the planned follow-on **2× faster (`<= 0.50x`)**
-  fresh map once this map closes at 8/8 `< 1.0x`.
+  [Per-layer `tree-support` renderer and `infill-linker` guest-fuel screen](issues/179-per-layer-tree-support-and-infill-linker-screen.md)
+  (unblocked; sharpened with `L2` `infill-linker` `134 / 104 ms` = `7.9 / 5.8 %`
+  single-layer straggler tail on `benchy-off`, `perimeters` #1 in supports-off
+  elapsed thread, and `tree-support` `8.2–9.9 %` proportional cell share /
+  `60.8–70.3 %` fuel),
+  [`ShellClassification` post-t172 residual attribution and speedup screen](issues/180-shell-classification-post-t172-residual-screen.md)
+  (unblocked; `27.0–27.9 %` on `benchy-off` → `0.825x / 0.843x` at zero,
+  `34.2–37.0 %` on `base-off`, `12.4–13.8 %` on supports-on, with a `4.5×`
+  `benchy` vs `8.1–8.6×` `base` concurrency gap), and newly graduated
+  [`SupportGeometry` post-planner host tail attribution and reduction screen](issues/181-support-geometry-post-planner-host-tail.md)
+  (`2,017–2,293 ms` = `7.0–7.8 %` `base-on`, `215–216 ms` = `6.1–6.2 %`
+  `benchy-on` host work after `tree-support-planner::module_complete`).
+  **Remaining fog:** (a) reserve stages not yet ticketed if `178`–`181` leave a
+  residual on binding `benchy-classic-on` or for the `<= 0.50x` map —
+  specifically `PrePass::SupportAnalysis` (`9.5–10.0 %` `base-on`, `7.8–7.9 %`
+  `benchy-on`; `84 % offset` in `host:support_analysis`, `3.2–3.4×` concurrency
+  on `benchy`), `PostPass::LayerFinalization` (`4.8–5.1 %` `benchy-on`;
+  whole postpass `11.8 %`), and `PrePass::Slice` (`9.1–14.0 %` supports-off,
+  `4.5–5.2×` concurrency); (b) timing of the next official three-tool Orca
+  scoreboard refresh once candidates from `178`–`181` land and push additional
+  cells across `< 1.0x`; and (c) the planned follow-on **2× faster (`<= 0.50x`)**
+  fresh map once this map closes at 8/8 `< 1.0x` (now proven by `t177` to
+  require both prepass and per-layer cuts on all four `benchy` cells).
 
 - **t129's operand-volume shapes are ANSWERED and both were already landed
   ([t171](issues/171-post-t169-prepass-reprice.md), 2026-11-20).** The map had

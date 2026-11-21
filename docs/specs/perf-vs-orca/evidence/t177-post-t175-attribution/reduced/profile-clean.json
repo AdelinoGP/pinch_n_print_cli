@@ -1,0 +1,189 @@
+{
+  "schema": 1,
+  "tag": "clean",
+  "captured_utc": "2026-11-21T21:21:10.741880+00:00",
+  "exe": "target/release/pnp_cli.exe",
+  "exe_sha256": "f30752321eac2bac4a45be37a1e82f1e646515ffdb95af150ed6fb595e177fb3",
+  "reference_artifact": "docs/specs/perf-vs-orca/evidence/t175-tiled-collision-carve/reference.json",
+  "cells": {
+    "benchy-classic-off": {
+      "exit_code": 0,
+      "profile_wall_seconds": 1.871,
+      "gcode_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+      "gcode_bytes": 4077945,
+      "reference_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+      "reference_bytes": 4077945,
+      "reference_match": true,
+      "code_1200_count": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::clip_polygons": 3516442,
+          "polygon_ops::offset2_ex": 1511837979
+        },
+        "wall": {
+          "polygon_ops::clip_polygons": 2307600000,
+          "polygon_ops::offset": 1443400000,
+          "polygon_ops::offset2_ex": 613500000,
+          "polygon_ops::closing_ex": 145000000
+        }
+      }
+    },
+    "benchy-classic-on": {
+      "exit_code": 0,
+      "profile_wall_seconds": 3.956,
+      "gcode_sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+      "gcode_bytes": 8544096,
+      "reference_sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+      "reference_bytes": 8544096,
+      "reference_match": true,
+      "code_1200_count": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::clip_polygons": 1343214600,
+          "polygon_ops::offset": 17326566,
+          "polygon_ops::offset2_ex": 1511770318
+        },
+        "wall": {
+          "polygon_ops::clip_polygons": 4624700000,
+          "polygon_ops::offset": 3183000000,
+          "polygon_ops::offset2_ex": 603700000,
+          "polygon_ops::closing_ex": 151100000
+        }
+      }
+    },
+    "benchy-arachne-off": {
+      "exit_code": 0,
+      "profile_wall_seconds": 2.014,
+      "gcode_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+      "gcode_bytes": 4225196,
+      "reference_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+      "reference_bytes": 4225196,
+      "reference_match": true,
+      "code_1200_count": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::clip_polygons": 4052245,
+          "polygon_ops::offset": 147405443
+        },
+        "wall": {
+          "polygon_ops::clip_polygons": 2344000000,
+          "polygon_ops::offset": 1397700000,
+          "polygon_ops::offset2_ex": 638800000,
+          "polygon_ops::closing_ex": 161400000
+        }
+      }
+    },
+    "benchy-arachne-on": {
+      "exit_code": 0,
+      "profile_wall_seconds": 4.066,
+      "gcode_sha256": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+      "gcode_bytes": 8688374,
+      "reference_sha256": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+      "reference_bytes": 8688374,
+      "reference_match": true,
+      "code_1200_count": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::clip_polygons": 1343187770,
+          "polygon_ops::offset": 164710473
+        },
+        "wall": {
+          "polygon_ops::clip_polygons": 4670800000,
+          "polygon_ops::offset": 3191100000,
+          "polygon_ops::offset2_ex": 631000000,
+          "polygon_ops::closing_ex": 158300000
+        }
+      }
+    },
+    "base-classic-off": {
+      "exit_code": 0,
+      "profile_wall_seconds": 12.386,
+      "gcode_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+      "gcode_bytes": 21230739,
+      "reference_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+      "reference_bytes": 21230739,
+      "reference_match": true,
+      "code_1200_count": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::offset2_ex": 13552200921,
+          "polygon_ops::clip_polygons": 785426
+        },
+        "wall": {
+          "polygon_ops::offset": 20171000000,
+          "polygon_ops::clip_polygons": 24859000000,
+          "polygon_ops::offset2_ex": 6834000000,
+          "polygon_ops::closing_ex": 1539000000
+        }
+      }
+    },
+    "base-classic-on": {
+      "exit_code": 0,
+      "profile_wall_seconds": 33.33,
+      "gcode_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "gcode_bytes": 39605534,
+      "reference_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "reference_bytes": 39605534,
+      "reference_match": true,
+      "code_1200_count": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::clip_polygons": 11094403420,
+          "polygon_ops::offset": 168223936,
+          "polygon_ops::offset2_ex": 13552115669
+        },
+        "wall": {
+          "polygon_ops::clip_polygons": 80813000000,
+          "polygon_ops::offset": 51014000000,
+          "polygon_ops::offset2_ex": 6923000000,
+          "polygon_ops::closing_ex": 1586000000
+        }
+      }
+    },
+    "base-arachne-off": {
+      "exit_code": 0,
+      "profile_wall_seconds": 12.217,
+      "gcode_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+      "gcode_bytes": 21041068,
+      "reference_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+      "reference_bytes": 21041068,
+      "reference_match": true,
+      "code_1200_count": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::offset": 981032860,
+          "polygon_ops::clip_polygons": 826416
+        },
+        "wall": {
+          "polygon_ops::offset": 18550000000,
+          "polygon_ops::clip_polygons": 23503000000,
+          "polygon_ops::offset2_ex": 6575100000,
+          "polygon_ops::closing_ex": 1504000000
+        }
+      }
+    },
+    "base-arachne-on": {
+      "exit_code": 0,
+      "profile_wall_seconds": 33.093,
+      "gcode_sha256": "f77633affab2fbea4f3b3b546aa564ba1a151a457fd20b2c4991f34526a58d5c",
+      "gcode_bytes": 39417495,
+      "reference_sha256": "f77633affab2fbea4f3b3b546aa564ba1a151a457fd20b2c4991f34526a58d5c",
+      "reference_bytes": 39417495,
+      "reference_match": true,
+      "code_1200_count": 0,
+      "scopes": {
+        "fuel": {
+          "polygon_ops::clip_polygons": 11092086468,
+          "polygon_ops::offset": 1149218693
+        },
+        "wall": {
+          "polygon_ops::clip_polygons": 81174000000,
+          "polygon_ops::offset": 48623000000,
+          "polygon_ops::offset2_ex": 7150200000,
+          "polygon_ops::closing_ex": 1468000000
+        }
+      }
+    }
+  },
+  "notes": "attribution only; --profile inflates wall and sums concurrent spans"
+}

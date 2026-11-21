@@ -6,7 +6,7 @@ Label: wayfinder:task
 Status: open
 Assignee: unclaimed
 Parent: [Slice performance vs OrcaSlicer](../map.md)
-Blocked by: 177
+Blocked by: 177 (resolved — unblocked 2026-11-21; see `evidence/t177-post-t175-attribution/FINDINGS.md` §6 for post-t175 stage shares, `clip_polygons`-dominant op split, and 4.5× `benchy` vs 8.1–8.6× `base` parallelism gap)
 Graduated from: [Destination ruling: CPU-corroboration semantics and sample count for cell closure](176-destination-cpu-corroboration-ruling.md),
 because `PrePass::ShellClassification` was the #1 stage across all four
 supports-off cells (**32.2–44.0 %** of cell wall in pre-t172

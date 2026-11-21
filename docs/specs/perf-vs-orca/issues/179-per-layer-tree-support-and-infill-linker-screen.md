@@ -6,7 +6,7 @@ Label: wayfinder:task
 Status: open
 Assignee: unclaimed
 Parent: [Slice performance vs OrcaSlicer](../map.md)
-Blocked by: 177
+Blocked by: 177 (resolved — unblocked 2026-11-21; see `evidence/t177-post-t175-attribution/FINDINGS.md` §6 for post-t175 module shares, fuel-vs-wall inversion, and the `L2` `infill-linker` 134/104 ms idle-core straggler tail)
 Graduated from: [Destination ruling: CPU-corroboration semantics and sample count for cell closure](176-destination-cpu-corroboration-ruling.md),
 using the pre-t172 fuel census in [t171](171-post-t169-prepass-reprice.md)
 (where `com.core.tree-support` held **57.7–68.0 %** of all supports-on guest
