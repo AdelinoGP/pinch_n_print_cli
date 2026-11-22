@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_14_pbt-support-modules
-status: draft
+status: implemented
 ---
 
 # Independently checked support planner and renderer properties

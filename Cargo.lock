@@ -4361,6 +4361,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 name = "support-surface-ironing"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -4674,6 +4675,7 @@ dependencies = [
 name = "traditional-support"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
@@ -4686,6 +4688,7 @@ dependencies = [
 name = "traditional-support-planner"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -4697,6 +4700,7 @@ dependencies = [
 name = "tree-support"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
@@ -4709,6 +4713,7 @@ dependencies = [
 name = "tree-support-planner"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",

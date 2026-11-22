@@ -6589,3 +6589,1036 @@ the outer boundary. The no-RNG regression
 `hole_crossing_regression_no_ironing_segment_enters_the_hole` fails on the old kernel. A
 determinism-pin exception is not used by this property (its checks are independent), and the
 current one-path-per-polygon shape is no longer pinned by any test.
+
+## M-SUPPORT-IRONING
+
+Registry record: `id = "M-SUPPORT-IRONING"`, `package = "support-surface-ironing"`,
+`target_kind = "lib"`, `target_name = "support_surface_ironing"`,
+`test_name = "property_tests::proptest_support_ironing_fill"`,
+`production_symbol = "support_surface_ironing::SupportSurfaceIroning::fill_expolygon"`,
+`production_path = "modules/core-modules/support-surface-ironing/src/lib.rs"`,
+`features = ["support-surface-ironing/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-support-ironing"`.
+
+### Stable property ID
+
+`M-SUPPORT-IRONING` — semantic (complete half-open row/material-interval coverage plus metadata
+propagation for the support-surface ironing fill).
+
+### Owner
+
+Package `support-surface-ironing`; lib target `support_surface_ironing`; module `property_tests` in
+`modules/core-modules/support-surface-ironing/src/property_tests.rs`; production symbol
+`SupportSurfaceIroning::fill_expolygon` (private) at
+`modules/core-modules/support-surface-ironing/src/lib.rs`, whose only production caller is
+`SupportSurfaceIroning::run_support_postprocess`. The module is constructed through `from_config`
+so the property sees the same field values the module would.
+
+### Contract
+
+Rows are `min_y + n * line_spacing` while below `max_y`, with no half-spacing offset. At each row
+the kernel gathers crossings from the contour and every hole ring with a half-open lower-inclusive
+rule, rounds each X to the nearest canonical unit, sorts, pairs even-odd, and skips a pair whose
+endpoints coincide. Each surviving pair becomes one `Ironing` path with the supplied Z, the
+configured `line_width`, the configured `ironing_flow_rate` as `flow_factor`, `dist_to_top_mm = 0.0`
+and `None` overhang and lock fields. The kernel does not compute `speed_factor`; the caller passes
+`ironing_speed / 50` and it is propagated verbatim. Nonpositive spacing and degenerate geometry may
+return empty. This is a metadata-propagation contract: it does not claim the manifest default's
+numeric `ironing_flow_rate` is an independently verified physical percentage.
+
+### Domain
+
+Independently validated rectangles, U-notches and rectangles with one rectangular hole on an exact
+0.25 mm grid, with 1 mm spacing and generated origins. A holed `[0,10]^2` mm fixture with hole
+`[4,6]^2` and 1 mm spacing has nonempty material intervals on both sides at an interior hole row.
+Separate deterministic modes cover a nonpositive spacing and a degenerate ring. Bounds are
+`max_abs_units`, `max_vertices`, `max_holes`, `max_components`, `max_shrink_candidates`,
+`max_spacing_units`, `max_rows`.
+
+### Strategy
+
+Nonshrinking shape-mode selector with generated dimensions, origin, cut placement, spacing, Z, flow
+and speed. Deterministic positive fixtures for the rectangle, notch and hole modes run inside every
+callback. Every `Cell` counter is asserted positive after `check`: `calls`, the five witness
+counters `w_charter` (holed `[4,6]^2` split on both sides), `w_asym` (asymmetric hole split),
+`w_notch`, `w_square` and `w_empty` (degenerate inputs), plus `strokes`, `segments` and
+`split_rows`. A run in which the callback never executed, or in which any witness counter stayed
+zero, fails.
+
+### Oracle
+
+The expected rows and material intervals are derived from the same rectangle arithmetic the
+contract states — the bbox minimum, the spacing steps, and the input edges — written once and
+reused by both the property and the controls. Every consecutive point pair of every path is checked
+with the boundary-inclusive `oracles::segment_in_region` against the self-built `ExPolygon`, and all
+metadata is compared exactly against the supplied configuration values.
+
+### Tolerance
+
+Exact. Every generated coordinate and spacing is a multiple of 0.25 mm, so `mm_to_units` and
+`units_to_mm` round-trip and each crossing is an exact integer unit.
+
+### Shrinking
+
+`support_ironing_shrink_bounds` drives the real strategy through
+`current`/`simplify`/`complicate`, revalidates the ring structure and the shape mode at every
+state, requires a permitted reduction, and exercises a false `simplify` return and repeated
+`complicate`.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, zero rejection budgets. Registry command
+`cargo xtask test --summary --properties --property M-SUPPORT-IRONING --tier routine|extended`.
+Measured timings are in the evidence file.
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression.
+
+### Acceptance
+
+Maps to AC-5, AC-8 and AC-N1. `support_ironing_controls` accepts the valid positive observation and
+then rejects, with the same checker: a single unsplit `(1,5) -> (9,5)` mm segment across the
+asymmetric hole of `[0,10]^2` minus `[2,3] x [4,6]` (both endpoints and the midpoint are material);
+the U-notch chord `(2,5) -> (8,5)` on `[0,10]^2` minus `[4,6] x [4,10]`; an otherwise correct
+interval set with the interior `y = 1` row deleted from a 10 mm square at 1 mm pitch; and a
+replacement of all output with empty. The metadata control also rejects a mutated `flow_factor`,
+width, Z or speed.
+
+## M-TRADITIONAL-SCAN
+
+Registry record: `id = "M-TRADITIONAL-SCAN"`, `package = "traditional-support"`,
+`target_kind = "lib"`, `target_name = "traditional_support"`,
+`test_name = "property_tests::proptest_traditional_support_fill"`,
+`production_symbol = "traditional_support::TraditionalSupport::fill_expolygon"`,
+`production_path = "modules/core-modules/traditional-support/src/lib.rs"`,
+`features = ["traditional-support/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-traditional-scan"`.
+
+### Stable property ID
+
+`M-TRADITIONAL-SCAN` — semantic (complete half-open row and material-interval coverage plus
+whole-segment containment of the traditional support fill kernel, with separated fallback and
+no-work modes).
+
+### Owner
+
+Package `traditional-support`; lib target `traditional_support`; module `property_tests` in
+`modules/core-modules/traditional-support/src/property_tests.rs`; production symbol
+`TraditionalSupport::fill_expolygon` (private) at
+`modules/core-modules/traditional-support/src/lib.rs`, whose only production caller is
+`TraditionalSupport::run_support`. The module is constructed through `from_config` with the
+manifest's seeded defaults.
+
+### Contract
+
+The kernel rotates the polygon about its unrotated bbox centre, scans rows at
+`y0 + n * spacing` while below `y1`, rounds each crossing X to the nearest canonical unit, sorts,
+pairs even-odd, and drops a pair whose endpoints coincide. Each surviving pair becomes one
+`ExtrusionPath3D` with `role = SupportMaterial`, the supplied Z and `speed_factor`,
+`flow_factor = 1.0`, the supplied path width and unset `tool_index`/`order_lock`/`overhang`
+fields. The **caller**, not this kernel, changes interface roles. When the scan loop emits nothing
+the centroid fallback may emit one band per centroid row, translated back by the same
+bbox-centre offset the scan branch adds; when that also emits nothing and the caller flagged the
+region as an interface, the contour is emitted as a closed path so the layer stays printable. A
+nonpositive spacing or a degenerate ring returns empty.
+
+### Domain
+
+Independently validated axis-aligned rectangles, an open-to-top U-notch and a rectangle with one
+rectangular hole on an exact 0.25 mm grid. Generated cases carry `1..=max_rows` rows, a spacing that is
+a grid multiple and at most `span / 4`, and a cut placed on a row boundary so at least one row is
+really split; a cut-carrying shape always has at least two rows (a notch) or three (a hole, which
+also covers the rotated mode), so its cut always has real height above it at every shrink state.
+Rotated cases carry the cut only on the 180-degree turn, because a quarter turn maps the cut's x
+extent onto the scan axis and a y-aligned cut then only lands on scan-row boundaries at half turns;
+the odd turns exercise the axis swap alone. Rotated cases use exact quarter turns only, so the derived rounding envelope is
+zero. Separate deterministic modes cover a translated narrow tip (the centroid fallback), the
+sub-pitch diamond at 2 mm pitch (the interface-contour fallback) and six degenerate classes
+(zero height, zero width, a two-point ring, an empty contour, zero spacing, negative spacing).
+Bounds are `max_abs_units`, `max_vertices`, `max_holes`, `max_components`,
+`max_shrink_candidates`, `max_spacing_units`, `max_rows`.
+
+### Strategy
+
+Nonshrinking shape selector (`Rect`, `Notch`, `Hole`, `Rotated`, `Degenerate`) over a total
+generator, so the run has zero local and global rejects. Every generated case is revalidated
+against the live bounds and `validate_geometry` before the kernel is called. Each callback also
+re-checks five deterministic witnesses: the charter's holed `[0,10]^2` mm fixture with hole
+`[4,6]^2` at 1 mm spacing, the asymmetric `[2,3] x [4,6]` hole, the U-notch, the 10 mm square, and
+the six degenerate classes. Counters `rect/notch/hole/rotated/degenerate`, `strokes`, `segments`,
+`rows` and `split_rows` are asserted positive after `check`.
+
+### Oracle
+
+Angle-zero expectations are rectangle arithmetic over the fixture's own fields: the half-open rows
+are `y0 + n * spacing < y1`, and each row's intervals are the outer rectangle minus the cut, with
+the cut active on `[cy0, cy1)` for a hole and on `[cy0, y1)` for a notch. The complete sorted
+`(row, x_start, x_end)` set is compared, so a missing row, an extra row, a reordered interval or a
+merged arm is a failure. Rotated modes are mapped back into the kernel's own bbox-centre-relative scan frame and compared
+against the **same complete row-and-interval model** there, which quarter turns keep axis-aligned.
+Because the turn is exact, this is an exact integer comparison rather than a row-count proxy, so a
+split row that loses one arm fails. Every consecutive point pair of every path — including a closed ring's closing edge
+— is checked with the boundary-inclusive `oracles::segment_in_region`.
+
+### Tolerance
+
+Exact. Every fixture coordinate and spacing is a multiple of 0.25 mm, each output coordinate is
+required to recover to a whole canonical unit bit-exactly, and the quarter-turn rotation is an
+integer permutation. A coordinate that does not round-trip is a failure, not a widened allowance.
+
+### Shrinking
+
+`traditional_renderer_shrink_bounds` probes all five modes with real `simplify`/`complicate`
+alternation, revalidating the bounds, the row count, the cut containment and the shape mode at
+every state, then exercises a false `simplify` return and repeated `complicate`, and asserts a
+real reduction from a nonminimal start. The mode selector is asserted to refuse both directions.
+
+### Execution
+
+Both tiers run `in_process` with `timeout_ms = 0`, chacha, zero rejection budgets and total
+generators. The registry-backed command is
+`cargo xtask test --summary --properties --property M-TRADITIONAL-SCAN --tier routine|extended`.
+Measured Windows timings and the retained-seed replay are in
+[`docs/testing/proptest-support-modules-evidence.md`](proptest-support-modules-evidence.md).
+
+### Failure record
+
+`failure.json` retains the classification, context, concrete case, reproduction command, direct
+cargo argv, captured SDK logs and shrink status. One confirmed defect and one hardening change live here, each with a
+named concrete no-RNG regression in the crate's `#[cfg(test)] mod tests`:
+
+- **Confirmed defect** — `narrow_translated_tip_fallback_is_placed_at_the_bbox_centre_regression`:
+  the centroid fallback rotated into bbox-centre-relative coordinates but never added the
+  translation back, so on the triangle `(5,4), (6,4.5), (4,4.5)` mm it emitted
+  `(-0.5, 0) -> (0.5, 0)` mm instead of `(4.5, 4.25) -> (5.5, 4.25)` mm. The packet required
+  reconciling whether the fallback is required before touching it; two independent live branches
+  (the centroid band and the interface-contour fallback) exist to keep a non-empty layer printable,
+  so the fallback is intended behaviour and the fix restores its contract. The
+  `D-209-SUPPORT-FILL-BEHAVIOUR-CHANGE` wording that says the fallback was removed is stale
+  relative to the code; correcting that row is a separate authorised action.
+- **Degenerate-input hardening** — `two_point_ring_emits_no_zero_length_fallback_regression`: the
+  same fallback pushed a coincident crossing pair unconditionally, so a two-point ring emitted one
+  zero-length stroke at `(0.5, 0.5)` mm. A two-point ring is not valid geometry, so no reachable
+  production loss was demonstrated; the guard mirrors the invariant the scan branch already
+  enforces and has no effect on non-degenerate input.
+
+### Acceptance
+
+Maps to AC-5, AC-8, AC-N1 and AC-N2. A holed `[0,10]^2` mm fixture with hole `[4,6]^2` and 1 mm
+spacing emits `(0,4)` and `(6,10)` mm on the interior hole row `y = 5` mm.
+`traditional_renderer_controls` accepts the valid positive observation and then rejects, with the
+same checker: a single unsplit `(1,5) -> (9,5)` mm segment across outer `[0,10]^2` minus
+`[2,3] x [4,6]` (both endpoints and the midpoint are material), the U-notch chord
+`(2,5) -> (8,5)`, an otherwise correct interval set with the interior `y = 1` row deleted, a row
+on the excluded top edge `y = 10`, a replacement of all output with empty, one arm of a rotated
+split row dropped, the untranslated centroid band, a sub-pitch diamond with no interface contour,
+and output injected into any of the six degenerate classes.
+
+## M-TREE-SMOOTH
+
+Registry record: `id = "M-TREE-SMOOTH"`, `package = "tree-support-planner"`, `target_kind = "lib"`,
+`target_name = "tree_support_planner"`,
+`test_name = "property_tests::proptest_tree_smoothing_graph"`,
+`production_symbol = "tree_support_planner::smooth_nodes"`,
+`production_path = "modules/core-modules/tree-support-planner/src/lib.rs"`,
+`features = ["tree-support-planner/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-tree-smooth"`.
+
+### Stable property ID
+
+`M-TREE-SMOOTH` — semantic (pinned-end branch relaxation, short-chain preservation and the
+source-backed merge extra-wall trigger).
+
+### Owner
+
+Package `tree-support-planner`; lib target `tree_support_planner`; module `property_tests` in
+`modules/core-modules/tree-support-planner/src/property_tests.rs`; production symbol
+`smooth_nodes` (private) at `modules/core-modules/tree-support-planner/src/lib.rs`, called by
+`SupportPlanner::plan_for_object` after pruning and before drawing and emitting. The fixtures build
+a private `NodeArena`, `LayerRecord`s and real parent/child/active links; no production visibility
+is widened.
+
+### Contract
+
+`SMOOTH_NODES_ITERATIONS` passes of a three-point average over each chain's interior nodes, with
+the head and tail held fixed, then a single `round()` on commit. On the simple single-chain
+subdomain: fixed endpoints keep position, radius and movement; chains shorter than three nodes are
+untouched; committed interior positions stay inside the coordinate-wise hull of the original
+chain. A committed interior node with more than one parent sets `need_extra_wall`, and the
+canonical end-of-chain interpolation then promotes a node bracketed by two extra-wall nodes. The
+width-derived half-line value is a **signed component threshold for the flag**, not a cap on
+`movement` and not a guarantee about `max_move_dist`; neither is asserted.
+
+`DEV-143` is preserved: the port relaxes in `f64` scaled units and rounds once where canonical
+truncates each pass, so no bit-exact upstream equality is claimed and no 100-pass reimplementation
+is used as the expected answer. `DEV-178` records that no renderer consumes the flag, so this
+charter asserts the flag on the node and makes no claim about rendered walls.
+
+### Domain
+
+Bounded valid graphs: a straight equally spaced chain (checked as an exact fixed point, position
+equal to the original and movement equal to the step), a bent chain with at least three nodes, a
+merge node with two parents, a polygon-typed child, and a chain shorter than three nodes, each with
+valid `active`, `parent`, `child` and `parents` links. Every chain stays under the tall-branch
+threshold, so that arm is out of the domain and is not asserted either way. Bounds are
+`max_abs_units`, `max_nodes`, `max_layers`, `max_width_units`; `max_layers` is constrained to
+`5..=256`, `max_nodes` to at least six, and `max_width_units` to an even value in `4000..=20000`.
+
+### Strategy
+
+Nonshrinking selector over the straight, bent, merge, polygon-child and short-chain modes with a
+total generator, so the run has zero rejects. The deterministic positive witness for each mode is
+built and checked inside the callback. Counters for accepted calls, interior nodes, straight-chain
+interior nodes, short-chain nodes, flagged nodes and the five witness classes are asserted positive
+after `check`.
+
+### Oracle
+
+Graph- and flag-based, derived from the contract: pinned endpoints compared field-by-field against
+their pre-call values, short chains compared field-by-field, interior positions checked for
+coordinate-wise containment in the original chain's per-axis integer hull with **zero** extra
+rounding allowance (the single `round()` cannot leave an integer hull while the `f64` error stays
+under half a unit), every reference re-inspected after the call, and the `need_extra_wall` trigger
+checked from the source-backed condition — `parents.len() > 1`, a signed component of `movement`
+greater than `mm_to_units(line_width / 2)`, or the tall-branch rule — never from the kernel's own
+output.
+
+### Tolerance
+
+Exact integers. The interior hull is an integer interval and the only rounding is the single
+commit `round()`, whose error is bounded below one unit for the fixture grid; the header records
+that derivation.
+
+### Shrinking
+
+`tree_planner_shrink_bounds` drives the real strategy, revalidates every exposed arena and layer
+record at every state, requires a permitted reduction, and exercises a false `simplify` return and
+repeated `complicate`.
+
+### Execution
+
+Both tiers run `in_process` with `timeout_ms = 0`, chacha, zero rejection budgets and total
+generators. Registry command
+`cargo xtask test --summary --properties --property M-TREE-SMOOTH --tier routine|extended`.
+Measured on Windows: 64 cases in 0.07 s and 1024 cases in 1.32 s of libtest. Provenance and the
+full counter mix are in
+[`docs/testing/proptest-support-modules-evidence.md`](proptest-support-modules-evidence.md).
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression.
+
+### Acceptance
+
+Maps to AC-3, AC-8 and AC-N1. `tree_planner_controls` accepts a valid straight chain and then
+rejects, with the same checker and its exact failure class: a pinned endpoint mutated to a
+different grid point, a `parent` or `parents[0]` index set to the arena length (a checker-only
+mutation — the kernel indexes its arena directly and promises no validation error), a rewired link,
+an interior node placed outside the hull, a broken straight-chain fixed point, the cleared merge
+flag, a spurious flag on a negative movement, and a changed short chain. The callback requires
+nonempty node and chain observations, and a zero-node run fails.
+
+## M-TREE-ROLES
+
+Registry record: `id = "M-TREE-ROLES"`, `package = "tree-support-planner"`, `target_kind = "lib"`,
+`target_name = "tree_support_planner"`,
+`test_name = "property_tests::proptest_tree_carve_and_roles"`,
+`production_symbol = "tree_support_planner::build_roles_batched"`,
+`production_path = "modules/core-modules/tree-support-planner/src/lib.rs"`,
+`features = ["tree-support-planner/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-tree-roles"`.
+
+### Stable property ID
+
+`M-TREE-ROLES` — semantic (per-region collision carve, serial and production batched role assembly,
+and the batched-only own-territory intersection).
+
+### Owner
+
+Package `tree-support-planner`; lib target `tree_support_planner`; module `property_tests`;
+production symbols `carve_emitted_regions` and `build_roles` (public hidden test seams) and
+`build_roles_batched` (private, the real emission kernel) at
+`modules/core-modules/tree-support-planner/src/lib.rs`. Production reaches the batched kernel
+through `flush_pending_emits` over private `RoleBuildInput`. The serial `build_roles` has **no**
+production caller; both are checked against the same independent model, and neither is the other's
+oracle. `carve_emitted_regions_with_bbox_gate` calls `carve_emitted_regions` only for its
+lone-gated/simplification repair, so nothing here claims every emitted role invokes the
+unconditional helper.
+
+### Contract
+
+For each input region, subtract the collision set and retain the uniquely larger surviving part
+where the cut splits it. Then form the declared body, roof, base and floor sets, and subtract each
+interface set from the body. The emitted role vector is ordered `SupportBody`, `TopInterface`,
+`BaseInterface`, `BottomInterface` with empty roles omitted, and the body is disjoint from each
+interface. Interface roles need not be pairwise disjoint outside the intentionally disjoint fixture.
+In the batched own-territory mode each role is additionally intersected with its own territory.
+Distinct-point skeleton segments are not assumed to create role polygons — every fixture passes
+empty segment lists, so the kernel's `structural_body_regions` contributes nothing and the claim
+stays inside the area algebra. The larger production routing around this kernel is out of scope.
+
+### Domain
+
+Bounded, non-simplifying, axis-aligned rectangle scenes: a body rectangle, a collision bar that
+splits it into one strictly larger and one strictly smaller part (both orientations, via a scene
+transpose), a roof rectangle inside the body, a floor rectangle, a fully swallowed region, a
+no-collision scene, a bbox-disjoint gated region, and a batched own-territory scene. Two
+distinguishable inputs are always submitted together so the batch's per-item association is
+verifiable. `role_simplify_tolerance` returns `None` for the whole generated domain —
+`avg_node_per_layer` in `0..=200` at line widths `1/64`, `0.4` and `2.0` mm for both
+`is_base_area` values — which is what makes the rectangular model exact; the controls assert the
+first `Some` value (2000 units at `avg = 201`, width 0.4 mm, base area). Bounds are
+`max_abs_units`, `max_regions`, `max_cells`, `max_batch_items`; `max_abs_units` is at least
+300 000 units because the second fixture reaches x = 30 mm, `max_regions` is `3..=32`,
+`max_cells` is at least `(2 * (max_regions + 3) - 1)^2`, and `max_batch_items` is `2..=16`.
+
+### Strategy
+
+Nonshrinking selector over the split, swallowed, no-collision, disjoint-gated and own-territory
+modes with a total generator. Deterministic positive fixtures for every mode run inside the
+callback. Counters for accepted calls, split/swallow/no-collision/territory cases, batch items,
+body cells, interface cells, territory-removed cells, swallowed cells and split regions are
+asserted positive after `check`.
+
+### Oracle
+
+The scene is partitioned at every input and output X and Y edge, and each open cell is labelled
+from the source rectangles at doubled-coordinate centres, so the comparison is an exact parity test
+insensitive to vertex order and ring start. The label algebra produces the expected body
+(`material - collision - roof - base - floor`) and the expected interface sets exactly as the
+contract states. Each batch item is compared against its own independently computed expectation,
+which is what catches a swapped or dropped result.
+
+### Tolerance
+
+None. All fixture coordinates are multiples of a whole millimetre and the operations are Clipper
+booleans on axis-aligned rectangles, so cells are compared exactly.
+
+### Shrinking
+
+`tree_planner_shrink_bounds` drives the real strategy, revalidates the rectangle ordering, the
+collision disjointness preconditions, the `role_simplify_tolerance` invariant and the batch arity
+at every state, requires a permitted reduction, and exercises a false `simplify` return and
+repeated `complicate`.
+
+### Execution
+
+Both tiers run `in_process` with `timeout_ms = 0`, chacha, zero rejection budgets and total
+generators. Registry command
+`cargo xtask test --summary --properties --property M-TREE-ROLES --tier routine|extended`.
+Measured on Windows: 64 cases in 0.23 s and 1024 cases in 5.95 s of libtest, with 127 and 2 535
+batch items checked. Provenance and the full counter mix are in
+[`docs/testing/proptest-support-modules-evidence.md`](proptest-support-modules-evidence.md).
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression. A batched result
+that disagrees with its own independently computed item is a failure, never a reason to fall back
+to the serial path.
+
+### Acceptance
+
+Maps to AC-4, AC-8 and AC-N1. In an independently modelled body `[0,10]^2` with collision
+`[7,8] x [0,10]` and roof `[3,5]^2`, the unique larger carved body side contains `(1,1)`, excludes
+`(7.5,1)` and `(8.5,1)`, and excludes roof point `(4,4)` from the body while the roof retains it.
+With batched own territory `[0,6] x [0,10]` the body additionally excludes `(6.5,1)`.
+`tree_planner_controls` accepts the valid positive observation and then rejects, with the same
+checker and its exact failure class: a body speck at each forbidden point (classed as collision
+material, wrong retained fragment and body/interface overlap), a wrong role order, an empty role,
+an omitted body, all-empty output, a carve fragment dropped, the batched `(6.5,1)` territory
+speck, the batch result swapped with the second fixture translated by 20 mm in X, a dropped batch
+item, and serial output passed off as the batched result.
+
+## M-SUPPORT-RASTER
+
+Registry record: `id = "M-SUPPORT-RASTER"`, `package = "traditional-support-planner"`,
+`target_kind = "lib"`, `target_name = "traditional_support_planner"`,
+`test_name = "property_tests::proptest_support_raster_cells"`,
+`production_symbol = "traditional_support_planner::agg_raster::rasterize_polygons"`,
+`production_path = "modules/core-modules/traditional-support-planner/src/agg_raster.rs"`,
+`features = ["traditional-support-planner/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-support-raster"`.
+
+### Stable property ID
+
+`M-SUPPORT-RASTER` — semantic (whole-buffer cell coverage of the AGG support rasterizer under a
+restricted open-interior model).
+
+### Owner
+
+Package `traditional-support-planner`; lib target `traditional_support_planner`; module
+`property_tests` in `modules/core-modules/traditional-support-planner/src/property_tests.rs`;
+production symbol `rasterize_polygons` (public) at
+`modules/core-modules/traditional-support-planner/src/agg_raster.rs`. Grids are built with
+`GridParams::for_test`, so constructor arithmetic is never inferred from the rasterizer. The
+kernel is consumed only on the opt-in `RasterizerMode::Agg` descent arm; this charter makes no
+claim about the default `LegacySemantic` mode.
+
+### Contract
+
+A cell is marked when the polygon set covers any part of it, from either a centre-inside
+nonzero-winding scan or any edge passing through the cell; there is no coverage threshold. The
+model is restricted to axis-aligned, well-wound rectangles, notches and rectangular holes whose
+vertices sit strictly away from pixel-grid lines and corners, which makes the open-interior set of
+each material rectangle unambiguous. Within that restriction the **entire** row-major `0/1` buffer
+and its length are compared. Coincident-boundary conventions, nonzero-winding parity at shared
+edges and antialiasing amplitudes are explicitly out of scope, and the kernel is angle-0 only.
+
+### Domain
+
+Bounded orthogonal scenes on a checked integer grid with a translated (including negative) origin,
+a pixel size that can partially cover a cell, at least one cell whose centre is outside while its
+coverage is positive, and a rectangular hole whose interior cell stays unset. Empty and short rings
+and a zero-sized grid are separate deterministic no-work modes. Bounds are `max_abs_units`,
+`max_pixel_units`, `max_grid_width`, `max_grid_height`, `max_cells`; `max_cells` is checked before
+any allocation and every dimension, stride and origin offset is computed in checked arithmetic.
+
+### Strategy
+
+A nonshrinking shape-mode selector (rectangle, notch, holed rectangle, multi-component, no-work)
+over a total generator, plus deterministic witnesses built and checked inside every callback. Each
+generated value is validated against the domain before the kernel runs. After `check` the
+accepted-call count, the four witness counters (centre-outside, hole-interior, negative-origin
+notch, no-work) and the generated set-cell total are asserted positive. The per-run mode mix, the
+checked-cell tally, the centre-outside tally and the generated hole-interior tally are reported but
+not required positive, because a run may legitimately generate no holed shape — the positive
+hole-interior topology is supplied by the deterministic witness, not by the sampler.
+
+### Oracle
+
+The expected buffer is enumerated cell by cell with exact interval arithmetic: each cell's
+half-open integer square is intersected with each analytically described material rectangle, the
+analytically described holes are subtracted, and the cell is set iff the remaining area is
+positive. The model never consults production edge rasterization, `contours_simplified` or the
+host clipper.
+
+### Tolerance
+
+None. Coordinates and pixel sizes are integers in canonical units, so the comparison is exact
+buffer equality. The only derived quantity is the fixture-side exclusion band that keeps vertices
+off grid lines and corners.
+
+### Shrinking
+
+`traditional_planner_shrink_bounds` drives the real strategy through
+`current`/`simplify`/`complicate`, revalidates every exposed case against the domain at every
+state, requires a real reduction from a nonminimal start, and exercises a false `simplify` return
+and repeated `complicate`. The mode selector is asserted to refuse both directions.
+
+### Execution
+
+Both tiers run `in_process` with `timeout_ms = 0`, chacha, zero rejection budgets and total
+generators. Registry command
+`cargo xtask test --summary --properties --property M-SUPPORT-RASTER --tier routine|extended`.
+Measured Windows timings are in
+[`docs/testing/proptest-support-modules-evidence.md`](proptest-support-modules-evidence.md).
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression.
+
+### Acceptance
+
+Maps to AC-1, AC-8 and AC-N1. `traditional_planner_controls` first accepts the valid positive
+observation, then rejects with the same checker and its exact failure class: a centre-only bit flip
+on the witness whose cell `(1,1)` has positive coverage but a centre at `(15,15)` grid units
+outside the material, and a flipped hole-interior bit. A size mismatch, a shifted origin, an
+unset-but-covered cell or a set hole-interior cell fails.
+
+## M-SUPPORT-HOLES
+
+Registry record: `id = "M-SUPPORT-HOLES"`, `package = "traditional-support-planner"`,
+`target_kind = "lib"`, `target_name = "traditional_support_planner"`,
+`test_name = "property_tests::proptest_support_hole_fill"`,
+`production_symbol = "traditional_support_planner::agg_raster::fill_grid_holes"`,
+`production_path = "modules/core-modules/traditional-support-planner/src/agg_raster.rs"`,
+`features = ["traditional-support-planner/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-support-holes"`.
+
+### Stable property ID
+
+`M-SUPPORT-HOLES` — semantic (one-pass simultaneous single-cell hole fill on the original grid).
+
+### Owner
+
+Package `traditional-support-planner`; lib target `traditional_support_planner`; module
+`property_tests`; production symbol `fill_grid_holes` (public) at
+`modules/core-modules/traditional-support-planner/src/agg_raster.rs`, reached in production through
+`contours_simplified`'s `fill_holes` branch when a caller requests extraction with hole filling.
+The property checks the kernel directly and inherits no caller guarantee.
+
+### Contract
+
+Output is a copy of the input with exactly one non-iterative pass over the interior cells. An
+interior cell becomes set when it is set, or when both horizontal neighbours are set in the
+**original** grid, or when both vertical neighbours are set in the original grid. The outer ring is
+never written. Reading the original rather than the partially written copy is load-bearing: a
+two-cell gap stays unbridged and a left-to-right in-place fill would wrongly bridge it. Inputs with
+either dimension below three, or a buffer shorter than `width * height`, are returned unchanged.
+This is not a general enclosed-hole fill and idempotence is not claimed.
+
+### Domain
+
+Bounded small grids with an independently validated boundary ring and interior populations that
+include a hole bridged horizontally only, a hole bridged vertically only, a single-cell hole, a
+two-cell horizontal gap and a two-cell vertical gap. Separately: a dimension below three, a short
+buffer, an all-zero grid and an all-set grid. Bounds are `max_grid_width`, `max_grid_height`,
+`max_cells`, each checked before allocation.
+
+### Strategy
+
+Nonshrinking shape-mode selector over a total generator, with the deterministic 5x5 cascading
+witness executed inside every callback. Counters for accepted calls, grid/tiny/short modes,
+checked cells, filled cells and horizontal/vertical fills are asserted positive after `check`.
+
+### Oracle
+
+The expected buffer is computed from the **original** grid with a pure two-neighbour relation
+written into a separate output buffer, so the model cannot cascade by construction. It is written
+from the rule above, never by re-invoking the kernel or by iterating a flood fill.
+
+### Tolerance
+
+None; the buffers are exact.
+
+### Shrinking
+
+`traditional_planner_shrink_bounds` drives the real strategy, rejects any exposed case with a set
+outer-ring cell or an out-of-bounds dimension, requires a real reduction, and demonstrates the
+stable-false `complicate` state.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, zero rejection budgets. Registry command
+`cargo xtask test --summary --properties --property M-SUPPORT-HOLES --tier routine|extended`.
+Measured timings are in the evidence file.
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression.
+
+### Acceptance
+
+Maps to AC-1, AC-8 and AC-N1. The property compares the whole buffer for every accepted case.
+`traditional_planner_controls` asserts the exact 5x5 requirement — set cells
+`(column,row) = (1,1), (3,2), (1,3)` yield `(1,2) = 1` and `(2,2) = 0` — then rejects an output
+that changes `(2,2)` after the valid fill, and rejects a fill of one cell inside a two-cell
+horizontal gap.
+
+## M-SUPPORT-GRID
+
+Registry record: `id = "M-SUPPORT-GRID"`, `package = "traditional-support-planner"`,
+`target_kind = "lib"`, `target_name = "traditional_support_planner"`,
+`test_name = "property_tests::proptest_support_grid_extraction"`,
+`production_symbol = "traditional_support_planner::agg_raster::SupportGrid::new"`,
+`production_path = "modules/core-modules/traditional-support-planner/src/agg_raster.rs"`,
+`features = ["traditional-support-planner/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-support-grid"`.
+
+### Stable property ID
+
+`M-SUPPORT-GRID` — semantic (macro-block isolation, 3x3 erosion, sample selection and trim
+subtraction over explicitly constructed rasters).
+
+### Owner
+
+Package `traditional-support-planner`; lib target `traditional_support_planner`; module
+`property_tests`; production symbols `SupportGrid::{new, for_test, grid, extract_islands,
+filter_islands_by_samples, extract_support}` and `seed_fill_block`, `dilate_trimming_region`,
+`contours_simplified` at
+`modules/core-modules/traditional-support-planner/src/agg_raster.rs`.
+
+`SupportPlanner::plan_candidate` really calls `SupportGrid::new`, `extract_islands` and
+`filter_islands_by_samples` on the `RasterizerMode::Agg` arm and does **not** call
+`extract_support`, so `extract_support` is exercised as a public composition seam only and is never
+presented as a production caller.
+
+### Contract
+
+Two separate contracts are checked and they are not interchangeable:
+
+1. `seed_fill_block` does exactly two block-local sweeps. A step copies a set bit to the adjacent
+   cell only when the eroded trimming mask is clear at **both** endpoints, so propagation never
+   crosses a macro block and never passes a masked cell. Original masked seeds remain present but
+   cannot propagate. There is no fixed point: an arbitrary masked maze is **not** modelled.
+2. `extract_islands` runs `contours_simplified` at a legal in-cell offset and differences the
+   trimming polygons away; `filter_islands_by_samples` keeps only islands containing at least one
+   sample. AGG block snapping may enlarge the extracted carry beyond the input polygon and may
+   avoid a *local* blocker that yields `NoRoute` in legacy mode (`DEV-166`), so no
+   extracted-subset-of-input or cross-layer monotonicity claim is made.
+
+### Domain
+
+Bounded multi-block scenes with a pre-validated empty outer ring, an analytically specified 3x3
+erosion mask, and per block either one axis-aligned rectangle of unmasked traversable cells with a
+nonempty seed inside it, or no usable seed. That is the only subdomain on which the source's two
+sweeps provably equal a flood-to-fixpoint, so the queue flood is used **only** there and is proved
+from the rectangular shape rather than asserted. A block outside that subdomain is never compared
+to the flood model. It is instead held to sound necessary conditions only — a block with no
+unmasked seed gains no cell, and a gained cell must lie inside the block's fixpoint reach — which
+cannot pass a wrong result but does not pin the exact set. Those blocks are counted separately and
+reported, so each run states how much of its population was exactly modelled rather than
+substituting a weaker oracle silently. Separately: a mask/grid length mismatch
+(the source asserts, so it is tested as the specified panic), zero size or stride, a blocked
+source, a blocked destination, an empty mask, neighbouring-block isolation, a tiny or short
+extraction buffer with a valid offset, and an invalid offset with its own assertion guard.
+Extraction uses analytic single-cell and rectangular islands separated by at least one pixel.
+Bounds are `max_abs_units`, `max_pixel_units`, `max_grid_width`, `max_grid_height`, `max_blocks`,
+`max_cells`.
+
+### Strategy
+
+Nonshrinking selector over the scene, seed, island and trim modes with a total generator. Every
+scene passes the per-block rectangularity predicate before the flood model is used, and the
+deterministic witnesses for block isolation, masked source and destination, the macro-block halo,
+sample selection, trim, hole exclusion, no samples, empty extraction and the legal offset boundary
+run inside every callback. Counters for proven/seeded/masked blocks, filled cells, multi-block
+scenes, islands, selected and trimmed islands are asserted positive after `check`.
+
+### Oracle
+
+The erosion mask is modelled as an all-nine-neighbour conjunction over the trimming raster. The
+seed-fill result on the proven subdomain is modelled with a four-neighbour queue flood from each
+block's seeds, and the equivalence with the source's two sweeps is justified from the rectangle
+shape and verified block by block. Extraction is compared as a geometric set at test-owned interior
+points and at explicitly derived rectangle limits, never by contour start vertex, vertex order or
+ring count. Trim is modelled as set subtraction, sample filtering as containment of the sample in
+the island's own geometry, and the halo witness is compared against the block-local extent rather
+than against the original polygon subset.
+
+### Tolerance
+
+Exact integer cell comparisons for the mask and the fill. The extraction comparison is exact in
+canonical units: the expected rectangle limits are derived from `offset_in_grid * pixel_size` and
+the corpus offset is an integer, so the corner displacement is an integer addition.
+
+### Shrinking
+
+`traditional_planner_shrink_bounds` drives the real strategy, revalidates the empty outer ring, the
+rectangularity predicate and the block layout at every simplified state, requires a permitted
+reduction, and exercises the false-`simplify` and repeated-`complicate` states.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, zero rejection budgets. Registry command
+`cargo xtask test --summary --properties --property M-SUPPORT-GRID --tier routine|extended`.
+Measured timings are in the evidence file.
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression.
+
+### Acceptance
+
+Maps to AC-1, AC-8 and AC-N1. `traditional_planner_controls` rejects, using the same checker: a
+second-block cell set by the first block's fill (`grid_size = (6,4)`, `blocks = (2,1)`,
+`oversampling = 2`, seed `(2,1)`, clear mask — `(3,1)` must stay `0`); propagation out of a masked
+seed `(1,1)` or into a masked destination `(2,1)`; selecting the second of two separated
+`SupportGrid::for_test` islands at pixel size 10 with sample `(15,15)` grid units; and retained
+trim material at `(17,15)` when the trim covers `[15,20] x [10,20]` grid units and the sample is the
+untrimmed point `(12,15)`.
+
+## M-SUPPORT-TERRITORY
+
+Registry record: `id = "M-SUPPORT-TERRITORY"`, `package = "traditional-support-planner"`,
+`target_kind = "lib"`, `target_name = "traditional_support_planner"`,
+`test_name = "property_tests::proptest_support_planner_territory"`,
+`production_symbol = "traditional_support_planner::SupportPlanner::clip_to_territory"`,
+`production_path = "modules/core-modules/traditional-support-planner/src/lib.rs"`,
+`features = ["traditional-support-planner/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-support-territory"`.
+
+### Stable property ID
+
+`M-SUPPORT-TERRITORY` — semantic (exact-source own intersection and base-minus-expanded-foreign
+clearance at the planner's local seam).
+
+### Owner
+
+Package `traditional-support-planner`; lib target `traditional_support_planner`; module
+`property_tests`; production symbol `SupportPlanner::clip_to_territory` (private) at
+`modules/core-modules/traditional-support-planner/src/lib.rs`, called in `plan_candidate` after
+extraction and again on the propagation arm. Fixtures are fresh test-local `SupportAnalysisView`
+values built over `SupportAnalysisIR`.
+
+### Contract
+
+With a minted modifier sub-region's own territory present, the result is `polys` intersected with
+that territory, looked up by the exact `(global_layer_index, object_id,
+modifier_sub_region_id, ordered variant_chain)` identity. With no own entry, the result is `polys`
+minus the positive-line-width expanded family-foreign rectangle from
+`territory_partition(object_id, layer, "traditional")`; when the partition or its foreign set is
+empty the input is returned unchanged, and an empty input is returned unchanged. A base region
+therefore loses the band the foreign family grows by the line width, while a minted sub-region
+keeps its own territory. This is `DEV-165`'s PnP-only rule at the planner's local seam. It is
+**not** the host clipper proof owned by packet `proptest-openrscad_11_pbt-prepass`, and it makes no
+canonical-routing claim.
+
+### Domain
+
+Controlled axis-aligned rectangles in canonical units: a subject rectangle, rectangular own
+territory, rectangular foreign territory, a positive line width, at least two distinguishable
+ordered variant chains and their swap, a sibling region with the other chain, a second object id
+and a second layer, plus no-partition, own-family-only, empty-subject and fully-removed modes. The
+fully-removed subject is placed inside the foreign rectangle grown by the line width, so the whole
+subject is removed rather than just its middle band. Bounds are `max_abs_units`,
+`max_clearance_units`, `max_cells`; the classification grid is derived from the checked subject
+extent and `max_cells` is checked before allocation.
+
+### Strategy
+
+Nonshrinking selector over the own, base, no-partition, own-family-only, empty and fully-removed
+modes with a total generator. The deterministic positive fixture for each mode is built and checked
+inside the callback. Counters for kept cells, removed cells, clearance cells and the seven witness
+classes are asserted positive after `check`.
+
+### Oracle
+
+Cells are classified by rectangle arithmetic at test-owned points: a cell is retained when it lies
+in the subject and, for the own mode, inside the own territory rectangle; for the base mode it is
+retained when it lies in the subject and outside the foreign rectangle expanded by the supplied
+line width. Nothing in the oracle calls the host clipper, so a clipping or clearance defect cannot
+be reproduced by the expectation. The chain vector is compared exactly and never sorted.
+
+### Tolerance
+
+Exact at cell points placed away from the expanded rectangle's boundary by at least one canonical
+unit. The `(4.5, 5)` mm witness is exactly on the expanded boundary for a 1 mm clearance from
+`x = 5` and is asserted **excluded**, because the difference removes the closed expanded set. No
+allowance is expanded to make a failure pass.
+
+### Shrinking
+
+`traditional_planner_shrink_bounds` drives the real strategy through
+`current`/`simplify`/`complicate`, revalidates the exact chain vector and the rectangle ordering at
+every state, requires a permitted reduction, and demonstrates the stable `complicate` state.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, zero rejection budgets. Registry command
+`cargo xtask test --summary --properties --property M-SUPPORT-TERRITORY --tier routine|extended`.
+Measured timings are in the evidence file.
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression.
+
+### Acceptance
+
+Maps to AC-2, AC-8 and AC-N1. For subject `[0,10]^2`, own territory `[0,4] x [0,10]` must contain
+`(2,5)` and exclude `(6,5)`; for foreign `[5,7] x [0,10]` with width `1` the base result must
+exclude `(4.5,5)` and `(6,5)` and retain `(2,5)` and `(9,5)`. A fully covered subject must come
+back empty, a second object or layer must not clip, and `traditional_planner_controls` rejects
+reinserting `(4.5,5)` (omitted clearance), substituting the other ordered-chain territory for the
+exact own-source lookup, and a false all-empty own result.
+
+## M-TREE-SCAN
+
+Registry record: `id = "M-TREE-SCAN"`, `package = "tree-support"`, `target_kind = "lib"`,
+`target_name = "tree_support"`, `test_name = "property_tests::proptest_tree_support_scan"`,
+`production_symbol = "tree_support::TreeSupport::scan_fill_region"`,
+`production_path = "modules/core-modules/tree-support/src/lib.rs"`,
+`features = ["tree-support/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-tree-scan"`.
+
+### Stable property ID
+
+`M-TREE-SCAN` — semantic (complete horizontal and vertical scan-interval coverage of the tree fill
+kernel, with a separated mid-scan fallback).
+
+### Owner
+
+Package `tree-support`; lib target `tree_support`; module `property_tests` in
+`modules/core-modules/tree-support/src/property_tests.rs`; production symbol
+`TreeSupport::scan_fill_region` (private) at `modules/core-modules/tree-support/src/lib.rs`. Its
+production caller is `TreeSupport::render_polygon_with_wall_count`, reached from
+`TreeSupport::run_support`; the `vertical` flag is the real production parameter
+`entry.anchor_layer_index % 2 != 0`.
+
+### Contract
+
+Crossings are gathered from the contour and every hole ring at
+`scan_min + spacing / 2 + n * spacing` while below `scan_max`, where the scan axis is Y for the
+horizontal mode and X for the vertical mode. Crossings are sorted and paired; a pair is emitted
+only when it is non-degenerate and lies inside the region's extent **on the segment's own axis**.
+Each surviving pair becomes one `ExtrusionPath3D` with `role = SupportMaterial`, the supplied Z and
+`speed_factor`, `flow_factor = 1.0` and the module's `line_width`. When no ordinary line is emitted,
+a separate mid-scan fallback is attempted at the axis midpoint; it is a distinct mode, not a
+universal tiny-tip guarantee.
+
+### Domain
+
+Axis-aligned rectangles, notches and holed rectangles in horizontal and vertical modes, with
+positive dyadic dimensions and spacing so the row grid is exact, plus a separated fallback mode and
+a separate nonpositive-spacing and degenerate-ring empty mode. Bounds are `max_abs_units`,
+`max_vertices`, `max_holes`, `max_components`, `max_shrink_candidates`, `max_spacing_units`,
+`max_rows`; `max_abs_units` is at least 200 000 units because the required vertical witness reaches
+y = 20 mm.
+
+### Strategy
+
+Nonshrinking selector over the horizontal-rectangle, vertical-rectangle, notch, holed, fallback and
+degenerate modes with a total generator. Deterministic positive fixtures for every mode run inside
+the callback. Counters for accepted calls, per-mode classes, vertical cases, strokes, segments and
+split rows, plus the six witness classes, are asserted positive after `check`.
+
+### Oracle
+
+Expected intervals are derived independently at the row positions above from the fixture's own
+rectangle edges, and expected segments are compared whole, with holes excluded by the same
+rectangle arithmetic. Every consecutive point pair of every path is additionally checked with the
+boundary-inclusive `oracles::segment_in_region` against the self-built `ExPolygon`. Metadata is
+compared exactly.
+
+### Tolerance
+
+Exact: every scan fixture coordinate is a multiple of 1/8 mm and every spacing a multiple of
+1/4 mm, so `units_to_mm`, the `f64` row accumulation, the mid-scan fallback and `mm_to_units` are
+all exact dyadic arithmetic. The kernel's crossing test `(a > scan) != (b > scan)` makes a ring's
+low edge inclusive and its high edge exclusive, which the model reproduces, so rows that land
+exactly on a hole edge are compared exactly too.
+
+### Shrinking
+
+`tree_renderer_shrink_bounds` drives the real strategy, revalidates the ring structure and the mode
+selection at every state, requires a permitted reduction, and exercises the false-`simplify` and
+repeated-`complicate` states.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, zero rejection budgets. Registry command
+`cargo xtask test --summary --properties --property M-TREE-SCAN --tier routine|extended`.
+Measured timings are in the evidence file.
+
+### Failure record
+
+**Confirmed defect and focused fix (commit `1515f8ce`).** The pair guard compared the segment-axis
+pair against the region's perpendicular extent. In `vertical` mode the pair holds Y coordinates
+while the guard tested `pair[1] <= max_x`, so the required `[0,10] x [0,20]` mm witness at 2.5 mm
+spacing emitted **zero** strokes — all four pairs are `(0.0, 20.0)` and fail `20.0 <= 10.0` — and
+the mid-scan fallback was rejected by the same comparison. Because `vertical` is
+`entry.anchor_layer_index % 2 != 0`, every odd-anchor-layer tree region taller than it is wide lost
+its fill. The kernel now selects the pair extent from the segment's own axis. The no-RNG regression
+`vertical_scan_fill_spans_the_full_y_extent_regression` lives in the crate's `#[cfg(test)] mod
+tests`, fails on the old kernel with `got []` against an expected 4, and needs neither RNGs nor
+`PNP_PROPERTY_CONTEXT`.
+
+### Acceptance
+
+Maps to AC-5, AC-8, AC-N1 and AC-N2. The vertical witness produces exactly four strokes at
+`x = 1.25, 3.75, 6.25, 8.75` mm each spanning `y [0,20]`. `tree_renderer_controls` accepts the
+valid positive observation and then rejects, with the same checker: a single unsplit
+`(1,5) -> (9,5)` mm segment across outer `[0,10]^2` minus `[2,3] x [4,6]`, the U-notch chord
+`(2,5) -> (8,5)`, a dropped interior `y = 1` row, and a false all-empty output.
+
+## M-TREE-RENDER
+
+Registry record: `id = "M-TREE-RENDER"`, `package = "tree-support"`, `target_kind = "lib"`,
+`target_name = "tree_support"`,
+`test_name = "property_tests::proptest_tree_support_walls_and_fill"`,
+`production_symbol = "tree_support::TreeSupport::render_polygon_with_wall_count"`,
+`production_path = "modules/core-modules/tree-support/src/lib.rs"`,
+`features = ["tree-support/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-tree-render"`.
+
+### Stable property ID
+
+`M-TREE-RENDER` — semantic (distinct inset wall bands plus clearance-respecting fill for the tree
+renderer's explicit-wall-count path).
+
+### Owner
+
+Package `tree-support`; lib target `tree_support`; module `property_tests`; production symbol
+`TreeSupport::render_polygon_with_wall_count` (private) at
+`modules/core-modules/tree-support/src/lib.rs`, reached from `TreeSupport::run_support`.
+`TreeSupport::render_polygon` is a test-used wrapper only and is not treated as the production
+explicit-wall-count path.
+
+### Contract
+
+Wall `i` is the region offset by `-line_width * (i + 0.5)`, emitted as a closed ring per contour and
+per hole. Fill is the region offset by `-line_width * wall_count`, scanned at
+`max(fill_spacing_mm, line_width)` through `scan_fill_region`. For a 10 mm square with line width
+`0.5` and two walls this gives the distinct closed wall-centre bands `[0.25, 9.75]` and
+`[0.75, 9.25]`, and fill centre lines inside `[1, 9]^2`. For a hole the outward hole expansion is
+accounted for and every wall and fill segment is checked against the relevant analytically inset
+region. Offset-collapse and small-tip cases are explicit possibly-empty outcomes; nonempty output is
+required only in the independently feasible roomy scenes. `from_config` clamps the configured wall
+count, so the private zero-wall mode is checked as a kernel mode and is never claimed to pass
+through the entrypoint.
+
+### Domain
+
+Sufficiently roomy axis-aligned rectangles and a holed rectangle with line width `0.5` mm, wall
+counts zero, one and two, both scan orientations, and a positive fill spacing, plus explicit
+collapse and sub-pitch fallback modes. Bounds are `max_abs_units`, `max_vertices`, `max_holes`,
+`max_components`, `max_shrink_candidates`, `max_width_units`, `max_walls`, `max_rows`.
+
+### Strategy
+
+Nonshrinking selector over the one-wall, two-wall, holed, zero-wall, holed-zero-wall, collapse and
+fallback modes with a total generator. Deterministic positive fixtures for every mode run inside the
+callback. After `check` the accepted-call count and all nine witness counters (two-wall bands,
+two-wall fill, vertical fill, hole bands, hole split rows, zero-wall exact fill, partial collapse,
+full collapse, sub-pitch fallback) are asserted positive. The per-run mode mix, wall-loop,
+fill-stroke and split-row tallies are reported but not required positive, because a run may
+legitimately generate no fully-collapsing shape — that topology comes from the deterministic
+witness.
+
+### Oracle
+
+Expected extents are derived analytically from the inset arithmetic above — never from
+`offset_polygons` output, which would make the kernel its own oracle. Distinctness of the two wall
+bands is asserted from their derived extents. Fill centre lines are checked against the
+independently inset fill rectangle, and every consecutive point pair of every path is checked with
+the boundary-inclusive `oracles::segment_in_region` against the self-built inset region.
+
+### Tolerance
+
+`CLIPPER_ALLOW = 2` canonical units (200 nm) on every Clipper-derived coordinate, derived as
+follows: the offset delta is a dyadic multiple of 1/4 mm so `delta_mm as f64 * 10_000` is exact;
+Clipper2 rounds each offset vertex to the nearest integer (<= 0.5 unit); the scan kernel then
+re-derives rows through one `f32` round trip and one `mm_to_units` rounding (<= 0.5 unit plus an
+`f32` relative error below 0.06 unit at 10^6 units). The total is <= 1.06 unit, so 2 is a
+factor-of-two margin rather than an observed epsilon. The generator keeps every fill row at least
+625 units (1/16 mm) from every analytic fill edge, far outside the allowance, and the checker
+re-verifies that separation and reports a violation as a fixture failure. The zero-wall mode never
+calls Clipper and is compared with allowance 0. `M-TREE-SCAN` needs no allowance at all: its
+fixtures are on a 1/8 mm grid with 1/4 mm spacings, so the whole comparison is exact dyadic
+arithmetic.
+
+### Shrinking
+
+`tree_renderer_shrink_bounds` drives the real strategy, revalidates the wall count against
+`max_walls`, the roominess precondition and the hole nesting at every state, requires a permitted
+reduction, and exercises the false-`simplify` and repeated-`complicate` states.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, zero rejection budgets. Registry command
+`cargo xtask test --summary --properties --property M-TREE-RENDER --tier routine|extended`.
+Measured timings are in the evidence file.
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression.
+
+### Acceptance
+
+Maps to AC-6, AC-8 and AC-N1. `tree_renderer_controls` accepts the valid positive observation and
+then rejects, with the same checker and its exact failure class: the inner `[0.75,9.25]` loop
+replaced by a duplicate of the outer `[0.25,9.75]` loop (a coincident wall), the hole wall removed
+from the holed case, and fill inserted at `(0.5,5)` outside the required `[1,9]^2` fill region. The
+sub-pitch scan fallback and the offset-collapse/no-work modes are separately observed and are not
+treated as always-success or always-empty.

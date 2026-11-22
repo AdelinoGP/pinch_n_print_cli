@@ -6303,6 +6303,10 @@ fn closest_point_on_segment(p0: [f32; 2], p1: [f32; 2], t: [f32; 2]) -> [f32; 2]
 }
 
 #[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;
+
+#[cfg(test)]
 mod tests {
 
     /// Canonical `SupportNode` ctor: `for (auto& neighbor : parent->merged_neighbours)

@@ -2471,3 +2471,403 @@ rng_algorithm = "chacha"
 isolation = "in_process"
 timeout_ms = 0
 bounds = { max_abs_units = 400000, max_paths = 4, max_points = 4, max_regions = 4, max_anchor_units = 100000 }
+
+[[property]]
+id = "M-SUPPORT-IRONING"
+package = "support-surface-ironing"
+target_kind = "lib"
+target_name = "support_surface_ironing"
+test_name = "property_tests::proptest_support_ironing_fill"
+production_symbol = "support_surface_ironing::SupportSurfaceIroning::fill_expolygon"
+production_path = "modules/core-modules/support-surface-ironing/src/lib.rs"
+features = ["support-surface-ironing/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-support-ironing"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 100000, max_vertices = 8, max_holes = 1, max_components = 1, max_shrink_candidates = 1, max_spacing_units = 10000, max_rows = 10 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 500000, max_vertices = 8, max_holes = 1, max_components = 1, max_shrink_candidates = 1, max_spacing_units = 10000, max_rows = 128 }
+
+[[property]]
+id = "M-TRADITIONAL-SCAN"
+package = "traditional-support"
+target_kind = "lib"
+target_name = "traditional_support"
+test_name = "property_tests::proptest_traditional_support_fill"
+production_symbol = "traditional_support::TraditionalSupport::fill_expolygon"
+production_path = "modules/core-modules/traditional-support/src/lib.rs"
+features = ["traditional-support/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-traditional-scan"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_vertices = 16, max_holes = 2, max_components = 1, max_shrink_candidates = 1, max_spacing_units = 10000, max_rows = 16 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_vertices = 16, max_holes = 2, max_components = 1, max_shrink_candidates = 1, max_spacing_units = 10000, max_rows = 16 }
+
+[[property]]
+id = "M-TREE-SMOOTH"
+package = "tree-support-planner"
+target_kind = "lib"
+target_name = "tree_support_planner"
+test_name = "property_tests::proptest_tree_smoothing_graph"
+production_symbol = "tree_support_planner::smooth_nodes"
+production_path = "modules/core-modules/tree-support-planner/src/lib.rs"
+features = ["tree-support-planner/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-tree-smooth"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 100000, max_nodes = 24, max_layers = 12, max_width_units = 10000 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 1000000, max_nodes = 64, max_layers = 32, max_width_units = 20000 }
+
+[[property]]
+id = "M-TREE-ROLES"
+package = "tree-support-planner"
+target_kind = "lib"
+target_name = "tree_support_planner"
+test_name = "property_tests::proptest_tree_carve_and_roles"
+production_symbol = "tree_support_planner::build_roles_batched"
+production_path = "modules/core-modules/tree-support-planner/src/lib.rs"
+features = ["tree-support-planner/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-tree-roles"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 300000, max_regions = 6, max_cells = 289, max_batch_items = 3 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 1000000, max_regions = 10, max_cells = 625, max_batch_items = 4 }
+
+[[property]]
+id = "M-SUPPORT-RASTER"
+package = "traditional-support-planner"
+target_kind = "lib"
+target_name = "traditional_support_planner"
+test_name = "property_tests::proptest_support_raster_cells"
+production_symbol = "traditional_support_planner::agg_raster::rasterize_polygons"
+production_path = "modules/core-modules/traditional-support-planner/src/agg_raster.rs"
+features = ["traditional-support-planner/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-support-raster"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 80, max_pixel_units = 10, max_grid_width = 8, max_grid_height = 8, max_cells = 64 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 80, max_pixel_units = 10, max_grid_width = 8, max_grid_height = 8, max_cells = 64 }
+
+[[property]]
+id = "M-SUPPORT-HOLES"
+package = "traditional-support-planner"
+target_kind = "lib"
+target_name = "traditional_support_planner"
+test_name = "property_tests::proptest_support_hole_fill"
+production_symbol = "traditional_support_planner::agg_raster::fill_grid_holes"
+production_path = "modules/core-modules/traditional-support-planner/src/agg_raster.rs"
+features = ["traditional-support-planner/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-support-holes"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_grid_width = 6, max_grid_height = 5, max_cells = 25 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_grid_width = 6, max_grid_height = 5, max_cells = 25 }
+
+[[property]]
+id = "M-SUPPORT-GRID"
+package = "traditional-support-planner"
+target_kind = "lib"
+target_name = "traditional_support_planner"
+test_name = "property_tests::proptest_support_grid_extraction"
+production_symbol = "traditional_support_planner::agg_raster::SupportGrid::new"
+production_path = "modules/core-modules/traditional-support-planner/src/agg_raster.rs"
+features = ["traditional-support-planner/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-support-grid"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 40000, max_pixel_units = 5000, max_grid_width = 18, max_grid_height = 8, max_blocks = 2, max_cells = 144 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 40000, max_pixel_units = 5000, max_grid_width = 18, max_grid_height = 8, max_blocks = 2, max_cells = 144 }
+
+[[property]]
+id = "M-SUPPORT-TERRITORY"
+package = "traditional-support-planner"
+target_kind = "lib"
+target_name = "traditional_support_planner"
+test_name = "property_tests::proptest_support_planner_territory"
+production_symbol = "traditional_support_planner::SupportPlanner::clip_to_territory"
+production_path = "modules/core-modules/traditional-support-planner/src/lib.rs"
+features = ["traditional-support-planner/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-support-territory"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 100000, max_clearance_units = 10000, max_cells = 121 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 100000, max_clearance_units = 10000, max_cells = 121 }
+
+[[property]]
+id = "M-TREE-SCAN"
+package = "tree-support"
+target_kind = "lib"
+target_name = "tree_support"
+test_name = "property_tests::proptest_tree_support_scan"
+production_symbol = "tree_support::TreeSupport::scan_fill_region"
+production_path = "modules/core-modules/tree-support/src/lib.rs"
+features = ["tree-support/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-tree-scan"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_vertices = 8, max_holes = 1, max_components = 1, max_shrink_candidates = 1, max_spacing_units = 25000, max_rows = 10 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 200000, max_vertices = 8, max_holes = 1, max_components = 1, max_shrink_candidates = 1, max_spacing_units = 25000, max_rows = 10 }
+
+[[property]]
+id = "M-TREE-RENDER"
+package = "tree-support"
+target_kind = "lib"
+target_name = "tree_support"
+test_name = "property_tests::proptest_tree_support_walls_and_fill"
+production_symbol = "tree_support::TreeSupport::render_polygon_with_wall_count"
+production_path = "modules/core-modules/tree-support/src/lib.rs"
+features = ["tree-support/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-tree-render"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 100000, max_vertices = 8, max_holes = 1, max_components = 1, max_shrink_candidates = 1, max_width_units = 5000, max_walls = 2, max_rows = 10 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_units = 100000, max_vertices = 8, max_holes = 1, max_components = 1, max_shrink_candidates = 1, max_width_units = 5000, max_walls = 2, max_rows = 10 }

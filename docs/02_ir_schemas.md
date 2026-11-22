@@ -1882,7 +1882,7 @@ a contract error, never a best-effort drop.
 
 ### Lightning legacy IR retirement
 
-The legacy host path is retired. Lightning planning runs inside the selected
+The legacy path is retired. Lightning planning runs inside the selected
 `com.core.lightning-infill` artifact during `prepare_print`, from typed committed
 regions, region configs, and the layer plan. One module-private
 `lightning-layer-{global_layer_index}` piece is published per schedule layer;

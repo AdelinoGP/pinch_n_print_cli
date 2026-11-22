@@ -26,6 +26,10 @@
 
 pub mod agg_raster;
 
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;
+
 use std::collections::btree_map;
 use std::collections::{BTreeMap, BTreeSet};
 
