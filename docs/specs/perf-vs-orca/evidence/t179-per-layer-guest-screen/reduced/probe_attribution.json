@@ -1,0 +1,3601 @@
+{
+ "schema": 1,
+ "note": "t179 observation-only probe attribution (8 cells, --profile --profile-verbose --instrument-stderr) plus deterministic guest-fuel candidate ablations (cand1 = TS-1 + IL-1, cand2 = TS-1 + IL-ALL, cand_ts2 = TS-2 + IL-ALL). All runs exited 0, degraded=false, code-1200=0, and matched t175's active reference.json byte-for-byte. Fuel is deterministic executed WASM instructions; self_wall_ns is accumulated parallel scope thread-wall under --profile (attribution only, never a wall claim).",
+ "reference_artifact": "docs/specs/perf-vs-orca/evidence/t175-tiled-collision-carve/reference.json",
+ "probe_cells": {
+  "benchy-classic-off": {
+   "slice_meta": {
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "code_1200_count": 0,
+   "modules": {
+    "com.core.infill-linker": {
+     "calls": 240,
+     "total_fuel": 10293790396,
+     "unmarked_self_fuel": 258865324,
+     "scopes": [
+      {
+       "scope": "t179::il::clip_batch_repair",
+       "calls": 1895,
+       "self_fuel": 3642803297,
+       "total_fuel": 3642803297,
+       "self_wall_ns": 231151800,
+       "total_wall_ns": 231151800
+      },
+      {
+       "scope": "t179::il::clip_batch_attr",
+       "calls": 379,
+       "self_fuel": 1703754357,
+       "total_fuel": 1703754357,
+       "self_wall_ns": 181618000,
+       "total_wall_ns": 181618000
+      },
+      {
+       "scope": "t179::il::clip_batch_exec",
+       "calls": 379,
+       "self_fuel": 1625726754,
+       "total_fuel": 1625726754,
+       "self_wall_ns": 157919200,
+       "total_wall_ns": 157919200
+      },
+      {
+       "scope": "t179::il::connect_bpos_proj",
+       "calls": 9294,
+       "self_fuel": 1093630923,
+       "total_fuel": 1093630923,
+       "self_wall_ns": 78396100,
+       "total_wall_ns": 78396100
+      },
+      {
+       "scope": "t179::il::post_clip_meta",
+       "calls": 392,
+       "self_fuel": 908922968,
+       "total_fuel": 908922968,
+       "self_wall_ns": 103537500,
+       "total_wall_ns": 103537500
+      },
+      {
+       "scope": "t179::il::connect_pair_scan",
+       "calls": 392,
+       "self_fuel": 315814203,
+       "total_fuel": 315814203,
+       "self_wall_ns": 30687500,
+       "total_wall_ns": 30687500
+      },
+      {
+       "scope": "t179::il::prep_clip_new",
+       "calls": 392,
+       "self_fuel": 308364486,
+       "total_fuel": 308364486,
+       "self_wall_ns": 32380300,
+       "total_wall_ns": 32380300
+      },
+      {
+       "scope": "t179::il::connect_merge",
+       "calls": 392,
+       "self_fuel": 194558749,
+       "total_fuel": 194558749,
+       "self_wall_ns": 19982800,
+       "total_wall_ns": 19982800
+      },
+      {
+       "scope": "t179::il::setup",
+       "calls": 1612,
+       "self_fuel": 131972069,
+       "total_fuel": 135448978,
+       "self_wall_ns": 47024300,
+       "total_wall_ns": 47787500
+      },
+      {
+       "scope": "t179::il::connect_bpos_hole",
+       "calls": 9294,
+       "self_fuel": 54315529,
+       "total_fuel": 54315529,
+       "self_wall_ns": 6804900,
+       "total_wall_ns": 6804900
+      },
+      {
+       "scope": "t179::il::offset_boundary",
+       "calls": 294,
+       "self_fuel": 18260856,
+       "total_fuel": 18260856,
+       "self_wall_ns": 46778900,
+       "total_wall_ns": 46778900
+      },
+      {
+       "scope": "t179::il::graph_new",
+       "calls": 392,
+       "self_fuel": 13012344,
+       "total_fuel": 13012344,
+       "self_wall_ns": 1333300,
+       "total_wall_ns": 1333300
+      },
+      {
+       "scope": "t179::il::chain_order",
+       "calls": 176,
+       "self_fuel": 12525851,
+       "total_fuel": 12525851,
+       "self_wall_ns": 1290500,
+       "total_wall_ns": 1290500
+      },
+      {
+       "scope": "t179::il::clip_batch_fallback",
+       "calls": 1,
+       "self_fuel": 5069182,
+       "total_fuel": 5069182,
+       "self_wall_ns": 441100,
+       "total_wall_ns": 441100
+      },
+      {
+       "scope": "polygon_ops::clip_polygons",
+       "calls": 302,
+       "self_fuel": 3476909,
+       "total_fuel": 3476909,
+       "self_wall_ns": 763200,
+       "total_wall_ns": 763200
+      },
+      {
+       "scope": "t179::il::clip_single_subj",
+       "calls": 7,
+       "self_fuel": 1534520,
+       "total_fuel": 1534520,
+       "self_wall_ns": 157700,
+       "total_wall_ns": 157700
+      },
+      {
+       "scope": "t179::il::output_emit",
+       "calls": 480,
+       "self_fuel": 1182075,
+       "total_fuel": 1182075,
+       "self_wall_ns": 805100,
+       "total_wall_ns": 805100
+      }
+     ]
+    },
+    "com.core.tree-support": {
+     "calls": 240,
+     "total_fuel": 86388663,
+     "unmarked_self_fuel": 86388663,
+     "scopes": []
+    }
+   },
+   "tree_support_counters": {},
+   "infill_linker_counters": {
+    "b_holes": 110,
+    "b_polys": 1133,
+    "b_rings": 1243,
+    "b_verts": 64451,
+    "bpos_hole_edges": 535938,
+    "bpos_hole_tests": 4565,
+    "bpos_proj_edges": 4514464,
+    "bpos_proj_rings": 28837,
+    "chain_paths": 1424,
+    "clip_ambig_repairs": 1895,
+    "clip_batch_calls": 379,
+    "clip_cand_bbox_pass": 60169,
+    "clip_err_fallback_subjs": 36,
+    "clip_err_fallbacks": 1,
+    "clip_out_segs": 47777,
+    "clip_single_calls": 7,
+    "clipped_paths": 4647,
+    "clipped_pts": 42536,
+    "endpoints": 9190,
+    "invocations": 392,
+    "merges_joined": 3182,
+    "merges_stub": 7,
+    "meta_scans": 3217128,
+    "pair_iters": 1138604,
+    "raw_fallbacks": 98,
+    "subjects": 12434,
+    "union_groups": 0
+   },
+   "infill_linker_l2_counters": {
+    "b_holes": 9,
+    "b_polys": 17,
+    "b_rings": 26,
+    "b_verts": 12583,
+    "bpos_hole_edges": 81090,
+    "bpos_hole_tests": 432,
+    "bpos_proj_edges": 1942069,
+    "bpos_proj_rings": 4202,
+    "chain_paths": 78,
+    "clip_ambig_repairs": 35,
+    "clip_batch_calls": 4,
+    "clip_cand_bbox_pass": 1429,
+    "clip_err_fallback_subjs": 0,
+    "clip_err_fallbacks": 0,
+    "clip_out_segs": 740,
+    "clip_single_calls": 0,
+    "clipped_paths": 332,
+    "clipped_pts": 698,
+    "endpoints": 664,
+    "invocations": 4,
+    "merges_joined": 254,
+    "merges_stub": 0,
+    "meta_scans": 3618,
+    "pair_iters": 207208,
+    "raw_fallbacks": 0,
+    "subjects": 544,
+    "union_groups": 0
+   },
+   "infill_linker_l2_scopes": {
+    "elapsed_ms_probed": 191,
+    "call_fuel": 3508538326,
+    "scopes": [
+     {
+      "scope": "t179::il::clip_batch_repair",
+      "calls": 35,
+      "self_fuel": 2485139728,
+      "total_fuel": 2485139728,
+      "self_wall_ns": 117004700,
+      "total_wall_ns": 117004700
+     },
+     {
+      "scope": "t179::il::connect_bpos_proj",
+      "calls": 664,
+      "self_fuel": 475104886,
+      "total_fuel": 475104886,
+      "self_wall_ns": 22991600,
+      "total_wall_ns": 22991600
+     },
+     {
+      "scope": "t179::il::clip_batch_exec",
+      "calls": 4,
+      "self_fuel": 266093764,
+      "total_fuel": 266093764,
+      "self_wall_ns": 12522800,
+      "total_wall_ns": 12522800
+     },
+     {
+      "scope": "t179::il::prep_clip_new",
+      "calls": 4,
+      "self_fuel": 111919398,
+      "total_fuel": 111919398,
+      "self_wall_ns": 5802900,
+      "total_wall_ns": 5802900
+     },
+     {
+      "scope": "t179::il::connect_merge",
+      "calls": 4,
+      "self_fuel": 66700040,
+      "total_fuel": 66700040,
+      "self_wall_ns": 4489100,
+      "total_wall_ns": 4489100
+     },
+     {
+      "scope": "t179::il::connect_pair_scan",
+      "calls": 4,
+      "self_fuel": 47672119,
+      "total_fuel": 47672119,
+      "self_wall_ns": 2295100,
+      "total_wall_ns": 2295100
+     },
+     {
+      "scope": "t179::il::clip_batch_attr",
+      "calls": 4,
+      "self_fuel": 25976032,
+      "total_fuel": 25976032,
+      "self_wall_ns": 1552100,
+      "total_wall_ns": 1552100
+     },
+     {
+      "scope": "t179::il::connect_bpos_hole",
+      "calls": 664,
+      "self_fuel": 9102660,
+      "total_fuel": 9102660,
+      "self_wall_ns": 512500,
+      "total_wall_ns": 512500
+     },
+     {
+      "scope": "t179::il::setup",
+      "calls": 17,
+      "self_fuel": 4861132,
+      "total_fuel": 4865231,
+      "self_wall_ns": 725900,
+      "total_wall_ns": 730800
+     },
+     {
+      "scope": "t179::il::offset_boundary",
+      "calls": 4,
+      "self_fuel": 3481764,
+      "total_fuel": 3481764,
+      "self_wall_ns": 20376900,
+      "total_wall_ns": 20376900
+     },
+     {
+      "scope": "t179::il::graph_new",
+      "calls": 4,
+      "self_fuel": 2418987,
+      "total_fuel": 2418987,
+      "self_wall_ns": 92400,
+      "total_wall_ns": 92400
+     },
+     {
+      "scope": "t179::il::post_clip_meta",
+      "calls": 4,
+      "self_fuel": 1814541,
+      "total_fuel": 1814541,
+      "self_wall_ns": 126300,
+      "total_wall_ns": 126300
+     },
+     {
+      "scope": "t179::il::chain_order",
+      "calls": 4,
+      "self_fuel": 1301304,
+      "total_fuel": 1301304,
+      "self_wall_ns": 66900,
+      "total_wall_ns": 66900
+     },
+     {
+      "scope": "t179::il::output_emit",
+      "calls": 2,
+      "self_fuel": 49779,
+      "total_fuel": 49779,
+      "self_wall_ns": 5100,
+      "total_wall_ns": 5100
+     },
+     {
+      "scope": "polygon_ops::clip_polygons",
+      "calls": 4,
+      "self_fuel": 4099,
+      "total_fuel": 4099,
+      "self_wall_ns": 4900,
+      "total_wall_ns": 4900
+     }
+    ]
+   },
+   "clean_baseline_fuel": {
+    "total_guest_fuel": 20274452478,
+    "com.core.tree-support": 86395717,
+    "com.core.infill-linker": 10271458422
+   },
+   "reference_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+   "reference_match": true
+  },
+  "benchy-classic-on": {
+   "slice_meta": {
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "code_1200_count": 0,
+   "modules": {
+    "com.core.tree-support": {
+     "calls": 240,
+     "total_fuel": 41953712487,
+     "unmarked_self_fuel": 220186597,
+     "scopes": [
+      {
+       "scope": "t179::ts::paint_policy",
+       "calls": 929,
+       "self_fuel": 33599624974,
+       "total_fuel": 33599624974,
+       "self_wall_ns": 2246294200,
+       "total_wall_ns": 2246294200
+      },
+      {
+       "scope": "t179::ts::skeleton",
+       "calls": 929,
+       "self_fuel": 6527893392,
+       "total_fuel": 6527893392,
+       "self_wall_ns": 278510500,
+       "total_wall_ns": 278510500
+      },
+      {
+       "scope": "polygon_ops::clip_polygons",
+       "calls": 242,
+       "self_fuel": 1339418373,
+       "total_fuel": 1339418373,
+       "self_wall_ns": 140868000,
+       "total_wall_ns": 140868000
+      },
+      {
+       "scope": "t179::ts::scan_fill",
+       "calls": 929,
+       "self_fuel": 157978668,
+       "total_fuel": 157978668,
+       "self_wall_ns": 13596100,
+       "total_wall_ns": 13596100
+      },
+      {
+       "scope": "t179::ts::render_walls",
+       "calls": 929,
+       "self_fuel": 59732319,
+       "total_fuel": 59732319,
+       "self_wall_ns": 191708400,
+       "total_wall_ns": 191708400
+      },
+      {
+       "scope": "t179::ts::render_fill_offset",
+       "calls": 929,
+       "self_fuel": 18624694,
+       "total_fuel": 18624694,
+       "self_wall_ns": 258799800,
+       "total_wall_ns": 258799800
+      },
+      {
+       "scope": "polygon_ops::offset",
+       "calls": 12,
+       "self_fuel": 17328935,
+       "total_fuel": 17328935,
+       "self_wall_ns": 1420000,
+       "total_wall_ns": 1420000
+      },
+      {
+       "scope": "t179::ts::regularize",
+       "calls": 200,
+       "self_fuel": 8457034,
+       "total_fuel": 170687856,
+       "self_wall_ns": 2733700,
+       "total_wall_ns": 16274600
+      },
+      {
+       "scope": "t179::ts::output_emit",
+       "calls": 929,
+       "self_fuel": 3836552,
+       "total_fuel": 3836552,
+       "self_wall_ns": 1332300,
+       "total_wall_ns": 1332300
+      },
+      {
+       "scope": "t179::ts::role_union",
+       "calls": 200,
+       "self_fuel": 347475,
+       "total_fuel": 1194863961,
+       "self_wall_ns": 376500,
+       "total_wall_ns": 129123600
+      },
+      {
+       "scope": "t179::ts::plan_lookup",
+       "calls": 240,
+       "self_fuel": 263554,
+       "total_fuel": 263554,
+       "self_wall_ns": 160400,
+       "total_wall_ns": 160400
+      },
+      {
+       "scope": "t179::ts::pitches",
+       "calls": 240,
+       "self_fuel": 19920,
+       "total_fuel": 19920,
+       "self_wall_ns": 172000,
+       "total_wall_ns": 172000
+      }
+     ]
+    },
+    "com.core.infill-linker": {
+     "calls": 240,
+     "total_fuel": 10293987417,
+     "unmarked_self_fuel": 258872951,
+     "scopes": [
+      {
+       "scope": "t179::il::clip_batch_repair",
+       "calls": 1895,
+       "self_fuel": 3642855441,
+       "total_fuel": 3642855441,
+       "self_wall_ns": 343757000,
+       "total_wall_ns": 343757000
+      },
+      {
+       "scope": "t179::il::clip_batch_attr",
+       "calls": 379,
+       "self_fuel": 1703768349,
+       "total_fuel": 1703768349,
+       "self_wall_ns": 188954300,
+       "total_wall_ns": 188954300
+      },
+      {
+       "scope": "t179::il::clip_batch_exec",
+       "calls": 379,
+       "self_fuel": 1625879983,
+       "total_fuel": 1625879983,
+       "self_wall_ns": 175401500,
+       "total_wall_ns": 175401500
+      },
+      {
+       "scope": "t179::il::connect_bpos_proj",
+       "calls": 9294,
+       "self_fuel": 1093630923,
+       "total_fuel": 1093630923,
+       "self_wall_ns": 89425300,
+       "total_wall_ns": 89425300
+      },
+      {
+       "scope": "t179::il::post_clip_meta",
+       "calls": 392,
+       "self_fuel": 908916141,
+       "total_fuel": 908916141,
+       "self_wall_ns": 100982500,
+       "total_wall_ns": 100982500
+      },
+      {
+       "scope": "t179::il::connect_pair_scan",
+       "calls": 392,
+       "self_fuel": 315790059,
+       "total_fuel": 315790059,
+       "self_wall_ns": 36056700,
+       "total_wall_ns": 36056700
+      },
+      {
+       "scope": "t179::il::prep_clip_new",
+       "calls": 392,
+       "self_fuel": 308358306,
+       "total_fuel": 308358306,
+       "self_wall_ns": 38470500,
+       "total_wall_ns": 38470500
+      },
+      {
+       "scope": "t179::il::connect_merge",
+       "calls": 392,
+       "self_fuel": 194574422,
+       "total_fuel": 194574422,
+       "self_wall_ns": 21731600,
+       "total_wall_ns": 21731600
+      },
+      {
+       "scope": "t179::il::setup",
+       "calls": 1612,
+       "self_fuel": 131970781,
+       "total_fuel": 135447837,
+       "self_wall_ns": 51940300,
+       "total_wall_ns": 52675600
+      },
+      {
+       "scope": "t179::il::connect_bpos_hole",
+       "calls": 9294,
+       "self_fuel": 54315529,
+       "total_fuel": 54315529,
+       "self_wall_ns": 6991900,
+       "total_wall_ns": 6991900
+      },
+      {
+       "scope": "t179::il::offset_boundary",
+       "calls": 294,
+       "self_fuel": 18257864,
+       "total_fuel": 18257864,
+       "self_wall_ns": 47170700,
+       "total_wall_ns": 47170700
+      },
+      {
+       "scope": "t179::il::graph_new",
+       "calls": 392,
+       "self_fuel": 13011570,
+       "total_fuel": 13011570,
+       "self_wall_ns": 1285300,
+       "total_wall_ns": 1285300
+      },
+      {
+       "scope": "t179::il::chain_order",
+       "calls": 176,
+       "self_fuel": 12524246,
+       "total_fuel": 12524246,
+       "self_wall_ns": 1346800,
+       "total_wall_ns": 1346800
+      },
+      {
+       "scope": "t179::il::clip_batch_fallback",
+       "calls": 1,
+       "self_fuel": 5069182,
+       "total_fuel": 5069182,
+       "self_wall_ns": 434400,
+       "total_wall_ns": 434400
+      },
+      {
+       "scope": "polygon_ops::clip_polygons",
+       "calls": 302,
+       "self_fuel": 3477056,
+       "total_fuel": 3477056,
+       "self_wall_ns": 735300,
+       "total_wall_ns": 735300
+      },
+      {
+       "scope": "t179::il::clip_single_subj",
+       "calls": 7,
+       "self_fuel": 1534520,
+       "total_fuel": 1534520,
+       "self_wall_ns": 145300,
+       "total_wall_ns": 145300
+      },
+      {
+       "scope": "t179::il::output_emit",
+       "calls": 480,
+       "self_fuel": 1180094,
+       "total_fuel": 1180094,
+       "self_wall_ns": 532300,
+       "total_wall_ns": 532300
+      }
+     ]
+    }
+   },
+   "tree_support_counters": {
+    "entries": 200,
+    "expoly_verts": 351836,
+    "expolys": 929,
+    "expolys_body": 920,
+    "expolys_iface": 9,
+    "fill_offsets": 929,
+    "fill_paths": 3782,
+    "offgrid_paths": 0,
+    "paint_cover_hits": 0,
+    "paint_cover_regions": 929,
+    "paint_has_ann": 0,
+    "paint_queries": 929,
+    "paint_ring_calls": 1043091,
+    "paint_ring_edges": 723509123,
+    "paint_vert_loops": 350862,
+    "pie_bbox_pass": 50462,
+    "pie_bbox_scans": 358765272,
+    "pie_ray_edges": 48610246,
+    "regize_calls": 200,
+    "regize_none": 194,
+    "skel_calls": 929,
+    "skel_extra_nonzero": 143,
+    "skel_hits": 44966,
+    "skel_needed_tests": 1697,
+    "skel_pts": 213486,
+    "union_in_polys": 929,
+    "union_singletons": 9,
+    "unions": 206,
+    "wall_offsets": 1072,
+    "wall_paths": 1282
+   },
+   "infill_linker_counters": {
+    "b_holes": 110,
+    "b_polys": 1133,
+    "b_rings": 1243,
+    "b_verts": 64451,
+    "bpos_hole_edges": 535938,
+    "bpos_hole_tests": 4565,
+    "bpos_proj_edges": 4514464,
+    "bpos_proj_rings": 28837,
+    "chain_paths": 1424,
+    "clip_ambig_repairs": 1895,
+    "clip_batch_calls": 379,
+    "clip_cand_bbox_pass": 60169,
+    "clip_err_fallback_subjs": 36,
+    "clip_err_fallbacks": 1,
+    "clip_out_segs": 47777,
+    "clip_single_calls": 7,
+    "clipped_paths": 4647,
+    "clipped_pts": 42536,
+    "endpoints": 9190,
+    "invocations": 392,
+    "merges_joined": 3182,
+    "merges_stub": 7,
+    "meta_scans": 3217128,
+    "pair_iters": 1138604,
+    "raw_fallbacks": 98,
+    "subjects": 12434,
+    "union_groups": 0
+   },
+   "infill_linker_l2_counters": {
+    "b_holes": 9,
+    "b_polys": 17,
+    "b_rings": 26,
+    "b_verts": 12583,
+    "bpos_hole_edges": 81090,
+    "bpos_hole_tests": 432,
+    "bpos_proj_edges": 1942069,
+    "bpos_proj_rings": 4202,
+    "chain_paths": 78,
+    "clip_ambig_repairs": 35,
+    "clip_batch_calls": 4,
+    "clip_cand_bbox_pass": 1429,
+    "clip_err_fallback_subjs": 0,
+    "clip_err_fallbacks": 0,
+    "clip_out_segs": 740,
+    "clip_single_calls": 0,
+    "clipped_paths": 332,
+    "clipped_pts": 698,
+    "endpoints": 664,
+    "invocations": 4,
+    "merges_joined": 254,
+    "merges_stub": 0,
+    "meta_scans": 3618,
+    "pair_iters": 207208,
+    "raw_fallbacks": 0,
+    "subjects": 544,
+    "union_groups": 0
+   },
+   "infill_linker_l2_scopes": {
+    "elapsed_ms_probed": 359,
+    "call_fuel": 3508479821,
+    "scopes": [
+     {
+      "scope": "t179::il::clip_batch_repair",
+      "calls": 35,
+      "self_fuel": 2485139728,
+      "total_fuel": 2485139728,
+      "self_wall_ns": 240339800,
+      "total_wall_ns": 240339800
+     },
+     {
+      "scope": "t179::il::connect_bpos_proj",
+      "calls": 664,
+      "self_fuel": 475104886,
+      "total_fuel": 475104886,
+      "self_wall_ns": 35757600,
+      "total_wall_ns": 35757600
+     },
+     {
+      "scope": "t179::il::clip_batch_exec",
+      "calls": 4,
+      "self_fuel": 266116221,
+      "total_fuel": 266116221,
+      "self_wall_ns": 26509900,
+      "total_wall_ns": 26509900
+     },
+     {
+      "scope": "t179::il::prep_clip_new",
+      "calls": 4,
+      "self_fuel": 111913346,
+      "total_fuel": 111913346,
+      "self_wall_ns": 9908600,
+      "total_wall_ns": 9908600
+     },
+     {
+      "scope": "t179::il::connect_merge",
+      "calls": 4,
+      "self_fuel": 66655886,
+      "total_fuel": 66655886,
+      "self_wall_ns": 6894900,
+      "total_wall_ns": 6894900
+     },
+     {
+      "scope": "t179::il::connect_pair_scan",
+      "calls": 4,
+      "self_fuel": 47647200,
+      "total_fuel": 47647200,
+      "self_wall_ns": 4156000,
+      "total_wall_ns": 4156000
+     },
+     {
+      "scope": "t179::il::clip_batch_attr",
+      "calls": 4,
+      "self_fuel": 25976244,
+      "total_fuel": 25976244,
+      "self_wall_ns": 3141400,
+      "total_wall_ns": 3141400
+     },
+     {
+      "scope": "t179::il::connect_bpos_hole",
+      "calls": 664,
+      "self_fuel": 9102660,
+      "total_fuel": 9102660,
+      "self_wall_ns": 838100,
+      "total_wall_ns": 838100
+     },
+     {
+      "scope": "t179::il::setup",
+      "calls": 17,
+      "self_fuel": 4855747,
+      "total_fuel": 4859846,
+      "self_wall_ns": 863500,
+      "total_wall_ns": 868200
+     },
+     {
+      "scope": "t179::il::offset_boundary",
+      "calls": 4,
+      "self_fuel": 3477677,
+      "total_fuel": 3477677,
+      "self_wall_ns": 26740200,
+      "total_wall_ns": 26740200
+     },
+     {
+      "scope": "t179::il::graph_new",
+      "calls": 4,
+      "self_fuel": 2417596,
+      "total_fuel": 2417596,
+      "self_wall_ns": 169900,
+      "total_wall_ns": 169900
+     },
+     {
+      "scope": "t179::il::post_clip_meta",
+      "calls": 4,
+      "self_fuel": 1816274,
+      "total_fuel": 1816274,
+      "self_wall_ns": 223400,
+      "total_wall_ns": 223400
+     },
+     {
+      "scope": "t179::il::chain_order",
+      "calls": 4,
+      "self_fuel": 1301116,
+      "total_fuel": 1301116,
+      "self_wall_ns": 104500,
+      "total_wall_ns": 104500
+     },
+     {
+      "scope": "t179::il::output_emit",
+      "calls": 2,
+      "self_fuel": 49497,
+      "total_fuel": 49497,
+      "self_wall_ns": 5200,
+      "total_wall_ns": 5200
+     },
+     {
+      "scope": "polygon_ops::clip_polygons",
+      "calls": 4,
+      "self_fuel": 4099,
+      "total_fuel": 4099,
+      "self_wall_ns": 4700,
+      "total_wall_ns": 4700
+     }
+    ]
+   },
+   "clean_baseline_fuel": {
+    "total_guest_fuel": 68743598625,
+    "com.core.tree-support": 41936863586,
+    "com.core.infill-linker": 10271494689
+   },
+   "reference_sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+   "reference_match": true
+  },
+  "benchy-arachne-off": {
+   "slice_meta": {
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "code_1200_count": 0,
+   "modules": {
+    "com.core.infill-linker": {
+     "calls": 240,
+     "total_fuel": 11129931758,
+     "unmarked_self_fuel": 266488718,
+     "scopes": [
+      {
+       "scope": "t179::il::clip_batch_repair",
+       "calls": 1878,
+       "self_fuel": 4093640170,
+       "total_fuel": 4093640170,
+       "self_wall_ns": 296148900,
+       "total_wall_ns": 296148900
+      },
+      {
+       "scope": "t179::il::clip_batch_attr",
+       "calls": 382,
+       "self_fuel": 1797953751,
+       "total_fuel": 1797953751,
+       "self_wall_ns": 195509600,
+       "total_wall_ns": 195509600
+      },
+      {
+       "scope": "t179::il::clip_batch_exec",
+       "calls": 382,
+       "self_fuel": 1706173776,
+       "total_fuel": 1706173776,
+       "self_wall_ns": 180749400,
+       "total_wall_ns": 180749400
+      },
+      {
+       "scope": "t179::il::connect_bpos_proj",
+       "calls": 9810,
+       "self_fuel": 1182601017,
+       "total_fuel": 1182601017,
+       "self_wall_ns": 90100900,
+       "total_wall_ns": 90100900
+      },
+      {
+       "scope": "t179::il::post_clip_meta",
+       "calls": 397,
+       "self_fuel": 949072679,
+       "total_fuel": 949072679,
+       "self_wall_ns": 107088500,
+       "total_wall_ns": 107088500
+      },
+      {
+       "scope": "t179::il::prep_clip_new",
+       "calls": 397,
+       "self_fuel": 346571875,
+       "total_fuel": 346571875,
+       "self_wall_ns": 47704800,
+       "total_wall_ns": 47704800
+      },
+      {
+       "scope": "t179::il::connect_pair_scan",
+       "calls": 397,
+       "self_fuel": 326653733,
+       "total_fuel": 326653733,
+       "self_wall_ns": 31994800,
+       "total_wall_ns": 31994800
+      },
+      {
+       "scope": "t179::il::connect_merge",
+       "calls": 397,
+       "self_fuel": 208083624,
+       "total_fuel": 208083624,
+       "self_wall_ns": 21147800,
+       "total_wall_ns": 21147800
+      },
+      {
+       "scope": "t179::il::setup",
+       "calls": 1650,
+       "self_fuel": 132678088,
+       "total_fuel": 136712219,
+       "self_wall_ns": 47373800,
+       "total_wall_ns": 48236400
+      },
+      {
+       "scope": "t179::il::connect_bpos_hole",
+       "calls": 9810,
+       "self_fuel": 65158645,
+       "total_fuel": 65158645,
+       "self_wall_ns": 9145600,
+       "total_wall_ns": 9145600
+      },
+      {
+       "scope": "t179::il::offset_boundary",
+       "calls": 308,
+       "self_fuel": 20446087,
+       "total_fuel": 20446087,
+       "self_wall_ns": 53644900,
+       "total_wall_ns": 53644900
+      },
+      {
+       "scope": "t179::il::graph_new",
+       "calls": 397,
+       "self_fuel": 15057158,
+       "total_fuel": 15057158,
+       "self_wall_ns": 1808700,
+       "total_wall_ns": 1808700
+      },
+      {
+       "scope": "t179::il::chain_order",
+       "calls": 191,
+       "self_fuel": 13254438,
+       "total_fuel": 13254438,
+       "self_wall_ns": 1382500,
+       "total_wall_ns": 1382500
+      },
+      {
+       "scope": "polygon_ops::clip_polygons",
+       "calls": 316,
+       "self_fuel": 4034131,
+       "total_fuel": 4034131,
+       "self_wall_ns": 862600,
+       "total_wall_ns": 862600
+      },
+      {
+       "scope": "t179::il::output_emit",
+       "calls": 480,
+       "self_fuel": 1220721,
+       "total_fuel": 1220721,
+       "self_wall_ns": 557000,
+       "total_wall_ns": 557000
+      },
+      {
+       "scope": "t179::il::clip_single_subj",
+       "calls": 4,
+       "self_fuel": 843147,
+       "total_fuel": 843147,
+       "self_wall_ns": 88300,
+       "total_wall_ns": 88300
+      }
+     ]
+    },
+    "com.core.tree-support": {
+     "calls": 240,
+     "total_fuel": 86744304,
+     "unmarked_self_fuel": 86744304,
+     "scopes": []
+    }
+   },
+   "tree_support_counters": {},
+   "infill_linker_counters": {
+    "b_holes": 114,
+    "b_polys": 1122,
+    "b_rings": 1236,
+    "b_verts": 74675,
+    "bpos_hole_edges": 640956,
+    "bpos_hole_tests": 4905,
+    "bpos_proj_edges": 4878323,
+    "bpos_proj_rings": 30419,
+    "chain_paths": 1480,
+    "clip_ambig_repairs": 1878,
+    "clip_batch_calls": 382,
+    "clip_cand_bbox_pass": 64482,
+    "clip_err_fallback_subjs": 0,
+    "clip_err_fallbacks": 0,
+    "clip_out_segs": 50063,
+    "clip_single_calls": 4,
+    "clipped_paths": 4905,
+    "clipped_pts": 44401,
+    "endpoints": 9682,
+    "invocations": 397,
+    "merges_joined": 3362,
+    "merges_stub": 12,
+    "meta_scans": 3358898,
+    "pair_iters": 1182420,
+    "raw_fallbacks": 89,
+    "subjects": 11998,
+    "union_groups": 0
+   },
+   "infill_linker_l2_counters": {
+    "b_holes": 10,
+    "b_polys": 16,
+    "b_rings": 26,
+    "b_verts": 12608,
+    "bpos_hole_edges": 127066,
+    "bpos_hole_tests": 486,
+    "bpos_proj_edges": 1970867,
+    "bpos_proj_rings": 4246,
+    "chain_paths": 79,
+    "clip_ambig_repairs": 35,
+    "clip_batch_calls": 4,
+    "clip_cand_bbox_pass": 1463,
+    "clip_err_fallback_subjs": 0,
+    "clip_err_fallbacks": 0,
+    "clip_out_segs": 758,
+    "clip_single_calls": 0,
+    "clipped_paths": 334,
+    "clipped_pts": 706,
+    "endpoints": 668,
+    "invocations": 4,
+    "merges_joined": 255,
+    "merges_stub": 0,
+    "meta_scans": 4027,
+    "pair_iters": 207368,
+    "raw_fallbacks": 0,
+    "subjects": 544,
+    "union_groups": 0
+   },
+   "infill_linker_l2_scopes": {
+    "elapsed_ms_probed": 270,
+    "call_fuel": 3618514160,
+    "scopes": [
+     {
+      "scope": "t179::il::clip_batch_repair",
+      "calls": 35,
+      "self_fuel": 2578329779,
+      "total_fuel": 2578329779,
+      "self_wall_ns": 152780100,
+      "total_wall_ns": 152780100
+     },
+     {
+      "scope": "t179::il::connect_bpos_proj",
+      "calls": 668,
+      "self_fuel": 482109218,
+      "total_fuel": 482109218,
+      "self_wall_ns": 23823700,
+      "total_wall_ns": 23823700
+     },
+     {
+      "scope": "t179::il::clip_batch_exec",
+      "calls": 4,
+      "self_fuel": 268759485,
+      "total_fuel": 268759485,
+      "self_wall_ns": 32039300,
+      "total_wall_ns": 32039300
+     },
+     {
+      "scope": "t179::il::prep_clip_new",
+      "calls": 4,
+      "self_fuel": 113697936,
+      "total_fuel": 113697936,
+      "self_wall_ns": 19016700,
+      "total_wall_ns": 19016700
+     },
+     {
+      "scope": "t179::il::connect_merge",
+      "calls": 4,
+      "self_fuel": 66620443,
+      "total_fuel": 66620443,
+      "self_wall_ns": 4546700,
+      "total_wall_ns": 4546700
+     },
+     {
+      "scope": "t179::il::connect_pair_scan",
+      "calls": 4,
+      "self_fuel": 47690322,
+      "total_fuel": 47690322,
+      "self_wall_ns": 2321800,
+      "total_wall_ns": 2321800
+     },
+     {
+      "scope": "t179::il::clip_batch_attr",
+      "calls": 4,
+      "self_fuel": 26546011,
+      "total_fuel": 26546011,
+      "self_wall_ns": 2593200,
+      "total_wall_ns": 2593200
+     },
+     {
+      "scope": "t179::il::connect_bpos_hole",
+      "calls": 668,
+      "self_fuel": 14131559,
+      "total_fuel": 14131559,
+      "self_wall_ns": 718300,
+      "total_wall_ns": 718300
+     },
+     {
+      "scope": "t179::il::setup",
+      "calls": 17,
+      "self_fuel": 4879967,
+      "total_fuel": 4884066,
+      "self_wall_ns": 892000,
+      "total_wall_ns": 897200
+     },
+     {
+      "scope": "t179::il::offset_boundary",
+      "calls": 4,
+      "self_fuel": 3140788,
+      "total_fuel": 3140788,
+      "self_wall_ns": 28579500,
+      "total_wall_ns": 28579500
+     },
+     {
+      "scope": "t179::il::graph_new",
+      "calls": 4,
+      "self_fuel": 2422633,
+      "total_fuel": 2422633,
+      "self_wall_ns": 95600,
+      "total_wall_ns": 95600
+     },
+     {
+      "scope": "t179::il::post_clip_meta",
+      "calls": 4,
+      "self_fuel": 1967174,
+      "total_fuel": 1967174,
+      "self_wall_ns": 134800,
+      "total_wall_ns": 134800
+     },
+     {
+      "scope": "t179::il::chain_order",
+      "calls": 4,
+      "self_fuel": 1302056,
+      "total_fuel": 1302056,
+      "self_wall_ns": 67700,
+      "total_wall_ns": 67700
+     },
+     {
+      "scope": "t179::il::output_emit",
+      "calls": 2,
+      "self_fuel": 53553,
+      "total_fuel": 53553,
+      "self_wall_ns": 5600,
+      "total_wall_ns": 5600
+     },
+     {
+      "scope": "polygon_ops::clip_polygons",
+      "calls": 4,
+      "self_fuel": 4099,
+      "total_fuel": 4099,
+      "self_wall_ns": 5200,
+      "total_wall_ns": 5200
+     }
+    ]
+   },
+   "clean_baseline_fuel": {
+    "total_guest_fuel": 20478001619,
+    "com.core.tree-support": 86740221,
+    "com.core.infill-linker": 11107637619
+   },
+   "reference_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+   "reference_match": true
+  },
+  "benchy-arachne-on": {
+   "slice_meta": {
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "code_1200_count": 0,
+   "modules": {
+    "com.core.tree-support": {
+     "calls": 240,
+     "total_fuel": 41953621668,
+     "unmarked_self_fuel": 220593593,
+     "scopes": [
+      {
+       "scope": "t179::ts::paint_policy",
+       "calls": 929,
+       "self_fuel": 33599624974,
+       "total_fuel": 33599624974,
+       "self_wall_ns": 2328964200,
+       "total_wall_ns": 2328964200
+      },
+      {
+       "scope": "t179::ts::skeleton",
+       "calls": 929,
+       "self_fuel": 6527893392,
+       "total_fuel": 6527893392,
+       "self_wall_ns": 277252200,
+       "total_wall_ns": 277252200
+      },
+      {
+       "scope": "polygon_ops::clip_polygons",
+       "calls": 242,
+       "self_fuel": 1339004381,
+       "total_fuel": 1339004381,
+       "self_wall_ns": 138678600,
+       "total_wall_ns": 138678600
+      },
+      {
+       "scope": "t179::ts::scan_fill",
+       "calls": 929,
+       "self_fuel": 157982262,
+       "total_fuel": 157982262,
+       "self_wall_ns": 13375000,
+       "total_wall_ns": 13375000
+      },
+      {
+       "scope": "t179::ts::render_walls",
+       "calls": 929,
+       "self_fuel": 59656469,
+       "total_fuel": 59656469,
+       "self_wall_ns": 158728500,
+       "total_wall_ns": 158728500
+      },
+      {
+       "scope": "t179::ts::render_fill_offset",
+       "calls": 929,
+       "self_fuel": 18629727,
+       "total_fuel": 18629727,
+       "self_wall_ns": 262861900,
+       "total_wall_ns": 262861900
+      },
+      {
+       "scope": "polygon_ops::offset",
+       "calls": 12,
+       "self_fuel": 17332148,
+       "total_fuel": 17332148,
+       "self_wall_ns": 1393000,
+       "total_wall_ns": 1393000
+      },
+      {
+       "scope": "t179::ts::regularize",
+       "calls": 200,
+       "self_fuel": 8466091,
+       "total_fuel": 170597687,
+       "self_wall_ns": 2812000,
+       "total_wall_ns": 16301800
+      },
+      {
+       "scope": "t179::ts::output_emit",
+       "calls": 929,
+       "self_fuel": 3804532,
+       "total_fuel": 3804532,
+       "self_wall_ns": 1251200,
+       "total_wall_ns": 1251200
+      },
+      {
+       "scope": "t179::ts::role_union",
+       "calls": 200,
+       "self_fuel": 350625,
+       "total_fuel": 1194555558,
+       "self_wall_ns": 393300,
+       "total_wall_ns": 126975100
+      },
+      {
+       "scope": "t179::ts::plan_lookup",
+       "calls": 240,
+       "self_fuel": 263554,
+       "total_fuel": 263554,
+       "self_wall_ns": 174100,
+       "total_wall_ns": 174100
+      },
+      {
+       "scope": "t179::ts::pitches",
+       "calls": 240,
+       "self_fuel": 19920,
+       "total_fuel": 19920,
+       "self_wall_ns": 184900,
+       "total_wall_ns": 184900
+      }
+     ]
+    },
+    "com.core.infill-linker": {
+     "calls": 240,
+     "total_fuel": 11129526188,
+     "unmarked_self_fuel": 266441277,
+     "scopes": [
+      {
+       "scope": "t179::il::clip_batch_repair",
+       "calls": 1878,
+       "self_fuel": 4093309138,
+       "total_fuel": 4093309138,
+       "self_wall_ns": 382737500,
+       "total_wall_ns": 382737500
+      },
+      {
+       "scope": "t179::il::clip_batch_attr",
+       "calls": 382,
+       "self_fuel": 1797986487,
+       "total_fuel": 1797986487,
+       "self_wall_ns": 201484900,
+       "total_wall_ns": 201484900
+      },
+      {
+       "scope": "t179::il::clip_batch_exec",
+       "calls": 382,
+       "self_fuel": 1706132763,
+       "total_fuel": 1706132763,
+       "self_wall_ns": 190582200,
+       "total_wall_ns": 190582200
+      },
+      {
+       "scope": "t179::il::connect_bpos_proj",
+       "calls": 9810,
+       "self_fuel": 1182601017,
+       "total_fuel": 1182601017,
+       "self_wall_ns": 102295500,
+       "total_wall_ns": 102295500
+      },
+      {
+       "scope": "t179::il::post_clip_meta",
+       "calls": 397,
+       "self_fuel": 949096667,
+       "total_fuel": 949096667,
+       "self_wall_ns": 103381800,
+       "total_wall_ns": 103381800
+      },
+      {
+       "scope": "t179::il::prep_clip_new",
+       "calls": 397,
+       "self_fuel": 346586188,
+       "total_fuel": 346586188,
+       "self_wall_ns": 37301700,
+       "total_wall_ns": 37301700
+      },
+      {
+       "scope": "t179::il::connect_pair_scan",
+       "calls": 397,
+       "self_fuel": 326649011,
+       "total_fuel": 326649011,
+       "self_wall_ns": 35485000,
+       "total_wall_ns": 35485000
+      },
+      {
+       "scope": "t179::il::connect_merge",
+       "calls": 397,
+       "self_fuel": 208053281,
+       "total_fuel": 208053281,
+       "self_wall_ns": 23921900,
+       "total_wall_ns": 23921900
+      },
+      {
+       "scope": "t179::il::setup",
+       "calls": 1650,
+       "self_fuel": 132651655,
+       "total_fuel": 136685756,
+       "self_wall_ns": 61216200,
+       "total_wall_ns": 62088100
+      },
+      {
+       "scope": "t179::il::connect_bpos_hole",
+       "calls": 9810,
+       "self_fuel": 65158645,
+       "total_fuel": 65158645,
+       "self_wall_ns": 12003200,
+       "total_wall_ns": 12003200
+      },
+      {
+       "scope": "t179::il::offset_boundary",
+       "calls": 308,
+       "self_fuel": 20446640,
+       "total_fuel": 20446640,
+       "self_wall_ns": 51635600,
+       "total_wall_ns": 51635600
+      },
+      {
+       "scope": "t179::il::graph_new",
+       "calls": 397,
+       "self_fuel": 15058154,
+       "total_fuel": 15058154,
+       "self_wall_ns": 1426000,
+       "total_wall_ns": 1426000
+      },
+      {
+       "scope": "t179::il::chain_order",
+       "calls": 191,
+       "self_fuel": 13256919,
+       "total_fuel": 13256919,
+       "self_wall_ns": 1519200,
+       "total_wall_ns": 1519200
+      },
+      {
+       "scope": "polygon_ops::clip_polygons",
+       "calls": 316,
+       "self_fuel": 4034101,
+       "total_fuel": 4034101,
+       "self_wall_ns": 871900,
+       "total_wall_ns": 871900
+      },
+      {
+       "scope": "t179::il::output_emit",
+       "calls": 480,
+       "self_fuel": 1221166,
+       "total_fuel": 1221166,
+       "self_wall_ns": 548500,
+       "total_wall_ns": 548500
+      },
+      {
+       "scope": "t179::il::clip_single_subj",
+       "calls": 4,
+       "self_fuel": 843079,
+       "total_fuel": 843079,
+       "self_wall_ns": 82300,
+       "total_wall_ns": 82300
+      }
+     ]
+    }
+   },
+   "tree_support_counters": {
+    "entries": 200,
+    "expoly_verts": 351836,
+    "expolys": 929,
+    "expolys_body": 920,
+    "expolys_iface": 9,
+    "fill_offsets": 929,
+    "fill_paths": 3782,
+    "offgrid_paths": 0,
+    "paint_cover_hits": 0,
+    "paint_cover_regions": 929,
+    "paint_has_ann": 0,
+    "paint_queries": 929,
+    "paint_ring_calls": 1043091,
+    "paint_ring_edges": 723509123,
+    "paint_vert_loops": 350862,
+    "pie_bbox_pass": 50462,
+    "pie_bbox_scans": 358765272,
+    "pie_ray_edges": 48610246,
+    "regize_calls": 200,
+    "regize_none": 194,
+    "skel_calls": 929,
+    "skel_extra_nonzero": 143,
+    "skel_hits": 44966,
+    "skel_needed_tests": 1697,
+    "skel_pts": 213486,
+    "union_in_polys": 929,
+    "union_singletons": 9,
+    "unions": 206,
+    "wall_offsets": 1072,
+    "wall_paths": 1282
+   },
+   "infill_linker_counters": {
+    "b_holes": 114,
+    "b_polys": 1122,
+    "b_rings": 1236,
+    "b_verts": 74675,
+    "bpos_hole_edges": 640956,
+    "bpos_hole_tests": 4905,
+    "bpos_proj_edges": 4878323,
+    "bpos_proj_rings": 30419,
+    "chain_paths": 1480,
+    "clip_ambig_repairs": 1878,
+    "clip_batch_calls": 382,
+    "clip_cand_bbox_pass": 64482,
+    "clip_err_fallback_subjs": 0,
+    "clip_err_fallbacks": 0,
+    "clip_out_segs": 50063,
+    "clip_single_calls": 4,
+    "clipped_paths": 4905,
+    "clipped_pts": 44401,
+    "endpoints": 9682,
+    "invocations": 397,
+    "merges_joined": 3362,
+    "merges_stub": 12,
+    "meta_scans": 3358898,
+    "pair_iters": 1182420,
+    "raw_fallbacks": 89,
+    "subjects": 11998,
+    "union_groups": 0
+   },
+   "infill_linker_l2_counters": {
+    "b_holes": 10,
+    "b_polys": 16,
+    "b_rings": 26,
+    "b_verts": 12608,
+    "bpos_hole_edges": 127066,
+    "bpos_hole_tests": 486,
+    "bpos_proj_edges": 1970867,
+    "bpos_proj_rings": 4246,
+    "chain_paths": 79,
+    "clip_ambig_repairs": 35,
+    "clip_batch_calls": 4,
+    "clip_cand_bbox_pass": 1463,
+    "clip_err_fallback_subjs": 0,
+    "clip_err_fallbacks": 0,
+    "clip_out_segs": 758,
+    "clip_single_calls": 0,
+    "clipped_paths": 334,
+    "clipped_pts": 706,
+    "endpoints": 668,
+    "invocations": 4,
+    "merges_joined": 255,
+    "merges_stub": 0,
+    "meta_scans": 4027,
+    "pair_iters": 207368,
+    "raw_fallbacks": 0,
+    "subjects": 544,
+    "union_groups": 0
+   },
+   "infill_linker_l2_scopes": {
+    "elapsed_ms_probed": 383,
+    "call_fuel": 3618514172,
+    "scopes": [
+     {
+      "scope": "t179::il::clip_batch_repair",
+      "calls": 35,
+      "self_fuel": 2578329779,
+      "total_fuel": 2578329779,
+      "self_wall_ns": 247699000,
+      "total_wall_ns": 247699000
+     },
+     {
+      "scope": "t179::il::connect_bpos_proj",
+      "calls": 668,
+      "self_fuel": 482109218,
+      "total_fuel": 482109218,
+      "self_wall_ns": 41331500,
+      "total_wall_ns": 41331500
+     },
+     {
+      "scope": "t179::il::clip_batch_exec",
+      "calls": 4,
+      "self_fuel": 268759485,
+      "total_fuel": 268759485,
+      "self_wall_ns": 35343400,
+      "total_wall_ns": 35343400
+     },
+     {
+      "scope": "t179::il::prep_clip_new",
+      "calls": 4,
+      "self_fuel": 113697936,
+      "total_fuel": 113697936,
+      "self_wall_ns": 9602200,
+      "total_wall_ns": 9602200
+     },
+     {
+      "scope": "t179::il::connect_merge",
+      "calls": 4,
+      "self_fuel": 66620443,
+      "total_fuel": 66620443,
+      "self_wall_ns": 7224800,
+      "total_wall_ns": 7224800
+     },
+     {
+      "scope": "t179::il::connect_pair_scan",
+      "calls": 4,
+      "self_fuel": 47690322,
+      "total_fuel": 47690322,
+      "self_wall_ns": 4727700,
+      "total_wall_ns": 4727700
+     },
+     {
+      "scope": "t179::il::clip_batch_attr",
+      "calls": 4,
+      "self_fuel": 26546011,
+      "total_fuel": 26546011,
+      "self_wall_ns": 2853700,
+      "total_wall_ns": 2853700
+     },
+     {
+      "scope": "t179::il::connect_bpos_hole",
+      "calls": 668,
+      "self_fuel": 14131559,
+      "total_fuel": 14131559,
+      "self_wall_ns": 1362000,
+      "total_wall_ns": 1362000
+     },
+     {
+      "scope": "t179::il::setup",
+      "calls": 17,
+      "self_fuel": 4879967,
+      "total_fuel": 4884066,
+      "self_wall_ns": 1058900,
+      "total_wall_ns": 1070400
+     },
+     {
+      "scope": "t179::il::offset_boundary",
+      "calls": 4,
+      "self_fuel": 3140788,
+      "total_fuel": 3140788,
+      "self_wall_ns": 27363700,
+      "total_wall_ns": 27363700
+     },
+     {
+      "scope": "t179::il::graph_new",
+      "calls": 4,
+      "self_fuel": 2422633,
+      "total_fuel": 2422633,
+      "self_wall_ns": 199300,
+      "total_wall_ns": 199300
+     },
+     {
+      "scope": "t179::il::post_clip_meta",
+      "calls": 4,
+      "self_fuel": 1967174,
+      "total_fuel": 1967174,
+      "self_wall_ns": 240100,
+      "total_wall_ns": 240100
+     },
+     {
+      "scope": "t179::il::chain_order",
+      "calls": 4,
+      "self_fuel": 1302056,
+      "total_fuel": 1302056,
+      "self_wall_ns": 138700,
+      "total_wall_ns": 138700
+     },
+     {
+      "scope": "t179::il::output_emit",
+      "calls": 2,
+      "self_fuel": 53553,
+      "total_fuel": 53553,
+      "self_wall_ns": 10700,
+      "total_wall_ns": 10700
+     },
+     {
+      "scope": "polygon_ops::clip_polygons",
+      "calls": 4,
+      "self_fuel": 4099,
+      "total_fuel": 4099,
+      "self_wall_ns": 11500,
+      "total_wall_ns": 11500
+     }
+    ]
+   },
+   "clean_baseline_fuel": {
+    "total_guest_fuel": 68947370960,
+    "com.core.tree-support": 41936500830,
+    "com.core.infill-linker": 11107852514
+   },
+   "reference_sha256": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+   "reference_match": true
+  },
+  "base-classic-off": {
+   "slice_meta": {
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "code_1200_count": 0,
+   "modules": {
+    "com.core.infill-linker": {
+     "calls": 496,
+     "total_fuel": 37511642996,
+     "unmarked_self_fuel": 772461072,
+     "scopes": [
+      {
+       "scope": "t179::il::clip_batch_attr",
+       "calls": 750,
+       "self_fuel": 11991825241,
+       "total_fuel": 11991825241,
+       "self_wall_ns": 1439040200,
+       "total_wall_ns": 1439040200
+      },
+      {
+       "scope": "t179::il::post_clip_meta",
+       "calls": 902,
+       "self_fuel": 8147097553,
+       "total_fuel": 8147097553,
+       "self_wall_ns": 944442800,
+       "total_wall_ns": 944442800
+      },
+      {
+       "scope": "t179::il::clip_batch_repair",
+       "calls": 3820,
+       "self_fuel": 6609505670,
+       "total_fuel": 6609505670,
+       "self_wall_ns": 585874000,
+       "total_wall_ns": 585874000
+      },
+      {
+       "scope": "t179::il::clip_batch_exec",
+       "calls": 750,
+       "self_fuel": 4680349196,
+       "total_fuel": 4680349196,
+       "self_wall_ns": 516856000,
+       "total_wall_ns": 516856000
+      },
+      {
+       "scope": "t179::il::connect_bpos_proj",
+       "calls": 29514,
+       "self_fuel": 2494212172,
+       "total_fuel": 2494212172,
+       "self_wall_ns": 243299000,
+       "total_wall_ns": 243299000
+      },
+      {
+       "scope": "t179::il::prep_clip_new",
+       "calls": 902,
+       "self_fuel": 789195632,
+       "total_fuel": 789195632,
+       "self_wall_ns": 95053200,
+       "total_wall_ns": 95053200
+      },
+      {
+       "scope": "t179::il::connect_pair_scan",
+       "calls": 902,
+       "self_fuel": 762109796,
+       "total_fuel": 762109796,
+       "self_wall_ns": 85286200,
+       "total_wall_ns": 85286200
+      },
+      {
+       "scope": "t179::il::connect_merge",
+       "calls": 902,
+       "self_fuel": 712754464,
+       "total_fuel": 712754464,
+       "self_wall_ns": 92730500,
+       "total_wall_ns": 92730500
+      },
+      {
+       "scope": "t179::il::setup",
+       "calls": 3834,
+       "self_fuel": 368204253,
+       "total_fuel": 368989646,
+       "self_wall_ns": 145819600,
+       "total_wall_ns": 147390100
+      },
+      {
+       "scope": "t179::il::offset_boundary",
+       "calls": 767,
+       "self_fuel": 53100340,
+       "total_fuel": 53100340,
+       "self_wall_ns": 108209800,
+       "total_wall_ns": 108209800
+      },
+      {
+       "scope": "t179::il::connect_bpos_hole",
+       "calls": 29514,
+       "self_fuel": 48016479,
+       "total_fuel": 48016479,
+       "self_wall_ns": 15031700,
+       "total_wall_ns": 15031700
+      },
+      {
+       "scope": "t179::il::graph_new",
+       "calls": 902,
+       "self_fuel": 35108987,
+       "total_fuel": 35108987,
+       "self_wall_ns": 3350400,
+       "total_wall_ns": 3350400
+      },
+      {
+       "scope": "t179::il::chain_order",
+       "calls": 473,
+       "self_fuel": 33417871,
+       "total_fuel": 33417871,
+       "self_wall_ns": 3628600,
+       "total_wall_ns": 3628600
+      },
+      {
+       "scope": "t179::il::clip_single_subj",
+       "calls": 137,
+       "self_fuel": 10188035,
+       "total_fuel": 10188035,
+       "self_wall_ns": 1279700,
+       "total_wall_ns": 1279700
+      },
+      {
+       "scope": "t179::il::output_emit",
+       "calls": 992,
+       "self_fuel": 3310842,
+       "total_fuel": 3310842,
+       "self_wall_ns": 1547300,
+       "total_wall_ns": 1547300
+      },
+      {
+       "scope": "polygon_ops::clip_polygons",
+       "calls": 767,
+       "self_fuel": 785393,
+       "total_fuel": 785393,
+       "self_wall_ns": 1570500,
+       "total_wall_ns": 1570500
+      }
+     ]
+    },
+    "com.core.tree-support": {
+     "calls": 496,
+     "total_fuel": 351910695,
+     "unmarked_self_fuel": 351910695,
+     "scopes": []
+    }
+   },
+   "tree_support_counters": {},
+   "infill_linker_counters": {
+    "b_holes": 111,
+    "b_polys": 1972,
+    "b_rings": 2083,
+    "b_verts": 173095,
+    "bpos_hole_edges": 395450,
+    "bpos_hole_tests": 8146,
+    "bpos_proj_edges": 10134028,
+    "bpos_proj_rings": 69204,
+    "chain_paths": 3983,
+    "clip_ambig_repairs": 3820,
+    "clip_batch_calls": 750,
+    "clip_cand_bbox_pass": 318363,
+    "clip_err_fallback_subjs": 0,
+    "clip_err_fallbacks": 0,
+    "clip_out_segs": 253610,
+    "clip_single_calls": 137,
+    "clipped_paths": 14757,
+    "clipped_pts": 261839,
+    "endpoints": 29514,
+    "invocations": 902,
+    "merges_joined": 10600,
+    "merges_stub": 4,
+    "meta_scans": 29290385,
+    "pair_iters": 2203172,
+    "raw_fallbacks": 135,
+    "subjects": 16771,
+    "union_groups": 0
+   },
+   "infill_linker_l2_counters": {
+    "b_holes": 1,
+    "b_polys": 9,
+    "b_rings": 10,
+    "b_verts": 658,
+    "bpos_hole_edges": 0,
+    "bpos_hole_tests": 0,
+    "bpos_proj_edges": 336,
+    "bpos_proj_rings": 6,
+    "chain_paths": 0,
+    "clip_ambig_repairs": 0,
+    "clip_batch_calls": 5,
+    "clip_cand_bbox_pass": 25,
+    "clip_err_fallback_subjs": 0,
+    "clip_err_fallbacks": 0,
+    "clip_out_segs": 25,
+    "clip_single_calls": 0,
+    "clipped_paths": 3,
+    "clipped_pts": 6,
+    "endpoints": 6,
+    "invocations": 5,
+    "merges_joined": 2,
+    "merges_stub": 0,
+    "meta_scans": 12,
+    "pair_iters": 36,
+    "raw_fallbacks": 2,
+    "subjects": 49,
+    "union_groups": 0
+   },
+   "infill_linker_l2_scopes": {
+    "elapsed_ms_probed": 1,
+    "call_fuel": 7145177,
+    "scopes": [
+     {
+      "scope": "t179::il::clip_batch_exec",
+      "calls": 5,
+      "self_fuel": 3538613,
+      "total_fuel": 3538613,
+      "self_wall_ns": 317700,
+      "total_wall_ns": 317700
+     },
+     {
+      "scope": "t179::il::prep_clip_new",
+      "calls": 5,
+      "self_fuel": 2132399,
+      "total_fuel": 2132399,
+      "self_wall_ns": 224200,
+      "total_wall_ns": 224200
+     },
+     {
+      "scope": "t179::il::setup",
+      "calls": 17,
+      "self_fuel": 316503,
+      "total_fuel": 319551,
+      "self_wall_ns": 86900,
+      "total_wall_ns": 89600
+     },
+     {
+      "scope": "t179::il::clip_batch_attr",
+      "calls": 5,
+      "self_fuel": 205915,
+      "total_fuel": 205915,
+      "self_wall_ns": 23900,
+      "total_wall_ns": 23900
+     },
+     {
+      "scope": "t179::il::graph_new",
+      "calls": 5,
+      "self_fuel": 131743,
+      "total_fuel": 131743,
+      "self_wall_ns": 11500,
+      "total_wall_ns": 11500
+     },
+     {
+      "scope": "t179::il::offset_boundary",
+      "calls": 3,
+      "self_fuel": 99992,
+      "total_fuel": 99992,
+      "self_wall_ns": 175700,
+      "total_wall_ns": 175700
+     },
+     {
+      "scope": "t179::il::connect_bpos_proj",
+      "calls": 6,
+      "self_fuel": 83484,
+      "total_fuel": 83484,
+      "self_wall_ns": 12400,
+      "total_wall_ns": 12400
+     },
+     {
+      "scope": "t179::il::connect_merge",
+      "calls": 5,
+      "self_fuel": 53320,
+      "total_fuel": 53320,
+      "self_wall_ns": 14400,
+      "total_wall_ns": 14400
+     },
+     {
+      "scope": "t179::il::post_clip_meta",
+      "calls": 5,
+      "self_fuel": 20080,
+      "total_fuel": 20080,
+      "self_wall_ns": 6700,
+      "total_wall_ns": 6700
+     },
+     {
+      "scope": "t179::il::connect_pair_scan",
+      "calls": 5,
+      "self_fuel": 13253,
+      "total_fuel": 13253,
+      "self_wall_ns": 5900,
+      "total_wall_ns": 5900
+     },
+     {
+      "scope": "polygon_ops::clip_polygons",
+      "calls": 3,
+      "self_fuel": 3048,
+      "total_fuel": 3048,
+      "self_wall_ns": 2700,
+      "total_wall_ns": 2700
+     },
+     {
+      "scope": "t179::il::output_emit",
+      "calls": 2,
+      "self_fuel": 1710,
+      "total_fuel": 1710,
+      "self_wall_ns": 1900,
+      "total_wall_ns": 1900
+     },
+     {
+      "scope": "t179::il::connect_bpos_hole",
+      "calls": 6,
+      "self_fuel": 438,
+      "total_fuel": 438,
+      "self_wall_ns": 2300,
+      "total_wall_ns": 2300
+     }
+    ]
+   },
+   "clean_baseline_fuel": {
+    "total_guest_fuel": 123274940949,
+    "com.core.tree-support": 351881160,
+    "com.core.infill-linker": 37462296938
+   },
+   "reference_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+   "reference_match": true
+  },
+  "base-classic-on": {
+   "slice_meta": {
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "code_1200_count": 0,
+   "modules": {
+    "com.core.tree-support": {
+     "calls": 496,
+     "total_fuel": 388749639547,
+     "unmarked_self_fuel": 971180269,
+     "scopes": [
+      {
+       "scope": "t179::ts::paint_policy",
+       "calls": 2775,
+       "self_fuel": 312058743069,
+       "total_fuel": 312058743069,
+       "self_wall_ns": 21296773700,
+       "total_wall_ns": 21296773700
+      },
+      {
+       "scope": "t179::ts::skeleton",
+       "calls": 2775,
+       "self_fuel": 63370367128,
+       "total_fuel": 63370367128,
+       "self_wall_ns": 2936535000,
+       "total_wall_ns": 2936535000
+      },
+      {
+       "scope": "polygon_ops::clip_polygons",
+       "calls": 1009,
+       "self_fuel": 11093255165,
+       "total_fuel": 11093255165,
+       "self_wall_ns": 995643600,
+       "total_wall_ns": 995643600
+      },
+      {
+       "scope": "t179::ts::scan_fill",
+       "calls": 2775,
+       "self_fuel": 712238052,
+       "total_fuel": 712238052,
+       "self_wall_ns": 62194900,
+       "total_wall_ns": 62194900
+      },
+      {
+       "scope": "t179::ts::render_walls",
+       "calls": 2775,
+       "self_fuel": 254229625,
+       "total_fuel": 254229625,
+       "self_wall_ns": 991512400,
+       "total_wall_ns": 991512400
+      },
+      {
+       "scope": "polygon_ops::offset",
+       "calls": 170,
+       "self_fuel": 168101026,
+       "total_fuel": 168101026,
+       "self_wall_ns": 14230800,
+       "total_wall_ns": 14230800
+      },
+      {
+       "scope": "t179::ts::render_fill_offset",
+       "calls": 2775,
+       "self_fuel": 61838127,
+       "total_fuel": 61838127,
+       "self_wall_ns": 1541950500,
+       "total_wall_ns": 1541950500
+      },
+      {
+       "scope": "t179::ts::regularize",
+       "calls": 432,
+       "self_fuel": 44890689,
+       "total_fuel": 5438612114,
+       "self_wall_ns": 6477900,
+       "total_wall_ns": 464917200
+      },
+      {
+       "scope": "t179::ts::output_emit",
+       "calls": 2775,
+       "self_fuel": 13057354,
+       "total_fuel": 13057354,
+       "self_wall_ns": 4501100,
+       "total_wall_ns": 4501100
+      },
+      {
+       "scope": "t179::ts::role_union",
+       "calls": 432,
+       "self_fuel": 1132792,
+       "total_fuel": 5868767558,
+       "self_wall_ns": 975800,
+       "total_wall_ns": 552410900
+      },
+      {
+       "scope": "t179::ts::plan_lookup",
+       "calls": 496,
+       "self_fuel": 565083,
+       "total_fuel": 565083,
+       "self_wall_ns": 398100,
+       "total_wall_ns": 398100
+      },
+      {
+       "scope": "t179::ts::pitches",
+       "calls": 496,
+       "self_fuel": 41168,
+       "total_fuel": 41168,
+       "self_wall_ns": 390800,
+       "total_wall_ns": 390800
+      }
+     ]
+    },
+    "com.core.infill-linker": {
+     "calls": 496,
+     "total_fuel": 37511766632,
+     "unmarked_self_fuel": 772452143,
+     "scopes": [
+      {
+       "scope": "t179::il::clip_batch_attr",
+       "calls": 750,
+       "self_fuel": 11991825213,
+       "total_fuel": 11991825213,
+       "self_wall_ns": 1401586200,
+       "total_wall_ns": 1401586200
+      },
+      {
+       "scope": "t179::il::post_clip_meta",
+       "calls": 902,
+       "self_fuel": 8147140963,
+       "total_fuel": 8147140963,
+       "self_wall_ns": 969065700,
+       "total_wall_ns": 969065700
+      },
+      {
+       "scope": "t179::il::clip_batch_repair",
+       "calls": 3820,
+       "self_fuel": 6609425470,
+       "total_fuel": 6609425470,
+       "self_wall_ns": 550153300,
+       "total_wall_ns": 550153300
+      },
+      {
+       "scope": "t179::il::clip_batch_exec",
+       "calls": 750,
+       "self_fuel": 4680489269,
+       "total_fuel": 4680489269,
+       "self_wall_ns": 488349400,
+       "total_wall_ns": 488349400
+      },
+      {
+       "scope": "t179::il::connect_bpos_proj",
+       "calls": 29514,
+       "self_fuel": 2494212172,
+       "total_fuel": 2494212172,
+       "self_wall_ns": 220092300,
+       "total_wall_ns": 220092300
+      },
+      {
+       "scope": "t179::il::prep_clip_new",
+       "calls": 902,
+       "self_fuel": 789173842,
+       "total_fuel": 789173842,
+       "self_wall_ns": 98106700,
+       "total_wall_ns": 98106700
+      },
+      {
+       "scope": "t179::il::connect_pair_scan",
+       "calls": 902,
+       "self_fuel": 762104028,
+       "total_fuel": 762104028,
+       "self_wall_ns": 86223200,
+       "total_wall_ns": 86223200
+      },
+      {
+       "scope": "t179::il::connect_merge",
+       "calls": 902,
+       "self_fuel": 712822155,
+       "total_fuel": 712822155,
+       "self_wall_ns": 79415200,
+       "total_wall_ns": 79415200
+      },
+      {
+       "scope": "t179::il::setup",
+       "calls": 3834,
+       "self_fuel": 368191997,
+       "total_fuel": 368977205,
+       "self_wall_ns": 127831900,
+       "total_wall_ns": 129246500
+      },
+      {
+       "scope": "t179::il::offset_boundary",
+       "calls": 767,
+       "self_fuel": 53102812,
+       "total_fuel": 53102812,
+       "self_wall_ns": 96809600,
+       "total_wall_ns": 96809600
+      },
+      {
+       "scope": "t179::il::connect_bpos_hole",
+       "calls": 29514,
+       "self_fuel": 48016479,
+       "total_fuel": 48016479,
+       "self_wall_ns": 14235500,
+       "total_wall_ns": 14235500
+      },
+      {
+       "scope": "t179::il::graph_new",
+       "calls": 902,
+       "self_fuel": 35110786,
+       "total_fuel": 35110786,
+       "self_wall_ns": 3210600,
+       "total_wall_ns": 3210600
+      },
+      {
+       "scope": "t179::il::chain_order",
+       "calls": 473,
+       "self_fuel": 33414282,
+       "total_fuel": 33414282,
+       "self_wall_ns": 3547100,
+       "total_wall_ns": 3547100
+      },
+      {
+       "scope": "t179::il::clip_single_subj",
+       "calls": 137,
+       "self_fuel": 10188137,
+       "total_fuel": 10188137,
+       "self_wall_ns": 1224100,
+       "total_wall_ns": 1224100
+      },
+      {
+       "scope": "t179::il::output_emit",
+       "calls": 992,
+       "self_fuel": 3311676,
+       "total_fuel": 3311676,
+       "self_wall_ns": 1607000,
+       "total_wall_ns": 1607000
+      },
+      {
+       "scope": "polygon_ops::clip_polygons",
+       "calls": 767,
+       "self_fuel": 785208,
+       "total_fuel": 785208,
+       "self_wall_ns": 1414600,
+       "total_wall_ns": 1414600
+      }
+     ]
+    }
+   },
+   "tree_support_counters": {
+    "entries": 432,
+    "expoly_verts": 1234066,
+    "expolys": 2775,
+    "expolys_body": 2667,
+    "expolys_iface": 108,
+    "fill_offsets": 2775,
+    "fill_paths": 13610,
+    "offgrid_paths": 0,
+    "paint_cover_hits": 0,
+    "paint_cover_regions": 2775,
+    "paint_has_ann": 0,
+    "paint_queries": 2775,
+    "paint_ring_calls": 2245670,
+    "paint_ring_edges": 6756284530,
+    "paint_vert_loops": 1165322,
+    "pie_bbox_pass": 286920,
+    "pie_bbox_scans": 3429754096,
+    "pie_ray_edges": 492479339,
+    "regize_calls": 432,
+    "regize_none": 350,
+    "skel_calls": 2775,
+    "skel_extra_nonzero": 795,
+    "skel_hits": 274807,
+    "skel_needed_tests": 17216,
+    "skel_pts": 1828426,
+    "union_in_polys": 2775,
+    "union_singletons": 77,
+    "unions": 517,
+    "wall_offsets": 3570,
+    "wall_paths": 4529
+   },
+   "infill_linker_counters": {
+    "b_holes": 111,
+    "b_polys": 1972,
+    "b_rings": 2083,
+    "b_verts": 173095,
+    "bpos_hole_edges": 395450,
+    "bpos_hole_tests": 8146,
+    "bpos_proj_edges": 10134028,
+    "bpos_proj_rings": 69204,
+    "chain_paths": 3983,
+    "clip_ambig_repairs": 3820,
+    "clip_batch_calls": 750,
+    "clip_cand_bbox_pass": 318363,
+    "clip_err_fallback_subjs": 0,
+    "clip_err_fallbacks": 0,
+    "clip_out_segs": 253610,
+    "clip_single_calls": 137,
+    "clipped_paths": 14757,
+    "clipped_pts": 261839,
+    "endpoints": 29514,
+    "invocations": 902,
+    "merges_joined": 10600,
+    "merges_stub": 4,
+    "meta_scans": 29290385,
+    "pair_iters": 2203172,
+    "raw_fallbacks": 135,
+    "subjects": 16771,
+    "union_groups": 0
+   },
+   "infill_linker_l2_counters": {
+    "b_holes": 1,
+    "b_polys": 9,
+    "b_rings": 10,
+    "b_verts": 658,
+    "bpos_hole_edges": 0,
+    "bpos_hole_tests": 0,
+    "bpos_proj_edges": 336,
+    "bpos_proj_rings": 6,
+    "chain_paths": 0,
+    "clip_ambig_repairs": 0,
+    "clip_batch_calls": 5,
+    "clip_cand_bbox_pass": 25,
+    "clip_err_fallback_subjs": 0,
+    "clip_err_fallbacks": 0,
+    "clip_out_segs": 25,
+    "clip_single_calls": 0,
+    "clipped_paths": 3,
+    "clipped_pts": 6,
+    "endpoints": 6,
+    "invocations": 5,
+    "merges_joined": 2,
+    "merges_stub": 0,
+    "meta_scans": 12,
+    "pair_iters": 36,
+    "raw_fallbacks": 2,
+    "subjects": 49,
+    "union_groups": 0
+   },
+   "infill_linker_l2_scopes": {
+    "elapsed_ms_probed": 1,
+    "call_fuel": 7147407,
+    "scopes": [
+     {
+      "scope": "t179::il::clip_batch_exec",
+      "calls": 5,
+      "self_fuel": 3538613,
+      "total_fuel": 3538613,
+      "self_wall_ns": 328700,
+      "total_wall_ns": 328700
+     },
+     {
+      "scope": "t179::il::prep_clip_new",
+      "calls": 5,
+      "self_fuel": 2132399,
+      "total_fuel": 2132399,
+      "self_wall_ns": 241200,
+      "total_wall_ns": 241200
+     },
+     {
+      "scope": "t179::il::setup",
+      "calls": 17,
+      "self_fuel": 316705,
+      "total_fuel": 319753,
+      "self_wall_ns": 87900,
+      "total_wall_ns": 92800
+     },
+     {
+      "scope": "t179::il::clip_batch_attr",
+      "calls": 5,
+      "self_fuel": 205915,
+      "total_fuel": 205915,
+      "self_wall_ns": 28200,
+      "total_wall_ns": 28200
+     },
+     {
+      "scope": "t179::il::graph_new",
+      "calls": 5,
+      "self_fuel": 131743,
+      "total_fuel": 131743,
+      "self_wall_ns": 14100,
+      "total_wall_ns": 14100
+     },
+     {
+      "scope": "t179::il::offset_boundary",
+      "calls": 3,
+      "self_fuel": 99992,
+      "total_fuel": 99992,
+      "self_wall_ns": 179400,
+      "total_wall_ns": 179400
+     },
+     {
+      "scope": "t179::il::connect_bpos_proj",
+      "calls": 6,
+      "self_fuel": 83484,
+      "total_fuel": 83484,
+      "self_wall_ns": 11500,
+      "total_wall_ns": 11500
+     },
+     {
+      "scope": "t179::il::connect_merge",
+      "calls": 5,
+      "self_fuel": 53320,
+      "total_fuel": 53320,
+      "self_wall_ns": 17000,
+      "total_wall_ns": 17000
+     },
+     {
+      "scope": "t179::il::post_clip_meta",
+      "calls": 5,
+      "self_fuel": 20080,
+      "total_fuel": 20080,
+      "self_wall_ns": 8100,
+      "total_wall_ns": 8100
+     },
+     {
+      "scope": "t179::il::connect_pair_scan",
+      "calls": 5,
+      "self_fuel": 13253,
+      "total_fuel": 13253,
+      "self_wall_ns": 7300,
+      "total_wall_ns": 7300
+     },
+     {
+      "scope": "polygon_ops::clip_polygons",
+      "calls": 3,
+      "self_fuel": 3048,
+      "total_fuel": 3048,
+      "self_wall_ns": 4900,
+      "total_wall_ns": 4900
+     },
+     {
+      "scope": "t179::il::output_emit",
+      "calls": 2,
+      "self_fuel": 1710,
+      "total_fuel": 1710,
+      "self_wall_ns": 2600,
+      "total_wall_ns": 2600
+     },
+     {
+      "scope": "t179::il::connect_bpos_hole",
+      "calls": 6,
+      "self_fuel": 438,
+      "total_fuel": 438,
+      "self_wall_ns": 2200,
+      "total_wall_ns": 2200
+     }
+    ]
+   },
+   "clean_baseline_fuel": {
+    "total_guest_fuel": 563915727963,
+    "com.core.tree-support": 388791114130,
+    "com.core.infill-linker": 37462379262
+   },
+   "reference_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+   "reference_match": true
+  },
+  "base-arachne-off": {
+   "slice_meta": {
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "code_1200_count": 0,
+   "modules": {
+    "com.core.infill-linker": {
+     "calls": 496,
+     "total_fuel": 40412757108,
+     "unmarked_self_fuel": 777849330,
+     "scopes": [
+      {
+       "scope": "t179::il::clip_batch_attr",
+       "calls": 803,
+       "self_fuel": 12491575712,
+       "total_fuel": 12491575712,
+       "self_wall_ns": 1479331700,
+       "total_wall_ns": 1479331700
+      },
+      {
+       "scope": "t179::il::post_clip_meta",
+       "calls": 960,
+       "self_fuel": 8417162266,
+       "total_fuel": 8417162266,
+       "self_wall_ns": 982438600,
+       "total_wall_ns": 982438600
+      },
+      {
+       "scope": "t179::il::clip_batch_repair",
+       "calls": 4002,
+       "self_fuel": 7679715876,
+       "total_fuel": 7679715876,
+       "self_wall_ns": 665504100,
+       "total_wall_ns": 665504100
+      },
+      {
+       "scope": "t179::il::clip_batch_exec",
+       "calls": 803,
+       "self_fuel": 5089686774,
+       "total_fuel": 5089686774,
+       "self_wall_ns": 528950800,
+       "total_wall_ns": 528950800
+      },
+      {
+       "scope": "t179::il::connect_bpos_proj",
+       "calls": 29994,
+       "self_fuel": 2832462620,
+       "total_fuel": 2832462620,
+       "self_wall_ns": 247205100,
+       "total_wall_ns": 247205100
+      },
+      {
+       "scope": "t179::il::prep_clip_new",
+       "calls": 960,
+       "self_fuel": 941575790,
+       "total_fuel": 941575790,
+       "self_wall_ns": 134568300,
+       "total_wall_ns": 134568300
+      },
+      {
+       "scope": "t179::il::connect_merge",
+       "calls": 960,
+       "self_fuel": 815350647,
+       "total_fuel": 815350647,
+       "self_wall_ns": 92829800,
+       "total_wall_ns": 92829800
+      },
+      {
+       "scope": "t179::il::connect_pair_scan",
+       "calls": 960,
+       "self_fuel": 777651027,
+       "total_fuel": 777651027,
+       "self_wall_ns": 92917300,
+       "total_wall_ns": 92917300
+      },
+      {
+       "scope": "t179::il::setup",
+       "calls": 4030,
+       "self_fuel": 379452270,
+       "total_fuel": 380278627,
+       "self_wall_ns": 192491000,
+       "total_wall_ns": 194091700
+      },
+      {
+       "scope": "t179::il::offset_boundary",
+       "calls": 807,
+       "self_fuel": 60704433,
+       "total_fuel": 60704433,
+       "self_wall_ns": 116336000,
+       "total_wall_ns": 116336000
+      },
+      {
+       "scope": "t179::il::connect_bpos_hole",
+       "calls": 29994,
+       "self_fuel": 58641841,
+       "total_fuel": 58641841,
+       "self_wall_ns": 16071500,
+       "total_wall_ns": 16071500
+      },
+      {
+       "scope": "t179::il::graph_new",
+       "calls": 960,
+       "self_fuel": 40611881,
+       "total_fuel": 40611881,
+       "self_wall_ns": 3796300,
+       "total_wall_ns": 3796300
+      },
+      {
+       "scope": "t179::il::chain_order",
+       "calls": 483,
+       "self_fuel": 35009803,
+       "total_fuel": 35009803,
+       "self_wall_ns": 3725800,
+       "total_wall_ns": 3725800
+      },
+      {
+       "scope": "t179::il::clip_single_subj",
+       "calls": 137,
+       "self_fuel": 11100450,
+       "total_fuel": 11100450,
+       "self_wall_ns": 1350900,
+       "total_wall_ns": 1350900
+      },
+      {
+       "scope": "t179::il::output_emit",
+       "calls": 992,
+       "self_fuel": 3380031,
+       "total_fuel": 3380031,
+       "self_wall_ns": 1484500,
+       "total_wall_ns": 1484500
+      },
+      {
+       "scope": "polygon_ops::clip_polygons",
+       "calls": 807,
+       "self_fuel": 826357,
+       "total_fuel": 826357,
+       "self_wall_ns": 1600700,
+       "total_wall_ns": 1600700
+      }
+     ]
+    },
+    "com.core.tree-support": {
+     "calls": 496,
+     "total_fuel": 353168023,
+     "unmarked_self_fuel": 353168023,
+     "scopes": []
+    }
+   },
+   "tree_support_counters": {},
+   "infill_linker_counters": {
+    "b_holes": 128,
+    "b_polys": 2200,
+    "b_rings": 2328,
+    "b_verts": 200857,
+    "bpos_hole_edges": 487310,
+    "bpos_hole_tests": 9798,
+    "bpos_proj_edges": 11511258,
+    "bpos_proj_rings": 71349,
+    "chain_paths": 4068,
+    "clip_ambig_repairs": 4002,
+    "clip_batch_calls": 803,
+    "clip_cand_bbox_pass": 335796,
+    "clip_err_fallback_subjs": 0,
+    "clip_err_fallbacks": 0,
+    "clip_out_segs": 265322,
+    "clip_single_calls": 137,
+    "clipped_paths": 14997,
+    "clipped_pts": 273226,
+    "endpoints": 29994,
+    "invocations": 960,
+    "merges_joined": 10739,
+    "merges_stub": 0,
+    "meta_scans": 30259372,
+    "pair_iters": 2259924,
+    "raw_fallbacks": 153,
+    "subjects": 17185,
+    "union_groups": 0
+   },
+   "infill_linker_l2_counters": {
+    "b_holes": 1,
+    "b_polys": 12,
+    "b_rings": 13,
+    "b_verts": 764,
+    "bpos_hole_edges": 0,
+    "bpos_hole_tests": 0,
+    "bpos_proj_edges": 1050,
+    "bpos_proj_rings": 22,
+    "chain_paths": 0,
+    "clip_ambig_repairs": 0,
+    "clip_batch_calls": 5,
+    "clip_cand_bbox_pass": 31,
+    "clip_err_fallback_subjs": 0,
+    "clip_err_fallbacks": 0,
+    "clip_out_segs": 31,
+    "clip_single_calls": 0,
+    "clipped_paths": 5,
+    "clipped_pts": 10,
+    "endpoints": 10,
+    "invocations": 5,
+    "merges_joined": 3,
+    "merges_stub": 0,
+    "meta_scans": 20,
+    "pair_iters": 68,
+    "raw_fallbacks": 2,
+    "subjects": 57,
+    "union_groups": 0
+   },
+   "infill_linker_l2_scopes": {
+    "elapsed_ms_probed": 1,
+    "call_fuel": 8231274,
+    "scopes": [
+     {
+      "scope": "t179::il::clip_batch_exec",
+      "calls": 5,
+      "self_fuel": 3918416,
+      "total_fuel": 3918416,
+      "self_wall_ns": 345800,
+      "total_wall_ns": 345800
+     },
+     {
+      "scope": "t179::il::prep_clip_new",
+      "calls": 5,
+      "self_fuel": 2453079,
+      "total_fuel": 2453079,
+      "self_wall_ns": 238300,
+      "total_wall_ns": 238300
+     },
+     {
+      "scope": "t179::il::setup",
+      "calls": 17,
+      "self_fuel": 349626,
+      "total_fuel": 352670,
+      "self_wall_ns": 91500,
+      "total_wall_ns": 94500
+     },
+     {
+      "scope": "t179::il::connect_bpos_proj",
+      "calls": 10,
+      "self_fuel": 259426,
+      "total_fuel": 259426,
+      "self_wall_ns": 24100,
+      "total_wall_ns": 24100
+     },
+     {
+      "scope": "t179::il::clip_batch_attr",
+      "calls": 5,
+      "self_fuel": 249516,
+      "total_fuel": 249516,
+      "self_wall_ns": 30100,
+      "total_wall_ns": 30100
+     },
+     {
+      "scope": "t179::il::graph_new",
+      "calls": 5,
+      "self_fuel": 153556,
+      "total_fuel": 153556,
+      "self_wall_ns": 13200,
+      "total_wall_ns": 13200
+     },
+     {
+      "scope": "t179::il::offset_boundary",
+      "calls": 3,
+      "self_fuel": 114724,
+      "total_fuel": 114724,
+      "self_wall_ns": 202600,
+      "total_wall_ns": 202600
+     },
+     {
+      "scope": "t179::il::connect_merge",
+      "calls": 5,
+      "self_fuel": 78515,
+      "total_fuel": 78515,
+      "self_wall_ns": 13900,
+      "total_wall_ns": 13900
+     },
+     {
+      "scope": "t179::il::post_clip_meta",
+      "calls": 5,
+      "self_fuel": 28095,
+      "total_fuel": 28095,
+      "self_wall_ns": 6400,
+      "total_wall_ns": 6400
+     },
+     {
+      "scope": "t179::il::connect_pair_scan",
+      "calls": 5,
+      "self_fuel": 25651,
+      "total_fuel": 25651,
+      "self_wall_ns": 5600,
+      "total_wall_ns": 5600
+     },
+     {
+      "scope": "polygon_ops::clip_polygons",
+      "calls": 3,
+      "self_fuel": 3044,
+      "total_fuel": 3044,
+      "self_wall_ns": 3000,
+      "total_wall_ns": 3000
+     },
+     {
+      "scope": "t179::il::output_emit",
+      "calls": 2,
+      "self_fuel": 2007,
+      "total_fuel": 2007,
+      "self_wall_ns": 1600,
+      "total_wall_ns": 1600
+     },
+     {
+      "scope": "t179::il::connect_bpos_hole",
+      "calls": 10,
+      "self_fuel": 910,
+      "total_fuel": 910,
+      "self_wall_ns": 3000,
+      "total_wall_ns": 3000
+     }
+    ]
+   },
+   "clean_baseline_fuel": {
+    "total_guest_fuel": 112548952613,
+    "com.core.tree-support": 353194144,
+    "com.core.infill-linker": 40354671059
+   },
+   "reference_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+   "reference_match": true
+  },
+  "base-arachne-on": {
+   "slice_meta": {
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   },
+   "code_1200_count": 0,
+   "modules": {
+    "com.core.tree-support": {
+     "calls": 496,
+     "total_fuel": 388748274145,
+     "unmarked_self_fuel": 971931916,
+     "scopes": [
+      {
+       "scope": "t179::ts::paint_policy",
+       "calls": 2775,
+       "self_fuel": 312058743069,
+       "total_fuel": 312058743069,
+       "self_wall_ns": 21252979900,
+       "total_wall_ns": 21252979900
+      },
+      {
+       "scope": "t179::ts::skeleton",
+       "calls": 2775,
+       "self_fuel": 63370367128,
+       "total_fuel": 63370367128,
+       "self_wall_ns": 2854848200,
+       "total_wall_ns": 2854848200
+      },
+      {
+       "scope": "polygon_ops::clip_polygons",
+       "calls": 1009,
+       "self_fuel": 11090783957,
+       "total_fuel": 11090783957,
+       "self_wall_ns": 1044650700,
+       "total_wall_ns": 1044650700
+      },
+      {
+       "scope": "t179::ts::scan_fill",
+       "calls": 2775,
+       "self_fuel": 712261828,
+       "total_fuel": 712261828,
+       "self_wall_ns": 57969400,
+       "total_wall_ns": 57969400
+      },
+      {
+       "scope": "t179::ts::render_walls",
+       "calls": 2775,
+       "self_fuel": 254309507,
+       "total_fuel": 254309507,
+       "self_wall_ns": 959833900,
+       "total_wall_ns": 959833900
+      },
+      {
+       "scope": "polygon_ops::offset",
+       "calls": 170,
+       "self_fuel": 168299599,
+       "total_fuel": 168299599,
+       "self_wall_ns": 14004200,
+       "total_wall_ns": 14004200
+      },
+      {
+       "scope": "t179::ts::render_fill_offset",
+       "calls": 2775,
+       "self_fuel": 61845804,
+       "total_fuel": 61845804,
+       "self_wall_ns": 1513564700,
+       "total_wall_ns": 1513564700
+      },
+      {
+       "scope": "t179::ts::regularize",
+       "calls": 432,
+       "self_fuel": 44905201,
+       "total_fuel": 5436712310,
+       "self_wall_ns": 6464500,
+       "total_wall_ns": 511338100
+      },
+      {
+       "scope": "t179::ts::output_emit",
+       "calls": 2775,
+       "self_fuel": 13084041,
+       "total_fuel": 13084041,
+       "self_wall_ns": 4427600,
+       "total_wall_ns": 4427600
+      },
+      {
+       "scope": "t179::ts::role_union",
+       "calls": 432,
+       "self_fuel": 1135978,
+       "total_fuel": 5868412425,
+       "self_wall_ns": 1032000,
+       "total_wall_ns": 554813300
+      },
+      {
+       "scope": "t179::ts::plan_lookup",
+       "calls": 496,
+       "self_fuel": 564949,
+       "total_fuel": 564949,
+       "self_wall_ns": 401600,
+       "total_wall_ns": 401600
+      },
+      {
+       "scope": "t179::ts::pitches",
+       "calls": 496,
+       "self_fuel": 41168,
+       "total_fuel": 41168,
+       "self_wall_ns": 409400,
+       "total_wall_ns": 409400
+      }
+     ]
+    },
+    "com.core.infill-linker": {
+     "calls": 496,
+     "total_fuel": 40412513431,
+     "unmarked_self_fuel": 777811667,
+     "scopes": [
+      {
+       "scope": "t179::il::clip_batch_attr",
+       "calls": 803,
+       "self_fuel": 12491572289,
+       "total_fuel": 12491572289,
+       "self_wall_ns": 1458903700,
+       "total_wall_ns": 1458903700
+      },
+      {
+       "scope": "t179::il::post_clip_meta",
+       "calls": 960,
+       "self_fuel": 8417187717,
+       "total_fuel": 8417187717,
+       "self_wall_ns": 1006326700,
+       "total_wall_ns": 1006326700
+      },
+      {
+       "scope": "t179::il::clip_batch_repair",
+       "calls": 4002,
+       "self_fuel": 7679443950,
+       "total_fuel": 7679443950,
+       "self_wall_ns": 655261300,
+       "total_wall_ns": 655261300
+      },
+      {
+       "scope": "t179::il::clip_batch_exec",
+       "calls": 803,
+       "self_fuel": 5089637694,
+       "total_fuel": 5089637694,
+       "self_wall_ns": 543795100,
+       "total_wall_ns": 543795100
+      },
+      {
+       "scope": "t179::il::connect_bpos_proj",
+       "calls": 29994,
+       "self_fuel": 2832462620,
+       "total_fuel": 2832462620,
+       "self_wall_ns": 253597900,
+       "total_wall_ns": 253597900
+      },
+      {
+       "scope": "t179::il::prep_clip_new",
+       "calls": 960,
+       "self_fuel": 941645534,
+       "total_fuel": 941645534,
+       "self_wall_ns": 125552700,
+       "total_wall_ns": 125552700
+      },
+      {
+       "scope": "t179::il::connect_merge",
+       "calls": 960,
+       "self_fuel": 815334031,
+       "total_fuel": 815334031,
+       "self_wall_ns": 99377500,
+       "total_wall_ns": 99377500
+      },
+      {
+       "scope": "t179::il::connect_pair_scan",
+       "calls": 960,
+       "self_fuel": 777655374,
+       "total_fuel": 777655374,
+       "self_wall_ns": 98868500,
+       "total_wall_ns": 98868500
+      },
+      {
+       "scope": "t179::il::setup",
+       "calls": 4030,
+       "self_fuel": 379459061,
+       "total_fuel": 380285146,
+       "self_wall_ns": 152071800,
+       "total_wall_ns": 153680400
+      },
+      {
+       "scope": "t179::il::offset_boundary",
+       "calls": 807,
+       "self_fuel": 60703023,
+       "total_fuel": 60703023,
+       "self_wall_ns": 110204100,
+       "total_wall_ns": 110204100
+      },
+      {
+       "scope": "t179::il::connect_bpos_hole",
+       "calls": 29994,
+       "self_fuel": 58641841,
+       "total_fuel": 58641841,
+       "self_wall_ns": 15438900,
+       "total_wall_ns": 15438900
+      },
+      {
+       "scope": "t179::il::graph_new",
+       "calls": 960,
+       "self_fuel": 40614743,
+       "total_fuel": 40614743,
+       "self_wall_ns": 3637700,
+       "total_wall_ns": 3637700
+      },
+      {
+       "scope": "t179::il::chain_order",
+       "calls": 483,
+       "self_fuel": 35027100,
+       "total_fuel": 35027100,
+       "self_wall_ns": 3635100,
+       "total_wall_ns": 3635100
+      },
+      {
+       "scope": "t179::il::clip_single_subj",
+       "calls": 137,
+       "self_fuel": 11106393,
+       "total_fuel": 11106393,
+       "self_wall_ns": 1348800,
+       "total_wall_ns": 1348800
+      },
+      {
+       "scope": "t179::il::output_emit",
+       "calls": 992,
+       "self_fuel": 3384309,
+       "total_fuel": 3384309,
+       "self_wall_ns": 1480900,
+       "total_wall_ns": 1480900
+      },
+      {
+       "scope": "polygon_ops::clip_polygons",
+       "calls": 807,
+       "self_fuel": 826085,
+       "total_fuel": 826085,
+       "self_wall_ns": 1608600,
+       "total_wall_ns": 1608600
+      }
+     ]
+    }
+   },
+   "tree_support_counters": {
+    "entries": 432,
+    "expoly_verts": 1234066,
+    "expolys": 2775,
+    "expolys_body": 2667,
+    "expolys_iface": 108,
+    "fill_offsets": 2775,
+    "fill_paths": 13610,
+    "offgrid_paths": 0,
+    "paint_cover_hits": 0,
+    "paint_cover_regions": 2775,
+    "paint_has_ann": 0,
+    "paint_queries": 2775,
+    "paint_ring_calls": 2245670,
+    "paint_ring_edges": 6756284530,
+    "paint_vert_loops": 1165322,
+    "pie_bbox_pass": 286920,
+    "pie_bbox_scans": 3429754096,
+    "pie_ray_edges": 492479339,
+    "regize_calls": 432,
+    "regize_none": 350,
+    "skel_calls": 2775,
+    "skel_extra_nonzero": 795,
+    "skel_hits": 274807,
+    "skel_needed_tests": 17216,
+    "skel_pts": 1828426,
+    "union_in_polys": 2775,
+    "union_singletons": 77,
+    "unions": 517,
+    "wall_offsets": 3570,
+    "wall_paths": 4529
+   },
+   "infill_linker_counters": {
+    "b_holes": 128,
+    "b_polys": 2200,
+    "b_rings": 2328,
+    "b_verts": 200857,
+    "bpos_hole_edges": 487310,
+    "bpos_hole_tests": 9798,
+    "bpos_proj_edges": 11511258,
+    "bpos_proj_rings": 71349,
+    "chain_paths": 4068,
+    "clip_ambig_repairs": 4002,
+    "clip_batch_calls": 803,
+    "clip_cand_bbox_pass": 335796,
+    "clip_err_fallback_subjs": 0,
+    "clip_err_fallbacks": 0,
+    "clip_out_segs": 265322,
+    "clip_single_calls": 137,
+    "clipped_paths": 14997,
+    "clipped_pts": 273226,
+    "endpoints": 29994,
+    "invocations": 960,
+    "merges_joined": 10739,
+    "merges_stub": 0,
+    "meta_scans": 30259372,
+    "pair_iters": 2259924,
+    "raw_fallbacks": 153,
+    "subjects": 17185,
+    "union_groups": 0
+   },
+   "infill_linker_l2_counters": {
+    "b_holes": 1,
+    "b_polys": 12,
+    "b_rings": 13,
+    "b_verts": 764,
+    "bpos_hole_edges": 0,
+    "bpos_hole_tests": 0,
+    "bpos_proj_edges": 1050,
+    "bpos_proj_rings": 22,
+    "chain_paths": 0,
+    "clip_ambig_repairs": 0,
+    "clip_batch_calls": 5,
+    "clip_cand_bbox_pass": 31,
+    "clip_err_fallback_subjs": 0,
+    "clip_err_fallbacks": 0,
+    "clip_out_segs": 31,
+    "clip_single_calls": 0,
+    "clipped_paths": 5,
+    "clipped_pts": 10,
+    "endpoints": 10,
+    "invocations": 5,
+    "merges_joined": 3,
+    "merges_stub": 0,
+    "meta_scans": 20,
+    "pair_iters": 68,
+    "raw_fallbacks": 2,
+    "subjects": 57,
+    "union_groups": 0
+   },
+   "infill_linker_l2_scopes": {
+    "elapsed_ms_probed": 1,
+    "call_fuel": 8231434,
+    "scopes": [
+     {
+      "scope": "t179::il::clip_batch_exec",
+      "calls": 5,
+      "self_fuel": 3918416,
+      "total_fuel": 3918416,
+      "self_wall_ns": 358000,
+      "total_wall_ns": 358000
+     },
+     {
+      "scope": "t179::il::prep_clip_new",
+      "calls": 5,
+      "self_fuel": 2453079,
+      "total_fuel": 2453079,
+      "self_wall_ns": 447400,
+      "total_wall_ns": 447400
+     },
+     {
+      "scope": "t179::il::setup",
+      "calls": 17,
+      "self_fuel": 349626,
+      "total_fuel": 352670,
+      "self_wall_ns": 93900,
+      "total_wall_ns": 99400
+     },
+     {
+      "scope": "t179::il::connect_bpos_proj",
+      "calls": 10,
+      "self_fuel": 259426,
+      "total_fuel": 259426,
+      "self_wall_ns": 24800,
+      "total_wall_ns": 24800
+     },
+     {
+      "scope": "t179::il::clip_batch_attr",
+      "calls": 5,
+      "self_fuel": 249516,
+      "total_fuel": 249516,
+      "self_wall_ns": 31400,
+      "total_wall_ns": 31400
+     },
+     {
+      "scope": "t179::il::graph_new",
+      "calls": 5,
+      "self_fuel": 153556,
+      "total_fuel": 153556,
+      "self_wall_ns": 13900,
+      "total_wall_ns": 13900
+     },
+     {
+      "scope": "t179::il::offset_boundary",
+      "calls": 3,
+      "self_fuel": 114724,
+      "total_fuel": 114724,
+      "self_wall_ns": 202000,
+      "total_wall_ns": 202000
+     },
+     {
+      "scope": "t179::il::connect_merge",
+      "calls": 5,
+      "self_fuel": 78515,
+      "total_fuel": 78515,
+      "self_wall_ns": 16500,
+      "total_wall_ns": 16500
+     },
+     {
+      "scope": "t179::il::post_clip_meta",
+      "calls": 5,
+      "self_fuel": 28095,
+      "total_fuel": 28095,
+      "self_wall_ns": 8300,
+      "total_wall_ns": 8300
+     },
+     {
+      "scope": "t179::il::connect_pair_scan",
+      "calls": 5,
+      "self_fuel": 25651,
+      "total_fuel": 25651,
+      "self_wall_ns": 9300,
+      "total_wall_ns": 9300
+     },
+     {
+      "scope": "polygon_ops::clip_polygons",
+      "calls": 3,
+      "self_fuel": 3044,
+      "total_fuel": 3044,
+      "self_wall_ns": 5500,
+      "total_wall_ns": 5500
+     },
+     {
+      "scope": "t179::il::output_emit",
+      "calls": 2,
+      "self_fuel": 2007,
+      "total_fuel": 2007,
+      "self_wall_ns": 2300,
+      "total_wall_ns": 2300
+     },
+     {
+      "scope": "t179::il::connect_bpos_hole",
+      "calls": 10,
+      "self_fuel": 910,
+      "total_fuel": 910,
+      "self_wall_ns": 3500,
+      "total_wall_ns": 3500
+     }
+    ]
+   },
+   "clean_baseline_fuel": {
+    "total_guest_fuel": 553187829941,
+    "com.core.tree-support": 388789911053,
+    "com.core.infill-linker": 40354460403
+   },
+   "reference_sha256": "f77633affab2fbea4f3b3b546aa564ba1a151a457fd20b2c4991f34526a58d5c",
+   "reference_match": true
+  }
+ },
+ "candidate_fuel_ablations": {
+  "cand1_ts1_il1": {
+   "benchy-classic-off": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 4905423178,
+      "self_fuel": 4901913186,
+      "calls": 240
+     },
+     "com.core.tree-support": {
+      "total_fuel": 86399972,
+      "self_fuel": 86399972,
+      "calls": 240
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 14908298964,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+    "reference_match": true
+   },
+   "benchy-classic-on": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 4905455766,
+      "self_fuel": 4901945885,
+      "calls": 240
+     },
+     "com.core.tree-support": {
+      "total_fuel": 1839956585,
+      "self_fuel": 482880634,
+      "calls": 240
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 23280472162,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+    "reference_match": true
+   },
+   "benchy-arachne-off": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 5202980952,
+      "self_fuel": 5198921871,
+      "calls": 240
+     },
+     "com.core.tree-support": {
+      "total_fuel": 86730101,
+      "self_fuel": 86730101,
+      "calls": 240
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 14573523316,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+    "reference_match": true
+   },
+   "benchy-arachne-on": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 5202825883,
+      "self_fuel": 5198766808,
+      "calls": 240
+     },
+     "com.core.tree-support": {
+      "total_fuel": 1840580792,
+      "self_fuel": 483599904,
+      "calls": 240
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 22946129120,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+    "reference_match": true
+   },
+   "base-classic-off": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 18832845036,
+      "self_fuel": 18832059443,
+      "calls": 496
+     },
+     "com.core.tree-support": {
+      "total_fuel": 351882612,
+      "self_fuel": 351882612,
+      "calls": 496
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 104646133962,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+    "reference_match": true
+   },
+   "base-classic-on": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 18832915624,
+      "self_fuel": 18832130009,
+      "calls": 496
+     },
+     "com.core.tree-support": {
+      "total_fuel": 13420124479,
+      "self_fuel": 2159949661,
+      "calls": 496
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 169915695246,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+    "reference_match": true
+   },
+   "base-arachne-off": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 20163334064,
+      "self_fuel": 20162507981,
+      "calls": 496
+     },
+     "com.core.tree-support": {
+      "total_fuel": 353177849,
+      "self_fuel": 353177849,
+      "calls": 496
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 92358388784,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+    "reference_match": true
+   },
+   "base-arachne-on": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 20163288425,
+      "self_fuel": 20162462148,
+      "calls": 496
+     },
+     "com.core.tree-support": {
+      "total_fuel": 13421738829,
+      "self_fuel": 2160639186,
+      "calls": 496
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 157629668960,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "f77633affab2fbea4f3b3b546aa564ba1a151a457fd20b2c4991f34526a58d5c",
+    "reference_match": true
+   }
+  },
+  "cand2_ts1_ilall": {
+   "benchy-classic-off": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 2777717432,
+      "self_fuel": 2774218941,
+      "calls": 240
+     },
+     "com.core.tree-support": {
+      "total_fuel": 86400423,
+      "self_fuel": 86400423,
+      "calls": 240
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 12780502521,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+    "reference_match": true
+   },
+   "benchy-classic-on": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 2777854111,
+      "self_fuel": 2774355189,
+      "calls": 240
+     },
+     "com.core.tree-support": {
+      "total_fuel": 1839698744,
+      "self_fuel": 482764355,
+      "calls": 240
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 21152753162,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+    "reference_match": true
+   },
+   "benchy-arachne-off": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 2947218326,
+      "self_fuel": 2943199007,
+      "calls": 240
+     },
+     "com.core.tree-support": {
+      "total_fuel": 86717019,
+      "self_fuel": 86717019,
+      "calls": 240
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 12317733663,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+    "reference_match": true
+   },
+   "benchy-arachne-on": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 2947184554,
+      "self_fuel": 2943165242,
+      "calls": 240
+     },
+     "com.core.tree-support": {
+      "total_fuel": 1840622299,
+      "self_fuel": 483592669,
+      "calls": 240
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 20690535889,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+    "reference_match": true
+   },
+   "base-classic-off": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 8018553235,
+      "self_fuel": 8017767823,
+      "calls": 496
+     },
+     "com.core.tree-support": {
+      "total_fuel": 351903603,
+      "self_fuel": 351903603,
+      "calls": 496
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 93831564216,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+    "reference_match": true
+   },
+   "base-classic-on": {
+    "modules": {
+     "com.core.tree-support": {
+      "total_fuel": 13421334372,
+      "self_fuel": 2159956969,
+      "calls": 496
+     },
+     "com.core.infill-linker": {
+      "total_fuel": 8018703310,
+      "self_fuel": 8017917777,
+      "calls": 496
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 159102111862,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+    "reference_match": true
+   },
+   "base-arachne-off": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 8763883944,
+      "self_fuel": 8763058035,
+      "calls": 496
+     },
+     "com.core.tree-support": {
+      "total_fuel": 353182507,
+      "self_fuel": 353182507,
+      "calls": 496
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 80958494326,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+    "reference_match": true
+   },
+   "base-arachne-on": {
+    "modules": {
+     "com.core.tree-support": {
+      "total_fuel": 13422128091,
+      "self_fuel": 2161726005,
+      "calls": 496
+     },
+     "com.core.infill-linker": {
+      "total_fuel": 8763935530,
+      "self_fuel": 8763109543,
+      "calls": 496
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 146228923682,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "f77633affab2fbea4f3b3b546aa564ba1a151a457fd20b2c4991f34526a58d5c",
+    "reference_match": true
+   }
+  },
+  "cand_ts2_ilall": {
+   "benchy-classic-on": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 2777741542,
+      "self_fuel": 2774242931,
+      "calls": 240
+     },
+     "com.core.tree-support": {
+      "total_fuel": 648617717,
+      "self_fuel": 486235758,
+      "calls": 240
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 19961505258,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+    "reference_match": true
+   },
+   "base-classic-on": {
+    "modules": {
+     "com.core.infill-linker": {
+      "total_fuel": 8018562423,
+      "self_fuel": 8017777256,
+      "calls": 496
+     },
+     "com.core.tree-support": {
+      "total_fuel": 7562360510,
+      "self_fuel": 2170525672,
+      "calls": 496
+     }
+    },
+    "code_1200_count": 0,
+    "total_guest_fuel": 153241860482,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "reference_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+    "reference_match": true
+   }
+  }
+ }
+}

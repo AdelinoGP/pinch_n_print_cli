@@ -1837,6 +1837,70 @@ and **`~0.990x → 0.948x`**, toward **4/8**). Evidence:
 [`SupportGeometry` post-planner host tail attribution and reduction screen](issues/181-support-geometry-post-planner-host-tail.md),
 and [Host-side spatial hierarchical Phase-3 union with convex-containment pruning](issues/182-host-spatial-hierarchical-phase3-union.md).
 
+**Destination status (2026-11-21,
+[Per-layer `tree-support` renderer and `infill-linker` guest-fuel screen](issues/179-per-layer-tree-support-and-infill-linker-screen.md)):
+both per-layer guests are attributed with zero production edits (`130/130` runs
+byte-identical to `t175`, `probe.patch` cleanly reverted, both guest freshness
+gates exit `0`) — `t66` was DROPPED (never landed), so `tree-support` is
+`98.1–98.5 %` reducible in exact guest fuel (`80.1–80.3 %` dead
+`paint_policy_for` + `15.6–16.3 %` `skeleton_wall_count` + `1.5–2.8 %`
+redundant `role_union`) and `infill-linker` is `73.0–78.6 %` reducible
+(`49.6–52.9 %` `clip_batched` geometric attribution/repair, `70.8–71.3 %` of
+`benchy` `L2`), and combining `TS-2 + IL-ALL` eliminates both standalone gate
+traps (`L2` straggler unmasking under standalone `TS-2`, sub-floor `0.52 %` on
+`base-classic-on` under standalone `IL-ALL`) to clear the literal 8-cell
+`0.80 %` screen floor at `2.6×–12.8×` (`24/24` wall wins, `24/24` CPU wins),
+graduating
+[Exact per-layer guest acceleration: `tree-support` renderer fast paths and `infill-linker` open-subject tagging](issues/183-per-layer-tree-support-and-infill-linker-exact-acceleration.md).**
+Premise correction: `t66` was dropped in Oct 2026, so
+`crates/slicer-sdk/src/traits.rs::PaintRegionLayerView::paint_policy_for` still
+walks `723.5 M` (`benchy`) / `6.76 B` (`base`) ring edges across `0` paint
+annotations (`paint_has_ann = 0`, `paint_cover_hits = 0`);
+`modules/core-modules/tree-support/src/lib.rs::skeleton_wall_count` rescans
+contour bboxes `358.8 M` / `3.43 B` times when `99.21 / 99.06 %` of skeleton
+points have `count <= best`; and `TreeSupport::run_support` re-runs in-guest
+`union_ex` on already-disjoint planner/regularized roles (`206 / 517` calls).
+`TS-2` cuts `tree-support` fuel **`−98.45 %` (`64.7×`, `41.94 → 0.65 B`)** on
+`benchy-classic-on` and **`−98.06 %` (`51.4×`, `388.79 → 7.56 B`)** on
+`base-classic-on` (surviving wall is real `host:native` `offset_polygons`:
+`2,001 / 6,345` calls). Inside `com.core.infill-linker`, native open-subject
+`source_id: u32` tagging in `vendor/clipper2-rust` (`add_open_subject_tagged` +
+`execute_open_tagged` — exact because open paths never self-intersect or join
+in Clipper2) removes `attributed_runs` + `1,878–4,002` ambiguity repairs
+(`IL-1`, `−49.7…−53.2 %` fuel), and pairing dead `source_segments` (`union_groups
+== 0` in 8/8) + `O(1)` uniform metadata (`IL-2`, `8.5–21.7 %`) + bbox-pruned
+`project_on_ring` & `O(E)` sorted-ring `nearest_pair_candidates` (`IL-3`,
+`10.8–16.2 %`) cuts fuel **`−72.96 / −73.47 %` (`benchy`)** and
+**`−78.60 / −78.28 %` (`base`)**, collapsing `benchy` `L2` `infill-linker`
+`186 → 42 ms` (`classic-off`) and `237 → 84 ms` (`arachne-off`). **Unsandboxed
+screen (attribution only, not a landing gate; `104/104` byte-identical to
+`t175`):** standalone `arm_ts2` unmasks `L2`'s tail on `benchy-classic-on`
+(`50 → 110 ms`, `c/w` `4.57× → 3.97×`, `−1.39 %` wall despite `+11.94 %` CPU)
+and standalone `arm_il` is capped at `146 ms` (`0.52 % < 0.80 %`) on
+`base-classic-on`; combined `TS-2 + IL-ALL` cuts `per_layer` wall
+`−44.6 / −34.6 / −44.3 / −41.1 %` on supports-on and `−29.1 / −23.1 / −7.0 /
+−12.2 %` on supports-off, clearing `0.80 %` in **8/8 cells** (`benchy`
+`+10.26 / +4.62 / +5.32 / +6.71 %`, `base` `+2.50 / +6.20 / +2.11 / +6.58 %`,
+`2.64×–12.82×` floor, `24/24` wall wins, `24/24` CPU wins `+3.33…+13.75 %`,
+`8/8` strict CPU sep, `7/8` strict wall sep). No standalone `with_max_len(1)`
+ticket graduates (`L2` tail drops to `5–6 ms` on three benchy cells and `31 ms`
+on `benchy-classic-off`, where `~159 ms` of `L2` is 3× host `region_partition`).
+**Route (`ESTIMATE ONLY`, `t174 × t175 × t179`):** `benchy-classic-off`
+`1.144x → ~1.026x` ord / `~1.003x` acc (`81.6 %` of `< 1.0x` cut closed),
+`benchy-arachne-off` `1.155x → ~1.093x` / `~1.007x`, `base-classic-on`
+`1.221x → ~1.145x` (**`~0.970x` stacked with `t182`, `~0.875x` with
+`t182 + t181`**), `base-arachne-on` `1.201x → ~1.122x` (**`~0.953x` with
+`t182`, `~0.869x` with `t182 + t181`**), `benchy-classic-on` `1.570x → ~1.498x`
+(`1.404x` `t177`-implied; `~1.351x` with `t182 + t181`), `benchy-arachne-on`
+`1.389x → ~1.295x` (`~1.169x` with `t182 + t181`). Evidence:
+[`evidence/t179-per-layer-guest-screen/FINDINGS.md`](evidence/t179-per-layer-guest-screen/FINDINGS.md)
+(`verify.py` PASS `6/6`, `--self-test` `14/14`). **Frontier (all 4 AFK,
+unblocked):**
+[`ShellClassification` post-t172 residual attribution and speedup screen](issues/180-shell-classification-post-t172-residual-screen.md),
+[`SupportGeometry` post-planner host tail attribution and reduction screen](issues/181-support-geometry-post-planner-host-tail.md),
+[Host-side spatial hierarchical Phase-3 union with convex-containment pruning](issues/182-host-spatial-hierarchical-phase3-union.md),
+and [Exact per-layer guest acceleration: `tree-support` renderer fast paths and `infill-linker` open-subject tagging](issues/183-per-layer-tree-support-and-infill-linker-exact-acceleration.md).
+
 ## Notes
 
 Domain: slice throughput on Windows dev hardware. Canonical evidence base:
@@ -5335,6 +5399,7 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+- [Per-layer `tree-support` renderer and `infill-linker` guest-fuel screen](issues/179-per-layer-tree-support-and-infill-linker-screen.md): **resolved 2026-11-21, attribution + exact fuel ablation + unsandboxed screen (zero production edits; `probe.patch` cleanly reverted; both guest freshness gates exit `0`; `130/130` runs byte-identical to `t175`, `16/16` exact integer fuel folds, `verify.py --self-test` `14/14`) — premise correction (`t66` was DROPPED in Oct 2026, never landed): `tree-support` is `98.1–98.5 %` reducible in exact fuel (`80.1–80.3 %` dead `paint_policy_for` walking `723.5 M / 6.76 B` ring edges across `0` paint annotations + `15.6–16.3 %` `skeleton_wall_count` where `99.1–99.2 %` of points have `count <= best` + `1.5–2.8 %` redundant in-guest `role_union`) and `infill-linker` is `73.0–78.6 %` reducible (`49.6–52.9 %` `clip_batched` geometric re-attribution + `1,878–4,002` ambiguity repairs, `70.8–71.3 %` of `benchy` `L2`; `8.5–21.7 %` dead `source_segments` / `3.2–30.3 M` uniform metadata scans; `10.8–16.2 %` `project_on_ring` / `O(E²)` pair scan); combining `TS-2 + IL-ALL` avoids both standalone gate traps (`L2` straggler unmasking `50 → 110 ms` under standalone `TS-2`; `0.52 % < 0.80 %` `base-classic-on` cap under standalone `IL-ALL`) and clears the literal 8-cell `0.80 %` screen floor at `2.64×–12.82×` (`+2.11…+10.26 %` wall, `24/24` wins; `+3.33…+13.75 %` CPU, `24/24` wins, `8/8` strict sep), graduating [Exact per-layer guest acceleration: `tree-support` renderer fast paths and `infill-linker` open-subject tagging](issues/183-per-layer-tree-support-and-infill-linker-exact-acceleration.md)** — `TS-2` cuts `tree-support` fuel `41.94 → 0.65 B` (`−98.45 %`, `64.7×`) on `benchy-classic-on` and `388.79 → 7.56 B` (`−98.06 %`, `51.4×`) on `base-classic-on` (safe bypass requires `regularized.is_some()` or pairwise bbox disjointness; surviving wall is `2,001 / 6,345` `host:native` `offset_polygons` calls); `IL-ALL` (`vendor/clipper2-rust` `add_open_subject_tagged` / `execute_open_tagged` + `IL-2` + `IL-3`) cuts `infill-linker` fuel `−72.96 / −73.47 %` (`benchy`) and `−78.60 / −78.28 %` (`base`), collapsing `L2` `infill-linker` `186 → 42 ms` (`classic-off`) and `237 → 84 ms` (`arachne-off`) and eliminating the `L2` tail on 3/4 benchy cells (`5–6 ms`; `31 ms` residual on `benchy-classic-off` where `~159 ms` of `L2` is 3× host `region_partition`, so no standalone `with_max_len(1)` ticket graduates). `ESTIMATE ONLY` route (`t174 × t175 × t179`): `benchy-classic-off` `1.144x → ~1.026x` ord / `~1.003x` acc (`81.6 %` of gap closed), `benchy-arachne-off` `1.155x → ~1.093x` / `~1.007x`, `base` supports-on `1.221x / 1.201x → ~1.145x / ~1.122x` (**`~0.970x / ~0.953x` stacked with `t182`, `~0.875x / ~0.869x` with `t182 + t181`**), `benchy-classic-on` `1.570x → ~1.498x` (`1.404x` `t177`-implied), `benchy-arachne-on` `1.389x → ~1.295x`. Evidence: [`evidence/t179-per-layer-guest-screen/FINDINGS.md`](evidence/t179-per-layer-guest-screen/FINDINGS.md).
 - [Planner Phase-3 batched union attribution and mechanism screen](issues/178-planner-phase3-union-attribution.md): **resolved 2026-11-21, attribution + 29-mechanism offline screen (zero production edits; `probe.patch` cleanly reverted, 12/12 capture runs byte-identical to `t175`, `verify.py --self-test` 14/14) — Phase 3 is 99.99 % `ROLE_BODY` monolithic Clipper2 sweeps over 1,024-circle overlapping clusters (`7.64×` area overlap, `28.1 %` strictly convex-contained, `88.5 %` in giant components); Mechanisms A/B/C and `subject=all` are falsified as sufficient levers, while host-side fast convex-containment pruning + bbox CC + Morton Z-order spatial hierarchical union (`M9n_host_nested_prune_hier_k8`) cuts Phase-3 wall −91.4 % / thread −92.4 % on `base` (`0.949 µm` Hausdorff) and −69.3 % wall on `benchy` (`0.400 µm` Hausdorff), graduating [Host-side spatial hierarchical Phase-3 union with convex-containment pruning](issues/182-host-spatial-hierarchical-phase3-union.md)** — clean uninstrumented Phase-3 wall is `4,434.3 / 4,404.6 ms` (`15.68 / 15.39 %` of `base` supports-on, `45.52 s` thread, `10.27×` par, `sum(batch_max) = 99.1 %`, WIT/IR conv `0.23 %`) and `154.5 / 153.8 ms` (`4.48 / 4.32 %` `benchy`, `1.55 s` thread, `10.03×`); classic ≡ arachne on operands. Exact baseline replay passes `480/480` `base` + `202/202` `benchy` (`0` mismatches). Singletons are only `0.39 %` (`base`, 530/530 canonical/simple) and `0.29 %` (`benchy`, 63/63) while `88.5 %` of `base` vertices sit in giant components (`max = 1,023` polys), falsifying standalone `M2`; `avg_nodes = 8 / 5` (`simplify_active_calls = 0`) and forced pre-union RDP (`M6`) is catastrophically lossy (`870–3,902 mm²` XOR); LPT/global batching (`M5a/b`) hits the `3.79 s` floor (`0 %` CPU cut); `M1` (`subject=all`) is speed-neutral; exact duplicates = `0`. Dummy-far-Y auditing proved `147/147` `base` + `27/27` `benchy` (100.0 %) of `M2`'s diffs are `add_new_intersect_node` distant-scanbeam clamping (`0.162 / 0.130 µm` Hausdorff). Because `tree-support-planner` is the sole caller of `clip_polygons_batch` in the repo, host-side `union_spatial_tree` inside `clip_polygons_batch` `Union` needs zero WIT/guest changes and is 100 % supports-off inert. `ESTIMATE ONLY` route (`t174 × t175 × t178`): `M9n_k8` clears `t137` by `3.7×–17.9×` (`−4.05 s` / `−14.33 %` `base-classic-on` → `1.046x` ord / `1.002x` acc; `−4.03 s` / `−14.06 %` `base-arachne-on` → `1.032x` ord / `0.991x` acc; `−107 ms` / `−3.10 / −2.99 %` `benchy`), closing `79.3 / 84.0 %` of `base`'s ordinary gap and crossing `< 1.0x` on both ordinary `base` cells (`~0.95x`) when stacked with [`SupportGeometry` post-planner host tail attribution and reduction screen](issues/181-support-geometry-post-planner-host-tail.md). Evidence: [`evidence/t178-planner-phase3-union/FINDINGS.md`](evidence/t178-planner-phase3-union/FINDINGS.md).
 - [Post-t175 full-matrix attribution and 0.50x headroom map](issues/177-post-t175-full-matrix-attribution.md): **resolved 2026-11-21, attribution + headroom pricing (zero production edits; 32/32 runs byte-identical to `t175`, `verify.py --self-test` 12/12) — all 8 cells are now `clip_polygons`-dominated, 5/6 open cells have a single-stage `< 1.0x` ceiling (only binding `benchy-classic-on` ~1.570x requires a 3–4 track combination), NO `benchy` cell can hit `<= 0.50x` from prepass alone, unblocks `179` & `180`, and graduates `181`** — prepass fell −2.4…−7.5 pp vs `t171` to **53.5–77.7 %**, per-layer **14.3–34.3 %**, postpass **6.8–11.8 %** (`11.8 %` on `benchy-on`), outside **0.3–4.1 %** (3 unsandboxed passes/cell; discarded sandboxed first capture that inflated `per-layer` ~2.8× on `benchy`). `--profile` host Clipper thread-time dropped −36.8…−40.3 % off (`base-classic-off` `88.85 → 53.40 s`) and −58.4…−59.7 % on (`base-classic-on` `343.38 → 140.34 s`), flipping **8/8** cells to `clip_polygons`-dominant (**46.5–58.6 %** vs `offset` **30.8–37.8 %**). `ESTIMATE ONLY` route (`t174 × t175`): `base-on` (`~1.221x / ~1.201x`) closes via `SupportGeometry` (**44.4 / 43.4 %** → 0.678x / 0.679x); `benchy-off` (`1.144x / 1.155x`) is now single-stage winnable via `ShellClassification` (**27.9 / 27.0 %** → 0.825x / 0.843x, only **4.5×** concurrency on `benchy` vs **8.1–8.6×** on `base`) or `per-layer` (**32.4 / 34.3 %**); `benchy-arachne-on` (`~1.389x`) needs multi-track (`SupportGeometry + ShellClassification + tree-support` = 53.3 % → 0.648x); binding `benchy-classic-on` (`~1.570x`, 36.3 % cut) cannot close from any single stage (`SupportGeometry` 31.7 % → 1.071x) or from `ShellClassification + per-layer` (33.1 % → 1.051x) and needs `SupportGeometry + ShellClassification + tree-support (+ SupportAnalysis)`. `<= 0.50x` theorem: zeroing all of `prepass` leaves `benchy` at **0.501x–0.537x** (all 4 short), so the follow-on 2× map structurally requires both prepass and per-layer cuts. Two new bottlenecks: (1) **graduated [`SupportGeometry` post-planner host tail attribution and reduction screen](issues/181-support-geometry-post-planner-host-tail.md)** (`2,293 / 2,017 ms` = **7.8 / 7.0 %** `base-on`, `215 / 216 ms` = **6.2 / 6.1 %** `benchy-on` elapsing *after* `tree-support-planner::module_complete`); (2) **sharpened [Per-layer `tree-support` renderer and `infill-linker` guest-fuel screen](issues/179-per-layer-tree-support-and-infill-linker-screen.md)** with the **`L2` `infill-linker` single-layer straggler tail** (`134 / 104 ms` = **7.9 / 5.8 %** cell with 11/12 cores idle on `benchy-off`) plus the supports-off fuel-vs-wall inversion (`perimeters` #1 in elapsed thread-time ahead of `infill-linker`). Evidence: [`evidence/t177-post-t175-attribution/FINDINGS.md`](evidence/t177-post-t175-attribution/FINDINGS.md).
 - [Destination ruling: CPU-corroboration semantics and sample count for cell closure](issues/176-destination-cpu-corroboration-ruling.md): **resolved 2026-11-21, human ruling (zero production edits) — Option C amends `## Destination` to unstarved wall-clock wins + CPU integrity guard + separate efficiency disclosure (`pnp-ordinary` binding arm, margin-tiered provisional closure + final single-HEAD `n>=4` 8/8 board), moving the official running tally `0/8 → 2/8` provisionally won (`base-classic-off` 0.769x, `base-arachne-off` 0.792x), keeping `< 1.0x` (8/8) with a fresh `<= 0.50x` effort afterward, and graduating `177`, `178`, `179`, `180`** — separates cross-engine **CPU integrity guard** (tight CPU, unstarved `cpu/wall`, matched non-degraded output, plus PnP/Orca CPU ratio disclosed as efficiency — accounting for Orca's ~10.0 s serial STL import vs PnP's ~5.2x-core slicing) from unchanged within-PnP **candidate A/B CPU corroboration**. **`pnp-ordinary`** (production default) binds cell closure (`pnp-accelerated` disclosed alongside; swaps only if adopted as production default). Wide-margin cells (`ratio <= 0.85x`) close provisionally on quiet `n=3` strict separation with 0 starvation flags (`base-classic-off` 0.7687x / 3.66 s sep and `base-arachne-off` 0.7921x / 2.37 s sep from `t174`, structurally inert under `t175`); close cells (`0.85x < ratio < 1.00x`) and the final single-HEAD 8/8 closing board require `>= 4` retained unstarved runs per arm with strict separation (starved outliers `< 0.75 × best` excludable per `SCOREBOARD.md` while `>= 4` unstarved runs remain); provisional wins carry forward across later commits passing paired non-regression gates. Destination bar stays `< 1.0x` (8/8) with a follow-on `<= 0.50x` (2× faster) effort planned as a fresh map afterward, prioritizing high-leverage speedup tracks now. Added 4 canonical terms to [`GLOSSARY.md`](../../../GLOSSARY.md) (**CPU integrity guard**, **Candidate CPU corroboration**, **Binding arm**, **Provisional cell win**) and graduated [177](issues/177-post-t175-full-matrix-attribution.md) (unblocked), [178](issues/178-planner-phase3-union-attribution.md) (unblocked), [179](issues/179-per-layer-tree-support-and-infill-linker-screen.md) (blocked by `177`), and [180](issues/180-shell-classification-post-t172-residual-screen.md) (blocked by `177`).
@@ -5633,23 +5698,18 @@ Standing decisions for this effort (2026-09-22):
   collision tile index banked **+31.32 / +30.90 %** wall on `base` supports-on
   (est. **~1.221x / ~1.201x** ord) and **+16.06 / +16.62 %** on `benchy`
   supports-on (est. `benchy-arachne-on` **~1.389x**, binding `benchy-classic-on`
-  **~1.570x**). [Post-t175 full-matrix attribution and 0.50x headroom map](issues/177-post-t175-full-matrix-attribution.md)
-  and [Planner Phase-3 batched union attribution and mechanism screen](issues/178-planner-phase3-union-attribution.md)
+  **~1.570x**). [Post-t175 full-matrix attribution and 0.50x headroom map](issues/177-post-t175-full-matrix-attribution.md),
+  [Planner Phase-3 batched union attribution and mechanism screen](issues/178-planner-phase3-union-attribution.md),
+  and [Per-layer `tree-support` renderer and `infill-linker` guest-fuel screen](issues/179-per-layer-tree-support-and-infill-linker-screen.md)
   are now **resolved** (2026-11-21), leaving four unblocked frontier tickets
-  (three AFK discovery tracks + one implementation & standing-gate track):
-  [Per-layer `tree-support` renderer and `infill-linker` guest-fuel screen](issues/179-per-layer-tree-support-and-infill-linker-screen.md)
-  (unblocked; sharpened with `L2` `infill-linker` `134 / 104 ms` = `7.9 / 5.8 %`
-  single-layer straggler tail on `benchy-off`, `perimeters` #1 in supports-off
-  elapsed thread, and `tree-support` `8.2–9.9 %` proportional cell share /
-  `60.8–70.3 %` fuel),
+  (two AFK discovery tracks + two implementation & standing-gate tracks):
   [`ShellClassification` post-t172 residual attribution and speedup screen](issues/180-shell-classification-post-t172-residual-screen.md)
   (unblocked; `27.0–27.9 %` on `benchy-off` → `0.825x / 0.843x` at zero,
   `34.2–37.0 %` on `base-off`, `12.4–13.8 %` on supports-on, with a `4.5×`
   `benchy` vs `8.1–8.6×` `base` concurrency gap),
   [`SupportGeometry` post-planner host tail attribution and reduction screen](issues/181-support-geometry-post-planner-host-tail.md)
   (`2,017–2,293 ms` = `7.0–7.8 %` `base-on`, `215–216 ms` = `6.1–6.2 %`
-  `benchy-on` host work after `tree-support-planner::module_complete`), and
-  newly graduated
+  `benchy-on` host work after `tree-support-planner::module_complete`),
   [Host-side spatial hierarchical Phase-3 union with convex-containment pruning](issues/182-host-spatial-hierarchical-phase3-union.md)
   (implementation + standing-gate validation of `M9n_k8` inside
   `crates/slicer-wasm-host/src/host.rs::clip_polygons_batch`, `−91.4 %` /
@@ -5657,18 +5717,30 @@ Standing decisions for this effort (2026-09-22):
   `base-on` to `~1.046x / ~1.032x` ord and `~1.002x / ~0.991x` acc, and
   `−3.10 / −2.99 %` on `benchy-on`, zero WIT/guest changes, inert on
   supports-off, requiring human KEEP ruling for `0.949 / 0.400 µm` Clipper2
-  distant-scanbeam boundary shift on support geometry only).
-  **Remaining fog:** (a) reserve stages not yet ticketed if `179`–`182` leave a
+  distant-scanbeam boundary shift on support geometry only), and newly graduated
+  [Exact per-layer guest acceleration: `tree-support` renderer fast paths and `infill-linker` open-subject tagging](issues/183-per-layer-tree-support-and-infill-linker-exact-acceleration.md)
+  (100 % output-preserving `TS-2 + IL-ALL` combined per-layer guest +
+  `clipper2-rust` exact open-subject tagging candidate; literal 8-cell `0.80 %`
+  standing gate with zero waivers and zero geometry exceptions; screen `+2.11 %`
+  to `+10.26 %` wall across 8/8 cells at `2.64×–12.82×` floor, `+3.33…+13.75 %`
+  CPU, `130/130` byte-identical to `t175`; stacked with `t182`, crosses `< 1.0x`
+  on both ordinary `base` supports-on cells at `~0.970x / ~0.953x`, and closes
+  `81.6 %` of `benchy-classic-off` to `~1.026x` ord / `~1.003x` acc).
+  **Remaining fog:** (a) reserve stages not yet ticketed if `180`–`183` leave a
   residual on binding `benchy-classic-on` or for the `<= 0.50x` map —
   specifically `PrePass::SupportAnalysis` (`9.5–10.0 %` `base-on`, `7.8–7.9 %`
   `benchy-on`; `84 % offset` in `host:support_analysis`, `3.2–3.4×` concurrency
   on `benchy`), `PostPass::LayerFinalization` (`4.8–5.1 %` `benchy-on`;
-  whole postpass `11.8 %`), and `PrePass::Slice` (`9.1–14.0 %` supports-off,
-  `4.5–5.2×` concurrency); (b) timing of the next official three-tool Orca
-  scoreboard refresh once candidates from `179`–`182` land and push additional
-  cells across `< 1.0x`; and (c) the planned follow-on **2× faster (`<= 0.50x`)**
-  fresh map once this map closes at 8/8 `< 1.0x` (now proven by `t177` to
-  require both prepass and per-layer cuts on all four `benchy` cells).
+  whole postpass `11.8 %`), `PrePass::Slice` (`9.1–14.0 %` supports-off,
+  `4.5–5.2×` concurrency), and the surviving `~159 ms` 3× host
+  `region_partition` inside `benchy` `L2` (standalone `with_max_len(1)` Rayon
+  granularity has only `31 ms` = `1.9 %` on `benchy-classic-off` and `<= 0.3 %`
+  on 7/8 cells post-`t183`, so it does not graduate on its own); (b) timing of
+  the next official three-tool Orca scoreboard refresh once candidates from
+  `180`–`183` land and push additional cells across `< 1.0x`; and (c) the planned
+  follow-on **2× faster (`<= 0.50x`)** fresh map once this map closes at 8/8
+  `< 1.0x` (now proven by `t177` to require both prepass and per-layer cuts on
+  all four `benchy` cells).
 
 - **t129's operand-volume shapes are ANSWERED and both were already landed
   ([t171](issues/171-post-t169-prepass-reprice.md), 2026-11-20).** The map had

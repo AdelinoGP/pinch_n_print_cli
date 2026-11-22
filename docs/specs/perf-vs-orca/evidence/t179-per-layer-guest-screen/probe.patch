@@ -1,0 +1,1723 @@
+diff --git a/crates/slicer-core/src/polygon_ops.rs b/crates/slicer-core/src/polygon_ops.rs
+index b55bb888..47521378 100644
+--- a/crates/slicer-core/src/polygon_ops.rs
++++ b/crates/slicer-core/src/polygon_ops.rs
+@@ -397,29 +397,37 @@ impl PreparedPolylineClip {
+         // A single-subject invocation pays one engine + one execute either
+         // way; take the `clip` path directly and skip attribution work.
+         if valid_positions.len() == 1 {
++            t179_clip_probe::inc_single_call();
++            let _g = t179_clip_probe::enter_single();
+             let position = valid_positions[0];
+             results[position] = self.clip(&[polylines[position].clone()]);
+             return results;
+         }
+ 
+-        let open_subjects: Vec<Vec<Point64>> = valid_positions
+-            .iter()
+-            .map(|&position| polyline_to_path(&polylines[position]))
+-            .collect();
+-        let mut clipper = Clipper64::default();
+-        clipper.add_open_subject(&open_subjects);
+-        clipper.add_clip(&self.clip_paths);
+-
+-        let mut closed_solution: Vec<Vec<Point64>> = Vec::new();
+-        let mut open_solution: Vec<Vec<Point64>> = Vec::new();
+-        let ok = clipper.execute(
+-            ClipType::Intersection,
+-            FillRule::NonZero,
+-            &mut closed_solution,
+-            Some(&mut open_solution),
+-        );
++        t179_clip_probe::inc_batch_call();
++        let (ok, open_solution) = {
++            let _g = t179_clip_probe::enter_exec();
++            let open_subjects: Vec<Vec<Point64>> = valid_positions
++                .iter()
++                .map(|&position| polyline_to_path(&polylines[position]))
++                .collect();
++            let mut clipper = Clipper64::default();
++            clipper.add_open_subject(&open_subjects);
++            clipper.add_clip(&self.clip_paths);
++
++            let mut closed_solution: Vec<Vec<Point64>> = Vec::new();
++            let mut open_solution: Vec<Vec<Point64>> = Vec::new();
++            let ok = clipper.execute(
++                ClipType::Intersection,
++                FillRule::NonZero,
++                &mut closed_solution,
++                Some(&mut open_solution),
++            );
++            (ok, open_solution)
++        };
+ 
+         let attributed = if ok {
++            let _g = t179_clip_probe::enter_attr();
+             attributed_runs(&open_solution, &subject_segment_lists)
+         } else {
+             Err(())
+@@ -431,6 +439,8 @@ impl PreparedPolylineClip {
+                         // Ambiguous junction neighbourhood: the subject's
+                         // own per-path chain is exact by construction, and
+                         // only the flagged subjects pay it.
++                        t179_clip_probe::inc_ambig_repair();
++                        let _g = t179_clip_probe::enter_repair();
+                         results[position] = self.clip(&[polylines[position].clone()]);
+                     } else {
+                         results[position] = runs_by_subject[subject]
+@@ -447,6 +457,8 @@ impl PreparedPolylineClip {
+                 // failure): the per-path chain, so the contract still
+                 // holds. Expected to never fire on the matched cells — the
+                 // t65 oracle counted its fires on the real captures.
++                t179_clip_probe::inc_err_fallback(valid_positions.len() as u64);
++                let _g = t179_clip_probe::enter_fallback();
+                 for &position in &valid_positions {
+                     results[position] = self.clip(&[polylines[position].clone()]);
+                 }
+@@ -456,6 +468,106 @@ impl PreparedPolylineClip {
+     }
+ }
+ 
++/// [T179-PROBE] Temporary observation-only scopes & counters inside `PreparedPolylineClip`.
++#[doc(hidden)]
++#[allow(missing_docs, dead_code)]
++pub mod t179_clip_probe {
++    use crate::profile::{self, ScopeGuard, ScopeId};
++    use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
++
++    static S_EXEC: AtomicU32 = AtomicU32::new(0);
++    static S_ATTR: AtomicU32 = AtomicU32::new(0);
++    static S_REPAIR: AtomicU32 = AtomicU32::new(0);
++    static S_FALLBACK: AtomicU32 = AtomicU32::new(0);
++    static S_SINGLE: AtomicU32 = AtomicU32::new(0);
++
++    static BATCH_CALLS: AtomicU64 = AtomicU64::new(0);
++    static SINGLE_CALLS: AtomicU64 = AtomicU64::new(0);
++    static AMBIG_REPAIRS: AtomicU64 = AtomicU64::new(0);
++    static ERR_FALLBACKS: AtomicU64 = AtomicU64::new(0);
++    static ERR_FALLBACK_SUBJS: AtomicU64 = AtomicU64::new(0);
++    static OUT_SEGS: AtomicU64 = AtomicU64::new(0);
++    static CAND_BBOX_PASS: AtomicU64 = AtomicU64::new(0);
++
++    pub fn set_scopes(
++        exec: Option<ScopeId>,
++        attr: Option<ScopeId>,
++        repair: Option<ScopeId>,
++        fallback: Option<ScopeId>,
++        single: Option<ScopeId>,
++    ) {
++        S_EXEC.store(exec.map_or(0, ScopeId::raw), Ordering::Relaxed);
++        S_ATTR.store(attr.map_or(0, ScopeId::raw), Ordering::Relaxed);
++        S_REPAIR.store(repair.map_or(0, ScopeId::raw), Ordering::Relaxed);
++        S_FALLBACK.store(fallback.map_or(0, ScopeId::raw), Ordering::Relaxed);
++        S_SINGLE.store(single.map_or(0, ScopeId::raw), Ordering::Relaxed);
++    }
++
++    #[inline]
++    pub fn enter(slot: &AtomicU32) -> Option<ScopeGuard> {
++        let raw = slot.load(Ordering::Relaxed);
++        (raw != 0).then(|| profile::scope(ScopeId::new(raw)))
++    }
++    #[inline]
++    pub fn enter_exec() -> Option<ScopeGuard> {
++        enter(&S_EXEC)
++    }
++    #[inline]
++    pub fn enter_attr() -> Option<ScopeGuard> {
++        enter(&S_ATTR)
++    }
++    #[inline]
++    pub fn enter_repair() -> Option<ScopeGuard> {
++        enter(&S_REPAIR)
++    }
++    #[inline]
++    pub fn enter_fallback() -> Option<ScopeGuard> {
++        enter(&S_FALLBACK)
++    }
++    #[inline]
++    pub fn enter_single() -> Option<ScopeGuard> {
++        enter(&S_SINGLE)
++    }
++
++    #[inline]
++    pub fn inc_batch_call() {
++        BATCH_CALLS.fetch_add(1, Ordering::Relaxed);
++    }
++    #[inline]
++    pub fn inc_single_call() {
++        SINGLE_CALLS.fetch_add(1, Ordering::Relaxed);
++    }
++    #[inline]
++    pub fn inc_ambig_repair() {
++        AMBIG_REPAIRS.fetch_add(1, Ordering::Relaxed);
++    }
++    #[inline]
++    pub fn inc_err_fallback(subjs: u64) {
++        ERR_FALLBACKS.fetch_add(1, Ordering::Relaxed);
++        ERR_FALLBACK_SUBJS.fetch_add(subjs, Ordering::Relaxed);
++    }
++    #[inline]
++    pub fn inc_out_seg() {
++        OUT_SEGS.fetch_add(1, Ordering::Relaxed);
++    }
++    #[inline]
++    pub fn inc_cand_bbox_pass() {
++        CAND_BBOX_PASS.fetch_add(1, Ordering::Relaxed);
++    }
++
++    pub fn take_and_reset() -> [u64; 7] {
++        [
++            BATCH_CALLS.swap(0, Ordering::Relaxed),
++            SINGLE_CALLS.swap(0, Ordering::Relaxed),
++            AMBIG_REPAIRS.swap(0, Ordering::Relaxed),
++            ERR_FALLBACKS.swap(0, Ordering::Relaxed),
++            ERR_FALLBACK_SUBJS.swap(0, Ordering::Relaxed),
++            OUT_SEGS.swap(0, Ordering::Relaxed),
++            CAND_BBOX_PASS.swap(0, Ordering::Relaxed),
++        ]
++    }
++}
++
+ /// Maximum tolerance (integer units; 1 unit = 100 nm) when attributing an
+ /// emitted open-path segment to a subject segment: ends and midpoint must
+ /// lie within this distance of the subject segment's line and inside its
+@@ -512,6 +624,7 @@ fn attributed_runs(
+         let mut current_owner: Option<usize> = None;
+         let mut current_run: Vec<Point2> = Vec::new();
+         for window in path.windows(2) {
++            t179_clip_probe::inc_out_seg();
+             let start = path_to_point2(window[0]);
+             let end = path_to_point2(window[1]);
+             let candidates = candidate_subjects(start, end, subject_segment_lists, &subject_boxes);
+@@ -581,6 +694,7 @@ fn candidate_subjects(
+         {
+             continue;
+         }
++        t179_clip_probe::inc_cand_bbox_pass();
+         if segments
+             .iter()
+             .any(|(a, b)| segment_rides(start, midpoint, end, *a, *b))
+diff --git a/crates/slicer-sdk/src/traits.rs b/crates/slicer-sdk/src/traits.rs
+index a0001dd7..04045097 100644
+--- a/crates/slicer-sdk/src/traits.rs
++++ b/crates/slicer-sdk/src/traits.rs
+@@ -227,15 +227,33 @@ impl PaintRegionLayerView {
+     /// region covers `expoly`, or when no enforcer/blocker annotations
+     /// are present.
+     pub fn paint_policy_for(&self, expoly: &ExPolygon) -> SupportPaintPolicy {
++        t179_paint_probe::inc_query();
+         let Some(slice) = self.slice_ir.as_ref() else {
+             return SupportPaintPolicy::DefaultEligible;
+         };
++        let has_ann = slice.regions.iter().any(|r| {
++            [
++                slicer_ir::PaintSemantic::SupportBlocker,
++                slicer_ir::PaintSemantic::SupportEnforcer,
++            ]
++            .iter()
++            .any(|sem| {
++                r.segment_annotations
++                    .get(sem)
++                    .is_some_and(|polys| polys.iter().any(|pts| pts.iter().any(Option::is_some)))
++            })
++        });
++        if has_ann {
++            t179_paint_probe::inc_has_support_ann();
++        }
+         let mut blocked = false;
+         let mut enforced = false;
+         for region in &slice.regions {
++            t179_paint_probe::inc_cover_region();
+             if !region_covers_expoly(&region.polygons, expoly) {
+                 continue;
+             }
++            t179_paint_probe::inc_cover_hit();
+             match slicer_core::paint_policy::support_eligibility(
+                 &region.polygons,
+                 &region.segment_annotations,
+@@ -255,6 +273,59 @@ impl PaintRegionLayerView {
+     }
+ }
+ 
++/// [T179-PROBE] Temporary observation-only counters for `paint_policy_for`.
++#[doc(hidden)]
++#[allow(missing_docs, dead_code)]
++pub mod t179_paint_probe {
++    use std::sync::atomic::{AtomicU64, Ordering};
++
++    static QUERIES: AtomicU64 = AtomicU64::new(0);
++    static HAS_SUPPORT_ANN: AtomicU64 = AtomicU64::new(0);
++    static COVER_REGIONS: AtomicU64 = AtomicU64::new(0);
++    static COVER_HITS: AtomicU64 = AtomicU64::new(0);
++    static VERT_LOOPS: AtomicU64 = AtomicU64::new(0);
++    static RING_CALLS: AtomicU64 = AtomicU64::new(0);
++    static RING_EDGES: AtomicU64 = AtomicU64::new(0);
++
++    #[inline]
++    pub fn inc_query() {
++        QUERIES.fetch_add(1, Ordering::Relaxed);
++    }
++    #[inline]
++    pub fn inc_has_support_ann() {
++        HAS_SUPPORT_ANN.fetch_add(1, Ordering::Relaxed);
++    }
++    #[inline]
++    pub fn inc_cover_region() {
++        COVER_REGIONS.fetch_add(1, Ordering::Relaxed);
++    }
++    #[inline]
++    pub fn inc_cover_hit() {
++        COVER_HITS.fetch_add(1, Ordering::Relaxed);
++    }
++    #[inline]
++    pub fn inc_vert_loop() {
++        VERT_LOOPS.fetch_add(1, Ordering::Relaxed);
++    }
++    #[inline]
++    pub fn inc_ring_call(edges: u64) {
++        RING_CALLS.fetch_add(1, Ordering::Relaxed);
++        RING_EDGES.fetch_add(edges, Ordering::Relaxed);
++    }
++
++    pub fn take_and_reset() -> [u64; 7] {
++        [
++            QUERIES.swap(0, Ordering::Relaxed),
++            HAS_SUPPORT_ANN.swap(0, Ordering::Relaxed),
++            COVER_REGIONS.swap(0, Ordering::Relaxed),
++            COVER_HITS.swap(0, Ordering::Relaxed),
++            VERT_LOOPS.swap(0, Ordering::Relaxed),
++            RING_CALLS.swap(0, Ordering::Relaxed),
++            RING_EDGES.swap(0, Ordering::Relaxed),
++        ]
++    }
++}
++
+ /// True if any vertex of `caller_expoly`'s contour lies inside one of
+ /// `region_polys`. The region-ownership predicate for
+ /// `paint_policy_for`. Tested against the caller's expoly contour
+@@ -270,6 +341,7 @@ fn region_covers_expoly(region_polys: &[ExPolygon], caller_expoly: &ExPolygon) -
+         return false;
+     }
+     for vertex in &caller_expoly.contour.points {
++        t179_paint_probe::inc_vert_loop();
+         for ep in region_polys {
+             if point_in_polygon_ring(&ep.contour.points, *vertex) {
+                 let mut in_hole = false;
+@@ -297,6 +369,7 @@ fn point_in_polygon_ring(ring: &[slicer_ir::Point2], pt: slicer_ir::Point2) -> b
+     if ring.len() < 3 {
+         return false;
+     }
++    t179_paint_probe::inc_ring_call(ring.len() as u64);
+     let mut inside = false;
+     let mut j = ring.len() - 1;
+     for i in 0..ring.len() {
+diff --git a/modules/core-modules/infill-linker/src/connect.rs b/modules/core-modules/infill-linker/src/connect.rs
+index 424fb9e7..4b6e4525 100644
+--- a/modules/core-modules/infill-linker/src/connect.rs
++++ b/modules/core-modules/infill-linker/src/connect.rs
+@@ -13,6 +13,7 @@ use std::cmp::Ordering;
+ 
+ pub use crate::graph::contour_stub;
+ use crate::graph::{contour_connector, BoundaryInfillGraph, BoundaryRing, RingDirection};
++use crate::t179_il_probe as probe;
+ use slicer_ir::{mm_to_units, ExtrusionPath3D, Point2, Point3WithWidth};
+ use slicer_sdk::error::ModuleError;
+ 
+@@ -134,6 +135,7 @@ pub fn connect_infill(
+         };
+ 
+     let mut candidates = nearest_pair_candidates(&active, graph);
++    let _g_merge = probe::enter(probe::IDX_CONNECT_MERGE);
+     candidates.sort_by(|left, right| {
+         left.distance
+             .total_cmp(&right.distance)
+@@ -231,6 +233,7 @@ pub fn connect_infill(
+         }
+ 
+         if joinable {
++            probe::count(probe::C_MERGES_JOINED, 1);
+             // After orientation the join runs from `first`'s last point to
+             // `second`'s first point. Route it along the contour instead of
+             // extruding a bare chord between them.
+@@ -250,6 +253,7 @@ pub fn connect_infill(
+             active[lower] = Some(first);
+             merged_with[upper] = lower;
+         } else if anchor_length_units > 0.0 {
++            probe::count(probe::C_MERGES_STUB, 1);
+             let direction = ring
+                 .directed_distance(
+                     candidate.first.position.arc_position,
+@@ -320,6 +324,8 @@ pub fn chain_or_connect_infill(
+     if paths.len() < 2 {
+         return paths;
+     }
++    let _g_chain = probe::enter(probe::IDX_CHAIN_ORDER);
++    probe::count(probe::C_CHAIN_PATHS, paths.len() as u64);
+ 
+     let first_index = (0..paths.len())
+         .min_by(|left, right| {
+@@ -432,10 +438,13 @@ fn nearest_pair_candidates(
+         })
+         .flatten()
+         .collect::<Vec<_>>();
++    let _g_pair = probe::enter(probe::IDX_CONNECT_PAIR_SCAN);
++    probe::count(probe::C_ENDPOINTS, endpoints.len() as u64);
+     endpoints.sort_by(endpoint_order);
+ 
+     let mut candidates = Vec::new();
+     for endpoint in &endpoints {
++        probe::count(probe::C_PAIR_ITERS, endpoints.len() as u64);
+         let Some(best) = endpoints
+             .iter()
+             .filter(|other| {
+@@ -582,20 +591,30 @@ fn boundary_position(
+     // Strictly-inside-a-hole test up front: hole rings below are found by
+     // `hole_index`, and the point-in-ring test runs on the hole polygon
+     // itself (units space, exact integer arithmetic where it matters).
+-    let inside_hole: Option<usize> =
++    let inside_hole: Option<usize> = {
++        let _g = probe::enter(probe::IDX_CONNECT_BPOS_HOLE);
+         graph
+             .rings()
+             .iter()
+             .enumerate()
+             .find_map(|(ring_index, ring)| {
+-                (ring.hole_index.is_some() && point_strictly_in_ring(point, &ring.polygon))
+-                    .then_some(ring_index)
+-            });
++                if ring.hole_index.is_some() {
++                    probe::count(probe::C_BPOS_HOLE_TESTS, 1);
++                    probe::count(probe::C_BPOS_HOLE_EDGES, ring.polygon.points.len() as u64);
++                    point_strictly_in_ring(point, &ring.polygon).then_some(ring_index)
++                } else {
++                    None
++                }
++            })
++    };
++    let _g_proj = probe::enter(probe::IDX_CONNECT_BPOS_PROJ);
+     if let Some(hole_ring) = inside_hole {
+         // Inside a void: only that hole's own ring can anchor, and only when
+         // the point sits on it (a scan line clipped exactly at the hole
+         // edge). Anything deeper has no T-joint anywhere.
+         let ring = &graph.rings()[hole_ring];
++        probe::count(probe::C_BPOS_PROJ_RINGS, 1);
++        probe::count(probe::C_BPOS_PROJ_EDGES, ring.polygon.points.len() as u64);
+         let (distance_squared, local_arc) = project_on_ring(ring, point)?;
+         if distance_squared > ON_RING_TOLERANCE_UNITS_SQUARED {
+             return None;
+@@ -607,6 +626,8 @@ fn boundary_position(
+     }
+     let mut best: Option<(f64, BoundaryPosition)> = None;
+     for (ring_index, ring) in graph.rings().iter().enumerate() {
++        probe::count(probe::C_BPOS_PROJ_RINGS, 1);
++        probe::count(probe::C_BPOS_PROJ_EDGES, ring.polygon.points.len() as u64);
+         let Some((distance_squared, local_arc)) = project_on_ring(ring, point) else {
+             continue;
+         };
+diff --git a/modules/core-modules/infill-linker/src/lib.rs b/modules/core-modules/infill-linker/src/lib.rs
+index d3ce0411..f16c9709 100644
+--- a/modules/core-modules/infill-linker/src/lib.rs
++++ b/modules/core-modules/infill-linker/src/lib.rs
+@@ -57,12 +57,13 @@ impl LayerModule for InfillLinker {
+ 
+     fn run_infill_postprocess(
+         &self,
+-        _layer_index: u32,
++        layer_index: u32,
+         regions: &[PerimeterRegionView],
+         prior_infill: &[InfillRegion],
+         output: &mut InfillOutputBuilder,
+         config: &ConfigView,
+     ) -> Result<(), ModuleError> {
++        t179_il_probe::init_for_dispatch();
+         let spacing_mm = match config.get("line_width") {
+             Some(ConfigValue::Float(value)) if value.is_finite() && *value > 0.0 => *value as f32,
+             Some(ConfigValue::Int(value)) if *value > 0 => *value as f32,
+@@ -76,9 +77,162 @@ impl LayerModule for InfillLinker {
+             output,
+         )
+         .map_err(|error| ModuleError::fatal(1, error))?;
+-        for region in prior_infill {
+-            Self::copy_ironing(region, output)?;
++        {
++            let _g = t179_il_probe::enter(t179_il_probe::IDX_OUTPUT_EMIT);
++            for region in prior_infill {
++                Self::copy_ironing(region, output)?;
++            }
+         }
++        t179_il_probe::flush(layer_index);
+         Ok(())
+     }
+ }
++
++/// [T179-PROBE] Temporary observation-only scopes & counters for `infill-linker`.
++#[allow(missing_docs, dead_code)]
++pub mod t179_il_probe {
++    use slicer_core::profile::{ScopeGuard, ScopeId};
++    use slicer_sdk::profile::register_scope;
++    use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
++
++    const SCOPES: [&str; 12] = [
++        "t179::il::setup",
++        "t179::il::offset_boundary",
++        "t179::il::prep_clip_new",
++        "t179::il::post_clip_meta",
++        "t179::il::graph_new",
++        "t179::il::connect_bpos_hole",
++        "t179::il::connect_bpos_proj",
++        "t179::il::connect_pair_scan",
++        "t179::il::connect_merge",
++        "t179::il::chain_order",
++        "t179::il::majority_owner",
++        "t179::il::output_emit",
++    ];
++
++    pub const IDX_SETUP: usize = 0;
++    pub const IDX_OFFSET_BOUNDARY: usize = 1;
++    pub const IDX_PREP_CLIP_NEW: usize = 2;
++    pub const IDX_POST_CLIP_META: usize = 3;
++    pub const IDX_GRAPH_NEW: usize = 4;
++    pub const IDX_CONNECT_BPOS_HOLE: usize = 5;
++    pub const IDX_CONNECT_BPOS_PROJ: usize = 6;
++    pub const IDX_CONNECT_PAIR_SCAN: usize = 7;
++    pub const IDX_CONNECT_MERGE: usize = 8;
++    pub const IDX_CHAIN_ORDER: usize = 9;
++    pub const IDX_MAJORITY_OWNER: usize = 10;
++    pub const IDX_OUTPUT_EMIT: usize = 11;
++
++    static SCOPE_IDS: [AtomicU32; 12] = [const { AtomicU32::new(0) }; 12];
++
++    pub fn init_for_dispatch() {
++        for (i, name) in SCOPES.iter().enumerate() {
++            let raw = register_scope(name).map_or(0, ScopeId::raw);
++            SCOPE_IDS[i].store(raw, Ordering::Relaxed);
++        }
++        slicer_core::polygon_ops::t179_clip_probe::set_scopes(
++            register_scope("t179::il::clip_batch_exec"),
++            register_scope("t179::il::clip_batch_attr"),
++            register_scope("t179::il::clip_batch_repair"),
++            register_scope("t179::il::clip_batch_fallback"),
++            register_scope("t179::il::clip_single_subj"),
++        );
++        for c in &COUNTERS {
++            c.store(0, Ordering::Relaxed);
++        }
++        let _ = slicer_core::polygon_ops::t179_clip_probe::take_and_reset();
++    }
++
++    #[inline]
++    pub fn enter(idx: usize) -> Option<ScopeGuard> {
++        let raw = SCOPE_IDS[idx].load(Ordering::Relaxed);
++        (raw != 0).then(|| slicer_core::profile::scope(ScopeId::new(raw)))
++    }
++
++    pub const C_INVOCATIONS: usize = 0;
++    pub const C_RAW_FALLBACKS: usize = 1;
++    pub const C_SUBJECTS: usize = 2;
++    pub const C_BOUNDARY_POLYS: usize = 3;
++    pub const C_BOUNDARY_RINGS: usize = 4;
++    pub const C_BOUNDARY_HOLES: usize = 5;
++    pub const C_BOUNDARY_VERTS: usize = 6;
++    pub const C_CLIPPED_PATHS: usize = 7;
++    pub const C_CLIPPED_PTS: usize = 8;
++    pub const C_META_SCANS: usize = 9;
++    pub const C_ENDPOINTS: usize = 10;
++    pub const C_BPOS_HOLE_TESTS: usize = 11;
++    pub const C_BPOS_HOLE_EDGES: usize = 12;
++    pub const C_BPOS_PROJ_RINGS: usize = 13;
++    pub const C_BPOS_PROJ_EDGES: usize = 14;
++    pub const C_PAIR_ITERS: usize = 15;
++    pub const C_MERGES_JOINED: usize = 16;
++    pub const C_MERGES_STUB: usize = 17;
++    pub const C_CHAIN_PATHS: usize = 18;
++    pub const C_UNION_GROUPS: usize = 19;
++
++    const C_COUNT: usize = 20;
++    const NAMES: [&str; C_COUNT] = [
++        "invocations",
++        "raw_fallbacks",
++        "subjects",
++        "b_polys",
++        "b_rings",
++        "b_holes",
++        "b_verts",
++        "clipped_paths",
++        "clipped_pts",
++        "meta_scans",
++        "endpoints",
++        "bpos_hole_tests",
++        "bpos_hole_edges",
++        "bpos_proj_rings",
++        "bpos_proj_edges",
++        "pair_iters",
++        "merges_joined",
++        "merges_stub",
++        "chain_paths",
++        "union_groups",
++    ];
++
++    static COUNTERS: [AtomicU64; C_COUNT] = [const { AtomicU64::new(0) }; C_COUNT];
++
++    #[inline]
++    pub fn count(idx: usize, n: u64) {
++        COUNTERS[idx].fetch_add(n, Ordering::Relaxed);
++    }
++
++    #[cfg(target_arch = "wasm32")]
++    pub fn flush(layer_index: u32) {
++        let clip = slicer_core::polygon_ops::t179_clip_probe::take_and_reset();
++        let vals: [u64; C_COUNT] = std::array::from_fn(|i| COUNTERS[i].swap(0, Ordering::Relaxed));
++        if vals.iter().all(|&v| v == 0) && clip.iter().all(|&v| v == 0) {
++            return;
++        }
++        let mut parts = Vec::with_capacity(C_COUNT + 8);
++        parts.push(format!("T179-IL layer={layer_index}"));
++        for (name, v) in NAMES.iter().zip(vals.iter()) {
++            parts.push(format!("{name}={v}"));
++        }
++        let cnames = [
++            "clip_batch_calls",
++            "clip_single_calls",
++            "clip_ambig_repairs",
++            "clip_err_fallbacks",
++            "clip_err_fallback_subjs",
++            "clip_out_segs",
++            "clip_cand_bbox_pass",
++        ];
++        for (name, v) in cnames.iter().zip(clip.iter()) {
++            parts.push(format!("{name}={v}"));
++        }
++        slicer_sdk::host::log_trace(&parts.join(" "));
++    }
++
++    #[cfg(not(target_arch = "wasm32"))]
++    pub fn flush(_layer_index: u32) {
++        let _ = slicer_core::polygon_ops::t179_clip_probe::take_and_reset();
++        for c in &COUNTERS {
++            c.store(0, Ordering::Relaxed);
++        }
++    }
++}
+diff --git a/modules/core-modules/infill-linker/src/orchestrate.rs b/modules/core-modules/infill-linker/src/orchestrate.rs
+index 33b3a9fd..8cdf7c30 100644
+--- a/modules/core-modules/infill-linker/src/orchestrate.rs
++++ b/modules/core-modules/infill-linker/src/orchestrate.rs
+@@ -20,6 +20,7 @@ use slicer_sdk::views::PerimeterRegionView;
+ 
+ use crate::connect::{chain_or_connect_infill, AnchorParams};
+ use crate::offset::{remove_short_polylines, ExPolygonWithOffset};
++use crate::t179_il_probe as probe;
+ 
+ const WIDTH_EPSILON_MM: f32 = 0.000001;
+ 
+@@ -182,87 +183,95 @@ pub fn orchestrate_infill(
+     default_line_width: f32,
+     output: &mut InfillOutputBuilder,
+ ) -> Result<(), String> {
+-    let mut records = Vec::with_capacity(prior_infill.len());
+-    let mut buckets = vec![BucketPaths::default(); prior_infill.len()];
+-
+-    for (prior_index, region) in prior_infill.iter().enumerate() {
+-        // Full source identity `(object_id, region_id, ordered variant_chain)`:
+-        // a pair-only match would join a paint-minted variant onto the
+-        // perimeter view of a chain sibling. The chain is compared exactly,
+-        // never sorted or normalized; an empty chain is a real value.
+-        let Some(view) = regions.iter().find(|view| {
+-            view.object_id() == &region.object_id
+-                && view.region_id() == &region.region_id
+-                && view.variant_chain() == region.variant_chain.as_slice()
+-        }) else {
+-            buckets[prior_index].sparse = region.sparse_infill.clone();
+-            buckets[prior_index].solid = region.solid_infill.clone();
+-            continue;
+-        };
++    let (mut records, mut buckets) = {
++        let _g = probe::enter(probe::IDX_SETUP);
++        let mut records = Vec::with_capacity(prior_infill.len());
++        let mut buckets = vec![BucketPaths::default(); prior_infill.len()];
+ 
+-        let line_width = config_float(view.config(), "line_width")
+-            .filter(|value| value.is_finite() && *value > 0.0)
+-            .unwrap_or(default_line_width);
+-        // Packet 06 (AC-3): `infill_density` and `layer_height` are declared
+-        // `float` with registry defaults in infill-linker.toml, so a bound
+-        // view always holds them; a missing or mistyped value is a fatal
+-        // config defect, not a fallback case. The sanitizing filter stays
+-        // for degenerate-but-legal values (a 0.0 density must not reach the
+-        // `sparse_spacing_mm` division).
+-        let density = view
+-            .config()
+-            .map(|config| config.require_float("infill_density"))
+-            .transpose()
+-            .map_err(|error| error.to_string())?
+-            .filter(|value| value.is_finite() && *value > 0.0)
+-            .unwrap_or(0.2) as f32;
+-        let layer_height = view
+-            .config()
+-            .map(|config| config.require_float("layer_height"))
+-            .transpose()
+-            .map_err(|error| error.to_string())?
+-            .filter(|value| value.is_finite() && *value > 0.0)
+-            .unwrap_or(0.2) as f32;
+-        // Packet-approved deviation: flow.rs treats negative spacing as the canonical
+-        // throw analog (`FlowErrorNegativeSpacing`); the linker resolves the percent
+-        // base from user config, must not fail a slice on a non-physical width, and the formula port is exact.
+-        let anchor_base_mm = line_width_to_spacing(line_width, layer_height).unwrap_or(line_width);
+-        let sparse_anchor = AnchorParams::from_config(view.config(), anchor_base_mm)
+-            .map_err(|error| error.to_string())?;
+-
+-        records.push(RegionRecord {
+-            prior_index,
+-            object_id: region.object_id.clone(),
+-            region_id: region.region_id,
+-            variant_chain: region.variant_chain.clone(),
+-            tool_index: view.tool_index(),
+-            wall_source_region_id: view.wall_source_region_id().copied(),
+-            boundaries: RoleBoundaries::from_view(view),
+-            config: RegionConfig {
+-                line_width: line_width.to_bits(),
+-                density: density.to_bits(),
+-                anchor_length: sparse_anchor.anchor_length_mm.to_bits(),
+-                anchor_length_max: sparse_anchor.anchor_length_max_mm.to_bits(),
+-            },
+-            sparse_spacing_mm: (line_width / density).max(f32::EPSILON),
+-            solid_spacing_mm: line_width.max(f32::EPSILON),
+-            anchor_base_mm,
+-            sparse_anchor,
+-            sparse_paths: region.sparse_infill.clone(),
+-            solid_paths: region.solid_infill.clone(),
+-        });
+-    }
++        for (prior_index, region) in prior_infill.iter().enumerate() {
++            // Full source identity `(object_id, region_id, ordered variant_chain)`:
++            // a pair-only match would join a paint-minted variant onto the
++            // perimeter view of a chain sibling. The chain is compared exactly,
++            // never sorted or normalized; an empty chain is a real value.
++            let Some(view) = regions.iter().find(|view| {
++                view.object_id() == &region.object_id
++                    && view.region_id() == &region.region_id
++                    && view.variant_chain() == region.variant_chain.as_slice()
++            }) else {
++                buckets[prior_index].sparse = region.sparse_infill.clone();
++                buckets[prior_index].solid = region.solid_infill.clone();
++                continue;
++            };
++
++            let line_width = config_float(view.config(), "line_width")
++                .filter(|value| value.is_finite() && *value > 0.0)
++                .unwrap_or(default_line_width);
++            // Packet 06 (AC-3): `infill_density` and `layer_height` are declared
++            // `float` with registry defaults in infill-linker.toml, so a bound
++            // view always holds them; a missing or mistyped value is a fatal
++            // config defect, not a fallback case. The sanitizing filter stays
++            // for degenerate-but-legal values (a 0.0 density must not reach the
++            // `sparse_spacing_mm` division).
++            let density = view
++                .config()
++                .map(|config| config.require_float("infill_density"))
++                .transpose()
++                .map_err(|error| error.to_string())?
++                .filter(|value| value.is_finite() && *value > 0.0)
++                .unwrap_or(0.2) as f32;
++            let layer_height = view
++                .config()
++                .map(|config| config.require_float("layer_height"))
++                .transpose()
++                .map_err(|error| error.to_string())?
++                .filter(|value| value.is_finite() && *value > 0.0)
++                .unwrap_or(0.2) as f32;
++            // Packet-approved deviation: flow.rs treats negative spacing as the canonical
++            // throw analog (`FlowErrorNegativeSpacing`); the linker resolves the percent
++            // base from user config, must not fail a slice on a non-physical width, and the formula port is exact.
++            let anchor_base_mm =
++                line_width_to_spacing(line_width, layer_height).unwrap_or(line_width);
++            let sparse_anchor = AnchorParams::from_config(view.config(), anchor_base_mm)
++                .map_err(|error| error.to_string())?;
++
++            records.push(RegionRecord {
++                prior_index,
++                object_id: region.object_id.clone(),
++                region_id: region.region_id,
++                variant_chain: region.variant_chain.clone(),
++                tool_index: view.tool_index(),
++                wall_source_region_id: view.wall_source_region_id().copied(),
++                boundaries: RoleBoundaries::from_view(view),
++                config: RegionConfig {
++                    line_width: line_width.to_bits(),
++                    density: density.to_bits(),
++                    anchor_length: sparse_anchor.anchor_length_mm.to_bits(),
++                    anchor_length_max: sparse_anchor.anchor_length_max_mm.to_bits(),
++                },
++                sparse_spacing_mm: (line_width / density).max(f32::EPSILON),
++                solid_spacing_mm: line_width.max(f32::EPSILON),
++                anchor_base_mm,
++                sparse_anchor,
++                sparse_paths: region.sparse_infill.clone(),
++                solid_paths: region.solid_infill.clone(),
++            });
++        }
++        (records, buckets)
++    };
+ 
+     process_bucket(&records, PathBucket::Sparse, infill_overlap, &mut buckets);
+     process_bucket(&records, PathBucket::Solid, infill_overlap, &mut buckets);
+ 
+-    for (index, region) in prior_infill.iter().enumerate() {
+-        output.begin_region(&region.object_id, region.region_id, &region.variant_chain);
+-        for path in buckets[index].sparse.drain(..) {
+-            output.push_sparse_path(path)?;
+-        }
+-        for path in buckets[index].solid.drain(..) {
+-            output.push_solid_path(path)?;
++    {
++        let _g = probe::enter(probe::IDX_OUTPUT_EMIT);
++        for (index, region) in prior_infill.iter().enumerate() {
++            output.begin_region(&region.object_id, region.region_id, &region.variant_chain);
++            for path in buckets[index].sparse.drain(..) {
++                output.push_sparse_path(path)?;
++            }
++            for path in buckets[index].solid.drain(..) {
++                output.push_solid_path(path)?;
++            }
+         }
+     }
+ 
+@@ -287,67 +296,72 @@ fn process_bucket_role(
+     infill_overlap: f32,
+     buckets: &mut [BucketPaths],
+ ) {
+-    for record in records {
+-        let locked = selected_paths(record, bucket, role)
+-            .into_iter()
+-            .filter(|path| path.order_lock.is_some())
+-            .cloned()
+-            .collect::<Vec<_>>();
+-        append_paths(&mut buckets[record.prior_index], bucket, locked);
+-    }
++    let (unlocked_records, boundaries, groups, shared_sources) = {
++        let _g = probe::enter(probe::IDX_SETUP);
++        for record in records {
++            let locked = selected_paths(record, bucket, role)
++                .into_iter()
++                .filter(|path| path.order_lock.is_some())
++                .cloned()
++                .collect::<Vec<_>>();
++            append_paths(&mut buckets[record.prior_index], bucket, locked);
++        }
+ 
+-    let mut unlocked_records = records.to_vec();
+-    for record in &mut unlocked_records {
+-        record.sparse_paths.retain(|path| path.order_lock.is_none());
+-        record.solid_paths.retain(|path| path.order_lock.is_none());
+-    }
++        let mut unlocked_records = records.to_vec();
++        for record in &mut unlocked_records {
++            record.sparse_paths.retain(|path| path.order_lock.is_none());
++            record.solid_paths.retain(|path| path.order_lock.is_none());
++        }
+ 
+-    // Per-role, per-region: `role`'s own partitioned polygon, never the union
+-    // of all four (see `RoleBoundaries::for_role`).
+-    let boundaries = records
+-        .iter()
+-        .map(|record| {
+-            record.boundaries.for_role(role).map(|boundary| {
+-                let locked = record
+-                    .sparse_paths
+-                    .iter()
+-                    .chain(&record.solid_paths)
+-                    .filter(|path| path.order_lock.is_some())
+-                    .cloned()
+-                    .collect::<Vec<_>>();
+-                let footprint = swept_footprint_polygons(&locked);
+-                if footprint.is_empty() {
+-                    boundary
+-                } else {
+-                    slicer_core::polygon_ops::difference_ex(&boundary, &footprint)
+-                }
++        // Per-role, per-region: `role`'s own partitioned polygon, never the union
++        // of all four (see `RoleBoundaries::for_role`).
++        let boundaries = records
++            .iter()
++            .map(|record| {
++                record.boundaries.for_role(role).map(|boundary| {
++                    let locked = record
++                        .sparse_paths
++                        .iter()
++                        .chain(&record.solid_paths)
++                        .filter(|path| path.order_lock.is_some())
++                        .cloned()
++                        .collect::<Vec<_>>();
++                    let footprint = swept_footprint_polygons(&locked);
++                    if footprint.is_empty() {
++                        boundary
++                    } else {
++                        slicer_core::polygon_ops::difference_ex(&boundary, &footprint)
++                    }
++                })
+             })
+-        })
+-        .collect::<Vec<_>>();
+-    let records = unlocked_records.as_slice();
++            .collect::<Vec<_>>();
+ 
+-    let active = (0..records.len())
+-        .filter(|&index| {
+-            !selected_paths(&records[index], bucket, role).is_empty() && boundaries[index].is_some()
+-        })
+-        .collect::<Vec<_>>();
++        let active = (0..unlocked_records.len())
++            .filter(|&index| {
++                !selected_paths(&unlocked_records[index], bucket, role).is_empty()
++                    && boundaries[index].is_some()
++            })
++            .collect::<Vec<_>>();
+ 
+-    for (index, record) in records.iter().enumerate() {
+-        let selected = selected_paths(record, bucket, role);
+-        if selected.is_empty() || boundaries[index].is_none() {
+-            append_paths(
+-                &mut buckets[record.prior_index],
+-                bucket,
+-                selected.into_iter().cloned().collect(),
+-            );
++        for (index, record) in unlocked_records.iter().enumerate() {
++            let selected = selected_paths(record, bucket, role);
++            if selected.is_empty() || boundaries[index].is_none() {
++                append_paths(
++                    &mut buckets[record.prior_index],
++                    bucket,
++                    selected.into_iter().cloned().collect(),
++                );
++            }
+         }
+-    }
+ 
+-    let shared_sources = records
+-        .iter()
+-        .filter_map(|record| record.wall_source_region_id)
+-        .collect::<Vec<_>>();
+-    let groups = wall_groups(records, &active, &shared_sources);
++        let shared_sources = unlocked_records
++            .iter()
++            .filter_map(|record| record.wall_source_region_id)
++            .collect::<Vec<_>>();
++        let groups = wall_groups(&unlocked_records, &active, &shared_sources);
++        (unlocked_records, boundaries, groups, shared_sources)
++    };
++    let records = unlocked_records.as_slice();
+ 
+     for group in groups {
+         let same_config = group
+@@ -553,25 +567,30 @@ fn link_union_group(
+     infill_overlap: f32,
+     buckets: &mut [BucketPaths],
+ ) {
++    probe::count(probe::C_UNION_GROUPS, 1);
+     // Cross-region joining (ADR-0025 Amendment 2026-07-01) is an intentional
+     // PnP improvement over canonical and is preserved: the union is taken
+     // across sibling regions of the wall-sharing group, but only over *this
+     // role's* polygon in each of them.
+-    let source = group
+-        .iter()
+-        .flat_map(|&index| boundary_for(boundaries, index).iter().cloned())
+-        .collect::<Vec<_>>();
+-    let boundary = union_ex(&source);
+-    let spacing = spacing(records, group[0], bucket);
+-    let tagged = group
+-        .iter()
+-        .flat_map(|&index| {
+-            selected_paths(&records[index], bucket, role)
+-                .into_iter()
+-                .cloned()
+-                .map(move |path| (index, path))
+-        })
+-        .collect::<Vec<_>>();
++    let (boundary, spacing, tagged) = {
++        let _g = probe::enter(probe::IDX_SETUP);
++        let source = group
++            .iter()
++            .flat_map(|&index| boundary_for(boundaries, index).iter().cloned())
++            .collect::<Vec<_>>();
++        let boundary = union_ex(&source);
++        let spacing = spacing(records, group[0], bucket);
++        let tagged = group
++            .iter()
++            .flat_map(|&index| {
++                selected_paths(&records[index], bucket, role)
++                    .into_iter()
++                    .cloned()
++                    .map(move |path| (index, path))
++            })
++            .collect::<Vec<_>>();
++        (boundary, spacing, tagged)
++    };
+     let (linked, source_segments) = link_paths(
+         tagged,
+         &boundary,
+@@ -579,6 +598,7 @@ fn link_union_group(
+         infill_overlap,
+         anchor(records, group[0], bucket),
+     );
++    let _g = probe::enter(probe::IDX_MAJORITY_OWNER);
+     for path in linked {
+         let owner = majority_owner(&path, &source_segments, records, group);
+         append_paths(&mut buckets[records[owner].prior_index], bucket, vec![path]);
+@@ -598,18 +618,24 @@ fn link_region_group(
+         let spacing_mm = spacing(records, index, bucket);
+         let anchor = anchor(records, index, bucket);
+         let raw = boundary_for(boundaries, index);
+-        let boundary = if group.len() == 1 {
+-            ExPolygonWithOffset::for_infill_overlap(raw, infill_overlap, spacing_mm)
+-                .polygons_outer()
+-                .to_vec()
+-        } else {
+-            mixed_boundary(boundaries, group, index, infill_overlap, spacing_mm)
++        let boundary = {
++            let _g = probe::enter(probe::IDX_OFFSET_BOUNDARY);
++            if group.len() == 1 {
++                ExPolygonWithOffset::for_infill_overlap(raw, infill_overlap, spacing_mm)
++                    .polygons_outer()
++                    .to_vec()
++            } else {
++                mixed_boundary(boundaries, group, index, infill_overlap, spacing_mm)
++            }
++        };
++        let tagged = {
++            let _g = probe::enter(probe::IDX_SETUP);
++            selected_paths(&records[index], bucket, role)
++                .into_iter()
++                .cloned()
++                .map(|path| (index, path))
++                .collect::<Vec<_>>()
+         };
+-        let tagged = selected_paths(&records[index], bucket, role)
+-            .into_iter()
+-            .cloned()
+-            .map(|path| (index, path))
+-            .collect::<Vec<_>>();
+         let (linked, _) = if group.len() == 1 {
+             link_paths_against(tagged, &boundary, raw, spacing_mm, anchor)
+         } else {
+@@ -789,7 +815,10 @@ fn link_paths(
+     infill_overlap: f32,
+     anchor: AnchorParams,
+ ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
+-    let offset = ExPolygonWithOffset::for_infill_overlap(boundary, infill_overlap, spacing_mm);
++    let offset = {
++        let _g = probe::enter(probe::IDX_OFFSET_BOUNDARY);
++        ExPolygonWithOffset::for_infill_overlap(boundary, infill_overlap, spacing_mm)
++    };
+     link_paths_against(
+         tagged,
+         offset.polygons_outer(),
+@@ -826,6 +855,7 @@ fn link_paths_against(
+     if !linked.is_empty() {
+         return (linked, source_segments);
+     }
++    probe::count(probe::C_RAW_FALLBACKS, 1);
+     link_paths_without_offset(tagged, raw_boundary, spacing_mm, anchor)
+ }
+ 
+@@ -835,6 +865,17 @@ fn link_paths_without_offset(
+     spacing_mm: f32,
+     anchor: AnchorParams,
+ ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
++    probe::count(probe::C_INVOCATIONS, 1);
++    probe::count(probe::C_BOUNDARY_POLYS, boundary.len() as u64);
++    for ep in boundary {
++        probe::count(probe::C_BOUNDARY_RINGS, 1 + ep.holes.len() as u64);
++        probe::count(probe::C_BOUNDARY_HOLES, ep.holes.len() as u64);
++        probe::count(
++            probe::C_BOUNDARY_VERTS,
++            (ep.contour.points.len() + ep.holes.iter().map(|h| h.points.len()).sum::<usize>())
++                as u64,
++        );
++    }
+     let mut clipped = Vec::new();
+     let mut source_segments = Vec::new();
+     // Batched clip (wayfinder ticket 65): one engine + one execute per
+@@ -843,54 +884,69 @@ fn link_paths_without_offset(
+     // result equals the per-path chain subject-for-subject — same spans, same
+     // subject-major order — so every downstream step below (short filtering,
+     // metadata, source segments, connectivity) runs unchanged.
+-    let prepared_subjects: Vec<(usize, Vec<Point2>, &ExtrusionPath3D)> = tagged
+-        .iter()
+-        .map(|(owner, path)| {
+-            let polyline = path
+-                .points
+-                .iter()
+-                .map(|point| Point2::from_mm(point.x, point.y))
+-                .collect::<Vec<_>>();
+-            (*owner, polyline, path)
+-        })
+-        .filter(|(_, polyline, _)| polyline.len() >= 2)
+-        .collect();
+-    if let Some(batched) = (!prepared_subjects.is_empty()).then(|| {
++    let prepared_subjects: Vec<(usize, Vec<Point2>, &ExtrusionPath3D)> = {
++        let _g = probe::enter(probe::IDX_SETUP);
++        tagged
++            .iter()
++            .map(|(owner, path)| {
++                let polyline = path
++                    .points
++                    .iter()
++                    .map(|point| Point2::from_mm(point.x, point.y))
++                    .collect::<Vec<_>>();
++                (*owner, polyline, path)
++            })
++            .filter(|(_, polyline, _)| polyline.len() >= 2)
++            .collect()
++    };
++    probe::count(probe::C_SUBJECTS, prepared_subjects.len() as u64);
++    if !prepared_subjects.is_empty() {
+         // Same laziness as the per-path chain: the immutable boundary is
+         // flatten-inflated once, and only when a valid subject exists.
+-        let polylines: Vec<Vec<Point2>> = prepared_subjects
+-            .iter()
+-            .map(|(_, polyline, _)| polyline.clone())
+-            .collect();
+-        PreparedPolylineClip::new(boundary).clip_batched(&polylines)
+-    }) {
+-        for (subject, (owner, _polyline, path)) in prepared_subjects.iter().enumerate() {
+-            for points in remove_short_polylines(&batched[subject], spacing_mm) {
+-                source_segments.extend(points.windows(2).filter_map(|segment| {
+-                    let length = ((segment[1].x - segment[0].x) as f64)
+-                        .hypot((segment[1].y - segment[0].y) as f64);
+-                    (length > 0.0).then_some(SourceSegment {
+-                        owner: *owner,
+-                        start: segment[0],
+-                        end: segment[1],
+-                        length,
+-                    })
+-                }));
+-                let mut clipped_path = (*path).clone();
+-                clipped_path.points = points
+-                    .into_iter()
+-                    .map(|point| point_with_metadata(path, point))
+-                    .collect();
+-                clipped.push(clipped_path);
++        let polylines: Vec<Vec<Point2>> = {
++            let _g = probe::enter(probe::IDX_SETUP);
++            prepared_subjects
++                .iter()
++                .map(|(_, polyline, _)| polyline.clone())
++                .collect()
++        };
++        let prep = {
++            let _g = probe::enter(probe::IDX_PREP_CLIP_NEW);
++            PreparedPolylineClip::new(boundary)
++        };
++        let batched = prep.clip_batched(&polylines);
++        {
++            let _g = probe::enter(probe::IDX_POST_CLIP_META);
++            for (subject, (owner, _polyline, path)) in prepared_subjects.iter().enumerate() {
++                for points in remove_short_polylines(&batched[subject], spacing_mm) {
++                    probe::count(probe::C_CLIPPED_PATHS, 1);
++                    probe::count(probe::C_CLIPPED_PTS, points.len() as u64);
++                    source_segments.extend(points.windows(2).filter_map(|segment| {
++                        let length = ((segment[1].x - segment[0].x) as f64)
++                            .hypot((segment[1].y - segment[0].y) as f64);
++                        (length > 0.0).then_some(SourceSegment {
++                            owner: *owner,
++                            start: segment[0],
++                            end: segment[1],
++                            length,
++                        })
++                    }));
++                    let mut clipped_path = (*path).clone();
++                    clipped_path.points = points
++                        .into_iter()
++                        .map(|point| point_with_metadata(path, point))
++                        .collect();
++                    clipped.push(clipped_path);
++                }
+             }
+         }
+     }
++    let graph = {
++        let _g = probe::enter(probe::IDX_GRAPH_NEW);
++        crate::graph::BoundaryInfillGraph::new(boundary)
++    };
+     (
+-        chain_or_connect_infill(
+-            clipped,
+-            &crate::graph::BoundaryInfillGraph::new(boundary),
+-            anchor,
+-        ),
++        chain_or_connect_infill(clipped, &graph, anchor),
+         source_segments,
+     )
+ }
+@@ -935,6 +991,7 @@ fn majority_owner(
+ }
+ 
+ fn point_with_metadata(path: &ExtrusionPath3D, point: Point2) -> Point3WithWidth {
++    probe::count(probe::C_META_SCANS, path.points.len() as u64);
+     let (x, y) = point.to_mm();
+     let source = path
+         .points
+diff --git a/modules/core-modules/tree-support/src/lib.rs b/modules/core-modules/tree-support/src/lib.rs
+index 2252ce92..4f855abf 100644
+--- a/modules/core-modules/tree-support/src/lib.rs
++++ b/modules/core-modules/tree-support/src/lib.rs
+@@ -175,15 +175,31 @@ impl TreeSupport {
+ /// Return the largest skeleton-requested wall count whose point lies in a role
+ /// region. Counts are positional and default to zero for malformed carriers.
+ fn skeleton_wall_count(skeleton: &slicer_ir::SupportPlanSkeleton, expoly: &ExPolygon) -> usize {
+-    let contained = skeleton
++    t179_ts_probe::count(t179_ts_probe::C_SKEL_CALLS, 1);
++    t179_ts_probe::count(t179_ts_probe::C_SKEL_PTS, skeleton.points.len() as u64);
++    let mut best = 0usize;
++    let mut hits = 0u64;
++    for (point, count) in skeleton
+         .points
+         .iter()
+         .zip(skeleton.wall_counts.iter().copied())
+-        .filter(|(point, _)| point_in_expolygon(expoly, point.x, point.y))
+-        .map(|(_, count)| count as usize)
+-        .max()
+-        .unwrap_or(0);
+-    contained
++    {
++        if (count as usize) > best {
++            t179_ts_probe::count(t179_ts_probe::C_SKEL_NEEDED_TESTS, 1);
++        }
++        if point_in_expolygon(expoly, point.x, point.y) {
++            hits += 1;
++            let c = count as usize;
++            if c > best {
++                best = c;
++            }
++        }
++    }
++    t179_ts_probe::count(t179_ts_probe::C_SKEL_HITS, hits);
++    if best > 0 {
++        t179_ts_probe::count(t179_ts_probe::C_SKEL_EXTRA_NONZERO, 1);
++    }
++    best
+ }
+ 
+ /// Ray-cast a millimetre-coordinate point against an IR polygon.
+@@ -191,6 +207,10 @@ fn point_in_expolygon(expoly: &ExPolygon, x: f32, y: f32) -> bool {
+     if expoly.contour.points.is_empty() {
+         return false;
+     }
++    t179_ts_probe::count(
++        t179_ts_probe::C_PIE_BBOX_SCANS,
++        expoly.contour.points.len() as u64 * 4,
++    );
+     let min_x = expoly
+         .contour
+         .points
+@@ -223,6 +243,12 @@ fn point_in_expolygon(expoly: &ExPolygon, x: f32, y: f32) -> bool {
+     if point.x < min_x || point.x > max_x || point.y < min_y || point.y > max_y {
+         return false;
+     }
++    t179_ts_probe::count(t179_ts_probe::C_PIE_BBOX_PASS, 1);
++    t179_ts_probe::count(
++        t179_ts_probe::C_PIE_RAY_EDGES,
++        (expoly.contour.points.len()
++            + expoly.holes.iter().map(|h| h.points.len()).sum::<usize>()) as u64,
++    );
+     fn inside(ring: &[slicer_ir::Point2], x: i64, y: i64) -> bool {
+         let mut result = false;
+         let mut previous = ring.len().saturating_sub(1);
+@@ -317,6 +343,10 @@ impl LayerModule for TreeSupport {
+             return Ok(());
+         }
+ 
++        let probe = t179_ts_probe::Scopes::mint();
++        t179_ts_probe::reset();
++        let _ = slicer_sdk::traits::t179_paint_probe::take_and_reset();
++
+         let speed_factor = self.support_speed / BASE_SPEED;
+         for region in regions {
+             let z = region.z();
+@@ -339,7 +369,10 @@ impl LayerModule for TreeSupport {
+                 body_spacing,
+                 top_interface_spacing,
+                 bottom_interface_spacing,
+-            ) = self.pitches_mm(layer_height)?;
++            ) = {
++                let _g = probe.enter(t179_ts_probe::IDX_PITCH);
++                self.pitches_mm(layer_height)?
++            };
+ 
+             // Structural support plans carry semantic regions, not printable
+             // paths. The lookup is the exact full source identity (object,
+@@ -347,21 +380,24 @@ impl LayerModule for TreeSupport {
+             // different-chain sibling cannot lend this region its entries.
+             // A missing entry means this demand was declined; do not
+             // resurrect it with the legacy grid-MST filler.
+-            let planned_entries: Vec<&slicer_ir::SupportPlanEntry> = paint
+-                .support_plan_entries_for(
+-                    region.object_id().as_str(),
+-                    *region.region_id(),
+-                    region.variant_chain(),
+-                )
+-                .into_iter()
+-                .filter(|entry| {
+-                    entry.global_layer_index == layer_index as i32
+-                        || (entry.anchor_layer_index == layer_index
+-                            && entry.anchor_z.abs_diff(slicer_ir::mm_to_units(z))
+-                                > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
+-                                    as u64)
+-                })
+-                .collect();
++            let planned_entries: Vec<&slicer_ir::SupportPlanEntry> = {
++                let _g = probe.enter(t179_ts_probe::IDX_PLAN);
++                paint
++                    .support_plan_entries_for(
++                        region.object_id().as_str(),
++                        *region.region_id(),
++                        region.variant_chain(),
++                    )
++                    .into_iter()
++                    .filter(|entry| {
++                        entry.global_layer_index == layer_index as i32
++                            || (entry.anchor_layer_index == layer_index
++                                && entry.anchor_z.abs_diff(slicer_ir::mm_to_units(z))
++                                    > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
++                                        as u64)
++                    })
++                    .collect()
++            };
+ 
+             if planned_entries.is_empty() {
+                 continue;
+@@ -376,6 +412,7 @@ impl LayerModule for TreeSupport {
+                                 > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
+                                     as u64))
+             }) {
++                t179_ts_probe::count(t179_ts_probe::C_ENTRIES, 1);
+                 if entry.family_id != "tree" {
+                     return Err(ModuleError::non_fatal(
+                         332,
+@@ -421,28 +458,65 @@ impl LayerModule for TreeSupport {
+                 // `smooth_supports` is `support_style != smsGrid`.
+                 // `None` means the entry carries no interface role, so the
+                 // planner's partition is rendered verbatim.
+-                let regularized = slicer_core::support_regularize::regularize_entry_roles(
+-                    &entry.roles,
+-                    interface_flow_spacing_mm,
+-                    top_interface_spacing,
+-                    bottom_interface_spacing,
+-                    true,
+-                );
+-                let rendered: Vec<(slicer_ir::SupportPlanRole, Vec<ExPolygon>)> = regularized
+-                    .unwrap_or_else(|| {
+-                        entry
+-                            .roles
+-                            .iter()
+-                            .map(|r| (r.role, r.regions.clone()))
+-                            .collect()
+-                    })
+-                    .into_iter()
+-                    .map(|(role, regions)| (role, slicer_core::polygon_ops::union_ex(&regions)))
+-                    .collect();
++                let regularized = {
++                    t179_ts_probe::count(t179_ts_probe::C_REGIZE_CALLS, 1);
++                    let _g = probe.enter(t179_ts_probe::IDX_REGULARIZE);
++                    slicer_core::support_regularize::regularize_entry_roles(
++                        &entry.roles,
++                        interface_flow_spacing_mm,
++                        top_interface_spacing,
++                        bottom_interface_spacing,
++                        true,
++                    )
++                };
++                if regularized.is_none() {
++                    t179_ts_probe::count(t179_ts_probe::C_REGIZE_NONE, 1);
++                }
++                let rendered: Vec<(slicer_ir::SupportPlanRole, Vec<ExPolygon>)> = {
++                    let pre_union: Vec<(slicer_ir::SupportPlanRole, Vec<ExPolygon>)> =
++                        regularized.unwrap_or_else(|| {
++                            entry
++                                .roles
++                                .iter()
++                                .map(|r| (r.role, r.regions.clone()))
++                                .collect()
++                        });
++                    let _g = probe.enter(t179_ts_probe::IDX_ROLE_UNION);
++                    pre_union
++                        .into_iter()
++                        .map(|(role, regions)| {
++                            t179_ts_probe::count(t179_ts_probe::C_UNIONS, 1);
++                            t179_ts_probe::count(
++                                t179_ts_probe::C_UNION_IN_POLYS,
++                                regions.len() as u64,
++                            );
++                            if regions.len() <= 1 {
++                                t179_ts_probe::count(t179_ts_probe::C_UNION_SINGLETONS, 1);
++                            }
++                            (role, slicer_core::polygon_ops::union_ex(&regions))
++                        })
++                        .collect()
++                };
+                 for (role, role_regions) in rendered.iter() {
+                     let role = *role;
+                     for expoly in role_regions.iter() {
+-                        match paint.paint_policy_for(expoly) {
++                        t179_ts_probe::count(t179_ts_probe::C_EXPOLYS, 1);
++                        t179_ts_probe::count(
++                            t179_ts_probe::C_EXPOLY_VERTS,
++                            (expoly.contour.points.len()
++                                + expoly.holes.iter().map(|h| h.points.len()).sum::<usize>())
++                                as u64,
++                        );
++                        if matches!(role, slicer_ir::SupportPlanRole::SupportBody) {
++                            t179_ts_probe::count(t179_ts_probe::C_EXPOLYS_BODY, 1);
++                        } else {
++                            t179_ts_probe::count(t179_ts_probe::C_EXPOLYS_IFACE, 1);
++                        }
++                        let policy = {
++                            let _g = probe.enter(t179_ts_probe::IDX_PAINT);
++                            paint.paint_policy_for(expoly)
++                        };
++                        match policy {
+                             // Painted "no support here" still overrides the plan.
+                             SupportPaintPolicy::Blocked => continue,
+                             // Painted "support here", and the default case, both
+@@ -475,19 +549,24 @@ impl LayerModule for TreeSupport {
+                             slicer_ir::SupportPlanRole::RaftRelated => continue,
+                         };
+                         let vertical = entry.anchor_layer_index % 2 != 0;
+-                        let extra_walls = entry
+-                            .skeleton
+-                            .as_ref()
+-                            .map(|skeleton| skeleton_wall_count(skeleton, expoly))
+-                            .unwrap_or(0);
+-                        let mut paths = self.render_polygon_with_wall_count(
++                        let extra_walls = {
++                            let _g = probe.enter(t179_ts_probe::IDX_SKELETON);
++                            entry
++                                .skeleton
++                                .as_ref()
++                                .map(|skeleton| skeleton_wall_count(skeleton, expoly))
++                                .unwrap_or(0)
++                        };
++                        let mut paths = self.render_polygon_with_wall_count_probed(
+                             expoly,
+                             print_z_mm,
+                             speed_factor,
+                             fill_spacing,
+                             vertical,
+                             self.wall_count + extra_walls,
++                            &probe,
+                         );
++                        let _g_out = probe.enter(t179_ts_probe::IDX_OUTPUT);
+                         if matches!(
+                             role,
+                             slicer_ir::SupportPlanRole::TopInterface
+@@ -530,6 +609,10 @@ impl LayerModule for TreeSupport {
+                         // identity retained in the provenance; the on-grid
+                         // route below is byte-identical to pre-239c.
+                         if off_grid {
++                            t179_ts_probe::count(
++                                t179_ts_probe::C_OFFGRID_PATHS,
++                                paths.len() as u64,
++                            );
+                             for path in paths {
+                                 off_grid_entities.push(slicer_ir::AnchoredEntity {
+                                     local_id: off_grid_entities.len() as u64,
+@@ -587,6 +670,7 @@ impl LayerModule for TreeSupport {
+             // Packet 239c Step 4: propose all off-grid entries anchored to this
+             // model layer as one atomic collection through 239b's drain.
+             if !off_grid_entities.is_empty() {
++                let _g = probe.enter(t179_ts_probe::IDX_OUTPUT);
+                 anchored_collection
+                     .set_anchored_event_collection(slicer_ir::OrderedEventCollection {
+                         anchor_global_layer_index: off_grid_entities[0].anchor_global_layer_index,
+@@ -597,6 +681,7 @@ impl LayerModule for TreeSupport {
+             }
+         }
+ 
++        t179_ts_probe::flush(layer_index);
+         Ok(())
+     }
+ }
+@@ -638,6 +723,7 @@ impl TreeSupport {
+ 
+     /// Render a polygon with an explicit perimeter count from a structural
+     /// skeleton override.
++    #[allow(dead_code)]
+     fn render_polygon_with_wall_count(
+         &self,
+         expoly: &ExPolygon,
+@@ -646,6 +732,28 @@ impl TreeSupport {
+         fill_spacing_mm: f32,
+         vertical: bool,
+         wall_count: usize,
++    ) -> Vec<ExtrusionPath3D> {
++        let probe = t179_ts_probe::Scopes::empty();
++        self.render_polygon_with_wall_count_probed(
++            expoly,
++            z,
++            speed_factor,
++            fill_spacing_mm,
++            vertical,
++            wall_count,
++            &probe,
++        )
++    }
++
++    fn render_polygon_with_wall_count_probed(
++        &self,
++        expoly: &ExPolygon,
++        z: f32,
++        speed_factor: f32,
++        fill_spacing_mm: f32,
++        vertical: bool,
++        wall_count: usize,
++        probe: &t179_ts_probe::Scopes,
+     ) -> Vec<ExtrusionPath3D> {
+         let mut paths = Vec::new();
+         if expoly.contour.points.len() < 3 {
+@@ -654,46 +762,60 @@ impl TreeSupport {
+         let line_width = self.line_width.max(f32::EPSILON);
+         let source = [expoly.clone()];
+ 
+-        for wall_index in 0..wall_count {
+-            let inset = -line_width * (wall_index as f32 + 0.5);
+-            let ring_set = host::offset_polygons(&source, inset, OffsetJoinType::Miter, 0.0);
+-            for ring_poly in &ring_set {
+-                for ring in std::iter::once(&ring_poly.contour).chain(ring_poly.holes.iter()) {
+-                    if ring.points.len() < 3 {
+-                        continue;
++        {
++            let _g = probe.enter(t179_ts_probe::IDX_WALLS);
++            for wall_index in 0..wall_count {
++                let inset = -line_width * (wall_index as f32 + 0.5);
++                t179_ts_probe::count(t179_ts_probe::C_WALL_OFFSETS, 1);
++                let ring_set = host::offset_polygons(&source, inset, OffsetJoinType::Miter, 0.0);
++                for ring_poly in &ring_set {
++                    for ring in std::iter::once(&ring_poly.contour).chain(ring_poly.holes.iter()) {
++                        if ring.points.len() < 3 {
++                            continue;
++                        }
++                        let mut wall = ring
++                            .points
++                            .iter()
++                            .map(|point| self.support_point(point.x, point.y, z))
++                            .collect::<Vec<_>>();
++                        wall.push(wall[0]);
++                        t179_ts_probe::count(t179_ts_probe::C_WALL_PATHS, 1);
++                        paths.push(ExtrusionPath3D {
++                            points: wall,
++                            role: ExtrusionRole::SupportMaterial,
++                            speed_factor,
++                            tool_index: None,
++                            order_lock: None,
++                        });
+                     }
+-                    let mut wall = ring
+-                        .points
+-                        .iter()
+-                        .map(|point| self.support_point(point.x, point.y, z))
+-                        .collect::<Vec<_>>();
+-                    wall.push(wall[0]);
+-                    paths.push(ExtrusionPath3D {
+-                        points: wall,
+-                        role: ExtrusionRole::SupportMaterial,
+-                        speed_factor,
+-                        tool_index: None,
+-                        order_lock: None,
+-                    });
+                 }
+             }
+         }
+ 
+         // Fill only the area the walls do not already cover.
+-        let fill_regions = if wall_count == 0 {
+-            source.to_vec()
+-        } else {
+-            host::offset_polygons(
+-                &source,
+-                -line_width * wall_count as f32,
+-                OffsetJoinType::Miter,
+-                0.0,
+-            )
++        let fill_regions = {
++            let _g = probe.enter(t179_ts_probe::IDX_FILL_OFFSET);
++            if wall_count == 0 {
++                source.to_vec()
++            } else {
++                t179_ts_probe::count(t179_ts_probe::C_FILL_OFFSETS, 1);
++                host::offset_polygons(
++                    &source,
++                    -line_width * wall_count as f32,
++                    OffsetJoinType::Miter,
++                    0.0,
++                )
++            }
+         };
+ 
+         let spacing = fill_spacing_mm.max(line_width) as f64;
+-        for region in &fill_regions {
+-            paths.extend(self.scan_fill_region(region, spacing, z, speed_factor, vertical));
++        {
++            let _g = probe.enter(t179_ts_probe::IDX_SCAN_FILL);
++            for region in &fill_regions {
++                let fill = self.scan_fill_region(region, spacing, z, speed_factor, vertical);
++                t179_ts_probe::count(t179_ts_probe::C_FILL_PATHS, fill.len() as u64);
++                paths.extend(fill);
++            }
+         }
+         paths
+     }
+@@ -828,6 +950,154 @@ impl TreeSupport {
+ // expolygon_centroid was an artifact of the deleted local support_paint_policy
+ // stub.  The v2 query lives in `PaintRegionLayerView::paint_policy_for` (slicer-sdk).
+ 
++/// [T179-PROBE] Temporary observation-only scopes & counters for `tree-support`.
++#[allow(missing_docs, dead_code)]
++mod t179_ts_probe {
++    use slicer_core::profile::{ScopeGuard, ScopeId};
++    use slicer_sdk::profile::register_scope;
++    use std::sync::atomic::{AtomicU64, Ordering};
++
++    const SCOPES: [&str; 10] = [
++        "t179::ts::plan_lookup",
++        "t179::ts::pitches",
++        "t179::ts::regularize",
++        "t179::ts::role_union",
++        "t179::ts::paint_policy",
++        "t179::ts::skeleton",
++        "t179::ts::render_walls",
++        "t179::ts::render_fill_offset",
++        "t179::ts::scan_fill",
++        "t179::ts::output_emit",
++    ];
++
++    pub const IDX_PLAN: usize = 0;
++    pub const IDX_PITCH: usize = 1;
++    pub const IDX_REGULARIZE: usize = 2;
++    pub const IDX_ROLE_UNION: usize = 3;
++    pub const IDX_PAINT: usize = 4;
++    pub const IDX_SKELETON: usize = 5;
++    pub const IDX_WALLS: usize = 6;
++    pub const IDX_FILL_OFFSET: usize = 7;
++    pub const IDX_SCAN_FILL: usize = 8;
++    pub const IDX_OUTPUT: usize = 9;
++
++    pub struct Scopes {
++        ids: [Option<ScopeId>; 10],
++    }
++
++    impl Scopes {
++        pub fn mint() -> Self {
++            Self {
++                ids: SCOPES.map(register_scope),
++            }
++        }
++        pub fn empty() -> Self {
++            Self { ids: [None; 10] }
++        }
++        #[inline]
++        pub fn enter(&self, idx: usize) -> Option<ScopeGuard> {
++            self.ids[idx].map(slicer_core::profile::scope)
++        }
++    }
++
++    pub const C_ENTRIES: usize = 0;
++    pub const C_REGIZE_CALLS: usize = 1;
++    pub const C_REGIZE_NONE: usize = 2;
++    pub const C_UNIONS: usize = 3;
++    pub const C_UNION_IN_POLYS: usize = 4;
++    pub const C_UNION_SINGLETONS: usize = 5;
++    pub const C_EXPOLYS: usize = 6;
++    pub const C_EXPOLY_VERTS: usize = 7;
++    pub const C_EXPOLYS_BODY: usize = 8;
++    pub const C_EXPOLYS_IFACE: usize = 9;
++    pub const C_SKEL_CALLS: usize = 10;
++    pub const C_SKEL_PTS: usize = 11;
++    pub const C_SKEL_NEEDED_TESTS: usize = 12;
++    pub const C_SKEL_HITS: usize = 13;
++    pub const C_SKEL_EXTRA_NONZERO: usize = 14;
++    pub const C_PIE_BBOX_SCANS: usize = 15;
++    pub const C_PIE_BBOX_PASS: usize = 16;
++    pub const C_PIE_RAY_EDGES: usize = 17;
++    pub const C_WALL_OFFSETS: usize = 18;
++    pub const C_WALL_PATHS: usize = 19;
++    pub const C_FILL_OFFSETS: usize = 20;
++    pub const C_FILL_PATHS: usize = 21;
++    pub const C_OFFGRID_PATHS: usize = 22;
++
++    const C_COUNT: usize = 23;
++    const NAMES: [&str; C_COUNT] = [
++        "entries",
++        "regize_calls",
++        "regize_none",
++        "unions",
++        "union_in_polys",
++        "union_singletons",
++        "expolys",
++        "expoly_verts",
++        "expolys_body",
++        "expolys_iface",
++        "skel_calls",
++        "skel_pts",
++        "skel_needed_tests",
++        "skel_hits",
++        "skel_extra_nonzero",
++        "pie_bbox_scans",
++        "pie_bbox_pass",
++        "pie_ray_edges",
++        "wall_offsets",
++        "wall_paths",
++        "fill_offsets",
++        "fill_paths",
++        "offgrid_paths",
++    ];
++
++    static COUNTERS: [AtomicU64; C_COUNT] = [const { AtomicU64::new(0) }; C_COUNT];
++
++    #[inline]
++    pub fn count(idx: usize, n: u64) {
++        COUNTERS[idx].fetch_add(n, Ordering::Relaxed);
++    }
++
++    pub fn reset() {
++        for c in &COUNTERS {
++            c.store(0, Ordering::Relaxed);
++        }
++    }
++
++    #[cfg(target_arch = "wasm32")]
++    pub fn flush(layer_index: u32) {
++        let paint = slicer_sdk::traits::t179_paint_probe::take_and_reset();
++        let vals: [u64; C_COUNT] = std::array::from_fn(|i| COUNTERS[i].swap(0, Ordering::Relaxed));
++        if vals.iter().all(|&v| v == 0) && paint.iter().all(|&v| v == 0) {
++            return;
++        }
++        let mut parts = Vec::with_capacity(C_COUNT + 8);
++        parts.push(format!("T179-TS layer={layer_index}"));
++        for (name, v) in NAMES.iter().zip(vals.iter()) {
++            parts.push(format!("{name}={v}"));
++        }
++        let pnames = [
++            "paint_queries",
++            "paint_has_ann",
++            "paint_cover_regions",
++            "paint_cover_hits",
++            "paint_vert_loops",
++            "paint_ring_calls",
++            "paint_ring_edges",
++        ];
++        for (name, v) in pnames.iter().zip(paint.iter()) {
++            parts.push(format!("{name}={v}"));
++        }
++        slicer_sdk::host::log_trace(&parts.join(" "));
++    }
++
++    #[cfg(not(target_arch = "wasm32"))]
++    pub fn flush(_layer_index: u32) {
++        let _ = slicer_sdk::traits::t179_paint_probe::take_and_reset();
++        reset();
++    }
++}
++
+ /// Compute bounding box of an ExPolygon in mm coordinates.
+ fn polygon_bbox_mm(expoly: &ExPolygon) -> (f64, f64, f64, f64) {
+     let mut min_x = f64::MAX;
