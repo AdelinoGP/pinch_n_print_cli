@@ -2,8 +2,8 @@
 
 Type: task / measured candidate (100 % output-preserving exact guest + `clipper2-rust` acceleration + standing 8-cell `0.80 %` paired ordinary + accelerated gate; zero geometry exceptions, zero gate waivers)
 Label: wayfinder:task
-Status: open
-Assignee: unclaimed
+Status: resolved (2026-11-23; literal standing all-8-cell `0.80 %` gate PASSED `8/8` — `+2.20…+9.59 %` wall, `39/40` ord wall wins, `40/40` ord CPU wins `+3.10…+16.54 %`, acc `+1.85…+7.97 %` wall / `+3.53…+15.92 %` CPU; `224/224` measured runs 100 % byte-identical to `t182/reference.json`, zero geometry exceptions, zero gate waivers)
+Assignee: agent (2026-11-22 → 2026-11-23)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [Per-layer `tree-support` renderer and `infill-linker` guest-fuel screen](179-per-layer-tree-support-and-infill-linker-screen.md) ([`evidence/t179-per-layer-guest-screen/FINDINGS.md`](../evidence/t179-per-layer-guest-screen/FINDINGS.md)), which attributed **98.1–98.5 %** of `com.core.tree-support` fuel and **73.0–78.6 %** of `com.core.infill-linker` fuel to exact redundant work, verified **130/130** probe/ablation/screen runs **100 % byte-identical** to `t175`'s active reference set, and proved why the two exact modules must ship together under one literal 8-cell standing gate.
@@ -52,4 +52,28 @@ Graduated from: [Per-layer `tree-support` renderer and `infill-linker` guest-fue
 
 ## Answer
 
-_(open)_
+**Yes — landed. The combined exact `TS-2 + IL-ALL` implementation PASSED the literal standing all-8-cell `0.80 %` paired ordinary + accelerated gate (`8/8 PASS`, zero waivers, zero geometry exceptions) with `224/224` measured runs (`16/16` ordinary output, `16/16` accelerated output, `16/16` `--profile` fuel, `80` ordinary A/B, `48` null control, `48` accelerated A/B) 100 % byte-identical to `t182`'s active reference currency (`evidence/t182-spatial-hierarchical-phase3-union/reference.json`, unchanged).**
+
+- **Production edits (crate-qualified symbols):**
+  1. **`TS-1a`:** `crates/slicer-core/src/paint_policy.rs::has_support_paint` and `crates/slicer-sdk/src/traits.rs::PaintRegionLayerView::paint_policy_for` — skips `region_covers_expoly` whenever a `SliceIR` region carries no non-`None` `SupportBlocker`/`SupportEnforcer` annotation, and breaks immediately on `SupportPaintPolicy::Blocked`.
+  2. **`TS-1b` & `TS-2`:** `modules/core-modules/tree-support/src/lib.rs::skeleton_wall_count`, `ring_bbox_units`, `point_in_expolygon_with_bboxes`, `expolygons_pairwise_bbox_disjoint`, and `unify_role_regions` — precomputes contour & hole AABBs once per `expoly`, checks `if count <= best { continue; }` before ray-casting, and bypasses in-guest `slicer_core::polygon_ops::union_ex(&regions)` strictly when `regularized.is_some()` OR `regions.len() <= 1` OR all contour AABBs are strictly pairwise disjoint.
+  3. **`IL-1`:** `vendor/clipper2-rust/src/engine.rs` (`LocalMinima.source_id`, `OutRec.source_id`, `ClipperBase::add_loc_min_tagged`, `add_path_tagged`, propagation in `start_open_path` / `add_local_min_poly` / `join_outrec_paths`), `vendor/clipper2-rust/src/engine_public.rs` (`Clipper64::add_open_subject_tagged`, `Clipper64::execute_open_tagged`), and `crates/slicer-core/src/polygon_ops.rs::PreparedPolylineClip::clip_batched` — buckets open paths directly by `source_id` out of one sweep, removing `attributed_runs` / `candidate_subjects` / `segment_rides` / `path_to_point2` and all per-subject ambiguity fallback clips while retaining the defensive `Err` fallback.
+  4. **`IL-2`:** `modules/core-modules/infill-linker/src/orchestrate.rs::link_paths_against`, `link_paths_without_offset`, `uniform_point_metadata` — skips building `source_segments` when `collect_source_segments == false` (`link_region_group`), eliminates redundant `tagged` & polyline clones, and uses bitwise-exact `O(1)` metadata attachment on uniform paths with exact fallback to `point_with_metadata` when any field of `Point3WithWidth` varies.
+  5. **`IL-3`:** `modules/core-modules/infill-linker/src/graph.rs` (`BoundaryEdge`, `BoundaryRing::project_bounded`, edge reuse in `vertices_between` / `contour_stub`) and `modules/core-modules/infill-linker/src/connect.rs` (`boundary_position` cross-ring pruning + hole AABB guard in `point_strictly_in_ring` + `O(E)` per-ring `local_position`-sorted forward/backward circular `nearest_pair_candidates`).
+- **Deterministic guest fuel (`--profile`, `16/16` byte-identical to `t182`, `reduced/fuel.json`):**
+  - `com.core.tree-support`: **`−96.42 %` (`27.95×`, `41.94 B → 1.50 B`)** on `benchy` supports-on and **`−97.06 %` (`33.99×`, `388.78 B → 11.44 B`)** on `base` supports-on (strict pairwise AABB-disjointness preserves unconditional soundness on merged overlapping inputs; concave-disjoint AABB overlaps still call `union_ex`).
+  - `com.core.infill-linker`: **`−74.03 %` (`3.85×`)** `benchy-classic`, **`−74.56 %` (`3.93×`)** `benchy-arachne`, **`−79.34 %` (`4.84×`)** `base-classic`, **`−79.05 %` (`4.77×`)** `base-arachne` (exceeding `t179`'s screen cuts).
+  - Total slice guest fuel: **`−23.92…−40.17 %`** supports-off, **`−69.73…−73.83 %`** (`3.30×–3.82×`) supports-on.
+- **Standing 8-cell paired gate (unsandboxed, `RAYON_NUM_THREADS=12`, quiet box `ab` `2 → 3 %`, `null` `1 → 9 %`, `accel` `0 → 1 %`):**
+  - **Ordinary 5-pair A/B (`8/8 PASS` literal standing gate; `39/40` wall wins, `40/40` CPU wins, `8/8` strict CPU sep, `6/8` strict wall sep):**
+    - `benchy-classic-off`: **+9.59 %** wall (`5/5`, `11.99×` floor, null `0.90 / 1.86 %`), **+6.24 %** CPU (`5/5`), acc **+7.23 % / +3.87 %**.
+    - `benchy-classic-on`: **+5.60 %** wall (`4/5`, `7.00×`, null `0.68 / 1.39 %`), **+16.54 %** CPU (`5/5`), acc **+7.54 % / +15.92 %**.
+    - `benchy-arachne-off`: **+8.36 %** wall (`5/5`, `10.45×`, null `1.22 / 1.75 %`), **+8.45 %** CPU (`5/5`), acc **+7.09 % / +7.06 %**.
+    - `benchy-arachne-on`: **+5.73 %** wall (`5/5`, `7.16×`, null `3.29 / 3.33 %`), **+14.60 %** CPU (`5/5`), acc **+6.77 % / +15.47 %**.
+    - `base-classic-off`: **+6.58 %** wall (`5/5`, `8.23×`, null `0.90 / 1.53 %`), **+3.10 %** CPU (`5/5`), acc **+2.39 % / +3.59 %**.
+    - `base-classic-on`: **+7.43 %** wall (`5/5`, `9.29×`, null `0.85 / 1.00 %`), **+15.40 %** CPU (`5/5`), acc **+7.27 % / +15.06 %**.
+    - `base-arachne-off`: **+2.20 %** wall (`5/5`, `2.75×`, null `0.49 / 3.56 %` — `4.47×` null median; strict any-pair `INSIDE-NULL-ANY-PAIR` disclosed against one pair-1 null spike), **+3.34 %** CPU (`5/5`, `4.25×` null any-pair CPU), acc **+1.85 % / +3.53 %**.
+    - `base-arachne-on`: **+6.46 %** wall (`5/5`, `8.07×`, null `0.59 / 4.29 %`), **+14.24 %** CPU (`5/5`), acc **+7.97 % / +14.66 %**.
+- **Route impact (`ESTIMATE ONLY`, `t174 × t175 × t182 × t183`, not a ratio of record):** BOTH ordinary `base` supports-on cells cross `< 1.0x` (**`base-classic-on` `1.0515x → ~0.9734x` ord / `0.9255x` acc**, **`base-arachne-on` `1.0329x → ~0.9662x` ord / `0.9173x` acc**), putting all 4 `base` cells `< 1.0x`; `benchy-arachne-off` crosses `< 1.0x` on accelerated (`1.0640x → ~0.9885x`, `1.0583x` ord); `benchy-classic-off` drops to `~1.0341x` ord (`76.3 %` of gap closed); binding `benchy-classic-on` moves `1.5402x → ~1.4539x` ord (`1.4130x` acc) and `benchy-arachne-on` `1.3550x → ~1.2773x` ord (`1.2637x` acc).
+- **Code & freshness gates:** `clipper2-rust` `406/406 + 3`, `slicer-core --features host-algos` `91/91` binaries (`polygon_ops_clip_batched_tdd` `11/11`), `slicer-sdk --features test` `30/30` binaries (`paint_policy_tests` `4/4`), `tree-support` all tests, `infill-linker` `43/43`, workspace + guest `clippy --all-targets -- -D warnings` clean, `check-literals` `0`, `check-test-quality --report` `0`, `build-guests --check` exit `0`, `build-guests --accelerated --check` exit `0`.
+- **Evidence:** [`evidence/t183-per-layer-guest-exact-accel/FINDINGS.md`](../evidence/t183-per-layer-guest-exact-accel/FINDINGS.md) (`verify.py` PASS, `--self-test` `16/16`).
