@@ -58,6 +58,10 @@ name = "bridge_orientation_tdd"
 required-features = ["host-algos"]
 
 [[test]]
+name = "shell_classification_exact_accel_tdd"
+required-features = ["host-algos"]
+
+[[test]]
 name = "perimeter_spatial_tdd"
 required-features = ["host-algos", "perimeter-spatial-test-support"]
 

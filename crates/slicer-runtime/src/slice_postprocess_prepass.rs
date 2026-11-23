@@ -247,12 +247,19 @@ pub fn commit_shell_classification_builtin(
     // from it at Perimeters commit, so module sparse infill never covers the
     // gated area. (`sparse_infill_area` itself is NOT mutated here — it does
     // not exist yet at this stage and would be overwritten.)
-    gate_internal_bridge_sites(
+    let gate_stats = gate_internal_bridge_sites(
         &mut new_vec,
         &timelines,
         &region_map,
         &object_layers,
         &lower_layer_polygons,
+    );
+    log::debug!(
+        "internal bridge gate prep_layers={} clusters={} recomputed={} speculation_misses={}",
+        gate_stats.prep_layers,
+        gate_stats.clusters,
+        gate_stats.recomputed,
+        gate_stats.speculation_misses
     );
 
     blackboard.replace_slice_ir(Arc::new(new_vec))?;
@@ -281,7 +288,9 @@ struct LayerPrep {
     print_z: f32,
     target_flow_height: f32,
     qualify_spacing_mm: f32,
-    unsupported: Vec<ExPolygon>,
+    /// `qualify_internal_bridge_surface`'s accepted polygons, per
+    /// `internal_solid_fill` surface index, in surface order. Never empty.
+    surface_qualifications: Vec<(usize, Vec<ExPolygon>)>,
 }
 
 #[derive(Default)]
@@ -367,6 +376,76 @@ where
     out
 }
 
+/// Which shell a Pass-2 walk feeds.
+#[derive(Clone, Copy)]
+enum ShellSide {
+    Top,
+    Bottom,
+}
+
+/// Fold one Pass-2 walk's shadow contributions into `local`, returning the
+/// slices that received at least one.
+///
+/// The sequential fold visited `contributions` seed by seed and, per
+/// contribution, replaced the target's fill with `union(fill, shadow)` and its
+/// depth with the minimum. Each target slice therefore sees only its own
+/// subsequence of contributions, in that global order, and no other slice's.
+/// Grouping by target while preserving that order and folding the groups in
+/// parallel performs the identical `union` sequence on every slice.
+fn merge_shadow_contributions(
+    local: &mut HashMap<usize, RegionUpdate>,
+    contributions: Vec<Vec<ShadowContribution>>,
+    side: ShellSide,
+) -> HashSet<usize> {
+    let mut grouped: HashMap<usize, Vec<ShadowContribution>> = HashMap::new();
+    for contribution in contributions.into_iter().flatten() {
+        grouped
+            .entry(contribution.slice_idx)
+            .or_default()
+            .push(contribution);
+    }
+    let received: HashSet<usize> = grouped.keys().copied().collect();
+    let jobs: Vec<(usize, Option<Vec<ExPolygon>>, Option<u8>, Vec<ShadowContribution>)> = grouped
+        .into_iter()
+        .map(|(slice_idx, group)| {
+            let entry = local.entry(slice_idx).or_default();
+            let (fill, depth) = match side {
+                ShellSide::Top => (entry.top_solid_fill.take(), entry.top_shell_index),
+                ShellSide::Bottom => (entry.bottom_solid_fill.take(), entry.bottom_shell_index),
+            };
+            (slice_idx, fill, depth, group)
+        })
+        .collect();
+    let merged: Vec<(usize, Vec<ExPolygon>, Option<u8>)> = jobs
+        .into_par_iter()
+        .map(|(slice_idx, mut fill, mut depth, group)| {
+            for contribution in group {
+                let existing_fill = fill.unwrap_or_default();
+                fill = Some(union(&existing_fill, &contribution.shadow));
+                depth = Some(match depth {
+                    None => contribution.depth,
+                    Some(prev) => prev.min(contribution.depth),
+                });
+            }
+            (slice_idx, fill.unwrap_or_default(), depth)
+        })
+        .collect();
+    for (slice_idx, fill, depth) in merged {
+        let entry = local.entry(slice_idx).or_default();
+        match side {
+            ShellSide::Top => {
+                entry.top_solid_fill = Some(fill);
+                entry.top_shell_index = depth;
+            }
+            ShellSide::Bottom => {
+                entry.bottom_solid_fill = Some(fill);
+                entry.bottom_shell_index = depth;
+            }
+        }
+    }
+    received
+}
+
 /// Run Pass 1 + Pass 2 for a single `(object, region)` timeline against the
 /// read-only `snapshot`. Returns one `RegionEdit` per slice that the region
 /// touched. The closure tracks all state in `local`, keyed by slice index.
@@ -440,6 +519,9 @@ fn compute_region_updates(
         })
         .collect();
     let mut local: HashMap<usize, RegionUpdate> = pass1.into_iter().collect();
+    // Slices that received at least one top Pass-2 shadow. Every other slice's
+    // `top_solid_fill` is still the Pass-1 seed clone.
+    let mut top_received: HashSet<usize> = HashSet::new();
     // Pass 2: shrinking-shadow projection for top (walk backward).
     //
     // Seeds are gathered from `local` *before* any Pass-2 write lands, so each
@@ -454,10 +536,10 @@ fn compute_region_updates(
             (u.top_shell_index, u.top_solid_fill.as_ref())
         });
         // Per-seed chains are independent: each reads only its own seed and the
-        // immutable `snapshot`, and writes nothing shared. The merge below is
-        // serial and walks seeds in ascending timeline position — the same order
-        // the sequential version visited them — so the `union` / `min` folds see
-        // an identical sequence and produce identical output.
+        // immutable `snapshot`, and writes nothing shared. The merge folds each
+        // target slice's contributions in ascending seed order — the order the
+        // sequential version visited them — so the `union` / `min` folds see an
+        // identical sequence per slice (see `merge_shadow_contributions`).
         let contributions: Vec<Vec<ShadowContribution>> = seeds
             .par_iter()
             .map(|(pos, seed_fill)| {
@@ -472,15 +554,7 @@ fn compute_region_updates(
                 )
             })
             .collect();
-        for contribution in contributions.into_iter().flatten() {
-            let existing = local.entry(contribution.slice_idx).or_default();
-            let existing_fill = existing.top_solid_fill.clone().unwrap_or_default();
-            existing.top_solid_fill = Some(union(&existing_fill, &contribution.shadow));
-            existing.top_shell_index = Some(match existing.top_shell_index {
-                None => contribution.depth,
-                Some(prev) => prev.min(contribution.depth),
-            });
-        }
+        top_received = merge_shadow_contributions(&mut local, contributions, ShellSide::Top);
     }
 
     // Pass 2: shrinking-shadow projection for bottom (walk forward).
@@ -515,26 +589,27 @@ fn compute_region_updates(
                 )
             })
             .collect();
-        for contribution in contributions.into_iter().flatten() {
-            let existing = local.entry(contribution.slice_idx).or_default();
-            let existing_fill = existing.bottom_solid_fill.clone().unwrap_or_default();
-            existing.bottom_solid_fill = Some(union(&existing_fill, &contribution.shadow));
-            existing.bottom_shell_index = Some(match existing.bottom_shell_index {
-                None => contribution.depth,
-                Some(prev) => prev.min(contribution.depth),
-            });
-        }
+        merge_shadow_contributions(&mut local, contributions, ShellSide::Bottom);
     }
 
     // The depth-0 exposed seed remains top solid, not internal solid. Only
     // geometry propagated down from an upper shell layer is an internal-solid
     // bridge candidate.
-    for update in local.values_mut() {
+    //
+    // Each entry's difference reads only that entry, so the map is processed
+    // in parallel. A slice that no top Pass-2 shadow reached still holds the
+    // fill Pass 1 wrote, which is a clone of its seed, and `A \ A` is empty:
+    // the clipper call is skipped for it.
+    local.par_iter_mut().for_each(|(slice_idx, update)| {
         if let Some(top_fill) = update.top_solid_fill.as_ref() {
-            let top_seed = update.top_solid_seed.as_deref().unwrap_or_default();
-            update.internal_solid_fill = Some(difference(top_fill, top_seed));
+            update.internal_solid_fill = Some(if top_received.contains(slice_idx) {
+                let top_seed = update.top_solid_seed.as_deref().unwrap_or_default();
+                difference(top_fill, top_seed)
+            } else {
+                Vec::new()
+            });
         }
-    }
+    });
 
     local
         .into_iter()
@@ -749,13 +824,19 @@ fn internal_bridge_offset_window(
 
 /// Compute the exact commit result for one layer from `deep_infill_area`
 /// (already lower-candidate-subtracted by the caller when required).
+///
+/// A surface contributes its qualified polygons when it passes both the
+/// deep-sparse clip test and `qualify_internal_bridge_surface`. The two tests
+/// are independent filters and the second depends only on the layer's own
+/// unsupported set, never on `deep_infill_area`, so phase A runs it once per
+/// surface up front (`surface_qualifications`) and this function applies only
+/// the first — the same retained polygons, extended in the same surface order.
 #[allow(clippy::too_many_arguments)]
 fn compute_internal_bridge_layer(
     region: &slicer_ir::SlicedRegion,
-    unsupported: &[ExPolygon],
+    surface_qualifications: &[(usize, Vec<ExPolygon>)],
     qualify_spacing_mm: f32,
     bridge_spacing_mm: f32,
-    nofilter: bool,
     internal_bridge_angle: f32,
     deep_infill_area: Vec<ExPolygon>,
     object_id: &ObjectId,
@@ -770,7 +851,8 @@ fn compute_internal_bridge_layer(
         0.0,
     );
     let mut qualified: Vec<ExPolygon> = Vec::new();
-    for surface in &region.internal_solid_fill {
+    for (surface_index, polys) in surface_qualifications {
+        let surface = &region.internal_solid_fill[*surface_index];
         let expanded_candidate = offset(
             std::slice::from_ref(surface),
             qualify_spacing_mm,
@@ -784,14 +866,7 @@ fn compute_internal_bridge_layer(
             );
             continue;
         }
-        if let Some(polys) = slicer_core::algos::bridge_over_infill::qualify_internal_bridge_surface(
-            surface,
-            unsupported,
-            qualify_spacing_mm,
-            nofilter,
-        ) {
-            qualified.extend(polys);
-        }
+        qualified.extend(polys.iter().cloned());
     }
     // Only the surviving candidates are filtered against this erosion,
     // so an empty candidate set skips the offset entirely.
@@ -860,7 +935,12 @@ fn compute_internal_bridge_layer(
     Some(InternalBridgeLayerResult { qualified, angles })
 }
 
-fn build_bridge_depth_layers(
+/// `committed` returns the internal-bridge polygons phase B has already
+/// committed on a slice, if any. A commit appends them to the slice's
+/// `bridge_areas`, so they are appended after the slice's own `bridge_areas`
+/// here — the exact sequence the committed slice would hold.
+#[allow(clippy::too_many_arguments)]
+fn build_bridge_depth_layers<'c>(
     slices: &[SliceIR],
     timeline: &[usize],
     depth_start: usize,
@@ -868,6 +948,7 @@ fn build_bridge_depth_layers(
     object_id: &ObjectId,
     region_id: RegionId,
     density_for: &dyn Fn(&slicer_ir::SlicedRegion, u32) -> f32,
+    committed: &dyn Fn(usize) -> Option<&'c [ExPolygon]>,
 ) -> Vec<slicer_core::algos::bridge_over_infill::BridgeDepthLayer> {
     timeline[depth_start..=timeline_position]
         .iter()
@@ -880,6 +961,9 @@ fn build_bridge_depth_layers(
             not_sparse.extend(lower.bottom_solid_fill.iter().cloned());
             not_sparse.extend(lower.internal_solid_fill.iter().cloned());
             not_sparse.extend(lower.bridge_areas.iter().cloned());
+            if let Some(polys) = committed(lower_idx) {
+                not_sparse.extend(polys.iter().cloned());
+            }
             Some(slicer_core::algos::bridge_over_infill::BridgeDepthLayer {
                 print_z: slices[lower_idx].z,
                 sparse_infill: if density < 0.999 {
@@ -899,6 +983,103 @@ fn build_bridge_depth_layers(
         .collect()
 }
 
+/// Settle one commit cluster's speculative outcomes, in member order.
+///
+/// `speculated[k]` is member `k`'s outcome computed under the assumption that
+/// every earlier member committed exactly its `precomputed` result (an
+/// outcome is `None` = publish the precomputed result, `Some(result)` = a
+/// recompute). A member's step reads earlier members only through their
+/// committed polygons (`commit`), so while every earlier member's real commit
+/// equals its precomputed one, the assumption held for this member and its
+/// speculative outcome is the real one. From the first member whose real
+/// commit differs, every remaining member is evaluated with `evaluate`
+/// against the real commits so far, keyed by slice (`slice_of`) — the plain
+/// sequential loop. With `trust_speculation = false` every member is
+/// evaluated that way and `speculated` is ignored. Returns the outcomes and
+/// whether the speculation missed.
+#[allow(clippy::too_many_arguments)]
+fn settle_speculation<R>(
+    members: std::ops::Range<usize>,
+    trust_speculation: bool,
+    speculated: Vec<Option<Option<R>>>,
+    precomputed: &[Option<R>],
+    commit: impl Fn(&R) -> &[ExPolygon],
+    slice_of: impl Fn(usize) -> usize,
+    evaluate: impl Fn(usize, &HashMap<usize, &[ExPolygon]>) -> Option<Option<R>>,
+) -> (Vec<(usize, Option<Option<R>>)>, bool) {
+    debug_assert!(!trust_speculation || members.len() == speculated.len());
+    // Polygons really committed so far, by slice.
+    let mut committed: HashMap<usize, Vec<ExPolygon>> = HashMap::new();
+    let mut diverged = !trust_speculation;
+    let mut missed = false;
+    let mut speculated = speculated.into_iter();
+    let mut outcomes = Vec::with_capacity(members.len());
+    for member in members {
+        let outcome = match speculated.next() {
+            Some(speculated) if !diverged => speculated,
+            _ => {
+                let view: HashMap<usize, &[ExPolygon]> = committed
+                    .iter()
+                    .map(|(&slice_idx, polys)| (slice_idx, polys.as_slice()))
+                    .collect();
+                evaluate(member, &view)
+            }
+        };
+        let result = match &outcome {
+            Some(recomputed) => recomputed.as_ref(),
+            None => precomputed[member].as_ref(),
+        };
+        let real_commit = result.map(&commit);
+        if real_commit != precomputed[member].as_ref().map(&commit) {
+            missed |= !diverged;
+            diverged = true;
+        }
+        if let Some(polys) = real_commit {
+            committed.insert(slice_of(member), polys.to_vec());
+        }
+        outcomes.push((member, outcome));
+    }
+    (outcomes, missed)
+}
+
+/// Partition commit-phase layers into independent clusters.
+///
+/// `positions[i]` is layer `i`'s timeline position (strictly ascending) and
+/// `dependency_starts[i]` the first timeline position whose commits layer `i`
+/// can read; it reads nothing at or above its own position. Returns
+/// contiguous, ascending index ranges into `positions` covering every layer
+/// once, such that **every earlier layer `j` with `positions[j] >=
+/// dependency_starts[i]` is in layer `i`'s range**. That is the property that
+/// makes running each range sequentially, ranges in parallel, equal to one
+/// sequential pass: a layer can only observe commits made inside its own
+/// range, and inside a range the order is the sequential order.
+///
+/// The windows' readable layers form a suffix of the earlier layers, so the
+/// earliest readable layer decides: a layer whose window reaches back into one
+/// or more earlier ranges merges them all with itself. This matters when
+/// layer heights vary — a later layer's window can reach past the layer that
+/// started the current range, into the range before it.
+fn dependent_layer_clusters(
+    positions: &[usize],
+    dependency_starts: &[usize],
+) -> Vec<std::ops::Range<usize>> {
+    debug_assert_eq!(positions.len(), dependency_starts.len());
+    debug_assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
+    let mut clusters: Vec<std::ops::Range<usize>> = Vec::new();
+    for (index, &dependency_start) in dependency_starts.iter().enumerate() {
+        let first_read = positions[..index].partition_point(|&position| position < dependency_start);
+        if first_read == index {
+            clusters.push(index..index + 1);
+            continue;
+        }
+        let first_cluster = clusters.partition_point(|cluster| cluster.end <= first_read);
+        let start = clusters[first_cluster].start;
+        clusters.truncate(first_cluster);
+        clusters.push(start..index + 1);
+    }
+    clusters
+}
+
 /// Packet 234a — canonical `bridge_over_infill` gather port (the support-math
 /// functions landed in `slicer_core::algos::bridge_over_infill`). For each
 /// region timeline, qualifies the upper layer's `internal_solid_fill` surfaces
@@ -911,8 +1092,10 @@ fn build_bridge_depth_layers(
 /// derives `sparse_infill_area = difference(wall_inset, bridge ∪ bottom ∪ top)`
 /// at Perimeters commit) keeps module sparse infill out of the gated area.
 ///
-/// Qualification runs in parallel, followed by ordered serial commits that
-/// can read earlier layers' bridge areas. Only this prepass legally sees every
+/// Qualification runs in parallel, followed by ordered commits that can read
+/// earlier layers' bridge areas; the commits run sequentially inside each
+/// cluster of mutually dependent layers and in parallel across clusters (see
+/// `dependent_layer_clusters`). Only this prepass legally sees every
 /// committed layer; per-layer stage arms run with private arenas. Config
 /// resolves through `region_map.config_for(...).extensions`, mirroring how
 /// undeclared module keys are routed there by the host resolver.
@@ -922,7 +1105,49 @@ fn gate_internal_bridge_sites(
     region_map: &RegionMapIR,
     object_layers: &HashMap<ObjectId, HashSet<u32>>,
     lower_layer_polygons: &HashMap<(ObjectId, u32), Vec<ExPolygon>>,
-) {
+) -> InternalBridgeGateStats {
+    gate_internal_bridge_sites_clustered(
+        slices,
+        timelines,
+        region_map,
+        object_layers,
+        lower_layer_polygons,
+        dependent_layer_clusters,
+        true,
+    )
+}
+
+/// Counters for one `gate_internal_bridge_sites` run, summed over timelines.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct InternalBridgeGateStats {
+    /// Layers that left phase A with at least one qualifying surface.
+    prep_layers: usize,
+    /// Commit clusters those layers were split into.
+    clusters: usize,
+    /// Layers recomputed against committed lower layers in phase B.
+    recomputed: usize,
+    /// Clusters in which some layer committed something other than its
+    /// precomputed result, so the speculation was abandoned from there on.
+    speculation_misses: usize,
+}
+
+/// Signature of the phase-B partitioner (see `dependent_layer_clusters`).
+type CommitClustering = fn(&[usize], &[usize]) -> Vec<std::ops::Range<usize>>;
+
+/// `gate_internal_bridge_sites` with the phase-B partitioner and the
+/// speculation as parameters, so tests can compare the production
+/// configuration against one whole-timeline cluster without speculation —
+/// the plain sequential loop — and against no grouping at all.
+fn gate_internal_bridge_sites_clustered(
+    slices: &mut [SliceIR],
+    timelines: &HashMap<(ObjectId, RegionId), Vec<usize>>,
+    region_map: &RegionMapIR,
+    object_layers: &HashMap<ObjectId, HashSet<u32>>,
+    lower_layer_polygons: &HashMap<(ObjectId, u32), Vec<ExPolygon>>,
+    clustering: CommitClustering,
+    speculate: bool,
+) -> InternalBridgeGateStats {
+    let mut stats = InternalBridgeGateStats::default();
     // Keep first-pass qualifications separate from carrier-free duplicates so a
     // duplicated area cannot become a new qualification candidate on the next
     // timeline entry.
@@ -1144,22 +1369,30 @@ fn gate_internal_bridge_sites(
             // meant paying for two full-layer `offset`s per rejected layer and
             // throwing the result away. Guard order is preserved so the skip
             // histogram is unchanged.
-            if candidate.is_none_or(|candidate| candidate.internal_solid_fill.is_empty())
-            {
-                log::debug!(
-                    "internal bridge skip object={} region={} layer={} print_z={} reason=internal_solid_fill_empty",
-                    object_id,
-                    region_id,
-                    layer_index,
-                    print_z
-                );
-                return None;
-            }
-            let unsupported = slicer_core::algos::bridge_over_infill::unsupported_span_areas(
+            let candidate = match candidate {
+                Some(candidate) if !candidate.internal_solid_fill.is_empty() => candidate,
+                _ => {
+                    log::debug!(
+                        "internal bridge skip object={} region={} layer={} print_z={} reason=internal_solid_fill_empty",
+                        object_id,
+                        region_id,
+                        layer_index,
+                        print_z
+                    );
+                    return None;
+                }
+            };
+            // The unsupported set is only ever read through
+            // `intersection(surface, unsupported)` below, so lower-layer
+            // geometry beyond the surfaces' reach is dropped first (whole
+            // polygons and holes only, never clipped; see
+            // `unsupported_span_areas_near`).
+            let unsupported = slicer_core::algos::bridge_over_infill::unsupported_span_areas_near(
                 lower_fills,
                 lower_solids,
                 qualify_spacing_mm,
                 expansion_multiplier,
+                &candidate.internal_solid_fill,
             );
             if unsupported.is_empty() {
                 log::debug!(
@@ -1171,6 +1404,40 @@ fn gate_internal_bridge_sites(
                 );
                 return None;
             }
+            // `qualify_internal_bridge_surface` reads only the surface, the
+            // unsupported set and the layer's spacing — not the deep-infill
+            // area the later steps gather — so it is decided here, once per
+            // surface. A layer none of whose surfaces qualify can only ever
+            // produce an empty candidate set, in the precompute and in any
+            // phase-B recompute alike, so it leaves the pipeline now instead
+            // of paying for the depth gather and its offsets.
+            let surface_qualifications: Vec<(usize, Vec<ExPolygon>)> = candidate
+                .internal_solid_fill
+                .iter()
+                .enumerate()
+                .filter_map(|(surface_index, surface)| {
+                    slicer_core::algos::bridge_over_infill::qualify_internal_bridge_surface(
+                        surface,
+                        &unsupported,
+                        qualify_spacing_mm,
+                        nofilter,
+                    )
+                    // An empty acceptance extends nothing downstream.
+                    .filter(|polys| !polys.is_empty())
+                    .map(|polys| (surface_index, polys))
+                })
+                .collect();
+            if surface_qualifications.is_empty() {
+                log::debug!(
+                    "internal bridge skip object={} region={} layer={} print_z={} reason=qualified_empty_or_deep_sparse_clip surfaces={}",
+                    object_id,
+                    region_id,
+                    layer_index,
+                    print_z,
+                    candidate.internal_solid_fill.len()
+                );
+                return None;
+            }
             Some(LayerPrep {
                 timeline_position,
                 slice_idx,
@@ -1178,7 +1445,7 @@ fn gate_internal_bridge_sites(
                 print_z,
                 target_flow_height,
                 qualify_spacing_mm,
-                unsupported,
+                surface_qualifications,
             })
             })
             .collect();
@@ -1188,7 +1455,8 @@ fn gate_internal_bridge_sites(
         // bridge polygons subtracted by
         // `remove_filled_polygons_on_lower_layers`; when that set is empty the
         // result below is exact and phase B merely publishes it.
-        let precomputed: Vec<Option<InternalBridgeLayerResult>> = preps
+        let no_commits = |_: usize| -> Option<&[ExPolygon]> { None };
+        let mut precomputed: Vec<Option<InternalBridgeLayerResult>> = preps
             .par_iter()
             .map(|prep| {
                 let region = slices_ro[prep.slice_idx].regions.iter().find(|candidate| {
@@ -1208,6 +1476,7 @@ fn gate_internal_bridge_sites(
                     object_id,
                     *region_id,
                     &density_for,
+                    &no_commits,
                 );
                 let deep_infill_area = slicer_core::algos::bridge_over_infill::gather_areas_w_depth(
                     &depth_layers,
@@ -1217,10 +1486,9 @@ fn gate_internal_bridge_sites(
                 );
                 compute_internal_bridge_layer(
                     region,
-                    &prep.unsupported,
+                    &prep.surface_qualifications,
                     prep.qualify_spacing_mm,
                     bridge_spacing_mm,
-                    nofilter,
                     internal_bridge_angle,
                     deep_infill_area,
                     object_id,
@@ -1231,101 +1499,214 @@ fn gate_internal_bridge_sites(
             })
             .collect();
 
-        // Phase B — commit. Serial by necessity: `lower_candidates` reads the
-        // `internal_bridge_areas` that earlier layers of this same pass wrote.
-        for (
-            LayerPrep {
-                timeline_position,
-                slice_idx,
-                layer_index,
-                print_z,
-                target_flow_height,
-                qualify_spacing_mm,
-                unsupported,
-            },
-            precomputed,
-        ) in preps.into_iter().zip(precomputed)
-        {
-            // Same reasoning as `depth_start`: the callee keeps only layers at or
-            // above `print_z - target_flow_height`.
+        // Phase B — commit. A layer reads the commits of earlier layers of
+        // this same pass in exactly two places, both over a window that ends
+        // just below it: `lower_candidates` reads `internal_bridge_areas` over
+        // the `filled_window_start` window, and the recompute's depth gather
+        // reads `bridge_areas` over the `depth_window_start` window. Only a
+        // layer in `preps` can commit. `dependent_layer_clusters` groups the
+        // layers so that every earlier prep layer inside a layer's window sits
+        // in that layer's own cluster; each cluster then runs the sequential
+        // commit loop over its own layers in timeline order, seeing its own
+        // earlier commits through `committed` and nothing else, which is
+        // exactly the state the whole-timeline sequential loop would have
+        // shown it. Clusters are independent and run in parallel.
+        let dependency_starts: Vec<usize> = preps
+            .iter()
+            .map(|prep| {
+                let depth_start = slicer_core::algos::bridge_over_infill::depth_window_start(
+                    &timeline_zs[..=prep.timeline_position],
+                    prep.timeline_position,
+                    prep.target_flow_height,
+                    slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+                );
+                let filled_start = slicer_core::algos::bridge_over_infill::filled_window_start(
+                    &timeline_zs[..prep.timeline_position],
+                    prep.print_z,
+                    prep.target_flow_height,
+                );
+                depth_start.min(filled_start)
+            })
+            .collect();
+        let positions: Vec<usize> = preps.iter().map(|prep| prep.timeline_position).collect();
+        let clusters = clustering(&positions, &dependency_starts);
+        stats.prep_layers += preps.len();
+        stats.clusters += clusters.len();
+        let precomputed_ro = &precomputed;
+        // One layer's commit-phase step against a view of the commits made
+        // below it (`committed_on(slice)` = that slice's committed qualified
+        // polygons, if any). `None` publishes the precomputed result;
+        // `Some(result)` is a recompute against the committed lower layers.
+        let evaluate = |prep_index: usize,
+                        committed: &HashMap<usize, &[ExPolygon]>|
+         -> Option<Option<InternalBridgeLayerResult>> {
+            let prep = &preps[prep_index];
+            // The layer's own slice is never committed before its own step.
+            let committed_on = |slice_idx: usize| {
+                (slice_idx != prep.slice_idx)
+                    .then(|| committed.get(&slice_idx).copied())
+                    .flatten()
+            };
+            // Same reasoning as `depth_start`: the callee keeps only layers at
+            // or above `print_z - target_flow_height`.
             let filled_start = slicer_core::algos::bridge_over_infill::filled_window_start(
-                &timeline_zs[..timeline_position],
-                print_z,
-                target_flow_height,
+                &timeline_zs[..prep.timeline_position],
+                prep.print_z,
+                prep.target_flow_height,
             );
-            let lower_candidates: Vec<
-                slicer_core::algos::bridge_over_infill::BridgeCandidateLayer,
-            > = timeline[filled_start..timeline_position]
-                .iter()
-                .filter_map(|&lower_idx| {
-                    let lower = slices[lower_idx].regions.iter().find(|candidate| {
-                        candidate.object_id == *object_id && candidate.region_id == *region_id
-                    })?;
-                    Some(
-                        slicer_core::algos::bridge_over_infill::BridgeCandidateLayer {
-                            print_z: slices[lower_idx].z,
-                            new_polys: lower.internal_bridge_areas.clone(),
-                        },
-                    )
-                })
-                .collect();
+            let lower_candidates: Vec<slicer_core::algos::bridge_over_infill::BridgeCandidateLayer> =
+                timeline[filled_start..prep.timeline_position]
+                    .iter()
+                    .filter_map(|&lower_idx| {
+                        let lower = slices_ro[lower_idx].regions.iter().find(|candidate| {
+                            candidate.object_id == *object_id && candidate.region_id == *region_id
+                        })?;
+                        Some(slicer_core::algos::bridge_over_infill::BridgeCandidateLayer {
+                            print_z: slices_ro[lower_idx].z,
+                            // A commit replaces the slice's
+                            // `internal_bridge_areas` with its qualified
+                            // polygons.
+                            new_polys: committed_on(lower_idx)
+                                .map(<[ExPolygon]>::to_vec)
+                                .unwrap_or_else(|| lower.internal_bridge_areas.clone()),
+                        })
+                    })
+                    .collect();
             // `remove_filled_polygons_on_lower_layers` is the only input that
             // depends on phase B's own earlier writes. When no lower layer
             // carries a bridge polygon the subtraction is a no-op, so the
             // independently precomputed result is exact. Otherwise recompute
             // this layer against the committed lower candidates.
-            let has_lower_filled = lower_candidates
+            if !lower_candidates
                 .iter()
-                .any(|candidate| !candidate.new_polys.is_empty());
-            let computed = if has_lower_filled {
-                let depth_start = slicer_core::algos::bridge_over_infill::depth_window_start(
-                    &timeline_zs[..=timeline_position],
-                    timeline_position,
-                    target_flow_height,
-                    slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+                .any(|candidate| !candidate.new_polys.is_empty())
+            {
+                return None;
+            }
+            let depth_start = slicer_core::algos::bridge_over_infill::depth_window_start(
+                &timeline_zs[..=prep.timeline_position],
+                prep.timeline_position,
+                prep.target_flow_height,
+                slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+            );
+            let depth_layers = build_bridge_depth_layers(
+                slices_ro,
+                timeline,
+                depth_start,
+                prep.timeline_position,
+                object_id,
+                *region_id,
+                &density_for,
+                &committed_on,
+            );
+            let deep_infill_area = slicer_core::algos::bridge_over_infill::gather_areas_w_depth(
+                &depth_layers,
+                depth_layers.len().saturating_sub(1),
+                prep.target_flow_height,
+                slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+            );
+            let deep_infill_area =
+                slicer_core::algos::bridge_over_infill::remove_filled_polygons_on_lower_layers(
+                    &deep_infill_area,
+                    &lower_candidates,
+                    prep.print_z,
+                    prep.target_flow_height,
                 );
-                let depth_layers = build_bridge_depth_layers(
-                    slices,
-                    timeline,
-                    depth_start,
-                    timeline_position,
-                    object_id,
-                    *region_id,
-                    &density_for,
-                );
-                let deep_infill_area = slicer_core::algos::bridge_over_infill::gather_areas_w_depth(
-                    &depth_layers,
-                    depth_layers.len().saturating_sub(1),
-                    target_flow_height,
-                    slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
-                );
-                let deep_infill_area =
-                    slicer_core::algos::bridge_over_infill::remove_filled_polygons_on_lower_layers(
-                        &deep_infill_area,
-                        &lower_candidates,
-                        print_z,
-                        target_flow_height,
-                    );
-                let Some(region) = slices[slice_idx].regions.iter().find(|candidate| {
-                    candidate.object_id == *object_id && candidate.region_id == *region_id
-                }) else {
-                    continue;
-                };
-                compute_internal_bridge_layer(
-                    region,
-                    &unsupported,
-                    qualify_spacing_mm,
-                    bridge_spacing_mm,
-                    nofilter,
-                    internal_bridge_angle,
-                    deep_infill_area,
-                    object_id,
-                    *region_id,
-                    layer_index,
-                    print_z,
+            Some(
+                slices_ro[prep.slice_idx]
+                    .regions
+                    .iter()
+                    .find(|candidate| {
+                        candidate.object_id == *object_id && candidate.region_id == *region_id
+                    })
+                    .and_then(|region| {
+                        compute_internal_bridge_layer(
+                            region,
+                            &prep.surface_qualifications,
+                            prep.qualify_spacing_mm,
+                            bridge_spacing_mm,
+                            internal_bridge_angle,
+                            deep_infill_area,
+                            object_id,
+                            *region_id,
+                            prep.layer_index,
+                            prep.print_z,
+                        )
+                    }),
+            )
+        };
+
+        // Speculation: evaluate every layer at once, in parallel, under the
+        // assumption that each earlier layer commits exactly its precomputed
+        // result. The assumption is checked below, in order, against what
+        // each layer really commits. The only thing a later layer ever reads
+        // from an earlier one is its committed qualified polygons, so a layer
+        // whose earlier window members all committed their precomputed
+        // polygons saw exactly the state the assumption described, and its
+        // speculative outcome is its real one.
+        let assumed: HashMap<usize, &[ExPolygon]> = preps
+            .iter()
+            .zip(precomputed_ro)
+            .filter_map(|(prep, result)| {
+                result
+                    .as_ref()
+                    .map(|result| (prep.slice_idx, result.qualified.as_slice()))
+            })
+            .collect();
+        let speculative: Vec<Option<Option<InternalBridgeLayerResult>>> = if speculate {
+            (0..preps.len())
+                .into_par_iter()
+                .map(|prep_index| evaluate(prep_index, &assumed))
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        // Settle each cluster in timeline order. While every commit so far
+        // matched its precomputed polygons the speculative outcome stands;
+        // from the first mismatch on, the cluster's remaining layers are
+        // evaluated one by one against the real commits (`committed`), which
+        // is the plain sequential loop. Clusters are independent (see
+        // `dependent_layer_clusters`), so they settle in parallel.
+        type CommitOutcome = (usize, Option<Option<InternalBridgeLayerResult>>);
+        type Speculated = Vec<Option<Option<InternalBridgeLayerResult>>>;
+        let mut speculative = speculative.into_iter();
+        let jobs: Vec<(std::ops::Range<usize>, Speculated)> = clusters
+            .iter()
+            .map(|cluster| {
+                (
+                    cluster.clone(),
+                    speculative.by_ref().take(cluster.len()).collect(),
                 )
-            } else {
-                precomputed
+            })
+            .collect();
+        let settled: Vec<(Vec<CommitOutcome>, bool)> = jobs
+            .into_par_iter()
+            .map(|(cluster, speculated)| {
+                settle_speculation(
+                    cluster,
+                    speculate,
+                    speculated,
+                    precomputed_ro,
+                    |result: &InternalBridgeLayerResult| result.qualified.as_slice(),
+                    |prep_index| preps[prep_index].slice_idx,
+                    evaluate,
+                )
+            })
+            .collect();
+        let mut outcomes: Vec<Vec<CommitOutcome>> = Vec::with_capacity(settled.len());
+        for (cluster_outcomes, diverged) in settled {
+            stats.speculation_misses += usize::from(diverged);
+            outcomes.push(cluster_outcomes);
+        }
+
+        // Publish in timeline order. Each commit writes only its own slice.
+        for (prep_index, outcome) in outcomes.into_iter().flatten() {
+            stats.recomputed += usize::from(outcome.is_some());
+            let slice_idx = preps[prep_index].slice_idx;
+            let computed = match outcome {
+                Some(recomputed) => recomputed,
+                None => precomputed[prep_index].take(),
             };
             let Some(InternalBridgeLayerResult { qualified, angles }) = computed else {
                 continue;
@@ -1437,6 +1818,7 @@ fn gate_internal_bridge_sites(
             }
         }
     }
+    stats
 }
 
 fn build_region_timelines(
@@ -1940,5 +2322,413 @@ mod tests {
             whole_inside, windowed_inside,
             "the erosion moved inside the candidate bbox"
         );
+    }
+
+    /// Index of the cluster holding layer `index`.
+    fn cluster_of(clusters: &[std::ops::Range<usize>], index: usize) -> usize {
+        clusters
+            .iter()
+            .position(|cluster| cluster.contains(&index))
+            .expect("every layer is in a cluster")
+    }
+
+    /// Every earlier layer a layer can read shares its cluster.
+    fn respects_dependencies(
+        clusters: &[std::ops::Range<usize>],
+        positions: &[usize],
+        dependency_starts: &[usize],
+    ) -> bool {
+        (0..positions.len()).all(|reader| {
+            (0..reader)
+                .filter(|&earlier| positions[earlier] >= dependency_starts[reader])
+                .all(|earlier| cluster_of(clusters, earlier) == cluster_of(clusters, reader))
+        })
+    }
+
+    /// The pre-fix rule this partition replaced in the prototype: chain a layer
+    /// to the current cluster only when its immediate predecessor is readable.
+    fn previous_layer_clusters(
+        positions: &[usize],
+        dependency_starts: &[usize],
+    ) -> Vec<std::ops::Range<usize>> {
+        let mut clusters: Vec<std::ops::Range<usize>> = Vec::new();
+        for index in 0..positions.len() {
+            let joins = index > 0 && positions[index - 1] >= dependency_starts[index];
+            match clusters.last_mut() {
+                Some(cluster) if joins => cluster.end = index + 1,
+                _ => clusters.push(index..index + 1),
+            }
+        }
+        clusters
+    }
+
+    /// Commit clusters must contain every layer a member can read, and must not
+    /// merge layers that no dependency joins (that would only cost parallelism).
+    #[test]
+    fn dependent_layer_clusters_hold_every_readable_layer_and_nothing_more() {
+        // Variable layer heights: layer 1's window stops above layer 0, but
+        // layer 2's longer window reaches past layer 1 into layer 0.
+        let positions = [3, 6, 7];
+        let dependency_starts = [2, 5, 3];
+        assert_eq!(dependent_layer_clusters(&positions, &dependency_starts), vec![0..3]);
+        let naive = previous_layer_clusters(&positions, &dependency_starts);
+        assert!(
+            !respects_dependencies(&naive, &positions, &dependency_starts),
+            "negative control: chaining to the predecessor alone splits layer 2 from layer 0"
+        );
+
+        let mut state = 0x0001_84c1_u64;
+        let mut next = |bound: usize| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % bound as u64) as usize
+        };
+        let mut split_cases = 0;
+        let mut merge_cases = 0;
+        for _ in 0..4_000 {
+            let count = 1 + next(12);
+            let mut positions = Vec::with_capacity(count);
+            let mut position = next(3);
+            for _ in 0..count {
+                positions.push(position);
+                position += 1 + next(4);
+            }
+            let dependency_starts: Vec<usize> = positions
+                .iter()
+                .map(|&position| position.saturating_sub(next(7)))
+                .collect();
+            let clusters = dependent_layer_clusters(&positions, &dependency_starts);
+            // A contiguous, ascending cover of every layer.
+            assert_eq!(clusters.first().map(|c| c.start), Some(0));
+            assert_eq!(clusters.last().map(|c| c.end), Some(count));
+            assert!(clusters.windows(2).all(|pair| pair[0].end == pair[1].start));
+            assert!(clusters.iter().all(|cluster| !cluster.is_empty()));
+            assert!(
+                respects_dependencies(&clusters, &positions, &dependency_starts),
+                "positions {positions:?} starts {dependency_starts:?} -> {clusters:?}"
+            );
+            // Minimal: every internal boundary of a cluster is crossed by a
+            // dependency, so no cluster could be split further.
+            for cluster in &clusters {
+                for boundary in cluster.start + 1..cluster.end {
+                    let crossed = (boundary..cluster.end).any(|reader| {
+                        (cluster.start..boundary)
+                            .any(|earlier| positions[earlier] >= dependency_starts[reader])
+                    });
+                    assert!(crossed, "{clusters:?} over-merges at {boundary} for {positions:?} / {dependency_starts:?}");
+                }
+            }
+            split_cases += usize::from(clusters.len() > 1);
+            merge_cases += usize::from(
+                !respects_dependencies(
+                    &previous_layer_clusters(&positions, &dependency_starts),
+                    &positions,
+                    &dependency_starts,
+                ),
+            );
+        }
+        assert!(split_cases > 1_000, "too few fixtures split into parallel clusters");
+        assert!(merge_cases > 0, "no fixture needed a merge past the predecessor");
+    }
+
+    /// Fixture for the commit-phase tests: L1 bridges over sparse L0 on the
+    /// left, L2 bridges over sparse L1 on the right — and L2 sits inside L1's
+    /// one-flow-height window, so its commit must see L1's. L6 bridges over
+    /// sparse L5 far above, independently.
+    fn dependent_bridge_fixture() -> (Vec<SliceIR>, RegionMapIR) {
+        let mut snapshot: Vec<_> = (0..9)
+            .map(|i| slice_with(i, vec![rect(0.0, 20.0)]))
+            .collect();
+        snapshot[1].regions[0].internal_solid_fill = vec![rect(0.0, 8.0)];
+        snapshot[2].regions[0].internal_solid_fill = vec![rect(10.0, 20.0)];
+        snapshot[6].regions[0].internal_solid_fill = vec![rect(0.0, 20.0)];
+        let mut region_map = RegionMapIR::default();
+        let config = region_map.intern_config(slicer_ir::ResolvedConfig {
+            infill_density: 0.2,
+            line_width: 0.4,
+            ..Default::default()
+        });
+        for slice in &snapshot {
+            region_map.entries.insert(
+                RegionKey {
+                    global_layer_index: slice.global_layer_index,
+                    object_id: "o".into(),
+                    region_id: 0,
+                    variant_chain: Vec::new(),
+                },
+                slicer_ir::RegionPlan {
+                    config,
+                    ..Default::default()
+                },
+            );
+        }
+        (snapshot, region_map)
+    }
+
+    fn run_gate_with(
+        snapshot: &[SliceIR],
+        region_map: &RegionMapIR,
+        clustering: CommitClustering,
+        speculate: bool,
+    ) -> (Vec<u8>, InternalBridgeGateStats, Vec<u32>) {
+        let timelines = build_region_timelines(snapshot, &HashSet::new());
+        let object_layers = HashMap::from([(
+            "o".into(),
+            snapshot.iter().map(|slice| slice.global_layer_index).collect(),
+        )]);
+        let lower_fills = snapshot
+            .iter()
+            .map(|slice| {
+                (
+                    ("o".into(), slice.global_layer_index),
+                    slice.regions[0].infill_areas.clone(),
+                )
+            })
+            .collect();
+        let mut slices = snapshot.to_vec();
+        let stats = gate_internal_bridge_sites_clustered(
+            &mut slices,
+            &timelines,
+            region_map,
+            &object_layers,
+            &lower_fills,
+            clustering,
+            speculate,
+        );
+        let bridged = slices
+            .iter()
+            .filter(|slice| !slice.regions[0].internal_bridge_areas.is_empty())
+            .map(|slice| slice.global_layer_index)
+            .collect();
+        (
+            serde_json::to_vec(&slices).expect("serialize gated slices"),
+            stats,
+            bridged,
+        )
+    }
+
+    /// The production commit phase (dependency clusters in parallel,
+    /// speculative recomputes) must reproduce the plain sequential loop — one
+    /// whole-timeline cluster, no speculation — exactly. The singleton
+    /// partition without speculation is the negative control: it hides L1's
+    /// commit from L2, which shows the fixture really has a cross-layer read.
+    #[test]
+    fn clustered_commits_equal_the_sequential_commit_loop() {
+        let (snapshot, region_map) = dependent_bridge_fixture();
+        let sequential: CommitClustering =
+            |positions, _| (!positions.is_empty()).then_some(0..positions.len()).into_iter().collect();
+        let singletons: CommitClustering = |positions, _| (0..positions.len()).map(|i| i..i + 1).collect();
+
+        let (clustered, clustered_stats, bridged) =
+            run_gate_with(&snapshot, &region_map, dependent_layer_clusters, true);
+        let (serial, serial_stats, _) = run_gate_with(&snapshot, &region_map, sequential, false);
+        let (unspeculated, _, _) =
+            run_gate_with(&snapshot, &region_map, dependent_layer_clusters, false);
+        let (_, singleton_stats, _) = run_gate_with(&snapshot, &region_map, singletons, false);
+
+        assert!(bridged.contains(&1) && bridged.contains(&6), "bridged layers: {bridged:?}");
+        assert!(
+            clustered_stats.clusters > 1,
+            "the fixture must split into parallel clusters: {clustered_stats:?}"
+        );
+        assert!(
+            singleton_stats.recomputed < serial_stats.recomputed,
+            "negative control: no layer read a lower commit ({singleton_stats:?} vs {serial_stats:?})"
+        );
+        assert_eq!(clustered_stats.recomputed, serial_stats.recomputed);
+        assert_eq!(clustered, serial, "clustered commits diverged from the sequential loop");
+        assert_eq!(unspeculated, serial, "unspeculated clusters diverged from the sequential loop");
+    }
+
+    /// Pass 2's per-target parallel merge must equal the sequential union fold
+    /// bit for bit, and the skipped `internal_solid_fill` differences must be
+    /// exactly the empty ones. (The per-target fold order is preserved by
+    /// construction; clipper's unions on this fixture happen to be
+    /// order-insensitive, so the test pins the result, not the order.)
+    #[test]
+    fn pass2_merge_matches_the_sequential_union_fold_and_skips_only_empty_diffs() {
+        // Three top seeds (L2's right strip, L4's middle strip, L5 whole),
+        // two of them projecting onto L3 and L2.
+        let widths = [30.0, 30.0, 30.0, 20.0, 20.0, 10.0];
+        let snapshot: Vec<SliceIR> = widths
+            .iter()
+            .enumerate()
+            .map(|(i, &width)| slice_with(i as u32, vec![rect(0.0, width)]))
+            .collect();
+        let object_id = String::from("o");
+        let timeline: Vec<usize> = (0..snapshot.len()).collect();
+        let k_top = 4u8;
+        let edits = compute_region_updates(
+            &snapshot,
+            &object_id,
+            0,
+            &timeline,
+            k_top,
+            0,
+            ShellClassificationParams {
+                opening_radius_mm: 0.0,
+                shell_width_mm: 0.0,
+            },
+        );
+
+        // Sequential oracle: seeds from the immutable snapshot, then every
+        // seed's chain folded in ascending seed order.
+        let polys: Vec<Vec<ExPolygon>> = snapshot.iter().map(|s| s.regions[0].polygons.clone()).collect();
+        let mut seeds: HashMap<usize, Vec<ExPolygon>> = HashMap::new();
+        for pos in 0..polys.len() {
+            let upper = polys.get(pos + 1).cloned().unwrap_or_default();
+            let seed = difference(&polys[pos], &upper);
+            if !seed.is_empty() {
+                seeds.insert(pos, seed);
+            }
+        }
+        let mut fills: HashMap<usize, Vec<ExPolygon>> = seeds.clone();
+        let mut contributions: HashMap<usize, usize> = HashMap::new();
+        let mut seed_positions: Vec<usize> = seeds.keys().copied().collect();
+        seed_positions.sort_unstable();
+        for &pos in &seed_positions {
+            let mut shadow = seeds[&pos].clone();
+            for depth in 1..k_top.min((pos + 1) as u8) {
+                let target = pos - depth as usize;
+                let projected = intersection(&shadow, &polys[target]);
+                if projected.is_empty() {
+                    break;
+                }
+                let existing = fills.remove(&target).unwrap_or_default();
+                fills.insert(target, union(&existing, &projected));
+                *contributions.entry(target).or_default() += 1;
+                shadow = projected;
+            }
+        }
+        assert!(
+            contributions.values().any(|&count| count >= 2),
+            "no slice received two shadows, so merge order went untested"
+        );
+        assert!(
+            seeds.keys().any(|pos| !contributions.contains_key(pos)),
+            "no seed slice went without a shadow, so the skipped difference went untested"
+        );
+
+        for edit in &edits {
+            let want_fill = fills.get(&edit.slice_idx);
+            assert_eq!(
+                edit.update.top_solid_fill.as_ref(),
+                want_fill,
+                "slice {}: top fill differs from the sequential fold",
+                edit.slice_idx
+            );
+            if let Some(fill) = want_fill {
+                let seed = seeds.get(&edit.slice_idx).cloned().unwrap_or_default();
+                assert_eq!(
+                    edit.update.internal_solid_fill.as_ref(),
+                    Some(&difference(fill, &seed)),
+                    "slice {}: internal solid fill differs from fill \\ seed",
+                    edit.slice_idx
+                );
+            }
+        }
+    }
+
+    /// Minimal commit result for driving `settle_speculation` directly.
+    #[derive(Clone, Debug, PartialEq)]
+    struct Commit(Vec<ExPolygon>);
+
+    fn commit_of(width: f32) -> Option<Commit> {
+        Some(Commit(vec![rect(0.0, width)]))
+    }
+
+    /// While every real commit equals its precomputed one, speculative
+    /// outcomes are published as they are and nothing is re-evaluated.
+    #[test]
+    fn settled_speculation_keeps_outcomes_while_commits_match() {
+        let precomputed = vec![commit_of(1.0), None, commit_of(3.0)];
+        // Member 0 publishes its precomputed result, member 1 recomputes to
+        // the same nothing, member 2 recomputes to the same polygons.
+        let speculated = vec![None, Some(None), Some(commit_of(3.0))];
+        let (outcomes, missed) = settle_speculation(
+            0..3,
+            true,
+            speculated.clone(),
+            &precomputed,
+            |commit: &Commit| commit.0.as_slice(),
+            |member| 10 + member,
+            |member, _| panic!("member {member} must not be re-evaluated"),
+        );
+        assert!(!missed);
+        assert_eq!(outcomes, vec![(0, speculated[0].clone()), (1, speculated[1].clone()), (2, speculated[2].clone())]);
+    }
+
+    /// The first commit that differs from its precomputed one invalidates the
+    /// speculation for every later member, which is then evaluated against
+    /// the real commits; the differing member's own outcome stands, since its
+    /// inputs were still as assumed.
+    #[test]
+    fn settled_speculation_reevaluates_every_member_after_a_miss() {
+        let precomputed = vec![commit_of(1.0), commit_of(2.0), commit_of(3.0), None];
+        let speculated = vec![
+            None,
+            Some(commit_of(2.5)),
+            Some(commit_of(99.0)),
+            Some(commit_of(98.0)),
+        ];
+        let seen = std::cell::RefCell::new(Vec::new());
+        let (outcomes, missed) = settle_speculation(
+            0..4,
+            true,
+            speculated,
+            &precomputed,
+            |commit: &Commit| commit.0.as_slice(),
+            |member| 10 + member,
+            |member, committed| {
+                let mut view: Vec<(usize, Vec<ExPolygon>)> = committed
+                    .iter()
+                    .map(|(&slice, polys)| (slice, polys.to_vec()))
+                    .collect();
+                view.sort_by_key(|(slice, _)| *slice);
+                seen.borrow_mut().push((member, view));
+                Some(commit_of(7.0 + member as f32))
+            },
+        );
+        assert!(missed);
+        assert_eq!(
+            outcomes,
+            vec![
+                (0, None),
+                (1, Some(commit_of(2.5))),
+                (2, Some(commit_of(9.0))),
+                (3, Some(commit_of(10.0))),
+            ]
+        );
+        let seen = seen.into_inner();
+        assert_eq!(seen.len(), 2, "exactly the members after the miss are re-evaluated");
+        assert_eq!(
+            seen[0],
+            (2, vec![(10, vec![rect(0.0, 1.0)]), (11, vec![rect(0.0, 2.5)])]),
+            "member 2 sees member 0's precomputed and member 1's real commit"
+        );
+        assert_eq!(seen[1].1.last(), Some(&(12, vec![rect(0.0, 9.0)])));
+    }
+
+    /// Without trusting the speculation every member is evaluated in order.
+    #[test]
+    fn untrusted_speculation_is_the_sequential_loop() {
+        let precomputed = vec![commit_of(1.0), commit_of(2.0)];
+        let calls = std::cell::Cell::new(0);
+        let (outcomes, missed) = settle_speculation(
+            0..2,
+            false,
+            Vec::new(),
+            &precomputed,
+            |commit: &Commit| commit.0.as_slice(),
+            |member| member,
+            |_, _| {
+                calls.set(calls.get() + 1);
+                None
+            },
+        );
+        assert!(!missed, "nothing was speculated, so nothing can miss");
+        assert_eq!(calls.get(), 2);
+        assert_eq!(outcomes, vec![(0, None), (1, None)]);
     }
 }

@@ -207,6 +207,117 @@ pub fn unsupported_span_areas(
     difference(&unsupported, &solids_grown)
 }
 
+/// Axis-aligned bounding box in workspace units: `(min_x, min_y, max_x, max_y)`.
+pub type UnitBox = (i64, i64, i64, i64);
+
+fn ring_box(points: &[Point2]) -> Option<UnitBox> {
+    let first = points.first()?;
+    Some(points.iter().fold(
+        (first.x, first.y, first.x, first.y),
+        |(min_x, min_y, max_x, max_y), p| {
+            (min_x.min(p.x), min_y.min(p.y), max_x.max(p.x), max_y.max(p.y))
+        },
+    ))
+}
+
+/// Union bounding box of every ring of `polygons`, or `None` when they carry
+/// no points.
+pub fn polygons_box(polygons: &[ExPolygon]) -> Option<UnitBox> {
+    polygons
+        .iter()
+        .flat_map(|polygon| std::iter::once(&polygon.contour).chain(polygon.holes.iter()))
+        .filter_map(|ring| ring_box(&ring.points))
+        .reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)))
+}
+
+/// `bbox` grown by `margin_mm` on every side, rounded outward to whole units.
+pub fn grow_box(bbox: UnitBox, margin_mm: f64) -> UnitBox {
+    let margin = (margin_mm * UNITS_PER_MM).ceil() as i64;
+    (
+        bbox.0 - margin,
+        bbox.1 - margin,
+        bbox.2 + margin,
+        bbox.3 + margin,
+    )
+}
+
+fn boxes_overlap(a: UnitBox, b: UnitBox) -> bool {
+    a.0 <= b.2 && b.0 <= a.2 && a.1 <= b.3 && b.1 <= a.3
+}
+
+/// Drop every polygon, and every hole, whose bounding box misses `window`.
+///
+/// Nothing is clipped: each kept ring is passed through unchanged, so no new
+/// vertex is created. A ring whose box misses the window can neither enclose
+/// nor cross a point of the window, so removing it changes the winding number
+/// — and therefore every boolean or offset result — only outside the window
+/// grown by the operation's own reach. Returns the input borrowed when nothing
+/// is dropped.
+pub fn polygons_touching_box(
+    polygons: &[ExPolygon],
+    window: UnitBox,
+) -> std::borrow::Cow<'_, [ExPolygon]> {
+    let touches = |points: &[Point2]| ring_box(points).is_some_and(|b| boxes_overlap(b, window));
+    let unchanged = polygons.iter().all(|polygon| {
+        touches(&polygon.contour.points) && polygon.holes.iter().all(|hole| touches(&hole.points))
+    });
+    if unchanged {
+        return std::borrow::Cow::Borrowed(polygons);
+    }
+    std::borrow::Cow::Owned(
+        polygons
+            .iter()
+            .filter(|polygon| touches(&polygon.contour.points))
+            .map(|polygon| ExPolygon {
+                contour: polygon.contour.clone(),
+                holes: polygon
+                    .holes
+                    .iter()
+                    .filter(|hole| touches(&hole.points))
+                    .cloned()
+                    .collect(),
+            })
+            .collect(),
+    )
+}
+
+/// Miter limit [`offset`] applies (Clipper2's default); a miter-joined offset
+/// by `d` moves no boundary point farther than this times `|d|`.
+const OFFSET_MITER_REACH: f64 = 2.0;
+
+/// [`unsupported_span_areas`] restricted to what `surfaces` can observe.
+///
+/// [`qualify_internal_bridge_surface`] reads the unsupported set only through
+/// `intersection(surface, unsupported)`, so only its geometry over the
+/// surfaces matters. Each step of `unsupported_span_areas` is local: the fill
+/// erosion moves boundaries at most `2 × m × s` (miter reach of
+/// `offset(-m s)`), and the solid shrink-grow at most `2 s + 2 (1 + m) s`;
+/// the `closing_ex` epsilon passes are negligible against the one-spacing
+/// safety pad. Lower-layer polygons and holes wholly outside the surfaces'
+/// bounding box grown by that reach are dropped with
+/// [`polygons_touching_box`] before the call, which leaves the result over the
+/// surfaces vertex-for-vertex unchanged.
+pub fn unsupported_span_areas_near(
+    lower_fills: &[ExPolygon],
+    lower_solids: &[ExPolygon],
+    spacing_mm: f32,
+    expansion_multiplier: f64,
+    surfaces: &[ExPolygon],
+) -> Vec<ExPolygon> {
+    let Some(bbox) = polygons_box(surfaces) else {
+        return unsupported_span_areas(lower_fills, lower_solids, spacing_mm, expansion_multiplier);
+    };
+    let spacing = f64::from(spacing_mm);
+    let fill_reach = OFFSET_MITER_REACH * expansion_multiplier * spacing;
+    let solid_reach = OFFSET_MITER_REACH * spacing
+        + OFFSET_MITER_REACH * (1.0 + expansion_multiplier) * spacing;
+    let margin_mm = fill_reach.max(solid_reach) + spacing + 8.0 * SCALED_EPSILON_MM;
+    let window = grow_box(bbox, margin_mm);
+    let fills = polygons_touching_box(lower_fills, window);
+    let solids = polygons_touching_box(lower_solids, window);
+    unsupported_span_areas(&fills, &solids, spacing_mm, expansion_multiplier)
+}
+
 /// Qualify the genuinely unsupported part of one internal bridge surface.
 pub fn qualify_internal_bridge_surface(
     surface: &ExPolygon,
@@ -310,6 +421,13 @@ pub fn expand_candidate_area(
 }
 
 /// Select a bridge direction from arc-length-weighted nearest anchor samples.
+///
+/// Same result as the original brute-force scan, bit for bit, without
+/// its two quadratic scans: the nearest anchor segment of each sample comes
+/// from a bounding-box hierarchy ([`AnchorSegmentIndex`]) that evaluates the
+/// identical distance expression and keeps the identical first-segment tie
+/// rule, and the angular vote only visits the samples that can fall inside a
+/// candidate's window (see [`vote_bridging_angle`]).
 pub fn determine_bridging_angle(
     anchors: &[Vec<Point2>],
     area_edges: &[Vec<Point2>],
@@ -318,7 +436,12 @@ pub fn determine_bridging_angle(
     if override_deg > 0.0 {
         return override_deg;
     }
+    let index = AnchorSegmentIndex::new(anchors);
     let mut samples = Vec::new();
+    if index.is_empty() {
+        return 0.001;
+    }
+    let mut stack = Vec::with_capacity(64);
     for edge in area_edges {
         for pair in edge.windows(2) {
             let dx = (pair[1].x - pair[0].x) as f64;
@@ -331,7 +454,7 @@ pub fn determine_bridging_angle(
             for n in 0..count {
                 let t = ((n as f64 + 0.5) / count as f64).min(1.0);
                 let p = (pair[0].x as f64 + dx * t, pair[0].y as f64 + dy * t);
-                if let Some(angle) = nearest_anchor_angle(anchors, p) {
+                if let Some(angle) = index.nearest_angle(p, &mut stack) {
                     samples.push(angle);
                 }
             }
@@ -341,25 +464,60 @@ pub fn determine_bridging_angle(
         return 0.001;
     }
     samples.sort_by(|a, b| a.total_cmp(b));
+    vote_bridging_angle(&samples)
+}
+
+/// Angular vote of the original `O(S²)` bridging-angle scan over ascending
+/// `samples`, visiting only the samples that can pass its window test.
+///
+/// The reference scores every candidate against every sample. A sample passes
+/// when its direction is within `window` of the candidate modulo `π`, which
+/// (both angles lying in `[0, π]`) means its value lies in one of the three
+/// intervals `candidate + kπ ± window`, `k ∈ {-1, 0, 1}`. Those intervals are
+/// disjoint (`2 × window < π`) and ascend with `k`, so their index ranges in
+/// the sorted samples are disjoint and ascending too. Each range is widened by
+/// `RANGE_SLACK`, far beyond the rounding of the reference's `rem_euclid`
+/// arithmetic, and then every sample in it is put through the reference's own
+/// test. The passing set, the order it is summed in (ascending index) and
+/// therefore `score` and `sum` are exactly the reference's. The ranges' total
+/// size bounds the score, so a candidate that cannot beat `best_score` is
+/// skipped without changing the result (the reference only replaces on a
+/// strictly greater score).
+fn vote_bridging_angle(samples: &[f64]) -> f32 {
+    const RANGE_SLACK: f64 = 1e-9;
+    let pi = PI as f64;
     let window = 18.0_f64.to_radians();
     let mut best_score = 0usize;
     let mut best_angle = 0.0;
-    for &candidate in &samples {
+    for &candidate in samples {
+        let ranges = [-1.0_f64, 0.0, 1.0].map(|k| {
+            let low = candidate + k * pi - window - RANGE_SLACK;
+            let high = candidate + k * pi + window + RANGE_SLACK;
+            let start = samples.partition_point(|&value| value < low);
+            let end = samples.partition_point(|&value| value <= high);
+            start..end.max(start)
+        });
+        let bound: usize = ranges.iter().map(|range| range.len()).sum();
+        if bound <= best_score {
+            continue;
+        }
         let mut score = 0usize;
         let mut sum = 0.0;
-        for &direction in &samples {
-            let mut delta = (direction - candidate).rem_euclid(PI as f64);
-            if delta > PI as f64 / 2.0 {
-                delta -= PI as f64;
-            }
-            if delta.abs() <= window {
-                score += 1;
-                sum += candidate + delta;
+        for range in ranges {
+            for &direction in &samples[range] {
+                let mut delta = (direction - candidate).rem_euclid(pi);
+                if delta > pi / 2.0 {
+                    delta -= pi;
+                }
+                if delta.abs() <= window {
+                    score += 1;
+                    sum += candidate + delta;
+                }
             }
         }
         if score > best_score {
             best_score = score;
-            best_angle = (sum / score as f64).rem_euclid(PI as f64);
+            best_angle = (sum / score as f64).rem_euclid(pi);
         }
     }
     (best_angle.to_degrees() as f32)
@@ -367,27 +525,209 @@ pub fn determine_bridging_angle(
         .max(0.001)
 }
 
-fn nearest_anchor_angle(anchors: &[Vec<Point2>], p: (f64, f64)) -> Option<f64> {
-    let mut best = None;
-    for line in anchors {
-        for pair in line.windows(2) {
-            let ax = pair[0].x as f64;
-            let ay = pair[0].y as f64;
-            let dx = (pair[1].x - pair[0].x) as f64;
-            let dy = (pair[1].y - pair[0].y) as f64;
-            let len2 = dx * dx + dy * dy;
-            if len2 == 0.0 {
-                continue;
-            }
-            let t = (((p.0 - ax) * dx + (p.1 - ay) * dy) / len2).clamp(0.0, 1.0);
-            let distance2 = (p.0 - ax - t * dx).powi(2) + (p.1 - ay - t * dy).powi(2);
-            let angle = (dy.atan2(dx) + PI as f64 / 2.0).rem_euclid(PI as f64);
-            if best.is_none_or(|(d, _, _): (f64, f64, f64)| distance2 < d) {
-                best = Some((distance2, angle, len2));
+/// One non-degenerate anchor segment, in the reference scan's order.
+struct AnchorSegment {
+    ax: f64,
+    ay: f64,
+    dx: f64,
+    dy: f64,
+    len2: f64,
+    angle: f64,
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+}
+
+struct AnchorNode {
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+    /// Leaf: `start..end` into `order`. Inner: child node indices.
+    start: usize,
+    end: usize,
+    leaf: bool,
+}
+
+/// Bounding-box hierarchy over anchor segments answering
+/// nearest-anchor queries exactly, matching the original linear scan.
+///
+/// Segment `i` is the `i`-th non-degenerate segment of the reference scan, and
+/// its distance is evaluated with the reference's expression, so the computed
+/// `distance2` values are identical. The reference keeps the first segment of
+/// minimal `distance2`; the query keeps the smallest index among equal
+/// distances, which is the same segment. A node is pruned only when its box
+/// lower bound exceeds the best distance by a relative and absolute margin
+/// that dominates the rounding of either computation, so no segment that
+/// could win or tie is ever skipped.
+struct AnchorSegmentIndex {
+    segments: Vec<AnchorSegment>,
+    order: Vec<usize>,
+    nodes: Vec<AnchorNode>,
+}
+
+impl AnchorSegmentIndex {
+    const LEAF_SIZE: usize = 8;
+
+    fn new(anchors: &[Vec<Point2>]) -> Self {
+        let mut segments = Vec::new();
+        for line in anchors {
+            for pair in line.windows(2) {
+                let ax = pair[0].x as f64;
+                let ay = pair[0].y as f64;
+                let dx = (pair[1].x - pair[0].x) as f64;
+                let dy = (pair[1].y - pair[0].y) as f64;
+                let len2 = dx * dx + dy * dy;
+                if len2 == 0.0 {
+                    continue;
+                }
+                let bx = pair[1].x as f64;
+                let by = pair[1].y as f64;
+                segments.push(AnchorSegment {
+                    ax,
+                    ay,
+                    dx,
+                    dy,
+                    len2,
+                    angle: (dy.atan2(dx) + PI as f64 / 2.0).rem_euclid(PI as f64),
+                    min_x: ax.min(bx),
+                    min_y: ay.min(by),
+                    max_x: ax.max(bx),
+                    max_y: ay.max(by),
+                });
             }
         }
+        let mut order: Vec<usize> = (0..segments.len()).collect();
+        let mut nodes = Vec::with_capacity(segments.len() / 4 + 1);
+        if !segments.is_empty() {
+            Self::build(&segments, &mut order, &mut nodes, 0, segments.len());
+        }
+        Self {
+            segments,
+            order,
+            nodes,
+        }
     }
-    best.map(|(_, angle, _)| angle)
+
+    fn is_empty(&self) -> bool {
+        self.segments.is_empty()
+    }
+
+    fn build(
+        segments: &[AnchorSegment],
+        order: &mut [usize],
+        nodes: &mut Vec<AnchorNode>,
+        start: usize,
+        end: usize,
+    ) -> usize {
+        let (mut min_x, mut min_y) = (f64::INFINITY, f64::INFINITY);
+        let (mut max_x, mut max_y) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for &index in &order[start..end] {
+            let segment = &segments[index];
+            min_x = min_x.min(segment.min_x);
+            min_y = min_y.min(segment.min_y);
+            max_x = max_x.max(segment.max_x);
+            max_y = max_y.max(segment.max_y);
+        }
+        let me = nodes.len();
+        nodes.push(AnchorNode {
+            min_x,
+            min_y,
+            max_x,
+            max_y,
+            start,
+            end,
+            leaf: end - start <= Self::LEAF_SIZE,
+        });
+        if end - start <= Self::LEAF_SIZE {
+            return me;
+        }
+        let split_x = (max_x - min_x) >= (max_y - min_y);
+        let mid = start + (end - start) / 2;
+        let centre = |index: usize| {
+            let segment = &segments[index];
+            if split_x {
+                segment.min_x + segment.max_x
+            } else {
+                segment.min_y + segment.max_y
+            }
+        };
+        order[start..end].select_nth_unstable_by(mid - start, |&a, &b| {
+            centre(a).total_cmp(&centre(b)).then(a.cmp(&b))
+        });
+        let left = Self::build(segments, order, nodes, start, mid);
+        let right = Self::build(segments, order, nodes, mid, end);
+        nodes[me].start = left;
+        nodes[me].end = right;
+        me
+    }
+
+    fn box_distance2(node: &AnchorNode, p: (f64, f64)) -> f64 {
+        let dx = if p.0 < node.min_x {
+            node.min_x - p.0
+        } else if p.0 > node.max_x {
+            p.0 - node.max_x
+        } else {
+            0.0
+        };
+        let dy = if p.1 < node.min_y {
+            node.min_y - p.1
+        } else if p.1 > node.max_y {
+            p.1 - node.max_y
+        } else {
+            0.0
+        };
+        dx * dx + dy * dy
+    }
+
+    /// `true` when nothing in a box at lower bound `bound` can match `best`.
+    fn prunable(bound: f64, best: f64) -> bool {
+        bound > best * (1.0 + 1e-9) + 1.0
+    }
+
+    fn nearest_angle(&self, p: (f64, f64), stack: &mut Vec<usize>) -> Option<f64> {
+        if self.segments.is_empty() {
+            return None;
+        }
+        let mut best_d2 = f64::INFINITY;
+        let mut best_index = usize::MAX;
+        stack.clear();
+        stack.push(0);
+        while let Some(node_index) = stack.pop() {
+            let node = &self.nodes[node_index];
+            if Self::prunable(Self::box_distance2(node, p), best_d2) {
+                continue;
+            }
+            if node.leaf {
+                for &index in &self.order[node.start..node.end] {
+                    let s = &self.segments[index];
+                    // The reference's exact expression.
+                    let t = (((p.0 - s.ax) * s.dx + (p.1 - s.ay) * s.dy) / s.len2).clamp(0.0, 1.0);
+                    let distance2 = (p.0 - s.ax - t * s.dx).powi(2) + (p.1 - s.ay - t * s.dy).powi(2);
+                    if distance2 < best_d2 || (distance2 == best_d2 && index < best_index) {
+                        best_d2 = distance2;
+                        best_index = index;
+                    }
+                }
+            } else {
+                let (left, right) = (node.start, node.end);
+                let left_bound = Self::box_distance2(&self.nodes[left], p);
+                let right_bound = Self::box_distance2(&self.nodes[right], p);
+                // Visit the nearer child first (pushed last).
+                if left_bound <= right_bound {
+                    stack.push(right);
+                    stack.push(left);
+                } else {
+                    stack.push(left);
+                    stack.push(right);
+                }
+            }
+        }
+        // `best_d2` stays infinite only if every distance was NaN, which the
+        // reference would also never select.
+        (best_index != usize::MAX).then(|| self.segments[best_index].angle)
+    }
 }
 
 /// Presort internal-bridge candidates the way canonical
@@ -531,6 +871,12 @@ pub fn internal_bridge_angles(
     );
     let mut angles: Vec<f32> = Vec::with_capacity(candidates.len());
     let mut bridge_areas: Vec<Vec<ExPolygon>> = Vec::with_capacity(candidates.len());
+    // `boundary_anchor_polylines(&total_fill_area, &limiting_area, ..)` emits
+    // the `total_fill_area` rings first and the `limiting_area` rings second.
+    // Only the second half depends on the candidate, so the first half is
+    // computed once here and each candidate's anchor set is that prefix
+    // followed by its own rings — the identical sequence.
+    let total_fill_rings = boundary_anchor_polylines(&total_fill_area, &[], spacing);
     for (index, candidate) in candidates.iter().enumerate() {
         let candidate = std::slice::from_ref(candidate);
         let mut area: Vec<ExPolygon> = intersection(
@@ -548,7 +894,8 @@ pub fn internal_bridge_angles(
             area = candidate.to_vec();
         }
         let limiting_area = union(&area, &expansion_area);
-        let anchors = boundary_anchor_polylines(&total_fill_area, &limiting_area, spacing);
+        let mut anchors = total_fill_rings.clone();
+        anchors.extend(boundary_anchor_polylines(&[], &limiting_area, spacing));
         let edges: Vec<Vec<Point2>> = area
             .iter()
             .flat_map(|polygon| std::iter::once(&polygon.contour).chain(polygon.holes.iter()))
@@ -557,17 +904,24 @@ pub fn internal_bridge_angles(
         let mut angle = determine_bridging_angle(&anchors, &edges, inputs.override_deg);
         // Canonical collision check (`expand(bridging_area, 3 × spacing)` vs
         // each earlier `new_polys`): both operands are the area-class bridging
-        // region, not the raw candidate. See the note above.
-        let grown = offset(&area, 3.0 * spacing, OffsetJoinType::Miter, 0.0);
-        if let Some(earlier) = bridge_areas[..index]
-            .iter()
-            .position(|earlier| !intersection(earlier, &grown).is_empty())
-        {
-            angle = angles[earlier];
+        // region, not the raw candidate. See the note above. The first
+        // candidate has no earlier one to meet, so its grown area is unread.
+        if index > 0 {
+            let grown = offset(&area, 3.0 * spacing, OffsetJoinType::Miter, 0.0);
+            if let Some(earlier) = bridge_areas[..index]
+                .iter()
+                .position(|earlier| !intersection(earlier, &grown).is_empty())
+            {
+                angle = angles[earlier];
+            }
         }
         angles.push(angle);
-        expansion_area = difference(&expansion_area, &area);
-        bridge_areas.push(area);
+        // The last candidate's updated expansion area and stored area are
+        // never read, so the final `difference` is skipped.
+        if index + 1 < candidates.len() {
+            expansion_area = difference(&expansion_area, &area);
+            bridge_areas.push(area);
+        }
     }
     angles
 }

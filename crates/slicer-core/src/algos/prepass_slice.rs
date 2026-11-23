@@ -414,6 +414,10 @@ pub fn detect_bridging_direction_deg(to_cover: &[ExPolygon], anchors: &[ExPolygo
     // unit-normalized, deduped by quantized angle (first-seen wins).
     let mut edges: Vec<(f64, f64)> = Vec::with_capacity(floating.len());
     let mut candidates: Vec<(i64, f64, f64)> = Vec::new();
+    // First-seen dedup by key; the set only replaces the linear `any` scan,
+    // so `candidates` keeps the identical order and contents.
+    let mut seen_keys: std::collections::HashSet<i64> =
+        std::collections::HashSet::with_capacity(floating.len());
     for (from, to) in &floating {
         let dx = (to.x - from.x) as f64;
         let dy = (to.y - from.y) as f64;
@@ -433,7 +437,7 @@ pub fn detect_bridging_direction_deg(to_cover: &[ExPolygon], anchors: &[ExPolygo
         let nx = if nx == 0.0 { 0.0 } else { nx };
         let ny = if ny == 0.0 { 0.0 } else { ny };
         let key = (ny.atan2(nx) * ORIENTATION_QUANTIZATION_SCALE).ceil() as i64;
-        if !candidates.iter().any(|&(k, _, _)| k == key) {
+        if seen_keys.insert(key) {
             candidates.push((key, nx, ny));
         }
     }
@@ -442,15 +446,37 @@ pub fn detect_bridging_direction_deg(to_cover: &[ExPolygon], anchors: &[ExPolygo
         return principal_minor_axis_deg(&overhang);
     }
 
-    // Minimal-cost candidate; exact-cost ties resolve to the smallest
-    // quantized-angle key (ADR-0061).
+    let (_, nx, ny) = min_cost_bridging_candidate(&edges, &candidates);
+
+    // Return direction = winning normal flipped: parallel to the winning
+    // floating edge, in degrees mod 180, half-open [0, 180).
+    direction_deg(ny, -nx)
+}
+
+/// Exact scoring objective of [`detect_bridging_direction_deg`]: the sum of
+/// `|edge . n|` over every floating edge, in edge order. Both the brute-force
+/// reference and the pruned selector call this one function, so the value a
+/// candidate is ranked by is bit-for-bit the same in either path.
+fn bridging_candidate_cost(edges: &[(f64, f64)], nx: f64, ny: f64) -> f64 {
+    edges
+        .iter()
+        .map(|&(dx, dy)| (dx * nx + dy * ny).abs())
+        .sum()
+}
+
+/// Brute-force reference selector: the minimal-cost candidate, exact-cost ties
+/// resolved to the smallest quantized-angle key (ADR-0061). `O(C × E)`.
+///
+/// Kept as the oracle [`min_cost_bridging_candidate`] is tested against.
+#[doc(hidden)]
+pub fn min_cost_bridging_candidate_reference(
+    edges: &[(f64, f64)],
+    candidates: &[(i64, f64, f64)],
+) -> (i64, f64, f64) {
     let mut best: Option<(i64, f64, f64)> = None; // (key, nx, ny) at min cost
     let mut best_cost = f64::INFINITY;
-    for &(key, nx, ny) in &candidates {
-        let cost: f64 = edges
-            .iter()
-            .map(|&(dx, dy)| (dx * nx + dy * ny).abs())
-            .sum();
+    for &(key, nx, ny) in candidates {
+        let cost = bridging_candidate_cost(edges, nx, ny);
         let wins = match best {
             None => true,
             Some((best_key, _, _)) => cost < best_cost || (cost == best_cost && key < best_key),
@@ -460,11 +486,103 @@ pub fn detect_bridging_direction_deg(to_cover: &[ExPolygon], anchors: &[ExPolygo
             best_cost = cost;
         }
     }
-    let (_, nx, ny) = best.expect("candidates is non-empty");
+    best.expect("candidates is non-empty")
+}
 
-    // Return direction = winning normal flipped: parallel to the winning
-    // floating edge, in degrees mod 180, half-open [0, 180).
-    direction_deg(ny, -nx)
+/// Same selection as [`min_cost_bridging_candidate_reference`], without its
+/// `O(C × E)` scan.
+///
+/// The cost `Σ|e·n|` is a piecewise-linear function of the candidate angle, so
+/// after sorting the edges by their direction folded into `[0, π)` it can be
+/// evaluated for every candidate from prefix sums in `O(log E)`. That value is
+/// only an *estimate*: it sums in a different order and classifies edge signs
+/// by angle, so it can differ from the reference cost in the last bits. It is
+/// therefore used purely as a filter. Every candidate whose estimate lies
+/// within `2 × tol` of the smallest estimate is re-scored with the exact
+/// reference cost ([`bridging_candidate_cost`]) and the winner is picked from
+/// those by the reference rule.
+///
+/// Exactness: `tol` bounds `|estimate - reference|` for every candidate (both
+/// differ from the real-number cost by at most a few ulps per edge of the
+/// total edge length `L`, and `tol = 16 (E + 8) ε L` is several times that
+/// bound). If `w` is the reference winner and `c*` the candidate with the
+/// smallest estimate, then `est(w) <= ref(w) + tol <= ref(c*) + tol <=
+/// est(c*) + 2 tol`, so `w` is always among the re-scored candidates. The
+/// reference rule is a lexicographic `(cost, key)` minimum (keys are unique
+/// after dedup), so restricting it to any subset that contains `w` returns
+/// `w`.
+#[doc(hidden)]
+pub fn min_cost_bridging_candidate(
+    edges: &[(f64, f64)],
+    candidates: &[(i64, f64, f64)],
+) -> (i64, f64, f64) {
+    // Small inputs: the scan is already cheap and the filter cannot pay for
+    // its sort.
+    if candidates.len() <= 4 || edges.len() <= 8 {
+        return min_cost_bridging_candidate_reference(edges, candidates);
+    }
+    const HALF_PI: f64 = std::f64::consts::FRAC_PI_2;
+    // Fold each edge into the upper half-plane; `|e·n|` is invariant under
+    // `e -> -e`.
+    let fold = |x: f64, y: f64| -> (f64, f64) {
+        if y < 0.0 || (y == 0.0 && x < 0.0) {
+            (-x, -y)
+        } else {
+            (x, y)
+        }
+    };
+    let mut folded: Vec<(f64, f64, f64)> = Vec::with_capacity(edges.len());
+    let mut total_length = 0.0_f64;
+    for &(dx, dy) in edges {
+        let (fx, fy) = fold(dx, dy);
+        total_length += dx.hypot(dy);
+        folded.push((fy.atan2(fx), fx, fy));
+    }
+    if !total_length.is_finite() {
+        return min_cost_bridging_candidate_reference(edges, candidates);
+    }
+    folded.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut prefix_x = Vec::with_capacity(folded.len() + 1);
+    let mut prefix_y = Vec::with_capacity(folded.len() + 1);
+    prefix_x.push(0.0_f64);
+    prefix_y.push(0.0_f64);
+    let (mut sum_x, mut sum_y) = (0.0_f64, 0.0_f64);
+    for &(_, fx, fy) in &folded {
+        sum_x += fx;
+        sum_y += fy;
+        prefix_x.push(sum_x);
+        prefix_y.push(sum_y);
+    }
+    let estimates: Vec<f64> = candidates
+        .iter()
+        .map(|&(_, nx, ny)| {
+            let (tx, ty) = fold(nx, ny);
+            let theta = ty.atan2(tx);
+            // Edges with folded angle within a quarter turn of `theta` have
+            // `f·t >= 0`; the rest contribute `-f·t`.
+            let (pos_x, pos_y) = if theta <= HALF_PI {
+                let k = folded.partition_point(|&(a, _, _)| a <= theta + HALF_PI);
+                (prefix_x[k], prefix_y[k])
+            } else {
+                let k = folded.partition_point(|&(a, _, _)| a < theta - HALF_PI);
+                (sum_x - prefix_x[k], sum_y - prefix_y[k])
+            };
+            (pos_x - (sum_x - pos_x)) * tx + (pos_y - (sum_y - pos_y)) * ty
+        })
+        .collect();
+    let tol = 16.0 * (edges.len() as f64 + 8.0) * f64::EPSILON * total_length;
+    let min_estimate = estimates.iter().copied().fold(f64::INFINITY, f64::min);
+    if !min_estimate.is_finite() || !tol.is_finite() {
+        return min_cost_bridging_candidate_reference(edges, candidates);
+    }
+    let cutoff = min_estimate + 2.0 * tol;
+    let contenders: Vec<(i64, f64, f64)> = candidates
+        .iter()
+        .zip(&estimates)
+        .filter(|&(_, &estimate)| estimate <= cutoff)
+        .map(|(&candidate, _)| candidate)
+        .collect();
+    min_cost_bridging_candidate_reference(edges, &contenders)
 }
 
 // ============================================================================
