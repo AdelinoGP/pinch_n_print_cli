@@ -1,0 +1,310 @@
+{
+  "schema": 1,
+  "cell": "base-classic-on",
+  "selection_rule": "Lowest measured median wall across {worker, nested} x k in {4, 8, 16}, preferring k = 8 over k = 4 when within repeat noise for sub-micron Hausdorff (worker-k8 is 0.057 s / 0.23% from nested-k4 within a 0.337-1.307 s repeat spread, beats nested-k8 on wall and CPU, beats nested-k4 on CPU, and cuts Support path delta 5x from -1.195 mm to -0.242 mm).",
+  "chosen_arm": "worker-k8",
+  "meta": {
+    "batch_id": "sweep1",
+    "cell": "base-classic-on",
+    "arms": [
+      "baseline",
+      "worker-k4",
+      "worker-k8",
+      "worker-k16",
+      "nested-k4",
+      "nested-k8",
+      "nested-k16"
+    ],
+    "runs_per_arm": 3,
+    "modules_tree_sha256": "96f3b3b0ca5f826066b5da849d6bc51298fff31b5006397006ba866c8c90d947",
+    "arm_exe_sha256": {
+      "baseline": "59ce295af11a936e0edf1f8fe79de3b07d457681e0676dfcb507be1f72af1b2b",
+      "worker-k4": "9cebbbc18d27d877f89d1c814998358bfb7c50574366296f8329a189b54a92bd",
+      "worker-k8": "39fd09d844acd98e4a63fa22e19f8ba3f99b26a32baa53d0d036172c436144c4",
+      "worker-k16": "47bfad2f1f874e9febabd2059df4b06401e70f70e67764701313cf6a0e3d358f",
+      "nested-k4": "57471ad9f61067d2ad6d2622eeb694d81507e392ba52cbb5119092a5358f760f",
+      "nested-k8": "9c738335be5486f42572d3e41a15a6ea3160e2ead2571a11c53c18c643c083c7",
+      "nested-k16": "fc4bdb0aee79d324aaff1ac53cfec0006f5df1dc4118c7bf2e0407b3170f04b4"
+    },
+    "cpu_load_before": 4.0,
+    "cpu_load_after": 5.0,
+    "completed_utc": "2026-11-22T23:19:37.2524295Z"
+  },
+  "arms": {
+    "baseline": {
+      "runs": 3,
+      "wall_s": [
+        28.646182,
+        29.102032,
+        28.433086
+      ],
+      "cpu_s": [
+        173.4375,
+        173.28125,
+        172.859375
+      ],
+      "wall_median_s": 28.646182,
+      "cpu_median_s": 173.28125,
+      "wall_min_s": 28.433086,
+      "wall_max_s": 29.102032,
+      "cpu_min_s": 172.859375,
+      "cpu_max_s": 173.4375,
+      "gcode_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "gcode_bytes": 39605534,
+      "exe_sha256": "59ce295af11a936e0edf1f8fe79de3b07d457681e0676dfcb507be1f72af1b2b",
+      "exit_codes": [
+        0
+      ],
+      "diag_issues": 0,
+      "matches_t175": true,
+      "wall_saving_pct": 0.0,
+      "cpu_saving_pct": 0.0
+    },
+    "worker-k4": {
+      "runs": 3,
+      "wall_s": [
+        24.434484,
+        24.586412,
+        24.380996
+      ],
+      "cpu_s": [
+        131.484375,
+        130.4375,
+        131.265625
+      ],
+      "wall_median_s": 24.434484,
+      "cpu_median_s": 131.265625,
+      "wall_min_s": 24.380996,
+      "wall_max_s": 24.586412,
+      "cpu_min_s": 130.4375,
+      "cpu_max_s": 131.484375,
+      "gcode_sha256": "9cd6c27fbe25ca1f22a8422e84cace72432503ba0e8d66c99d80574b1d82a9c7",
+      "gcode_bytes": 39605621,
+      "exe_sha256": "9cebbbc18d27d877f89d1c814998358bfb7c50574366296f8329a189b54a92bd",
+      "exit_codes": [
+        0
+      ],
+      "diag_issues": 0,
+      "matches_t175": false,
+      "audit_summary": {
+        "delta_bytes": 87,
+        "delta_lines": 3,
+        "total_extruding_delta_mm": -1.1948969064978883,
+        "total_extruding_delta_pct": -0.0001531068836244588,
+        "moved_sections": [
+          "Support"
+        ],
+        "part_sections_moved": [],
+        "part_motion_sha256_equal": true,
+        "non_support_xy_mismatches": 0
+      },
+      "wall_saving_pct": 14.702475883173536,
+      "cpu_saving_pct": 24.247069431920647
+    },
+    "worker-k8": {
+      "runs": 3,
+      "wall_s": [
+        24.262106,
+        24.181186,
+        24.517766
+      ],
+      "cpu_s": [
+        132.390625,
+        133.140625,
+        131.609375
+      ],
+      "wall_median_s": 24.262106,
+      "cpu_median_s": 132.390625,
+      "wall_min_s": 24.181186,
+      "wall_max_s": 24.517766,
+      "cpu_min_s": 131.609375,
+      "cpu_max_s": 133.140625,
+      "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+      "gcode_bytes": 39605478,
+      "exe_sha256": "39fd09d844acd98e4a63fa22e19f8ba3f99b26a32baa53d0d036172c436144c4",
+      "exit_codes": [
+        0
+      ],
+      "diag_issues": 0,
+      "matches_t175": false,
+      "audit_summary": {
+        "delta_bytes": -56,
+        "delta_lines": -1,
+        "total_extruding_delta_mm": -0.24238167819567025,
+        "total_extruding_delta_pct": -3.1057326531183126e-05,
+        "moved_sections": [
+          "Support"
+        ],
+        "part_sections_moved": [],
+        "part_motion_sha256_equal": true,
+        "non_support_xy_mismatches": 0
+      },
+      "wall_saving_pct": 15.304224486181091,
+      "cpu_saving_pct": 23.597835888187557
+    },
+    "worker-k16": {
+      "runs": 3,
+      "wall_s": [
+        24.58618,
+        26.161572,
+        24.431912
+      ],
+      "cpu_s": [
+        133.09375,
+        133.640625,
+        133.3125
+      ],
+      "wall_median_s": 24.58618,
+      "cpu_median_s": 133.3125,
+      "wall_min_s": 24.431912,
+      "wall_max_s": 26.161572,
+      "cpu_min_s": 133.09375,
+      "cpu_max_s": 133.640625,
+      "gcode_sha256": "097b6dbd9edd1c237963ad21849ff5ddc22131e35d6fcea6372624827f5ffb69",
+      "gcode_bytes": 39605595,
+      "exe_sha256": "47bfad2f1f874e9febabd2059df4b06401e70f70e67764701313cf6a0e3d358f",
+      "exit_codes": [
+        0
+      ],
+      "diag_issues": 0,
+      "matches_t175": false,
+      "audit_summary": {
+        "delta_bytes": 61,
+        "delta_lines": 2,
+        "total_extruding_delta_mm": -0.11632549040950835,
+        "total_extruding_delta_pct": -1.4905246825758829e-05,
+        "moved_sections": [
+          "Support"
+        ],
+        "part_sections_moved": [],
+        "part_motion_sha256_equal": true,
+        "non_support_xy_mismatches": 0
+      },
+      "wall_saving_pct": 14.172925383215121,
+      "cpu_saving_pct": 23.065825067628495
+    },
+    "nested-k4": {
+      "runs": 3,
+      "wall_s": [
+        24.205449,
+        25.40405,
+        24.096923
+      ],
+      "cpu_s": [
+        131.984375,
+        132.828125,
+        132.46875
+      ],
+      "wall_median_s": 24.205449,
+      "cpu_median_s": 132.46875,
+      "wall_min_s": 24.096923,
+      "wall_max_s": 25.40405,
+      "cpu_min_s": 131.984375,
+      "cpu_max_s": 132.828125,
+      "gcode_sha256": "9cd6c27fbe25ca1f22a8422e84cace72432503ba0e8d66c99d80574b1d82a9c7",
+      "gcode_bytes": 39605621,
+      "exe_sha256": "57471ad9f61067d2ad6d2622eeb694d81507e392ba52cbb5119092a5358f760f",
+      "exit_codes": [
+        0
+      ],
+      "diag_issues": 0,
+      "matches_t175": false,
+      "audit_summary": {
+        "delta_bytes": 87,
+        "delta_lines": 3,
+        "total_extruding_delta_mm": -1.1948969064978883,
+        "total_extruding_delta_pct": -0.0001531068836244588,
+        "moved_sections": [
+          "Support"
+        ],
+        "part_sections_moved": [],
+        "part_motion_sha256_equal": true,
+        "non_support_xy_mismatches": 0
+      },
+      "wall_saving_pct": 15.502006515213784,
+      "cpu_saving_pct": 23.552750225428316
+    },
+    "nested-k8": {
+      "runs": 3,
+      "wall_s": [
+        24.230271,
+        24.437908,
+        24.411118
+      ],
+      "cpu_s": [
+        132.8125,
+        132.125,
+        133.015625
+      ],
+      "wall_median_s": 24.411118,
+      "cpu_median_s": 132.8125,
+      "wall_min_s": 24.230271,
+      "wall_max_s": 24.437908,
+      "cpu_min_s": 132.125,
+      "cpu_max_s": 133.015625,
+      "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+      "gcode_bytes": 39605478,
+      "exe_sha256": "9c738335be5486f42572d3e41a15a6ea3160e2ead2571a11c53c18c643c083c7",
+      "exit_codes": [
+        0
+      ],
+      "diag_issues": 0,
+      "matches_t175": false,
+      "audit_summary": {
+        "delta_bytes": -56,
+        "delta_lines": -1,
+        "total_extruding_delta_mm": -0.24238167819567025,
+        "total_extruding_delta_pct": -3.1057326531183126e-05,
+        "moved_sections": [
+          "Support"
+        ],
+        "part_sections_moved": [],
+        "part_motion_sha256_equal": true,
+        "non_support_xy_mismatches": 0
+      },
+      "wall_saving_pct": 14.784043472180693,
+      "cpu_saving_pct": 23.354373309287645
+    },
+    "nested-k16": {
+      "runs": 3,
+      "wall_s": [
+        24.462143,
+        24.534816,
+        24.341981
+      ],
+      "cpu_s": [
+        133.859375,
+        134.265625,
+        133.171875
+      ],
+      "wall_median_s": 24.462143,
+      "cpu_median_s": 133.859375,
+      "wall_min_s": 24.341981,
+      "wall_max_s": 24.534816,
+      "cpu_min_s": 133.171875,
+      "cpu_max_s": 134.265625,
+      "gcode_sha256": "097b6dbd9edd1c237963ad21849ff5ddc22131e35d6fcea6372624827f5ffb69",
+      "gcode_bytes": 39605595,
+      "exe_sha256": "fc4bdb0aee79d324aaff1ac53cfec0006f5df1dc4118c7bf2e0407b3170f04b4",
+      "exit_codes": [
+        0
+      ],
+      "diag_issues": 0,
+      "matches_t175": false,
+      "audit_summary": {
+        "delta_bytes": 61,
+        "delta_lines": 2,
+        "total_extruding_delta_mm": -0.11632549040950835,
+        "total_extruding_delta_pct": -1.4905246825758829e-05,
+        "moved_sections": [
+          "Support"
+        ],
+        "part_sections_moved": [],
+        "part_motion_sha256_equal": true,
+        "non_support_xy_mismatches": 0
+      },
+      "wall_saving_pct": 14.605922003846791,
+      "cpu_saving_pct": 22.750225428313797
+    }
+  }
+}
