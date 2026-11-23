@@ -1725,14 +1725,18 @@ fn painted_selection_corpus(external: bool) {
             .find(|o| o.module_id.as_str() == PATH_ID)
             .unwrap();
         assert!(!owner.selected_targets.is_empty());
+        // Ascending `(priority, semantic name)`, per ADR-0018's shared
+        // priority/name chain identity: this fixture's manifest gives
+        // `material` priority 100 and `fuzzy_skin` priority 200, so `material`
+        // leads even though `fuzzy_skin` sorts first by name.
         let expected_chain = vec![
-            (
-                "fuzzy_skin".to_owned(),
-                slicer_sdk::preparation::PreparationPaintValue::Flag(true),
-            ),
             (
                 "material".to_owned(),
                 slicer_sdk::preparation::PreparationPaintValue::ToolIndex(1),
+            ),
+            (
+                "fuzzy_skin".to_owned(),
+                slicer_sdk::preparation::PreparationPaintValue::Flag(true),
             ),
         ];
         let mut base = 0;

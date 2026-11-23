@@ -45,8 +45,12 @@ const IRONING_LINE_WIDTH: f32 = 0.4;
 ///
 /// Implements `LayerModule::run_infill`. Per-region self-gates on
 /// `top_shell_index() == Some(0)` (exposed top) and `top_solid_fill` being
-/// non-empty. Generates a single connected zigzag polyline per top-solid
-/// ExPolygon contour, clipped to the polygon's axis-aligned bounding box.
+/// non-empty. Generates connected zigzag polylines over the top-solid
+/// ExPolygon, clipped to the polygon's axis-aligned bounding box. A path
+/// continues across rows and between a row's intervals only while the joining
+/// move stays inside the region, so no emitted segment is extruded across a
+/// hole, a notch, or a slanted boundary that leaves the material; a move that
+/// would leave the region starts a new path instead.
 #[derive(Debug)]
 pub struct TopSurfaceIroning {
     enabled: bool,
@@ -149,7 +153,135 @@ fn collect_x_crossings(poly: &Polygon, y_mm: f32, xs: &mut Vec<f32>) {
     }
 }
 
-/// Generate a rectilinear (horizontal-zigzag, snake) ironing path over the
+/// Tolerance for deciding that a probe point lies on a polygon edge, in mm.
+///
+/// One canonical unit (100 nm). Joins between scan rows are constructed from
+/// grid-aligned endpoints, so a point that should be exactly on an edge is
+/// within one unit after `f32` interpolation for top-surface coordinates up to
+/// a few hundred millimetres; beyond that the `f32` ulp exceeds the tolerance
+/// and the test fails conservatively (a spurious split, never an out-of-region
+/// join). Real features are orders of magnitude larger than the tolerance.
+const ON_EDGE_EPS_MM: f64 = 1.0e-4;
+
+/// True when `(x, y)` lies on any edge of `poly` (contour or hole), within
+/// [`ON_EDGE_EPS_MM`].
+fn on_boundary(poly: &ExPolygon, x: f32, y: f32) -> bool {
+    let (x, y) = (f64::from(x), f64::from(y));
+    for ring in std::iter::once(&poly.contour).chain(poly.holes.iter()) {
+        let points = &ring.points;
+        if points.len() < 2 {
+            continue;
+        }
+        for i in 0..points.len() {
+            let j = (i + 1) % points.len();
+            let (px, py) = (
+                f64::from(units_to_mm(points[i].x)),
+                f64::from(units_to_mm(points[i].y)),
+            );
+            let (qx, qy) = (
+                f64::from(units_to_mm(points[j].x)),
+                f64::from(units_to_mm(points[j].y)),
+            );
+            let (dx, dy) = (qx - px, qy - py);
+            let length = (dx * dx + dy * dy).sqrt();
+            if length < ON_EDGE_EPS_MM {
+                continue;
+            }
+            let distance = ((x - px) * dy - (y - py) * dx).abs() / length;
+            if distance > ON_EDGE_EPS_MM {
+                continue;
+            }
+            if x >= px.min(qx) - ON_EDGE_EPS_MM
+                && x <= px.max(qx) + ON_EDGE_EPS_MM
+                && y >= py.min(qy) - ON_EDGE_EPS_MM
+                && y <= py.max(qy) + ON_EDGE_EPS_MM
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Even-odd point-in-region test with the boundary counted as inside.
+fn point_in_expolygon(poly: &ExPolygon, x: f32, y: f32) -> bool {
+    if on_boundary(poly, x, y) {
+        return true;
+    }
+    let mut xs: Vec<f32> = Vec::new();
+    collect_x_crossings(&poly.contour, y, &mut xs);
+    for hole in &poly.holes {
+        collect_x_crossings(hole, y, &mut xs);
+    }
+    xs.iter().filter(|crossing| **crossing < x).count() % 2 == 1
+}
+
+/// Parameter `t` in `[0, 1]` where segment `a -> b` meets segment `p -> q`,
+/// or `None` when they are parallel or the meeting lies outside either span.
+fn segment_meeting_parameter(
+    a: (f32, f32),
+    b: (f32, f32),
+    p: (f32, f32),
+    q: (f32, f32),
+) -> Option<f64> {
+    let (ax, ay) = (f64::from(a.0), f64::from(a.1));
+    let (bx, by) = (f64::from(b.0), f64::from(b.1));
+    let (px, py) = (f64::from(p.0), f64::from(p.1));
+    let (qx, qy) = (f64::from(q.0), f64::from(q.1));
+    let (dx, dy) = (bx - ax, by - ay);
+    let (ex, ey) = (qx - px, qy - py);
+    let denominator = dx * ey - dy * ex;
+    if denominator.abs() < 1e-12 {
+        return None;
+    }
+    let t = ((px - ax) * ey - (py - ay) * ex) / denominator;
+    let u = ((px - ax) * dy - (py - ay) * dx) / denominator;
+    if (-1e-9..=1.0 + 1e-9).contains(&t) && (-1e-9..=1.0 + 1e-9).contains(&u) {
+        Some(t.clamp(0.0, 1.0))
+    } else {
+        None
+    }
+}
+
+/// True when the whole open segment `a -> b` stays inside `poly`, boundary
+/// included.
+///
+/// The segment is split at every edge meeting parameter and each open
+/// sub-interval's midpoint must be inside the region. A join that leaves the
+/// region — across a hole, a notch, or a slanted boundary — therefore returns
+/// `false`, and the caller starts a new path instead of extruding it.
+fn segment_stays_inside(poly: &ExPolygon, a: (f32, f32), b: (f32, f32)) -> bool {
+    let mut parameters = vec![0.0_f64, 1.0_f64];
+    for ring in std::iter::once(&poly.contour).chain(poly.holes.iter()) {
+        let points = &ring.points;
+        if points.len() < 2 {
+            continue;
+        }
+        for i in 0..points.len() {
+            let j = (i + 1) % points.len();
+            let p = (units_to_mm(points[i].x), units_to_mm(points[i].y));
+            let q = (units_to_mm(points[j].x), units_to_mm(points[j].y));
+            if let Some(t) = segment_meeting_parameter(a, b, p, q) {
+                parameters.push(t);
+            }
+        }
+    }
+    parameters.sort_by(f64::total_cmp);
+    for pair in parameters.windows(2) {
+        if pair[1] - pair[0] <= 1e-9 {
+            continue;
+        }
+        let middle = 0.5 * (pair[0] + pair[1]);
+        let x = a.0 + (b.0 - a.0) * middle as f32;
+        let y = a.1 + (b.1 - a.1) * middle as f32;
+        if !point_in_expolygon(poly, x, y) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Generate rectilinear (horizontal-zigzag, snake) ironing paths over the
 /// `poly` ExPolygon at z. For each scan row at spacing `spacing_mm`, the
 /// algorithm:
 ///
@@ -157,6 +289,12 @@ fn collect_x_crossings(poly: &Polygon, y_mm: f32, xs: &mut Vec<f32>) {
 /// 2. Sorts ascending and pairs into `[x_{2k}, x_{2k+1}]` interior intervals.
 /// 3. Emits one stroke per interval, alternating row direction so the path
 ///    stays a connected snake within each fill block.
+/// 4. Starts a new path whenever the implicit move from the last emitted point
+///    to the next interval's start would leave the region (`segment_stays_inside`).
+///    For axis-aligned fixtures that move is a vertical run on the outer
+///    boundary and the snake is preserved; a hole or notch gap, and a slanted
+///    boundary that cuts the move, both start a new path, so no segment is
+///    extruded outside the material.
 ///
 /// Cost is O(P) per row (P = vertex count) instead of the old per-row
 /// O(span / 0.05 · P) walk-inward clipping — which trapped on benchy
@@ -190,6 +328,21 @@ fn generate_zigzag_strokes_for_polygon(
         overhang_distance_mm: None,
     };
 
+    let flush = |paths: &mut Vec<ExtrusionPath3D>, points: &mut Vec<Point3WithWidth>| {
+        if points.len() >= 2 {
+            paths.push(ExtrusionPath3D {
+                points: std::mem::take(points),
+                role: ExtrusionRole::Ironing,
+                speed_factor,
+                tool_index: None,
+                order_lock: None,
+            });
+        } else {
+            points.clear();
+        }
+    };
+
+    let mut paths: Vec<ExtrusionPath3D> = Vec::new();
     let mut points: Vec<Point3WithWidth> = Vec::new();
     let mut xs: Vec<f32> = Vec::new();
     for i in 0..n_rows {
@@ -217,22 +370,27 @@ fn generate_zigzag_strokes_for_polygon(
                 continue;
             }
             let (xa, xb) = if reverse_row { (b, a) } else { (a, b) };
-            points.push(mk(xa, y));
+            // Continue the snake only when the move from the previous emitted
+            // point to this interval's start stays inside the region. For the
+            // axis-aligned fixtures that move is a vertical run on the outer
+            // boundary between rows and a zero-length move between adjacent
+            // intervals; for a slanted or concave boundary it can leave the
+            // material, in which case the interval starts its own path instead
+            // of extruding an out-of-region join.
+            let start = mk(xa, y);
+            let continues = points.last().is_none_or(|last| {
+                segment_stays_inside(poly, (last.x, last.y), (start.x, start.y))
+            });
+            if !continues {
+                flush(&mut paths, &mut points);
+            }
+            points.push(start);
             points.push(mk(xb, y));
         }
     }
+    flush(&mut paths, &mut points);
 
-    if points.len() < 2 {
-        return Vec::new();
-    }
-
-    vec![ExtrusionPath3D {
-        points,
-        role: ExtrusionRole::Ironing,
-        speed_factor,
-        tool_index: None,
-        order_lock: None,
-    }]
+    paths
 }
 
 #[slicer_module]
@@ -354,3 +512,12 @@ impl LayerModule for TopSurfaceIroning {
         Ok(())
     }
 }
+
+// Out-of-line property module. The two separate gates are load-bearing: the
+// default build never compiles it, and the feature alone (without a test
+// build) cannot pull Proptest or the property engine into a normal graph.
+// `cargo xtask check-literals` does not follow this declaration — see the
+// file's own literal-review note.
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;

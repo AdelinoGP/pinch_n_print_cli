@@ -11,9 +11,18 @@ slicer-schema = { path = "../../../crates/slicer-schema" }
 slicer-ir = { path = "../../../crates/slicer-ir" }
 slicer-core = { path = "../../../crates/slicer-core" }
 
+[features]
+# Empty selection feature (default off). It gates the crate-internal
+# `src/property_tests.rs` unit-test module that exercises this module's private
+# `TreeSupport::{scan_fill_region,render_polygon_with_wall_count}` kernels. It
+# never enters a production or guest graph: the module is also
+# `#[cfg(test)]`-gated, and the property engine is a dev-dependency only.
+property_testing = []
+
 [dev-dependencies]
-slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }
+slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test", "property_testing"] }
 slicer-wasm-host = { path = "../../../crates/slicer-wasm-host" }
+proptest = { workspace = true }
 
 [[test]]
 name = "tree_family_tdd"

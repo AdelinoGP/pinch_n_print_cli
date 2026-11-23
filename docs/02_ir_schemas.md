@@ -742,6 +742,14 @@ interned `ResolvedConfig` pool, `RegionPlan.config` is its per-plan index, and
 `RegionMapIR::config_for` and `RegionMapIR::intern_config` rather than relying
 on the internal pool layout.
 
+The chain vector is the shared ascending `(priority, semantic name)` ordered
+identity: RegionMapping emits it, paint composition emits the same vector, and
+selection and exact-chain config lookup match it without re-sorting (ADR-0018's
+2026-11-19 amendment; covered by
+[`H-REGIONMAP`](testing/properties.md#h-regionmap)). Lexical paint-config
+overlay precedence (§ Config Key Namespaces, tool overlay last) is a separate
+rule that chain order does not change.
+
 Packet 10 adds map content in existing `ResolvedConfig.extensions` values in
 `RegionMapIR.configs` and `RegionPlan.paint_overrides`; it does not add a struct
 field or change the persisted 3.0.0 layout. The independent pre-change 3.0.0
@@ -815,7 +823,7 @@ global < object < layer range < modifier < paint semantic < tool
 
 Per-tool config is applied **last (highest)**, mirroring OrcaSlicer's filament-override-last model (`PrintApply.cpp` applies the filament preset's overrides on top of print/object/modifier/material). At `RegionMapping` the per-tool overlay runs after the paint overlays for a painted tool's chain; at emit it overlays the global config.
 
-When multiple paint semantics overlap a single region during `RegionMapping`, the host sorts the contributing semantics by the lexicographic order of `paint_semantic_namespace_key(&PaintSemantic)` ascending and overlays them in that order. The lexicographically-last semantic in sort order overlays last and therefore wins. This RegionMap-stage rule determines which semantic's config wins in `RegionPlan.config`. It is distinct from the `paint_order`-based rule, which governs intra-semantic polygon overlap during `PrePass::PaintSegmentation`: the highest `paint_order` wins, and equal-order conflicting values are a fatal error. The `paint_order` field is defined in `crates/slicer-sdk/src/prepass_builders.rs`; its resolution rule is documented in `04_host_scheduler.md` § "Layer::PaintRegionAnnotation Stage" and traced in `10_scenario_traces.md`.
+When multiple paint semantics overlap a single region during `RegionMapping`, the host sorts the contributing semantics by the lexicographic order of `paint_semantic_namespace_key(&PaintSemantic)` ascending and overlays them in that order. The lexicographically-last semantic in sort order overlays last and therefore wins. This RegionMap-stage rule determines which semantic's config wins in `RegionPlan.config`. It is separate from chain identity: the `variant_chain` vector stays in the shared `(priority, semantic name)` order (IR 4; [`H-REGIONMAP`](testing/properties.md#h-regionmap)), and that order does not change this lexical overlay precedence or the tool overlay applied last. It is distinct from the `paint_order`-based rule, which governs intra-semantic polygon overlap during `PrePass::PaintSegmentation`: the highest `paint_order` wins, and equal-order conflicting values are a fatal error. The `paint_order` field is defined in `crates/slicer-sdk/src/prepass_builders.rs`; its resolution rule is documented in `04_host_scheduler.md` § "Layer::PaintRegionAnnotation Stage" and traced in `10_scenario_traces.md`.
 
 **Overlap determination (Normative — Packet 51):** A region's polygons
 are considered to overlap a `PaintSemantic` when
@@ -1267,6 +1275,31 @@ The property charters
 and [`M-ARACHNE-BUILD`](testing/properties.md#m-arachne-build) (per-point alignment through
 `build_walls`) test these rules.
 
+#### Classic-wall closure and fuzzy-skin span semantics (packet proptest-openrscad_12)
+
+This subsection clarifies existing IR semantics. It changes no field, schema version or WIT
+record.
+
+- **Classic ordinary walls.** On the tested native no-medial-axis path, an ordinary
+  `Outer`/`Inner` wall carries one point per offset-ring vertex plus an explicit closing repeat.
+  `path.points`, `width_profile.widths` and `feature_flags` are parallel by point, the closing
+  width/flag mirror the first entry, and the `perimeter_index` is the band that produced the wall.
+  The requested wall count is an upper bound, not a promised emitted count; tiny or degenerate
+  shapes may emit fewer bands or nothing.
+- **Fuzzy-skin spans.** `apply_fuzzy_skin` consumes every input point, flag and profile width
+  once in order. An unselected segment, or a selected zero-length segment, copies its endpoint
+  exactly and inserts nothing. A selected nonzero segment inserts at least one synthetic sample.
+  Inserted sample metadata is synthetic: flag/profile width come from the segment start, while
+  point width/flow interpolate and overhang annotations reset. The retained contract is exact
+  preservation of unselected spans and original endpoints plus a measured displacement envelope
+  for inserted samples, not universal metadata preservation.
+
+The property charters
+[`M-CLASSIC-WALL-STRUCTURE`](testing/properties.md#m-classic-wall-structure),
+[`M-CLASSIC-BAND-SELECTION`](testing/properties.md#m-classic-band-selection),
+[`M-FUZZY-SPAN-PRESERVATION`](testing/properties.md#m-fuzzy-span-preservation) and
+[`M-FUZZY-DISPLACEMENT`](testing/properties.md#m-fuzzy-displacement) test these rules.
+
 #### Overhang quartile bucketization (Normative — Packet 57)
 
 The four overhang speed bands map to signed-distance thresholds from
@@ -1429,7 +1462,9 @@ emitting only at those model layers where accumulated per-object height crosses
 `support_layer_height_mm`. It is not an index into a separate support-layer
 grid. `u32::MAX` denotes an intermediate model-resolution layer. Two
 chain-differing sources of one object occupy distinct keys — same-number
-different ordered chains never collapse at this map.
+different ordered chains never collapse at this map. The ordered chain is the
+shared `(priority, semantic name)` identity emitted by RegionMapping and paint
+composition (IR 4; [`H-REGIONMAP`](testing/properties.md#h-regionmap)).
 
 **Source-specific ownership vs object-wide geometry (ADR-0073).** The exact-Z
 support query carries the ordered source chain in its query identity while the
@@ -1483,7 +1518,11 @@ initial.)
 **Producer:** The host built-in. `SupportAnalysisIR` is the strategy-neutral
 host-owned input shared by all support family planners — it is produced once
 and consumed read-only by every family planner, so each family sees identical
-candidate and occupancy inputs.
+candidate and occupancy inputs. Its occupancy, feasible envelope, termination
+surfaces and territory clearance are covered by
+[`H-SUPPORT-ANALYSIS`](testing/properties.md#h-support-analysis), and the host
+territory clip by
+[`H-SUPPORT-TERRITORY`](testing/properties.md#h-support-territory).
 
 `SupportAnalysisIR`, `SupportCandidate`, and `SupportCandidateSource` are
 defined in `crates/slicer-ir/src/slice_ir.rs`. The IR carries:
@@ -1552,6 +1591,9 @@ sliced region remain the legacy facet-projection shim boundary.
 **Determinism:** `family_assignments` is a `BTreeMap` keyed by the full source
 origin `SupportSourceKey`, so per-source family assignment is deterministic and
 stable across identical inputs, and chain-differing rows never collide.
+Every ordered `variant_chain` in these keys is the shared `(priority, semantic
+name)` identity from RegionMapping and paint composition, never re-sorted (IR 4;
+[`H-REGIONMAP`](testing/properties.md#h-regionmap)).
 Identical PrePass inputs must produce byte-identical `SupportAnalysisIR`.
 
 **Merge/admission keys (ADR-0073, as implemented in
@@ -1840,19 +1882,32 @@ a contract error, never a best-effort drop.
 
 ### Lightning legacy IR retirement
 
-The legacy path is retired.
-Lightning planning runs inside the selected `com.core.lightning-infill` artifact during `prepare_print`,
-from typed committed regions, region configs, and layer plan.
-One module-private `lightning-layer-{global_layer_index}` piece is published per schedule layer;
-ordinary `Layer::Infill` consumers require and decode their own layer's piece with the module's decoder.
-The host `commit_lightning_tree_ir_builtin` producer, `PrePass::LightningTreeGen` and its `STAGE_ORDER` entry,
-`BlackboardPrepassSlot::LightningTreeIR`, and `BlackboardError::LightningTreeGeneration` are deleted.
-So are public `LightningTreeIR`/`LightningTreeEntry`/`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION`,
-the `lightning-tree-segments` WIT method and whole `slicer:lightning-queries` package,
-and SDK `lightning_tree_segments_for`/`with_lightning_tree_ir` accessors.
-Plan types live only as module-private `KernelPlan`/`PlanEntry`, never public IR; IR 9d is retired.
-This records behavioural equivalence to the pre-migration producer: ownership moves with no intended output change,
-not a canonical-parity claim; the recorded Gate A/B outcomes remain unchanged.
+The legacy path is retired. Lightning planning runs inside the selected
+`com.core.lightning-infill` artifact during `prepare_print`, from typed committed
+regions, region configs, and the layer plan. One module-private
+`lightning-layer-{global_layer_index}` piece is published per schedule layer;
+ordinary `Layer::Infill` consumers require and decode their own layer's piece
+with the module's decoder.
+
+The host `commit_lightning_tree_ir_builtin` producer, `PrePass::LightningTreeGen`
+and its `STAGE_ORDER` entry, `BlackboardPrepassSlot::LightningTreeIR`, and
+`BlackboardError::LightningTreeGeneration` are deleted. So are public
+`LightningTreeIR`/`LightningTreeEntry`/`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION`,
+the `lightning-tree-segments` WIT method and the whole `slicer:lightning-queries`
+package, and the SDK `lightning_tree_segments_for`/`with_lightning_tree_ir`
+accessors. Plan types live only as module-private `KernelPlan`/`PlanEntry`, never
+public IR; IR 9d is retired.
+
+The [`H-LIGHTNING-SEEDS`](testing/properties.md#h-lightning-seeds) and
+[`H-LIGHTNING-TREES`](testing/properties.md#h-lightning-trees) properties live in
+the `lightning-infill` module-private kernel
+(`modules/core-modules/lightning-infill/src/kernel/`), gated by the module's
+`property_testing` feature and executed through `cargo xtask test --properties`.
+They are delegated module coverage, not a host prepass.
+
+This records behavioural equivalence to the pre-migration producer: ownership
+moves with no intended output change, not a canonical-parity claim. The recorded
+Gate A/B outcomes remain unchanged.
 
 ---
 

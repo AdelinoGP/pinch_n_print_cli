@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_12_pbt-walls
-status: draft
+status: implemented
 ---
 
 # Classic-perimeter and fuzzy-skin kernel properties

@@ -4284,5 +4284,3341 @@ Maps to AC-6. `arachne_module_oracle_controls` rejects a naive full reversal of 
 `InnerOuter` batch and a lost feature-flag vector. It also confirms that `OuterInner` on the same
 batch is the full reverse.
 
+## H-REGIONMAP
 
+Registry record: `id = "H-REGIONMAP"`, `package = "slicer-core"`, `target_kind = "test"`,
+`target_name = "property_prepass"`, `test_name = "proptest_region_mapping_expansion"`,
+`production_symbol = "slicer_core::algos::region_mapping::execute_region_mapping_with_cap"`,
+`production_path = "crates/slicer-core/src/algos/region_mapping.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-regionmap"`.
 
+### Stable property ID
+
+`H-REGIONMAP` — the complete ordered `(layer, object, region) × variant_chain` expansion of
+`PrePass::RegionMapping`, including the per-key config authority and the cap boundary.
+
+### Owner
+
+Package `slicer-core`; test target `property_prepass`; test
+`proptest_region_mapping_expansion` in `crates/slicer-core/tests/property_prepass.rs`. Production
+surface: `execute_region_mapping_with_cap` (`crates/slicer-core/src/algos/region_mapping.rs`).
+Deterministic controls live in `crates/slicer-core/tests/property_prepass_common/controls.rs`
+(`prepass_model_controls`, `prepass_regionmap_order_and_cap_controls`,
+`prepass_regionmap_rejection_controls`, `prepass_owned_shrink_and_bound_controls`). The
+cross-stage join (committed map → paint segmentation → `build_layer_selection_index`) is
+`prepass_paint_map_identity_integration` in
+`crates/slicer-runtime/tests/property_prepass_controls.rs`; the wrapper-only chain assertion is
+`prepass_regionmap_runtime_wrapper` in the same target.
+
+### Contract
+
+Per ADR-0018 § Shared priority/name chain identity and `docs/03_wit_and_manifest.md`
+§ Variant-chain enumeration order: for every active `(layer, object, region)` parent the map
+holds exactly the chains produced by choosing, per canonical axis, either no value or exactly one
+of the object's distinct values. The canonical axis sequence is ascending
+`(declared priority, semantic name)`; each chain is a subsequence of that sequence, and its
+pairs appear in it. Cardinality per parent is `∏ (1 + K_i)` and the empty chain occurs exactly
+once per parent. `RegionKey` equality includes the ordered vector.
+
+Each entry's config is the compatibility authority: the parent's base config, then the declared
+paint-config overlays in **lexical semantic namespace order** (wholesale replacement, lexically
+last present wins), then the tool overlay last. Chain order does not drive overlay order. The
+interner holds exactly the distinct expected configs, once each.
+
+### Domain
+
+`max_layers`, `max_objects`, `max_regions`, `max_semantics`, `max_values_per_semantic` and
+`max_chains` are required profile bounds. The strategy is total (no `prop_assume`, zero rejection
+budget). Axes are drawn from the five legal fixture declarations — `material` (100),
+`fuzzy_skin` (200), `com.example.zeta` (1000), `com.example.alpha` (1100) and
+`com.example.beta` (1100) — so both `priority`-beats-name and lexical-tie cases are reachable.
+Per object, each axis is absent or carries a nonempty subset of its declared value family
+(`Flag`, `ToolIndex` or `Custom`). Objects and layers are enumerated explicitly, so absent paint,
+one object, two objects, one layer and multiple layers are all reachable.
+
+### Strategy
+
+Axis declarations, layer/object/region counts and, per `(object, axis)`, a 4-bit value mask.
+The mask keeps one uniform element strategy across the three value families; bits beyond an
+axis's alphabet are ignored. Values are sorted by an independently implemented canonical
+`PaintValue` comparator before use. Before sampling, the property runs the four named
+material/fuzzy chains through the same checker, so a broken checker cannot be masked by a lucky
+draw.
+
+### Oracle
+
+`crates/slicer-core/tests/property_prepass_common/model.rs`. The expected chain set is an
+**ordinal decode** over the mixed radix `1 + K_i` (digit 0 omits an axis, digit `d > 0` selects
+`values[d - 1]`), not the production recursive enumerator. The expected config is computed from
+the declared base config and the declared overlay table by sorting overlay names lexically. The
+model never calls `execute_region_mapping_with_cap`'s sorter, enumerator, interner, `config_for`
+or `paint_variant_region_id` to build an expectation.
+
+### Tolerance
+
+Exact equality throughout: full `RegionKey` sets (including ordered chains), exact
+`config_for`/`config_for_raw` values, exact distinct-config pool membership and cardinality, and
+exact `CapExceeded { entry_count, cap }` at `cap = total - 1`. No unordered comparison is used for
+a chain, and no float tolerance is needed because every declared width and density is dyadic.
+
+### Shrinking
+
+Proptest shrinks masks toward zero (fewer painted axes and values), object/layer/region counts
+toward one, and axes toward an empty declaration. The rare modes the contract names — the empty
+chain, the combined chain, a tied priority, a nonempty painted object — are supplied by the
+deterministic witnesses in the controls and by the pre-sampling witness, so a shrink never needs
+to preserve them probabilistically.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, zero rejection budgets. Measured on Windows
+on 2026-11-19: routine `cases = 64` in 0.10 s, extended `cases = 256` in 0.99 s (libtest walls,
+after the build was warm). Bounds: routine
+`max_layers = 2`, `max_objects = 2`, `max_regions = 2`, `max_semantics = 3`,
+`max_values_per_semantic = 3`, `max_chains = 64`; extended
+`max_layers = 2`, `max_objects = 3`, `max_regions = 2`, `max_semantics = 4`,
+`max_values_per_semantic = 3`, `max_chains = 256`. Both are the exact widest reachable products
+for their declared maxima, so a well-formed case is always compared in full.
+
+### Failure record
+
+Artifacts are written under `target/property-testing/<run-token>/H-REGIONMAP/`; a failure keeps
+`context.json`, `observations.jsonl`, `case.txt` and `failure.json` with the reproduction
+command. Root-cause regression destination: `prepass_paint_map_identity_integration`
+(`crates/slicer-runtime/tests/property_prepass_controls.rs`) — a named, RNG-independent scene,
+never a seed.
+
+### Acceptance
+
+Every generated case's full key set, per-key config, config pool and cap boundary agree with the
+independent model. `prepass_model_controls` rejects a dropped empty chain, a dropped combined
+chain, a name-order substitution, a substituted value, a duplicated key, a wrong config, a
+non-idempotent pool, a truncated pool and a cap success. `prepass_regionmap_order_and_cap_controls`
+pins the four named chains, the community `1000 → 1100/1100` order with its lexical tie, the
+lexical overlay width `0.75` and the tool-last width `1.0`, the exact/one-below cap boundary, the
+zero-count/zero-cap mode and a unique top contributor. `prepass_regionmap_rejection_controls`
+covers the declared-scalar error fields, a duplicated full active identity,
+identical-footprint modifier grouping, an unsupported base parent, a real
+distinct-footprint `modifier_sub_region_id` collision, and both halves of the
+painted-id contract;
+`prepass_owned_shrink_and_bound_controls` rejects a narrowing bound.
+`prepass_paint_map_identity_integration` proves the real map → paint → selection join, both
+negative mutations returning `SelectionError::MissingModelConfig` with the exact map-space key.
+Defect outcome for this family: **no production defect was confirmed**; the ordering change is an
+approved identity correction authorized by the source plan, recorded in ADR-0018's 2026-11-19
+amendment and DEV-199.
+
+## H-PAINT-COMPOSE
+
+Registry record: `id = "H-PAINT-COMPOSE"`, `package = "slicer-core"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_paint_composition_cells"`,
+`production_symbol = "slicer_core::algos::paint_segmentation::compose_variants::compose_variants"`,
+`production_path = "crates/slicer-core/src/algos/paint_segmentation/compose_variants.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-paint-compose"`.
+
+### Stable property ID
+
+`H-PAINT-COMPOSE` — the geometric partition, coverage and ordered chain identity
+of the paint-compilation composer.
+
+### Owner
+
+Package `slicer-core`; target `property_prepass`; test
+`proptest_paint_composition_cells` in `crates/slicer-core/tests/property_prepass.rs`.
+Production surface: `compose_variants` in
+`crates/slicer-core/src/algos/paint_segmentation/compose_variants.rs`. The model is
+`crates/slicer-core/tests/property_prepass_common/paint.rs`; deterministic controls are
+`prepass_paint_partition_and_driver_controls` in
+`crates/slicer-core/tests/property_prepass_common/controls_paint.rs`.
+
+### Contract
+
+Per ADR-0018 § Shared priority/name chain identity and `docs/02_ir_schemas.md` IR 6/IR 9a, the
+composer emits one key per subset of the supplied semantic outputs — the caller supplies one
+output per `(declared axis, declared value)` in canonical `(priority, semantic name)` order — and
+assigns every point of the layer total to exactly one chain: the subset of semantics covering it,
+in that same axis order, with the empty chain holding the unpainted residual. Chains are pairwise
+disjoint, their union is the total, no chain extends outside it, and longer chains claim their
+intersection before shorter ones. The key vector order is the caller's axis order; it is never
+re-sorted.
+
+### Domain
+
+`max_layers = 2 / 2`, `max_semantics = 2 / 3`, `max_cells = 16 / 16`,
+`max_abs_units = 64 / 128`. The grid is built on an **even** coordinate lattice (outer edges and
+every interior cut are even), so each cell midpoint is an integer point that can never lie on a
+boundary. Axes are drawn from `material` (100, two tool values), `fuzzy_skin` (200, one flag) and
+`com.example.alpha` (1100, one custom value), so priority order, multi-value axes, disjoint areas
+of one semantic, partial and full overlap, and BASE-only cells are all reachable.
+
+### Strategy
+
+Layer count, a `columns x rows` grid with even interior cuts, a declared axis subset, and one label
+choice per `(layer, cell, axis)`: unpainted, or one of that axis's declared values. A layer whose
+draw is entirely unpainted is promoted to one painted cell so the painted half of the checker is
+never vacuous; the fully-BASE mode keeps its own deterministic witness.
+
+### Oracle
+
+`property_prepass_common::paint` enumerates the expected key set as the exact cross-product
+`∏ (1 + K_i)` over the supplied outputs, derives each cell's chain from the declared labels and
+the independently sorted `(priority, name)` axis order, then classifies each returned chain with
+`oracles::point_in_region` at the cell midpoint. It never calls Clipper, `compose_variants` or any
+production sorter to build an expectation.
+
+### Tolerance
+
+Exact. Cell midpoints are integer points; membership is `Inside`/`Outside` with `Boundary`
+rejected outright. Areas, counts and `Vec` key equality are exact; no float geometry is involved.
+
+### Shrinking
+
+Removes layers, axes, values, cells and labels. The model is re-derived for every shrink, and the
+rare BASE-only and single-axis shapes are covered by deterministic witnesses.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on Windows
+on 2026-11-19: routine `cases = 64` in 0.05-0.64 s across runs, extended
+`cases = 256` in 0.20-0.21 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-PAINT-COMPOSE/`. Root-cause regression
+destination: `prepass_paint_partition_and_driver_controls`
+(`crates/slicer-core/tests/property_prepass_common/controls_paint.rs`), never a seed.
+
+### Acceptance
+
+Every cell of every layer is owned by exactly its expected chain; the key set is the full supplied
+cross-product; no chain leaves the total extent. The controls refute a lost BASE chain, a filled
+(unpainted) cell, a name-ordered key, a false all-empty result and swapped ownership, and confirm a
+live combined material/fuzzy cell plus a BASE residual.
+
+## H-PAINT-OVERHANG
+
+Registry record: `id = "H-PAINT-OVERHANG"`, `package = "slicer-core"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_overhang_adjacent_layer_bands"`,
+`production_symbol = "slicer_core::algos::overhang_annotation::annotate_overhangs"`,
+`production_path = "crates/slicer-core/src/algos/overhang_annotation.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-paint-overhang"`.
+
+### Stable property ID
+
+`H-PAINT-OVERHANG` — the four-band distance partition of one object's adjacent
+layer footprints.
+
+### Owner
+
+Package `slicer-core`; target `property_prepass`; test
+`proptest_overhang_adjacent_layer_bands`. Production surface: `annotate_overhangs`
+(`crates/slicer-core/src/algos/overhang_annotation.rs`). Model:
+`crates/slicer-core/tests/property_prepass_common/overhang.rs`. Controls:
+`prepass_overhang_band_controls` in
+`crates/slicer-core/tests/property_prepass_common/controls_paint.rs`.
+
+### Contract
+
+For one object's consecutive footprints, `current \ previous` is partitioned into
+four bands: band 1 within `0.5 x line_width` of the previous boundary, band 2 up
+to `1.0 x`, band 3 up to `1.5 x`, and band 4 the remaining strip — **not** capped
+at `2.0 x`. Layers with no overhang have **no key** in either returned map; an
+overhang's previous-boundary map holds the actual previous footprint. A single
+layer, identical consecutive footprints and an empty current slice are the
+no-overhang modes. The first layer has no predecessor and never overhangs.
+
+### Domain
+
+`max_layers = 2 / 2`, `max_abs_units = 200000 / 200000`,
+`max_band_width_units = 12000 / 24000`, `max_cells = 32 / 64`. The scene is the
+packet's X-strip fixture: two rectangles with the same Y extent, the current one
+wider by `shift > 2 x line_width`, so all four bands are observable. Line widths
+are `0.4`, `0.5` or `0.6` mm and the classification row sits far from the
+rounded corners, where the band boundaries are exact X intervals.
+
+### Strategy
+
+A `(line width, shift)` pair; the grid is derived from the thresholds and the
+strip edges with quarter-point cuts, so at least one cell lies strictly inside
+each band whenever the band is wide enough.
+
+### Oracle
+
+`property_prepass_common::overhang` derives each cell's band from its X midpoint
+and the declared `0.5 / 1.0 / 1.5 x line_width` thresholds, then classifies the
+returned bands with `oracles::point_in_region`. `Boundary` is rejected. The
+offset's `0.01 mm` arc tolerance cannot flip a midpoint because every cell is at
+least a quarter band away from a threshold.
+
+### Tolerance
+
+Exact cell ownership plus a `0.01 mm`-clearance argument for the offset
+boundaries. Areas are compared through cell counts, not float sums.
+
+### Shrinking
+
+Shrinks the line width and the shift; the grid is re-derived from the shrunk
+thresholds, and the four-band positive witness is deterministic, so shrinking
+never needs to preserve it probabilistically.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.33 s, extended
+`cases = 256` in 1.24 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-PAINT-OVERHANG/`. Root
+cause regression destination: `prepass_overhang_band_controls`, never a seed.
+
+### Acceptance
+
+Every classified cell lies in exactly its analytic band; the quartile set equals
+the scene's observable set; band 4 extends past `2.0 x line width`; both maps
+hold the actual previous footprint; and the three no-overhang modes leave both
+maps without the layer key. The controls refute swapped quartiles, a substituted
+previous footprint and a fourth band capped at `2.0 x`. The runtime
+object-delivery half of AC-2 (`prepass_overhang_object_delivery`) is not yet
+implemented; it is recorded as remaining work in the evidence file.
+
+## H-PAINT-DRIVER
+
+Registry record: `id = "H-PAINT-DRIVER"`, `package = "slicer-core"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_paint_driver_source_isolation"`,
+`production_symbol = "slicer_core::algos::paint_segmentation::execute_paint_segmentation"`,
+`production_path = "crates/slicer-core/src/algos/paint_segmentation/mod.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-paint-driver"`.
+
+### Stable property ID
+
+`H-PAINT-DRIVER` — the paint driver's source isolation, axis ownership and
+documented painted-region identity.
+
+### Owner
+
+Package `slicer-core`; target `property_prepass`; test
+`proptest_paint_driver_source_isolation`. Production surface:
+`execute_paint_segmentation` (`crates/slicer-core/src/algos/paint_segmentation/mod.rs`).
+Model: `crates/slicer-core/tests/property_prepass_common/driver.rs`. The
+cross-stage selection join is `prepass_paint_map_identity_integration` in
+`crates/slicer-runtime/tests/property_prepass_controls.rs`.
+
+### Contract
+
+For each object the driver emits one region per chain that owns geometry, plus
+a BASE region. A region may only contain geometry from its own object; a
+neighbour's axes never appear in its chains; BASE and the painted chain must
+never claim the same point; and the region ids follow the documented scheme —
+the empty chain keeps the parent's base id, and the material `ToolIndex(0)` fast
+path mints payload 1. Empty mesh, absent paint and an empty map are
+unchanged-input paths that return the caller's `Arc` unchanged. A same-object
+synthesized-id collision is a hard error.
+
+### Domain
+
+`max_layers = 1 / 1`, `max_objects = 2 / 3`, `max_regions = 1 / 1`,
+`max_abs_units = 200000 / 200000`, `max_facets = 16 / 16`. Objects are
+axis-aligned 2 mm square tubes on a 1 mm pitch, so their footprints are disjoint
+by construction. Each object paints a drawn subset of `material`
+(`ToolIndex(0)`, 100) and `fuzzy_skin` (`Flag(true)`, 200) on every wall facet;
+the paint-layer order is a rotation of the axes in use. An object with no axes
+is the unpainted-object mode.
+
+### Strategy
+
+Object count, one axis subset per object, and a paint-order rotation. The
+deterministic block runs the three unchanged-input paths and the colliding-chain
+error before sampling.
+
+### Oracle
+
+`property_prepass_common::driver` derives each object's widest chain from its
+own axes in independently sorted `(priority, name)` order, checks every output
+point against that object's square, samples a 4x4 interior grid to prove BASE
+and the painted chain are disjoint, and classifies the widest chain's coverage
+with `oracles::point_in_region`. It never calls Clipper or the driver's own
+partition to build an expectation.
+
+### Tolerance
+
+Exact for ids, chain vectors and point containment; the BASE/painted
+disjointness check is a point grid rather than an exact area so a Clipper sliver
+cannot make it flaky, while "BASE is the whole contour" still fails.
+
+### Shrinking
+
+Removes objects and axes, and rotates the paint order toward the identity. The
+unchanged-input and collision-error modes are deterministic.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.22 s, extended
+`cases = 256` in 1.05 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-PAINT-DRIVER/`. Root
+cause regression destination: the unchanged-path and collision assertions in
+`property_prepass_common::driver`, never a seed.
+
+### Acceptance
+
+No region leaves its own object's square; each object's chain set is exactly its
+own widest chain plus BASE; the widest chain covers the square's centre; BASE
+and the painted chain are disjoint; ids follow the documented scheme; repeated
+runs agree; and the three unchanged-input paths return the input `Arc`.
+`colliding_chain_error` proves the real `PaintVariantRegionIdCollision` path with
+`material`/`ToolIndex(0)` and `ToolIndex(999_999)`.
+
+## H-SUPPORT-SCHEDULE
+
+Registry record: `id = "H-SUPPORT-SCHEDULE"`, `package = "slicer-core"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_support_schedule_and_sources"`,
+`production_symbol = "slicer_core::algos::support_geometry::execute_support_geometry"`,
+`production_path = "crates/slicer-core/src/algos/support_geometry.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-support-schedule"`.
+
+### Stable property ID
+
+`H-SUPPORT-SCHEDULE` — the per-object support emission schedule and the exact
+source-geometry entries the stage publishes.
+
+### Owner
+
+Package `slicer-core`; target `property_prepass`; test
+`proptest_support_schedule_and_sources`. Production surfaces:
+`build_emit_schedule` and `execute_support_geometry`
+(`crates/slicer-core/src/algos/support_geometry.rs`). Model:
+`crates/slicer-core/tests/property_prepass_common/support.rs`. Controls:
+`prepass_support_schedule_controls` in
+`crates/slicer-core/tests/property_prepass_common/controls_paint.rs`.
+
+### Contract
+
+Each object accumulates its effective layer height and emits on the layer where
+the declared `support_layer_height_mm` target is reached, resetting the
+accumulator; a target of `0` emits on every active layer and an object with no
+active region never accumulates. Each emitted `(layer, object, region, chain)`
+carries the committed source polygons for that exact region and chain; a
+scheduled region with **no** committed source is a present key with an empty
+polygon vector and the empty chain, which is not the same as an absent key. The
+intermediate-model pass adds the same geometry under the `u32::MAX` sentinel for
+every layer within `support_top_z_distance` of that object's column top. The
+IR-wide `support_layer_height_mm` / `support_top_z_distance_mm` come from the
+first active region of the plan.
+
+### Domain
+
+`max_layers = 4 / 4`, `max_objects = 2 / 3`, `max_regions = 1 / 1`,
+`max_abs_units = 200000 / 200000`. Layer indices are unique and never the
+sentinel; `z = 0.2 * (index + 1)`. Heights are `0.1`, `0.2` or `0.25` mm and
+targets are `0`, one step, two steps or three steps, so the threshold comparison
+is exact in `f32`. Chains alternate between empty and
+`material`/`ToolIndex(0)`, and some scheduled layers deliberately carry no
+source.
+
+### Strategy
+
+Layer count, object count, target choice per object, height choice, and a source
+presence/chain selector. The deterministic block covers the empty plan (no
+schedule, no entries) and the controls cover an empty-source scheduled key.
+
+### Oracle
+
+`property_prepass_common::support` re-derives the schedule with its own
+accumulator, re-derives each object's column top, and rebuilds the expected key
+map from the declared fixture. It never calls `build_emit_schedule` or the
+collector to build an expectation.
+
+### Tolerance
+
+Exact. Keys, chain vectors, polygon counts and the IR-wide settings are compared
+with `==`; all fixture coordinates are integers and all heights/targets are
+dyadic.
+
+### Shrinking
+
+Removes layers and objects and simplifies the target choice. The empty-plan and
+empty-source modes are deterministic.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.03 s, extended
+`cases = 256` in 0.31 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-SUPPORT-SCHEDULE/`. Root
+cause regression destination: `prepass_support_schedule_controls`, never a seed.
+
+### Acceptance
+
+The schedule, the full key set, the empty-source present keys, the sentinel
+entries and the IR-wide settings all agree with the model. The controls refute a
+dropped emission, a wrong object, a wrong chain and a false empty map, and they
+confirm the live source-less scheduled key. Not covered here: the runtime
+wrapper's `NoLayerPlan` / `MissingSliceIR` errors
+(`prepass_support_wrapper_absence_controls`) and any planner output.
+
+## H-SUPPORT-ROLES
+
+Registry record: `id = "H-SUPPORT-ROLES"`, `package = "slicer-core"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_support_role_partition"`,
+`production_symbol = "slicer_core::support_regularize::regularize_entry_roles"`,
+`production_path = "crates/slicer-core/src/support_regularize.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-support-roles"`.
+
+### Stable property ID
+
+`H-SUPPORT-ROLES` — the disjoint top/bottom/body/raft role partition of one
+support entry in grid style.
+
+### Owner
+
+Package `slicer-core`; target `property_prepass`; test
+`proptest_support_role_partition`. Production surface: `regularize_entry_roles`
+(`crates/slicer-core/src/support_regularize.rs`) with `smooth_supports = false`.
+Model: `crates/slicer-core/tests/property_prepass_common/roles.rs`. Controls:
+`prepass_support_contact_role_controls`.
+
+### Contract
+
+In grid style the regularizer is set algebra over the declared role polygons:
+`layer_area = top ∪ bottom ∪ body`, `iface_top = top ∩ layer_area`,
+`iface_bottom = (bottom ∩ layer_area) − iface_top`, and the body remainder is
+`layer_area − (iface_top ∪ iface_bottom)`. Raft geometry is passed through
+untouched and is **not** part of `layer_area`. Output roles follow the input's
+first-appearance order, with `SupportBody` appended last when it was absent from
+the input and owns geometry. `None` means "unchanged": a nonpositive flow
+spacing, a body-only entry, or no interface input. `TopInterface` and
+`BaseInterface` alias onto the same output role; the aliasing is pinned
+separately and deliberately kept out of the disjoint partition.
+
+### Domain
+
+`max_cells = 8 / 16`, `max_abs_units = 200000`. One row of cells on an even
+lattice (the grid is derived from the label count), each labelled absent, top,
+bottom, body or raft; the input roster is a rotation of the labels actually
+present, so the fixture and the model always agree about which interfaces exist.
+
+### Strategy
+
+Cell count and a role rotation; each cell's label is drawn independently. The
+deterministic block drives a top-over-body witness and the three `None` modes.
+
+### Oracle
+
+`property_prepass_common::roles` re-derives the partition with its own set
+algebra and classifies each cell midpoint with `oracles::point_in_region`. It
+never calls the regularizer or Clipper to build an expectation.
+
+### Tolerance
+
+Exact cell ownership and exact role order. `Boundary` classification is rejected
+outright; all coordinates are integers and all cells are at least two units wide.
+
+### Shrinking
+
+Removes cells and simplifies labels; the `None` and aliasing modes are
+deterministic.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.14 s, extended
+`cases = 256` in 0.27 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-SUPPORT-ROLES/`. Root
+cause regression destination: `prepass_support_contact_role_controls`, never a
+seed.
+
+### Acceptance
+
+Every cell is owned by exactly the role its label names (or by none), the role
+order matches the input order plus the appended body, every emitted role is
+nonempty, and the three `None` modes return `None`. Top/base aliasing emits both
+roles. No area monotonicity across layers and no universal nonempty support is
+asserted.
+
+## H-SUPPORT-CONTACT
+
+Registry record: `id = "H-SUPPORT-CONTACT"`, `package = "slicer-core"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_support_contact_rectangles"`,
+`production_symbol = "slicer_core::algos::overhang_annotation::detect_support_contacts"`,
+`production_path = "crates/slicer-core/src/algos/overhang_annotation.rs"`,
+`features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
+`requires_host_algos = true`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-support-contact"`.
+
+### Stable property ID
+
+`H-SUPPORT-CONTACT` — the enforced-layer plain-difference support contact set.
+
+### Owner
+
+Package `slicer-core`; target `property_prepass`; test
+`proptest_support_contact_rectangles`. Production surface:
+`detect_support_contacts` (`crates/slicer-core/src/algos/overhang_annotation.rs`).
+Model: `crates/slicer-core/tests/property_prepass_common/contact.rs`. Controls:
+`prepass_support_contact_role_controls`.
+
+### Contract
+
+On the enforced-layer plain-difference branch (`layer_id` inside
+`[raft_layers, raft_layers + enforce_support_layers)`) the contact set is
+`upper − lower − blockers`, with no offset, no expand-back, no sharp-tail
+bypass, no bridge margin and zero XY expansion, then filtered by the tiny-spot
+erosion of `−0.1 × external_perimeter_width` and unioned. A fully supported
+column, a blocker-covered contact and a sub-threshold sliver produce no contact;
+an empty upper region is the no-work mode.
+
+### Domain
+
+`max_abs_units = 200000`, `max_cells = 4`. A 2 × 1 cell lattice at
+millimetre scale (each cell 4 mm × 8 mm) with independent upper/lower/blocker
+cell flags, so supported cells, blocker-covered cells and genuine contacts are
+all reachable.
+
+### Strategy
+
+Two independent boolean triples (upper/lower/blocker) on the fixed lattice. The
+deterministic block runs the sliver, supported-column, blocker and empty-upper
+modes and a positive witness.
+
+### Oracle
+
+`property_prepass_common::contact` derives the expected contact cells as
+`upper ∧ ¬lower ∧ ¬blocker` and classifies the returned polygons at each cell
+midpoint with `oracles::point_in_region`. It never calls `difference_ex` to
+build an expectation. Cell geometry is millimetre-scale so the tiny-spot filter
+cannot silently empty a legitimately printable contact.
+
+### Tolerance
+
+Exact cell ownership; `Boundary` is rejected. Coordinates are integers and
+cells are 4 mm wide, far above the `0.04 mm` erosion.
+
+### Shrinking
+
+Flips cell flags toward the no-contact configuration; the sliver and supported
+modes are deterministic.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.03 s, extended
+`cases = 256` in 0.09 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-SUPPORT-CONTACT/`. Root
+cause regression destination: `prepass_support_contact_role_controls`, never a
+seed.
+
+### Acceptance
+
+Every cell's contact membership equals `upper ∧ ¬lower ∧ ¬blocker`; contacts
+stay inside the upper extent; the sliver, supported-column, blocker-covered and
+empty-upper modes produce no contact. The controls refute a substituted lower
+layer, a lost blocker and a false empty result. This is not `annotate_overhangs`
+(whose contract differs) and it makes no claim about planner routing.
+
+## H-SUPPORT-TERRITORY
+
+Registry record: `id = "H-SUPPORT-TERRITORY"`, `package = "slicer-wasm-host"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_support_territory_clearance"`,
+`production_symbol = "slicer_wasm_host::support_territory::TerritoryClipper::clip"`,
+`production_path = "crates/slicer-wasm-host/src/support_territory.rs"`,
+`features = ["slicer-wasm-host/property_testing"]`, `requires_host_algos = true`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-support-territory"`.
+
+### Stable property ID
+
+`H-SUPPORT-TERRITORY` — the host territory own/foreign clip and its clearance.
+
+### Owner
+
+Package `slicer-wasm-host`; target `property_prepass`; test
+`proptest_support_territory_clearance`. Production surface:
+`TerritoryClipper::{from_ir, clip}` (`crates/slicer-wasm-host/src/support_territory.rs`).
+Model: `crates/slicer-wasm-host/tests/property_prepass_common/territory.rs`.
+Controls: `prepass_support_analysis_territory_controls` (runtime target).
+
+### Contract
+
+A query naming an exact minted sub-region origin `(object, layer, region_id,
+ordered chain)` keeps `polygons ∩ own territory`. A base region keeps
+`polygons − inflate(foreign, clearance)`, and keeps `polygons` unchanged when no
+foreign territory exists. `inflate` is the miter offset by the
+`support_territory_clearance_mm` shared setting. `from_ir` returns `None` when
+the analysis carries no territory, and `clip` returns `None` when the layer
+carries no territory — both are no-clipping outcomes, not empty successes. The
+`region_id` is the IR integer rendered as a decimal `&str`, so a distinct id is
+a distinct origin.
+
+### Domain
+
+`max_objects = 1`, `max_regions = 3`, `max_abs_units = 200000`,
+`max_clearance_units = 8000`, `max_cells = 16 / 32`. One to three territory
+rectangles on a whole-millimetre lattice with clearances `0`, `0.2` or `0.4` mm;
+the query body is a separate rectangle and the query is either a minted
+sub-region or a base region.
+
+### Strategy
+
+Rectangle count, one rectangle per entry, a clearance choice and a sub-region
+flag. Region ids are the entry index + 1 and families alternate, so own and
+foreign territory always coexist.
+
+### Oracle
+
+`property_prepass_common::territory` re-derives membership analytically
+(`body ∩ own` for a minted origin; `body` minus every inflated foreign rectangle
+otherwise) and classifies sample points with `oracles::point_in_region`. Sample
+coordinates are offset by 2500 units from every edge, so a `Boundary` outcome is
+impossible by construction rather than tolerated.
+
+### Tolerance
+
+Exact point membership on a lattice where every edge is a multiple of 1000 units
+and every clearance is 2000 or 4000 units. No float geometry is compared.
+
+### Shrinking
+
+Removes entries and simplifies the clearance; the absence and foreign-only modes
+are deterministic.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.48 s, extended
+`cases = 256` in 2.13 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-SUPPORT-TERRITORY/`. Root
+cause regression destination: `prepass_support_analysis_territory_controls`,
+never a seed.
+
+### Acceptance
+
+Every sample point's membership equals the analytic model; `from_ir` on an
+empty analysis is `None`; a layer with no territory clips to `None`; a distinct
+region id does not match a minted entry. This checks the host clipping seam, not
+planner routing, aggregation ownership or whole-print support, and it is a PnP
+territory rule (DEV-165), not an OrcaSlicer parity claim.
+
+## H-SUPPORT-ANALYSIS
+
+Registry record: `id = "H-SUPPORT-ANALYSIS"`, `package = "slicer-runtime"`,
+`target_kind = "test"`, `target_name = "property_prepass"`,
+`test_name = "proptest_support_analysis_layered_scenes"`,
+`production_symbol = "slicer_runtime::builtins::support_analysis_producer::commit_support_analysis_builtin"`,
+`production_path = "crates/slicer-runtime/src/builtins/support_analysis_producer.rs"`,
+`features = ["slicer-runtime/property_testing"]`, `requires_host_algos = true`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-support-analysis"`.
+
+### Stable property ID
+
+`H-SUPPORT-ANALYSIS` — the host-owned layered support analysis: occupancy, the
+feasible envelope, termination surfaces and the territory clearance.
+
+### Owner
+
+Package `slicer-runtime`; target `property_prepass`; test
+`proptest_support_analysis_layered_scenes`. Production surface:
+`commit_support_analysis_builtin`
+(`crates/slicer-runtime/src/builtins/support_analysis_producer.rs`). Model:
+`crates/slicer-runtime/tests/property_prepass_common/analysis.rs`.
+
+### Contract
+
+With support enabled, `model_occupancy` holds exactly one entry per nonempty
+committed region, keyed by the full `(layer, object, region_id, ordered chain)`
+identity and carrying that region's polygons verbatim. Each object with a
+nonempty bound contributes exactly one `baseline_feasible_envelope` rectangle —
+its full XY bounds. Every occupancy key at that object's highest active layer
+carries a `termination_surfaces` entry holding the top footprint plus the plate;
+non-top keys carry none. `support_territory_clearance_mm` is the resolved
+positive support line width; in the literal mode the property declares it is
+that literal, and the percent mode is the documented percentage of the fallback
+line width. A disabled analysis publishes the settings and no occupancy,
+envelope or candidates.
+
+### Domain
+
+`max_layers = 3`, `max_objects = 2`, `max_regions = 2`, `max_abs_units = 200000`,
+`max_cells = 16 / 32`. One to three layers of whole-millimetre rectangles, one
+or two objects, two chain spellings, and an enabled/disabled flag. Every layer
+carries at least one region so each object's top layer is well defined.
+
+### Strategy
+
+Layer count, object count, six region specs (rectangle, chain, presence) and the
+enabled flag.
+
+### Oracle
+
+`property_prepass_common::analysis` rebuilds occupancy, bounds, the envelope
+rectangles and the termination sets from the declared fixture, and re-derives
+the literal clearance. It never calls the producer's own collectors.
+
+### Tolerance
+
+Exact key sets, exact polygon equality for occupancy, exact envelope rectangles
+(compared as bounds), exact termination counts and exact `f32` clearance.
+
+### Shrinking
+
+Removes layers, objects, regions and the enabled flag; both witnesses are
+deterministic.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.04 s, extended
+`cases = 256` in 0.12 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-SUPPORT-ANALYSIS/`. Root
+cause regression destination: `prepass_support_analysis_territory_controls`,
+never a seed.
+
+### Acceptance
+
+Occupancy, envelope, termination and clearance agree with the model in both
+enabled modes and the disabled mode publishes nothing. Candidate selection and
+contact-layer eligibility are **not** asserted here; they depend on surface
+classification this property does not fabricate. A candidate is not a printed
+support plan, and no planner feasibility is claimed.
+
+## H-LIGHTNING-SEEDS
+
+Registry record: `id = "H-LIGHTNING-SEEDS"`, `package = "lightning-infill"`,
+`target_kind = "lib"`, `target_name = "lightning_infill"`,
+`test_name = "kernel::property_tests::proptest_lightning_seed_regions"`,
+`production_symbol = "lightning_infill::kernel::generator::generate_initial_internal_overhangs"`,
+`production_path = "modules/core-modules/lightning-infill/src/kernel/generator.rs"`,
+`features = ["lightning-infill/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-lightning-seeds"`.
+
+### Stable property ID
+
+`H-LIGHTNING-SEEDS` — the per-layer internal-overhang seed regions of the
+module-private lightning kernel.
+
+### Owner
+
+Package `lightning-infill` (a **lib** test, not a standalone binary); module
+`kernel::property_tests`. Production surface:
+`generate_initial_internal_overhangs`
+(`modules/core-modules/lightning-infill/src/kernel/generator.rs`).
+
+### Contract
+
+Walking from the top layer down, each layer's seed regions are
+`erode(current) − above`, where `erode` is the miter offset by the wall
+supporting radius and `above` is the next-higher layer's **un-eroded** outline.
+An empty layer above resets `above` to nothing. Radius zero degenerates to a
+plain difference, and a layer fully covered by the layer above has no seed.
+
+### Domain
+
+`max_layers = 3`, `max_abs_units = 200000`, `max_radius_units = 20000`,
+`max_cells = 32 / 64`. Layer outlines are axis-aligned rectangles of 1-5 mm on a
+whole-millimetre lattice, one to three layers, some layers deliberately absent.
+
+### Strategy
+
+Layer count, square size and a presence vector; the radius is half a millimetre
+bounded by the profile.
+
+### Oracle
+
+The model computes the expected region analytically (rectangle inset by the
+radius minus the un-eroded layer above) and classifies the kernel's **flat ring
+list** with an even-odd ray-crossing test written in the test module. It never
+calls the kernel's offset or difference helpers.
+
+### Tolerance
+
+Exact point membership on samples offset 2500 units from every edge and from the
+erosion ring, so a boundary sample is impossible by construction.
+
+### Shrinking
+
+Removes layers and presences; the empty-above, empty-layer-reset, zero-radius and
+fully-covered witnesses are deterministic.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.03 s, extended
+`cases = 256` in 0.08 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-LIGHTNING-SEEDS/`.
+Controls: `kernel::property_tests::lightning_model_controls` and
+`lightning_seed_tree_controls`.
+
+### Acceptance
+
+Every sample's membership equals the analytic model, and the four deterministic
+witnesses hold. Hole preservation is covered only through the eroded-outline
+case (the fixture's `above` rectangle is the only inner boundary); a general
+polygon-with-holes fixture is not claimed.
+
+## H-LIGHTNING-TREES
+
+Registry record: `id = "H-LIGHTNING-TREES"`, `package = "lightning-infill"`,
+`target_kind = "lib"`, `target_name = "lightning_infill"`,
+`test_name = "kernel::property_tests::proptest_lightning_tree_structure"`,
+`production_symbol = "lightning_infill::kernel::generator::Generator::generate_trees"`,
+`production_path = "modules/core-modules/lightning-infill/src/kernel/generator.rs"`,
+`features = ["lightning-infill/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-lightning-trees"`.
+
+### Stable Property ID
+
+`H-LIGHTNING-TREES` — the structural integrity and determinism of the generated
+lightning forest.
+
+### Owner
+
+Package `lightning-infill` (lib test); module `kernel::property_tests`.
+Production surface: `Generator::{new, generate_trees, get_trees_for_layer}`
+(`modules/core-modules/lightning-infill/src/kernel/generator.rs`).
+
+### Contract
+
+Every node reachable from `tree_roots` reports `is_root()` exactly when it is a
+root, is reached exactly once (no shared child, no cycle), and the traversal
+terminates. The walk reports an exceeded `max_tree_nodes` budget as an
+incomplete case rather than certifying a prefix. Two identical runs produce the
+same forest. Points stay inside the fixture's declared bounded domain.
+
+### Domain
+
+`max_layers = 3`, `max_objects = 1`, `max_regions = 1`, `max_abs_units = 200000`,
+`max_tree_nodes = 20000`. Narrowing stacks of 1-3 layers, 1-4 mm wide, shrinking
+by 1-3 mm per layer.
+
+### Strategy
+
+Layer count, base width and per-layer shrink; the node budget is a profile bound.
+
+### Oracle
+
+A pointer-identity visited set over `Rc::as_ptr`, plus a declared domain box (the
+union of the layer rectangles grown by 20 mm). Trees legitimately branch outside
+their outline, so containment is a bounded-domain check, not an outline check.
+
+### Tolerance
+
+Exact. Structure and point equality only; no numeric tolerance is involved.
+
+### Shrinking
+
+Fewer layers, a smaller base and a smaller shrink; determinism is checked inside
+every case, so a shrink that changes the forest fails rather than silently
+passing.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
+Measured on Windows on 2026-11-19: routine `cases = 64` in 0.05 s, extended
+`cases = 256` in 0.17 s.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/H-LIGHTNING-TREES/`.
+Controls: `lightning_model_controls`, `lightning_seed_tree_controls`,
+`lightning_owned_shrink_controls`.
+
+### Acceptance
+
+Roots, ownership, termination and determinism hold on every case; the node-budget
+and duplicate-root mutants fail. Repeated-run equality is a determinism pin, not
+a correctness or parity claim; no snapshot is treated as canonical evidence.
+
+### Classic-perimeter and fuzzy-skin pilots (packet `proptest-openrscad_12_pbt-walls`)
+
+Measured on Windows 11, rustc 1.96.0, Proptest 1.11.0, `dev` profile, workspace `target/`,
+`generator_version = 1`, source revision `7fc9c2b4` plus the Step 7 registry/doc worktree.
+Selected runs used seed `17102094542611295699` (routine) and `5869198346882150039` (extended);
+the retained replay reused seed `17102094542611295699`. All records had
+`accepted_cases == cases`, zero rejected callbacks, zero local/global rejects and
+`shrink_completed = null`.
+
+| Property | routine libtest | extended libtest | routine accepted | extended accepted |
+|---|---:|---:|---:|---:|
+| `M-CLASSIC-WALL-STRUCTURE` | 0.11 s | 0.39 s | 64 | 256 |
+| `M-CLASSIC-BAND-SELECTION` | 0.10 s | 0.38 s | 64 | 256 |
+| `M-FUZZY-REPEATABILITY` | 0.04 s | 0.12 s | 64 | 256 |
+| `M-FUZZY-SPAN-PRESERVATION` | 0.04 s | 0.13 s | 64 | 256 |
+| `M-FUZZY-DISPLACEMENT` | 0.04 s | 0.12 s | 64 | 256 |
+
+Bounds are `max_abs_units=2048`, `max_vertices=16`, `max_holes=2`, `max_components=3`,
+`max_shrink_candidates=32`, `max_wall_count=4`, `max_width_units=8`,
+`max_layer_height_units=4` for both classic records; and `max_abs_mm_units=20000`,
+`max_thickness_units=3000`, `max_point_distance_units=8000`, `max_points=8` for all fuzzy
+records. Both selected and combined lanes reported `VERDICT: PASS`. The final measured
+artifacts and exact logs are retained under `target/proptest-walls-evidence/review-fix/`.
+
+## M-CLASSIC-WALL-STRUCTURE
+
+Registry record: `id = "M-CLASSIC-WALL-STRUCTURE"`, `package = "classic-perimeters"`,
+`target_kind = "lib"`, `target_name = "classic_perimeters"`,
+`test_name = "property_tests::proptest_classic_wall_structure"`,
+`production_symbol = "classic_perimeters::ClassicPerimeters::emit_walls"`,
+`production_path = "modules/core-modules/classic-perimeters/src/lib.rs"`,
+`features = ["classic-perimeters/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-classic-wall-structure"`.
+
+### Stable property ID
+
+`M-CLASSIC-WALL-STRUCTURE` checks ordinary wall role, closure and metadata alignment for the
+selected no-medial-axis path.
+
+### Owner
+
+- **Package and module.** `classic-perimeters`, private `property_tests`
+  (`modules/core-modules/classic-perimeters/src/property_tests.rs`), with stacked `#[cfg(test)]`
+  and `#[cfg(feature = "property_testing")]` gates. See
+  [module-owned property files](../05_module_sdk.md#module-owned-private-kernel-property-files-packet-proptest-openrscad_10).
+- **Controls.** `classic_required_witnesses_are_nonempty`,
+  `classic_structure_oracle_rejects_mutations`,
+  `classic_shrink_preserves_emit_mode_and_topology`.
+
+### Contract
+
+Every emitted ordinary `Outer`/`Inner` wall has a `perimeter_index` below the requested wall
+count; band 0 is `LoopType::Outer` / `ExtrusionRole::OuterWall` with the outer speed/width, and
+band > 0 is `LoopType::Inner` / `ExtrusionRole::InnerWall` with the inner speed/width. Points,
+width-profile entries and flags are parallel; the path is closed with an explicit repeat; at
+least four points exist; consecutive XY are distinct; copied z/width/flow/default annotations,
+closing width/flag and absent tool/order-lock values match the fixture. The emitted count is
+never compared with `wall_count`.
+
+### Domain
+
+The shared `geometry_cases` constructions for `Convex`, `Concave`, `Holed` and `Disconnected`
+are prebuilt for `max_abs_units = 2048`, `max_vertices = 16`, `max_holes = 2`,
+`max_components = 3`, `max_shrink_candidates = 32`; every case is certified by
+`validate_geometry` before the SUT runs. `wall_count` is `1..=4`, widths are
+`width_floor(4)..=8` canonical units, layer height is `1..=4` units, and z spans
+0.05..=0.35 mm. Both emit gates and both `variant_fuzzy` values are selected. Empty geometry
+output is valid; an aggregate nonempty counter and the deterministic 20 mm witness make the
+population non-vacuous.
+
+### Strategy
+
+The no-shrink topology `ClassTag` selector feeds `prop_ind_flat_map` into the matching prebuilt
+domain. Wall count, both widths, layer height and z stay shrinkable. Emit mode and
+`variant_fuzzy` use `prop::sample::select(...).no_shrink()`, never a union of `Just` arms. The
+fixture calls the real private `emit_walls` with empty annotations, an empty spatial context,
+`PathAnnotationMode::Unconsumed`, `detect_thin_wall = false` and `medial_axis_enabled = false`,
+and a fresh `PerimeterOutputBuilder` per invocation.
+
+### Oracle
+
+`classic_structure_oracle` is local and independent. It does not call a production validator or
+reconstruct the offset. It checks finite coordinates/width/flow first, then exact bits for
+copied z, widths, flow and closing point, exact default annotations/flags, band/role/loop/speed
+mapping, closure, distinct consecutive XY and parallel lengths.
+
+### Tolerance
+
+Exact f32 equality for copied values and structural metadata; no numeric epsilon.
+
+### Shrinking
+
+The class and both mode selectors cannot flip. Geometry shrinking preserves its declared
+topology and every current case remains `validate_geometry`-valid; wall count and ordinary
+scalars may shrink. The probe exercises both simplify and complicate for every class and fails
+on a false-only walk.
+
+### Execution
+
+Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets. Registry routine
+(64 cases) measured 0.11 s with 43 nonempty generated cases (Convex/Concave/Holed/Disconnected
+= 7/11/12/13); extended (256 cases) measured 0.39 s with 160 nonempty (42/27/44/47). Both had
+zero rejects and every class had a nonempty population. The 128-case controlled pilot measured
+0.20 s and 78 nonempty cases.
+
+### Failure record
+
+Artifacts under `target/property-testing/<run-token>/M-CLASSIC-WALL-STRUCTURE/`; retain geometry,
+wall/band index and the first failing field. A confirmed SUT defect requires a named concrete
+RNG/context-independent regression.
+
+### Acceptance
+
+Every ordinary wall satisfies the structure contract; the deterministic 20 mm/3-band witness is
+nonempty with bands `{0,1,2}` in both fuzzy modes; the generated nonempty counter is positive;
+all named oracle mutations are rejected.
+
+## M-CLASSIC-BAND-SELECTION
+
+Registry record: `id = "M-CLASSIC-BAND-SELECTION"`, `package = "classic-perimeters"`,
+`target_kind = "lib"`, `target_name = "classic_perimeters"`,
+`test_name = "property_tests::proptest_classic_band_selection"`,
+`production_symbol = "classic_perimeters::ClassicPerimeters::emit_walls"`,
+`production_path = "modules/core-modules/classic-perimeters/src/lib.rs"`,
+`features = ["classic-perimeters/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-classic-band-selection"`.
+
+### Stable property ID
+
+`M-CLASSIC-BAND-SELECTION` checks the emit gates, calculated allowed-prefix band set, capacity,
+degenerate inputs and fatal spacing.
+
+### Owner
+
+Same owner module and controls file as the structure record. Controls are
+`classic_band_oracle_and_degenerate_cases`, `classic_negative_spacing_is_fatal`,
+`classic_property_domains_reject_unsafe_bounds` and the structure controls rerun after shared
+helper changes.
+
+### Contract
+
+`emit_outer`/`emit_inner` select exactly their ordinary roles. For nonempty output the emitted
+band set is the gate-filtered prefix through the maximum computed band; a missing allowed index
+is a failure. No outer output means no seam candidates; no inner output means no infill areas.
+The requested wall count is only an upper bound. Degenerate contours emit nothing, and a
+nonpositive spacing is fatal `ERR_NEGATIVE_SPACING`, never a clamp.
+
+### Domain
+
+The structure geometry and scalar domain, all three emit modes, and `wall_count == 1`. The
+deterministic controls add a 1 mm square requesting ten bands, 2-point and collinear contours,
+an empty polygon list, and a width below the positive-spacing threshold. Bounds are supplied
+explicitly; missing/invalid/overflow values are rejected before sampling.
+
+### Strategy
+
+Reuses the construction-first class strategy and the single no-shrink emit selector, and keeps
+ordinary scalars shrinkable.
+
+### Oracle
+
+`classic_band_oracle` runs `classic_structure_oracle` first, then checks gates, the allowed
+prefix and side-output implications over the real builder's walls, infill and seams. It never
+compares emitted wall/band count with `wall_count`.
+
+### Tolerance
+
+Exact integer band indices and booleans; no geometry tolerance.
+
+### Shrinking
+
+Modes cannot flip; smaller requests may legitimately emit fewer bands, but may not introduce a
+band outside the request or break the allowed prefix.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Registry routine
+(64 cases) measured 0.10 s with 38 nonempty cases, every class nonempty (Convex/Concave/Holed/
+Disconnected = 11/7/12/8), modes 28/19/17 and 10 single-band cases; extended (256 cases) measured
+0.38 s with 145 nonempty (30/44/45/26), modes 77/94/85 and 52 single-band cases. Both had zero
+rejects. The capacity witness emitted exactly band `{0}`.
+
+### Failure record
+
+Retain the requested count, emit mode, actual band set and first violating index. Capacity
+differences are documented, not failures unless the prefix/gate contract breaks.
+
+### Acceptance
+
+Generated mode/wall-count coverage, capacity, degenerates, fatal spacing, exact domain errors
+and all gate/gap mutations pass; no universal wall count is claimed.
+
+## M-FUZZY-REPEATABILITY
+
+Registry record: `id = "M-FUZZY-REPEATABILITY"`, `package = "fuzzy-skin"`,
+`target_kind = "lib"`, `target_name = "fuzzy_skin"`,
+`test_name = "property_tests::proptest_fuzzy_repeatability"`,
+`production_symbol = "fuzzy_skin::apply_fuzzy_skin"`,
+`production_path = "modules/core-modules/fuzzy-skin/src/lib.rs"`,
+`features = ["fuzzy-skin/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-fuzzy-repeatability"`.
+
+### Stable property ID
+
+`M-FUZZY-REPEATABILITY` is a determinism pin for identical `apply_fuzzy_skin` arguments, not a
+geometric correctness claim.
+
+### Owner
+
+`fuzzy-skin`, private `property_tests`
+(`modules/core-modules/fuzzy-skin/src/property_tests.rs`), with the same stacked default-off
+gates as the classic records. Controls: `fuzzy_repeatability_control` and
+`fuzzy_shrink_preserves_modes_and_fixed_prefix`.
+
+### Contract
+
+Two calls with identical path, flags, profile, modes, parameters and layer/wall indices return
+bit-identical points, flags and widths. The SUT seed derives from layer/wall indices; the
+Proptest seed samples cases.
+
+### Domain
+
+Canonical-grid points with a fixed selected leading nonzero segment, a fixed unselected
+following segment when `apply_to_all=false`, a shrinkable tail (including duplicate points),
+parallel flags/widths, positive thickness/point distance and arbitrary u32 indices. Bounds:
+`max_abs_mm_units = 20000`, `max_thickness_units = 3000`,
+`max_point_distance_units = 8000`, `max_points = 8`.
+
+### Strategy
+
+Construction-first tail vectors; `apply_to_all` and open/closed topology are separate no-shrink
+`prop::sample::select` strategies. A closed path carries its explicit final repeat.
+
+### Oracle
+
+Every point field, flag and width is compared by float bits, including signed zero. A changed
+bit fails.
+
+### Tolerance
+
+None; bitwise equality.
+
+### Shrinking
+
+Modes cannot flip; generated tail flags/points/widths and ordinary parameters shrink as valid
+inputs. The deterministic mixed witness carries the specific selected/unselected contrast.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`. Registry routine (64 cases) measured 0.04 s
+and extended (256 cases) 0.12 s, with zero rejects. The 128-case pilot passed in 0.07 s; every
+case called the SUT twice.
+
+### Failure record
+
+Retain both argument tuples and the first differing point/flag/width. Do not relax to
+approximate equality.
+
+### Acceptance
+
+Repeatability property, one-bit mutation rejection, changed-layer sensitivity and seed-repeat
+control pass. The `// test-quality:` determinism waiver is present.
+
+## M-FUZZY-SPAN-PRESERVATION
+
+Registry record: `id = "M-FUZZY-SPAN-PRESERVATION"`, `package = "fuzzy-skin"`,
+`target_kind = "lib"`, `target_name = "fuzzy_skin"`,
+`test_name = "property_tests::proptest_fuzzy_span_preservation"`,
+`production_symbol = "fuzzy_skin::apply_fuzzy_skin"`,
+`production_path = "modules/core-modules/fuzzy-skin/src/lib.rs"`,
+`features = ["fuzzy-skin/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-fuzzy-span-preservation"`.
+
+### Stable property ID
+
+`M-FUZZY-SPAN-PRESERVATION` checks ordered span consumption and exact preservation of unselected
+spans and original endpoint metadata.
+
+### Owner
+
+Same fuzzy owner file. Controls: `fuzzy_required_witnesses_are_nonempty`,
+`fuzzy_span_oracle_rejects_mutations`, `fuzzy_disabled_parameters_are_identity`,
+`fuzzy_property_domains_reject_unsafe_bounds` and the shrink probe.
+
+### Contract
+
+Every input entry is consumed once in order. An unselected segment and a selected zero-length
+segment add no sample and copy endpoint point/flag/profile width exactly. A selected nonzero
+segment adds at least one sample. Output arrays are parallel. Synthetic inserted overhang/flow
+metadata is not claimed preserved.
+
+### Domain
+
+The repeatability domain with mixed, all-selected and all-unselected deterministic witnesses.
+The five-point square uses flags `[true,false,true,true,true]`, widths `[0.4,0.5,0.4,0.45,0.4]`,
+thickness 0.3 mm and point distance 0.8 mm; segment 1 is unselected and segment 3 closes.
+
+### Strategy
+
+Fixed `Just` selected/unselected prefixes survive shrinking; generated tail values remain
+shrinkable. Modes are no-shrink selectors.
+
+### Oracle
+
+`match_fuzzy_output` is a memoized full-tail parser. It requires the first point exactly, then
+for every segment either a direct endpoint (unselected/zero) or at least one inserted sample
+followed by the endpoint (selected nonzero). Inserted flags/profile widths must equal a source
+endpoint; endpoints and unselected metadata are bit-exact. Full-tail parsing disambiguates a
+sample that rounds onto an endpoint.
+
+### Tolerance
+
+Bitwise equality for original endpoints/flags/widths and inserted flag/profile selection; no
+width epsilon.
+
+### Shrinking
+
+Modes and fixed prefixes cannot flip in the shrink probe; ordinary tail length/points/widths
+shrink and every state remains parseable with its closure invariant.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`. Registry routine (64 cases) measured 0.04 s
+and extended (256 cases) 0.13 s; every case inserted samples on the fixed leading segment. A
+selected zero-length segment was exercised in 33 routine and 130 extended cases. Both tiers had
+zero rejects. The 128-case pilot passed in 0.07 s.
+
+### Failure record
+
+Retain the input path, flags, widths and first mismatched output index; classify SUT versus
+matcher.
+
+### Acceptance
+
+Mixed/all-selected/all-unselected witnesses, unselected-point insertion/removal mutations,
+disabled parameters and bound rejection pass.
+
+## M-FUZZY-DISPLACEMENT
+
+Registry record: `id = "M-FUZZY-DISPLACEMENT"`, `package = "fuzzy-skin"`,
+`target_kind = "lib"`, `target_name = "fuzzy_skin"`,
+`test_name = "property_tests::proptest_fuzzy_displacement"`,
+`production_symbol = "fuzzy_skin::apply_fuzzy_skin"`,
+`production_path = "modules/core-modules/fuzzy-skin/src/lib.rs"`,
+`features = ["fuzzy-skin/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-fuzzy-displacement"`.
+
+### Stable property ID
+
+`M-FUZZY-DISPLACEMENT` independently measures each inserted sample against its source segment.
+
+### Owner
+
+Same fuzzy owner file. Control: `fuzzy_displacement_oracle_rejects_mutations`.
+
+### Contract
+
+Each inserted sample lies on the perpendicular offset of its source segment with magnitude at
+most `thickness` within the derived envelope, and its longitudinal projection lies in the
+source span within the derived envelope. Source identity comes from output order.
+
+### Domain
+
+The span-preservation domain with finite positive thickness/distance, all coordinates bounded
+by `max_abs_mm_units`, the fixed selected leading nonzero segment and both no-shrink mode
+selectors. Selected zero-length segments are excluded from displacement assertions.
+
+### Strategy
+
+Construction-first path/parameter families; the oracle widens f32 inputs to f64 so the SUT's
+f32 arithmetic is the only source of the envelope.
+
+### Oracle
+
+`match_fuzzy_output` returns `InsertedSample { segment_index, output_index, point }`.
+`fuzzy_measure_displacement` computes perpendicular distance and projection in f64.
+`check_inserted_displacement` requires finite nonnegative distance, bounded magnitude and
+projection in `[-tol_t, 1+tol_t]` with `tol_t = tolerance/segment_length + 8*f64::EPSILON`.
+
+### Tolerance
+
+`fuzzy_displacement_tolerance = K * f32::EPSILON * (max_abs_mm + thickness_mm + 1.0)` with
+`K = 32`, derived from the actual f32 subtraction/squared-length/sqrt/normalize/base/displace/add
+sequence and the f64 measurement. The derivation is recorded in the packet evidence; no
+observed-output epsilon is used.
+
+### Shrinking
+
+The fixed leading selected segment and both mode selectors survive simplify/complicate. The
+Step 5 shrink probe covers the same case family and retains closure and parseability.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`. Registry routine (64 cases) measured 0.04 s
+and 1,221 inserted samples; extended (256 cases) measured 0.12 s and 8,460 samples; both had
+zero rejects. The 128-case pilot passed in 0.07 s with 6,871 samples.
+
+### Failure record
+
+Retain input points, segment/output indices, measured distance/projection, tolerance and
+derivation; classify SUT, generator/oracle or contract.
+
+### Acceptance
+
+Generated displacement and longitudinal checks pass; the deterministic closing edge has
+positive displacement; over-thickness, beyond-span and wrong-segment mutations are rejected;
+the tolerance derivation is recorded.
+
+## M-RECTILINEAR-SCAN
+
+Registry record: `id = "M-RECTILINEAR-SCAN"`, `package = "rectilinear-infill"`, `target_kind = "lib"`,
+`target_name = "rectilinear_infill"`, `test_name = "property_tests::proptest_rectilinear_scan_intervals"`,
+`features = ["rectilinear-infill/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-RECTILINEAR-SCAN` — semantic (complete scan-interval coverage of the rectilinear emitter),
+independent of packet numbers.
+
+### Owner
+
+Package `rectilinear-infill`; lib target `rectilinear_infill`; test module `property_tests` in
+`modules/core-modules/rectilinear-infill/src/property_tests.rs`; production symbol
+`scan_expolygon` at `modules/core-modules/rectilinear-infill/src/lib.rs`. The kernel is private,
+so the properties are a crate-internal unit-test module gated by `#[cfg(test)]` +
+`#[cfg(feature = "property_testing")]`; production visibility is not widened. Module-source tests
+are outside the `check-literals` and `check-test-quality` scanners
+(`docs/21_data_defaults_and_fixtures.md` §7.1), so the file carries a manual FRU/waiver ledger.
+
+### Contract
+
+`scan_expolygon` scans one `ExPolygon` (contour + holes) with parallel lines at a positive
+integer spacing, half-open in Y (include at `min_y`, exclude at `max_y`), and emits one two-point
+`ExtrusionPath3D` per interior X interval per row. The property restricts itself to the exact
+axis-aligned model: unit rotation (`cos_a = 1`, `sin_a = 0`), an integer `x_shift`,
+`adjust_for_solid` both false and true, positive spacing and finite metadata. Rotation,
+tangential vertex contact and the `align_to_grid` anchor are outside this exact model and are
+observed separately by the degenerate/tangential controls.
+
+### Domain
+
+Construction-first integer fixtures on the canonical grid (1 unit = 100 nm): axis-aligned
+rectangles, L-notches, U-notches and rectangles with one rectangular hole, plus a sub-spacing
+rectangle whose positive height is below the passed spacing. Classes are selected with
+`prop::sample::select(..).no_shrink()`; dimensions, origin, spacing, Z, speed factor, flow
+factor, line width and solid/sparse/shift modes are generated. Every class is independently
+validated with `oracles::validate_geometry` against a matching `GeometryDomain`, with coordinates
+derived from the fixture edges rather than the scanner. Negative XY is a required sub-case.
+Bounds are `max_abs_units`, `max_vertices`, `max_holes`, `max_components`,
+`max_shrink_candidates`, `max_spacing_units`, `max_rows`; each is read through
+`PropertyRun::bound`, so a missing or zero bound is an error, never a default.
+
+### Strategy
+
+One parameter draw produces a suite of cases (rectangle, sub-spacing rectangle, L-notch, U-notch,
+holed rectangle, each with its solid/sparse and shift modes), so every class and mode is
+exercised on every accepted call; per-class segment counters are asserted positive after `check`.
+The half-open row grid is enumerated arithmetically from the bbox and cross-checked against an
+independent `ceil(height / spacing)` count. Modes never switch during shrinking because they come
+from non-shrinking selectors.
+
+### Oracle
+
+Independent of the SUT: rows are enumerated from the fixture bbox arithmetic, and each row's
+interior X intervals are derived by probing the open cells of a **doubled** copy of the region
+with `oracles::point_in_region`, so no probe can land on an edge (a boundary probe would be a
+fixture error, not a silent Inside). The expected interval multiset, including omitted spans and
+the translated region under `x_shift`, is compared element-wise against the emitted intervals;
+every emitted segment is additionally checked with the boundary-inclusive
+`oracles::segment_in_region`. The expected solid spacing comes from the
+`M-RECTILINEAR-SPACING` reference, never from a call to the SUT. Role, both endpoints, Z, width,
+flow, speed and `None` tool/lock are compared bit-exactly.
+
+### Tolerance
+
+Exact. All fixtures are on the canonical integer grid and the endpoint check requires
+`mm_to_units(units_to_mm(x)) == x` bit-exactly, so no numeric tolerance applies. A non-grid
+endpoint fails the property rather than being rounded into the model.
+
+### Shrinking
+
+`rect_shrink_bounds` probes the real local strategy with `TestRunner::deterministic` /
+`Strategy::new_tree`, driving `current`, `simplify` and `complicate`, including a false simplify
+return, repeated complicate calls until exhaustion, and revalidation of every exposed input and
+retained fixture at every state. A false-only probe, a missing reduction from a nonminimal start,
+or a lost class fails.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 14.05 s of libtest (routine) and
+256 cases = 53.85 s (extended). Every accepted call checks a suite covering all five shape classes and the shifted, solid and negative-XY modes.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+`failure.json` retains the classification, the full context, the concrete/debug case, the
+tier-bearing reproduction command, the direct cargo reproduction with the consumed
+`PNP_PROPERTY_CONTEXT`, captured SDK logs and the shrink status. A confirmed SUT defect belongs
+in `modules/core-modules/rectilinear-infill/tests/rectilinear_raw_emit_tdd.rs` as a named
+concrete no-RNG regression, never a seed.
+
+### Acceptance
+
+The exact test is discovered and executed with `--exact --nocapture`; every expected interval and
+every whole emitted segment is checked; per-class counters are positive; the exact
+hole/notch/sub-spacing/empty/tangential controls pass; the mutation controls (removed interval,
+filled hole, and a concavity or hole chord whose endpoints and midpoint are in material) are
+rejected by the same checker. Defect outcome: **none confirmed** for the scanner by this
+property.
+
+## M-RECTILINEAR-SPACING
+
+Registry record: `id = "M-RECTILINEAR-SPACING"`, `package = "rectilinear-infill"`,
+`target_kind = "lib"`, `target_name = "rectilinear_infill"`,
+`test_name = "property_tests::proptest_rectilinear_solid_spacing"`,
+`features = ["rectilinear-infill/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-RECTILINEAR-SPACING` — semantic (canonical solid-spacing interval and cap arithmetic).
+
+### Owner
+
+Same package, target and module as `M-RECTILINEAR-SCAN`; production symbol
+`adjust_solid_spacing` at `modules/core-modules/rectilinear-infill/src/lib.rs`.
+
+### Contract
+
+Canonical `Fill::_adjust_solid_spacing` (`src/libslic3r/Fill/FillBase.cpp`) computes
+`number_of_intervals = coord_t((width - EPSILON) / distance)`, then
+`distance_new = coord_t((width - EPSILON) / number_of_intervals)` (or `distance` when that count
+is zero), and caps an over-limit interval when `distance_new / distance > 1.2` by returning
+`coord_t(floor(distance * 1.2 + 0.5))`, with `EPSILON = 1e-4`. The kernel is non-validating:
+`distance > 0` and `width >= 0` are caller contracts, so no division-by-zero branch is added.
+
+### Domain
+
+Positive `distance`, nonnegative bounded `width`, checked i64 arithmetic. Zero and too-large
+bounds are rejected by the test-domain builder, never by the kernel. The generator draws four
+named pair families per accepted call — width below distance, an exact interval boundary
+(`width` an exact multiple of `distance`), a general truncation interval, and an over-cap pair —
+with non-shrinking labels.
+
+### Strategy
+
+The four pair families come from checked bounds (`max_width_units`, `max_spacing_units`); the
+over-cap family requires `distance` in
+`MIN_CAP_DISTANCE_UNITS..=min(max_spacing_units, max_width_units / 2)` so the band is
+admissible. Because all four families are present in one parameter draw, the property never
+depends on a randomly selected mode.
+
+### Oracle
+
+An independent canonical reference on the integer grid: `adjusted = width - 1` (the exact integer
+form of `width - EPSILON` for any `0 < epsilon < 1` unit), truncated interval count, truncated
+interval distance, and the over-cap branch expressed exactly as
+`distance_new * 5 > distance * 6` and `(distance * 12 + 5) / 10`. The equivalence of the integer
+epsilon form to the source's `1e-4` is proved in the file header and was swept exhaustively over
+`distance in 1..400`, `width in 0..200000` with zero divergences. The oracle never calls the SUT.
+
+### Tolerance
+
+Exact integer comparison; no tolerance.
+
+### Shrinking
+
+Probed with a real value tree over the four pair families, with simplify/complicate alternation
+and revalidation of every pair at every state, plus explicit rejection of a pair outside the
+checked profile and of `distance = 0`.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 0.04 s of libtest (routine) and
+256 cases = 0.13 s (extended). Every accepted call checks the below-distance, exact-multiple, truncation-interval and over-cap pair families.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+As `M-RECTILINEAR-SCAN`. Exact canonical cases asserted in `rect_controls`:
+`(15000,10000) -> 12000`, `(12000,10000) -> 11999`, `(12001,10000) -> 12000`,
+`(12002,10000) -> 12000`, `(10000,10000) -> 10000`, `(5000,10000) -> 10000`,
+`(100000,4200) -> 4347`, `(100000,5000) -> 5263`, plus the additional boundary pairs listed in
+the packet evidence.
+
+### Acceptance
+
+The exact test runs; all four families are nonempty at both tiers; the canonical over-cap witness
+is reproduced and pinned. **Confirmed defect and focused fix:** the pre-fix kernel used bare
+`width`, `.round()` and returned the requested `distance` on the over-cap branch. It now matches
+the canonical arithmetic, and the no-RNG regression
+`solid_spacing_over_cap_uses_canonical_1_2_factor`
+(`modules/core-modules/rectilinear-infill/tests/rectilinear_raw_emit_tdd.rs`) pins the
+1.5 mm / 1.0 mm grid change. `D-209-ADJUST-SOLID-SPACING-DIVERGENCE` is closed.
+
+## M-GYROID-PHASE
+
+Registry record: `id = "M-GYROID-PHASE"`, `package = "gyroid-infill"`, `target_kind = "lib"`,
+`target_name = "gyroid_infill"`, `test_name = "property_tests::proptest_gyroid_phase_and_grid"`,
+`features = ["gyroid-infill/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-GYROID-PHASE` — semantic (gyroid branch evaluation and grid floor semantics).
+
+### Owner
+
+Package `gyroid-infill`; lib target `gyroid_infill`; module `property_tests` in
+`modules/core-modules/gyroid-infill/src/property_tests.rs`; production symbols `gyroid_f`
+(private) and `align_to_grid` (public) at `modules/core-modules/gyroid-infill/src/lib.rs`.
+
+### Contract
+
+`gyroid_f(x, z_sin, z_cos, vertical, flip)` inverts the gyroid implicit surface in normalized
+units. Both `asin` terms are clamped into `[-pi/2, pi/2]`, so the vertical branch returns a value
+in `[0, 2pi]` and the horizontal branch in `[-pi/2, 3pi/2]`; the `r < 1e-15` degenerate case
+returns `PI` and `FRAC_PI_2` respectively. `align_to_grid(val, grid) = floor(val / grid) * grid`.
+
+### Domain
+
+Bounded finite `x` and phase `z` within one gyroid period (`max_phase_milliradians = 6284`);
+`z_sin`/`z_cos` are derived from that same phase and the branch is the fill caller's own rule
+`abs(sin) <= abs(cos)`, not a free choice. Positive finite grids and safe ratios
+(`max_grid_units = 512`). Both orientation branches, both flip branches, positive and negative
+phases, and periodic observations are required sub-cases. Reachability is recorded: with a
+consistent phase and the caller's rule the unused component is at least `1/sqrt(2)`, so the
+singular return is unreachable from generated cases and is covered by explicit controls instead.
+
+### Strategy
+
+Non-shrinking phase-band and flip selectors plus generated phase/x values and exact integer grid
+cases. Periodicity is asserted only when `r >= 0.25` and the two compared arguments satisfy
+`|u| <= 0.75`, which keeps the check off the clamp plateaus and off the singular early return.
+
+### Oracle
+
+Mathematical, not SUT-derived: the branch range from the clamped-`asin` argument, and for the
+grid the exact integer model `val.div_euclid(grid) * grid` compared **bit-exactly** against
+`align_to_grid` (bit-exactness argument: `grid <= 16384`, `|val/grid| <= 65`, and `1/grid` is far
+above the f64 division error, so the quotient cannot cross an integer). The
+truncation-toward-zero mutant is rejected by the same checker.
+
+### Tolerance
+
+`1e-12` for the phase range, over 500x the derived term-wise error (two clamped-`asin` terms at at
+most 2 ulps each plus one addition), and `4e-12` for periodic observations against a derived
+`~4e-13` bound. No observed-output epsilon. No implicit-surface residual is asserted: the file
+records that no meaningful residual subdomain is proved, because the emitter's
+swapped/offset/clamped coordinates, f32 stamp and grid expansion make the emitted-to-source
+mapping non-injective.
+
+### Shrinking
+
+`gyroid_shrink_bounds` probes eight phase cases (both bands, both flips, grid cases) and five clip
+cases with real `simplify`/`complicate` alternation, repeated complicate calls and revalidation;
+the non-shrinking selectors are asserted to reject both directions.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 0.04 s of libtest (routine) and
+256 cases = 0.11 s (extended). Both orientation branches and both flip branches are required sub-cases; periodicity is asserted only away from the clamp plateaus.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+As the rectilinear records; the reproduction command and the direct cargo argv are retained in
+`failure.json`. A confirmed defect's regression home is
+`modules/core-modules/gyroid-infill/tests/gyroid_infill_tdd.rs`.
+
+### Acceptance
+
+The exact test runs; both branches and both flips are nonempty; the exact dyadic floor witnesses
+(`-3 -> -4`, `-2 -> -2`, `+3 -> 2` at grid 2; `-9 -> -12`, `-8 -> -8`, `7 -> 4` at grid 4) are
+bit-exact; the truncation mutant and the out-of-range/NaN phase mutants are rejected.
+
+Recorded limitation: the generated phase cases check the output range and the periodic identity
+against the SUT's own values, so a `gyroid_f` that always returned `PI` would pass every generated
+case. The deterministic controls are what pin the actual branch values (`PI` and `FRAC_PI_2` at
+the singular inputs, and the near-singular clamp), which is why they are mandatory rather than
+decorative. Defect
+outcome: **none confirmed**; no production change.
+
+## M-GYROID-CLIP
+
+Registry record: `id = "M-GYROID-CLIP"`, `package = "gyroid-infill"`, `target_kind = "lib"`,
+`target_name = "gyroid_infill"`,
+`test_name = "property_tests::proptest_gyroid_raw_wave_clipping"`,
+`features = ["gyroid-infill/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-GYROID-CLIP` — semantic (raw wave emission plus the linker's prepared batch clip seam).
+
+### Owner
+
+Same package and module as `M-GYROID-PHASE`; primary production symbol
+`GyroidInfill::fill_expolygon` (private) at `modules/core-modules/gyroid-infill/src/lib.rs`,
+composed with `PreparedPolylineClip::{new,clip_batched}` at `crates/slicer-core/src/polygon_ops.rs`.
+
+### Contract
+
+`fill_expolygon` deliberately emits **raw, unclipped** waves (ADR-0025): clipping and connecting
+belong to the linker. Raw output may extend beyond the outline, so this property never asserts
+hole exclusion on the raw paths. It does assert finite coordinates, copied Z/speed, the
+`SparseInfill` role, `None` tool/lock, and the source-stamped point width, which is the module's
+`line_width`, **not** the per-call spacing width. The clipping half composes the real emitter
+output with the real batch clip primitive the linker calls; it is not an end-to-end dispatch
+claim (`M-LINKER-*` own that).
+
+### Domain
+
+`0 < density <= 1` (`min_density_ppm = 100000`), positive finite width
+(`max_width_units = 6000`), bounded finite Z and controlled angles, controlled axis-aligned
+rectangles with rectangular holes, plus rotated and dense modes (`max_abs_units`,
+`max_vertices`, `max_holes`, `max_components`, `max_shrink_candidates`,
+`max_phase_milliradians`, `max_wave_points`). The profile also carries a derived worst-case wave
+envelope check, so an impossible `max_wave_points` fails at bound construction instead of during
+generation.
+
+### Strategy
+
+Non-shrinking topology and rotation selectors with generated density, width, Z, speed factor and
+angle. Legitimate empty modes (empty contour, nonpositive density or width) are separate
+deterministic controls, as is a real wave set clipped against a far-away boundary, which
+legitimately yields an empty result.
+
+### Oracle
+
+For the raw half: fixture arithmetic and source-stamped metadata only. For the clip half: the clip
+universe is each contour inflated by exactly 1 unit and each hole contracted by 1 unit; each
+subject segment's critical parameters (where `x` or `y` hits any inflated contour or contracted
+hole edge) partition it, every open subinterval is classified at its exact `i128` rational
+midpoint, and kept intervals are merged. Returned per-subject spans are mapped back to subject
+parameter space and compared in **both** directions per segment, so a retained span the model does
+not expect and a missing span the model expects are both failures. Every surviving segment is
+additionally checked directly: no point outside contour + 4 units, and no segment entering a hole
+deeper than `inflation + band`. No SUT clipper, offset or union routine contributes to the
+expected result, and no flat output order is assumed.
+
+### Tolerance
+
+Linear allowance `CLIP_BAND_UNITS = 1.0` unit. The model already computes its expected intervals
+on the inflated edge, and for these axis-aligned integer fixtures the pre-inflation lands exactly one
+unit out, so the only deviation of a reported coordinate from the modelled edge is the clipper's
+±1-unit integer intersection rounding. There is no separate f32 quantization term: the property
+converts the raw waves to an integer `Point2` subject and the model consumes that same integer
+subject. The returned-point projection onto the subject has a separate derived 2-unit tolerance used
+only for attribution, never as a boundary allowance. The parameter
+allowance is **per expected-interval endpoint and derived from the local crossing geometry**, not a
+single uniform `band / length`:
+
+- a subject endpoint (no clip-edge crossing) uses `band / length`;
+- a crossing of a vertical or horizontal clip edge uses `band / |Δnormal|` for that edge
+  (`|Δx|` on a vertical edge, `|Δy|` on a horizontal one).
+
+The derivation: any displacement within the band of the modelled edge has a component
+perpendicular to that edge and one along it. The perpendicular component `d_perp` moves the subject
+parameter by at most `d_perp / |Δnormal|`, and the along-edge component `d_par` by at most
+`d_par·cos θ / |Δnormal|`; the perpendicular bound dominates, so the term is `band / |Δnormal|`.
+A perpendicular crossing (`|Δnormal| = length`) reduces exactly to `band / length`, and a shallow
+crossing grows as `1/sin θ`. An earlier `(band/length)·max(1, cot θ)` form bounded only the
+along-edge slide and missed the perpendicular component by `cos θ`; a shallow-crossing control
+caught the ~0.008-unit shortfall. The term saturates at one full segment: beyond that the band
+alone accounts for the whole segment, so the interval carries no discriminating power and is
+excluded from the coverage direction; the file counts those saturated endpoints and the docstring
+records why. Returned cut points are attributed to the **nearest** subject segment within a bounded
+window of the first in-band hit, not to the first segment within the band, because near a vertex
+that first hit is the incoming segment clamped at its endpoint and fabricates a vertex start.
+Coverage is required outside each expected interval eroded by its own endpoint terms and
+containment allows a returned span only inside each interval dilated by its own terms. A negative
+control in `gyroid_controls` proves the term is finite: a shallow crossing accepts a cut exactly at
+the derived term and still rejects one 5 units short through the coverage direction.
+
+### Shrinking
+
+`gyroid_shrink_bounds` covers the clip domain across density/width classes and clip topologies
+with real simplify/complicate alternation (measured 19-22 simplifications and 13-16 repeated
+complicate calls) and revalidation, plus the bound-rejection matrix.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 0.46 s of libtest (routine) and
+256 cases = 0.98 s (extended). The clip half requires a nonempty raw-wave witness, retained interior observations and at least one hole-crossing split; saturated endpoints are counted and printed.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+As the other records. A confirmed clip-stage defect's regression home is `crates/slicer-core/tests/`
+for the primitive and `modules/core-modules/infill-linker/tests/` for the driver; the emitter's own
+regressions stay in `modules/core-modules/gyroid-infill/tests/gyroid_infill_tdd.rs`.
+
+### Acceptance
+
+The exact test runs; a nonempty raw-wave witness with out-of-outline points is observed; every raw
+segment's metadata is checked; the full retained/missing subinterval comparison runs on real
+clipped output with nonempty interior observations and at least one hole-crossing split; an
+all-empty clip, an omitted interior span and a fabricated hole-crossing span are each rejected
+through the intended mechanism. Defect outcome: **none confirmed**; no production change.
+
+## M-LINKER-GRAPH
+
+Registry record: `id = "M-LINKER-GRAPH"`, `package = "infill-linker"`, `target_kind = "lib"`,
+`target_name = "infill_linker"`, `test_name = "property_tests::proptest_linker_ring_walks"`,
+`features = ["infill-linker/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-LINKER-GRAPH` — semantic (boundary-graph ring geometry and connector/stub walks).
+
+### Owner
+
+Package `infill-linker`; lib target `infill_linker`; module `property_tests` in
+`modules/core-modules/infill-linker/src/property_tests.rs`; production symbols
+`BoundaryInfillGraph`, `BoundaryRing::directed_distance`, `contour_connector` and
+`contour_stub` at `modules/core-modules/infill-linker/src/graph.rs`. The linker's submodules
+are already `pub mod`, so the properties call the same seams the driver calls without widening
+any API.
+
+### Contract
+
+`BoundaryInfillGraph::new` builds one closed ring per contour and per hole, contour first, with
+global start positions tiling `[0, total_len)`. `BoundaryRing::directed_distance(from, to)`
+returns the **shorter** forward or backward arc and its direction, ties resolving to `Forward`.
+`contour_connector` returns only the intermediate points of a ring walk between two arc
+positions, with Z and width lerped by arc fraction; `contour_stub` returns a walk of at most
+`budget.min(ring.length)` from a position in a direction, with every point inheriting the
+anchor's attributes.
+
+### Domain
+
+Rectangles, a concave notch, a rectangular hole and two separated components, with endpoints
+constructed **on** known ring edges at least 3 units from any vertex (`VERTEX_MARGIN_UNITS`,
+because production deliberately merges arc positions within `ARC_EPSILON_UNITS = 1`). An empty
+graph is a distinct mode. Bounds: `max_abs_units`, `max_vertices`, `max_holes`,
+`max_components`, `max_shrink_candidates`.
+
+### Strategy
+
+Non-shrinking shape-class selectors (rectangle, notch, hole, two components, empty) over an
+axis-aligned integer `RingModel`, with generated cell sizes, origins and arc positions on ring
+edges.
+
+### Oracle
+
+A small `RingModel` computes every expected value in exact `i64` arithmetic: perimeter, ring
+start positions, the shortest forward/backward arc (tie to `Forward`), the corners a walk passes
+and a stub's corners and end point. Hand-derived literal witnesses pin the model first — a
+320,000-unit rectangle with one strictly shorter arc each way and one tie, a notch walk through
+both reflex corners, a clockwise hole ring starting at 400,000, a second component at 120,000,
+and an empty graph — and the real `BoundaryInfillGraph` structure, `directed_distance`,
+`contour_connector` and `contour_stub` are then compared against it. Every connector and stub
+segment must lie on a single expected ring edge, and endpoints are additionally checked with the
+shared SDK `oracles::point_in_region`. `project`, `vertices_between` and the code's own walks are
+never used to build an expected value. `BoundaryInfillGraph::project` is compared to the model as
+well, but it is a public boundary-graph API with no production caller inside the linker, so that
+comparison is API-surface evidence rather than driver-path evidence.
+
+### Tolerance
+
+Grid and interpolation envelopes derived from the operation sequence, not observed:
+grid `2·(max_abs+1)·2⁻²⁴` and stub interpolation `16·(max_abs+1)·2⁻²⁴`.
+
+### Shrinking
+
+`linker_shrink_bounds` probes every ring class, connect class and chain/lock class with real
+`simplify`/`complicate` alternation, repeated complicate calls, exhaustion, and revalidation of
+the constructed ring and the real output at every state.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 0.08 s of libtest (routine) and
+256 cases = 0.24 s (extended). Every accepted call performs at least one query or empty-graph case and at least one stub check.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+`failure.json` keeps the classification, context, concrete case, reproduction command, direct
+cargo argv and SDK logs. A confirmed defect's regression home is
+`modules/core-modules/infill-linker/tests/graph_tdd.rs`.
+
+### Acceptance
+
+The exact test runs; shorter forward and backward arcs, a tie, reflex corner traversal, hole and
+second-component walks, stubs and the empty graph are all exercised (deterministic witnesses
+assert them nonzero on every run); a notch walk replaced by a chord, a same-length shortcut that
+skips the reflex corners, a hole connector judged against the outer ring, outer-ring corners
+offered as a hole connector, a stub missing its corner, and a nonempty model against the empty
+graph are each rejected. Defect outcome: **none confirmed**; no production change.
+
+## M-LINKER-CONNECT
+
+Registry record: `id = "M-LINKER-CONNECT"`, `package = "infill-linker"`, `target_kind = "lib"`,
+`target_name = "infill_linker"`,
+`test_name = "property_tests::proptest_linker_connection_compatibility"`,
+`features = ["infill-linker/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-LINKER-CONNECT` — semantic (source-path preservation and independent metadata compatibility at
+the connector).
+
+### Owner
+
+Same package and module as `M-LINKER-GRAPH`; production symbol `connect_infill` at
+`modules/core-modules/infill-linker/src/connect.rs`.
+
+### Contract
+
+`connect_infill(paths, graph, anchor)` keeps every eligible source path as a contiguous
+ordered-or-reversed point/metadata subsequence of exactly one output, and joins two paths only
+when they are on the same ring, their four compatibility clauses hold, and the shorter arc is
+strictly shorter than `anchor_length_max`. The predicate is equal `role`, bit-equal
+`speed_factor`, equal `tool_index`, and both corresponding first/last endpoint width differences
+at most `0.000001` mm. Paths with fewer than two points are dropped only in the connecting branch;
+`AnchorParams::dont_connect()` early-returns the input untouched. Ordinary interior endpoints are
+not unanchorable: the live boundary-position search selects the nearest ring, so exact ring-walk
+claims are restricted to constructed on-ring endpoints. `DEV-110`'s stub-residual algorithm is not
+reproduced in the oracle.
+
+### Domain
+
+Distinguishable, nonzero, at-least-two-point paths with endpoints on known rings and widths on
+both sides of the `1e-6` boundary; outer/hole and disconnected pairs; strict-anchor and
+`dont_connect` modes; one-, two- and three-path classes. Bounds: `max_abs_units`, `max_paths`,
+`max_points`, `max_anchor_units`.
+
+### Strategy
+
+Non-shrinking class selectors (merge, separated, cross-ring, mismatch family, strict anchor,
+identity, short path, multi) over constructed rings and paths.
+
+### Oracle
+
+Each output path is scanned for every eligible source, matched point-for-point **bitwise**,
+forward or reversed; every source must appear exactly once and no output may consist only of
+added points. Points between two matched sources are a connector and must satisfy four
+independent checks: both ends on the same ring in the `RingModel`; the two sources pass the
+independently computed compatibility predicate (with widths compared exactly in `f64`, which is
+exact in this width domain); the joining arc is strictly shorter than the anchor; and the points
+equal the model's corner walk. Leading or trailing added points are stubs, checked on-ring and no
+longer than the anchor (their exact length is deliberately not predicted because of `DEV-110`).
+For two-path cases the model independently decides "must merge across distance `d`" or "must stay
+separate". The SUT's own `project` result is compared to the model, never used to build it.
+
+### Tolerance
+
+Widths are compared exactly; the `1e-6` boundary is exercised at exactly `1e-6` (merge), 33 ulps
+(merge) and `next_up(2c)` (reject). Grid and walk tolerances are the same derived envelopes as
+`M-LINKER-GRAPH`.
+
+### Shrinking
+
+Covered by `linker_shrink_bounds` across the connect classes with revalidation of every
+source/output at every state.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 0.09 s of libtest (routine) and
+256 cases = 0.31 s (extended). Every accepted call carries at least one eligible source path; per-mode populations are asserted by the deterministic witness.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+As `M-LINKER-GRAPH`; the regression home for a confirmed connector defect is
+`modules/core-modules/infill-linker/tests/connect_tdd.rs` (or `anchor_length_tdd.rs` for anchor
+arithmetic).
+
+### Acceptance
+
+The exact test runs; merges, separated pairs, cross-ring pairs, mismatch families, strict-anchor,
+identity and short-path modes are all nonempty; a dropped source, an unmerged compatible pair, an
+interior connector chord, fabricated role/speed/tool/first-width/last-width merges, a fabricated
+outer-to-hole merge and a `dont_connect` output with its 1-point path removed are each rejected;
+the real code passes the positive counterparts (exactly `1e-6` and 33 ulps merge, the 1-point path
+survives `dont_connect` and is dropped when connecting, interior endpoints are still anchored).
+Defect outcome: **none confirmed**; no production change.
+
+## M-LINKER-CHAIN
+
+Registry record: `id = "M-LINKER-CHAIN"`, `package = "infill-linker"`, `target_kind = "lib"`,
+`target_name = "infill_linker"`, `test_name = "property_tests::proptest_linker_chain_and_origins"`,
+`features = ["infill-linker/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-LINKER-CHAIN` — semantic (chain-only behaviour and ordered-region provenance at the real
+orchestration seam).
+
+### Owner
+
+Same package and module; production symbols `chain_or_connect_infill` at
+`modules/core-modules/infill-linker/src/connect.rs` and `orchestrate_infill` at
+`modules/core-modules/infill-linker/src/orchestrate.rs`.
+
+### Contract
+
+`chain_or_connect_infill` reorders and reverses paths to minimize travel but must never add
+connector geometry in chain-only mode (`dont_connect`). `orchestrate_infill` matches a prior
+`InfillRegion` to a view on the exact ordered triple `(object_id, region_id, variant_chain)`; an
+unmatched region passes its bucket through unchanged, an empty chain is a real value and not a
+wildcard, wall groups are keyed by wall source plus the borrower's ordered chain, `order_lock`
+paths bypass clip/link and are emitted first while their swept footprint is subtracted from the
+boundary, and a union link additionally needs same object, same tool, same chain, same wall group
+and pairwise path compatibility. The region tool and the authored path tool are separate checks.
+
+### Domain
+
+Nonempty at-least-two-point paths, both sides of `dont_connect`, full `(object_id, region_id,
+ordered variant_chain)` identities, same-object/same-wall-group and separate-region/tool/role/width
+fixtures, a legal priority/name-ordered `material` then `fuzzy_skin` chain and a distinct chain, a
+deliberately mismatched and a deliberately reversed lookup, locked and unlocked paths, and
+unequal plus tied source lengths. Bounds: `max_abs_units`, `max_paths`, `max_points`,
+`max_regions`, `max_anchor_units`.
+
+### Strategy
+
+Non-shrinking mode selectors (chain-only, chain-connect, orchestrate union/separated, locked
+bypass) with generated ring geometry, path roles/tools/widths and region identities. Every test
+row has its own height and owning region, so provenance and majority ownership are measurable
+without inferring from the first point.
+
+### Oracle
+
+Chain-only output must be a permutation of the inputs, each possibly reversed, with nothing added
+or lost; chain-connect output goes through the `M-LINKER-CONNECT` checker. For `orchestrate_infill`
+the test builds its own compatibility/ownership table (exact view match plus same object, region
+tool, ordered chain, wall source, role, speed, authored tool and width) and checks four things:
+each output's full identity exists and outputs come out in prior-region order; unmatched regions
+pass through bit-identical; locked paths appear exactly once and are emitted first; each linked
+path contains only rows from its own group, with only axis-aligned connectors inside the group's
+area, and its owner is the group member with the most independently measured row length (ties to
+the lower region id). Every row must be covered exactly once. Adjacency in the returned list is
+never treated as extrusion between paths, and no global route optimality is asserted.
+
+### Tolerance
+
+Derived grid/interpolation envelopes as above; lengths and ownership compared from measured `i64`
+row lengths, never from the first point. Orchestrate connectors are checked as axis-aligned and
+inside the group area rather than as exact walks, because the offset boundary ring is not modelled
+independently.
+
+### Shrinking
+
+Covered by `linker_shrink_bounds` across chain-only, chain-connect, orchestrate union/separated and
+locked classes, revalidating every input and output at every state.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 0.16 s of libtest (routine) and
+256 cases = 0.37 s (extended). Every accepted case takes exactly one chain mode; per-mode populations are asserted by the deterministic witness.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+As `M-LINKER-GRAPH`; the regression home for a confirmed orchestration defect is
+`modules/core-modules/infill-linker/tests/orchestrate_tdd.rs`.
+
+### Acceptance
+
+The exact test runs; chain-only reordering adds no connector geometry; connect-mode output passes
+the full compatibility checker; every orchestrate row is covered exactly once with its owning
+region's identity; locked paths bypass linking and are emitted first; pass-through regions are
+bit-identical. Mutations rejected: a connector point added in chain-only mode, two outputs merged
+in chain-only mode, an origin with the chain reversed or emptied, a merged path re-attributed to
+the minority owner, and an altered reversed-chain pass-through region. Defect outcome: **none
+confirmed**; no production change.
+
+## M-WAVE-TRIM
+
+Registry record: `id = "M-WAVE-TRIM"`, `package = "wave-overhangs"`, `target_kind = "lib"`,
+`target_name = "wave_overhangs"`,
+`test_name = "property_tests::proptest_wave_trim_and_coverage"`,
+`features = ["wave-overhangs/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-WAVE-TRIM` — semantic (deposited-footprint trim containment and sampled coverage of the wave
+generator).
+
+### Owner
+
+Package `wave-overhangs`; lib target `wave_overhangs`; module `property_tests` in
+`modules/core-modules/wave-overhangs/src/property_tests.rs`; production symbol `generate` in the
+private `crate::generator` module at `modules/core-modules/wave-overhangs/src/generator.rs`.
+`WaveParams`, `WaveOutput`, `FallbackReason` and `EPSILON_MM` are `pub(crate)`, so the properties
+are a crate-internal unit-test module and no API is widened.
+
+### Contract
+
+For the declared positive-flow domain, let `r = (flow_width * flow_ratio) / 2` be the deposited
+radius (required `>= EPSILON_MM`), `P` the independently derived original rectangular wave piece
+before the first trim, and `T = P minus disk(r)` the centerline trim. Every output centerline
+endpoint must lie in `T`, and every whole deposited capsule (both endcaps included, radius `r`)
+must lie in `P`. The capsule is **never** required to fit in `T`; doing so applies the inset
+twice and false-rejects a legitimate boundary-tangent output. Because `T` is rectangular and
+therefore convex, endpoint containment proves the whole straight centerline lies in `T`. `filled`
+is a regularized union and is never used as a footprint. Fallback reasons are a repeatable vector
+and coexist with nonempty `paths`; fallback is not equivalent to empty output.
+
+### Domain
+
+A controlled axis-aligned bridge rectangle with analytically specified supporting bands,
+`perimeter_overlap = 0`, `minimum_width = 0` (no narrow split), `min_length = 0` and an unbounded
+iteration class, with generated line spacing, flow width, flow ratio, pattern and iteration bound.
+Every parameter that would change `P` (`perimeter_overlap`, `minimum_width`, `min_length`,
+`base_spacing`) is held fixed inside the property. Bounds are `max_abs_units`,
+`max_spacing_units`, `max_width_units`, `max_iterations`, `max_cells`.
+
+### Strategy
+
+The fixture is the existing seam geometry adapted to a direct `generate` call: `P = [0,6] x [0,6]`
+mm with support bands extended 0.5 mm into the bridge (the plan's edge-flush translation produces
+no wave because `generate` clips `lower` to the fill bbox before deriving anchors; measured in the
+packet evidence). `r = (0.4 * 1.875) / 2 = 0.375` mm and `T = [0.375, 5.625]^2` mm. The nonempty
+no-fallback witness was established by execution before any neighborhood was generalized. Pattern,
+iteration class and full/capped modes are non-shrinking selectors.
+
+### Oracle
+
+`P` and `T` are derived analytically from the fixture and the input parameters, never from the
+SUT. Containment checks the centerline against `T` and the radius-`r` capsule against `P` with
+exact segment-to-boundary distance arithmetic. Coverage is an independently computed
+point-to-segment/capsule-distance lattice over `P` (96x96 cell centres, 0.0625 mm pitch, 9,216
+cells) with a boundary-connected empty-cell model: a cell farther than `r + 0.1` mm from every
+centerline is empty, and only empty cells not 4-connected to the lattice border count as interior
+gaps. `0.1` mm is half the existing seam fixture's 0.2 mm defect width. This is labelled sampled
+coverage, never a proof of arbitrary continuous area; guaranteed detection is for axis-aligned
+voids at least 0.2625 mm wide and one pitch long. The determinism half calls `generate` twice on
+identical inputs and compares every point, filled contour/hole and fallback in order as an
+explicit `docs/22_test_quality.md` determinism pin, not a correctness oracle.
+
+### Tolerance
+
+`CLIP_BAND_UNITS = 2` (documented `PreparedPolylineClip` ±2-unit band) + `TRIM_QUANTIZATION_UNITS
+= 2` (integer snap of the integer-unit trim offset) = 4 units = 0.0004 mm, plus a `1e-9` mm
+rational comparison epsilon and the same 4-unit outward band on the capsule. The derived total is
+625x smaller than the 0.25 mm gap the nominal-radius negative control relies on, so it cannot mask
+that control, and the exact tangent control proves the checker is not double-inset.
+
+### Shrinking
+
+`wave_shrink_bounds` probes six mode x pattern combinations with real `simplify`/`complicate`
+alternation (measured 26-32 simplifications with matching restores, `exhausted = true`),
+revalidating every exposed input and the generated output at every state, plus the
+bound-rejection matrix.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 32 cases = 21.12 s of libtest (routine) and
+128 cases = 95.28 s (extended). This is the expensive record in the family (lattice coverage over every emitted segment), which is why its case counts are lower than the other eight.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+`failure.json` retains the classification, context, concrete case, reproduction command, direct
+cargo argv and captured SDK logs. Confirmed defects belong in
+`modules/core-modules/wave-overhangs/tests/wave_overhangs_tdd.rs` as named no-RNG regressions.
+
+### Acceptance
+
+The exact test runs; every positive-run centerline is checked against `T` and every whole capsule
+against `P`; the exact `P = [0,10]^2`, `r = 1`, `T = [1,9]^2`, `(1,2) -> (1,8)` tangent case is
+accepted while a `capsule subset T` checker rejects it; the nominal-width `(0.75,2) -> (0.75,8)`
+case is rejected at the deposited radius and accepted at the mistaken nominal radius; a changed
+repeat, a removed central wave (692 and 39 interior gap cells in the two controls) and a false
+fallback are each detected; the empty-area, min-length, missing-anchor and one-iteration fallback
+fixtures are observed with `paths`/`filled`/`fallbacks` coexisting where specified. Defect
+outcome: **none confirmed**; no production change.
+
+## M-IRONING-ZIGZAG
+
+Registry record: `id = "M-IRONING-ZIGZAG"`, `package = "top-surface-ironing"`,
+`target_kind = "lib"`, `target_name = "top_surface_ironing"`,
+`test_name = "property_tests::proptest_ironing_full_paths"`,
+`features = ["top-surface-ironing/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`.
+
+### Stable property ID
+
+`M-IRONING-ZIGZAG` — semantic (complete scan-interval coverage plus whole-path containment of the
+ironing emitter).
+
+### Owner
+
+Package `top-surface-ironing`; lib target `top_surface_ironing`; module `property_tests` in
+`modules/core-modules/top-surface-ironing/src/property_tests.rs`; production symbol
+`generate_zigzag_strokes_for_polygon` (private) at
+`modules/core-modules/top-surface-ironing/src/lib.rs`. `bbox_of_expoly`, `BBox2D` and the
+`IRONING_LINE_WIDTH` constant are crate-visible, so the property checks the same values the
+module stamps.
+
+### Contract
+
+For each scan row at a positive spacing, the kernel derives the row's interior X intervals from
+the contour and every hole with a half-open Y rule (`[y_lo, y_hi)`), drops intervals of width
+`<= 1e-4`, and emits `Ironing` paths at planar Z with `flow_factor = ironing_flow / 100`,
+`speed_factor = ironing_speed / 50`, the module's fixed `IRONING_LINE_WIDTH`, and `None`
+tool/lock. Consecutive scan rows alternate direction. A path continues across rows, and between a
+row's intervals, only while the joining move stays inside the region (exact segment-in-region
+test); a move that would leave the material — across a hole, a notch, or a concave/slanted
+boundary — starts a new path instead. **Every consecutive point pair of every returned path is an
+extruded segment**, including the implicit joins between intervals in one row and between rows;
+evaluating only `chunks(2)` misses exactly those joins.
+
+### Domain
+
+Independently validated axis-aligned rectangles, U-notches and rectangles with one rectangular
+hole on an exact 0.25 mm fixture grid, so every generated coordinate and spacing converts to
+`f32` millimetres without rounding and `y_min + i * spacing` stays exact. Spacings are 0.5-1.5 mm;
+the cut's bottom edge is placed exactly on an interior scan row, so every generated hole or notch
+case really splits a row. Empty contour, zero-height, zero-width, nonpositive spacing and a
+positive sub-spacing span are separate deterministic modes. Bounds are `max_abs_units`,
+`max_vertices`, `max_holes`, `max_components`, `max_shrink_candidates`, `max_spacing_units`,
+`max_rows`; `max_rows` is constrained to `4..=64`, because the derived `f32` envelope assumes at
+most 64 rows and at least four rows are needed to place a gap that a scan row crosses.
+
+### Strategy
+
+Non-shrinking shape selector with generated dimensions, origin, cut placement, spacing, Z, flow
+and speed. Each accepted call checks the complete point sequence against the independent interval
+model, so a missing row, an extra segment or a reordering is a failure. Per-shape counters
+(rect/notch/hole), whole-path segment counters and a split-row counter are asserted positive after
+`check`.
+
+### Oracle
+
+The expected row grid is `floor(span / spacing) + 1` half-open rows from the bbox, and the expected
+X intervals are derived analytically from the fixture edges and the cut (rect: one interval; notch
+from `y >= notch_y`: two; hole for `hole_y0 <= y < hole_y1`: two), reversed on odd rows. The full
+expected point sequence is compared element-wise with a derived envelope. Every consecutive
+segment of every returned path is additionally checked with the boundary-inclusive
+`oracles::segment_in_region` against the real `ExPolygon`, which is what catches an implicit join
+crossing a gap. Metadata is compared bit-exactly (Z, width, flow, speed, role, `None` tool/lock).
+
+### Tolerance
+
+`64 * f32::EPSILON * (max_abs_mm + span_mm + 1.0)` for the point comparison, derived from the
+documented operation sequence (one unit-to-mm rounding plus at most 64 exact-grid row additions)
+and twice the largest allowed row count; the fixtures are exact, so the observed deviation is
+zero. Containment is exact integer arithmetic through `Point2::from_mm`.
+
+### Shrinking
+
+`ironing_shrink_bounds` probes all three shapes with real `simplify`/`complicate` alternation
+(measured 154 simplifications per shape), revalidating geometry, the expected model and the real
+output at every state, then exercises a false simplify return and repeated complicate calls to a
+stable false state, and asserts a real reduction from a nonminimal start. The shape selector is
+asserted to reject both directions.
+
+### Execution
+
+Both tiers, in-process, chacha, `timeout_ms = 0`, zero rejection budgets. Measured on
+Windows in the registry lanes: 64 cases = 0.53 s of libtest (routine) and
+256 cases = 1.98 s (extended). Every accepted call checks the complete point sequence and every whole-path segment.
+
+Per-run case-mix counters and the retained-seed replay are recorded in
+[`docs/testing/proptest-infill-evidence.md`](proptest-infill-evidence.md) § Step 8.
+
+### Failure record
+
+`failure.json` retains the classification, context, concrete case, reproduction command, direct
+cargo argv and captured SDK logs. A confirmed defect's regression home is
+`modules/core-modules/top-surface-ironing/tests/top_surface_ironing_emission_tdd.rs` as a named
+concrete no-RNG test.
+
+### Acceptance
+
+The exact test runs; the deterministic 8 mm square with hole `[3,5] x [2,6]` mm at 1 mm spacing
+produces nonempty rows on both sides of the hole with no segment through its interior; a U-notch
+retains both arms; every segment of every path is in-region; a gap-connector merge, a dropped row,
+a false-empty output and a mutated flow factor are rejected by the same checker. Two slanted
+controls pin the join rule: a right triangle keeps a single snake (the joins lie on the
+hypotenuse), and a concave notch whose kink sits inside one row spacing splits into more than one
+path, both with every segment in-region. **Confirmed
+defect and focused fix:** the pre-fix kernel emitted one `ExtrusionPath3D` per polygon by
+concatenating all rows' intervals, so the join `(5,3) -> (3,3)` mm (both endpoints on material)
+crossed the hole. The kernel now starts a new path whenever the next interval does not start at
+the x the previous interval ended on, so every implicit join is a vertical move at a shared x on
+the outer boundary. The no-RNG regression
+`hole_crossing_regression_no_ironing_segment_enters_the_hole` fails on the old kernel. A
+determinism-pin exception is not used by this property (its checks are independent), and the
+current one-path-per-polygon shape is no longer pinned by any test.
+
+## M-SUPPORT-IRONING
+
+Registry record: `id = "M-SUPPORT-IRONING"`, `package = "support-surface-ironing"`,
+`target_kind = "lib"`, `target_name = "support_surface_ironing"`,
+`test_name = "property_tests::proptest_support_ironing_fill"`,
+`production_symbol = "support_surface_ironing::SupportSurfaceIroning::fill_expolygon"`,
+`production_path = "modules/core-modules/support-surface-ironing/src/lib.rs"`,
+`features = ["support-surface-ironing/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-support-ironing"`.
+
+### Stable property ID
+
+`M-SUPPORT-IRONING` — semantic (complete half-open row/material-interval coverage plus metadata
+propagation for the support-surface ironing fill).
+
+### Owner
+
+Package `support-surface-ironing`; lib target `support_surface_ironing`; module `property_tests` in
+`modules/core-modules/support-surface-ironing/src/property_tests.rs`; production symbol
+`SupportSurfaceIroning::fill_expolygon` (private) at
+`modules/core-modules/support-surface-ironing/src/lib.rs`, whose only production caller is
+`SupportSurfaceIroning::run_support_postprocess`. The module is constructed through `from_config`
+so the property sees the same field values the module would.
+
+### Contract
+
+Rows are `min_y + n * line_spacing` while below `max_y`, with no half-spacing offset. At each row
+the kernel gathers crossings from the contour and every hole ring with a half-open lower-inclusive
+rule, rounds each X to the nearest canonical unit, sorts, pairs even-odd, and skips a pair whose
+endpoints coincide. Each surviving pair becomes one `Ironing` path with the supplied Z, the
+configured `line_width`, the configured `ironing_flow_rate` as `flow_factor`, `dist_to_top_mm = 0.0`
+and `None` overhang and lock fields. The kernel does not compute `speed_factor`; the caller passes
+`ironing_speed / 50` and it is propagated verbatim. Nonpositive spacing and degenerate geometry may
+return empty. This is a metadata-propagation contract: it does not claim the manifest default's
+numeric `ironing_flow_rate` is an independently verified physical percentage.
+
+### Domain
+
+Independently validated rectangles, U-notches and rectangles with one rectangular hole on an exact
+0.25 mm grid, with 1 mm spacing and generated origins. A holed `[0,10]^2` mm fixture with hole
+`[4,6]^2` and 1 mm spacing has nonempty material intervals on both sides at an interior hole row.
+Separate deterministic modes cover a nonpositive spacing and a degenerate ring. Bounds are
+`max_abs_units`, `max_vertices`, `max_holes`, `max_components`, `max_shrink_candidates`,
+`max_spacing_units`, `max_rows`.
+
+### Strategy
+
+Nonshrinking shape-mode selector with generated dimensions, origin, cut placement, spacing, Z, flow
+and speed. Deterministic positive fixtures for the rectangle, notch and hole modes run inside every
+callback. Every `Cell` counter is asserted positive after `check`: `calls`, the five witness
+counters `w_charter` (holed `[4,6]^2` split on both sides), `w_asym` (asymmetric hole split),
+`w_notch`, `w_square` and `w_empty` (degenerate inputs), plus `strokes`, `segments` and
+`split_rows`. A run in which the callback never executed, or in which any witness counter stayed
+zero, fails.
+
+### Oracle
+
+The expected rows and material intervals are derived from the same rectangle arithmetic the
+contract states — the bbox minimum, the spacing steps, and the input edges — written once and
+reused by both the property and the controls. Every consecutive point pair of every path is checked
+with the boundary-inclusive `oracles::segment_in_region` against the self-built `ExPolygon`, and all
+metadata is compared exactly against the supplied configuration values.
+
+### Tolerance
+
+Exact. Every generated coordinate and spacing is a multiple of 0.25 mm, so `mm_to_units` and
+`units_to_mm` round-trip and each crossing is an exact integer unit.
+
+### Shrinking
+
+`support_ironing_shrink_bounds` drives the real strategy through
+`current`/`simplify`/`complicate`, revalidates the ring structure and the shape mode at every
+state, requires a permitted reduction, and exercises a false `simplify` return and repeated
+`complicate`.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, zero rejection budgets. Registry command
+`cargo xtask test --summary --properties --property M-SUPPORT-IRONING --tier routine|extended`.
+Measured timings are in the evidence file.
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression.
+
+### Acceptance
+
+Maps to AC-5, AC-8 and AC-N1. `support_ironing_controls` accepts the valid positive observation and
+then rejects, with the same checker: a single unsplit `(1,5) -> (9,5)` mm segment across the
+asymmetric hole of `[0,10]^2` minus `[2,3] x [4,6]` (both endpoints and the midpoint are material);
+the U-notch chord `(2,5) -> (8,5)` on `[0,10]^2` minus `[4,6] x [4,10]`; an otherwise correct
+interval set with the interior `y = 1` row deleted from a 10 mm square at 1 mm pitch; and a
+replacement of all output with empty. The metadata control also rejects a mutated `flow_factor`,
+width, Z or speed.
+
+## M-TRADITIONAL-SCAN
+
+Registry record: `id = "M-TRADITIONAL-SCAN"`, `package = "traditional-support"`,
+`target_kind = "lib"`, `target_name = "traditional_support"`,
+`test_name = "property_tests::proptest_traditional_support_fill"`,
+`production_symbol = "traditional_support::TraditionalSupport::fill_expolygon"`,
+`production_path = "modules/core-modules/traditional-support/src/lib.rs"`,
+`features = ["traditional-support/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-traditional-scan"`.
+
+### Stable property ID
+
+`M-TRADITIONAL-SCAN` — semantic (complete half-open row and material-interval coverage plus
+whole-segment containment of the traditional support fill kernel, with separated fallback and
+no-work modes).
+
+### Owner
+
+Package `traditional-support`; lib target `traditional_support`; module `property_tests` in
+`modules/core-modules/traditional-support/src/property_tests.rs`; production symbol
+`TraditionalSupport::fill_expolygon` (private) at
+`modules/core-modules/traditional-support/src/lib.rs`, whose only production caller is
+`TraditionalSupport::run_support`. The module is constructed through `from_config` with the
+manifest's seeded defaults.
+
+### Contract
+
+The kernel rotates the polygon about its unrotated bbox centre, scans rows at
+`y0 + n * spacing` while below `y1`, rounds each crossing X to the nearest canonical unit, sorts,
+pairs even-odd, and drops a pair whose endpoints coincide. Each surviving pair becomes one
+`ExtrusionPath3D` with `role = SupportMaterial`, the supplied Z and `speed_factor`,
+`flow_factor = 1.0`, the supplied path width and unset `tool_index`/`order_lock`/`overhang`
+fields. The **caller**, not this kernel, changes interface roles. When the scan loop emits nothing
+the centroid fallback may emit one band per centroid row, translated back by the same
+bbox-centre offset the scan branch adds; when that also emits nothing and the caller flagged the
+region as an interface, the contour is emitted as a closed path so the layer stays printable. A
+nonpositive spacing or a degenerate ring returns empty.
+
+### Domain
+
+Independently validated axis-aligned rectangles, an open-to-top U-notch and a rectangle with one
+rectangular hole on an exact 0.25 mm grid. Generated cases carry `1..=max_rows` rows, a spacing that is
+a grid multiple and at most `span / 4`, and a cut placed on a row boundary so at least one row is
+really split; a cut-carrying shape always has at least two rows (a notch) or three (a hole, which
+also covers the rotated mode), so its cut always has real height above it at every shrink state.
+Rotated cases carry the cut only on the 180-degree turn, because a quarter turn maps the cut's x
+extent onto the scan axis and a y-aligned cut then only lands on scan-row boundaries at half turns;
+the odd turns exercise the axis swap alone. Rotated cases use exact quarter turns only, so the derived rounding envelope is
+zero. Separate deterministic modes cover a translated narrow tip (the centroid fallback), the
+sub-pitch diamond at 2 mm pitch (the interface-contour fallback) and six degenerate classes
+(zero height, zero width, a two-point ring, an empty contour, zero spacing, negative spacing).
+Bounds are `max_abs_units`, `max_vertices`, `max_holes`, `max_components`,
+`max_shrink_candidates`, `max_spacing_units`, `max_rows`.
+
+### Strategy
+
+Nonshrinking shape selector (`Rect`, `Notch`, `Hole`, `Rotated`, `Degenerate`) over a total
+generator, so the run has zero local and global rejects. Every generated case is revalidated
+against the live bounds and `validate_geometry` before the kernel is called. Each callback also
+re-checks five deterministic witnesses: the charter's holed `[0,10]^2` mm fixture with hole
+`[4,6]^2` at 1 mm spacing, the asymmetric `[2,3] x [4,6]` hole, the U-notch, the 10 mm square, and
+the six degenerate classes. Counters `rect/notch/hole/rotated/degenerate`, `strokes`, `segments`,
+`rows` and `split_rows` are asserted positive after `check`.
+
+### Oracle
+
+Angle-zero expectations are rectangle arithmetic over the fixture's own fields: the half-open rows
+are `y0 + n * spacing < y1`, and each row's intervals are the outer rectangle minus the cut, with
+the cut active on `[cy0, cy1)` for a hole and on `[cy0, y1)` for a notch. The complete sorted
+`(row, x_start, x_end)` set is compared, so a missing row, an extra row, a reordered interval or a
+merged arm is a failure. Rotated modes are mapped back into the kernel's own bbox-centre-relative scan frame and compared
+against the **same complete row-and-interval model** there, which quarter turns keep axis-aligned.
+Because the turn is exact, this is an exact integer comparison rather than a row-count proxy, so a
+split row that loses one arm fails. Every consecutive point pair of every path — including a closed ring's closing edge
+— is checked with the boundary-inclusive `oracles::segment_in_region`.
+
+### Tolerance
+
+Exact. Every fixture coordinate and spacing is a multiple of 0.25 mm, each output coordinate is
+required to recover to a whole canonical unit bit-exactly, and the quarter-turn rotation is an
+integer permutation. A coordinate that does not round-trip is a failure, not a widened allowance.
+
+### Shrinking
+
+`traditional_renderer_shrink_bounds` probes all five modes with real `simplify`/`complicate`
+alternation, revalidating the bounds, the row count, the cut containment and the shape mode at
+every state, then exercises a false `simplify` return and repeated `complicate`, and asserts a
+real reduction from a nonminimal start. The mode selector is asserted to refuse both directions.
+
+### Execution
+
+Both tiers run `in_process` with `timeout_ms = 0`, chacha, zero rejection budgets and total
+generators. The registry-backed command is
+`cargo xtask test --summary --properties --property M-TRADITIONAL-SCAN --tier routine|extended`.
+Measured Windows timings and the retained-seed replay are in
+[`docs/testing/proptest-support-modules-evidence.md`](proptest-support-modules-evidence.md).
+
+### Failure record
+
+`failure.json` retains the classification, context, concrete case, reproduction command, direct
+cargo argv, captured SDK logs and shrink status. One confirmed defect and one hardening change live here, each with a
+named concrete no-RNG regression in the crate's `#[cfg(test)] mod tests`:
+
+- **Confirmed defect** — `narrow_translated_tip_fallback_is_placed_at_the_bbox_centre_regression`:
+  the centroid fallback rotated into bbox-centre-relative coordinates but never added the
+  translation back, so on the triangle `(5,4), (6,4.5), (4,4.5)` mm it emitted
+  `(-0.5, 0) -> (0.5, 0)` mm instead of `(4.5, 4.25) -> (5.5, 4.25)` mm. The packet required
+  reconciling whether the fallback is required before touching it; two independent live branches
+  (the centroid band and the interface-contour fallback) exist to keep a non-empty layer printable,
+  so the fallback is intended behaviour and the fix restores its contract. The
+  `D-209-SUPPORT-FILL-BEHAVIOUR-CHANGE` wording that says the fallback was removed is stale
+  relative to the code; correcting that row is a separate authorised action.
+- **Degenerate-input hardening** — `two_point_ring_emits_no_zero_length_fallback_regression`: the
+  same fallback pushed a coincident crossing pair unconditionally, so a two-point ring emitted one
+  zero-length stroke at `(0.5, 0.5)` mm. A two-point ring is not valid geometry, so no reachable
+  production loss was demonstrated; the guard mirrors the invariant the scan branch already
+  enforces and has no effect on non-degenerate input.
+
+### Acceptance
+
+Maps to AC-5, AC-8, AC-N1 and AC-N2. A holed `[0,10]^2` mm fixture with hole `[4,6]^2` and 1 mm
+spacing emits `(0,4)` and `(6,10)` mm on the interior hole row `y = 5` mm.
+`traditional_renderer_controls` accepts the valid positive observation and then rejects, with the
+same checker: a single unsplit `(1,5) -> (9,5)` mm segment across outer `[0,10]^2` minus
+`[2,3] x [4,6]` (both endpoints and the midpoint are material), the U-notch chord
+`(2,5) -> (8,5)`, an otherwise correct interval set with the interior `y = 1` row deleted, a row
+on the excluded top edge `y = 10`, a replacement of all output with empty, one arm of a rotated
+split row dropped, the untranslated centroid band, a sub-pitch diamond with no interface contour,
+and output injected into any of the six degenerate classes.
+
+## M-TREE-SMOOTH
+
+Registry record: `id = "M-TREE-SMOOTH"`, `package = "tree-support-planner"`, `target_kind = "lib"`,
+`target_name = "tree_support_planner"`,
+`test_name = "property_tests::proptest_tree_smoothing_graph"`,
+`production_symbol = "tree_support_planner::smooth_nodes"`,
+`production_path = "modules/core-modules/tree-support-planner/src/lib.rs"`,
+`features = ["tree-support-planner/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-tree-smooth"`.
+
+### Stable property ID
+
+`M-TREE-SMOOTH` — semantic (pinned-end branch relaxation, short-chain preservation and the
+source-backed merge extra-wall trigger).
+
+### Owner
+
+Package `tree-support-planner`; lib target `tree_support_planner`; module `property_tests` in
+`modules/core-modules/tree-support-planner/src/property_tests.rs`; production symbol
+`smooth_nodes` (private) at `modules/core-modules/tree-support-planner/src/lib.rs`, called by
+`SupportPlanner::plan_for_object` after pruning and before drawing and emitting. The fixtures build
+a private `NodeArena`, `LayerRecord`s and real parent/child/active links; no production visibility
+is widened.
+
+### Contract
+
+`SMOOTH_NODES_ITERATIONS` passes of a three-point average over each chain's interior nodes, with
+the head and tail held fixed, then a single `round()` on commit. On the simple single-chain
+subdomain: fixed endpoints keep position, radius and movement; chains shorter than three nodes are
+untouched; committed interior positions stay inside the coordinate-wise hull of the original
+chain. A committed interior node with more than one parent sets `need_extra_wall`, and the
+canonical end-of-chain interpolation then promotes a node bracketed by two extra-wall nodes. The
+width-derived half-line value is a **signed component threshold for the flag**, not a cap on
+`movement` and not a guarantee about `max_move_dist`; neither is asserted.
+
+`DEV-143` is preserved: the port relaxes in `f64` scaled units and rounds once where canonical
+truncates each pass, so no bit-exact upstream equality is claimed and no 100-pass reimplementation
+is used as the expected answer. `DEV-178` records that no renderer consumes the flag, so this
+charter asserts the flag on the node and makes no claim about rendered walls.
+
+### Domain
+
+Bounded valid graphs: a straight equally spaced chain (checked as an exact fixed point, position
+equal to the original and movement equal to the step), a bent chain with at least three nodes, a
+merge node with two parents, a polygon-typed child, and a chain shorter than three nodes, each with
+valid `active`, `parent`, `child` and `parents` links. Every chain stays under the tall-branch
+threshold, so that arm is out of the domain and is not asserted either way. Bounds are
+`max_abs_units`, `max_nodes`, `max_layers`, `max_width_units`; `max_layers` is constrained to
+`5..=256`, `max_nodes` to at least six, and `max_width_units` to an even value in `4000..=20000`.
+
+### Strategy
+
+Nonshrinking selector over the straight, bent, merge, polygon-child and short-chain modes with a
+total generator, so the run has zero rejects. The deterministic positive witness for each mode is
+built and checked inside the callback. Counters for accepted calls, interior nodes, straight-chain
+interior nodes, short-chain nodes, flagged nodes and the five witness classes are asserted positive
+after `check`.
+
+### Oracle
+
+Graph- and flag-based, derived from the contract: pinned endpoints compared field-by-field against
+their pre-call values, short chains compared field-by-field, interior positions checked for
+coordinate-wise containment in the original chain's per-axis integer hull with **zero** extra
+rounding allowance (the single `round()` cannot leave an integer hull while the `f64` error stays
+under half a unit), every reference re-inspected after the call, and the `need_extra_wall` trigger
+checked from the source-backed condition — `parents.len() > 1`, a signed component of `movement`
+greater than `mm_to_units(line_width / 2)`, or the tall-branch rule — never from the kernel's own
+output.
+
+### Tolerance
+
+Exact integers. The interior hull is an integer interval and the only rounding is the single
+commit `round()`, whose error is bounded below one unit for the fixture grid; the header records
+that derivation.
+
+### Shrinking
+
+`tree_planner_shrink_bounds` drives the real strategy, revalidates every exposed arena and layer
+record at every state, requires a permitted reduction, and exercises a false `simplify` return and
+repeated `complicate`.
+
+### Execution
+
+Both tiers run `in_process` with `timeout_ms = 0`, chacha, zero rejection budgets and total
+generators. Registry command
+`cargo xtask test --summary --properties --property M-TREE-SMOOTH --tier routine|extended`.
+Measured on Windows: 64 cases in 0.07 s and 1024 cases in 1.32 s of libtest. Provenance and the
+full counter mix are in
+[`docs/testing/proptest-support-modules-evidence.md`](proptest-support-modules-evidence.md).
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression.
+
+### Acceptance
+
+Maps to AC-3, AC-8 and AC-N1. `tree_planner_controls` accepts a valid straight chain and then
+rejects, with the same checker and its exact failure class: a pinned endpoint mutated to a
+different grid point, a `parent` or `parents[0]` index set to the arena length (a checker-only
+mutation — the kernel indexes its arena directly and promises no validation error), a rewired link,
+an interior node placed outside the hull, a broken straight-chain fixed point, the cleared merge
+flag, a spurious flag on a negative movement, and a changed short chain. The callback requires
+nonempty node and chain observations, and a zero-node run fails.
+
+## M-TREE-ROLES
+
+Registry record: `id = "M-TREE-ROLES"`, `package = "tree-support-planner"`, `target_kind = "lib"`,
+`target_name = "tree_support_planner"`,
+`test_name = "property_tests::proptest_tree_carve_and_roles"`,
+`production_symbol = "tree_support_planner::build_roles_batched"`,
+`production_path = "modules/core-modules/tree-support-planner/src/lib.rs"`,
+`features = ["tree-support-planner/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-tree-roles"`.
+
+### Stable property ID
+
+`M-TREE-ROLES` — semantic (per-region collision carve, serial and production batched role assembly,
+and the batched-only own-territory intersection).
+
+### Owner
+
+Package `tree-support-planner`; lib target `tree_support_planner`; module `property_tests`;
+production symbols `carve_emitted_regions` and `build_roles` (public hidden test seams) and
+`build_roles_batched` (private, the real emission kernel) at
+`modules/core-modules/tree-support-planner/src/lib.rs`. Production reaches the batched kernel
+through `flush_pending_emits` over private `RoleBuildInput`. The serial `build_roles` has **no**
+production caller; both are checked against the same independent model, and neither is the other's
+oracle. `carve_emitted_regions_with_bbox_gate` calls `carve_emitted_regions` only for its
+lone-gated/simplification repair, so nothing here claims every emitted role invokes the
+unconditional helper.
+
+### Contract
+
+For each input region, subtract the collision set and retain the uniquely larger surviving part
+where the cut splits it. Then form the declared body, roof, base and floor sets, and subtract each
+interface set from the body. The emitted role vector is ordered `SupportBody`, `TopInterface`,
+`BaseInterface`, `BottomInterface` with empty roles omitted, and the body is disjoint from each
+interface. Interface roles need not be pairwise disjoint outside the intentionally disjoint fixture.
+In the batched own-territory mode each role is additionally intersected with its own territory.
+Distinct-point skeleton segments are not assumed to create role polygons — every fixture passes
+empty segment lists, so the kernel's `structural_body_regions` contributes nothing and the claim
+stays inside the area algebra. The larger production routing around this kernel is out of scope.
+
+### Domain
+
+Bounded, non-simplifying, axis-aligned rectangle scenes: a body rectangle, a collision bar that
+splits it into one strictly larger and one strictly smaller part (both orientations, via a scene
+transpose), a roof rectangle inside the body, a floor rectangle, a fully swallowed region, a
+no-collision scene, a bbox-disjoint gated region, and a batched own-territory scene. Two
+distinguishable inputs are always submitted together so the batch's per-item association is
+verifiable. `role_simplify_tolerance` returns `None` for the whole generated domain —
+`avg_node_per_layer` in `0..=200` at line widths `1/64`, `0.4` and `2.0` mm for both
+`is_base_area` values — which is what makes the rectangular model exact; the controls assert the
+first `Some` value (2000 units at `avg = 201`, width 0.4 mm, base area). Bounds are
+`max_abs_units`, `max_regions`, `max_cells`, `max_batch_items`; `max_abs_units` is at least
+300 000 units because the second fixture reaches x = 30 mm, `max_regions` is `3..=32`,
+`max_cells` is at least `(2 * (max_regions + 3) - 1)^2`, and `max_batch_items` is `2..=16`.
+
+### Strategy
+
+Nonshrinking selector over the split, swallowed, no-collision, disjoint-gated and own-territory
+modes with a total generator. Deterministic positive fixtures for every mode run inside the
+callback. Counters for accepted calls, split/swallow/no-collision/territory cases, batch items,
+body cells, interface cells, territory-removed cells, swallowed cells and split regions are
+asserted positive after `check`.
+
+### Oracle
+
+The scene is partitioned at every input and output X and Y edge, and each open cell is labelled
+from the source rectangles at doubled-coordinate centres, so the comparison is an exact parity test
+insensitive to vertex order and ring start. The label algebra produces the expected body
+(`material - collision - roof - base - floor`) and the expected interface sets exactly as the
+contract states. Each batch item is compared against its own independently computed expectation,
+which is what catches a swapped or dropped result.
+
+### Tolerance
+
+None. All fixture coordinates are multiples of a whole millimetre and the operations are Clipper
+booleans on axis-aligned rectangles, so cells are compared exactly.
+
+### Shrinking
+
+`tree_planner_shrink_bounds` drives the real strategy, revalidates the rectangle ordering, the
+collision disjointness preconditions, the `role_simplify_tolerance` invariant and the batch arity
+at every state, requires a permitted reduction, and exercises a false `simplify` return and
+repeated `complicate`.
+
+### Execution
+
+Both tiers run `in_process` with `timeout_ms = 0`, chacha, zero rejection budgets and total
+generators. Registry command
+`cargo xtask test --summary --properties --property M-TREE-ROLES --tier routine|extended`.
+Measured on Windows: 64 cases in 0.23 s and 1024 cases in 5.95 s of libtest, with 127 and 2 535
+batch items checked. Provenance and the full counter mix are in
+[`docs/testing/proptest-support-modules-evidence.md`](proptest-support-modules-evidence.md).
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression. A batched result
+that disagrees with its own independently computed item is a failure, never a reason to fall back
+to the serial path.
+
+### Acceptance
+
+Maps to AC-4, AC-8 and AC-N1. In an independently modelled body `[0,10]^2` with collision
+`[7,8] x [0,10]` and roof `[3,5]^2`, the unique larger carved body side contains `(1,1)`, excludes
+`(7.5,1)` and `(8.5,1)`, and excludes roof point `(4,4)` from the body while the roof retains it.
+With batched own territory `[0,6] x [0,10]` the body additionally excludes `(6.5,1)`.
+`tree_planner_controls` accepts the valid positive observation and then rejects, with the same
+checker and its exact failure class: a body speck at each forbidden point (classed as collision
+material, wrong retained fragment and body/interface overlap), a wrong role order, an empty role,
+an omitted body, all-empty output, a carve fragment dropped, the batched `(6.5,1)` territory
+speck, the batch result swapped with the second fixture translated by 20 mm in X, a dropped batch
+item, and serial output passed off as the batched result.
+
+## M-SUPPORT-RASTER
+
+Registry record: `id = "M-SUPPORT-RASTER"`, `package = "traditional-support-planner"`,
+`target_kind = "lib"`, `target_name = "traditional_support_planner"`,
+`test_name = "property_tests::proptest_support_raster_cells"`,
+`production_symbol = "traditional_support_planner::agg_raster::rasterize_polygons"`,
+`production_path = "modules/core-modules/traditional-support-planner/src/agg_raster.rs"`,
+`features = ["traditional-support-planner/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-support-raster"`.
+
+### Stable property ID
+
+`M-SUPPORT-RASTER` — semantic (whole-buffer cell coverage of the AGG support rasterizer under a
+restricted open-interior model).
+
+### Owner
+
+Package `traditional-support-planner`; lib target `traditional_support_planner`; module
+`property_tests` in `modules/core-modules/traditional-support-planner/src/property_tests.rs`;
+production symbol `rasterize_polygons` (public) at
+`modules/core-modules/traditional-support-planner/src/agg_raster.rs`. Grids are built with
+`GridParams::for_test`, so constructor arithmetic is never inferred from the rasterizer. The
+kernel is consumed only on the opt-in `RasterizerMode::Agg` descent arm; this charter makes no
+claim about the default `LegacySemantic` mode.
+
+### Contract
+
+A cell is marked when the polygon set covers any part of it, from either a centre-inside
+nonzero-winding scan or any edge passing through the cell; there is no coverage threshold. The
+model is restricted to axis-aligned, well-wound rectangles, notches and rectangular holes whose
+vertices sit strictly away from pixel-grid lines and corners, which makes the open-interior set of
+each material rectangle unambiguous. Within that restriction the **entire** row-major `0/1` buffer
+and its length are compared. Coincident-boundary conventions, nonzero-winding parity at shared
+edges and antialiasing amplitudes are explicitly out of scope, and the kernel is angle-0 only.
+
+### Domain
+
+Bounded orthogonal scenes on a checked integer grid with a translated (including negative) origin,
+a pixel size that can partially cover a cell, at least one cell whose centre is outside while its
+coverage is positive, and a rectangular hole whose interior cell stays unset. Empty and short rings
+and a zero-sized grid are separate deterministic no-work modes. Bounds are `max_abs_units`,
+`max_pixel_units`, `max_grid_width`, `max_grid_height`, `max_cells`; `max_cells` is checked before
+any allocation and every dimension, stride and origin offset is computed in checked arithmetic.
+
+### Strategy
+
+A nonshrinking shape-mode selector (rectangle, notch, holed rectangle, multi-component, no-work)
+over a total generator, plus deterministic witnesses built and checked inside every callback. Each
+generated value is validated against the domain before the kernel runs. After `check` the
+accepted-call count, the four witness counters (centre-outside, hole-interior, negative-origin
+notch, no-work) and the generated set-cell total are asserted positive. The per-run mode mix, the
+checked-cell tally, the centre-outside tally and the generated hole-interior tally are reported but
+not required positive, because a run may legitimately generate no holed shape — the positive
+hole-interior topology is supplied by the deterministic witness, not by the sampler.
+
+### Oracle
+
+The expected buffer is enumerated cell by cell with exact interval arithmetic: each cell's
+half-open integer square is intersected with each analytically described material rectangle, the
+analytically described holes are subtracted, and the cell is set iff the remaining area is
+positive. The model never consults production edge rasterization, `contours_simplified` or the
+host clipper.
+
+### Tolerance
+
+None. Coordinates and pixel sizes are integers in canonical units, so the comparison is exact
+buffer equality. The only derived quantity is the fixture-side exclusion band that keeps vertices
+off grid lines and corners.
+
+### Shrinking
+
+`traditional_planner_shrink_bounds` drives the real strategy through
+`current`/`simplify`/`complicate`, revalidates every exposed case against the domain at every
+state, requires a real reduction from a nonminimal start, and exercises a false `simplify` return
+and repeated `complicate`. The mode selector is asserted to refuse both directions.
+
+### Execution
+
+Both tiers run `in_process` with `timeout_ms = 0`, chacha, zero rejection budgets and total
+generators. Registry command
+`cargo xtask test --summary --properties --property M-SUPPORT-RASTER --tier routine|extended`.
+Measured Windows timings are in
+[`docs/testing/proptest-support-modules-evidence.md`](proptest-support-modules-evidence.md).
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression.
+
+### Acceptance
+
+Maps to AC-1, AC-8 and AC-N1. `traditional_planner_controls` first accepts the valid positive
+observation, then rejects with the same checker and its exact failure class: a centre-only bit flip
+on the witness whose cell `(1,1)` has positive coverage but a centre at `(15,15)` grid units
+outside the material, and a flipped hole-interior bit. A size mismatch, a shifted origin, an
+unset-but-covered cell or a set hole-interior cell fails.
+
+## M-SUPPORT-HOLES
+
+Registry record: `id = "M-SUPPORT-HOLES"`, `package = "traditional-support-planner"`,
+`target_kind = "lib"`, `target_name = "traditional_support_planner"`,
+`test_name = "property_tests::proptest_support_hole_fill"`,
+`production_symbol = "traditional_support_planner::agg_raster::fill_grid_holes"`,
+`production_path = "modules/core-modules/traditional-support-planner/src/agg_raster.rs"`,
+`features = ["traditional-support-planner/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-support-holes"`.
+
+### Stable property ID
+
+`M-SUPPORT-HOLES` — semantic (one-pass simultaneous single-cell hole fill on the original grid).
+
+### Owner
+
+Package `traditional-support-planner`; lib target `traditional_support_planner`; module
+`property_tests`; production symbol `fill_grid_holes` (public) at
+`modules/core-modules/traditional-support-planner/src/agg_raster.rs`, reached in production through
+`contours_simplified`'s `fill_holes` branch when a caller requests extraction with hole filling.
+The property checks the kernel directly and inherits no caller guarantee.
+
+### Contract
+
+Output is a copy of the input with exactly one non-iterative pass over the interior cells. An
+interior cell becomes set when it is set, or when both horizontal neighbours are set in the
+**original** grid, or when both vertical neighbours are set in the original grid. The outer ring is
+never written. Reading the original rather than the partially written copy is load-bearing: a
+two-cell gap stays unbridged and a left-to-right in-place fill would wrongly bridge it. Inputs with
+either dimension below three, or a buffer shorter than `width * height`, are returned unchanged.
+This is not a general enclosed-hole fill and idempotence is not claimed.
+
+### Domain
+
+Bounded small grids with an independently validated boundary ring and interior populations that
+include a hole bridged horizontally only, a hole bridged vertically only, a single-cell hole, a
+two-cell horizontal gap and a two-cell vertical gap. Separately: a dimension below three, a short
+buffer, an all-zero grid and an all-set grid. Bounds are `max_grid_width`, `max_grid_height`,
+`max_cells`, each checked before allocation.
+
+### Strategy
+
+Nonshrinking shape-mode selector over a total generator, with the deterministic 5x5 cascading
+witness executed inside every callback. Counters for accepted calls, grid/tiny/short modes,
+checked cells, filled cells and horizontal/vertical fills are asserted positive after `check`.
+
+### Oracle
+
+The expected buffer is computed from the **original** grid with a pure two-neighbour relation
+written into a separate output buffer, so the model cannot cascade by construction. It is written
+from the rule above, never by re-invoking the kernel or by iterating a flood fill.
+
+### Tolerance
+
+None; the buffers are exact.
+
+### Shrinking
+
+`traditional_planner_shrink_bounds` drives the real strategy, rejects any exposed case with a set
+outer-ring cell or an out-of-bounds dimension, requires a real reduction, and demonstrates the
+stable-false `complicate` state.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, zero rejection budgets. Registry command
+`cargo xtask test --summary --properties --property M-SUPPORT-HOLES --tier routine|extended`.
+Measured timings are in the evidence file.
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression.
+
+### Acceptance
+
+Maps to AC-1, AC-8 and AC-N1. The property compares the whole buffer for every accepted case.
+`traditional_planner_controls` asserts the exact 5x5 requirement — set cells
+`(column,row) = (1,1), (3,2), (1,3)` yield `(1,2) = 1` and `(2,2) = 0` — then rejects an output
+that changes `(2,2)` after the valid fill, and rejects a fill of one cell inside a two-cell
+horizontal gap.
+
+## M-SUPPORT-GRID
+
+Registry record: `id = "M-SUPPORT-GRID"`, `package = "traditional-support-planner"`,
+`target_kind = "lib"`, `target_name = "traditional_support_planner"`,
+`test_name = "property_tests::proptest_support_grid_extraction"`,
+`production_symbol = "traditional_support_planner::agg_raster::SupportGrid::new"`,
+`production_path = "modules/core-modules/traditional-support-planner/src/agg_raster.rs"`,
+`features = ["traditional-support-planner/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-support-grid"`.
+
+### Stable property ID
+
+`M-SUPPORT-GRID` — semantic (macro-block isolation, 3x3 erosion, sample selection and trim
+subtraction over explicitly constructed rasters).
+
+### Owner
+
+Package `traditional-support-planner`; lib target `traditional_support_planner`; module
+`property_tests`; production symbols `SupportGrid::{new, for_test, grid, extract_islands,
+filter_islands_by_samples, extract_support}` and `seed_fill_block`, `dilate_trimming_region`,
+`contours_simplified` at
+`modules/core-modules/traditional-support-planner/src/agg_raster.rs`.
+
+`SupportPlanner::plan_candidate` really calls `SupportGrid::new`, `extract_islands` and
+`filter_islands_by_samples` on the `RasterizerMode::Agg` arm and does **not** call
+`extract_support`, so `extract_support` is exercised as a public composition seam only and is never
+presented as a production caller.
+
+### Contract
+
+Two separate contracts are checked and they are not interchangeable:
+
+1. `seed_fill_block` does exactly two block-local sweeps. A step copies a set bit to the adjacent
+   cell only when the eroded trimming mask is clear at **both** endpoints, so propagation never
+   crosses a macro block and never passes a masked cell. Original masked seeds remain present but
+   cannot propagate. There is no fixed point: an arbitrary masked maze is **not** modelled.
+2. `extract_islands` runs `contours_simplified` at a legal in-cell offset and differences the
+   trimming polygons away; `filter_islands_by_samples` keeps only islands containing at least one
+   sample. AGG block snapping may enlarge the extracted carry beyond the input polygon and may
+   avoid a *local* blocker that yields `NoRoute` in legacy mode (`DEV-166`), so no
+   extracted-subset-of-input or cross-layer monotonicity claim is made.
+
+### Domain
+
+Bounded multi-block scenes with a pre-validated empty outer ring, an analytically specified 3x3
+erosion mask, and per block either one axis-aligned rectangle of unmasked traversable cells with a
+nonempty seed inside it, or no usable seed. That is the only subdomain on which the source's two
+sweeps provably equal a flood-to-fixpoint, so the queue flood is used **only** there and is proved
+from the rectangular shape rather than asserted. A block outside that subdomain is never compared
+to the flood model. It is instead held to sound necessary conditions only — a block with no
+unmasked seed gains no cell, and a gained cell must lie inside the block's fixpoint reach — which
+cannot pass a wrong result but does not pin the exact set. Those blocks are counted separately and
+reported, so each run states how much of its population was exactly modelled rather than
+substituting a weaker oracle silently. Separately: a mask/grid length mismatch
+(the source asserts, so it is tested as the specified panic), zero size or stride, a blocked
+source, a blocked destination, an empty mask, neighbouring-block isolation, a tiny or short
+extraction buffer with a valid offset, and an invalid offset with its own assertion guard.
+Extraction uses analytic single-cell and rectangular islands separated by at least one pixel.
+Bounds are `max_abs_units`, `max_pixel_units`, `max_grid_width`, `max_grid_height`, `max_blocks`,
+`max_cells`.
+
+### Strategy
+
+Nonshrinking selector over the scene, seed, island and trim modes with a total generator. Every
+scene passes the per-block rectangularity predicate before the flood model is used, and the
+deterministic witnesses for block isolation, masked source and destination, the macro-block halo,
+sample selection, trim, hole exclusion, no samples, empty extraction and the legal offset boundary
+run inside every callback. Counters for proven/seeded/masked blocks, filled cells, multi-block
+scenes, islands, selected and trimmed islands are asserted positive after `check`.
+
+### Oracle
+
+The erosion mask is modelled as an all-nine-neighbour conjunction over the trimming raster. The
+seed-fill result on the proven subdomain is modelled with a four-neighbour queue flood from each
+block's seeds, and the equivalence with the source's two sweeps is justified from the rectangle
+shape and verified block by block. Extraction is compared as a geometric set at test-owned interior
+points and at explicitly derived rectangle limits, never by contour start vertex, vertex order or
+ring count. Trim is modelled as set subtraction, sample filtering as containment of the sample in
+the island's own geometry, and the halo witness is compared against the block-local extent rather
+than against the original polygon subset.
+
+### Tolerance
+
+Exact integer cell comparisons for the mask and the fill. The extraction comparison is exact in
+canonical units: the expected rectangle limits are derived from `offset_in_grid * pixel_size` and
+the corpus offset is an integer, so the corner displacement is an integer addition.
+
+### Shrinking
+
+`traditional_planner_shrink_bounds` drives the real strategy, revalidates the empty outer ring, the
+rectangularity predicate and the block layout at every simplified state, requires a permitted
+reduction, and exercises the false-`simplify` and repeated-`complicate` states.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, zero rejection budgets. Registry command
+`cargo xtask test --summary --properties --property M-SUPPORT-GRID --tier routine|extended`.
+Measured timings are in the evidence file.
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression.
+
+### Acceptance
+
+Maps to AC-1, AC-8 and AC-N1. `traditional_planner_controls` rejects, using the same checker: a
+second-block cell set by the first block's fill (`grid_size = (6,4)`, `blocks = (2,1)`,
+`oversampling = 2`, seed `(2,1)`, clear mask — `(3,1)` must stay `0`); propagation out of a masked
+seed `(1,1)` or into a masked destination `(2,1)`; selecting the second of two separated
+`SupportGrid::for_test` islands at pixel size 10 with sample `(15,15)` grid units; and retained
+trim material at `(17,15)` when the trim covers `[15,20] x [10,20]` grid units and the sample is the
+untrimmed point `(12,15)`.
+
+## M-SUPPORT-TERRITORY
+
+Registry record: `id = "M-SUPPORT-TERRITORY"`, `package = "traditional-support-planner"`,
+`target_kind = "lib"`, `target_name = "traditional_support_planner"`,
+`test_name = "property_tests::proptest_support_planner_territory"`,
+`production_symbol = "traditional_support_planner::SupportPlanner::clip_to_territory"`,
+`production_path = "modules/core-modules/traditional-support-planner/src/lib.rs"`,
+`features = ["traditional-support-planner/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-support-territory"`.
+
+### Stable property ID
+
+`M-SUPPORT-TERRITORY` — semantic (exact-source own intersection and base-minus-expanded-foreign
+clearance at the planner's local seam).
+
+### Owner
+
+Package `traditional-support-planner`; lib target `traditional_support_planner`; module
+`property_tests`; production symbol `SupportPlanner::clip_to_territory` (private) at
+`modules/core-modules/traditional-support-planner/src/lib.rs`, called in `plan_candidate` after
+extraction and again on the propagation arm. Fixtures are fresh test-local `SupportAnalysisView`
+values built over `SupportAnalysisIR`.
+
+### Contract
+
+With a minted modifier sub-region's own territory present, the result is `polys` intersected with
+that territory, looked up by the exact `(global_layer_index, object_id,
+modifier_sub_region_id, ordered variant_chain)` identity. With no own entry, the result is `polys`
+minus the positive-line-width expanded family-foreign rectangle from
+`territory_partition(object_id, layer, "traditional")`; when the partition or its foreign set is
+empty the input is returned unchanged, and an empty input is returned unchanged. A base region
+therefore loses the band the foreign family grows by the line width, while a minted sub-region
+keeps its own territory. This is `DEV-165`'s PnP-only rule at the planner's local seam. It is
+**not** the host clipper proof owned by packet `proptest-openrscad_11_pbt-prepass`, and it makes no
+canonical-routing claim.
+
+### Domain
+
+Controlled axis-aligned rectangles in canonical units: a subject rectangle, rectangular own
+territory, rectangular foreign territory, a positive line width, at least two distinguishable
+ordered variant chains and their swap, a sibling region with the other chain, a second object id
+and a second layer, plus no-partition, own-family-only, empty-subject and fully-removed modes. The
+fully-removed subject is placed inside the foreign rectangle grown by the line width, so the whole
+subject is removed rather than just its middle band. Bounds are `max_abs_units`,
+`max_clearance_units`, `max_cells`; the classification grid is derived from the checked subject
+extent and `max_cells` is checked before allocation.
+
+### Strategy
+
+Nonshrinking selector over the own, base, no-partition, own-family-only, empty and fully-removed
+modes with a total generator. The deterministic positive fixture for each mode is built and checked
+inside the callback. Counters for kept cells, removed cells, clearance cells and the seven witness
+classes are asserted positive after `check`.
+
+### Oracle
+
+Cells are classified by rectangle arithmetic at test-owned points: a cell is retained when it lies
+in the subject and, for the own mode, inside the own territory rectangle; for the base mode it is
+retained when it lies in the subject and outside the foreign rectangle expanded by the supplied
+line width. Nothing in the oracle calls the host clipper, so a clipping or clearance defect cannot
+be reproduced by the expectation. The chain vector is compared exactly and never sorted.
+
+### Tolerance
+
+Exact at cell points placed away from the expanded rectangle's boundary by at least one canonical
+unit. The `(4.5, 5)` mm witness is exactly on the expanded boundary for a 1 mm clearance from
+`x = 5` and is asserted **excluded**, because the difference removes the closed expanded set. No
+allowance is expanded to make a failure pass.
+
+### Shrinking
+
+`traditional_planner_shrink_bounds` drives the real strategy through
+`current`/`simplify`/`complicate`, revalidates the exact chain vector and the rectangle ordering at
+every state, requires a permitted reduction, and demonstrates the stable `complicate` state.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, zero rejection budgets. Registry command
+`cargo xtask test --summary --properties --property M-SUPPORT-TERRITORY --tier routine|extended`.
+Measured timings are in the evidence file.
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression.
+
+### Acceptance
+
+Maps to AC-2, AC-8 and AC-N1. For subject `[0,10]^2`, own territory `[0,4] x [0,10]` must contain
+`(2,5)` and exclude `(6,5)`; for foreign `[5,7] x [0,10]` with width `1` the base result must
+exclude `(4.5,5)` and `(6,5)` and retain `(2,5)` and `(9,5)`. A fully covered subject must come
+back empty, a second object or layer must not clip, and `traditional_planner_controls` rejects
+reinserting `(4.5,5)` (omitted clearance), substituting the other ordered-chain territory for the
+exact own-source lookup, and a false all-empty own result.
+
+## M-TREE-SCAN
+
+Registry record: `id = "M-TREE-SCAN"`, `package = "tree-support"`, `target_kind = "lib"`,
+`target_name = "tree_support"`, `test_name = "property_tests::proptest_tree_support_scan"`,
+`production_symbol = "tree_support::TreeSupport::scan_fill_region"`,
+`production_path = "modules/core-modules/tree-support/src/lib.rs"`,
+`features = ["tree-support/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-tree-scan"`.
+
+### Stable property ID
+
+`M-TREE-SCAN` — semantic (complete horizontal and vertical scan-interval coverage of the tree fill
+kernel, with a separated mid-scan fallback).
+
+### Owner
+
+Package `tree-support`; lib target `tree_support`; module `property_tests` in
+`modules/core-modules/tree-support/src/property_tests.rs`; production symbol
+`TreeSupport::scan_fill_region` (private) at `modules/core-modules/tree-support/src/lib.rs`. Its
+production caller is `TreeSupport::render_polygon_with_wall_count`, reached from
+`TreeSupport::run_support`; the `vertical` flag is the real production parameter
+`entry.anchor_layer_index % 2 != 0`.
+
+### Contract
+
+Crossings are gathered from the contour and every hole ring at
+`scan_min + spacing / 2 + n * spacing` while below `scan_max`, where the scan axis is Y for the
+horizontal mode and X for the vertical mode. Crossings are sorted and paired; a pair is emitted
+only when it is non-degenerate and lies inside the region's extent **on the segment's own axis**.
+Each surviving pair becomes one `ExtrusionPath3D` with `role = SupportMaterial`, the supplied Z and
+`speed_factor`, `flow_factor = 1.0` and the module's `line_width`. When no ordinary line is emitted,
+a separate mid-scan fallback is attempted at the axis midpoint; it is a distinct mode, not a
+universal tiny-tip guarantee.
+
+### Domain
+
+Axis-aligned rectangles, notches and holed rectangles in horizontal and vertical modes, with
+positive dyadic dimensions and spacing so the row grid is exact, plus a separated fallback mode and
+a separate nonpositive-spacing and degenerate-ring empty mode. Bounds are `max_abs_units`,
+`max_vertices`, `max_holes`, `max_components`, `max_shrink_candidates`, `max_spacing_units`,
+`max_rows`; `max_abs_units` is at least 200 000 units because the required vertical witness reaches
+y = 20 mm.
+
+### Strategy
+
+Nonshrinking selector over the horizontal-rectangle, vertical-rectangle, notch, holed, fallback and
+degenerate modes with a total generator. Deterministic positive fixtures for every mode run inside
+the callback. Counters for accepted calls, per-mode classes, vertical cases, strokes, segments and
+split rows, plus the six witness classes, are asserted positive after `check`.
+
+### Oracle
+
+Expected intervals are derived independently at the row positions above from the fixture's own
+rectangle edges, and expected segments are compared whole, with holes excluded by the same
+rectangle arithmetic. Every consecutive point pair of every path is additionally checked with the
+boundary-inclusive `oracles::segment_in_region` against the self-built `ExPolygon`. Metadata is
+compared exactly.
+
+### Tolerance
+
+Exact: every scan fixture coordinate is a multiple of 1/8 mm and every spacing a multiple of
+1/4 mm, so `units_to_mm`, the `f64` row accumulation, the mid-scan fallback and `mm_to_units` are
+all exact dyadic arithmetic. The kernel's crossing test `(a > scan) != (b > scan)` makes a ring's
+low edge inclusive and its high edge exclusive, which the model reproduces, so rows that land
+exactly on a hole edge are compared exactly too.
+
+### Shrinking
+
+`tree_renderer_shrink_bounds` drives the real strategy, revalidates the ring structure and the mode
+selection at every state, requires a permitted reduction, and exercises the false-`simplify` and
+repeated-`complicate` states.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, zero rejection budgets. Registry command
+`cargo xtask test --summary --properties --property M-TREE-SCAN --tier routine|extended`.
+Measured timings are in the evidence file.
+
+### Failure record
+
+**Confirmed defect and focused fix (commit `1515f8ce`).** The pair guard compared the segment-axis
+pair against the region's perpendicular extent. In `vertical` mode the pair holds Y coordinates
+while the guard tested `pair[1] <= max_x`, so the required `[0,10] x [0,20]` mm witness at 2.5 mm
+spacing emitted **zero** strokes — all four pairs are `(0.0, 20.0)` and fail `20.0 <= 10.0` — and
+the mid-scan fallback was rejected by the same comparison. Because `vertical` is
+`entry.anchor_layer_index % 2 != 0`, every odd-anchor-layer tree region taller than it is wide lost
+its fill. The kernel now selects the pair extent from the segment's own axis. The no-RNG regression
+`vertical_scan_fill_spans_the_full_y_extent_regression` lives in the crate's `#[cfg(test)] mod
+tests`, fails on the old kernel with `got []` against an expected 4, and needs neither RNGs nor
+`PNP_PROPERTY_CONTEXT`.
+
+### Acceptance
+
+Maps to AC-5, AC-8, AC-N1 and AC-N2. The vertical witness produces exactly four strokes at
+`x = 1.25, 3.75, 6.25, 8.75` mm each spanning `y [0,20]`. `tree_renderer_controls` accepts the
+valid positive observation and then rejects, with the same checker: a single unsplit
+`(1,5) -> (9,5)` mm segment across outer `[0,10]^2` minus `[2,3] x [4,6]`, the U-notch chord
+`(2,5) -> (8,5)`, a dropped interior `y = 1` row, and a false all-empty output.
+
+## M-TREE-RENDER
+
+Registry record: `id = "M-TREE-RENDER"`, `package = "tree-support"`, `target_kind = "lib"`,
+`target_name = "tree_support"`,
+`test_name = "property_tests::proptest_tree_support_walls_and_fill"`,
+`production_symbol = "tree_support::TreeSupport::render_polygon_with_wall_count"`,
+`production_path = "modules/core-modules/tree-support/src/lib.rs"`,
+`features = ["tree-support/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-tree-render"`.
+
+### Stable property ID
+
+`M-TREE-RENDER` — semantic (distinct inset wall bands plus clearance-respecting fill for the tree
+renderer's explicit-wall-count path).
+
+### Owner
+
+Package `tree-support`; lib target `tree_support`; module `property_tests`; production symbol
+`TreeSupport::render_polygon_with_wall_count` (private) at
+`modules/core-modules/tree-support/src/lib.rs`, reached from `TreeSupport::run_support`.
+`TreeSupport::render_polygon` is a test-used wrapper only and is not treated as the production
+explicit-wall-count path.
+
+### Contract
+
+Wall `i` is the region offset by `-line_width * (i + 0.5)`, emitted as a closed ring per contour and
+per hole. Fill is the region offset by `-line_width * wall_count`, scanned at
+`max(fill_spacing_mm, line_width)` through `scan_fill_region`. For a 10 mm square with line width
+`0.5` and two walls this gives the distinct closed wall-centre bands `[0.25, 9.75]` and
+`[0.75, 9.25]`, and fill centre lines inside `[1, 9]^2`. For a hole the outward hole expansion is
+accounted for and every wall and fill segment is checked against the relevant analytically inset
+region. Offset-collapse and small-tip cases are explicit possibly-empty outcomes; nonempty output is
+required only in the independently feasible roomy scenes. `from_config` clamps the configured wall
+count, so the private zero-wall mode is checked as a kernel mode and is never claimed to pass
+through the entrypoint.
+
+### Domain
+
+Sufficiently roomy axis-aligned rectangles and a holed rectangle with line width `0.5` mm, wall
+counts zero, one and two, both scan orientations, and a positive fill spacing, plus explicit
+collapse and sub-pitch fallback modes. Bounds are `max_abs_units`, `max_vertices`, `max_holes`,
+`max_components`, `max_shrink_candidates`, `max_width_units`, `max_walls`, `max_rows`.
+
+### Strategy
+
+Nonshrinking selector over the one-wall, two-wall, holed, zero-wall, holed-zero-wall, collapse and
+fallback modes with a total generator. Deterministic positive fixtures for every mode run inside the
+callback. After `check` the accepted-call count and all nine witness counters (two-wall bands,
+two-wall fill, vertical fill, hole bands, hole split rows, zero-wall exact fill, partial collapse,
+full collapse, sub-pitch fallback) are asserted positive. The per-run mode mix, wall-loop,
+fill-stroke and split-row tallies are reported but not required positive, because a run may
+legitimately generate no fully-collapsing shape — that topology comes from the deterministic
+witness.
+
+### Oracle
+
+Expected extents are derived analytically from the inset arithmetic above — never from
+`offset_polygons` output, which would make the kernel its own oracle. Distinctness of the two wall
+bands is asserted from their derived extents. Fill centre lines are checked against the
+independently inset fill rectangle, and every consecutive point pair of every path is checked with
+the boundary-inclusive `oracles::segment_in_region` against the self-built inset region.
+
+### Tolerance
+
+`CLIPPER_ALLOW = 2` canonical units (200 nm) on every Clipper-derived coordinate, derived as
+follows: the offset delta is a dyadic multiple of 1/4 mm so `delta_mm as f64 * 10_000` is exact;
+Clipper2 rounds each offset vertex to the nearest integer (<= 0.5 unit); the scan kernel then
+re-derives rows through one `f32` round trip and one `mm_to_units` rounding (<= 0.5 unit plus an
+`f32` relative error below 0.06 unit at 10^6 units). The total is <= 1.06 unit, so 2 is a
+factor-of-two margin rather than an observed epsilon. The generator keeps every fill row at least
+625 units (1/16 mm) from every analytic fill edge, far outside the allowance, and the checker
+re-verifies that separation and reports a violation as a fixture failure. The zero-wall mode never
+calls Clipper and is compared with allowance 0. `M-TREE-SCAN` needs no allowance at all: its
+fixtures are on a 1/8 mm grid with 1/4 mm spacings, so the whole comparison is exact dyadic
+arithmetic.
+
+### Shrinking
+
+`tree_renderer_shrink_bounds` drives the real strategy, revalidates the wall count against
+`max_walls`, the roominess precondition and the hole nesting at every state, requires a permitted
+reduction, and exercises the false-`simplify` and repeated-`complicate` states.
+
+### Execution
+
+Both tiers, `in_process`, `timeout_ms = 0`, chacha, zero rejection budgets. Registry command
+`cargo xtask test --summary --properties --property M-TREE-RENDER --tier routine|extended`.
+Measured timings are in the evidence file.
+
+### Failure record
+
+Standard `PropertyRun` artifacts; no confirmed defect, so no committed regression.
+
+### Acceptance
+
+Maps to AC-6, AC-8 and AC-N1. `tree_renderer_controls` accepts the valid positive observation and
+then rejects, with the same checker and its exact failure class: the inner `[0.75,9.25]` loop
+replaced by a duplicate of the outer `[0.25,9.75]` loop (a coincident wall), the hole wall removed
+from the holed case, and fill inserted at `(0.5,5)` outside the required `[1,9]^2` fill region. The
+sub-pitch scan fallback and the offset-collapse/no-work modes are separately observed and are not
+treated as always-success or always-empty.

@@ -12,13 +12,26 @@
 //!
 //! Takes per-semantic polygon outputs (from Phase 4 colorize/extract_segments
 //! and Phase 6 top_bottom) and composes them into disjoint variant chains per
-//! layer. Each variant chain key is a sorted `Vec<(semantic_name: String,
-//! PaintValue)>`; the empty Vec represents BASE (unpainted) area.
+//! layer. Each variant chain key is a `Vec<(semantic_name: String,
+//! PaintValue)>` whose pair order is the **caller's first-occurrence semantic
+//! order**; the empty Vec represents BASE (unpainted) area.
 //!
-//! # Key encoding
+//! # Input-order contract
+//!
+//! `compose_variants` groups axes in the order each semantic first appears in
+//! `semantic_outputs` and emits every chain key in that same order. The caller
+//! owns the sequence: `execute_paint_segmentation` supplies each parent's
+//! inputs in the canonical `(region-split priority, semantic name)` order
+//! derived from the committed `RegionMapIR` chains. There is deliberately no
+//! name sort here — sorting would silently substitute a different identity
+//! from the one RegionMapping committed.
+//!
+//! # Key ordering
+//!
 //! `PaintValue` implements `Ord` (Flag < Scalar < ToolIndex < Custom; within
-//! Scalar, `f32::total_cmp` is used). `ChainKey` elements are sorted
-//! alphabetically by `semantic_name` for deterministic `BTreeMap` ordering.
+//! Scalar, `f32::total_cmp` is used). Chain keys are compared as `Vec`s, so
+//! within a `BTreeMap` two chains differ by their ordered pair sequence; the
+//! sequence itself is the caller-supplied axis order, never re-sorted.
 
 use crate::polygon_ops::{difference_ex, intersection_ex, union_ex};
 use slicer_ir::{ExPolygon, PaintSemantic, PaintValue};
@@ -47,8 +60,10 @@ pub(super) fn semantic_name(s: &PaintSemantic) -> String {
 
 /// Variant-chain key type.
 ///
-/// Each element is `(semantic_name, PaintValue)`. Elements are sorted
-/// alphabetically by `semantic_name` for deterministic BTreeMap ordering.
+/// Each element is `(semantic_name, PaintValue)`, in the caller's
+/// first-occurrence semantic axis order (see the module docs). Chain order is
+/// part of the identity: `RegionKey` equality and hashing include it, and
+/// selection/config lookup requires an exact match.
 /// `PaintValue` implements `Ord` (Flag < Scalar < ToolIndex < Custom; within
 /// Scalar, `f32::total_cmp` provides the total ordering).
 /// Empty Vec ⟹ BASE (unpainted) area.
@@ -60,8 +75,17 @@ pub type ChainKey = Vec<(String, PaintValue)>;
 /// `ChainKey`:
 /// - Empty `Vec` → BASE (unpainted) area.
 /// - Non-empty `Vec` → painted by that exact combination of
-///   `(semantic_name, value_repr)` pairs, ordered alphabetically by
-///   semantic name.
+///   `(semantic_name, value_repr)` pairs, in the order the semantics first
+///   appear in `semantic_outputs`.
+///
+/// # Caller-supplied axis order
+///
+/// The pair order in every emitted key follows the **first occurrence** of each
+/// semantic in `semantic_outputs`; values of one semantic keep their own
+/// input order (the caller's established discrete `PaintValue` order). This
+/// function never sorts axes by name: the committed `RegionMapIR` chain
+/// identity is canonical `(region-split priority, semantic name)` order and a
+/// name sort here would mint a different identity.
 ///
 /// Chains are assigned priority by length (longer chains win): the combined
 /// intersection of multiple semantics is claimed before any individual
@@ -82,15 +106,23 @@ pub fn compose_variants(
     // Match RegionMapping: each semantic contributes either no value or one
     // value. Group first rather than enumerating a powerset of individual
     // values (which also overflows a bit mask for sufficiently many colors).
+    //
+    // Axis order is the caller's first-occurrence order, retained in `axes`;
+    // the name-keyed map is only a value accumulator, never an iteration order.
     let mut by_semantic: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    let mut axes: Vec<String> = Vec::new();
     for (index, output) in semantic_outputs.iter().enumerate() {
-        by_semantic
-            .entry(semantic_name(&output.semantic))
-            .or_default()
-            .push(index);
+        let name = semantic_name(&output.semantic);
+        if !by_semantic.contains_key(&name) {
+            axes.push(name.clone());
+        }
+        by_semantic.entry(name).or_default().push(index);
     }
     let mut subsets: Vec<Vec<usize>> = vec![Vec::new()];
-    for values in by_semantic.values() {
+    for name in &axes {
+        let values = by_semantic
+            .get(name)
+            .expect("every retained axis has at least one output");
         let previous_len = subsets.len();
         for i in 0..previous_len {
             for &index in values {
@@ -141,7 +173,8 @@ pub fn compose_variants(
                 chain_poly = difference_ex(&chain_poly, &claimed);
             }
 
-            // Build chain key: sorted (semantic_name, PaintValue) pairs.
+            // Build chain key in the caller's axis order (subset_indices were
+            // pushed while iterating `axes`, so they already encode it).
             let chain_key: ChainKey = subset_indices
                 .iter()
                 .map(|&i| {

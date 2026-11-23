@@ -1350,8 +1350,9 @@ max-ir-schema     = "2.0.0"      # exclusive upper bound
 # Each [[region_split]] entry declares one paint semantic this module wants
 # the host to split regions on. The host aggregates entries across all
 # loaded manifests into a BTreeMap keyed and iterated by semantic name. The
-# separate canonical_variant_chain_order helper returns the intended
-# (priority, semantic name) sequence; raw map iteration is not that sequence.
+# separate canonical_variant_chain_order helper returns the canonical
+# (priority, semantic name) sequence, which the RegionMapping kernel computes
+# locally as its chain axis order; raw map iteration is not that sequence.
 # See ADR-0018 (including its amendment) and docs/04 §"[[region_split]]
 # Aggregation and Tied-Priority Diagnostic".
 [[region_split]]
@@ -1473,22 +1474,23 @@ handing the vectors to the enumerator. Do not infer the value order from the
 enumerator's signature; it is a caller-supplied contract, exactly as the semantic
 axis is.
 
-The scheduler's `canonical_variant_chain_order`
-(`crates/slicer-scheduler/src/region_split.rs`) returns the intended
-`(priority, semantic name)` sequence, but it has **no production caller in the
-current tree**. The RegionMapping driver
-(`commit_region_mapping_builtin` → `execute_region_mapping_inner`) builds its axis
-order from `aggregated_region_split`'s `BTreeMap` keys, i.e. **name order**, and
-the enumerator then preserves that order. So the current driver's axes are
-name-ordered even where that differs from the helper's `(priority, name)`
-sequence; ADR-0018's amendment records the distinction and no policy decision
-follows from it. Do not infer the contract from raw `BTreeMap` iteration, and do
-not describe the driver as using the helper.
+The enumerator preserves the caller's axis and value order. The scheduler's
+`canonical_variant_chain_order` (`crates/slicer-scheduler/src/region_split.rs`)
+returns the ascending `(priority, semantic name)` sequence. The RegionMapping
+kernel (`commit_region_mapping_builtin` → `execute_region_mapping_inner` in
+`crates/slicer-core/src/algos/region_mapping.rs`) computes that same sequence
+locally from `aggregated_region_split` before calling the enumerator; it does not
+call the helper, and `slicer-core` has no `slicer-scheduler` dependency. Paint
+composition (`compose_variants`) and selection/exact-chain config identity
+(`crates/slicer-wasm-host/src/selection.rs`) keep the same ordered vector without
+re-sorting it. Do not infer the contract from raw `BTreeMap` iteration, which is
+name order. ADR-0018's 2026-11-19 amendment records the shared identity; the
+driver ordering is covered by `H-REGIONMAP`
+([`docs/testing/properties.md#h-regionmap`](testing/properties.md#h-regionmap)).
 
 Reordering breaks every existing region-split test suite. Any change to the
 enumeration order must be a coordinated packet with explicit test-fixture updates
-(the driver-level audit belongs to the pre-pass property packet, not to
-`H-REGISTRY`).
+(the driver-level property is `H-REGIONMAP`, not `H-REGISTRY`).
 
 ### Configuration keys added by recent packets
 

@@ -1534,6 +1534,26 @@ The worked examples are [`M-ARACHNE-BUILD`](testing/properties.md#m-arachne-buil
 Arachne properties, which need `slicer-core/host-algos`, stay standalone `slicer-core` test
 targets and are not module files.
 
+Packet `proptest-openrscad_12_pbt-walls` applies the same layout to
+`modules/core-modules/classic-perimeters/src/property_tests.rs` and
+`modules/core-modules/fuzzy-skin/src/property_tests.rs`. Their `property_testing` features are
+empty, default-off selectors; the SDK `test`/`property_testing` support and workspace Proptest
+remain dev-only edges, and production visibility is unchanged. The fuzzy file additionally keeps
+the ordered span matcher and widened-f64 displacement oracle local because no shared wall/fuzzy
+oracle is exported. The `src/**` scanner blind spot and required manual FRU/waiver review apply
+unchanged; see
+[`docs/testing/proptest-walls-evidence.md`](testing/proptest-walls-evidence.md).
+
+Packet `proptest-openrscad_13_pbt-infill` extends the same layout to five infill-owner modules:
+`rectilinear-infill`, `gyroid-infill`, `infill-linker`, `wave-overhangs` and
+`top-surface-ironing`. Each carries an empty, default-off `property_testing` feature, a
+`src/property_tests.rs` with the stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`
+declaration, and a manual watched-type ledger; `M-RECTILINEAR-SCAN`, `M-RECTILINEAR-SPACING`,
+`M-GYROID-PHASE`, `M-GYROID-CLIP`, `M-LINKER-GRAPH`, `M-LINKER-CONNECT`, `M-LINKER-CHAIN`,
+`M-WAVE-TRIM` and `M-IRONING-ZIGZAG` are their charters, and the manual review plus measured
+Windows profiles are recorded in
+[`docs/testing/proptest-infill-evidence.md`](testing/proptest-infill-evidence.md).
+
 ### Mock Host
 
 ```rust
@@ -2177,3 +2197,17 @@ first dispatch. The stage packages are additive-safe per stage — a change to
 the perimeters module the monolithic-world era's all-or-nothing contract
 used to sweep in. See `docs/adr/0045-per-stage-versioned-interfaces-over-monolithic-tier-worlds.md`
 for the reasoning.
+
+### Owner-private module properties
+
+A module may keep its own property tests inside its crate instead of a shared SDK
+target. `lightning-infill` is the worked example: the
+`lightning-infill/property_testing` selection feature gates a private
+`kernel::property_tests` lib module (`modules/core-modules/lightning-infill/src/kernel/property_tests.rs`)
+behind `#[cfg(all(test, feature = "property_testing"))]`, so the guest build and a
+default native test run never compile it, and only
+`cargo test -p lightning-infill --features property_testing --lib` (or the
+registry's `--features lightning-infill/property_testing`) reaches it. The crate's
+existing SDK dev edge carries the `property_testing` feature; no new public API is
+exposed for testing. See `docs/testing/properties.md#h-lightning-seeds` and
+`#h-lightning-trees`.

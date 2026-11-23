@@ -529,6 +529,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 name = "classic-perimeters"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-gcode",
  "slicer-ir",
@@ -1438,6 +1439,7 @@ dependencies = [
 name = "fuzzy-skin"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -1686,6 +1688,7 @@ dependencies = [
 name = "gyroid-infill"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
@@ -2000,6 +2003,7 @@ dependencies = [
 name = "infill-linker"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
@@ -2265,6 +2269,7 @@ dependencies = [
 name = "lightning-infill"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
@@ -3515,6 +3520,7 @@ checksum = "03251193000f4bd3b042892be858ee50e8b3719f2b08e5833ac4353724632430"
 name = "rectilinear-infill"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
@@ -4251,6 +4257,7 @@ dependencies = [
  "preparation-pilot-path",
  "preparation-transport-path",
  "preparation-visual-guest",
+ "proptest",
  "rayon",
  "sdk-finalization-guest",
  "sdk-infill-postprocess-view-guest",
@@ -4354,6 +4361,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 name = "support-surface-ironing"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -4625,6 +4633,7 @@ checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
 name = "top-surface-ironing"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -4666,6 +4675,7 @@ dependencies = [
 name = "traditional-support"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
@@ -4678,6 +4688,7 @@ dependencies = [
 name = "traditional-support-planner"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -4689,6 +4700,7 @@ dependencies = [
 name = "tree-support"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
@@ -4701,6 +4713,7 @@ dependencies = [
 name = "tree-support-planner"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -5529,6 +5542,7 @@ dependencies = [
 name = "wave-overhangs"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
