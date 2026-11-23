@@ -233,6 +233,9 @@ impl PaintRegionLayerView {
         let mut blocked = false;
         let mut enforced = false;
         for region in &slice.regions {
+            if !slicer_core::paint_policy::has_support_paint(&region.segment_annotations) {
+                continue;
+            }
             if !region_covers_expoly(&region.polygons, expoly) {
                 continue;
             }
@@ -240,7 +243,10 @@ impl PaintRegionLayerView {
                 &region.polygons,
                 &region.segment_annotations,
             ) {
-                SupportPaintPolicy::Blocked => blocked = true,
+                SupportPaintPolicy::Blocked => {
+                    blocked = true;
+                    break;
+                }
                 SupportPaintPolicy::Enforced => enforced = true,
                 SupportPaintPolicy::DefaultEligible => {}
             }
@@ -1942,5 +1948,205 @@ pub trait FinalizationModule: Sized {
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod paint_policy_tests {
+    use super::*;
+    use slicer_ir::{Point2, Polygon, SlicedRegion};
+    use std::collections::HashMap;
+
+    fn rect_expoly(x0: f32, y0: f32, x1: f32, y1: f32) -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(x0, y0),
+                    Point2::from_mm(x1, y0),
+                    Point2::from_mm(x1, y1),
+                    Point2::from_mm(x0, y1),
+                ],
+            },
+            holes: Vec::new(),
+        }
+    }
+
+    /// Non-convex L-shape whose vertex-mean centroid lies inside its cut-out notch.
+    fn l_shape_expoly() -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(10.0, 0.0),
+                    Point2::from_mm(10.0, 2.0),
+                    Point2::from_mm(2.0, 2.0),
+                    Point2::from_mm(2.0, 10.0),
+                    Point2::from_mm(0.0, 10.0),
+                ],
+            },
+            holes: Vec::new(),
+        }
+    }
+
+    fn region_with(
+        region_id: u64,
+        polygons: Vec<ExPolygon>,
+        segment_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    ) -> SlicedRegion {
+        SlicedRegion {
+            region_id,
+            polygons,
+            segment_annotations,
+            ..Default::default()
+        }
+    }
+
+    fn paint_map(
+        entries: &[(PaintSemantic, Vec<Option<PaintValue>>)],
+    ) -> HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> {
+        let mut map = HashMap::new();
+        for (sem, vals) in entries {
+            map.insert(sem.clone(), vec![vals.clone()]);
+        }
+        map
+    }
+
+    #[test]
+    fn paint_policy_honors_support_blocker_and_enforcer() {
+        let region_poly = rect_expoly(0.0, 0.0, 20.0, 20.0);
+        let probe = rect_expoly(5.0, 5.0, 15.0, 15.0);
+
+        let blocker_slice = SliceIR {
+            regions: vec![region_with(
+                1,
+                vec![region_poly.clone()],
+                paint_map(&[(PaintSemantic::SupportBlocker, vec![Some(PaintValue::Flag(true))])]),
+            )],
+            ..Default::default()
+        };
+        let view_blocked = PaintRegionLayerView::new(0).with_slice_ir(Arc::new(blocker_slice));
+        assert_eq!(
+            view_blocked.paint_policy_for(&probe),
+            SupportPaintPolicy::Blocked
+        );
+
+        let enforcer_slice = SliceIR {
+            regions: vec![region_with(
+                2,
+                vec![region_poly],
+                paint_map(&[(PaintSemantic::SupportEnforcer, vec![Some(PaintValue::Flag(true))])]),
+            )],
+            ..Default::default()
+        };
+        let view_enforced = PaintRegionLayerView::new(0).with_slice_ir(Arc::new(enforcer_slice));
+        assert_eq!(
+            view_enforced.paint_policy_for(&probe),
+            SupportPaintPolicy::Enforced
+        );
+    }
+
+    #[test]
+    fn paint_policy_blocker_overrides_enforcer_across_mixed_regions() {
+        let big = rect_expoly(0.0, 0.0, 30.0, 30.0);
+        let probe = rect_expoly(5.0, 5.0, 10.0, 10.0);
+
+        // Unpainted region first, then enforcer, then fuzzy-only, then blocker:
+        // blocker must still win regardless of ordering or interleaved unpainted regions.
+        let slice = SliceIR {
+            regions: vec![
+                region_with(1, vec![big.clone()], HashMap::new()),
+                region_with(
+                    2,
+                    vec![big.clone()],
+                    paint_map(&[(PaintSemantic::SupportEnforcer, vec![Some(PaintValue::Flag(true))])]),
+                ),
+                region_with(
+                    3,
+                    vec![big.clone()],
+                    paint_map(&[(PaintSemantic::FuzzySkin, vec![Some(PaintValue::Flag(true))])]),
+                ),
+                region_with(
+                    4,
+                    vec![big],
+                    paint_map(&[(PaintSemantic::SupportBlocker, vec![Some(PaintValue::Flag(true))])]),
+                ),
+            ],
+            ..Default::default()
+        };
+        let view = PaintRegionLayerView::new(0).with_slice_ir(Arc::new(slice));
+        assert_eq!(view.paint_policy_for(&probe), SupportPaintPolicy::Blocked);
+    }
+
+    #[test]
+    fn paint_policy_matches_non_convex_l_shape_probe() {
+        let l_region = l_shape_expoly();
+        // Probe strictly inside the L-shape arm, whose own centroid lies in the notch (4, 4).
+        let l_probe = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.5, 0.5),
+                    Point2::from_mm(9.5, 0.5),
+                    Point2::from_mm(9.5, 1.5),
+                    Point2::from_mm(1.5, 1.5),
+                    Point2::from_mm(1.5, 9.5),
+                    Point2::from_mm(0.5, 9.5),
+                ],
+            },
+            holes: Vec::new(),
+        };
+        let slice = SliceIR {
+            regions: vec![region_with(
+                10,
+                vec![l_region],
+                paint_map(&[(PaintSemantic::SupportEnforcer, vec![Some(PaintValue::Flag(true))])]),
+            )],
+            ..Default::default()
+        };
+        let view = PaintRegionLayerView::new(0).with_slice_ir(Arc::new(slice));
+        assert_eq!(
+            view.paint_policy_for(&l_probe),
+            SupportPaintPolicy::Enforced
+        );
+
+        // Probe inside the cut-out notch (not covered by the L-shape) must stay DefaultEligible.
+        let notch_probe = rect_expoly(4.0, 4.0, 8.0, 8.0);
+        assert_eq!(
+            view.paint_policy_for(&notch_probe),
+            SupportPaintPolicy::DefaultEligible
+        );
+    }
+
+    #[test]
+    fn paint_policy_unpainted_and_non_support_annotations_stay_default_eligible() {
+        let region_poly = rect_expoly(0.0, 0.0, 20.0, 20.0);
+        let probe = rect_expoly(5.0, 5.0, 15.0, 15.0);
+
+        let slice = SliceIR {
+            regions: vec![
+                region_with(1, vec![region_poly.clone()], HashMap::new()),
+                region_with(
+                    2,
+                    vec![region_poly.clone()],
+                    paint_map(&[
+                        (PaintSemantic::FuzzySkin, vec![Some(PaintValue::Flag(true))]),
+                        (PaintSemantic::Material, vec![Some(PaintValue::ToolIndex(1))]),
+                    ]),
+                ),
+                region_with(
+                    3,
+                    vec![region_poly],
+                    paint_map(&[
+                        (PaintSemantic::SupportBlocker, vec![None, None]),
+                        (PaintSemantic::SupportEnforcer, vec![None]),
+                    ]),
+                ),
+            ],
+            ..Default::default()
+        };
+        let view = PaintRegionLayerView::new(0).with_slice_ir(Arc::new(slice));
+        assert_eq!(
+            view.paint_policy_for(&probe),
+            SupportPaintPolicy::DefaultEligible
+        );
     }
 }

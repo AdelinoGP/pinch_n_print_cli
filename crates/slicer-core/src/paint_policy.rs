@@ -56,6 +56,20 @@ pub use slicer_ir::paint_policy::SupportPaintPolicy;
 /// not flip a borderline case to `Enforced`/`Blocked`.
 const NON_TRIVIAL_AREA_UNITS_SQ: i128 = 200;
 
+/// True if `segment_annotations` contains at least one non-`None`
+/// `SupportBlocker` or `SupportEnforcer` annotation.
+///
+/// Exact pre-filter for `PaintRegionLayerView::paint_policy_for`: whenever
+/// this returns `false`, [`support_eligibility`] unconditionally returns
+/// `SupportPaintPolicy::DefaultEligible`, so callers can skip geometric
+/// region-ownership queries without changing any classification outcome.
+pub fn has_support_paint(
+    segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+) -> bool {
+    entries_has_some_paint(segment_annotations.get(&PaintSemantic::SupportBlocker))
+        || entries_has_some_paint(segment_annotations.get(&PaintSemantic::SupportEnforcer))
+}
+
 /// Compute the support-paint policy for a single region via a presence
 /// check on `segment_annotations` and a region-area floor.
 ///

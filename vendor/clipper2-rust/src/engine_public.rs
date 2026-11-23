@@ -297,6 +297,16 @@ impl Clipper64 {
         self.base.add_paths(open_subjects, PathType::Subject, true);
     }
 
+    /// Add one open subject path tagged with `source_id`.
+    ///
+    /// Open paths never intersect or merge across distinct open subjects during
+    /// clipping, so `source_id` survives on every open `OutRec` produced from
+    /// this subject and is returned by [`Self::execute_open_tagged`].
+    pub fn add_open_subject_tagged(&mut self, path: &Path64, source_id: u32) {
+        self.base
+            .add_path_tagged(path, PathType::Subject, true, source_id);
+    }
+
     /// Add clip paths
     pub fn add_clip(&mut self, clips: &Paths64) {
         self.base.add_paths(clips, PathType::Clip, false);
@@ -349,6 +359,47 @@ impl Clipper64 {
         }
         self.base.clean_up();
         self.base.succeeded
+    }
+
+    /// Execute a clipping operation and return all emitted open paths paired
+    /// with the `source_id` registered via [`Self::add_open_subject_tagged`].
+    pub fn execute_open_tagged(
+        &mut self,
+        clip_type: ClipType,
+        fill_rule: FillRule,
+    ) -> Result<Vec<(u32, Path64)>, Clipper2Exception> {
+        let mut tagged = Vec::new();
+        if self.base.execute_internal(clip_type, fill_rule, false) {
+            tagged.reserve(self.base.outrec_list.len());
+            for i in 0..self.base.outrec_list.len() {
+                if !self.base.outrec_list[i].is_open {
+                    continue;
+                }
+                let Some(op) = self.base.outrec_list[i].pts else {
+                    continue;
+                };
+                if let Some(path) = build_path64_from_outpt(
+                    op,
+                    self.base.reverse_solution,
+                    true,
+                    &self.base.outpt_arena,
+                ) {
+                    tagged.push((self.base.outrec_list[i].source_id, path));
+                }
+            }
+        }
+        let succeeded = self.base.succeeded;
+        let error_code = self.base.error_code;
+        self.base.clean_up();
+        if succeeded {
+            Ok(tagged)
+        } else if error_code != 0 {
+            Err(do_error(error_code).unwrap_err())
+        } else {
+            Err(Clipper2Exception::new(
+                "Clipper64 open-path execution failed",
+            ))
+        }
     }
 
     /// Execute a clipping operation, returning a polytree and open paths
