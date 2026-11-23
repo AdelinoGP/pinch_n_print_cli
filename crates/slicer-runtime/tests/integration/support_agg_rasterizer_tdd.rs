@@ -58,7 +58,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use slicer_core::polygon_ops::{difference_ex, intersection_ex, offset, union_ex, OffsetJoinType};
+use slicer_core::polygon_ops::{
+    difference_ex, intersection_ex, offset, union_ex, OffsetJoinType, OFFSET_SHORTEST_EDGE_FACTOR,
+};
 use slicer_ir::{ConfigValue, ExPolygon, Polygon, SupportPlanIR, SupportPlanRole};
 use slicer_wasm_host::exact_z_query::ExactZQueryService;
 
@@ -337,8 +339,26 @@ struct P241Baseline {
     columns: ColumnContinuityMetrics,
 }
 
+/// Effective clearance distance (mm) used by [`wall_leakage_metrics`].
+///
+/// Since `t169` (`9c3125d5`), `slicer_core::polygon_ops::offset` applies
+/// canonical OrcaSlicer's `append_offset_path` pre-offset edge decimation
+/// (`OFFSET_SHORTEST_EDGE_FACTOR = 0.005`, i.e. `0.005 * |delta|`). On
+/// `SliceIR` contours that carry sub-threshold corner bevels (< 1.75 um at
+/// `xy_distance_mm = 0.35`), collapsing a bevel vertex before offsetting shifts
+/// the planner's trimmed edge inward by up to `0.005 * xy_distance_mm`
+/// (measured `0.1–0.2 um` = `1–2` PnP units on `SupportAdversarial.stl`)
+/// relative to raw undecimated `ExactZQueryService` cross-sections. Subtracting
+/// that exact canonical decimation bound keeps 99.5% of the `xy_distance_mm`
+/// clearance gated (0.34825 mm at 0.35 mm) while excluding sub-decimation
+/// bevel-collapse slivers.
+fn effective_wall_clearance_mm(xy_distance_mm: f32) -> f32 {
+    (xy_distance_mm * (1.0 - OFFSET_SHORTEST_EDGE_FACTOR as f32)).max(0.0)
+}
+
 /// Wall leakage: support body geometry intruding into model occupancy grown by
-/// `xy_distance_mm`. See the module header for the exact definitions.
+/// `xy_distance_mm` (less canonical [`OFFSET_SHORTEST_EDGE_FACTOR`] decimation
+/// allowance). See the module header and [`effective_wall_clearance_mm`].
 fn wall_leakage_metrics(
     body_by_layer: &BTreeMap<i32, Vec<ExPolygon>>,
     occupancy_by_layer: &BTreeMap<i32, Vec<ExPolygon>>,
@@ -346,6 +366,7 @@ fn wall_leakage_metrics(
 ) -> WallLeakageMetrics {
     let mut penetration_events = 0usize;
     let mut penetrated_area = 0.0f64;
+    let effective_xy_mm = effective_wall_clearance_mm(xy_distance_mm);
     for (layer, bodies) in body_by_layer {
         let Some(occupancy) = occupancy_by_layer.get(layer) else {
             continue;
@@ -353,7 +374,7 @@ fn wall_leakage_metrics(
         if occupancy.is_empty() {
             continue;
         }
-        let grown = offset(occupancy, xy_distance_mm, GROW_JOIN, GROW_ARC_TOLERANCE_MM);
+        let grown = offset(occupancy, effective_xy_mm, GROW_JOIN, GROW_ARC_TOLERANCE_MM);
         if grown.is_empty() {
             continue;
         }
@@ -742,6 +763,17 @@ fn p241_wall_leakage_grow_argument_is_millimetres() {
         "a 1.0 mm grow must close a 0.5 mm gap; the grow argument is being \
          interpreted as PnP units (35 nm) instead of millimetres"
     );
+
+    // Sensitivity guard for `effective_wall_clearance_mm`: a body intruding by
+    // 0.02 mm (20 um, well above the 1.75 um canonical t169 decimation bound)
+    // into a 0.35 mm clearance zone must still be reported as penetration.
+    let shallow_intrusion: BTreeMap<i32, Vec<ExPolygon>> =
+        BTreeMap::from([(3, vec![rect_mm(10.33, 0.0, 20.0, 10.0)])]);
+    let shallow = wall_leakage_metrics(&shallow_intrusion, &occupancy, 0.35);
+    assert_eq!(
+        shallow.penetration_events, 1,
+        "a 20 um intrusion into a 0.35 mm clearance zone must be detected"
+    );
 }
 
 /// A column that vanishes mid-stack, above a printable layer and away from the
@@ -1090,7 +1122,7 @@ fn describe_parts(parts: &BaselineParts) -> (Vec<(i32, f64, (f64, f64, f64, f64)
         };
         let grown = offset(
             occ,
-            baseline.support_object_xy_distance_mm,
+            effective_wall_clearance_mm(baseline.support_object_xy_distance_mm),
             GROW_JOIN,
             GROW_ARC_TOLERANCE_MM,
         );
