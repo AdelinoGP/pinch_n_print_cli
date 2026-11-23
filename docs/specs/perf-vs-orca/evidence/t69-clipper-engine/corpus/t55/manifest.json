@@ -1,0 +1,54 @@
+[
+  {
+    "source": "ordinary-base-specimens.jsonl",
+    "source_sha256": "d495136762ba6fea0e65a2b7022fcbdbdc79caa0ba32078f136bb8b5c803a3f0",
+    "output": "ordinary-base.cases",
+    "bytes": 4687940,
+    "sha256": "8328f87aebf39a68c6e606b40888b411f9a68c4b3d26dbe6bf497292e03cfca7",
+    "layers": [
+      232,
+      38,
+      21,
+      9
+    ]
+  },
+  {
+    "source": "ordinary-benchy-specimens.jsonl",
+    "source_sha256": "7098e299b6ad75912b0c6ff93a72592f1412cb4a76da9c3de1400f3dbd39d526",
+    "output": "ordinary-benchy.cases",
+    "bytes": 758297,
+    "sha256": "3c1db8031ddef7c4e0269d5774b4896052e9cd89432f88ba60ec57850000ef42",
+    "layers": [
+      168,
+      152,
+      43,
+      0
+    ]
+  },
+  {
+    "source": "accelerated-base-specimens.jsonl",
+    "source_sha256": "d495136762ba6fea0e65a2b7022fcbdbdc79caa0ba32078f136bb8b5c803a3f0",
+    "output": "accelerated-base.cases",
+    "bytes": 4687940,
+    "sha256": "8328f87aebf39a68c6e606b40888b411f9a68c4b3d26dbe6bf497292e03cfca7",
+    "layers": [
+      232,
+      38,
+      21,
+      9
+    ]
+  },
+  {
+    "source": "accelerated-benchy-specimens.jsonl",
+    "source_sha256": "7098e299b6ad75912b0c6ff93a72592f1412cb4a76da9c3de1400f3dbd39d526",
+    "output": "accelerated-benchy.cases",
+    "bytes": 758297,
+    "sha256": "3c1db8031ddef7c4e0269d5774b4896052e9cd89432f88ba60ec57850000ef42",
+    "layers": [
+      168,
+      152,
+      43,
+      0
+    ]
+  }
+]

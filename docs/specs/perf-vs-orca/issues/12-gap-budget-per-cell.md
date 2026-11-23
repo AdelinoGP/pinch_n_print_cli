@@ -176,3 +176,15 @@ prepass included) → acceptance slots for 27's then 22's candidate → 21's →
 25's → below-fold polish (19, 20). Attribution-only tickets (18, 22, 24, 25,
 26, 28) stay parallel-takeable, but no substage split starts before 24 closes
 (wired on 22 and 27).
+
+## Comments
+
+### Park lifted for ticket 20 - 2026-10-21
+
+The human explicitly lifted the below-fold park for one candidate-scoped take:
+[Consume-only-when-read annotations](20-consume-only-when-read-annotations.md)
+was selected as the route for the 2026-10-21 session. This is not a
+re-derivation of the park: the t72 best cell is still 3.30x, so the ~1.5x
+condition is unchanged and any future below-fold take still needs its own
+route decision. The lift is recorded here because this ticket owns the park
+condition; ticket 20 carries the claim and the take's evidence.

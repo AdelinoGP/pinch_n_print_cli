@@ -1,0 +1,82 @@
+{
+  "benchy classic off": {
+    "n": 6,
+    "wall": -14.31,
+    "cpu": -23.12,
+    "bytes": -9.4,
+    "wall_min": -21.41,
+    "wall_max": -11.23,
+    "cpu_min": -23.89,
+    "cpu_max": -21.96
+  },
+  "benchy classic on": {
+    "n": 6,
+    "wall": -9.0,
+    "cpu": -18.77,
+    "bytes": -4.69,
+    "wall_min": -25.55,
+    "wall_max": 3.07,
+    "cpu_min": -20.75,
+    "cpu_max": -16.54
+  },
+  "benchy arachne off": {
+    "n": 6,
+    "wall": -0.07,
+    "cpu": -3.16,
+    "bytes": -1.51,
+    "wall_min": -0.92,
+    "wall_max": 3.77,
+    "cpu_min": -4.54,
+    "cpu_max": -1.53
+  },
+  "benchy arachne on": {
+    "n": 6,
+    "wall": -1.87,
+    "cpu": -1.8,
+    "bytes": -0.74,
+    "wall_min": -3.93,
+    "wall_max": -0.06,
+    "cpu_min": -5.4,
+    "cpu_max": -0.24
+  },
+  "base classic off": {
+    "n": 6,
+    "wall": -22.24,
+    "cpu": -26.87,
+    "bytes": -6.26,
+    "wall_min": -33.56,
+    "wall_max": -12.02,
+    "cpu_min": -27.67,
+    "cpu_max": -25.74
+  },
+  "base classic on": {
+    "n": 6,
+    "wall": -10.87,
+    "cpu": -20.29,
+    "bytes": -3.2,
+    "wall_min": -11.75,
+    "wall_max": -9.01,
+    "cpu_min": -20.9,
+    "cpu_max": -20.05
+  },
+  "base arachne off": {
+    "n": 12,
+    "wall": -1.07,
+    "cpu": -2.08,
+    "bytes": -1.58,
+    "wall_min": -5.57,
+    "wall_max": 29.71,
+    "cpu_min": -4.09,
+    "cpu_max": 0.25
+  },
+  "base arachne on": {
+    "n": 6,
+    "wall": -0.88,
+    "cpu": -1.44,
+    "bytes": -0.78,
+    "wall_min": -3.13,
+    "wall_max": 3.1,
+    "cpu_min": -2.23,
+    "cpu_max": -1.23
+  }
+}

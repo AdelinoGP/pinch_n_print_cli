@@ -1,0 +1,734 @@
+diff --git a/crates/slicer-core/src/perimeter_spatial.rs b/crates/slicer-core/src/perimeter_spatial.rs
+index 8bfbf8e4..53a78c8c 100644
+--- a/crates/slicer-core/src/perimeter_spatial.rs
++++ b/crates/slicer-core/src/perimeter_spatial.rs
+@@ -37,6 +37,9 @@ pub enum PathAnnotationMode {
+     Planar,
+     /// Emit previous-layer distance annotations without quartiles.
+     NonPlanarNoQuartile,
++    /// Emit neither annotation: no downstream consumer reads them on this
++    /// slice, so both per-vertex queries are skipped.
++    Unconsumed,
+ }
+ 
+ #[derive(Debug, Clone, Copy)]
+@@ -734,12 +737,17 @@ pub fn expolygon_to_path3d_indexed(
+             let y = slicer_ir::units_to_mm(point.y);
+             let overhang_quartile = match mode {
+                 PathAnnotationMode::Planar => context.overhang_quartile(x, y),
+-                PathAnnotationMode::NonPlanarNoQuartile => None,
++                PathAnnotationMode::NonPlanarNoQuartile | PathAnnotationMode::Unconsumed => None,
+             };
+-            let overhang_distance_mm = if context.boundary.is_empty() {
+-                None
+-            } else {
+-                Some(context.signed_distance_to_boundary(x, y) + 0.5 * width)
++            let overhang_distance_mm = match mode {
++                PathAnnotationMode::Planar | PathAnnotationMode::NonPlanarNoQuartile => {
++                    if context.boundary.is_empty() {
++                        None
++                    } else {
++                        Some(context.signed_distance_to_boundary(x, y) + 0.5 * width)
++                    }
++                }
++                PathAnnotationMode::Unconsumed => None,
+             };
+             Point3WithWidth {
+                 x,
+diff --git a/crates/slicer-core/tests/perimeter_spatial_tdd.rs b/crates/slicer-core/tests/perimeter_spatial_tdd.rs
+index 45fcfafa..9725773c 100644
+--- a/crates/slicer-core/tests/perimeter_spatial_tdd.rs
++++ b/crates/slicer-core/tests/perimeter_spatial_tdd.rs
+@@ -392,6 +392,47 @@ fn assert_observed_equal(expected: &Observed, actual: &Observed) {
+     );
+ }
+ 
++#[test]
++fn unconsumed_mode_issues_no_annotation_queries() {
++    let fixture = adversarial_fixture();
++    let context = slicer_core::perimeter_spatial::PerimeterSpatialContext::new(
++        &fixture.boundary,
++        &fixture.overhang_bands,
++        &fixture.bridge_areas,
++    );
++    let planar = slicer_core::perimeter_spatial::expolygon_to_path3d_indexed(
++        &fixture.path_contour,
++        0.2,
++        0.4,
++        &context,
++        slicer_core::perimeter_spatial::PathAnnotationMode::Planar,
++    );
++    let (unconsumed, counters) =
++        slicer_core::perimeter_spatial::diagnostics::with_counters(true, false, || {
++            slicer_core::perimeter_spatial::expolygon_to_path3d_indexed(
++                &fixture.path_contour,
++                0.2,
++                0.4,
++                &context,
++                slicer_core::perimeter_spatial::PathAnnotationMode::Unconsumed,
++            )
++        });
++
++    assert_eq!(planar.len(), unconsumed.len());
++    assert!(!unconsumed.is_empty());
++    for (planar_point, unconsumed_point) in planar.iter().zip(&unconsumed) {
++        assert_eq!(planar_point.x.to_bits(), unconsumed_point.x.to_bits());
++        assert_eq!(planar_point.y.to_bits(), unconsumed_point.y.to_bits());
++        assert_eq!(planar_point.z.to_bits(), unconsumed_point.z.to_bits());
++        assert_eq!(planar_point.width.to_bits(), unconsumed_point.width.to_bits());
++        assert_eq!(unconsumed_point.overhang_quartile, None);
++        assert_eq!(unconsumed_point.overhang_distance_mm, None);
++    }
++    assert_eq!(counters.indexed_queries, 0, "unconsumed mode queried the index");
++    assert_eq!(counters.legacy_queries, 0, "unconsumed mode ran a legacy query");
++    assert_eq!(counters.fallback_queries, 0, "unconsumed mode fell back");
++}
++
+ #[test]
+ fn exact_queries_match_legacy() {
+     let fixture = adversarial_fixture();
+diff --git a/crates/slicer-runtime/tests/integration/manifest_default_reconcile_tdd.rs b/crates/slicer-runtime/tests/integration/manifest_default_reconcile_tdd.rs
+index 4f9dd5f9..59ac87f5 100644
+--- a/crates/slicer-runtime/tests/integration/manifest_default_reconcile_tdd.rs
++++ b/crates/slicer-runtime/tests/integration/manifest_default_reconcile_tdd.rs
+@@ -282,6 +282,17 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
+     ("detect_overhang_wall", Unread), // declared; classic never reads it
+     ("overhang_reverse", Unread),
+     ("overhang_reverse_internal_only", Unread),
++    // t20 consume-only-when-read gate: run_perimeters reads the same
++    // liveness predicate as overhang-classifier-default through
++    // slicer_sdk::config_predicates. The producer-side helper reports
++    // inactive when a key is missing, so the composite code fallback is
++    // "(true, all bands 0) => inactive"; the manifest defaults below are
++    // the per-key values that compose it.
++    ("enable_overhang_speed", Bool(true)),
++    ("overhang_1_4_speed", Float(0.0)),
++    ("overhang_2_4_speed", Float(0.0)),
++    ("overhang_3_4_speed", Float(0.0)),
++    ("overhang_4_4_speed", Float(0.0)),
+     ("min_width_top_surface", Str("0.0")),
+     ("alternate_extra_wall", Unread),
+     ("bridge_flow", Float(1.0)),
+@@ -356,6 +367,17 @@ const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
+     ("overhang_reverse", Bool(false)),
+     ("overhang_reverse_internal_only", Bool(false)),
+     ("overhang_reverse_threshold", Str("0.0")), // float_or_percent; unwrap_or(0.0)
++    // t20 consume-only-when-read gate: run_perimeters reads the same
++    // liveness predicate as overhang-classifier-default through
++    // slicer_sdk::config_predicates. The producer-side helper reports
++    // inactive when a key is missing, so the composite code fallback is
++    // "(true, all bands 0) => inactive"; the manifest defaults below are
++    // the per-key values that compose it.
++    ("enable_overhang_speed", Bool(true)),
++    ("overhang_1_4_speed", Float(0.0)),
++    ("overhang_2_4_speed", Float(0.0)),
++    ("overhang_3_4_speed", Float(0.0)),
++    ("overhang_4_4_speed", Float(0.0)),
+     ("extra_perimeters_on_overhangs", Unread),  // declared; arachne never reads it
+     // float_or_percent; code fallback is 0.0 = "filter disabled"
+     // (get_abs_value(..).unwrap_or(0.0)). Upstream's default is 300%, but the
+diff --git a/crates/slicer-sdk/src/config_predicates.rs b/crates/slicer-sdk/src/config_predicates.rs
+new file mode 100644
+index 00000000..d2339c13
+--- /dev/null
++++ b/crates/slicer-sdk/src/config_predicates.rs
+@@ -0,0 +1,110 @@
++//! Cross-module config predicates.
++//!
++//! A predicate that decides whether one module's output is consumed by another
++//! module must be evaluated identically on both sides. These helpers are the
++//! single definition for such shared predicates, so a producer cannot skip
++//! work that a consumer still reads (or keep doing work nobody reads).
++
++use slicer_ir::slice_ir::ConfigReadError;
++use slicer_ir::ConfigView;
++
++/// Whether this slice's config makes any consumer read the per-vertex
++/// overhang annotations (`overhang_quartile` / `overhang_distance_mm`).
++///
++/// This is exactly `OverhangClassifierDefault::run_finalization`'s liveness
++/// predicate: the classifier returns before reading a single stamp when
++/// `enable_overhang_speed` is false, or when all four
++/// `overhang_{1..4}_4_speed` bands are zero. The classifier calls this same
++/// helper, so the producer (`classic-perimeters` / `arachne-perimeters`) and
++/// the consumer cannot disagree.
++///
++/// The bands are `float_or_percent` and are host-expanded to absolute values
++/// before a module's `ConfigView` is bound, so `require_float` is the same
++/// read the classifier has always performed.
++pub fn overhang_annotations_consumed(config: &ConfigView) -> Result<bool, ConfigReadError> {
++    if !config.require_bool("enable_overhang_speed")? {
++        return Ok(false);
++    }
++    for key in [
++        "overhang_1_4_speed",
++        "overhang_2_4_speed",
++        "overhang_3_4_speed",
++        "overhang_4_4_speed",
++    ] {
++        if config.require_float(key)? != 0.0 {
++            return Ok(true);
++        }
++    }
++    Ok(false)
++}
++
++/// Producer-side variant of [`overhang_annotations_consumed`]: a missing or
++/// mistyped key reports "inactive" instead of failing the perimeter call.
++///
++/// The producer modules declare all five keys, so on the live path the host
++/// seeds them into the resolved view and this fallback is unreachable. If it
++/// is ever reached, skipping the stamps is safe: the consumer performs its
++/// own required read of the same keys and aborts the slice on that same
++/// config defect, so no output can be emitted with a reader that expected
++/// values the producer did not stamp.
++#[must_use]
++pub fn overhang_annotations_consumed_or_inactive(config: &ConfigView) -> bool {
++    overhang_annotations_consumed(config).unwrap_or(false)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use slicer_ir::{ConfigKey, ConfigValue};
++    use std::collections::HashMap;
++
++    fn view(enable: bool, bands: [f64; 4]) -> ConfigView {
++        let mut fields = HashMap::new();
++        fields.insert(
++            ConfigKey::from("enable_overhang_speed"),
++            ConfigValue::Bool(enable),
++        );
++        for (index, value) in bands.into_iter().enumerate() {
++            fields.insert(
++                ConfigKey::from(format!("overhang_{}_4_speed", index + 1).as_str()),
++                ConfigValue::Float(value),
++            );
++        }
++        ConfigView::from_map(fields)
++    }
++
++    #[test]
++    fn all_zero_bands_are_unconsumed_even_when_enabled() {
++        assert!(!overhang_annotations_consumed(&view(true, [0.0; 4])).unwrap());
++    }
++
++    #[test]
++    fn disabled_switch_is_unconsumed_even_with_nonzero_bands() {
++        assert!(!overhang_annotations_consumed(&view(false, [0.0, 0.0, 30.0, 0.0])).unwrap());
++    }
++
++    #[test]
++    fn any_nonzero_band_with_the_switch_enabled_is_consumed() {
++        assert!(overhang_annotations_consumed(&view(true, [0.0, 0.0, 0.0, 30.0])).unwrap());
++        assert!(overhang_annotations_consumed(&view(true, [30.0, 0.0, 0.0, 0.0])).unwrap());
++    }
++
++    #[test]
++    fn negative_zero_counts_as_zero_like_the_classifier_comparison() {
++        assert!(!overhang_annotations_consumed(&view(true, [-0.0, 0.0, 0.0, 0.0])).unwrap());
++    }
++
++    #[test]
++    fn missing_key_is_a_config_error_not_a_silent_skip() {
++        assert!(overhang_annotations_consumed(&ConfigView::new()).is_err());
++    }
++
++    #[test]
++    fn producer_variant_reports_inactive_for_a_missing_key() {
++        assert!(!overhang_annotations_consumed_or_inactive(&ConfigView::new()));
++        assert!(overhang_annotations_consumed_or_inactive(&view(
++            true,
++            [0.0, 0.0, 30.0, 0.0]
++        )));
++    }
++}
+diff --git a/crates/slicer-sdk/src/lib.rs b/crates/slicer-sdk/src/lib.rs
+index 062c40ca..c243c148 100644
+--- a/crates/slicer-sdk/src/lib.rs
++++ b/crates/slicer-sdk/src/lib.rs
+@@ -20,6 +20,7 @@
+ #![warn(unused_must_use)]
+ 
+ pub mod builders;
++pub mod config_predicates;
+ pub mod config_resolution;
+ pub mod coords;
+ pub mod error;
+diff --git a/modules/core-modules/arachne-perimeters/arachne-perimeters.toml b/modules/core-modules/arachne-perimeters/arachne-perimeters.toml
+index dedf6844..8b291d96 100644
+--- a/modules/core-modules/arachne-perimeters/arachne-perimeters.toml
++++ b/modules/core-modules/arachne-perimeters/arachne-perimeters.toml
+@@ -452,6 +452,54 @@ group       = "Support"
+   description = "Allowed positional error (mm; squared internally) for Arachne's wall simplification, replacing meshfix_maximum_deviation for the wall path (canonical `WallToolPaths::simplifyToolPaths`). Code fallback is 0.005mm (ArachneParams::default's allowed_error_distance_squared = 0.000025 mm²); the manifest default states the code fallback per the reconcile guard. The previous 0.025 here was a 5x lie against the code fallback (see D-160's reconcile follow-up)."
+   group       = "Walls"
+ 
++# ── Consume-only-when-read gate (t20) ──────────────────────────────────
++# The per-vertex overhang stamps (`overhang_quartile` /
++# `overhang_distance_mm`) are read only by overhang-classifier-default, whose
++# liveness predicate is exactly (`enable_overhang_speed` && any overhang band
++# != 0). These five keys mirror that module's schema so `run_perimeters` can
++# read the same predicate from its own ConfigView and skip both spatial
++# queries when nobody reads them. Types, defaults and denied_scopes must stay
++# compatible with `overhang-classifier-default.toml`; both declarations feed
++# one registry entry.
++
++[config.schema.enable_overhang_speed]
++type    = "bool"
++default = true
++display = "Enable Overhang Speed"
++group   = "Speed"
++
++[config.schema.overhang_1_4_speed]
++type    = "float_or_percent"
++base_key = "outer_wall_speed"
++default = 0.0
++display = "Overhang 1/4 Speed"
++group   = "Speed"
++denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
++
++[config.schema.overhang_2_4_speed]
++type    = "float_or_percent"
++base_key = "outer_wall_speed"
++default = 0.0
++display = "Overhang 2/4 Speed"
++group   = "Speed"
++denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
++
++[config.schema.overhang_3_4_speed]
++type    = "float_or_percent"
++base_key = "outer_wall_speed"
++default = 0.0
++display = "Overhang 3/4 Speed"
++group   = "Speed"
++denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
++
++[config.schema.overhang_4_4_speed]
++type    = "float_or_percent"
++base_key = "outer_wall_speed"
++default = 0.0
++display = "Overhang 4/4 Speed"
++group   = "Speed"
++denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
++
+ # Region-split activation. Declaring `material` registers it in the
+ # cross-manifest aggregate at plan-build time. `paint_only` is deliberately
+ # absent (defaults to false): Arachne perimeters must run on unpainted layers
+diff --git a/modules/core-modules/arachne-perimeters/src/lib.rs b/modules/core-modules/arachne-perimeters/src/lib.rs
+index c20912c4..60a79d54 100644
+--- a/modules/core-modules/arachne-perimeters/src/lib.rs
++++ b/modules/core-modules/arachne-perimeters/src/lib.rs
+@@ -621,6 +621,14 @@ impl LayerModule for ArachnePerimeters {
+         let bridge_flow_ratio = config.require_float("bridge_flow")? as f32;
+         let thick_bridges = config.require_bool("thick_bridges")?;
+ 
++        // Consume-only-when-read (t20): the per-vertex overhang stamps are
++        // read only by overhang-classifier-default, and only when its own
++        // liveness predicate holds. Read the same predicate here so this
++        // per-layer producer skips both spatial query loops when nobody reads
++        // them; when live, the exact same stamps as before are produced.
++        let overhang_annotations_consumed =
++            slicer_sdk::config_predicates::overhang_annotations_consumed_or_inactive(config);
++
+         // Per-color (MMU) wiring (P112 Step 10B): `regions` already contains
+         // one entry per paint-color cell (see PrePass::PaintSegmentation) plus
+         // any residual base-color region — no per-tool grouping/splitting is
+@@ -765,6 +773,7 @@ impl LayerModule for ArachnePerimeters {
+                     bridge_flow_ratio,
+                     thick_bridges,
+                     &spatial_context,
++                    overhang_annotations_consumed,
+                     output,
+                 )?;
+                 continue;
+@@ -807,6 +816,7 @@ impl LayerModule for ArachnePerimeters {
+                 bridge_flow_ratio,
+                 thick_bridges,
+                 &spatial_context,
++                overhang_annotations_consumed,
+             )?;
+             commit_wall_sequence(&mut walls, sequence);
+             for wall in walls {
+@@ -924,6 +934,7 @@ impl ArachnePerimeters {
+         bridge_flow_ratio: f32,
+         thick_bridges: bool,
+         context: &PerimeterSpatialContext,
++        overhang_annotations_consumed: bool,
+     ) -> Result<Vec<WallLoop>, ModuleError> {
+         let bridge_areas = region.bridge_areas();
+         let overhang_bands = region.overhang_quartile_polygons();
+@@ -1029,18 +1040,20 @@ impl ArachnePerimeters {
+                 }
+             }
+ 
+-            for pt in &mut path.points {
+-                pt.overhang_distance_mm = if prev_layer_boundary.is_empty() {
+-                    None
+-                } else {
+-                    Some(context.signed_distance_to_boundary(pt.x, pt.y) + 0.5 * pt.width)
+-                };
++            if overhang_annotations_consumed {
++                for pt in &mut path.points {
++                    pt.overhang_distance_mm = if prev_layer_boundary.is_empty() {
++                        None
++                    } else {
++                        Some(context.signed_distance_to_boundary(pt.x, pt.y) + 0.5 * pt.width)
++                    };
++                }
+             }
+ 
+             // AC-5 (packet 148): overhang_quartile is set per-vertex on
+             // every wall type, for every vertex whose path point lies
+             // inside a `overhang_quartile_polygons` band's polygon(s).
+-            if !overhang_bands.is_empty() {
++            if overhang_annotations_consumed && !overhang_bands.is_empty() {
+                 for pt in &mut path.points {
+                     pt.overhang_quartile = context.overhang_quartile(pt.x, pt.y);
+                 }
+@@ -1111,6 +1124,7 @@ impl ArachnePerimeters {
+         bridge_flow_ratio: f32,
+         thick_bridges: bool,
+         context: &PerimeterSpatialContext,
++        overhang_annotations_consumed: bool,
+         output: &mut PerimeterOutputBuilder,
+     ) -> Result<(), ModuleError> {
+         let sequence =
+@@ -1185,6 +1199,7 @@ impl ArachnePerimeters {
+             bridge_flow_ratio,
+             thick_bridges,
+             context,
++            overhang_annotations_consumed,
+         )?;
+ 
+         // Not-top remainder. Generation comes from the SHRUNK outline, because
+@@ -1226,6 +1241,7 @@ impl ArachnePerimeters {
+                 bridge_flow_ratio,
+                 thick_bridges,
+                 context,
++                overhang_annotations_consumed,
+             )?;
+             commit_wall_sequence(&mut fb_walls, sequence);
+             for w in fb_walls {
+@@ -1288,6 +1304,7 @@ impl ArachnePerimeters {
+             bridge_flow_ratio,
+             thick_bridges,
+             context,
++            overhang_annotations_consumed,
+         )?;
+ 
+         // Step 7: merge — top single wall + renumbered second-pass inner walls.
+diff --git a/modules/core-modules/arachne-perimeters/tests/overhang_distance_tdd.rs b/modules/core-modules/arachne-perimeters/tests/overhang_distance_tdd.rs
+index d3348250..ce1279ba 100644
+--- a/modules/core-modules/arachne-perimeters/tests/overhang_distance_tdd.rs
++++ b/modules/core-modules/arachne-perimeters/tests/overhang_distance_tdd.rs
+@@ -19,7 +19,7 @@ use slicer_sdk::test_prelude::*;
+ use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
+ use slicer_sdk::views::SliceRegionView;
+ 
+-fn make_config() -> ConfigView {
++fn make_config(overhang_speed_active: bool) -> ConfigView {
+     ConfigViewBuilder::new()
+         .int("wall_count", 2)
+         .float("inner_wall_line_width", 0.4)
+@@ -52,6 +52,18 @@ fn make_config() -> ConfigView {
+         .float("bridge_flow", 1.0)
+         .bool("thick_bridges", false)
+         .float("seam_candidate_angle_threshold_deg", 30.0)
++        // t20 consume-only-when-read gate: the distance stamp is produced
++        // only when the overhang-classifier consumer is live. This fixture
++        // exercises the live path explicitly; the dead path has its own test
++        // below.
++        .bool("enable_overhang_speed", true)
++        .float(
++            "overhang_1_4_speed",
++            if overhang_speed_active { 30.0 } else { 0.0 },
++        )
++        .float("overhang_2_4_speed", 0.0)
++        .float("overhang_3_4_speed", 0.0)
++        .float("overhang_4_4_speed", 0.0)
+         .build()
+ }
+ 
+@@ -70,7 +82,7 @@ fn make_region() -> SliceRegionView {
+ 
+ #[test]
+ fn arachne_stamps_distance_for_regions_with_no_overhang_bands() {
+-    let config = make_config();
++    let config = make_config(true);
+     let module = ArachnePerimeters::from_config(&config).unwrap();
+     let regions = vec![make_region()];
+     let paint = PaintRegionLayerView::new(0);
+@@ -105,3 +117,41 @@ fn arachne_stamps_distance_for_regions_with_no_overhang_bands() {
+         "expected at least one path point to verify"
+     );
+ }
++
++#[test]
++fn arachne_skips_distance_when_the_overhang_consumer_is_inactive() {
++    let config = make_config(false);
++    let module = ArachnePerimeters::from_config(&config).unwrap();
++    let regions = vec![make_region()];
++    let paint = PaintRegionLayerView::new(0);
++    let mut output = PerimeterOutputBuilder::new();
++
++    module
++        .run_perimeters(0, &regions, &paint, &mut output, &config)
++        .unwrap();
++
++    assert!(
++        !output.wall_loops().is_empty(),
++        "expected at least one wall loop to be emitted"
++    );
++
++    let mut checked_any_point = false;
++    for wall in output.wall_loops() {
++        for pt in &wall.path.points {
++            checked_any_point = true;
++            assert_eq!(
++                pt.overhang_distance_mm, None,
++                "all overhang bands are zero, so no consumer reads the distance"
++            );
++            assert_eq!(
++                pt.overhang_quartile, None,
++                "all overhang bands are zero, so no consumer reads the quartile"
++            );
++        }
++    }
++
++    assert!(
++        checked_any_point,
++        "expected at least one path point to verify"
++    );
++}
+diff --git a/modules/core-modules/classic-perimeters/classic-perimeters.toml b/modules/core-modules/classic-perimeters/classic-perimeters.toml
+index 8a9fc72d..f16a376b 100644
+--- a/modules/core-modules/classic-perimeters/classic-perimeters.toml
++++ b/modules/core-modules/classic-perimeters/classic-perimeters.toml
+@@ -346,6 +346,54 @@ display     = "Layer height"
+ description = "OrcaSlicer coFloat key layer_height; read by run_perimeters (packet 150 step 5) alongside nozzle_diameter for bridging_flow's thick_bridges round-cross-section formula (D-104g)."
+ group       = "Quality"
+ 
++# ── Consume-only-when-read gate (t20) ──────────────────────────────────
++# The per-vertex overhang stamps (`overhang_quartile` /
++# `overhang_distance_mm`) are read only by overhang-classifier-default, whose
++# liveness predicate is exactly (`enable_overhang_speed` && any overhang band
++# != 0). These five keys mirror that module's schema so `run_perimeters` can
++# read the same predicate from its own ConfigView and skip both spatial
++# queries when nobody reads them. Types, defaults and denied_scopes must stay
++# compatible with `overhang-classifier-default.toml`; both declarations feed
++# one registry entry.
++
++[config.schema.enable_overhang_speed]
++type    = "bool"
++default = true
++display = "Enable Overhang Speed"
++group   = "Speed"
++
++[config.schema.overhang_1_4_speed]
++type    = "float_or_percent"
++base_key = "outer_wall_speed"
++default = 0.0
++display = "Overhang 1/4 Speed"
++group   = "Speed"
++denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
++
++[config.schema.overhang_2_4_speed]
++type    = "float_or_percent"
++base_key = "outer_wall_speed"
++default = 0.0
++display = "Overhang 2/4 Speed"
++group   = "Speed"
++denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
++
++[config.schema.overhang_3_4_speed]
++type    = "float_or_percent"
++base_key = "outer_wall_speed"
++default = 0.0
++display = "Overhang 3/4 Speed"
++group   = "Speed"
++denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
++
++[config.schema.overhang_4_4_speed]
++type    = "float_or_percent"
++base_key = "outer_wall_speed"
++default = 0.0
++display = "Overhang 4/4 Speed"
++group   = "Speed"
++denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
++
+ # Region-split activation. Declaring `material` registers it in the
+ # cross-manifest aggregate at plan-build time. `paint_only` is deliberately
+ # absent (defaults to false): classic perimeters must run on unpainted
+diff --git a/modules/core-modules/classic-perimeters/src/lib.rs b/modules/core-modules/classic-perimeters/src/lib.rs
+index e4eac95f..9d1b2c92 100644
+--- a/modules/core-modules/classic-perimeters/src/lib.rs
++++ b/modules/core-modules/classic-perimeters/src/lib.rs
+@@ -341,6 +341,24 @@ impl LayerModule for ClassicPerimeters {
+         let bridge_flow_ratio = _config.require_float("bridge_flow")? as f32;
+         let thick_bridges = _config.require_bool("thick_bridges")?;
+ 
++        // Consume-only-when-read (t20): the per-vertex overhang stamps are
++        // read only by overhang-classifier-default, and only when its own
++        // liveness predicate holds. Read the same predicate here so this
++        // per-layer producer skips both spatial queries when nobody reads
++        // them; when live, the exact same modes as before are used.
++        let overhang_annotations_consumed =
++            slicer_sdk::config_predicates::overhang_annotations_consumed_or_inactive(_config);
++        let planar_annotation_mode = if overhang_annotations_consumed {
++            PathAnnotationMode::Planar
++        } else {
++            PathAnnotationMode::Unconsumed
++        };
++        let nonplanar_annotation_mode = if overhang_annotations_consumed {
++            PathAnnotationMode::NonPlanarNoQuartile
++        } else {
++            PathAnnotationMode::Unconsumed
++        };
++
+         for region in regions {
+             output.begin_region(
+                 region.object_id(),
+@@ -373,6 +391,7 @@ impl LayerModule for ClassicPerimeters {
+                     layer_height,
+                     output,
+                     &spatial_context,
++                    nonplanar_annotation_mode,
+                 )?;
+                 continue;
+             }
+@@ -461,6 +480,7 @@ impl LayerModule for ClassicPerimeters {
+                         medial_axis_enabled,
+                         seam_candidate_angle_threshold_deg,
+                         &spatial_context,
++                        planar_annotation_mode,
+                     )?;
+                 }
+                 if !split.non_top_portion.is_empty() {
+@@ -491,6 +511,7 @@ impl LayerModule for ClassicPerimeters {
+                         medial_axis_enabled,
+                         seam_candidate_angle_threshold_deg,
+                         &spatial_context,
++                        planar_annotation_mode,
+                     )?;
+                 }
+             } else if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
+@@ -555,6 +576,7 @@ impl LayerModule for ClassicPerimeters {
+                         medial_axis_enabled,
+                         seam_candidate_angle_threshold_deg,
+                         &spatial_context,
++                        planar_annotation_mode,
+                     )?;
+                 }
+                 if !split.non_top_portion.is_empty() {
+@@ -585,6 +607,7 @@ impl LayerModule for ClassicPerimeters {
+                         medial_axis_enabled,
+                         seam_candidate_angle_threshold_deg,
+                         &spatial_context,
++                        planar_annotation_mode,
+                     )?;
+                 }
+             } else {
+@@ -615,6 +638,7 @@ impl LayerModule for ClassicPerimeters {
+                     medial_axis_enabled,
+                     seam_candidate_angle_threshold_deg,
+                     &spatial_context,
++                    planar_annotation_mode,
+                 )?;
+             }
+         }
+@@ -684,6 +708,7 @@ impl ClassicPerimeters {
+         medial_axis_enabled: bool,
+         seam_candidate_angle_threshold_deg: f32,
+         context: &PerimeterSpatialContext,
++        annotation_mode: PathAnnotationMode,
+     ) -> Result<(), ModuleError> {
+         // P109 degeneracy guard: a contour needs >=3 non-collinear vertices
+         // (strictly positive enclosed area) to be offsettable. Clipper's polygon
+@@ -870,7 +895,7 @@ impl ClassicPerimeters {
+                     z,
+                     bead_flow_width_mm,
+                     context,
+-                    PathAnnotationMode::Planar,
++                    annotation_mode,
+                 );
+                 if points.is_empty() {
+                     return None;
+@@ -1210,6 +1235,7 @@ impl ClassicPerimeters {
+         layer_height: f32,
+         output: &mut PerimeterOutputBuilder,
+         context: &PerimeterSpatialContext,
++        annotation_mode: PathAnnotationMode,
+     ) -> Result<(), ModuleError> {
+         // D-105 residual (packet 185): inset consecutive shells by Flow
+         // *spacing* (rounded cross-section via `line_width_to_spacing`), not by
+@@ -1249,14 +1275,14 @@ impl ClassicPerimeters {
+                 ExtrusionRole::InnerWall
+             };
+             for poly in &inset_result {
+-                // Non-planar shells are an explicitly separate concern (D-3); never
++                // Non-planar shells are an explicitly separate concern (D-3): never
+                 // stamp overhang_quartile here.
+                 let points = expolygon_to_path3d_indexed(
+                     &poly.contour,
+                     z,
+                     width,
+                     context,
+-                    PathAnnotationMode::NonPlanarNoQuartile,
++                    annotation_mode,
+                 );
+                 if points.is_empty() {
+                     continue;
+diff --git a/modules/core-modules/overhang-classifier-default/src/lib.rs b/modules/core-modules/overhang-classifier-default/src/lib.rs
+index d30685dc..dce9ed67 100644
+--- a/modules/core-modules/overhang-classifier-default/src/lib.rs
++++ b/modules/core-modules/overhang-classifier-default/src/lib.rs
+@@ -56,17 +56,6 @@ fn base_speed(role: &ExtrusionRole, config: &ConfigView) -> Result<f32, ModuleEr
+     }
+ }
+ 
+-/// Overhang speed for `quartile` (1..=4), 0.0 otherwise.
+-fn overhang_speed(quartile: u8, config: &ConfigView) -> Result<f32, ModuleError> {
+-    match quartile {
+-        1 => speed(config, "overhang_1_4_speed"),
+-        2 => speed(config, "overhang_2_4_speed"),
+-        3 => speed(config, "overhang_3_4_speed"),
+-        4 => speed(config, "overhang_4_4_speed"),
+-        _ => Ok(0.0),
+-    }
+-}
+-
+ /// Line width (mm) used for both overhang-quartile bucketing and curl
+ /// distance synthesis. Reads `outer_wall_line_width`, falling back to
+ /// `line_width` (matches the resolution convention documented in
+@@ -574,22 +563,19 @@ impl FinalizationModule for OverhangClassifierDefault {
+         output: &mut FinalizationOutputBuilder,
+         config: &ConfigView,
+     ) -> Result<(), ModuleError> {
+-        // Required read (packet 06): `enable_overhang_speed` is `bool` in the
+-        // manifest with a seeded `true` default, so the previous
+-        // `.unwrap_or(true)` fallback becomes a hard requirement.
+-        if !config.require_bool("enable_overhang_speed")? {
+-            return Ok(());
+-        }
+-
++        // Shared with the perimeter producers: the same helper decides whether
++        // they stamp `overhang_quartile` / `overhang_distance_mm`, so the
++        // reader and the producers cannot disagree. The helper uses the same
++        // required reads, keeping a missing key a fatal config defect
++        // (packet 06).
++        //
+         // Curl reuses the overhang speed table (no separate curl-specific
+         // config keys — see the module doc-comment), so "all overhang bands
+         // are zero" already means the whole feature family is off; skipping
+         // here also avoids the wasted cross-layer point scan below.
+-        let any_overhang_band_nonzero = (1..=4)
+-            .try_fold(false, |acc, q| -> Result<bool, ModuleError> {
+-                Ok(acc || overhang_speed(q, config)? != 0.0)
+-            })?;
+-        if !any_overhang_band_nonzero {
++        let overhang_consumed =
++            slicer_sdk::config_predicates::overhang_annotations_consumed(config)?;
++        if !overhang_consumed {
+             return Ok(());
+         }
+         let flow_width = line_width(config)?;

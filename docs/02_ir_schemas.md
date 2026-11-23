@@ -81,6 +81,22 @@ Bounds and overflow policy:
   geometry within a single slice.
 - ID collisions are fatal contract errors.
 
+Tested boundaries (property charter
+[`H-IDS`](testing/properties.md#h-ids)): `LayerEntityIdGen::new` starts at `1`, allocates
+strictly monotonically, and never returns the reserved `0` sentinel — for a bounded number of
+allocations, far below `u64::MAX`; allocation exhaustion is not exercised by looping to the
+limit. For modifier sub-regions, with `S = MODIFIER_VARIANT_REGION_ID_STRIDE` and `B = 2^63`,
+`modifier_sub_region_id_fits(parent)` is exactly `parent·S + (S-1) < B-1`, so the documented
+worst-case payload fits iff `parent ≤ floor((B - S - 1)/S)`. Beyond that limit `fits` returns
+`false` and minting asserts (the assertion text is observed deterministically by
+`ir_id_parent_and_sentinel_rejections` in `crates/slicer-ir/tests/property_ir_contracts.rs`).
+Namespace membership is not provenance validation: `is_modifier_namespace_id` accepts any
+high-bit-marked value except `MODIFIER_FOOTPRINT_REGION_ID`, so an arbitrary bit-marked id
+decodes through `modifier_base_region_id` even though it was never minted. Distinct parents
+cannot share an id for identical object/footprint inputs, but distinct inputs **can** collide
+inside the bounded stride — no blanket injectivity or unequal-hash guarantee is claimed, and
+runtime collision rejection remains the caller's obligation.
+
 ---
 
 ## IR 0 — MeshIR
@@ -335,12 +351,23 @@ tie; equal priorities are not themselves an error.
 
 ### `ObjectMesh` Assembly Contract (Normative — Packet 75)
 
-All `ObjectMesh` instances are constructed via
-`slicer_model_io::loader::assemble_object(mesh, id, paint_data, modifiers, config)`.
-Five wrap sites use this single entry point: the STL, OBJ, and 3MF
-loader paths in `load_model`, plus the `mesh convert` split
-re-assembly. `assemble_object` computes `world_z_extent` from the mesh
-and applies the object's transform; for single-component models that
+All `ObjectMesh` instances produced by the model loader are constructed via
+`slicer_model_io::loader::assemble_object(id, mesh, config, modifier_volumes, paint_data)`
+(`crates/slicer-model-io/src/loader.rs`). The argument order above is the real
+signature; an earlier revision of this section listed the arguments in an
+illustrative order that did not match the function.
+
+Producers that route through this single entry point:
+
+- the STL, OBJ and 3MF paths in `load_model` (3MF once per build item);
+- `load_scad_model` (`crates/slicer-model-io/src/loader.rs`), which assembles the
+  one mesh returned by the strict SCAD adapter with an empty `ObjectConfig`, no
+  modifier volumes and no paint data — SCAD colors and `group()`s never become
+  tools, materials or paint;
+- the `mesh convert` split-to-objects re-assembly.
+
+`assemble_object` computes `world_z_extent` from the mesh
+and applies the object's identity transform. For single-component models that
 reuse a parent extent during convert's split re-assembly the recompute
 is identical under identity transform (locked by AC-4.3 regression in
 packet 75). Z-extent logic is centralised here; the convert path's separate
@@ -348,6 +375,11 @@ packet 75). Z-extent logic is centralised here; the convert path's separate
 second implementation. The `assemble_object` symbol (`crates/slicer-model-io/src/loader.rs`)
 was promoted from `pub(crate)` to `pub` in Packet 81 to support the CLI's
 `helpers_cmd.rs` move into `pnp-cli`.
+
+One pre-existing producer does **not** use this seam: the STEP importer
+(`crates/slicer-helpers/src/import/step.rs`) builds its `ObjectMesh` inline with a
+`uuid_v4` id. It is outside the model-loader contract and is not a precedent for
+new loaders.
 
 ### `ObjectConfig.data` Population (Normative — Packet 67)
 
@@ -675,6 +707,16 @@ and their distinct bit patterns would be supplied to hashing, so they intern
 as distinct entries. NaN is already a fatal validation error (see top of this
 doc), so this is theoretical for real prints.
 
+Tested (property charter [`H-CONFIG-INTERN`](testing/properties.md#h-config-intern)): the
+canonical Postcard encoding of the whole `ResolvedConfig` is used as an equality oracle
+independent of the hand-written `PartialEq`/`Hash`, and the property asserts
+`actual_eq(a, b) == (representation(a) == representation(b))` plus the implication
+`actual_eq(a, b) ⇒ hash(a) == hash(b)`. The premise that Postcard preserves scalar float bits
+and ordered `BTreeMap` content is validated first on signed-zero, NaN-payload, option, list and
+extension counterexamples. Unequal hashes are never required for unequal values, and no digest
+is persisted. A defect confined to a field family the generator does not vary (see the
+charter's coverage table) would not be caught by that property alone.
+
 ---
 
 ## IR 4 — RegionMapIR
@@ -699,6 +741,14 @@ interned `ResolvedConfig` pool, `RegionPlan.config` is its per-plan index, and
 `RegionMapIR::config_for` and `RegionMapIR::intern_config` rather than relying
 on the internal pool layout.
 
+The chain vector is the shared ascending `(priority, semantic name)` ordered
+identity: RegionMapping emits it, paint composition emits the same vector, and
+selection and exact-chain config lookup match it without re-sorting (ADR-0018's
+2026-11-19 amendment; covered by
+[`H-REGIONMAP`](testing/properties.md#h-regionmap)). Lexical paint-config
+overlay precedence (§ Config Key Namespaces, tool overlay last) is a separate
+rule that chain order does not change.
+
 Packet 10 adds map content in existing `ResolvedConfig.extensions` values in
 `RegionMapIR.configs` and `RegionPlan.paint_overrides`; it does not add a struct
 field or change the persisted 3.0.0 layout. The independent pre-change 3.0.0
@@ -708,7 +758,7 @@ experimental fixed-field 3.1.0 layout and its packet-added production decoder
 are abandoned without authorizing deletion or regeneration of existing
 experimental artifacts and without a reader compatibility promise. This
 preservation constraint does not assert that a 3.1.0 fixture was produced;
-Packet 10's [review remediation](spec_packets/config-scope-resolution_10_remaining-automatic-values/review-remediation.md)
+Packet 10's [review remediation](spec_packets/_OLD/config-scope-resolution_10_remaining-automatic-values.md#review-remediation)
 records the identified artifact inventory.
 No WIT, CLI-output, or manifest schema version changes.
 
@@ -732,6 +782,15 @@ No WIT, CLI-output, or manifest schema version changes.
   and `run_slice` injects `slice_has_paint` into every painted job's config
   source, real configs intern at `ConfigId(1)` and above and `configs[0]`
   stays the untouched `ResolvedConfig::default()` placeholder (Packet 207).
+
+Tested (property charter [`H-CONFIG-INTERN`](testing/properties.md#h-config-intern)): the
+interner is compared case by case against an independent first-occurrence rank model over
+canonical Postcard keys, seeded with the serialized default. Equal-but-independently-built
+configs reuse an id, re-interning is idempotent, the pool grows exactly as the model predicts,
+`config_for_raw` returns the interned input, and a real `RegionKey`/`RegionPlan` inserted with
+the returned non-default id resolves through `config_for` to that config rather than to index
+zero. `config_for` panics on broken construction invariants, so indexing an invalid id is not
+treated as a missing-validator finding.
 
 ### `RegionMappingPlanProjection` (Internal Decoupling Type — Packet 87)
 
@@ -763,7 +822,7 @@ global < object < layer range < modifier < paint semantic < tool
 
 Per-tool config is applied **last (highest)**, mirroring OrcaSlicer's filament-override-last model (`PrintApply.cpp` applies the filament preset's overrides on top of print/object/modifier/material). At `RegionMapping` the per-tool overlay runs after the paint overlays for a painted tool's chain; at emit it overlays the global config.
 
-When multiple paint semantics overlap a single region during `RegionMapping`, the host sorts the contributing semantics by the lexicographic order of `paint_semantic_namespace_key(&PaintSemantic)` ascending and overlays them in that order. The lexicographically-last semantic in sort order overlays last and therefore wins. This RegionMap-stage rule determines which semantic's config wins in `RegionPlan.config`. It is distinct from the `paint_order`-based rule, which governs intra-semantic polygon overlap during `PrePass::PaintSegmentation`: the highest `paint_order` wins, and equal-order conflicting values are a fatal error. The `paint_order` field is defined in `crates/slicer-sdk/src/prepass_builders.rs`; its resolution rule is documented in `04_host_scheduler.md` § "Layer::PaintRegionAnnotation Stage" and traced in `10_scenario_traces.md`.
+When multiple paint semantics overlap a single region during `RegionMapping`, the host sorts the contributing semantics by the lexicographic order of `paint_semantic_namespace_key(&PaintSemantic)` ascending and overlays them in that order. The lexicographically-last semantic in sort order overlays last and therefore wins. This RegionMap-stage rule determines which semantic's config wins in `RegionPlan.config`. It is separate from chain identity: the `variant_chain` vector stays in the shared `(priority, semantic name)` order (IR 4; [`H-REGIONMAP`](testing/properties.md#h-regionmap)), and that order does not change this lexical overlay precedence or the tool overlay applied last. It is distinct from the `paint_order`-based rule, which governs intra-semantic polygon overlap during `PrePass::PaintSegmentation`: the highest `paint_order` wins, and equal-order conflicting values are a fatal error. The `paint_order` field is defined in `crates/slicer-sdk/src/prepass_builders.rs`; its resolution rule is documented in `04_host_scheduler.md` § "Layer::PaintRegionAnnotation Stage" and traced in `10_scenario_traces.md`.
 
 **Overlap determination (Normative — Packet 51):** A region's polygons
 are considered to overlap a `PaintSemantic` when
@@ -848,35 +907,53 @@ depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 
 After the host runs `sync_perimeter_infill_areas_into_slice` at
 `Layer::Perimeters` commit (see
-`crates/slicer-runtime/src/region_partition.rs`):
+`crates/slicer-runtime/src/region_partition.rs`), the contract is conditional on
+`W = PerimeterIR.regions[i].infill_areas ∩ SlicedRegion.polygons` — the
+effective wall inset, not the donor's whole object geometry:
 
-1. **`bridge_areas`** is claimed directly from the gated
-   `SlicedRegion.bridge_areas` (post-unsupported-span gate, packet 234) and
-   may extend beyond the wall-inset polygon — at a ceiling layer the
-   perimeter module's infill area can be empty (the whole cross-section is
-   top surface) and the canonical bridge site must survive.
-   **`bottom_solid_fill`**, **`top_solid_fill`**,
-   **`internal_solid_fill`**, and
-   **`sparse_infill_area`** are pairwise disjoint subsets of the
-   corresponding `PerimeterIR.regions[i].infill_areas` (the wall-inset
-   polygon). All five sets remain pairwise disjoint from each other via the
-   precedence dedup (`bottom`/`top`/`internal`/`sparse` are differenced
-   against the higher-precedence claims in
-   `sync_perimeter_infill_areas_into_slice`).
-2. Precedence on overlap is strict:
-   `bridge > bottom > top > internal > sparse`
-   (OrcaSlicer `PrintObject::prepare_infill` parity; the internal bucket
-   carries the converted sparse islands of `minimum_sparse_infill_area` —
-   the PrePass shell-band marker content carves to empty here because it is
-   a subset of `top_solid_fill`).
-3. The pre-perimeter values of `top_solid_fill` / `bottom_solid_fill` /
-   `bridge_areas` (committed by `PrePass::ShellClassification` and
-   `PrePass::MeshAnalysis`) live unchanged on the **Blackboard**'s
-   `Arc<Vec<SliceIR>>`; the per-layer arena copy is the one that gets
-   clipped + deduped. This preserves the read-only Blackboard contract.
-4. A `SliceIR` region with no matching `PerimeterIR.regions` entry is
-   skipped silently (used by the region_split work in packets 92–95 where
-   variant regions share wall geometry with their base region).
+1. **Nonempty `W`:** `bridge_areas`, `bottom_solid_fill`, `top_solid_fill`,
+   `internal_solid_fill`, and `sparse_infill_area` are pairwise disjoint subsets
+   of `W`, and their union is `W`, under the strict precedence
+   `bridge > bottom > top > internal > sparse` (OrcaSlicer
+   `PrintObject::prepare_infill` parity; the internal bucket carries the
+   converted sparse islands of `minimum_sparse_infill_area` — the PrePass
+   shell-band marker content carves to empty here because it is a subset of
+   `top_solid_fill`). An unsupported span is classified in `PrePass::Slice`
+   against the raw previous cross-section (canonical `detect_surfaces_type`);
+   the `ShellClassification` stage does not subtract a second lower layer.
+2. **Empty `W` with nonempty `PerimeterRegion.walls`:** the walls consumed the
+   cross-section: an empty wall inset yields no canonical bridge or top surface,
+   and all five canonical fill roles are empty. Canonical
+   `LayerRegion::slices_to_fill_surfaces_clipped` builds each typed surface as
+   slice ∩ the perimeters' fill area, so an empty fill area produces no
+   bridge/top surface there.
+3. **Empty `W` with no walls:** the original `bridge_areas` is preserved,
+   `top_solid_fill` becomes the original top minus bridge, and
+   `bottom_solid_fill` / `internal_solid_fill` / `sparse_infill_area` are empty.
+   This branch makes NO subset claim against the empty `W` — it is not the case
+   that "all roles are subsets".
+4. **Missing donor** for an ordinary, virtual or modifier region is NOT fatal:
+   the roles stay at their `PrePass` values (minus the shell-band marker carve
+   from `internal_solid_fill`) and a `log::warn!` names the object and source
+   region; a modifier child's warning also names the parent region. The
+   stage-ordering fatals are a missing staged `SliceIR` or `PerimeterIR`
+   (`LayerStageError::FatalModule`, stage `Layer::Perimeters`, module
+   `host:region_partition`); the missing-perimeter path re-stages the taken
+   slice. A rejected modifier split is also fatal, but it restores the
+   entry-state slice first (see item 6).
+5. Donor joins are exact on `(object_id, source region_id, ordered
+   variant_chain)`; modifier children decode only their parent region id for the
+   donor lookup while preserving their own object and ordered chain.
+6. The hook is arena-local and transactional at its own boundary: role sync and
+   the modifier split run on a working copy, and a rejected modifier split
+   (full-identity collision or an unencodable parent id) re-stages the
+   ENTRY-STATE slice, so `arena.slice()` is never left `None` or
+   half-repartitioned. It makes no claim about earlier module commits. The
+   immutable Blackboard `Arc<Vec<SliceIR>>` is unchanged.
+
+These branches are property-tested under the `H-RUNTIME-PARTITION` charter
+(`docs/testing/properties.md#h-runtime-partition`); recorded measurements and
+provenance are in `docs/testing/proptest-runtime-evidence.md`.
 
 Each fill claim holder (`claim:sparse-fill`, `claim:top-fill`,
 `claim:bottom-fill`, `claim:bridge-fill`; see `docs/03_wit_and_manifest.md`)
@@ -1046,6 +1123,22 @@ For overlapping non-support modifier volumes, priority is applied first and
 document order breaks ties: the first winning modifier owns the footprint, and
 subsequent modifiers intersect only the remaining base area.
 
+**Full-identity collision rejection.** The modifier splitter rejects a collision
+on the full identity `(object_id, minted modifier region_id, ordered
+variant_chain)`; an equal numeric id on a different object or chain is a
+different identity and is not rejected. The splitter works on a copy and assigns
+only on success, so a rejection leaves the input `SliceIR` unchanged; the
+`Layer::Perimeters` hook adds the arena-level rollback described above.
+
+**Child fill carriers.** Modifier children add no `PerimeterIR` walls and keep
+per-polygon `internal_bridge_areas` / `internal_bridge_angles_deg`
+index-aligned; an empty angle Vec falls back to `bridge_orientation_deg` (never
+union the carriers into one angle-ambiguous polygon).
+
+This behavior is property-tested under the `H-RUNTIME-MODIFIERS` charter
+(`docs/testing/properties.md#h-runtime-modifiers`); recorded measurements and
+provenance are in `docs/testing/proptest-runtime-evidence.md`.
+
 `ExPolygon`, `Polygon`, and `Point2` are shared geometry types defined in
 `crates/slicer-ir/src/slice_ir.rs`; polygon contours are counter-clockwise,
 holes are clockwise, and `Point2` uses native 100 nm integer units.
@@ -1161,6 +1254,56 @@ arbitrary guest module — the only production consumer is the new
   (`rayon` + `boostvoronoi` are native-only) — see the host-service bridge
   record in `docs/DEVIATION_LOG.md` for the full architecture rationale.
 
+#### Arachne printable lines versus inner-contour markers (packet proptest-openrscad_10)
+
+This subsection clarifies the existing semantics. It changes no field, schema version or WIT
+record.
+
+- **Two kinds of line.** `run_arachne_pipeline` returns `(printable_lines, inner_contour)`. A
+  printable line has a **nonzero first-junction width**. `separate_out_inner_contour`
+  (`crates/slicer-core/src/arachne/separate_inner_contour.rs`) looks only at the **first**
+  junction: a line whose first width is zero is an inner-contour marker, not an extrudable wall.
+- **Later junctions may be zero-width.** A printable line can still have zero-width junctions
+  after its first one. These are the limited strategy's legitimate interior sentinels, so "every
+  printable width is positive" is not part of the contract.
+- **Per-point arrays.** On a `WallLoop`, `path.points`, `width_profile.widths` and
+  `feature_flags` are parallel **by point**, not just equal in length. Entry `i` of each belongs to
+  the same point, so a winding reversal must reverse all three together.
+- **Closure.** `ExtrusionLine::is_closed` is asserted to mean "the endpoint XY repeats" only where
+  the stitcher produced an explicit repeated endpoint. Canonical `WallToolPaths::stitchToolPaths`
+  can set the closure flag without appending that repeat, and legitimately open paths (thin walls,
+  stitched odd chains) exist. Nothing may fabricate closure for an open line.
+
+The property charters
+[`H-ARACHNE-PIPELINE`](testing/properties.md#h-arachne-pipeline) (output roles, markers, closure)
+and [`M-ARACHNE-BUILD`](testing/properties.md#m-arachne-build) (per-point alignment through
+`build_walls`) test these rules.
+
+#### Classic-wall closure and fuzzy-skin span semantics (packet proptest-openrscad_12)
+
+This subsection clarifies existing IR semantics. It changes no field, schema version or WIT
+record.
+
+- **Classic ordinary walls.** On the tested native no-medial-axis path, an ordinary
+  `Outer`/`Inner` wall carries one point per offset-ring vertex plus an explicit closing repeat.
+  `path.points`, `width_profile.widths` and `feature_flags` are parallel by point, the closing
+  width/flag mirror the first entry, and the `perimeter_index` is the band that produced the wall.
+  The requested wall count is an upper bound, not a promised emitted count; tiny or degenerate
+  shapes may emit fewer bands or nothing.
+- **Fuzzy-skin spans.** `apply_fuzzy_skin` consumes every input point, flag and profile width
+  once in order. An unselected segment, or a selected zero-length segment, copies its endpoint
+  exactly and inserts nothing. A selected nonzero segment inserts at least one synthetic sample.
+  Inserted sample metadata is synthetic: flag/profile width come from the segment start, while
+  point width/flow interpolate and overhang annotations reset. The retained contract is exact
+  preservation of unselected spans and original endpoints plus a measured displacement envelope
+  for inserted samples, not universal metadata preservation.
+
+The property charters
+[`M-CLASSIC-WALL-STRUCTURE`](testing/properties.md#m-classic-wall-structure),
+[`M-CLASSIC-BAND-SELECTION`](testing/properties.md#m-classic-band-selection),
+[`M-FUZZY-SPAN-PRESERVATION`](testing/properties.md#m-fuzzy-span-preservation) and
+[`M-FUZZY-DISPLACEMENT`](testing/properties.md#m-fuzzy-displacement) test these rules.
+
 #### Overhang quartile bucketization (Normative — Packet 57)
 
 The four overhang speed bands map to signed-distance thresholds from
@@ -1200,7 +1343,7 @@ while seam-first geometry is represented by the first point of the wall path.
 
 **Stage:** Output of `Layer::Infill`, mutated by `Layer::InfillPostProcess`
 
-**Current schema_version: 1.1.0** (authoritative source: `CURRENT_INFILL_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`). 1.1.0 adds the additive `InfillRegion.variant_chain: Vec<(String, PaintValue)>` carrier (seam identity): the full paint variant chain of the source region, so the infill linker and post-process consumers re-attribute output to the painted variant rather than the chain-less base. The field is `#[serde(default)]`, so pre-1.1.0 fixtures parse to an empty chain (unchanged behaviour for unpainted regions). Prior version: 1.0.0.
+**Current schema_version: 1.2.0** (authoritative source: `CURRENT_INFILL_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`). 1.1.0 adds the additive `InfillRegion.variant_chain: Vec<(String, PaintValue)>` carrier (seam identity): the full paint variant chain of the source region, so the infill linker and post-process consumers re-attribute output to the painted variant rather than the chain-less base. The field is `#[serde(default)]`, so pre-1.1.0 fixtures parse to an empty chain (unchanged behaviour for unpainted regions). 1.2.0 (packet `layer-module-preparation_01`) adds the additive `#[serde(default)]` ordered `InfillRaftRegion.variant_chain` carrier, so every committed raft-fill group in `InfillIR.raft_regions` (the separate non-path raft substrate from packet 240b) keeps full source identity `(object_id, region_id, ordered variant_chain)` — raft commits key per full source origin, never per map-space address; an empty chain is the exact identity of a genuinely chain-less source, never a wildcard, and the chain serializes explicitly (no `skip_serializing_if`). Prior versions: 1.1.0 → 1.0.0.
 
 `InfillIR` and `InfillRegion` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. Each layer carries region-scoped sparse,
@@ -1230,17 +1373,25 @@ exactly the pre-226 behaviour.
 
 **Stage:** Output of `Layer::Support`, mutated by `Layer::SupportPostProcess`
 
-**Current schema_version: 2.0.0** (`CURRENT_SUPPORT_IR_SCHEMA_VERSION` in
-`crates/slicer-ir/src/slice_ir.rs`). Major bump by packet 220 — the flat
-per-region path lists were replaced by attributed per-body/role entries
-(breaking). Prior version: 1.0.0.
+**Current schema_version: 2.1.0** (`CURRENT_SUPPORT_IR_SCHEMA_VERSION` in
+`crates/slicer-ir/src/slice_ir.rs`). 2.1.0 (packet `layer-module-preparation_01`)
+adds the additive `#[serde(default)]` ordered `SupportEntry.variant_chain`
+carrier — a printed support row keeps the full source origin
+`(object_id, region_id, ordered variant_chain)` it was derived from; the chain
+serializes explicitly (`[]` round-trips; an empty chain is the exact identity of
+a genuinely chain-less source, never a wildcard). Major bump 2.0.0 by packet
+220 — the flat per-region path lists were replaced by attributed
+per-body/role entries (breaking). Prior versions: 2.0.0 → 1.0.0.
 
 `SupportIR` and `SupportEntry` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. Each layer carries a
 `entries: Vec<SupportEntry>` collection. Each `SupportEntry` carries
-`family_id`, `body_id`, the source `demand_ids`, `object_id`, `region_id`,
-a `role: SupportRole`, and the printable `paths: Vec<ExtrusionPath3D>` for
-that body/role.
+`family_id`, `body_id`, the source `demand_ids`, `object_id`, `region_id`, the
+ordered source `variant_chain`, a `role: SupportRole`, and the printable
+`paths: Vec<ExtrusionPath3D>` for that body/role. Attribution is per
+ordered entity: body and demand identities remain opaque token IDs and every
+attribution (family/body/demand → source) keeps the entry's exact ordered
+chain rather than collapsing to a map-space address (ADR-0073).
 
 `SupportRole` is `{ SupportBody, TopInterface, BaseInterface, BottomInterface, Raft,
 Ironing }`. One entry is emitted per body/role — a single body may produce
@@ -1256,12 +1407,17 @@ Selection is region-scoped through `object_id` and `region_id`.
 Mixed-family attribution: each demand is tracked by a `support_demand_id`,
 and family attribution is decided at the host support-plan merge point rather
 than by geometry. An entry is retained only when
-`SupportAnalysisIR::family_assignments[(object_id, region_id)]` equals the
-entry's `family_id` and the producing module's manifest claims include the
-matching support-family claim. The check is per entry and default-deny: a
-trespassing entry is dropped with a diagnostic instead of being arbitrated
-against a competing family, so per-demand family attribution is preserved
-end-to-end and is independent of plan arrival order.
+`SupportAnalysisIR::family_assignments` contains the row addressing the
+entry's full source origin — the chain-bearing `SupportSourceKey`
+(`object_id, region_id, ordered variant_chain`; deliberately no layer
+coordinate, per ADR-0073) — that equals the entry's `family_id` and the
+producing module's manifest claims include the matching
+`support-family:<family_id>` claim. The check is per entry and default-deny: a
+trespassing entry is dropped with a diagnostic (warn code `1206`) instead of
+being arbitrated against a competing family, so per-demand family attribution
+is preserved end-to-end and is independent of plan arrival order. The
+ownership row addresses the entry's exact ordered chain — a chain-ignored
+pair-key assignment lookup is never substituted here.
 
 Packet 205c introduced origin-preserving per-region support output; packet 220
 subsequently superseded its `SupportIR` shape with attributed `SupportEntry`
@@ -1282,7 +1438,15 @@ own/foreign territory trim rule.
 **Stage:** Output of `PrePass::SupportGeometry` — coarse outline prepass results,
 committed before `SupportPlanIR` within the same stage.
 
-**Current schema_version: 1.0.0** (authoritative source: `CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`).
+**Current schema_version: 2.0.0** (authoritative source:
+`CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`).
+Major bump by packet `layer-module-preparation_01`: the `entries` map key
+`SupportGeometryKey` gains the ordered `variant_chain` identity component
+("Field type changed | Major (1.x → 2.0)" in the IR Versioning Contract — the
+widening changes owner identity/encoding even though the map's field spelling
+is unchanged). The widened key retains every former component — layered
+`global_support_layer_index`, `object_id`, `region_id` — plus the exact ordered
+chain; the `u32::MAX` intermediate-sentinel semantics are preserved.
 
 **Producer:** The host built-in commits `SupportGeometryIR` first within
 `PrePass::SupportGeometry`, ahead of any `support-planner` module's
@@ -1294,12 +1458,33 @@ region)` outline polygons independent of organic branch planning.
 `SupportGeometryIR` and `SupportGeometryKey` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. The IR carries support layer-height
 settings and coarse outline polygons keyed by **model-layer (global) index on
-the support emit schedule**, object ID, and region ID: `execute_support_geometry`
+the support emit schedule**, object ID, ordered `variant_chain`, and region ID:
+`execute_support_geometry`
 / `build_emit_schedule` (`crates/slicer-core/src/algos/support_geometry.rs`) set
 `SupportGeometryKey.global_support_layer_index` from `global_layer.index`,
 emitting only at those model layers where accumulated per-object height crosses
 `support_layer_height_mm`. It is not an index into a separate support-layer
-grid. `u32::MAX` denotes an intermediate model-resolution layer.
+grid. `u32::MAX` denotes an intermediate model-resolution layer. Two
+chain-differing sources of one object occupy distinct keys — same-number
+different ordered chains never collapse at this map. The ordered chain is the
+shared `(priority, semantic name)` identity emitted by RegionMapping and paint
+composition (IR 4; [`H-REGIONMAP`](testing/properties.md#h-regionmap)).
+
+**Source-specific ownership vs object-wide geometry (ADR-0073).** The exact-Z
+support query carries the ordered source chain in its query identity while the
+geometry it answers stays object-wide: `exact-z-support-query.query` takes the
+four-argument form `(object-id, region-id, variant-chain, physical-z-mm)`
+(`crates/slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit`),
+and `ExactZQueryService::query` / `QueryKey`
+(`crates/slicer-wasm-host/src/exact_z_query.rs`) include the order-sensitive
+chain in the cache identity; an empty chain is the exact identity of a
+genuinely chain-less source, never a wildcard. Occupancy and the baseline
+envelope remain object-wide computations over the object's world mesh;
+`validate_entry` (`crates/slicer-wasm-host/src/support_aggregation.rs`)
+supplies the plan's full source identity, and `TerritoryClipper`
+(`crates/slicer-wasm-host/src/support_territory.rs`) enforces source-specific
+territory ownership by full source key. Object-wide collision geometry is not
+permission for pair-only ownership or config lookup.
 The `support_top_z_distance` and `support_layer_height_mm` fields carry
 resolved region/config values, rather than hardcoded constants or a literal
 `0.0`.
@@ -1315,13 +1500,20 @@ the actual layer Z rather than divide by this field.
 **Stage:** Output of `PrePass::SupportAnalysis` (host-owned; committed before
 `SupportGeometryIR` / `SupportPlanIR` within the support prepass chain)
 
-**Current schema_version: 1.3.0** (`CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION`
-in `crates/slicer-ir/src/slice_ir.rs`. Minor bump by SchemaBridgeMap ticket 19
-(reopened, 2026-09-02) — additive `support_territory` map (see below),
-`#[serde(default)]`, mirrored on the WIT `support-analysis-view` as
-`support-territory`. Prior version 1.2.0 by packet 237 — additive
-`cantilever_surfaces` map, `#[serde(default)]` and host-only. Prior
-version 1.1.0 by F-19 — the shape was otherwise unchanged, while
+**Current schema_version: 2.0.0** (`CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION`
+in `crates/slicer-ir/src/slice_ir.rs`.) Major bump by packet
+`layer-module-preparation_01`: the geometry-map keys (`model_occupancy`,
+`cantilever_surfaces`, `termination_surfaces`, `support_territory`) are the
+widened `SupportGeometryKey` (ordered `variant_chain` added; "Field type
+changed | Major (1.x → 2.0)" in the IR Versioning Contract table), and
+`family_assignments` moves from the `(ObjectId, RegionId)` pair to the
+chain-bearing `SupportSourceKey` — both changes alter source-selection
+identity at the same owner, so one major bump covers them. Prior versions:
+1.3.0 by SchemaBridgeMap ticket 19 (reopened, 2026-09-02) — additive
+`support_territory` map (see below), `#[serde(default)]`, mirrored on the WIT
+`support-analysis-view` as `support-territory`. Prior version 1.2.0 by packet
+237 — additive `cantilever_surfaces` map, `#[serde(default)]` and host-only.
+Prior version 1.1.0 by F-19 — the shape was otherwise unchanged, while
 `enforced` / `blocked` became derived from sliced support-enforcer /
 support-blocker modifier volumes instead of hardcoded `false`. Current
 candidate population follows the manual/auto rules below. Prior version: 1.0.0
@@ -1330,7 +1522,11 @@ initial.)
 **Producer:** The host built-in. `SupportAnalysisIR` is the strategy-neutral
 host-owned input shared by all support family planners — it is produced once
 and consumed read-only by every family planner, so each family sees identical
-candidate and occupancy inputs.
+candidate and occupancy inputs. Its occupancy, feasible envelope, termination
+surfaces and territory clearance are covered by
+[`H-SUPPORT-ANALYSIS`](testing/properties.md#h-support-analysis), and the host
+territory clip by
+[`H-SUPPORT-TERRITORY`](testing/properties.md#h-support-territory).
 
 `SupportAnalysisIR`, `SupportCandidate`, and `SupportCandidateSource` are
 defined in `crates/slicer-ir/src/slice_ir.rs`. The IR carries:
@@ -1342,7 +1538,8 @@ sliced region remain the legacy facet-projection shim boundary.
 - `candidates: Vec<SupportCandidate>` — strategy-neutral candidates. Each
   candidate carries an `id`, its `geometry: Vec<ExPolygon>`, and a
   `source: SupportCandidateSource` (the `object_id`, `region_id`,
-  `global_layer_index`, and `z_units` evidence identifying the geometry from
+  `global_layer_index`, `z_units`, and ordered `variant_chain` evidence
+  identifying the geometry from
   which the conservative candidate came). Each candidate also carries
   `enforced: bool` and `blocked: bool` — the enforcer/blocker annotations
   (enforcers guarantee candidate creation, not printed geometry; blockers
@@ -1358,7 +1555,7 @@ sliced region remain the legacy facet-projection shim boundary.
   and their surviving contact geometry is unioned. Enforcer coverage is not
   gated by `support_type`.
 - `model_occupancy: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — model
-  occupancy per `(layer, object, region)` key.
+  occupancy per `(layer, object, region, ordered variant_chain)` key.
 - `cantilever_surfaces: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — additive
   map mirroring `model_occupancy` keying; `#[serde(default)]` and host-only
   until a later packet projects it onto candidate geometry (packet 237 adds the
@@ -1370,11 +1567,17 @@ sliced region remain the legacy facet-projection shim boundary.
   consumed by all families.
 - `baseline_feasible_envelope: Vec<ExPolygon>` — the conservative baseline
   feasible envelope before any family-specific tightening.
-- `family_assignments: BTreeMap<(ObjectId, RegionId), String>` — the
-  deterministic per-region family assignment (region → family id).
+- `family_assignments: BTreeMap<SupportSourceKey, String>` — the deterministic
+  per-source family assignment, keyed by the full source origin
+  `(object_id, region_id, ordered variant_chain)` via `SupportSourceKey`
+  (`crates/slicer-ir/src/slice_ir.rs`; the key deliberately carries no layer
+  coordinate, per ADR-0073). Two chain-differing regions of one object receive
+  independent assignments.
 - `support_territory: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — the XY
-  territory owned by each minted modifier sub-region, keyed
-  `(global_layer_index, object_id, modifier_sub_region_id)`. The value is the
+  territory owned by each minted modifier sub-region, keyed by the widened
+  `SupportGeometryKey`
+  `(global_layer_index, object_id, modifier_sub_region_id, variant_chain)`. The
+  value is the
   modifier mesh's full cross-section at the layer Z, sliced per layer exactly
   as `split_modifier_sub_regions_for_prepass` slices it (so the FNV id from
   `slicer_ir::modifier_sub_region_id` matches the region map byte-for-byte)
@@ -1389,10 +1592,30 @@ sliced region remain the legacy facet-projection shim boundary.
   clips its carry; host aggregation re-applies the rule and reports the trim
   as Info diagnostic 1205 instead of rejecting both families (DEV-165).
 
-**Determinism:** `family_assignments` is a `BTreeMap` keyed by
-`(ObjectId, RegionId)`, so per-region family assignment is deterministic and
-stable across identical inputs. Identical PrePass inputs must produce
-byte-identical `SupportAnalysisIR`.
+**Determinism:** `family_assignments` is a `BTreeMap` keyed by the full source
+origin `SupportSourceKey`, so per-source family assignment is deterministic and
+stable across identical inputs, and chain-differing rows never collide.
+Every ordered `variant_chain` in these keys is the shared `(priority, semantic
+name)` identity from RegionMapping and paint composition, never re-sorted (IR 4;
+[`H-REGIONMAP`](testing/properties.md#h-regionmap)).
+Identical PrePass inputs must produce byte-identical `SupportAnalysisIR`.
+
+**Merge/admission keys (ADR-0073, as implemented in
+`crates/slicer-wasm-host/src/support_aggregation.rs`).** Host merging of
+same-family contributions (`union_same_family_entries`) keys the declared
+identity `(family_id, global_layer_index, object_id, region_id, variant_chain,
+anchor_z)` — every former dimension retained, with the ordered chain added as
+one more dimension. Admission at the aggregation seam
+(`try_aggregate_support_plans_with_policy`) keys the conflict/admission
+identity on the full source origin
+`(global_layer_index, object_id, region_id, variant_chain)`: entries for two
+chain-differing regions of one object never collapse into one row, and repeated
+identities within one family combine into exactly one retained entry.
+`check_ownership` resolves the owner by the full source key and admits an entry
+only when the assigned family matches the entry's `family_id` AND the producing
+module's manifest claims hold `support-family:<family_id>` — default-deny
+ownership, never arrival-order arbitration; violations drop the entry with
+diagnostic code `1206` (or abort under `FamilyConflictPolicy::Fail`).
 
 ---
 
@@ -1401,13 +1624,19 @@ byte-identical `SupportAnalysisIR`.
 **Stage:** Output of `PrePass::SupportGeometry` (optional; only present when a
 `support-planner` module is loaded)
 
-**Current schema_version: 2.2.0** (`CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` in
-`crates/slicer-ir/src/slice_ir.rs`). Packet 238b adds the per-point
-`SupportPlanSkeleton.wall_counts` carrier as an additive minor bump. The prior
-2.0.0 major bump by packet 220 made the breaking
-structural support-family migration: branch extrusion paths were removed; no
-planner emits nozzle-width `ExtrusionPath3D` paths into this IR. Prior
-versions: 1.0.0 → 1.2.0 (packet 119) → 1.3.0 (packet 124). Packet 238c adds the base-interface minor bump.
+**Current schema_version: 2.3.0** (`CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` in
+`crates/slicer-ir/src/slice_ir.rs`). Minor bump 2.3.0 by packet
+`layer-module-preparation_01` adds the additive `#[serde(default)]` ordered
+`SupportPlanEntry.variant_chain` carrier: each plan entry keeps the full source
+origin `(object_id, region_id, ordered variant_chain)` its geometry was
+planned for, and the chain serializes explicitly (`[]` round-trips; an empty
+chain is the exact identity of a genuinely chain-less source, never a
+wildcard). Prior 2.2.0 added the per-point `SupportPlanSkeleton.wall_counts`
+carrier as an additive minor bump. The prior 2.0.0 major bump by packet 220
+made the breaking structural support-family migration: branch extrusion paths
+were removed; no planner emits nozzle-width `ExtrusionPath3D` paths into this
+IR. Prior versions: 1.0.0 → 1.2.0 (packet 119) → 1.3.0 (packet 124). Packet
+238c added the base-interface minor bump.
 
 **Producer:** A module holding the `support-planner` claim on `PrePass::SupportGeometry`;
 guests of `PrePass::SupportGeometry` emit `SupportPlanIR` via `run-support-geometry`;
@@ -1416,10 +1645,13 @@ the host built-in commits `SupportGeometryIR` first within the same stage
 `TreeSupport::detect_overhangs` + `TreeSupport::drop_nodes`).
 
 **WIT producer boundary:** the plan crosses the boundary through the
-`slicer:prepass-support-geometry@1.0.0` package's `support-plan-entry` record,
-which was **replaced in place** (breaking in-place replacement, not an additive
-parallel package) — see `docs/03_wit_and_manifest.md` and the packet-220
-design's resolved Q2.
+`slicer:prepass-support-geometry@2.0.0` package's `support-plan-entry` record
+(which carries the exact ordered `variant-chain` field alongside the rest of
+the entry), a breaking in-place migration from the packet-220 shape rather
+than an additive parallel package — see `docs/03_wit_and_manifest.md` and the
+packet-220 design's resolved Q2. The package itself took the matching
+`1.0.0 → 2.0.0` major bump because the entry record's widening changes the
+guest-visible encoding.
 
 **Consumers:** `Layer::Support` modules that declare `SupportPlanIR` as a read in
 their manifest (notably `tree-support`). Modules whose algorithm is inherently
@@ -1428,14 +1660,38 @@ read this IR.
 
 `SupportPlanIR`, `RaftPlan`, and `SupportPlanEntry` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. The plan is structural and universal: it
-carries no printable nozzle-width paths. Each `SupportPlanEntry` is produced
-once per `(global_layer_index, object_id, region_id)` triple.
-An entry's owning family is `SupportAnalysisIR::family_assignments[(object_id, region_id)]`, and the producing module must hold the `support-family:<family_id>` claim; otherwise the host drops the entry at the support-plan merge point.
+carries no printable nozzle-width paths. Every `SupportPlanEntry` addresses its
+full source origin — it carries the exact ordered `variant_chain`, so
+chain-differing sources of one object stay distinct at the generation, query,
+aggregation-admission and output boundaries and are never merged into one row
+there (ADR-0073).
+An entry's owning family is
+`SupportAnalysisIR::family_assignments` at the entry's full source key
+`SupportSourceKey { object_id, region_id, variant_chain }`, and the producing
+module must hold the `support-family:<family_id>` claim; otherwise the host
+drops the entry at the support-plan merge point.
+The prepass commit-seam duplicate guard
+`SupportPlanIR::duplicate_region_identity`
+(`crates/slicer-ir/src/slice_ir.rs`; enforced by
+`Blackboard::commit_support_plan` in
+`crates/slicer-runtime/src/blackboard.rs`) is intentionally UNCHANGED and
+chain-independent (per ADR-0073): one committed entry per
+`(global_layer_index, object_id, region_id)`; two rows sharing that triple
+reject the commit with `BlackboardError::DuplicateSupportPlanEntry` regardless
+of their chains. The full-origin admission identity at the host aggregation
+seam (`try_aggregate_support_plans_with_policy`,
+`crates/slicer-wasm-host/src/support_aggregation.rs`) is the boundary that keys
+chain-differing rows apart
+(`(global_layer_index, object_id, region_id, variant_chain)`), and it never
+collapses them into one row.
 Each entry carries:
 
 - `family_id` — the support family this entry belongs to.
 - `demand_ids` — the source demand identities the entry satisfies.
 - `body_ids` — the structural body identities the entry contributes to.
+- `variant_chain` — the exact ordered `(paint_semantic_name, PaintValue)` chain
+  of the source region the entry was planned for (additive carrier of the
+  2.3.0 minor bump).
 - `anchor_layer_index: u32` and `anchor_z: i64` — the anchor layer index and
   its Z (in repository units) that place the entry's geometry.
 - `roles: Vec<SupportPlanRoleRegion>` — structural universal roles, each a
@@ -1497,9 +1753,14 @@ derivation is unchanged.
 For each `(layer, object, region)` reached during `Layer::Support` dispatch, a
 plan-aware module must:
 
-1. Look up `SupportPlanIR.entries` matching `(global_layer_index, object_id,
-   region_id)` (e.g. via the SDK's `PaintRegionLayerView::support_plan_segments_for(...)`
-   accessor).
+1. Look up `SupportPlanIR.entries` matching the exact full source identity
+   `(layer, object_id, region_id, ordered variant_chain)` (e.g. via the
+   specialist `support-query-view`'s 3-key `support-plan-entries` read on the
+   wasm leg, or the SDK's
+   `PaintRegionLayerView::support_plan_entries_for(object_id, region_id,
+   variant_chain)` accessor on the native leg, `crates/slicer-sdk/src/traits.rs`
+   — the match is exact over full source identity; a pair-only or
+   chain-ignored lookup is never a fallback).
 2. If at least one entry's `roles` is non-empty: emit those structural regions
    directly with `ExtrusionRole::SupportMaterial` and skip the per-layer filler
    for that region.
@@ -1623,58 +1884,34 @@ a contract error, never a best-effort drop.
 
 ---
 
-## IR 9d — LightningTreeIR
+### Lightning legacy IR retirement
 
-**Stage:** Output of `PrePass::LightningTreeGen` (optional; only committed when
-the print's `sparse_fill_holder` resolves to `lightning-infill` per ADR-0029).
-Positioned after `PrePass::SupportGeometry`, before `Layer::PaintRegionAnnotation`.
+The legacy path is retired. Lightning planning runs inside the selected
+`com.core.lightning-infill` artifact during `prepare_print`, from typed committed
+regions, region configs, and the layer plan. One module-private
+`lightning-layer-{global_layer_index}` piece is published per schedule layer;
+ordinary `Layer::Infill` consumers require and decode their own layer's piece
+with the module's decoder.
 
-**Current schema_version: 1.0.0** (authoritative source:
-`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`).
-Packet 137 lands the contract; packets 138/139 fill the producer skeleton with
-the real cross-layer distance-field + tree-node generator.
+The host `commit_lightning_tree_ir_builtin` producer, `PrePass::LightningTreeGen`
+and its `STAGE_ORDER` entry, `BlackboardPrepassSlot::LightningTreeIR`, and
+`BlackboardError::LightningTreeGeneration` are deleted. So are public
+`LightningTreeIR`/`LightningTreeEntry`/`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION`,
+the `lightning-tree-segments` WIT method and the whole `slicer:lightning-queries`
+package, and the SDK `lightning_tree_segments_for`/`with_lightning_tree_ir`
+accessors. Plan types live only as module-private `KernelPlan`/`PlanEntry`, never
+public IR; IR 9d is retired.
 
-**Producer:** A host built-in committed via
-`crates/slicer-runtime/src/builtins/lightning_tree_producer.rs`. The producer is
-**skipped** (no commit, slot stays `None`) when no region's
-`sparse_fill_holder` is `lightning-infill` — the zero-cost skip promise from
-ADR-0029. When committed, the IR carries per-object, per-region, per-layer 2-point
-tree-edge segments in integer coordinate units (compact storage per ADR-0029's
-memory note; no full topology).
+The [`H-LIGHTNING-SEEDS`](testing/properties.md#h-lightning-seeds) and
+[`H-LIGHTNING-TREES`](testing/properties.md#h-lightning-trees) properties live in
+the `lightning-infill` module-private kernel
+(`modules/core-modules/lightning-infill/src/kernel/`), gated by the module's
+`property_testing` feature and executed through `cargo xtask test --properties`.
+They are delegated module coverage, not a host prepass.
 
-**Consumers:** `Layer::Infill` modules that declare `LightningTreeIR` as a read
-in their manifest. The packet 140 `lightning-infill` module consumes this view
-and emits one raw path per committed tree segment.
-
-`LightningTreeIR` and `LightningTreeEntry` are defined in
-`crates/slicer-ir/src/slice_ir.rs`. Entries are scoped by object, region, and
-signed layer index and carry two-point integer-coordinate tree edges.
-
-**Supersession note (packet 137, C-class):** the packet 137 contract's
-`LightningTreeEntry` shape (which omitted `region_id`) is superseded by the
-implemented per-region contract shown in IR 9d above. The
-`(object_id, region_id, layer_index)` keying is authoritative — the entry
-carries `region_id` exactly as `SupportPlanEntry` and `SeamPlanEntry` do, and
-the view lookup below is region-scoped, not object-scoped.
-
-**Consumption pattern — read-view via `lightning-tree-segments`:**
-
-The host exposes the IR to a `Layer::Infill` guest via the
-`lightning-tree-segments` method on the `paint-region-layer-view` WIT resource
-(`crates/slicer-schema/wit/deps/ir-types.wit`; the guest exports the
-`slicer:layer-infill@1.0.0` package's `infill` interface, whose `run` function
-receives the `paint: paint-region-layer-view` argument). The guest looks up the per-layer
-`tree_edge_segments` matching `(object_id, region_id, layer_index)` via the SDK's
-`PaintRegionLayerView::lightning_tree_segments_for(object_id, region_id)`
-accessor (`crates/slicer-sdk/src/traits.rs`). When no `LightningTreeIR` is
-committed (skip-when-no-lightning-holder), the accessor returns an empty
-`Vec` and the module emits no paths for that layer; there is no non-lightning
-fallback.
-
-**Determinism:** Identical PrePass inputs must produce byte-identical
-`LightningTreeIR`. The `entries` Vec order is producer-defined and must be
-stable (no hash containers); per-layer segment ordering is the producer's
-responsibility. 138/139 inherit this contract.
+This records behavioural equivalence to the pre-migration producer: ownership
+moves with no intended output change, not a canonical-parity claim. The recorded
+Gate A/B outcomes remain unchanged.
 
 ---
 
@@ -1682,6 +1919,22 @@ responsibility. 138/139 inherit this contract.
 
 **Stage:** Output of `Layer::PathOptimization`
 **Current schema_version: 1.4.0** (authoritative source: `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`). Introduced at 1.0.0; packet 244 added the additive `ExtrusionPath3D.order_lock: Option<u64>` field (optional per-path ordering lock tag; `None`/absent preserves pre-1.4.0 behavior; local tags (bit 63 clear) are remapped to layer-unique global tags (bit 63 set) at host output boundaries), bumping 1.3.0→1.4.0; packet 226 added the additive `ExtrusionPath3D.tool_index: Option<u32>` authored-coloring carrier (ADR-0058), bumping 1.2.0→1.3.0 — additive semver-minor, the field is `#[serde(default)]` so pre-1.3.0 serialized fixtures still parse and deserialize to `None` (host-resolved region tool, i.e. unchanged behaviour); packet 125 added the additive `PrintEntity.tool_index: u32` field (region_id↔tool split), bumping 1.0.0→1.1.0; packet 189 added the additive `LayerCollectionIR.speed_profiles: Vec<EntitySpeedProfile>` side table (per-point speed-factor carrier), bumping 1.1.0→1.2.0. Packet 39 earlier renamed `TravelMove.entity_idx: u32` → `entity_id: u64` and added `entity_id: u64` on `PrintEntity`, decoupling travel anchors from positional indices so finalization-stage entity insertion no longer invalidates anchors (these landed without bumping the constant beyond 1.x).
+
+Tested serialization boundary (property charter
+[`H-IR-SERDE`](testing/properties.md#h-ir-serde)): a bounded, finite, dyadic layer slice
+survives both a Postcard and a finite-domain JSON round trip with entity IDs, ordering, roles,
+`RegionKey` identity, `PrintEntity.tool_index`, path `tool_index`/`order_lock`, selected float
+bits, travel anchors and their optional coordinate bits, `speed_profiles` factor bits and
+`support_entity_identities` rows intact; integer `Point2` geometry stays exact through both
+codecs including `i64::MIN`/`i64::MAX`. The actually-defaulted legacy-JSON fields are exactly
+`PrintEntity.tool_index → 0`, `ExtrusionPath3D.tool_index → None`,
+`ExtrusionPath3D.order_lock → None`, `LayerCollectionIR.speed_profiles → []` and
+`LayerCollectionIR.support_entity_identities → []`; omission of the required `entity_id`, a
+mistyped ID, or a JSON `null` in a required numeric field is rejected. Omission defaults are a
+**JSON map-compatibility** guarantee, not a claim that serde can recover an arbitrary truncated
+Postcard sequence. Nonfinite `ConfigValue`/scalar serialization may produce `null` and is never
+credited as a lossless successful JSON round trip; Postcard exceptional-bit coverage is
+representation-only and does not certify such values as valid model input.
 
 **Ownership lifecycle — three phases:**
 
@@ -1703,13 +1956,21 @@ responsibility. 138/139 inherit this contract.
    exclusive mutable ownership of the `Vec` and is single-threaded — no
    `RwLock` or `Mutex` is needed. Finalization modules may append entities
    to existing layers or insert new synthetic layers (e.g. wipe tower
-   slices).
+   slices). The stage mutates that vector in place
+   (`execute_layer_finalization_owned`) instead of cloning a rollback
+   snapshot: a fatal module or validation error aborts the stage and the
+   working collection is dropped with the error, which is unobservable in
+   production because the slice aborts there.
 
 3. **After finalization — `PostPass::GCodeEmit` onward:**
-   The `Vec<LayerCollectionIR>` is passed as `&[LayerCollectionIR]`
-   (immutable slice) to `execute_postpass`. It is never re-entered into
-   the Blackboard. GCodeEmit reads it sequentially and the Vec is dropped
-   after emission completes.
+   The `Vec<LayerCollectionIR>` is **moved by value** into
+   `execute_postpass` (`execute_postpass_with_owned_capture`), reconciled in
+   place, and passed to `GCodeEmitter::emit_gcode_owned`, which consumes it.
+   GCodeEmit reads it sequentially and the collection is dropped exactly once
+   inside that bracket. The visual-debug capture sinks are the one path that
+   keeps the collection afterwards: they take the borrowed
+   `execute_postpass_with_capture` entry point, whose copy is moved into the
+   capture instead of being cloned again.
 
 **Consequence for module authors:**
 A module in `PostPass::LayerFinalization` receives a mutable view of the
@@ -2177,6 +2438,49 @@ pre-packet-60 behavior at `{:.4}`).
 
 The existing `extensions: BTreeMap<String, ConfigValue>` field on `ResolvedConfig` carries declared host runtime and module keys without fixed fields in the host's schema snapshot. Adding content to that map does not itself add a serialized struct field; declared keys still follow normal registry validation, defaulting, and scope resolution before interning.
 
+### Sub-IR bump classes and manifest-bound scope (Normative — packet `layer-module-preparation_01`)
+
+**Chosen subsystem bump classes, as landed.** Additive, `#[serde(default)]`
+ordered chain carriers take MINOR — "New optional field added", old modules
+ignore it: `InfillIR` 1.1.0 → 1.2.0 (`InfillRaftRegion.variant_chain`),
+`SupportIR` 2.0.0 → 2.1.0 (`SupportEntry.variant_chain`), `SupportPlanIR`
+2.2.0 → 2.3.0 (`SupportPlanEntry.variant_chain`). Historically, the now-deleted
+`LightningTreeIR` also moved 1.0.0 → 1.1.0 (`LightningTreeEntry.variant_chain`). Source-selection identity/key
+widening takes MAJOR — "Field type changed", even where the nominal map field
+spelling is unchanged: `SupportGeometryIR` 1.0.0 → 2.0.0
+(`SupportGeometryKey` gains the ordered chain, retaining its layered fields
+and the `u32::MAX` sentinel) and `SupportAnalysisIR` 1.3.0 → 2.0.0 (the
+widened `SupportGeometryKey` geometry maps plus `family_assignments` moving to
+the chain-bearing `SupportSourceKey` at one owner). Each affected owner bumped
+once from its live constant. `CURRENT_SLICE_IR_SCHEMA_VERSION` is unchanged
+and so are the global manifest bounds.
+
+**Standalone JSON versus populated-owner postcard coverage.** The committed
+coverage lives in `crates/slicer-ir/tests/support_geometry_ir_shape_tdd.rs`:
+standalone-JSON tests prove additive carrier omission/defaulting — a legacy
+payload without a chain normalizes to an explicit `variant_chain: []`
+(`support_key_json_legacy_missing_chain_normalizes_to_explicit_empty`),
+serialized explicitly (no `skip_serializing_if`) — and populated composite-key
+maps reject the ordinary JSON object-map encoding rather than growing a
+stringify/entry-list adapter (`support_composite_map_json_rejects_populated_keys`);
+populated actual-new-owner postcard round-trips prove complete populated
+composite-key maps preserve full identity and every remaining field
+(`support_owner_postcard_populated_maps_preserve_full_identity`; the decoded
+value consumes all input). Standalone-JSON defaulting is a self-describing
+normalization, NOT positional or binary compatibility with old payloads; no
+persisted support-owner input loader or decoder exists, so no old-payload
+compatibility adapter is defined.
+
+**Manifest bounds check the global host SliceIR, not sub-IR versions
+(normative).** The `[compatibility]` `min-ir-schema` / `max-ir-schema` range
+is checked by `validate_ir_versions`
+(`crates/slicer-scheduler/src/validation.rs`) against the single global host
+SliceIR version carried in `DagValidationRequest::host_ir_schema_version` —
+not against any of the individual sub-IR schema versions documented in this
+file. An unchanged global `SliceIR` therefore needs no manifest-bound edits
+when a sub-IR owner bumps, and these per-subIR bumps imply no per-subIR
+compatibility enforcement: the global gate never compares them.
+
 ### Reservation Table — perimeter parity roadmap (P102–P112)
 
 | Version | Packet | Rationale |
@@ -2192,3 +2496,52 @@ The existing `extensions: BTreeMap<String, ConfigValue>` field on `ResolvedConfi
 Reservations apply only to the perimeter parity roadmap (P102..P112 + P106/P107). Other concurrent packets must coordinate with the active roadmap maintainer before bumping. Multiple bumps within a single packet are not permitted.
 
 > **Contract note (P109) — compatible-removal exception.** The contract table above classifies "Field removed" as *major* by default. The `SlicedRegion.external_contour` removal is a deliberate, documented EXCEPTION shipped as a **minor** (4.6.0) because ALL THREE conditions hold: (1) the field had **no live consumer** (superseded by ADR-0013 Model-A per-color fragmentation; consumption was already removed in P105, D-105-AC22-PARITY-RESHAPE); (2) `SlicedRegion` does not use `deny_unknown_fields`, so **serde ignores the now-absent field** and serialized 4.x fixtures still parse; and (3) **every loaded module declares `max_ir_schema = 5.0.0`**, so a 5.0.0 host would fail the scheduler's `validate_ir_versions` gate (`min_ir_schema ≤ host < max_ir_schema`, `crates/slicer-scheduler/src/validation.rs`) for EVERY module — a major bump would break the entire module ecosystem for a removal that changes no behaviour. The original filing's "additive removal" phrasing was imprecise; the accurate term is a *compatible removal*. A removal that does NOT meet all three conditions (there is a live consumer, the shape is not serde-tolerant, or the target host version crosses any module's `max_ir_schema`) MUST take the major bump and the coordinated `max_ir_schema` widening across all modules.
+
+---
+
+## Committed preparation input projections
+
+The new `slicer_sdk::preparation` DTOs (defined in
+`crates/slicer-sdk/src/preparation_input.rs`) project committed inputs:
+
+| Committed source / purpose | DTO inventory |
+|----------------------------|---------------|
+| Paint and full-key identity | `PreparationPaintValue`, `PreparationVariantChain`, `PreparationRegionKey`, `PreparationPaintStroke`, `PreparationPaintLayer` |
+| `LayerPlanIR` | `PreparationLayer`, `PreparationActiveRegion`, `PreparationNonplanarShell` |
+| `SliceIR` / `SlicedRegion`, `RegionMapIR` | `PreparationRegion`, `PreparationInputPhase`, `PreparationRegionConfig` |
+| `SurfaceClassificationIR` | `PreparationFacetClass`, `PreparationBridgeRegion`, `PreparationOverhangRegion`, `PreparationSurfaceObject`, `PreparationSurfaceLayer` |
+| `MeshIR` | `PreparationMeshObject`, `PreparationMeshQuery`, `PreparationMeshQueryResult` |
+| `SeamPlanIR` | `PreparationSeam`, `PreparationSeamReason`, `PreparationScoredSeamCandidate` |
+| `SupportAnalysisIR` / `SupportGeometryIR` | `PreparationSupportCandidateSource`, `PreparationSupportCandidate`, `PreparationSupportGeometryKey`, `PreparationSupportGeometryEntry`, `PreparationSupportSourceKey`, `PreparationSupportFamilyAssignment`, `PreparationSupportAnalysisBatch`, `PreparationSupportGeometryBatch` |
+| `SupportPlanIR` | `PreparationSupportPlanRole`, `PreparationSupportPlanRoleRegion`, `PreparationSupportPlanSkeleton`, `PreparationSupportPlanDeclineReason`, `PreparationSupportPlanEntry`, `PreparationRaftPlan`, `PreparationSupportPlanBatch` |
+| Selected source identity | `PreparationTargetSource`, `PreparationSelectedTarget` |
+
+`PreparationRegion.phase = PreparationInputPhase::CommittedPrepass`: these are
+**committed inputs**, with no future output coverage and no claim to final Layer
+output. Region geometry, classifications, paint, and declared-key-filtered
+configs retain their committed meaning rather than predicting later stages.
+
+`PreparationPaintValue { Flag(bool), Scalar(f32), ToolIndex(u32), Custom(String) }`
+maps losslessly to and from native `slicer_ir::PaintValue` through exhaustive
+bidirectional `From` implementations. Exact UTF-8 (including π and Custom
+strings) and finite f32 bit identity (including signed zero) are preserved.
+`PreparationVariantChain = Vec<(String, PreparationPaintValue)>` preserves element
+order. `PreparationRegionKey { global_layer_index: u32, object_id: String,
+region_id: u64, variant_chain }` retains native identity; only the WIT boundary
+uses a decimal-string region-id, without leading zeros.
+Paint-bearing conversion sites include region variant chains, segment
+annotations, config keys, seam keys, selected Model key/members, and mesh facet
+values/strokes, and support-plan entry variant chains. Capability WIT uses `preparation-paint-value`,
+`preparation-variant-chain`, and `preparation-segment-annotations-*`
+(`crates/slicer-schema/wit/deps/layer-preparation/layer-preparation.wit`);
+ordinary `paint-value` and prepass `paint-value-view` remain unwidened.
+
+**Paint producer evidence boundary (normative).** `SlicedRegion::sparse_infill_area`
+is the committed value, empty until `Layer::Perimeters` commitment per its field
+documentation (`crates/slicer-ir/src/slice_ir.rs`). `infill_areas` are committed
+inputs, never a claimed final inset. The `segment_paint` paths rebuild regions
+with default-rest fields: this transport's tests prove exact preservation of
+already-committed typed values across production adapters, not production
+paint-output completeness. The lightning-geometry portability gate (row 07)
+must resolve its own required geometry evidence. No producer repair is implied
+or performed by this projection contract.

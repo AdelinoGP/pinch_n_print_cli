@@ -113,6 +113,19 @@ Manifest keys are kebab-case and table-scoped. `LoadedModule` stores normalized 
 | `[compatibility].incompatible-with`    | `incompatible_with`      |
 | `[compatibility].requires`             | `requires_modules`       |
 
+#### Preparation metadata naming exception (Normative)
+
+The new `[preparation]` table maps `[preparation].interface`,
+`[preparation].input_reads`, and `[preparation].views` to the companion's
+Rust `interface()`, `input_reads()`, and `views()` methods, respectively. A
+kebab-case `input-reads` alias is rejected as an unknown key.
+
+Only new [preparation] metadata keys use snake_case; legacy manifest/config naming remains unchanged.
+
+This exception applies only to the new `[preparation]` table; no existing
+manifest key is renamed, existing mapping rows remain unchanged, and the
+config naming policy is unchanged.
+
 Per-key scope eligibility is not a manifest-table list: each key's
 `denied_scopes` entries live on its own `[config.schema.<key>]` declaration and
 are parsed into the key's schema entry (`config_schema`), where the registry
@@ -130,8 +143,11 @@ file or embedded TOML. `LoadedModule` carries a `ModuleProvenance` marker
 
 When ingestion completes, the scheduler aggregates the
 `[[region_split]]` array entries from every loaded manifest into a single
-canonical `BTreeMap<String, AggregatedRegionSplitEntry>` keyed by
-semantic name and ordered by `(priority, name)`. The aggregate is exactly the
+`BTreeMap<String, AggregatedRegionSplitEntry>` keyed and iterated by
+**semantic name**. The map is not a priority-ordered sequence: the separate
+`slicer_scheduler::region_split::canonical_variant_chain_order` helper returns
+the `(priority, name)` sequence that canonical priority ordering calls for, and
+raw map iteration is not that sequence in general. The aggregate is exactly the
 union of the loaded modules' declarations — no semantics are seeded implicitly.
 `material` and `fuzzy_skin` are present in a real slice because the core
 perimeter and fuzzy-skin manifests declare them. The map is consumed by:
@@ -157,13 +173,45 @@ Per-manifest validation (Packet 92):
    rejected (`LoadErrorKind::PaintOnlyWithoutRegionSplit`); a non-boolean
    `paint_only` is a `Schema` error.
 
-Cross-manifest **tied-priority warning** (non-fatal): if two distinct
-semantics from different manifests declare the same priority, a
-`LoadDiagnostic { level: DiagnosticLevel::Warning, path, field, message }`
-is appended to the diagnostics vec. The message names both semantics,
-both manifest paths, the shared priority, and the lexicographic
-tiebreaker order used to keep aggregation deterministic. Scheduler
-operation continues; this is purely an author-facing nudge.
+Cross-manifest **tied-priority warning** (non-fatal): one
+`LoadDiagnostic { level: DiagnosticLevel::Warning, path, field, message }` is
+appended per priority shared by two or more **distinct semantics** — including
+two semantics declared by the same module. The message names the shared
+priority, the tied semantic names, each semantic's declaring module IDs, and
+the lexicographic tiebreaker order used to keep aggregation deterministic. Its
+`path` is an empty `PathBuf` sentinel (no single manifest is authoritative) and
+its `field` is `Some("region_split")`; it names module IDs, not both manifest
+paths. Scheduler operation continues; this is purely an author-facing nudge.
+
+Cross-manifest **conflicting declaration** (non-fatal): when two manifests
+declare the same semantic with different priority or value type, the first one
+seen wins and one warning is appended per later incompatible declaration,
+carrying that later module's **WASM path** (`LoadedModule::wasm_path` in
+`crates/slicer-scheduler/src/manifest.rs`, the module's built artifact) rather
+than its manifest TOML path; for integrated modules that field carries the
+registration origin label. Declaration-order invariance is therefore claimed
+only for compatible declarations.
+
+**Where the two orders apply.** `build_execution_plan`
+(`crates/slicer-scheduler/src/execution_plan.rs`) calls the aggregator and
+stores its output in `ExecutionPlan.aggregated_region_split`; that aggregate is
+**name-keyed**. The RegionMapping builtin then passes that map to the kernel,
+which derives the ascending `(priority, name)` axis sequence locally and supplies
+it to `enumerate_canonical_chains`
+(`crates/slicer-ir/src/region_split_registry.rs`); the enumerator preserves the
+caller's order. `canonical_variant_chain_order` returns the same sequence but has
+no production caller in the current Rust tree. Selection and exact-chain config
+lookup preserve the ordered vector without sorting or fallback. See ADR-0018's
+2026-11-19 amendment; the property that proves the driver ordering is
+`H-REGIONMAP` (`docs/testing/properties.md#h-regionmap`).
+
+Property coverage: `H-REGISTRY` (`docs/testing/properties.md#h-registry`,
+evidence in
+[proptest-scheduler-evidence.md](testing/proptest-scheduler-evidence.md))
+drives both real functions — the aggregate plus the separate helper sequence —
+on compatible, conflicting and tied declarations, and it asserts the plan-level
+aggregate so a missing plan-to-aggregator call cannot pass. It does **not**
+prove helper integration with RegionMapping.
 
 ### IR Access Path Format (Normative)
 
@@ -226,7 +274,6 @@ pub const STAGE_ORDER: &[&str] = &[
     "PrePass::ShellClassification",  // host-built-in; annotates the committed SliceIR
     "PrePass::SupportAnalysis",      // host-built-in; derives support candidates from the colour-resolved SliceIR
     "PrePass::SupportGeometry",      // host built-in always runs; guest optional
-    "PrePass::LightningTreeGen",     // host-built-in; commits only for lightning sparse fill
     "Layer::PaintRegionAnnotation",  // host-built-in; a module claiming this stage runs instead of the host
     "Layer::SlicePostProcess",
     "Layer::Perimeters",
@@ -257,20 +304,12 @@ Two caveats a reader must know:
 - **Declared vs. executed order.** The list above is the declared order the
   scheduler validates against. The prepass host built-ins actually *execute* in
   a different sequence (`Slice` → `OverhangAnnotation` → `ShellClassification` →
-  `PaintSegmentation` → `SupportAnalysis` → `SupportGeometry` →
-  `LightningTreeGen`) — see
+  `PaintSegmentation` → `SupportAnalysis` → `SupportGeometry`) — see
   `01_system_architecture.md` §"PrePass Stage Order", which documents the
   executed chain and the known divergence between the two. `PrePass::SupportAnalysis`
   runs strictly after the Slice/paint stages (it derives support candidates from
   the committed, colour-resolved `SliceIR`) and before `PrePass::SupportGeometry`
   (which consumes that analysis), matching its declared `STAGE_ORDER` position.
-
-  `PrePass::LightningTreeGen` (packet 137, ADR-0029) executes **after** the
-  stages producing sparse-infill outlines and **before** `Layer::Infill`
-  dispatch. It consumes the committed sparse-infill outlines (via the committed
-  `SliceIR`) and is **skipped** (no commit — the blackboard `LightningTreeIR`
-  slot stays `None`) when no region's `sparse_fill_holder` resolves to
-  `lightning-infill`: the zero-cost promise from ADR-0029.
 
 `PrePass::OverhangAnnotation` — populates `SurfaceClassificationIR.overhang_quartile_polygons` by diffing consecutive-layer footprints, mirroring OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp`) which diffs consecutive `lslices`. It runs **strictly after `PrePass::Slice`** and reads the committed `SliceIR` (each object's final per-layer region polygons) rather than re-slicing the mesh — the object meshes are sliced exactly once, in `PrePass::Slice`. Host built-in (`host:overhang_annotation`). Since packet 193 the same host built-in additionally writes
 `SurfaceClassificationIR.prev_layer_boundaries` — a
@@ -331,36 +370,67 @@ pub fn build_intra_stage_dag(
 
 ### Per-Layer Region-Split Dispatch Filter (Normative — Packet 92, ADR-0071)
 
-After the intra-stage DAG is sorted, each `LoadedModule` carries a
-cached `region_split_semantics: HashSet<String>` on its
-`CompiledModuleStatic` descriptor. The set is populated **only** when the
-module's manifest opted into paint-only dispatch with top-level
-`paint_only = true`, in which case it holds exactly the semantic names
-declared in the module's `[[region_split]]` array. A module that declares
+Each `LoadedModule` carries a cached `region_split_semantics: HashSet<String>`
+on its `CompiledModuleStatic` descriptor
+(`crates/slicer-scheduler/src/execution_plan.rs`). The set is populated **only**
+when the manifest opted into paint-only dispatch with top-level
+`paint_only = true`, in which case it holds exactly the semantic names declared
+in the module's `[[region_split]]` array. A module that declares
 `[[region_split]]` semantics without `paint_only = true` — the core
 `classic-perimeters`, `arachne-perimeters`, and `fuzzy-skin` modules — has an
-**empty** dispatch set and runs on every layer; its declarations still
-register the semantics in the cross-manifest aggregate. The host applies a
-per-layer filter at dispatch time using this set; the granularity is
-per-(module × layer), NOT per-(module × region):
+**empty** dispatch set and runs on every layer; its declarations still register
+the semantics in the cross-manifest aggregate. The runtime passes the declared
+set as `LayerSelectionModuleInput.paint_semantics`
+(`crates/slicer-wasm-host/src/selection.rs`) while building the whole-print
+selection index.
 
-- A module whose `region_split_semantics` is **empty** runs
-  unconditionally (paint-transparent default — preserves pre-packet-92
-  behaviour for every existing module).
-- A module with a non-empty set `S` is **skipped on layer `L`** if NO
-  region in `L`'s `RegionMapIR` entries has a `variant_chain` whose
-  semantic ∈ `S`.
-- **Conservative-allow edge case:** if the slice for `L` is `None`
-  (rare; layer not yet sliced or filter consulted out of order), the
-  filter conservatively allows the module to run rather than skipping
-  it. This is the safe default; missing the run would silently drop
-  output, missing the skip wastes a no-op call.
+The live predicate is
+`paint_allows_layer(&HashSet<String>, Option<&SliceIR>) -> bool`
+(`crates/slicer-wasm-host/src/selection.rs`): a `(module, layer)` pair is
+allowed iff the declared set is empty, the committed slice for the layer is
+absent, or at least one region's ordered `variant_chain` names a declared
+semantic. Granularity is per (module × layer), NOT per (module × region): a
+matching layer selects every candidate region of the module-backed stage, not
+only the regions carrying the matching semantic.
 
-The filter helper is `module_invocation_allowed_on_layer(...)` in `crates/slicer-runtime/src/layer_executor.rs`, consulted at per-layer dispatch. Filter cost is `O(|regions| × |S|)` per
-dispatch decision; the `region_split_semantics` HashSet keeps the
-inner check at O(1).
+`build_and_commit_layer_selection_index`
+(`crates/slicer-runtime/src/layer_executor.rs`) builds the whole-print
+`LayerSelectionIndex` once and publishes it through the write-once Blackboard
+seam. Per-layer executors read
+`LayerSelectionIndex::selection_for(global_layer_index, module_id)` and act on
+`LayerSelection.invoke`; there is no per-region filter and no fallback resolver.
+
+- A module whose `region_split_semantics` is **empty** runs unconditionally
+  (paint-transparent default — preserves pre-packet-92 behaviour for every
+  existing module).
+- **Conservative-allow edge case:** if the slice for `L` is `None` (rare; layer
+  not yet sliced or filter consulted out of order), the predicate allows the
+  module to run rather than skipping it. This is the safe default; missing the
+  run would silently drop output, missing the skip wastes a no-op call.
+
+The absent/empty/match/case/value/order modes and the no-target transparent
+`invoke = true` case are property-tested under the `H-RUNTIME-DISPATCH` charter
+(`docs/testing/properties.md#h-runtime-dispatch`); recorded measurements and
+provenance live in `docs/testing/proptest-runtime-evidence.md`.
 
 ---
+
+### Lightning selection-driven preparation
+
+The legacy path is retired.
+The committed selection index decides participation via `selection.invoke && !selection.targets.is_empty()`;
+the old `sparse_fill_holder` string gate is no longer the scheduler's predicate.
+The selected `com.core.lightning-infill` artifact plans during `prepare_print` from typed committed
+regions, region configs, and layer plan, publishing one private `lightning-layer-{global_layer_index}` piece per schedule layer.
+Ordinary `Layer::Infill` consumers require and decode their own layer's piece through the module's decoder.
+Deleted surfaces are `commit_lightning_tree_ir_builtin`, `PrePass::LightningTreeGen` and its `STAGE_ORDER` entry,
+`BlackboardPrepassSlot::LightningTreeIR`, `BlackboardError::LightningTreeGeneration`,
+public `LightningTreeIR`/`LightningTreeEntry`/`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION`,
+the `lightning-tree-segments` WIT method and whole `slicer:lightning-queries` package,
+and SDK `lightning_tree_segments_for`/`with_lightning_tree_ir` accessors.
+Only module-private `KernelPlan`/`PlanEntry` remain, never public IR.
+This records behavioural equivalence to the pre-migration producer, moving ownership with no intended output change;
+it is not a canonical-parity claim, and the recorded Gate A/B outcomes remain unchanged.
 
 ## Phase 3 — DAG Validation
 
@@ -440,12 +510,12 @@ active per region at a time.
 ### Validation Passes (in order)
 
 1. **Stage ID validation** — manifest `stage` must exist in `STAGE_ORDER`
-2. **Global claim conflicts** — two enabled modules hold the same claim globally. For the four fill-role claims (`top-fill`, `bottom-fill`, `bridge-fill`, `sparse-fill`, introduced in packet 37) the pass rejects two modules holding the same fill-role claim for the same `(layer, object, region)` triple. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Per-region overrides may transfer a fill-role claim to a different module. **For symmetry, startup module dedup (`dedup_same_claim_modules` in `crates/slicer-scheduler/src/execution_plan.rs`) and the *global* arm of this pass both skip the four fill-role claim IDs (`validation::FILL_CLAIM_IDS`):** multiple modules legitimately declare the same fill claim and per-region resolution at dispatch time picks the active holder. The *per-region* arm (pass 3 below) still flags genuine `(layer, object, region)`-level collisions. The authoritative exemptions are `validation::FILL_CLAIM_IDS` (`crates/slicer-scheduler/src/validation.rs`) and the dedup symmetry in `dedup_same_claim_modules` (`crates/slicer-scheduler/src/execution_plan.rs`). family-scoped support claims are likewise exempted globally, while family planner writes to `SupportPlanIR` and `SupportIR` are orderable through host aggregation rather than blanket-exempted. The configured holder check in `validate_startup_dag_with_configured_holders` (`crates/slicer-scheduler/src/validation.rs`) is attached to this pass: `UnmatchedClaimHolder` means no loaded module matches the configured ID, while `ClaimHolderDoesNotDeclareClaim` means a matching module does not declare the selected claim. Both are fatal.
-3. **Per-region claim conflicts** — same claim remains after region-level filtering
+2. **Global claim conflicts** — two effective modules hold the same claim with `ConflictScope::Global`. The four configured fill-role claims (`top-fill`, `bottom-fill`, `bridge-fill`, `sparse-fill`, introduced in packet 37) are exempt from this arm: multiple modules legitimately declare the same fill claim and per-region resolution at dispatch time picks the active holder. `claim:raft-fill` is **ordinary** here — two effective holders conflict. The same exemption covers exactly four family-scoped support claims (`support-generator`, `support-planner`, `support-family:traditional`, `support-family:tree`); it is a finite table, not a `support-family:*` wildcard. Absence of any holder for one of the four fill claims is a `MissingDependency { module: "fill-role-claim:<claim>", requires: "no module holds <claim>" }`. See `FILL_CLAIM_IDS` and `validate_claim_conflicts` in `crates/slicer-scheduler/src/validation.rs`, and property `H-CLAIMS` (`docs/testing/properties.md#h-claims`). The configured holder check in `validate_startup_dag_with_configured_holders` (`crates/slicer-scheduler/src/validation.rs`) is attached to this pass: `UnmatchedClaimHolder` means no loaded module matches the configured ID, while `ClaimHolderDoesNotDeclareClaim` means a matching module does not declare the selected claim. Both are fatal.
+3. **Per-region claim conflicts** — the same claim with `ConflictScope::Region { object_id, region_id, global_layer_index }`. Holders are grouped by a typed key, never a concatenated string: ordinary and transition-capable claims key on the full `(object, region, layer)` triple, while the four non-transitionable claims (`perimeter-generator`, `seam-placer`, `layer-planner`, `mesh-analyzer`) key on the object alone, because `docs/01_system_architecture.md` §"Allowed Claim Transition Matrix" requires one holder across every layer **and** region of one object. A same-region cross-layer conflict reports the original region with `global_layer_index = None`.
 4. **Incompatibility declarations** — explicit `incompatible-with` pairs
 5. **Missing dependencies** — `requires` modules absent or disabled
 6. **IR version compatibility** — module requires newer IR schema than host provides
-7. **Cycle detection** — Kahn's algorithm per stage DAG
+7. **Cycle detection** — Kahn's algorithm per stage DAG. The reported `CyclicDependency.cycle` is the entire blocked remainder: every node on a cycle plus every node reachable from a cycle, including an acyclic downstream tail, and it excludes independently sortable nodes. It is not a simple-cycle route and the private sorter promises no order, so consumers compare it as a set. Property `H-DAG` compares both this set and the public sorter's lexically sorted `Err` vector to a nonempty-path model.
 8. **Write conflicts** — two modules in the same stage both write the same IR field with no read-after-write ordering edge between them (see below)
 9. **Unfulfilled reads** — module reads a field no upstream module or host writes
 10. **Dead writes** — module writes a field no downstream module reads (warning only)
@@ -453,6 +523,14 @@ active per region at a time.
 12. **Cross-stage dependency legality** — module may not require a module from a later stage
 13. **Transitive dependency legality** — transitive `requires` closure may not include later-stage modules
 14. **Host version compatibility** — module's declared `min-host-version` must be `<=` the running host version (`env!("CARGO_PKG_VERSION")` of `slicer-runtime`). Fatal, same blocking tier as pass 6 (IR version compatibility); see `SchedulerError::HostVersionIncompatible` and `docs/11_operational_governance_and_acceptance_gate.md` §2 "Compatibility Policy" dimension 1. Closes DEV-026 gap (1).
+
+**Production scope today.** `DagValidationRequest` has no module-disable field and production
+constructs only `ConflictScope::Global` claim holders
+(`crates/slicer-runtime/src/run.rs`), so pass 3 always runs on an empty set in the live path.
+Region-scoped uniqueness for support is enforced at the support-plan commit seam (host aggregation
+in `crates/slicer-wasm-host/src/support_aggregation.rs`), not by this pass. Synthetic
+`ConflictScope::Region` observations exercise the public validator contract — the typed-scope
+stability and exception rules — and are **not** evidence of live region-scoped enforcement.
 
 For the `claim:raft-fill` role, duplicate active holders are rejected at the
 applicable scope as `SchedulerError::ClaimConflict`. The resolved holder is
@@ -479,33 +557,32 @@ This dual-layer design prevents privilege escalation through custom bindings whi
 > `docs/01_system_architecture.md` § "Claim System"; the known-claim catalog and
 > manifest `[claims]` syntax live in `docs/03_wit_and_manifest.md`.
 
-Claims are evaluated only over modules that remain enabled after config filtering.
+The validator itself has **no** module-disable input: `DagValidationRequest` carries `modules`,
+`stage_dags`, `host_ir_schema_version`, `host_version`, `claim_holders` and `access_audits`, and
+nothing else. Callers supply the effective universe; a locally disabled module and its holder
+observations must be removed before the request is built, which is what the `H-CLAIMS`
+disabled-mode property models.
 
 ```rust
-// Illustrative. The real claim-conflict validation pass is
-// `validate_claim_conflicts` in `crates/slicer-scheduler/src/validation.rs`.
-fn effective_claim_holders(
-    claim: &ClaimId,
-    modules: &[LoadedModule],
-    cfg: &ResolvedConfig,
-) -> Vec<ModuleId> {
-    modules.iter()
-        .filter(|m| m.claims.contains(claim))
-        .filter(|m| !config_disables_module(cfg, &m.id))
-        .map(|m| m.id.clone())
+// Illustrative. The real claim-conflict pass is `validate_claim_conflicts` in
+// `crates/slicer-scheduler/src/validation.rs`; it groups the caller-supplied
+// effective observations, it does not re-filter modules.
+fn effective_claim_holders(claim: &ClaimId, request: &DagValidationRequest) -> Vec<ModuleId> {
+    request.claim_holders.iter()
+        .filter(|holder| holder.claim == *claim)
+        .map(|holder| holder.module_id.clone())
         .collect()
 }
 ```
 
 Rules:
 
-- Global validation fails only if `effective_claim_holders(claim).len() > 1`.
-- A disabled module does not participate in claim conflicts.
-- Region overrides may disable one holder and enable another; the region-level result must still be unique.
-- If no holder remains for a required claim, this is a configuration error (`MissingDependency`/unfulfilled capability).
+- Global validation fails only if the effective holder set for a claim in one scope has more than one distinct module.
+- A module removed from the effective universe (disabled, not loaded, or shadowed) does not participate in claim conflicts, and its holder observations must not be retained.
+- If no holder remains for a required claim or fill role, this is a configuration error (`MissingDependency`).
 - A configured holder must match a loaded module that declares the selected claim. An unmatched name fails with `SchedulerError::UnmatchedClaimHolder`; a matching module without the claim fails with `SchedulerError::ClaimHolderDoesNotDeclareClaim`. There is no silent empty-set fallback for either case.
-- Claim holder consistency is required per `(object_id, claim)` across all global layers.
-- If region overrides produce claim holder transitions across layers for the same object, validation fails as non-deterministic.
+- Stable claims are the four non-transitionable rows of the Allowed Claim Transition Matrix. Their holder must not change across layers **or regions** of one `(object_id, claim)`; the validator keys those by object alone and reports a conflict with the original object, the first holder's original region, and `global_layer_index = None`.
+- Transition-capable claims (for example `claim:sparse-fill`, `infill-generator`, `support-generator`) may vary per layer, and ordinary claims are compared only inside the same typed `(object, region, layer)` scope. `support-planner` is retained per support family at dispatch time, so family-scoped planners coexist rather than being deduplicated; no blanket cross-layer temporal policy is imposed on other claim ids.
 
 Cross-stage transitive rule:
 
@@ -741,133 +818,54 @@ To avoid tight coupling while keeping determinism:
 
 ### Topological Sort (Kahn's Algorithm)
 
-```rust
-pub fn topological_sort(
-    nodes: &[ModuleNode],
-) -> Result<Vec<ModuleId>, Vec<ModuleId>> {
-    let mut in_degree: BTreeMap<ModuleId, usize> = nodes.iter()
-        .map(|n| (n.module_id.clone(), 0usize))
-        .collect();
+Two different sorts exist, and they promise different things:
 
-    for node in nodes {
-        for dep in &node.edges_to {
-            *in_degree.get_mut(dep).unwrap() += 1;
-        }
-    }
+- **Public sorter.** `slicer_scheduler::topological_sort`
+  (`crates/slicer-scheduler/src/topology.rs`) is Kahn's algorithm over a `BTreeSet` of ready
+  modules and takes `pop_first()` at every step, so the emitted sequence is the
+  **lexicographically minimum** module ID among the currently ready nodes — not FIFO or insertion
+  order. Each node's destinations are collapsed into a `BTreeSet`, so a destination repeated with
+  several reasons increments in-degree once. On success the result is a bijection over the declared
+  nodes that satisfies every edge.
+- **Validator sorter.** `validate_startup_dag` uses its own private Kahn pass (a `VecDeque`
+  in-degree-0 queue) to fill `SchedulerError::CyclicDependency.cycle`. It makes no ordering
+  promise; only the set matters. Consumers must not assume a simple-cycle route or lexical order
+  from it.
 
-    let mut queue: VecDeque<ModuleId> = in_degree.iter()
-        .filter(|(_, &d)| d == 0)
-        .map(|(id, _)| id.clone())
-        .collect();
+**Blocked remainder, not cycle members.** Both sorts return the same set, and it is larger than
+"the cycle": a node never reaches in-degree zero exactly when it lies on a cycle **or** is
+reachable from one. So the reported blocked set is the cycle plus every descendant — including an
+acyclic downstream tail — and it excludes nodes that are independently sortable. The public
+`Err` vector is lexically sorted because it is collected from a `BTreeMap`; the private one is in
+node order.
 
-    let mut sorted = vec![];
-    while let Some(id) = queue.pop_front() {
-        sorted.push(id.clone());
-        let node = nodes.iter().find(|n| n.module_id == id).unwrap();
-        for dep in &node.edges_to {
-            let d = in_degree.get_mut(dep).unwrap();
-            *d -= 1;
-            if *d == 0 { queue.push_back(dep.clone()); }
-        }
-    }
+Property `H-DAG` (`docs/testing/properties.md#h-dag`, evidence in
+[proptest-scheduler-evidence.md](testing/proptest-scheduler-evidence.md)) compares the public
+sequence to an exhaustive lexical-minimum linear extension over all node permutations, and compares
+both the public `Err` set and the `CycleDetection` set to
+`slicer_sdk::test_support::property_testing::oracles::graph_cycle_remainder`, which is a
+nonempty-path reachability model rather than a second sorter.
 
-    if sorted.len() == nodes.len() {
-        Ok(sorted)
-    } else {
-        let visited: BTreeSet<_> = sorted.iter().cloned().collect();
-        Err(nodes.iter()
-            .map(|n| n.module_id.clone())
-            .filter(|id| !visited.contains(id))
-            .collect())
-    }
-}
+### Write Conflicts (validation pass 8)
 
-/// Validation pass 8: detect write conflicts within a stage.
-///
-/// A write conflict exists when modules A and B both write field F in the
-/// same stage, and there is no directed path A→B or B→A in the stage DAG.
-/// Without an ordering edge, the second writer silently overwrites the first
-/// and the result is implementation-defined.
-///
-/// A valid multi-writer scenario: A writes F, B reads F and writes F.
-/// This creates edge A→B (A's write satisfies B's read), establishing a
-/// deterministic transformation chain. This is NOT a conflict.
-fn validate_write_conflicts(
-    nodes: &[ModuleNode],
-    errors: &mut Vec<SchedulerError>,
-    stage: StageId,
-) {
-    // Build a reachability map: can_reach[a][b] = true if there is a
-    // directed path from a to b in the DAG.
-    let reachability = compute_reachability(nodes);
+`validate_write_conflicts` (`crates/slicer-scheduler/src/validation.rs`) compares every unordered
+pair of nodes in one stage DAG, per shared **exact** write path, and skips the pair only when an
+ordering genuinely resolves the shared field:
 
-    // For every pair of distinct modules (A, B) in this stage:
-    for i in 0..nodes.len() {
-        for j in (i + 1)..nodes.len() {
-            let a = &nodes[i];
-            let b = &nodes[j];
+- the other module declares that exact path in its `ir_reads` **and** a directed path exists from
+  the upstream writer to it (a consumed-field transform chain), or
+- both modules are family-support holders and the shared path is exactly `SupportPlanIR` or
+  `SupportIR` (or a dot-descendant of either). `SupportIRx`, unrelated fields and a bare
+  `requires_modules` edge are not exempt: ordering without consumption is not a transform.
 
-            // Find fields written by both A and B.
-            let shared_writes: Vec<IrAccessPath> = a.ir_writes.iter()
-                .filter(|w| b.ir_writes.contains(w))
-                .cloned()
-                .collect();
-
-            for field in shared_writes {
-                // Check if an ordering exists between A and B.
-                let a_before_b = reachability[&a.module_id][&b.module_id];
-                let b_before_a = reachability[&b.module_id][&a.module_id];
-
-                if !a_before_b && !b_before_a {
-                    // No ordering — this is a conflict.
-                    // Determine if it is orderable: would B reading the field
-                    // establish an A→B edge?
-                    let orderable = b.ir_reads.contains(&field)
-                        || a.ir_reads.contains(&field);
-
-                    errors.push(SchedulerError::WriteConflict {
-                        field,
-                        module_a: a.module_id.clone(),
-                        module_b: b.module_id.clone(),
-                        stage,
-                        orderable,
-                    });
-                }
-                // If a_before_b or b_before_a: ordering exists, no conflict.
-                // The later module's write is an intentional transformation
-                // of the earlier module's output.
-            }
-        }
-    }
-}
-
-fn compute_reachability(
-    nodes: &[ModuleNode],
-) -> HashMap<ModuleId, HashMap<ModuleId, bool>> {
-    // Floyd-Warshall over the DAG adjacency list.
-    // O(N³) but N (modules per stage) is always small (< 20 in practice).
-    let mut reach: HashMap<ModuleId, HashMap<ModuleId, bool>> = nodes.iter()
-        .map(|n| {
-            let row = nodes.iter()
-                .map(|m| (m.module_id.clone(), n.edges_to.contains(&m.module_id)))
-                .collect();
-            (n.module_id.clone(), row)
-        })
-        .collect();
-
-    let ids: Vec<ModuleId> = nodes.iter().map(|n| n.module_id.clone()).collect();
-    for k in &ids {
-        for i in &ids {
-            for j in &ids {
-                if reach[i][k] && reach[k][j] {
-                    *reach.get_mut(i).unwrap().get_mut(j).unwrap() = true;
-                }
-            }
-        }
-    }
-    reach
-}
-```
+Everything else is a fatal `WriteConflict { field, module_a, module_b, stage, orderable: false }`,
+reported as a normalized set because request node order can orient the pair. The `orderable` hint
+in the documented enum describes a *possible* repair (declare the read), not an observed
+exemption; the validating pass reports `false` for conflicts it emits. Property `H-CLAIMS`
+(`docs/testing/properties.md#h-claims`) models reachability and exact shared-path consumption
+independently and also pins the negative mutations (ordering without consumption, the `SupportIRx`
+pseudo-exemption, an unordered pair) in
+`scheduler_write_dependency_and_disabled_controls`.
 
 ---
 
@@ -909,6 +907,30 @@ the scattered resolvers and `overlay_resolved`:
   in `slicer-config`, which the runtime kernel also calls before re-resolving a
   layer, so both consumers agree by construction — no caller re-derives range
   precedence locally and no runtime path re-parses XML.
+
+### Bounds-only scalar validation (Normative)
+
+Bounds-only scalar validation is a separate, narrower seam from scope admission:
+`ConfigBoundsIndex::{from_declarations, check}` in
+`crates/slicer-scheduler/src/config_resolution.rs` intersects every module's declared
+`[min, max]` per key and rejects a numeric scalar or list element that falls outside the
+intersection, reporting the first offending list index. Its scope is exactly that:
+
+- an entirely absent key returns `Ok(())`;
+- a non-numeric (`Bool`/`String`) value returns `Ok(())` — variant mismatch is
+  `ResolvedConfig::apply_cli_key`'s job, not this API's;
+- a present declaration with neither min nor max still reaches the finiteness check, so
+  NaN/infinity is rejected there;
+- `Percent` and percent-authored `FloatOrPercent` are checked for finiteness and the **min**
+  only, because a declared max is expressed in the key's absolute unit while a raw percentage's
+  absolute equivalent is only known after Phase-B expansion. Absolute `FloatOrPercent` uses the
+  full bounds.
+
+No cross-field or whole-config validity is inferred, and the private `check_scalar` /
+`check_value` helpers stay private. The public behaviour is pinned by the
+[`H-CONFIG-BOUNDS`](testing/properties.md#h-config-bounds) property charter against an
+independent all-declarations predicate, including inclusive edges, empty intersections,
+one-sided bounds, first-invalid-index and percent-versus-absolute distinctions.
 
 ### Config scope admission (Normative — ADR-0069)
 
@@ -961,10 +983,24 @@ kernel uses it to:
    `RegionMappingError::ScalarInRegionSplitFacetValue` (Packet 93 guard, the
    manifest validator from Packet 92 normally catches it first).
 
-`enumerate_canonical_chains` produces chains deterministically in
-canonical `(priority, name)` semantic order (`canonical_variant_chain_order`), with `PaintValue` ordered as
-`Flag < ToolIndex(0) < ToolIndex(1) < … < Custom(s_lex)`. This order
-is contract — test fixtures and integration tests lock it.
+`enumerate_canonical_chains` produces chains deterministically from the axis order it is
+**given**, and preserves the caller's value vectors verbatim rather than sorting them. The
+`Flag < ToolIndex(0) < ToolIndex(1) < … < Custom(s_lex)` value order is supplied by
+`scan_paint_data` (`crates/slicer-core/src/algos/region_mapping.rs`), which de-duplicates each
+semantic's values through a `BTreeSet` ordered by `paint_value_canonical_cmp` in that file before
+the enumerator sees them.
+
+The aggregate is name-keyed. The RegionMapping driver passes `aggregated_region_split` to
+`execute_region_mapping_inner` (`crates/slicer-core/src/algos/region_mapping.rs`), which derives
+the ascending `(priority, name)` axis sequence locally and hands that to the enumerator; the
+enumerator preserves the caller's order. The scheduler's separate `canonical_variant_chain_order`
+(`crates/slicer-scheduler/src/region_split.rs`) returns the same sequence, but it has **no
+production caller in the current tree**; the kernel does not call it, and `slicer-core` has no
+`slicer-scheduler` dependency. Selection and exact-chain config lookup preserve the ordered
+vector without sorting or fallback. ADR-0018's 2026-11-19 amendment records this shared identity.
+Property `H-REGISTRY` proves the aggregate, the helper sequence and the map's name-ordered keys;
+the property that proves the driver ordering is `H-REGIONMAP`
+(`docs/testing/properties.md#h-regionmap`).
 
 **Cap and overflow:** `DEFAULT_REGION_MAP_CAP = 750_000` (raised from
 `1_000` in Packet 93 to accommodate worst-realistic envelopes of 16
@@ -1063,6 +1099,123 @@ every declared key with a registry default or an authored value is present and
 the load-time view is registry-complete; and the per-region overlay rides on
 the same resolved base, so a region view also contains every declared key —
 authored or seeded default — with the region's overlay applied on top.
+
+### Ordinary full-identity delivery (Normative — TASK-572 row 1)
+
+`build_layer_selection_index(LayerSelectionIndexInput)` (`crates/slicer-wasm-host/src/selection.rs`)
+builds the whole-print `LayerSelectionIndex` once, after late PrePass and global-layer promotion,
+via the runtime late-bind seam `build_and_commit_layer_selection_index` (`crates/slicer-runtime/src/layer_executor.rs`).
+The index is committed as one immutable
+Blackboard product, with no partial publication. `selection_for(global_layer_index, module_id)`
+is O(1); a missing index or missing bound pair is an internal-consistency fatal, never a fallback resolver.
+The index contains selection metadata only: delivered geometry always comes from current call-local products associated by full `RegionKey`/`OriginId`.
+
+The exact-key marker and insertion-permutation evidence is charted at
+`docs/testing/properties.md#h-runtime-selection` and recorded in
+`docs/testing/proptest-runtime-evidence.md`. A second runtime publication attempt
+is rejected by the write-once `Blackboard::commit_layer_selection_index` seam
+(`crates/slicer-runtime/src/blackboard.rs`), which preserves the originally
+published `Arc<LayerSelectionIndex>`. The builder may construct a candidate
+index before attempting the commit, but the seam rejects the write and the
+committed authority is never rebuilt or replaced as a recovery fallback.
+
+During construction, model authority requires `entries.get(&key)` before `config_for(&key)`
+(the Config Interner Contract in `docs/02_ir_schemas.md`). A missing exact key produces
+`SelectionError::MissingModelConfig`, wrapped by `LayerSelectionBuildError` and mapped by the runtime seam
+to `LayerStageError::FatalModule`, naming stage, module and exact key before any Layer invocation.
+Default, sibling and first-match config authority are forbidden.
+
+`variant_chain` is ordered and is never sorted or regenerated: it is the shared ascending
+`(priority, semantic name)` vector emitted by RegionMapping and paint composition, matched exactly
+(covered by `H-REGIONMAP`, `docs/testing/properties.md#h-regionmap`). `SelectedLayerTarget`'s
+`LayerTargetSource::Model { key, members }` retains the base plus matching merged modifier
+sources; config authority is the base's exact key. This section owns the painted-id encoding:
+`RegionMapIR.entries` keys painted variants by BASE region id plus ordered chain, whereas
+post-paint `SliceIR`/`PerimeterIR` ids are DERIVED by `paint_variant_region_id` (`crates/slicer-core/src/algos/paint_segmentation/mod.rs`)
+as `base * PAINT_VARIANT_REGION_ID_STRIDE + h`.
+Only inside config resolution, the builder derives a temporary map-space address by
+`id / PAINT_VARIANT_REGION_ID_STRIDE` for non-modifier nonempty-chain ids;
+modifier-namespace ids and empty-chain ids stay verbatim. This is exact config addressing, not fallback.
+Ordinary `Layer::Infill` delivery and commit preserve source-space object/region IDs and the complete ordered chain,
+exactly like perimeter and postprocess delivery and commit; stored source identities are never normalized.
+
+Non-region contexts use explicit `LayerTargetSource` provenance, never a fabricated model key.
+The selection describes EVERY role the module holds on the layer, each from its own
+`LayerTargetSource`: model targets (the perimeter/fill products selected by full
+`RegionKey`), `Layer::Support` carriers, the raft context (`LayerTargetSource::Raft`,
+`GlobalLayer.is_raft`) and the anchored stage (`LayerTargetSource::AnchoredStage`).
+Targets are ordered source outputs enumerated in deterministic source order — model
+regions in committed slice order, carriers in immutable plan-entry order
+(`LayerTargetSource::SupportCarrier.entry_index`) — never temporary config-map
+addresses: each target's config is resolved once at build time through exact-key
+identity addressing, and invoke-time delivery re-associates CURRENT call-local
+geometry by full `RegionKey`/`OriginId` on top of that ordered identity.
+Support carriers retain `SupportPlanEntry` provenance and use the resolved, declared-key-filtered
+`invocation_config` from `bind_module_config_view` — the frozen invocation/non-region
+config, never a per-region config-map read.
+Carrier layer eligibility is `global_layer_index == layer.index`;
+`anchor_layer_index` is provenance only.
+Carrier exclusions are complete and exact (`eligible_carrier_entries`,
+`crates/slicer-wasm-host/src/selection.rs`) — an entry failing any one of the
+following is not selected and not delivered as a carrier:
+
+- it belongs to a support family the module does not claim (the
+  `support-family:` claim prefix);
+- its `global_layer_index` differs from the physical layer;
+- it carries a decline reason;
+- every one of its roles is empty geometry;
+- the committed slice already contains a region of the SAME full origin
+  (object + source region + exact ordered chain) — presence exclusion is
+  full-origin, so a slice row differing only by chain never excludes a
+  carrier, and a present-but-EMPTY slice row excludes by identity presence
+  alone, polygon content being irrelevant (covered by
+  `model_identity_and_non_region_authority` in
+  `crates/slicer-wasm-host/src/selection.rs`).
+
+Eligible carriers are delivered even with `slice = None` (plan present, slice
+product absent). Carrier wire handles (`support_carrier_regions`, same file)
+are one `SlicedRegion` per full source origin, copied exactly from the plan
+entry (chain-differing carriers stay distinct handles) and sorted
+deterministically by `(object_id, region_id)`. Carriers hold NO model or
+coloring authority: they receive the non-fill claim set, never resolve the
+model config map, and are granted no authored coloring and no role-tool
+authority (`authored_coloring = false`, `resolved_role_tool = None` on the
+`SelectedLayerTarget`). Raft context derives from `GlobalLayer.is_raft` for
+`Layer::Infill`/`Layer::Support`.
+`AnchoredStage` records the physical layer index with invocation config as module execution context, not a synthetic anchored closure/entity.
+
+Extruder/tool authority is host-only. The host resolves the tool authority of
+each selected model target at build time from the target's resolved config
+(`extruder` extension → `SelectedLayerTarget.resolved_role_tool`,
+`crates/slicer-wasm-host/src/selection.rs`), and the marshal/commit boundary
+applies it to committed output; carriers, raft and anchored targets carry
+`None`, so a module can never mint, override or extend tool selection — it
+only reads what the host delivers.
+
+`OptionalProductPresence::{Absent, Present}` distinguishes absence from present-empty; `invoke`
+is not `!targets.is_empty()`: under `paint_allows_layer`, a paint-transparent
+non-support module on an empty present slice retains `invoke = true` with no targets. `Ok(None)` preserves no-output semantics.
+
+Both native and WASM legs consume the same call-local `LayerStageInput.selection` (`crates/slicer-wasm-host/src/binding.rs`).
+`WasmRuntimeDispatcher::run_stage` (`crates/slicer-wasm-host/src/dispatch.rs`) returns `LayerStageError::FatalModule`
+for a scheduled module with `selection = None`, invoking and committing nothing.
+With a selection and `invoke = false`, neither leg invokes. Native production uses
+`build_native_layer_request_from_selection` and `commit_native_layer_response_with_authored`
+(`crates/slicer-wasm-host/src/marshal/native.rs`); old direct builder/commit wrappers remain
+for legacy direct callers only and are deny-by-default for coloring.
+
+`AuthoredColoringContext` grants are full-origin `HashSet<OriginId>` values derived from selected model targets.
+`allows` checks the complete origin and tool range; a sibling variant is never authorized by another variant's grant.
+Enforcement remains at the marshal/commit boundary in `enforce_authored_coloring` (`crates/slicer-wasm-host/src/marshal/out.rs`),
+silently stripping unauthorized or out-of-range authored tool indices to `None`.
+
+This rule supersedes Packet 51 for module-backed Layer stages bound to the whole-print selection index:
+config authority is build-time exact-key resolution carried by `LayerSelection`
+(per-target `config` and `perimeter_configs`), not fresh per-invocation `RegionPlan.config`
+reconstruction inside `dispatch_layer_call`. Both rules must be read together. The Packet 51
+section is retained unchanged for stages outside this indexed contract: `is_indexed_module_stage` (`crates/slicer-runtime/src/layer_executor.rs`)
+distinguishes the roster slice the index is built from; host-built-in/non-roster stages keep the pre-index path.
+`bind_module_config_view`'s frozen view and explicit `invocation_config` remain authoritative only for invocation-wide/non-region reads.
 
 ### PrePass Config-View Plumbing (Normative — Packet 73)
 
@@ -1251,7 +1404,7 @@ pub struct LayerStageInput<'a> {
     pub perimeter:                Option<&'a PerimeterIR>,
     pub surface_classification:   Option<&'a SurfaceClassificationIR>,
     // … further per-stage optional borrows (infill, layer_collection,
-    //     prepared regions, lightning tree); see `binding.rs`.
+    //     prepared regions); see `binding.rs`.
 }
 ```
 
@@ -1406,7 +1559,6 @@ must not run their own ad-hoc presence checks for these slots.
 | `PrePass::RegionMapping`           | `LayerPlan`                                                               |
 | `PrePass::SupportAnalysis`         | `SliceIR`                                                                 |
 | `PrePass::SupportGeometry`         | `SurfaceClassification`, `LayerPlan`, `RegionMap`, `SliceIR`, `SupportGeometry` (the last committed by the host built-in within this stage before the guest runs) |
-| `PrePass::LightningTreeGen`        | `SurfaceClassification`, `LayerPlan`, `RegionMap`, `SliceIR`              |
 
 A stage scheduled before its prerequisites are committed produces
 `PrepassExecutionError::MissingRequiredPrepass { stage_id, slot }` and aborts
@@ -1414,21 +1566,25 @@ the prepass without invoking any module. This guard short-circuits before
 dispatch so module-side error handling for "the IR I need wasn't committed"
 is unnecessary.
 
-Bridge gating occurs after `PrePass::Slice`, in `ShellClassification`. It uses
-the previous global layer's same-object committed region polygons; when that
-layer is missing, candidates are cleared, while an existing layer with empty
-polygons subtracts nothing. Cross-layer internal-bridge qualification runs only
-after the `ShellClassification` shell state is committed, and it is the single
-internal-bridge producer: it writes `internal_bridge_areas`, one bridge angle
-per polygon in `internal_bridge_angles_deg`, and the qualified polygons into
-`bridge_areas` (plus the optional extra-bridge-layer duplicates at the parent
-angle + 90°). The `claim:bridge-fill` holder emits them during `Layer::Infill`;
-the `InfillPostProcess` commit arm constructs no internal-bridge paths.
+Bridge classification runs inside `PrePass::Slice`:
+`classify_unsupported_bridge_areas` applies canonical
+`PrintObject::detect_surfaces_type`'s whole-set rule —
+`opening_ex(diff(current_raw, safety_offset(previous_raw)), 0.1 x external_perimeter_width)`
+— to each region. A missing previous layer clears the candidates; an existing
+empty layer leaves the whole cross-section unsupported. `ShellClassification`
+does not subtract a second lower layer. Cross-layer internal-bridge
+qualification runs only after the `ShellClassification` shell state is
+committed, and it is the single internal-bridge producer: it writes
+`internal_bridge_areas`, one bridge angle per polygon in
+`internal_bridge_angles_deg`, and the qualified polygons into `bridge_areas`
+(plus the optional extra-bridge-layer duplicates at the parent angle + 90°).
+The `claim:bridge-fill` holder emits them during `Layer::Infill`; the
+`InfillPostProcess` commit arm constructs no internal-bridge paths.
 
-`ShellClassification` consumes gated bridge areas plus previous-layer
-contours and writes `bridge_orientation_deg` after gating. Empty gated areas
-leave the existing orientation unchanged. External orientation is computed
-from gated geometry and raw lower contours by floating-edge normal-cost
+`ShellClassification` consumes the classified bridge areas plus previous-layer
+contours and writes `bridge_orientation_deg`. Empty classified areas leave the
+existing orientation unchanged. External orientation is computed from the
+classified geometry and raw lower contours by floating-edge normal-cost
 minimization; empty candidates use the minor principal axis, and degenerate
 geometry falls back to `0°`.
 
@@ -1467,6 +1623,82 @@ multi-thread utilisation is exposed via report wall-clock timing
 error (`SlicePostProcessPaintAnnotationError::DeterministicConflict`). This is a
 correctness improvement over the pre-Packet-64 path where the same
    conflict failed per-layer at query time.
+
+### Automatic preparation lifecycle (Normative — TASK-574 row 5)
+
+The private pipeline core closes preparation after **all final committed
+PrePass products** (slices, region map, support plan and perimeter products)
+and global-layer promotion, before ending the PrePass bracket or admitting
+any `LayerArena`, Layer stage or anchored consumer. The row-01 whole-print
+selection index is built once per print from those final products. Eligible
+owners prepare exactly once in stable bytewise identity order: module,
+version, stage, artifact. An all-Ready guard precedes every dependent ordinary
+or `Layer::AnchoredEvents` consumer. Only row-03's atomic transaction finish
+and `current` establish Ready; successful empty output is Ready-empty.
+
+Participation requires `invoke && !targets.is_empty()` on `selection_for`
+entries. A declared owner with no selected targets emits `NoWork` without
+creating a plan owner or calling preparation. At the ordinary boundary,
+prepared calls resolve their selection against the **actual available slice
+views**: identity-only empty regions are not prepared work. Such no-work calls
+skip before readiness checks, reads or Consumption observations. Plain
+`invoke=true` empty-target calls remain unchanged; legacy plain modules never
+acquire prepared behavior.
+
+Required preparation failure aborts through `PipelineError::Preparation`,
+preserving the original typed `ModuleError` fields, including `fatal: false`.
+This is a required-dependency abort, not a rewrite of the general ordinary
+non-fatal policy or its documented host limitation. An original module error
+or trap takes precedence over writer poison. Poisoned staging publishes
+nothing, never Ready, and no selected consumer executes after that failure.
+
+Cancellation checkpoints occur before preparation, between owners and before
+consumers. An active call is allowed to return; unfinished staging is
+discarded. The recorded host cancellation decision maps to the existing
+Cancelled outcome, never by matching diagnostic text. The caller joins active
+calls before disposing staging and owners, after guards quiesce; row-03
+`Busy` is a producer return value, not something to wait on, spin on or force
+past. Disposal leaves zero retained logical bytes. Normal Layer arenas still
+run to completion or their explicit error, without a between-stage barrier.
+
+Actual selected `Layer::AnchoredEvents` runs as an ordinary Layer-module call
+through `PreparedLayerStageRunner`
+(`crates/slicer-runtime/src/preparation_lifecycle.rs`); its module-owned plan
+reads count as consumption. Synthetic `Anchored::Event` /
+`host:anchored-events` commits are builtin host work with no module dispatch
+and no plan reads. Their host-closure Finish observation denotes return or
+unwind separately from real module calls. The print scope remains alive
+through both: owners are disposed only after all real calls and the applicable
+synthetic host closure finish.
+
+### Preparation-only runtime capture (Normative — TASK-574 row 5)
+
+`run_slice_preparation_capture` (`crates/slicer-runtime/src/run.rs`) shares
+production's full validated startup, committed PrePass and preparation prefix.
+It stops before any `LayerArena`, ordinary Layer-module call or synthetic
+anchored-host closure; preparation calls themselves remain part of the prefix.
+It snapshots metadata only: piece names and lengths, typed selected targets,
+lifecycle records and `accounting_before_disposal` from row-03's actual
+production gauges, including `returned_read_bytes` observed before disposal.
+
+Capture `retained_bytes` is the checked post-cleanup retained total (zero).
+`transferred_bytes` is the checked sum of production `returned_read_bytes`,
+not stored lengths, metadata sizes or requested bytes; it is zero when no
+consumer reads. Retention and transfer are logical byte counts, not allocator
+or process peak-memory claims (see `docs/16_slicer_report.md`).
+
+Capture never opens, reads, copies or decodes opaque pieces. Neither capture,
+observer, CLI nor DAG exports raw payloads, and the host supplies no plan
+decoder. Row 06 alone adds opt-in atomic typed diagnostic snapshots through
+row-03's publication hook.
+
+Lifecycle records carry module/version/artifact identity, lifecycle phase
+separately from `consumer_stage`, piece names/lengths, retained/transferred
+counts and typed `PreparationFailure` on failure. Whole-print preparation and
+disposal have no global layer index; actual layer-scoped calls carry their
+real index. `elapsed` is `None` unless existing instrumentation is enabled.
+These typed observations add no `ProgressEvent` JSONL fields or schema/version
+change. Static capability or DAG metadata never fabricates Start or Ready.
 
 ### Per-Layer Execution (rayon parallel)
 
@@ -1718,6 +1950,14 @@ The G-code emission machinery lives in the `slicer-gcode` crate
 pub trait GCodeEmitter {
     fn emit_gcode(&self, layers: &[LayerCollectionIR])
         -> Result<GCodeIR, GCodeEmitError>;
+
+    // Owning variant (perf-vs-orca t90). Behaviour is identical; an
+    // implementation may consume the vector instead of copying it, and the
+    // default implementation forwards to `emit_gcode`. `DefaultGCodeEmitter`
+    // overrides it so the postpass `Vec<LayerCollectionIR>` is the emitter's
+    // working copy and is dropped exactly once.
+    fn emit_gcode_owned(&self, layers: Vec<LayerCollectionIR>)
+        -> Result<GCodeIR, GCodeEmitError>;
 }
 
 pub trait GCodeSerializer {
@@ -1729,11 +1969,13 @@ pub trait GCodeSerializer {
 `PostPass::GCodeEmit` is implemented in
 `slicer-runtime/src/builtins/gcode_emit_producer.rs` as a metadata-only
 `BuiltinProducer` descriptor (~42 LOC). The actual call site lives in
-`crates/slicer-runtime/src/run.rs` / `crates/slicer-runtime/src/postpass.rs` and wraps `DefaultGCodeEmitter::emit_gcode`,
+`crates/slicer-runtime/src/run.rs` / `crates/slicer-runtime/src/postpass.rs` and wraps `DefaultGCodeEmitter::emit_gcode_owned`,
 converting `GCodeEmitError` → `PostpassError` at the boundary via a free
 function (not a `From` impl — orphan rule prevents that). This
 preserves ADR-0001's in-stage-commit pattern without introducing a
-`slicer-gcode` → `slicer-runtime` circular dependency.
+`slicer-gcode` → `slicer-runtime` circular dependency. The owning call is
+taken only when no visual-debug capture sink is attached; a capturing caller
+keeps the borrowed path and receives the collection in the sink.
 
 #### Overhang Classification (Normative — Packets 88 / 106 / 107, ADR-0008 / ADR-0031)
 
@@ -1920,7 +2162,6 @@ pub struct Blackboard {
     slice_ir:               Option<Arc<Vec<SliceIR>>>,
     support_geometry:       Option<Arc<SupportGeometryIR>>,
     support_analysis:       Option<Arc<SupportAnalysisIR>>,
-    lightning_tree_ir:      Option<Arc<LightningTreeIR>>,
 
     // Written by per-layer (one slot per layer, written once, read after join)
     layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
@@ -1960,7 +2201,6 @@ slice command
     │    ├─ PrePassPaintSegmentation     → SliceIR (per-variant regions)       → Blackboard
     │    ├─ PrePassSupportAnalysis       → SupportAnalysisIR                   → Blackboard
     │    ├─ PrePassSupportGeometry       → SupportGeometryIR+SupportPlanIR      → Blackboard  (guest optional)
-  │    └─ PrePassLightningTreeGen      → LightningTreeIR                      → Blackboard  (only when sparse_fill_holder = lightning-infill)
   ├─ execute_per_layer()  [rayon::par_iter]
   │    └─ per layer (parallel):
   │         ├─ LayerPaintRegionAnnotation  (host-built-in; WASM override)

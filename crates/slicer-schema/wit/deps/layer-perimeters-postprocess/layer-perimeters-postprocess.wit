@@ -1,7 +1,7 @@
 package slicer:layer-perimeters-postprocess@1.0.0;
 
 interface perimeters-postprocess {
-    use slicer:ir-handles/ir-handles.{layer-idx, perimeter-region-view,
+    use slicer:ir-handles/ir-handles@1.0.0.{layer-idx, perimeter-region-view,
         perimeter-output-builder};
     use slicer:config/config-types.{config-view};
     use slicer:common/module-errors.{module-error};
@@ -15,6 +15,6 @@ world perimeters-postprocess-module {
     import slicer:common/host-services;
     import slicer:common/profiling;
     import slicer:config/config-types;
-    import slicer:ir-handles/ir-handles;
+    import slicer:ir-handles/ir-handles@1.0.0;
     export perimeters-postprocess;
 }

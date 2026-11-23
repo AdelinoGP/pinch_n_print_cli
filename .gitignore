@@ -36,6 +36,10 @@ tmp/
 # Durable local acceptance payloads (licensed inputs and frozen snapshots).
 # Not build/scratch storage: preserve across cargo clean and target cleanup.
 /.local-artifacts/perimeter-reference-preparation/
+# Gate A canonical capture snapshot (packet layer-module-preparation_07): the
+# recorder capture the checked-in lightning_gate fixtures were published from,
+# kept outside target/ so `cargo clean` cannot destroy the provenance baseline.
+/.local-artifacts/lightning-gate-gate-a/
 # Local environment files
 .env
 

@@ -1,0 +1,48 @@
+diff --git a/crates/slicer-runtime/src/builtins/support_analysis_producer.rs b/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
+index f079435f..5eeef861 100644
+--- a/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
++++ b/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
+@@ -74,6 +74,29 @@ pub fn commit_support_analysis_builtin(
+             let mut object_layer_polygons: BTreeMap<(String, u32), Vec<ExPolygon>> =
+                 BTreeMap::new();
+             let surface_classification = blackboard.surface_classification().cloned();
++            // Parallel eligibility pre-pass. `derive_needs_support` is a pure
++            // per-region predicate over immutable inputs, but it costs ~49 ms
++            // per region on supports-on base (the object-global overhang
++            // footprint is the union of every overhang facet, re-intersected
++            // against each region cross-section). Run it over the same indexed
++            // rayon shape as the contact pass below; `collect()` on an indexed
++            // parallel iterator preserves order, so the serial consumer reads
++            // the same values in the same order. Values are identical by
++            // construction: the same function, the same inputs, no shared
++            // mutable state.
++            let eligibility_work: Vec<&slicer_ir::SlicedRegion> = slices
++                .iter()
++                .flat_map(|slice| slice.regions.iter())
++                .filter(|region| !region.polygons.is_empty())
++                .collect();
++            let needs_support_by_region: Vec<bool> = eligibility_work
++                .par_iter()
++                .map(|region| {
++                    slicer_sdk::views::SliceRegionView::from_ir(region, 0.0, Vec::new())
++                        .derive_needs_support(surface_classification.as_deref())
++                })
++                .collect();
++            let mut needs_support_index = 0_usize;
+             let mut contact_work: Vec<(u32, String, u64, Vec<ExPolygon>, bool)> = Vec::new();
+             for slice in slices.iter() {
+                 for region in &slice.regions {
+@@ -113,9 +136,10 @@ pub fn commit_support_analysis_builtin(
+                         .entry((region.object_id.clone(), slice.global_layer_index))
+                         .or_default()
+                         .extend(region.polygons.iter().cloned());
+-                    let needs_support =
+-                        slicer_sdk::views::SliceRegionView::from_ir(region, 0.0, Vec::new())
+-                            .derive_needs_support(surface_classification.as_deref());
++                    // The pre-pass visits regions in exactly this order (flat
++                    // map over `slices` × `regions` with the same empty filter).
++                    let needs_support = needs_support_by_region[needs_support_index];
++                    needs_support_index += 1;
+                     contact_work.push((
+                         slice.global_layer_index,
+                         region.object_id.clone(),

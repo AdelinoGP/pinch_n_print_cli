@@ -30,7 +30,7 @@ world mesh-analysis-module {
     import slicer:common/host-services;
     import slicer:common/profiling;
     import slicer:config/config-types;
-    import slicer:ir-handles/ir-handles;
+    import slicer:ir-handles/ir-handles@1.0.0;
     import mesh-analysis-types;
     export mesh-analysis;
 }

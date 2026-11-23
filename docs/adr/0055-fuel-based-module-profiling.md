@@ -113,6 +113,15 @@ adds per-call detail for finding a single pathological layer.
   Fuel ratios are unaffected, because marks burn no fuel. The summary labels
   wall-clock under `--profile` as indicative; absolute timings come from a
   profiling-off run. This is an accepted, documented limitation, not a defect.
+- **The profile table's wall columns are accumulated thread-time, not run
+  wall.** Each value sums one span per completed activation, and the native
+  sink's per-thread flush adds concurrent worker activations too, so a
+  run-wide total can exceed the run's own wall-clock by roughly the mean
+  concurrency. The columns rank work share; they are never comparable to
+  `module_complete`/phase walls or process CPU. (Resolved the `host:slice`
+  `closing_ex` span contradiction, wayfinder ticket 24; documented in
+  `crates/slicer-runtime/src/profiling_report.rs` and
+  `docs/17_agent_debugging.md` by ticket 30.)
 - Fuel is deterministic *given identical guest inputs*. DEV-093 currently makes
   guest inputs vary run to run on a handful of layers, so whole-slice fuel
   totals can drift slightly until that is fixed. Fixed-input assertions (the

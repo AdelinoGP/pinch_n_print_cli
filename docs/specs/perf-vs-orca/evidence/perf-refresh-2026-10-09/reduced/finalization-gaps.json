@@ -1,0 +1,182 @@
+{
+  "base-classic-off": {
+    "events": [
+      {
+        "event": "stage_start",
+        "module_id": null,
+        "timestamp_ms": 1791599947411,
+        "elapsed_ms": null
+      },
+      {
+        "event": "module_start",
+        "module_id": "com.core.overhang-classifier-default",
+        "timestamp_ms": 1791599947411,
+        "elapsed_ms": null
+      },
+      {
+        "event": "module_complete",
+        "module_id": "com.core.overhang-classifier-default",
+        "timestamp_ms": 1791599947928,
+        "elapsed_ms": 516
+      },
+      {
+        "event": "module_start",
+        "module_id": "com.core.part-cooling",
+        "timestamp_ms": 1791599947940,
+        "elapsed_ms": null
+      },
+      {
+        "event": "module_complete",
+        "module_id": "com.core.part-cooling",
+        "timestamp_ms": 1791599948465,
+        "elapsed_ms": 525
+      },
+      {
+        "event": "module_start",
+        "module_id": "com.core.skirt-brim",
+        "timestamp_ms": 1791599948491,
+        "elapsed_ms": null
+      },
+      {
+        "event": "module_complete",
+        "module_id": "com.core.skirt-brim",
+        "timestamp_ms": 1791599949001,
+        "elapsed_ms": 509
+      },
+      {
+        "event": "module_start",
+        "module_id": "com.core.wipe-tower",
+        "timestamp_ms": 1791599949015,
+        "elapsed_ms": null
+      },
+      {
+        "event": "module_complete",
+        "module_id": "com.core.wipe-tower",
+        "timestamp_ms": 1791599949443,
+        "elapsed_ms": 428
+      },
+      {
+        "event": "stage_complete",
+        "module_id": null,
+        "timestamp_ms": 1791599949451,
+        "elapsed_ms": 2040
+      }
+    ],
+    "module_bracket_total_ms": 1978,
+    "stage_elapsed_ms": 2040,
+    "gaps": [
+      {
+        "after": "com.core.overhang-classifier-default",
+        "before": "com.core.part-cooling",
+        "gap_ms": 12
+      },
+      {
+        "after": "com.core.part-cooling",
+        "before": "com.core.skirt-brim",
+        "gap_ms": 26
+      },
+      {
+        "after": "com.core.skirt-brim",
+        "before": "com.core.wipe-tower",
+        "gap_ms": 14
+      },
+      {
+        "after": "com.core.wipe-tower",
+        "before": "stage_complete",
+        "gap_ms": 8
+      }
+    ],
+    "gaps_total_ms": 60,
+    "stage_minus_modules_ms": 62
+  },
+  "base-classic-on": {
+    "events": [
+      {
+        "event": "stage_start",
+        "module_id": null,
+        "timestamp_ms": 1791599471368,
+        "elapsed_ms": null
+      },
+      {
+        "event": "module_start",
+        "module_id": "com.core.overhang-classifier-default",
+        "timestamp_ms": 1791599471368,
+        "elapsed_ms": null
+      },
+      {
+        "event": "module_complete",
+        "module_id": "com.core.overhang-classifier-default",
+        "timestamp_ms": 1791599486430,
+        "elapsed_ms": 15062
+      },
+      {
+        "event": "module_start",
+        "module_id": "com.core.part-cooling",
+        "timestamp_ms": 1791599494688,
+        "elapsed_ms": null
+      },
+      {
+        "event": "module_complete",
+        "module_id": "com.core.part-cooling",
+        "timestamp_ms": 1791599509743,
+        "elapsed_ms": 15055
+      },
+      {
+        "event": "module_start",
+        "module_id": "com.core.skirt-brim",
+        "timestamp_ms": 1791599522338,
+        "elapsed_ms": null
+      },
+      {
+        "event": "module_complete",
+        "module_id": "com.core.skirt-brim",
+        "timestamp_ms": 1791599538321,
+        "elapsed_ms": 15982
+      },
+      {
+        "event": "module_start",
+        "module_id": "com.core.wipe-tower",
+        "timestamp_ms": 1791599551661,
+        "elapsed_ms": null
+      },
+      {
+        "event": "module_complete",
+        "module_id": "com.core.wipe-tower",
+        "timestamp_ms": 1791599568311,
+        "elapsed_ms": 16650
+      },
+      {
+        "event": "stage_complete",
+        "module_id": null,
+        "timestamp_ms": 1791599581478,
+        "elapsed_ms": 110109
+      }
+    ],
+    "module_bracket_total_ms": 62749,
+    "stage_elapsed_ms": 110109,
+    "gaps": [
+      {
+        "after": "com.core.overhang-classifier-default",
+        "before": "com.core.part-cooling",
+        "gap_ms": 8258
+      },
+      {
+        "after": "com.core.part-cooling",
+        "before": "com.core.skirt-brim",
+        "gap_ms": 12595
+      },
+      {
+        "after": "com.core.skirt-brim",
+        "before": "com.core.wipe-tower",
+        "gap_ms": 13340
+      },
+      {
+        "after": "com.core.wipe-tower",
+        "before": "stage_complete",
+        "gap_ms": 13167
+      }
+    ],
+    "gaps_total_ms": 47360,
+    "stage_minus_modules_ms": 47360
+  }
+}

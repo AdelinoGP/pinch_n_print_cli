@@ -1,0 +1,280 @@
+{
+  "cases": [
+    {
+      "add_paths_ns": 113200,
+      "boolean_wrapper_ns": 3548000,
+      "build_tree_ns": 20500,
+      "cleanup_ns": 400,
+      "execute_internal_ns": 3389300,
+      "flatten_ns": 20300,
+      "full_roles": [
+        "SupportBody",
+        "TopInterface"
+      ],
+      "input": [
+        40,
+        0,
+        3995
+      ],
+      "intersection_build_ns": 1294600,
+      "intersection_process_ns": 90600,
+      "job": "benchy",
+      "layer": 168,
+      "reconstruct_ns": 4300,
+      "sweep_final_horz_joins_ns": 0,
+      "sweep_horizontal_ns": 182700,
+      "sweep_insert_ns": 89500,
+      "sweep_intersections_ns": 1674300,
+      "sweep_reset_ns": 1300,
+      "sweep_top_ns": 934700,
+      "total_ns": 3574800,
+      "union": [
+        4,
+        0,
+        1236
+      ]
+    },
+    {
+      "add_paths_ns": 204600,
+      "boolean_wrapper_ns": 9231900,
+      "build_tree_ns": 54100,
+      "cleanup_ns": 600,
+      "execute_internal_ns": 8928800,
+      "flatten_ns": 16700,
+      "full_roles": [
+        "SupportBody"
+      ],
+      "input": [
+        96,
+        0,
+        9348
+      ],
+      "intersection_build_ns": 3514000,
+      "intersection_process_ns": 232000,
+      "job": "benchy",
+      "layer": 152,
+      "reconstruct_ns": 5500,
+      "sweep_final_horz_joins_ns": 0,
+      "sweep_horizontal_ns": 411200,
+      "sweep_insert_ns": 240300,
+      "sweep_intersections_ns": 4411600,
+      "sweep_reset_ns": 4400,
+      "sweep_top_ns": 2653900,
+      "total_ns": 9257800,
+      "union": [
+        5,
+        2,
+        1994
+      ]
+    },
+    {
+      "add_paths_ns": 287100,
+      "boolean_wrapper_ns": 21079600,
+      "build_tree_ns": 180700,
+      "cleanup_ns": 1400,
+      "execute_internal_ns": 20533900,
+      "flatten_ns": 126500,
+      "full_roles": [
+        "SupportBody",
+        "BottomInterface"
+      ],
+      "input": [
+        161,
+        0,
+        15758
+      ],
+      "intersection_build_ns": 10077600,
+      "intersection_process_ns": 327000,
+      "job": "benchy",
+      "layer": 43,
+      "reconstruct_ns": 10200,
+      "sweep_final_horz_joins_ns": 100,
+      "sweep_horizontal_ns": 600700,
+      "sweep_insert_ns": 354900,
+      "sweep_intersections_ns": 11387800,
+      "sweep_reset_ns": 5300,
+      "sweep_top_ns": 6386600,
+      "total_ns": 21275000,
+      "union": [
+        3,
+        0,
+        2118
+      ]
+    },
+    {
+      "add_paths_ns": 439700,
+      "boolean_wrapper_ns": 16952000,
+      "build_tree_ns": 29500,
+      "cleanup_ns": 300,
+      "execute_internal_ns": 16407400,
+      "flatten_ns": 120900,
+      "full_roles": [
+        "SupportBody"
+      ],
+      "input": [
+        182,
+        0,
+        18200
+      ],
+      "intersection_build_ns": 8013900,
+      "intersection_process_ns": 246500,
+      "job": "benchy",
+      "layer": 0,
+      "reconstruct_ns": 11200,
+      "sweep_final_horz_joins_ns": 100,
+      "sweep_horizontal_ns": 419200,
+      "sweep_insert_ns": 293800,
+      "sweep_intersections_ns": 8938500,
+      "sweep_reset_ns": 16800,
+      "sweep_top_ns": 5349600,
+      "total_ns": 17111400,
+      "union": [
+        1,
+        0,
+        1816
+      ]
+    },
+    {
+      "add_paths_ns": 998300,
+      "boolean_wrapper_ns": 225415900,
+      "build_tree_ns": 152200,
+      "cleanup_ns": 1200,
+      "execute_internal_ns": 224135200,
+      "flatten_ns": 147500,
+      "full_roles": [
+        "SupportBody",
+        "TopInterface",
+        "BottomInterface"
+      ],
+      "input": [
+        417,
+        0,
+        41120
+      ],
+      "intersection_build_ns": 143274600,
+      "intersection_process_ns": 971300,
+      "job": "base",
+      "layer": 232,
+      "reconstruct_ns": 19200,
+      "sweep_final_horz_joins_ns": 100,
+      "sweep_horizontal_ns": 1638600,
+      "sweep_insert_ns": 1081400,
+      "sweep_intersections_ns": 146854300,
+      "sweep_reset_ns": 30700,
+      "sweep_top_ns": 69277700,
+      "total_ns": 225608800,
+      "union": [
+        2,
+        1,
+        3288
+      ]
+    },
+    {
+      "add_paths_ns": 1083300,
+      "boolean_wrapper_ns": 208299400,
+      "build_tree_ns": 356600,
+      "cleanup_ns": 800,
+      "execute_internal_ns": 206567500,
+      "flatten_ns": 307300,
+      "full_roles": [
+        "SupportBody",
+        "TopInterface"
+      ],
+      "input": [
+        654,
+        0,
+        63638
+      ],
+      "intersection_build_ns": 121509900,
+      "intersection_process_ns": 1411100,
+      "job": "base",
+      "layer": 38,
+      "reconstruct_ns": 23600,
+      "sweep_final_horz_joins_ns": 100,
+      "sweep_horizontal_ns": 2398400,
+      "sweep_insert_ns": 1532700,
+      "sweep_intersections_ns": 126811700,
+      "sweep_reset_ns": 22300,
+      "sweep_top_ns": 67926600,
+      "total_ns": 208742700,
+      "union": [
+        6,
+        2,
+        4976
+      ]
+    },
+    {
+      "add_paths_ns": 1718700,
+      "boolean_wrapper_ns": 409699200,
+      "build_tree_ns": 462100,
+      "cleanup_ns": 1100,
+      "execute_internal_ns": 407150800,
+      "flatten_ns": 424300,
+      "full_roles": [
+        "SupportBody"
+      ],
+      "input": [
+        921,
+        0,
+        92112
+      ],
+      "intersection_build_ns": 254259900,
+      "intersection_process_ns": 2039100,
+      "job": "base",
+      "layer": 21,
+      "reconstruct_ns": 32500,
+      "sweep_final_horz_joins_ns": 100,
+      "sweep_horizontal_ns": 3186100,
+      "sweep_insert_ns": 2240600,
+      "sweep_intersections_ns": 261469300,
+      "sweep_reset_ns": 59000,
+      "sweep_top_ns": 129192900,
+      "total_ns": 410391500,
+      "union": [
+        4,
+        12,
+        5129
+      ]
+    },
+    {
+      "add_paths_ns": 2216300,
+      "boolean_wrapper_ns": 420270500,
+      "build_tree_ns": 427800,
+      "cleanup_ns": 3100,
+      "execute_internal_ns": 417204300,
+      "flatten_ns": 501400,
+      "full_roles": [
+        "SupportBody"
+      ],
+      "input": [
+        1024,
+        0,
+        102400
+      ],
+      "intersection_build_ns": 267169400,
+      "intersection_process_ns": 2070500,
+      "job": "base",
+      "layer": 9,
+      "reconstruct_ns": 28600,
+      "sweep_final_horz_joins_ns": 100,
+      "sweep_horizontal_ns": 2655700,
+      "sweep_insert_ns": 2149400,
+      "sweep_intersections_ns": 273593300,
+      "sweep_reset_ns": 52700,
+      "sweep_top_ns": 128861600,
+      "total_ns": 421043300,
+      "union": [
+        4,
+        10,
+        4750
+      ]
+    }
+  ],
+  "hole_cases": 5,
+  "negative_controls": {
+    "hole": 5,
+    "role": 8,
+    "vertex": 8
+  },
+  "positive_body_cuts": 4
+}

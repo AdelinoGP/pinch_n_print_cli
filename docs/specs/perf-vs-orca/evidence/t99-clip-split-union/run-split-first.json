@@ -1,0 +1,19 @@
+{
+  "id": "ordinary-probe-split-first-1",
+  "mode": "ordinary",
+  "arm": "probe-split-first",
+  "run_index": 1,
+  "threads": 12,
+  "exit_code": 0,
+  "order": "split-first",
+  "rows": 130,
+  "wall_seconds": 91.0515511,
+  "cpu_seconds": 752.765625,
+  "cpu_wall_ratio": 8.26746624198915,
+  "sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+  "bytes": 21023739,
+  "reference_sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+  "reference_bytes": 21023739,
+  "matches_reference": true,
+  "exe_sha256": "9dd897fa9156a1c5b874d74f0621b6970ae81631cadd726d8653386700323698"
+}

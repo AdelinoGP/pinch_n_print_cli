@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use slicer_ir::slice_ir::SupportSourceKey;
 use slicer_ir::PrepassRunnerError;
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExPolygon, GlobalLayer, LayerPlanIR, MeshIR,
@@ -134,7 +135,17 @@ fn support_geometry_aggregates_family_outputs_before_one_final_commit() {
     // below need the same host ownership and claim metadata as live planners.
     blackboard
         .commit_support_analysis(Arc::new(SupportAnalysisIR {
-            family_assignments: BTreeMap::from([(("cube".into(), 1), "tree".into())]),
+            // This fixture bypasses SliceIR and carries no paint semantics, so
+            // the `cube`/region-1 source is genuinely chain-empty: grant that
+            // exact empty chain, never a chain-erasing wildcard.
+            family_assignments: BTreeMap::from([(
+                SupportSourceKey {
+                    object_id: "cube".into(),
+                    region_id: 1,
+                    variant_chain: Vec::new(),
+                },
+                "tree".into(),
+            )]),
             ..Default::default()
         }))
         .unwrap();
@@ -435,6 +446,9 @@ fn support_plan_entry(family_id: &str) -> SupportPlanEntry {
         capabilities: Vec::new(),
         provenance: Vec::new(),
         decline_reason: None,
+        // Synthetic chain-less fixture source: no paint semantics exist in this
+        // test, so the exact empty chain is the identity, never a wildcard.
+        variant_chain: Vec::new(),
     }
 }
 

@@ -1,0 +1,25 @@
+{
+ "fixture": "base",
+ "stage_wall_ms": 37929,
+ "slice_thread_ms": 410505.152,
+ "slice_activations": 23180,
+ "closing_thread_ms": 290646.49,
+ "closing_calls": 470,
+ "scopes": [
+  {
+   "scope": "polygon_ops::closing_ex",
+   "self_wall_ms": 290646.49,
+   "calls": 470
+  },
+  {
+   "scope": "polygon_ops::offset",
+   "self_wall_ms": 87889.273,
+   "calls": 3113
+  },
+  {
+   "scope": "polygon_ops::clip_polygons",
+   "self_wall_ms": 31968.785,
+   "calls": 19597
+  }
+ ]
+}

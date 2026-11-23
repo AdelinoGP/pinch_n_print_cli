@@ -3,17 +3,13 @@
 use std::collections::HashMap;
 
 use slicer_core::algos::prepass_slice::{
-    assemble_flat_bridge_areas, batch_bottom_surface_footprints, batch_slice_objects_by_layer,
-    execute_prepass_slice_single_layer, execute_prepass_slice_single_layer_with_cache,
-    PrepassSliceCache,
+    classify_unsupported_bridge_areas, execute_prepass_slice_single_layer,
 };
-use slicer_core::polygon_ops::{closing_ex, difference};
-use slicer_ir::slice_ir::QuartileBand;
+use slicer_core::polygon_ops::{difference, intersection};
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, ExPolygon, FacetClass, GlobalLayer, IndexedTriangleSet, MeshIR,
-    ObjectConfig, ObjectMesh, ObjectSurfaceData, Point2, Point3, Polygon, RegionId, RegionKey,
-    RegionMapIR, RegionPlan, ResolvedConfig, SemVer, SlicedRegion, SurfaceClassificationIR,
-    Transform3d,
+    ActiveRegion, BoundingBox3, ExPolygon, GlobalLayer, IndexedTriangleSet, MeshIR, ObjectConfig,
+    ObjectMesh, Point2, Point3, Polygon, RegionId, RegionKey, RegionMapIR, RegionPlan,
+    ResolvedConfig, SemVer, SlicedRegion, Transform3d,
 };
 
 fn sv(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -102,7 +98,7 @@ fn slice_at_mid_height_produces_nonempty_polygons() {
     let layer = make_global_layer(0, 5.0, "cube");
 
     let result =
-        execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice must succeed");
+        execute_prepass_slice_single_layer(&mesh, &layer, None).expect("slice must succeed");
 
     assert_eq!(result.global_layer_index, 0);
     assert!((result.z - 5.0).abs() < 1e-6);
@@ -122,7 +118,7 @@ fn slice_below_mesh_produces_empty_polygons() {
     let layer = make_global_layer(0, -1.0, "cube");
 
     let result =
-        execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice must succeed");
+        execute_prepass_slice_single_layer(&mesh, &layer, None).expect("slice must succeed");
 
     assert_eq!(result.regions.len(), 1);
     assert!(
@@ -137,7 +133,7 @@ fn slice_above_mesh_produces_empty_polygons() {
     let layer = make_global_layer(0, 15.0, "cube");
 
     let result =
-        execute_prepass_slice_single_layer(&mesh, &layer, None, None).expect("slice must succeed");
+        execute_prepass_slice_single_layer(&mesh, &layer, None).expect("slice must succeed");
 
     assert_eq!(result.regions.len(), 1);
     assert!(
@@ -151,7 +147,7 @@ fn unknown_object_returns_error() {
     let mesh = cube_mesh();
     let layer = make_global_layer(0, 5.0, "nonexistent");
 
-    let err = execute_prepass_slice_single_layer(&mesh, &layer, None, None)
+    let err = execute_prepass_slice_single_layer(&mesh, &layer, None)
         .expect_err("must fail for unknown object");
 
     match err {
@@ -163,135 +159,6 @@ fn unknown_object_returns_error() {
             assert_eq!(object_id, "nonexistent");
         }
         other => panic!("expected UnknownObject, got {other:?}"),
-    }
-}
-
-/// `facet_count` mutually non-overlapping unit triangles, all flat at Z=0
-/// (so they never straddle a slicing plane), spaced 10mm apart on the X
-/// axis so their XY projections never touch. Mirrors the disjoint-facet
-/// fixture already used to regression-test `compute_xy_footprint`'s own
-/// batching fix in `mesh_analysis.rs`.
-fn disjoint_flat_bottom_mesh(facet_count: usize) -> IndexedTriangleSet {
-    let mut vertices = Vec::with_capacity(facet_count * 3);
-    let mut indices = Vec::with_capacity(facet_count * 3);
-    for i in 0..facet_count {
-        let ox = i as f32 * 10.0;
-        let base = vertices.len() as u32;
-        vertices.push(p3(ox, 0.0, 0.0));
-        vertices.push(p3(ox + 1.0, 0.0, 0.0));
-        vertices.push(p3(ox, 1.0, 0.0));
-        indices.push(base);
-        indices.push(base + 1);
-        indices.push(base + 2);
-    }
-    IndexedTriangleSet { vertices, indices }
-}
-
-fn mesh_with_bottom_facets(facet_count: usize) -> MeshIR {
-    MeshIR {
-        schema_version: sv(1, 0, 0),
-        objects: vec![ObjectMesh {
-            id: "obj".to_string(),
-            mesh: disjoint_flat_bottom_mesh(facet_count),
-            transform: identity_transform(),
-            config: ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: vec![],
-            paint_data: None,
-            ..Default::default()
-        }],
-        build_volume: build_volume(),
-    }
-}
-
-/// A `SurfaceClassificationIR` marking every facet of `"obj"` as
-/// `BottomSurface`, plus a non-empty overhang-quartile band on every layer
-/// in `0..layer_count` — the combination that makes
-/// `execute_prepass_slice_single_layer`'s flat-bridge branch call
-/// `bottom_surface_footprint` on every layer.
-fn surface_classification_with_quartile_bands(
-    facet_count: usize,
-    layer_count: u32,
-) -> SurfaceClassificationIR {
-    let mut sc = SurfaceClassificationIR::default();
-    sc.per_object.insert(
-        "obj".to_string(),
-        ObjectSurfaceData {
-            facet_classes: vec![FacetClass::BottomSurface; facet_count],
-            ..Default::default()
-        },
-    );
-    // Position is irrelevant — this only needs to union into a non-empty
-    // `unsupported` region so the flat-bridge branch actually runs.
-    let band_polygon = ExPolygon {
-        contour: Polygon {
-            points: vec![
-                Point2::from_mm(-100.0, -100.0),
-                Point2::from_mm(-99.0, -100.0),
-                Point2::from_mm(-99.0, -99.0),
-                Point2::from_mm(-100.0, -99.0),
-            ],
-        },
-        holes: vec![],
-    };
-    for layer_index in 0..layer_count {
-        sc.overhang_quartile_polygons
-            .entry("obj".to_string())
-            .or_default()
-            .insert(
-                layer_index,
-                vec![QuartileBand {
-                    quartile: 1,
-                    polygons: vec![band_polygon.clone()],
-                }],
-            );
-    }
-    sc
-}
-
-/// Regression test for the redundant `bottom_surface_footprint` recomputation
-/// that made `PrePass::Slice` take ~28s (of a ~40s total slice, down from an
-/// original ~50s) on 3D Benchy: `execute_prepass_slice_single_layer`
-/// recomputed the whole object's bottom-surface XY footprint (a
-/// `compute_xy_footprint` union over every `BottomSurface` facet) from
-/// scratch on *every layer*, even though the footprint depends only on the
-/// object's mesh and facet classes and is identical across all layers.
-/// `execute_prepass_slice_single_layer_with_cache`, fed by
-/// `batch_bottom_surface_footprints`, computes it exactly once per object
-/// instead.
-///
-/// Note the per-layer flat-bridge branch also runs
-/// `assemble_flat_bridge_areas` (real, layer-varying geometry work
-/// unaffected by this cache), so the achievable speedup here is bounded —
-/// unlike the `compute_xy_footprint`/`annotate_overhangs` batching fixes
-/// elsewhere in this session, which eliminated their per-item cost
-/// entirely. Measured directly against the uncached per-layer path on this
-/// fixture (800 disjoint bottom facets across 20 layers): ~840ms uncached
-/// vs. ~240ms cached (~3.5x, consistent with the ~1.8x reduction measured
-/// on the full Benchy pipeline once `assemble_flat_bridge_areas`'s own cost
-/// is included). The 1.5x floor below leaves headroom across machines/build
-/// profiles while still failing fast if this regresses back to per-layer
-/// recomputation (which would collapse the ratio to ~1x).
-/// A sharp-cornered star polygon with `tips` points, alternating between
-/// `outer_mm` and `inner_mm` radii. Sharp convex tips are what make a
-/// large-radius `Round`-join morphological offset pathological: Clipper2
-/// tessellates every tip's exterior angle into an arc, so the intermediate
-/// polygon's vertex count explodes with the join radius. A smooth high-vertex
-/// circle does NOT stress `Round` joins (each vertex's exterior angle is
-/// tiny); sharp tips do — and the real Benchy cross-section is full of them
-/// (railings, cabin edges, chimney).
-fn sharp_star(tips: usize, outer_mm: f32, inner_mm: f32) -> ExPolygon {
-    use std::f32::consts::PI;
-    let mut points = Vec::with_capacity(tips * 2);
-    for i in 0..(tips * 2) {
-        let angle = (i as f32) * PI / (tips as f32);
-        let r = if i % 2 == 0 { outer_mm } else { inner_mm };
-        points.push(Point2::from_mm(r * angle.cos(), r * angle.sin()));
-    }
-    ExPolygon {
-        contour: Polygon { points },
-        holes: vec![],
     }
 }
 
@@ -309,13 +176,13 @@ fn square_expoly(cx: f32, cy: f32, half_mm: f32) -> ExPolygon {
     }
 }
 
-/// The emitted bridge component must cover the whole gap, not the
-/// morphological closing's contour, while a free-edge bottom is not a bridge.
-/// The two kinds of unsupported bottom deliberately coexist in one layer.
+/// Canonical classification: every unsupported component that survives
+/// `opening_ex(..., 0.1 x width, Miter, 3.0)` is a bridge. The enclosed gap and
+/// the free-edge band deliberately coexist in one layer; the retired
+/// enclosure gate kept only the gap, canonical keeps both (0.1 x 0.4 mm =
+/// 0.04 mm removes nothing at a 4 mm feature width).
 #[test]
-fn flat_bridge_gap_and_free_edge_keep_only_the_gap_component() {
-    use slicer_core::polygon_ops::OffsetJoinType;
-
+fn whole_set_classification_keeps_gap_and_free_edge() {
     let body = square_expoly(2.0, 0.0, 22.0);
     let gap = square_expoly(0.0, 0.0, 2.0);
     let free_edge = ExPolygon {
@@ -329,179 +196,103 @@ fn flat_bridge_gap_and_free_edge_keep_only_the_gap_component() {
         },
         holes: vec![],
     };
+    let previous = difference(
+        std::slice::from_ref(&body),
+        &[gap.clone(), free_edge.clone()],
+    );
     let mut region = SlicedRegion {
         polygons: vec![body.clone()],
-        infill_areas: vec![body],
+        infill_areas: vec![body.clone()],
         ..Default::default()
     };
-    assemble_flat_bridge_areas(
-        &mut region,
-        &[gap.clone(), free_edge.clone()],
-        &[gap.clone(), free_edge],
-        OffsetJoinType::Miter,
-    );
+    classify_unsupported_bridge_areas(&mut region, &[body], Some(&previous), 0.4);
 
-    assert!(region.is_bridge, "the enclosed gap must be recognized");
-    assert_eq!(region.bridge_areas.len(), 1, "the free edge must stay out");
-    assert!(difference(&region.bridge_areas, &[gap.clone()]).is_empty());
-    assert!(difference(&[gap], &region.bridge_areas).is_empty());
-}
-
-/// Regression test for the flat-bridge enclosure closing that dominated
-/// `PrePass::Slice` (~28s of a ~30s stage on 3D Benchy — 92% of it, per
-/// sub-stage instrumentation). `assemble_flat_bridge_areas`'s enclosure
-/// discriminator used a `Round`-join `closing_ex` (0.05mm arc tolerance) at a
-/// 12mm radius. On a high-vertex, sharp-cornered cross-section this tessellates
-/// every convex tip into a large arc, exploding the intermediate polygon before
-/// the erode — and it ran per layer.
-///
-/// The fix made the join type configurable (`flat_bridge_closing_join`) and
-/// defaulted it to `Miter` (OrcaSlicer's `closing` join). The discriminator is
-/// a BOOLEAN "does a gap ≤ 2·R re-fill?" test gated by a loose 10% fraction, so
-/// corner roundness is irrelevant to the verdict — the join type is purely a
-/// performance knob here (the closing's geometry is discarded).
-///
-/// The robust, machine-independent signal is the **vertex count** of the
-/// closing output on this 220-tip fixture. `Round` at 12mm / 0.05mm tessellates
-/// every sharp tip into an arc and is by far the heaviest; `Miter` (the default)
-/// is meaningfully leaner; `Square` is leanest of all. Measured here: roughly
-/// Round≈1100, Miter≈730, Square≈220. The default `Miter` therefore clears the
-/// Round arc-explosion (the ~28s / 92%-of-`PrePass::Slice` regression on 3D
-/// Benchy) while `Square` remains available as the leanest opt-in. Wall-clock
-/// ratio alone is a weaker signal (Clipper2 offset has a high fixed per-call
-/// cost), so this asserts on vertex count, not timing. It also runs the real
-/// `assemble_flat_bridge_areas` and requires the enclosed gap to still be
-/// flagged under every join mode, proving each closing PATH actually executes.
-#[test]
-fn flat_bridge_enclosure_closing_avoids_round_arc_explosion() {
-    use slicer_core::polygon_ops::OffsetJoinType;
-
-    // Solid star with a small central gap: the gap is the flat-unsupported
-    // span; the star body is the support that gets morphologically closed.
-    let star = sharp_star(220, 40.0, 26.0);
-    let gap = square_expoly(0.0, 0.0, 2.0); // 4mm square gap, well inside inner radius
-    let bottom_fp = square_expoly(0.0, 0.0, 4.0); // covers the gap → flat_unsupported non-empty
-
-    let support = difference(&[star.clone()], &[gap.clone()]);
-    let pts = |join| -> usize {
-        closing_ex(&support, 12.0, join)
-            .iter()
-            .map(|e| e.contour.points.len())
-            .sum()
-    };
-    let round_pts = pts(OffsetJoinType::Round);
-    let miter_pts = pts(OffsetJoinType::Miter);
-    let square_pts = pts(OffsetJoinType::Square);
-
-    assert!(
-        miter_pts > 0 && round_pts > 0 && square_pts > 0,
-        "all closings must produce geometry (fixture sanity): \
-         round={round_pts} miter={miter_pts} square={square_pts}"
-    );
-    // Default (Miter) clears the Round arc-explosion by a clear margin (≥25%
-    // leaner) — reverting the default join to Round would push this back to
-    // Round's vertex count and fail here.
-    assert!(
-        miter_pts * 4 < round_pts * 3,
-        "Default Miter enclosure closing emitted {miter_pts} vertices vs the legacy Round \
-         `closing_ex`'s {round_pts} on the same sharp-cornered 12mm-radius support — \
-         expected Miter ≥25% leaner. A vertex count near Round's means the enclosure \
-         discriminator reverted to `Round` arc tessellation (~92% of PrePass::Slice, ~28s, \
-         on 3D Benchy)."
-    );
-    // `Square` remains the leanest option (dramatically below Round).
-    assert!(
-        square_pts * 3 < round_pts,
-        "Square enclosure closing ({square_pts}) should be ≥3× leaner than Round ({round_pts})"
-    );
-
-    // Every supported join mode must still flag the enclosed gap — i.e. its
-    // closing path actually ran, rather than short-circuiting before it.
-    for join in [
-        OffsetJoinType::Miter,
-        OffsetJoinType::Square,
-        OffsetJoinType::Round,
-    ] {
-        let mut region = SlicedRegion {
-            object_id: "star".to_string(),
-            polygons: vec![star.clone()],
-            infill_areas: vec![star.clone()],
-            ..Default::default()
-        };
-        assemble_flat_bridge_areas(
-            &mut region,
-            std::slice::from_ref(&bottom_fp),
-            &[gap.clone()],
-            join,
-        );
-        assert!(
-            region.is_bridge,
-            "the enclosed central gap must be flagged as a flat bridge under {join:?} — \
-             otherwise the closing PATH short-circuited and this test would not guard it"
-        );
-    }
-}
-
-// KEEP-review (core-brittle): per-layer footprint-recomputation guard; cached-vs-uncached ratio self-normalizes across machines; 1.5x minimum (measured ~3.5x debug / ~2.3x release).
-#[test]
-fn prepass_slice_caches_bottom_surface_footprint_across_layers() {
-    const FACET_COUNT: usize = 800;
-    const LAYER_COUNT: u32 = 20;
-
-    let mesh = mesh_with_bottom_facets(FACET_COUNT);
-    let sc = surface_classification_with_quartile_bands(FACET_COUNT, LAYER_COUNT);
-    let layers: Vec<GlobalLayer> = (0..LAYER_COUNT)
-        .map(|i| make_global_layer(i, 1.0, "obj"))
-        .collect();
-
-    let start = std::time::Instant::now();
-    let uncached: Vec<_> = layers
-        .iter()
-        .map(|layer| {
-            execute_prepass_slice_single_layer(&mesh, layer, Some(&sc), None)
-                .expect("uncached slice must succeed")
-        })
-        .collect();
-    let uncached_elapsed = start.elapsed();
-
-    let raw_polygons_by_layer = batch_slice_objects_by_layer(&mesh, &layers);
-    let bottom_surface_footprint_by_object = batch_bottom_surface_footprints(&mesh, Some(&sc));
-    let empty_cache = HashMap::new();
-
-    let start = std::time::Instant::now();
-    let cached: Vec<_> = layers
-        .iter()
-        .map(|layer| {
-            let raw_polygons = raw_polygons_by_layer
-                .get(&layer.index)
-                .unwrap_or(&empty_cache);
-            // `prev_raw_polygons: None` keeps the flat-bridge unsupported diff
-            // empty in both paths, so this test isolates the bottom-surface
-            // footprint caching it targets (uncached has no cache at all).
-            let cache = PrepassSliceCache {
-                raw_polygons,
-                prev_raw_polygons: None,
-                bottom_surface_footprint: &bottom_surface_footprint_by_object,
-            };
-            execute_prepass_slice_single_layer_with_cache(&mesh, layer, Some(&sc), None, &cache)
-                .expect("cached slice must succeed")
-        })
-        .collect();
-    let cached_elapsed = start.elapsed();
-
+    assert!(region.is_bridge, "both components are canonical bridges");
     assert_eq!(
-        uncached, cached,
-        "cached and uncached PrePass::Slice paths must produce identical SliceIR output"
+        region.bridge_areas.len(),
+        2,
+        "canonical keeps the enclosed gap AND the free-edge band; only the          opening (0.04 mm at a 0.4 mm width) may drop a component"
+    );
+    // 4x4 gap + 4x44 band = 192 mm2 (1 mm2 = 1e8 units2).
+    let total_mm2: f64 = region
+        .bridge_areas
+        .iter()
+        .map(expolygon_area_units2)
+        .sum::<f64>()
+        / 1.0e8;
+    assert!(
+        (total_mm2 - 192.0).abs() < 1.92,
+        "opened bridge area must be 192 mm2 +/- 1%, got {total_mm2:.2} mm2"
+    );
+}
+
+/// The canonical opening removes the sub-printable sliver tail: a feature
+/// narrower than `2 x 0.1 x width` (0.08 mm at the default 0.4 mm width) is not
+/// bridge area. A 0.06 mm-wide band vanishes, the 4 mm gap survives in full.
+#[test]
+fn whole_set_opening_drops_sub_width_sliver() {
+    let body = square_expoly(0.0, 0.0, 30.0);
+    let gap = square_expoly(0.0, 0.0, 2.0);
+    let sliver = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(10.0, -25.0),
+                Point2::from_mm(10.06, -25.0),
+                Point2::from_mm(10.06, 25.0),
+                Point2::from_mm(10.0, 25.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let previous = difference(std::slice::from_ref(&body), &[gap.clone(), sliver.clone()]);
+    let mut region = SlicedRegion {
+        polygons: vec![body.clone()],
+        infill_areas: vec![body.clone()],
+        ..Default::default()
+    };
+    classify_unsupported_bridge_areas(&mut region, &[body], Some(&previous), 0.4);
+
+    assert!(region.is_bridge, "the 4 mm gap must survive the opening");
+    assert_eq!(
+        region.bridge_areas.len(),
+        1,
+        "the 0.06 mm sliver is narrower than 2 x 0.1 x 0.4 mm = 0.08 mm and must          be opened away; only the 4 mm gap remains"
     );
     assert!(
-        cached_elapsed * 3 < uncached_elapsed * 2,
-        "cached path took {cached_elapsed:?} vs. uncached {uncached_elapsed:?} for \
-         {LAYER_COUNT} layers ({FACET_COUNT} bottom facets each) — expected at least \
-         1.5x speedup (measured ~3.5x in debug / ~2.3x in release) from caching the \
-         whole-object bottom-surface footprint instead of recomputing it on every \
-         layer; this smells like a regression to per-layer `bottom_surface_footprint` \
-         recomputation, which is what made PrePass::Slice take ~28s (of ~40s total, \
-         down from an original ~50s) on 3D Benchy"
+        intersection(&region.bridge_areas, std::slice::from_ref(&sliver)).is_empty(),
+        "no part of the sub-width sliver may be reported as bridge area"
+    );
+    let total_mm2 = expolygon_area_units2(&region.bridge_areas[0]) / 1.0e8;
+    assert!(
+        (total_mm2 - 16.0).abs() < 0.16,
+        "the surviving gap must be reported in full (16 mm2 +/- 1%), got {total_mm2:.2} mm2"
+    );
+}
+
+/// The classifier clips the unsupported set to the region's own printable
+/// area before opening; a shared object cross-section must not leak across a
+/// region boundary.
+#[test]
+fn whole_set_classification_clips_to_the_region_infill_area() {
+    let current = square_expoly(5.0, 5.0, 5.0); // x,y in [0,10]
+    let region_area = square_expoly(2.5, 5.0, 2.5); // x in [0,5], y in [2.5,7.5]
+    let mut region = SlicedRegion {
+        polygons: vec![region_area.clone()],
+        infill_areas: vec![region_area.clone()],
+        ..Default::default()
+    };
+    classify_unsupported_bridge_areas(&mut region, &[current], Some(&[]), 0.4);
+
+    assert!(region.is_bridge);
+    let total_mm2: f64 = region
+        .bridge_areas
+        .iter()
+        .map(expolygon_area_units2)
+        .sum::<f64>()
+        / 1.0e8;
+    assert!(
+        (total_mm2 - 25.0).abs() < 0.25,
+        "the classified area must be clipped to the region's 5x5 mm infill area, got {total_mm2:.2} mm2"
     );
 }
 
@@ -630,9 +421,8 @@ fn prepass_slice_closing_radius_gate_applies_only_when_positive() {
         slice_closing_radius: 0.0,
         ..ResolvedConfig::default()
     });
-    let zero_radius =
-        execute_prepass_slice_single_layer(&mesh, &layer, None, Some(&zero_region_map))
-            .expect("zero-radius slice must succeed");
+    let zero_radius = execute_prepass_slice_single_layer(&mesh, &layer, Some(&zero_region_map))
+        .expect("zero-radius slice must succeed");
     assert_eq!(zero_radius.regions.len(), 1);
     let zero_polygons = &zero_radius.regions[0].polygons;
     assert_eq!(zero_polygons.len(), 2);
@@ -655,7 +445,7 @@ fn prepass_slice_closing_radius_gate_applies_only_when_positive() {
         ..ResolvedConfig::default()
     });
     let positive_radius =
-        execute_prepass_slice_single_layer(&mesh, &layer, None, Some(&positive_region_map))
+        execute_prepass_slice_single_layer(&mesh, &layer, Some(&positive_region_map))
             .expect("positive-radius slice must succeed");
     assert_eq!(positive_radius.regions.len(), 1);
     let positive_polygons = &positive_radius.regions[0].polygons;

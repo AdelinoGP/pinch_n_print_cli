@@ -102,7 +102,7 @@ fn integrated_parity_part_cooling() {
             config: Arc::clone(&config),
             native_entry: PartCooling::__slicer_native_entry(),
         },
-        |dispatcher, native_live, wasm_live| {
+        |dispatcher, native_live, wasm_live, _native_module, _wasm_module| {
             FinalizationStageRunner::run_stage(
                 dispatcher,
                 &stage,

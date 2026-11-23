@@ -37,7 +37,7 @@ fn cube_4color_3mf() -> PathBuf {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn paint_config_override_visibly_differs_gcode() {
+fn paint_config_override_parses_cleanly_on_the_live_path() {
     let painted = cube_4color_3mf();
     assert!(
         painted.exists(),

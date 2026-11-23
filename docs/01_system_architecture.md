@@ -84,12 +84,11 @@ the authoritative normalized form).
 
 #### PrePass Stage Order
 
-Eleven `PrePass::*` stages are declared in the following scheduler order. The retired
+Ten `PrePass::*` stages are declared in the following scheduler order. The retired
 `PrePass::MeshSegmentation` is not among them: `split_triangle_strokes` in
 `crates/slicer-model-io/src/loader.rs` already normalizes sub-facet paint
 strokes at load time. `SeamPlanning` and `SupportGeometry`'s guest half run only when a
-corresponding module is loaded; `LightningTreeGen` additionally commits only
-for the lightning sparse-fill holder (see below); the rest always run.
+corresponding module is loaded; the rest always run.
 
 ```text
 1. PrePass::MeshAnalysis
@@ -102,7 +101,6 @@ for the lightning sparse-fill holder (see below); the rest always run.
 8. PrePass::ShellClassification  (host-built-in; annotates the committed SliceIR)
 9. PrePass::SupportAnalysis      (host-built-in; shared host-owned support analysis)
 10. PrePass::SupportGeometry      (host-built-in always runs; guest optional)
-11. PrePass::LightningTreeGen     (host-built-in; commits only for lightning sparse fill)
 ```
 
 **Operational order:** `STAGE_ORDER` is the scheduler's validation and
@@ -110,9 +108,8 @@ plan-grouping order. The runtime splits prepass execution around host-built-in
 prerequisites: it runs stages that do not require `RegionMapIR`, commits region
 mapping, slices the whole print, runs the dependent host built-ins, and then
 dispatches late stages such as seam planning. This is why the declared list is
-not a literal call trace. `PrePass::LightningTreeGen` runs after
-`SupportGeometry` and is skipped without a commit unless the resolved
-`sparse_fill_holder` is `lightning-infill`.
+not a literal call trace. Lightning planning is selected module preparation,
+not a host PrePass stage.
 
 **Note (packet 178):** `PrePass::SeamPlanning` requires `SliceIR` and
 `RegionMap` as prerequisites; the scheduler still routes it before `Layer::*`
@@ -156,12 +153,14 @@ after analysis so it can consume the fully-split, colour-resolved `SliceIR`.
 There is no obsolete grid-MST fallback in this chain: a missing or declined
 family plan remains degraded rather than silently generating fallback filler.
 
-Bridge gating occurs in `PrePass::ShellClassification` after `PrePass::Slice`
-and uses the previous global layer's same-object committed region polygons.
-Missing layers clear candidates; existing layers with empty polygons subtract
-nothing. `ShellClassification` consumes gated bridge areas plus previous-layer
-contours and writes `bridge_orientation_deg` after gating; empty gated areas
-leave the existing orientation unchanged. The orientation cost minimizes
+Bridge classification runs in `PrePass::Slice`:
+`classify_unsupported_bridge_areas` applies canonical `detect_surfaces_type`'s
+whole-set rule (`opening_ex(diff(current_raw, safety_offset(previous_raw)),
+0.1 x external_perimeter_width)`) per region. Missing layers clear candidates;
+an existing empty layer leaves the whole cross-section unsupported.
+`ShellClassification` consumes the classified bridge areas plus previous-layer
+contours and writes `bridge_orientation_deg`; empty classified areas leave the
+existing orientation unchanged. The orientation cost minimizes
 floating-edge normal cost, uses the minor principal axis for empty candidates,
 and falls back to `0°` for degenerate geometry.
 
@@ -288,12 +287,6 @@ PrePass::SupportGeometry  [host built-in always runs; guest optional]
             support-planner module is installed only Phase 1 runs and
              no fallback filler is synthesized.
 
-PrePass::LightningTreeGen  [host built-in; conditional]
-  Input:  SliceIR + LayerPlanIR + RegionMapIR + SurfaceClassificationIR
-  Output: LightningTreeIR (only when sparse_fill_holder = "lightning-infill")
-  Purpose: Build the print-wide lightning tree consumed by the lightning infill
-           module. When the resolved sparse-fill holder is not lightning, the
-           stage is skipped and the Blackboard slot remains empty.
 ```
 
 #### Variant-Chain Region Splitting
@@ -315,6 +308,12 @@ variant chain via per-semantic Voronoi passes and geometric composition
 `docs/02_ir_schemas.md` for the `RegionKey.variant_chain` and
 `SlicedRegion.variant_chain` field definitions, and `docs/03_wit_and_manifest.md`
 for the `[[region_split]]` manifest declaration schema.
+
+The chain order is the shared ascending `(priority, semantic name)` sequence:
+`PrePass::RegionMapping` and paint composition both emit it, and selection and
+exact-chain config lookup match it exactly, never re-sorting it. `H-REGIONMAP`
+(`docs/testing/properties.md#h-regionmap`) covers it; ADR-0018's 2026-11-19
+amendment records the decision.
 
 #### Catch-Up Layer Semantics (Authoritative)
 
@@ -402,15 +401,18 @@ Layer::Perimeters
            wall segment. Sets WallLoop.boundary_type to MaterialBoundary
            where adjacent material semantic regions are detected via
            PaintRegionLayerView.
-           Commit side-effect: the host computes the five canonical
-           pairwise-disjoint fill polygons (`sparse_infill_area`, clipped
-           `top_solid_fill`, `bottom_solid_fill`, `internal_solid_fill`,
-           `bridge_areas`) into the
-           per-layer arena's `SliceIR` from `perimeter.infill_areas` via
-           `sync_perimeter_infill_areas_into_slice`. Precedence
-           `bridge > bottom > top > internal > sparse` (OrcaSlicer parity).
-           See
-           `crates/slicer-runtime/src/region_partition.rs` and
+           Commit side-effect: the host partitions the effective wall inset
+           (`perimeter.infill_areas ∩ region.polygons`) into five canonical fill
+           polygons (`bridge_areas`, `bottom_solid_fill`, `top_solid_fill`,
+           `internal_solid_fill`, `sparse_infill_area`) via
+           `sync_perimeter_infill_areas_into_slice`. Nonempty inset obeys
+           `bridge > bottom > top > internal > sparse` (OrcaSlicer parity);
+           empty inset with walls leaves all five roles empty; empty inset
+           without walls preserves the original bridge and top-minus-bridge;
+           a missing donor warns and keeps the PrePass roles; a rejected
+           modifier split restores the entry-state slice. See
+           `crates/slicer-runtime/src/region_partition.rs`,
+           `docs/testing/properties.md#h-runtime-partition`, and
            `specs/_OLD/infill-fill-partition-plan.md` (superseded spec,
            retained for the partition write-up).
 
@@ -813,7 +815,109 @@ These rules are enforced by the host at runtime. Violations trap the WASM module
 | `LayerCollectionIR`                           | Per-layer arena → Host after join | Read-only in PostPass                                           |
 | `GCodeIR`                                     | Host PostPass buffer              | Write builder (GCodePostProcess only)                           |
 
+### Optional SCAD ingress (`slicer-scad`)
+
+`slicer-scad` (`docs/scad/adapter.md`) is an optional, engine-opaque geometry
+ingress: it converts self-contained OpenSCAD source into checked `ExPolygon`
+contours or an `IndexedTriangleSet`. It does **not** own any of the data above.
+
+- It returns geometry only. `ObjectMesh`/`MeshIR` assembly, source-derived
+  identity, object IDs, bed placement and material/colour assignment stay with the
+  host — `assemble_object` (`crates/slicer-model-io/src/loader.rs`) remains the
+  assembly owner under `docs/02_ir_schemas.md` § `ObjectMesh` Assembly Contract.
+- It is default-off. A default workspace build does not compile the engine or its
+  native kernel, and the crate has no SDK, runtime or Proptest edge.
+- Its output types are existing IR types, so nothing here introduces an IR, WIT or
+  schema version change.
+
 ---
+
+## Private prepared-plan storage and atomic publication
+
+`PreparedOwnerStore` (`crates/slicer-wasm-host/src/preparation_store.rs`)
+owns one print's opaque prepared-plan bytes under private owner authority tied
+to the frozen artifact. Staging is invocation-local and owner-private: `put`
+accepts a complete piece once per unique name, with no append or replacement.
+Names are nonempty, exact case-sensitive UTF-8 strings; whitespace and control
+characters are not trimmed or normalized. Retained bytes are immutable copies
+owned by the store, not by a module value or read handle.
+
+Any failed `put` irreversibly poisons that invocation's output, even if the
+module catches the error and returns success. `PreparationTransaction::finish`
+publishes the complete collection and ready marker atomically only after a
+successful preparation and validation. Returned errors, traps, unwinding,
+dropped unfinished output/transactions, and rejected validators publish
+nothing; unfinished staging is cleared and remains unready. Successful empty
+output is a ready-empty plan, distinct from not-ready. An original module or
+trap failure takes precedence over poison without discarding the recorded
+writer fault.
+
+The pre-ready `prepare_with_publication` hook on `FrozenPreparationBinding`
+(`crates/slicer-wasm-host/src/preparation_native.rs`) exposes a read-only
+`StagedPreparation` description: owner, declared views, and piece names/lengths.
+It neither exposes a ready plan nor defines diagnostic geometry. This
+geometry-free validation hook is row 06's extension seam before the same
+atomic publication transition.
+
+Disposal returns `Busy` while preparation or active call/read guards remain.
+Once disposal succeeds, stored name and payload bytes are cleared and old
+plan/piece handles' fallible access fails with `AccessDenied`; captured piece
+length metadata remains readable. Handles retain no payload copies. Reads
+are owner-wide and cursorless, not region/layer restricted: each request uses
+its own offset and maximum count, with no shared cursor. Returned byte vectors
+belong to callers and are outside retained-store accounting.
+
+`PreparedPlanMetadata` (`crates/slicer-wasm-host/src/preparation_store.rs`)
+exposes redacted metadata: module identity, phase/readiness, names/lengths,
+separate staged/retained payload-byte and UTF-8-name-byte totals, accepted
+`put_calls`, successful `read_calls`, `requested_read_bytes`,
+`returned_read_bytes`, and adapter-boundary `prepare_invocations`.
+Conversions and additions are checked; transfer accounting updates commit
+together or not at all. Requested bytes count the original maximum, while
+returned bytes count the EOF-clipped transfer. No raw payload dump is exposed.
+These counters do not measure allocator overhead or peak memory. This storage
+contract does not implement row-04 typed projections, row-05 scheduling,
+cancellation or release orchestration, or row-06 diagnostic geometry.
+
+---
+
+### Frozen preparation ownership (Normative — TASK-574 row 5)
+
+Artifact selection precedes preparation ownership. An external same-ID
+override suppresses the paired integrated native registration **before claim
+arbitration**. The frozen binding keeps module ID, version and a deterministic
+opaque artifact identity derived from the actual selected artifact. That same
+native prepare/ordinary pair or selected component serves both preparation
+and ordinary calls; a selected external component has no native surrogate.
+
+Each print has its own private store and one prepared owner per eligible
+frozen binding, prepared exactly once. Even concurrent prints selecting the
+same identities never share plan storage. Published bytes are immutable,
+owner-private memory; neither module instances nor call-local read adapters
+own the retained plan. Stores remain alive through all real module calls and
+the applicable synthetic anchored-host closure, then dispose after active
+guards quiesce.
+
+Retained payload/name bytes and returned-read transfer bytes are logical
+production gauges, not allocator overhead, process memory or peak-memory
+measurements. Post-disposal retained bytes are zero; this does not assert a
+process-memory peak (see `docs/16_slicer_report.md`).
+
+### Lightning private preparation migration
+
+The legacy path is retired.
+Lightning planning runs inside the selected `com.core.lightning-infill` artifact during `prepare_print`,
+from typed committed preparation inputs: regions, region configs, and layer plan.
+It publishes one module-private `lightning-layer-{global_layer_index}` piece per schedule layer;
+ordinary `Layer::Infill` consumers require and decode their own layer's piece with the module's decoder.
+Deleted surfaces are the host `commit_lightning_tree_ir_builtin` producer, `PrePass::LightningTreeGen`
+and its `STAGE_ORDER` entry, `BlackboardPrepassSlot::LightningTreeIR`, and `BlackboardError::LightningTreeGeneration`;
+the public `LightningTreeIR`/`LightningTreeEntry`/`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION` types;
+the `lightning-tree-segments` WIT method and whole `slicer:lightning-queries` package;
+and SDK `lightning_tree_segments_for`/`with_lightning_tree_ir` accessors.
+Plan types live only as module-private `KernelPlan`/`PlanEntry`, never public IR.
+This is recorded behavioural equivalence to the pre-migration producer: ownership moves with no intended output change,
+not a canonical-parity claim; the recorded Gate A/B outcomes remain unchanged.
 
 ## Memory Model
 
@@ -946,6 +1050,27 @@ Determinism constraints:
 - A claim holder must be stable across layers for the same `(object, claim)` unless the stage explicitly supports temporal transitions.
 - If two overrides of equal precedence select different holders for the same key, startup validation fails.
 - If no holder remains for a required claim, startup validation fails.
+
+**Tested and enforced boundaries.** `validate_startup_dag`
+(`crates/slicer-scheduler/src/validation.rs`) receives caller-supplied
+`claim_holders`; it has no module-disable input of its own, so the effective
+universe — modules, holder observations and stage DAG nodes — must already have
+removed disabled, shadowed or unloaded modules. A retained consumer that still
+requires a removed module or capability then fails with `MissingDependency`
+rather than resurrecting the disabled candidate. Claim observations are compared
+as typed `(object_id, region_id, global_layer_index)` values; `ConflictScope`
+promises no delimiter grammar, so identity is never reassembled from a
+concatenated key. The validator keys the four non-transitionable rows
+(`perimeter-generator`, `seam-placer`, `layer-planner`, `mesh-analyzer`) on the
+object alone — one holder across every layer **and** region of that object —
+while ordinary and transition-capable claims are compared only inside one typed
+scope. `support-planner` is deliberately not in that stable set: family-scoped
+planners are retained per family and paired with their renderer at dispatch time
+(see `docs/04_host_scheduler.md` § "Planner-Renderer Pairing"). Property
+`H-CLAIMS` (`docs/testing/properties.md#h-claims`, evidence in
+[proptest-scheduler-evidence.md](testing/proptest-scheduler-evidence.md)) models
+these rules independently and pins the negative mutations; it covers the public
+validator contract, not live per-region support aggregation.
 
 Worked example — valid:
 
@@ -1227,3 +1352,45 @@ all wall loops. Degenerate empty wall loops (no points) emit
 is preserved. The slice continues with degraded status. Wall preservation is
 unconditional: every region's walls reach the output regardless of seam
 state, missing plan, or degenerate geometry.
+
+---
+
+## Shared committed preparation input backing
+
+`slicer_wasm_host::preparation::CommittedPreparationInputs::new`
+(`crates/slicer-wasm-host/src/preparation_input.rs`) accepts the committed products:
+
+```rust
+new(
+    mesh: Arc<MeshIR>, layers: Arc<LayerPlanIR>, slices: Arc<Vec<SliceIR>>,
+    region_map: Arc<RegionMapIR>, surface: Option<Arc<SurfaceClassificationIR>>,
+    seam: Option<Arc<SeamPlanIR>>, support_analysis: Option<Arc<SupportAnalysisIR>>,
+    support_geometry: Option<Arc<SupportGeometryIR>>,
+    support_plan: Option<Arc<SupportPlanIR>>,
+)
+```
+
+The backing retains these original immutable Arc products without cloning their
+contents; `canonical_bounded_batches`
+(`crates/slicer-wasm-host/tests/contract/whole_print_input_tdd.rs`) instruments real
+Arc identity. It contains no live Layer arenas or future output slot. Calls do
+not copy per-layer whole prints: each batch materializes only requested records;
+settings, envelope, and raft-plan metadata remain in the shared backing.
+
+Presentation follows schedule order (increasing index, exact supplied Z), then
+the full key `(global_layer_index, object_id, region_id, variant_chain)` under
+native `PaintValue` total order: Flag < Scalar < ToolIndex < Custom, scalar
+`total_cmp`, and exact Custom string order. Object maps sort by id, support
+keyed maps by full key, and seam entries by full `RegionKey`. Plan entries sort
+by signed global index/object/region/family, with original input index as the
+deterministic tie-breaker. Carrier `entry_index` always refers to retained input
+order, never a renumbered presentation ordinal.
+
+Batch offset is an ordinal in this stable presentation: `offset == len` yields
+an empty batch; `offset > len` returns `RangeError`. Count is clipped before
+checked end arithmetic. There is no cursor. Support-analysis applies offset and
+count independently to each sorted collection, without zip loss.
+Owner vocabulary, requirements, and selection prevalidation belong to
+`PreparationInputData::from_committed`
+(`crates/slicer-wasm-host/src/preparation_input.rs`); runtime scheduling is not
+part of this backing contract.

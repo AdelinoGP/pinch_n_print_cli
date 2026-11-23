@@ -1,0 +1,25 @@
+{
+ "fixture": "benchy",
+ "stage_wall_ms": 1983,
+ "slice_thread_ms": 20259.258,
+ "slice_activations": 5921,
+ "closing_thread_ms": 17576.245,
+ "closing_calls": 240,
+ "scopes": [
+  {
+   "scope": "polygon_ops::closing_ex",
+   "self_wall_ms": 17576.245,
+   "calls": 240
+  },
+  {
+   "scope": "polygon_ops::clip_polygons",
+   "self_wall_ms": 1489.021,
+   "calls": 5005
+  },
+  {
+   "scope": "polygon_ops::offset",
+   "self_wall_ms": 1193.843,
+   "calls": 676
+  }
+ ]
+}

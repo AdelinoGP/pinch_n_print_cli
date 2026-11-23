@@ -1,15 +1,17 @@
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
+//! Whole-set bridge classification: a bottom area is a bridge only where the
+//! layer below does not support it.
+//!
+//! These claims used to live in `gate_bridge_areas_by_unsupported_span`, which
+//! subtracted the committed lower layer *after* the facet path assembled
+//! candidates. Ticket 123 moved the difference into the classifier itself
+//! (canonical `PrintObject::detect_surfaces_type`), so the same claims are
+//! re-derived here against `classify_unsupported_bridge_areas`.
 
-use slicer_core::algos::prepass_slice::{
-    assemble_bridge_areas, gate_bridge_areas_by_unsupported_span,
-};
-use slicer_core::polygon_ops::{difference, intersection};
-use slicer_ir::{
-    BridgeRegion, ExPolygon, ObjectSurfaceData, Point2, Polygon, SlicedRegion,
-    SurfaceClassificationIR,
-};
+use slicer_core::algos::prepass_slice::classify_unsupported_bridge_areas;
+use slicer_core::polygon_ops::intersection;
+use slicer_ir::{ExPolygon, Point2, Polygon, SlicedRegion};
 
 fn square(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> ExPolygon {
     ExPolygon {
@@ -25,83 +27,96 @@ fn square(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> ExPolygon {
     }
 }
 
-fn region_with_bridge(bridge: ExPolygon) -> SlicedRegion {
+fn region_with_infill(infill: ExPolygon) -> SlicedRegion {
     SlicedRegion {
         object_id: "object".to_string(),
-        bridge_areas: vec![bridge.clone()],
-        infill_areas: vec![bridge],
+        infill_areas: vec![infill],
         ..Default::default()
     }
 }
 
+fn area_mm2(region: &SlicedRegion) -> f64 {
+    fn ring_area(ring: &Polygon) -> f64 {
+        let points = &ring.points;
+        if points.len() < 3 {
+            return 0.0;
+        }
+        let twice: f64 = points
+            .iter()
+            .enumerate()
+            .map(|(index, point)| {
+                let next = &points[(index + 1) % points.len()];
+                point.x as f64 * next.y as f64 - next.x as f64 * point.y as f64
+            })
+            .sum();
+        twice.abs() / 2.0
+    }
+    let units2: f64 = region
+        .bridge_areas
+        .iter()
+        .map(|expolygon| {
+            ring_area(&expolygon.contour) - expolygon.holes.iter().map(ring_area).sum::<f64>()
+        })
+        .sum();
+    units2 / 1.0e8
+}
+
+/// A span the layer below fully covers is not a bridge: the safety-offset
+/// difference is empty.
 #[test]
 fn solid_underneath_span_produces_no_bridge_area() {
-    let bridge = square(0.0, 0.0, 10.0, 10.0);
-    let mut region = region_with_bridge(bridge.clone());
-    gate_bridge_areas_by_unsupported_span(&mut region, Some(&[bridge]));
+    let body = square(0.0, 0.0, 10.0, 10.0);
+    let mut region = region_with_infill(body.clone());
+    classify_unsupported_bridge_areas(&mut region, &[body.clone()], Some(&[body]), 0.4);
     assert!(region.bridge_areas.is_empty());
+    assert!(!region.is_bridge);
 }
 
+/// The unsupported part is retained in full and never overlaps the anchor.
 #[test]
 fn unsupported_span_retains_bridge_area() {
-    let bridge = square(0.0, 0.0, 10.0, 10.0);
+    let current = square(0.0, 0.0, 10.0, 10.0);
     let anchor = square(0.0, 0.0, 4.0, 10.0);
-    let mut region = region_with_bridge(bridge.clone());
-    gate_bridge_areas_by_unsupported_span(&mut region, Some(&[anchor.clone()]));
-    // AC-2: the retained area equals the bridge minus the lower-layer anchor
-    // areas — the exact canonical difference, not merely non-empty.
-    let expected = difference(&[bridge.clone()], &[anchor.clone()]);
-    assert_eq!(region.bridge_areas, expected);
-    assert!(intersection(&region.bridge_areas, &[anchor]).is_empty());
+    let mut region = region_with_infill(current.clone());
+    classify_unsupported_bridge_areas(&mut region, &[current], Some(&[anchor.clone()]), 0.4);
+
+    assert!(region.is_bridge);
+    assert!(
+        intersection(&region.bridge_areas, std::slice::from_ref(&anchor)).is_empty(),
+        "the anchor span must not be reported as bridge area"
+    );
+    // 6 x 10 mm minus the one-unit safety offset at the anchor boundary.
+    let area = area_mm2(&region);
+    assert!(
+        (area - 60.0).abs() < 0.3,
+        "retained area must be the 60 mm2 unsupported remainder, got {area:.2} mm2"
+    );
 }
 
-#[test]
-fn ungated_candidates_cannot_silently_return() {
-    let bridge = square(0.0, 0.0, 10.0, 10.0);
-    // Start with EMPTY bridge_areas so the ungated candidate provably comes
-    // from `assemble_bridge_areas` stamping, not from the fixture.
-    let mut ungated = SlicedRegion {
-        object_id: "object".to_string(),
-        bridge_areas: Vec::new(),
-        infill_areas: vec![bridge.clone()],
-        ..Default::default()
-    };
-    let surface = SurfaceClassificationIR {
-        per_object: HashMap::from([(
-            "object".to_string(),
-            ObjectSurfaceData {
-                bridge_regions: vec![BridgeRegion {
-                    is_valid: true,
-                    facet_indices: vec![0],
-                    xy_footprint: vec![bridge.clone()],
-                    ..Default::default()
-                }],
-                ..Default::default()
-            },
-        )]),
-        ..Default::default()
-    };
-    assemble_bridge_areas(&mut ungated, Some(&surface));
-    assert!(!ungated.bridge_areas.is_empty());
-
-    let mut gated = ungated.clone();
-    gate_bridge_areas_by_unsupported_span(&mut gated, Some(&[bridge]));
-    assert_ne!(gated.bridge_areas, ungated.bridge_areas);
-    assert!(gated.bridge_areas.is_empty());
-}
-
+/// Canonical's `lower_layer == nullptr` guard: with no previous cross-section,
+/// a bottom is `stBottom`, never a bridge. Pre-existing candidates are cleared.
 #[test]
 fn no_lower_layer_clears_bridge_areas() {
-    let bridge = square(0.0, 0.0, 10.0, 10.0);
-    let mut region = region_with_bridge(bridge);
-    gate_bridge_areas_by_unsupported_span(&mut region, None);
+    let body = square(0.0, 0.0, 10.0, 10.0);
+    let mut region = region_with_infill(body.clone());
+    region.bridge_areas = vec![body.clone()];
+    region.is_bridge = true;
+    classify_unsupported_bridge_areas(&mut region, &[body], None, 0.4);
     assert!(region.bridge_areas.is_empty());
+    assert!(!region.is_bridge);
 }
 
+/// An existing-but-empty lower layer subtracts nothing, so the whole span is
+/// unsupported (the old gate's AC-2 distinction between missing and empty).
 #[test]
-fn existing_empty_lower_layer_retains_bridge_area() {
-    let bridge = square(0.0, 0.0, 10.0, 10.0);
-    let mut region = region_with_bridge(bridge.clone());
-    gate_bridge_areas_by_unsupported_span(&mut region, Some(&[]));
-    assert_eq!(region.bridge_areas, vec![bridge]);
+fn existing_empty_lower_layer_classifies_the_whole_span() {
+    let body = square(0.0, 0.0, 10.0, 10.0);
+    let mut region = region_with_infill(body.clone());
+    classify_unsupported_bridge_areas(&mut region, &[body], Some(&[]), 0.4);
+    assert!(region.is_bridge);
+    let area = area_mm2(&region);
+    assert!(
+        (area - 100.0).abs() < 0.5,
+        "an empty lower layer must leave the whole 100 mm2 span unsupported, got {area:.2} mm2"
+    );
 }

@@ -1,0 +1,138 @@
+{
+ "note": "t110 Phase 0 capability census. log_probe is one benchy-classic-off slice at --debug 4 with the log tapped every 2 ms; bursts are markers arriving within 5 ms of each other. etw records the host's refusal text verbatim.",
+ "log_probe": {
+  "wall_ms": 1873.5,
+  "exit_code": 0,
+  "log_bytes": 1880777,
+  "marker_count": 27,
+  "burst_count": 3,
+  "largest_burst": 18,
+  "first_marker_ms": 1119.0,
+  "last_marker_ms": 1804.2,
+  "stage_marker_span_ms": 685.2,
+  "markers": [
+   {
+    "t_ms": 1119.0,
+    "marker": "Starting the slicing process"
+   },
+   {
+    "t_ms": 1119.0,
+    "marker": "Slicing volumes"
+   },
+   {
+    "t_ms": 1119.1,
+    "marker": "Slicing volumes"
+   },
+   {
+    "t_ms": 1119.1,
+    "marker": "Make overhang printable"
+   },
+   {
+    "t_ms": 1119.1,
+    "marker": "Slicing volumes"
+   },
+   {
+    "t_ms": 1119.1,
+    "marker": "Slicing volumes"
+   },
+   {
+    "t_ms": 1119.1,
+    "marker": "Generating walls"
+   },
+   {
+    "t_ms": 1314.1,
+    "marker": "Detecting solid surfaces"
+   },
+   {
+    "t_ms": 1314.1,
+    "marker": "Detecting solid surfaces"
+   },
+   {
+    "t_ms": 1314.1,
+    "marker": "Detecting solid surfaces"
+   },
+   {
+    "t_ms": 1314.1,
+    "marker": "Detecting solid surfaces"
+   },
+   {
+    "t_ms": 1314.1,
+    "marker": "Preparing fill surfaces"
+   },
+   {
+    "t_ms": 1314.2,
+    "marker": "Discovering vertical shells"
+   },
+   {
+    "t_ms": 1314.2,
+    "marker": "Discovering vertical shells"
+   },
+   {
+    "t_ms": 1314.2,
+    "marker": "Discovering vertical shells"
+   },
+   {
+    "t_ms": 1314.2,
+    "marker": "Discovering vertical shells"
+   },
+   {
+    "t_ms": 1314.2,
+    "marker": "Discovering vertical shells"
+   },
+   {
+    "t_ms": 1314.2,
+    "marker": "Processing external surfaces"
+   },
+   {
+    "t_ms": 1314.2,
+    "marker": "Processing external surfaces"
+   },
+   {
+    "t_ms": 1314.2,
+    "marker": "Processing external surfaces"
+   },
+   {
+    "t_ms": 1314.2,
+    "marker": "Bridge over infill - Start"
+   },
+   {
+    "t_ms": 1314.2,
+    "marker": "is_support_necessary"
+   },
+   {
+    "t_ms": 1314.2,
+    "marker": "Slicing process finished"
+   },
+   {
+    "t_ms": 1314.2,
+    "marker": "Will export G-code"
+   },
+   {
+    "t_ms": 1314.2,
+    "marker": "Exporting G-code"
+   },
+   {
+    "t_ms": 1804.2,
+    "marker": "Exporting G-code"
+   },
+   {
+    "t_ms": 1804.2,
+    "marker": "Slic3r::CLI::run, Finished"
+   }
+  ]
+ },
+ "etw": {
+  "wpr": {
+   "start_exit": 3310899217,
+   "start_stdout": "",
+   "start_stderr": "Failed to enable the policy to profile system performance.\n\n\n\tProfile Id: CPU.Verbose.File\n\t\n\tError code: 0xc5585011\n\t\n\tFailed to enable the policy to profile system performance.",
+   "cancel_exit": 3310891008,
+   "cancel_stdout": ""
+  },
+  "xperf": {
+   "on_exit": 2147943404,
+   "on_output": "xperf: error: NT Kernel Logger: Invalid flags. (0x3ec).",
+   "stop_output": "xperf: error: NT Kernel Logger: The instance name passed was not recognized as valid by a WMI data provider. (0x1069)."
+  }
+ }
+}

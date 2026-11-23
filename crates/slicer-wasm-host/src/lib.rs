@@ -8,6 +8,7 @@
 
 pub mod batch;
 pub mod binding;
+mod component_cache;
 pub mod dispatch;
 pub mod exact_z_query;
 pub mod execution_plan_live;
@@ -16,9 +17,13 @@ pub mod instance;
 /// IR-to-WIT and WIT-to-IR marshalling helpers for the WASM stage boundary.
 pub mod marshal;
 pub mod pool;
+pub mod preparation;
+mod preparation_denied;
+mod preparation_store;
 /// Host-side fuel/scope profiling: mark records, the scope-stack fold, and the
 /// process-global scope-name registry (ADR-0055).
 pub mod profiling;
+pub mod selection;
 pub mod support_aggregation;
 pub mod support_territory;
 pub mod traits;

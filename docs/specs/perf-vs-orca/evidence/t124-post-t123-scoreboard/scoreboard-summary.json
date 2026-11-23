@@ -1,0 +1,240 @@
+{
+ "batches": [
+  "t124-post-t123",
+  "t124-resume-base-classic-on",
+  "t124-resume-base-arachne-on"
+ ],
+ "cells": {
+  "base/arachne/off": {
+   "accelerated_ratio": 2.400493,
+   "orca": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 40.0469,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "61b3f504c57ecf5889466c76c5b0ffbaf5a1760f60437b8c5662cbf3c0ae32c1",
+    "wall_s": 17.454
+   },
+   "ordinary_ratio": 2.35927,
+   "pnp-accelerated": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 324.4062,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "6b865d4a2cb892daa3172add3e3677e0dc35192bcedd0acbc463abca7064d715",
+    "wall_s": 41.8982
+   },
+   "pnp-ordinary": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 326.7656,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "6b865d4a2cb892daa3172add3e3677e0dc35192bcedd0acbc463abca7064d715",
+    "wall_s": 41.1787
+   }
+  },
+  "base/arachne/on": {
+   "accelerated_ratio": 4.668999,
+   "orca": {
+    "batch_id": "t124-resume-base-arachne-on",
+    "cpu_s": 106.6094,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "8776eb0500927d3f7792ccc5d5c22f7726ac3d82a871fccfa3314f2f5446c6bb",
+    "wall_s": 26.2371
+   },
+   "ordinary_ratio": 4.653887,
+   "pnp-accelerated": {
+    "batch_id": "t124-resume-base-arachne-on",
+    "cpu_s": 643.1719,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "62d6eedc02e5db972928f830104aab95c3598f6df6407159cb5438adb35bef13",
+    "wall_s": 122.501
+   },
+   "pnp-ordinary": {
+    "batch_id": "t124-resume-base-arachne-on",
+    "cpu_s": 646.25,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "62d6eedc02e5db972928f830104aab95c3598f6df6407159cb5438adb35bef13",
+    "wall_s": 122.1045
+   }
+  },
+  "base/classic/off": {
+   "accelerated_ratio": 2.844182,
+   "orca": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 30.6875,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "e241c4007cd6127bea5ab326d5f3c9054a80f7981f78e08f6a152cfc4c8857bf",
+    "wall_s": 14.4374
+   },
+   "ordinary_ratio": 2.946126,
+   "pnp-accelerated": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 318.7812,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "b3b4ac5e885c7f637b98f79eca21901a41d85739627d4dcb40820663c15e90ef",
+    "wall_s": 41.0626
+   },
+   "pnp-ordinary": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 325.5,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "b3b4ac5e885c7f637b98f79eca21901a41d85739627d4dcb40820663c15e90ef",
+    "wall_s": 42.5344
+   }
+  },
+  "base/classic/on": {
+   "accelerated_ratio": 4.446601,
+   "orca": {
+    "batch_id": "t124-resume-base-classic-on",
+    "cpu_s": 99.2812,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "0af662ff00f414f9c1b96b981d4961231d58aeefb47491c4eea320abafc4786f",
+    "wall_s": 27.2821
+   },
+   "ordinary_ratio": 4.628397,
+   "pnp-accelerated": {
+    "batch_id": "t124-resume-base-classic-on",
+    "cpu_s": 637.8281,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "4e31a2db368ff80f388512211ae824b9660342a465c87f093f6182023e34eb4e",
+    "wall_s": 121.3126
+   },
+   "pnp-ordinary": {
+    "batch_id": "t124-resume-base-classic-on",
+    "cpu_s": 643.0469,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "4e31a2db368ff80f388512211ae824b9660342a465c87f093f6182023e34eb4e",
+    "wall_s": 126.2724
+   }
+  },
+  "benchy/arachne/off": {
+   "accelerated_ratio": 2.516671,
+   "orca": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 7.5156,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "2b4601e308a0489aaef2ea53d7a2456b108755fa544501660bd3aec4da2127c9",
+    "wall_s": 2.1354
+   },
+   "ordinary_ratio": 2.499766,
+   "pnp-accelerated": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 26.7344,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "2ba5d84ccf3c8deea6f39f4977dd71221faaecde9987d1699b361a5366e86380",
+    "wall_s": 5.3741
+   },
+   "pnp-ordinary": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 27.2656,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "2ba5d84ccf3c8deea6f39f4977dd71221faaecde9987d1699b361a5366e86380",
+    "wall_s": 5.338
+   }
+  },
+  "benchy/arachne/on": {
+   "accelerated_ratio": 3.467879,
+   "orca": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 12.4062,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "894bf19ec74cfd30ff2e7e6c6a4a16e09dcefd52606e9749a37f0f0f1c63aab7",
+    "wall_s": 2.7708
+   },
+   "ordinary_ratio": 3.594377,
+   "pnp-accelerated": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 42.7656,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "a972b0f2c25a988e667ecf5a5b3d6c3f5ba87f5c8872733c2a4b4e5d51a9695e",
+    "wall_s": 9.6088
+   },
+   "pnp-ordinary": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 44.1094,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "a972b0f2c25a988e667ecf5a5b3d6c3f5ba87f5c8872733c2a4b4e5d51a9695e",
+    "wall_s": 9.9593
+   }
+  },
+  "benchy/classic/off": {
+   "accelerated_ratio": 2.462399,
+   "orca": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 6.1719,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "268c5eaf5eb737b64530f52142e60ba25eed0b1d3ad7bd1cf156741fac746ac6",
+    "wall_s": 2.1356
+   },
+   "ordinary_ratio": 2.701208,
+   "pnp-accelerated": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 26.1094,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "90638bf3ea9e592d573b223c3eb9af64473efe804578d2478adfbbc5f0e67008",
+    "wall_s": 5.2587
+   },
+   "pnp-ordinary": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 26.7656,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "90638bf3ea9e592d573b223c3eb9af64473efe804578d2478adfbbc5f0e67008",
+    "wall_s": 5.7687
+   }
+  },
+  "benchy/classic/on": {
+   "accelerated_ratio": 3.516426,
+   "orca": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 11.0781,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "879ab617a378649a126366169cd782ede9b41029a03a1a5d8bcfe5a04b5ff8be",
+    "wall_s": 2.77
+   },
+   "ordinary_ratio": 3.614332,
+   "pnp-accelerated": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 41.9531,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "711c6334e397e5ae6911b15bfc71d42add9e93822cddd0a29391db6ef531d556",
+    "wall_s": 9.7405
+   },
+   "pnp-ordinary": {
+    "batch_id": "t124-post-t123",
+    "cpu_s": 43.3438,
+    "excluded": 0,
+    "n": 3,
+    "sha256": "711c6334e397e5ae6911b15bfc71d42add9e93822cddd0a29391db6ef531d556",
+    "wall_s": 10.0117
+   }
+  }
+ },
+ "discarded_partial_sources": [
+  "t124-post-t123:base/classic/on ({'orca': (1, 1), 'pnp-ordinary': (1, 2), 'pnp-accelerated': (1, 1)})"
+ ],
+ "generated_utc": "2026-11-07T20:14:52Z",
+ "row_count": 96,
+ "starvation_ratio": 0.75,
+ "ticket": "perf-vs-orca/124"
+}

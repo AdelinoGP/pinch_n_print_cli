@@ -1,8 +1,5 @@
 /// Internal bridge-over-infill geometry.
 pub mod bridge_over_infill;
-/// Lightning tree generator skeleton (packet 137 contract; algorithm ships in 138/139).
-#[cfg(feature = "host-algos")]
-pub mod lightning;
 /// Mesh analysis utilities.
 #[cfg(feature = "host-algos")]
 pub mod mesh_analysis;

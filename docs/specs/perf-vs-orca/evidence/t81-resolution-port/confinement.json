@@ -1,0 +1,228 @@
+{
+  "rows": [
+    {
+      "fixture": "benchy",
+      "cell": "classic-off",
+      "layer": 12,
+      "tap": "Layer::Perimeters",
+      "expect": "differs",
+      "observed": "differs",
+      "ok": true,
+      "baseline_sha": "90888ddf52e5bd05",
+      "candidate_sha": "6bfb34408c8efac2"
+    },
+    {
+      "fixture": "benchy",
+      "cell": "classic-off",
+      "layer": 12,
+      "tap": "Layer::Slice",
+      "expect": "identical",
+      "observed": "identical",
+      "ok": true,
+      "baseline_sha": "588788775fbddb92",
+      "candidate_sha": "588788775fbddb92"
+    },
+    {
+      "fixture": "benchy",
+      "cell": "classic-on",
+      "layer": 12,
+      "tap": "Layer::Perimeters",
+      "expect": "differs",
+      "observed": "differs",
+      "ok": true,
+      "baseline_sha": "90888ddf52e5bd05",
+      "candidate_sha": "6bfb34408c8efac2"
+    },
+    {
+      "fixture": "benchy",
+      "cell": "classic-on",
+      "layer": 12,
+      "tap": "Layer::Slice",
+      "expect": "identical",
+      "observed": "identical",
+      "ok": true,
+      "baseline_sha": "588788775fbddb92",
+      "candidate_sha": "588788775fbddb92"
+    },
+    {
+      "fixture": "benchy",
+      "cell": "classic-on",
+      "layer": "images/PrePass__SupportGeometry_silhouette_front.png",
+      "tap": "PrePass::SupportGeometry [silhouette png]",
+      "expect": "identical",
+      "observed": "identical",
+      "ok": true,
+      "baseline_sha": "eb427ad64307d8f8",
+      "candidate_sha": "eb427ad64307d8f8"
+    },
+    {
+      "fixture": "benchy",
+      "cell": "arachne-off",
+      "layer": 12,
+      "tap": "Layer::Perimeters",
+      "expect": "differs",
+      "observed": "differs",
+      "ok": true,
+      "baseline_sha": "6b7a7308072bfb75",
+      "candidate_sha": "a3411a9f82276c4c"
+    },
+    {
+      "fixture": "benchy",
+      "cell": "arachne-off",
+      "layer": 12,
+      "tap": "Layer::Slice",
+      "expect": "identical",
+      "observed": "identical",
+      "ok": true,
+      "baseline_sha": "588788775fbddb92",
+      "candidate_sha": "588788775fbddb92"
+    },
+    {
+      "fixture": "benchy",
+      "cell": "arachne-on",
+      "layer": 12,
+      "tap": "Layer::Perimeters",
+      "expect": "differs",
+      "observed": "differs",
+      "ok": true,
+      "baseline_sha": "6b7a7308072bfb75",
+      "candidate_sha": "a3411a9f82276c4c"
+    },
+    {
+      "fixture": "benchy",
+      "cell": "arachne-on",
+      "layer": 12,
+      "tap": "Layer::Slice",
+      "expect": "identical",
+      "observed": "identical",
+      "ok": true,
+      "baseline_sha": "588788775fbddb92",
+      "candidate_sha": "588788775fbddb92"
+    },
+    {
+      "fixture": "benchy",
+      "cell": "arachne-on",
+      "layer": "images/PrePass__SupportGeometry_silhouette_front.png",
+      "tap": "PrePass::SupportGeometry [silhouette png]",
+      "expect": "identical",
+      "observed": "identical",
+      "ok": true,
+      "baseline_sha": "eb427ad64307d8f8",
+      "candidate_sha": "eb427ad64307d8f8"
+    },
+    {
+      "fixture": "base",
+      "cell": "classic-off",
+      "layer": 12,
+      "tap": "Layer::Perimeters",
+      "expect": "differs",
+      "observed": "differs",
+      "ok": true,
+      "baseline_sha": "6dd63f89a6dcb3ec",
+      "candidate_sha": "dda8c813317aabc0"
+    },
+    {
+      "fixture": "base",
+      "cell": "classic-off",
+      "layer": 12,
+      "tap": "Layer::Slice",
+      "expect": "identical",
+      "observed": "identical",
+      "ok": true,
+      "baseline_sha": "6ab6090908bea787",
+      "candidate_sha": "6ab6090908bea787"
+    },
+    {
+      "fixture": "base",
+      "cell": "classic-on",
+      "layer": 12,
+      "tap": "Layer::Perimeters",
+      "expect": "differs",
+      "observed": "differs",
+      "ok": true,
+      "baseline_sha": "6dd63f89a6dcb3ec",
+      "candidate_sha": "dda8c813317aabc0"
+    },
+    {
+      "fixture": "base",
+      "cell": "classic-on",
+      "layer": 12,
+      "tap": "Layer::Slice",
+      "expect": "identical",
+      "observed": "identical",
+      "ok": true,
+      "baseline_sha": "6ab6090908bea787",
+      "candidate_sha": "6ab6090908bea787"
+    },
+    {
+      "fixture": "base",
+      "cell": "classic-on",
+      "layer": "images/PrePass__SupportGeometry_silhouette_front.png",
+      "tap": "PrePass::SupportGeometry [silhouette png]",
+      "expect": "identical",
+      "observed": "identical",
+      "ok": true,
+      "baseline_sha": "faa0df96c0425df9",
+      "candidate_sha": "faa0df96c0425df9"
+    },
+    {
+      "fixture": "base",
+      "cell": "arachne-off",
+      "layer": 12,
+      "tap": "Layer::Perimeters",
+      "expect": "differs",
+      "observed": "differs",
+      "ok": true,
+      "baseline_sha": "777585c3429859aa",
+      "candidate_sha": "03791e6fd11dc20f"
+    },
+    {
+      "fixture": "base",
+      "cell": "arachne-off",
+      "layer": 12,
+      "tap": "Layer::Slice",
+      "expect": "identical",
+      "observed": "identical",
+      "ok": true,
+      "baseline_sha": "6ab6090908bea787",
+      "candidate_sha": "6ab6090908bea787"
+    },
+    {
+      "fixture": "base",
+      "cell": "arachne-on",
+      "layer": 12,
+      "tap": "Layer::Perimeters",
+      "expect": "differs",
+      "observed": "differs",
+      "ok": true,
+      "baseline_sha": "777585c3429859aa",
+      "candidate_sha": "03791e6fd11dc20f"
+    },
+    {
+      "fixture": "base",
+      "cell": "arachne-on",
+      "layer": 12,
+      "tap": "Layer::Slice",
+      "expect": "identical",
+      "observed": "identical",
+      "ok": true,
+      "baseline_sha": "6ab6090908bea787",
+      "candidate_sha": "6ab6090908bea787"
+    },
+    {
+      "fixture": "base",
+      "cell": "arachne-on",
+      "layer": "images/PrePass__SupportGeometry_silhouette_front.png",
+      "tap": "PrePass::SupportGeometry [silhouette png]",
+      "expect": "identical",
+      "observed": "identical",
+      "ok": true,
+      "baseline_sha": "faa0df96c0425df9",
+      "candidate_sha": "faa0df96c0425df9"
+    }
+  ],
+  "failures": [],
+  "layers": [
+    12
+  ]
+}

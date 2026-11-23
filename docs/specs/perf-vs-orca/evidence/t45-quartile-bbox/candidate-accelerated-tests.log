@@ -1,0 +1,14 @@
+
+running 6 tests
+test fallback_paths_are_nonvacuous ... ok
+test accelerated_mode_exercised_not_vacuous ... ok
+test exact_queries_match_legacy ... ok
+test quartile_bbox_preserves_edges_holes_degenerate_rings_and_nonfinite_queries ... ok
+test quartile_bbox_matches_unchanged_predicate_at_large_and_rounding_sensitive_coordinates ... ok
+test quartile_bbox_prunes_same_y_disjoint_x_without_changing_winding_verdicts ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Compiling slicer-core v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 12s
+     Running tests\perimeter_spatial_tdd.rs (target\debug\deps\perimeter_spatial_tdd-44ac362a5a46b452.exe)

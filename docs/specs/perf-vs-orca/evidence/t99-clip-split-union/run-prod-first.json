@@ -1,0 +1,19 @@
+{
+  "id": "ordinary-probe-prod-first-1",
+  "mode": "ordinary",
+  "arm": "probe-prod-first",
+  "run_index": 1,
+  "threads": 12,
+  "exit_code": 0,
+  "order": "prod-first",
+  "rows": 130,
+  "wall_seconds": 100.1439377,
+  "cpu_seconds": 775.578125,
+  "cpu_wall_ratio": 7.744633802231646,
+  "sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+  "bytes": 21023739,
+  "reference_sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+  "reference_bytes": 21023739,
+  "matches_reference": true,
+  "exe_sha256": "9dd897fa9156a1c5b874d74f0621b6970ae81631cadd726d8653386700323698"
+}

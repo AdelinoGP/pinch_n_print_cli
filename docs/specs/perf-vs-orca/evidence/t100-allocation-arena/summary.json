@@ -1,0 +1,390 @@
+{
+  "ticket": "100-allocation-volume-layer-collection",
+  "take": "2026-10-30",
+  "head": "cc2c54e6",
+  "cell": "ordinary base classic supports-on",
+  "cell_wall_s": 164.803,
+  "floor_fraction": 0.008,
+  "floor_us": 1318424.0,
+  "reference_sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+  "reference_bytes": 42507912,
+  "method": {
+    "census_window": "explicit drop(layer_irs) in DefaultGCodeEmitter::emit_gcode_owned",
+    "allocator": "Counting<AccountingAllocator<System>> (probe build); Counting<MiMalloc> for the allocator arm",
+    "bulk_arm": "alloc blocks summing to the censused byte volume, touch every page, time the free",
+    "copy_arm": "sequential copy of the same byte volume (half read, half written), checksum read back",
+    "sampling_note": "the sample instrumentation costs one extra atomic increment and an 8-byte copy per 8-15-byte block; the sampling-free census is run t100-classic-census"
+  },
+  "runs": [
+    {
+      "id": "t100-classic-bulk",
+      "cell": "ordinary-base-classic-on",
+      "allocator": "sys",
+      "bulk_requested": "both",
+      "wall_s": 257.0205163,
+      "cpu_s": 1104.640625,
+      "cpu_wall": 4.29786944988718,
+      "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+      "bytes": 42507912,
+      "degraded": false,
+      "exe_sha256": "1fc8907f8d44022b6e486a66bbcbf5d73921b44962a8a15389c2a4b013d7ff2a",
+      "shape": null,
+      "census": {
+        "layers": 495,
+        "drop_us": 4197279,
+        "deallocs": 34796481,
+        "dealloc_bytes": 1358397544,
+        "allocs_in_window": 0,
+        "alloc_bytes_in_window": 0,
+        "hist": {
+          "3": 23773,
+          "4": 34662668,
+          "6": 54296,
+          "7": 20095,
+          "8": 934,
+          "9": 895,
+          "10": 1406,
+          "11": 1807,
+          "12": 2085,
+          "13": 3083,
+          "14": 4267,
+          "15": 8688,
+          "16": 8879,
+          "17": 3577,
+          "18": 28
+        },
+        "samples": []
+      },
+      "bulk": [
+        {
+          "order": "before",
+          "blocks": 1,
+          "bytes": 1358397544,
+          "touch_us": 366512,
+          "free_us": 189692
+        },
+        {
+          "order": "before",
+          "blocks": 495,
+          "bytes": 1358397544,
+          "touch_us": 504446,
+          "free_us": 120542
+        },
+        {
+          "order": "after",
+          "blocks": 1,
+          "bytes": 1358397544,
+          "touch_us": 187491,
+          "free_us": 63822
+        },
+        {
+          "order": "after",
+          "blocks": 495,
+          "bytes": 1358397544,
+          "touch_us": 227836,
+          "free_us": 79059
+        }
+      ],
+      "copy": [
+        {
+          "order": "before",
+          "bytes": 1358397544,
+          "copy_us": 0,
+          "checksum": 0
+        },
+        {
+          "order": "before",
+          "bytes": 1358397544,
+          "copy_us": 0,
+          "checksum": 0
+        },
+        {
+          "order": "after",
+          "bytes": 1358397544,
+          "copy_us": 0,
+          "checksum": 0
+        },
+        {
+          "order": "after",
+          "bytes": 1358397544,
+          "copy_us": 0,
+          "checksum": 0
+        }
+      ]
+    },
+    {
+      "id": "t100-classic-bulk2",
+      "cell": "ordinary-base-classic-on",
+      "allocator": "sys",
+      "bulk_requested": "after",
+      "wall_s": 263.9750257,
+      "cpu_s": 1080.0,
+      "cpu_wall": 4.091296125972875,
+      "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+      "bytes": 42507912,
+      "degraded": false,
+      "exe_sha256": "0b02491e40f920304d63c70d8f8e5607a99db7b10a66c449b4a283dc91e1e236",
+      "shape": {
+        "layers": 495,
+        "entities": 30076,
+        "points": 2782098,
+        "one_point_paths": 0,
+        "supports": 23751,
+        "variant_chain": 0,
+        "tools": 0,
+        "zhops": 0,
+        "annotations": 1113,
+        "retracts": 988,
+        "travels": 1,
+        "speed_profiles": 0,
+        "speed_factors": 0,
+        "size_point": 36,
+        "size_entity": 184,
+        "size_layer": 216,
+        "size_support": 80
+      },
+      "census": {
+        "layers": 495,
+        "drop_us": 4032801,
+        "deallocs": 34796481,
+        "dealloc_bytes": 1358397544,
+        "allocs_in_window": 0,
+        "alloc_bytes_in_window": 0,
+        "hist": {
+          "3": 23773,
+          "4": 34662668,
+          "6": 54296,
+          "7": 20095,
+          "8": 934,
+          "9": 895,
+          "10": 1406,
+          "11": 1807,
+          "12": 2085,
+          "13": 3083,
+          "14": 4267,
+          "15": 8688,
+          "16": 8879,
+          "17": 3577,
+          "18": 28
+        },
+        "samples": [
+          "__skirt_",
+          "__skirt_",
+          "__skirt_",
+          "__skirt_",
+          "__skirt_",
+          "__skirt_",
+          "demand-2",
+          "demand-2",
+          "demand-2",
+          "demand-2",
+          "demand-2",
+          "demand-2"
+        ]
+      },
+      "bulk": [
+        {
+          "order": "after",
+          "blocks": 1,
+          "bytes": 1358397544,
+          "touch_us": 113033,
+          "free_us": 44481
+        },
+        {
+          "order": "after",
+          "blocks": 495,
+          "bytes": 1358397544,
+          "touch_us": 235035,
+          "free_us": 58268
+        }
+      ],
+      "copy": [
+        {
+          "order": "after",
+          "bytes": 1358397544,
+          "copy_us": 73273,
+          "checksum": 2
+        },
+        {
+          "order": "after",
+          "bytes": 1358397544,
+          "copy_us": 115062,
+          "checksum": 2
+        }
+      ]
+    },
+    {
+      "id": "t100-classic-census",
+      "cell": "ordinary-base-classic-on",
+      "allocator": "sys",
+      "bulk_requested": "",
+      "wall_s": 200.7238973,
+      "cpu_s": 1098.28125,
+      "cpu_wall": 5.471601860930985,
+      "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+      "bytes": 42507912,
+      "degraded": false,
+      "exe_sha256": "1fc8907f8d44022b6e486a66bbcbf5d73921b44962a8a15389c2a4b013d7ff2a",
+      "shape": null,
+      "census": {
+        "layers": 495,
+        "drop_us": 3526544,
+        "deallocs": 34796481,
+        "dealloc_bytes": 1358397544,
+        "allocs_in_window": 0,
+        "alloc_bytes_in_window": 0,
+        "hist": {
+          "3": 23773,
+          "4": 34662668,
+          "6": 54296,
+          "7": 20095,
+          "8": 934,
+          "9": 895,
+          "10": 1406,
+          "11": 1807,
+          "12": 2085,
+          "13": 3083,
+          "14": 4267,
+          "15": 8688,
+          "16": 8879,
+          "17": 3577,
+          "18": 28
+        },
+        "samples": []
+      },
+      "bulk": [],
+      "copy": []
+    },
+    {
+      "id": "t100-classic-mimalloc",
+      "cell": "ordinary-base-classic-on",
+      "allocator": "mimalloc",
+      "bulk_requested": "after",
+      "wall_s": 270.7297423,
+      "cpu_s": 1068.21875,
+      "cpu_wall": 3.94570149893723,
+      "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+      "bytes": 42507912,
+      "degraded": false,
+      "exe_sha256": "83ad7ec5bb12775cf800c127d69651aa76c38ee2f527b6d6bfba2e9f5550f979",
+      "shape": {
+        "layers": 495,
+        "entities": 30076,
+        "points": 2782098,
+        "one_point_paths": 0,
+        "supports": 23751,
+        "variant_chain": 0,
+        "tools": 0,
+        "zhops": 0,
+        "annotations": 1113,
+        "retracts": 988,
+        "travels": 1,
+        "speed_profiles": 0,
+        "speed_factors": 0,
+        "size_point": 36,
+        "size_entity": 184,
+        "size_layer": 216,
+        "size_support": 80
+      },
+      "census": {
+        "layers": 495,
+        "drop_us": 1301783,
+        "deallocs": 34796481,
+        "dealloc_bytes": 1358397544,
+        "allocs_in_window": 0,
+        "alloc_bytes_in_window": 0,
+        "hist": {
+          "3": 23773,
+          "4": 34662668,
+          "6": 54296,
+          "7": 20095,
+          "8": 934,
+          "9": 895,
+          "10": 1406,
+          "11": 1807,
+          "12": 2085,
+          "13": 3083,
+          "14": 4267,
+          "15": 8688,
+          "16": 8879,
+          "17": 3577,
+          "18": 28
+        },
+        "samples": [
+          "__skirt_",
+          "__skirt_",
+          "__skirt_",
+          "__skirt_",
+          "__skirt_",
+          "__skirt_",
+          "demand-2",
+          "demand-2",
+          "demand-2",
+          "demand-2",
+          "demand-2",
+          "demand-2"
+        ]
+      },
+      "bulk": [
+        {
+          "order": "after",
+          "blocks": 1,
+          "bytes": 1358397544,
+          "touch_us": 336305,
+          "free_us": 8
+        },
+        {
+          "order": "after",
+          "blocks": 495,
+          "bytes": 1358397544,
+          "touch_us": 573585,
+          "free_us": 233
+        }
+      ],
+      "copy": [
+        {
+          "order": "after",
+          "bytes": 1358397544,
+          "copy_us": 133752,
+          "checksum": 2
+        },
+        {
+          "order": "after",
+          "bytes": 1358397544,
+          "copy_us": 107138,
+          "checksum": 2
+        }
+      ]
+    }
+  ],
+  "derived": {
+    "blocks": 34796481,
+    "bytes": 1358397544,
+    "ns_per_block": 101.3,
+    "bucket4_share": 0.996154,
+    "geometry_blocks": 32673,
+    "geometry_block_share": 0.00093897,
+    "geometry_bytes": 105796432,
+    "geometry_byte_share": 0.077883,
+    "support_rows": 23751,
+    "demand_strings": 34615166,
+    "demand_strings_per_row": 1457.4,
+    "bulk_free_us": 44481,
+    "bulk_free_conservative_us": 58268,
+    "bulk_free_ceiling_us": 3468276,
+    "bulk_free_ceiling_share": 0.02104,
+    "bulk_free_ceiling_multiple_of_floor": 2.63,
+    "copy_us": 73273,
+    "flatten_total_us": 3599817,
+    "flatten_penalty_vs_baseline_us": 73273,
+    "sampling_overhead_us": 506257,
+    "mimalloc_drop_measured_us": 1301783,
+    "mimalloc_drop_corrected_us": 795526,
+    "mimalloc_saving_measured_us": 2224761,
+    "mimalloc_saving_corrected_us": 2731018,
+    "mimalloc_saving_share_measured": 0.0135,
+    "mimalloc_saving_share_corrected": 0.01657,
+    "mimalloc_saving_multiple_of_floor_measured": 1.69,
+    "mimalloc_saving_multiple_of_floor_corrected": 2.07
+  }
+}

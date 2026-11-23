@@ -68,7 +68,7 @@ impl EstimatorLimits {
     /// enables the stealth time estimator). This selection is deliberately
     /// flavor-agnostic: canonical gates it on Marlin/Marlin2
     /// (`init_gcode_processor`, `apply_config`), but this estimator seam
-    /// carries no flavor — see DEV-200.
+    /// carries no flavor — see DEV-207.
     pub fn from_config(cfg: &ResolvedConfig) -> Self {
         let d = Self::default();
         let silent = cfg.silent_mode;

@@ -45,6 +45,50 @@ The current implementations use `f32` at both conversion boundaries:
 a nominal maximum quantization error of half a unit (`0.00005 mm`) when the
 floating-point operations do not add a larger error.
 
+Neither direction is an exact inverse, and no caller may assume one. The derived bounds are
+documented and continuously exercised by the `H-COORD` property charter
+([property-testing charters](testing/properties.md#h-coord)): for exact real `m` with
+`t = 10_000·m`, `|mm_to_units(m) - t| ≤ 1/2 + 2^-24·|t| + 2^-150` units on a domain where
+`0 < 10_000·max_abs_mm ≤ 2^24`, and for integer `n` with
+`|units_to_mm(n) - n/10_000| ≤ 2^-24·|n/10_000| + 2^-150` millimetres on
+`0 < max_abs_units ≤ 2^24`. The exact tie rule (`1/32 mm` → `312.5` units → `313`, symmetric
+for negatives, both zero signs → `0`) is checked separately, because the envelope alone admits
+truncation at a tie. SDK-helper and `Point2` agreement with `mm_to_units` is consistency
+evidence only — correctness rests on the analytical envelopes, not on two implementations
+agreeing. `Point2` integer identity (including `i64::MIN`/`i64::MAX`) never takes a float round
+trip.
+
+### Checked external-`f64` conversion (Normative)
+
+A conversion boundary that receives millimetres as **`f64`** from outside this
+repository cannot use `mm_to_units`: it takes `f32` and its `as i64` cast
+saturates, so an out-of-range value becomes a plausible-looking coordinate
+instead of an error. The SCAD adapter (`docs/scad/adapter.md`) is the first such
+boundary.
+
+Such a boundary applies the same canonical rule — round half away from zero
+against `UNITS_PER_MM` — directly on `f64`, in five checked steps:
+
+1. the input is finite;
+2. `|input|` is within the caller's declared coordinate bound;
+3. the scaled product `input * UNITS_PER_MM` is finite;
+4. the rounded value lies inside the half-open representable `i64` range;
+5. only then is it cast.
+
+Steps 3–5 are the part a saturating cast hides. The `f64` multiply/round error is
+recorded separately from the integer half-unit quantization: when the product is
+exact, rounding to the nearest grid point contributes at most 0.5 unit
+(`0.00005 mm`); for an arbitrary `f64` the product is not exact, and no universal
+exact round trip is claimed.
+
+Checked conversion does not stop at the cast. A boundary that quantizes a
+topology — nested rings, closed solids — must re-validate **after quantization**
+and reject `quantization` damage rather than repair it: collapsed vertices and
+edges, zero-area rings, changed nesting or contact, degenerate or inverted
+triangles. `post-quantization` validation is part of the coordinate contract, not
+an optional extra, because two exactly distinct millimetre coordinates can share
+one integer grid point.
+
 Do not treat either conversion as a universal exact round trip. In particular,
 `units_to_mm` narrows arbitrary `i64` values to `f32`. Retain integer units for
 exact geometry identity and convert to millimeters only at a float boundary.
@@ -67,8 +111,10 @@ not establish a full-domain error bound or an accumulated per-layer budget.
 
 For loaded models, 3MF build-item and component transforms are baked into mesh
 vertices and paint-stroke vertices before `assemble_object` constructs the
-`ObjectMesh`. STL and OBJ geometry has no input object transform. All three
-loader paths use `assemble_object` in `crates/slicer-model-io/src/loader.rs`,
+`ObjectMesh`. STL and OBJ geometry has no input object transform, and neither
+does a SCAD script: the adapter emits source-coordinate millimetre vertices, so
+an explicitly loaded SCAD model is baked the same way. Every loader path uses
+`assemble_object` in `crates/slicer-model-io/src/loader.rs`,
 which stores an identity `ObjectMesh.transform`; loaded vertices therefore
 already represent world-space coordinates. See the `ObjectMesh` Assembly
 Contract in `docs/02_ir_schemas.md`.
@@ -101,15 +147,17 @@ Conventions:
   one.
 - **Bed placement:** bare meshes are placed onto the plate at load. `pnp_cli
   slice` calls `place_bare_mesh_on_bed`
-  (`crates/slicer-model-io/src/loader.rs`) for **STL and OBJ only**, which
-  drops the model so its world `z_min` is `0.0 mm` and centres its XY bounding
-  box on the `bed_shape` centre. **3MF is excluded** — it carries authored
-  plate placement that must survive. See the Bed Placement section below.
+  (`crates/slicer-model-io/src/loader.rs`) for **STL, OBJ and explicitly loaded
+  SCAD**, which drops the model so its world `z_min` is `0.0 mm` and centres its
+  XY bounding box on the `printable_area` centre. **3MF is excluded** — it carries
+  authored plate placement that must survive. `pnp_cli mesh import` never
+  places, including for SCAD. See the Bed Placement section below.
 
 ## Bed Placement (Normative)
 
-An STL or OBJ has **no plate coordinate system**. Its coordinates are whatever
-the authoring tool emitted, so they may sit anywhere relative to the printer
+An STL, OBJ or explicitly loaded SCAD script has **no plate coordinate system**.
+Their coordinates are whatever the authoring tool (or the script) emitted, so
+they may sit anywhere relative to the printer
 bed — arbitrarily far from the origin, and partly or wholly below `z = 0`.
 Nothing downstream corrects for this: `assemble_object` stores an identity
 transform, and the prepass slices those vertices as-is.
@@ -127,17 +175,24 @@ OrcaSlicer's two placement primitives together:
 
 Rules:
 
-- **Applies to STL and OBJ only.** A 3MF's authored placement is preserved
-  untouched.
+- **Applies to STL, OBJ and explicitly loaded SCAD — on `slice` only.** An
+  explicit SCAD load (`load_scad_model`) is placed by `pnp_cli slice` against
+  the same bed; `pnp_cli mesh import` writes source coordinates and never
+  places. A 3MF's authored placement is preserved untouched.
 - **Rigid-body.** All objects receive the same translation, so multi-object
-  scenes keep their relative arrangement.
-- **Bed geometry comes from `bed_shape`** (`ResolvedConfig`), an interleaved
+  scenes keep their relative arrangement. A SCAD script's disconnected bodies
+  live in one object's single indexed mesh and move together by construction.
+- **Placement refreshes the cached Z extent.** `world_z_extent` is cached at
+  assembly, so `place_model_on_bed` (`crates/pnp-cli/src/main.rs`) recomputes it
+  after translating; otherwise a model loaded below the plate would keep
+  reporting a negative world Z minimum while its vertices rest on the bed.
+- **Bed geometry comes from `printable_area`** (`ResolvedConfig`), an interleaved
   `[x0, y0, x1, y1, ...]` mm polygon defaulting to a 250 x 250 square. When it
   cannot describe a plate, placement is skipped with a warning rather than
   guessed at.
 - **Fit is warned, not enforced.** `bed_overflow_mm` reports how far the placed
   footprint spills past the plate; `pnp_cli` prints a warning and slices
-  anyway, because `bed_shape` may simply be unconfigured.
+  anyway, because `printable_area` may simply be unconfigured.
 
 **Why this is normative rather than cosmetic:** without placement, a model
 authored below the plate is silently truncated at `z = 0`. A real case measured

@@ -1,0 +1,521 @@
+{
+ "pass": true,
+ "cells": [
+  {
+   "cell": "ordinary-benchy-classic-off",
+   "sha256": "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d",
+   "bytes": 3925554,
+   "reference_sha256": "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d",
+   "wall_seconds": {
+    "baseline": 7.3541924,
+    "candidate": 7.4661851
+   },
+   "cpu_seconds": {
+    "baseline": 48.0,
+    "candidate": 48.796875
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 240,
+    "Inner wall": 240,
+    "Gap infill": 98,
+    "Bottom surface": 23,
+    "Bridge": 21,
+    "Sparse infill": 198,
+    "Internal solid infill": 13,
+    "Top surface": 63,
+    "Internal Bridge": 12
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "ordinary-benchy-classic-on",
+   "sha256": "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714",
+   "bytes": 8252412,
+   "reference_sha256": "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714",
+   "wall_seconds": {
+    "baseline": 11.8555107,
+    "candidate": 11.4888627
+   },
+   "cpu_seconds": {
+    "baseline": 64.140625,
+    "candidate": 66.71875
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 240,
+    "Inner wall": 240,
+    "Gap infill": 98,
+    "Bottom surface": 23,
+    "Support": 179,
+    "Bridge": 21,
+    "Sparse infill": 198,
+    "Internal solid infill": 13,
+    "Top surface": 63,
+    "Internal Bridge": 12,
+    "Support interface": 4
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "ordinary-benchy-arachne-off",
+   "sha256": "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b",
+   "bytes": 4064270,
+   "reference_sha256": "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b",
+   "wall_seconds": {
+    "baseline": 7.3609611,
+    "candidate": 7.3283919
+   },
+   "cpu_seconds": {
+    "baseline": 49.109375,
+    "candidate": 49.96875
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 700,
+    "Inner wall": 690,
+    "Bottom surface": 27,
+    "Bridge": 23,
+    "Sparse infill": 222,
+    "Internal solid infill": 13,
+    "Top surface": 67,
+    "Internal Bridge": 12
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "ordinary-benchy-arachne-on",
+   "sha256": "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05",
+   "bytes": 8390168,
+   "reference_sha256": "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05",
+   "wall_seconds": {
+    "baseline": 12.1880799,
+    "candidate": 11.7370782
+   },
+   "cpu_seconds": {
+    "baseline": 66.15625,
+    "candidate": 68.1875
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 700,
+    "Inner wall": 690,
+    "Bottom surface": 27,
+    "Support": 179,
+    "Bridge": 23,
+    "Sparse infill": 222,
+    "Internal solid infill": 13,
+    "Top surface": 67,
+    "Internal Bridge": 12,
+    "Support interface": 4
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "ordinary-base-classic-off",
+   "sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+   "bytes": 21023739,
+   "reference_sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+   "wall_seconds": {
+    "baseline": 73.5255802,
+    "candidate": 72.8385406
+   },
+   "cpu_seconds": {
+    "baseline": 711.609375,
+    "candidate": 709.25
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 494,
+    "Inner wall": 494,
+    "Gap infill": 220,
+    "Bridge": 61,
+    "Bottom surface": 50,
+    "Sparse infill": 664,
+    "Top surface": 70,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "ordinary-base-classic-on",
+   "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+   "bytes": 42507912,
+   "reference_sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+   "wall_seconds": {
+    "baseline": 172.8590072,
+    "candidate": 165.7712442
+   },
+   "cpu_seconds": {
+    "baseline": 1051.484375,
+    "candidate": 1128.8125
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 495,
+    "Inner wall": 494,
+    "Gap infill": 220,
+    "Support": 431,
+    "Bridge": 61,
+    "Bottom surface": 50,
+    "Sparse infill": 664,
+    "Support interface": 70,
+    "Top surface": 70,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "ordinary-base-arachne-off",
+   "sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97",
+   "bytes": 20846160,
+   "reference_sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97",
+   "wall_seconds": {
+    "baseline": 73.7941522,
+    "candidate": 73.1660282
+   },
+   "cpu_seconds": {
+    "baseline": 715.109375,
+    "candidate": 712.90625
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 844,
+    "Inner wall": 844,
+    "Bridge": 77,
+    "Bottom surface": 61,
+    "Sparse infill": 590,
+    "Top surface": 77,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "ordinary-base-arachne-on",
+   "sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c",
+   "bytes": 42330265,
+   "reference_sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c",
+   "wall_seconds": {
+    "baseline": 173.110757,
+    "candidate": 168.8963798
+   },
+   "cpu_seconds": {
+    "baseline": 1060.09375,
+    "candidate": 1135.625
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 844,
+    "Inner wall": 844,
+    "Support": 431,
+    "Bridge": 77,
+    "Bottom surface": 61,
+    "Sparse infill": 590,
+    "Support interface": 70,
+    "Top surface": 77,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-benchy-classic-off",
+   "sha256": "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d",
+   "bytes": 3925554,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 7.7447375,
+    "candidate": 7.3524073
+   },
+   "cpu_seconds": {
+    "baseline": 48.921875,
+    "candidate": 48.65625
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 240,
+    "Inner wall": 240,
+    "Gap infill": 98,
+    "Bottom surface": 23,
+    "Bridge": 21,
+    "Sparse infill": 198,
+    "Internal solid infill": 13,
+    "Top surface": 63,
+    "Internal Bridge": 12
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-benchy-classic-on",
+   "sha256": "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714",
+   "bytes": 8252412,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 11.8199363,
+    "candidate": 11.4753084
+   },
+   "cpu_seconds": {
+    "baseline": 66.34375,
+    "candidate": 66.421875
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 240,
+    "Inner wall": 240,
+    "Gap infill": 98,
+    "Bottom surface": 23,
+    "Support": 179,
+    "Bridge": 21,
+    "Sparse infill": 198,
+    "Internal solid infill": 13,
+    "Top surface": 63,
+    "Internal Bridge": 12,
+    "Support interface": 4
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-benchy-arachne-off",
+   "sha256": "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b",
+   "bytes": 4064270,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 7.1948465,
+    "candidate": 7.4086941
+   },
+   "cpu_seconds": {
+    "baseline": 48.25,
+    "candidate": 50.28125
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 700,
+    "Inner wall": 690,
+    "Bottom surface": 27,
+    "Bridge": 23,
+    "Sparse infill": 222,
+    "Internal solid infill": 13,
+    "Top surface": 67,
+    "Internal Bridge": 12
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-benchy-arachne-on",
+   "sha256": "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05",
+   "bytes": 8390168,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 11.7982236,
+    "candidate": 11.4886127
+   },
+   "cpu_seconds": {
+    "baseline": 65.984375,
+    "candidate": 64.96875
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 700,
+    "Inner wall": 690,
+    "Bottom surface": 27,
+    "Support": 179,
+    "Bridge": 23,
+    "Sparse infill": 222,
+    "Internal solid infill": 13,
+    "Top surface": 67,
+    "Internal Bridge": 12,
+    "Support interface": 4
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-base-classic-off",
+   "sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+   "bytes": 21023739,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 71.5856512,
+    "candidate": 72.5757324
+   },
+   "cpu_seconds": {
+    "baseline": 702.578125,
+    "candidate": 706.609375
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 494,
+    "Inner wall": 494,
+    "Gap infill": 220,
+    "Bridge": 61,
+    "Bottom surface": 50,
+    "Sparse infill": 664,
+    "Top surface": 70,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-base-classic-on",
+   "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+   "bytes": 42507912,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 170.7847138,
+    "candidate": 172.9833684
+   },
+   "cpu_seconds": {
+    "baseline": 1048.421875,
+    "candidate": 1132.625
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 495,
+    "Inner wall": 494,
+    "Gap infill": 220,
+    "Support": 431,
+    "Bridge": 61,
+    "Bottom surface": 50,
+    "Sparse infill": 664,
+    "Support interface": 70,
+    "Top surface": 70,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-base-arachne-off",
+   "sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97",
+   "bytes": 20846160,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 72.0824156,
+    "candidate": 72.6294854
+   },
+   "cpu_seconds": {
+    "baseline": 709.625,
+    "candidate": 709.0
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 844,
+    "Inner wall": 844,
+    "Bridge": 77,
+    "Bottom surface": 61,
+    "Sparse infill": 590,
+    "Top surface": 77,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-base-arachne-on",
+   "sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c",
+   "bytes": 42330265,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 170.25129,
+    "candidate": 167.1680473
+   },
+   "cpu_seconds": {
+    "baseline": 1050.0,
+    "candidate": 1128.09375
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 844,
+    "Inner wall": 844,
+    "Support": 431,
+    "Bridge": 77,
+    "Bottom surface": 61,
+    "Sparse infill": 590,
+    "Support interface": 70,
+    "Top surface": 77,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  }
+ ],
+ "problems": [],
+ "cross_mode": {
+  "benchy-classic-off": {
+   "equal": true,
+   "ordinary_sha256": "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d",
+   "accelerated_sha256": "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d"
+  },
+  "benchy-classic-on": {
+   "equal": true,
+   "ordinary_sha256": "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714",
+   "accelerated_sha256": "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714"
+  },
+  "benchy-arachne-off": {
+   "equal": true,
+   "ordinary_sha256": "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b",
+   "accelerated_sha256": "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b"
+  },
+  "benchy-arachne-on": {
+   "equal": true,
+   "ordinary_sha256": "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05",
+   "accelerated_sha256": "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05"
+  },
+  "base-classic-off": {
+   "equal": true,
+   "ordinary_sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+   "accelerated_sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80"
+  },
+  "base-classic-on": {
+   "equal": true,
+   "ordinary_sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+   "accelerated_sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d"
+  },
+  "base-arachne-off": {
+   "equal": true,
+   "ordinary_sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97",
+   "accelerated_sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97"
+  },
+  "base-arachne-on": {
+   "equal": true,
+   "ordinary_sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c",
+   "accelerated_sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c"
+  }
+ },
+ "cross_mode_note": "ordinary vs accelerated byte equality; the accelerated artifacts have no post-t81 reference set, so this is reported, not gated"
+}

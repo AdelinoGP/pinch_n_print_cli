@@ -1,0 +1,43 @@
+{
+  "take": "t118",
+  "date": "2026-11-04",
+  "head": "3dae17e1",
+  "milestone": {"limit_s": 900, "description": "whole slicer-runtime e2e bucket, idle box"},
+  "slice": {
+    "fixture": "resources/calicat.stl",
+    "modules": 24,
+    "before_median_s": 11.732,
+    "warm_median_s": 2.813,
+    "cold_s": 15.424,
+    "gcode_sha256": "d12cdfd10dab66a0010a0b5d5fca53d9387f4e96227ad5e74d0ec18197c0e260"
+  },
+  "modules": [
+    {"name": "preparation_runtime_lifecycle_tdd", "before_s": 1800, "after_s": 267.60, "basis": "ticket's 14-of-16-in-30-min recorded window"},
+    {"name": "slice_end_to_end_tdd", "before_s": 200.86, "after_s": 49.96},
+    {"name": "slicing_precision_integration_tdd", "before_s": 86.66, "after_s": 11.37},
+    {"name": "preparation_visual_capture_tdd", "before_s": 96.22, "after_s": 22.67},
+    {"name": "modifier_infill_tdd", "before_s": 26.78, "after_s": 7.14},
+    {"name": "calicat_internal_bridge_gating_e2e_tdd", "before_s": 24.61, "after_s": 5.43}
+  ],
+  "full_suite": {
+    "tests": 172,
+    "ignored": 1,
+    "before_floor_s": 4065.3,
+    "before_extrapolated_s": 5263.1,
+    "after_caches_and_layers_s": 1282.18,
+    "after_case_parallel_s": 755.12,
+    "limit_s": 900,
+    "headroom_s": 144.88
+  },
+  "cache": {
+    "disk_dir": "%TEMP%/pnp-wasmtime-cache-v1",
+    "disk_size_mb": 15,
+    "process_key": "profile + canonical wasm path + mtime + length",
+    "failures_cached": false
+  },
+  "checks": {
+    "clippy_clean": true,
+    "literals_violations": 0,
+    "test_quality_findings": 0
+  }
+}

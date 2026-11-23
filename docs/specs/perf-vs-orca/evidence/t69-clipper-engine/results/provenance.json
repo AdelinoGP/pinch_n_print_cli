@@ -1,0 +1,83 @@
+{
+  "binaries": {
+    "cpp-driver.exe": "73f38a40a81c31b3f95aeede5c998a7a577fe4ff3c87c048daccc44ef230af06",
+    "rust-harness\\target\\release\\t69-dual-engine.exe": "3b56fc7269b09c5a9258e2f6f31f04c3e6d4fdb82de63a28f2c88f02045d9ea7"
+  },
+  "case_count": 295,
+  "commands": [
+    {
+      "argv": [
+        "cargo",
+        "generate-lockfile",
+        "--offline"
+      ],
+      "cwd": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perf-vs-orca\\t69-clipper-engine\\rust-harness",
+      "shell": "cargo generate-lockfile --offline"
+    },
+    {
+      "argv": [
+        "g++",
+        "-O3",
+        "-std=c++17",
+        "-static",
+        "-static-libgcc",
+        "-static-libstdc++",
+        "-I",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\OrcaSlicerDocumented\\deps_src\\clipper2\\Clipper2Lib\\include",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\OrcaSlicerDocumented\\deps_src\\clipper2\\Clipper2Lib\\src\\clipper.engine.cpp",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\OrcaSlicerDocumented\\deps_src\\clipper2\\Clipper2Lib\\src\\clipper.offset.cpp",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\OrcaSlicerDocumented\\deps_src\\clipper2\\Clipper2Lib\\src\\clipper.rectclip.cpp",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\OrcaSlicerDocumented\\deps_src\\clipper2\\Clipper2Lib\\src\\clipper2_z.cpp",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t69-clipper-engine\\driver.cpp",
+        "-o",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perf-vs-orca\\t69-clipper-engine\\cpp-driver.exe"
+      ],
+      "cwd": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perf-vs-orca\\t69-clipper-engine",
+      "shell": "g++ -O3 -std=c++17 -static -static-libgcc -static-libstdc++ -I 'D:\\slicerProject\\pinch_n_print_cli_2\\OrcaSlicerDocumented\\deps_src\\clipper2\\Clipper2Lib\\include' 'D:\\slicerProject\\pinch_n_print_cli_2\\OrcaSlicerDocumented\\deps_src\\clipper2\\Clipper2Lib\\src\\clipper.engine.cpp' 'D:\\slicerProject\\pinch_n_print_cli_2\\OrcaSlicerDocumented\\deps_src\\clipper2\\Clipper2Lib\\src\\clipper.offset.cpp' 'D:\\slicerProject\\pinch_n_print_cli_2\\OrcaSlicerDocumented\\deps_src\\clipper2\\Clipper2Lib\\src\\clipper.rectclip.cpp' 'D:\\slicerProject\\pinch_n_print_cli_2\\OrcaSlicerDocumented\\deps_src\\clipper2\\Clipper2Lib\\src\\clipper2_z.cpp' 'D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t69-clipper-engine\\driver.cpp' -o 'D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perf-vs-orca\\t69-clipper-engine\\cpp-driver.exe'"
+    },
+    {
+      "argv": [
+        "cargo",
+        "build",
+        "--release",
+        "--locked",
+        "--offline"
+      ],
+      "cwd": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perf-vs-orca\\t69-clipper-engine\\rust-harness",
+      "shell": "cargo build --release --locked --offline"
+    }
+  ],
+  "corpus": {
+    "corpus/t55/accelerated-base.cases": "8328f87aebf39a68c6e606b40888b411f9a68c4b3d26dbe6bf497292e03cfca7",
+    "corpus/t55/accelerated-benchy.cases": "3c1db8031ddef7c4e0269d5774b4896052e9cd89432f88ba60ec57850000ef42",
+    "corpus/t55/ordinary-base.cases": "8328f87aebf39a68c6e606b40888b411f9a68c4b3d26dbe6bf497292e03cfca7",
+    "corpus/t55/ordinary-benchy.cases": "3c1db8031ddef7c4e0269d5774b4896052e9cd89432f88ba60ec57850000ef42",
+    "corpus/t68sites/base-region-prep.corpus": "0251a77241f8bef6445b8b64b7224d08d77a2ba2f8bd4d6c70b02a614c9849ed",
+    "corpus/t68sites/base-t68sites.corpus": "9153ed4c0b00c36b83fb68f63104ea56175c3ef9e8f085e1c60502128ebca4ed",
+    "corpus/t68sites/benchy-region-prep.corpus": "7fc94e638c4d80f19918711d5cc5e4e9a2cb73984f0477b4749c8fbfa2788ac3",
+    "corpus/t68sites/benchy-t68sites.corpus": "81e234a8b22e1d581f2982d509a69f74268ee1bb0cc7f66ff0e3dd50fd0e9800"
+  },
+  "cpp_version": "1.5.2",
+  "crate_inventory_sha256": "9da095924952df009363cac4148aacaf17864aacc981e551f5056cbe58d581d4",
+  "crate_package_checksum": "0fd663fe209e7030c956e3be4c051dcc20cdb73da794f31466762cff12ca11bf",
+  "driver_sources": {
+    "driver.cpp": "197311240cd1ed1223f1d682f8bf6091c43c6a349e2202089d05c193c9fb2c21",
+    "driver.rs": "65ec6346000943a776d29d7c0c7eb8de28f885e51b4a54e345942f807cab4bb3"
+  },
+  "g++": "g++ (x86_64-posix-seh-rev0, Built by MinGW-Builds project) 16.1.0\nCopyright (C) 2026 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+  "lock_sha256": "33c45b2c1b7aa162d66fd8197bced87fc194ecc4f444096b609dddcd13686006",
+  "protocol": "fresh process per case; warmup then 5 timed repeats; forward Rust then C++; reverse C++ then Rust",
+  "reduced_results_sha256": {
+    "forward": "f7a3148c7ba514b9e7f7fbe34abe2321ed72225994d9a66c4246ec6d13258e9d",
+    "reverse": "66b0a1df10b20d6f92a35353d0b6aa9367facd6908c8025d3cebedb40f2017a8"
+  },
+  "resolved_clipper": {
+    "dependencies": [
+      "num-traits"
+    ],
+    "name": "clipper2-rust",
+    "version": "1.1.0"
+  },
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)\nbinary: rustc\ncommit-hash: ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96\ncommit-date: 2026-05-25\nhost: x86_64-pc-windows-msvc\nrelease: 1.96.0\nLLVM version: 22.1.2\n",
+  "seal_sha256": "32d55b4f7a1ff79ba4a4c8362b335909c7ba6ca12ef8b2869af4cdfbf744dcb9"
+}

@@ -243,6 +243,34 @@ mod tests {
         test_serde_roundtrip!(custom);
     }
 
+    /// D6 priority precedence: the derived `Ord` must rank the built-in
+    /// semantics Material > FuzzySkin > SupportEnforcer > SupportBlocker >
+    /// Custom, because `RegionKey.variant_chain` normalization sorts by it and
+    /// the cross-product expansion in `execute_region_mapping_with_cap`
+    /// depends on the canonical order for deterministic region hashing.
+    #[test]
+    fn paint_semantic_derived_ordering_ranks_material_first() {
+        let mut sorted = vec![
+            PaintSemantic::Custom("custom1".to_string()),
+            PaintSemantic::SupportBlocker,
+            PaintSemantic::SupportEnforcer,
+            PaintSemantic::FuzzySkin,
+            PaintSemantic::Material,
+        ];
+        sorted.sort();
+        assert_eq!(
+            sorted,
+            vec![
+                PaintSemantic::Material,
+                PaintSemantic::FuzzySkin,
+                PaintSemantic::SupportEnforcer,
+                PaintSemantic::SupportBlocker,
+                PaintSemantic::Custom("custom1".to_string()),
+            ],
+            "PaintSemantic's derived Ord must rank built-ins in the documented D6 order"
+        );
+    }
+
     #[test]
     fn test_paint_value() {
         let flag = PaintValue::Flag(true);
@@ -900,6 +928,11 @@ fn chunk2_ir_schema_versions_are_default_sourced() {
         SupportGeometryIR::default().schema_version,
         slicer_ir::CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
         "SupportGeometryIR::default().schema_version must equal CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION"
+    );
+    assert_eq!(
+        slicer_ir::slice_ir::SupportAnalysisIR::default().schema_version,
+        slicer_ir::slice_ir::CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION,
+        "SupportAnalysisIR::default().schema_version must equal CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION"
     );
     assert_eq!(
         RegionMapIR::default().schema_version,

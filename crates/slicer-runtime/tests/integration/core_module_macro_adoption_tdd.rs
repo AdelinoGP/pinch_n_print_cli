@@ -50,10 +50,9 @@ fn every_core_module_adopts_slicer_module_macro() {
     for path in &libs {
         let src = fs::read_to_string(path).expect("read core-module lib.rs");
         // The attribute must appear on an actual impl block, not just in
-        // a comment. Looking for `#[slicer_module]` (possibly followed by
-        // whitespace / newline and an `impl`) is sufficient here because
-        // proc-macro attributes can only be applied to item positions.
-        if !src.contains("#[slicer_module]") {
+        // a comment. It may carry arguments (`#[slicer_module(preparation)]`),
+        // so accept both the bare and the parameterised form.
+        if !(src.contains("#[slicer_module]") || src.contains("#[slicer_module(")) {
             missing.push(
                 path.parent()
                     .and_then(|p| p.parent())

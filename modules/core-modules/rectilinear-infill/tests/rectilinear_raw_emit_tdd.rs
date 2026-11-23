@@ -556,14 +556,16 @@ fn rotate_point(x: i64, y: i64, cos_a: f64, sin_a: f64) -> (i64, i64) {
 // Test 5 — AC-5
 // ---------------------------------------------------------------------------
 /// AC-5: A solid role with a non-multiple line_width uses
-/// `adjust_solid_spacing` to divide the polygon width exactly. First
-/// and last lines touch the boundary; spacing is uniform.
+/// `adjust_solid_spacing` to divide the polygon width evenly. The first row
+/// touches the minimum boundary; spacing is uniform. Canonical spacing does not
+/// promise that the last row touches the far boundary.
 #[test]
 fn solid_spacing_adjusted_for_solid_role() {
     // A 0.42mm top width at full density gives raw spacing=0.42mm. On a
-    // 10mm width, adjust_solid_spacing(10mm, 0.42mm): count=23, new
-    // spacing=round(10/23)=0.4348mm. The adjusted spacing is within the
-    // 1.2x cap, so the scan uses 23 evenly spaced lines.
+    // 10mm span, canonical adjust_solid_spacing(10mm, 0.42mm):
+    // intervals=floor((100000-1)/4200)=23, spacing=floor(99999/23)=4347
+    // units (0.4347mm), factor 1.035 within the 1.2x cap, so 24 half-open
+    // rows (0..=99981) are emitted.
     let config = baseline_config()
         .float("sparse_infill_density", 18.0)
         .float("infill_direction", 0.0)
@@ -598,11 +600,11 @@ fn solid_spacing_adjusted_for_solid_role() {
         .unwrap();
 
     let solid = output.solid_paths();
-    // AC-5: 23 adjusted scan lines.
+    // AC-5: 24 adjusted scan lines.
     assert_eq!(
         solid.len(),
-        23,
-        "AC-5: expected 23 adjusted scan lines, got {}",
+        24,
+        "AC-5: expected 24 adjusted scan lines, got {}",
         solid.len()
     );
 
@@ -621,13 +623,13 @@ fn solid_spacing_adjusted_for_solid_role() {
     );
     assert_eq!(
         y_vals_vec.len(),
-        23,
+        24,
         "AC-5: every scan line must have a unique y"
     );
     for pair in y_vals_vec.windows(2) {
         assert_eq!(
             pair[1] - pair[0],
-            4348,
+            4347,
             "AC-5: adjusted scan spacing must be uniform"
         );
     }
@@ -644,6 +646,78 @@ fn solid_spacing_adjusted_for_solid_role() {
             "AC-5: solid line should be horizontal, dy={}",
             dy
         );
+    }
+}
+
+/// Canonical `Fill::_adjust_solid_spacing` (`src/libslic3r/Fill/FillBase.cpp`)
+/// caps an over-wide interval at `floor(distance * 1.2 + 0.5)` instead of
+/// falling back to the unmodified `distance`.
+///
+/// Root cause: the pre-fix `adjust_solid_spacing` returned `distance` on the
+/// over-cap branch. Formerly failing inputs: a 10 mm x 1.5 mm solid top-fill
+/// region at 0 deg with 1.0 mm solid spacing (15,000 units of span over
+/// 10,000 units of spacing). The pre-fix rule returned 10,000 units (1.0 mm)
+/// and placed rows at y = 0 and y = 10,000; canonical returns 12,000 units
+/// (1.2 mm) and places them at y = 0 and y = 12,000. Both cases emit two rows,
+/// so the row *grid* is the formerly failing observation, not the row count.
+/// No RNG and no property context are involved.
+#[test]
+fn solid_spacing_over_cap_uses_canonical_1_2_factor() {
+    let config = baseline_config()
+        .float("infill_direction", 0.0)
+        .float("line_width", 0.4)
+        .float("top_surface_line_width", 1.0)
+        .build();
+    let module = RectilinearInfill::from_config(&config).unwrap();
+
+    // [0,10] x [0,1.5] mm = [0,100_000] x [0,15_000] units.
+    let rect = rect_polygon(5.0, 0.75, 10.0, 1.5);
+    let mut region = SliceRegionViewBuilder::new()
+        .object_id("obj1")
+        .region_id(1)
+        .add_polygon(rect.clone())
+        .add_infill_area(rect.clone())
+        .effective_layer_height(0.2)
+        .z(30.05)
+        .has_nonplanar(false)
+        .top_shell_index(Some(0))
+        .top_solid_fill(vec![rect])
+        .build();
+    region.set_held_claims(vec!["claim:top-fill".into()]);
+
+    let mut output = InfillOutputBuilder::new();
+    module
+        .run_infill(149, &[region], &empty_paint_view(), &mut output, &config)
+        .unwrap();
+
+    let solid = output.solid_paths();
+    assert_eq!(
+        solid.len(),
+        2,
+        "a 1.5 mm span at the canonical 1.2 mm spacing emits 2 rows, got {}",
+        solid.len()
+    );
+    let rows: BTreeSet<i64> = solid
+        .iter()
+        .map(|path| slicer_ir::mm_to_units(path.points[0].y))
+        .collect();
+    assert_eq!(
+        rows,
+        BTreeSet::from([0, 12_000]),
+        "rows must sit on the 12,000-unit canonical grid"
+    );
+    for path in solid {
+        assert_eq!(
+            slicer_ir::mm_to_units(path.points[0].x),
+            0,
+            "each row starts at the region minimum X"
+        );
+        assert_eq!(
+            slicer_ir::mm_to_units(path.points[1].x),
+            100_000,
+            "each row ends at the region maximum X"
+        );
+        assert!((path.points[0].width - 1.0).abs() < 0.001);
     }
 }
 
@@ -729,8 +803,8 @@ fn solid_surfaces_use_full_density_and_role_width() {
     let bottom_paths = bottom_output.solid_paths();
     assert_eq!(
         bottom_paths.len(),
-        14,
-        "10 mm first-layer bottom at 0.7 mm width must emit 14 full-density lines, got {}",
+        15,
+        "10 mm first-layer bottom at 0.7 mm width must emit 15 canonical full-density lines, got {}",
         bottom_paths.len()
     );
     assert!(bottom_paths
@@ -768,8 +842,8 @@ fn solid_surfaces_use_full_density_and_role_width() {
     let internal_paths = internal_output.solid_paths();
     assert_eq!(
         internal_paths.len(),
-        16,
-        "10 mm internal solid at 0.6 mm width must emit 16 full-density lines, got {}",
+        17,
+        "10 mm internal solid at 0.6 mm width must emit 17 canonical full-density lines, got {}",
         internal_paths.len()
     );
     assert!(internal_paths

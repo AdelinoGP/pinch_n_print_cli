@@ -1,0 +1,345 @@
+diff --git a/crates/slicer-core/src/algos/bridge_over_infill.rs b/crates/slicer-core/src/algos/bridge_over_infill.rs
+index 37ba5be1..31a3077a 100644
+--- a/crates/slicer-core/src/algos/bridge_over_infill.rs
++++ b/crates/slicer-core/src/algos/bridge_over_infill.rs
+@@ -21,6 +21,65 @@ const SAMPLE_STEP: f64 = 20_000.0;
+ const SCALED_EPSILON_MM: f64 = 0.0001;
+ const UNITS_PER_MM: f64 = 10_000.0;
+ 
++/// t92 Phase-1 screening probe for the two boundary-anchor offsets —
++/// env-gated (`PNP_T92_PROBE=1`), attribution only, removed before the take
++/// closes. Global sums: the caller prints one summary after the slice.
++mod t92_probe {
++    use std::sync::atomic::{AtomicU64, Ordering};
++    use std::sync::OnceLock;
++
++    static ENABLED: OnceLock<bool> = OnceLock::new();
++
++    pub(super) fn enabled() -> bool {
++        *ENABLED.get_or_init(|| std::env::var_os("PNP_T92_PROBE").is_some())
++    }
++
++    pub(super) static TOTAL_FILL_NS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static LIMITING_NS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static CALLS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static TOTAL_FILL_POLYS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static LIMITING_POLYS: AtomicU64 = AtomicU64::new(0);
++
++    /// `factor` distinguishes the layer-constant `1.3 x` total-fill offset from
++    /// the per-candidate `0.3 x` limiting-area offset.
++    pub(super) fn record(area_polys: usize, factor: f32, nanos: u128) {
++        let target = if factor > 1.0 {
++            &TOTAL_FILL_NS
++        } else {
++            &LIMITING_NS
++        };
++        target.fetch_add(nanos as u64, Ordering::Relaxed);
++        CALLS.fetch_add(1, Ordering::Relaxed);
++        if factor > 1.0 {
++            TOTAL_FILL_POLYS.fetch_add(area_polys as u64, Ordering::Relaxed);
++        } else {
++            LIMITING_POLYS.fetch_add(area_polys as u64, Ordering::Relaxed);
++        }
++    }
++
++    pub(super) fn dump() {
++        if !enabled() {
++            return;
++        }
++        let ms = |counter: &AtomicU64| counter.load(Ordering::Relaxed) as f64 / 1.0e6;
++        eprintln!(
++            "T92ANCHORS calls={} total_fill_polys={} limiting_polys={} \
++total_fill_offset_ms={:.3} limiting_offset_ms={:.3}",
++            CALLS.load(Ordering::Relaxed),
++            TOTAL_FILL_POLYS.load(Ordering::Relaxed),
++            LIMITING_POLYS.load(Ordering::Relaxed),
++            ms(&TOTAL_FILL_NS),
++            ms(&LIMITING_NS),
++        );
++    }
++}
++
++/// t92 Phase-1 screening: print the accumulated boundary-anchor offset split.
++/// Env-gated, attribution only; removed before the take closes.
++pub fn dump_boundary_anchor_probe() {
++    t92_probe::dump();
++}
++
+ /// Canonical `target_flow_height_factor` fallback captured from PrintObject.cpp.
+ pub const BRIDGE_FLOW_HEIGHT_FACTOR: f32 = 1.0;
+ 
+@@ -440,9 +499,15 @@ pub fn boundary_anchor_polylines(
+     limiting_area: &[ExPolygon],
+     spacing_mm: f32,
+ ) -> Vec<Vec<Point2>> {
++    let probe = t92_probe::enabled();
+     let mut rings = Vec::new();
+     for (area, factor) in [(total_fill_area, 1.3_f32), (limiting_area, 0.3_f32)] {
+-        for polygon in offset(area, factor * spacing_mm, OffsetJoinType::Miter, 0.0) {
++        let started = probe.then(std::time::Instant::now);
++        let offset_area = offset(area, factor * spacing_mm, OffsetJoinType::Miter, 0.0);
++        if let Some(started) = started {
++            t92_probe::record(area.len(), factor, started.elapsed().as_nanos());
++        }
++        for polygon in offset_area {
+             for ring in std::iter::once(&polygon.contour).chain(polygon.holes.iter()) {
+                 if ring.points.len() < 2 {
+                     continue;
+diff --git a/crates/slicer-runtime/src/slice_postprocess_prepass.rs b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+index 7edead57..08acc768 100644
+--- a/crates/slicer-runtime/src/slice_postprocess_prepass.rs
++++ b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+@@ -582,6 +582,73 @@ fn resolve_opening_radius(
+ // Internal helpers
+ // ============================================================================
+ 
++/// t92 Phase-1 screening probe — env-gated (`PNP_T92_PROBE=1`), attribution
++/// only, removed before the take closes. Every counter is a sum over the
++/// qualification/commit calls on this process; the per-layer detail is printed
++/// on `T92LAYER` lines and the totals on one `T92PROBE` line.
++mod t92_probe {
++    use std::sync::atomic::{AtomicU64, Ordering};
++    use std::sync::OnceLock;
++
++    static ENABLED: OnceLock<bool> = OnceLock::new();
++
++    pub(super) fn enabled() -> bool {
++        *ENABLED.get_or_init(|| std::env::var_os("PNP_T92_PROBE").is_some())
++    }
++
++    pub(super) fn add(counter: &AtomicU64, nanos: u128) {
++        counter.fetch_add(nanos as u64, Ordering::Relaxed);
++    }
++
++    pub(super) fn add_count(counter: &AtomicU64, value: u64) {
++        counter.fetch_add(value, Ordering::Relaxed);
++    }
++
++    pub(super) static CALLS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static QUALIFIED_CALLS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static SURFACES: AtomicU64 = AtomicU64::new(0);
++    pub(super) static DEEP_CLIP_POLYS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static QUALIFIED_POLYS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static DEEP_CLIP_OFFSET_NS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static SURFACE_OFFSET_NS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static SURFACE_CLIP_NS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static QUALIFY_NS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static UNSUPPORTED_OFFSET_NS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static RETAIN_NS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static EXPANSION_NS: AtomicU64 = AtomicU64::new(0);
++    pub(super) static ANGLES_NS: AtomicU64 = AtomicU64::new(0);
++
++    fn ms(counter: &AtomicU64) -> f64 {
++        counter.load(Ordering::Relaxed) as f64 / 1.0e6
++    }
++
++    pub(super) fn dump() {
++        if !enabled() {
++            return;
++        }
++        eprintln!(
++            "T92PROBE calls={} qualified_calls={} surfaces={} deep_clip_polys={} \
++qualified_polys={} deep_clip_offset_ms={:.3} surface_offset_ms={:.3} \
++surface_clip_ms={:.3} qualify_ms={:.3} unsupported_offset_ms={:.3} retain_ms={:.3} \
++expansion_ms={:.3} angles_ms={:.3}",
++            CALLS.load(Ordering::Relaxed),
++            QUALIFIED_CALLS.load(Ordering::Relaxed),
++            SURFACES.load(Ordering::Relaxed),
++            DEEP_CLIP_POLYS.load(Ordering::Relaxed),
++            QUALIFIED_POLYS.load(Ordering::Relaxed),
++            ms(&DEEP_CLIP_OFFSET_NS),
++            ms(&SURFACE_OFFSET_NS),
++            ms(&SURFACE_CLIP_NS),
++            ms(&QUALIFY_NS),
++            ms(&UNSUPPORTED_OFFSET_NS),
++            ms(&RETAIN_NS),
++            ms(&EXPANSION_NS),
++            ms(&ANGLES_NS),
++        );
++        slicer_core::algos::bridge_over_infill::dump_boundary_anchor_probe();
++    }
++}
++
+ /// Fully computed internal-bridge commit for one layer. The expensive
+ /// per-layer clipper work depends only on committed geometry and on this
+ /// layer's own fields, so it can run in the independent qualification phase;
+@@ -607,38 +674,65 @@ fn compute_internal_bridge_layer(
+     layer_index: u32,
+     print_z: f32,
+ ) -> Option<InternalBridgeLayerResult> {
++    let probe = t92_probe::enabled();
++    let call_started = probe.then(std::time::Instant::now);
++    let deep_clip_offset_started = probe.then(std::time::Instant::now);
+     let deep_infill_clip_area = offset(
+         &deep_infill_area,
+         1.5 * qualify_spacing_mm,
+         OffsetJoinType::Miter,
+         0.0,
+     );
++    let deep_clip_offset_ns = deep_clip_offset_started
++        .map(|started| started.elapsed().as_nanos())
++        .unwrap_or(0);
++    let surface_count = region.internal_solid_fill.len();
++    let deep_clip_polys = deep_infill_clip_area.len();
++    let mut surface_offset_ns: u128 = 0;
++    let mut surface_clip_ns: u128 = 0;
++    let mut qualify_ns: u128 = 0;
+     let mut qualified: Vec<ExPolygon> = Vec::new();
+     for surface in &region.internal_solid_fill {
++        let offset_started = probe.then(std::time::Instant::now);
+         let expanded_candidate = offset(
+             std::slice::from_ref(surface),
+             qualify_spacing_mm,
+             OffsetJoinType::Miter,
+             0.0,
+         );
+-        if intersection(&expanded_candidate, &deep_infill_clip_area).is_empty() {
++        surface_offset_ns += offset_started
++            .map(|started| started.elapsed().as_nanos())
++            .unwrap_or(0);
++        let clip_started = probe.then(std::time::Instant::now);
++        let expanded_clip = intersection(&expanded_candidate, &deep_infill_clip_area);
++        surface_clip_ns += clip_started
++            .map(|started| started.elapsed().as_nanos())
++            .unwrap_or(0);
++        if expanded_clip.is_empty() {
+             log::debug!(
+                 "internal bridge skip object={} region={} layer={} print_z={} reason=deep_sparse_clip_empty",
+                 object_id, region_id, layer_index, print_z
+             );
+             continue;
+         }
+-        if let Some(polys) = slicer_core::algos::bridge_over_infill::qualify_internal_bridge_surface(
+-            surface,
+-            unsupported,
+-            qualify_spacing_mm,
+-            nofilter,
+-        ) {
++        let qualify_started = probe.then(std::time::Instant::now);
++        let qualified_surface =
++            slicer_core::algos::bridge_over_infill::qualify_internal_bridge_surface(
++                surface,
++                unsupported,
++                qualify_spacing_mm,
++                nofilter,
++            );
++        qualify_ns += qualify_started
++            .map(|started| started.elapsed().as_nanos())
++            .unwrap_or(0);
++        if let Some(polys) = qualified_surface {
+             qualified.extend(polys);
+         }
+     }
+     // Only the surviving candidates are filtered against this erosion,
+     // so an empty candidate set skips the offset entirely.
++    let unsupported_offset_started = probe.then(std::time::Instant::now);
+     let internal_unsupported_area = if qualified.is_empty() || deep_infill_area.is_empty() {
+         Vec::new()
+     } else {
+@@ -649,9 +743,55 @@ fn compute_internal_bridge_layer(
+             0.0,
+         )
+     };
++    let unsupported_offset_ns = unsupported_offset_started
++        .map(|started| started.elapsed().as_nanos())
++        .unwrap_or(0);
++    let retain_started = probe.then(std::time::Instant::now);
+     qualified.retain(|polygon| {
+         !intersection(std::slice::from_ref(polygon), &internal_unsupported_area).is_empty()
+     });
++    let retain_ns = retain_started
++        .map(|started| started.elapsed().as_nanos())
++        .unwrap_or(0);
++    if probe {
++        let total_ms = call_started
++            .map(|started| started.elapsed().as_nanos() as f64 / 1.0e6)
++            .unwrap_or(0.0);
++        t92_probe::add_count(&t92_probe::CALLS, 1);
++        t92_probe::add_count(&t92_probe::SURFACES, surface_count as u64);
++        t92_probe::add_count(&t92_probe::DEEP_CLIP_POLYS, deep_clip_polys as u64);
++        t92_probe::add_count(&t92_probe::QUALIFIED_POLYS, qualified.len() as u64);
++        t92_probe::add(&t92_probe::DEEP_CLIP_OFFSET_NS, deep_clip_offset_ns);
++        t92_probe::add(&t92_probe::SURFACE_OFFSET_NS, surface_offset_ns);
++        t92_probe::add(&t92_probe::SURFACE_CLIP_NS, surface_clip_ns);
++        t92_probe::add(&t92_probe::QUALIFY_NS, qualify_ns);
++        t92_probe::add(&t92_probe::UNSUPPORTED_OFFSET_NS, unsupported_offset_ns);
++        t92_probe::add(&t92_probe::RETAIN_NS, retain_ns);
++        eprintln!(
++            "T92LAYER object={} region={} layer={} print_z={} outcome={} surfaces={} \
++deep_clip_polys={} qualified_polys={} deep_clip_offset_ms={:.3} surface_offset_ms={:.3} \
++surface_clip_ms={:.3} qualify_ms={:.3} unsupported_offset_ms={:.3} retain_ms={:.3} total_ms={:.3}",
++            object_id,
++            region_id,
++            layer_index,
++            print_z,
++            if qualified.is_empty() {
++                "empty"
++            } else {
++                "qualified"
++            },
++            surface_count,
++            deep_clip_polys,
++            qualified.len(),
++            deep_clip_offset_ns as f64 / 1.0e6,
++            surface_offset_ns as f64 / 1.0e6,
++            surface_clip_ns as f64 / 1.0e6,
++            qualify_ns as f64 / 1.0e6,
++            unsupported_offset_ns as f64 / 1.0e6,
++            retain_ns as f64 / 1.0e6,
++            total_ms,
++        );
++    }
+     if qualified.is_empty() {
+         log::debug!(
+             "internal bridge skip object={} region={} layer={} print_z={} reason=qualified_empty_or_deep_sparse_clip surfaces={}",
+@@ -668,6 +808,7 @@ fn compute_internal_bridge_layer(
+     // polygon at its own angle; the region-wide
+     // `bridge_orientation_deg` stays the external-bridge direction.
+     slicer_core::algos::bridge_over_infill::presort_bridge_candidates(&mut qualified);
++    let expansion_started = probe.then(std::time::Instant::now);
+     let expansion_area = {
+         let not_sparse = union(
+             &union(&region.top_solid_fill, &region.bottom_solid_fill),
+@@ -678,6 +819,10 @@ fn compute_internal_bridge_layer(
+             &region.internal_solid_fill,
+         )
+     };
++    let expansion_ns = expansion_started
++        .map(|started| started.elapsed().as_nanos())
++        .unwrap_or(0);
++    let angles_started = probe.then(std::time::Instant::now);
+     let angles = slicer_core::algos::bridge_over_infill::internal_bridge_angles(
+         &qualified,
+         &slicer_core::algos::bridge_over_infill::InternalBridgeAngleInputs {
+@@ -689,6 +834,23 @@ fn compute_internal_bridge_layer(
+             override_deg: internal_bridge_angle,
+         },
+     );
++    if probe {
++        let angles_ns = angles_started
++            .map(|started| started.elapsed().as_nanos())
++            .unwrap_or(0);
++        t92_probe::add_count(&t92_probe::QUALIFIED_CALLS, 1);
++        t92_probe::add(&t92_probe::EXPANSION_NS, expansion_ns);
++        t92_probe::add(&t92_probe::ANGLES_NS, angles_ns);
++        eprintln!(
++            "T92ANGLES_CALL object={} region={} layer={} candidates={} expansion_ms={:.3} angles_ms={:.3}",
++            object_id,
++            region_id,
++            layer_index,
++            qualified.len(),
++            expansion_ns as f64 / 1.0e6,
++            angles_ns as f64 / 1.0e6,
++        );
++    }
+     Some(InternalBridgeLayerResult { qualified, angles })
+ }
+ 
+@@ -1269,6 +1431,7 @@ fn gate_internal_bridge_sites(
+             }
+         }
+     }
++    t92_probe::dump();
+ }
+ 
+ fn build_region_timelines(

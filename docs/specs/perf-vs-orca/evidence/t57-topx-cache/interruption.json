@@ -1,0 +1,32 @@
+{
+  "status": "blocked",
+  "qualification_pass": false,
+  "timing_started": false,
+  "completed_cells": [
+    "ordinary-benchy-classic-off",
+    "ordinary-benchy-classic-on",
+    "ordinary-benchy-arachne-off",
+    "ordinary-benchy-arachne-on",
+    "ordinary-base-classic-off",
+    "ordinary-base-classic-on",
+    "ordinary-base-arachne-off"
+  ],
+  "interrupted_cell": "ordinary-base-arachne-on",
+  "interrupted_arm": "baseline",
+  "cause": "outer shell command exceeded its configured aggregate timeout; remaining qualification not executed",
+  "timeout_ms": 2400000,
+  "timeout_authority": "shell sh_1168dc419001Z1rvDkA5RePRQT completion notification",
+  "no_performance_verdict": true,
+  "recommendation": "do not adopt; request human authorization before resuming qualification",
+  "automatic_retry": false,
+  "restoration": {
+    "build_inputs_unchanged": true,
+    "registry_unchanged": true,
+    "archived_artifacts_byte_restored": true,
+    "freshness": {
+      "ordinary": 0,
+      "accelerated": 0
+    }
+  },
+  "coverage": "seven ordinary-mode qualification pairs passed; eighth baseline interrupted; accelerated qualification and all paired timing absent"
+}

@@ -47,21 +47,6 @@ fn normalize_gcode(gcode: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Pre-flight: fixture must exist before E2E paint claims can be verified.
-// ---------------------------------------------------------------------------
-
-#[test]
-fn painted_3mf_fixture_is_committed() {
-    let p = cube_4color_3mf();
-    assert!(
-        p.exists(),
-        "painted cube fixture missing at {}. \
-         resources/cube_4color.3mf is the 4-color painted-cube fixture.",
-        p.display()
-    );
-}
-
-// ---------------------------------------------------------------------------
 // E2E: paint data must reach the live pipeline.
 // ---------------------------------------------------------------------------
 
@@ -74,8 +59,8 @@ fn painted_cube_3mf_reaches_paint_segmentation() {
     let unpainted = unpainted_cube_obj();
     assert!(
         painted.exists(),
-        "painted cube 3MF fixture missing at {} — blocked by \
-         the prerequisite test `painted_3mf_fixture_is_committed`",
+        "painted cube 3MF fixture missing at {} — resources/cube_4color.3mf \
+         is the committed 4-color painted-cube fixture",
         painted.display()
     );
     assert!(

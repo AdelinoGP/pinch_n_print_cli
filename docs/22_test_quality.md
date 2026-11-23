@@ -198,6 +198,13 @@ mode and `cargo xtask test` runs it in its preflight without blocking;
 (ADR-0065) — flipping the `TEST_QUALITY_ENFORCED` constant in
 `xtask/src/test.rs`.
 
+One failure report mode cannot downgrade: a scan that collects zero enforced
+files exits 1 in every mode (distinct error naming the workspace root). A
+zero-file scan proves nothing; it was the exact false-green signature of a
+stale cached xtask binary resolving a foreign checkout's dead root
+(perf-vs-orca tickets 71/70). The root is resolved at runtime by walking up
+from the current directory, never from the binary's compile-time path.
+
 ## 6. Relations to other docs
 
 - `docs/21_data_defaults_and_fixtures.md` — owns struct-literal discipline and

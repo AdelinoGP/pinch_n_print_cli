@@ -1,0 +1,391 @@
+diff --git a/crates/slicer-core/src/perimeter_spatial.rs b/crates/slicer-core/src/perimeter_spatial.rs
+index 8bfbf8e4..c727ba7a 100644
+--- a/crates/slicer-core/src/perimeter_spatial.rs
++++ b/crates/slicer-core/src/perimeter_spatial.rs
+@@ -526,6 +526,7 @@ struct BridgeBounds {
+ pub struct PerimeterSpatialContext {
+     boundary: Vec<ExPolygon>,
+     overhang_bands: Vec<QuartileBand>,
++    quartile_bounds: Vec<Vec<Option<AABB<[f64; 2]>>>>,
+     bridge_areas: Vec<ExPolygon>,
+     distance_index: IndexState<DistanceEdgeRecord>,
+     boundary_y_index: IndexState<BoundaryYRecord>,
+@@ -545,6 +546,7 @@ impl PerimeterSpatialContext {
+         count_context_constructed();
+         let boundary = boundary.to_vec();
+         let overhang_bands = overhang_bands.to_vec();
++        let quartile_bounds = quartile_contour_bounds(&overhang_bands);
+         let bridge_areas = bridge_areas.to_vec();
+ 
+         let distance_index = build_index(distance_records(&boundary));
+@@ -560,6 +562,7 @@ impl PerimeterSpatialContext {
+         Self {
+             boundary,
+             overhang_bands,
++            quartile_bounds,
+             bridge_areas,
+             distance_index,
+             boundary_y_index,
+@@ -631,7 +634,7 @@ impl PerimeterSpatialContext {
+         let dispatch = dispatch();
+         if !dispatch.indexed {
+             count_legacy();
+-            return legacy_overhang_quartile(x, y, &self.overhang_bands);
++            return legacy_overhang_quartile(x, y, &self.overhang_bands, &self.quartile_bounds);
+         }
+         if dispatch.inject_pruning_fault
+             || self.construction_failed
+@@ -646,7 +649,13 @@ impl PerimeterSpatialContext {
+         match &self.quartile_y_index {
+             IndexState::Linear => self.fallback_overhang_quartile(x, y),
+             IndexState::Indexed(tree) => {
+-                let quartile = match indexed_overhang_quartile(tree, x, y, &self.overhang_bands) {
++                let quartile = match indexed_overhang_quartile(
++                    tree,
++                    x,
++                    y,
++                    &self.overhang_bands,
++                    &self.quartile_bounds,
++                ) {
+                     Some(quartile) => quartile,
+                     None => return self.fallback_overhang_quartile(x, y),
+                 };
+@@ -707,7 +716,7 @@ impl PerimeterSpatialContext {
+     fn fallback_overhang_quartile(&self, x: f32, y: f32) -> Option<u8> {
+         count_fallback();
+         count_legacy();
+-        legacy_overhang_quartile(x, y, &self.overhang_bands)
++        legacy_overhang_quartile(x, y, &self.overhang_bands, &self.quartile_bounds)
+     }
+ 
+     fn fallback_bridge(&self, point: &Point2) -> bool {
+@@ -802,6 +811,60 @@ fn boundary_y_records(boundary: &[ExPolygon]) -> Vec<BoundaryYRecord> {
+     records
+ }
+ 
++fn quartile_contour_bounds(bands: &[QuartileBand]) -> Vec<Vec<Option<AABB<[f64; 2]>>>> {
++    bands
++        .iter()
++        .map(|band| {
++            band.polygons
++                .iter()
++                .map(|polygon| {
++                    let points = &polygon.contour.points;
++                    if points.len() < 3 {
++                        return None;
++                    }
++                    let mut lower = [f64::INFINITY; 2];
++                    let mut upper = [f64::NEG_INFINITY; 2];
++                    for i in 0..points.len() {
++                        let a = points[i];
++                        let b = points[(i + 1) % points.len()];
++                        for (axis, (a, b)) in [(a.x, b.x), (a.y, b.y)].into_iter().enumerate() {
++                            let a = winding_coordinate(a);
++                            let b = winding_coordinate(b);
++                            // Cover both raw winding endpoints and the segment-distance
++                            // evaluator's effective endpoint, including cancellation.
++                            let effective_b = a + (b - a);
++                            // Outward slack also covers rounded winding cross products
++                            // just outside a raw bound. Integer coordinates converted
++                            // to f64 stay finite, as do all predicate intermediates for
++                            // finite f32 queries. No hole subtraction is introduced.
++                            let slack = 16.0 * f64::EPSILON * a.abs().max(b.abs()).max(1.0);
++                            lower[axis] =
++                                lower[axis].min(next_down(a.min(b).min(effective_b) - slack));
++                            upper[axis] =
++                                upper[axis].max(next_up(a.max(b).max(effective_b) + slack));
++                        }
++                    }
++                    Some(AABB::from_corners(lower, upper))
++                })
++                .collect()
++        })
++        .collect()
++}
++
++fn quartile_bbox_may_contain(bounds: Option<&AABB<[f64; 2]>>, x: f32, y: f32) -> bool {
++    if !x.is_finite() || !y.is_finite() {
++        return true;
++    }
++    let Some(bounds) = bounds else {
++        return false;
++    };
++    let lower = bounds.lower();
++    let upper = bounds.upper();
++    let x = f64::from(x);
++    let y = f64::from(y);
++    x >= lower[0] && x <= upper[0] && y >= lower[1] && y <= upper[1]
++}
++
+ fn quartile_y_records(bands: &[QuartileBand]) -> Vec<QuartileYRecord> {
+     let mut records = Vec::new();
+     for (band_index, band) in bands.iter().enumerate() {
+@@ -1038,6 +1101,7 @@ fn indexed_overhang_quartile(
+     x: f32,
+     y: f32,
+     bands: &[QuartileBand],
++    bounds: &[Vec<Option<AABB<[f64; 2]>>>],
+ ) -> Option<Option<u8>> {
+     let query = [0.0, f64::from(y)];
+     let envelope = AABB::from_corners(query, query);
+@@ -1050,6 +1114,9 @@ fn indexed_overhang_quartile(
+     for (band_index, polygon_index) in candidates {
+         let band = bands.get(band_index)?;
+         let polygon = band.polygons.get(polygon_index)?;
++        if !quartile_bbox_may_contain(bounds.get(band_index)?.get(polygon_index)?.as_ref(), x, y) {
++            continue;
++        }
+         count_exact_evaluation();
+         if slicer_ir::point_in_polygon_winding(polygon, f64::from(x), f64::from(y), 0.0) {
+             quartile = Some(quartile.map_or(band.quartile, |current| current.max(band.quartile)));
+@@ -1114,15 +1181,30 @@ fn legacy_distance_ordinal(x: f32, y: f32, boundary: &[ExPolygon]) -> Option<usi
+     nearest.map(|(_, source_ordinal)| source_ordinal)
+ }
+ 
+-fn legacy_overhang_quartile(x: f32, y: f32, bands: &[QuartileBand]) -> Option<u8> {
++fn legacy_overhang_quartile(
++    x: f32,
++    y: f32,
++    bands: &[QuartileBand],
++    bounds: &[Vec<Option<AABB<[f64; 2]>>>],
++) -> Option<u8> {
+     bands
+         .iter()
+-        .filter(|band| {
+-            band.polygons.iter().any(|polygon| {
+-                slicer_ir::point_in_polygon_winding(polygon, f64::from(x), f64::from(y), 0.0)
+-            })
++        .zip(bounds)
++        .filter(|(band, bounds)| {
++            band.polygons
++                .iter()
++                .zip(bounds.iter())
++                .any(|(polygon, bounds)| {
++                    quartile_bbox_may_contain(bounds.as_ref(), x, y)
++                        && slicer_ir::point_in_polygon_winding(
++                            polygon,
++                            f64::from(x),
++                            f64::from(y),
++                            0.0,
++                        )
++                })
+         })
+-        .map(|band| band.quartile)
++        .map(|(band, _)| band.quartile)
+         .max()
+ }
+ 
+diff --git a/crates/slicer-core/tests/perimeter_spatial_tdd.rs b/crates/slicer-core/tests/perimeter_spatial_tdd.rs
+index 45fcfafa..72c59406 100644
+--- a/crates/slicer-core/tests/perimeter_spatial_tdd.rs
++++ b/crates/slicer-core/tests/perimeter_spatial_tdd.rs
+@@ -1,3 +1,5 @@
++//! Exact spatial-query equivalence and pruning regressions.
++
+ use slicer_core::perimeter_utils::{
+     expolygon_to_path3d, point_in_any_polygon, signed_distance_to_boundary,
+ };
+@@ -47,6 +49,203 @@ fn quartile_band(quartile: u8, polygons: &[&[(f32, f32)]]) -> QuartileBand {
+     }
+ }
+ 
++#[test]
++fn quartile_bbox_preserves_edges_holes_degenerate_rings_and_nonfinite_queries() {
++    use slicer_core::perimeter_spatial::{diagnostics::with_counters, PerimeterSpatialContext};
++    let square = [(-5.0, -5.0), (5.0, -5.0), (5.0, 5.0), (-5.0, 5.0)];
++    let mut repeated = expolygon_mm(&square, &[]);
++    repeated
++        .contour
++        .points
++        .insert(1, repeated.contour.points[0]);
++    let bands = vec![
++        QuartileBand {
++            quartile: 2,
++            polygons: vec![expolygon_mm(
++                &square,
++                &[&[(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]],
++            )],
++        },
++        QuartileBand {
++            quartile: 3,
++            polygons: vec![repeated],
++        },
++        quartile_band(4, &[&[(10.0, 0.0), (10.0, 0.0), (10.0, 0.0)]]),
++        quartile_band(9, &[&[(0.0, 0.0), (1.0, 0.0)], &[]]),
++    ];
++    let queries = [
++        (5.0, 0.0, Some(3)),
++        (5.0, 5.0, Some(3)),
++        (-5.0, 0.0, Some(3)),
++        (0.0, -5.0, Some(3)),
++        (0.0, 5.0, Some(3)),
++        (0.0, 0.0, Some(3)),
++        (5.001, 0.0, None),
++        (10.0, 0.0, Some(4)),
++        (10.001, 0.0, None),
++        (f32::NAN, 0.0, None),
++        (f32::INFINITY, 0.0, None),
++        (f32::NEG_INFINITY, 0.0, None),
++        (0.0, f32::NAN, None),
++    ];
++    for accelerated in [false, true] {
++        let (observed, _) = with_counters(accelerated, false, || {
++            let context = PerimeterSpatialContext::new(&[], &bands, &[]);
++            queries
++                .iter()
++                .map(|&(x, y, _)| context.overhang_quartile(x, y))
++                .collect::<Vec<_>>()
++        });
++        assert_eq!(observed, queries.iter().map(|q| q.2).collect::<Vec<_>>());
++    }
++}
++
++#[test]
++fn quartile_bbox_prunes_same_y_disjoint_x_without_changing_winding_verdicts() {
++    use slicer_core::perimeter_spatial::{diagnostics::with_counters, PerimeterSpatialContext};
++    let polygons = (0..32)
++        .map(|i| {
++            let x = (i * 20) as f32;
++            expolygon_mm(
++                &[(x, -5.0), (x + 10.0, -5.0), (x + 10.0, 5.0), (x, 5.0)],
++                &[],
++            )
++        })
++        .collect::<Vec<_>>();
++    assert_eq!(polygons.len(), 32);
++    let bands = vec![QuartileBand {
++        quartile: 4,
++        polygons,
++    }];
++    let (quartile, counters) = with_counters(true, false, || {
++        PerimeterSpatialContext::new(&[], &bands, &[]).overhang_quartile(5.0, 0.0)
++    });
++    assert_eq!(quartile, Some(4));
++    assert_eq!(counters.indexed_queries, 1);
++    assert_eq!(
++        counters.exact_evaluations, 1,
++        "only the containing polygon should reach the exact scan"
++    );
++    let points = (0..640).map(|x| (x as f32, 0.0)).collect::<Vec<_>>();
++    assert!(!points.is_empty());
++    let expected = points
++        .iter()
++        .map(|&(x, y)| {
++            bands
++                .iter()
++                .filter(|band| {
++                    band.polygons.iter().any(|p| {
++                        slicer_ir::point_in_polygon_winding(p, f64::from(x), f64::from(y), 0.0)
++                    })
++                })
++                .map(|b| b.quartile)
++                .max()
++        })
++        .collect::<Vec<_>>();
++    for accelerated in [false, true] {
++        let (observed, _) = with_counters(accelerated, false, || {
++            let context = PerimeterSpatialContext::new(&[], &bands, &[]);
++            points
++                .iter()
++                .map(|&(x, y)| context.overhang_quartile(x, y))
++                .collect::<Vec<_>>()
++        });
++        assert_eq!(observed, expected);
++    }
++}
++
++#[test]
++fn quartile_bbox_matches_unchanged_predicate_at_large_and_rounding_sensitive_coordinates() {
++    use slicer_core::perimeter_spatial::{diagnostics::with_counters, PerimeterSpatialContext};
++    let mut rings = Vec::new();
++    for origin in [
++        i64::MIN + 2048,
++        -9_000_000_000_000_000,
++        -10_003,
++        0,
++        10_003,
++        i64::MAX - 4096,
++    ] {
++        rings.push(ExPolygon {
++            contour: Polygon {
++                points: vec![
++                    Point2 {
++                        x: origin,
++                        y: origin,
++                    },
++                    Point2 {
++                        x: origin + 2048,
++                        y: origin,
++                    },
++                    Point2 {
++                        x: origin + 2048,
++                        y: origin + 2048,
++                    },
++                    Point2 {
++                        x: origin,
++                        y: origin + 2048,
++                    },
++                ],
++            },
++            holes: vec![],
++        });
++    }
++    // Cancellation in a + (b - a), and a nearly horizontal sloped edge.
++    rings.push(ExPolygon {
++        contour: Polygon {
++            points: vec![
++                Point2 { x: i64::MIN, y: -1 },
++                Point2 { x: 1, y: 0 },
++                Point2 { x: i64::MAX, y: 1 },
++            ],
++        },
++        holes: vec![],
++    });
++    let points = rings
++        .iter()
++        .flat_map(|p| p.contour.points.iter())
++        .flat_map(|p| {
++            let x = (p.x as f64 / 10_000.0) as f32;
++            let y = (p.y as f64 / 10_000.0) as f32;
++            [
++                (x, y),
++                (x.next_up(), y),
++                (x.next_down(), y),
++                (x, y.next_up()),
++                (x, y.next_down()),
++                (0.0, y),
++            ]
++        })
++        .collect::<Vec<_>>();
++    assert!(!points.is_empty());
++    let bands = vec![QuartileBand {
++        quartile: 3,
++        polygons: rings,
++    }];
++    let expected = points
++        .iter()
++        .map(|&(x, y)| {
++            bands[0]
++                .polygons
++                .iter()
++                .any(|p| slicer_ir::point_in_polygon_winding(p, f64::from(x), f64::from(y), 0.0))
++                .then_some(3)
++        })
++        .collect::<Vec<_>>();
++    assert!(expected.iter().any(Option::is_some));
++    assert!(expected.iter().any(Option::is_none));
++    for accelerated in [false, true] {
++        let (observed, _) = with_counters(accelerated, false, || {
++            let context = PerimeterSpatialContext::new(&[], &bands, &[]);
++            points
++                .iter()
++                .map(|&(x, y)| context.overhang_quartile(x, y))
++                .collect::<Vec<_>>()
++        });
++        assert_eq!(observed, expected);
++    }
++}
++
+ fn adversarial_fixture() -> SpatialFixture {
+     let computed_endpoint = (0.1_f32 + 0.2_f32) * 10.0_f32;
+     let boundary = vec![

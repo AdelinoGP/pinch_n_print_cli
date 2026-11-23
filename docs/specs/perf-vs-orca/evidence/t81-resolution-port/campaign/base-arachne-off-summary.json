@@ -1,0 +1,24 @@
+{
+  "cell": "arachne-off",
+  "pairs": 6,
+  "wall_delta_pct_median": 2.2966,
+  "cpu_delta_pct_median": -1.0954,
+  "wall_deltas": [
+    -5.5673,
+    4.3902,
+    3.1821,
+    1.411,
+    -0.5706,
+    8.8933
+  ],
+  "cpu_deltas": [
+    -2.3594,
+    -2.9495,
+    0.2496,
+    -1.2305,
+    -0.9603,
+    -0.7146
+  ],
+  "wall_clause": false,
+  "cpu_clause": true
+}

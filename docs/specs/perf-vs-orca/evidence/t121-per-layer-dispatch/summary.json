@@ -1,0 +1,52 @@
+{
+  "ticket": "121",
+  "command": "target/release/pnp_cli.exe slice --model <fixture> --config <matched cell> --module-dir modules/core-modules --no-default-module-paths --output <out>",
+  "pre_binary_sha256": "2a9af51d76efa2296753e66b634a1a01407147175b4992360218f20253f3824e",
+  "fix_binary_sha256": "250e396d86bb92b308793c2430ab390ea4e46335fde92ccc661df2c08bf90133",
+  "cells": {
+    "benchy-classic-off": {
+      "pre": {"wall_ms_median": 7073, "cpu_s_median": 42.84},
+      "fix": {"wall_ms_median": 6062, "cpu_s_median": 26.89},
+      "wall_delta_pct": -14.29,
+      "cpu_delta_pct": -37.23,
+      "sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897"
+    },
+    "benchy-classic-on": {
+      "pre": {"wall_ms_median": 11081, "cpu_s_median": 58.73},
+      "fix": {"wall_ms_median": 10056, "cpu_s_median": 42.66},
+      "wall_delta_pct": -9.25,
+      "cpu_delta_pct": -27.36,
+      "sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e"
+    },
+    "base-classic-off": {
+      "pre": {"wall_ms_median": 85451, "cpu_s_median": 810.02},
+      "fix": {"wall_ms_median": 53434, "cpu_s_median": 435.95},
+      "wall_delta_pct": -37.47,
+      "cpu_delta_pct": -46.18,
+      "sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131"
+    },
+    "base-classic-on": {
+      "pre": {"wall_ms_median": 164383, "cpu_s_median": 1131.25},
+      "fix": {"wall_ms_median": 126731, "cpu_s_median": 746.55},
+      "wall_delta_pct": -22.91,
+      "cpu_delta_pct": -34.01,
+      "sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca"
+    }
+  },
+  "per_layer": {
+    "t115_premerge_bracket_ms": 7265,
+    "pre_fix_ms": 42406,
+    "fix_ms": 6758,
+    "config": "base classic-off, --instrument-stderr"
+  },
+  "probe": {
+    "transport_prepare_us_mean_before": 45863,
+    "transport_prepare_us_mean_after": 7033,
+    "transport_total_us_mean_before": 53141,
+    "transport_total_us_mean_after": 14133,
+    "per_call_guest_us_mean": 11629
+  },
+  "anomalies": [
+    "benchy-classic-off pair 2: wall +0.66 % while CPU -37.23 % (the pre arm in that pair ran 6,031 ms, below its other two pre runs at 7,074/7,073 ms; the cell median wall is -14.29 %)."
+  ]
+}

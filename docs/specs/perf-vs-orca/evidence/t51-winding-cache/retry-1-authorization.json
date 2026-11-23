@@ -1,0 +1,30 @@
+{
+  "human_request": "Try one more run",
+  "scope": "one additional complete campaign in both modes; no pooling, changed thresholds, source changes or further retries",
+  "candidate_patch_sha256": "ecc20349dd2365cabd065b87949add7a5b8a69fd6941107394c7aee614a4d0f0",
+  "protocol_sha256": "dd07e7cba6f3df2ebba8d1fc891148f085f9256452d79092d9acdef302641c6a",
+  "preserved_initial_evidence_sha256": "a35e670e0ab9f1aa0e8005e39411643a85c2964526185df1c6a3e78f6aefefde",
+  "preserved_initial_summary_sha256": "aa650fedd3bc257d7aa3241d847ccb4ab1c18fc260452da80b7adaf5861862e0",
+  "source_and_snapshot_identity_checks": "passed",
+  "freshness": {
+    "ordinary": {
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--check"
+      ],
+      "exit_code": 0
+    },
+    "accelerated": {
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--accelerated",
+        "--check"
+      ],
+      "exit_code": 0
+    }
+  }
+}

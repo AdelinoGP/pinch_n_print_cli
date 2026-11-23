@@ -78,7 +78,7 @@ packet 267 already specifies. `EstimatorLimits::from_config`
 `pair.select(cfg.silent_mode)` per field, falling back per-field to the
 estimator defaults when absent (so `silent_mode` with no configured limits
 is identity). Selection is flavor-agnostic (Q3) — canonical gates on
-Marlin/Marlin2 but this seam carries no flavor — recorded as **DEV-200**.
+Marlin/Marlin2 but this seam carries no flavor — recorded as **DEV-207**.
 `silent_mode` itself (canonical `coBool` default `false`) is a
 `ResolvedConfig` bool, host-only and omitted from the CONFIG_BLOCK (the
 `disable_m73`/P35 `pressure_advance` precedent). CONFIG_BLOCK spelling for

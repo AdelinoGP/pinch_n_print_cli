@@ -127,6 +127,36 @@ fn intentional_error_config(code: i64) -> ConfigView {
     ConfigView::from_map(fields)
 }
 
+fn commit_selection_products(bb: &mut Blackboard, slice: &SliceIR, config: &ConfigView) {
+    use slicer_ir::{RegionKey, RegionMapIR, RegionPlan, ResolvedConfig};
+    let mut map = RegionMapIR::default();
+    let config = map.intern_config(ResolvedConfig {
+        extensions: config
+            .iter_entries()
+            .map(|(k, v)| (k.to_owned(), v.clone()))
+            .collect(),
+        ..Default::default()
+    });
+    for region in &slice.regions {
+        map.entries.insert(
+            RegionKey {
+                global_layer_index: slice.global_layer_index,
+                object_id: region.object_id.clone(),
+                region_id: region.region_id,
+                variant_chain: region.variant_chain.clone(),
+            },
+            RegionPlan {
+                config,
+                ..Default::default()
+            },
+        );
+    }
+    bb.commit_region_map(Arc::new(map))
+        .expect("commit exact region map");
+    bb.commit_slice_ir(Arc::new(vec![slice.clone()]))
+        .expect("commit selection slice");
+}
+
 // â”€â”€ Finalization world â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
@@ -318,12 +348,18 @@ fn layer_world_macro_guest_round_trips_typed_config_and_result() {
     let (arena, layer) = one_layer_arena();
     let stage: StageId = "Layer::Infill".to_string();
 
+    let index =
+        crate::common::selection_for_module(&stage, &layer, &module.module, &bb, None, None)
+            .expect("build fixture selection");
+    let selection = index
+        .selection_for(layer.index, module.module.module_id())
+        .expect("fixture selection");
     let err = LayerStageRunner::run_stage(
         &dispatcher,
         &stage,
         &layer,
         &module.as_live(),
-        layer_input(&bb, &arena),
+        layer_input(&bb, &arena, selection),
     )
     .expect_err("guest must surface typed ModuleError driven by config");
     match err {
@@ -369,12 +405,18 @@ fn layer_world_macro_guest_succeeds_without_error_config() {
     let bb = Blackboard::new(empty_mesh_ir(), 1);
     let (arena, layer) = one_layer_arena();
     let stage: StageId = "Layer::Infill".to_string();
+    let index =
+        crate::common::selection_for_module(&stage, &layer, &module.module, &bb, None, None)
+            .expect("build fixture selection");
+    let selection = index
+        .selection_for(layer.index, module.module.module_id())
+        .expect("fixture selection");
     let _out = LayerStageRunner::run_stage(
         &dispatcher,
         &stage,
         &layer,
         &module.as_live(),
-        layer_input(&bb, &arena),
+        layer_input(&bb, &arena, selection),
     )
     .expect("empty config path must succeed through real typed glue");
 }
@@ -395,12 +437,18 @@ fn layer_world_macro_guest_is_deterministic() {
     let stage: StageId = "Layer::Infill".to_string();
     for _ in 0..3 {
         let (arena, layer) = one_layer_arena();
+        let index =
+            crate::common::selection_for_module(&stage, &layer, &module.module, &bb, None, None)
+                .expect("build fixture selection");
+        let selection = index
+            .selection_for(layer.index, module.module.module_id())
+            .expect("fixture selection");
         LayerStageRunner::run_stage(
             &dispatcher,
             &stage,
             &layer,
             &module.as_live(),
-            layer_input(&bb, &arena),
+            layer_input(&bb, &arena, selection),
         )
         .expect("deterministic success across repeated calls");
     }
@@ -488,15 +536,29 @@ fn layer_world_macro_guest_sees_real_slice_region_content() {
     };
     let mut arena = LayerArena::new();
     let slice = slice_ir_with_regions(7, 1.4, 2, 3);
+    let mut bb = bb;
+    commit_selection_products(&mut bb, &slice, module.module.config_view());
     arena.set_slice(slice).expect("commit slice ir");
 
     let stage: StageId = "Layer::Infill".to_string();
+    let index = crate::common::selection_for_module(
+        &stage,
+        &layer,
+        &module.module,
+        &bb,
+        arena.slice(),
+        None,
+    )
+    .expect("build fixture selection");
+    let selection = index
+        .selection_for(layer.index, module.module.module_id())
+        .expect("fixture selection");
     let err = LayerStageRunner::run_stage(
         &dispatcher,
         &stage,
         &layer,
         &module.as_live(),
-        layer_input(&bb, &arena),
+        layer_input(&bb, &arena, selection),
     )
     .expect_err("intentional error must surface");
     let msg = format!("{err}");
@@ -538,15 +600,29 @@ fn layer_world_macro_guest_drain_back_reaches_arena_infill() {
     let mut arena = LayerArena::new();
     // 3 regions, 4 polygons each â†’ total 12 polygons.
     let slice = slice_ir_with_regions(9, 1.8, 3, 4);
+    let mut bb = bb;
+    commit_selection_products(&mut bb, &slice, module.module.config_view());
     arena.set_slice(slice).expect("commit slice ir");
 
     let stage: StageId = "Layer::Infill".to_string();
+    let index = crate::common::selection_for_module(
+        &stage,
+        &layer,
+        &module.module,
+        &bb,
+        arena.slice(),
+        None,
+    )
+    .expect("build fixture selection");
+    let selection = index
+        .selection_for(layer.index, module.module.module_id())
+        .expect("fixture selection");
     let __commit = LayerStageRunner::run_stage(
         &dispatcher,
         &stage,
         &layer,
         &module.as_live(),
-        layer_input(&bb, &arena),
+        layer_input(&bb, &arena, selection),
     )
     .expect("success path must succeed");
     let __commit = __commit.expect("Layer::Infill must produce a commit");
@@ -627,7 +703,6 @@ fn layer_world_macro_guest_deep_copy_is_deterministic() {
         ConfigView::new(),
     );
     let stage: StageId = "Layer::Infill".to_string();
-    let bb = Blackboard::new(empty_mesh_ir(), 1);
 
     let mut snapshots: Vec<(f32, f32, f32, f32, f32)> = Vec::new();
     for _ in 0..3 {
@@ -637,15 +712,33 @@ fn layer_world_macro_guest_deep_copy_is_deterministic() {
             ..Default::default()
         };
         let mut arena = LayerArena::new();
+        let mut bb = Blackboard::new(empty_mesh_ir(), 1);
+        commit_selection_products(
+            &mut bb,
+            &slice_ir_with_regions(2, 0.4, 2, 5),
+            module.module.config_view(),
+        );
         arena
             .set_slice(slice_ir_with_regions(2, 0.4, 2, 5))
             .unwrap();
+        let index = crate::common::selection_for_module(
+            &stage,
+            &layer,
+            &module.module,
+            &bb,
+            arena.slice(),
+            None,
+        )
+        .expect("build fixture selection");
+        let selection = index
+            .selection_for(layer.index, module.module.module_id())
+            .expect("fixture selection");
         let __commit = LayerStageRunner::run_stage(
             &dispatcher,
             &stage,
             &layer,
             &module.as_live(),
-            layer_input(&bb, &arena),
+            layer_input(&bb, &arena, selection),
         )
         .unwrap();
         let __commit = __commit.expect("Layer::Infill must produce a commit");

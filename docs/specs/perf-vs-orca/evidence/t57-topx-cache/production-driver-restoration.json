@@ -1,0 +1,10 @@
+{
+  "cause": "shared target/debug/xtask.exe retained candidate compile-time workspace root while production Cargo considered its own compilation fresh",
+  "root_correct_driver_sha256": "ab337aa564a2d51527ee9e373e68822c09e2ca52312d59c1497de8ee0df08961",
+  "root_correct_freshness": {
+    "ordinary": 0,
+    "accelerated": 0
+  },
+  "separate_target_directory": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t57-production-driver-restoration",
+  "candidate_driver_saved": true
+}

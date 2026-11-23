@@ -183,6 +183,7 @@ fn seeded_support_geometry_and_plan() -> (SupportGeometryIR, SupportPlanIR) {
             global_support_layer_index: 0,
             object_id: "obj-0".to_string(),
             region_id: 7,
+            variant_chain: Vec::new(), // genuinely chain-empty source: seeded_slice_ir/seeded_region_map seed obj-0/region-7 with an empty chain
         },
         vec![triangle_expolygon()],
     );
@@ -223,6 +224,7 @@ fn seeded_support_geometry_and_plan() -> (SupportGeometryIR, SupportPlanIR) {
             capabilities: vec!["tree-branch-skeleton".to_string()],
             provenance: vec!["test".to_string()],
             decline_reason: None,
+            variant_chain: Vec::new(), // genuinely chain-empty source: matches seeded_slice_ir/seeded_region_map (both empty-chain for obj-0/region-7)
         }],
         raft_plan: None,
     };

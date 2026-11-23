@@ -1,0 +1,417 @@
+{
+  "batch": "t88-wall-base-arachne-off",
+  "bytes": 20846160,
+  "captured_commit": "5c7fa03ecf02a1a1e8bc6621e6be2a6a03b9b83a",
+  "cell": "arachne-supports-off",
+  "config": "docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-arachne-supports-off.json",
+  "config_sha256": "65f2c42069677f5b9a55b45706a5d2b9b780b28aa29cf88a9af645dfb9af06ff",
+  "cpu_seconds": 840.219,
+  "cpu_wall_ratio": 3.7884,
+  "degraded": false,
+  "exe_sha256": "ee7837df5f7b2b3e6fb1e23f54d68f3cc5ee69e50ec22cefd9cce00de31135ad",
+  "fatal": 0,
+  "label": "wall",
+  "modules": [
+    {
+      "calls": 495,
+      "elapsed_ms": 175788,
+      "module_id": "com.core.arachne-perimeters",
+      "stage": "Layer::Perimeters"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 110218,
+      "module_id": "host:slice",
+      "stage": "PrePass::Slice"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 107343,
+      "module_id": "com.core.raft-default",
+      "stage": "Layer::Infill"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 34040,
+      "module_id": "host:shell_classification",
+      "stage": "PrePass::ShellClassification"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 19640,
+      "module_id": "host:overhang_annotation",
+      "stage": "PrePass::OverhangAnnotation"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 14500,
+      "module_id": "com.core.infill-linker",
+      "stage": "Layer::InfillPostProcess"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 13161,
+      "module_id": "host:mesh_analysis",
+      "stage": "PrePass::MeshAnalysis"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 4658,
+      "module_id": "com.core.seam-planner-default",
+      "stage": "PrePass::SeamPlanning"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 2900,
+      "module_id": "com.core.gyroid-infill",
+      "stage": "Layer::Infill"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 2857,
+      "module_id": "com.core.rectilinear-infill",
+      "stage": "Layer::Infill"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 2711,
+      "module_id": "com.core.wave-overhangs",
+      "stage": "Layer::Infill"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 2648,
+      "module_id": "com.core.tree-support",
+      "stage": "Layer::Support"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 2647,
+      "module_id": "com.core.top-surface-ironing",
+      "stage": "Layer::Infill"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 2553,
+      "module_id": "com.core.lightning-infill",
+      "stage": "Layer::Infill"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 2379,
+      "module_id": "com.core.support-surface-ironing",
+      "stage": "Layer::SupportPostProcess"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 1869,
+      "module_id": "com.core.seam-placer",
+      "stage": "Layer::PerimetersPostProcess"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 1195,
+      "module_id": "com.core.fuzzy-skin",
+      "stage": "Layer::PerimetersPostProcess"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 1041,
+      "module_id": "com.core.path-optimization-default",
+      "stage": "Layer::PathOptimization"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 705,
+      "module_id": "host:gcode_serialize",
+      "stage": "PostPass::GCodeSerialize"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 570,
+      "module_id": "com.core.machine-gcode-emit",
+      "stage": "PostPass::GCodePostProcess"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 388,
+      "module_id": "host:paint_annotator",
+      "stage": "Layer::PaintRegionAnnotation"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 281,
+      "module_id": "com.core.wipe-tower",
+      "stage": "PostPass::LayerFinalization"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 245,
+      "module_id": "host:gcode_emit",
+      "stage": "PostPass::GCodeEmit"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 244,
+      "module_id": "com.core.tree-support-planner",
+      "stage": "PrePass::SupportGeometry"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 228,
+      "module_id": "com.core.traditional-support-planner",
+      "stage": "PrePass::SupportGeometry"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 211,
+      "module_id": "host:paint_segmentation",
+      "stage": "PrePass::PaintSegmentation"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 130,
+      "module_id": "com.core.overhang-classifier-default",
+      "stage": "PostPass::LayerFinalization"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 115,
+      "module_id": "com.core.part-cooling",
+      "stage": "PostPass::LayerFinalization"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 105,
+      "module_id": "com.core.skirt-brim",
+      "stage": "PostPass::LayerFinalization"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 50,
+      "module_id": "host:region_mapping",
+      "stage": "PrePass::RegionMapping"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 28,
+      "module_id": "host:support_geometry",
+      "stage": "PrePass::SupportGeometry"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 3,
+      "module_id": "com.core.layer-planner-default",
+      "stage": "PrePass::LayerPlanning"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 0,
+      "module_id": "host:support_analysis",
+      "stage": "PrePass::SupportAnalysis"
+    }
+  ],
+  "non_fatal": 0,
+  "phases": {
+    "per_layer": 30343,
+    "postpass": 2344,
+    "prepass": 182522,
+    "validation": 175
+  },
+  "probe": false,
+  "probe_terms": {},
+  "profile": false,
+  "reference_sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97",
+  "run_id": "base-arachne-off-wall",
+  "sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97",
+  "slice_complete": {
+    "degraded": false,
+    "elapsed_ms": 217680,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0,
+    "status": "ok"
+  },
+  "stage_gaps": [
+    {
+      "after_last_module_ms": 0,
+      "before_first_module_ms": 1,
+      "module_span_ms": 473,
+      "modules": [
+        "com.core.traditional-support-planner",
+        "com.core.tree-support-planner"
+      ],
+      "stage": "PrePass::SupportGeometry",
+      "wall_ms": 474
+    },
+    {
+      "after_last_module_ms": 9,
+      "before_first_module_ms": 16,
+      "module_span_ms": 635,
+      "modules": [
+        "com.core.overhang-classifier-default",
+        "com.core.part-cooling",
+        "com.core.skirt-brim",
+        "com.core.wipe-tower"
+      ],
+      "stage": "PostPass::LayerFinalization",
+      "wall_ms": 660
+    },
+    {
+      "after_last_module_ms": 0,
+      "before_first_module_ms": 0,
+      "module_span_ms": 246,
+      "modules": [
+        "host:gcode_emit"
+      ],
+      "stage": "PostPass::GCodeEmit",
+      "wall_ms": 246
+    },
+    {
+      "after_last_module_ms": 156,
+      "before_first_module_ms": 0,
+      "module_span_ms": 570,
+      "modules": [
+        "com.core.machine-gcode-emit"
+      ],
+      "stage": "PostPass::GCodePostProcess",
+      "wall_ms": 726
+    },
+    {
+      "after_last_module_ms": 0,
+      "before_first_module_ms": 0,
+      "module_span_ms": 706,
+      "modules": [
+        "host:gcode_serialize"
+      ],
+      "stage": "PostPass::GCodeSerialize",
+      "wall_ms": 706
+    }
+  ],
+  "stages": [
+    {
+      "calls": 495,
+      "elapsed_ms": 182900,
+      "stage": "Layer::Perimeters"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 129967,
+      "stage": "Layer::Infill"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 110220,
+      "stage": "PrePass::Slice"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 34041,
+      "stage": "PrePass::ShellClassification"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 19641,
+      "stage": "PrePass::OverhangAnnotation"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 16445,
+      "stage": "Layer::InfillPostProcess"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 13161,
+      "stage": "PrePass::MeshAnalysis"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 10324,
+      "stage": "Layer::PerimetersPostProcess"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 4659,
+      "stage": "PrePass::SeamPlanning"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 4298,
+      "stage": "Layer::Support"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 4122,
+      "stage": "Layer::SupportPostProcess"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 2236,
+      "stage": "Layer::PathOptimization"
+    },
+    {
+      "calls": 495,
+      "elapsed_ms": 1423,
+      "stage": "Layer::PaintRegionAnnotation"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 726,
+      "stage": "PostPass::GCodePostProcess"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 706,
+      "stage": "PostPass::GCodeSerialize"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 660,
+      "stage": "PostPass::LayerFinalization"
+    },
+    {
+      "calls": 2,
+      "elapsed_ms": 503,
+      "stage": "PrePass::SupportGeometry"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 246,
+      "stage": "PostPass::GCodeEmit"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 214,
+      "stage": "PrePass::PaintSegmentation"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 50,
+      "stage": "PrePass::RegionMapping"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 17,
+      "stage": "PrePass::SupportAnalysis"
+    },
+    {
+      "calls": 1,
+      "elapsed_ms": 3,
+      "stage": "PrePass::LayerPlanning"
+    }
+  ],
+  "status": "ok",
+  "threads": 12,
+  "type_counts": {
+    "Bottom surface": 61,
+    "Bridge": 77,
+    "Brim": 1,
+    "Inner wall": 844,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2,
+    "Outer wall": 844,
+    "Skirt": 1,
+    "Sparse infill": 590,
+    "Top surface": 77
+  },
+  "wall_seconds": 221.787
+}

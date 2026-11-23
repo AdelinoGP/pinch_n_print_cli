@@ -244,7 +244,7 @@
 - Objective: file the three deviation rows, regen docs, and run the whole-tree gates.
 - Precondition: Steps 1–8 green.
 - Postcondition: AC-13 green; DEV-201/202/203 in the log; check/clippy/guests green.
-- Files allowed to read, with ranges when over 300 lines: (none — row format mirrored from the adjacent DEV-200 row)
+- Files allowed to read, with ranges when over 300 lines: (none — row format mirrored from the adjacent DEV-207 row)
 - Files allowed to edit (at most 3):
   - `docs/DEVIATION_LOG.md`
 - Files explicitly out of bounds:
@@ -252,7 +252,7 @@
 - Expected sub-agent dispatches: none (all shapes verified in prior steps)
 - Context cost: `S`
 - Authoritative docs:
-  - `docs/DEVIATION_LOG.md` - row format (mirror the DEV-200 row shape)
+  - `docs/DEVIATION_LOG.md` - row format (mirror the DEV-207 row shape)
 - OrcaSlicer refs: (none this step)
 - Verification:
   - `cargo xtask gen-config-docs --check; echo "exit=$?"` - FACT pass/fail

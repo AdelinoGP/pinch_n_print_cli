@@ -1,0 +1,204 @@
+diff --git a/crates/slicer-wasm-host/src/exact_z_query.rs b/crates/slicer-wasm-host/src/exact_z_query.rs
+index be4603a0..7e432b5d 100644
+--- a/crates/slicer-wasm-host/src/exact_z_query.rs
++++ b/crates/slicer-wasm-host/src/exact_z_query.rs
+@@ -3,11 +3,49 @@
+ use std::collections::hash_map::Entry;
+ use std::collections::HashMap;
+ use std::sync::atomic::{AtomicUsize, Ordering};
+-use std::sync::{Arc, Mutex};
++use std::sync::{Arc, Mutex, OnceLock};
++use std::time::Instant;
+ 
+ use slicer_core::algos::mesh_cross_section::cross_section_at_z;
++use slicer_core::slice_mesh_ex;
+ use slicer_ir::{mm_to_units, ExPolygon, MeshIR, ObjectMesh, Point2, Point3, Polygon};
+ 
++// ---- T95 PROBE (temporary; removed before the take closes) ----------------
++/// Per-query probe record: object, requested Z, the production occupancy, and
++/// the time that one `cross_section_at_z` call took.
++struct T95Record {
++    object_id: String,
++    z_mm: f32,
++    ns: u64,
++    occupancy: Vec<ExPolygon>,
++}
++
++struct T95Sink {
++    queries: u64,
++    misses: u64,
++    cross_section_ns: u64,
++    records: Vec<T95Record>,
++}
++
++fn t95_enabled() -> bool {
++    static ENABLED: OnceLock<bool> = OnceLock::new();
++    *ENABLED.get_or_init(|| std::env::var("PNP_T95_PROBE").as_deref() == Ok("1"))
++}
++
++fn t95_sink() -> &'static Mutex<T95Sink> {
++    static SINK: OnceLock<Mutex<T95Sink>> = OnceLock::new();
++    SINK.get_or_init(|| {
++        Mutex::new(T95Sink {
++            queries: 0,
++            misses: 0,
++            cross_section_ns: 0,
++            records: Vec::new(),
++        })
++    })
++}
++
++// --------------------------------------------------------------------------
++
+ /// Immutable result of one normalized support geometry query.
+ #[derive(Debug, Clone, PartialEq)]
+ pub struct ExactZSupportQuery {
+@@ -78,6 +116,10 @@ impl ExactZQueryService {
+         }
+         let z_units = mm_to_units(physical_z_mm);
+         let key = (object_id.to_owned(), region_id, z_units);
++        let t95 = t95_enabled();
++        if t95 {
++            t95_sink().lock().unwrap().queries += 1;
++        }
+         if let Some(result) = self
+             .cache
+             .lock()
+@@ -88,7 +130,20 @@ impl ExactZQueryService {
+         }
+ 
+         let geometry = self.object_geometry(object_id)?;
++        let t95_start = t95.then(Instant::now);
+         let occupancy = cross_section_at_z(&geometry.world_mesh, physical_z_mm);
++        if let Some(start) = t95_start {
++            let ns = start.elapsed().as_nanos() as u64;
++            let mut sink = t95_sink().lock().unwrap();
++            sink.misses += 1;
++            sink.cross_section_ns += ns;
++            sink.records.push(T95Record {
++                object_id: object_id.to_owned(),
++                z_mm: physical_z_mm,
++                ns,
++                occupancy: occupancy.clone(),
++            });
++        }
+         let result = Arc::new(ExactZSupportQuery {
+             z_units,
+             blockers: occupancy.clone(),
+@@ -108,6 +163,86 @@ impl ExactZQueryService {
+         Ok(result)
+     }
+ 
++    /// T95 PROBE — batch every requested Z of every queried object through one
++    /// `slice_mesh_ex` call and compare each plane against the production
++    /// single-Z result. Attribution only: it runs after the production loop and
++    /// changes no emitted byte.
++    pub fn probe_batch_cross_sections(&self) {
++        if !t95_enabled() {
++            return;
++        }
++        let (queries, misses, records) = {
++            let mut sink = t95_sink().lock().unwrap();
++            (sink.queries, sink.misses, std::mem::take(&mut sink.records))
++        };
++        let mut by_object: HashMap<String, Vec<(f32, u64, Vec<ExPolygon>)>> = HashMap::new();
++        for record in records {
++            by_object.entry(record.object_id).or_default().push((
++                record.z_mm,
++                record.ns,
++                record.occupancy,
++            ));
++        }
++        for (object_id, mut recs) in by_object {
++            recs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
++            let distinct_z = recs
++                .windows(2)
++                .filter(|pair| pair[0].0 != pair[1].0)
++                .count()
++                + usize::from(!recs.is_empty());
++            let zs: Vec<f32> = recs.iter().map(|record| record.0).collect();
++            let Ok(geometry) = self.object_geometry(&object_id) else {
++                continue;
++            };
++            let triangles = geometry.world_mesh.indices.len() / 3;
++            let vertices = geometry.world_mesh.vertices.len();
++            let start = Instant::now();
++            let batch = slice_mesh_ex(&geometry.world_mesh, &zs);
++            let batch_ns = start.elapsed().as_nanos() as u64;
++            let mut equal = 0usize;
++            let mut mismatch = 0usize;
++            let mut first_mismatch = String::new();
++            let mut batch_polys = 0usize;
++            let mut production_polys = 0usize;
++            for (index, (z, _, production)) in recs.iter().enumerate() {
++                let got = batch.get(index).cloned().unwrap_or_default();
++                batch_polys += got.len();
++                production_polys += production.len();
++                if &got == production {
++                    equal += 1;
++                } else {
++                    mismatch += 1;
++                    if first_mismatch.is_empty() {
++                        first_mismatch = format!(
++                            "z={z:.6} batch_polys={} production_polys={}",
++                            got.len(),
++                            production.len()
++                        );
++                    }
++                }
++            }
++            let mut per_query: Vec<u64> = recs.iter().map(|record| record.1).collect();
++            per_query.sort_unstable();
++            let min = per_query.first().copied().unwrap_or(0);
++            let median = per_query.get(per_query.len() / 2).copied().unwrap_or(0);
++            let max = per_query.last().copied().unwrap_or(0);
++            let single_ns_total: u64 = per_query.iter().sum();
++            eprintln!(
++                "T95 BATCH object={object_id} vertices={vertices} triangles={triangles} \
++                 queries={queries} misses={misses} object_misses={} distinct_z={distinct_z} \
++                 single_ns_total={single_ns_total} single_ns_min={min} \
++                 single_ns_median={median} single_ns_max={max} batch_ns={batch_ns} \
++                 equal={equal} mismatch={mismatch} first_mismatch={first_mismatch:?} \
++                 batch_polys={batch_polys} production_polys={production_polys}",
++                recs.len()
++            );
++        }
++        let mut sink = t95_sink().lock().unwrap();
++        sink.queries = 0;
++        sink.misses = 0;
++        sink.cross_section_ns = 0;
++    }
++
+     /// Resolve (building once per object) the terms that do not depend on Z.
+     ///
+     /// The lookup, the world-space transform, the bounds-derived plate and the
+diff --git a/crates/slicer-wasm-host/src/support_aggregation.rs b/crates/slicer-wasm-host/src/support_aggregation.rs
+index e4c5cd20..edf9d04c 100644
+--- a/crates/slicer-wasm-host/src/support_aggregation.rs
++++ b/crates/slicer-wasm-host/src/support_aggregation.rs
+@@ -394,6 +394,10 @@ pub fn try_aggregate_support_plans_with_policy(
+     for plan in &input.plans {
+         result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan.clone());
+     }
++    // T95 PROBE (temporary): time the serial validation loop.
++    let t95_probe = std::env::var("PNP_T95_PROBE").as_deref() == Ok("1");
++    let t95_entries = entries.len();
++    let t95_start = t95_probe.then(std::time::Instant::now);
+     for (plan_index, entry) in entries {
+         let identity = (
+             entry.global_layer_index,
+@@ -450,6 +454,14 @@ pub fn try_aggregate_support_plans_with_policy(
+             }
+         }
+     }
++    // T95 PROBE (temporary): report the loop and the batch counterfactual.
++    if let Some(start) = t95_start {
++        eprintln!(
++            "T95 LOOP entries={t95_entries} total_ns={}",
++            start.elapsed().as_nanos()
++        );
++        input.exact_z.probe_batch_cross_sections();
++    }
+     // Validation is a *per-body* gate and runs only here, before union.
+     // Re-running it on merged groups was a category error: a merged group is by
+     // construction not one planner-emitted body, so the per-body max-body-extent

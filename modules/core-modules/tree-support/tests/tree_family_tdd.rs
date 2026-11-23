@@ -82,6 +82,8 @@ fn fixture(
         capabilities: vec![],
         provenance: vec!["tree-planner".into()],
         decline_reason,
+        // Chain-less fixture region: empty chain is the exact query identity.
+        variant_chain: vec![],
     };
     let region = SliceRegionViewBuilder::new()
         .object_id("obj1")
@@ -124,8 +126,13 @@ fn offgrid_plan_entry_renders_at_declared_anchor_z() {
         capabilities: vec![],
         provenance: vec!["tree-planner".into()],
         decline_reason: None,
+        // Chain-less fixture region: empty chain is the exact query identity.
+        variant_chain: vec![],
     };
-    let off_grid_paint = PaintRegionLayerView::new(0).with_support_plan(Arc::new(SupportPlanIR {
+    // The canonical plan lookup returns an entry only on its
+    // `anchor_layer_index`, so the view and the dispatch layer are both the
+    // off-grid entry's anchor layer (3), not the region's grid layer.
+    let off_grid_paint = PaintRegionLayerView::new(3).with_support_plan(Arc::new(SupportPlanIR {
         entries: vec![off_grid_entry],
         ..Default::default()
     }));
@@ -134,7 +141,7 @@ fn offgrid_plan_entry_renders_at_declared_anchor_z() {
     let mut collection = slicer_sdk::LayerCollectionBuilder::new();
     module
         .run_support(
-            0,
+            3,
             &[region.clone()],
             &off_grid_paint,
             &mut output,

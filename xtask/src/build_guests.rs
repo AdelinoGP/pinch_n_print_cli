@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub const EXIT_FRESH: i32 = 0;
 pub const EXIT_STALE: i32 = 1;
 pub const EXIT_INFRA_ERROR: i32 = 3;
-pub const FINGERPRINT_VERSION: &str = "v2";
+pub const FINGERPRINT_VERSION: &str = "v3";
 /// Isolated fingerprint sidecar namespace for accelerated freshness metadata.
 pub use crate::guest_namespaces::ACCELERATED_FINGERPRINT_NAMESPACE;
 /// Isolated target/cache namespace for accelerated (controlled-compiler) guest
@@ -37,14 +37,46 @@ pub struct GuestSpec {
     pub stage_id: Option<String>,
 }
 
-/// Locate the workspace root by popping one level from the xtask crate dir.
+/// Locate the workspace root at runtime by walking up from the current
+/// directory to the nearest ancestor holding both `Cargo.toml` and `crates/`.
+///
+/// Deliberately NOT `env!("CARGO_MANIFEST_DIR")`: the shared target's cached
+/// xtask binary is routinely built in one checkout and run in another
+/// (perf-vs-orca tickets 71 and 70 — a binary whose manifest dir was baked in
+/// at build time makes the second checkout's `check-literals` /
+/// `check-test-quality` gates silently scan zero files and still print
+/// green). Root discovery follows where the process runs, never where the
+/// binary was built.
 pub fn workspace_root() -> PathBuf {
-    let xtask_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let ws = xtask_dir
-        .parent()
-        .expect("xtask/ must have a parent directory (workspace root)")
-        .to_path_buf();
-    ws.canonicalize().unwrap_or(ws)
+    let cwd = std::env::current_dir().expect("read current directory");
+    match locate_root_from(&cwd) {
+        Some(ws) => ws.canonicalize().unwrap_or(ws),
+        None => panic!(
+            "xtask: cannot locate the workspace root by walking up from {} \
+             (no ancestor directory contains both Cargo.toml and crates/). \
+             Run cargo xtask from inside the repository. If the binary was \
+             built somewhere else, purge its cached build units \
+             (target/debug/xtask.exe, deps/xtask-*, .fingerprint/xtask-*) and \
+             rebuild.",
+            cwd.display()
+        ),
+    }
+}
+
+/// Walk up from `start`, returning the first ancestor directory (start
+/// included) that holds both `Cargo.toml` and `crates/`, or `None` when the
+/// filesystem root is reached without a match. The returned path is NOT
+/// canonicalized; callers do that per their own contract.
+pub(crate) fn locate_root_from(start: &Path) -> Option<PathBuf> {
+    let mut dir = start.to_path_buf();
+    loop {
+        if dir.join("Cargo.toml").is_file() && dir.join("crates").is_dir() {
+            return Some(dir);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
 }
 
 /// Check if the parsed TOML table has [lib] crate-type containing "cdylib".
@@ -703,7 +735,7 @@ fn build_one_effective(
             }
         })?;
     if drifts.is_empty() {
-        // 7. Only on success: write v2- fingerprint.
+        // 7. Only on success: write the versioned fingerprint.
         let mut cache = ClosureCache::new();
         let freshness =
             compute_guest_freshness(spec, ws_root, &mut cache, probes).map_err(|e| {
@@ -887,6 +919,7 @@ fn guest_build_cargo_command_for_mode(
                 crate::rustc_driver::PNP_XTASK_EXE_ENV,
                 std::env::current_exe().expect("resolve current xtask executable"),
             )
+            .env(crate::rustc_driver::PNP_WORKSPACE_ROOT_ENV, ws_root)
             .env(crate::rustc_driver::ACCELERATED_ENV, "1")
             .env(crate::rustc_driver::ACCELERATED_MODE_ENV, "guest-release");
     }
@@ -1478,6 +1511,72 @@ fn hash_update(hash: &mut [u64; 2], bytes: &[u8]) {
     }
 }
 
+/// The bytes a Cargo manifest contributes to a guest fingerprint: its
+/// build-relevant TOML content, re-serialized, so test-only edits cannot mark
+/// guests stale.
+///
+/// Removed before hashing: `dev-dependencies` (and the legacy
+/// `dev_dependencies` spelling), at top level and under every `target.<cfg>`
+/// table, and the `test`, `bench` and `example` target arrays. None of these
+/// participate in building a guest's library (the path-dependency walk already
+/// never follows dev-dependencies). Re-serializing the parsed table also drops
+/// comments and formatting. Everything else — `package`, `lib`, `features`,
+/// `dependencies`, `build-dependencies`, target-specific dependencies,
+/// `workspace`, profiles, patches — is kept, so a feature or dependency edit
+/// still changes the fingerprint.
+///
+/// A manifest that does not parse is hashed raw, so an edit to it still changes
+/// the fingerprint; Cargo itself will report the parse error at build time.
+fn manifest_fingerprint_bytes(raw: &[u8]) -> Vec<u8> {
+    const DEV_KEYS: [&str; 2] = ["dev-dependencies", "dev_dependencies"];
+    const TEST_TARGETS: [&str; 3] = ["test", "bench", "example"];
+    let Some(mut table) = std::str::from_utf8(raw)
+        .ok()
+        .and_then(|text| text.parse::<toml::Table>().ok())
+    else {
+        return raw.to_vec();
+    };
+    for key in DEV_KEYS.iter().chain(TEST_TARGETS.iter()) {
+        table.remove(*key);
+    }
+    if let Some(toml::Value::Table(targets)) = table.get_mut("target") {
+        for (_, platform) in targets.iter_mut() {
+            if let toml::Value::Table(platform) = platform {
+                for key in DEV_KEYS {
+                    platform.remove(key);
+                }
+            }
+        }
+        // A platform table that only held dev-dependencies is now empty and
+        // would still serialize as a header; drop it, then an empty `target`.
+        targets.retain(|_, platform| !matches!(platform, toml::Value::Table(t) if t.is_empty()));
+        if targets.is_empty() {
+            table.remove("target");
+        }
+    }
+    match toml::to_string(&table) {
+        Ok(normalized) => {
+            let mut bytes = b"normalized-cargo-manifest\n".to_vec();
+            bytes.extend(normalized.into_bytes());
+            bytes
+        }
+        Err(_) => raw.to_vec(),
+    }
+}
+
+/// The fingerprint bytes of one input file: Cargo manifests are normalized by
+/// [`manifest_fingerprint_bytes`], every other file is hashed as-is.
+fn input_fingerprint_bytes(path: &Path) -> Vec<u8> {
+    let Ok(raw) = fs::read(path) else {
+        return b"<unreadable-input>".to_vec();
+    };
+    if path.file_name().and_then(|name| name.to_str()) == Some("Cargo.toml") {
+        manifest_fingerprint_bytes(&raw)
+    } else {
+        raw
+    }
+}
+
 fn snapshot_from_paths(ws_root: &Path, paths: &[PathBuf]) -> FreshnessSnapshot {
     let mut entries = Vec::with_capacity(paths.len());
     let mut newest_mtime = UNIX_EPOCH;
@@ -1486,7 +1585,7 @@ fn snapshot_from_paths(ws_root: &Path, paths: &[PathBuf]) -> FreshnessSnapshot {
         if let Some(mtime) = file_mtime(path) {
             newest_mtime = newest_mtime.max(mtime);
         }
-        let bytes = fs::read(path).unwrap_or_else(|_| b"<unreadable-input>".to_vec());
+        let bytes = input_fingerprint_bytes(path);
         entries.push(FingerprintEntry {
             path: relative_input_path(ws_root, path),
             bytes,
@@ -1514,8 +1613,7 @@ fn compute_guest_freshness(
     let mut extra_entries: Vec<FingerprintEntry> = Vec::new();
     // workspace Cargo.toml
     let ws_manifest = ws_root.join("Cargo.toml");
-    let ws_manifest_bytes =
-        fs::read(&ws_manifest).unwrap_or_else(|_| b"<unreadable-input>".to_vec());
+    let ws_manifest_bytes = input_fingerprint_bytes(&ws_manifest);
     extra_entries.push(FingerprintEntry {
         path: relative_input_path(ws_root, &ws_manifest),
         bytes: ws_manifest_bytes,
@@ -2379,6 +2477,42 @@ mod tests {
     }
 
     #[test]
+    fn locate_root_from_finds_marker_ancestor() {
+        let temp = TempDir::new();
+        let root = temp.0.join("repo");
+        fs::create_dir_all(root.join("crates")).expect("create crates dir");
+        fs::write(root.join("Cargo.toml"), "[workspace]\n").expect("write root manifest");
+        let nested = root.join("target").join("debug").join("sub");
+        fs::create_dir_all(&nested).expect("create nested dir");
+        assert_eq!(locate_root_from(&nested), Some(root));
+    }
+
+    #[test]
+    fn locate_root_from_stops_at_the_nearest_marker() {
+        let temp = TempDir::new();
+        let inner = temp.0.join("outer").join("crates").join("inner");
+        fs::create_dir_all(inner.join("crates")).expect("create inner crates dir");
+        fs::write(inner.join("Cargo.toml"), "[workspace]\n").expect("write inner manifest");
+        let outer = temp.0.join("outer");
+        fs::create_dir_all(outer.join("crates")).expect("create outer crates dir");
+        fs::write(outer.join("Cargo.toml"), "[workspace]\n").expect("write outer manifest");
+        let child = inner.join("target");
+        fs::create_dir_all(&child).expect("create child dir");
+        assert_eq!(locate_root_from(&child), Some(inner));
+    }
+
+    #[test]
+    fn locate_root_from_unmatched_start_is_none() {
+        // A relative path that names nothing: both marker probes fail and
+        // `pop` reaches the empty path, without consulting this machine's
+        // real ancestors above the start point.
+        assert_eq!(
+            locate_root_from(Path::new("pnp71-nonexistent-start-here")),
+            None
+        );
+    }
+
+    #[test]
     fn fingerprint_is_deterministic_and_content_sensitive() {
         let entries = vec![
             FingerprintEntry {
@@ -2422,7 +2556,7 @@ mod tests {
             stage_id: None,
         };
         // Seed a stale sidecar, then verify that a successful compute + metadata write
-        // produces a v2- fingerprint and correct file.
+        // produces a versioned fingerprint and correct file.
         let _ctx = fresh_ctx(&temp, &spec);
         let metadata_path = fingerprint_metadata_path(&temp.0, &spec);
         assert!(
@@ -2431,8 +2565,8 @@ mod tests {
         );
         let content = fs::read_to_string(&metadata_path).expect("read sidecar");
         assert!(
-            content.starts_with("v2-"),
-            "fingerprint must start with v2- prefix, got {content}"
+            content.starts_with(&format!("{FINGERPRINT_VERSION}-")),
+            "fingerprint must start with the {FINGERPRINT_VERSION}- prefix, got {content}"
         );
         // Simulate failure path: ensure sidecar absent after we remove it (matches build_one start).
         fs::remove_file(&metadata_path).expect("remove sidecar");
@@ -2449,8 +2583,8 @@ mod tests {
     }
 
     #[test]
-    fn v2_fingerprint_covers_workspace_manifest_lockfile_rustc_and_wasm_tools() {
-        // Verify v2 prefix and that changing any of the 4 extra inputs changes fingerprint.
+    fn fingerprint_covers_workspace_manifest_lockfile_rustc_and_wasm_tools() {
+        // Verify the version prefix and that changing any of the 4 extra inputs changes fingerprint.
         let temp = TempDir::new();
         let guest_dir = temp.0.join("guest");
         fs::create_dir_all(guest_dir.join("src")).expect("create src");
@@ -2482,10 +2616,14 @@ mod tests {
             .expect("compute freshness")
             .fingerprint
             .clone();
-        assert!(fp1.starts_with("v2-"), "must start with v2-, got {fp1}");
+        assert!(
+            fp1.starts_with(&format!("{FINGERPRINT_VERSION}-")),
+            "must start with {FINGERPRINT_VERSION}-, got {fp1}"
+        );
 
-        // Change workspace Cargo.toml
-        fs::write(&ws_toml, "[workspace]\n# changed\n").expect("change ws toml");
+        // Change workspace Cargo.toml with a build-relevant key: comments are
+        // normalized away by `manifest_fingerprint_bytes`.
+        fs::write(&ws_toml, "[workspace]\nresolver = \"2\"\n").expect("change ws toml");
         let mut closure2 = ClosureCache::new();
         let fp2 = compute_guest_freshness(&spec, &temp.0, &mut closure2, &VersionProbes::probe())
             .expect("compute freshness")
@@ -2539,6 +2677,160 @@ mod tests {
         assert_ne!(
             fingerprint_entries(std::slice::from_ref(&synth_wt)),
             fingerprint_entries(&[synth_wt2])
+        );
+    }
+
+    /// A Cargo manifest is fingerprinted by its build-relevant content only:
+    /// comments, formatting, `[dev-dependencies]` (top-level and per-target)
+    /// and `[[test]]`/`[[bench]]`/`[[example]]` targets cannot change a guest
+    /// build, so they must not change the fingerprint; normal dependencies,
+    /// build-dependencies, features and package fields must.
+    #[test]
+    fn manifest_fingerprint_ignores_test_only_sections() {
+        let base = "[package]\nname = \"m\"\nversion = \"0.1.0\"\n\n\
+                    [features]\ndefault = []\n\n\
+                    [dependencies]\nserde = \"1\"\n";
+        let fp = |manifest: &str| {
+            fingerprint_entries(&[FingerprintEntry {
+                path: "crates/m/Cargo.toml".to_string(),
+                bytes: manifest_fingerprint_bytes(manifest.as_bytes()),
+            }])
+        };
+        let reference = fp(base);
+
+        let test_only = [
+            ("comment", format!("# a comment\n{base}# trailing\n")),
+            (
+                "formatting",
+                base.replace("serde = \"1\"", "serde   =   \"1\""),
+            ),
+            (
+                "dev-dependencies",
+                format!("{base}\n[dev-dependencies]\nproptest = \"1\"\n"),
+            ),
+            (
+                "target dev-dependencies",
+                format!("{base}\n[target.'cfg(windows)'.dev-dependencies]\nproptest = \"1\"\n"),
+            ),
+            (
+                "[[test]] target",
+                format!("{base}\n[[test]]\nname = \"t\"\nrequired-features = [\"x\"]\n"),
+            ),
+            (
+                "[[bench]] target",
+                format!("{base}\n[[bench]]\nname = \"b\"\nharness = false\n"),
+            ),
+            (
+                "[[example]] target",
+                format!("{base}\n[[example]]\nname = \"e\"\n"),
+            ),
+        ];
+        for (label, manifest) in &test_only {
+            assert_eq!(
+                fp(manifest),
+                reference,
+                "a {label} edit must not change the manifest fingerprint"
+            );
+        }
+
+        let build_relevant = [
+            ("dependency", format!("{base}rand = \"0.8\"\n")),
+            (
+                "build-dependency",
+                format!("{base}\n[build-dependencies]\ncc = \"1\"\n"),
+            ),
+            (
+                "target dependency",
+                format!("{base}\n[target.'cfg(windows)'.dependencies]\nwinapi = \"0.3\"\n"),
+            ),
+            (
+                "feature",
+                base.replace("default = []", "default = []\nextra = []"),
+            ),
+            ("package field", base.replace("0.1.0", "0.2.0")),
+        ];
+        for (label, manifest) in &build_relevant {
+            assert_ne!(
+                fp(manifest),
+                reference,
+                "a {label} edit must change the manifest fingerprint"
+            );
+        }
+
+        // A manifest that does not parse is hashed raw, so editing it still
+        // changes the fingerprint instead of collapsing to one value.
+        let broken = b"[package\nname = \"m\"\n";
+        let broken_edited = b"[package\nname = \"n\"\n";
+        assert_eq!(manifest_fingerprint_bytes(broken), broken.to_vec());
+        assert_ne!(
+            manifest_fingerprint_bytes(broken),
+            manifest_fingerprint_bytes(broken_edited)
+        );
+    }
+
+    /// End to end through `compute_guest_freshness`: a dev-only edit to a
+    /// closure crate's manifest leaves the guest fresh, a normal-dependency
+    /// feature edit does not.
+    #[test]
+    fn closure_manifest_dev_only_edit_keeps_guest_fingerprint() {
+        let temp = TempDir::new();
+        fs::write(temp.0.join("Cargo.toml"), "[workspace]\n").expect("write ws toml");
+        let dep_dir = temp.0.join("dep");
+        fs::create_dir_all(dep_dir.join("src")).expect("create dep src");
+        let dep_manifest = dep_dir.join("Cargo.toml");
+        let dep_base = "[package]\nname = \"dep\"\nversion = \"0.1.0\"\n";
+        fs::write(&dep_manifest, dep_base).expect("write dep manifest");
+        fs::write(dep_dir.join("src/lib.rs"), "pub fn d() {}\n").expect("write dep src");
+
+        let guest_dir = temp.0.join("guest");
+        fs::create_dir_all(guest_dir.join("src")).expect("create src");
+        let manifest_path = guest_dir.join("Cargo.toml");
+        fs::write(
+            &manifest_path,
+            "[package]\nname = \"closure\"\n\n[dependencies]\ndep = { path = \"../dep\" }\n",
+        )
+        .expect("write manifest");
+        fs::write(guest_dir.join("src/lib.rs"), "").expect("write src");
+        let spec = GuestSpec {
+            crate_name: "closure".to_string(),
+            lib_name: "closure".to_string(),
+            manifest_path,
+            guest_dir,
+            artifact_path: PathBuf::from("closure.wasm"),
+            tree: GuestTree::TestGuest,
+            stage_id: None,
+        };
+        let probes = VersionProbes::probe();
+        let fingerprint = || {
+            compute_guest_freshness(&spec, &temp.0, &mut ClosureCache::new(), &probes)
+                .expect("compute freshness")
+                .fingerprint
+        };
+        let reference = fingerprint();
+
+        fs::write(
+            &dep_manifest,
+            format!(
+                "{dep_base}# dev-only edit\n[dev-dependencies]\nproptest = \"1\"\n\n\
+                 [[test]]\nname = \"property\"\n"
+            ),
+        )
+        .expect("dev-only edit");
+        assert_eq!(
+            fingerprint(),
+            reference,
+            "a dev-only edit to a closure manifest must keep the guest fresh"
+        );
+
+        fs::write(
+            &dep_manifest,
+            format!("{dep_base}\n[features]\nextra = []\n"),
+        )
+        .expect("feature edit");
+        assert_ne!(
+            fingerprint(),
+            reference,
+            "a feature edit to a closure manifest must make the guest stale"
         );
     }
 
@@ -2657,7 +2949,7 @@ mod tests {
         // Fix: matching stage is fresh (fingerprint matches, artifact decodable).
         // Rewrite the artifact to infill and rebuild the context so canonical
         // matches the rewritten embedded world.
-        let wit_infill = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+        let wit_infill = "package slicer:layer-infill@2.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@2.0.0; } }";
         fs::write(&artifact_path, wit_infill).expect("overwrite artifact");
         let mut ctx2 = fresh_ctx(&temp, &spec);
         assert!(stale_reason(&spec, &temp.0, &mut ctx2).is_none());
@@ -2671,7 +2963,7 @@ mod tests {
         let manifest_path = guest_dir.join("Cargo.toml");
         fs::write(&manifest_path, "[package]\nname = \"tg\"\n").expect("write manifest");
         fs::write(guest_dir.join("src/lib.rs"), "").expect("write src");
-        let wit_infill = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+        let wit_infill = "package slicer:layer-infill@2.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@2.0.0; } }";
         let artifact_rel = wit_artifact(&temp, "tg", wit_infill);
         let spec = GuestSpec {
             crate_name: "tg".to_string(),
@@ -2761,7 +3053,7 @@ mod tests {
             stale_reason(&spec_missing, &temp.0, &mut ctx).is_some()
         );
         // Fresh case
-        let wit_infill = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+        let wit_infill = "package slicer:layer-infill@2.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@2.0.0; } }";
         let artifact_rel = wit_artifact(&temp, "del2", wit_infill);
         let spec_fresh = GuestSpec {
             crate_name: "del2".to_string(),
@@ -2875,7 +3167,7 @@ mod tests {
         let manifest_path = guest_dir.join("Cargo.toml");
         fs::write(&manifest_path, "[package]\nname = \"fresh-guest\"\n").expect("write manifest");
         fs::write(guest_dir.join("src/lib.rs"), "").expect("write src");
-        let wit = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+        let wit = "package slicer:layer-infill@2.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@2.0.0; } }";
         let artifact_rel = wit_artifact(&temp, "fresh-guest", wit);
         let spec = GuestSpec {
             // exhaustive: 7-field GuestSpec (AC-7 fixture)
@@ -3484,7 +3776,7 @@ mod tests {
         )
         .unwrap();
         fs::write(guest_dir.join("src/lib.rs"), "").unwrap();
-        let wit = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+        let wit = "package slicer:layer-infill@2.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@2.0.0; } }";
         let artifact_rel = wit_artifact(&temp, "my-module-guest", wit);
         let spec = GuestSpec {
             crate_name: "my-module-guest".to_string(),
@@ -3610,7 +3902,7 @@ mod tests {
         )
         .unwrap();
         fs::write(guest_dir.join("src/lib.rs"), "pub fn guest() {}\n").unwrap();
-        let wit = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+        let wit = "package slicer:layer-infill@2.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@2.0.0; } }";
         let artifact_rel = wit_artifact(&temp, "guest-isolated", wit);
         let spec = GuestSpec {
             crate_name: "guest-isolated".to_string(),
@@ -3986,7 +4278,7 @@ mod tests {
         );
     }
 
-    const MEMO_WIT: &str = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+    const MEMO_WIT: &str = "package slicer:layer-infill@2.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@2.0.0; } }";
 
     /// Build a guest source tree plus a WIT-text artifact that `stale_reason`
     /// can decode, so the freshness path is genuinely reached.

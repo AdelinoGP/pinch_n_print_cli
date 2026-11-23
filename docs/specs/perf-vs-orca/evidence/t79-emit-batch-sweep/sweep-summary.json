@@ -1,0 +1,275 @@
+{
+ "cell": "ordinary-base-classic-on",
+ "instrumented_only": true,
+ "note": "Screening only. The planner module bracket chooses the constants; the standing paired gate decides the keep/drop. Every run must hash to the preserved t58 reference.",
+ "variants": [
+  {
+   "e": 1,
+   "c": 256,
+   "runs": 1,
+   "planner_ms": [
+    92875
+   ],
+   "planner_median_ms": 92875,
+   "planner_invocations": [
+    1
+   ],
+   "support_geometry_ms": [
+    119531.0
+   ],
+   "slice_elapsed_ms": [
+    286591.0
+   ],
+   "wall_median_s": 289.119,
+   "peak_working_set_mb_max": 0.0,
+   "sha256": [
+    "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319"
+   ],
+   "clean": true
+  },
+  {
+   "e": 2,
+   "c": 256,
+   "runs": 1,
+   "planner_ms": [
+    75503
+   ],
+   "planner_median_ms": 75503,
+   "planner_invocations": [
+    1
+   ],
+   "support_geometry_ms": [
+    105129.0
+   ],
+   "slice_elapsed_ms": [
+    296817.0
+   ],
+   "wall_median_s": 299.701,
+   "peak_working_set_mb_max": 0.0,
+   "sha256": [
+    "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319"
+   ],
+   "clean": true
+  },
+  {
+   "e": 4,
+   "c": 64,
+   "runs": 3,
+   "planner_ms": [
+    56879,
+    82583,
+    71158
+   ],
+   "planner_median_ms": 71158,
+   "planner_invocations": [
+    1,
+    1,
+    1
+   ],
+   "support_geometry_ms": [
+    74855.0,
+    120564.0,
+    96381.0
+   ],
+   "slice_elapsed_ms": [
+    228175.0,
+    371552.0,
+    306027.0
+   ],
+   "wall_median_s": 308.661,
+   "peak_working_set_mb_max": 5319.9,
+   "sha256": [
+    "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319"
+   ],
+   "clean": true
+  },
+  {
+   "e": 4,
+   "c": 256,
+   "runs": 7,
+   "planner_ms": [
+    61593,
+    61593,
+    59107,
+    91402,
+    59551,
+    61519,
+    56146
+   ],
+   "planner_median_ms": 61519,
+   "planner_invocations": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "support_geometry_ms": [
+    92839.0,
+    92839.0,
+    78913.0,
+    132552.0,
+    77035.0,
+    103450.0,
+    80428.0
+   ],
+   "slice_elapsed_ms": [
+    259431.0,
+    259431.0,
+    239438.0,
+    387710.0,
+    234397.0,
+    273472.0,
+    237261.0
+   ],
+   "wall_median_s": 261.316,
+   "peak_working_set_mb_max": 5321.5,
+   "sha256": [
+    "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319"
+   ],
+   "clean": true
+  },
+  {
+   "e": 4,
+   "c": 1024,
+   "runs": 1,
+   "planner_ms": [
+    61044
+   ],
+   "planner_median_ms": 61044,
+   "planner_invocations": [
+    1
+   ],
+   "support_geometry_ms": [
+    81356.0
+   ],
+   "slice_elapsed_ms": [
+    242952.0
+   ],
+   "wall_median_s": 245.565,
+   "peak_working_set_mb_max": 5322.3,
+   "sha256": [
+    "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319"
+   ],
+   "clean": true
+  },
+  {
+   "e": 4,
+   "c": 4096,
+   "runs": 6,
+   "planner_ms": [
+    58544,
+    68728,
+    58042,
+    58184,
+    57540,
+    57390
+   ],
+   "planner_median_ms": 58113.0,
+   "planner_invocations": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "support_geometry_ms": [
+    83198.0,
+    94181.0,
+    78174.0,
+    75702.0,
+    76267.0,
+    75697.0
+   ],
+   "slice_elapsed_ms": [
+    252761.0,
+    303538.0,
+    244119.0,
+    230885.0,
+    233391.0,
+    233822.0
+   ],
+   "wall_median_s": 241.1835,
+   "peak_working_set_mb_max": 5326.5,
+   "sha256": [
+    "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319"
+   ],
+   "clean": true
+  },
+  {
+   "e": 8,
+   "c": 256,
+   "runs": 1,
+   "planner_ms": [
+    65492
+   ],
+   "planner_median_ms": 65492,
+   "planner_invocations": [
+    1
+   ],
+   "support_geometry_ms": [
+    83854.0
+   ],
+   "slice_elapsed_ms": [
+    284013.0
+   ],
+   "wall_median_s": 286.136,
+   "peak_working_set_mb_max": 0.0,
+   "sha256": [
+    "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319"
+   ],
+   "clean": true
+  },
+  {
+   "e": 16,
+   "c": 256,
+   "runs": 1,
+   "planner_ms": [
+    62574
+   ],
+   "planner_median_ms": 62574,
+   "planner_invocations": [
+    1
+   ],
+   "support_geometry_ms": [
+    84781.0
+   ],
+   "slice_elapsed_ms": [
+    261392.0
+   ],
+   "wall_median_s": 263.41,
+   "peak_working_set_mb_max": 0.0,
+   "sha256": [
+    "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319"
+   ],
+   "clean": true
+  },
+  {
+   "e": 32,
+   "c": 256,
+   "runs": 1,
+   "planner_ms": [
+    76813
+   ],
+   "planner_median_ms": 76813,
+   "planner_invocations": [
+    1
+   ],
+   "support_geometry_ms": [
+    126844.0
+   ],
+   "slice_elapsed_ms": [
+    349131.0
+   ],
+   "wall_median_s": 351.177,
+   "peak_working_set_mb_max": 0.0,
+   "sha256": [
+    "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319"
+   ],
+   "clean": true
+  }
+ ]
+}

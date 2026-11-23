@@ -178,8 +178,10 @@ fn simplify_distance_gated(
     //
     // Both of this crate's producers now satisfy that: `stitch_extrusions`
     // duplicates the start junction onto the end when it closes a loop, and
-    // `generate_local_maxima_single_beads` closes its hexagonal micro-loop the
-    // same way. The check below is therefore expected to pass for every closed
+    // `generate_local_maxima_single_beads` leaves its hexagonal micro-loop
+    // open for the stitcher (canonical's producer does the same), so any
+    // repeated endpoint on a micro-loop comes from `stitch_extrusions` too.
+    // The check below is therefore expected to pass for every closed
     // line in the current pipeline.
     //
     // It is kept as a guard rather than an assertion because the convention is

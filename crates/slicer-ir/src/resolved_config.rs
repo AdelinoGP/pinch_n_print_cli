@@ -395,6 +395,27 @@ impl ResolvedConfig {
 }
 
 impl ResolvedConfig {
+    /// Slicing-time contour simplification in mm (OrcaSlicer `resolution`).
+    ///
+    /// Carried in [`ResolvedConfig::extensions`] rather than as a fixed typed
+    /// field: `RegionMapIR` interns this struct, so a new typed field changes the
+    /// Postcard layout and breaks the frozen 3.0.0 fixture (the same constraint
+    /// that reverted the packet-10 fixed-field addition — see
+    /// `crates/slicer-ir/tests/region_map_versioned_decode_tdd.rs`). An absent
+    /// key reads as [`DEFAULT_RESOLUTION_MM`].
+    ///
+    /// The resolver applies canonical's [`RESOLUTION_FLOOR_MM`] clamp
+    /// (`DynamicPrintConfig::normalize_fdm`) after the scope stack is assembled,
+    /// so a caller never sees a value below the floor.
+    #[must_use]
+    pub fn resolution(&self) -> f32 {
+        match self.extensions.get("resolution") {
+            Some(ConfigValue::Float(value)) => *value as f32,
+            Some(ConfigValue::Int(value)) => *value as f32,
+            _ => DEFAULT_RESOLUTION_MM,
+        }
+    }
+
     /// Effective `filament_max_volumetric_speed` in mm³/s for the selected
     /// tool, read from the [`ResolvedConfig::extensions`] carrier.
     ///
@@ -2108,6 +2129,58 @@ macro_rules! __drc {
         }
     };
 
+    // `carrier <field>: <ty> = <default>;` — struct + default only.
+    //
+    // Unlike `plain`, a carrier row is *serialization-only*: it appears in the
+    // struct (so the Postcard field order is preserved) and in `Default`, but not
+    // in `to_config_map`, not in `typed_field_keys`, and not in CLI dispatch.
+    // This exists for deprecated fields that must keep the wire layout without
+    // resurrecting an output key (`flat_bridge_closing_join`).
+    (@parse
+        fields:    { $($sf:tt)* }
+        defaults:  { $($df:tt)* }
+        cli_arms:  { $($arm:tt)* }
+        host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
+        cfg:       $cfg:ident
+        key:       $key:ident
+        value:     $value:ident
+        dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
+        input: {
+            $(#[$m:meta])*
+            carrier $field:ident : $ty:ty = $default:expr ;
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::__drc!(@parse
+            fields: {
+                $($sf)*
+                $(#[$m])*
+                pub $field: $ty,
+            }
+            defaults: {
+                $($df)*
+                $field: $default,
+            }
+            cli_arms:  { $($arm)* }
+            host_keys: { $($hk)* }
+            map_arms:  { $($ma)* }
+            typed_keys: { $($tk)* }
+            cfg:       $cfg
+            key:       $key
+            value:     $value
+            dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
+            input:     { $($rest)* }
+        );
+    };
+
     // `plain <field>: <ty> = <default>;` — struct + default, no CLI dispatch.
     (@parse
         fields:    { $($sf:tt)* }
@@ -2652,6 +2725,21 @@ macro_rules! __drc {
 
 // ── Field declarations: the single source of truth ─────────────────────────
 
+/// Canonical default of OrcaSlicer's `resolution` key, in millimetres.
+///
+/// `PrintConfig.cpp`'s `PrintConfigDef::init_fff_params` declares `resolution`
+/// as `coFloat` with `def->min = 0` and default `0.01`.
+pub const DEFAULT_RESOLUTION_MM: f32 = 0.01;
+
+/// Canonical lower clamp of `resolution`, in millimetres.
+///
+/// `DynamicPrintConfig::normalize_fdm` raises any explicitly-set value to at
+/// least this floor ("Resolution will be above 1um"), so "disabled" is not
+/// expressible in canonical and must not be expressible here. The config
+/// resolver applies this clamp after the scope stack is assembled, so the
+/// disclosed value is always the applied one.
+pub const RESOLUTION_FLOOR_MM: f32 = 0.001;
+
 declare_resolved_config! {
     // Geometry
     /// Layer height in millimeters.
@@ -2801,24 +2889,20 @@ declare_resolved_config! {
     cli "perimeter_arc_tolerance" perimeter_arc_tolerance: f32 = 0.0125 => extract_float;
     /// Slice closing radius in mm (OrcaSlicer: slice_closing_radius).
     cli "slice_closing_radius"   slice_closing_radius: f32 = 0.049 => extract_float;
-    /// Morphological-closing join type used by the flat-bridge enclosure
-    /// discriminator in `PrePass::Slice`. One of `"miter"` (default),
-    /// `"square"`, or `"round"` (case-insensitive; unknown values fall back to
-    /// `miter`). The discriminator is a boolean "does a gap ≤ 2·R re-fill?"
-    /// test, so corner roundness never changes the verdict:
-    /// - `miter` matches OrcaSlicer's `closing` default (`jtMiter`,
-    ///   `ClipperUtils.hpp`) and is cheap (one bevel point per corner).
-    /// - `square` is an equally cheap alternative.
-    /// - `round` reproduces pre-optimisation flat-bridge detection
-    ///   bit-for-bit, but tessellates every corner into an arc and made the
-    ///   closing ~92% of `PrePass::Slice` on high-vertex cross-sections.
-    cli "flat_bridge_closing_join" flat_bridge_closing_join: String = String::from("miter") => extract_string @ {
-        wire_type: Some("enum"),
-        values: &["miter", "square", "round"],
-        display: Some("Flat bridge closing join"),
-        description: Some("Polygon-closing join used when detecting flat bridges. Unknown values fall back to miter."),
-        group: Some("Quality"),
-    };
+    /// **Deprecated serialized-compatibility carrier.** This field previously
+    /// held the morphological-closing join used by the flat-bridge enclosure
+    /// discriminator. Commit `6db49f0f` removed the behaviour and the field, but
+    /// `ResolvedConfig` is serialized positionally with Postcard, so deleting a
+    /// mid-struct field shifts every later field and makes every pre-existing
+    /// `RegionMapIR` payload undecodable (a `String` length byte is then read as
+    /// the `support_enabled` bool). Keeping the field with its original name,
+    /// position and type restores the 3.0.0 wire layout. It is declared with the
+    /// serialization-only `carrier` row kind, so it is absent from
+    /// `to_config_map`, from `typed_field_keys` and from CLI dispatch — the
+    /// retired output key does **not** come back, while Postcard field order is
+    /// preserved. Removing it again requires a schema version bump plus a
+    /// migration, not a silent reorder.
+    carrier                      flat_bridge_closing_join: String = String::from("miter");
 
      // Support
      /// Whether support is enabled.
@@ -4243,6 +4327,40 @@ mod config_map_parity_tests {
         }
     }
 
+    /// `resolution` rides in the `extensions` carrier (a typed field would break
+    /// the frozen `RegionMapIR` layout), so pin that it still reaches the config
+    /// map — the appendix and the per-module `ConfigView` both read it there —
+    /// and that two configs differing only in it are unequal.
+    #[test]
+    fn resolution_extension_reaches_the_config_map_and_participates_in_eq() {
+        let mut coarse = ResolvedConfig::default();
+        coarse
+            .extensions
+            .insert("resolution".into(), ConfigValue::Float(0.01));
+        let mut coarse_twin = ResolvedConfig::default();
+        coarse_twin
+            .extensions
+            .insert("resolution".into(), ConfigValue::Float(0.01));
+        let mut fine = ResolvedConfig::default();
+        fine.extensions
+            .insert("resolution".into(), ConfigValue::Float(0.03));
+
+        assert_eq!(coarse, coarse_twin);
+        assert_ne!(coarse, fine);
+        assert!((coarse.resolution() - 0.01).abs() < 1e-6);
+        assert!((fine.resolution() - 0.03).abs() < 1e-6);
+        assert_eq!(
+            coarse.to_config_map().get("resolution"),
+            Some(&ConfigValue::Float(0.01)),
+            "the appendix and module views read the key from the merged map"
+        );
+    }
+
+    #[test]
+    fn resolution_absent_reads_as_the_canonical_default() {
+        assert!((ResolvedConfig::default().resolution() - 0.01).abs() < 1e-6);
+    }
+
     #[test]
     fn generated_to_config_map_matches_legacy_rendering() {
         let cases = [
@@ -4318,7 +4436,6 @@ mod config_map_parity_tests {
             "printable_area",                         // cli, float-list
             "fill_authored_coloring",                 // cli, string-list
             "disable_m73",                            // cli, bool
-            "flat_bridge_closing_join",               // cli, string + metadata
             "mmu_segmented_region_interlocking_beam", // cli, annotated bool
             "gcode_resolution",                       // cli, annotated f32
             "retract_length",                         // cli, f32

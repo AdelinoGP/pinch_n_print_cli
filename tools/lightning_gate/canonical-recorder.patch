@@ -1,0 +1,2424 @@
+diff --git a/src/libslic3r/Fill/Fill.cpp b/src/libslic3r/Fill/Fill.cpp
+index 28fabed8af..69a2c35671 100644
+--- a/src/libslic3r/Fill/Fill.cpp
++++ b/src/libslic3r/Fill/Fill.cpp
+@@ -1,6 +1,7 @@
+ #include <assert.h>
+ #include <stdio.h>
+ #include <memory>
++#include <optional>
+ 
+ #include "../ClipperUtils.hpp"
+ #include "../Geometry.hpp"
+@@ -14,6 +15,7 @@
+ #include "Fill.hpp"
+ #include "FillRectilinear.hpp"
+ #include "FillLightning.hpp"
++#include "Lightning/Generator.hpp"
+ #include "FillConcentricInternal.hpp"
+ #include "FillTpmsD.hpp"
+ #include "FillTpmsFK.hpp"
+@@ -853,6 +855,10 @@ void split_solid_surface(size_t layer_id, const SurfaceFill &fill, ExPolygons &n
+ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_param)
+ {
+ 	std::vector<SurfaceFill> surface_fills;
++	// Opt-in gate grouping registry: cleared once per layer, then each contributing pre-anchor
++	// surface is noted against its SurfaceFillParams::idx group before the union pass below.
++	if (FillLightning::GateRecorder::enabled())
++		FillLightning::GateRecorder::reset_group_sources(int(layer.id()));
+ 	// Fill in a map of a region & surface to SurfaceFillParams.
+ 	std::set<SurfaceFillParams> 						set_surface_params;
+ 	std::vector<std::vector<const SurfaceFillParams*>> 	region_to_surface_params(layer.regions().size(), std::vector<const SurfaceFillParams*>());
+@@ -1084,6 +1090,11 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
+ 						//BBS
+ 						fill.region_id_group.push_back(region_id);
+ 						fill.no_overlap_expolygons = layerm.fill_no_overlap_expolygons;
++						if (FillLightning::GateRecorder::enabled())
++							FillLightning::GateRecorder::note_group_source(
++								int(layer.id()), params->idx, int(layer.id()), region_id,
++								size_t(&surface - &layerm.fill_surfaces.surfaces.front()),
++								int(layer.object()->get_id()));
+ 					} else {
+ 						fill.expolygons.emplace_back(surface.expolygon);
+ 						//BBS
+@@ -1092,6 +1103,11 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
+ 							fill.region_id_group.push_back(region_id);
+ 							fill.no_overlap_expolygons = union_ex(fill.no_overlap_expolygons, layerm.fill_no_overlap_expolygons);
+ 						}
++						if (FillLightning::GateRecorder::enabled())
++							FillLightning::GateRecorder::note_group_source(
++								int(layer.id()), params->idx, int(layer.id()), region_id,
++								size_t(&surface - &layerm.fill_surfaces.surfaces.front()),
++								int(layer.object()->get_id()));
+ 					}
+ 				}
+ 	        }
+@@ -1434,6 +1450,29 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
+                 if (f->layer_id > 0 && f->layer_id <= elefant_layers)
+                     params.density = 1.0f - (1.0f - elefant_density) * (elefant_layers - (f->layer_id - 1)) / elefant_layers; // Reverse calculation - The higher layer number means the higher density. Counting starts from the second layer.
+             }
++            // Opt-in gate caller probe: bind this exact dispatch (layer, region, surface, angle,
++            // density and the geometry handed to the filler) before the callee can offset/clip it.
++            std::optional<FillLightning::GateRecorder::ProbeFillContext> gate_probe;
++            if (FillLightning::GateRecorder::enabled()) {
++                FillLightning::GateRecorder::FillCallInfo call_info;
++                call_info.object_id          = int(this->object()->get_id());
++                call_info.local_layer_index  = int(this->id() - this->object()->get_layer(0)->id());
++                call_info.global_layer_index = int(this->id());
++                call_info.z_mm               = this->print_z;
++                call_info.region_id          = surface_fill.region_id;
++                call_info.region_id_group    = surface_fill.region_id_group;
++                call_info.surface_type       = int(surface_fill.surface.surface_type);
++                call_info.pattern            = int(surface_fill.params.pattern);
++                call_info.extrusion_role     = int(params.extrusion_role);
++                call_info.angle_rad          = f->angle;
++                call_info.fixed_angle        = f->fixed_angle;
++                call_info.density_percent    = double(params.density) * 100.0;
++                call_info.spacing_mm         = f->spacing;
++                call_info.caller_expolygon   = surface_fill.surface.expolygon;
++                call_info.source_ids         = FillLightning::GateRecorder::group_source_ids(
++                    int(this->id()), surface_fill.params.idx);
++                gate_probe.emplace(std::move(call_info), layerm->region().config());
++            }
+             // make fill
+ 			f->fill_surface_extrusion(&surface_fill.surface,
+ 				params,
+@@ -1586,6 +1625,29 @@ Polylines Layer::generate_sparse_infill_polylines_for_anchoring(FillAdaptive::Oc
+             f->spacing                     = surface_fill.params.spacing;
+             surface_fill.surface.expolygon = std::move(expoly);
+             try {
++                // Opt-in gate caller probe for the anchoring dispatch. It is scoped per expolygon so
++                // each f->fill_surface call has its own dispatch token.
++                std::optional<FillLightning::GateRecorder::ProbeFillContext> gate_probe;
++                if (FillLightning::GateRecorder::enabled()) {
++                    FillLightning::GateRecorder::FillCallInfo call_info;
++                    call_info.object_id          = int(this->object()->get_id());
++                    call_info.local_layer_index  = int(this->id() - this->object()->get_layer(0)->id());
++                    call_info.global_layer_index = int(this->id());
++                    call_info.z_mm               = this->print_z;
++                    call_info.region_id          = surface_fill.region_id;
++                    call_info.region_id_group    = surface_fill.region_id_group;
++                    call_info.surface_type       = int(surface_fill.surface.surface_type);
++                    call_info.pattern            = int(surface_fill.params.pattern);
++                    call_info.extrusion_role     = int(params.extrusion_role);
++                    call_info.angle_rad          = f->angle;
++                    call_info.fixed_angle        = f->fixed_angle;
++                    call_info.density_percent    = double(params.density) * 100.0;
++                    call_info.spacing_mm         = f->spacing;
++                    call_info.caller_expolygon   = surface_fill.surface.expolygon;
++                    call_info.source_ids         = FillLightning::GateRecorder::group_source_ids(
++                        int(this->id()), surface_fill.params.idx);
++                    gate_probe.emplace(std::move(call_info), layerm.region().config());
++                }
+                 Polylines polylines = f->fill_surface(&surface_fill.surface, params);
+                 sparse_infill_polylines.insert(sparse_infill_polylines.end(), polylines.begin(), polylines.end());
+             } catch (InfillFailedException &) {}
+diff --git a/src/libslic3r/Fill/FillLightning.cpp b/src/libslic3r/Fill/FillLightning.cpp
+index 77031b42e0..6fb3cad139 100644
+--- a/src/libslic3r/Fill/FillLightning.cpp
++++ b/src/libslic3r/Fill/FillLightning.cpp
+@@ -34,9 +34,33 @@ void Filler::_fill_surface_single(
+     // Apply multiline offset if needed
+     multiline_fill(fill_lines, params, spacing);
+ 
++    // Opt-in gate clipping observation. Copy the exact pre-clip and post-clip lines before
++    // chain_or_connect_infill consumes them; disabled unless LIGHTNING_GATE_OUTPUT is set.
++    const bool            gate_recording = GateRecorder::enabled();
++    Polylines             pre_clip_polylines;
++    if (gate_recording)
++        pre_clip_polylines = fill_lines;
++
+     fill_lines = Slic3r::intersection_pl(std::move(fill_lines), expolygon);
+ 
++    const size_t appended_start = polylines_out.size();
++    Polylines    clipped_polylines;
++    if (gate_recording)
++        clipped_polylines = fill_lines;
++
+     chain_or_connect_infill(std::move(fill_lines), expolygon, polylines_out, this->spacing, params);
++
++    if (gate_recording) {
++        GateRecorder::LightningClipRecord record;
++        record.callee_expolygon   = expolygon;
++        record.pre_clip_polylines = std::move(pre_clip_polylines);
++        record.clipped_polylines  = std::move(clipped_polylines);
++        record.appended_start     = appended_start;
++        record.appended_end       = polylines_out.size();
++        record.thickness_layers   = thickness_layers;
++        record.spacing_mm         = this->spacing;
++        GateRecorder::record_lightning_clip(record);
++    }
+ }
+ 
+ void GeneratorDeleter::operator()(Generator *p) {
+diff --git a/src/libslic3r/Fill/Lightning/Generator.cpp b/src/libslic3r/Fill/Lightning/Generator.cpp
+index c638610aa5..a6df6c5afa 100644
+--- a/src/libslic3r/Fill/Lightning/Generator.cpp
++++ b/src/libslic3r/Fill/Lightning/Generator.cpp
+@@ -10,6 +10,19 @@
+ 
+ #include "ExPolygon.hpp"
+ 
++#include <nlohmann/json.hpp>
++
++#include <algorithm>
++#include <atomic>
++#include <cctype>
++#include <cstdio>
++#include <cstdlib>
++#include <fstream>
++#include <map>
++#include <mutex>
++#include <sstream>
++#include <unordered_map>
++
+ /* Possible future tasks/optimizations,etc.:
+  * - Improve connecting heuristic to favor connecting to shorter trees
+  * - Change which node of a tree is the root when that would be better in reconnectRoots.
+@@ -148,26 +161,69 @@ Generator::Generator(PrintObject* m_object, std::vector<Polygons>& contours, std
+     //}
+ }
+ 
+-void Generator::generateInitialInternalOverhangs(const PrintObject &print_object, const std::function<void()> &throw_on_cancel_callback)
++Generator::Generator(const LightningPlannerSnapshot &snapshot, const std::function<void()> &throw_on_cancel_callback)
++    : Generator(snapshot, snapshot.faithful_infill_outlines, throw_on_cancel_callback)
+ {
+-    m_overhang_per_layer.resize(print_object.layers().size());
++}
+ 
+-    Polygons infill_area_above;
+-    //Iterate from top to bottom, to subtract the overhang areas above from the overhang areas on the layer below, to get only overhang in the top layer where it is overhanging.
+-    for (int layer_nr = int(print_object.layers().size()) - 1; layer_nr >= 0; --layer_nr) {
++// Replay-only constructor. Every input comes from the snapshot or the already-selected domains: no
++// PrintObject is read and the snapshot is left untouched.
++Generator::Generator(const LightningPlannerSnapshot &snapshot,
++                     const std::vector<Polygons>    &selected_infill_outlines,
++                     const std::function<void()>   &throw_on_cancel_callback)
++    : m_infill_extrusion_width(snapshot.infill_extrusion_width)
++    , m_supporting_radius(snapshot.supporting_radius)
++    , m_wall_supporting_radius(snapshot.wall_supporting_radius)
++    , m_prune_length(snapshot.prune_length)
++    , m_straightening_max_distance(snapshot.straightening_max_distance)
++{
++    m_overhang_per_layer = deriveOverhangs(selected_infill_outlines, m_wall_supporting_radius);
++    generateTreesFromDomains(selected_infill_outlines, throw_on_cancel_callback, nullptr);
++}
++
++namespace {
++// The surfaces the lightning planner consumes as planning area. Shared by production planning and
++// every snapshot flattening so the faithful outline bytes cannot drift.
++bool is_planning_surface(const Surface &surface)
++{
++    return surface.surface_type == stInternal || surface.surface_type == stInternalVoid;
++}
++} // namespace
++
++std::vector<Polygons> Generator::collectInternalDomains(const PrintObject &print_object, const std::function<void()> &throw_on_cancel_callback)
++{
++    std::vector<Polygons> infill_outlines(print_object.layers().size(), Polygons());
++
++    // For-each layer from top to bottom:
++    for (int layer_id = int(print_object.layers().size()) - 1; layer_id >= 0; layer_id--) {
+         throw_on_cancel_callback();
+-        Polygons infill_area_here;
+-        for (const LayerRegion* layerm : print_object.get_layer(layer_nr)->regions())
++        for (const LayerRegion* layerm : print_object.get_layer(layer_id)->regions())
+             for (const Surface& surface : layerm->fill_surfaces.surfaces)
+-                if (surface.surface_type == stInternal || surface.surface_type == stInternalVoid)
+-                    append(infill_area_here, to_polygons(surface.expolygon));
++                if (is_planning_surface(surface))
++                    append(infill_outlines[layer_id], to_polygons(surface.expolygon));
++    }
++    return infill_outlines;
++}
+ 
+-        //Remove the part of the infill area that is already supported by the walls.
+-        Polygons overhang = diff(offset(infill_area_here, -float(m_wall_supporting_radius)), infill_area_above);
++std::vector<Polygons> Generator::deriveOverhangs(const std::vector<Polygons> &infill_outlines, coord_t wall_supporting_radius)
++{
++    std::vector<Polygons> overhang_per_layer(infill_outlines.size());
+ 
+-        m_overhang_per_layer[layer_nr] = overhang;
+-        infill_area_above = std::move(infill_area_here);
++    Polygons infill_area_above;
++    //Iterate from top to bottom, to subtract the overhang areas above from the overhang areas on the layer below, to get only overhang in the top layer where it is overhanging.
++    for (int layer_nr = int(infill_outlines.size()) - 1; layer_nr >= 0; --layer_nr) {
++        const Polygons& infill_area_here = infill_outlines[layer_nr];
++
++        //Remove the part of the infill area that is already supported by the walls.
++        overhang_per_layer[layer_nr] = diff(offset(infill_area_here, -float(wall_supporting_radius)), infill_area_above);
++        infill_area_above = infill_area_here;
+     }
++    return overhang_per_layer;
++}
++
++void Generator::generateInitialInternalOverhangs(const PrintObject &print_object, const std::function<void()> &throw_on_cancel_callback)
++{
++    m_overhang_per_layer = deriveOverhangs(collectInternalDomains(print_object, throw_on_cancel_callback), m_wall_supporting_radius);
+ }
+ 
+ const Layer& Generator::getTreesForLayer(const size_t& layer_id) const
+@@ -177,23 +233,40 @@ const Layer& Generator::getTreesForLayer(const size_t& layer_id) const
+ }
+ 
+ void Generator::generateTrees(const PrintObject &print_object, const std::function<void()> &throw_on_cancel_callback)
++{
++    generateTreesFromDomains(collectInternalDomains(print_object, throw_on_cancel_callback), throw_on_cancel_callback, &print_object);
++}
++
++void Generator::generateTreesFromDomains(const std::vector<Polygons> &infill_outlines, const std::function<void()> &throw_on_cancel_callback, const PrintObject *print_object)
+ {
+     const auto _locator_cell_size = locator_cell_size();
+-    m_lightning_layers.resize(print_object.layers().size());
+-    bboxs.resize(print_object.layers().size());
+-    std::vector<Polygons> infill_outlines(print_object.layers().size(), Polygons());
++    m_lightning_layers.resize(infill_outlines.size());
++    bboxs.resize(infill_outlines.size());
++    if (infill_outlines.empty())
++        return;
+ 
+-    // For-each layer from top to bottom:
+-    for (int layer_id = int(print_object.layers().size()) - 1; layer_id >= 0; layer_id--) {
+-        throw_on_cancel_callback();
+-        for (const LayerRegion *layerm : print_object.get_layer(layer_id)->regions())
+-            for (const Surface &surface : layerm->fill_surfaces.surfaces)
+-                if (surface.surface_type == stInternal || surface.surface_type == stInternalVoid)
+-                    append(infill_outlines[layer_id], to_polygons(surface.expolygon));
+-    }
++    // Publishes the per-layer witness identity only while the production layer runs. Snapshot
++    // replay passes print_object == nullptr, so this scope stays inactive and the witness writers
++    // no-op. RAII also clears the thread-local on cancel/exception paths.
++    struct ScopedGroundingContext
++    {
++        bool active { false };
++        ScopedGroundingContext(bool set, const GateRecorder::GroundingContext &context) : active(set)
++        {
++            if (active)
++                GateRecorder::set_context(context);
++        }
++        ~ScopedGroundingContext()
++        {
++            if (active)
++                GateRecorder::clear_context();
++        }
++        ScopedGroundingContext(const ScopedGroundingContext &) = delete;
++        ScopedGroundingContext &operator=(const ScopedGroundingContext &) = delete;
++    };
+ 
+     // For various operations its beneficial to quickly locate nearby features on the polygon:
+-    const size_t top_layer_id = print_object.layers().size() - 1;
++    const size_t top_layer_id = infill_outlines.size() - 1;
+     EdgeGrid::Grid outlines_locator(get_extents(infill_outlines[top_layer_id]).inflated(SCALED_EPSILON));
+     outlines_locator.create(infill_outlines[top_layer_id], _locator_cell_size);
+ 
+@@ -206,6 +279,17 @@ void Generator::generateTrees(const PrintObject &print_object, const std::functi
+ 
+         bboxs[layer_id] = get_extents(current_outlines);
+ 
++        GateRecorder::GroundingContext grounding_context;
++        if (print_object != nullptr) {
++            const ModelObject *model_object = print_object->model_object();
++            grounding_context.object_name = model_object == nullptr ? std::string() : model_object->name;
++            grounding_context.object_id   = print_object->get_id();
++            grounding_context.layer_id    = layer_id;
++            const Slic3r::Layer *print_layer = print_object->get_layer(size_t(layer_id));
++            grounding_context.z_mm        = print_layer == nullptr ? 0.0 : print_layer->print_z;
++        }
++        ScopedGroundingContext scoped_grounding_context(print_object != nullptr, grounding_context);
++
+         // register all trees propagated from the previous layer as to-be-reconnected
+         std::vector<NodeSPtr> to_be_reconnected_tree_roots = current_lightning_layer.tree_roots;
+ 
+@@ -213,8 +297,13 @@ void Generator::generateTrees(const PrintObject &print_object, const std::functi
+         current_lightning_layer.reconnectRoots(to_be_reconnected_tree_roots, current_outlines, current_outlines_bbox, outlines_locator, m_supporting_radius, m_wall_supporting_radius);
+ 
+         // Initialize trees for next lower layer from the current one.
+-        if (layer_id == 0)
++        if (layer_id == 0) {
++            if (print_object != nullptr)
++                GateRecorder::record_generator(*print_object, infill_outlines, m_overhang_per_layer, bboxs, m_lightning_layers,
++                                               m_infill_extrusion_width, m_supporting_radius, m_wall_supporting_radius,
++                                               m_prune_length, m_straightening_max_distance);
+             return;
++        }
+ 
+         const Polygons &below_outlines      = infill_outlines[layer_id - 1];
+         BoundingBox     below_outlines_bbox = get_extents(below_outlines).inflated(SCALED_EPSILON);
+@@ -262,6 +351,7 @@ void Generator::generateTreesforSupport(std::vector<Polygons>& contours, const s
+         current_lightning_layer.reconnectRoots(to_be_reconnected_tree_roots, current_outlines, current_outlines_bbox, outlines_locator, m_supporting_radius, m_wall_supporting_radius);
+ 
+         // Initialize trees for next lower layer from the current one.
++        // Support lightning is not part of the preparation gate; only the sparse-infill path records.
+         if (layer_id == 0)
+             return;
+ 
+@@ -282,4 +372,1320 @@ void Generator::generateTreesforSupport(std::vector<Polygons>& contours, const s
+     }
+ }
+ 
++LightningPlannerFixtureResult run_lightning_planner_fixture(const LightningPlannerSnapshot &snapshot, FixtureDomainSelector selector)
++{
++    const std::vector<Polygons> &selected = selector == FixtureDomainSelector::faithful_planning
++        ? snapshot.faithful_infill_outlines
++        : snapshot.final_infill_outlines;
++    const std::vector<Polygons> &other = selector == FixtureDomainSelector::faithful_planning
++        ? snapshot.final_infill_outlines
++        : snapshot.faithful_infill_outlines;
++
++    // No-op cancel callback: replay is a deterministic, single-threaded planning pass.
++    Generator generator(snapshot, selected, []() {});
++
++    LightningPlannerFixtureResult result;
++    result.object_name        = snapshot.object_name;
++    result.seed_policy        = snapshot.seed_policy;
++    result.layers             = generator.m_lightning_layers;
++    result.overhang_per_layer = generator.m_overhang_per_layer;
++    result.bboxs              = generator.bboxs;
++
++    // Measure the candidate outline sets per layer. Flattening all layers into one union would
++    // compare unrelated layer footprints and can collapse a real per-layer difference to zero.
++    Polygons empty_layer;
++    double   symmetric_difference_area = 0.0;
++    const size_t layer_count = std::max(selected.size(), other.size());
++    for (size_t layer_index = 0; layer_index < layer_count; ++layer_index) {
++        const Polygons &selected_layer = layer_index < selected.size() ? selected[layer_index] : empty_layer;
++        const Polygons &other_layer    = layer_index < other.size() ? other[layer_index] : empty_layer;
++        const ExPolygons selected_union = union_ex(selected_layer);
++        const ExPolygons other_union    = union_ex(other_layer);
++        symmetric_difference_area +=
++            area(to_polygons(diff_ex(selected_union, other_union))) +
++            area(to_polygons(diff_ex(other_union, selected_union)));
++    }
++    result.domain_symmetric_difference_area = symmetric_difference_area;
++
++    return result;
++}
++
++namespace GateRecorder {
++
++namespace {
++
++std::atomic<unsigned long long> g_dispatch_counter { 0 };
++
++// The caller probe is per-thread: fill dispatch is called from TBB workers and no mutable JSON or
++// identity state may be shared between them. Nested contexts restore the previous value.
++thread_local ProbeFillContext *t_current_fill_context = nullptr;
++
++// Grounding witnesses are also per-thread. Production planning sets this around one layer's
++// generateNewTrees/reconnectRoots pair; snapshot replay never does, so the writers no-op there.
++struct ThreadGroundingContext
++{
++    bool             active { false };
++    GroundingContext value;
++};
++thread_local ThreadGroundingContext t_grounding_context;
++
++// Pre-anchor surface catalog filled by capture_source and read by the Phase-2 workers. Keying on
++// the Surface address is sound because Phase 2's backup-by-move preserves the vector buffer those
++// addresses point into, and candidates keep pointing at the original surfaces.
++std::mutex t_source_catalog_mutex;
++std::unordered_map<const Surface *, SourceSurfaceRef> t_source_catalog;
++
++void register_source_catalog(int object_id,
++                             const std::vector<std::pair<const Surface *, SourceSurfaceRef>> &entries)
++{
++    std::lock_guard<std::mutex> lock(t_source_catalog_mutex);
++    // Replace this object's previous catalog so a re-slice cannot resolve recycled addresses to
++    // stale identities. Catalogs of other live objects are left untouched.
++    for (auto it = t_source_catalog.begin(); it != t_source_catalog.end();) {
++        if (it->second.object_id == object_id)
++            it = t_source_catalog.erase(it);
++        else
++            ++it;
++    }
++    for (const auto &entry : entries)
++        t_source_catalog[entry.first] = entry.second;
++}
++
++std::string output_dir()
++{
++    const char *env = std::getenv("LIGHTNING_GATE_OUTPUT");
++    return env == nullptr ? std::string() : std::string(env);
++}
++
++const std::string &case_name_ref()
++{
++    // Function-local static initialization is thread-safe; the environment is fixed for the process.
++    static const std::string cached = []() {
++        const char *env = std::getenv("LIGHTNING_GATE_CASE");
++        const std::string raw = env == nullptr ? std::string("case") : std::string(env);
++        std::string safe;
++        for (char c : raw)
++            safe.push_back((std::isalnum(static_cast<unsigned char>(c)) != 0) ? c : '_');
++        return safe;
++    }();
++    return cached;
++}
++
++std::string case_name()
++{
++    return case_name_ref();
++}
++
++nlohmann::json point_json(const Point &p)
++{
++    return nlohmann::json::array({p.x(), p.y()});
++}
++
++nlohmann::json point_mm_json(const Point &p)
++{
++    return nlohmann::json::array({unscale<double>(p.x()), unscale<double>(p.y())});
++}
++
++nlohmann::json polygon_json(const Polygon &poly)
++{
++    nlohmann::json ring = nlohmann::json::array();
++    for (const Point &p : poly.points)
++        ring.push_back(point_json(p));
++    return ring;
++}
++
++nlohmann::json polygons_json(const Polygons &polys)
++{
++    nlohmann::json out = nlohmann::json::array();
++    for (const Polygon &poly : polys)
++        out.push_back(polygon_json(poly));
++    return out;
++}
++
++nlohmann::json polyline_json(const Polyline &line)
++{
++    nlohmann::json out = nlohmann::json::array();
++    for (const Point &p : line.points)
++        out.push_back(point_json(p));
++    return out;
++}
++
++nlohmann::json polylines_json(const Polylines &lines)
++{
++    nlohmann::json out = nlohmann::json::array();
++    for (const Polyline &line : lines)
++        out.push_back(polyline_json(line));
++    return out;
++}
++
++nlohmann::json expolygon_json(const ExPolygon &ep)
++{
++    nlohmann::json j;
++    j["contour"] = polygon_json(ep.contour);
++    j["holes"]   = nlohmann::json::array();
++    for (const Polygon &hole : ep.holes)
++        j["holes"].push_back(polygon_json(hole));
++    return j;
++}
++
++nlohmann::json expolygons_json(const ExPolygons &eps)
++{
++    nlohmann::json out = nlohmann::json::array();
++    for (const ExPolygon &ep : eps)
++        out.push_back(expolygon_json(ep));
++    return out;
++}
++
++const char *surface_type_name(SurfaceType type)
++{
++    switch (type) {
++    case stTop: return "top";
++    case stBottom: return "bottom";
++    case stBottomBridge: return "bottom_bridge";
++    case stInternalAfterExternalBridge: return "internal_after_external_bridge";
++    case stInternal: return "internal";
++    case stInternalSolid: return "internal_solid";
++    case stInternalBridge: return "internal_bridge";
++    case stSecondInternalBridge: return "second_internal_bridge";
++    case stInternalVoid: return "internal_void";
++    case stPerimeter: return "perimeter";
++    default: return "unknown";
++    }
++}
++
++const char *extrusion_role_name(int role)
++{
++    switch (static_cast<ExtrusionRole>(role)) {
++    case erNone: return "none";
++    case erPerimeter: return "perimeter";
++    case erExternalPerimeter: return "external_perimeter";
++    case erOverhangPerimeter: return "overhang_perimeter";
++    case erInternalInfill: return "internal_infill";
++    case erSolidInfill: return "solid_infill";
++    case erTopSolidInfill: return "top_solid_infill";
++    case erBottomSurface: return "bottom_surface";
++    case erIroning: return "ironing";
++    case erBridgeInfill: return "bridge_infill";
++    case erInternalBridgeInfill: return "internal_bridge_infill";
++    case erGapFill: return "gap_fill";
++    case erSkirt: return "skirt";
++    case erBrim: return "brim";
++    case erSupportMaterial: return "support_material";
++    case erSupportMaterialInterface: return "support_material_interface";
++    case erSupportTransition: return "support_transition";
++    case erWipeTower: return "wipe_tower";
++    case erCustom: return "custom";
++    case erMixed: return "mixed";
++    default: return "unknown";
++    }
++}
++
++std::string infill_pattern_name(int pattern)
++{
++    // Reuse the canonical enum key map so the recorded string matches config serialization.
++    for (const auto &entry : ConfigOptionEnum<InfillPattern>::get_enum_values())
++        if (entry.second == pattern)
++            return entry.first;
++    // Internal-only patterns are not user-selectable and therefore absent from the config enum map.
++    switch (static_cast<InfillPattern>(pattern)) {
++    case ipSupportBase: return "support_base";
++    case ipConcentricInternal: return "concentric_internal";
++    case ipCount: return "count";
++    default: return "unknown";
++    }
++}
++
++nlohmann::json config_json(const ConfigBase &config, std::initializer_list<const char *> keys)
++{
++    nlohmann::json out = nlohmann::json::object();
++    for (const char *key : keys)
++        if (config.option(key) != nullptr)
++            out[key] = config.opt_serialize(key);
++    return out;
++}
++
++// Single source of truth for the region-config keys recorded by both regions_json (source.json and
++// planning.json) and the caller probe. Keep the caller record identical to those surfaces.
++nlohmann::json region_config_json(const ConfigBase &config)
++{
++    return config_json(config,
++        {"fill_multiline", "sparse_infill_density", "sparse_infill_pattern", "sparse_infill_line_width",
++         "lightning_overhang_angle", "lightning_prune_angle", "lightning_straightening_angle",
++         "infill_direction", "sparse_infill_rotate_template", "solid_infill_direction",
++         "solid_infill_rotate_template", "top_layer_direction", "bottom_layer_direction",
++         "align_infill_direction_to_model"});
++}
++
++nlohmann::json region_surfaces_json(const Slic3r::LayerRegion &region)
++{
++    nlohmann::json surfaces = nlohmann::json::array();
++    for (const Surface &surface : region.fill_surfaces.surfaces) {
++        nlohmann::json s;
++        s["surface_type"] = surface_type_name(surface.surface_type);
++        s["expolygon"]    = expolygon_json(surface.expolygon);
++        surfaces.push_back(std::move(s));
++    }
++    return surfaces;
++}
++
++nlohmann::json regions_json(const PrintObject &print_object)
++{
++    nlohmann::json out = nlohmann::json::array();
++    for (int layer_index = 0; layer_index < int(print_object.layers().size()); ++layer_index) {
++        const Slic3r::Layer *layer = print_object.get_layer(layer_index);
++        for (const LayerRegion *region : layer->regions()) {
++            nlohmann::json r;
++            r["region_id"]    = region->region().print_object_region_id();
++            // Layer::print_z and Layer::height are already millimetres (coordf_t), not scaled units.
++            r["z_mm"]         = layer->print_z;
++            r["height_mm"]    = layer->height;
++            r["surfaces"]     = region_surfaces_json(*region);
++            r["region_config"] = region_config_json(region->region().config());
++            out.push_back(std::move(r));
++        }
++    }
++    return out;
++}
++
++// source.json variant of regions_json: every surface additionally carries its stable pre-anchor
++// source identity and checkpoint identity. The catalog records the Surface addresses so Phase 2
++// can resolve its candidate/operand surfaces back to those ids.
++nlohmann::json source_regions_json(const PrintObject &print_object,
++                                   std::vector<std::pair<const Surface *, SourceSurfaceRef>> &catalog)
++{
++    nlohmann::json out = nlohmann::json::array();
++    for (int layer_index = 0; layer_index < int(print_object.layers().size()); ++layer_index) {
++        const Slic3r::Layer *layer = print_object.get_layer(layer_index);
++        for (const LayerRegion *region : layer->regions()) {
++            const int region_id = region->region().print_object_region_id();
++            nlohmann::json r;
++            r["region_id"] = region_id;
++            // Layer::print_z and Layer::height are already millimetres (coordf_t), not scaled units.
++            r["z_mm"]      = layer->print_z;
++            r["height_mm"] = layer->height;
++            nlohmann::json surfaces = nlohmann::json::array();
++            const Surfaces &region_surfaces = region->fill_surfaces.surfaces;
++            for (size_t surface_index = 0; surface_index < region_surfaces.size(); ++surface_index) {
++                const Surface &surface = region_surfaces[surface_index];
++                SourceSurfaceRef entry;
++                entry.object_id          = print_object.get_id();
++                entry.source_id          = "o" + std::to_string(entry.object_id) +
++                                           "_l" + std::to_string(layer->id()) +
++                                           "_r" + std::to_string(region_id) +
++                                           "_s" + std::to_string(surface_index);
++                entry.local_layer_index  = layer_index;
++                entry.global_layer_index = layer->id();
++                entry.region_id          = region_id;
++                entry.surface_index      = surface_index;
++                catalog.emplace_back(&surface, entry);
++
++                nlohmann::json s;
++                s["surface_type"]       = surface_type_name(surface.surface_type);
++                s["expolygon"]          = expolygon_json(surface.expolygon);
++                s["source_id"]          = entry.source_id;
++                s["region_id"]          = region_id;
++                s["local_layer_index"]  = layer_index;
++                s["global_layer_index"] = layer->id();
++                s["z_mm"]               = layer->print_z;
++                s["height_mm"]          = layer->height;
++                s["checkpoint"]         = "before_anchor_edit";
++                surfaces.push_back(std::move(s));
++            }
++            r["surfaces"]      = std::move(surfaces);
++            r["region_config"] = region_config_json(region->region().config());
++            out.push_back(std::move(r));
++        }
++    }
++    return out;
++}
++
++nlohmann::json graph_json(const std::vector<Layer> &layers, bool include_ptr = true)
++{
++    nlohmann::json out = nlohmann::json::array();
++    for (size_t layer_index = 0; layer_index < layers.size(); ++layer_index) {
++        std::unordered_map<const Node *, int> ids;
++        int next_id = 0;
++        for (const NodeSPtr &root : layers[layer_index].tree_roots)
++            root->visitNodes([&ids, &next_id](NodeSPtr node) { ids.emplace(node.get(), next_id++); });
++
++        nlohmann::json nodes = nlohmann::json::array();
++        nlohmann::json edges = nlohmann::json::array();
++        for (const NodeSPtr &root : layers[layer_index].tree_roots) {
++            root->visitNodes([&ids, &nodes, &edges, include_ptr](NodeSPtr node) {
++                const auto self_it = ids.find(node.get());
++                if (self_it == ids.end())
++                    return;
++                const int node_id = self_it->second;
++                const NodeSPtr parent = node->getParent();
++                int parent_id = -1;
++                int root_id   = node_id;
++                if (parent) {
++                    const auto parent_it = ids.find(parent.get());
++                    if (parent_it != ids.end())
++                        parent_id = parent_it->second;
++                    const Node *top = parent.get();
++                    NodeSPtr top_parent = parent->getParent();
++                    while (top_parent) {
++                        top = top_parent.get();
++                        top_parent = top_parent->getParent();
++                    }
++                    const auto root_it = ids.find(top);
++                    if (root_it != ids.end())
++                        root_id = root_it->second;
++                }
++                nlohmann::json n;
++                n["node_id"]    = node_id;
++                n["point"]      = point_json(node->getLocation());
++                n["point_mm"]   = point_mm_json(node->getLocation());
++                n["parent_id"]  = parent_id;
++                n["root_id"]    = root_id;
++                n["is_root"]    = node->isRoot();
++                if (include_ptr)
++                    n["ptr"] = static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>(node.get()));
++                if (const std::optional<Point> &grounding = node->getLastGroundingLocation())
++                    n["last_grounding"] = point_json(*grounding);
++                else
++                    n["last_grounding"] = nullptr;
++                nodes.push_back(std::move(n));
++                if (parent_id >= 0) {
++                    nlohmann::json e;
++                    e["parent_id"] = parent_id;
++                    e["child_id"]  = node_id;
++                    e["root_id"]   = root_id;
++                    edges.push_back(std::move(e));
++                }
++            });
++        }
++
++        nlohmann::json g;
++        g["layer_index"] = layer_index;
++        g["nodes"]       = std::move(nodes);
++        g["edges"]       = std::move(edges);
++        g["root_count"]  = layers[layer_index].tree_roots.size();
++        out.push_back(std::move(g));
++    }
++    return out;
++}
++
++void write_json(const std::string &path, const nlohmann::json &value)
++{
++    const std::string tmp = path + ".tmp";
++    {
++        std::ofstream stream(tmp, std::ios::binary | std::ios::trunc);
++        if (!stream)
++            return;
++        stream << value.dump(2);
++    }
++    std::remove(path.c_str());
++    std::rename(tmp.c_str(), path.c_str());
++}
++
++// Append exactly one complete JSON object plus newline. The mutex serializes the whole write so TBB
++// workers can never interleave partial lines in the same file.
++void append_jsonl(const std::string &path, const nlohmann::json &value)
++{
++    const std::string line = value.dump();
++    static std::mutex s_mutex;
++    std::lock_guard<std::mutex> lock(s_mutex);
++    std::ofstream stream(path, std::ios::binary | std::ios::app);
++    if (!stream)
++        return;
++    stream << line << '\n';
++}
++
++std::string make_dispatch_token(const FillCallInfo &info)
++{
++    return "o" + std::to_string(info.object_id) +
++           "_l" + std::to_string(info.global_layer_index) +
++           "_r" + std::to_string(info.region_id) +
++           "_d" + std::to_string(g_dispatch_counter.fetch_add(1, std::memory_order_relaxed));
++}
++
++std::string object_tag(const PrintObject &print_object)
++{
++    return "object_" + std::to_string(print_object.get_id());
++}
++
++// Stable scene name of the ModelObject backing this PrintObject (e.g. "object-a"/"object-b").
++// PrintObject::get_id() remains recorded separately; it is process ordering, not scene identity.
++std::string model_object_name(const PrintObject &print_object)
++{
++    const ModelObject *model_object = print_object.model_object();
++    return model_object == nullptr ? std::string() : model_object->name;
++}
++
++struct LightningScalars
++{
++    float   infill_extrusion_width { 0 };
++    coord_t supporting_radius { 0 };
++    coord_t wall_supporting_radius { 0 };
++    coord_t prune_length { 0 };
++    coord_t straightening_max_distance { 0 };
++};
++
++// Resolve exactly the five scalars and the inputs the production sparse-infill constructor
++// (Generator::Generator(const PrintObject &, ...)) derives them from. Returns false when the
++// production accessors cannot resolve the inputs (an empty nozzle-diameter vector); callers then
++// omit the affected fields instead of inventing defaults.
++bool resolve_lightning_scalars(const PrintObject &print_object, LightningScalars &scalars, LightningResolvedInputs &resolved_inputs)
++{
++    const PrintConfig       &print_config  = print_object.print()->config();
++    const PrintObjectConfig &object_config = print_object.config();
++    if (print_object.shared_regions() == nullptr || print_object.shared_regions()->all_regions.empty())
++        return false;
++    const PrintRegionConfig &region_config = print_object.shared_regions()->all_regions.front()->config();
++    const std::vector<double> &nozzle_diameters = print_config.nozzle_diameter.values;
++    if (nozzle_diameters.empty())
++        return false;
++
++    const double max_nozzle_diameter = *std::max_element(nozzle_diameters.begin(), nozzle_diameters.end());
++    const int    n_multiline         = region_config.fill_multiline.value;
++    const double default_infill_extrusion_width = Flow::auto_extrusion_width(FlowRole::frInfill, float(max_nozzle_diameter));
++    // Note: There's not going to be a layer below the first one, so the 'initial layer height'
++    // doesn't have to be taken into account.
++    const double layer_thickness = scaled<double>(object_config.layer_height.value);
++
++    float infill_extrusion_width = scaled<float>(region_config.sparse_infill_line_width.get_abs_value(max_nozzle_diameter));
++    // Match the production divide-by-zero fallback exactly.
++    if (infill_extrusion_width < EPSILON)
++        infill_extrusion_width = scaled<float>(
++            object_config.line_width.get_abs_value(max_nozzle_diameter) < EPSILON ?
++            default_infill_extrusion_width :
++            object_config.line_width.get_abs_value(max_nozzle_diameter));
++
++    const double overhang_angle      = region_config.lightning_overhang_angle.value * M_PI / 180.0;
++    const double prune_angle         = region_config.lightning_prune_angle.value * M_PI / 180.0;
++    const double straightening_angle = region_config.lightning_straightening_angle.value * M_PI / 180.0;
++
++    scalars.infill_extrusion_width      = infill_extrusion_width;
++    scalars.supporting_radius           = coord_t(infill_extrusion_width) * 100 * n_multiline / region_config.sparse_infill_density.value;
++    scalars.wall_supporting_radius      = coord_t(layer_thickness * std::tan(overhang_angle));
++    scalars.prune_length                = coord_t(layer_thickness * std::tan(prune_angle));
++    scalars.straightening_max_distance  = coord_t(layer_thickness * std::tan(straightening_angle));
++
++    resolved_inputs.max_nozzle_diameter_mm        = max_nozzle_diameter;
++    resolved_inputs.layer_height_mm               = object_config.layer_height.value;
++    resolved_inputs.sparse_infill_line_width_mm   = region_config.sparse_infill_line_width.get_abs_value(max_nozzle_diameter);
++    resolved_inputs.object_line_width_mm          = object_config.line_width.get_abs_value(max_nozzle_diameter);
++    resolved_inputs.fill_multiline                = n_multiline;
++    resolved_inputs.sparse_infill_density_percent = region_config.sparse_infill_density.value;
++    resolved_inputs.overhang_angle_deg            = region_config.lightning_overhang_angle.value;
++    resolved_inputs.prune_angle_deg               = region_config.lightning_prune_angle.value;
++    resolved_inputs.straightening_angle_deg       = region_config.lightning_straightening_angle.value;
++    return true;
++}
++
++nlohmann::json resolved_inputs_json(const LightningResolvedInputs &inputs)
++{
++    return {
++        {"max_nozzle_diameter_mm", inputs.max_nozzle_diameter_mm},
++        {"layer_height_mm", inputs.layer_height_mm},
++        {"sparse_infill_line_width_mm", inputs.sparse_infill_line_width_mm},
++        {"object_line_width_mm", inputs.object_line_width_mm},
++        {"fill_multiline", inputs.fill_multiline},
++        {"sparse_infill_density_percent", inputs.sparse_infill_density_percent},
++        {"overhang_angle_deg", inputs.overhang_angle_deg},
++        {"prune_angle_deg", inputs.prune_angle_deg},
++        {"straightening_angle_deg", inputs.straightening_angle_deg},
++    };
++}
++
++nlohmann::json scalars_json(const LightningScalars &scalars)
++{
++    return {
++        {"infill_extrusion_width", unscale<double>(scalars.infill_extrusion_width)},
++        {"supporting_radius", unscale<double>(scalars.supporting_radius)},
++        {"wall_supporting_radius", unscale<double>(scalars.wall_supporting_radius)},
++        {"prune_length", unscale<double>(scalars.prune_length)},
++        {"straightening_max_distance", unscale<double>(scalars.straightening_max_distance)},
++    };
++}
++
++} // namespace
++
++bool enabled()
++{
++    return !output_dir().empty();
++}
++
++std::string case_id()
++{
++    return case_name();
++}
++
++void set_context(const GroundingContext &context)
++{
++    t_grounding_context.value  = context;
++    t_grounding_context.active = true;
++}
++
++void clear_context()
++{
++    t_grounding_context.active = false;
++    t_grounding_context.value  = GroundingContext{};
++}
++
++namespace {
++
++std::uint64_t node_ptr(const NodeSPtr &node)
++{
++    return node ? static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(node.get())) : 0;
++}
++
++nlohmann::json context_prefix(const char *kind, const char *site)
++{
++    nlohmann::json j;
++    j["kind"]        = kind;
++    j["object_name"] = t_grounding_context.value.object_name;
++    j["object_id"]   = t_grounding_context.value.object_id;
++    j["layer_id"]    = t_grounding_context.value.layer_id;
++    j["z_mm"]        = t_grounding_context.value.z_mm;
++    j["site"]        = site == nullptr ? "" : site;
++    return j;
++}
++
++} // namespace
++
++void record_grounding(const Point &unsupported,
++                      const Point &boundary_point,
++                      const Point &edge_from,
++                      const Point &edge_to,
++                      const NodeSPtr &tree_node,
++                      coord_t weighted_distance,
++                      bool boundary_winner,
++                      const char *site,
++                      bool has_boundary_candidate)
++{
++    if (!enabled() || !t_grounding_context.active)
++        return;
++
++    nlohmann::json j = context_prefix("grounding", site);
++    j["unsupported_mm"] = point_mm_json(unsupported);
++    if (has_boundary_candidate) {
++        j["boundary_point_mm"] = point_mm_json(boundary_point);
++        j["edge_from_mm"]      = point_mm_json(edge_from);
++        j["edge_to_mm"]        = point_mm_json(edge_to);
++    } else {
++        j["boundary_point_mm"] = nullptr;
++        j["edge_from_mm"]      = nullptr;
++        j["edge_to_mm"]        = nullptr;
++    }
++    j["boundary_winner"]  = boundary_winner;
++    j["weighted_distance"] = weighted_distance;
++    j["tree_node_ptr"]    = node_ptr(tree_node);
++
++    append_jsonl(output_dir() + "/" + case_name() + ".object_" +
++                     std::to_string(t_grounding_context.value.object_id) + ".grounding.jsonl",
++                 j);
++}
++
++void record_attachment(const Point &unsupported,
++                       const NodeSPtr &parent,
++                       const NodeSPtr &child,
++                       bool new_root,
++                       const char *site)
++{
++    if (!enabled() || !t_grounding_context.active)
++        return;
++
++    nlohmann::json j = context_prefix("attachment", site);
++    j["unsupported_mm"] = point_mm_json(unsupported);
++    j["parent_ptr"]      = node_ptr(parent);
++    j["child_ptr"]       = node_ptr(child);
++    j["new_root"]        = new_root;
++    j["parent_point_mm"] = parent ? point_mm_json(parent->getLocation()) : nlohmann::json(nullptr);
++    j["child_point_mm"]  = child ? point_mm_json(child->getLocation()) : nlohmann::json(nullptr);
++
++    append_jsonl(output_dir() + "/" + case_name() + ".object_" +
++                     std::to_string(t_grounding_context.value.object_id) + ".grounding.jsonl",
++                 j);
++}
++
++void capture_source(const PrintObject &print_object, const char *phase)
++{
++    if (!enabled())
++        return;
++
++    nlohmann::json j;
++    j["schema_version"] = 1;
++    j["case_id"]        = case_name();
++    j["phase"]          = phase;
++    j["object_id"]      = print_object.get_id();
++    j["object_name"]    = model_object_name(print_object);
++    j["object_config"]  = config_json(print_object.config(),
++        {"layer_height", "line_width", "nozzle_diameter"});
++    j["print_config"]   = config_json(print_object.print()->config(), {"nozzle_diameter"});
++    std::vector<std::pair<const Surface *, SourceSurfaceRef>> catalog;
++    j["regions"]        = source_regions_json(print_object, catalog);
++    register_source_catalog(print_object.get_id(), catalog);
++    write_json(output_dir() + "/" + case_name() + "." + object_tag(print_object) + ".source.json", j);
++}
++
++std::string source_id_for(const Surface *surface)
++{
++    if (surface == nullptr)
++        return {};
++    std::lock_guard<std::mutex> lock(t_source_catalog_mutex);
++    const auto it = t_source_catalog.find(surface);
++    return it == t_source_catalog.end() ? std::string() : it->second.source_id;
++}
++
++std::string source_id_for(const Surface *surface, int object_id)
++{
++    if (surface == nullptr)
++        return {};
++    std::lock_guard<std::mutex> lock(t_source_catalog_mutex);
++    const auto it = t_source_catalog.find(surface);
++    return it == t_source_catalog.end() || it->second.object_id != object_id
++        ? std::string() : it->second.source_id;
++}
++
++std::vector<std::string> source_ids_for(const std::vector<const Surface *> &surfaces, int object_id)
++{
++    std::vector<std::string> ids;
++    ids.reserve(surfaces.size());
++    std::lock_guard<std::mutex> lock(t_source_catalog_mutex);
++    for (const Surface *surface : surfaces) {
++        const auto it = surface == nullptr ? t_source_catalog.end() : t_source_catalog.find(surface);
++        ids.push_back(it == t_source_catalog.end() || it->second.object_id != object_id
++            ? std::string() : it->second.source_id);
++    }
++    return ids;
++}
++
++// group_fills runs on a TBB worker and its dispatch loop runs on the same worker immediately
++// afterwards, so the per-layer group registry stays thread-local and needs no lock.
++namespace {
++thread_local std::map<std::pair<int, size_t>, std::vector<std::string>> t_group_sources;
++}
++
++void reset_group_sources(int layer_id)
++{
++    t_group_sources.clear();
++    (void)layer_id;
++}
++
++// Address-keyed lookup is not sufficient at group_fills time: the layer's fill_surfaces vector can
++// be reallocated between the source snapshot and the dispatch pass, so the same occurrence appears
++// at a different address. The recorder already assigns source ids by the occurrence's stable
++// (object, global layer, region, surface index) identity; resolve that instead of guessing.
++std::string source_id_at(int object_id, int global_layer_index, size_t region_id, size_t surface_index)
++{
++    std::lock_guard<std::mutex> lock(t_source_catalog_mutex);
++    for (const auto &entry : t_source_catalog) {
++        const SourceSurfaceRef &ref = entry.second;
++        if (ref.object_id == object_id && ref.global_layer_index == global_layer_index &&
++            ref.region_id == int(region_id) && ref.surface_index == surface_index)
++            return ref.source_id;
++    }
++    return {};
++}
++
++void note_group_source(int layer_id, size_t group_index, int global_layer_index, size_t region_id,
++                       size_t surface_index, int object_id)
++{
++    if (!enabled())
++        return;
++    const std::string id = source_id_at(object_id, global_layer_index, region_id, surface_index);
++    // An empty id is a genuine lookup miss; record it so the consumer can reject the group instead
++    // of silently accepting a shorter contributor list.
++    t_group_sources[{layer_id, group_index}].push_back(id);
++}
++
++std::vector<std::string> group_source_ids(int layer_id, size_t group_index)
++{
++    const auto it = t_group_sources.find({layer_id, group_index});
++    return it == t_group_sources.end() ? std::vector<std::string>() : it->second;
++}
++
++void record_operations(const PrintObject &print_object,
++                       const std::vector<std::vector<OperationRecord>> &operations_by_layer)
++{
++    if (!enabled())
++        return;
++
++    nlohmann::json j;
++    j["schema_version"] = 1;
++    j["case_id"]        = case_name();
++    j["object_name"]    = model_object_name(print_object);
++    j["object_id"]      = print_object.get_id();
++    j["seed_policy"]    = "root_point_hash";
++
++    // Each layer's events form one contiguous block; resolve the block-local parent/operand
++    // references to zero-based global operation ids.
++    std::vector<int> base(operations_by_layer.size(), 0);
++    int next_id = 0;
++    for (size_t layer_index = 0; layer_index < operations_by_layer.size(); ++layer_index) {
++        base[layer_index] = next_id;
++        next_id += int(operations_by_layer[layer_index].size());
++    }
++
++    auto source_or_null = [](const std::string &id) {
++        return id.empty() ? nlohmann::json(nullptr) : nlohmann::json(id);
++    };
++    auto sources_json = [&source_or_null](const std::vector<std::string> &ids) {
++        nlohmann::json out = nlohmann::json::array();
++        for (const std::string &id : ids)
++            out.push_back(source_or_null(id));
++        return out;
++    };
++
++    int lookup_miss = 0;
++    nlohmann::json operations = nlohmann::json::array();
++    for (size_t layer_index = 0; layer_index < operations_by_layer.size(); ++layer_index) {
++        const std::vector<OperationRecord> &block = operations_by_layer[layer_index];
++        for (size_t local = 0; local < block.size(); ++local) {
++            const OperationRecord &record = block[local];
++            nlohmann::json op;
++            op["operation_id"] = base[layer_index] + int(local);
++            op["kind"]         = record.kind == nullptr ? std::string() : std::string(record.kind);
++            op["checkpoint"]   = "post_anchor";
++            op["inputs"]       = sources_json(record.inputs);
++            for (const std::string &input : record.inputs)
++                if (input.empty())
++                    ++lookup_miss;
++            nlohmann::json parents = nlohmann::json::array();
++            for (int parent : record.parents)
++                parents.push_back(base[layer_index] + parent);
++            op["parent_operations"] = std::move(parents);
++            nlohmann::json operands = nlohmann::json::array();
++            for (const OperationOperandRecord &operand : record.operands) {
++                nlohmann::json o;
++                o["role"]    = operand.role == nullptr ? std::string() : std::string(operand.role);
++                o["sources"] = sources_json(operand.sources);
++                o["operation_id"] = operand.operation < 0
++                    ? nlohmann::json(nullptr)
++                    : nlohmann::json(base[layer_index] + operand.operation);
++                operands.push_back(std::move(o));
++            }
++            op["operands"]        = std::move(operands);
++            op["offset_units"]    = record.has_offset ? nlohmann::json(record.offset_units) : nlohmann::json(nullptr);
++            op["join"]            = record.join == nullptr ? nlohmann::json(nullptr) : nlohmann::json(std::string(record.join));
++            op["result_geometry"] = expolygons_json(record.result_geometry);
++            op["outputs"]         = nlohmann::json::array();
++            operations.push_back(std::move(op));
++        }
++    }
++    j["operations"]  = std::move(operations);
++    j["lookup_miss"] = lookup_miss;
++
++    write_json(output_dir() + "/" + case_name() + "." + object_tag(print_object) + ".operations.json", j);
++}
++
++void record_generator(
++    const PrintObject              &print_object,
++    const std::vector<Polygons>    &planning_outlines,
++    const std::vector<Polygons>    &overhangs,
++    const std::vector<BoundingBox> &bboxs,
++    const std::vector<Layer>       &layers,
++    float                           infill_extrusion_width,
++    coord_t                         supporting_radius,
++    coord_t                         wall_supporting_radius,
++    coord_t                         prune_length,
++    coord_t                         straightening_max_distance)
++{
++    if (!enabled())
++        return;
++
++    nlohmann::json j;
++    j["schema_version"] = 1;
++    j["case_id"]        = case_name();
++    j["object_id"]      = print_object.get_id();
++    j["object_name"]    = model_object_name(print_object);
++    j["scalars"] = {
++        {"infill_extrusion_width", unscale<double>(infill_extrusion_width)},
++        {"supporting_radius", unscale<double>(supporting_radius)},
++        {"wall_supporting_radius", unscale<double>(wall_supporting_radius)},
++        {"prune_length", unscale<double>(prune_length)},
++        {"straightening_max_distance", unscale<double>(straightening_max_distance)},
++        {"nozzle_diameter", print_object.print()->config().nozzle_diameter.values.empty()
++             ? 0.0 : print_object.print()->config().nozzle_diameter.values.front()},
++    };
++    j["object_config"] = config_json(print_object.config(), {"layer_height", "line_width"});
++    j["regions"]       = regions_json(print_object);
++
++    nlohmann::json planning_layers = nlohmann::json::array();
++    for (size_t layer_index = 0; layer_index < planning_outlines.size(); ++layer_index) {
++        const Slic3r::Layer *layer = print_object.get_layer(int(layer_index));
++        nlohmann::json l;
++        l["local_layer_index"]     = layer_index;
++        // Layer::print_z and Layer::height are already millimetres (coordf_t), not scaled units.
++        l["z_mm"]                  = layer->print_z;
++        l["height_mm"]             = layer->height;
++        l["planning_outlines"]     = polygons_json(planning_outlines[layer_index]);
++        l["overhang"]              = polygons_json(overhangs[layer_index]);
++        l["bbox"]                  = {bboxs[layer_index].min.x(), bboxs[layer_index].min.y(),
++                                      bboxs[layer_index].max.x(), bboxs[layer_index].max.y()};
++        planning_layers.push_back(std::move(l));
++    }
++    j["planning_layers"] = std::move(planning_layers);
++    j["graph"]           = graph_json(layers);
++
++    write_json(output_dir() + "/" + case_name() + "." + object_tag(print_object) + ".planning.json", j);
++}
++
++namespace {
++
++template <typename Domain>
++const Domain &lookup_domains(const std::vector<std::map<const LayerRegion *, Domain>> &domains,
++                             size_t                                                       layer_index,
++                             const LayerRegion                                           *region)
++{
++    static const Domain empty;
++    if (layer_index >= domains.size())
++        return empty;
++    const auto it = domains[layer_index].find(region);
++    return it == domains[layer_index].end() ? empty : it->second;
++}
++
++} // namespace
++
++void capture_domains(const PrintObject &print_object,
++                     const std::vector<std::map<const LayerRegion *, ExPolygons>> &temporary_anchors,
++                     const std::vector<std::map<const LayerRegion *, SurfaceCollection>> &final_surfaces,
++                     const char *phase)
++{
++    if (!enabled())
++        return;
++
++    nlohmann::json j;
++    j["schema_version"] = 1;
++    j["case_id"]        = case_name();
++    j["object_id"]      = print_object.get_id();
++    j["object_name"]    = model_object_name(print_object);
++    j["phase"]          = phase;
++
++    // The five scalars the production sparse-infill Generator constructor resolves, plus the exact
++    // inputs they are derived from. Both groups are omitted as a whole if the production accessors
++    // cannot resolve them; no value is defaulted here.
++    LightningScalars scalars;
++    LightningResolvedInputs resolved_inputs;
++    if (resolve_lightning_scalars(print_object, scalars, resolved_inputs)) {
++        j["scalars"]         = scalars_json(scalars);
++        j["resolved_inputs"] = resolved_inputs_json(resolved_inputs);
++    }
++
++    nlohmann::json layers = nlohmann::json::array();
++    for (int layer_index = 0; layer_index < int(print_object.layers().size()); ++layer_index) {
++        const Slic3r::Layer *layer = print_object.get_layer(layer_index);
++        nlohmann::json l;
++        l["local_layer_index"]  = layer_index;
++        l["global_layer_index"] = layer->id();
++        // Layer::print_z and Layer::height are already millimetres (coordf_t), not scaled units.
++        l["z_mm"]               = layer->print_z;
++        l["height_mm"]          = layer->height;
++        nlohmann::json regions = nlohmann::json::array();
++        for (const LayerRegion *region : layer->regions()) {
++            nlohmann::json r;
++            r["region_id"]        = region->region().print_object_region_id();
++            r["internal_domains"] = expolygons_json(to_expolygons(region->fill_surfaces.filter_by_type(stInternal)));
++            r["void_domains"]     = expolygons_json(to_expolygons(region->fill_surfaces.filter_by_type(stInternalVoid)));
++            r["temporary_anchors"] = expolygons_json(lookup_domains(temporary_anchors, size_t(layer_index), region));
++            const SurfaceCollection &final_surface_set = lookup_domains(final_surfaces, size_t(layer_index), region);
++            r["final_expolygons"]       = expolygons_json(to_expolygons(final_surface_set.surfaces));
++            r["final_internal_domains"] = expolygons_json(to_expolygons(final_surface_set.filter_by_type(stInternal)));
++            r["final_void_domains"]     = expolygons_json(to_expolygons(final_surface_set.filter_by_type(stInternalVoid)));
++            regions.push_back(std::move(r));
++        }
++        l["regions"] = std::move(regions);
++        layers.push_back(std::move(l));
++    }
++    j["layers"] = std::move(layers);
++
++    write_json(output_dir() + "/" + case_name() + "." + object_tag(print_object) + ".domains.json", j);
++}
++
++namespace {
++
++// Areas are computed in canonical scaled units²; report them in mm² like every other recorded
++// spatial value.
++double unscale_area(double scaled_area)
++{
++    return scaled_area * SCALING_FACTOR * SCALING_FACTOR;
++}
++
++nlohmann::json snapshot_layers_json(const LightningPlannerSnapshot &snapshot)
++{
++    nlohmann::json layers = nlohmann::json::array();
++    for (const FixtureLayerDomains &layer : snapshot.layers) {
++        nlohmann::json l;
++        l["local_layer_index"]  = layer.local_layer_index;
++        l["global_layer_index"] = layer.global_layer_index;
++        l["z_mm"]               = layer.z_mm;
++        l["height_mm"]          = layer.height_mm;
++        nlohmann::json regions = nlohmann::json::array();
++        for (const FixtureRegionDomains &region : layer.regions) {
++            nlohmann::json r;
++            r["region_id"] = region.region_id;
++            r["internal"]  = expolygons_json(region.internal);
++            r["voids"]     = expolygons_json(region.voids);
++            regions.push_back(std::move(r));
++        }
++        l["regions"] = std::move(regions);
++        layers.push_back(std::move(l));
++    }
++    return layers;
++}
++
++// Canonical, key-sorted dump of the whole snapshot. Both the fingerprint and the mutation check
++// are computed from exactly this serialization, so they cannot disagree about what the snapshot
++// contained.
++nlohmann::json snapshot_json(const LightningPlannerSnapshot &snapshot)
++{
++    nlohmann::json j;
++    j["object_name"] = snapshot.object_name;
++    j["object_id"]   = snapshot.object_id;
++    j["seed_policy"] = snapshot.seed_policy;
++    j["layers"]      = snapshot_layers_json(snapshot);
++
++    nlohmann::json faithful = nlohmann::json::array();
++    for (const Polygons &layer : snapshot.faithful_infill_outlines)
++        faithful.push_back(polygons_json(layer));
++    j["faithful_infill_outlines"] = std::move(faithful);
++
++    nlohmann::json final_outlines = nlohmann::json::array();
++    for (const Polygons &layer : snapshot.final_infill_outlines)
++        final_outlines.push_back(polygons_json(layer));
++    j["final_infill_outlines"] = std::move(final_outlines);
++
++    LightningScalars scalars;
++    scalars.infill_extrusion_width     = float(snapshot.infill_extrusion_width);
++    scalars.supporting_radius          = snapshot.supporting_radius;
++    scalars.wall_supporting_radius     = snapshot.wall_supporting_radius;
++    scalars.prune_length               = snapshot.prune_length;
++    scalars.straightening_max_distance = snapshot.straightening_max_distance;
++    j["scalars_resolved"] = snapshot.scalars_resolved;
++    j["scalars"]          = scalars_json(scalars);
++    if (snapshot.scalars_resolved)
++        j["resolved_inputs"] = resolved_inputs_json(snapshot.resolved_inputs);
++    return j;
++}
++
++// FNV-1a 64 bit over the canonical JSON dump. A fingerprint is a change detector, not a claim of
++// cryptographic collision resistance.
++std::string snapshot_fingerprint(const LightningPlannerSnapshot &snapshot)
++{
++    const std::string dump = snapshot_json(snapshot).dump();
++    uint64_t          hash = 1469598103934665603ull;
++    for (unsigned char c : dump) {
++        hash ^= static_cast<uint64_t>(c);
++        hash *= 1099511628211ull;
++    }
++    char buffer[17];
++    std::snprintf(buffer, sizeof(buffer), "%016llx", static_cast<unsigned long long>(hash));
++    return std::string(buffer);
++}
++
++size_t polygon_count(const std::vector<Polygons> &outlines)
++{
++    size_t count = 0;
++    for (const Polygons &layer : outlines)
++        count += layer.size();
++    return count;
++}
++
++nlohmann::json generator_graph_json(const Generator &generator, bool include_ptr)
++{
++    std::vector<Layer> layers;
++    layers.reserve(generator.layerCount());
++    for (size_t layer_id = 0; layer_id < generator.layerCount(); ++layer_id)
++        layers.push_back(generator.getTreesForLayer(layer_id));
++    return graph_json(layers, include_ptr);
++}
++
++struct GraphCounts
++{
++    size_t node_count { 0 };
++    size_t edge_count { 0 };
++    size_t root_count { 0 };
++};
++
++GraphCounts graph_counts(const nlohmann::json &graph)
++{
++    GraphCounts counts;
++    if (!graph.is_array())
++        return counts;
++    for (const nlohmann::json &layer : graph) {
++        if (!layer.contains("nodes") || !layer.contains("edges") || !layer.contains("root_count"))
++            continue;
++        counts.node_count += layer["nodes"].size();
++        counts.edge_count += layer["edges"].size();
++        counts.root_count += layer["root_count"].get<size_t>();
++    }
++    return counts;
++}
++
++nlohmann::json graph_entry(const nlohmann::json &graph)
++{
++    const GraphCounts counts = graph_counts(graph);
++    nlohmann::json    entry;
++    entry["node_count"] = counts.node_count;
++    entry["edge_count"] = counts.edge_count;
++    entry["root_count"] = counts.root_count;
++    entry["graph"]      = graph;
++    return entry;
++}
++
++// Bounded diagnostic for a faithful/production mismatch: the first differing layer plus at most one
++// differing node and one differing edge. Never a full diff.
++nlohmann::json first_graph_mismatch(const nlohmann::json &production, const nlohmann::json &faithful)
++{
++    nlohmann::json summary;
++    summary["production_layer_count"] = production.is_array() ? production.size() : 0;
++    summary["faithful_layer_count"]   = faithful.is_array() ? faithful.size() : 0;
++
++    const size_t layer_count = production.is_array() && faithful.is_array()
++        ? std::min(production.size(), faithful.size()) : 0;
++    size_t first_layer = 0;
++    bool   found       = false;
++    for (size_t layer_index = 0; layer_index < layer_count; ++layer_index) {
++        if (production[layer_index] != faithful[layer_index]) {
++            first_layer = layer_index;
++            found       = true;
++            break;
++        }
++    }
++    if (!found && summary["production_layer_count"] != summary["faithful_layer_count"]) {
++        first_layer = layer_count;
++        found       = true;
++    }
++    if (!found)
++        return summary;
++
++    summary["first_differing_layer"] = first_layer;
++    if (first_layer < layer_count) {
++        const nlohmann::json &p = production[first_layer];
++        const nlohmann::json &f = faithful[first_layer];
++        summary["production_root_count"] = p.value("root_count", 0);
++        summary["faithful_root_count"]   = f.value("root_count", 0);
++
++        const auto first_difference = [](const nlohmann::json &a, const nlohmann::json &b, const char *key) -> nlohmann::json {
++            if (!a.contains(key) && !b.contains(key))
++                return nullptr;
++            const nlohmann::json &av = a.contains(key) ? a[key] : nlohmann::json::array();
++            const nlohmann::json &bv = b.contains(key) ? b[key] : nlohmann::json::array();
++            const size_t count = std::min(av.size(), bv.size());
++            for (size_t i = 0; i < count; ++i) {
++                if (av[i] != bv[i]) {
++                    nlohmann::json d;
++                    d["index"]      = i;
++                    d["production"] = av[i];
++                    d["faithful"]   = bv[i];
++                    return d;
++                }
++            }
++            if (av.size() != bv.size()) {
++                nlohmann::json d;
++                d["index"]      = count;
++                d["production"] = count < av.size() ? av[count] : nlohmann::json();
++                d["faithful"]   = count < bv.size() ? bv[count] : nlohmann::json();
++                return d;
++            }
++            return nullptr;
++        };
++        if (nlohmann::json node = first_difference(p, f, "nodes"); !node.is_null())
++            summary["first_differing_node"] = std::move(node);
++        if (nlohmann::json edge = first_difference(p, f, "edges"); !edge.is_null())
++            summary["first_differing_edge"] = std::move(edge);
++    }
++    return summary;
++}
++
++} // namespace
++
++LightningPlannerSnapshot make_planner_snapshot(
++    const PrintObject &print_object,
++    const std::vector<std::map<const LayerRegion *, SurfaceCollection>> &final_surfaces)
++{
++    LightningPlannerSnapshot snapshot;
++    snapshot.object_name = model_object_name(print_object);
++    snapshot.object_id   = print_object.get_id();
++    snapshot.seed_policy = "root_point_hash";
++
++    LightningScalars scalars;
++    snapshot.scalars_resolved = resolve_lightning_scalars(print_object, scalars, snapshot.resolved_inputs);
++    if (snapshot.scalars_resolved) {
++        snapshot.infill_extrusion_width     = scalars.infill_extrusion_width;
++        snapshot.supporting_radius          = scalars.supporting_radius;
++        snapshot.wall_supporting_radius     = scalars.wall_supporting_radius;
++        snapshot.prune_length               = scalars.prune_length;
++        snapshot.straightening_max_distance = scalars.straightening_max_distance;
++    }
++
++    const size_t layer_count = print_object.layers().size();
++    snapshot.layers.resize(layer_count);
++    snapshot.faithful_infill_outlines.resize(layer_count);
++    snapshot.final_infill_outlines.resize(layer_count);
++
++    // Same order as collectInternalDomains: top-to-bottom layers, then Layer::regions() order, then
++    // fill_surfaces.surfaces order. The append of to_polygons(surface.expolygon) is byte-identical.
++    for (int layer_id = int(layer_count) - 1; layer_id >= 0; --layer_id) {
++        const Slic3r::Layer *layer = print_object.get_layer(layer_id);
++        FixtureLayerDomains &snapshot_layer = snapshot.layers[layer_id];
++        snapshot_layer.local_layer_index  = uint32_t(layer_id);
++        snapshot_layer.global_layer_index = uint32_t(layer->id());
++        snapshot_layer.z_mm               = layer->print_z;
++        snapshot_layer.height_mm          = layer->height;
++
++        for (const LayerRegion *region : layer->regions()) {
++            FixtureRegionDomains domains;
++            domains.region_id = region->region().print_object_region_id();
++            for (const Surface &surface : region->fill_surfaces.surfaces) {
++                if (!is_planning_surface(surface))
++                    continue;
++                if (surface.surface_type == stInternal)
++                    domains.internal.push_back(surface.expolygon);
++                else
++                    domains.voids.push_back(surface.expolygon);
++                append(snapshot.faithful_infill_outlines[layer_id], to_polygons(surface.expolygon));
++            }
++
++            const SurfaceCollection &final_surface_set = lookup_domains(final_surfaces, size_t(layer_id), region);
++            for (const Surface &surface : final_surface_set.surfaces)
++                if (is_planning_surface(surface))
++                    append(snapshot.final_infill_outlines[layer_id], to_polygons(surface.expolygon));
++
++            snapshot_layer.regions.push_back(std::move(domains));
++        }
++    }
++    return snapshot;
++}
++
++void record_replay(const PrintObject &print_object,
++                   const LightningPlannerSnapshot &snapshot,
++                   const Generator *production_generator)
++{
++    if (!enabled())
++        return;
++
++    const std::string snapshot_before = snapshot_fingerprint(snapshot);
++
++    const LightningPlannerFixtureResult faithful =
++        run_lightning_planner_fixture(snapshot, FixtureDomainSelector::faithful_planning);
++    const LightningPlannerFixtureResult wrong =
++        run_lightning_planner_fixture(snapshot, FixtureDomainSelector::final_domain_only);
++
++    // Fixture replay is const-only; this is the explicit proof that both selectors left the shared
++    // snapshot untouched.
++    const std::string snapshot_after = snapshot_fingerprint(snapshot);
++
++    const nlohmann::json production_graph = production_generator == nullptr
++        ? nlohmann::json::array()
++        : generator_graph_json(*production_generator, false);
++    const nlohmann::json faithful_graph = graph_json(faithful.layers, false);
++    const nlohmann::json wrong_graph     = graph_json(wrong.layers, false);
++
++    const bool faithful_matches_production = production_graph == faithful_graph;
++
++    nlohmann::json j;
++    j["schema_version"]                  = 1;
++    j["case_id"]                        = case_name();
++    j["object_name"]                    = snapshot.object_name;
++    j["object_id"]                      = snapshot.object_id;
++    j["seed_policy"]                    = snapshot.seed_policy;
++    j["snapshot_before"]                = snapshot_before;
++    j["snapshot_after"]                 = snapshot_after;
++    j["snapshot_unchanged"]             = snapshot_before == snapshot_after;
++    j["faithful_matches_production"]    = faithful_matches_production;
++    j["scalars_resolved"]               = snapshot.scalars_resolved;
++    j["domain_symmetric_difference_area"] = unscale_area(faithful.domain_symmetric_difference_area);
++    j["topology_differs"]               = faithful_graph != wrong_graph;
++    j["faithful_domain_polygon_count"]  = polygon_count(snapshot.faithful_infill_outlines);
++    j["wrong_domain_polygon_count"]     = polygon_count(snapshot.final_infill_outlines);
++    j["wrong_nonempty"]                 = polygon_count(snapshot.final_infill_outlines) > 0;
++    j["production"]                     = graph_entry(production_graph);
++    j["faithful"]                       = graph_entry(faithful_graph);
++    j["wrong"]                          = graph_entry(wrong_graph);
++    if (!faithful_matches_production)
++        j["mismatch"] = first_graph_mismatch(production_graph, faithful_graph);
++
++    write_json(output_dir() + "/" + case_name() + "." + object_tag(print_object) + ".replay.json", j);
++}
++
++ProbeFillContext::ProbeFillContext(FillCallInfo info, const ConfigBase &region_config)
++    : m_info(std::move(info))
++    , m_region_config_json(region_config_json(region_config).dump())
++    , m_dispatch_token(make_dispatch_token(m_info))
++    , m_previous(t_current_fill_context)
++{
++    t_current_fill_context = this;
++}
++
++ProbeFillContext::~ProbeFillContext()
++{
++    if (t_current_fill_context == this)
++        t_current_fill_context = m_previous;
++
++    if (!enabled())
++        return;
++
++    nlohmann::json j;
++    j["dispatch_token"]        = m_dispatch_token;
++    j["object_id"]             = m_info.object_id;
++    j["local_layer_index"]     = m_info.local_layer_index;
++    j["global_layer_index"]    = m_info.global_layer_index;
++    j["z_mm"]                  = m_info.z_mm;
++    j["region_id"]             = m_info.region_id;
++    j["region_id_group"]       = m_info.region_id_group;
++    j["surface_type"]          = surface_type_name(static_cast<SurfaceType>(m_info.surface_type));
++    j["surface_type_id"]       = m_info.surface_type;
++    j["pattern"]               = infill_pattern_name(m_info.pattern);
++    j["pattern_id"]            = m_info.pattern;
++    j["extrusion_role"]        = extrusion_role_name(m_info.extrusion_role);
++    j["extrusion_role_id"]     = m_info.extrusion_role;
++    j["angle_deg"]             = m_info.angle_rad * 180.0 / M_PI;
++    j["angle_rad"]             = m_info.angle_rad;
++    j["fixed_angle"]           = m_info.fixed_angle;
++    j["density_percent"]       = m_info.density_percent;
++    j["spacing_mm"]            = m_info.spacing_mm;
++    j["caller_expolygon"]      = expolygon_json(m_info.caller_expolygon);
++    nlohmann::json source_ids  = nlohmann::json::array();
++    for (const std::string &id : m_info.source_ids)
++        source_ids.push_back(id.empty() ? nlohmann::json(nullptr) : nlohmann::json(id));
++    j["source_ids"]            = std::move(source_ids);
++    j["region_config"]         = nlohmann::json::parse(m_region_config_json);
++
++    append_jsonl(output_dir() + "/" + case_name() + "." +
++                     "object_" + std::to_string(m_info.object_id) + ".callers.jsonl",
++                 j);
++}
++
++ProbeFillContext *current_fill_context()
++{
++    return t_current_fill_context;
++}
++
++void record_lightning_clip(const LightningClipRecord &record)
++{
++    if (!enabled())
++        return;
++
++    ProbeFillContext *context = current_fill_context();
++    nlohmann::json    j;
++    if (context != nullptr) {
++        j["dispatch_token"]        = context->dispatch_token();
++        j["caller_dispatch_token"] = context->dispatch_token();
++        j["callee_call_index"]     = context->next_callee_call_index();
++        j["object_id"]             = context->object_id();
++    } else {
++        // No caller probe was installed: keep the observation, but never invent identity.
++        j["dispatch_token"]        = nullptr;
++        j["caller_dispatch_token"] = nullptr;
++        j["callee_call_index"]     = nullptr;
++        j["object_id"]             = nullptr;
++    }
++    j["callee_expolygon"]       = expolygon_json(record.callee_expolygon);
++    j["pre_clip_polylines"]     = polylines_json(record.pre_clip_polylines);
++    j["clipped_polylines"]      = polylines_json(record.clipped_polylines);
++    j["appended_output_range"]  = nlohmann::json::array({record.appended_start, record.appended_end});
++    j["thickness_layers"]       = record.thickness_layers;
++    j["spacing_mm"]             = record.spacing_mm;
++    j["pattern"]                = "lightning";
++
++    const std::string object_name = context != nullptr ? std::to_string(context->object_id()) : std::string("unknown");
++    append_jsonl(output_dir() + "/" + case_name() + ".object_" + object_name + ".clips.jsonl", j);
++}
++
++} // namespace GateRecorder
++
+ } // namespace Slic3r::FillLightning
+diff --git a/src/libslic3r/Fill/Lightning/Generator.hpp b/src/libslic3r/Fill/Lightning/Generator.hpp
+index 79110fb8dd..708c492383 100644
+--- a/src/libslic3r/Fill/Lightning/Generator.hpp
++++ b/src/libslic3r/Fill/Lightning/Generator.hpp
+@@ -6,17 +6,99 @@
+ 
+ #include "Layer.hpp"
+ 
++#include "../../ExPolygon.hpp"
++#include "../../SurfaceCollection.hpp"
++
++#include <cstdint>
+ #include <functional>
++#include <map>
+ #include <memory>
++#include <string>
+ #include <vector>
+ 
+ namespace Slic3r 
+ {
++class ConfigBase;
++class LayerRegion;
+ class PrintObject;
+ 
+ namespace FillLightning
+ {
+ 
++// Mutation-free planning replay inputs for the lightning geometry/portability gate.
++//
++// A snapshot carries the resolved scalars, the per-layer/per-region internal domains and the two
++// candidate planning-outline sets. Replay only reads it; the production constructors never consult
++// it, so production behaviour is unchanged when no snapshot is used.
++enum class FixtureDomainSelector
++{
++    faithful_planning,
++    final_domain_only,
++};
++
++struct FixtureRegionDomains
++{
++    int       region_id { -1 };
++    ExPolygons internal;
++    ExPolygons voids;
++};
++
++struct FixtureLayerDomains
++{
++    uint32_t                          local_layer_index;
++    uint32_t                          global_layer_index;
++    double                            z_mm;
++    double                            height_mm;
++    std::vector<FixtureRegionDomains> regions;
++};
++
++// Raw values the production sparse-infill constructor resolves the five planning scalars from.
++// Stored as plain numbers so the snapshot stays free of the JSON recorder types.
++struct LightningResolvedInputs
++{
++    double max_nozzle_diameter_mm { 0.0 };
++    double layer_height_mm { 0.0 };
++    double sparse_infill_line_width_mm { 0.0 };
++    double object_line_width_mm { 0.0 };
++    int    fill_multiline { 0 };
++    double sparse_infill_density_percent { 0.0 };
++    double overhang_angle_deg { 0.0 };
++    double prune_angle_deg { 0.0 };
++    double straightening_angle_deg { 0.0 };
++};
++
++struct LightningPlannerSnapshot
++{
++    std::string           object_name;
++    int                   object_id { -1 };
++    std::string           seed_policy;
++    std::vector<FixtureLayerDomains> layers;
++    std::vector<Polygons> faithful_infill_outlines;
++    std::vector<Polygons> final_infill_outlines;
++    bool                  scalars_resolved { false };
++    LightningResolvedInputs resolved_inputs;
++    double                infill_extrusion_width { 0.0 };
++    coord_t               supporting_radius { 0 };
++    coord_t               wall_supporting_radius { 0 };
++    coord_t               prune_length { 0 };
++    coord_t               straightening_max_distance { 0 };
++};
++
++struct LightningPlannerFixtureResult
++{
++    std::string            object_name;
++    std::string            seed_policy;
++    std::vector<Layer>     layers;
++    std::vector<Polygons>  overhang_per_layer;
++    std::vector<BoundingBox> bboxs;
++    double                 domain_symmetric_difference_area;
++};
++
++// Replays the canonical planning pass from a snapshot without touching any PrintObject. Selects
++// either the faithful-planning or the final-domain outline set. Does not modify the snapshot.
++LightningPlannerFixtureResult run_lightning_planner_fixture(const LightningPlannerSnapshot &snapshot,
++                                                            FixtureDomainSelector            selector);
++
+ /*!
+  * Generates the Lightning Infill pattern.
+  *
+@@ -46,6 +128,9 @@ public:
+      */
+     explicit Generator(const PrintObject &print_object, const std::function<void()> &throw_on_cancel_callback);
+ 
++    // Replay constructor: plans from a mutation-free snapshot using the faithful planning domains.
++    explicit Generator(const LightningPlannerSnapshot &snapshot, const std::function<void()> &throw_on_cancel_callback);
++
+     /*!
+      * Get a tree of paths generated for a certain layer of the mesh.
+      *
+@@ -57,12 +142,40 @@ public:
+      */
+     const Layer& getTreesForLayer(const size_t& layer_id) const;
+ 
++    // Number of planned layers. Used by the gate recorder to walk the production graph without
++    // reaching into private state; equals the print object's layer count for a built generator.
++    size_t layerCount() const { return m_lightning_layers.size(); }
++
+     std::vector<Polygons>& Overhangs() { return m_overhang_per_layer; }
+ 
+     float infilll_extrusion_width() const { return m_infill_extrusion_width; }
+ 
+     Generator(PrintObject* m_object, std::vector<Polygons>& contours, std::vector<Polygons>& overhangs, const std::function<void()> &throw_on_cancel_callback, float density = 0.15);
+ 
++private:
++    // Replay-only constructor. Plans from already-selected domains and never reads a PrintObject.
++    Generator(const LightningPlannerSnapshot &snapshot,
++              const std::vector<Polygons>    &selected_infill_outlines,
++              const std::function<void()>   &throw_on_cancel_callback);
++
++    // Collects the stInternal / stInternalVoid surfaces of every layer into one Polygons list per
++    // layer, iterating top to bottom. Shared by production planning and snapshot replay.
++    static std::vector<Polygons> collectInternalDomains(const PrintObject &print_object,
++                                                        const std::function<void()> &throw_on_cancel_callback);
++
++    // Top-down diff(offset(infill_area_here, -wall_supporting_radius), infill_area_above) chain.
++    static std::vector<Polygons> deriveOverhangs(const std::vector<Polygons> &infill_outlines,
++                                                 coord_t                      wall_supporting_radius);
++
++    // The canonical planning loop over explicit domains. `print_object` is used only to emit the
++    // gate recorder; pass nullptr for replay.
++    void generateTreesFromDomains(const std::vector<Polygons> &infill_outlines,
++                                  const std::function<void()>  &throw_on_cancel_callback,
++                                  const PrintObject             *print_object);
++
++    friend LightningPlannerFixtureResult run_lightning_planner_fixture(const LightningPlannerSnapshot &snapshot,
++                                                                        FixtureDomainSelector            selector);
++
+ protected:
+     /*!
+      * Calculate the overhangs above the infill areas that need to be supported
+@@ -132,6 +245,243 @@ protected:
+     std::vector<BoundingBox> bboxs;
+ };
+ 
++// Opt-in canonical recording for the lightning geometry/portability gate.
++//
++// Enabled only when LIGHTNING_GATE_OUTPUT names an existing directory. The recorder copies canonical
++// planning inputs and outputs into that directory as JSON; it never changes planning behaviour and
++// writes nothing when the variable is absent. Declarations live here (pass A) so the recorder can be
++// reached from PrintObject.cpp without a new translation unit or CMake entry.
++namespace GateRecorder
++{
++bool enabled();
++std::string case_id();
++
++// Earlier-source snapshot, taken before temporary anchor edits. Captures the per-layer/per-region
++// surfaces and raw configuration that a Gate A reconstruction is allowed to consume. Every
++// surface carries a stable `source_id` token (`o<object>_l<global layer>_r<region>_s<surface>`),
++// and the surface addresses are catalogued for the Phase-2 operation recorder.
++void capture_source(const PrintObject &print_object, const char *phase);
++
++// One catalogued pre-anchor source surface, keyed by its runtime Surface address.
++struct SourceSurfaceRef
++{
++    int         object_id { -1 };
++    std::string source_id;
++    int         local_layer_index { -1 };
++    int         global_layer_index { -1 };
++    int         region_id { -1 };
++    size_t      surface_index { 0 };
++};
++
++// Pre-anchor source identity of `surface`, or an empty string when it was not catalogued for
++// `object_id`. Callers must record the miss (null) rather than inventing an identity. Thread-safe:
++// Phase 2 resolves these from TBB workers. The `object_id` overload rejects stale entries whose
++// address was recycled by a different object.
++std::string              source_id_for(const Surface *surface);
++std::string              source_id_for(const Surface *surface, int object_id);
++std::vector<std::string> source_ids_for(const std::vector<const Surface *> &surfaces, int object_id);
++
++// Grouped-fill attribution. `group_fills` merges every fill surface that shares one
++// `SurfaceFillParams`; that params' `idx` is the group index and is unique within one layer. The
++// recorder notes each contributing pre-anchor surface before the union/`diff_ex` pass can discard
++// its identity, and the caller probe reads the complete set back. Keys are `(layer id, group
++// index)` in thread-local storage: `group_fills` and the dispatch loop that consumes its result
++// run on the same thread. `reset_group_sources` clears the registry at the start of one layer's
++// grouping; nothing is recorded when the recorder is disabled.
++void                     reset_group_sources(int layer_id);
++std::string              source_id_at(int object_id, int global_layer_index, size_t region_id,
++                                      size_t surface_index);
++void                     note_group_source(int layer_id, size_t group_index, int global_layer_index,
++                                          size_t region_id, size_t surface_index, int object_id);
++std::vector<std::string> group_source_ids(int layer_id, size_t group_index);
++
++// One recorded Phase-2 geometry operation. `inputs` and operand `sources` hold pre-anchor source
++// ids; an empty string is a lookup miss and is written as JSON null. `parents` and operand
++// `operation` are block-local indices into the same layer's contiguous operation run; the writer
++// resolves them to zero-based global operation ids.
++struct OperationOperandRecord
++{
++    const char              *role { "subject" }; // "subject" | "clip"
++    std::vector<std::string> sources;
++    int                      operation { -1 };
++};
++
++struct OperationRecord
++{
++    const char                          *kind { nullptr };
++    std::vector<std::string>             inputs;
++    std::vector<int>                     parents;
++    std::vector<OperationOperandRecord>  operands;
++    bool                                 has_offset { false };
++    int                                  offset_units { 0 };
++    const char                          *join { nullptr };
++    ExPolygons                           result_geometry;
++};
++
++// Writes `<case>.object_<id>.operations.json` once after the Phase-2 anchor-expansion pass and
++// before the pre-anchor surfaces are restored. `operations_by_layer` is indexed by local layer
++// index; each inner vector is that layer's event block, emitted in layer order.
++void record_operations(const PrintObject &print_object,
++                       const std::vector<std::vector<OperationRecord>> &operations_by_layer);
++
++// Planning result, taken once planning completes. Captures pooled planning domains, per-layer
++// overhangs/bboxes, generator scalars and the complete node/edge/grounding graph.
++void record_generator(
++    const PrintObject                &print_object,
++    const std::vector<Polygons>      &planning_outlines,
++    const std::vector<Polygons>      &overhangs,
++    const std::vector<BoundingBox>   &bboxs,
++    const std::vector<Layer>         &layers,
++    float                             infill_extrusion_width,
++    coord_t                           supporting_radius,
++    coord_t                           wall_supporting_radius,
++    coord_t                           prune_length,
++    coord_t                           straightening_max_distance);
++
++// Exact planning domains at the post-anchor checkpoint, taken once per object between the
++// bridge-over-infill Phase 2 write pass and prepare_lightning_infill_data(). `temporary_anchors` is
++// the exact per-(layer, region) sum of the `expansion` copies computed by Phase 2, not a later
++// inference from stInternalSolid. `final_surfaces` is a complete copy of every layer/region
++// `fill_surfaces` taken before Phase 2 moved them; expanded layers therefore report the backup
++// surfaces that are restored after the generator is built, and unexpanded layers report the
++// unchanged surfaces. The copy retains surface types, so the recorder can split it into the typed
++// `stInternal` / `stInternalVoid` final domains while still emitting the untyped union.
++void capture_domains(const PrintObject &print_object,
++                     const std::vector<std::map<const LayerRegion *, ExPolygons>> &temporary_anchors,
++                     const std::vector<std::map<const LayerRegion *, SurfaceCollection>> &final_surfaces,
++                     const char *phase);
++
++// Builds the immutable planner snapshot at the post-anchor, pre-generator seam.
++//
++// `final_surfaces` is the complete pre-Phase-2 copy of every layer/region `fill_surfaces` (the
++// geometry restored after the generator is built). The typed planning regions come from the
++// current post-anchor `fill_surfaces`; `faithful_infill_outlines` is flattened in exactly the
++// order `collectInternalDomains` consumes, and `final_infill_outlines` applies the same flattening
++// to the typed stInternal/stInternalVoid subset of the final copy. Scalars are resolved with the
++// same helper `capture_domains` uses, so the recorded values cannot drift from production.
++LightningPlannerSnapshot make_planner_snapshot(
++    const PrintObject &print_object,
++    const std::vector<std::map<const LayerRegion *, SurfaceCollection>> &final_surfaces);
++
++// Replays the snapshot through both domain selectors, compares the faithful graph against the
++// production generator, verifies the snapshot was not mutated, and writes
++// `<case>.object_<id>.replay.json`. Replay is an independent artifact: it never writes
++// planning.json or caller/clip records and never touches the production generator.
++void record_replay(const PrintObject &print_object,
++                   const LightningPlannerSnapshot &snapshot,
++                   const Generator *production_generator);
++
++// Per-layer identity attached to grounding/attachment witnesses. Set once around the production
++// layer's generateNewTrees/reconnectRoots pair; snapshot replay never sets it, so the witness
++// writers no-op there and stay production-only.
++struct GroundingContext
++{
++    std::string object_name;
++    int         object_id { -1 };
++    int         layer_id { -1 };
++    double      z_mm { 0.0 };
++};
++
++void set_context(const GroundingContext &context);
++void clear_context();
++
++// One getBestGroundingLocation decision. `boundary_point`, `edge_from` and `edge_to` describe the
++// winning outline edge (the `d2` winner) and are emitted as null when no outline edge exists.
++// `tree_node` is the winning tree when the decision was not a boundary one; `weighted_distance` is
++// the value the selection compared, in canonical units. Purely observational: callers must not
++// alter their comparison, return value or ordering based on this call.
++void record_grounding(const Point &unsupported,
++                      const Point &boundary_point,
++                      const Point &edge_from,
++                      const Point &edge_to,
++                      const NodeSPtr &tree_node,
++                      coord_t weighted_distance,
++                      bool boundary_winner,
++                      const char *site,
++                      bool has_boundary_candidate = true);
++
++// One actual addChild site after it has been performed. `parent`/`child` are the real nodes the
++// tree now links; `new_root` is true only for Layer::attach's boundary branch.
++void record_attachment(const Point &unsupported,
++                       const NodeSPtr &parent,
++                       const NodeSPtr &child,
++                       bool new_root,
++                       const char *site);
++
++// Identity of one caller-side dispatch into a Fill implementation. Populated by
++// Layer::make_fills and Layer::generate_sparse_infill_polylines_for_anchoring before the callee
++// receives the surface. Enum-valued fields are stored as their underlying integer so this header
++// stays independent of the surface/pattern/role type headers.
++struct FillCallInfo
++{
++    int                 object_id { -1 };
++    int                 local_layer_index { -1 };
++    int                 global_layer_index { -1 };
++    double              z_mm { 0.0 };
++    size_t              region_id { size_t(-1) };
++    std::vector<size_t> region_id_group;
++    int                 surface_type { 0 };
++    int                 pattern { 0 };
++    int                 extrusion_role { 0 };
++    float               angle_rad { 0.f };
++    bool                fixed_angle { false };
++    double              density_percent { 0.0 };
++    double              spacing_mm { 0.0 };
++    ExPolygon           caller_expolygon;
++    // Complete pre-anchor contributor set of the grouped fill that produced this dispatch, in
++    // group_fills accumulation order. Empty strings are lookup misses and are written as null.
++    std::vector<std::string> source_ids;
++};
++
++// Same-thread observer installed around a single fill dispatch. Construction assigns a unique
++// dispatch token (`o<object>_l<global layer>_r<region>_d<counter>`) and publishes the context to the
++// current thread; destruction appends the caller record and restores the previous context on both
++// normal and exceptional exits. No mutable JSON is shared between threads.
++class ProbeFillContext
++{
++public:
++    ProbeFillContext(FillCallInfo info, const ConfigBase &region_config);
++    ~ProbeFillContext();
++
++    ProbeFillContext(const ProbeFillContext &) = delete;
++    ProbeFillContext &operator=(const ProbeFillContext &) = delete;
++
++    const FillCallInfo &info() const { return m_info; }
++    int                 object_id() const { return m_info.object_id; }
++    const std::string  &dispatch_token() const { return m_dispatch_token; }
++
++    // Index of the next _fill_surface_single call within this dispatch. A dispatch can split into
++    // several callee polygons (fill_surface offsets the caller polygon), so the index binds each
++    // clip record to its exact callee invocation.
++    int next_callee_call_index() { return m_callee_call_index++; }
++
++private:
++    FillCallInfo            m_info;
++    std::string             m_region_config_json;
++    std::string             m_dispatch_token;
++    ProbeFillContext       *m_previous { nullptr };
++    int                     m_callee_call_index { 0 };
++};
++
++ProbeFillContext *current_fill_context();
++
++// One Lightning::Filler::_fill_surface_single invocation. The pre-clip polylines are captured after
++// multiline_fill and the clipped polylines after intersection_pl, both before
++// chain_or_connect_infill consumes them.
++struct LightningClipRecord
++{
++    ExPolygon    callee_expolygon;
++    Polylines    pre_clip_polylines;
++    Polylines    clipped_polylines;
++    size_t       appended_start { 0 };
++    size_t       appended_end { 0 };
++    unsigned int thickness_layers { 0 };
++    double       spacing_mm { 0.0 };
++};
++
++void record_lightning_clip(const LightningClipRecord &record);
++} // namespace GateRecorder
++
+ } // namespace FillLightning
+ } // namespace Slic3r
+ 
+diff --git a/src/libslic3r/Fill/Lightning/Layer.cpp b/src/libslic3r/Fill/Lightning/Layer.cpp
+index 4a30a95f45..81800c2204 100644
+--- a/src/libslic3r/Fill/Lightning/Layer.cpp
++++ b/src/libslic3r/Fill/Lightning/Layer.cpp
+@@ -4,6 +4,7 @@
+ #include "Layer.hpp" //The class we're implementing.
+ 
+ #include "DistanceField.hpp"
++#include "Generator.hpp"
+ #include "TreeNode.hpp"
+ 
+ #include "../../ClipperUtils.hpp"
+@@ -32,6 +33,14 @@ inline static Point to_grid_point(const Point &point, const BoundingBox &bbox)
+     return (point - bbox.min) / locator_cell_size();
+ }
+ 
++namespace {
++
++// Which canonical planning pass is asking for a grounding decision. The witness writer only reads
++// this; it never feeds back into selection.
++thread_local const char *t_grounding_site = "generateNewTrees";
++
++} // namespace
++
+ void Layer::fillLocator(SparseNodeGrid &tree_node_locator, const BoundingBox& current_outlines_bbox)
+ {
+     std::function<void(NodeSPtr)> add_node_to_locator_func = [&tree_node_locator, &current_outlines_bbox](const NodeSPtr &node) {
+@@ -52,6 +61,8 @@ void Layer::generateNewTrees
+     const std::function<void()> &throw_on_cancel_callback
+ )
+ {
++    t_grounding_site = "generateNewTrees";
++
+     DistanceField distance_field(supporting_radius, current_outlines, current_outlines_bbox, current_overhang);
+     throw_on_cancel_callback();
+ 
+@@ -128,6 +139,9 @@ GroundingLocation Layer::getBestGroundingLocation
+ {
+     // Closest point on current_outlines to unsupported_location:
+     Point node_location;
++    Point best_from;
++    Point best_to;
++    bool  has_boundary_candidate = false;
+     {
+         double d2 = std::numeric_limits<double>::max();
+         for (const Polygon &contour : current_outlines)
+@@ -138,6 +152,9 @@ GroundingLocation Layer::getBestGroundingLocation
+                     if (double d = line_alg::distance_to_squared(Line{prev, p2}, unsupported_location, &closest_point); d < d2) {
+                         d2 = d;
+                         node_location = closest_point;
++                        best_from = prev;
++                        best_to = p2;
++                        has_boundary_candidate = true;
+                     }
+                     prev = p2;
+                 }
+@@ -194,6 +211,10 @@ GroundingLocation Layer::getBestGroundingLocation
+         }); // end of parallel_for
+     }
+ 
++    const bool boundary_winner = !sub_tree;
++    GateRecorder::record_grounding(unsupported_location, node_location, best_from, best_to, sub_tree,
++                                   current_dist, boundary_winner, t_grounding_site, has_boundary_candidate);
++
+     return ! sub_tree ?
+         GroundingLocation{ nullptr, node_location } :
+         GroundingLocation{ sub_tree, std::optional<Point>() };
+@@ -210,9 +231,11 @@ bool Layer::attach(
+         new_root = Node::create(grounding_loc.p(), std::make_optional(grounding_loc.p()));
+         new_child = new_root->addChild(unsupported_location);
+         tree_roots.push_back(new_root);
++        GateRecorder::record_attachment(unsupported_location, new_root, new_child, true, "attach");
+         return true;
+     } else {
+         new_child = grounding_loc.tree_node->addChild(unsupported_location);
++        GateRecorder::record_attachment(unsupported_location, grounding_loc.tree_node, new_child, false, "attach");
+         return false;
+     }
+ }
+@@ -227,6 +250,8 @@ void Layer::reconnectRoots
+     const coord_t wall_supporting_radius
+ )
+ {
++    t_grounding_site = "reconnectRoots";
++
+     constexpr coord_t tree_connecting_ignore_offset = 100;
+ 
+     SparseNodeGrid tree_node_locator;
+@@ -248,6 +273,8 @@ void Layer::reconnectRoots
+                     auto new_root = Node::create(new_root_pt, new_root_pt);
+                     root_ptr->addChild(new_root);
+                     new_root->reroot();
++                    // reroot() reverses the just-added edge, so the final link is new_root -> root_ptr.
++                    GateRecorder::record_attachment(root_ptr->getLocation(), new_root, root_ptr, false, "reconnectRoots");
+ 
+                     tree_node_locator.insert(std::make_pair(to_grid_point(new_root->getLocation(), current_outlines_bbox), new_root));
+ 
+@@ -281,6 +308,7 @@ void Layer::reconnectRoots
+ 
+             new_root->addChild(attach_ptr);
+             tree_node_locator.insert(std::make_pair(to_grid_point(new_root->getLocation(), current_outlines_bbox), new_root));
++            GateRecorder::record_attachment(root_ptr->getLocation(), new_root, attach_ptr, false, "reconnectRoots");
+ 
+             *old_root_it = std::move(new_root); // replace old root with new root
+         }
+@@ -295,6 +323,7 @@ void Layer::reconnectRoots
+             attach_ptr->reroot();
+ 
+             ground.tree_node->addChild(attach_ptr);
++            GateRecorder::record_attachment(root_ptr->getLocation(), ground.tree_node, attach_ptr, false, "reconnectRoots");
+ 
+             // remove old root
+             *old_root_it = std::move(tree_roots.back());
+diff --git a/src/libslic3r/Fill/Lightning/TreeNode.hpp b/src/libslic3r/Fill/Lightning/TreeNode.hpp
+index 95559524ba..6e92fa8efd 100644
+--- a/src/libslic3r/Fill/Lightning/TreeNode.hpp
++++ b/src/libslic3r/Fill/Lightning/TreeNode.hpp
+@@ -248,6 +248,11 @@ public:
+      */
+     const std::optional<Point>& getLastGroundingLocation() const { return m_last_grounding_location; }
+ 
++    // Read-only graph accessors used by the opt-in lightning gate recorder. They expose the
++    // existing topology without changing it; production behaviour is unaffected.
++    NodeSPtr getParent() const { return m_parent.lock(); }
++    const std::vector<NodeSPtr>& getChildren() const { return m_children; }
++
+     void draw_tree(SVG& svg) { for (auto& child : m_children) { svg.draw(Line(m_p, child->getLocation()), "yellow"); child->draw_tree(svg); } }
+ 
+ protected:
+diff --git a/src/libslic3r/PrintObject.cpp b/src/libslic3r/PrintObject.cpp
+index bb2a355daa..dca708d6a9 100644
+--- a/src/libslic3r/PrintObject.cpp
++++ b/src/libslic3r/PrintObject.cpp
+@@ -23,12 +23,15 @@
+ #include "Fill/FillAdaptive.hpp"
+ #include "Fill/Fill.hpp"
+ #include "Fill/FillLightning.hpp"
++#include "Fill/Lightning/Generator.hpp"
+ #include "Format/STL.hpp"
+ #include "format.hpp"
+ #include "AABBTreeIndirect.hpp"
+ #include "AABBTreeLines.hpp"
+ 
++#include <algorithm>
+ #include <cstddef>
++#include <cstdlib>
+ #include <float.h>
+ #include <iterator>
+ #include <mutex>
+@@ -2694,6 +2697,11 @@ void PrintObject::bridge_over_infill()
+         }
+     }
+ 
++    // Opt-in gate A source snapshot: the unmodified surfaces and raw configuration before any
++    // temporary bridge-anchor expansion. Disabled unless LIGHTNING_GATE_OUTPUT is set.
++    if (has_lightning_infill)
++        FillLightning::GateRecorder::capture_source(*this, "pre_anchor");
++
+     // SECTION to gather and filter surfaces for expanding, and then cluster them by layer
+     {
+         tbb::concurrent_vector<CandidateSurface> candidate_surfaces;
+@@ -2797,6 +2805,26 @@ void PrintObject::bridge_over_infill()
+             backup_surfaces[lidx] = {};
+         }
+ 
++        // Opt-in gate domain snapshot. Copy (never move) the complete pre-anchor surfaces for every
++        // layer/region before Phase 2 moves them into backup_surfaces, and collect the exact
++        // Phase-2 `expansion` additions keyed by (layer, region). The complete SurfaceCollection
++        // copy keeps surface types so the fixture can distinguish the final stInternal and
++        // stInternalVoid domains. Disabled unless LIGHTNING_GATE_OUTPUT is set.
++        const bool gate_recording = FillLightning::GateRecorder::enabled();
++        std::vector<std::map<const LayerRegion *, ExPolygons>> temporary_anchors;
++        std::vector<std::map<const LayerRegion *, SurfaceCollection>> pre_anchor_surfaces;
++        std::vector<std::vector<FillLightning::GateRecorder::OperationRecord>> operation_records;
++        if (gate_recording) {
++            temporary_anchors.resize(this->layers().size());
++            pre_anchor_surfaces.resize(this->layers().size());
++            // Each Phase-2 worker owns one lidx, so its layer's operation block needs no lock.
++            operation_records.resize(this->layers().size());
++            for (size_t lidx = 0; lidx < this->layer_count(); lidx++) {
++                for (const LayerRegion *region : this->get_layer(lidx)->regions())
++                    pre_anchor_surfaces[lidx][region] = region->fill_surfaces;
++            }
++        }
++
+         // ORCA: Two-phase split (collect-then-apply) to eliminate a data race in
+         // the original single-phase parallel_for, where iteration `lidx` read
+         // m_layers[lidx-1]->regions()->fill_surfaces (its lower_layer) to compute
+@@ -2859,7 +2887,10 @@ void PrintObject::bridge_over_infill()
+         // there is no aliasing between worker threads.
+         tbb::parallel_for(tbb::blocked_range<size_t>(0, this->layers().size()), [po = this, &backup_surfaces,
+                                                                                  &surfaces_by_layer,
+-                                                                                 &needs_lightning_expansion](tbb::blocked_range<size_t> r) {
++                                                                                 &needs_lightning_expansion,
++                                                                                 &temporary_anchors,
++                                                                                 &operation_records,
++                                                                                 gate_recording](tbb::blocked_range<size_t> r) {
+             PRINT_OBJECT_TIME_LIMIT_MILLIS(PRINT_OBJECT_TIME_LIMIT_DEFAULT);
+             for (size_t lidx = r.begin(); lidx < r.end(); lidx++) {
+                 if (! needs_lightning_expansion[lidx])
+@@ -2881,16 +2912,122 @@ void PrintObject::bridge_over_infill()
+                     if (sparse_infill.empty()) {
+                         break;
+                     }
++
++                    // Pre-anchor source ids in the same filter order the two domains above use.
++                    // `backup_surfaces` owns the original Surface objects the catalog keyed on, so
++                    // these addresses resolve even though `region->fill_surfaces` is now a copy.
++                    std::vector<std::string> sparse_source_ids;
++                    std::vector<std::string> solid_source_ids;
++                    std::vector<FillLightning::GateRecorder::OperationRecord> *operation_block = nullptr;
++                    const int object_id = po->get_id();
++                    std::vector<std::pair<std::string, FillLightning::GateRecorder::OperationRecord>> anchor_records;
++                    if (gate_recording) {
++                        std::vector<const Surface *> sparse_surfaces;
++                        std::vector<const Surface *> solid_surfaces;
++                        for (const Surface &surface : backup_surfaces[lidx][region].surfaces) {
++                            if (surface.surface_type == stInternal)
++                                sparse_surfaces.push_back(&surface);
++                            else if (surface.surface_type == stInternalSolid)
++                                solid_surfaces.push_back(&surface);
++                        }
++                        sparse_source_ids = FillLightning::GateRecorder::source_ids_for(sparse_surfaces, object_id);
++                        solid_source_ids  = FillLightning::GateRecorder::source_ids_for(solid_surfaces, object_id);
++                        operation_block   = &operation_records[lidx];
++                    }
++
+                     for (const auto &surface : surfaces_by_layer[lidx]) {
+                         if (surface.region != region)
+                             continue;
+                         ExPolygons expansion = intersection_ex(sparse_infill, expand(surface.new_polys, scaled<float>(3.0)));
+                         solid_infill.insert(solid_infill.end(), expansion.begin(), expansion.end());
++                        if (gate_recording) {
++                            // Exact temporary-anchor addition for this (lidx, region). Each Phase-2
++                            // iteration owns a distinct lidx, so the per-layer map needs no lock.
++                            ExPolygons &anchor_bucket = temporary_anchors[lidx][region];
++                            anchor_bucket.insert(anchor_bucket.end(), expansion.begin(), expansion.end());
++                            if (!expansion.empty()) {
++                                // AnchorExpansion: subject = candidate stInternalSolid surface,
++                                // clip = the region's pre-anchor stInternal surfaces, offset = the
++                                // canonical 3 mm expansion radius.
++                                FillLightning::GateRecorder::OperationRecord record;
++                                record.kind = "AnchorExpansion";
++                                const std::string subject =
++                                    FillLightning::GateRecorder::source_id_for(surface.original_surface, object_id);
++                                record.inputs.push_back(subject);
++                                record.inputs.insert(record.inputs.end(), sparse_source_ids.begin(), sparse_source_ids.end());
++                                FillLightning::GateRecorder::OperationOperandRecord subject_operand;
++                                subject_operand.role = "subject";
++                                subject_operand.sources.push_back(subject);
++                                FillLightning::GateRecorder::OperationOperandRecord clip_operand;
++                                clip_operand.role    = "clip";
++                                clip_operand.sources = sparse_source_ids;
++                                record.operands.push_back(std::move(subject_operand));
++                                record.operands.push_back(std::move(clip_operand));
++                                record.has_offset    = true;
++                                record.offset_units  = int(scaled<float>(3.0));
++                                record.join          = "miter";
++                                record.result_geometry = expansion;
++                                anchor_records.emplace_back(subject, std::move(record));
++                            }
++                        }
+                     }
+ 
+                     solid_infill  = union_safety_offset_ex(solid_infill);
+                     sparse_infill = diff_ex(sparse_infill, solid_infill);
+ 
++                    if (gate_recording && !anchor_records.empty()) {
++                        // Stable operation order independent of the parallel gather's insertion
++                        // order: sort by the candidate source id. Union/diff are set operations,
++                        // so production geometry and surface order are unchanged.
++                        std::stable_sort(anchor_records.begin(), anchor_records.end(),
++                            [](const std::pair<std::string, FillLightning::GateRecorder::OperationRecord> &lhs,
++                               const std::pair<std::string, FillLightning::GateRecorder::OperationRecord> &rhs) {
++                                return lhs.first < rhs.first;
++                            });
++                        std::vector<int> expansion_ids;
++                        expansion_ids.reserve(anchor_records.size());
++                        for (auto &anchor : anchor_records) {
++                            expansion_ids.push_back(int(operation_block->size()));
++                            operation_block->push_back(std::move(anchor.second));
++                        }
++
++                        // Union of the pre-anchor stInternalSolid surfaces with every expansion
++                        // produced above. Each expansion is an ordered clip operand.
++                        FillLightning::GateRecorder::OperationRecord union_record;
++                        union_record.kind   = "Union";
++                        union_record.inputs = solid_source_ids;
++                        union_record.parents = expansion_ids;
++                        FillLightning::GateRecorder::OperationOperandRecord union_subject;
++                        union_subject.role    = "subject";
++                        union_subject.sources = solid_source_ids;
++                        union_record.operands.push_back(std::move(union_subject));
++                        for (int expansion_id : expansion_ids) {
++                            FillLightning::GateRecorder::OperationOperandRecord union_clip;
++                            union_clip.role      = "clip";
++                            union_clip.operation = expansion_id;
++                            union_record.operands.push_back(std::move(union_clip));
++                        }
++                        union_record.result_geometry = solid_infill;
++                        const int union_index = int(operation_block->size());
++                        operation_block->push_back(std::move(union_record));
++
++                        // Difference of the pre-anchor stInternal surfaces with the unioned solid.
++                        FillLightning::GateRecorder::OperationRecord difference_record;
++                        difference_record.kind   = "Difference";
++                        difference_record.inputs = sparse_source_ids;
++                        difference_record.parents.push_back(union_index);
++                        FillLightning::GateRecorder::OperationOperandRecord difference_subject;
++                        difference_subject.role    = "subject";
++                        difference_subject.sources = sparse_source_ids;
++                        difference_record.operands.push_back(std::move(difference_subject));
++                        FillLightning::GateRecorder::OperationOperandRecord difference_clip;
++                        difference_clip.role      = "clip";
++                        difference_clip.operation = union_index;
++                        difference_record.operands.push_back(std::move(difference_clip));
++                        difference_record.result_geometry = sparse_infill;
++                        operation_block->push_back(std::move(difference_record));
++                    }
++
+                     region->fill_surfaces.remove_types({stInternalSolid, stInternal});
+                     for (const ExPolygon &ep : solid_infill) {
+                         region->fill_surfaces.surfaces.emplace_back(stInternalSolid, ep);
+@@ -2902,9 +3039,26 @@ void PrintObject::bridge_over_infill()
+             }
+         });
+ 
++        // Opt-in exact planning-domain snapshot, taken after Phase 2 and before the config-only
++        // prepare_lightning_infill_data(). The layer regions currently hold the post-anchor
++        // stInternal/stInternalVoid surfaces plus the expanded stInternalSolid surfaces. The
++        // immutable planner snapshot is built from the same state; replay compares it against the
++        // production generator after construction.
++        FillLightning::LightningPlannerSnapshot planner_snapshot;
++        if (gate_recording) {
++            FillLightning::GateRecorder::record_operations(*this, operation_records);
++            planner_snapshot = FillLightning::GateRecorder::make_planner_snapshot(*this, pre_anchor_surfaces);
++            FillLightning::GateRecorder::capture_domains(*this, temporary_anchors, pre_anchor_surfaces, "post_anchor");
++        }
++
+         // Use the modified surfaces to generate expanded lightning anchors
+         this->m_lightning_generator = this->prepare_lightning_infill_data();
+ 
++        // Independent replay artifact: only when explicitly requested. The fixture never writes
++        // planning.json or caller/clip records and never consults or mutates production state.
++        if (gate_recording && std::getenv("LIGHTNING_GATE_REPLAY") != nullptr)
++            FillLightning::GateRecorder::record_replay(*this, planner_snapshot, this->m_lightning_generator.get());
++
+         // And now restore carefully the original surfaces, again using move to avoid reallocation and preserving the validity of the
+         // pointers in surface candidates
+         for (size_t lidx = 0; lidx < this->layer_count(); lidx++) {

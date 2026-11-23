@@ -15,7 +15,10 @@ use slicer_helpers::{
 };
 use slicer_ir::{BoundingBox3, MeshIR, ObjectConfig, ObjectMesh};
 
-use slicer_model_io::{assemble_object, load_model};
+use slicer_model_io::{assemble_object, detect_format, load_model, ModelFormat};
+
+#[cfg(feature = "scad")]
+use slicer_model_io::ModelLoadError;
 
 use pnp_cli::io::OutputFormat;
 
@@ -25,6 +28,50 @@ mod exit_codes {
     pub const UNREADABLE: i32 = 2;
     pub const EMPTY_OR_TRIVIAL: i32 = 3;
     pub const PARSE_ERROR: i32 = 4;
+    /// Command-line usage error, matching clap's own exit status. Carries the
+    /// same value as [`UNREADABLE`] but says *why*: the invocation was wrong,
+    /// not the input file. Used for SCAD/STEP option conflicts.
+    #[cfg(feature = "scad")]
+    pub const USAGE: i32 = 2;
+}
+
+/// Command-local SCAD input options. Empty in feature-off builds, where the
+/// flags do not exist.
+#[derive(Debug, Default)]
+pub struct ScadImportOptions {
+    #[cfg(feature = "scad")]
+    parameters: Vec<slicer_model_io::ScadParameter>,
+    #[cfg(feature = "scad")]
+    extrude_height_mm: Option<f64>,
+}
+
+#[cfg(feature = "scad")]
+impl ScadImportOptions {
+    /// Build from already-parsed command-line values.
+    pub fn new(
+        parameters: Vec<slicer_model_io::ScadParameter>,
+        extrude_height_mm: Option<f64>,
+    ) -> Self {
+        Self {
+            parameters,
+            extrude_height_mm,
+        }
+    }
+
+    /// True when neither SCAD flag was supplied.
+    pub fn is_empty(&self) -> bool {
+        self.parameters.is_empty() && self.extrude_height_mm.is_none()
+    }
+
+    /// Options for one evaluation; FRU over `ScadEvalOptions::default()` so the
+    /// adapter's bounded limits are never replaced by "unlimited".
+    pub fn eval_options(&self) -> slicer_model_io::ScadEvalOptions {
+        slicer_model_io::ScadEvalOptions {
+            parameters: self.parameters.clone(),
+            extrude_height_mm: self.extrude_height_mm,
+            ..slicer_model_io::ScadEvalOptions::default()
+        }
+    }
 }
 
 /// Run the `repair` subcommand. Returns the process exit code per
@@ -354,6 +401,165 @@ pub fn run_import(
     } else {
         exit_codes::WARNINGS_OR_PARTIAL
     }
+}
+
+/// Entry point for `mesh import`: routes a detected `.scad` input to the SCAD
+/// branch and every other input to the unchanged STEP importer.
+pub fn run_import_command(
+    input: &Path,
+    output: &Path,
+    output_format: OutputFormat,
+    merge_components: bool,
+    no_repair: bool,
+    stats: bool,
+    #[cfg_attr(not(feature = "scad"), allow(unused_variables))] scad: ScadImportOptions,
+) -> i32 {
+    if matches!(detect_format(input), Ok(ModelFormat::Scad)) {
+        // Feature-off builds must fail with the adapter's actionable
+        // "SCAD support is disabled" diagnostic before any STEP path can run.
+        // The STEP-only flags are deliberately not checked here: with no
+        // evaluation support compiled in, `SCAD_SUPPORT_DISABLED` is the
+        // actionable error, and the flags cannot change that outcome.
+        #[cfg(feature = "scad")]
+        {
+            return run_scad_import(
+                input,
+                output,
+                output_format,
+                merge_components,
+                no_repair,
+                stats,
+                &scad,
+            );
+        }
+        #[cfg(not(feature = "scad"))]
+        {
+            return match load_model(input) {
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    exit_codes::PARSE_ERROR
+                }
+                Ok(_) => {
+                    eprintln!("error: .scad input loaded without SCAD support");
+                    exit_codes::PARSE_ERROR
+                }
+            };
+        }
+    }
+
+    run_import(
+        input,
+        output,
+        output_format,
+        merge_components,
+        no_repair,
+        stats,
+    )
+}
+
+/// SCAD branch of `mesh import`: evaluate one self-contained script explicitly,
+/// write exactly the requested file in source coordinates, and emit accepted
+/// information diagnostics plus the stats rows.
+///
+/// No repair, no connected-component splitting, no placement and no temp files:
+/// the explicit loader already returns one fused object in source coordinates.
+#[cfg(feature = "scad")]
+fn run_scad_import(
+    input: &Path,
+    output: &Path,
+    output_format: OutputFormat,
+    merge_components: bool,
+    no_repair: bool,
+    stats: bool,
+    scad: &ScadImportOptions,
+) -> i32 {
+    if !input.exists() {
+        eprintln!("error: input file not found: {}", input.display());
+        return exit_codes::UNREADABLE;
+    }
+
+    if merge_components {
+        eprintln!(
+            "error: SCAD_STEP_OPTION_CONFLICT: --merge-components is a STEP-only option; \
+             SCAD import produces one fused object and never repairs"
+        );
+        return exit_codes::USAGE;
+    }
+    if no_repair {
+        eprintln!(
+            "error: SCAD_STEP_OPTION_CONFLICT: --no-repair is a STEP-only option; \
+             SCAD import produces one fused object and never repairs"
+        );
+        return exit_codes::USAGE;
+    }
+
+    if stats {
+        emit_event(json!({
+            "event": "start",
+            "operation": "import",
+            "input": input.display().to_string(),
+            "output": output.display().to_string(),
+        }));
+    }
+
+    let loaded = match slicer_model_io::load_scad_model(input, &scad.eval_options()) {
+        Ok(loaded) => loaded,
+        Err(e @ ModelLoadError::ScadEmpty { .. }) => {
+            eprintln!("error: {e}");
+            return exit_codes::EMPTY_OR_TRIVIAL;
+        }
+        Err(e @ ModelLoadError::Io(_)) => {
+            eprintln!("error: {e}");
+            return exit_codes::UNREADABLE;
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            return exit_codes::PARSE_ERROR;
+        }
+    };
+
+    // Every accepted diagnostic is information (the adapter rejects partial,
+    // degraded and unknown classes), so the stats kind is fixed.
+    for diagnostic in &loaded.diagnostics {
+        if stats {
+            let stage = serde_json::to_value(diagnostic.stage).unwrap_or(Value::Null);
+            emit_event(json!({
+                "event": "diagnostic",
+                "operation": "import",
+                "kind": "scad_information",
+                "code": &diagnostic.code,
+                "message": &diagnostic.message,
+                "source_label": &loaded.provenance.source_label,
+                "stage": stage,
+            }));
+        } else {
+            eprintln!("note: scad {}: {}", diagnostic.code, diagnostic.message);
+        }
+    }
+
+    if let Err(e) = write_mesh(&loaded.mesh, output, output_format) {
+        eprintln!("error: failed to write output mesh: {e}");
+        return exit_codes::UNREADABLE;
+    }
+
+    if stats {
+        let total_triangles: usize = loaded
+            .mesh
+            .objects
+            .iter()
+            .map(|object| object.mesh.indices.len() / 3)
+            .sum();
+        emit_event(json!({
+            "event": "done",
+            "operation": "import",
+            "source_unit": "mm",
+            "mesh_count": 1,
+            "total_triangles": total_triangles,
+            "warnings": 0,
+        }));
+    }
+
+    exit_codes::SUCCESS
 }
 
 /// Run the `convert` subcommand. Returns the process exit code.

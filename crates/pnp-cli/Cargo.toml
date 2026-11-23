@@ -17,9 +17,19 @@ name = "integrated_provenance_tdd"
 path = "tests/integrated_provenance_tdd.rs"
 required-features = ["integrated-classic-perimeters"]
 
+# Ungated on purpose: this target must build and report real assertions in BOTH
+# feature configurations.
+[[test]]
+name = "scad_cli_feature_contract"
+
+[[test]]
+name = "scad_cli_ingest"
+required-features = ["scad"]
+
 [features]
 default = ["report"]
 report = ["slicer-runtime/report"]
+scad = ["slicer-model-io/scad"]
 integrated-classic-perimeters = ["slicer-integrated-modules/classic-perimeters"]
 integrated-arachne-perimeters = ["slicer-integrated-modules/arachne-perimeters"]
 integrated-tree-support-planner = ["slicer-integrated-modules/tree-support-planner"]
@@ -58,6 +68,10 @@ slicer-ir = { path = "../slicer-ir" }
 slicer-sdk = { path = "../slicer-sdk", features = ["test"] }
 clap = { workspace = true, features = ["derive"] }
 env_logger = "0.11"
+# Global allocator replacement (wayfinder ticket 102). Wrapped by the
+# `AccountingAllocator` below, exactly as the packager contract in
+# docs/16_slicer_report.md prescribes, so `--report` accounting still works.
+mimalloc = { version = "0.1.52", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"

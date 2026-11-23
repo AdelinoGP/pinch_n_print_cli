@@ -1,0 +1,17 @@
+{
+  "id": "ordinary-base-arachne-on",
+  "mode": "ordinary",
+  "fixture": "base",
+  "generator": "arachne",
+  "supports": "on",
+  "threads": 12,
+  "exit_code": 0,
+  "probe": "PNP_T95_PROBE",
+  "wall_seconds": 171.6511215,
+  "cpu_seconds": 1084.078125,
+  "cpu_wall_ratio": 6.3155901081601735,
+  "sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c",
+  "bytes": 42330265,
+  "reference_sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c",
+  "exe_sha256": "daac315095c43bc81eea4b80875a846f5de28ff20520e79b9435fcba01280c6c"
+}

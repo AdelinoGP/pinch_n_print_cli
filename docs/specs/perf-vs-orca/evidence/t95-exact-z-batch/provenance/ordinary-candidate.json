@@ -1,0 +1,133 @@
+{
+  "arm": "candidate",
+  "mode": "ordinary",
+  "captured_commit": "8f19a6a93c22ddee61d03f27866811208b1bbbd6",
+  "candidate_sources_dirty": [
+    "M crates/slicer-wasm-host/src/exact_z_query.rs",
+    "M crates/slicer-wasm-host/src/support_aggregation.rs"
+  ],
+  "exe_sha256": "3a08516f3b8a358a2625e2b33b7ea9c348d37ff4ad0f58066804f48a8f8037a3",
+  "module_count": 24,
+  "modules": [
+    {
+      "name": "arachne-perimeters.wasm",
+      "bytes": 486967,
+      "sha256": "595584444fea12f9096b19a48e86d9c44d6086b31cd95a433dd06f2a542d7d22"
+    },
+    {
+      "name": "classic-perimeters.wasm",
+      "bytes": 499188,
+      "sha256": "9494899bb1896284017cfdb22f92975c50bea3b916dc2d1e96e248c68a5f16d8"
+    },
+    {
+      "name": "fuzzy-skin.wasm",
+      "bytes": 182920,
+      "sha256": "b1ac30e369e9846dd1a6524acc8485fdbbff2c066f58809935bcb3641c3a4320"
+    },
+    {
+      "name": "gyroid-infill.wasm",
+      "bytes": 221747,
+      "sha256": "6ec67e1b8f073ad1f0917150d769c236bbf2c5a0692f7971e64098445bcaacc0"
+    },
+    {
+      "name": "infill-linker.wasm",
+      "bytes": 453342,
+      "sha256": "74c6467858ca8e734311ef6a44c1ad28f76a2ff93026528223e47643236fbaa7"
+    },
+    {
+      "name": "layer-planner-default.wasm",
+      "bytes": 77108,
+      "sha256": "584233a6f684bcab895ae4f16877420c8a3c7082356d20bcafe71f11f9c888cc"
+    },
+    {
+      "name": "lightning-infill.wasm",
+      "bytes": 167330,
+      "sha256": "c60e6155b870a26631d0ee501969a904a25f536ab27de1ea6fb5e064a17a6814"
+    },
+    {
+      "name": "machine-gcode-emit.wasm",
+      "bytes": 175083,
+      "sha256": "052ef2bb097727806c7d50d68fe44777a9732d73cad2a86f3d2f99f2742345af"
+    },
+    {
+      "name": "overhang-classifier-default.wasm",
+      "bytes": 154084,
+      "sha256": "08b8f537d6df5dc8713a57a5967f54292a34e595cd1109ecbf7e7b6619418a0b"
+    },
+    {
+      "name": "part-cooling.wasm",
+      "bytes": 93076,
+      "sha256": "88f24a081cedccc677a6fb1531d6e34686947511d14f543f525733e9b7ff6515"
+    },
+    {
+      "name": "path-optimization-default.wasm",
+      "bytes": 131115,
+      "sha256": "c4e5676fb7c429632be52a9f81d3e7c7abddd8fcdb07a54a61bea147d5393196"
+    },
+    {
+      "name": "raft-default.wasm",
+      "bytes": 149892,
+      "sha256": "94f795ca9d35b063804151d9bf6e9a70a87ee3bc0d16e2eb6fe36c3e3c49cb9c"
+    },
+    {
+      "name": "rectilinear-infill.wasm",
+      "bytes": 201921,
+      "sha256": "5f3860297ede57e0cca9f7b06f36bfef42ed817404425f8a46d4ab9d9d08f9c0"
+    },
+    {
+      "name": "seam-placer.wasm",
+      "bytes": 179419,
+      "sha256": "824864e4780763b261b1d4be177580843a6c6872c676b704306f3f18153fa689"
+    },
+    {
+      "name": "seam-planner-default.wasm",
+      "bytes": 124184,
+      "sha256": "e24961df48b8b040b2e5331dd0195b73a3609f69fc091cfa4031e89f98d61b76"
+    },
+    {
+      "name": "skirt-brim.wasm",
+      "bytes": 118675,
+      "sha256": "fc76d7036c41e057d5d4d1ef4faa61c6668b3877cb09cf1b066bf058a1e52231"
+    },
+    {
+      "name": "support-surface-ironing.wasm",
+      "bytes": 152470,
+      "sha256": "343b2c950e82c2b25a387147ea9642e1c847b3eaff6879dc8a598b2b1b320eea"
+    },
+    {
+      "name": "top-surface-ironing.wasm",
+      "bytes": 179239,
+      "sha256": "f9d1c239ba850f5460d284164027e7df73e54c918b58a211ea3c793ec8e9e81d"
+    },
+    {
+      "name": "traditional-support-planner.wasm",
+      "bytes": 354189,
+      "sha256": "150ca44353a67f2ccf91dbcdb4b4b976ba1747651a9cbe4f1c4847ce4a9b880d"
+    },
+    {
+      "name": "traditional-support.wasm",
+      "bytes": 397377,
+      "sha256": "4b389e75f85ee1f8d3943984b5a8b6b31fa805f8242ef76e8183d5b1b12571b2"
+    },
+    {
+      "name": "tree-support-planner.wasm",
+      "bytes": 547639,
+      "sha256": "806ffe417619d9790edd751b6dc726b2ced7d8164c02d96196988466e4ebe54d"
+    },
+    {
+      "name": "tree-support.wasm",
+      "bytes": 403053,
+      "sha256": "21e587dfdbb0fbabec58fc3c204b36211d2ef35259075ebc76ffb7ce963af5fa"
+    },
+    {
+      "name": "wave-overhangs.wasm",
+      "bytes": 439894,
+      "sha256": "807c46175d0c62e0a6a71d2f0a55313ecb083260be4e2a8062d05cae9a049835"
+    },
+    {
+      "name": "wipe-tower.wasm",
+      "bytes": 154889,
+      "sha256": "46ce87335e42a8e05b0f44f1449f1fcae0c72e48cffe0441fdb07ca2e9bb4486"
+    }
+  ]
+}

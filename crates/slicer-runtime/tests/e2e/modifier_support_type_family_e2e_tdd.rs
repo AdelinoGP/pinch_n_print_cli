@@ -20,6 +20,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use slicer_ir::slice_ir::SupportSourceKey;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigDelta, ConfigValue, ExPolygon, GlobalLayer,
     IndexedTriangleSet, LayerPlanIR, MeshIR, ModifierKind, ModifierVolume, ObjectMesh,
@@ -197,7 +198,7 @@ fn modifier_support_type_binds_to_minted_sub_region_in_production() {
     // family (no `support_type` anywhere); the modifier's delta must land on
     // the minted sub-region only.
     let mesh = Arc::new(mesh_with_modifier());
-    let mut blackboard = Blackboard::new(mesh, 1);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
     blackboard
         .commit_layer_plan(Arc::new(layer_plan()))
         .expect("commit layer plan");
@@ -257,9 +258,20 @@ fn modifier_support_type_binds_to_minted_sub_region_in_production() {
     );
 
     // Phase 2 — support analysis: per-region family assignment must reach
-    // `family_assignments` through the production builtin.
+    // `family_assignments` through the production builtin. The repaired producer
+    // publishes one assignment per committed SOURCE origin, so the modifier's
+    // minted sub-region has to be materialised in the committed slice first —
+    // exactly as the production prepass does in its `PrePass::PaintSegmentation`
+    // stage via `split_modifier_sub_regions_for_prepass` before
+    // `PrePass::SupportGeometry` reads `slice_ir`.
+    let mut phase_two_slice = slice_ir();
+    slicer_runtime::region_partition::split_modifier_sub_regions_for_prepass(
+        &mut phase_two_slice,
+        mesh.as_ref(),
+    )
+    .expect("modifier sub-region split must succeed");
     blackboard
-        .commit_slice_ir(Arc::new(vec![slice_ir()]))
+        .commit_slice_ir(Arc::new(vec![phase_two_slice]))
         .expect("commit slice IR");
     let analysis_config = ResolvedConfig {
         support_enabled: true,
@@ -272,15 +284,27 @@ fn modifier_support_type_binds_to_minted_sub_region_in_production() {
         .support_analysis()
         .expect("SupportAnalysisIR must be committed");
 
+    // Family assignments are keyed by the full source identity
+    // `(object_id, region_id, ordered variant_chain)` (`SupportSourceKey`).
+    // Both fixture sources are exactly chain-empty: the base region is plain,
+    // and the parameter-modifier sub-region inherits its parent's exact ordered
+    // chain, which is empty here (no paint annotation feeds either region).
+    // Empty is the exact identity of these sources, never a wildcard.
     assert_eq!(
-        analysis.family_assignments.get(&(OBJECT_ID.to_string(), 0)),
+        analysis.family_assignments.get(&SupportSourceKey {
+            object_id: OBJECT_ID.to_string(),
+            region_id: 0,
+            variant_chain: Vec::new(),
+        }),
         Some(&"traditional".to_string()),
         "base region must keep the global (traditional) family"
     );
     assert_eq!(
-        analysis
-            .family_assignments
-            .get(&(OBJECT_ID.to_string(), expected_sub_id)),
+        analysis.family_assignments.get(&SupportSourceKey {
+            object_id: OBJECT_ID.to_string(),
+            region_id: expected_sub_id,
+            variant_chain: Vec::new(),
+        }),
         Some(&"tree".to_string()),
         "minted sub-region must be assigned the tree family from the modifier's support_type"
     );
@@ -324,8 +348,8 @@ fn modifier_support_type_routes_planned_support_inside_footprint() {
     let tree_region_ids: BTreeSet<_> = analysis
         .family_assignments
         .iter()
-        .filter_map(|((assignment_object, region_id), family)| {
-            (assignment_object == &object_id && family == "tree").then_some(*region_id)
+        .filter_map(|(source, family)| {
+            (source.object_id == object_id && family == "tree").then_some(source.region_id)
         })
         .collect();
     assert!(

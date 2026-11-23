@@ -41,6 +41,10 @@ use slicer_ir::{
     ExPolygon, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GlobalLayer, LayerAnnotationKind,
     LayerCollectionIR, PerimeterRegion, Point2, Point3WithWidth, Polygon,
 };
+use slicer_sdk::preparation::{
+    PreparationProjectionGeometry as PreparationGeometry, PreparationProjectionPrimitive,
+};
+use slicer_wasm_host::preparation::CommittedPreparationProjection;
 
 /// Base raster dimension (px) at `resolution_scale: 1`. Actual canvas is
 /// `BASE_DIMENSION_PX * resolution_scale` square, matching the
@@ -58,6 +62,11 @@ pub const VIEWPORT_MARGIN_MM: f32 = 2.0;
 
 /// Half-width (px) of a diagnostic-overlay marker square.
 const OVERLAY_MARKER_HALF_PX: i64 = 5;
+
+/// Diagnostic circle radius in screen pixels at resolution scale 1 (not bead width).
+pub const PREPARATION_POINT_RADIUS_PX: i64 = 4;
+/// Diagnostic line/outline stroke in screen pixels at resolution scale 1.
+pub const PREPARATION_STROKE_PX: u32 = 2;
 
 /// Fixed v1 semantic palette. RGB, request-independent (AC-4).
 pub mod palette {
@@ -315,6 +324,15 @@ pub struct RenderedImage {
 /// partial PNG or a successful image entry (AC-N1/AC-N2/AC-N3).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RenderError {
+    /// Preparation diagnostics support only unstyled XY geometry, never extrusion/overlays.
+    UnsupportedPreparationOption {
+        /// The owning consumer stage.
+        tap: String,
+        /// The selected global layer.
+        layer_index: u32,
+        /// The unsupported style or dimension.
+        option: &'static str,
+    },
     /// `resolution_scale` was outside the documented `{1, 2, 3}` set.
     UnsupportedResolutionScale {
         /// The offending scale.
@@ -375,6 +393,10 @@ pub enum RenderError {
 impl fmt::Display for RenderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedPreparationOption { tap, layer_index, option } => write!(
+                f,
+                "tap '{tap}' layer {layer_index}: preparation projection does not support {option}"
+            ),
             Self::UnsupportedResolutionScale { scale } => {
                 write!(f, "unsupported resolution_scale: {scale} (must be 1, 2, 3)")
             }
@@ -420,6 +442,19 @@ impl std::error::Error for RenderError {}
 /// One fillable/strokeable shape in millimeter space, tagged with its fixed
 /// palette color.
 enum Shape {
+    /// Fixed screen-space diagnostic circle, unrelated to physical deposition.
+    PreparationPoint { center: (f32, f32), color: [u8; 3] },
+    /// Fixed screen-space diagnostic path or closed ring stroke.
+    PreparationStroke {
+        points: Vec<(f32, f32)>,
+        color: [u8; 3],
+    },
+    /// Diagnostic text, painted after every geometry kind.
+    PreparationLabel {
+        anchor: (f32, f32),
+        text: String,
+        color: [u8; 3],
+    },
     /// A polygon-with-holes fill (even-odd rule over contour + hole edges).
     Fill {
         contour: Vec<(f32, f32)>,
@@ -483,6 +518,20 @@ pub fn compute_viewport_bounds(captures: &[StageCapture]) -> ViewportBoundsMm {
 fn geometry_points_mm(ir: &CapturedIr) -> Vec<(f32, f32)> {
     let mut pts = Vec::new();
     match ir {
+        CapturedIr::PreparationProjection(projection) => {
+            // Whole scene, not just this rendered layer: subset framing is stable.
+            for primitive in &projection.scene().primitives {
+                match &primitive.geometry {
+                    PreparationGeometry::Point(point) => pts.push(point2_to_mm(*point)),
+                    PreparationGeometry::Polyline(points) => {
+                        pts.extend(points.iter().copied().map(point2_to_mm));
+                    }
+                    PreparationGeometry::Polygon { polygon, .. } => {
+                        push_expolygon_points(polygon, &mut pts);
+                    }
+                }
+            }
+        }
         CapturedIr::Perimeter(p) => {
             for region in &p.regions {
                 for poly in &region.infill_areas {
@@ -1377,6 +1426,97 @@ fn gcode_shapes(
     Ok(shapes)
 }
 
+/// Class rank is based on the full scene's frozen identity, including classes
+/// absent from the rendered layer. The palette denotes diagnostics, not tools.
+fn preparation_class_colors(
+    projection: &CommittedPreparationProjection,
+) -> BTreeMap<&str, [u8; 3]> {
+    projection
+        .scene()
+        .classes
+        .iter()
+        .map(|class| {
+            (
+                projection.owner_module_id(),
+                projection.view(),
+                class.as_str(),
+            )
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .enumerate()
+        .map(|(rank, (_, _, class))| (class, style::TOOL_PALETTE[rank % style::TOOL_PALETTE.len()]))
+        .collect()
+}
+
+fn preparation_kind(primitive: &PreparationProjectionPrimitive) -> u8 {
+    match primitive.geometry {
+        PreparationGeometry::Polygon { filled: true, .. } => 0,
+        PreparationGeometry::Polygon { filled: false, .. } => 1,
+        PreparationGeometry::Polyline(_) => 2,
+        PreparationGeometry::Point(_) => 3,
+    }
+}
+
+fn preparation_shapes(projection: &CommittedPreparationProjection, layer_index: u32) -> Vec<Shape> {
+    let colors = preparation_class_colors(projection);
+    let mut primitives: Vec<_> = projection
+        .scene()
+        .primitives
+        .iter()
+        .filter(|primitive| primitive.global_layer_index == layer_index)
+        .collect();
+    primitives.sort_by(|a, b| {
+        (preparation_kind(a), &a.class, &a.id).cmp(&(preparation_kind(b), &b.class, &b.id))
+    });
+    let mut shapes = Vec::new();
+    let mut labels = Vec::new();
+    for primitive in primitives {
+        let color = colors[primitive.class.as_str()];
+        let anchor = match &primitive.geometry {
+            PreparationGeometry::Point(point) => {
+                let center = point2_to_mm(*point);
+                shapes.push(Shape::PreparationPoint { center, color });
+                center
+            }
+            PreparationGeometry::Polyline(points) => {
+                shapes.push(Shape::PreparationStroke {
+                    points: points.iter().copied().map(point2_to_mm).collect(),
+                    color,
+                });
+                point2_to_mm(points[0])
+            }
+            PreparationGeometry::Polygon { polygon, filled } => {
+                if *filled {
+                    shapes.push(expolygon_fill_shape(polygon, color));
+                } else {
+                    for ring in std::iter::once(&polygon.contour).chain(&polygon.holes) {
+                        let mut points: Vec<_> =
+                            ring.points.iter().copied().map(point2_to_mm).collect();
+                        points.push(points[0]);
+                        shapes.push(Shape::PreparationStroke { points, color });
+                    }
+                }
+                point2_to_mm(polygon.contour.points[0])
+            }
+        };
+        if let Some(text) = &primitive.label {
+            labels.push((
+                &primitive.class,
+                &primitive.id,
+                Shape::PreparationLabel {
+                    anchor,
+                    text: text.clone(),
+                    color,
+                },
+            ));
+        }
+    }
+    labels.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+    shapes.extend(labels.into_iter().map(|(_, _, label)| label));
+    shapes
+}
+
 fn shapes_for(
     ir: &CapturedIr,
     view: GeometryView,
@@ -1384,6 +1524,11 @@ fn shapes_for(
     layer_index: u32,
 ) -> Result<Vec<Shape>, RenderError> {
     match ir {
+        // Dispatch before any GeometryView interpretation: diagnostic geometry
+        // carries neither extrusion dimensions nor ordinary IR semantics.
+        CapturedIr::PreparationProjection(projection) => {
+            Ok(preparation_shapes(projection, layer_index))
+        }
         CapturedIr::Perimeter(p) => perimeter_shapes(p, view, tap, layer_index),
         CapturedIr::Infill(i) => infill_shapes(i, view, tap, layer_index),
         CapturedIr::Support(s) => support_shapes(s, view, tap, layer_index),
@@ -1595,6 +1740,9 @@ fn recolor_shapes(shapes: &mut [Shape], color: [u8; 3]) {
     for shape in shapes {
         match shape {
             Shape::Fill { color: c, .. }
+            | Shape::PreparationPoint { color: c, .. }
+            | Shape::PreparationStroke { color: c, .. }
+            | Shape::PreparationLabel { color: c, .. }
             | Shape::Line { color: c, .. }
             | Shape::Disk { color: c, .. } => *c = color,
         }
@@ -1930,6 +2078,86 @@ impl Canvas {
         }
     }
 
+    fn preparation_stroke(&mut self, points: &[(f32, f32)], color: [u8; 3]) {
+        let radius = f64::from(PREPARATION_STROKE_PX * (self.width / BASE_DIMENSION_PX)) / 2.0;
+        let pixels: Vec<_> = points
+            .iter()
+            .map(|&(x, y)| {
+                let (x, y) = self.projector.project(f64::from(x), f64::from(y));
+                (x.round(), y.round())
+            })
+            .collect();
+        for pair in pixels.windows(2) {
+            let ((ax, ay), (bx, by)) = (pair[0], pair[1]);
+            let (dx, dy) = (bx - ax, by - ay);
+            let length_sq = dx * dx + dy * dy;
+            // Clip the raster work, not the world geometry: off-plate scenes
+            // must not widen a plate viewport or walk unbounded pixel ranges.
+            let x0 = (ax.min(bx) - radius).max(0.0) as i64;
+            let x1 = (ax.max(bx) + radius).min(f64::from(self.width) - 1.0) as i64;
+            let y0 = (ay.min(by) - radius).max(0.0) as i64;
+            let y1 = (ay.max(by) + radius).min(f64::from(self.height) - 1.0) as i64;
+            for y in y0..=y1 {
+                for x in x0..=x1 {
+                    let (px, py) = (x as f64 - ax, y as f64 - ay);
+                    let t = if length_sq == 0.0 {
+                        0.0
+                    } else {
+                        ((px * dx + py * dy) / length_sq).clamp(0.0, 1.0)
+                    };
+                    if (px - t * dx).powi(2) + (py - t * dy).powi(2) <= radius * radius {
+                        self.set(x, y, color);
+                    }
+                }
+            }
+        }
+    }
+
+    fn preparation_point(&mut self, center: (f32, f32), color: [u8; 3]) {
+        let half = PREPARATION_POINT_RADIUS_PX * i64::from(self.width / BASE_DIMENSION_PX);
+        let (x, y) = self.to_px(center.0, center.1);
+        if x < -(half as f32)
+            || y < -(half as f32)
+            || x > self.width as f32 + half as f32
+            || y > self.height as f32 + half as f32
+        {
+            return;
+        }
+        self.glyph(GlyphKind::Circle, center, half, color);
+    }
+
+    fn preparation_label(&mut self, anchor: (f32, f32), text: &str, color: [u8; 3]) {
+        let (x, y) = self.to_px(anchor.0, anchor.1);
+        // Off-canvas anchors cannot overflow integer glyph coordinates.
+        if x < 0.0 || y < 0.0 || x > self.width as f32 || y > self.height as f32 {
+            return;
+        }
+        let scale = i64::from(self.width / BASE_DIMENSION_PX);
+        let mut left = x.round() as i64 + 8 * scale;
+        let top = y.round() as i64 - 12 * scale;
+        for character in text.chars() {
+            if left >= i64::from(self.width) {
+                break;
+            }
+            for (row, bits) in preparation_letter(character).into_iter().enumerate() {
+                for column in 0..3 {
+                    if bits & (1 << (2 - column)) != 0 {
+                        for dy in 0..scale {
+                            for dx in 0..scale {
+                                self.set(
+                                    left + column * scale + dx,
+                                    top + row as i64 * scale + dy,
+                                    color,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            left += 4 * scale;
+        }
+    }
+
     fn fill_disk(&mut self, center: (f32, f32), radius_mm: f32, color: [u8; 3]) {
         let (cx, cy) = self.to_px(center.0, center.1);
         // Convert the width-derived world radius through the canvas' uniform
@@ -1949,6 +2177,57 @@ impl Canvas {
                 }
             }
         }
+    }
+}
+
+/// Tiny fixed bitmap font: no platform font/rasterizer affects deterministic
+/// output. Non-ASCII characters use a visible replacement; exact UTF-8 labels
+/// remain in the typed scene, never normalized there.
+fn preparation_letter(character: char) -> [u8; 5] {
+    match character.to_ascii_uppercase() {
+        'A' => [2, 5, 7, 5, 5],
+        'B' => [6, 5, 6, 5, 6],
+        'C' => [3, 4, 4, 4, 3],
+        'D' => [6, 5, 5, 5, 6],
+        'E' => [7, 4, 6, 4, 7],
+        'F' => [7, 4, 6, 4, 4],
+        'G' => [3, 4, 5, 5, 3],
+        'H' => [5, 5, 7, 5, 5],
+        'I' => [7, 2, 2, 2, 7],
+        'J' => [1, 1, 1, 5, 2],
+        'K' => [5, 5, 6, 5, 5],
+        'L' => [4, 4, 4, 4, 7],
+        'M' => [5, 7, 7, 5, 5],
+        'N' => [5, 7, 7, 7, 5],
+        'O' => [2, 5, 5, 5, 2],
+        'P' => [6, 5, 6, 4, 4],
+        'Q' => [2, 5, 5, 7, 3],
+        'R' => [6, 5, 6, 5, 5],
+        'S' => [3, 4, 2, 1, 6],
+        'T' => [7, 2, 2, 2, 2],
+        'U' => [5, 5, 5, 5, 7],
+        'V' => [5, 5, 5, 5, 2],
+        'W' => [5, 5, 7, 7, 5],
+        'X' => [5, 5, 2, 5, 5],
+        'Y' => [5, 5, 2, 2, 2],
+        'Z' => [7, 1, 2, 4, 7],
+        '0' => [7, 5, 5, 5, 7],
+        '1' => [2, 6, 2, 2, 7],
+        '2' => [6, 1, 2, 4, 7],
+        '3' => [6, 1, 2, 1, 6],
+        '4' => [5, 5, 7, 1, 1],
+        '5' => [7, 4, 6, 1, 6],
+        '6' => [3, 4, 6, 5, 2],
+        '7' => [7, 1, 2, 2, 2],
+        '8' => [2, 5, 2, 5, 2],
+        '9' => [2, 5, 3, 1, 6],
+        ' ' => [0; 5],
+        '-' => [0, 0, 7, 0, 0],
+        '_' => [0, 0, 0, 0, 7],
+        '.' => [0, 0, 0, 0, 2],
+        ':' => [0, 2, 0, 2, 0],
+        '/' => [1, 1, 2, 4, 4],
+        _ => [6, 1, 2, 0, 2],
     }
 }
 
@@ -2056,6 +2335,13 @@ fn ray_cast(px: f32, py: f32, ring: &[(f32, f32)]) -> bool {
 fn draw_shapes(canvas: &mut Canvas, shapes: &[Shape]) {
     for shape in shapes {
         match shape {
+            Shape::PreparationPoint { center, color } => canvas.preparation_point(*center, *color),
+            Shape::PreparationStroke { points, color } => canvas.preparation_stroke(points, *color),
+            Shape::PreparationLabel {
+                anchor,
+                text,
+                color,
+            } => canvas.preparation_label(*anchor, text, *color),
             Shape::Fill {
                 contour,
                 holes,
@@ -2296,6 +2582,34 @@ pub fn render_stage_capture_styled(
         return Err(RenderError::UnsupportedResolutionScale {
             scale: resolution_scale,
         });
+    }
+    if matches!(capture.ir, CapturedIr::PreparationProjection(_)) {
+        let option = if !matches!(view, RenderView::Geometry(_)) {
+            Some("ordinary overlays")
+        } else if render_style != &RenderStyle::default() {
+            Some("tool/extrusion styles")
+        } else if layer_plan_overlay.is_some() {
+            Some("layer-plan overlays")
+        } else if ![
+            viewport.min_x,
+            viewport.min_y,
+            viewport.max_x,
+            viewport.max_y,
+        ]
+        .into_iter()
+        .all(f32::is_finite)
+        {
+            Some("non-finite viewport")
+        } else {
+            None
+        };
+        if let Some(option) = option {
+            return Err(RenderError::UnsupportedPreparationOption {
+                tap: capture.stage_id.clone(),
+                layer_index: capture.layer_index,
+                option,
+            });
+        }
     }
     let geometry_view = match view {
         RenderView::Geometry(g) => g,
@@ -2988,6 +3302,7 @@ fn silhouette_bands(
     out: &mut Vec<SilhouetteBand>,
     unjoined_region_mapping_entries: &mut usize,
 ) -> Result<(), RenderError> {
+    reject_preparation_dimension(capture, view)?;
     if matches!(style.color_by, ColorBy::Tool)
         && !matches!(capture.ir, CapturedIr::LayerFinalization(_))
     {
@@ -3425,6 +3740,7 @@ pub fn render_silhouette_overhang_composite(
     let mut bands = Vec::new();
     let mut first = None;
     for capture in captures {
+        reject_preparation_dimension(capture, view)?;
         let CapturedIr::SurfaceClassification(sc) = &capture.ir else {
             continue;
         };
@@ -3519,6 +3835,20 @@ pub fn render_silhouette_overhang_composite(
         })
         .unwrap_or_else(|| ("<empty capture group>".to_string(), 0));
     render_silhouette_band_set(bands, resolution_scale, viewport, &tap, layer_index)
+}
+
+fn reject_preparation_dimension(
+    capture: &StageCapture,
+    view: SilhouetteView,
+) -> Result<(), RenderError> {
+    if matches!(capture.ir, CapturedIr::PreparationProjection(_)) {
+        return Err(RenderError::UnsupportedPreparationOption {
+            tap: capture.stage_id.clone(),
+            layer_index: capture.layer_index,
+            option: view.name(),
+        });
+    }
+    Ok(())
 }
 
 /// Render a silhouette composite using the requested role or tool coloring.

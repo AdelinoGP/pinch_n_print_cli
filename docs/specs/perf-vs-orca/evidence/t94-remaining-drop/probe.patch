@@ -1,0 +1,106 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index ffe4d5dd..30360a4c 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3489,6 +3489,7 @@ version = "0.1.0"
+ dependencies = [
+  "image",
+  "log",
++ "rayon",
+  "slicer-helpers",
+  "slicer-ir",
+  "slicer-sdk",
+diff --git a/crates/slicer-gcode/Cargo.toml b/crates/slicer-gcode/Cargo.toml
+index 61951414..6ec5765e 100644
+--- a/crates/slicer-gcode/Cargo.toml
++++ b/crates/slicer-gcode/Cargo.toml
+@@ -10,6 +10,7 @@ slicer-helpers = { path = "../slicer-helpers" }
+ thiserror = "1.0"
+ log = "0.4"
+ image = { version = "0.25", default-features = false, features = ["png", "jpeg", "qoi"] }
++rayon = "1.11"
+ 
+ [dev-dependencies]
+ image = { version = "0.25", default-features = false, features = ["png", "jpeg", "qoi"] }
+diff --git a/crates/slicer-gcode/src/emit.rs b/crates/slicer-gcode/src/emit.rs
+index 608c20a7..5ccdcb95 100644
+--- a/crates/slicer-gcode/src/emit.rs
++++ b/crates/slicer-gcode/src/emit.rs
+@@ -28,6 +28,37 @@ use slicer_ir::{
+ use crate::error::GCodeEmitError;
+ use crate::serialize::{format_xyz, tolerance_for_role};
+ 
++/// t94 Phase-1 probe — env-gated (`PNP_T94_PROBE=1`), attribution only,
++/// removed before the take closes. Splits the `host:gcode_emit` bracket into
++/// cross-layer rotation, emission walk and collection drop, and can free the
++/// collection in parallel (`PNP_T94_PARALLEL=1`) to price that counterfactual.
++/// Never changes emitted bytes.
++mod t94_probe {
++    use std::sync::OnceLock;
++    use std::time::{SystemTime, UNIX_EPOCH};
++
++    static ENABLED: OnceLock<bool> = OnceLock::new();
++    static PARALLEL: OnceLock<bool> = OnceLock::new();
++
++    pub(super) fn enabled() -> bool {
++        *ENABLED.get_or_init(|| std::env::var_os("PNP_T94_PROBE").is_some())
++    }
++
++    pub(super) fn parallel() -> bool {
++        *PARALLEL.get_or_init(|| std::env::var_os("PNP_T94_PARALLEL").is_some())
++    }
++
++    /// Microseconds since the Unix epoch. `SystemTime`, not `Instant`, per the
++    /// t88 probe trap (an `Instant` read disagreed with the event timestamps by
++    /// the width of an earlier phase).
++    pub(super) fn now_us() -> u128 {
++        SystemTime::now()
++            .duration_since(UNIX_EPOCH)
++            .map(|duration| duration.as_micros())
++            .unwrap_or(0)
++    }
++}
++
+ /// Maximum plausible number of extruder/tool slots.
+ ///
+ /// `filament_per_tool` is sized as a dense `Vec<f32>` indexed by tool id.
+@@ -456,6 +487,8 @@ impl GCodeEmitter for DefaultGCodeEmitter {
+         &self,
+         mut layer_irs: Vec<LayerCollectionIR>,
+     ) -> Result<GCodeIR, GCodeEmitError> {
++        let probe = t94_probe::enabled();
++        let rotate_start = t94_probe::now_us();
+         // Apply cross-layer tool rotation before classification and emission.
+         // This rotates each layer's entity clusters so the first cluster's tool
+         // matches the previous layer's ending tool, avoiding redundant T<n>
+@@ -465,7 +498,29 @@ impl GCodeEmitter for DefaultGCodeEmitter {
+         // rotation is a no-op on single-tool layers; only a layer whose leading
+         // cluster's tool differs from the previous layer's ending tool moves.
+         apply_cross_layer_tool_rotation(&mut layer_irs);
+-        self.emit_from_reconciled_layers(&layer_irs)
++        let walk_start = t94_probe::now_us();
++        let result = self.emit_from_reconciled_layers(&layer_irs);
++        let drop_start = t94_probe::now_us();
++        let layer_count = layer_irs.len();
++        let parallel = probe && t94_probe::parallel();
++        if parallel {
++            use rayon::prelude::*;
++            layer_irs.into_par_iter().for_each(drop);
++        } else {
++            drop(layer_irs);
++        }
++        if probe {
++            let drop_end = t94_probe::now_us();
++            eprintln!(
++                "T94 EMIT rotate_us={} walk_us={} drop_us={} layers={} parallel={}",
++                walk_start - rotate_start,
++                drop_start - walk_start,
++                drop_end - drop_start,
++                layer_count,
++                parallel
++            );
++        }
++        result
+     }
+ 
+     /// Resolved travel feedrate in mm/min for finalization-aware travel inserts.

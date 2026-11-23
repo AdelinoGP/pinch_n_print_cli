@@ -1,0 +1,533 @@
+{
+ "note": "Built by build-snapshots.ps1. `modules` is the sorted per-file SHA256 list of the snapshot's external module tree; `candidate_sources_dirty` records which candidate sources were stashed for the baseline arm, so the arm diff is auditable.",
+ "snapshots": {
+  "accelerated-baseline": {
+   "arm": "baseline",
+   "mode": "accelerated",
+   "captured_commit": "a1185c0b3fef4d5dc855bae9e359c8d5e710a3ed",
+   "candidate_sources_dirty": [],
+   "exe_sha256": "e59bd501a4554485c3749cb8e77e70515d66d30d25365861c6515192694db8c5",
+   "module_count": 24,
+   "modules": [
+    {
+     "name": "arachne-perimeters.wasm",
+     "bytes": 522403,
+     "sha256": "dc2dee0540a2543b2eb631ae620d0aa26691c7434e523b586d5ebf7a6af9f02c"
+    },
+    {
+     "name": "classic-perimeters.wasm",
+     "bytes": 534975,
+     "sha256": "b2a48ea8180fb5f7a0301b93e0de378f7d68a974e7998f7919eff1011c7a8066"
+    },
+    {
+     "name": "fuzzy-skin.wasm",
+     "bytes": 182919,
+     "sha256": "a568c2315e7556b24a775d93302d07fb4e621f932c66802e66000eec6dd16a83"
+    },
+    {
+     "name": "gyroid-infill.wasm",
+     "bytes": 221750,
+     "sha256": "40fa1f651e6ad6e39785f3ba5861f81b70ee19f2d32652157e8918e09baaf6d4"
+    },
+    {
+     "name": "infill-linker.wasm",
+     "bytes": 453341,
+     "sha256": "1d599134a62425bf071673d37778507dd35f86e79ffdbaa7493b30f00fd365bc"
+    },
+    {
+     "name": "layer-planner-default.wasm",
+     "bytes": 77107,
+     "sha256": "477819cd8243497a95c67936fb77d662134a2be19128b329d4371bf954512e95"
+    },
+    {
+     "name": "lightning-infill.wasm",
+     "bytes": 167334,
+     "sha256": "7ef819ed3e7e3ec1142d3691ee446ee33411a07a9337a90794ed3a1c0008ade3"
+    },
+    {
+     "name": "machine-gcode-emit.wasm",
+     "bytes": 175083,
+     "sha256": "789f2cb791c88da57a447eb3dbd0fc5c1b5a4d818e530761548f95b24c62bd3c"
+    },
+    {
+     "name": "overhang-classifier-default.wasm",
+     "bytes": 154083,
+     "sha256": "0412ac4dffdc064a08bd88ed27dccbc0bec2401c982c88779189946566fc88b0"
+    },
+    {
+     "name": "part-cooling.wasm",
+     "bytes": 93076,
+     "sha256": "d2c023796d426dd8ccb9ae6e7bb088c7e90fb236d708ea29a1dd0fb497ae6bae"
+    },
+    {
+     "name": "path-optimization-default.wasm",
+     "bytes": 131114,
+     "sha256": "b7ddaf521d017fbd222c7d0e873f859be9d22fb3b7b152224e7003ac9eaba2c8"
+    },
+    {
+     "name": "raft-default.wasm",
+     "bytes": 149891,
+     "sha256": "a4ec6558add3fc3339c6b73009e998b5be385ad1d4b5a9d8d577eb1d97ba45a2"
+    },
+    {
+     "name": "rectilinear-infill.wasm",
+     "bytes": 201925,
+     "sha256": "4dbeac62f0a138db3a5cd2769ac45e549dc51eeb893a50becb8a0094b70a2b73"
+    },
+    {
+     "name": "seam-placer.wasm",
+     "bytes": 179418,
+     "sha256": "69918586551eb32cc1c40a78b08a1fb04f0a85671bdd123955e42afffa67ee51"
+    },
+    {
+     "name": "seam-planner-default.wasm",
+     "bytes": 124184,
+     "sha256": "d4b63fd9eec2a3e3e117550adaa6b9be900b7b42580e8b099d1bdf4183b8de3e"
+    },
+    {
+     "name": "skirt-brim.wasm",
+     "bytes": 118675,
+     "sha256": "f8f7de01275bc2d08252689a86aa47759795a04e0ddd6be2315099ef39b3439a"
+    },
+    {
+     "name": "support-surface-ironing.wasm",
+     "bytes": 152470,
+     "sha256": "e02caf51ae92fa6e9d323af2facfb94008189ae0f62047ba1832761c3a45eb3d"
+    },
+    {
+     "name": "top-surface-ironing.wasm",
+     "bytes": 179238,
+     "sha256": "5f026abee0cb53418696be807e555383e5ce148a9fc91e327dc367b896e71011"
+    },
+    {
+     "name": "traditional-support-planner.wasm",
+     "bytes": 354188,
+     "sha256": "2cd0b42239e23e49f0f5309aae35c3936b268b611664902d9c062e8e8db47f29"
+    },
+    {
+     "name": "traditional-support.wasm",
+     "bytes": 397376,
+     "sha256": "a4aa60f063dc609608e656cabb55495188bd1a01a9b3a44d7fe7e5087986a30a"
+    },
+    {
+     "name": "tree-support-planner.wasm",
+     "bytes": 547638,
+     "sha256": "fd424d549b7fbb0f3b24f6bc151b1dd7a06b41c080b990c528a3221404207b58"
+    },
+    {
+     "name": "tree-support.wasm",
+     "bytes": 403052,
+     "sha256": "0d477cb11b7e87062140e44c2d9d54a592d0026d8f2dd384d6e2f1a9e1606b4f"
+    },
+    {
+     "name": "wave-overhangs.wasm",
+     "bytes": 439897,
+     "sha256": "2e8aad5fd21c10c7c09fd2cb7fa00085a5d3912c409389e6a49d460f9addf7ad"
+    },
+    {
+     "name": "wipe-tower.wasm",
+     "bytes": 154889,
+     "sha256": "f93fda2bdd945ed3a6ae07248e3a7cbcf78af0a15cbc45785e1292b0aad9c9dc"
+    }
+   ]
+  },
+  "accelerated-candidate": {
+   "arm": "candidate",
+   "mode": "accelerated",
+   "captured_commit": "a1185c0b3fef4d5dc855bae9e359c8d5e710a3ed",
+   "candidate_sources_dirty": [
+    "M crates/slicer-wasm-host/src/exact_z_query.rs"
+   ],
+   "exe_sha256": "d7992130e283d490e1d05815ae1b7a53295101652ba67fe288be509c4a9b3396",
+   "module_count": 24,
+   "modules": [
+    {
+     "name": "arachne-perimeters.wasm",
+     "bytes": 522403,
+     "sha256": "dc2dee0540a2543b2eb631ae620d0aa26691c7434e523b586d5ebf7a6af9f02c"
+    },
+    {
+     "name": "classic-perimeters.wasm",
+     "bytes": 534975,
+     "sha256": "b2a48ea8180fb5f7a0301b93e0de378f7d68a974e7998f7919eff1011c7a8066"
+    },
+    {
+     "name": "fuzzy-skin.wasm",
+     "bytes": 182919,
+     "sha256": "a568c2315e7556b24a775d93302d07fb4e621f932c66802e66000eec6dd16a83"
+    },
+    {
+     "name": "gyroid-infill.wasm",
+     "bytes": 221750,
+     "sha256": "40fa1f651e6ad6e39785f3ba5861f81b70ee19f2d32652157e8918e09baaf6d4"
+    },
+    {
+     "name": "infill-linker.wasm",
+     "bytes": 453341,
+     "sha256": "1d599134a62425bf071673d37778507dd35f86e79ffdbaa7493b30f00fd365bc"
+    },
+    {
+     "name": "layer-planner-default.wasm",
+     "bytes": 77107,
+     "sha256": "477819cd8243497a95c67936fb77d662134a2be19128b329d4371bf954512e95"
+    },
+    {
+     "name": "lightning-infill.wasm",
+     "bytes": 167334,
+     "sha256": "7ef819ed3e7e3ec1142d3691ee446ee33411a07a9337a90794ed3a1c0008ade3"
+    },
+    {
+     "name": "machine-gcode-emit.wasm",
+     "bytes": 175083,
+     "sha256": "789f2cb791c88da57a447eb3dbd0fc5c1b5a4d818e530761548f95b24c62bd3c"
+    },
+    {
+     "name": "overhang-classifier-default.wasm",
+     "bytes": 154083,
+     "sha256": "0412ac4dffdc064a08bd88ed27dccbc0bec2401c982c88779189946566fc88b0"
+    },
+    {
+     "name": "part-cooling.wasm",
+     "bytes": 93076,
+     "sha256": "d2c023796d426dd8ccb9ae6e7bb088c7e90fb236d708ea29a1dd0fb497ae6bae"
+    },
+    {
+     "name": "path-optimization-default.wasm",
+     "bytes": 131114,
+     "sha256": "b7ddaf521d017fbd222c7d0e873f859be9d22fb3b7b152224e7003ac9eaba2c8"
+    },
+    {
+     "name": "raft-default.wasm",
+     "bytes": 149891,
+     "sha256": "a4ec6558add3fc3339c6b73009e998b5be385ad1d4b5a9d8d577eb1d97ba45a2"
+    },
+    {
+     "name": "rectilinear-infill.wasm",
+     "bytes": 201925,
+     "sha256": "4dbeac62f0a138db3a5cd2769ac45e549dc51eeb893a50becb8a0094b70a2b73"
+    },
+    {
+     "name": "seam-placer.wasm",
+     "bytes": 179418,
+     "sha256": "69918586551eb32cc1c40a78b08a1fb04f0a85671bdd123955e42afffa67ee51"
+    },
+    {
+     "name": "seam-planner-default.wasm",
+     "bytes": 124184,
+     "sha256": "d4b63fd9eec2a3e3e117550adaa6b9be900b7b42580e8b099d1bdf4183b8de3e"
+    },
+    {
+     "name": "skirt-brim.wasm",
+     "bytes": 118675,
+     "sha256": "f8f7de01275bc2d08252689a86aa47759795a04e0ddd6be2315099ef39b3439a"
+    },
+    {
+     "name": "support-surface-ironing.wasm",
+     "bytes": 152470,
+     "sha256": "e02caf51ae92fa6e9d323af2facfb94008189ae0f62047ba1832761c3a45eb3d"
+    },
+    {
+     "name": "top-surface-ironing.wasm",
+     "bytes": 179238,
+     "sha256": "5f026abee0cb53418696be807e555383e5ce148a9fc91e327dc367b896e71011"
+    },
+    {
+     "name": "traditional-support-planner.wasm",
+     "bytes": 354188,
+     "sha256": "2cd0b42239e23e49f0f5309aae35c3936b268b611664902d9c062e8e8db47f29"
+    },
+    {
+     "name": "traditional-support.wasm",
+     "bytes": 397376,
+     "sha256": "a4aa60f063dc609608e656cabb55495188bd1a01a9b3a44d7fe7e5087986a30a"
+    },
+    {
+     "name": "tree-support-planner.wasm",
+     "bytes": 547638,
+     "sha256": "fd424d549b7fbb0f3b24f6bc151b1dd7a06b41c080b990c528a3221404207b58"
+    },
+    {
+     "name": "tree-support.wasm",
+     "bytes": 403052,
+     "sha256": "0d477cb11b7e87062140e44c2d9d54a592d0026d8f2dd384d6e2f1a9e1606b4f"
+    },
+    {
+     "name": "wave-overhangs.wasm",
+     "bytes": 439897,
+     "sha256": "2e8aad5fd21c10c7c09fd2cb7fa00085a5d3912c409389e6a49d460f9addf7ad"
+    },
+    {
+     "name": "wipe-tower.wasm",
+     "bytes": 154889,
+     "sha256": "f93fda2bdd945ed3a6ae07248e3a7cbcf78af0a15cbc45785e1292b0aad9c9dc"
+    }
+   ]
+  },
+  "ordinary-baseline": {
+   "arm": "baseline",
+   "mode": "ordinary",
+   "captured_commit": "a1185c0b3fef4d5dc855bae9e359c8d5e710a3ed",
+   "candidate_sources_dirty": [],
+   "exe_sha256": "83103fb63c908a8b68a2fc3ebebd745cc2b5f239150a67b3333fbfdd09ad2b61",
+   "module_count": 24,
+   "modules": [
+    {
+     "name": "arachne-perimeters.wasm",
+     "bytes": 486967,
+     "sha256": "595584444fea12f9096b19a48e86d9c44d6086b31cd95a433dd06f2a542d7d22"
+    },
+    {
+     "name": "classic-perimeters.wasm",
+     "bytes": 499188,
+     "sha256": "9494899bb1896284017cfdb22f92975c50bea3b916dc2d1e96e248c68a5f16d8"
+    },
+    {
+     "name": "fuzzy-skin.wasm",
+     "bytes": 182920,
+     "sha256": "b1ac30e369e9846dd1a6524acc8485fdbbff2c066f58809935bcb3641c3a4320"
+    },
+    {
+     "name": "gyroid-infill.wasm",
+     "bytes": 221747,
+     "sha256": "6ec67e1b8f073ad1f0917150d769c236bbf2c5a0692f7971e64098445bcaacc0"
+    },
+    {
+     "name": "infill-linker.wasm",
+     "bytes": 453342,
+     "sha256": "74c6467858ca8e734311ef6a44c1ad28f76a2ff93026528223e47643236fbaa7"
+    },
+    {
+     "name": "layer-planner-default.wasm",
+     "bytes": 77108,
+     "sha256": "584233a6f684bcab895ae4f16877420c8a3c7082356d20bcafe71f11f9c888cc"
+    },
+    {
+     "name": "lightning-infill.wasm",
+     "bytes": 167330,
+     "sha256": "c60e6155b870a26631d0ee501969a904a25f536ab27de1ea6fb5e064a17a6814"
+    },
+    {
+     "name": "machine-gcode-emit.wasm",
+     "bytes": 175083,
+     "sha256": "052ef2bb097727806c7d50d68fe44777a9732d73cad2a86f3d2f99f2742345af"
+    },
+    {
+     "name": "overhang-classifier-default.wasm",
+     "bytes": 154084,
+     "sha256": "08b8f537d6df5dc8713a57a5967f54292a34e595cd1109ecbf7e7b6619418a0b"
+    },
+    {
+     "name": "part-cooling.wasm",
+     "bytes": 93076,
+     "sha256": "88f24a081cedccc677a6fb1531d6e34686947511d14f543f525733e9b7ff6515"
+    },
+    {
+     "name": "path-optimization-default.wasm",
+     "bytes": 131115,
+     "sha256": "c4e5676fb7c429632be52a9f81d3e7c7abddd8fcdb07a54a61bea147d5393196"
+    },
+    {
+     "name": "raft-default.wasm",
+     "bytes": 149892,
+     "sha256": "94f795ca9d35b063804151d9bf6e9a70a87ee3bc0d16e2eb6fe36c3e3c49cb9c"
+    },
+    {
+     "name": "rectilinear-infill.wasm",
+     "bytes": 201921,
+     "sha256": "5f3860297ede57e0cca9f7b06f36bfef42ed817404425f8a46d4ab9d9d08f9c0"
+    },
+    {
+     "name": "seam-placer.wasm",
+     "bytes": 179419,
+     "sha256": "824864e4780763b261b1d4be177580843a6c6872c676b704306f3f18153fa689"
+    },
+    {
+     "name": "seam-planner-default.wasm",
+     "bytes": 124184,
+     "sha256": "e24961df48b8b040b2e5331dd0195b73a3609f69fc091cfa4031e89f98d61b76"
+    },
+    {
+     "name": "skirt-brim.wasm",
+     "bytes": 118675,
+     "sha256": "fc76d7036c41e057d5d4d1ef4faa61c6668b3877cb09cf1b066bf058a1e52231"
+    },
+    {
+     "name": "support-surface-ironing.wasm",
+     "bytes": 152470,
+     "sha256": "343b2c950e82c2b25a387147ea9642e1c847b3eaff6879dc8a598b2b1b320eea"
+    },
+    {
+     "name": "top-surface-ironing.wasm",
+     "bytes": 179239,
+     "sha256": "f9d1c239ba850f5460d284164027e7df73e54c918b58a211ea3c793ec8e9e81d"
+    },
+    {
+     "name": "traditional-support-planner.wasm",
+     "bytes": 354189,
+     "sha256": "150ca44353a67f2ccf91dbcdb4b4b976ba1747651a9cbe4f1c4847ce4a9b880d"
+    },
+    {
+     "name": "traditional-support.wasm",
+     "bytes": 397377,
+     "sha256": "4b389e75f85ee1f8d3943984b5a8b6b31fa805f8242ef76e8183d5b1b12571b2"
+    },
+    {
+     "name": "tree-support-planner.wasm",
+     "bytes": 547639,
+     "sha256": "806ffe417619d9790edd751b6dc726b2ced7d8164c02d96196988466e4ebe54d"
+    },
+    {
+     "name": "tree-support.wasm",
+     "bytes": 403053,
+     "sha256": "21e587dfdbb0fbabec58fc3c204b36211d2ef35259075ebc76ffb7ce963af5fa"
+    },
+    {
+     "name": "wave-overhangs.wasm",
+     "bytes": 439894,
+     "sha256": "807c46175d0c62e0a6a71d2f0a55313ecb083260be4e2a8062d05cae9a049835"
+    },
+    {
+     "name": "wipe-tower.wasm",
+     "bytes": 154889,
+     "sha256": "46ce87335e42a8e05b0f44f1449f1fcae0c72e48cffe0441fdb07ca2e9bb4486"
+    }
+   ]
+  },
+  "ordinary-candidate": {
+   "arm": "candidate",
+   "mode": "ordinary",
+   "captured_commit": "a1185c0b3fef4d5dc855bae9e359c8d5e710a3ed",
+   "candidate_sources_dirty": [
+    "M crates/slicer-wasm-host/src/exact_z_query.rs"
+   ],
+   "exe_sha256": "8fbb818e2c895a7cfa23ad85f01ca3d12f71ad3fac33bec04c026e5d5662b5c2",
+   "module_count": 24,
+   "modules": [
+    {
+     "name": "arachne-perimeters.wasm",
+     "bytes": 486967,
+     "sha256": "595584444fea12f9096b19a48e86d9c44d6086b31cd95a433dd06f2a542d7d22"
+    },
+    {
+     "name": "classic-perimeters.wasm",
+     "bytes": 499188,
+     "sha256": "9494899bb1896284017cfdb22f92975c50bea3b916dc2d1e96e248c68a5f16d8"
+    },
+    {
+     "name": "fuzzy-skin.wasm",
+     "bytes": 182920,
+     "sha256": "b1ac30e369e9846dd1a6524acc8485fdbbff2c066f58809935bcb3641c3a4320"
+    },
+    {
+     "name": "gyroid-infill.wasm",
+     "bytes": 221747,
+     "sha256": "6ec67e1b8f073ad1f0917150d769c236bbf2c5a0692f7971e64098445bcaacc0"
+    },
+    {
+     "name": "infill-linker.wasm",
+     "bytes": 453342,
+     "sha256": "74c6467858ca8e734311ef6a44c1ad28f76a2ff93026528223e47643236fbaa7"
+    },
+    {
+     "name": "layer-planner-default.wasm",
+     "bytes": 77108,
+     "sha256": "584233a6f684bcab895ae4f16877420c8a3c7082356d20bcafe71f11f9c888cc"
+    },
+    {
+     "name": "lightning-infill.wasm",
+     "bytes": 167330,
+     "sha256": "c60e6155b870a26631d0ee501969a904a25f536ab27de1ea6fb5e064a17a6814"
+    },
+    {
+     "name": "machine-gcode-emit.wasm",
+     "bytes": 175083,
+     "sha256": "052ef2bb097727806c7d50d68fe44777a9732d73cad2a86f3d2f99f2742345af"
+    },
+    {
+     "name": "overhang-classifier-default.wasm",
+     "bytes": 154084,
+     "sha256": "08b8f537d6df5dc8713a57a5967f54292a34e595cd1109ecbf7e7b6619418a0b"
+    },
+    {
+     "name": "part-cooling.wasm",
+     "bytes": 93076,
+     "sha256": "88f24a081cedccc677a6fb1531d6e34686947511d14f543f525733e9b7ff6515"
+    },
+    {
+     "name": "path-optimization-default.wasm",
+     "bytes": 131115,
+     "sha256": "c4e5676fb7c429632be52a9f81d3e7c7abddd8fcdb07a54a61bea147d5393196"
+    },
+    {
+     "name": "raft-default.wasm",
+     "bytes": 149892,
+     "sha256": "94f795ca9d35b063804151d9bf6e9a70a87ee3bc0d16e2eb6fe36c3e3c49cb9c"
+    },
+    {
+     "name": "rectilinear-infill.wasm",
+     "bytes": 201921,
+     "sha256": "5f3860297ede57e0cca9f7b06f36bfef42ed817404425f8a46d4ab9d9d08f9c0"
+    },
+    {
+     "name": "seam-placer.wasm",
+     "bytes": 179419,
+     "sha256": "824864e4780763b261b1d4be177580843a6c6872c676b704306f3f18153fa689"
+    },
+    {
+     "name": "seam-planner-default.wasm",
+     "bytes": 124184,
+     "sha256": "e24961df48b8b040b2e5331dd0195b73a3609f69fc091cfa4031e89f98d61b76"
+    },
+    {
+     "name": "skirt-brim.wasm",
+     "bytes": 118675,
+     "sha256": "fc76d7036c41e057d5d4d1ef4faa61c6668b3877cb09cf1b066bf058a1e52231"
+    },
+    {
+     "name": "support-surface-ironing.wasm",
+     "bytes": 152470,
+     "sha256": "343b2c950e82c2b25a387147ea9642e1c847b3eaff6879dc8a598b2b1b320eea"
+    },
+    {
+     "name": "top-surface-ironing.wasm",
+     "bytes": 179239,
+     "sha256": "f9d1c239ba850f5460d284164027e7df73e54c918b58a211ea3c793ec8e9e81d"
+    },
+    {
+     "name": "traditional-support-planner.wasm",
+     "bytes": 354189,
+     "sha256": "150ca44353a67f2ccf91dbcdb4b4b976ba1747651a9cbe4f1c4847ce4a9b880d"
+    },
+    {
+     "name": "traditional-support.wasm",
+     "bytes": 397377,
+     "sha256": "4b389e75f85ee1f8d3943984b5a8b6b31fa805f8242ef76e8183d5b1b12571b2"
+    },
+    {
+     "name": "tree-support-planner.wasm",
+     "bytes": 547639,
+     "sha256": "806ffe417619d9790edd751b6dc726b2ced7d8164c02d96196988466e4ebe54d"
+    },
+    {
+     "name": "tree-support.wasm",
+     "bytes": 403053,
+     "sha256": "21e587dfdbb0fbabec58fc3c204b36211d2ef35259075ebc76ffb7ce963af5fa"
+    },
+    {
+     "name": "wave-overhangs.wasm",
+     "bytes": 439894,
+     "sha256": "807c46175d0c62e0a6a71d2f0a55313ecb083260be4e2a8062d05cae9a049835"
+    },
+    {
+     "name": "wipe-tower.wasm",
+     "bytes": 154889,
+     "sha256": "46ce87335e42a8e05b0f44f1449f1fcae0c72e48cffe0441fdb07ca2e9bb4486"
+    }
+   ]
+  }
+ },
+ "module_trees_equal": {
+  "ordinary": true,
+  "accelerated": true
+ }
+}

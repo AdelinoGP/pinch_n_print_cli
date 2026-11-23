@@ -1,0 +1,90 @@
+[
+  {
+    "run_id": "benchy-classic-supports-off",
+    "fixture": "benchy",
+    "generator": "classic",
+    "supports": "off",
+    "exit_code": 0,
+    "wall_s": 4.001,
+    "appendix_keys": 622,
+    "gcode_bytes": 3896152,
+    "derived_config": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t82-key-audit\\configs\\derived-classic-support0.json"
+  },
+  {
+    "run_id": "benchy-classic-supports-on",
+    "fixture": "benchy",
+    "generator": "classic",
+    "supports": "on",
+    "exit_code": 0,
+    "wall_s": 4.354,
+    "appendix_keys": 622,
+    "gcode_bytes": 8923328,
+    "derived_config": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t82-key-audit\\configs\\derived-classic-support1.json"
+  },
+  {
+    "run_id": "benchy-arachne-supports-off",
+    "fixture": "benchy",
+    "generator": "arachne",
+    "supports": "off",
+    "exit_code": 0,
+    "wall_s": 3.296,
+    "appendix_keys": 622,
+    "gcode_bytes": 4675521,
+    "derived_config": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t82-key-audit\\configs\\derived-arachne-support0.json"
+  },
+  {
+    "run_id": "benchy-arachne-supports-on",
+    "fixture": "benchy",
+    "generator": "arachne",
+    "supports": "on",
+    "exit_code": 0,
+    "wall_s": 4.149,
+    "appendix_keys": 622,
+    "gcode_bytes": 9718989,
+    "derived_config": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t82-key-audit\\configs\\derived-arachne-support1.json"
+  },
+  {
+    "run_id": "base-classic-supports-off",
+    "fixture": "base",
+    "generator": "classic",
+    "supports": "off",
+    "exit_code": 0,
+    "wall_s": 19.85,
+    "appendix_keys": 622,
+    "gcode_bytes": 20636232,
+    "derived_config": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t82-key-audit\\configs\\derived-classic-support0.json"
+  },
+  {
+    "run_id": "base-classic-supports-on",
+    "fixture": "base",
+    "generator": "classic",
+    "supports": "on",
+    "exit_code": 0,
+    "wall_s": 24.773,
+    "appendix_keys": 622,
+    "gcode_bytes": 37409049,
+    "derived_config": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t82-key-audit\\configs\\derived-classic-support1.json"
+  },
+  {
+    "run_id": "base-arachne-supports-off",
+    "fixture": "base",
+    "generator": "arachne",
+    "supports": "off",
+    "exit_code": 0,
+    "wall_s": 19.01,
+    "appendix_keys": 622,
+    "gcode_bytes": 19230915,
+    "derived_config": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t82-key-audit\\configs\\derived-arachne-support0.json"
+  },
+  {
+    "run_id": "base-arachne-supports-on",
+    "fixture": "base",
+    "generator": "arachne",
+    "supports": "on",
+    "exit_code": 0,
+    "wall_s": 25.14,
+    "appendix_keys": 622,
+    "gcode_bytes": 35943900,
+    "derived_config": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t82-key-audit\\configs\\derived-arachne-support1.json"
+  }
+]

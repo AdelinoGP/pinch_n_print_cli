@@ -509,3 +509,121 @@ fn cross_region_isolation_does_not_emit_for_uncovered_regions() {
         .sum();
     assert_eq!(total_points, expected);
 }
+
+// ---------------------------------------------------------------------------
+// Regression: D-209-adjacent whole-path containment (root cause: one path per
+// polygon concatenated disjoint scan intervals across a hole)
+// ---------------------------------------------------------------------------
+
+/// 8 mm square with a rectangular hole `[3,5] x [2,6]` mm.
+fn holed_square() -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(8.0, 0.0),
+                Point2::from_mm(8.0, 8.0),
+                Point2::from_mm(0.0, 8.0),
+            ],
+        },
+        holes: vec![Polygon {
+            points: vec![
+                Point2::from_mm(3.0, 2.0),
+                Point2::from_mm(3.0, 6.0),
+                Point2::from_mm(5.0, 6.0),
+                Point2::from_mm(5.0, 2.0),
+            ],
+        }],
+    }
+}
+
+/// Ironing over a holed polygon must never extrude a segment across the hole.
+///
+/// Root cause: the scanner emitted ONE `ExtrusionPath3D` per polygon by
+/// concatenating every row's intervals into a single point vector. Consecutive
+/// points from two disjoint intervals of the same row therefore became an
+/// implicit segment straight through the gap. With a 1 mm row spacing the
+/// formerly failing extruded move on this fixture was `(5,3) -> (3,3)` mm:
+/// both endpoints lie on material, but the whole segment crosses the hole
+/// interior at `y = 3`.
+#[test]
+fn hole_crossing_regression_no_ironing_segment_enters_the_hole() {
+    use slicer_ir::Point2;
+    use slicer_sdk::test_support::property_testing::domains::BoundaryRule;
+    use slicer_sdk::test_support::property_testing::oracles::segment_in_region;
+
+    let cfg = config_with(&[
+        ("ironing_enabled", ConfigValue::Bool(true)),
+        ("ironing_speed", ConfigValue::Float(20.0)),
+        ("ironing_flow", ConfigValue::Float(10.0)),
+        ("ironing_spacing", ConfigValue::Float(1.0)),
+        (
+            "ironing_pattern",
+            ConfigValue::String("rectilinear".to_string()),
+        ),
+    ]);
+    let module = TopSurfaceIroning::from_config(&cfg).unwrap();
+    let poly = holed_square();
+    let region = region_with(Some(0), None, vec![poly.clone()]);
+    let mut output = InfillOutputBuilder::new();
+
+    module
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &cfg)
+        .unwrap();
+
+    let paths = output.ironing_paths();
+    assert!(
+        !paths.is_empty(),
+        "the holed fixture must emit ironing paths"
+    );
+
+    let mut left_intervals = 0_usize;
+    let mut right_intervals = 0_usize;
+    for path in paths {
+        for pair in path.points.as_chunks::<2>().0 {
+            let midx = (pair[0].x + pair[1].x) / 2.0;
+            if midx < 3.0 {
+                left_intervals += 1;
+            } else if midx > 5.0 {
+                right_intervals += 1;
+            }
+        }
+    }
+    assert!(
+        left_intervals > 0 && right_intervals > 0,
+        "expected nonempty ironing rows on both sides of the hole, got \
+         left={left_intervals} right={right_intervals}"
+    );
+
+    let region_shape = [poly];
+    for path in paths {
+        assert!(
+            path.points.len() >= 2,
+            "an emitted ironing path must carry at least two points"
+        );
+        for segment in path.points.windows(2) {
+            let a = Point2::from_mm(segment[0].x, segment[0].y);
+            let b = Point2::from_mm(segment[1].x, segment[1].y);
+            let inside = segment_in_region([a, b], &region_shape, BoundaryRule::Inclusive)
+                .expect("exact integer containment predicate");
+            assert!(
+                inside,
+                "ironing segment ({}, {}) -> ({}, {}) mm leaves the top-fill region",
+                segment[0].x, segment[0].y, segment[1].x, segment[1].y
+            );
+            // The formerly failing move is the interior gap crossing at y = 3
+            // (and its neighbours at y = 4 and y = 5). Assert the sharper,
+            // named property so the regression message is unambiguous.
+            let midy = (segment[0].y + segment[1].y) / 2.0;
+            let midx = (segment[0].x + segment[1].x) / 2.0;
+            assert!(
+                !(midx > 3.0 && midx < 5.0 && midy > 2.0 && midy < 6.0),
+                "ironing segment ({}, {}) -> ({}, {}) mm crosses the hole interior",
+                segment[0].x,
+                segment[0].y,
+                segment[1].x,
+                segment[1].y
+            );
+        }
+    }
+}

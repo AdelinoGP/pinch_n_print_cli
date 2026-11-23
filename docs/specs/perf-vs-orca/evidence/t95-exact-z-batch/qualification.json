@@ -1,0 +1,521 @@
+{
+ "pass": true,
+ "cells": [
+  {
+   "cell": "ordinary-benchy-classic-off",
+   "sha256": "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d",
+   "bytes": 3925554,
+   "reference_sha256": "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d",
+   "wall_seconds": {
+    "baseline": 7.6252204,
+    "candidate": 7.4849359
+   },
+   "exe_sha256": {
+    "baseline": "530c23958a580805de9f66bc1151b4cb38e547c1a242fe1d4b7a1ed218a1afba",
+    "candidate": "3a08516f3b8a358a2625e2b33b7ea9c348d37ff4ad0f58066804f48a8f8037a3"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 240,
+    "Inner wall": 240,
+    "Gap infill": 98,
+    "Bottom surface": 23,
+    "Bridge": 21,
+    "Sparse infill": 198,
+    "Internal solid infill": 13,
+    "Top surface": 63,
+    "Internal Bridge": 12
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "ordinary-benchy-classic-on",
+   "sha256": "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714",
+   "bytes": 8252412,
+   "reference_sha256": "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714",
+   "wall_seconds": {
+    "baseline": 11.6854345,
+    "candidate": 11.7095781
+   },
+   "exe_sha256": {
+    "baseline": "530c23958a580805de9f66bc1151b4cb38e547c1a242fe1d4b7a1ed218a1afba",
+    "candidate": "3a08516f3b8a358a2625e2b33b7ea9c348d37ff4ad0f58066804f48a8f8037a3"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 240,
+    "Inner wall": 240,
+    "Gap infill": 98,
+    "Bottom surface": 23,
+    "Support": 179,
+    "Bridge": 21,
+    "Sparse infill": 198,
+    "Internal solid infill": 13,
+    "Top surface": 63,
+    "Internal Bridge": 12,
+    "Support interface": 4
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "ordinary-benchy-arachne-off",
+   "sha256": "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b",
+   "bytes": 4064270,
+   "reference_sha256": "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b",
+   "wall_seconds": {
+    "baseline": 7.4465462,
+    "candidate": 7.4706062
+   },
+   "exe_sha256": {
+    "baseline": "530c23958a580805de9f66bc1151b4cb38e547c1a242fe1d4b7a1ed218a1afba",
+    "candidate": "3a08516f3b8a358a2625e2b33b7ea9c348d37ff4ad0f58066804f48a8f8037a3"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 700,
+    "Inner wall": 690,
+    "Bottom surface": 27,
+    "Bridge": 23,
+    "Sparse infill": 222,
+    "Internal solid infill": 13,
+    "Top surface": 67,
+    "Internal Bridge": 12
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "ordinary-benchy-arachne-on",
+   "sha256": "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05",
+   "bytes": 8390168,
+   "reference_sha256": "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05",
+   "wall_seconds": {
+    "baseline": 11.6992431,
+    "candidate": 11.7482571
+   },
+   "exe_sha256": {
+    "baseline": "530c23958a580805de9f66bc1151b4cb38e547c1a242fe1d4b7a1ed218a1afba",
+    "candidate": "3a08516f3b8a358a2625e2b33b7ea9c348d37ff4ad0f58066804f48a8f8037a3"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 700,
+    "Inner wall": 690,
+    "Bottom surface": 27,
+    "Support": 179,
+    "Bridge": 23,
+    "Sparse infill": 222,
+    "Internal solid infill": 13,
+    "Top surface": 67,
+    "Internal Bridge": 12,
+    "Support interface": 4
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "ordinary-base-classic-off",
+   "sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+   "bytes": 21023739,
+   "reference_sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+   "wall_seconds": {
+    "baseline": 75.3154231,
+    "candidate": 75.8204813
+   },
+   "exe_sha256": {
+    "baseline": "530c23958a580805de9f66bc1151b4cb38e547c1a242fe1d4b7a1ed218a1afba",
+    "candidate": "3a08516f3b8a358a2625e2b33b7ea9c348d37ff4ad0f58066804f48a8f8037a3"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 494,
+    "Inner wall": 494,
+    "Gap infill": 220,
+    "Bridge": 61,
+    "Bottom surface": 50,
+    "Sparse infill": 664,
+    "Top surface": 70,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "ordinary-base-classic-on",
+   "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+   "bytes": 42507912,
+   "reference_sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+   "wall_seconds": {
+    "baseline": 158.7178262,
+    "candidate": 153.4418019
+   },
+   "exe_sha256": {
+    "baseline": "530c23958a580805de9f66bc1151b4cb38e547c1a242fe1d4b7a1ed218a1afba",
+    "candidate": "3a08516f3b8a358a2625e2b33b7ea9c348d37ff4ad0f58066804f48a8f8037a3"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 495,
+    "Inner wall": 494,
+    "Gap infill": 220,
+    "Support": 431,
+    "Bridge": 61,
+    "Bottom surface": 50,
+    "Sparse infill": 664,
+    "Support interface": 70,
+    "Top surface": 70,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "ordinary-base-arachne-off",
+   "sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97",
+   "bytes": 20846160,
+   "reference_sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97",
+   "wall_seconds": {
+    "baseline": 76.0300113,
+    "candidate": 75.5981101
+   },
+   "exe_sha256": {
+    "baseline": "530c23958a580805de9f66bc1151b4cb38e547c1a242fe1d4b7a1ed218a1afba",
+    "candidate": "3a08516f3b8a358a2625e2b33b7ea9c348d37ff4ad0f58066804f48a8f8037a3"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 844,
+    "Inner wall": 844,
+    "Bridge": 77,
+    "Bottom surface": 61,
+    "Sparse infill": 590,
+    "Top surface": 77,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "ordinary-base-arachne-on",
+   "sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c",
+   "bytes": 42330265,
+   "reference_sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c",
+   "wall_seconds": {
+    "baseline": 164.8053625,
+    "candidate": 153.1493484
+   },
+   "exe_sha256": {
+    "baseline": "530c23958a580805de9f66bc1151b4cb38e547c1a242fe1d4b7a1ed218a1afba",
+    "candidate": "3a08516f3b8a358a2625e2b33b7ea9c348d37ff4ad0f58066804f48a8f8037a3"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 844,
+    "Inner wall": 844,
+    "Support": 431,
+    "Bridge": 77,
+    "Bottom surface": 61,
+    "Sparse infill": 590,
+    "Support interface": 70,
+    "Top surface": 77,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-benchy-classic-off",
+   "sha256": "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d",
+   "bytes": 3925554,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 7.2985981,
+    "candidate": 7.3251252
+   },
+   "exe_sha256": {
+    "baseline": "a1f33322bf5393acd8a965b639b6cc748a95793e4e6f949436ffb810493c959b",
+    "candidate": "edf8d10023a3cb7e10c110c45358401beb59b22375156490af7f330b069d6ed6"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 240,
+    "Inner wall": 240,
+    "Gap infill": 98,
+    "Bottom surface": 23,
+    "Bridge": 21,
+    "Sparse infill": 198,
+    "Internal solid infill": 13,
+    "Top surface": 63,
+    "Internal Bridge": 12
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-benchy-classic-on",
+   "sha256": "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714",
+   "bytes": 8252412,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 11.6008521,
+    "candidate": 11.6357626
+   },
+   "exe_sha256": {
+    "baseline": "a1f33322bf5393acd8a965b639b6cc748a95793e4e6f949436ffb810493c959b",
+    "candidate": "edf8d10023a3cb7e10c110c45358401beb59b22375156490af7f330b069d6ed6"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 240,
+    "Inner wall": 240,
+    "Gap infill": 98,
+    "Bottom surface": 23,
+    "Support": 179,
+    "Bridge": 21,
+    "Sparse infill": 198,
+    "Internal solid infill": 13,
+    "Top surface": 63,
+    "Internal Bridge": 12,
+    "Support interface": 4
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-benchy-arachne-off",
+   "sha256": "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b",
+   "bytes": 4064270,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 7.4282782,
+    "candidate": 7.3780876
+   },
+   "exe_sha256": {
+    "baseline": "a1f33322bf5393acd8a965b639b6cc748a95793e4e6f949436ffb810493c959b",
+    "candidate": "edf8d10023a3cb7e10c110c45358401beb59b22375156490af7f330b069d6ed6"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 700,
+    "Inner wall": 690,
+    "Bottom surface": 27,
+    "Bridge": 23,
+    "Sparse infill": 222,
+    "Internal solid infill": 13,
+    "Top surface": 67,
+    "Internal Bridge": 12
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-benchy-arachne-on",
+   "sha256": "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05",
+   "bytes": 8390168,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 11.861534,
+    "candidate": 11.6773607
+   },
+   "exe_sha256": {
+    "baseline": "a1f33322bf5393acd8a965b639b6cc748a95793e4e6f949436ffb810493c959b",
+    "candidate": "edf8d10023a3cb7e10c110c45358401beb59b22375156490af7f330b069d6ed6"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 700,
+    "Inner wall": 690,
+    "Bottom surface": 27,
+    "Support": 179,
+    "Bridge": 23,
+    "Sparse infill": 222,
+    "Internal solid infill": 13,
+    "Top surface": 67,
+    "Internal Bridge": 12,
+    "Support interface": 4
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-base-classic-off",
+   "sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+   "bytes": 21023739,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 74.8738056,
+    "candidate": 75.2194014
+   },
+   "exe_sha256": {
+    "baseline": "a1f33322bf5393acd8a965b639b6cc748a95793e4e6f949436ffb810493c959b",
+    "candidate": "edf8d10023a3cb7e10c110c45358401beb59b22375156490af7f330b069d6ed6"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 494,
+    "Inner wall": 494,
+    "Gap infill": 220,
+    "Bridge": 61,
+    "Bottom surface": 50,
+    "Sparse infill": 664,
+    "Top surface": 70,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-base-classic-on",
+   "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+   "bytes": 42507912,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 159.0202593,
+    "candidate": 152.1601172
+   },
+   "exe_sha256": {
+    "baseline": "a1f33322bf5393acd8a965b639b6cc748a95793e4e6f949436ffb810493c959b",
+    "candidate": "edf8d10023a3cb7e10c110c45358401beb59b22375156490af7f330b069d6ed6"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 495,
+    "Inner wall": 494,
+    "Gap infill": 220,
+    "Support": 431,
+    "Bridge": 61,
+    "Bottom surface": 50,
+    "Sparse infill": 664,
+    "Support interface": 70,
+    "Top surface": 70,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-base-arachne-off",
+   "sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97",
+   "bytes": 20846160,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 75.7328706,
+    "candidate": 75.4428642
+   },
+   "exe_sha256": {
+    "baseline": "a1f33322bf5393acd8a965b639b6cc748a95793e4e6f949436ffb810493c959b",
+    "candidate": "edf8d10023a3cb7e10c110c45358401beb59b22375156490af7f330b069d6ed6"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 844,
+    "Inner wall": 844,
+    "Bridge": 77,
+    "Bottom surface": 61,
+    "Sparse infill": 590,
+    "Top surface": 77,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  },
+  {
+   "cell": "accelerated-base-arachne-on",
+   "sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c",
+   "bytes": 42330265,
+   "reference_sha256": null,
+   "wall_seconds": {
+    "baseline": 160.2871493,
+    "candidate": 157.0381546
+   },
+   "exe_sha256": {
+    "baseline": "a1f33322bf5393acd8a965b639b6cc748a95793e4e6f949436ffb810493c959b",
+    "candidate": "edf8d10023a3cb7e10c110c45358401beb59b22375156490af7f330b069d6ed6"
+   },
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 844,
+    "Inner wall": 844,
+    "Support": 431,
+    "Bridge": 77,
+    "Bottom surface": 61,
+    "Sparse infill": 590,
+    "Support interface": 70,
+    "Top surface": 77,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+   },
+   "status": "ok",
+   "degraded": "False"
+  }
+ ],
+ "problems": [],
+ "cross_mode": {
+  "benchy-classic-off": {
+   "equal": true,
+   "ordinary_sha256": "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d",
+   "accelerated_sha256": "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d"
+  },
+  "benchy-classic-on": {
+   "equal": true,
+   "ordinary_sha256": "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714",
+   "accelerated_sha256": "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714"
+  },
+  "benchy-arachne-off": {
+   "equal": true,
+   "ordinary_sha256": "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b",
+   "accelerated_sha256": "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b"
+  },
+  "benchy-arachne-on": {
+   "equal": true,
+   "ordinary_sha256": "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05",
+   "accelerated_sha256": "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05"
+  },
+  "base-classic-off": {
+   "equal": true,
+   "ordinary_sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+   "accelerated_sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80"
+  },
+  "base-classic-on": {
+   "equal": true,
+   "ordinary_sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+   "accelerated_sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d"
+  },
+  "base-arachne-off": {
+   "equal": true,
+   "ordinary_sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97",
+   "accelerated_sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97"
+  },
+  "base-arachne-on": {
+   "equal": true,
+   "ordinary_sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c",
+   "accelerated_sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c"
+  }
+ },
+ "cross_mode_note": "ordinary vs accelerated byte equality; the post-t81 reference set is ordinary-only, so accelerated cells are gated on cross-mode equality plus their own baseline/candidate identity"
+}

@@ -1,0 +1,125 @@
+{
+  "recommendation": "KEEP",
+  "automatic_commit": false,
+  "scope": "matched-pair classic supports-off Benchy (docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-classic-supports-off.json), 12 threads",
+  "modes": {
+    "ordinary": {
+      "retained_pairs": 6,
+      "excluded_pairs": [],
+      "starvation_cutoffs": {
+        "baseline": 5.400915519495941,
+        "candidate": 5.383366192672527
+      },
+      "medians": {
+        "baseline": {
+          "wall_seconds": 16.9803129,
+          "cpu_seconds": 120.0859375,
+          "cpu_wall_range": [
+            6.182699536694843,
+            7.201220692661254
+          ]
+        },
+        "candidate": {
+          "wall_seconds": 16.869631599999998,
+          "cpu_seconds": 117.5859375,
+          "cpu_wall_range": [
+            6.720223413660785,
+            7.177821590230036
+          ]
+        }
+      },
+      "wall_reduction_percent": 0.651821321855639,
+      "cpu_reduction_percent": 2.0818424305510397,
+      "paired_median_deltas": {
+        "wall_seconds": -0.34280899999999903,
+        "cpu_seconds": -2.3046875
+      },
+      "pairs_favoring_candidate": {
+        "wall_seconds": 4,
+        "cpu_seconds": 6
+      },
+      "strict_range_separation": {
+        "wall_seconds": false,
+        "cpu_seconds": false
+      },
+      "output": {
+        "sha256": "34886ccb56b214d57c28aa58bdcc8d371a41f440200f5b49276b96b53e18cc40",
+        "bytes": 4332737,
+        "type_counts": {
+          "Skirt": 1,
+          "Brim": 1,
+          "Outer wall": 240,
+          "Inner wall": 240,
+          "Gap infill": 110,
+          "Bottom surface": 24,
+          "Bridge": 22,
+          "Sparse infill": 204,
+          "Internal solid infill": 13,
+          "Top surface": 70,
+          "Internal Bridge": 12
+        },
+        "open_loop_warnings": 0
+      },
+      "gate_passed": true
+    },
+    "accelerated": {
+      "retained_pairs": 6,
+      "excluded_pairs": [],
+      "starvation_cutoffs": {
+        "baseline": 4.781381236474357,
+        "candidate": 4.812414057741674
+      },
+      "medians": {
+        "baseline": {
+          "wall_seconds": 15.7084187,
+          "cpu_seconds": 99.5,
+          "cpu_wall_range": [
+            6.257321953550182,
+            6.3751749819658095
+          ]
+        },
+        "candidate": {
+          "wall_seconds": 15.4777415,
+          "cpu_seconds": 98.46875,
+          "cpu_wall_range": [
+            6.280752493656107,
+            6.416552076988899
+          ]
+        }
+      },
+      "wall_reduction_percent": 1.4684940884597042,
+      "cpu_reduction_percent": 1.036432160804024,
+      "paired_median_deltas": {
+        "wall_seconds": -0.24815194999999957,
+        "cpu_seconds": -1.0625
+      },
+      "pairs_favoring_candidate": {
+        "wall_seconds": 6,
+        "cpu_seconds": 5
+      },
+      "strict_range_separation": {
+        "wall_seconds": true,
+        "cpu_seconds": false
+      },
+      "output": {
+        "sha256": "34886ccb56b214d57c28aa58bdcc8d371a41f440200f5b49276b96b53e18cc40",
+        "bytes": 4332737,
+        "type_counts": {
+          "Skirt": 1,
+          "Brim": 1,
+          "Outer wall": 240,
+          "Inner wall": 240,
+          "Gap infill": 110,
+          "Bottom surface": 24,
+          "Bridge": 22,
+          "Sparse infill": 204,
+          "Internal solid infill": 13,
+          "Top surface": 70,
+          "Internal Bridge": 12
+        },
+        "open_loop_warnings": 0
+      },
+      "gate_passed": true
+    }
+  }
+}

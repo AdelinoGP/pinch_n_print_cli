@@ -16,9 +16,18 @@ const PATH_OPT_DEFAULT_PATH: &str = concat!(
     "/../../modules/core-modules/path-optimization-default/path-optimization-default.wasm"
 );
 
+fn spacing_map(spacing: f64) -> slicer_ir::RegionMapIR {
+    let mut config = slicer_ir::ResolvedConfig::default();
+    config
+        .extensions
+        .insert("infill-spacing".into(), ConfigValue::Float(spacing));
+    dispatch_fixture::region_map_for_slice(&ir_builders::slice_ir::with_count(1).build(), 0, config)
+}
+
 #[test]
 fn real_config_visible_through_production_layer_dispatch() {
     let mut fx = dispatch_fixture::for_stage("Layer::Infill")
+        .with_region_map(spacing_map(5.0))
         .with_config(ConfigView::from_map(
             [("infill-spacing".into(), ConfigValue::Float(5.0))].into(),
         ))
@@ -44,6 +53,7 @@ fn different_configs_produce_different_output() {
     let slice = ir_builders::slice_ir::with_count(1).build();
 
     let mut fx_a = dispatch_fixture::for_stage("Layer::Infill")
+        .with_region_map(spacing_map(3.0))
         .with_config(ConfigView::from_map(
             [("infill-spacing".into(), ConfigValue::Float(3.0))].into(),
         ))
@@ -59,6 +69,7 @@ fn different_configs_produce_different_output() {
     .unwrap();
 
     let mut fx_b = dispatch_fixture::for_stage("Layer::Infill")
+        .with_region_map(spacing_map(7.0))
         .with_config(ConfigView::from_map(
             [("infill-spacing".into(), ConfigValue::Float(7.0))].into(),
         ))
@@ -96,6 +107,7 @@ fn repeated_identical_config_produces_deterministic_output() {
     let mut results = Vec::new();
     for _ in 0..3 {
         let mut fx = dispatch_fixture::for_stage("Layer::Infill")
+            .with_region_map(spacing_map(4.0))
             .with_config(config.clone())
             .with_slice(slice.clone())
             .build();
@@ -117,6 +129,7 @@ fn config_isolation_across_sequential_calls() {
     };
 
     let mut fx = dispatch_fixture::for_stage("Layer::Infill")
+        .with_region_map(spacing_map(2.0))
         .with_config(ConfigView::from_map(
             [("infill-spacing".into(), ConfigValue::Float(2.0))].into(),
         ))
@@ -125,6 +138,7 @@ fn config_isolation_across_sequential_calls() {
     fx.run_layer(&layer).unwrap();
 
     let mut fx2 = dispatch_fixture::for_stage("Layer::Infill")
+        .with_region_map(spacing_map(8.0))
         .with_config(ConfigView::from_map(
             [("infill-spacing".into(), ConfigValue::Float(8.0))].into(),
         ))

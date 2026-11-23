@@ -3,15 +3,16 @@
 //! This module defines the TASK-026 public API surface and minimal runtime
 //! behavior for blackboard and layer-arena ownership.
 
+use slicer_wasm_host::selection::LayerSelectionIndex;
 use std::sync::Arc;
 
 use slicer_ir::slice_ir::SupportAnalysisIR;
 use slicer_ir::{
     ActiveRegion, BlackboardError, BlackboardPrepassSlot, ExPolygon, InfillIR, LayerAnnotation,
-    LayerArenaError, LayerArenaSlot, LayerCollectionIR, LayerPlanIR, LightningTreeIR, MeshIR,
-    ObjectMesh, PerimeterIR, Point2, Point3, Polygon, PreparedRegionData, RegionKey, RegionMapIR,
-    RegionPlan, RetractMode, SeamPlanIR, SliceIR, SlicedRegion, SupportGeometryIR,
-    SupportGeometryKey, SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
+    LayerArenaError, LayerArenaSlot, LayerCollectionIR, LayerPlanIR, MeshIR, ObjectMesh,
+    PerimeterIR, Point2, Point3, Polygon, PreparedRegionData, RegionKey, RegionMapIR, RegionPlan,
+    RetractMode, SeamPlanIR, SliceIR, SlicedRegion, SupportGeometryIR, SupportGeometryKey,
+    SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
 };
 
 /// Structured diagnostic emitted when a cross-family support body is dropped
@@ -67,6 +68,18 @@ pub struct DeferredTravelMove {
     pub f: Option<f32>,
 }
 
+/// A second attempt to publish the host-only immutable selection product.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LayerSelectionIndexCommitError;
+
+impl std::fmt::Display for LayerSelectionIndexCommitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("layer selection index already committed")
+    }
+}
+
+impl std::error::Error for LayerSelectionIndexCommitError {}
+
 /// Host-owned immutable global IR store plus write-once per-layer output slots.
 #[derive(Debug)]
 pub struct Blackboard {
@@ -77,9 +90,9 @@ pub struct Blackboard {
     support_plan: Option<Arc<SupportPlanIR>>,
     region_map: Option<Arc<RegionMapIR>>,
     slice_ir: Option<Arc<Vec<SliceIR>>>,
+    layer_selection_index: Option<Arc<LayerSelectionIndex>>,
     support_geometry: Option<Arc<SupportGeometryIR>>,
     support_analysis: Option<Arc<SupportAnalysisIR>>,
-    lightning_tree_ir: Option<Arc<LightningTreeIR>>,
     layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
 }
 
@@ -95,9 +108,9 @@ impl Blackboard {
             support_plan: None,
             region_map: None,
             slice_ir: None,
+            layer_selection_index: None,
             support_geometry: None,
             support_analysis: None,
-            lightning_tree_ir: None,
             layer_outputs: Some((0..layer_count).map(|_| None).collect()),
         }
     }
@@ -142,9 +155,6 @@ impl Blackboard {
         }
         if let Some(arc) = self.support_analysis.as_ref() {
             total = total.saturating_add(std::mem::size_of_val(arc.as_ref()) as u64);
-        }
-        if let Some(arc) = self.lightning_tree_ir.as_ref() {
-            total = total.saturating_add(estimated_lightning_tree_ir_bytes(arc));
         }
         total
     }
@@ -240,15 +250,20 @@ impl Blackboard {
     ///
     /// Family planners are independent writers of family-attributed entries,
     /// so their outputs must be combined at this seam before the immutable
-    /// blackboard slot is published.
+    /// blackboard slot is published. Entries sharing a full source origin —
+    /// the `(global_layer_index, object_id, region_id, variant_chain)`
+    /// identity, chain compared exactly — are rejected, and the error carries
+    /// that exact offending identity.
     pub fn commit_support_plan(&mut self, ir: Arc<SupportPlanIR>) -> Result<(), BlackboardError> {
         let Some(existing) = self.support_plan.as_ref() else {
-            if let Some((global_layer_index, object_id, region_id)) = ir.duplicate_region_identity()
+            if let Some((global_layer_index, object_id, region_id, variant_chain)) =
+                ir.duplicate_region_identity()
             {
                 return Err(BlackboardError::DuplicateSupportPlanEntry {
                     global_layer_index,
                     object_id,
                     region_id,
+                    variant_chain,
                 });
             }
             self.support_plan = Some(ir);
@@ -263,12 +278,14 @@ impl Blackboard {
 
         let mut merged = (**existing).clone();
         merged.entries.extend(ir.entries.iter().cloned());
-        if let Some((global_layer_index, object_id, region_id)) = merged.duplicate_region_identity()
+        if let Some((global_layer_index, object_id, region_id, variant_chain)) =
+            merged.duplicate_region_identity()
         {
             return Err(BlackboardError::DuplicateSupportPlanEntry {
                 global_layer_index,
                 object_id,
                 region_id,
+                variant_chain,
             });
         }
         merged.raft_plan = match (merged.raft_plan.take(), ir.raft_plan.clone()) {
@@ -340,6 +357,24 @@ impl Blackboard {
         self.slice_ir.as_ref()
     }
 
+    /// Return the immutable whole-print selection authority, if committed.
+    #[must_use]
+    pub fn layer_selection_index(&self) -> Option<&Arc<LayerSelectionIndex>> {
+        self.layer_selection_index.as_ref()
+    }
+
+    /// Publish a complete selection index exactly once, without an IR slot label.
+    pub fn commit_layer_selection_index(
+        &mut self,
+        index: Arc<LayerSelectionIndex>,
+    ) -> Result<(), LayerSelectionIndexCommitError> {
+        if self.layer_selection_index.is_some() {
+            return Err(LayerSelectionIndexCommitError);
+        }
+        self.layer_selection_index = Some(index);
+        Ok(())
+    }
+
     /// Commit `SupportGeometryIR` exactly once.
     pub fn commit_support_geometry(
         &mut self,
@@ -374,28 +409,6 @@ impl Blackboard {
     #[must_use]
     pub fn support_analysis(&self) -> Option<&Arc<SupportAnalysisIR>> {
         self.support_analysis.as_ref()
-    }
-
-    /// Commit `LightningTreeIR` exactly once.
-    ///
-    /// Skipped (no commit) when the print's `sparse_fill_holder` is not
-    /// `lightning-infill` — see `PrePass::LightningTreeGen` wiring in
-    /// `prepass.rs` and ADR-0029.
-    pub fn commit_lightning_tree_ir(
-        &mut self,
-        ir: Arc<LightningTreeIR>,
-    ) -> Result<(), BlackboardError> {
-        commit_prepass(
-            &mut self.lightning_tree_ir,
-            ir,
-            BlackboardPrepassSlot::LightningTreeIR,
-        )
-    }
-
-    /// Return the committed lightning tree IR, if available.
-    #[must_use]
-    pub fn lightning_tree_ir(&self) -> Option<&Arc<LightningTreeIR>> {
-        self.lightning_tree_ir.as_ref()
     }
 
     /// Commit one `LayerCollectionIR` into its write-once layer slot.
@@ -542,21 +555,21 @@ fn estimated_support_geometry_bytes(ir: &SupportGeometryIR) -> u64 {
     total
 }
 
-fn estimated_lightning_tree_ir_bytes(ir: &LightningTreeIR) -> u64 {
-    let mut total = std::mem::size_of::<LightningTreeIR>() as u64;
-    for entry in &ir.entries {
-        total += std::mem::size_of::<slicer_ir::LightningTreeEntry>() as u64;
-        total += std::mem::size_of::<[Point2; 2]>() as u64 * entry.tree_edge_segments.len() as u64;
-    }
-    total
-}
-
 /// Ephemeral per-layer intermediate IR ownership used during one layer worker run.
 #[derive(Debug, Default)]
 pub struct LayerArena {
     slice: Option<SliceIR>,
     prepared_regions: Option<Vec<PreparedRegionData>>,
     prepared_perimeter_source_regions: Option<Vec<PreparedRegionData>>,
+    /// Set when the perimeter-source projection coincides with the ordinary one
+    /// for the staged slice, so `prepared_regions` serves both consumers.
+    ///
+    /// The two projections consume byte-identical inputs exactly when
+    /// `slicer_wasm_host::marshal::perimeter_source_projection_is_identity` holds
+    /// (no footprint carrier, no modifier child), and `prepare_regions` is pure,
+    /// so the shared values are the values a second derivation would produce.
+    /// Cleared with the slots it describes.
+    prepared_regions_serve_perimeter_source: bool,
     perimeter: Option<PerimeterIR>,
     infill: Option<InfillIR>,
     support: Option<SupportIR>,
@@ -595,9 +608,18 @@ impl LayerArena {
     /// Stage `SliceIR` in the arena.
     pub fn set_slice(&mut self, ir: SliceIR) -> Result<(), LayerArenaError> {
         set_arena_slot(&mut self.slice, ir, LayerArenaSlot::Slice)?;
+        self.clear_prepared_regions();
+        Ok(())
+    }
+
+    /// Drop every prepared-region slot and the sharing decision that describes
+    /// them. The three sites that mutate or drop the staged slice call this so a
+    /// stale derivation (or a stale sharing decision) can never outlive its
+    /// input.
+    fn clear_prepared_regions(&mut self) {
         self.prepared_regions = None;
         self.prepared_perimeter_source_regions = None;
-        Ok(())
+        self.prepared_regions_serve_perimeter_source = false;
     }
 
     /// Borrow the staged `SliceIR`, if present.
@@ -608,8 +630,7 @@ impl LayerArena {
 
     /// Take ownership of the staged `SliceIR`, if present.
     pub fn take_slice(&mut self) -> Option<SliceIR> {
-        self.prepared_regions = None;
-        self.prepared_perimeter_source_regions = None;
+        self.clear_prepared_regions();
         self.slice.take()
     }
 
@@ -639,14 +660,35 @@ impl LayerArena {
 
     /// Prepare and borrow derived data for reconstructed wall-owning regions.
     ///
+    /// When the perimeter-source projection coincides with the ordinary one
+    /// ([`slicer_wasm_host::marshal::perimeter_source_projection_is_identity`] —
+    /// no modifier child, no footprint carrier, which is every matched job) the
+    /// two projections consume the same regions in the same order, so the
+    /// ordinary derivation serves both consumers and this slot stays empty
+    /// (ticket 67). Otherwise the wall-owning projection is derived on its own
+    /// inputs, as before.
+    ///
     /// Repeated calls reuse the arena-owned allocation until the slice lifecycle
     /// invalidates it. Returns `None` when no slice is staged.
     pub fn ensure_prepared_perimeter_source_regions(
         &mut self,
         surface_classification: Option<&SurfaceClassificationIR>,
     ) -> Option<&[PreparedRegionData]> {
+        if self.prepared_regions_serve_perimeter_source {
+            return self.prepared_regions.as_deref();
+        }
         if self.prepared_perimeter_source_regions.is_none() {
             let slice = self.slice.as_ref()?;
+            if slicer_wasm_host::marshal::perimeter_source_projection_is_identity(slice) {
+                if self.prepared_regions.is_none() {
+                    self.prepared_regions = Some(slicer_wasm_host::marshal::prepare_slice_regions(
+                        slice,
+                        surface_classification,
+                    ));
+                }
+                self.prepared_regions_serve_perimeter_source = true;
+                return self.prepared_regions.as_deref();
+            }
             self.prepared_perimeter_source_regions =
                 Some(slicer_wasm_host::marshal::prepare_perimeter_source_regions(
                     slice,
@@ -659,6 +701,9 @@ impl LayerArena {
     /// Borrow prepared perimeter-source data without computing it.
     #[must_use]
     pub fn prepared_perimeter_source_regions(&self) -> Option<&[PreparedRegionData]> {
+        if self.prepared_regions_serve_perimeter_source {
+            return self.prepared_regions.as_deref();
+        }
         self.prepared_perimeter_source_regions.as_deref()
     }
 
@@ -808,8 +853,7 @@ impl LayerArena {
     /// `LayerCollectionIR` by `layer_executor` before this is called.
     pub fn reset(&mut self) {
         self.slice = None;
-        self.prepared_regions = None;
-        self.prepared_perimeter_source_regions = None;
+        self.clear_prepared_regions();
         self.perimeter = None;
         self.infill = None;
         self.support = None;
@@ -864,4 +908,31 @@ fn set_arena_slot<T>(
 
     *slot = Some(ir);
     Ok(())
+}
+
+#[cfg(test)]
+mod selection_index_tests {
+    use super::*;
+
+    #[test]
+    fn selection_index_duplicate_commit_preserves_original_product() {
+        let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
+        assert!(blackboard.layer_selection_index().is_none());
+        let original = Arc::new(LayerSelectionIndex::default());
+        blackboard
+            .commit_layer_selection_index(Arc::clone(&original))
+            .unwrap();
+        assert!(Arc::ptr_eq(
+            blackboard.layer_selection_index().unwrap(),
+            &original
+        ));
+        assert_eq!(
+            blackboard.commit_layer_selection_index(Arc::new(LayerSelectionIndex::default())),
+            Err(LayerSelectionIndexCommitError)
+        );
+        assert!(Arc::ptr_eq(
+            blackboard.layer_selection_index().unwrap(),
+            &original
+        ));
+    }
 }

@@ -135,7 +135,7 @@ Headline per bench (mean of the per-iteration sample, from `estimates.json`):
 | Benchmark | Leaves | Representative magnitudes |
 | --- | --- | --- |
 | `polygon_ops` | 12 | union/difference/intersection 16 → 256 squares: 8.49 → 199.29 µs (union); `offset` 10.86 / 44.28 / 242.52 µs |
-| `mesh_ops` | 4 | `import_step` cube 1.44 ms, assembly 2.14 ms; `repair/cube` 2.95 µs; `decimate/cube_default` 3.75 µs |
+| `mesh_ops` | 4 | `import_step` cube 1.44 ms, assembly 2.14 ms; `repair/cube` 2.95 µs; `decimate/cube_default` 3.75 µs (the last two leaves superseded 2026-10-07 by [mesh_ops fixture limits](../../issues/29-mesh-ops-fixture-limits.md)) |
 | `pipeline` | 8 | noop bracket drive 1.6 / 16.8 / 160 µs; collector 19.3 / 190.4 µs / 1.85 ms; allocator fast-path ns-scale |
 | `per_stage` | 3 | `compute_serial_edges` 942.58 ns / 8.32 µs / 97.25 µs at 8 / 32 / 128 modules |
 | `wasm_modules` | 49 | `export_name_for_stage` 6.73 ns; `manifest_load` 85.9–400.6 µs across 24 modules; `compile_component` 9.1–97.0 ms across 24 modules |

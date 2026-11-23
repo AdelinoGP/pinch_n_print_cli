@@ -1,0 +1,12 @@
+{
+ "note": "Counts from `pnp_cli support-preview` on benchy classic-on at HEAD 9a1921ac with target/release/pnp_cli.exe = sha256 4cb96942...; the 77,252,577-byte preview JSON is regenerated per REPRODUCE.md and never committed. `geometry_support_*` counts the non-sentinel SupportGeometryIR entries the preview renders into `layers[].support`; `plan_support_body_*` is the SupportPlanIR body geometry it renders beside them.",
+ "cell": "benchy-classic-on",
+ "layer_count": 240,
+ "layers_with_geometry": 240,
+ "geometry_support_polygons": 577,
+ "geometry_support_points": 444259,
+ "skipped_intermediate_entries": 1,
+ "plan_support_body_polygons": 798,
+ "plan_support_body_points": 354208,
+ "preview_json_bytes": 77252577
+}

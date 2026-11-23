@@ -1,7 +1,7 @@
 package slicer:prepass-seam-planning@1.0.0;
 
 interface seam-planning-types {
-    use slicer:ir-handles/ir-handles.{paint-value, segment-annotations-entry};
+    use slicer:ir-handles/ir-handles@1.0.0.{paint-value, segment-annotations-entry};
     use slicer:types/geometry.{ex-polygon, seam-point3-with-width};
 
     type object-id = string;
@@ -63,7 +63,7 @@ world seam-planning-module {
     import slicer:common/host-services;
     import slicer:common/profiling;
     import slicer:config/config-types;
-    import slicer:ir-handles/ir-handles;
+    import slicer:ir-handles/ir-handles@1.0.0;
     import slicer:prepass-types/prepass-types;
     import seam-planning-types;
     export seam-planning;

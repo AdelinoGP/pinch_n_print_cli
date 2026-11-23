@@ -1,0 +1,16 @@
+{
+  "inputs": {
+    "docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-arachne-supports-off.json": "65f2c42069677f5b9a55b45706a5d2b9b780b28aa29cf88a9af645dfb9af06ff",
+    "docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-arachne-supports-on.json": "ebd8866c52fdfc0c4a03b1393aa541b3b25a50802ce314b67fe004bb4ed13dde",
+    "docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-classic-supports-off.json": "e428f149f3d8ae63957d84a570590447abef42946bce98ee359f9d36a90ec82d",
+    "docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-classic-supports-on.json": "ceca6be08991f120a74c98df47a6deaae98aaaad61c2eaeb6c346677a2072a7e",
+    "tmp/3dbenchy.stl": "6a07f34cc7769b1c852635212c91a1b354532f4222a9a8105c1035a1a7b284f7",
+    "tmp/base.stl": "b26c8c79158bd009119e13c89aa0cb9b6f8100bef1de63f58c0d58e2c1c178af"
+  },
+  "protocol_sha256": "ea088794cb479c6d8f894aaeabd1fbd61de3d248612de35554bfca035c7165b9",
+  "exactness_sha256": "23d8bc474698635d36b5b0ba034aa31c0c77986b5ad68446395ca33320c5d50a",
+  "identity_sha256": "0c50804e6446df37f34c8cbc33570f302e908d44ba98b793d556ed81da005d5d",
+  "candidate_builds_sha256": "4f4696aa0244bd71c07823a5881e8ca0da2a20e557229056060922f49f4d14b1",
+  "runner_sha256": "22eb1202dccc6540f468275c25ebcb2f794bc39cf6f5575cc556f3a0b29a3584",
+  "output_verifier_sha256": "f44c548fca7cda6fae6de24f867ab5a404be6fdc41e2eca8fd5c79c522683af6"
+}

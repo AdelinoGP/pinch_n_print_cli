@@ -1,0 +1,126 @@
+--- a/crates/slicer-wasm-host/src/exact_z_query.rs
++++ b/crates/slicer-wasm-host/src/exact_z_query.rs
+@@ -1,11 +1,25 @@
+ //! Host-owned exact-Z geometry queries for support family planners.
+ 
+ use std::collections::HashMap;
++use std::sync::atomic::{AtomicU64, Ordering};
+ use std::sync::{Arc, Mutex};
+ 
+ use slicer_core::algos::mesh_cross_section::cross_section_at_z;
+ use slicer_ir::{mm_to_units, ExPolygon, MeshIR, ObjectMesh, Point2, Point3, Polygon};
+ 
++/// Probe-only counters (ticket 89): total `query` calls and cache misses.
++/// Removed before any keep/drop decision; they exist to explain the measured
++/// process-CPU delta between the serial and parallel validation arms.
++pub static PROBE_QUERIES: AtomicU64 = AtomicU64::new(0);
++/// Probe-only miss counter; see [`PROBE_QUERIES`].
++pub static PROBE_MISSES: AtomicU64 = AtomicU64::new(0);
++/// Probe-only: microseconds spent building the world mesh and its bounds.
++pub static PROBE_US_MESH: AtomicU64 = AtomicU64::new(0);
++/// Probe-only: microseconds spent on the requested-Z cross-section.
++pub static PROBE_US_Z_SECTION: AtomicU64 = AtomicU64::new(0);
++/// Probe-only: microseconds spent on the constant top-Z cross-section.
++pub static PROBE_US_TOP_SECTION: AtomicU64 = AtomicU64::new(0);
++
+ /// Immutable result of one normalized support geometry query.
+ #[derive(Debug, Clone, PartialEq)]
+ pub struct ExactZSupportQuery {
+@@ -51,6 +65,7 @@
+         if !physical_z_mm.is_finite() {
+             return Err("exact-z-support-query: Z must be finite".into());
+         }
++        PROBE_QUERIES.fetch_add(1, Ordering::Relaxed);
+         let z_units = mm_to_units(physical_z_mm);
+         let key = (object_id.to_owned(), region_id, z_units);
+         if let Some(result) = self
+@@ -61,6 +76,7 @@
+         {
+             return Ok(Arc::clone(result));
+         }
++        PROBE_MISSES.fetch_add(1, Ordering::Relaxed);
+ 
+         let object = self
+             .mesh
+@@ -68,12 +84,28 @@
+             .iter()
+             .find(|object| object.id == object_id)
+             .ok_or_else(|| format!("exact-z-support-query: object '{object_id}' not found"))?;
++        let probe_start = std::time::Instant::now();
+         let world_mesh = world_mesh(object);
+-        let occupancy = cross_section_at_z(&world_mesh, physical_z_mm);
+         let bbox = world_bounds(&world_mesh)
+             .ok_or_else(|| format!("exact-z-support-query: object '{object_id}' has empty mesh"))?;
++        let probe_after_mesh = std::time::Instant::now();
++        let occupancy = cross_section_at_z(&world_mesh, physical_z_mm);
++        let probe_after_z = std::time::Instant::now();
+         let plate = rectangle(bbox.0, bbox.1, bbox.2, bbox.3);
+         let top = cross_section_at_z(&world_mesh, bbox.5);
++        let probe_after_top = std::time::Instant::now();
++        PROBE_US_MESH.fetch_add(
++            (probe_after_mesh - probe_start).as_micros() as u64,
++            Ordering::Relaxed,
++        );
++        PROBE_US_Z_SECTION.fetch_add(
++            (probe_after_z - probe_after_mesh).as_micros() as u64,
++            Ordering::Relaxed,
++        );
++        PROBE_US_TOP_SECTION.fetch_add(
++            (probe_after_top - probe_after_z).as_micros() as u64,
++            Ordering::Relaxed,
++        );
+         let result = Arc::new(ExactZSupportQuery {
+             z_units,
+             blockers: occupancy.clone(),
+--- a/crates/slicer-wasm-host/src/support_aggregation.rs
++++ b/crates/slicer-wasm-host/src/support_aggregation.rs
+@@ -462,6 +462,25 @@
+     // that same order. Refused and declined entries never reach the query, as
+     // before.
+     let exact_z = input.exact_z;
++    let probe = std::env::var_os("PNP_T89_PROBE").is_some();
++    let probe_start = if probe {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++    let probe_admitted = if probe {
++        let mut admitted = 0usize;
++        let mut distinct = HashSet::new();
++        for ((_, entry), admission) in entries.iter().zip(admission.iter()) {
++            if matches!(admission, Admission::Admitted) {
++                admitted += 1;
++                distinct.insert((entry.object_id.clone(), entry.anchor_z));
++            }
++        }
++        Some((admitted, distinct.len()))
++    } else {
++        None
++    };
+     let verdicts = entries
+         .par_iter()
+         .zip(admission.par_iter())
+@@ -470,6 +489,23 @@
+             Admission::Declined(_) | Admission::Refused => None,
+         })
+         .collect::<Vec<_>>();
++    if let (Some(start), Some((admitted, distinct))) = (probe_start, probe_admitted) {
++        eprintln!(
++            "T89PROBE entries={} admitted={} distinct_object_z={} validate_ms={:.1} queries={} misses={}",
++            entries.len(),
++            admitted,
++            distinct,
++            start.elapsed().as_secs_f64() * 1000.0,
++            crate::exact_z_query::PROBE_QUERIES.load(std::sync::atomic::Ordering::Relaxed),
++            crate::exact_z_query::PROBE_MISSES.load(std::sync::atomic::Ordering::Relaxed),
++        );
++        eprintln!(
++            "T89SPLIT mesh_us={} z_section_us={} top_section_us={}",
++            crate::exact_z_query::PROBE_US_MESH.load(std::sync::atomic::Ordering::Relaxed),
++            crate::exact_z_query::PROBE_US_Z_SECTION.load(std::sync::atomic::Ordering::Relaxed),
++            crate::exact_z_query::PROBE_US_TOP_SECTION.load(std::sync::atomic::Ordering::Relaxed),
++        );
++    }
+     for (((_, entry), admission), verdict) in entries.into_iter().zip(admission).zip(verdicts) {
+         match admission {
+             Admission::Refused => {}

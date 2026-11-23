@@ -251,6 +251,18 @@ fn build_region_map(object_id: &str, layer_count: u32) -> Arc<RegionMapIR> {
             },
             RegionPlan::default(),
         );
+        // Declare the material paint axis this fixture asserts. The capability
+        // gate reads only the semantic names; the plan resolves to the default
+        // config, so the value is an axis marker, not a tool selection.
+        entries.insert(
+            RegionKey {
+                global_layer_index: i,
+                object_id: object_id.to_string(),
+                region_id: 0,
+                variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(0))],
+            },
+            RegionPlan::default(),
+        );
     }
     Arc::new(RegionMapIR {
         schema_version: CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
@@ -850,26 +862,34 @@ fn cube_4color_first_layer_perimeter_colour_matches_bottom_face() {
         .expect("must have at least one layer");
 
     let tools = unique_material_tool_indices(first_layer);
+    // Unpainted facets keep the BASE identity (empty ordered chain); the base
+    // extruder is then tool 0 by definition, not a synthetic chain entry.
+    let base_region_present = first_layer
+        .regions
+        .iter()
+        .any(|region| region.variant_chain.is_empty() && !region.polygons.is_empty());
+    let has_base_tool = tools.contains(&0) || base_region_present;
     eprintln!(
-        "DIAGNOSTIC AC-G3: first layer Z={} tool indices = {:?}",
-        first_layer.z, tools
+        "DIAGNOSTIC AC-G3: first layer Z={} tool indices = {:?} base_region={}",
+        first_layer.z, tools, base_region_present
     );
 
     // The base-extruder colour (ToolIndex 0 = orange) must appear: the unpainted
     // half of the bottom face defaults to the base extruder and its bottom
     // projection is full-area at the contact layer (layer 0).
     assert!(
-        tools.contains(&0),
-        "AC-G3: first layer (Z={}) material-tool set must include ToolIndex(0) (orange / base \
-         extruder from unpainted bottom-face projection). Got: {:?}.\n\
-         Check Phase-6 bottom projection for ToolIndex(0) at layer 0 and Phase-7 merge.",
-        first_layer.z,
-        tools
+        has_base_tool,
+        "AC-G3: first layer (Z={}) material-tool set must include the base extruder \
+         (ToolIndex(0) or an unpainted BASE region from the bottom-face projection). Got: {:?}, \
+         base_region_present={base_region_present}.\n\
+         Check Phase-6 bottom projection for the unpainted half at layer 0 and Phase-7 merge.",
+        first_layer.z, tools
     );
 
     // The set must NOT be exactly {{ToolIndex(1)}} alone — that would mean the
     // green right-face side-wall colour dominated the entire first layer, which
-    // violates the bottom-face-dominance rule.
+    // violates the bottom-face-dominance rule. BASE existence does not excuse a
+    // green-only painted population, so the guard ignores the implicit base tool.
     let only_green = tools.len() == 1 && tools.contains(&1);
     assert!(
         !only_green,

@@ -1,0 +1,50 @@
+[module]
+id = "com.test.preparation-lifecycle-guest"
+version = "0.1.0"
+display-name = "Prepared PathOptimization lifecycle fixture"
+description = "Module-owned probe decoder exercised by ordinary PathOptimization dispatch"
+author = "Pinch 'n Print Team"
+license = "MIT"
+
+[stage]
+id = "Layer::PathOptimization"
+
+[ir-access]
+reads = []
+writes = []
+
+[claims]
+holds = ["path-optimizer"]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires = []
+min-host-version = "0.1.0"
+min-ir-schema = "1.0.0"
+max-ir-schema = "5.0.0"
+
+[preparation]
+interface = "slicer:layer-preparation/prepare@1.0.0"
+input_reads = [
+    "layer_plan", "slices", "region_map", "mesh", "selected_targets",
+    "surface_classification", "seam_plan", "support_analysis",
+    "support_geometry", "support_plan",
+]
+views = []
+
+[config.schema.preparation_probe_mode]
+type = "enum"
+values = ["ready", "ready_empty", "required_decoder", "duplicate_put", "panic", "trap", "module_error"]
+default = "ready"
+
+[config.schema.preparation_probe_token]
+type = "string"
+default = "probe"
+
+[config.schema.preparation_probe_length]
+type = "int"
+default = 4
+
+[hints]
+layer-parallel-safe = true

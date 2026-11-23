@@ -1,0 +1,22 @@
+{
+  "purpose": "one isolated full-key scanbeam TopX cache take, not adoption or an Orca scoreboard",
+  "jobs": ["benchy-classic-on", "base-classic-on"],
+  "modes": ["ordinary", "accelerated"],
+  "qualification": "fresh full {benchy,base} x {classic,arachne} x {off,on} matrix in both modes; exact streamed bytes, clean status, correct generator and nonvacuous roles before any timing",
+  "threads": 12,
+  "measured_pairs_per_cell": 6,
+  "excluded_warmups_per_arm": 1,
+  "order": "AB then BA, alternating by pair; ordinary benchy/base then accelerated benchy/base; stop on first failed or inconclusive cell",
+  "only_arm_difference": "shared native and guest clipper2-rust =1.1.0 engine cache, explicit candidate slicer-core path; isolated build-driver output-path normalization has no geometry/policy change",
+  "starvation": {
+    "cutoff_fraction_of_best_cpu_wall_ratio": 0.75,
+    "reference_group": "fixture, mode and arm separately; measured rows only",
+    "discard": "exclude entire pair if either arm is below its own cutoff; no automatic resampling",
+    "minimum_retained_pairs_per_cell": 5
+  },
+  "keep": "every cell requires lower candidate median wall and process CPU, with negative paired median deltas in both metrics; no pooling",
+  "measurement": "GetProcessTimes process creation-to-exit wall and kernel+user CPU; whole probe-free external-only process including cache allocation, checks and teardown",
+  "automatic_retry": false,
+  "automatic_commit": false,
+  "permanent_dependency_adoption": false
+}

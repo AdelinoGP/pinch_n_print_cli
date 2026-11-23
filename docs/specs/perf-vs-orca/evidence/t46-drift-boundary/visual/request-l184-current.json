@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0.0",
+  "source": {"kind": "gcode", "path": "D:/slicerProject/pinch_n_print_cli_2/target/t46-recon/current-head.gcode", "model": null},
+  "gcode_line_width_mm": 0.4,
+  "layers": [184],
+  "taps": ["final_gcode"],
+  "visualizations": ["filament_lines"],
+  "resolution_scale": 1
+}

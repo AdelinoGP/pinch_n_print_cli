@@ -1,0 +1,26 @@
+{
+  "human_request": "Continue until completion (qualification, timing, handback)",
+  "recorded_at_stage": "blocked after 7/16 ordinary qualification cells; no timing",
+  "resume_scope": "rerun only the interrupted ordinary cell and the not-yet-run accelerated cells; completed cells preserved and revalidated; then the frozen paired timing protocol",
+  "interrupted_partial_archived": {
+    "ordinary-base-arachne-on-baseline-w0.stderr.jsonl": {
+      "archived_as": "partial-proof-interrupted-baseline-w0.stderr.jsonl",
+      "bytes": 206123
+    },
+    "ordinary-base-arachne-on-baseline-w0.stdout.log": {
+      "archived_as": "partial-proof-interrupted-baseline-w0.stdout.log",
+      "bytes": 0
+    }
+  },
+  "remaining_proof_dirs_after_cleanup": [
+    "ordinary-base-arachne-off",
+    "ordinary-base-classic-off",
+    "ordinary-base-classic-on",
+    "ordinary-benchy-arachne-off",
+    "ordinary-benchy-arachne-on",
+    "ordinary-benchy-classic-off",
+    "ordinary-benchy-classic-on"
+  ],
+  "automatic_retry_beyond_this_authorization": false,
+  "timeout_lesson": "outer command timeout removed for the resumption; no shell-level aggregate limit"
+}

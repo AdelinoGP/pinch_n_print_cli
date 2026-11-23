@@ -1,0 +1,13 @@
+diff --git a/modules/core-modules/tree-support-planner/src/lib.rs b/modules/core-modules/tree-support-planner/src/lib.rs
+index a59a11e5529d..5b38caf0bd09 100644
+--- a/modules/core-modules/tree-support-planner/src/lib.rs
++++ b/modules/core-modules/tree-support-planner/src/lib.rs
+@@ -1090,7 +1090,7 @@
+ /// The batch API is per-item, so every request carries its own copy of the clip
+ /// set. A batch therefore trades memory for fan-out: large enough to keep the
+ /// rayon pool busy, small enough that the marshalled payload stays bounded.
+-const CLIP_BATCH_MAX_REQUESTS: usize = 256;
++const CLIP_BATCH_MAX_REQUESTS: usize = 4096;
+ 
+ /// How many layers' emit inputs are buffered before a batch runs.
+ ///

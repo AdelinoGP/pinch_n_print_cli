@@ -30,6 +30,61 @@ use crate::common::wasm_cache;
 use crate::common::{commit_hec_for_test, layer_input};
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
+fn commit_selection_products(
+    blackboard: &mut slicer_runtime::Blackboard,
+    arena: &slicer_runtime::LayerArena,
+    layer: &slicer_ir::GlobalLayer,
+    config: &slicer_ir::ConfigView,
+) {
+    let slice = arena
+        .slice()
+        .cloned()
+        .unwrap_or_else(|| slicer_ir::SliceIR {
+            global_layer_index: layer.index,
+            z: layer.z,
+            regions: arena
+                .perimeter()
+                .into_iter()
+                .flat_map(|p| &p.regions)
+                .map(|r| slicer_ir::SlicedRegion {
+                    object_id: r.object_id.clone(),
+                    region_id: r.region_id,
+                    variant_chain: r.variant_chain.clone(),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        });
+    let mut map = slicer_ir::RegionMapIR::default();
+    let config = map.intern_config(slicer_ir::ResolvedConfig {
+        extensions: config
+            .iter_entries()
+            .map(|(k, v)| (k.to_owned(), v.clone()))
+            .collect(),
+        ..Default::default()
+    });
+    for region in &slice.regions {
+        map.entries.insert(
+            slicer_ir::RegionKey {
+                global_layer_index: layer.index,
+                object_id: region.object_id.clone(),
+                region_id: region.region_id,
+                variant_chain: region.variant_chain.clone(),
+            },
+            slicer_ir::RegionPlan {
+                config,
+                ..Default::default()
+            },
+        );
+    }
+    blackboard
+        .commit_region_map(std::sync::Arc::new(map))
+        .expect("commit exact region map");
+    blackboard
+        .commit_slice_ir(std::sync::Arc::new(vec![slice]))
+        .expect("commit selection slice");
+}
+
 /// Helper: create a minimal SliceIR with regions matching the given
 /// `(object_id, region_id)` pairs, then stage it into the arena.
 /// Required because `region_partition::sync_perimeter_infill_areas_into_slice`
@@ -576,6 +631,20 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
     };
 
     // Dispatch PathOptimization through the real run_stage path.
+    let mut blackboard = blackboard;
+    commit_selection_products(&mut blackboard, &arena, &layer, module.config_view());
+    let index = crate::common::selection_for_module(
+        "Layer::PathOptimization",
+        &layer,
+        &module,
+        &blackboard,
+        None,
+        None,
+    )
+    .expect("build fixture selection");
+    let selection = index
+        .selection_for(layer.index, module.module_id())
+        .expect("fixture selection");
     // run_stage internally calls dispatch_layer_call and then commit_layer_outputs,
     // which must reject move replay for this stage.
     LayerStageRunner::run_stage(
@@ -589,7 +658,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
             module.claims(),
             Arc::clone(module.config_view()),
         ),
-        layer_input(&blackboard, &arena),
+        layer_input(&blackboard, &arena, selection),
     )
     .expect("PathOptimization dispatch must succeed");
 
@@ -1153,6 +1222,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     if let Some(sp) = blackboard.seam_plan() {
         eprintln!("DEBUG: blackboard seam_plan entries: {}", sp.entries.len());
     }
+    commit_selection_products(&mut blackboard, &arena, &layer, bundle.module.config_view());
     crate::common::run_layer_and_commit(
         &dispatcher,
         "Layer::PerimetersPostProcess",
@@ -1395,6 +1465,8 @@ fn classic_perimeters_seam_candidate_z_survives_wasm_boundary_above_first_layer(
         ..Default::default()
     };
 
+    let mut blackboard = blackboard;
+    commit_selection_products(&mut blackboard, &arena, &layer, bundle.module.config_view());
     crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Perimeters",

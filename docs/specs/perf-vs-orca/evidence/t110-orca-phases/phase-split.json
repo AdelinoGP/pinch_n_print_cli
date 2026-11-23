@@ -1,0 +1,323 @@
+{
+ "note": "t110 reducer output. Orca side: phase tap medians over retained runs (runs.csv); PnP side: ticket 104's committed phase-split.json. Wall numbers are attribution only (tap adds a 2 ms poller).",
+ "info_controls": {
+  "calicat": {
+   "runs": 2,
+   "wall_ms_median": 949.1,
+   "wall_ms_values": [
+    975.1,
+    923.1
+   ]
+  },
+  "benchy": {
+   "runs": 2,
+   "wall_ms_median": 1229.75,
+   "wall_ms_values": [
+    1284.2,
+    1175.3
+   ]
+  },
+  "base": {
+   "runs": 2,
+   "wall_ms_median": 10129.95,
+   "wall_ms_values": [
+    10056.4,
+    10203.5
+   ]
+  }
+ },
+ "cells": {
+  "benchy-classic-off": {
+   "orca": {
+    "runs": 3,
+    "wall_ms_median": 1867.5,
+    "wall_ms_values": [
+     1896.4,
+     1867.5,
+     1863.1
+    ],
+    "wall_ms_spread_pct": 1.78,
+    "startup_import_ms": 1229.75,
+    "prephase_ms_median": 1280.3,
+    "prepass_ms": 50.5,
+    "emit_ms_median": 365.8,
+    "tail_ms_median": 225.5,
+    "shares_pct": {
+     "startup_import": 65.85,
+     "prepass": 2.71,
+     "emit": 19.59,
+     "tail": 12.07
+    },
+    "cpu_s_median": {
+     "at_prepass_end": 3.469,
+     "at_emit_end": 6.312,
+     "at_exit": 6.469
+    },
+    "cpu_s_by_phase": {
+     "startup_import_and_prepass": 3.469,
+     "emit": 2.843,
+     "tail": 0.157
+    },
+    "gcode_bytes": 3999822.0,
+    "sys_cpu_util_median": 0.3347,
+    "poll_max_gap_ms": 33.1,
+    "slicing_ms": 637.8,
+    "slicing_share_pct": 34.15,
+    "trivial_arm": {
+     "model": "benchy",
+     "wall_ms": 1746.8,
+     "prephase_ms": 1211.3,
+     "emit_ms": 313.8,
+     "tail_ms": 221.7,
+     "gcode_bytes": 2106487,
+     "args": [
+      "--sparse-infill-density=0%",
+      "--wall-loops=1",
+      "--top-shell-layers=1",
+      "--bottom-shell-layers=1"
+     ]
+    }
+   },
+   "pnp_t104": {
+    "slice_complete_ms": 8096,
+    "prepass_ms": 5545,
+    "per_layer_ms": 1626,
+    "postpass_ms": 190,
+    "outside_phases_ms": 731,
+    "layer_count": 240,
+    "gcode_bytes": 3925554,
+    "prepass_share_pct": 68.49,
+    "per_layer_plus_postpass_share_pct": 22.43,
+    "slicing_ms": 7365
+   },
+   "compare": {
+    "prepass_multiple_pnp_over_orca": 109.69,
+    "emit_multiple_pnp_over_orca": 4.96,
+    "slicing_multiple_pnp_over_orca": 11.55,
+    "import_multiple_orca_over_pnp": 1.68,
+    "pnp_prepass_over_orca_whole_cell": 2.97,
+    "whole_slice_multiple_pnp_over_orca": 4.34,
+    "note": "Orca prepass = prephase - startup_import, where startup_import is the --info median for the same model (an upper bound, since --info also prints a manifold check), so the Orca prepass and slicing figures are LOWER bounds and every PnP/Orca multiple here is an UPPER bound. The trivial-feature arm (controls.json) corroborates the import term: with every per-layer feature turned down the cell wall moves by ~0.1 s. PnP side is t104's instrumented phase table; its 'outside_phases' is startup + mesh IO + teardown inside the instrumented span, so the import multiple overstates Orca/PnP by whatever share of 'outside' is not import."
+   }
+  },
+  "benchy-classic-on": {
+   "orca": {
+    "runs": 3,
+    "wall_ms_median": 2509.8,
+    "wall_ms_values": [
+     2518.6,
+     2509.8,
+     2472.3
+    ],
+    "wall_ms_spread_pct": 1.84,
+    "startup_import_ms": 1229.75,
+    "prephase_ms_median": 1779.5,
+    "prepass_ms": 549.8,
+    "emit_ms_median": 497.5,
+    "tail_ms_median": 225.2,
+    "shares_pct": {
+     "startup_import": 49.0,
+     "prepass": 21.9,
+     "emit": 19.82,
+     "tail": 8.97
+    },
+    "cpu_s_median": {
+     "at_prepass_end": 7.797,
+     "at_emit_end": 10.859,
+     "at_exit": 11.031
+    },
+    "cpu_s_by_phase": {
+     "startup_import_and_prepass": 7.797,
+     "emit": 3.062,
+     "tail": 0.172
+    },
+    "gcode_bytes": 9481130.0,
+    "sys_cpu_util_median": 0.4203,
+    "poll_max_gap_ms": 33.2,
+    "slicing_ms": 1280.1,
+    "slicing_share_pct": 51.0,
+    "trivial_arm": {
+     "model": "benchy",
+     "wall_ms": 1746.8,
+     "prephase_ms": 1211.3,
+     "emit_ms": 313.8,
+     "tail_ms": 221.7,
+     "gcode_bytes": 2106487,
+     "args": [
+      "--sparse-infill-density=0%",
+      "--wall-loops=1",
+      "--top-shell-layers=1",
+      "--bottom-shell-layers=1"
+     ]
+    }
+   },
+   "pnp_t104": {
+    "slice_complete_ms": 12458,
+    "prepass_ms": 9595,
+    "per_layer_ms": 1752,
+    "postpass_ms": 435,
+    "outside_phases_ms": 674,
+    "layer_count": 240,
+    "gcode_bytes": 8252412,
+    "prepass_share_pct": 77.02,
+    "per_layer_plus_postpass_share_pct": 17.55,
+    "slicing_ms": 11784
+   },
+   "compare": {
+    "prepass_multiple_pnp_over_orca": 17.45,
+    "emit_multiple_pnp_over_orca": 4.4,
+    "slicing_multiple_pnp_over_orca": 9.21,
+    "import_multiple_orca_over_pnp": 1.82,
+    "pnp_prepass_over_orca_whole_cell": 3.82,
+    "whole_slice_multiple_pnp_over_orca": 4.96,
+    "note": "Orca prepass = prephase - startup_import, where startup_import is the --info median for the same model (an upper bound, since --info also prints a manifold check), so the Orca prepass and slicing figures are LOWER bounds and every PnP/Orca multiple here is an UPPER bound. The trivial-feature arm (controls.json) corroborates the import term: with every per-layer feature turned down the cell wall moves by ~0.1 s. PnP side is t104's instrumented phase table; its 'outside_phases' is startup + mesh IO + teardown inside the instrumented span, so the import multiple overstates Orca/PnP by whatever share of 'outside' is not import."
+   }
+  },
+  "base-classic-off": {
+   "orca": {
+    "runs": 3,
+    "wall_ms_median": 13814.5,
+    "wall_ms_values": [
+     13814.5,
+     14384.7,
+     13492.1
+    ],
+    "wall_ms_spread_pct": 6.46,
+    "startup_import_ms": 10129.95,
+    "prephase_ms_median": 12233.0,
+    "prepass_ms": 2103.0,
+    "emit_ms_median": 1349.1,
+    "tail_ms_median": 237.9,
+    "shares_pct": {
+     "startup_import": 73.33,
+     "prepass": 15.22,
+     "emit": 9.77,
+     "tail": 1.72
+    },
+    "cpu_s_median": {
+     "at_prepass_end": 24.422,
+     "at_emit_end": 28.703,
+     "at_exit": 28.875
+    },
+    "cpu_s_by_phase": {
+     "startup_import_and_prepass": 24.422,
+     "emit": 4.281,
+     "tail": 0.172
+    },
+    "gcode_bytes": 20299883.0,
+    "sys_cpu_util_median": 0.2491,
+    "poll_max_gap_ms": 46.3,
+    "slicing_ms": 3684.5,
+    "slicing_share_pct": 26.67,
+    "trivial_arm": {
+     "model": "base",
+     "wall_ms": 13639.6,
+     "prephase_ms": 12161.3,
+     "emit_ms": 1241.2,
+     "tail_ms": 237.1,
+     "gcode_bytes": 10402698,
+     "args": [
+      "--sparse-infill-density=0%",
+      "--wall-loops=1",
+      "--top-shell-layers=1",
+      "--bottom-shell-layers=1"
+     ]
+    }
+   },
+   "pnp_t104": {
+    "slice_complete_ms": 80924,
+    "prepass_ms": 72433,
+    "per_layer_ms": 7016,
+    "postpass_ms": 765,
+    "outside_phases_ms": 708,
+    "layer_count": 495,
+    "gcode_bytes": 21023739,
+    "prepass_share_pct": 89.51,
+    "per_layer_plus_postpass_share_pct": 9.62,
+    "slicing_ms": 80216
+   },
+   "compare": {
+    "prepass_multiple_pnp_over_orca": 34.44,
+    "emit_multiple_pnp_over_orca": 5.77,
+    "slicing_multiple_pnp_over_orca": 21.77,
+    "import_multiple_orca_over_pnp": 14.31,
+    "pnp_prepass_over_orca_whole_cell": 5.24,
+    "whole_slice_multiple_pnp_over_orca": 5.86,
+    "note": "Orca prepass = prephase - startup_import, where startup_import is the --info median for the same model (an upper bound, since --info also prints a manifold check), so the Orca prepass and slicing figures are LOWER bounds and every PnP/Orca multiple here is an UPPER bound. The trivial-feature arm (controls.json) corroborates the import term: with every per-layer feature turned down the cell wall moves by ~0.1 s. PnP side is t104's instrumented phase table; its 'outside_phases' is startup + mesh IO + teardown inside the instrumented span, so the import multiple overstates Orca/PnP by whatever share of 'outside' is not import."
+   }
+  },
+  "base-classic-on": {
+   "orca": {
+    "runs": 3,
+    "wall_ms_median": 24140.3,
+    "wall_ms_values": [
+     24140.3,
+     24208.9,
+     23753.6
+    ],
+    "wall_ms_spread_pct": 1.89,
+    "startup_import_ms": 10129.95,
+    "prephase_ms_median": 20574.8,
+    "prepass_ms": 10444.8,
+    "emit_ms_median": 3230.6,
+    "tail_ms_median": 287.9,
+    "shares_pct": {
+     "startup_import": 41.96,
+     "prepass": 43.27,
+     "emit": 13.38,
+     "tail": 1.19
+    },
+    "cpu_s_median": {
+     "at_prepass_end": 92.469,
+     "at_emit_end": 99.641,
+     "at_exit": 99.891
+    },
+    "cpu_s_by_phase": {
+     "startup_import_and_prepass": 92.469,
+     "emit": 7.172,
+     "tail": 0.25
+    },
+    "gcode_bytes": 44803778.0,
+    "sys_cpu_util_median": 0.4294,
+    "poll_max_gap_ms": 36.1,
+    "slicing_ms": 14010.3,
+    "slicing_share_pct": 58.04,
+    "trivial_arm": {
+     "model": "base",
+     "wall_ms": 13639.6,
+     "prephase_ms": 12161.3,
+     "emit_ms": 1241.2,
+     "tail_ms": 237.1,
+     "gcode_bytes": 10402698,
+     "args": [
+      "--sparse-infill-density=0%",
+      "--wall-loops=1",
+      "--top-shell-layers=1",
+      "--bottom-shell-layers=1"
+     ]
+    }
+   },
+   "pnp_t104": {
+    "slice_complete_ms": 228997,
+    "prepass_ms": 204832,
+    "per_layer_ms": 18077,
+    "postpass_ms": 5405,
+    "outside_phases_ms": 680,
+    "layer_count": 495,
+    "gcode_bytes": 42507912,
+    "prepass_share_pct": 89.45,
+    "per_layer_plus_postpass_share_pct": 10.25,
+    "slicing_ms": 228317
+   },
+   "compare": {
+    "prepass_multiple_pnp_over_orca": 19.61,
+    "emit_multiple_pnp_over_orca": 7.27,
+    "slicing_multiple_pnp_over_orca": 16.3,
+    "import_multiple_orca_over_pnp": 14.9,
+    "pnp_prepass_over_orca_whole_cell": 8.49,
+    "whole_slice_multiple_pnp_over_orca": 9.49,
+    "note": "Orca prepass = prephase - startup_import, where startup_import is the --info median for the same model (an upper bound, since --info also prints a manifold check), so the Orca prepass and slicing figures are LOWER bounds and every PnP/Orca multiple here is an UPPER bound. The trivial-feature arm (controls.json) corroborates the import term: with every per-layer feature turned down the cell wall moves by ~0.1 s. PnP side is t104's instrumented phase table; its 'outside_phases' is startup + mesh IO + teardown inside the instrumented span, so the import multiple overstates Orca/PnP by whatever share of 'outside' is not import."
+   }
+  }
+ }
+}

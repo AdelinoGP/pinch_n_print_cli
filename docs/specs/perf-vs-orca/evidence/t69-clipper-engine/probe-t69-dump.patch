@@ -1,0 +1,221 @@
+diff --git a/crates/slicer-core/src/lib.rs b/crates/slicer-core/src/lib.rs
+index 0ac2d6a3..4e34d1f0 100644
+--- a/crates/slicer-core/src/lib.rs
++++ b/crates/slicer-core/src/lib.rs
+@@ -44,6 +44,8 @@ pub mod skeletal_trapezoidation;
+ pub mod smooth_outward;
+ pub mod stage_io;
+ pub mod support_regularize;
++#[cfg(not(target_arch = "wasm32"))]
++pub mod t69_probe;
+ pub mod top_surface_split;
+ pub mod triangle_mesh_slicer;
+ #[cfg(feature = "host-algos")]
+diff --git a/crates/slicer-core/src/polygon_ops.rs b/crates/slicer-core/src/polygon_ops.rs
+index f93cce1e..7ff8df99 100644
+--- a/crates/slicer-core/src/polygon_ops.rs
++++ b/crates/slicer-core/src/polygon_ops.rs
+@@ -654,6 +654,18 @@ pub fn clip_polygons(
+     };
+ 
+     let mut tree = PolyTree64::new();
++    #[cfg(not(target_arch = "wasm32"))]
++    crate::t69_probe::record(
++        match op {
++            ClipOperation::Difference => 1,
++            ClipOperation::Union => 2,
++            ClipOperation::Intersection => 3,
++            ClipOperation::Xor => 4,
++        },
++        &[(10, FillRule::NonZero as u64)],
++        &subject_paths,
++        &clip_paths,
++    );
+     boolean_op_tree_64(
+         clip_type,
+         FillRule::NonZero,
+@@ -837,6 +849,22 @@ fn inflate_once(
+         false,
+         false,
+     );
++    #[cfg(not(target_arch = "wasm32"))]
++    crate::t69_probe::record(
++        0,
++        &[
++            (1, delta_units.to_bits()),
++            (2, join_type as u64),
++            (3, EndType::Polygon as u64),
++            (4, miter_limit.to_bits()),
++            (
++                5,
++                ((arc_tolerance_mm as f64) * slicer_ir::UNITS_PER_MM).to_bits(),
++            ),
++        ],
++        &paths,
++        &[],
++    );
+     clip_offset.add_paths(&paths, join_type, EndType::Polygon);
+ 
+     let mut tree = PolyTree64::new();
+diff --git a/crates/slicer-runtime/src/blackboard.rs b/crates/slicer-runtime/src/blackboard.rs
+index ed1c8396..f6de754d 100644
+--- a/crates/slicer-runtime/src/blackboard.rs
++++ b/crates/slicer-runtime/src/blackboard.rs
+@@ -640,6 +640,7 @@ impl LayerArena {
+     ) -> Option<&[PreparedRegionData]> {
+         if self.prepared_regions.is_none() {
+             let slice = self.slice.as_ref()?;
++            let _t69 = slicer_core::t69_probe::Guard::new("RP1", slice.global_layer_index);
+             self.prepared_regions = Some(slicer_wasm_host::marshal::prepare_slice_regions(
+                 slice,
+                 surface_classification,
+@@ -675,6 +676,7 @@ impl LayerArena {
+         }
+         if self.prepared_perimeter_source_regions.is_none() {
+             let slice = self.slice.as_ref()?;
++            let _t69 = slicer_core::t69_probe::Guard::new("RP2", slice.global_layer_index);
+             if slicer_wasm_host::marshal::perimeter_source_projection_is_identity(slice) {
+                 if self.prepared_regions.is_none() {
+                     self.prepared_regions = Some(slicer_wasm_host::marshal::prepare_slice_regions(
+diff --git a/crates/slicer-runtime/src/layer_executor.rs b/crates/slicer-runtime/src/layer_executor.rs
+index a8d4f75c..b71c8241 100644
+--- a/crates/slicer-runtime/src/layer_executor.rs
++++ b/crates/slicer-runtime/src/layer_executor.rs
+@@ -973,7 +973,11 @@ fn execute_single_layer_inner(
+             // Seam plan consulted by the perimeter arms of `apply` (ADR-0020).
+             let seam_plan_ir_for_commit = blackboard.seam_plan().map(|arc| arc.as_ref());
+ 
+-            let run_result = runner.run_stage(&stage.stage_id, layer, &live_module, input);
++            let run_result = {
++                let _t69 = (module.module_id().as_str() == "com.core.classic-perimeters")
++                    .then(|| slicer_core::t69_probe::Guard::new("CP", layer.index));
++                runner.run_stage(&stage.stage_id, layer, &live_module, input)
++            };
+             // Pull the wasm linear-memory sample for the just-completed call.
+             // Returns (0, 0) for non-wasm runners (test mocks, host built-ins).
+             let (wasm_before, wasm_after) = runner.last_wasm_mem_sample();
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index 7f55a576..0e7d4305 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -2599,6 +2599,7 @@ impl hs::Host for HostExecutionContext {
+     ) -> wasmtime::Result<Vec<ExPolygon>> {
+         let ir_subject = wit_to_ir_expolygons(&subject);
+         let ir_clip = wit_to_ir_expolygons(&clip);
++        slicer_core::t69_probe::service("clip", 0.0);
+         let result = slicer_core::polygon_ops::clip_polygons(&ir_subject, &ir_clip, ir_clip_op(op));
+         Ok(ir_to_wit_expolygons(&result))
+     }
+@@ -2612,6 +2613,7 @@ impl hs::Host for HostExecutionContext {
+         miter_limit: Option<f32>,
+     ) -> wasmtime::Result<Vec<ExPolygon>> {
+         let ir_polys = wit_to_ir_expolygons(&polygons);
++        slicer_core::t69_probe::service("offset", delta_mm as f64);
+         let result = match miter_limit {
+             Some(miter_limit) => slicer_core::polygon_ops::offset_with_miter_limit(
+                 &ir_polys,
+diff --git a/crates/slicer-core/src/t69_probe.rs b/crates/slicer-core/src/t69_probe.rs
+new file mode 100644
+index 00000000..c804add9
+--- /dev/null
++++ b/crates/slicer-core/src/t69_probe.rs
+@@ -0,0 +1,99 @@
++//! T69-DUMP temporary host-only engine-input recorder. Revert after capture.
++use clipper2_rust::Point64;
++use std::{cell::RefCell, fmt::Write as _, path::PathBuf};
++
++struct State {
++    owner: &'static str,
++    layer: u32,
++    service: usize,
++    engine: usize,
++    rows: String,
++    root: PathBuf,
++}
++thread_local! { static CURRENT: RefCell<Option<State>> = const { RefCell::new(None) }; }
++/// Temporary attribution bracket; thread local, synchronous with dispatch.
++pub struct Guard(Option<State>);
++impl Guard {
++    /// Begin an owner/layer bracket only when the dump environment is enabled.
++    pub fn new(owner: &'static str, layer: u32) -> Self {
++        let Some(root) = std::env::var_os("PNP_T69_DUMP") else {
++            return Self(None);
++        };
++        let state = State {
++            owner,
++            layer,
++            service: 0,
++            engine: 0,
++            rows: String::new(),
++            root: root.into(),
++        };
++        Self(CURRENT.with(|c| c.replace(Some(state))))
++    }
++}
++impl Drop for Guard {
++    fn drop(&mut self) {
++        CURRENT.with(|c| {
++            if let Some(s) = c.replace(self.0.take()) {
++                std::fs::write(
++                    s.root.join(format!("{}-{}.calls", s.owner, s.layer)),
++                    s.rows,
++                )
++                .expect("t69 census write");
++            }
++        });
++    }
++}
++/// Note every host service, including offsets which bypass the engine.
++pub fn service(kind: &str, delta: f64) {
++    CURRENT.with(|c| {
++        if let Some(s) = c.borrow_mut().as_mut() {
++            writeln!(s.rows, "service {} {} {}", s.service, kind, delta.to_bits()).unwrap();
++            s.service += 1;
++        }
++    });
++}
++/// Serialize the exact flat engine paths, each framed as one path/one ring.
++pub fn record(opcode: u8, args: &[(u8, u64)], subj: &[Vec<Point64>], clip: &[Vec<Point64>]) {
++    CURRENT.with(|c| {
++        let mut current = c.borrow_mut();
++        let Some(s) = current.as_mut() else { return };
++        let seq = if s.owner == "CP" {
++            s.service.checked_sub(1).expect("t69 service bracket")
++        } else {
++            s.engine
++        };
++        let filename = format!("{}-{}-{}-{}.case", s.owner, s.layer, seq, s.engine);
++        let sampled = s.layer % 20 == 0 || s.layer == 239 || s.layer == 494 || s.layer == 270;
++        let vertices: usize = subj.iter().chain(clip).map(Vec::len).sum();
++        writeln!(
++            s.rows,
++            "engine {seq} {} {opcode} {vertices} {}",
++            s.engine,
++            if sampled { &filename } else { "-" }
++        )
++        .unwrap();
++        s.engine += 1;
++        if !sampled {
++            return;
++        }
++        let mut text = format!("case {} {} {opcode} {seq}\n", s.owner, s.layer);
++        for &(id, value) in args {
++            writeln!(text, "arg {id} {value}").unwrap();
++        }
++        for (name, paths) in [("subj", subj), ("clip", clip)] {
++            if name == "clip" && opcode == 0 {
++                continue;
++            }
++            writeln!(text, "{name} {}", paths.len()).unwrap();
++            for path in paths {
++                write!(text, "1 {}", path.len()).unwrap();
++                for p in path {
++                    write!(text, " {} {}", p.x, p.y).unwrap();
++                }
++                text.push('\n');
++            }
++        }
++        text.push_str("end\n");
++        std::fs::write(s.root.join(filename), text).expect("t69 geometry write");
++    });
++}

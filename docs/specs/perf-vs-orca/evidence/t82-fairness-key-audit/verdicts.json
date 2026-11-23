@@ -1,0 +1,917 @@
+{
+  "_comment": "Curated adjudication for the t82 fairness-key parity audit. Every entry names the canonical role and why the resolved difference does or does not change pre-emission geometry work. Keys not listed here are resolved mechanically by merge_verdicts.py; any key that lands in bucket=review fails the build.",
+  "_equal_by_units": "values differ only by the wire format",
+  "bridge_line_width": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "Orca 100% and PnP 0.0 are both 'auto = line width'; PnP resolves the percent against line_width at the read site."
+  },
+  "initial_layer_line_width": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "Both 0 = auto."
+  },
+  "internal_solid_infill_line_width": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "Both 0 = auto."
+  },
+  "sparse_infill_line_width": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "Both 0 = auto."
+  },
+  "support_line_width": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "Both 0 = auto."
+  },
+  "top_surface_line_width": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "Both 0 = auto."
+  },
+  "line_width": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "Orca 0 = auto (nozzle), PnP registry 0 = auto, and the matched job authors 0.4 on both sides."
+  },
+  "bridge_flow": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 vs 1.0, same value."
+  },
+  "internal_bridge_flow": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 vs 1.0, same value."
+  },
+  "internal_bridge_angle": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "0 vs 0.0, same value."
+  },
+  "sparse_infill_density": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "20% vs 20.0, same value."
+  },
+  "support_threshold_overlap": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "50% vs 50.0, same value."
+  },
+  "raft_first_layer_density": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "90% vs 90.0; raft_layers resolves 0, so inert."
+  },
+  "support_expansion": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "0 vs 0.0, same value."
+  },
+  "initial_layer_min_bead_width": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "Orca 85% of the 0.4 mm line width = 0.34 mm; PnP stores 3400 slicer units (1 unit = 100 nm) = 0.34 mm."
+  },
+  "wall_transition_filter_deviation": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "Orca 25% of 0.4 mm = 0.10 mm; PnP stores 1000 units (1 unit = 100 nm) = 0.10 mm."
+  },
+  "dont_filter_internal_bridges": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "'disabled' vs false: both mean the filter is off."
+  },
+  "enable_extra_bridge_layer": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "'disabled' vs false: both mean off."
+  },
+  "wall_direction": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "'ccw' vs 'counter_clockwise': same enum value."
+  },
+  "wall_sequence": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "'inner wall/outer wall' vs 'InnerOuter': same enum value."
+  },
+  "tree_support_wall_count": {
+    "bucket": "equal-by-clamp",
+    "scope": "geometry",
+    "note": "Canonical clamps at the consumption site with std::max(1, value), so Orca 0 and PnP 1 both run one wall loop."
+  },
+  "overhang_1_4_speed": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "0 vs 0.0, and the 0 band disables the bottom quartile on both sides."
+  },
+  "ironing_speed": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "Orca 20 vs PnP declaration set {20, 30}; ironing_type is 'no ironing', so inert on this job."
+  },
+  "internal_bridge_speed": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "Orca 150% and PnP {150%, 37.5}; emission-only in either case."
+  },
+  "_equal_by_rename": "PnP has the counterpart under a different runtime key",
+  "wall_loops": {
+    "bucket": "equal-by-rename",
+    "scope": "geometry",
+    "note": "PnP key is wall_count; the matched job authors 2 on both sides."
+  },
+  "seam_position": {
+    "bucket": "equal-by-rename",
+    "scope": "emission",
+    "note": "PnP key is seam_mode, default aligned, same as Orca's resolved value."
+  },
+  "initial_layer_print_height": {
+    "bucket": "equal-by-rename",
+    "scope": "geometry",
+    "note": "PnP key is first_layer_height; both resolve 0.2."
+  },
+  "sparse_infill_pattern": {
+    "bucket": "equal-by-rename",
+    "scope": "geometry",
+    "note": "Runtime key exists and the matched job authors gyroid on both sides; absent from the generated [config.schema] table only."
+  },
+  "support_type": {
+    "bucket": "equal-by-rename",
+    "scope": "geometry",
+    "note": "Runtime key exists and the matched job authors tree(auto) on both sides."
+  },
+  "wall_generator": {
+    "bucket": "equal-by-rename",
+    "scope": "geometry",
+    "note": "Varies by cell exactly as the matched job intends (classic/arachne)."
+  },
+  "_matched_at_runtime": "declared defaults disagree but the resolved job agrees",
+  "detect_thin_wall": {
+    "bucket": "matched",
+    "scope": "geometry",
+    "note": "Orca resolves 0. PnP's classic-perimeters manifest declares true while arachne-perimeters declares false; the emitted PnP config block records 0, so the job runs with detection off on both sides. The classic manifest default is therefore dead at runtime - recorded as an audit observation, not a work difference."
+  },
+  "precise_outer_wall": {
+    "bucket": "geometry-differs",
+    "scope": "geometry",
+    "note": "Orca 1, PnP 0. Orca performs the precision inset; PnP does not. Already adjudicated as parity work in the map's fog, not re-opened here."
+  },
+  "_geometry_pnp_does_more": "PnP runs more geometry work than the matched Orca job",
+  "wall_maximum_resolution": {
+    "bucket": "geometry-differs",
+    "scope": "geometry",
+    "note": "Orca 0.5 mm, PnP 0.05 mm - PnP keeps 10x more Arachne wall detail. Logged as D-168 but invisible to the generated deviations table because the upstream reference snapshot predates the key. Arachne cells only. Magnitude unmeasured."
+  },
+  "wall_maximum_deviation": {
+    "bucket": "geometry-differs",
+    "scope": "geometry",
+    "note": "Orca 0.025 mm, PnP 0.005 mm - PnP keeps 5x more Arachne wall detail. Same D-168 caveat. Arachne cells only. Magnitude unmeasured."
+  },
+  "tree_support_branch_distance": {
+    "bucket": "geometry-differs",
+    "scope": "geometry",
+    "note": "Orca 5 mm, PnP 1 mm - PnP places branches 5x denser. Supports-on cells only. Magnitude unmeasured."
+  },
+  "skirt_loops": {
+    "bucket": "geometry-differs",
+    "scope": "geometry",
+    "note": "Orca 1, PnP 6. First layer only; both emit a Skirt role in the captured cells."
+  },
+  "brim_width": {
+    "bucket": "geometry-differs",
+    "scope": "geometry",
+    "note": "Orca 0 (brim_type auto_brim), PnP 8 mm. Both cells emit a Brim role in the captured output, so the output-level difference is not established; recorded as an unresolved fairness difference."
+  },
+  "filter_out_gap_fill": {
+    "bucket": "geometry-differs",
+    "scope": "geometry",
+    "note": "Orca 0, PnP 0.5 mm. PnP drops gap-fill segments under 0.5 mm, Orca under none - PnP does LESS work here, the opposite direction."
+  },
+  "min_width_top_surface": {
+    "bucket": "equal-by-clamp",
+    "scope": "geometry",
+    "note": "Orca 300%, PnP 0 (gate off). The gate only collapses walls when only_one_wall_top is set, and Orca resolves only_one_wall_top = 0, so both keep full wall counts."
+  },
+  "_geometry_orca_does_more": "the matched Orca job runs more geometry work than PnP",
+  "top_shell_layers": {
+    "bucket": "geometry-differs",
+    "scope": "geometry",
+    "note": "Orca 4, PnP 3 - Orca emits one more solid top layer. Direction favours PnP."
+  },
+  "support_interface_top_layers": {
+    "bucket": "geometry-differs",
+    "scope": "geometry",
+    "note": "Orca 3, PnP 2 - Orca emits one more dense interface layer. Direction favours PnP."
+  },
+  "support_interface_spacing": {
+    "bucket": "geometry-differs",
+    "scope": "geometry",
+    "note": "Orca 0.5 mm, PnP 0.4 mm - Orca's interface is sparser, i.e. less work. Direction favours PnP."
+  },
+  "support_interface_bottom_layers": {
+    "bucket": "geometry-differs",
+    "scope": "geometry",
+    "note": "Orca 0; PnP declares -1 while the emitted PnP block records 2. Direction favours PnP; the -1/2 discrepancy is a declared-vs-emitted observation."
+  },
+  "tree_support_branch_angle": {
+    "bucket": "geometry-differs",
+    "scope": "geometry",
+    "note": "Orca 40 deg, PnP 45 deg - branch shape differs; no work direction established."
+  },
+  "ensure_vertical_shell_thickness": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca ensure_all adds solid shells over sparse infill to keep vertical shell thickness; PnP has no counterpart. Orca does more work."
+  },
+  "detect_narrow_internal_solid_infill": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca widens internal solid infill into narrow regions; PnP has no counterpart. Orca does more work."
+  },
+  "tree_support_auto_brim": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca auto-brims the tree support base; PnP has no counterpart. Orca does more work."
+  },
+  "tree_support_brim_width": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca 3 mm support brim; PnP has no counterpart. Orca does more work."
+  },
+  "tree_support_tip_diameter": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca 0.8 mm branch tip; PnP's planner uses its own tip geometry. No work direction established."
+  },
+  "tree_support_top_rate": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca 30% top contact density; PnP's planner uses its own contact rule. No work direction established."
+  },
+  "tree_support_angle_slow": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca 25 deg slow-angle branch rule; PnP has no counterpart."
+  },
+  "minimum_sparse_infill_area": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca 15 mm2 floor on sparse infill regions; PnP has no counterpart. Orca can skip small regions."
+  },
+  "_geometry_shape_only": "same amount of work, different placement",
+  "brim_type": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca auto_brim decides the brim per object; PnP has no counterpart and runs an always-on width policy (see brim_width)."
+  },
+  "infill_shift_step": {
+    "bucket": "geometry-differs",
+    "scope": "geometry",
+    "note": "Orca 0.4 mm per-layer infill shift, PnP 0.0 - placement only."
+  },
+  "infill_direction": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca 45 deg; PnP's fill modules own their own angles (the matched job's gyroid holder uses a default angle). Placement only."
+  },
+  "solid_infill_direction": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca 45 deg solid-infill angle; placement only."
+  },
+  "internal_solid_infill_pattern": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca monotonic; placement only."
+  },
+  "top_surface_pattern": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca monotonicline; placement only."
+  },
+  "bottom_surface_pattern": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca monotonic; placement only."
+  },
+  "top_surface_density": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca 100%; PnP's solid top surface is also 100%. Placement only."
+  },
+  "bottom_surface_density": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca 100%; PnP's solid bottom surface is also 100%. Placement only."
+  },
+  "gap_fill_target": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Orca's resolved 'nowhere' does not disable gap fill - every captured cell emits Gap infill paths - so it is not a work-skipping lever."
+  },
+  "skirt_type": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Placement of the skirt only; both emit one."
+  },
+  "skirt_start_angle": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Placement only."
+  },
+  "support_interface_pattern": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Orca 'auto' pattern selection inside the interface; PnP's planner owns its interface pattern."
+  },
+  "support_interface_not_for_body": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Material-selection key; no geometry work on this job."
+  },
+  "support_style": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Orca 'default' (grid) style for normal supports; this job runs tree supports, so inert."
+  },
+  "_emission_only": "changes only the emitted G-code, not pre-emission geometry work",
+  "fan_min_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Cooling fan duty cycle."
+  },
+  "fan_max_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Cooling fan duty cycle."
+  },
+  "filament_max_volumetric_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Volumetric flow cap; no pre-emission geometry."
+  },
+  "nozzle_temperature_initial_layer": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Temperature command."
+  },
+  "wipe_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Wipe feedrate."
+  },
+  "overhang_reverse_threshold": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "overhang_reverse resolves 0 on both sides, so the threshold is inert."
+  },
+  "bridge_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Feedrate."
+  },
+  "gap_infill_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Feedrate."
+  },
+  "initial_layer_infill_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Feedrate."
+  },
+  "initial_layer_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Feedrate."
+  },
+  "initial_layer_travel_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Travel feedrate."
+  },
+  "inner_wall_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Feedrate."
+  },
+  "internal_solid_infill_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Feedrate."
+  },
+  "outer_wall_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Feedrate."
+  },
+  "sparse_infill_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Feedrate."
+  },
+  "support_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Feedrate."
+  },
+  "top_surface_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Feedrate."
+  },
+  "travel_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Travel feedrate."
+  },
+  "travel_speed_z": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Z travel feedrate."
+  },
+  "overhang_2_4_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Feedrate. Nonzero in Orca, so Orca's overhang classifier is live while PnP's bands are 0 - a work difference in PnP's favour, not a geometry lever."
+  },
+  "overhang_3_4_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Feedrate; see overhang_2_4_speed."
+  },
+  "overhang_4_4_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Feedrate; see overhang_2_4_speed."
+  },
+  "ironing_flow": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Extrusion multiplier; ironing_type is 'no ironing' on this job."
+  },
+  "wipe_tower_x": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Prime tower placement; enable_prime_tower resolves 0."
+  },
+  "wipe_tower_y": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Prime tower placement; enable_prime_tower resolves 0."
+  },
+  "_feature_gated_inert": "PnP has no counterpart, and the feature's own flag disables it on this job",
+  "fuzzy_skin_mode": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "fuzzy_skin resolves disabled_fuzzy."
+  },
+  "fuzzy_skin_noise_type": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "fuzzy_skin resolves disabled_fuzzy."
+  },
+  "fuzzy_skin_octaves": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "fuzzy_skin resolves disabled_fuzzy."
+  },
+  "fuzzy_skin_persistence": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "fuzzy_skin resolves disabled_fuzzy."
+  },
+  "fuzzy_skin_point_distance": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "fuzzy_skin resolves disabled_fuzzy."
+  },
+  "fuzzy_skin_scale": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "fuzzy_skin resolves disabled_fuzzy."
+  },
+  "fuzzy_skin_thickness": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "fuzzy_skin resolves disabled_fuzzy."
+  },
+  "scarf_angle_threshold": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "seam_slope_type resolves 'none'."
+  },
+  "scarf_joint_flow_ratio": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "seam_slope_type resolves 'none'."
+  },
+  "scarf_joint_speed": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "seam_slope_type resolves 'none'."
+  },
+  "scarf_overhang_threshold": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "seam_slope_type resolves 'none'."
+  },
+  "seam_slope_min_length": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "seam_slope_type resolves 'none'."
+  },
+  "seam_slope_steps": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "seam_slope_type resolves 'none'."
+  },
+  "support_ironing_flow": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "support_ironing resolves 0."
+  },
+  "support_ironing_pattern": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "support_ironing resolves 0."
+  },
+  "support_ironing_spacing": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "support_ironing resolves 0."
+  },
+  "spiral_mode_max_xy_smoothing": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "spiral_mode resolves 0."
+  },
+  "wrapping_detection_layers": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "enable_wrapping_detection resolves 0."
+  },
+  "infill_combination_max_layer_height": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "infill_combination resolves 0."
+  },
+  "elefant_foot_compensation_layers": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "elefant_foot_compensation resolves 0."
+  },
+  "hole_to_polyhole_threshold": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "hole_to_polyhole resolves 0."
+  },
+  "hole_to_polyhole_twisted": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "hole_to_polyhole resolves 0."
+  },
+  "make_overhang_printable_angle": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "make_overhang_printable resolves 0."
+  },
+  "brim_ears_detection_length": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "brim_type resolves auto_brim, not brim_ears."
+  },
+  "brim_ears_max_angle": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "brim_type resolves auto_brim, not brim_ears."
+  },
+  "tree_support_branch_angle_organic": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "support_style resolves default, not organic."
+  },
+  "tree_support_branch_diameter_organic": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "support_style resolves default, not organic."
+  },
+  "tree_support_branch_distance_organic": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "support_style resolves default, not organic."
+  },
+  "infill_lock_depth": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Only the locked-z lattice patterns use it; the matched job uses gyroid."
+  },
+  "infill_overhang_angle": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Only overhang infill uses it; gyroid on this job."
+  },
+  "lateral_lattice_angle_1": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Lateral-lattice pattern only."
+  },
+  "lateral_lattice_angle_2": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Lateral-lattice pattern only."
+  },
+  "skeleton_infill_density": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Skeleton pattern only."
+  },
+  "skeleton_infill_line_width": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Skeleton pattern only."
+  },
+  "skin_infill_density": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Lateral-lattice/skin pattern only."
+  },
+  "skin_infill_depth": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Lateral-lattice/skin pattern only."
+  },
+  "skin_infill_line_width": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Lateral-lattice/skin pattern only."
+  },
+  "print_flow_ratio": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 = no scaling."
+  },
+  "first_layer_flow_ratio": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 = no scaling."
+  },
+  "inner_wall_flow_ratio": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 = no scaling."
+  },
+  "outer_wall_flow_ratio": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 = no scaling."
+  },
+  "sparse_infill_flow_ratio": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 = no scaling."
+  },
+  "internal_solid_infill_flow_ratio": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 = no scaling."
+  },
+  "top_solid_infill_flow_ratio": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 = no scaling."
+  },
+  "bottom_solid_infill_flow_ratio": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 = no scaling."
+  },
+  "gap_fill_flow_ratio": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 = no scaling."
+  },
+  "overhang_flow_ratio": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 = no scaling."
+  },
+  "support_flow_ratio": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 = no scaling."
+  },
+  "support_interface_flow_ratio": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 = no scaling."
+  },
+  "small_area_infill_flow_compensation_model": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "small_area_infill_flow_compensation resolves 0."
+  },
+  "role_based_wipe_speed": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Wipe feedrate selection."
+  },
+  "seam_gap": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Seam gap emission only; PnP's seam planner owns the equivalent."
+  },
+  "_unreferenced": "keys newer than the 2026-05-19 upstream reference snapshot",
+  "zaa_enabled": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Z-axis anti-aliasing resolves 0."
+  },
+  "zaa_min_z": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "zaa_enabled resolves 0."
+  },
+  "zaa_minimize_perimeter_height": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "zaa_enabled resolves 0."
+  },
+  "zaa_dont_alternate_fill_direction": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "zaa_enabled resolves 0."
+  },
+  "gyroid_optimized": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Orca resolves 0, so its gyroid optimisation is off."
+  },
+  "relative_bridge_angle": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Orca resolves 0; bridging uses the absolute angle."
+  },
+  "combine_brims": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Orca resolves 0."
+  },
+  "brim_flow_ratio": {
+    "bucket": "equal-by-units",
+    "scope": "geometry",
+    "note": "1 = no scaling."
+  },
+  "elefant_foot_layers_density": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "elefant_foot_compensation resolves 0."
+  },
+  "lightning_overhang_angle": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Lightning infill only; the job uses gyroid."
+  },
+  "lightning_prune_angle": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Lightning infill only."
+  },
+  "lightning_straightening_angle": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Lightning infill only."
+  },
+  "fuzzy_skin_ripples_per_layer": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "fuzzy_skin resolves disabled_fuzzy."
+  },
+  "fuzzy_skin_ripple_offset": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "fuzzy_skin resolves disabled_fuzzy."
+  },
+  "fuzzy_skin_layers_between_ripple_offset": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "fuzzy_skin resolves disabled_fuzzy."
+  },
+  "support_parallel_printheads": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Orca resolves 0."
+  },
+  "parallel_printheads_count": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Single-head machine; 1 head."
+  },
+  "parallel_printheads_bed_exclude_areas": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "Single-head machine."
+  },
+  "tool_change_on_wipe_tower": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "enable_prime_tower resolves 0."
+  },
+  "wipe_tower_type": {
+    "bucket": "absent-inert",
+    "scope": "geometry",
+    "note": "enable_prime_tower resolves 0."
+  },
+  "bottom_surface_filament_id": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Single-extruder material id."
+  },
+  "inner_wall_filament_id": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Single-extruder material id."
+  },
+  "internal_solid_filament_id": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Single-extruder material id."
+  },
+  "outer_wall_filament_id": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Single-extruder material id."
+  },
+  "sparse_infill_filament_id": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Single-extruder material id."
+  },
+  "top_surface_filament_id": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Single-extruder material id."
+  },
+  "change_filament_gcode": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "G-code text only."
+  },
+  "filament_end_gcode": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "G-code text only."
+  },
+  "filament_start_gcode": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "G-code text only."
+  },
+  "machine_end_gcode": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "G-code text only; PnP emits its own PRINT_END template."
+  },
+  "machine_start_gcode": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "G-code text only; PnP emits its own start template."
+  },
+  "time_lapse_gcode": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "G-code text only."
+  },
+  "enable_support": {
+    "bucket": "matched",
+    "scope": "geometry",
+    "note": "Varies by cell on both sides exactly as the matched job intends; PnP authors enable_support and the override is applied."
+  },
+  "skirt_distance": {
+    "bucket": "geometry-differs",
+    "scope": "geometry",
+    "note": "Orca 2 mm, PnP 3 mm - first-layer skirt placement only."
+  },
+  "support_angle": {
+    "bucket": "differs-inert",
+    "scope": "geometry",
+    "note": "Orca 0, PnP 60. The consumer is traditional-support, and this job runs tree(auto), so the key is inert here."
+  },
+  "support_air_filtration": {
+    "bucket": "emission",
+    "scope": "emission",
+    "note": "Chamber-exhaust fan enable; no geometry."
+  },
+  "top_shell_thickness": {
+    "bucket": "absent-material",
+    "scope": "geometry",
+    "note": "Orca 0.6 mm thickness floor; PnP has no thickness key. Canonical's effective top-shell count is recorded by top_shell_layers = 4, so the work difference is captured there."
+  }
+}

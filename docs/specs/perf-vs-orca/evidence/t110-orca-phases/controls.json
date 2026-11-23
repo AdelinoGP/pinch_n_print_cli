@@ -1,0 +1,45 @@
+{
+ "note": "t110 controls. A: trivial-feature slices of base and benchy, tapped for the same boundaries as a campaign run (every per-layer feature turned down). B: the tap's own CPU against a 5 s no-op child. C: the abandoned STL-prefix linearity test is recorded with its failure, because a truncated binary STL is a non-manifold mesh and Orca's repair path did not return on the 615k-facet prefix (killed at 300 s).",
+ "trivial_arms": [
+  {
+   "model": "base",
+   "wall_ms": 13639.6,
+   "prephase_ms": 12161.3,
+   "emit_ms": 1241.2,
+   "tail_ms": 237.1,
+   "gcode_bytes": 10402698,
+   "args": [
+    "--sparse-infill-density=0%",
+    "--wall-loops=1",
+    "--top-shell-layers=1",
+    "--bottom-shell-layers=1"
+   ]
+  },
+  {
+   "model": "benchy",
+   "wall_ms": 1746.8,
+   "prephase_ms": 1211.3,
+   "emit_ms": 313.8,
+   "tail_ms": 221.7,
+   "gcode_bytes": 2106487,
+   "args": [
+    "--sparse-infill-density=0%",
+    "--wall-loops=1",
+    "--top-shell-layers=1",
+    "--bottom-shell-layers=1"
+   ]
+  }
+ ],
+ "tap_cost": {
+  "child_wall_ms": 4056.0,
+  "polls": 1624,
+  "tap_cpu_s": 0.0,
+  "tap_cpu_pct_of_core": 0.0
+ },
+ "abandoned_import_linearity": {
+  "attempt": "--info on binary-STL prefixes of base.stl at 25 / 50 / 100 % facets",
+  "result": "hung on the 25 % prefix (615,308 facets); killed after 300 s",
+  "reason": "a truncated binary STL is an open mesh, so TriangleMesh::repair() and the manifold check do not terminate in bounded time",
+  "replaced_by": "the trivial-feature slice arm, which uses a closed mesh and the real slice code path"
+ }
+}

@@ -1,0 +1,187 @@
+{
+ "note": "Reduced by reduce.py from gitignored raw event streams in target/t104-instrumented/.",
+ "cells": {
+  "base-classic-off": {
+   "raw_events": 23208,
+   "slice_complete_ms": 80924,
+   "phases_ms": {
+    "validation": 2,
+    "prepass": 72433,
+    "per_layer": 7016,
+    "postpass": 765
+   },
+   "outside_phases_ms": 708,
+   "layer_count": 495,
+   "degraded": false,
+   "fatal_error_count": 0,
+   "non_fatal_error_count": 0,
+   "prepass_stages_ms": {
+    "PrePass::Slice": 41472,
+    "PrePass::ShellClassification": 14042,
+    "PrePass::OverhangAnnotation": 9951,
+    "PrePass::MeshAnalysis": 4924,
+    "PrePass::SeamPlanning": 1762,
+    "PrePass::SupportGeometry": 231,
+    "PrePass::PaintSegmentation": 32,
+    "PrePass::RegionMapping": 13,
+    "PrePass::LayerPlanning": 1,
+    "PrePass::SupportAnalysis": 0
+   },
+   "per_layer_stages_thread_sum_ms": {
+    "Layer::Perimeters": 42586,
+    "Layer::Infill": 31709,
+    "Layer::InfillPostProcess": 4082,
+    "Layer::PerimetersPostProcess": 2450,
+    "Layer::Support": 451,
+    "Layer::SupportPostProcess": 386,
+    "Layer::PathOptimization": 51,
+    "Layer::PaintRegionAnnotation": 1
+   },
+   "postpass_stages_ms": {
+    "PostPass::GCodeSerialize": 281,
+    "PostPass::GCodePostProcess": 230,
+    "PostPass::LayerFinalization": 193,
+    "PostPass::GCodeEmit": 60
+   },
+   "gcode_sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+   "gcode_bytes": 21023739
+  },
+  "base-classic-on": {
+   "raw_events": 23280,
+   "slice_complete_ms": 228997,
+   "phases_ms": {
+    "validation": 3,
+    "prepass": 204832,
+    "per_layer": 18077,
+    "postpass": 5405
+   },
+   "outside_phases_ms": 680,
+   "layer_count": 495,
+   "degraded": false,
+   "fatal_error_count": 0,
+   "non_fatal_error_count": 0,
+   "prepass_stages_ms": {
+    "PrePass::SupportGeometry": 91902,
+    "PrePass::Slice": 44558,
+    "PrePass::SupportAnalysis": 22254,
+    "PrePass::ShellClassification": 21969,
+    "PrePass::OverhangAnnotation": 16266,
+    "PrePass::MeshAnalysis": 4587,
+    "PrePass::SeamPlanning": 3224,
+    "PrePass::PaintSegmentation": 54,
+    "PrePass::RegionMapping": 12,
+    "PrePass::LayerPlanning": 1
+   },
+   "per_layer_stages_thread_sum_ms": {
+    "Layer::Support": 78911,
+    "Layer::Perimeters": 67767,
+    "Layer::Infill": 52141,
+    "Layer::InfillPostProcess": 6453,
+    "Layer::PerimetersPostProcess": 3926,
+    "Layer::SupportPostProcess": 840,
+    "Layer::PathOptimization": 381,
+    "Layer::PaintRegionAnnotation": 5
+   },
+   "postpass_stages_ms": {
+    "PostPass::LayerFinalization": 1737,
+    "PostPass::GCodePostProcess": 1453,
+    "PostPass::GCodeEmit": 1205,
+    "PostPass::GCodeSerialize": 1007
+   },
+   "gcode_sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+   "gcode_bytes": 42507912
+  },
+  "benchy-classic-off": {
+   "raw_events": 11230,
+   "slice_complete_ms": 8096,
+   "phases_ms": {
+    "validation": 4,
+    "prepass": 5545,
+    "per_layer": 1626,
+    "postpass": 190
+   },
+   "outside_phases_ms": 731,
+   "layer_count": 240,
+   "degraded": false,
+   "fatal_error_count": 0,
+   "non_fatal_error_count": 0,
+   "prepass_stages_ms": {
+    "PrePass::Slice": 2301,
+    "PrePass::ShellClassification": 2027,
+    "PrePass::OverhangAnnotation": 768,
+    "PrePass::SeamPlanning": 219,
+    "PrePass::MeshAnalysis": 171,
+    "PrePass::SupportGeometry": 43,
+    "PrePass::PaintSegmentation": 7,
+    "PrePass::RegionMapping": 4,
+    "PrePass::LayerPlanning": 0,
+    "PrePass::SupportAnalysis": 0
+   },
+   "per_layer_stages_thread_sum_ms": {
+    "Layer::Perimeters": 3587,
+    "Layer::Infill": 3081,
+    "Layer::InfillPostProcess": 2068,
+    "Layer::PerimetersPostProcess": 786,
+    "Layer::Support": 146,
+    "Layer::SupportPostProcess": 99,
+    "Layer::PathOptimization": 64,
+    "Layer::PaintRegionAnnotation": 2
+   },
+   "postpass_stages_ms": {
+    "PostPass::GCodeSerialize": 64,
+    "PostPass::GCodePostProcess": 58,
+    "PostPass::LayerFinalization": 53,
+    "PostPass::GCodeEmit": 13
+   },
+   "gcode_sha256": "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d",
+   "gcode_bytes": 3925554,
+   "repeat_count": 1,
+   "repeat_max_share_delta_pp": 5.92
+  },
+  "benchy-classic-on": {
+   "raw_events": 11291,
+   "slice_complete_ms": 12458,
+   "phases_ms": {
+    "validation": 2,
+    "prepass": 9595,
+    "per_layer": 1752,
+    "postpass": 435
+   },
+   "outside_phases_ms": 674,
+   "layer_count": 240,
+   "degraded": false,
+   "fatal_error_count": 0,
+   "non_fatal_error_count": 0,
+   "prepass_stages_ms": {
+    "PrePass::SupportGeometry": 3260,
+    "PrePass::Slice": 2253,
+    "PrePass::ShellClassification": 1922,
+    "PrePass::SupportAnalysis": 1096,
+    "PrePass::OverhangAnnotation": 688,
+    "PrePass::SeamPlanning": 198,
+    "PrePass::MeshAnalysis": 162,
+    "PrePass::PaintSegmentation": 5,
+    "PrePass::RegionMapping": 4,
+    "PrePass::LayerPlanning": 1
+   },
+   "per_layer_stages_thread_sum_ms": {
+    "Layer::Support": 5732,
+    "Layer::Perimeters": 3273,
+    "Layer::Infill": 2794,
+    "Layer::InfillPostProcess": 2030,
+    "Layer::PerimetersPostProcess": 693,
+    "Layer::SupportPostProcess": 80,
+    "Layer::PathOptimization": 36,
+    "Layer::PaintRegionAnnotation": 0
+   },
+   "postpass_stages_ms": {
+    "PostPass::LayerFinalization": 176,
+    "PostPass::GCodeSerialize": 113,
+    "PostPass::GCodePostProcess": 95,
+    "PostPass::GCodeEmit": 50
+   },
+   "gcode_sha256": "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714",
+   "gcode_bytes": 8252412
+  }
+ }
+}

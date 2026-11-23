@@ -20,7 +20,7 @@
 
 use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole as IrExtrusionRole, LayerStageCommit, Point3WithWidth, SemVer,
-    SupportEntry, SupportIR, SupportRole,
+    SupportEntry, SupportIR, SupportRole, CURRENT_SUPPORT_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::{apply_for_test, StageApplyContext};
 
@@ -68,11 +68,8 @@ fn support_commit(paths: Vec<ExtrusionPath3D>) -> Option<LayerStageCommit> {
     }
     // exhaustive: SupportIR support-commit fixture specifies every commit field.
     Some(LayerStageCommit::Support(SupportIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
+        // Owned by SupportIR, not an OLD codec control: this is a current-behavior commit fixture.
+        schema_version: CURRENT_SUPPORT_IR_SCHEMA_VERSION,
         global_layer_index: 0,
         // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
         entries: vec![SupportEntry {
@@ -83,6 +80,8 @@ fn support_commit(paths: Vec<ExtrusionPath3D>) -> Option<LayerStageCommit> {
             region_id: 0,
             role: SupportRole::SupportBody,
             paths,
+            // Genuinely chain-empty source: the fixture support row is an unpainted base region.
+            variant_chain: Vec::new(),
         }],
     }))
 }
@@ -611,6 +610,41 @@ fn make_slice_ir(layer_index: u32, z: f32, region_count: usize) -> SliceIR {
     }
 }
 
+fn commit_selection_products(
+    blackboard: &mut Blackboard,
+    slice: &SliceIR,
+    config: &slicer_ir::ConfigView,
+) {
+    let mut map = slicer_ir::RegionMapIR::default();
+    let config = map.intern_config(slicer_ir::ResolvedConfig {
+        extensions: config
+            .iter_entries()
+            .map(|(k, v)| (k.to_owned(), v.clone()))
+            .collect(),
+        ..Default::default()
+    });
+    for region in &slice.regions {
+        map.entries.insert(
+            slicer_ir::RegionKey {
+                global_layer_index: slice.global_layer_index,
+                object_id: region.object_id.clone(),
+                region_id: region.region_id,
+                variant_chain: region.variant_chain.clone(),
+            },
+            slicer_ir::RegionPlan {
+                config,
+                ..Default::default()
+            },
+        );
+    }
+    blackboard
+        .commit_region_map(Arc::new(map))
+        .expect("commit exact region map");
+    blackboard
+        .commit_slice_ir(Arc::new(vec![slice.clone()]))
+        .expect("commit selection slice");
+}
+
 /// A 10 mm square `ExPolygon` in canonical units, used as a planned
 /// `SupportBody` role region that the tree-support renderer can fill.
 fn body_region_expoly() -> ExPolygon {
@@ -675,6 +709,8 @@ fn plan_for_obj0(
             capabilities: vec![],
             provenance: vec![],
             decline_reason: None,
+            // Genuinely chain-empty source: the planned obj-0/region-0 row is an unpainted base region.
+            variant_chain: Vec::new(),
         }],
         ..Default::default()
     })
@@ -757,6 +793,12 @@ fn tree_support_live_dispatch_emits_nothing_when_no_plan_committed() {
     arena
         .set_slice(make_slice_ir(layer_index, layer_z, 1))
         .unwrap();
+    let mut blackboard = blackboard;
+    commit_selection_products(
+        &mut blackboard,
+        arena.slice().expect("staged slice"),
+        bundle.module.config_view(),
+    );
     run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Support",
@@ -860,6 +902,12 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
     arena
         .set_slice(make_slice_ir(layer_index, layer_z, 1))
         .unwrap();
+    let mut blackboard = blackboard;
+    commit_selection_products(
+        &mut blackboard,
+        arena.slice().expect("staged slice"),
+        bundle.module.config_view(),
+    );
     run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Support",
@@ -946,7 +994,7 @@ fn support_deterministic_across_repeated_runs() {
     let layer_index = 0u32;
     let layer_z = 0.2;
     let blackboard = || {
-        Blackboard::new(
+        let mut bb = Blackboard::new(
             Arc::new(slicer_ir::MeshIR {
                 build_volume: BoundingBox3 {
                     min: slicer_ir::Point3::default(),
@@ -959,7 +1007,13 @@ fn support_deterministic_across_repeated_runs() {
                 ..Default::default()
             }),
             1,
-        )
+        );
+        commit_selection_products(
+            &mut bb,
+            &make_slice_ir(layer_index, layer_z, 1),
+            bundle.module.config_view(),
+        );
+        bb
     };
 
     let layer = GlobalLayer {
@@ -974,12 +1028,24 @@ fn support_deterministic_across_repeated_runs() {
         arena
             .set_slice(make_slice_ir(layer.index, layer.z, 1))
             .unwrap();
+        let index = crate::common::selection_for_module(
+            "Layer::Support",
+            layer,
+            &bundle.module,
+            bb,
+            None,
+            None,
+        )
+        .expect("build fixture selection");
+        let selection = index
+            .selection_for(layer.index, bundle.module.module_id())
+            .expect("fixture selection");
         let commit_data = LayerStageRunner::run_stage(
             &dispatcher,
             &"Layer::Support".to_string(),
             layer,
             &bundle.as_live(),
-            layer_input(bb, &arena),
+            layer_input(bb, &arena, selection),
         )
         .expect("support dispatch must succeed");
         if let Some(c) = commit_data {
@@ -1273,6 +1339,12 @@ mod planner_consuming_tier {
         arena
             .set_slice(make_slice_ir(layer_index, layer_z))
             .unwrap();
+        let mut blackboard = blackboard;
+        super::commit_selection_products(
+            &mut blackboard,
+            arena.slice().expect("staged slice"),
+            bundle.module.config_view(),
+        );
         run_layer_and_commit_with_bundle(
             &dispatcher,
             "Layer::Support",
@@ -1571,6 +1643,8 @@ mod planner_consuming_tier {
                     capabilities: vec![],
                     provenance: vec![],
                     decline_reason: None,
+                    // Genuinely chain-empty source: this planned obj-0/region-7 sibling row is an unpainted base region.
+                    variant_chain: Vec::new(),
                 },
                 // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
                 SupportPlanEntry {
@@ -1604,6 +1678,8 @@ mod planner_consuming_tier {
                     capabilities: vec![],
                     provenance: vec![],
                     decline_reason: None,
+                    // Genuinely chain-empty source: this planned obj-0/region-42 row is an unpainted base region.
+                    variant_chain: Vec::new(),
                 },
             ],
             ..Default::default()

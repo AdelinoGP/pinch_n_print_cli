@@ -1,0 +1,3 @@
+"run_id","threads","wall_seconds","cpu_seconds","cpu_wall_ratio","bytes","sha256","status","degraded","fatal","non_fatal","shadow_warnings","exit_code","generator","probe_lines"
+"benchy-classic-on","12","28.6195538","141.359375","4.939258521913085","8658663","76eb4e1df3a47abf9a973be4ac99cd6bac41efa9fb65240786251ec0f7cdf6a8","ok","False","0","0","0","0","classic","21"
+"base-classic-on","12","574.6077785","2378.203125","4.138828630562996","43912792","f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319","ok","False","0","0","0","0","classic","21"

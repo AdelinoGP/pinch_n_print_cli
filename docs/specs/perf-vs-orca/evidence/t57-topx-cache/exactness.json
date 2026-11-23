@@ -1,0 +1,100 @@
+{
+  "pass": true,
+  "logs": {
+    "native-engine-checks.log": "47f75ecc9e302971cc5200161e9ea2ed6196730e5398a64745e24996da171f25",
+    "wasm-engine-checks.log": "361b9f530a32d6fbe9fe63e113f932d8c8249f85d5fa671fa530f357df4206ab",
+    "native-role-replay.log": "e9289d492d6f19cb9a48dc87275e96dc0efa7306e4289bf29073141d98e15c6f",
+    "native-consumers.log": "8296b04e11a6238a73c6001f76d777d1e6f36f52f02a6457398e3a76b66d0781",
+    "wasm-consumers-execution.log": "050c54fd9d9b9800bb91f4c1254c47cc87756d50411af3574679dccbc5a8248a",
+    "closure-witness.log": "1bbdf473b1135a6d61a4142147994dfba03e09ec05f190275cdc536ff238dfb4",
+    "reducer-regressions.log": "4e500e9c8cc57eb254c0ec210b28fe7a04b718aed0b74706c0455d4ac200f195",
+    "runner-syntax.log": "62bfe15a4959084b08254579db32b9e93b2c14380cde07770b76115ad01fb675"
+  },
+  "native_wasm_engine_ordered_comparisons_each": 1056,
+  "native_wasm_production_consumer_comparisons_each": 18,
+  "recorded_full_role_cases": 8,
+  "negative_controls": {
+    "stale_y": {
+      "native_exit": 101,
+      "native_assertion_rejected": true,
+      "wasm_exit": 1,
+      "wasm_assertion_rejected": true,
+      "sabotage": {
+        "old": "&& self.y == y",
+        "new": "&& true"
+      },
+      "source_sha256": "03255d56d468c202fb6698a080e705659eeab84ebf92bf7131ff5b43872158f1"
+    },
+    "wrong_projection": {
+      "native_exit": 101,
+      "native_assertion_rejected": true,
+      "wasm_exit": 1,
+      "wasm_assertion_rejected": true,
+      "sabotage": {
+        "old": "            x,\n",
+        "new": "            x: x + 1,\n"
+      },
+      "source_sha256": "d3a83f317f46dfa5d4b3c7cbabb198df3f6841b03fa491ead3dc72798f2d26ee"
+    }
+  },
+  "code_gates": {
+    "candidate-workspace-build": {
+      "command": [
+        "cargo",
+        "build",
+        "--workspace"
+      ],
+      "exit_code": 0
+    },
+    "candidate-workspace-all-targets-clippy": {
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0
+    },
+    "candidate-literals": {
+      "command": [
+        "cargo",
+        "xtask",
+        "check-literals"
+      ],
+      "exit_code": 0
+    },
+    "candidate-test-quality": {
+      "command": [
+        "cargo",
+        "xtask",
+        "check-test-quality",
+        "--report"
+      ],
+      "exit_code": 0
+    },
+    "ordinary-final-candidate-freshness": {
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--check"
+      ],
+      "exit_code": 0
+    },
+    "accelerated-final-candidate-freshness": {
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--accelerated",
+        "--check"
+      ],
+      "exit_code": 0
+    }
+  },
+  "candidate_patch_sha256": "23712bf973df4201456eec6b6ac2e9459d77071b040f999b4a40b77ebbab7942",
+  "coverage_limits": "selected recorded full-role cases only, not all-layer replay; no positive role simplification or populated BaseInterface in recorded cases; synthetic nested-hole meshes, not every mesh topology; layout accounting not peak RSS"
+}

@@ -1,0 +1,8 @@
+{
+ "ordinary-benchy-classic-off-profile": "34886ccb56b214d57c28aa58bdcc8d371a41f440200f5b49276b96b53e18cc40",
+ "ordinary-benchy-classic-on-profile": "76eb4e1df3a47abf9a973be4ac99cd6bac41efa9fb65240786251ec0f7cdf6a8",
+ "ordinary-benchy-arachne-off-profile": "b76d846acdb13f3255c515878a43082da160c01a4155ae6904d2d473c30e1ba1",
+ "ordinary-benchy-arachne-on-profile": "ae9d90612bf87ae9f76cb6faf341482e1abbaf5897bb2b981c3247d1646c3b9f",
+ "ordinary-benchy-arachne-off-instrumented": "b76d846acdb13f3255c515878a43082da160c01a4155ae6904d2d473c30e1ba1",
+ "accelerated-benchy-arachne-off-profile": "b76d846acdb13f3255c515878a43082da160c01a4155ae6904d2d473c30e1ba1"
+}

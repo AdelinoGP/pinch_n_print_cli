@@ -1,0 +1,154 @@
+{
+  "note": "corrected = raw / (1 + delta) is a fairness counterfactual against an Orca doing PnP's geometric work, never a scoreboard",
+  "cells": [
+    {
+      "fixture": "benchy",
+      "cell": "classic-off",
+      "orca_wall_s": 4.2709,
+      "orca_delta_pct": 58.41,
+      "pnp": {
+        "pnp-ordinary": {
+          "wall_s": 21.9569,
+          "raw_ratio": 5.14,
+          "corrected_ratio": 3.25
+        },
+        "pnp-accelerated": {
+          "wall_s": 18.5241,
+          "raw_ratio": 4.34,
+          "corrected_ratio": 2.74
+        }
+      }
+    },
+    {
+      "fixture": "benchy",
+      "cell": "arachne-off",
+      "orca_wall_s": 4.4451,
+      "orca_delta_pct": 32.09,
+      "pnp": {
+        "pnp-ordinary": {
+          "wall_s": 14.6526,
+          "raw_ratio": 3.3,
+          "corrected_ratio": 2.5
+        },
+        "pnp-accelerated": {
+          "wall_s": 14.708,
+          "raw_ratio": 3.31,
+          "corrected_ratio": 2.5
+        }
+      }
+    },
+    {
+      "fixture": "benchy",
+      "cell": "classic-on",
+      "orca_wall_s": 4.7277,
+      "orca_delta_pct": 65.19,
+      "pnp": {
+        "pnp-ordinary": {
+          "wall_s": 27.7318,
+          "raw_ratio": 5.87,
+          "corrected_ratio": 3.55
+        },
+        "pnp-accelerated": {
+          "wall_s": 24.0632,
+          "raw_ratio": 5.09,
+          "corrected_ratio": 3.08
+        }
+      }
+    },
+    {
+      "fixture": "benchy",
+      "cell": "arachne-on",
+      "orca_wall_s": 4.3824,
+      "orca_delta_pct": 47.33,
+      "pnp": {
+        "pnp-ordinary": {
+          "wall_s": 20.8659,
+          "raw_ratio": 4.76,
+          "corrected_ratio": 3.23
+        },
+        "pnp-accelerated": {
+          "wall_s": 20.2989,
+          "raw_ratio": 4.63,
+          "corrected_ratio": 3.14
+        }
+      }
+    },
+    {
+      "fixture": "base",
+      "cell": "classic-off",
+      "orca_wall_s": 18.8414,
+      "orca_delta_pct": 37.54,
+      "pnp": {
+        "pnp-ordinary": {
+          "wall_s": 216.2847,
+          "raw_ratio": 11.48,
+          "corrected_ratio": 8.35
+        },
+        "pnp-accelerated": {
+          "wall_s": 173.4069,
+          "raw_ratio": 9.2,
+          "corrected_ratio": 6.69
+        }
+      }
+    },
+    {
+      "fixture": "base",
+      "cell": "arachne-off",
+      "orca_wall_s": 18.0555,
+      "orca_delta_pct": 9.53,
+      "pnp": {
+        "pnp-ordinary": {
+          "wall_s": 133.4241,
+          "raw_ratio": 7.39,
+          "corrected_ratio": 6.75
+        },
+        "pnp-accelerated": {
+          "wall_s": 130.6325,
+          "raw_ratio": 7.24,
+          "corrected_ratio": 6.61
+        }
+      }
+    },
+    {
+      "fixture": "base",
+      "cell": "classic-on",
+      "orca_wall_s": 24.3784,
+      "orca_delta_pct": 42.81,
+      "pnp": {
+        "pnp-ordinary": {
+          "wall_s": 439.6576,
+          "raw_ratio": 18.03,
+          "corrected_ratio": 12.63
+        },
+        "pnp-accelerated": {
+          "wall_s": 408.3534,
+          "raw_ratio": 16.75,
+          "corrected_ratio": 11.73
+        }
+      }
+    },
+    {
+      "fixture": "base",
+      "cell": "arachne-on",
+      "orca_wall_s": 23.7758,
+      "orca_delta_pct": 30.92,
+      "pnp": {
+        "pnp-ordinary": {
+          "wall_s": 372.1553,
+          "raw_ratio": 15.65,
+          "corrected_ratio": 11.96
+        },
+        "pnp-accelerated": {
+          "wall_s": 368.5763,
+          "raw_ratio": 15.5,
+          "corrected_ratio": 11.84
+        }
+      }
+    }
+  ],
+  "best_raw_ratio_ordinary": 3.3,
+  "best_corrected_ratio_ordinary": 2.5,
+  "all_cells_lost_raw": true,
+  "all_cells_lost_corrected": true,
+  "park_condition_1_5x_still_binding": true
+}

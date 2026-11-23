@@ -1,0 +1,317 @@
+{
+  "take": "t106-post-pin-supports-on-scoreboard",
+  "park_ratio": 1.5,
+  "support_style_pin": "tree_strong",
+  "provenance": {
+    "orca_exe": "C:\\Program Files\\OrcaSlicer\\orca-slicer.exe",
+    "orca_bytes": 278528,
+    "orca_sha256": "7663f5d3b87228f58196a8bb8e00157ac654c5c3db4fe4e3619116e9309406eb",
+    "orca_cli_version": "cli mode, Current OrcaSlicer Version 2.5.0-beta",
+    "orca_support_style": "tree_strong",
+    "vendor_manifest": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\orca-vendor\\BBL.json",
+    "started_utc": "2026-11-02T14:33:25.2836075Z",
+    "rounds": 3,
+    "warmups": 1
+  },
+  "cells": {
+    "base/arachne-on": {
+      "samples": 3,
+      "retained": 3,
+      "excluded_rounds": [],
+      "resolved_styles": [
+        "tree_strong"
+      ],
+      "resolved_enable_support": [
+        "1"
+      ],
+      "median_wall_s": 26.3653,
+      "median_cpu_s": 109.0469,
+      "cpu_wall_median": 4.1212,
+      "wall_range_s": [
+        26.1493,
+        27.0504
+      ],
+      "spread_s": 0.9011,
+      "gcode_bytes": [
+        43802018
+      ],
+      "sha256": [
+        "4a96df9c87d0aec0bc527c6119cc9036efffc784f552f73c255e8eeb722cff83",
+        "5417b39b180324e68ffc2d4a1bb9b85454a78459fae43da274476bd7d961ef89",
+        "f9237f6d81a9bb5a0b62a7b3b479f9d691a8acf8a6ae341107feaaaa29564e96"
+      ],
+      "support_sections": [
+        742
+      ],
+      "support_interface_sections": [
+        426
+      ],
+      "pnp_ordinary_wall_s": 161.1394,
+      "t103_orca_wall_s": 23.0276,
+      "t103_orca_range_s": [
+        20.6928,
+        25.3624
+      ],
+      "t103_orca_spread_s": 4.6696,
+      "t103_orca_gcode_bytes": [
+        32363932
+      ],
+      "t103_orca_support_sections": [
+        619
+      ],
+      "t103_orca_support_interface_sections": [
+        226
+      ],
+      "t103_orca_sha256": [
+        "365c711c4c63f33f56543e2f0bb8568550860182a018caa263dd1f80ae18e076",
+        "df14cea7a3190e4e86fb42db077051796fa06b381ba4939a01c62c7b477db623"
+      ],
+      "t105_transfer": {
+        "style_wall_delta_pct": 39.55,
+        "derived_ratio_vs_pnp": 5.629,
+        "predicted_wall_s": 32.135,
+        "predicted_ratio_vs_pnp": 5.0144
+      },
+      "ratio_vs_pnp": 6.1118,
+      "cut_to_park_pct": 75.46,
+      "post_pin_vs_t103_orca": {
+        "delta_s": 3.3377,
+        "delta_pct": 14.49
+      },
+      "transfer_check": {
+        "measured_minus_predicted_s": -5.7697,
+        "measured_minus_predicted_pct": -17.95,
+        "tolerance_s": 4.6696,
+        "tolerance_basis": "max(t106 measured range, t103 measured range)",
+        "agrees": false
+      },
+      "output_bytes_delta_pct_vs_t103_orca": 35.34,
+      "non_vacuous_vs_t103_orca": true
+    },
+    "base/classic-on": {
+      "samples": 3,
+      "retained": 3,
+      "excluded_rounds": [],
+      "resolved_styles": [
+        "tree_strong"
+      ],
+      "resolved_enable_support": [
+        "1"
+      ],
+      "median_wall_s": 26.7058,
+      "median_cpu_s": 102.4062,
+      "cpu_wall_median": 3.8377,
+      "wall_range_s": [
+        25.8757,
+        26.8836
+      ],
+      "spread_s": 1.0079,
+      "gcode_bytes": [
+        44803778
+      ],
+      "sha256": [
+        "a621573ffd34488d4aeed83004a37adabad45a2d93dbeba474eba9f48152743e",
+        "d0d2faeac2b7e30acdbbfdd1a259e56813a44ea23b9aaee147b11337c405f027",
+        "f2d659d98fefb5e8270dae85f5a42bf98de53b66c9369d1bb38ac5c9bad721fe"
+      ],
+      "support_sections": [
+        739
+      ],
+      "support_interface_sections": [
+        423
+      ],
+      "pnp_ordinary_wall_s": 160.857,
+      "t103_orca_wall_s": 19.488,
+      "t103_orca_range_s": [
+        18.626,
+        20.7455
+      ],
+      "t103_orca_spread_s": 2.1195,
+      "t103_orca_gcode_bytes": [
+        33366060
+      ],
+      "t103_orca_support_sections": [
+        622
+      ],
+      "t103_orca_support_interface_sections": [
+        230
+      ],
+      "t103_orca_sha256": [
+        "1c6349c1d244c14c7f34db21bd3fbd64861fedf1319fe03fe5ffac33a46297ed",
+        "35c87aea1baf1addbfed0bb178551050b7312171d38b3fb8c161e80b7ef77bea",
+        "6bc74ffbe860a79c2f6acfe0e6298fac9509fd098f0f16f3b40ff98affecb9fd"
+      ],
+      "t105_transfer": {
+        "style_wall_delta_pct": 44.42,
+        "derived_ratio_vs_pnp": 5.4469,
+        "predicted_wall_s": 28.1446,
+        "predicted_ratio_vs_pnp": 5.7154
+      },
+      "ratio_vs_pnp": 6.0233,
+      "cut_to_park_pct": 75.1,
+      "post_pin_vs_t103_orca": {
+        "delta_s": 7.2178,
+        "delta_pct": 37.04
+      },
+      "transfer_check": {
+        "measured_minus_predicted_s": -1.4388,
+        "measured_minus_predicted_pct": -5.11,
+        "tolerance_s": 2.1195,
+        "tolerance_basis": "max(t106 measured range, t103 measured range)",
+        "agrees": true
+      },
+      "output_bytes_delta_pct_vs_t103_orca": 34.28,
+      "non_vacuous_vs_t103_orca": true
+    },
+    "benchy/arachne-on": {
+      "samples": 3,
+      "retained": 3,
+      "excluded_rounds": [],
+      "resolved_styles": [
+        "tree_strong"
+      ],
+      "resolved_enable_support": [
+        "1"
+      ],
+      "median_wall_s": 2.6983,
+      "median_cpu_s": 11.9375,
+      "cpu_wall_median": 4.4264,
+      "wall_range_s": [
+        2.6757,
+        2.7091
+      ],
+      "spread_s": 0.0334,
+      "gcode_bytes": [
+        10331360
+      ],
+      "sha256": [
+        "09209bdc4ecc70d0a9a58678641f1d9006fb89a12efb1768dcf7e40ff2ef5aa7",
+        "395eb10527f97796ba895781de3dbdf04b8e70f4aacfd6c08b950cf41aec5a10",
+        "791058160c71ab88c9cde62b01aaa8673691cec664235d01ee6bfe1fe6aadb5d"
+      ],
+      "support_sections": [
+        188
+      ],
+      "support_interface_sections": [
+        58
+      ],
+      "pnp_ordinary_wall_s": 12.2164,
+      "t103_orca_wall_s": 2.5531,
+      "t103_orca_range_s": [
+        2.421,
+        2.5723
+      ],
+      "t103_orca_spread_s": 0.1513,
+      "t103_orca_gcode_bytes": [
+        8367863
+      ],
+      "t103_orca_support_sections": [
+        191
+      ],
+      "t103_orca_support_interface_sections": [
+        8
+      ],
+      "t103_orca_sha256": [
+        "2a24a05ab7725042f06bdeafa6aaaab6bbbc1cf39d6dc19a4297ac2c44631968",
+        "355eb1ae4aece9ff138475331ea15f1866a3c5b62ad26e24416c499ab38154a2",
+        "b5aedb57f3e4763a7b5f9b7bc8fabe26c06460abebb4752b5a919a738ff7036d"
+      ],
+      "t105_transfer": {
+        "style_wall_delta_pct": 7.6,
+        "derived_ratio_vs_pnp": 4.276,
+        "predicted_wall_s": 2.7471,
+        "predicted_ratio_vs_pnp": 4.447
+      },
+      "ratio_vs_pnp": 4.5274,
+      "cut_to_park_pct": 66.87,
+      "post_pin_vs_t103_orca": {
+        "delta_s": 0.1452,
+        "delta_pct": 5.69
+      },
+      "transfer_check": {
+        "measured_minus_predicted_s": -0.0488,
+        "measured_minus_predicted_pct": -1.78,
+        "tolerance_s": 0.1513,
+        "tolerance_basis": "max(t106 measured range, t103 measured range)",
+        "agrees": true
+      },
+      "output_bytes_delta_pct_vs_t103_orca": 23.46,
+      "non_vacuous_vs_t103_orca": true
+    },
+    "benchy/classic-on": {
+      "samples": 3,
+      "retained": 3,
+      "excluded_rounds": [],
+      "resolved_styles": [
+        "tree_strong"
+      ],
+      "resolved_enable_support": [
+        "1"
+      ],
+      "median_wall_s": 2.6001,
+      "median_cpu_s": 10.8281,
+      "cpu_wall_median": 4.1702,
+      "wall_range_s": [
+        2.5291,
+        2.6217
+      ],
+      "spread_s": 0.0926,
+      "gcode_bytes": [
+        9481130
+      ],
+      "sha256": [
+        "193aff858c747632447741ca679effc1fb51e203ef0de865dd9e639178198977",
+        "708a63036e11c7d5f7d6c2be243bed6f643f0524b991c459964a3eca72475738",
+        "ba3c23dfbf613ee99309eef2061d7056c1da4cf642780f4a6b8b41dc129e5abd"
+      ],
+      "support_sections": [
+        186
+      ],
+      "support_interface_sections": [
+        57
+      ],
+      "pnp_ordinary_wall_s": 12.4034,
+      "t103_orca_wall_s": 2.2861,
+      "t103_orca_range_s": [
+        2.2603,
+        2.3051
+      ],
+      "t103_orca_spread_s": 0.0448,
+      "t103_orca_gcode_bytes": [
+        7544100
+      ],
+      "t103_orca_support_sections": [
+        189
+      ],
+      "t103_orca_support_interface_sections": [
+        7
+      ],
+      "t103_orca_sha256": [
+        "24252520e5995d6d89b5dd9d5f02ba097009b885934823660cc0ec97071b0332",
+        "44460863e62ecb687cc1dd89397ee52d3f962bb1e7ffa20bb709ab64614efaba",
+        "66dc30b73ea6d491032a2ae438c90636c73cd0638b78bd48d4944f4c82d72bfe"
+      ],
+      "t105_transfer": {
+        "style_wall_delta_pct": 9.48,
+        "derived_ratio_vs_pnp": 4.6784,
+        "predicted_wall_s": 2.5028,
+        "predicted_ratio_vs_pnp": 4.9558
+      },
+      "ratio_vs_pnp": 4.7704,
+      "cut_to_park_pct": 68.56,
+      "post_pin_vs_t103_orca": {
+        "delta_s": 0.314,
+        "delta_pct": 13.74
+      },
+      "transfer_check": {
+        "measured_minus_predicted_s": 0.0973,
+        "measured_minus_predicted_pct": 3.89,
+        "tolerance_s": 0.0926,
+        "tolerance_basis": "max(t106 measured range, t103 measured range)",
+        "agrees": false
+      },
+      "output_bytes_delta_pct_vs_t103_orca": 25.68,
+      "non_vacuous_vs_t103_orca": true
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "sources": {
+    "modules/core-modules/tree-support-planner/src/lib.rs": "57642cced9be71645b99d202e8ee7975765ae9899caa1581f7f4962b1883832a"
+  },
+  "freshness": {
+    "ordinary": {
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--check"
+      ],
+      "exit_code": 0
+    },
+    "accelerated": {
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--accelerated",
+        "--check"
+      ],
+      "exit_code": 0
+    }
+  },
+  "artifacts_match_before": true,
+  "production_diff": "",
+  "build_inputs_unchanged": true,
+  "prior_t53_evidence_unchanged": true,
+  "distribution_file_sets_match_before": true
+}

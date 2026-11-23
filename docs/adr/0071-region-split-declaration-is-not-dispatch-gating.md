@@ -115,3 +115,16 @@ Concretely:
 - The core perimeter/fuzzy-skin manifests must NOT set `paint_only`:
   fuzzy-skin's `apply_to_all` and unpainted perimeter generation both require
   invocation on layers with no matching `variant_chain`.
+
+## Factual migration note (proptest-openrscad_08)
+
+The historical text above names `module_invocation_allowed_on_layer` in
+`crates/slicer-runtime/src/layer_executor.rs`; that helper no longer exists. The
+live predicate is `paint_allows_layer` in
+`crates/slicer-wasm-host/src/selection.rs`, consumed through
+`build_and_commit_layer_selection_index`
+(`crates/slicer-runtime/src/layer_executor.rs`) and
+`LayerSelectionIndex::selection_for`. The decision is unchanged: declaration is
+not dispatch gating, `paint_only` remains the opt-in, and granularity stays
+per (module × layer). This is a source-location note, not a policy amendment.
+See `docs/testing/properties.md#h-runtime-dispatch`.

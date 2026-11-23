@@ -80,12 +80,24 @@ fn dispatch() -> Result<Option<LayerStageCommit>, LayerStageError> {
         ..Default::default()
     };
     let arena = LayerArena::new();
+    let index = crate::common::selection_for_module(
+        "Layer::Support",
+        &layer,
+        &module,
+        &blackboard,
+        None,
+        None,
+    )
+    .expect("build support fixture selection");
+    let selection = index
+        .selection_for(layer.index, module.module_id())
+        .expect("support fixture bound pair");
     LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Support".to_string(),
         &layer,
         &live,
-        crate::common::layer_input(&blackboard, &arena),
+        crate::common::layer_input(&blackboard, &arena, selection),
     )
 }
 

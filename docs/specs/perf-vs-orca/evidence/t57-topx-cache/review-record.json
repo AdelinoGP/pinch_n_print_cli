@@ -1,0 +1,88 @@
+{
+  "reviewer": "OpenCode reviewer subagent (adversarial methods review)",
+  "requested_by": "human ('@reviewer your methods')",
+  "date": "2026-10-07",
+  "verdicts": {
+    "A_stop_resume_discipline": "RESOLVED (human confirmed 2026-10-07) — the second resume relied on the standing 'Continue until completion' authorization; the human confirmed it covered the externally interrupted-cell rerun. The campaign's measured stop was correct in all cases",
+    "B_reuse_integrity": "SOUND — raw-output, frozen-input and snapshot hashes support reusing completed qualification cells; re-slicing was unnecessary",
+    "C_cell16_handling": "SOUND — whole-cell rerun, preserved interrupted baseline and matching cross-mode hash avoid mixed-attempt qualification",
+    "D_measurement": "FLAWED — measurement and arithmetic are correct, but reducers did not enforce timed-row cell/mode identity",
+    "E_verifier_honesty": "FLAWED — checkout verification had false-pass paths; the retained regression log establishes six tests, not the claimed seven",
+    "F_evidence_completeness": "SOUND — the bounded DROP is re-derivable and the final seal is intact",
+    "G_operational_resilience": "FLAWED — non-atomic checkpoints and insufficient interruption/process-ownership checks defeated the claimed recovery guarantee",
+    "H_restoration_integrity": "SOUND — production inputs, archived artifacts, distributions, registry and corrected helper hashes match"
+  },
+  "summary": "No BLOCKER or HIGH findings. Bounded measured DROP remains supported; the identified method and evidence weaknesses do not establish that the completed result is wrong.",
+  "findings_and_resolutions": [
+    {
+      "id": 1,
+      "severity": "NOTE",
+      "area": "D/F",
+      "finding": "Independent re-reduction reproduces the DROP: 6 pairs, 0 excluded, wall median delta +0.5053315 s (+2.1414973%), CPU delta +4.0859375 s (+2.7816724%), zero candidate wins.",
+      "resolution": "Retained DROP; no additional cells run."
+    },
+    {
+      "id": 2,
+      "severity": "MEDIUM",
+      "area": "A",
+      "finding": "Second-stop resume cites 'same continuing authorization' rather than a fresh post-stop human response.",
+      "resolution": "RESOLVED BY HUMAN 2026-10-07: the human confirmed ('Confirmed, drop is accepted') that the standing 'Continue until completion' authorization covered the externally interrupted-cell rerun after the harness session eviction. Only externally interrupted in-flight cells were rerun; no gate-failing cell was ever rerun. See drop-acceptance.json."
+    },
+    {
+      "id": 4,
+      "severity": "MEDIUM",
+      "area": "D/E",
+      "finding": "Timing-row identity was not bound to its declared cell (no mode/fixture/generator/supports/phase/run_id check); ordinary and accelerated outputs intentionally share hashes, so cross-mode substitution was not rejected by output digest alone.",
+      "resolution": "summarize() now validates the full cell tuple, phase and run-id prefix when a cell is supplied; validate_cell() and verify() pass the cell. New regression test relabels valid ordinary rows as accelerated and requires rejection (test_cross_cell_relabel_and_identity_mismatch_are_rejected)."
+    },
+    {
+      "id": 5,
+      "severity": "MEDIUM",
+      "area": "E",
+      "finding": "restored() did not cross-check validation.json outcome/freshness/manifest, and an empty sealed-evidence mapping made the loop vacuous.",
+      "resolution": "restored() now requires outcome == campaign recommendation, final freshness == restoration freshness, non-empty raw_manifest and sealed_evidence, and presence of a required evidence set before hash checks."
+    },
+    {
+      "id": 6,
+      "severity": "MEDIUM",
+      "area": "G",
+      "finding": "Checkpoints overwrote files non-atomically; --resume-authorized did not establish an external interruption and did not check for a completed decisive cell or process quiescence.",
+      "resolution": "manage.write() is now an atomic temp-file replace. campaign.run() adopts any complete (>=14 rows) unrecorded cell via validate_cell instead of discarding it, and before archiving a partial cell asserts the cell is not decisive-by-record and that no pnp_cli.exe is running."
+    },
+    {
+      "id": 7,
+      "severity": "MEDIUM",
+      "area": "E",
+      "finding": "The sealed regression log says 'Ran 6 tests'; the current suite has 8 (outcome-taxonomy + cross-cell tests added after the sealed run).",
+      "resolution": "logs/reducer-regressions.log remains the frozen pre-campaign six-test log; logs/reducer-regressions-current.log records the supplementary post-campaign eight-test run and is explicitly labelled supplementary, not a rewritten seal."
+    },
+    {
+      "id": 8,
+      "severity": "LOW",
+      "area": "E",
+      "finding": "campaign_reducer_sha256 proves reduction-time identity, not pre-timing registration.",
+      "resolution": "campaign-as-run.py preserves the as-run reducer (sha256 e9926960c663e3d704c93f57c9490e0323c79cf20dd30aefa1dd08af3c32d333), and verify() pins that immutable copy rather than the hardened live reducer."
+    },
+    {
+      "id": 9,
+      "severity": "LOW",
+      "area": "F",
+      "finding": "The stop-1 seal is a preserved manifest; five sealed paths changed contents afterwards.",
+      "resolution": "validation-stop1.json is retained and described as a historical manifest, not a currently executable seal."
+    },
+    {
+      "id": 10,
+      "severity": "LOW",
+      "area": "A/D/F",
+      "finding": "Wording error: 'slower in 0 of 6' should be 'slower in 6 of 6'; the first timeout is 40 minutes (2400000 ms), not 45.",
+      "resolution": "Corrected in REPRODUCE.md, ticket 57 and map.md. Measured numbers unchanged."
+    },
+    {
+      "id": 11,
+      "severity": "NOTE",
+      "area": "H",
+      "finding": "Restoration identities convincing; the separate-target helper correction was necessary and is not part of manage.py restore.",
+      "resolution": "production-driver-restoration.json records the correction and is part of the restoration procedure."
+    }
+  ]
+}

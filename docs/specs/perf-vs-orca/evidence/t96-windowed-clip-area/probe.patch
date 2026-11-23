@@ -1,0 +1,247 @@
+diff --git a/crates/slicer-runtime/src/slice_postprocess_prepass.rs b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+index 7edead57..608de519 100644
+--- a/crates/slicer-runtime/src/slice_postprocess_prepass.rs
++++ b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+@@ -582,6 +582,176 @@ fn resolve_opening_radius(
+ // Internal helpers
+ // ============================================================================
+ 
++/// t96 Phase-1 screening probe — env-gated (`PNP_T96_WINDOW=1` routes the clip
++/// area through the windowed form, `PNP_T96_PROBE=1` records per-call spans and
++/// checks the two areas for set equality inside the window). Attribution only,
++/// removed before the take closes.
++mod t96_probe {
++    use std::sync::OnceLock;
++
++    use slicer_ir::{ExPolygon, Point2, Polygon};
++
++    static WINDOW: OnceLock<bool> = OnceLock::new();
++    static ENABLED: OnceLock<bool> = OnceLock::new();
++
++    pub(super) fn window() -> bool {
++        *WINDOW.get_or_init(|| std::env::var_os("PNP_T96_WINDOW").is_some())
++    }
++
++    pub(super) fn enabled() -> bool {
++        *ENABLED.get_or_init(|| std::env::var_os("PNP_T96_PROBE").is_some())
++    }
++
++    /// `(min_x, min_y, max_x, max_y)` over every contour and hole point.
++    pub(super) fn bbox(polygons: &[ExPolygon]) -> Option<(i64, i64, i64, i64)> {
++        let mut points = polygons
++            .iter()
++            .flat_map(|polygon| std::iter::once(&polygon.contour).chain(polygon.holes.iter()))
++            .flat_map(|ring| ring.points.iter());
++        let first = points.next()?;
++        let (mut x0, mut y0, mut x1, mut y1) = (first.x, first.y, first.x, first.y);
++        for point in points {
++            x0 = x0.min(point.x);
++            y0 = y0.min(point.y);
++            x1 = x1.max(point.x);
++            y1 = y1.max(point.y);
++        }
++        Some((x0, y0, x1, y1))
++    }
++
++    /// `(polygons, ring vertices)`.
++    pub(super) fn shape(polygons: &[ExPolygon]) -> (u64, u64) {
++        let mut vertices = 0u64;
++        for polygon in polygons {
++            vertices += polygon.contour.points.len() as u64;
++            for hole in &polygon.holes {
++                vertices += hole.points.len() as u64;
++            }
++        }
++        (polygons.len() as u64, vertices)
++    }
++
++    /// Axis-aligned rectangle grown from `bbox` by `margin` scaled units.
++    fn rect(bbox: (i64, i64, i64, i64), margin: i64) -> ExPolygon {
++        let (x0, y0, x1, y1) = (
++            bbox.0 - margin,
++            bbox.1 - margin,
++            bbox.2 + margin,
++            bbox.3 + margin,
++        );
++        ExPolygon {
++            contour: Polygon {
++                points: vec![
++                    Point2 { x: x0, y: y0 },
++                    Point2 { x: x1, y: y0 },
++                    Point2 { x: x1, y: y1 },
++                    Point2 { x: x0, y: y1 },
++                ],
++            },
++            holes: Vec::new(),
++        }
++    }
++
++    pub(super) struct Outcome {
++        pub area: Vec<ExPolygon>,
++        pub window: Vec<ExPolygon>,
++        pub operand_polys: u64,
++        pub operand_vertices: u64,
++        pub boxes: u64,
++        pub clip_ns: u128,
++        pub offset_ns: u128,
++        pub result_clip_ns: u128,
++    }
++
++    /// Windowed `+1.5 x spacing` clip area. The window is the union of the
++    /// candidate boxes grown by `8 x spacing`; the operand is clipped by
++    /// `11 x spacing` (window plus the offset's `2 x 1.5` Miter reach) and the
++    /// result is clipped back to the window.
++    pub(super) fn windowed_clip_area(
++        deep: &[ExPolygon],
++        surfaces: &[ExPolygon],
++        spacing_mm: f32,
++    ) -> Outcome {
++        let spacing_units = (f64::from(spacing_mm) * slicer_ir::UNITS_PER_MM).round() as i64;
++        let mut window: Vec<ExPolygon> = Vec::new();
++        let mut operand_window: Vec<ExPolygon> = Vec::new();
++        for surface in surfaces {
++            if let Some(bbox) = bbox(std::slice::from_ref(surface)) {
++                window.push(rect(bbox, 8 * spacing_units));
++                operand_window.push(rect(bbox, 11 * spacing_units));
++            }
++        }
++        let boxes = window.len() as u64;
++        let clip_started = std::time::Instant::now();
++        let operand = super::intersection(deep, &operand_window);
++        let clip_ns = clip_started.elapsed().as_nanos();
++        let (operand_polys, operand_vertices) = shape(&operand);
++        let offset_started = std::time::Instant::now();
++        let dilated = super::offset(
++            &operand,
++            1.5 * spacing_mm,
++            super::OffsetJoinType::Miter,
++            0.0,
++        );
++        let offset_ns = offset_started.elapsed().as_nanos();
++        let result_started = std::time::Instant::now();
++        let area = super::intersection(&dilated, &window);
++        let result_clip_ns = result_started.elapsed().as_nanos();
++        Outcome {
++            area,
++            window,
++            operand_polys,
++            operand_vertices,
++            boxes,
++            clip_ns,
++            offset_ns,
++            result_clip_ns,
++        }
++    }
++
++    /// Print one per-call row and the inside-the-window set comparison.
++    pub(super) fn report(
++        full_clip: &[ExPolygon],
++        outcome: &Outcome,
++        full_ns: u128,
++        deep: &[ExPolygon],
++        surfaces: usize,
++        layer_index: u32,
++        print_z: f32,
++    ) {
++        let inside = super::intersection(full_clip, &outcome.window);
++        let missing = super::difference(&outcome.area, &inside);
++        let extra = super::difference(&inside, &outcome.area);
++        let (missing_polys, missing_vertices) = shape(&missing);
++        let (extra_polys, extra_vertices) = shape(&extra);
++        let (deep_polys, deep_vertices) = shape(deep);
++        let total_ms =
++            (outcome.clip_ns + outcome.offset_ns + outcome.result_clip_ns) as f64 / 1.0e6;
++        eprintln!(
++            "T96LAYER layer={} print_z={} surfaces={} deep_polys={} deep_vertices={} \
++full_ms={:.3} win_boxes={} win_operand_polys={} win_operand_vertices={} \
++win_clip_ms={:.3} win_offset_ms={:.3} win_result_ms={:.3} win_total_ms={:.3} \
++win_area_polys={} mismatch_polys={} mismatch_vertices={}",
++            layer_index,
++            print_z,
++            surfaces,
++            deep_polys,
++            deep_vertices,
++            full_ns as f64 / 1.0e6,
++            outcome.boxes,
++            outcome.operand_polys,
++            outcome.operand_vertices,
++            outcome.clip_ns as f64 / 1.0e6,
++            outcome.offset_ns as f64 / 1.0e6,
++            outcome.result_clip_ns as f64 / 1.0e6,
++            total_ms,
++            outcome.area.len(),
++            missing_polys + extra_polys,
++            missing_vertices + extra_vertices,
++        );
++    }
++}
++
+ /// Fully computed internal-bridge commit for one layer. The expensive
+ /// per-layer clipper work depends only on committed geometry and on this
+ /// layer's own fields, so it can run in the independent qualification phase;
+@@ -607,12 +777,59 @@ fn compute_internal_bridge_layer(
+     layer_index: u32,
+     print_z: f32,
+ ) -> Option<InternalBridgeLayerResult> {
+-    let deep_infill_clip_area = offset(
+-        &deep_infill_area,
+-        1.5 * qualify_spacing_mm,
+-        OffsetJoinType::Miter,
+-        0.0,
+-    );
++    let probe = t96_probe::enabled();
++    let windowed = t96_probe::window();
++    let (full_clip, full_ns): (Option<Vec<ExPolygon>>, u128) = if !windowed || probe {
++        let started = std::time::Instant::now();
++        let area = offset(
++            &deep_infill_area,
++            1.5 * qualify_spacing_mm,
++            OffsetJoinType::Miter,
++            0.0,
++        );
++        let elapsed = started.elapsed().as_nanos();
++        (Some(area), if probe { elapsed } else { 0 })
++    } else {
++        (None, 0)
++    };
++    let windowed_clip = if windowed || probe {
++        Some(t96_probe::windowed_clip_area(
++            &deep_infill_area,
++            &region.internal_solid_fill,
++            qualify_spacing_mm,
++        ))
++    } else {
++        None
++    };
++    let deep_infill_clip_area = if windowed {
++        let outcome = windowed_clip.expect("windowed clip area");
++        if probe {
++            t96_probe::report(
++                full_clip.as_deref().expect("production clip area"),
++                &outcome,
++                full_ns,
++                &deep_infill_area,
++                region.internal_solid_fill.len(),
++                layer_index,
++                print_z,
++            );
++        }
++        outcome.area
++    } else {
++        let full = full_clip.expect("production clip area");
++        if probe {
++            t96_probe::report(
++                &full,
++                &windowed_clip.expect("windowed clip area"),
++                full_ns,
++                &deep_infill_area,
++                region.internal_solid_fill.len(),
++                layer_index,
++                print_z,
++            );
++        }
++        full
++    };
+     let mut qualified: Vec<ExPolygon> = Vec::new();
+     for surface in &region.internal_solid_fill {
+         let expanded_candidate = offset(

@@ -1,0 +1,42 @@
+{
+  "label": "v1-do-top-scanbeam",
+  "exactness_mismatches": [],
+  "opclasses": {
+    "difference": {
+      "cases": 68,
+      "pristine_median_ns": 325150.0,
+      "candidate_median_ns": 254550.0,
+      "ratio": 0.7828694448715977,
+      "case_ratio_min": 0.0,
+      "case_ratio_median": 0.9771760154738878,
+      "case_ratio_max": 1.7428571428571429
+    },
+    "intersection": {
+      "cases": 34,
+      "pristine_median_ns": 1931900.0,
+      "candidate_median_ns": 1927250.0,
+      "ratio": 0.9975930431181739,
+      "case_ratio_min": 0.5746268656716418,
+      "case_ratio_median": 1.0756665855975522,
+      "case_ratio_max": 1.426553672316384
+    },
+    "offset": {
+      "cases": 177,
+      "pristine_median_ns": 6310700,
+      "candidate_median_ns": 6360300,
+      "ratio": 1.0078596669149222,
+      "case_ratio_min": 0.5534954407294833,
+      "case_ratio_median": 0.97031147421402,
+      "case_ratio_max": 1.3389544688026982
+    },
+    "union": {
+      "cases": 16,
+      "pristine_median_ns": 106678250.0,
+      "candidate_median_ns": 99994900.0,
+      "ratio": 0.9373503971053143,
+      "case_ratio_min": 0.9046589888672973,
+      "case_ratio_median": 1.023205543931615,
+      "case_ratio_max": 1.1836605630628994
+    }
+  }
+}

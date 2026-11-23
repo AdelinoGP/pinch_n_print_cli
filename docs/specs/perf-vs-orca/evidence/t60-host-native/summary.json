@@ -1,0 +1,894 @@
+{
+ "captured_commit": "200d4611396854e7434ae5a7a3ce77302649fd85",
+ "cells": {
+  "base-classic-off-profile": {
+   "layers": 495,
+   "output_sha256": "20e7204cfdbb813f642e7e1669d5ba1e30ed1d0ff7f90635af95d967196975ac",
+   "owner_table": {
+    "host:mesh_analysis": {
+     "calls": 3200,
+     "clip_polygons_calls": 3200,
+     "clip_polygons_wall_ms": 21005.936,
+     "total_wall_ms": 21006.013
+    },
+    "host:overhang_annotation": {
+     "calls": 6314,
+     "clip_polygons_calls": 4859,
+     "clip_polygons_wall_ms": 21709.619,
+     "offset_calls": 1455,
+     "offset_wall_ms": 127706.336,
+     "total_wall_ms": 149416.132
+    },
+    "host:shell_classification": {
+     "calls": 9763,
+     "clip_polygons_calls": 5139,
+     "clip_polygons_wall_ms": 14735.668,
+     "closing_ex_calls": 434,
+     "closing_ex_wall_ms": 2646.577,
+     "offset_calls": 4190,
+     "offset_wall_ms": 129791.21,
+     "total_wall_ms": 147173.701
+    },
+    "host:slice": {
+     "calls": 23180,
+     "clip_polygons_calls": 19597,
+     "clip_polygons_wall_ms": 46327.358,
+     "closing_ex_calls": 470,
+     "closing_ex_wall_ms": 371822.139,
+     "offset_calls": 3113,
+     "offset_wall_ms": 122745.066,
+     "total_wall_ms": 540895.529
+    },
+    "probe:d:classic-perimeters": {
+     "calls": 5442,
+     "clip_polygons_calls": 1484,
+     "clip_polygons_wall_ms": 3341.121,
+     "offset_calls": 3958,
+     "offset_wall_ms": 85920.626,
+     "total_wall_ms": 89261.896
+    },
+    "probe:d:infill-linker": {
+     "calls": 743,
+     "offset_calls": 743,
+     "offset_wall_ms": 3100.706,
+     "total_wall_ms": 3100.727
+    },
+    "probe:d:rectilinear-infill": {
+     "calls": 22,
+     "clip_polygons_calls": 22,
+     "clip_polygons_wall_ms": 4.61,
+     "total_wall_ms": 4.611
+    },
+    "probe:derive_ordinary": {
+     "calls": 1926,
+     "clip_polygons_calls": 1926,
+     "clip_polygons_wall_ms": 40529.26,
+     "total_wall_ms": 40529.307
+    },
+    "probe:derive_perimeter_source": {
+     "calls": 1926,
+     "clip_polygons_calls": 1926,
+     "clip_polygons_wall_ms": 40180.814,
+     "total_wall_ms": 40180.862
+    },
+    "probe:p:seam-planner-default": {
+     "calls": 495,
+     "offset_calls": 495,
+     "offset_wall_ms": 13668.085,
+     "total_wall_ms": 13668.097
+    },
+    "probe:region_partition": {
+     "calls": 13320,
+     "clip_polygons_calls": 13320,
+     "clip_polygons_wall_ms": 10038.938,
+     "total_wall_ms": 10039.336
+    }
+   },
+   "phases_ms": {
+    "per_layer": 120741,
+    "postpass": 2862,
+    "prepass": 143042,
+    "validation": 93
+   },
+   "probe_totals": {
+    "probe:d:classic-perimeters": {
+     "entries": 495,
+     "span_ms": 1253128.32
+    },
+    "probe:d:fuzzy-skin": {
+     "entries": 495,
+     "span_ms": 2238.914
+    },
+    "probe:d:gyroid-infill": {
+     "entries": 495,
+     "span_ms": 891.343
+    },
+    "probe:d:infill-linker": {
+     "entries": 495,
+     "span_ms": 20033.624
+    },
+    "probe:d:lightning-infill": {
+     "entries": 495,
+     "span_ms": 654.052
+    },
+    "probe:d:path-optimization-default": {
+     "entries": 495,
+     "span_ms": 1425.574
+    },
+    "probe:d:raft-default": {
+     "entries": 495,
+     "span_ms": 969.3
+    },
+    "probe:d:rectilinear-infill": {
+     "entries": 495,
+     "span_ms": 691.889
+    },
+    "probe:d:seam-placer": {
+     "entries": 495,
+     "span_ms": 2535.568
+    },
+    "probe:d:support-surface-ironing": {
+     "entries": 495,
+     "span_ms": 644.177
+    },
+    "probe:d:top-surface-ironing": {
+     "entries": 495,
+     "span_ms": 637.59
+    },
+    "probe:d:tree-support": {
+     "entries": 495,
+     "span_ms": 769.079
+    },
+    "probe:d:wave-overhangs": {
+     "entries": 495,
+     "span_ms": 652.169
+    },
+    "probe:derive_ordinary": {
+     "entries": 495,
+     "span_ms": 40619.385
+    },
+    "probe:derive_perimeter_source": {
+     "entries": 495,
+     "span_ms": 40301.419
+    },
+    "probe:layer_span": {
+     "entries": 495,
+     "span_ms": 1382743.386
+    },
+    "probe:p:layer-planner-default": {
+     "entries": 1,
+     "span_ms": 2.313
+    },
+    "probe:p:seam-planner-default": {
+     "entries": 1,
+     "span_ms": 14466.86
+    },
+    "probe:p:traditional-support-planner": {
+     "entries": 1,
+     "span_ms": 143.642
+    },
+    "probe:p:tree-support-planner": {
+     "entries": 1,
+     "span_ms": 145.224
+    },
+    "probe:plan_aggregation": {
+     "entries": 1,
+     "span_ms": 0.03
+    },
+    "probe:postpass_dispatch": {
+     "entries": 4,
+     "span_ms": 1584.078
+    },
+    "probe:prepare_regions": {
+     "entries": 6435,
+     "span_ms": 80922.845
+    },
+    "probe:region_partition": {
+     "entries": 1485,
+     "span_ms": 10113.182
+    }
+   },
+   "reconciliation": [
+    {
+     "attributed_calls": 18678,
+     "baseline_calls": 18678,
+     "baseline_source": "perf-refresh-2026-10-09/reduced/classic-cells.json",
+     "residual_calls": 0,
+     "scope": "polygon_ops::clip_polygons"
+    },
+    {
+     "attributed_calls": 5196,
+     "baseline_calls": 5196,
+     "baseline_source": "perf-refresh-2026-10-09/reduced/classic-cells.json",
+     "residual_calls": 0,
+     "scope": "polygon_ops::offset"
+    }
+   ],
+   "reference_sha256": "20e7204cfdbb813f642e7e1669d5ba1e30ed1d0ff7f90635af95d967196975ac"
+  },
+  "base-classic-on-profile": {
+   "layers": 495,
+   "output_sha256": "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319",
+   "owner_table": {
+    "host:mesh_analysis": {
+     "calls": 3200,
+     "clip_polygons_calls": 3200,
+     "clip_polygons_wall_ms": 22239.376,
+     "total_wall_ms": 22239.452
+    },
+    "host:overhang_annotation": {
+     "calls": 6314,
+     "clip_polygons_calls": 4859,
+     "clip_polygons_wall_ms": 21866.854,
+     "offset_calls": 1455,
+     "offset_wall_ms": 126432.975,
+     "total_wall_ms": 148300.0
+    },
+    "host:shell_classification": {
+     "calls": 9763,
+     "clip_polygons_calls": 5139,
+     "clip_polygons_wall_ms": 14979.686,
+     "closing_ex_calls": 434,
+     "closing_ex_wall_ms": 2832.428,
+     "offset_calls": 4190,
+     "offset_wall_ms": 137256.764,
+     "total_wall_ms": 155069.141
+    },
+    "host:slice": {
+     "calls": 23180,
+     "clip_polygons_calls": 19597,
+     "clip_polygons_wall_ms": 47774.448,
+     "closing_ex_calls": 470,
+     "closing_ex_wall_ms": 379080.693,
+     "offset_calls": 3113,
+     "offset_wall_ms": 126283.897,
+     "total_wall_ms": 553139.632
+    },
+    "host:support_analysis": {
+     "calls": 4922,
+     "clip_polygons_calls": 3692,
+     "clip_polygons_wall_ms": 40879.277,
+     "offset_calls": 1230,
+     "offset_wall_ms": 171036.412,
+     "total_wall_ms": 211915.818
+    },
+    "probe:d:classic-perimeters": {
+     "calls": 5442,
+     "clip_polygons_calls": 1484,
+     "clip_polygons_wall_ms": 3243.973,
+     "offset_calls": 3958,
+     "offset_wall_ms": 82588.798,
+     "total_wall_ms": 85832.917
+    },
+    "probe:d:infill-linker": {
+     "calls": 743,
+     "offset_calls": 743,
+     "offset_wall_ms": 3156.447,
+     "total_wall_ms": 3156.467
+    },
+    "probe:d:rectilinear-infill": {
+     "calls": 22,
+     "clip_polygons_calls": 22,
+     "clip_polygons_wall_ms": 4.235,
+     "total_wall_ms": 4.235
+    },
+    "probe:d:tree-support": {
+     "calls": 5405,
+     "offset_calls": 5405,
+     "offset_wall_ms": 40286.567,
+     "total_wall_ms": 40286.706
+    },
+    "probe:derive_ordinary": {
+     "calls": 1926,
+     "clip_polygons_calls": 1926,
+     "clip_polygons_wall_ms": 39419.586,
+     "total_wall_ms": 39419.639
+    },
+    "probe:derive_perimeter_source": {
+     "calls": 1926,
+     "clip_polygons_calls": 1926,
+     "clip_polygons_wall_ms": 40060.137,
+     "total_wall_ms": 40060.187
+    },
+    "probe:p:seam-planner-default": {
+     "calls": 495,
+     "offset_calls": 495,
+     "offset_wall_ms": 14168.71,
+     "total_wall_ms": 14168.722
+    },
+    "probe:p:tree-support-planner": {
+     "calls": 116339,
+     "clip_polygons_calls": 92804,
+     "clip_polygons_wall_ms": 110669.375,
+     "offset_calls": 23535,
+     "offset_wall_ms": 49661.614,
+     "total_wall_ms": 160333.917
+    },
+    "probe:plan_aggregation": {
+     "calls": 4392,
+     "clip_polygons_calls": 4392,
+     "clip_polygons_wall_ms": 2094.074,
+     "total_wall_ms": 2094.183
+    },
+    "probe:region_partition": {
+     "calls": 13320,
+     "clip_polygons_calls": 13320,
+     "clip_polygons_wall_ms": 9838.667,
+     "total_wall_ms": 9839.018
+    },
+    "probe:svc_offset_batch": {
+     "calls": 24255,
+     "offset_calls": 24255,
+     "offset_wall_ms": 2743.84,
+     "total_wall_ms": 2744.511
+    }
+   },
+   "phases_ms": {
+    "per_layer": 145563,
+    "postpass": 87933,
+    "prepass": 362778,
+    "validation": 111
+   },
+   "probe_totals": {
+    "probe:d:classic-perimeters": {
+     "entries": 495,
+     "span_ms": 1177644.024
+    },
+    "probe:d:fuzzy-skin": {
+     "entries": 495,
+     "span_ms": 2345.843
+    },
+    "probe:d:gyroid-infill": {
+     "entries": 495,
+     "span_ms": 1191.526
+    },
+    "probe:d:infill-linker": {
+     "entries": 495,
+     "span_ms": 19429.718
+    },
+    "probe:d:lightning-infill": {
+     "entries": 495,
+     "span_ms": 915.883
+    },
+    "probe:d:path-optimization-default": {
+     "entries": 495,
+     "span_ms": 1680.999
+    },
+    "probe:d:raft-default": {
+     "entries": 495,
+     "span_ms": 1141.376
+    },
+    "probe:d:rectilinear-infill": {
+     "entries": 495,
+     "span_ms": 951.512
+    },
+    "probe:d:seam-placer": {
+     "entries": 495,
+     "span_ms": 2548.469
+    },
+    "probe:d:support-surface-ironing": {
+     "entries": 495,
+     "span_ms": 773.124
+    },
+    "probe:d:top-surface-ironing": {
+     "entries": 495,
+     "span_ms": 899.486
+    },
+    "probe:d:tree-support": {
+     "entries": 495,
+     "span_ms": 75333.522
+    },
+    "probe:d:wave-overhangs": {
+     "entries": 495,
+     "span_ms": 934.417
+    },
+    "probe:derive_ordinary": {
+     "entries": 495,
+     "span_ms": 39521.474
+    },
+    "probe:derive_perimeter_source": {
+     "entries": 495,
+     "span_ms": 40227.412
+    },
+    "probe:layer_span": {
+     "entries": 495,
+     "span_ms": 1716649.988
+    },
+    "probe:p:layer-planner-default": {
+     "entries": 1,
+     "span_ms": 2.56
+    },
+    "probe:p:seam-planner-default": {
+     "entries": 1,
+     "span_ms": 14988.147
+    },
+    "probe:p:traditional-support-planner": {
+     "entries": 1,
+     "span_ms": 223.164
+    },
+    "probe:p:tree-support-planner": {
+     "entries": 1,
+     "span_ms": 168073.09
+    },
+    "probe:plan_aggregation": {
+     "entries": 1,
+     "span_ms": 32053.097
+    },
+    "probe:postpass_dispatch": {
+     "entries": 4,
+     "span_ms": 57178.979
+    },
+    "probe:prepare_regions": {
+     "entries": 6435,
+     "span_ms": 79751.22
+    },
+    "probe:region_partition": {
+     "entries": 1485,
+     "span_ms": 9952.983
+    }
+   },
+   "reconciliation": [
+    {
+     "attributed_calls": 115874,
+     "baseline_calls": 115874,
+     "baseline_source": "perf-refresh-2026-10-09/reduced/classic-cells.json",
+     "residual_calls": 0,
+     "scope": "polygon_ops::clip_polygons"
+    },
+    {
+     "attributed_calls": 58391,
+     "baseline_calls": 58391,
+     "baseline_source": "perf-refresh-2026-10-09/reduced/classic-cells.json",
+     "residual_calls": 0,
+     "scope": "polygon_ops::offset"
+    }
+   ],
+   "reference_sha256": "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319"
+  },
+  "benchy-classic-off-profile": {
+   "layers": 240,
+   "output_sha256": "34886ccb56b214d57c28aa58bdcc8d371a41f440200f5b49276b96b53e18cc40",
+   "owner_table": {
+    "host:mesh_analysis": {
+     "calls": 343,
+     "clip_polygons_calls": 343,
+     "clip_polygons_wall_ms": 135.062,
+     "total_wall_ms": 135.07
+    },
+    "host:overhang_annotation": {
+     "calls": 3107,
+     "clip_polygons_calls": 2390,
+     "clip_polygons_wall_ms": 2420.814,
+     "offset_calls": 717,
+     "offset_wall_ms": 6150.44,
+     "total_wall_ms": 8571.343
+    },
+    "host:shell_classification": {
+     "calls": 4150,
+     "clip_polygons_calls": 2194,
+     "clip_polygons_wall_ms": 1208.563,
+     "closing_ex_calls": 195,
+     "closing_ex_wall_ms": 307.3,
+     "offset_calls": 1761,
+     "offset_wall_ms": 10136.107,
+     "total_wall_ms": 11652.078
+    },
+    "host:slice": {
+     "calls": 5921,
+     "clip_polygons_calls": 5005,
+     "clip_polygons_wall_ms": 2073.228,
+     "closing_ex_calls": 240,
+     "closing_ex_wall_ms": 23174.439,
+     "offset_calls": 676,
+     "offset_wall_ms": 1665.835,
+     "total_wall_ms": 26913.651
+    },
+    "probe:d:classic-perimeters": {
+     "calls": 2640,
+     "clip_polygons_calls": 720,
+     "clip_polygons_wall_ms": 347.945,
+     "offset_calls": 1920,
+     "offset_wall_ms": 5559.563,
+     "total_wall_ms": 5907.573
+    },
+    "probe:d:infill-linker": {
+     "calls": 294,
+     "offset_calls": 294,
+     "offset_wall_ms": 533.373,
+     "total_wall_ms": 533.381
+    },
+    "probe:d:rectilinear-infill": {
+     "calls": 31,
+     "clip_polygons_calls": 31,
+     "clip_polygons_wall_ms": 1.11,
+     "total_wall_ms": 1.11
+    },
+    "probe:derive_ordinary": {
+     "calls": 661,
+     "clip_polygons_calls": 661,
+     "clip_polygons_wall_ms": 1476.921,
+     "total_wall_ms": 1476.938
+    },
+    "probe:derive_perimeter_source": {
+     "calls": 661,
+     "clip_polygons_calls": 661,
+     "clip_polygons_wall_ms": 1474.338,
+     "total_wall_ms": 1474.354
+    },
+    "probe:p:seam-planner-default": {
+     "calls": 240,
+     "offset_calls": 240,
+     "offset_wall_ms": 949.753,
+     "total_wall_ms": 949.759
+    },
+    "probe:region_partition": {
+     "calls": 6120,
+     "clip_polygons_calls": 6120,
+     "clip_polygons_wall_ms": 1257.306,
+     "total_wall_ms": 1257.462
+    }
+   },
+   "phases_ms": {
+    "per_layer": 7517,
+    "postpass": 595,
+    "prepass": 8420,
+    "validation": 161
+   },
+   "probe_totals": {
+    "probe:d:classic-perimeters": {
+     "entries": 240,
+     "span_ms": 69960.372
+    },
+    "probe:d:fuzzy-skin": {
+     "entries": 240,
+     "span_ms": 458.872
+    },
+    "probe:d:gyroid-infill": {
+     "entries": 240,
+     "span_ms": 263.495
+    },
+    "probe:d:infill-linker": {
+     "entries": 240,
+     "span_ms": 4487.887
+    },
+    "probe:d:lightning-infill": {
+     "entries": 240,
+     "span_ms": 193.871
+    },
+    "probe:d:path-optimization-default": {
+     "entries": 240,
+     "span_ms": 325.914
+    },
+    "probe:d:raft-default": {
+     "entries": 240,
+     "span_ms": 259.219
+    },
+    "probe:d:rectilinear-infill": {
+     "entries": 240,
+     "span_ms": 221.177
+    },
+    "probe:d:seam-placer": {
+     "entries": 240,
+     "span_ms": 498.748
+    },
+    "probe:d:support-surface-ironing": {
+     "entries": 240,
+     "span_ms": 192.629
+    },
+    "probe:d:top-surface-ironing": {
+     "entries": 240,
+     "span_ms": 191.715
+    },
+    "probe:d:tree-support": {
+     "entries": 240,
+     "span_ms": 216.136
+    },
+    "probe:d:wave-overhangs": {
+     "entries": 240,
+     "span_ms": 202.742
+    },
+    "probe:derive_ordinary": {
+     "entries": 240,
+     "span_ms": 1489.735
+    },
+    "probe:derive_perimeter_source": {
+     "entries": 240,
+     "span_ms": 1492.336
+    },
+    "probe:layer_span": {
+     "entries": 240,
+     "span_ms": 85720.198
+    },
+    "probe:p:layer-planner-default": {
+     "entries": 1,
+     "span_ms": 1.262
+    },
+    "probe:p:seam-planner-default": {
+     "entries": 1,
+     "span_ms": 1113.783
+    },
+    "probe:p:traditional-support-planner": {
+     "entries": 1,
+     "span_ms": 30.178
+    },
+    "probe:p:tree-support-planner": {
+     "entries": 1,
+     "span_ms": 24.835
+    },
+    "probe:plan_aggregation": {
+     "entries": 1,
+     "span_ms": 0.028
+    },
+    "probe:postpass_dispatch": {
+     "entries": 4,
+     "span_ms": 312.843
+    },
+    "probe:prepare_regions": {
+     "entries": 3120,
+     "span_ms": 2982.723
+    },
+    "probe:region_partition": {
+     "entries": 720,
+     "span_ms": 1274.415
+    }
+   },
+   "reconciliation": [
+    {
+     "attributed_calls": 8193,
+     "baseline_calls": 8193,
+     "baseline_source": "perf-refresh-2026-10-13/captures/ordinary-benchy-classic-off-profile.json",
+     "residual_calls": 0,
+     "scope": "polygon_ops::clip_polygons"
+    },
+    {
+     "attributed_calls": 2454,
+     "baseline_calls": 2454,
+     "baseline_source": "perf-refresh-2026-10-13/captures/ordinary-benchy-classic-off-profile.json",
+     "residual_calls": 0,
+     "scope": "polygon_ops::offset"
+    }
+   ],
+   "reference_sha256": "34886ccb56b214d57c28aa58bdcc8d371a41f440200f5b49276b96b53e18cc40"
+  },
+  "benchy-classic-on-profile": {
+   "layers": 240,
+   "output_sha256": "76eb4e1df3a47abf9a973be4ac99cd6bac41efa9fb65240786251ec0f7cdf6a8",
+   "owner_table": {
+    "host:mesh_analysis": {
+     "calls": 343,
+     "clip_polygons_calls": 343,
+     "clip_polygons_wall_ms": 125.057,
+     "total_wall_ms": 125.066
+    },
+    "host:overhang_annotation": {
+     "calls": 3107,
+     "clip_polygons_calls": 2390,
+     "clip_polygons_wall_ms": 2304.692,
+     "offset_calls": 717,
+     "offset_wall_ms": 5912.31,
+     "total_wall_ms": 8217.086
+    },
+    "host:shell_classification": {
+     "calls": 4150,
+     "clip_polygons_calls": 2194,
+     "clip_polygons_wall_ms": 1234.875,
+     "closing_ex_calls": 195,
+     "closing_ex_wall_ms": 291.355,
+     "offset_calls": 1761,
+     "offset_wall_ms": 10442.395,
+     "total_wall_ms": 11968.734
+    },
+    "host:slice": {
+     "calls": 5921,
+     "clip_polygons_calls": 5005,
+     "clip_polygons_wall_ms": 2006.333,
+     "closing_ex_calls": 240,
+     "closing_ex_wall_ms": 22794.29,
+     "offset_calls": 676,
+     "offset_wall_ms": 1646.536,
+     "total_wall_ms": 26447.309
+    },
+    "host:support_analysis": {
+     "calls": 1574,
+     "clip_polygons_calls": 1181,
+     "clip_polygons_wall_ms": 1562.298,
+     "offset_calls": 393,
+     "offset_wall_ms": 6239.497,
+     "total_wall_ms": 7801.835
+    },
+    "probe:d:classic-perimeters": {
+     "calls": 2640,
+     "clip_polygons_calls": 720,
+     "clip_polygons_wall_ms": 394.659,
+     "offset_calls": 1920,
+     "offset_wall_ms": 5916.872,
+     "total_wall_ms": 6311.602
+    },
+    "probe:d:infill-linker": {
+     "calls": 294,
+     "offset_calls": 294,
+     "offset_wall_ms": 622.653,
+     "total_wall_ms": 622.658
+    },
+    "probe:d:rectilinear-infill": {
+     "calls": 31,
+     "clip_polygons_calls": 31,
+     "clip_polygons_wall_ms": 1.13,
+     "total_wall_ms": 1.131
+    },
+    "probe:d:tree-support": {
+     "calls": 1822,
+     "offset_calls": 1822,
+     "offset_wall_ms": 3792.36,
+     "total_wall_ms": 3792.408
+    },
+    "probe:derive_ordinary": {
+     "calls": 661,
+     "clip_polygons_calls": 661,
+     "clip_polygons_wall_ms": 1468.943,
+     "total_wall_ms": 1468.96
+    },
+    "probe:derive_perimeter_source": {
+     "calls": 661,
+     "clip_polygons_calls": 661,
+     "clip_polygons_wall_ms": 1542.706,
+     "total_wall_ms": 1542.721
+    },
+    "probe:p:seam-planner-default": {
+     "calls": 240,
+     "offset_calls": 240,
+     "offset_wall_ms": 936.535,
+     "total_wall_ms": 936.54
+    },
+    "probe:p:tree-support-planner": {
+     "calls": 22959,
+     "clip_polygons_calls": 17982,
+     "clip_polygons_wall_ms": 4121.508,
+     "offset_calls": 4977,
+     "offset_wall_ms": 2364.015,
+     "total_wall_ms": 6486.095
+    },
+    "probe:plan_aggregation": {
+     "calls": 3191,
+     "clip_polygons_calls": 3191,
+     "clip_polygons_wall_ms": 215.482,
+     "total_wall_ms": 215.565
+    },
+    "probe:region_partition": {
+     "calls": 6120,
+     "clip_polygons_calls": 6120,
+     "clip_polygons_wall_ms": 1315.999,
+     "total_wall_ms": 1316.157
+    },
+    "probe:svc_offset_batch": {
+     "calls": 6480,
+     "offset_calls": 6480,
+     "offset_wall_ms": 247.775,
+     "total_wall_ms": 247.957
+    }
+   },
+   "phases_ms": {
+    "per_layer": 8354,
+    "postpass": 3080,
+    "prepass": 17684,
+    "validation": 84
+   },
+   "probe_totals": {
+    "probe:d:classic-perimeters": {
+     "entries": 240,
+     "span_ms": 73373.977
+    },
+    "probe:d:fuzzy-skin": {
+     "entries": 240,
+     "span_ms": 474.339
+    },
+    "probe:d:gyroid-infill": {
+     "entries": 240,
+     "span_ms": 295.141
+    },
+    "probe:d:infill-linker": {
+     "entries": 240,
+     "span_ms": 5041.547
+    },
+    "probe:d:lightning-infill": {
+     "entries": 240,
+     "span_ms": 217.434
+    },
+    "probe:d:path-optimization-default": {
+     "entries": 240,
+     "span_ms": 344.98
+    },
+    "probe:d:raft-default": {
+     "entries": 240,
+     "span_ms": 282.402
+    },
+    "probe:d:rectilinear-infill": {
+     "entries": 240,
+     "span_ms": 242.483
+    },
+    "probe:d:seam-placer": {
+     "entries": 240,
+     "span_ms": 519.286
+    },
+    "probe:d:support-surface-ironing": {
+     "entries": 240,
+     "span_ms": 213.42
+    },
+    "probe:d:top-surface-ironing": {
+     "entries": 240,
+     "span_ms": 213.53
+    },
+    "probe:d:tree-support": {
+     "entries": 240,
+     "span_ms": 7532.674
+    },
+    "probe:d:wave-overhangs": {
+     "entries": 240,
+     "span_ms": 222.536
+    },
+    "probe:derive_ordinary": {
+     "entries": 240,
+     "span_ms": 1488.189
+    },
+    "probe:derive_perimeter_source": {
+     "entries": 240,
+     "span_ms": 1563.175
+    },
+    "probe:layer_span": {
+     "entries": 240,
+     "span_ms": 97275.281
+    },
+    "probe:p:layer-planner-default": {
+     "entries": 1,
+     "span_ms": 1.142
+    },
+    "probe:p:seam-planner-default": {
+     "entries": 1,
+     "span_ms": 1106.497
+    },
+    "probe:p:traditional-support-planner": {
+     "entries": 1,
+     "span_ms": 48.365
+    },
+    "probe:p:tree-support-planner": {
+     "entries": 1,
+     "span_ms": 7292.787
+    },
+    "probe:plan_aggregation": {
+     "entries": 1,
+     "span_ms": 737.033
+    },
+    "probe:postpass_dispatch": {
+     "entries": 4,
+     "span_ms": 1497.304
+    },
+    "probe:prepare_regions": {
+     "entries": 3120,
+     "span_ms": 3052.059
+    },
+    "probe:region_partition": {
+     "entries": 720,
+     "span_ms": 1335.622
+    }
+   },
+   "reconciliation": [
+    {
+     "attributed_calls": 29366,
+     "baseline_calls": 29366,
+     "baseline_source": "perf-refresh-2026-10-13/captures/ordinary-benchy-classic-on-profile.json",
+     "residual_calls": 0,
+     "scope": "polygon_ops::clip_polygons"
+    },
+    {
+     "attributed_calls": 15733,
+     "baseline_calls": 15733,
+     "baseline_source": "perf-refresh-2026-10-13/captures/ordinary-benchy-classic-on-profile.json",
+     "residual_calls": 0,
+     "scope": "polygon_ops::offset"
+    }
+   ],
+   "reference_sha256": "76eb4e1df3a47abf9a973be4ac99cd6bac41efa9fb65240786251ec0f7cdf6a8"
+  }
+ },
+ "exe_sha256": "8a6ace4859fc5ef2bf0fb4d4c98843c5d37c84bd784db25a6617f80f26fd9be1"
+}

@@ -450,6 +450,60 @@ integrated_registry!(
     ),
 );
 
+/// Return the generated prepared pair for every integrated module that declares
+/// the preparation capability.
+///
+/// A module joins by declaring `[preparation]` in its manifest **and** adding a
+/// row here; the accessor itself does not change. The table is code-side because
+/// the generated `__slicer_prepared_native_entry()` /
+/// `__SLICER_PREPARATION_SCHEMA` pair is a typed associated item, not something
+/// discoverable from a manifest string at runtime.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn prepared_native_entries() -> Vec<(
+    String,
+    slicer_sdk::native::NativePreparedStageEntry,
+    slicer_schema::PreparationExportSchema,
+)> {
+    #[cfg(feature = "lightning-infill")]
+    {
+        vec![(
+            String::from("com.core.lightning-infill"),
+            LightningInfill::__slicer_prepared_native_entry(),
+            LightningInfill::__SLICER_PREPARATION_SCHEMA,
+        )]
+    }
+    #[cfg(not(feature = "lightning-infill"))]
+    {
+        Vec::new()
+    }
+}
+
+#[cfg(all(test, feature = "lightning-infill"))]
+mod prepared_entries_tests {
+    use super::{integrated_inventory, prepared_native_entries};
+
+    #[test]
+    fn prepared_entries_name_declared_integrated_modules() {
+        let entries = prepared_native_entries();
+        assert_eq!(
+            entries.len(),
+            1,
+            "lightning is the only integrated module that declares preparation"
+        );
+        assert_eq!(entries[0].0, "com.core.lightning-infill");
+        // The pair must be the module's real ordinary entry plus its generated
+        // preparation trampoline, not a surrogate.
+        assert!(matches!(
+            entries[0].1.stage,
+            slicer_sdk::native::NativeStageEntry::Layer(_)
+        ));
+        assert_eq!(entries[0].2.ordinary_world, "infill-module");
+        assert!(integrated_inventory()
+            .iter()
+            .any(|module| module.id == "com.core.lightning-infill"));
+    }
+}
+
 #[cfg(all(test, feature = "classic-perimeters"))]
 mod classic_perimeters_tests {
     use super::integrated_registrations;

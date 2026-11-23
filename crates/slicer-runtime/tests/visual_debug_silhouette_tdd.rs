@@ -439,6 +439,7 @@ fn plan_entry(
         capabilities: Vec::new(),
         provenance: vec!["test".to_string()],
         decline_reason: None,
+        variant_chain: Vec::new(), // genuinely chain-empty source: this synthetic plan helper seeds no paint chain
     }
 }
 
@@ -545,6 +546,7 @@ fn raft_and_coarse_entries_skip_with_named_warnings() {
                 global_support_layer_index: 0,
                 object_id: "obj-0".to_string(),
                 region_id,
+                variant_chain: Vec::new(), // genuinely chain-empty source: coarse-geometry fixtures seed no paint chain
             },
             vec![rect_expolygon(base, base + 1.0, 0.0, 5.0)],
         );

@@ -12,6 +12,7 @@ fn main() {
         "../slicer-schema/wit/deps/layer-path-optimization/layer-path-optimization.wit",
         "../slicer-schema/wit/deps/layer-perimeters-postprocess/layer-perimeters-postprocess.wit",
         "../slicer-schema/wit/deps/layer-perimeters/layer-perimeters.wit",
+        "../slicer-schema/wit/deps/layer-preparation/layer-preparation.wit",
         "../slicer-schema/wit/deps/layer-slice-postprocess/layer-slice-postprocess.wit",
         "../slicer-schema/wit/deps/layer-support-postprocess/layer-support-postprocess.wit",
         "../slicer-schema/wit/deps/layer-support/layer-support.wit",
@@ -22,6 +23,7 @@ fn main() {
         "../slicer-schema/wit/deps/prepass-seam-planning/prepass-seam-planning.wit",
         "../slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit",
         "../slicer-schema/wit/deps/prepass-types.wit",
+        "../slicer-schema/wit/deps/support-queries/support-queries.wit",
         "../slicer-schema/wit/deps/types.wit",
     ] {
         println!("cargo:rerun-if-changed={path}");

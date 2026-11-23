@@ -5,6 +5,16 @@ edition = "2021"
 authors = ["Pinch 'n Print Team"]
 description = "WIT/wasmtime marshalling and dispatch for Pinch 'n Print's WASM module host"
 
+[features]
+# Mirrors crates/slicer-runtime for delivery-capture observations in contract tests.
+perimeter-spatial-test-support = ["slicer-core/perimeter-spatial-test-support"]
+# Opt-in gate for the host pre-pass property target. Empty on purpose: it
+# exists so `required-features` keeps the Proptest harness out of default
+# builds and out of the guest graph.
+property_testing = []
+# Controlled-only fixture support; must never be enabled for production runs.
+preparation-test-fixtures = []
+
 [dependencies]
 wasmtime = { workspace = true }
 wasmtime-wasi = { workspace = true }
@@ -19,6 +29,18 @@ slicer-schema = { path = "../slicer-schema" }
 slicer-sdk = { path = "../slicer-sdk" }
 
 [dev-dependencies]
+slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk", features = ["property_testing"] }
+proptest = { workspace = true }
+lightning-portability-guest = { path = "test-guests/lightning-portability-guest" }
+preparation-pilot-infill = { path = "test-guests/preparation-pilot-infill" }
+preparation-pilot-path = { path = "test-guests/preparation-pilot-path" }
+preparation-transport-path = { path = "test-guests/preparation-transport-path" }
+preparation-visual-guest = { path = "test-guests/preparation-visual-guest" }
+whole-print-input-path = { path = "test-guests/whole-print-input-path" }
+whole-print-input-perimeters = { path = "test-guests/whole-print-input-perimeters" }
+whole-print-input-infill = { path = "test-guests/whole-print-input-infill" }
+whole-print-input-support = { path = "test-guests/whole-print-input-support" }
+whole-print-input-anchored = { path = "test-guests/whole-print-input-anchored" }
 sdk-finalization-guest = { path = "test-guests/sdk-finalization-guest" }
 sdk-layer-pathopt-guest = { path = "test-guests/sdk-layer-pathopt-guest" }
 sdk-infill-postprocess-view-guest = { path = "test-guests/sdk-infill-postprocess-view-guest" }
@@ -28,6 +50,12 @@ wat = "1.0"
 wit-parser = "0.247"
 tempfile = "3"
 toml = "0.8"
+# Host-side Gate A oracle: the Lightning geometry feasibility kernel is outside
+# the root workspace (see the root manifest's exclude), so it is wired in as a
+# dev-dependency of the host test binary rather than a production dependency.
+lightning-feasibility-kernel = { path = "../../modules/core-modules/lightning-infill/feasibility-kernel" }
+serde_json = "1.0"
+sha2 = "0.10"
 
 [[test]]
 name = "contract"
@@ -43,3 +71,10 @@ path = "tests/unit/main.rs"
 
 [lints]
 workspace = true
+
+# Host pre-pass property target (packet `proptest-openrscad_11_pbt-prepass`).
+# Gated so a default build never compiles the Proptest harness.
+[[test]]
+name = "property_prepass"
+path = "tests/property_prepass.rs"
+required-features = ["property_testing"]

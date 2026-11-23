@@ -100,12 +100,6 @@ pub enum PrepassExecutionError {
         /// Underlying support geometry failure.
         source: SupportGeometryBuiltinError,
     },
-    /// The host-built-in `PrePass::LightningTreeGen` stage failed
-    /// (packet 137).
-    LightningTree {
-        /// Underlying blackboard failure (e.g. duplicate commit).
-        source: BlackboardError,
-    },
     /// The host-built-in `PrePass::Slice` stage failed.
     Slice {
         /// Underlying slice failure.
@@ -172,9 +166,6 @@ impl fmt::Display for PrepassExecutionError {
             }
             Self::SupportGeometry { source } => {
                 write!(f, "built-in PrePass::SupportGeometry failed: {source}")
-            }
-            Self::LightningTree { source } => {
-                write!(f, "built-in PrePass::LightningTreeGen failed: {source}")
             }
             Self::Slice { source } => {
                 write!(f, "built-in PrePass::Slice failed: {source}")
@@ -1105,28 +1096,6 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
                 .map_err(|source| PrepassExecutionError::SupportGeometry { source })
         },
     )?;
-    // PrePass::LightningTreeGen — host built-in (packet 137). Skipped
-    // (no commit) when the print's `sparse_fill_holder` is not
-    // `lightning-infill` — the zero-cost promise from ADR-0029. The
-    // `default_resolved_config` is captured by reference in the closure
-    // below; it lives for the duration of this `execute_prepass_*` call.
-    run_builtin_stage(
-        blackboard,
-        instrumentation,
-        "PrePass::LightningTreeGen",
-        "host:lightning_tree",
-        |bb| {
-            bb.lightning_tree_ir().is_none()
-                && default_resolved_config.sparse_fill_holder == "lightning-infill"
-        },
-        |bb| {
-            crate::builtins::lightning_tree_producer::commit_lightning_tree_ir_builtin(
-                bb,
-                default_resolved_config,
-            )
-            .map_err(|source| PrepassExecutionError::LightningTree { source })
-        },
-    )?;
     // Phase-2: late stages that require RegionMap.
     let late_stages: Vec<_> = plan
         .prepass_stages
@@ -1208,7 +1177,6 @@ pub fn ensure_stage_prerequisites(
             BlackboardPrepassSlot::SliceIR => blackboard.slice_ir().is_some(),
             BlackboardPrepassSlot::SupportGeometry => blackboard.support_geometry().is_some(),
             BlackboardPrepassSlot::SupportAnalysis => blackboard.support_analysis().is_some(),
-            BlackboardPrepassSlot::LightningTreeIR => blackboard.lightning_tree_ir().is_some(),
         };
 
         if !present {
@@ -1243,12 +1211,6 @@ fn required_slots(stage_id: &StageId) -> &'static [BlackboardPrepassSlot] {
             BlackboardPrepassSlot::SupportGeometry,
         ],
         "PrePass::SupportAnalysis" => &[BlackboardPrepassSlot::SliceIR],
-        "PrePass::LightningTreeGen" => &[
-            BlackboardPrepassSlot::SurfaceClassification,
-            BlackboardPrepassSlot::LayerPlan,
-            BlackboardPrepassSlot::RegionMap,
-            BlackboardPrepassSlot::SliceIR,
-        ],
         "PrePass::RegionMapping" => &[BlackboardPrepassSlot::LayerPlan],
         // Host-only built-ins. `PrePass::Slice` does NOT self-list (it writes
         // SliceIR; no user-module satisfaction path exists). `PrePass::ShellClassification`

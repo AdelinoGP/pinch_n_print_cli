@@ -544,6 +544,7 @@ fn support_blocker_emits_paint_regions_from_disk() {
         "support_blocker_fixture.3mf",
         "bridge_support_blockers.3mf",
         "cube_positive_n_negative.3mf",
+        "bridge_support_enforcers.3mf",
     ];
     let mut chosen: Option<Arc<MeshIR>> = None;
     for name in candidates {

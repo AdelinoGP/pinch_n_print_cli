@@ -1,0 +1,96 @@
+{
+  "cell": "base-classic-off",
+  "run_id": "base-classic-off-probe",
+  "label": "probe",
+  "probe": true,
+  "profile": {
+    "seam": {
+      "module_wall_ms": 8404.993,
+      "module_fuel": 3863741367,
+      "scopes": [
+        {
+          "scope": "t84.candidates",
+          "fuel": 794626994,
+          "calls": 495,
+          "wall_ms": 94.582
+        },
+        {
+          "scope": "t84.offset_project",
+          "fuel": 402576116,
+          "calls": 495,
+          "wall_ms": 8195.444
+        },
+        {
+          "scope": "t84.choose",
+          "fuel": 275726446,
+          "calls": 495,
+          "wall_ms": 16.606
+        }
+      ]
+    },
+    "overhang_host": {
+      "wall_ms": 112425.258,
+      "scopes": [
+        {
+          "scope": "polygon_ops::offset",
+          "calls": 1455,
+          "wall_ms": 95956.664
+        },
+        {
+          "scope": "polygon_ops::clip_polygons",
+          "calls": 4859,
+          "wall_ms": 16468.405
+        }
+      ]
+    }
+  },
+  "wall_seconds": 89.771,
+  "cpu_seconds": 726.594,
+  "slice_complete_ms": 87848,
+  "bytes": 21023739,
+  "sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+  "status": "ok",
+  "degraded": false,
+  "fatal": 0,
+  "non_fatal": 0,
+  "stages_ms": {
+    "PrePass::OverhangAnnotation": 9510,
+    "PrePass::SeamPlanning": 8865
+  },
+  "terms": {
+    "overhang": {
+      "gather_ms": 10.618,
+      "kernel_ms": 9482.66,
+      "merge_ms": 1.064,
+      "clone_ms": 5.065,
+      "commit_ms": 0.001,
+      "objects": 1,
+      "layer_entries": 495,
+      "polys": 845,
+      "points": 2553550,
+      "band_layers": 485,
+      "bands": 1431,
+      "prev_layers": 485,
+      "prev_polys": 835,
+      "prev_points": 2547147
+    },
+    "seam_project": {
+      "project_ms": 4.228,
+      "regions": 495,
+      "polys": 845,
+      "points": 2553550,
+      "annotations": 0
+    },
+    "seam_call": {
+      "call_ms": 8776.963,
+      "push_ms": 0.041,
+      "pushes": 495
+    },
+    "seam_harvest": {
+      "harvest_ms": 58.142,
+      "entries": 495,
+      "candidates": 2553550
+    },
+    "overhang_window": {}
+  }
+}

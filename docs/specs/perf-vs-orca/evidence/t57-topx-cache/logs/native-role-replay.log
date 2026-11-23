@@ -1,0 +1,77 @@
+     Locking 1 package to latest compatible version
+      Adding clipper2-rust v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-rust)
+    Blocking waiting for file lock on package cache
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling syn v2.0.117
+   Compiling autocfg v1.5.0
+   Compiling libm v0.2.16
+   Compiling num-traits v0.2.19
+   Compiling getrandom v0.3.4
+   Compiling zerocopy v0.8.48
+   Compiling crossbeam-utils v0.8.21
+   Compiling cfg-if v1.0.4
+   Compiling serde_core v1.0.228
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_core v0.9.5
+   Compiling serde v1.0.228
+   Compiling thiserror v2.0.18
+   Compiling thiserror v1.0.69
+   Compiling rand_chacha v0.9.0
+   Compiling crossbeam-epoch v0.9.18
+   Compiling serde_derive v1.0.228
+   Compiling thiserror-impl v2.0.18
+   Compiling thiserror-impl v1.0.69
+   Compiling smallvec v1.15.1
+   Compiling heapless v0.8.0
+   Compiling rayon-core v1.13.0
+   Compiling byteorder v1.5.0
+   Compiling hash32 v0.3.1
+   Compiling crossbeam-deque v0.8.6
+   Compiling rand v0.9.4
+   Compiling stable_deref_trait v1.2.1
+   Compiling cpp_map v0.2.0
+   Compiling slicer-ir v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-ir)
+   Compiling approx v0.5.1
+   Compiling vob v3.0.6
+   Compiling ordered-float v5.3.0
+   Compiling slicer-core v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-core)
+   Compiling slicer-macros v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-macros)
+   Compiling either v1.15.0
+   Compiling rustc-hash v2.1.2
+   Compiling boostvoronoi v0.12.1
+   Compiling rayon v1.11.0
+   Compiling slicer-config v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-config)
+   Compiling rstar v0.12.2
+   Compiling clipper2-rust v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-rust)
+   Compiling slicer-schema v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-schema)
+   Compiling log v0.4.29
+   Compiling slicer-sdk v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-sdk)
+   Compiling tree-support-planner v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\modules\core-modules\tree-support-planner)
+   Compiling t57-role-replay v0.0.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\replay)
+warning: function `shape` is never used
+  --> src\main.rs:55:4
+   |
+55 | fn shape(polys:&[ExPolygon]) -> [usize;3] {
+   |    ^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `t57-role-replay` (bin "t57-role-replay" test) generated 1 warning
+    Finished `release` profile [optimized] target(s) in 1m 36s
+     Running unittests src\main.rs (.local-artifacts\perimeter-reference-preparation\t57-topx-cache\replay\target\release\deps\t57_role_replay-7d5ef91a563d0659.exe)
+
+running 1 test
+T57_EXACT_REPLAY benchy/168 PASS
+T57_EXACT_REPLAY benchy/152 PASS
+T57_EXACT_REPLAY benchy/43 PASS
+T57_EXACT_REPLAY benchy/0 PASS
+T57_EXACT_REPLAY base/232 PASS
+T57_EXACT_REPLAY base/38 PASS
+T57_EXACT_REPLAY base/21 PASS
+T57_EXACT_REPLAY base/9 PASS
+test candidate_full_original_role_chain_matches_recorded_ordered_results ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.86s
+

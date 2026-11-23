@@ -633,25 +633,40 @@ fn solid_fill_role(shell_index: Option<u8>, exposed: ExtrusionRole) -> Extrusion
     }
 }
 
-/// Adjust solid infill line spacing so that the polygon width is divided
-/// evenly, producing uniform scan lines that exactly span the polygon.
+/// Canonical `Fill::_adjust_solid_spacing` spacing epsilon on this grid.
 ///
-/// D-209-ADJUST-SOLID-SPACING-DIVERGENCE: differs from OrcaSlicer's
-/// `Fill::_adjust_solid_spacing` (`FillBase.cpp`) in three ways: PnP uses bare
-/// `width` instead of canonical `(width - EPSILON)` as the numerator of both
-/// divisions; PnP rounds where canonical truncates; and PnP returns the
-/// unmodified `distance` on the over-cap branch where canonical returns
-/// `floor(distance * 1.2 + 0.5)`.
+/// The source subtracts `EPSILON = 1e-4` from a `coord_t`, i.e. from a count of
+/// coordinate-scaled units, not from a physical length
+/// (`src/libslic3r/Fill/FillBase.cpp`). On the 100 nm grid any
+/// `0 < epsilon < 1` unit produces the same truncated interval count: an exact
+/// multiple `width = k * distance` drops to `k - 1` intervals, and every
+/// nonzero remainder keeps `k`. Representing `width - EPSILON` as
+/// `width - 1` is therefore exact for every integer `(width, distance)` pair.
+const SOLID_SPACING_EPSILON_UNITS: i64 = 1;
+
+/// Canonical 1.2x over-cap factor from `Fill::_adjust_solid_spacing`.
+const SOLID_SPACING_FACTOR_MAX: f64 = 1.2;
+
+/// Adjust solid infill line spacing so that the polygon width is divided
+/// evenly, following canonical `Fill::_adjust_solid_spacing` (`FillBase.cpp`).
+///
+/// The interval count and interval distance use the canonical
+/// `(width - EPSILON)` numerator and integer truncation; an over-cap factor is
+/// rounded to `floor(distance * 1.2 + 0.5)` rather than reset to `distance`.
+/// `distance` must be positive and `width` nonnegative: the caller guarantees
+/// both, so this non-validating kernel keeps its empty/degenerate contract.
 fn adjust_solid_spacing(width: i64, distance: i64) -> i64 {
-    let count = width / distance;
-    if count < 1 {
+    let adjusted_width = width.saturating_sub(SOLID_SPACING_EPSILON_UNITS);
+    let number_of_intervals = adjusted_width / distance;
+    if number_of_intervals < 1 {
         return distance;
     }
-    let new_distance = ((width as f64) / (count as f64)).round() as i64;
-    if (new_distance as f64) > (distance as f64) * 1.2 {
-        return distance;
+    let distance_new = adjusted_width / number_of_intervals;
+    let factor = (distance_new as f64) / (distance as f64);
+    if factor > SOLID_SPACING_FACTOR_MAX {
+        return (distance as f64 * SOLID_SPACING_FACTOR_MAX + 0.5).floor() as i64;
     }
-    new_distance
+    distance_new
 }
 
 /// Scan a single ExPolygon and produce fill segments.
@@ -842,6 +857,15 @@ fn rotate_point(x: i64, y: i64, cos_a: f64, sin_a: f64) -> (i64, i64) {
     let ry = (xf * sin_a + yf * cos_a).round() as i64;
     (rx, ry)
 }
+
+// Out-of-line property module. The two separate gates are load-bearing: the
+// default build never compiles it, and the feature alone (without a test
+// build) cannot pull Proptest or the property engine into a normal graph.
+// `cargo xtask check-literals` does not follow this declaration — see the
+// file's own literal-review note.
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;
 
 #[cfg(test)]
 mod tests {

@@ -1,6 +1,7 @@
 /// Declined support candidates are structured and never filled by fallback.
 use std::sync::Arc;
 
+use slicer_ir::slice_ir::SupportSourceKey;
 use slicer_ir::{
     MeshIR, SupportAnalysisIR, SupportPlanDeclineReason as DeclineReason,
     SupportPlanEntry as DeclineEntry, SupportPlanIR as DeclinePlan,
@@ -12,9 +13,11 @@ use slicer_wasm_host::support_aggregation::{
 };
 
 /// Ownership at the merge point is default-deny, and a DECLINE is only reported
-/// for an entry that owns the region it names -- a trespassing entry is refused
-/// before its decline is ever read. So a decline fixture must grant each
-/// entry's `(object_id, region_id)` to that entry's own family.
+/// for an entry that owns the full source it names -- a trespassing entry is
+/// refused before its decline is ever read. So a decline fixture must grant
+/// each entry's exact `(object_id, region_id, variant_chain)` source key to
+/// that entry's own family, cloning the entry's own chain so the key stays
+/// coherent with the identity that aggregation looks up.
 fn family_assignments_for(plans: &[DeclinePlan]) -> SupportAnalysisIR {
     SupportAnalysisIR {
         family_assignments: plans
@@ -22,7 +25,11 @@ fn family_assignments_for(plans: &[DeclinePlan]) -> SupportAnalysisIR {
             .flat_map(|plan| plan.entries.iter())
             .map(|entry| {
                 (
-                    (entry.object_id.clone(), entry.region_id),
+                    SupportSourceKey {
+                        object_id: entry.object_id.clone(),
+                        region_id: entry.region_id,
+                        variant_chain: entry.variant_chain.clone(),
+                    },
                     entry.family_id.clone(),
                 )
             })
@@ -52,21 +59,25 @@ pub fn support_decline_contract() {
     let decline_reason = DeclineReason::NoRoute;
     assert!(matches!(decline_reason, DeclineReason::NoRoute));
     let plan = DeclinePlan {
-        entries: vec![DeclineEntry {
-            global_layer_index: 0,
-            object_id: "object-a".into(),
-            region_id: 7,
-            family_id: "tree".into(),
-            demand_ids: vec!["demand-1".into()],
-            body_ids: vec![],
-            anchor_layer_index: 0,
-            anchor_z: 0,
-            roles: vec![],
-            skeleton: None,
-            capabilities: vec![],
-            provenance: vec![],
-            decline_reason: Some(decline_reason),
-        }],
+        entries: vec![
+            // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+            DeclineEntry {
+                global_layer_index: 0,
+                object_id: "object-a".into(),
+                region_id: 7,
+                family_id: "tree".into(),
+                demand_ids: vec!["demand-1".into()],
+                body_ids: vec![],
+                anchor_layer_index: 0,
+                anchor_z: 0,
+                roles: vec![],
+                skeleton: None,
+                capabilities: vec![],
+                provenance: vec![],
+                decline_reason: Some(decline_reason),
+                variant_chain: Vec::new(),
+            },
+        ],
         ..Default::default()
     };
     let exact_z = ExactZQueryService::new(Arc::new(MeshIR::default()));
@@ -107,21 +118,25 @@ pub fn support_decline_contract() {
 pub fn decline_is_attributed_to_producing_family_not_last_writer() {
     fn declining_plan(family_id: &str, demand_id: &str) -> DeclinePlan {
         DeclinePlan {
-            entries: vec![DeclineEntry {
-                global_layer_index: 0,
-                object_id: "object-a".into(),
-                region_id: 7,
-                family_id: family_id.into(),
-                demand_ids: vec![demand_id.into()],
-                body_ids: vec![],
-                anchor_layer_index: 0,
-                anchor_z: 0,
-                roles: vec![],
-                skeleton: None,
-                capabilities: vec![],
-                provenance: vec![],
-                decline_reason: Some(DeclineReason::NoRoute),
-            }],
+            entries: vec![
+                // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+                DeclineEntry {
+                    global_layer_index: 0,
+                    object_id: "object-a".into(),
+                    region_id: 7,
+                    family_id: family_id.into(),
+                    demand_ids: vec![demand_id.into()],
+                    body_ids: vec![],
+                    anchor_layer_index: 0,
+                    anchor_z: 0,
+                    roles: vec![],
+                    skeleton: None,
+                    capabilities: vec![],
+                    provenance: vec![],
+                    decline_reason: Some(DeclineReason::NoRoute),
+                    variant_chain: Vec::new(),
+                },
+            ],
             ..Default::default()
         }
     }
@@ -131,21 +146,25 @@ pub fn decline_is_attributed_to_producing_family_not_last_writer() {
     let plans = vec![
         declining_plan("traditional", "demand-1"),
         DeclinePlan {
-            entries: vec![DeclineEntry {
-                global_layer_index: 0,
-                object_id: "object-b".into(),
-                region_id: 9,
-                family_id: "tree".into(),
-                demand_ids: vec!["demand-2".into()],
-                body_ids: vec!["tree-body".into()],
-                anchor_layer_index: 0,
-                anchor_z: 0,
-                roles: vec![],
-                skeleton: None,
-                capabilities: vec![],
-                provenance: vec![],
-                decline_reason: None,
-            }],
+            entries: vec![
+                // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+                DeclineEntry {
+                    global_layer_index: 0,
+                    object_id: "object-b".into(),
+                    region_id: 9,
+                    family_id: "tree".into(),
+                    demand_ids: vec!["demand-2".into()],
+                    body_ids: vec!["tree-body".into()],
+                    anchor_layer_index: 0,
+                    anchor_z: 0,
+                    roles: vec![],
+                    skeleton: None,
+                    capabilities: vec![],
+                    provenance: vec![],
+                    decline_reason: None,
+                    variant_chain: Vec::new(),
+                },
+            ],
             ..Default::default()
         },
     ];

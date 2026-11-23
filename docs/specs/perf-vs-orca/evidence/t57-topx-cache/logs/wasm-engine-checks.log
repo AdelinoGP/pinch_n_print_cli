@@ -1,0 +1,1 @@
+PASS: actual WASM cache hit/fallback/lifetime checks and 1056 independent ordered-geometry comparisons

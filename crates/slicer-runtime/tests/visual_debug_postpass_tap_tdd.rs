@@ -390,6 +390,8 @@ fn postpass_whole_print_tap_contracts() {
             },
         ]))
         .expect("commit_slice_ir on a fresh Blackboard must succeed");
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index for zero-region slices");
     let wasm_handles = HashMap::new();
 
     // ---- Tier 2: run every per-layer stage, for every layer. ----

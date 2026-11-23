@@ -56,17 +56,6 @@ fn base_speed(role: &ExtrusionRole, config: &ConfigView) -> Result<f32, ModuleEr
     }
 }
 
-/// Overhang speed for `quartile` (1..=4), 0.0 otherwise.
-fn overhang_speed(quartile: u8, config: &ConfigView) -> Result<f32, ModuleError> {
-    match quartile {
-        1 => speed(config, "overhang_1_4_speed"),
-        2 => speed(config, "overhang_2_4_speed"),
-        3 => speed(config, "overhang_3_4_speed"),
-        4 => speed(config, "overhang_4_4_speed"),
-        _ => Ok(0.0),
-    }
-}
-
 /// Line width (mm) used for both overhang-quartile bucketing and curl
 /// distance synthesis. Reads `outer_wall_line_width`, falling back to
 /// `line_width` (matches the resolution convention documented in
@@ -574,22 +563,19 @@ impl FinalizationModule for OverhangClassifierDefault {
         output: &mut FinalizationOutputBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        // Required read (packet 06): `enable_overhang_speed` is `bool` in the
-        // manifest with a seeded `true` default, so the previous
-        // `.unwrap_or(true)` fallback becomes a hard requirement.
-        if !config.require_bool("enable_overhang_speed")? {
-            return Ok(());
-        }
-
+        // Shared with the perimeter producers: the same helper decides whether
+        // they stamp `overhang_quartile` / `overhang_distance_mm`, so the
+        // reader and the producers cannot disagree. The helper uses the same
+        // required reads, keeping a missing key a fatal config defect
+        // (packet 06).
+        //
         // Curl reuses the overhang speed table (no separate curl-specific
         // config keys — see the module doc-comment), so "all overhang bands
         // are zero" already means the whole feature family is off; skipping
         // here also avoids the wasted cross-layer point scan below.
-        let any_overhang_band_nonzero = (1..=4)
-            .try_fold(false, |acc, q| -> Result<bool, ModuleError> {
-                Ok(acc || overhang_speed(q, config)? != 0.0)
-            })?;
-        if !any_overhang_band_nonzero {
+        let overhang_consumed =
+            slicer_sdk::config_predicates::overhang_annotations_consumed(config)?;
+        if !overhang_consumed {
             return Ok(());
         }
         let flow_width = line_width(config)?;

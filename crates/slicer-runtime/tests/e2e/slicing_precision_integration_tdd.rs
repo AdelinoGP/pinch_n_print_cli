@@ -332,6 +332,11 @@ fn legacy_precision_run_is_deterministic() {
         "DET-2 FAILED: two identical legacy-mode runs produced different bytes — \
          the pipeline is nondeterministic on the zero-cost precision path."
     );
+
+    // INV-3 shares the first legacy run: the structural invariants are a
+    // property of the same output, so a separate slice would only re-derive
+    // the same bytes at the fixed per-slice module-load cost.
+    assert_legacy_structural_invariants(&a);
 }
 
 // ---------------------------------------------------------------------------
@@ -427,12 +432,10 @@ fn parse_layers(gcode: &str) -> Vec<ParsedLayer> {
 ///    so every X/Y token carries ≤ 4 decimals; the default-config run (decimals
 ///    = 3) carries ≤ 3. Proves the key flows through resolution to the emitter
 ///    on both paths.
-#[test]
-fn legacy_slice_structural_invariants() {
+fn assert_legacy_structural_invariants(legacy_bytes: &[u8]) {
     const EXPECTED_LAYERS: usize = 100;
     const LAYER_HEIGHT_MM: f64 = 0.2;
 
-    let legacy_bytes = run_with_config(LEGACY_PRECISION_JSON);
     let gcode = std::str::from_utf8(&legacy_bytes).expect("legacy gcode is utf-8");
 
     // -- 1. Analytic layer count ---------------------------------------------

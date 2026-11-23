@@ -7,11 +7,17 @@ authors = ["Pinch 'n Print Team"]
 [features]
 default = ["report"]
 report = []
+# Opt-in gate for the H-RUNTIME property targets and the inline
+# `region_partition::property_tests` unit tests. Empty on purpose: it exists so
+# `required-features` can keep Proptest harnesses out of default builds. The
+# normal `slicer-sdk` edge stays property-free; only the dev alias below opts in.
+property_testing = []
 perimeter-spatial-test-support = ["slicer-core/perimeter-spatial-test-support"]
 
 [dependencies]
 slicer-config = { path = "../slicer-config" }
 slicer-ir = { path = "../slicer-ir" }
+slicer-schema = { path = "../slicer-schema" }
 slicer-core = { path = "../slicer-core", features = ["host-algos"] }
 slicer-sdk = { path = "../slicer-sdk" }
 slicer-helpers = { path = "../slicer-helpers" }
@@ -65,8 +71,17 @@ wit-parser = "0.247"
 tempfile = "3"
 serde_json = "1.0"
 base64 = "0.22"
-slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk", features = ["test"] }
-slicer-schema = { path = "../slicer-schema" }
+sha2 = "0.10"
+slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk", features = ["property_testing"] }
+proptest = { workspace = true }
+preparation-lifecycle-guest = { path = "../slicer-wasm-host/test-guests/preparation-lifecycle-guest" }
+preparation-visual-guest = { path = "../slicer-wasm-host/test-guests/preparation-visual-guest" }
+preparation-lifecycle-anchored-guest = { path = "../slicer-wasm-host/test-guests/preparation-lifecycle-anchored-guest" }
+whole-print-input-path = { path = "../slicer-wasm-host/test-guests/whole-print-input-path" }
+whole-print-input-perimeters = { path = "../slicer-wasm-host/test-guests/whole-print-input-perimeters" }
+whole-print-input-infill = { path = "../slicer-wasm-host/test-guests/whole-print-input-infill" }
+whole-print-input-support = { path = "../slicer-wasm-host/test-guests/whole-print-input-support" }
+whole-print-input-anchored = { path = "../slicer-wasm-host/test-guests/whole-print-input-anchored" }
 sdk-layer-infill-guest = { path = "../slicer-wasm-host/test-guests/sdk-layer-infill-guest" }
 sdk-finalization-guest = { path = "../slicer-wasm-host/test-guests/sdk-finalization-guest" }
 sdk-postpass-text-guest = { path = "../slicer-wasm-host/test-guests/sdk-postpass-text-guest" }
@@ -113,6 +128,10 @@ path = "../../modules/core-modules/classic-perimeters"
 # packet 204 (AC-5): integrated_parity_support_planner_tdd drives SupportPlanner
 [dev-dependencies.tree-support-planner]
 path = "../../modules/core-modules/tree-support-planner"
+
+# AC-R8: exercise the real macro-generated native prepass entry alongside WASM.
+[dev-dependencies.traditional-support-planner]
+path = "../../modules/core-modules/traditional-support-planner"
 
 # packet 148 (AC-9): arachne_parity.rs drives ArachnePerimeters::run_perimeters
 # natively (mirroring the module's own canonical tdd tests) instead of
@@ -165,12 +184,44 @@ path = "../../modules/core-modules/path-optimization-default"
 path = "../../modules/core-modules/machine-gcode-emit"
 
 [[test]]
+name = "e2e"
+path = "tests/e2e/main.rs"
+
+[[test]]
 name = "integration"
 path = "tests/integration/main.rs"
 
 [[test]]
 name = "support_family_routing"
 path = "tests/integration/support_family_routing.rs"
+
+# H-RUNTIME registry targets. Both are gated so a default `cargo test` never
+# compiles the Proptest harness; the registry passes
+# `--features slicer-runtime/property_testing` explicitly.
+[[test]]
+name = "property_runtime"
+path = "tests/property_runtime.rs"
+required-features = ["property_testing"]
+
+[[test]]
+name = "property_runtime_contracts"
+path = "tests/property_runtime_contracts.rs"
+required-features = ["property_testing"]
+
+# Pre-pass runtime controls (packet `proptest-openrscad_11_pbt-prepass`). The
+# cross-stage map → paint → selection regression drives the real
+# `build_layer_selection_index` (`slicer-wasm-host`, already a normal
+# dependency of this crate). The target is property-feature gated like the
+# H-RUNTIME records so a default build never compiles it.
+[[test]]
+name = "property_prepass"
+path = "tests/property_prepass.rs"
+required-features = ["property_testing"]
+
+[[test]]
+name = "property_prepass_controls"
+path = "tests/property_prepass_controls.rs"
+required-features = ["property_testing"]
 
 [[bench]]
 name = "pipeline"

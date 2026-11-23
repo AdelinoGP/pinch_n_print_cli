@@ -12,6 +12,8 @@ use slicer_sdk::views::SliceRegionView;
 fn config_with_min_feature_size(percent: f64) -> ConfigView {
     let mut fields = HashMap::new();
     fields.insert("wall_loops".to_string(), ConfigValue::Int(2));
+    // Required slicing-time simplification read (manifest default 0.01 mm).
+    fields.insert("resolution".to_string(), ConfigValue::Float(0.01));
     fields.insert("inner_wall_line_width".to_string(), ConfigValue::Float(0.4));
     fields.insert("outer_wall_line_width".to_string(), ConfigValue::Float(0.4));
     fields.insert("detect_thin_wall".to_string(), ConfigValue::Bool(true));

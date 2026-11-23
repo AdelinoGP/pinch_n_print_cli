@@ -1,0 +1,44 @@
+{
+  "human_decision": "drop",
+  "candidate_patch_sha256": "ecc20349dd2365cabd065b87949add7a5b8a69fd6941107394c7aee614a4d0f0",
+  "source": {
+    "crates/slicer-core/src/perimeter_spatial.rs": {
+      "restored_sha256": "42ef6dc8bc50e034c37c68b057e11c5f1c3d160a3f3c23b14faec6fa36498a65",
+      "matches_head_and_pre_experiment": true
+    },
+    "crates/slicer-core/tests/perimeter_spatial_tdd.rs": {
+      "restored_sha256": "7c174e439069e08d8c9a2c32e931df2bf06a138b3ef800a3fdba17bf1032c592",
+      "matches_head_and_pre_experiment": true
+    }
+  },
+  "rebuilt_guest_sha256": {
+    "ordinary": "e93985ff869a4b0991997e6d0632a3ed86b632af9c7e01014f90c3cfc367ed64",
+    "accelerated": "cc54cc8bfc37b04c4f185fa4faf23ee59d20a9c170cd91551e10597124bc91b1"
+  },
+  "rebuild_matches_archived_baseline": true,
+  "restored_suite_log": "cleanup-restored-suite.log",
+  "patch_reapplicable_to_restored_tree": true,
+  "active_distribution_restoration": "restoration.json (unchanged)",
+  "automatic_commit": false,
+  "freshness": {
+    "ordinary": {
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--check"
+      ],
+      "exit_code": 0
+    },
+    "accelerated": {
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--accelerated",
+        "--check"
+      ],
+      "exit_code": 0
+    }
+  }
+}

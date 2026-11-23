@@ -10,6 +10,7 @@ use slicer::config::config_types::ConfigView;
 use slicer::ir_handles::ir_handles::{
     InfillOutputBuilder, LayerIdx, PaintRegionLayerView, SliceRegionView,
 };
+use slicer::support_queries::support_queries::SupportQueryView;
 
 struct Component;
 
@@ -18,17 +19,31 @@ impl Guest for Component {
         layer_index: LayerIdx,
         regions: Vec<SliceRegionView>,
         paint: PaintRegionLayerView,
+        support_queries: SupportQueryView,
         output: InfillOutputBuilder,
         config: ConfigView,
     ) -> Result<(), ModuleError> {
+        let support_entry_count: usize = regions
+            .iter()
+            .map(|region| {
+                support_queries
+                    .support_plan_entries(
+                        region.object_id().as_str(),
+                        region.region_id().as_str(),
+                        &region.variant_chain(),
+                    )
+                    .len()
+            })
+            .sum();
         let spacing = config.get_float("infill-spacing").unwrap_or(2.0);
         slicer::common::host_services::log(
             slicer::common::host_services::LogLevel::Info,
             &format!(
-                "run-infill: layer={}, spacing={}, regions={}",
+                "run-infill: layer={}, spacing={}, regions={}, support_entries={}",
                 layer_index,
                 spacing,
-                regions.len()
+                regions.len(),
+                support_entry_count
             ),
         );
 
@@ -37,17 +52,6 @@ impl Guest for Component {
         };
         let region_count = regions.len() as f32;
         let total_polys: f32 = regions.iter().map(|r| r.polygons().len() as f32).sum();
-        let lightning_segment_count: usize = regions
-            .iter()
-            .map(|region| {
-                paint
-                    .lightning_tree_segments(
-                        region.object_id().as_str(),
-                        region.region_id().as_str(),
-                    )
-                    .len()
-            })
-            .sum();
 
         let path = slicer::types::geometry::ExtrusionPath3d {
             points: vec![
@@ -78,27 +82,6 @@ impl Guest for Component {
             order_lock: None,
         };
         output.push_sparse_path(&path).expect("push failed");
-        if lightning_segment_count > 0 {
-            let witness = slicer::types::geometry::ExtrusionPath3d {
-                points: vec![slicer::types::geometry::Point3WithWidth {
-                    overhang_distance_mm: None,
-                    x: lightning_segment_count as f32,
-                    y: 0.0,
-                    z,
-                    width: 137.0,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                    dist_to_top_mm: 0.0,
-                }],
-                role: slicer::types::geometry::ExtrusionRole::SparseInfill,
-                speed_factor: 1.0,
-                tool_index: None,
-                order_lock: None,
-            };
-            output
-                .push_sparse_path(&witness)
-                .expect("push lightning witness failed");
-        }
         // Raft reads (packet 240a AC-7). Both witnesses are emitted only when
         // the accessor reports raft state, so every non-raft fixture keeps its
         // existing sparse-path shape.
@@ -107,7 +90,7 @@ impl Guest for Component {
                 .push_sparse_path(&witness_path(240.0, 1.0, 0.0, 1.0, z))
                 .expect("push is-raft witness failed");
         }
-        if let Some(raft) = paint.raft_plan() {
+        if let Some(raft) = support_queries.raft_plan() {
             output
                 .push_sparse_path(&witness_path(
                     241.0,

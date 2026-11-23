@@ -350,25 +350,26 @@ impl LayerModule for TreeSupport {
             ) = self.pitches_mm(layer_height)?;
 
             // Structural support plans carry semantic regions, not printable
-            // paths. A missing entry means this demand was declined; do not
+            // paths. The lookup is the exact full source identity (object,
+            // source region and ordered variant chain), so a same-number
+            // different-chain sibling cannot lend this region its entries.
+            // A missing entry means this demand was declined; do not
             // resurrect it with the legacy grid-MST filler.
             let planned_entries: Vec<&slicer_ir::SupportPlanEntry> = paint
-                .support_plan()
-                .map(|plan| {
-                    plan.entries
-                        .iter()
-                        .filter(|entry| {
-                            entry.object_id == region.object_id().as_str()
-                                && entry.region_id == *region.region_id()
-                                && (entry.global_layer_index == layer_index as i32
-                                    || (entry.anchor_layer_index == layer_index
-                                        && entry.anchor_z.abs_diff(slicer_ir::mm_to_units(z))
-                                            > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
-                                                as u64))
-                        })
-                        .collect()
+                .support_plan_entries_for(
+                    region.object_id().as_str(),
+                    *region.region_id(),
+                    region.variant_chain(),
+                )
+                .into_iter()
+                .filter(|entry| {
+                    entry.global_layer_index == layer_index as i32
+                        || (entry.anchor_layer_index == layer_index
+                            && entry.anchor_z.abs_diff(slicer_ir::mm_to_units(z))
+                                > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
+                                    as u64)
                 })
-                .unwrap_or_default();
+                .collect();
 
             if planned_entries.is_empty() {
                 continue;
@@ -780,10 +781,18 @@ impl TreeSupport {
             crossings.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             crossings
         };
+        // A crossing pair holds coordinates along the segment axis (Y when
+        // `vertical`), so it must be bounded by that axis's extent, not the
+        // scan axis's.
+        let (segment_min, segment_max) = if vertical {
+            (min_y, max_y)
+        } else {
+            (min_x, max_x)
+        };
         let emit_scanline = |scan: f64, paths: &mut Vec<ExtrusionPath3D>| {
             let crossings = crossings_at(scan);
             for pair in crossings.as_chunks::<2>().0 {
-                if pair[1] > pair[0] && pair[0] >= min_x && pair[1] <= max_x {
+                if pair[1] > pair[0] && pair[0] >= segment_min && pair[1] <= segment_max {
                     paths.push(ExtrusionPath3D {
                         points: vec![
                             self.support_point(
@@ -853,6 +862,10 @@ fn polygon_bbox_mm(expoly: &ExPolygon) -> (f64, f64, f64, f64) {
 
     (min_x, min_y, max_x, max_y)
 }
+
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1094,5 +1107,48 @@ mod tests {
         };
         let fills = module.scan_fill_region(&region, 2.0, 1.0, 1.0, false);
         assert!(!fills.is_empty(), "a small tip region must not be hollow");
+    }
+
+    /// Regression for the vertical-mode extent guard in `scan_fill_region`.
+    ///
+    /// Root cause: each crossing pair holds coordinates along the *segment*
+    /// axis (Y in vertical mode), but the guard compared it against the
+    /// region's X extent `[min_x, max_x]` — the perpendicular axis. For a
+    /// region taller than it is wide every vertical pair `(y=0, y=20)` failed
+    /// `pair[1] <= max_x` (`20 <= 10`), so no stroke was emitted, and the
+    /// mid-scan fallback at `x = 5` was rejected by the same comparison.
+    /// `vertical` is the production setting on every odd anchor layer
+    /// (`entry.anchor_layer_index % 2 != 0` in `TreeSupport::run_support`).
+    ///
+    /// Previously failing input: outer `[0,10] x [0,20]` mm, no holes,
+    /// `spacing = 2.5` mm, `z = 1.0`, `speed_factor = 1.0`, `vertical = true`.
+    #[test]
+    fn vertical_scan_fill_spans_the_full_y_extent_regression() {
+        let module = TreeSupport::from_config(&seeded_config()).unwrap();
+        let region = ExPolygon {
+            contour: slicer_ir::Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(10.0, 0.0),
+                    Point2::from_mm(10.0, 20.0),
+                    Point2::from_mm(0.0, 20.0),
+                ],
+            },
+            holes: vec![],
+        };
+        let fills = module.scan_fill_region(&region, 2.5, 1.0, 1.0, true);
+        assert_eq!(
+            fills.len(),
+            4,
+            "expected four vertical strokes at x = 1.25, 3.75, 6.25, 8.75 mm, got {fills:?}"
+        );
+        for (path, expected_x) in fills.iter().zip([1.25_f32, 3.75, 6.25, 8.75]) {
+            assert_eq!(path.role, ExtrusionRole::SupportMaterial);
+            assert_eq!(path.points.len(), 2, "a scan stroke has two points");
+            assert_eq!(path.points[0].x, expected_x);
+            assert_eq!(path.points[1].x, expected_x);
+            assert_eq!(path.points[0].y, 0.0, "stroke must start at y = 0");
+            assert_eq!(path.points[1].y, 20.0, "stroke must end at y = 20");
+        }
     }
 }

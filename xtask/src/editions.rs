@@ -106,10 +106,19 @@ mod tests {
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("xtask has a workspace parent")
-            .to_path_buf()
+        // Runtime-first so a cached test binary built in another checkout
+        // still resolves the tree it runs in (ticket 71); the compile-time
+        // parent stays as the fallback for runners that do not set this
+        // package's directory as the current directory.
+        std::env::current_dir()
+            .ok()
+            .and_then(|cwd| crate::build_guests::locate_root_from(&cwd))
+            .unwrap_or_else(|| {
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .expect("xtask has a workspace parent")
+                    .to_path_buf()
+            })
     }
 
     #[test]

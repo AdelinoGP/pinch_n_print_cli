@@ -1,0 +1,28 @@
+     Locking 2 packages to latest compatible versions
+      Adding clipper2-rust v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\negative-controls\wrong_projection\engine)
+      Adding clipper2-rust-oracle v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-original)
+   Compiling autocfg v1.5.0
+   Compiling num-traits v0.2.19
+   Compiling clipper2-rust v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\negative-controls\wrong_projection\engine)
+   Compiling clipper2-rust-oracle v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-original)
+   Compiling t57-negative-wrong-projection v0.0.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\negative-controls\wrong_projection)
+    Finished `release` profile [optimized] target(s) in 10.26s
+     Running unittests src\lib.rs (.local-artifacts\perimeter-reference-preparation\t57-topx-cache\negative-controls\wrong_projection\target\release\deps\t57_negative_wrong_projection-dcb140d1275640d3.exe)
+
+running 1 test
+
+thread 'native_shared_engine_cache_and_ordered_geometry_contract' (18796) panicked at engine\src\topx_contract.rs:28:5:
+assertion `left == right` failed
+  left: 5
+ right: 4
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test native_shared_engine_cache_and_ordered_geometry_contract ... FAILED
+
+failures:
+
+failures:
+    native_shared_engine_cache_and_ordered_geometry_contract
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

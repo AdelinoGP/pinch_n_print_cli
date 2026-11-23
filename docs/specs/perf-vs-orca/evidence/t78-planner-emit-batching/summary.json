@@ -1,0 +1,47 @@
+{
+  "cell": "ordinary-base-classic-on (12 rayon threads, external modules only)",
+  "head": "6fdb02ac",
+  "reference_sha256": "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319",
+  "reference_bytes": 43912792,
+  "arms": {
+    "candidate": {
+      "wall_seconds": 271.07,
+      "cpu_seconds": 1372.156,
+      "cpu_wall_ratio": 5.061999,
+      "sha256": "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319",
+      "bytes": 43912792,
+      "order": 1
+    },
+    "baseline": {
+      "wall_seconds": 355.893,
+      "cpu_seconds": 1356.203,
+      "cpu_wall_ratio": 3.810704,
+      "sha256": "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319",
+      "bytes": 43912792,
+      "order": 2
+    }
+  },
+  "derived": {
+    "wall_delta_seconds": -84.823,
+    "wall_delta_percent": -23.833849,
+    "cpu_delta_percent": 1.176299,
+    "stage_drop_ms": -46361,
+    "module_drop_ms": -48980
+  },
+  "attribution": {
+    "baseline": {
+      "support_geometry_ms": 127723,
+      "planner_module_ms": 109018
+    },
+    "candidate": {
+      "support_geometry_ms": 81362,
+      "planner_module_ms": 60038
+    }
+  },
+  "unit_tests": {
+    "passed": 146,
+    "failed": 0,
+    "crate": "tree-support-planner (own workspace)"
+  },
+  "strength": "one uninstrumented run per arm, candidate first; the wall delta is not a paired median and baseline has a faster instrumented sibling (301.0 s), so the attributed effect is the stage/module delta, not the wall pair"
+}

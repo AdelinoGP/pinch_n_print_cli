@@ -36,6 +36,19 @@ const RUSTC_PATH_FILE_NAME: &str = "rustc-path";
 const SHIM_FILE_STEM: &str = "rustc-shim";
 const SHIM_LAUNCHER_SOURCE_FILE_NAME: &str = "shim_launcher.rs";
 pub(crate) const PNP_XTASK_EXE_ENV: &str = "PNP_XTASK_EXE";
+/// Workspace root exported by the accelerated entry points to every child of
+/// the build they spawn.
+///
+/// The shim cannot always resolve it from the process's working directory: it
+/// is invoked as the `rustc` that compiles a package's `build.rs`, and cargo
+/// runs rustc with the **package** directory as CWD. For a registry dependency
+/// that is a path under `~/.cargo/registry`, whose ancestors never hold both
+/// `Cargo.toml` and `crates/`, so the runtime walk that
+/// `build_guests::workspace_root` performs for user-facing commands panics
+/// there (a cold accelerated build dies on `proc-macro2`'s build script).
+/// The entry point already knows the root; it exports it here and the shim
+/// re-validates it before use.
+pub(crate) const PNP_WORKSPACE_ROOT_ENV: &str = "PNP_XTASK_WORKSPACE_ROOT";
 
 const SHIM_LAUNCHER_SRC: &str = r#"use std::process::{exit, Command};
 
@@ -1295,9 +1308,59 @@ pub(crate) fn create_shim_wrapper(ws_root: &Path) -> io::Result<PathBuf> {
     Ok(wrapper)
 }
 
+/// Resolve the workspace root for a shim invocation.
+///
+/// Precedence, each candidate validated with the same
+/// `Cargo.toml` + `crates/` ancestor test the user-facing entry points use:
+///
+/// 1. [`PNP_WORKSPACE_ROOT_ENV`], exported by the accelerated entry point that
+///    spawned the build. This is the only candidate that survives cargo
+///    compiling a **dependency's** build script, where CWD is a registry path.
+/// 2. The working directory walk, which is correct for a hand-run
+///    `cargo xtask rustc-shim` from inside the repository.
+/// 3. The directory of the running xtask binary, which sits inside the tree
+///    that installed the shim (`<root>/target/<profile>/xtask.exe`).
+pub(crate) fn resolve_shim_root(
+    env_root: Option<&Path>,
+    cwd: &Path,
+    exe: Option<&Path>,
+) -> Option<PathBuf> {
+    let candidates = [
+        env_root.and_then(normalize_root),
+        crate::build_guests::locate_root_from(cwd).and_then(|root| normalize_root(&root)),
+        exe.and_then(Path::parent)
+            .and_then(crate::build_guests::locate_root_from)
+            .and_then(|root| normalize_root(&root)),
+    ];
+    candidates.into_iter().flatten().next()
+}
+
+/// Accept `path` only when it is an actual workspace root, canonicalized.
+fn normalize_root(path: &Path) -> Option<PathBuf> {
+    if !path.is_absolute() {
+        return None;
+    }
+    let located = crate::build_guests::locate_root_from(path)?;
+    Some(located.canonicalize().unwrap_or(located))
+}
+
+/// [`resolve_shim_root`] fed from the process environment.
+fn shim_workspace_root() -> Option<PathBuf> {
+    let env_root = env::var_os(PNP_WORKSPACE_ROOT_ENV).map(PathBuf::from);
+    let cwd = env::current_dir().ok()?;
+    let exe = env::current_exe().ok();
+    resolve_shim_root(env_root.as_deref(), &cwd, exe.as_deref())
+}
+
 /// Entry point for `cargo xtask rustc-shim ...`.
 pub(crate) fn run_shim_mode(args: &[String]) -> i32 {
-    let ws_root = crate::build_guests::workspace_root();
+    let Some(ws_root) = shim_workspace_root() else {
+        eprintln!(
+            "xtask rustc-shim: cannot locate the workspace root (no candidate from {PNP_WORKSPACE_ROOT_ENV}, \
+             the working directory, or the xtask binary's directory holds both Cargo.toml and crates/)"
+        );
+        return 1;
+    };
     if is_latched(&ws_root) {
         eprintln!("xtask rustc-shim: accelerated-driver session is latched; refusing invocation");
         return 1;

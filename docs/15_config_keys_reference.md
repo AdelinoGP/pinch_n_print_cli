@@ -58,6 +58,7 @@ is the authoritative catalog of their defaults and ranges.
 | `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `arachne-perimeters` |
 | `detect_overhang_wall` | bool | `true` | — | — | `arachne-perimeters` |
 | `detect_thin_wall` | bool | `false` | — | — | `arachne-perimeters` |
+| `enable_overhang_speed` | bool | `true` | — | — | `arachne-perimeters` |
 | `extra_perimeters` | int | `0` | [0.0, 10.0] | — | `arachne-perimeters` |
 | `extra_perimeters_on_overhangs` | bool | `false` | — | — | `arachne-perimeters` |
 | `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `arachne-perimeters` |
@@ -77,10 +78,15 @@ is the authoritative catalog of their defaults and ranges.
 | `only_one_wall_top` | bool | `false` | — | — | `arachne-perimeters` |
 | `outer_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | base `nozzle_diameter` | `arachne-perimeters` |
 | `outer_wall_offset` | float | `0` | >= 0.0 | — | `arachne-perimeters` |
+| `overhang_1_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `arachne-perimeters` |
+| `overhang_2_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `arachne-perimeters` |
+| `overhang_3_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `arachne-perimeters` |
+| `overhang_4_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `arachne-perimeters` |
 | `overhang_reverse` | bool | `false` | — | — | `arachne-perimeters` |
 | `overhang_reverse_internal_only` | bool | `false` | — | — | `arachne-perimeters` |
 | `overhang_reverse_threshold` | float_or_percent | `"0.0"` | [0.0, 10.0] | — | `arachne-perimeters` |
 | `precise_outer_wall` | bool | `false` | — | — | `arachne-perimeters` |
+| `resolution` | float | `0.01` | >= 0.0 | — | `arachne-perimeters` |
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | — | `arachne-perimeters` |
 | `sparse_infill_density` | float | `20.0` | [0.0, 100.0] | — | `arachne-perimeters` |
 | `spiral_vase` | bool | `false` | — | — | `arachne-perimeters` |
@@ -100,6 +106,7 @@ is the authoritative catalog of their defaults and ranges.
 | `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `classic-perimeters` |
 | `detect_overhang_wall` | bool | `true` | — | — | `classic-perimeters` |
 | `detect_thin_wall` | bool | `false` | — | — | `classic-perimeters` |
+| `enable_overhang_speed` | bool | `true` | — | — | `classic-perimeters` |
 | `extra_perimeters` | int | `0` | [0.0, 10.0] | — | `classic-perimeters` |
 | `extra_perimeters_on_overhangs` | bool | `false` | — | — | `classic-perimeters` |
 | `filter_out_gap_fill` | float | `0.5` | [0.0, 5.0] | — | `classic-perimeters` |
@@ -118,10 +125,15 @@ is the authoritative catalog of their defaults and ranges.
 | `only_one_wall_top` | bool | `false` | — | — | `classic-perimeters` |
 | `outer_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | base `nozzle_diameter` | `classic-perimeters` |
 | `outer_wall_speed` | float | `30.0` | [0.0, 300.0] | — | `classic-perimeters` |
+| `overhang_1_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `classic-perimeters` |
+| `overhang_2_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `classic-perimeters` |
+| `overhang_3_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `classic-perimeters` |
+| `overhang_4_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `classic-perimeters` |
 | `overhang_reverse` | bool | `false` | — | — | `classic-perimeters` |
 | `overhang_reverse_internal_only` | bool | `false` | — | — | `classic-perimeters` |
 | `perimeter_arc_tolerance` | float | `0.0125` | [0.0, 1.0] | — | `classic-perimeters` |
 | `precise_outer_wall` | bool | `false` | — | — | `classic-perimeters` |
+| `resolution` | float | `0.01` | >= 0.0 | — | `classic-perimeters` |
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | — | `classic-perimeters` |
 | `slice_has_paint` | bool | `false` | — | — | `classic-perimeters` |
 | `small_perimeter_threshold` | float | `0.0` | [0.0, 10.0] | — | `classic-perimeters` |
@@ -155,8 +167,11 @@ is the authoritative catalog of their defaults and ranges.
 | `layer_height` | float | `0.2` | [0.01, 1.0] | — | `layer-planner-default` |
 | `support_raft_layers` | int | `0` | [0.0, 100.0] | — | `layer-planner-default` |
 | `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `lightning-infill` |
+| `infill_direction` | float | `45.0` | [0.0, 360.0] | — | `lightning-infill` |
 | `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `lightning-infill` |
+| `layer_height` | float | `0.2` | [0.01, 2.0] | — | `lightning-infill` |
 | `line_width` | float | `0` | [0.0, 2.0] | — | `lightning-infill` |
+| `prepared_plan_diagnostic` | enum | `"none"` | — (values: none|missing_piece|malformed_piece|unsupported_version|empty_plan|missing_scene) | — | `lightning-infill` |
 | `sparse_infill_density` | float | `20.0` | [0.0, 100.0] | — | `lightning-infill` |
 | `sparse_infill_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `lightning-infill` |
 | `sparse_infill_speed` | float | `100.0` | >= 1.0 | — | `lightning-infill` |
@@ -441,7 +456,6 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `bridge_no_support` | bool | `false` | — | — | `resolved_config.rs::ResolvedConfig` |
 | `enforce_support_layers` | int | `0` | [0, 5000] | — | `resolved_config.rs::ResolvedConfig` |
 | `filament_max_volumetric_speed` | float | `0.0` | >= 0 (filament-scoped declared extension; 0 = unavailable when role speed requests volumetric auto; automatic role speed resolves per move in DefaultGCodeEmitter::emit_gcode) | — | `resolved_config.rs::ResolvedConfig` |
-| `flat_bridge_closing_join` | string | `"miter"` | — (flat-bridge enclosure closing join: miter (OrcaSlicer parity, default) | square | round (legacy, bit-identical, slow)) | — | `resolved_config.rs::ResolvedConfig` |
 | `gcode_resolution` | float | `0.0125` | >= 0 (D-P tolerance for walls / brim) | — | `resolved_config.rs::ResolvedConfig` |
 | `gcode_xy_decimals` | int | `3` | [1, 6] (X / Y / Z token formatting) | — | `resolved_config.rs::ResolvedConfig` |
 | `infill_resolution` | float | `0.04` | >= 0 (D-P tolerance for infill / bridge / top / bottom) | — | `resolved_config.rs::ResolvedConfig` |
@@ -449,6 +463,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `mmu_segmented_region_interlocking_depth` | float | `0.0` | >= 0 (mm; on EVEN layer indices this depth replaces (never adds to) `mmu_segmented_region_max_width`, giving the interlocking alternation. 0 disables. Canonical default 0. Canonical's tooltip claims the key is ignored when max_width is 0 or when depth > max_width; `cut_segmented_layers` implements neither clause and this port matches the code, not the tooltip.) | — | `resolved_config.rs::ResolvedConfig` |
 | `mmu_segmented_region_max_width` | float | `0.0` | >= 0 (mm; clips every painted MMU region to a band this wide measured in from the layer outline. 0 disables. Consumed by the host paint-segmentation prepass (`run_phase5_width_limit` -> `cut_segmented_layers`). Canonical default 0.) | — | `resolved_config.rs::ResolvedConfig` |
 | `printable_height` | float | `250.0` | >= 0 (build-volume height; objects taller are rejected before slicing. Intended deviation from canonical's 100.0 — matches this tree's 250 × 250 mm printable_area default and the value the emitter has always advertised.) | — | `resolved_config.rs::ResolvedConfig` |
+| `resolution` | float | `0.01` | >= 0 (clamped up to 0.001 by the resolver, canonical `normalize_fdm`) (slicing-time contour simplification before walls / infill (OrcaSlicer `resolution`)) | — | `resolved_config.rs::ResolvedConfig` |
 | `silent_mode` | bool | `false` | — (select the stealth variant of every configured machine_max_* pair for the time estimator (canonical GCodeProcessor stealth estimator); false = byte-identical output (wayfinder ticket 117)) | — | `resolved_config.rs::ResolvedConfig` |
 | `slice_closing_radius` | float | `0.049` | >= 0 (per-layer Clipper2 close) | — | `resolved_config.rs::ResolvedConfig` |
 | `sparse_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:sparse-fill (packet 37)) | — | `resolved_config.rs::ResolvedConfig` |
@@ -465,7 +480,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `top_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:top-fill (packet 37)) | — | `resolved_config.rs::ResolvedConfig` |
 | `top_shell_layers` | int | `3` | [1, 10] (deviates from OrcaSlicer's 4) | — | `resolved_config.rs::ResolvedConfig` |
 | `gcode_add_line_number` | bool | `false` | — (prefix every exported G-code line with N<line> (canonical PostProcessor.cpp::gcode_add_line_number); false = byte-identical output (wayfinder ticket 91 / P84)) | — | `run.rs::DEFAULT_GCODE_ADD_LINE_NUMBER` |
-| `post_process` | list | `[]` | — (commands run against the exported G-code in order (canonical PostProcessor.cpp::run_post_process_scripts); each gets the <output>.pp working-copy path as its final argument; empty = byte-identical output. Slice config only — a value carried by model metadata is refused (DEV-197) (wayfinder ticket 92 / P85)) | — | `run.rs::DEFAULT_POST_PROCESS` |
+| `post_process` | list | `[]` | — (commands run against the exported G-code in order (canonical PostProcessor.cpp::run_post_process_scripts); each gets the <output>.pp working-copy path as its final argument; empty = byte-identical output. Slice config only — a value carried by model metadata is refused (DEV-206) (wayfinder ticket 92 / P85)) | — | `run.rs::DEFAULT_POST_PROCESS` |
 | `thumbnail_path` | string | `""` | — (absent/empty = no THUMBNAIL_BLOCK; CLI --thumbnail overrides (packet 55)) | — | `pipeline.rs::DEFAULT_THUMBNAIL_PATH` |
 | `use_relative_e_distances` | bool | `true` | — (false selects M82; serializer issues G92 E0 on mode change (packet 54)) | — | `run.rs::DEFAULT_USE_RELATIVE_E_DISTANCES` |
 | `wall_generator` | string | `"classic"` | — (values classic or arachne; selects the perimeter-generator claim holder (com.core.classic-perimeters vs com.core.arachne-perimeters) at module-load time, before ResolvedConfig exists (packet 112 Step 10)) | — | `slicer-scheduler::execution_plan::DEFAULT_WALL_GENERATOR` |
@@ -502,6 +517,16 @@ speed-factor mutation is gone. The host's `overhang_classifier::classify_layers`
 prepass stamps the point annotations; it does NOT read the speed keys. Treat
 the source column above as "registration site"; treat ADR-0008 as the
 authoritative pointer to the consumer.
+
+**Consume-only-when-read (ticket 20, 2026-10-21):** `classic-perimeters` and
+`arachne-perimeters` now also declare these five keys so their per-layer
+`run_perimeters` can read the classifier's own liveness predicate through
+`slicer_sdk::config_predicates::overhang_annotations_consumed`. When the
+predicate is false (the matched jobs: `enable_overhang_speed=true` with all
+four bands at their `0.0` default), the generators skip both per-vertex
+annotation queries and emit `None` for `overhang_quartile` and
+`overhang_distance_mm` (`PathAnnotationMode::Unconsumed`); when it is true, the
+pre-ticket stamps are produced unchanged.
 
 <!-- VERIFY: this section previously documented a `union_paint_regions_at_harvest`
      bool key (default true) on a `paint-segmentation` scope, plus a

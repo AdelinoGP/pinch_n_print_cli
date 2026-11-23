@@ -1,0 +1,1440 @@
+{
+  "ab": {
+    "base-arachne-off": {
+      "baseline_cpu_seconds": [
+        1079.2031,
+        1091.7656,
+        1104.125
+      ],
+      "baseline_median_wall_seconds": 106.395,
+      "baseline_sha256": [
+        "7f36b0898a244ce27321ba6e6942387cee4273f3d5b8286f129e2eabffb10a23"
+      ],
+      "baseline_wall_seconds": [
+        102.9578,
+        106.395,
+        116.4784
+      ],
+      "candidate_cpu_seconds": [
+        801.0,
+        802.8906,
+        811.0469
+      ],
+      "candidate_median_wall_seconds": 80.3942,
+      "candidate_sha256": [
+        "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f"
+      ],
+      "candidate_wall_seconds": [
+        78.7557,
+        80.3942,
+        86.7057
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 288.875,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 30.547488133840872,
+      "floor_seconds": 0.85116,
+      "gcode_bytes": [
+        20846194,
+        20847171
+      ],
+      "median_wall_delta_fraction": 0.244379905070727,
+      "median_wall_delta_seconds": 26.000799999999998,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 278.20309999999995,
+          "pair": 1,
+          "wall_delta_seconds": 24.2021
+        },
+        {
+          "cpu_delta_seconds": 288.875,
+          "pair": 2,
+          "wall_delta_seconds": 26.000799999999998
+        },
+        {
+          "cpu_delta_seconds": 293.07809999999995,
+          "pair": 3,
+          "wall_delta_seconds": 29.7727
+        }
+      ],
+      "runs_per_arm": 3
+    },
+    "base-arachne-on": {
+      "baseline_cpu_seconds": [
+        1412.9375,
+        1416.7031,
+        1403.4688
+      ],
+      "baseline_median_wall_seconds": 185.4661,
+      "baseline_sha256": [
+        "d8ef39a53a2f67ba8c2cb8ad365966de41291a260bd8d5b83b4b3d4fee4f4186"
+      ],
+      "baseline_wall_seconds": [
+        192.8714,
+        180.9098,
+        185.4661
+      ],
+      "candidate_cpu_seconds": [
+        1148.2188,
+        1143.75,
+        1134.8906
+      ],
+      "candidate_median_wall_seconds": 164.4097,
+      "candidate_sha256": [
+        "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee"
+      ],
+      "candidate_wall_seconds": [
+        176.1402,
+        164.2914,
+        164.4097
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 269.1875,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 14.191542281850984,
+      "floor_seconds": 1.4837288000000002,
+      "gcode_bytes": [
+        42330299,
+        42331252
+      ],
+      "median_wall_delta_fraction": 0.11353233825480788,
+      "median_wall_delta_seconds": 21.056400000000025,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 264.7186999999999,
+          "pair": 1,
+          "wall_delta_seconds": 16.7312
+        },
+        {
+          "cpu_delta_seconds": 272.95309999999995,
+          "pair": 2,
+          "wall_delta_seconds": 16.61839999999998
+        },
+        {
+          "cpu_delta_seconds": 268.57820000000015,
+          "pair": 3,
+          "wall_delta_seconds": 21.056400000000025
+        }
+      ],
+      "runs_per_arm": 3
+    },
+    "base-classic-off": {
+      "baseline_cpu_seconds": [
+        1073.4375,
+        1096.7656,
+        1084.3125
+      ],
+      "baseline_median_wall_seconds": 106.8311,
+      "baseline_sha256": [
+        "910afa320bd19b07962312889aab03347d8a7638723b65c631cc7519c35a9e72"
+      ],
+      "baseline_wall_seconds": [
+        102.2029,
+        120.3822,
+        106.8311
+      ],
+      "candidate_cpu_seconds": [
+        798.0,
+        806.0156,
+        810.3906
+      ],
+      "candidate_median_wall_seconds": 83.983,
+      "candidate_sha256": [
+        "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131"
+      ],
+      "candidate_wall_seconds": [
+        78.6747,
+        83.983,
+        84.3039
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 278.29690000000005,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 26.733905201762408,
+      "floor_seconds": 0.8546488000000001,
+      "gcode_bytes": [
+        21023773,
+        21026410
+      ],
+      "median_wall_delta_fraction": 0.21387124161409926,
+      "median_wall_delta_seconds": 22.848100000000002,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 275.4375,
+          "pair": 1,
+          "wall_delta_seconds": 23.5282
+        },
+        {
+          "cpu_delta_seconds": 290.75,
+          "pair": 2,
+          "wall_delta_seconds": 36.39919999999999
+        },
+        {
+          "cpu_delta_seconds": 273.92190000000005,
+          "pair": 3,
+          "wall_delta_seconds": 22.527200000000008
+        }
+      ],
+      "runs_per_arm": 3
+    },
+    "base-classic-on": {
+      "baseline_cpu_seconds": [
+        1392.3125,
+        1381.6562,
+        1397.2656
+      ],
+      "baseline_median_wall_seconds": 176.4083,
+      "baseline_sha256": [
+        "4b6d28434d83f6e347dd353ff0300ee25f2c314b46dd9546b589d9a911438bb1"
+      ],
+      "baseline_wall_seconds": [
+        174.3524,
+        176.4083,
+        182.6787
+      ],
+      "candidate_cpu_seconds": [
+        1111.0469,
+        1134.3594,
+        1142.9688
+      ],
+      "candidate_median_wall_seconds": 160.7329,
+      "candidate_sha256": [
+        "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca"
+      ],
+      "candidate_wall_seconds": [
+        150.0278,
+        160.7329,
+        174.8961
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 257.95309999999995,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 11.107328850173147,
+      "floor_seconds": 1.4112664,
+      "gcode_bytes": [
+        42507946,
+        42510534
+      ],
+      "median_wall_delta_fraction": 0.08885863080138517,
+      "median_wall_delta_seconds": 15.675399999999996,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 281.26559999999995,
+          "pair": 1,
+          "wall_delta_seconds": 24.324599999999975
+        },
+        {
+          "cpu_delta_seconds": 247.29679999999985,
+          "pair": 2,
+          "wall_delta_seconds": 15.675399999999996
+        },
+        {
+          "cpu_delta_seconds": 254.29679999999985,
+          "pair": 3,
+          "wall_delta_seconds": 7.782600000000002
+        }
+      ],
+      "runs_per_arm": 3
+    },
+    "benchy-arachne-off": {
+      "baseline_cpu_seconds": [
+        60.2188,
+        61.2656,
+        60.3125
+      ],
+      "baseline_median_wall_seconds": 7.2733,
+      "baseline_sha256": [
+        "9ef7617b0eb15d6e9b1bba715b6d3941bcf0326821b12fca7e6981393eea2f1a"
+      ],
+      "baseline_wall_seconds": [
+        7.1478,
+        7.6927,
+        7.2733
+      ],
+      "candidate_cpu_seconds": [
+        43.1094,
+        43.8906,
+        43.4375
+      ],
+      "candidate_median_wall_seconds": 5.938,
+      "candidate_sha256": [
+        "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219"
+      ],
+      "candidate_wall_seconds": [
+        5.8428,
+        6.1039,
+        5.938
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 16.875,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 22.948661542903498,
+      "floor_seconds": 0.0581864,
+      "gcode_bytes": [
+        4064091,
+        4064304
+      ],
+      "median_wall_delta_fraction": 0.183589292343228,
+      "median_wall_delta_seconds": 1.3353000000000002,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 17.1094,
+          "pair": 1,
+          "wall_delta_seconds": 1.3049999999999997
+        },
+        {
+          "cpu_delta_seconds": 17.375,
+          "pair": 2,
+          "wall_delta_seconds": 1.5888
+        },
+        {
+          "cpu_delta_seconds": 16.875,
+          "pair": 3,
+          "wall_delta_seconds": 1.3353000000000002
+        }
+      ],
+      "runs_per_arm": 3
+    },
+    "benchy-arachne-on": {
+      "baseline_cpu_seconds": [
+        75.6406,
+        77.3125,
+        77.5625
+      ],
+      "baseline_median_wall_seconds": 11.7505,
+      "baseline_sha256": [
+        "d4644c14e14c8b39e72c20866c6ffe02ea25b21bd8b0004be0019a56886af4fd"
+      ],
+      "baseline_wall_seconds": [
+        11.3154,
+        12.3068,
+        11.7505
+      ],
+      "candidate_cpu_seconds": [
+        60.2656,
+        60.7031,
+        59.5625
+      ],
+      "candidate_median_wall_seconds": 10.1152,
+      "candidate_sha256": [
+        "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd"
+      ],
+      "candidate_wall_seconds": [
+        9.8341,
+        10.7213,
+        10.1152
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 17.0469,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 17.3960682524148,
+      "floor_seconds": 0.094004,
+      "gcode_bytes": [
+        8390069,
+        8390202
+      ],
+      "median_wall_delta_fraction": 0.13916854601931838,
+      "median_wall_delta_seconds": 1.6353000000000009,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 15.375000000000007,
+          "pair": 1,
+          "wall_delta_seconds": 1.481300000000001
+        },
+        {
+          "cpu_delta_seconds": 16.6094,
+          "pair": 2,
+          "wall_delta_seconds": 1.5855000000000015
+        },
+        {
+          "cpu_delta_seconds": 18.0,
+          "pair": 3,
+          "wall_delta_seconds": 1.6353000000000009
+        }
+      ],
+      "runs_per_arm": 3
+    },
+    "benchy-classic-off": {
+      "baseline_cpu_seconds": [
+        59.2188,
+        60.1562,
+        59.3594
+      ],
+      "baseline_median_wall_seconds": 7.2335,
+      "baseline_sha256": [
+        "39298f40c129f105811bf50b1e1d8d4e55c2ecd7eb6babfa8050bde63ec82fc5"
+      ],
+      "baseline_wall_seconds": [
+        7.0185,
+        7.607,
+        7.2335
+      ],
+      "candidate_cpu_seconds": [
+        42.25,
+        43.0625,
+        42.7812
+      ],
+      "candidate_median_wall_seconds": 5.7888,
+      "candidate_sha256": [
+        "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897"
+      ],
+      "candidate_wall_seconds": [
+        5.7033,
+        5.9361,
+        5.7888
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 16.578200000000002,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 24.965438584364417,
+      "floor_seconds": 0.057868,
+      "gcode_bytes": [
+        3925588,
+        3926024
+      ],
+      "median_wall_delta_fraction": 0.19972350867491534,
+      "median_wall_delta_seconds": 1.4447,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 16.9688,
+          "pair": 1,
+          "wall_delta_seconds": 1.3152000000000008
+        },
+        {
+          "cpu_delta_seconds": 17.0937,
+          "pair": 2,
+          "wall_delta_seconds": 1.6709000000000005
+        },
+        {
+          "cpu_delta_seconds": 16.578200000000002,
+          "pair": 3,
+          "wall_delta_seconds": 1.4447
+        }
+      ],
+      "runs_per_arm": 3
+    },
+    "benchy-classic-on": {
+      "baseline_cpu_seconds": [
+        75.3594,
+        75.1875,
+        75.0938
+      ],
+      "baseline_median_wall_seconds": 11.5827,
+      "baseline_sha256": [
+        "3b8fa86a6c142b4bd1aa727d36d6bcb654d637e1d29c98e30346395f45ac3948"
+      ],
+      "baseline_wall_seconds": [
+        11.3531,
+        12.4194,
+        11.5827
+      ],
+      "candidate_cpu_seconds": [
+        57.1094,
+        58.5781,
+        59.8594
+      ],
+      "candidate_median_wall_seconds": 10.2081,
+      "candidate_sha256": [
+        "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e"
+      ],
+      "candidate_wall_seconds": [
+        10.2621,
+        10.2081,
+        9.9532
+      ],
+      "cpu_corroborates": true,
+      "cpu_delta_median_seconds": 16.6094,
+      "exit_codes": [
+        0
+      ],
+      "floor_multiple": 14.83462405138699,
+      "floor_seconds": 0.09266160000000001,
+      "gcode_bytes": [
+        8252446,
+        8252846
+      ],
+      "median_wall_delta_fraction": 0.11867699241109593,
+      "median_wall_delta_seconds": 1.374600000000001,
+      "pairs": [
+        {
+          "cpu_delta_seconds": 18.249999999999993,
+          "pair": 1,
+          "wall_delta_seconds": 1.0909999999999993
+        },
+        {
+          "cpu_delta_seconds": 16.6094,
+          "pair": 2,
+          "wall_delta_seconds": 2.2112999999999996
+        },
+        {
+          "cpu_delta_seconds": 15.2344,
+          "pair": 3,
+          "wall_delta_seconds": 1.6295000000000002
+        }
+      ],
+      "runs_per_arm": 3
+    }
+  },
+  "arm_equality": {
+    "base-arachne-off": {
+      "baseline_accelerated_sha256": "7f36b0898a244ce27321ba6e6942387cee4273f3d5b8286f129e2eabffb10a23",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "7f36b0898a244ce27321ba6e6942387cee4273f3d5b8286f129e2eabffb10a23",
+      "candidate_accelerated_sha256": "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f"
+    },
+    "base-arachne-on": {
+      "baseline_accelerated_sha256": "d8ef39a53a2f67ba8c2cb8ad365966de41291a260bd8d5b83b4b3d4fee4f4186",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "d8ef39a53a2f67ba8c2cb8ad365966de41291a260bd8d5b83b4b3d4fee4f4186",
+      "candidate_accelerated_sha256": "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee"
+    },
+    "base-classic-off": {
+      "baseline_accelerated_sha256": "910afa320bd19b07962312889aab03347d8a7638723b65c631cc7519c35a9e72",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "910afa320bd19b07962312889aab03347d8a7638723b65c631cc7519c35a9e72",
+      "candidate_accelerated_sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131"
+    },
+    "base-classic-on": {
+      "baseline_accelerated_sha256": "4b6d28434d83f6e347dd353ff0300ee25f2c314b46dd9546b589d9a911438bb1",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "4b6d28434d83f6e347dd353ff0300ee25f2c314b46dd9546b589d9a911438bb1",
+      "candidate_accelerated_sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca"
+    },
+    "benchy-arachne-off": {
+      "baseline_accelerated_sha256": "9ef7617b0eb15d6e9b1bba715b6d3941bcf0326821b12fca7e6981393eea2f1a",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "9ef7617b0eb15d6e9b1bba715b6d3941bcf0326821b12fca7e6981393eea2f1a",
+      "candidate_accelerated_sha256": "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219"
+    },
+    "benchy-arachne-on": {
+      "baseline_accelerated_sha256": "d4644c14e14c8b39e72c20866c6ffe02ea25b21bd8b0004be0019a56886af4fd",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "d4644c14e14c8b39e72c20866c6ffe02ea25b21bd8b0004be0019a56886af4fd",
+      "candidate_accelerated_sha256": "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd"
+    },
+    "benchy-classic-off": {
+      "baseline_accelerated_sha256": "39298f40c129f105811bf50b1e1d8d4e55c2ecd7eb6babfa8050bde63ec82fc5",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "39298f40c129f105811bf50b1e1d8d4e55c2ecd7eb6babfa8050bde63ec82fc5",
+      "candidate_accelerated_sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897"
+    },
+    "benchy-classic-on": {
+      "baseline_accelerated_sha256": "3b8fa86a6c142b4bd1aa727d36d6bcb654d637e1d29c98e30346395f45ac3948",
+      "baseline_arms_identical": true,
+      "baseline_ordinary_sha256": "3b8fa86a6c142b4bd1aa727d36d6bcb654d637e1d29c98e30346395f45ac3948",
+      "candidate_accelerated_sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e",
+      "candidate_arms_identical": true,
+      "candidate_moved_from_baseline": true,
+      "candidate_ordinary_sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e"
+    }
+  },
+  "arms": [
+    "baseline-ordinary",
+    "baseline-accelerated",
+    "candidate-ordinary",
+    "candidate-accelerated"
+  ],
+  "binaries": {
+    "baseline_ordinary_sha256": "2fbfec0a653c84c0c8f96a687a536ba289d3fee454f35eb7b8169d65a34fafe9",
+    "candidate_ordinary_sha256": "0ef2dcb77cdbef6556d5ff370ff34d2aac2e78e448761d5f4d6f08093e6ff622"
+  },
+  "cells": [
+    "benchy-classic-off",
+    "benchy-classic-on",
+    "benchy-arachne-off",
+    "benchy-arachne-on",
+    "base-classic-off",
+    "base-classic-on",
+    "base-arachne-off",
+    "base-arachne-on"
+  ],
+  "delta_audit": {
+    "base-arachne-off": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 5h 41m 12s",
+        "; filament used [mm] = 13271.91",
+        "; flat_bridge_closing_join = miter"
+      ],
+      "baseline_sha256": "7f36b0898a244ce27321ba6e6942387cee4273f3d5b8286f129e2eabffb10a23",
+      "candidate_sha256": "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f",
+      "cell": "base-arachne-off",
+      "changed_types": {
+        "Bottom surface": {
+          "changed_lines": 134,
+          "extrusion_only": 1,
+          "geometry": 131,
+          "progress_counter": 2
+        },
+        "Bridge": {
+          "changed_lines": 120,
+          "geometry": 118,
+          "progress_counter": 2
+        },
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 16,
+          "extrusion_only": 13
+        },
+        "Internal Bridge": {
+          "changed_lines": 913,
+          "geometry": 913
+        },
+        "Outer wall": {
+          "changed_lines": 12,
+          "extrusion_only": 12
+        },
+        "Sparse infill": {
+          "changed_lines": 138,
+          "extrusion_only": 20,
+          "geometry": 112,
+          "progress_counter": 6
+        }
+      },
+      "fill_geometry_lines": 1274,
+      "first_changed_z": {
+        "Bottom surface": 8.4,
+        "Bridge": 2.0,
+        "Inner wall": 4.8,
+        "Internal Bridge": 53.6,
+        "Outer wall": 51.0,
+        "Sparse infill": 7.4
+      },
+      "layer_count": 495,
+      "structural_changed_types": {
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 16,
+          "extrusion_only": 13
+        },
+        "Outer wall": {
+          "changed_lines": 12,
+          "extrusion_only": 12
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    },
+    "base-arachne-on": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 10h 30m 57s",
+        "; filament used [mm] = 30631.74",
+        "; flat_bridge_closing_join = miter"
+      ],
+      "baseline_sha256": "d8ef39a53a2f67ba8c2cb8ad365966de41291a260bd8d5b83b4b3d4fee4f4186",
+      "candidate_sha256": "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee",
+      "cell": "base-arachne-on",
+      "changed_types": {
+        "Bottom surface": {
+          "changed_lines": 132,
+          "extrusion_only": 1,
+          "geometry": 131
+        },
+        "Bridge": {
+          "changed_lines": 119,
+          "extrusion_only": 1,
+          "geometry": 118
+        },
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 3
+        },
+        "Internal Bridge": {
+          "changed_lines": 913,
+          "geometry": 913
+        },
+        "Sparse infill": {
+          "changed_lines": 113,
+          "extrusion_only": 1,
+          "geometry": 112
+        },
+        "Support": {
+          "changed_lines": 14,
+          "extrusion_only": 12,
+          "progress_counter": 2
+        }
+      },
+      "fill_geometry_lines": 1274,
+      "first_changed_z": {
+        "Bottom surface": 8.4,
+        "Bridge": 2.0,
+        "Inner wall": 99.0,
+        "Internal Bridge": 53.6,
+        "Sparse infill": 8.4,
+        "Support": 15.8
+      },
+      "layer_count": 495,
+      "structural_changed_types": {
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 3
+        },
+        "Support": {
+          "changed_lines": 14,
+          "extrusion_only": 12,
+          "progress_counter": 2
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    },
+    "base-classic-off": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 5h 43m 59s",
+        "; filament used [mm] = 13132.76",
+        "; flat_bridge_closing_join = miter"
+      ],
+      "baseline_sha256": "910afa320bd19b07962312889aab03347d8a7638723b65c631cc7519c35a9e72",
+      "candidate_sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131",
+      "cell": "base-classic-off",
+      "changed_types": {
+        "Bottom surface": {
+          "changed_lines": 142,
+          "geometry": 138,
+          "progress_counter": 4
+        },
+        "Bridge": {
+          "changed_lines": 149,
+          "extrusion_only": 3,
+          "geometry": 142,
+          "progress_counter": 4
+        },
+        "Gap infill": {
+          "changed_lines": 12,
+          "progress_counter": 12
+        },
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 4,
+          "extrusion_only": 1
+        },
+        "Internal Bridge": {
+          "changed_lines": 902,
+          "geometry": 902
+        },
+        "Outer wall": {
+          "changed_lines": 31,
+          "extrusion_only": 31
+        },
+        "Sparse infill": {
+          "changed_lines": 196,
+          "extrusion_only": 27,
+          "geometry": 143,
+          "progress_counter": 26
+        }
+      },
+      "fill_geometry_lines": 1325,
+      "first_changed_z": {
+        "Bottom surface": 8.8,
+        "Bridge": 8.8,
+        "Gap infill": 3.8,
+        "Inner wall": 39.4,
+        "Internal Bridge": 53.6,
+        "Outer wall": 27.4,
+        "Sparse infill": 4.0
+      },
+      "layer_count": 495,
+      "structural_changed_types": {
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 4,
+          "extrusion_only": 1
+        },
+        "Outer wall": {
+          "changed_lines": 31,
+          "extrusion_only": 31
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    },
+    "base-classic-on": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 10h 33m 32s",
+        "; filament used [mm] = 30494.07",
+        "; flat_bridge_closing_join = miter"
+      ],
+      "baseline_sha256": "4b6d28434d83f6e347dd353ff0300ee25f2c314b46dd9546b589d9a911438bb1",
+      "candidate_sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca",
+      "cell": "base-classic-on",
+      "changed_types": {
+        "Bottom surface": {
+          "changed_lines": 138,
+          "geometry": 138
+        },
+        "Bridge": {
+          "changed_lines": 143,
+          "extrusion_only": 1,
+          "geometry": 142
+        },
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 3
+        },
+        "Internal Bridge": {
+          "changed_lines": 900,
+          "geometry": 900
+        },
+        "Sparse infill": {
+          "changed_lines": 144,
+          "extrusion_only": 1,
+          "geometry": 143
+        },
+        "Support": {
+          "changed_lines": 22,
+          "extrusion_only": 16,
+          "progress_counter": 6
+        },
+        "Support interface": {
+          "changed_lines": 8,
+          "progress_counter": 8
+        }
+      },
+      "fill_geometry_lines": 1323,
+      "first_changed_z": {
+        "Bottom surface": 8.8,
+        "Bridge": 8.8,
+        "Inner wall": 99.0,
+        "Internal Bridge": 53.6,
+        "Sparse infill": 8.4,
+        "Support": 15.8,
+        "Support interface": 15.6
+      },
+      "layer_count": 495,
+      "structural_changed_types": {
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 3
+        },
+        "Support": {
+          "changed_lines": 22,
+          "extrusion_only": 16,
+          "progress_counter": 6
+        },
+        "Support interface": {
+          "changed_lines": 8,
+          "progress_counter": 8
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    },
+    "benchy-arachne-off": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 1h 38m 45s",
+        "; filament used [mm] = 3407.52",
+        "; flat_bridge_closing_join = miter",
+        "; path-optimization layer 158 regions=1 entities=6",
+        ";LAYER_CHANGE"
+      ],
+      "baseline_sha256": "9ef7617b0eb15d6e9b1bba715b6d3941bcf0326821b12fca7e6981393eea2f1a",
+      "candidate_sha256": "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219",
+      "cell": "benchy-arachne-off",
+      "changed_types": {
+        "Bottom surface": {
+          "appendix": 2,
+          "changed_lines": 799,
+          "geometry": 797
+        },
+        "Bridge": {
+          "appendix": 2,
+          "changed_lines": 770,
+          "extrusion_only": 2,
+          "geometry": 766
+        },
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 22,
+          "extrusion_only": 19
+        },
+        "Internal Bridge": {
+          "changed_lines": 73,
+          "geometry": 71,
+          "progress_counter": 2
+        },
+        "Sparse infill": {
+          "changed_lines": 62,
+          "extrusion_only": 21,
+          "geometry": 29,
+          "progress_counter": 12
+        }
+      },
+      "fill_geometry_lines": 1663,
+      "first_changed_z": {
+        "Bottom surface": 0.4,
+        "Bridge": 0.4,
+        "Inner wall": 15.6,
+        "Internal Bridge": 6.0,
+        "Sparse infill": 0.8
+      },
+      "layer_count": 240,
+      "structural_changed_types": {
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 22,
+          "extrusion_only": 19
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    },
+    "benchy-arachne-on": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 2h 34m 37s",
+        "; filament used [mm] = 6057.66",
+        "; flat_bridge_closing_join = miter"
+      ],
+      "baseline_sha256": "d4644c14e14c8b39e72c20866c6ffe02ea25b21bd8b0004be0019a56886af4fd",
+      "candidate_sha256": "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd",
+      "cell": "benchy-arachne-on",
+      "changed_types": {
+        "Bottom surface": {
+          "changed_lines": 795,
+          "geometry": 795
+        },
+        "Bridge": {
+          "changed_lines": 765,
+          "extrusion_only": 2,
+          "geometry": 763
+        },
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 6,
+          "extrusion_only": 3
+        },
+        "Internal Bridge": {
+          "changed_lines": 72,
+          "extrusion_only": 1,
+          "geometry": 71
+        },
+        "Internal solid infill": {
+          "changed_lines": 1,
+          "extrusion_only": 1
+        },
+        "Outer wall": {
+          "changed_lines": 1,
+          "extrusion_only": 1
+        },
+        "Sparse infill": {
+          "changed_lines": 29,
+          "geometry": 29
+        },
+        "Support": {
+          "changed_lines": 24,
+          "extrusion_only": 18,
+          "progress_counter": 6
+        }
+      },
+      "fill_geometry_lines": 1658,
+      "first_changed_z": {
+        "Bottom surface": 0.4,
+        "Bridge": 0.4,
+        "Inner wall": 8.4,
+        "Internal Bridge": 38.2,
+        "Internal solid infill": 0.4,
+        "Outer wall": 19.2,
+        "Sparse infill": 14.8,
+        "Support": 1.2
+      },
+      "layer_count": 240,
+      "structural_changed_types": {
+        "Inner wall": {
+          "appendix": 3,
+          "changed_lines": 6,
+          "extrusion_only": 3
+        },
+        "Outer wall": {
+          "changed_lines": 1,
+          "extrusion_only": 1
+        },
+        "Support": {
+          "changed_lines": 24,
+          "extrusion_only": 18,
+          "progress_counter": 6
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    },
+    "benchy-classic-off": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 1h 40m 7s",
+        "; filament used [mm] = 3374.36",
+        "; flat_bridge_closing_join = miter",
+        "; path-optimization layer 158 regions=1 entities=6",
+        ";LAYER_CHANGE"
+      ],
+      "baseline_sha256": "39298f40c129f105811bf50b1e1d8d4e55c2ecd7eb6babfa8050bde63ec82fc5",
+      "candidate_sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897",
+      "cell": "benchy-classic-off",
+      "changed_types": {
+        "Bottom surface": {
+          "appendix": 2,
+          "changed_lines": 417,
+          "extrusion_only": 1,
+          "geometry": 414
+        },
+        "Bridge": {
+          "appendix": 2,
+          "changed_lines": 720,
+          "extrusion_only": 4,
+          "geometry": 714
+        },
+        "Gap infill": {
+          "appendix": 3,
+          "changed_lines": 3
+        },
+        "Inner wall": {
+          "changed_lines": 2,
+          "extrusion_only": 2
+        },
+        "Internal Bridge": {
+          "changed_lines": 73,
+          "extrusion_only": 2,
+          "geometry": 71
+        },
+        "Outer wall": {
+          "changed_lines": 1,
+          "extrusion_only": 1
+        },
+        "Sparse infill": {
+          "changed_lines": 33,
+          "extrusion_only": 13,
+          "geometry": 16,
+          "progress_counter": 4
+        }
+      },
+      "fill_geometry_lines": 1215,
+      "first_changed_z": {
+        "Bottom surface": 0.4,
+        "Bridge": 0.4,
+        "Gap infill": 48.0,
+        "Inner wall": 15.8,
+        "Internal Bridge": 8.0,
+        "Outer wall": 4.0,
+        "Sparse infill": 1.0
+      },
+      "layer_count": 240,
+      "structural_changed_types": {
+        "Inner wall": {
+          "changed_lines": 2,
+          "extrusion_only": 2
+        },
+        "Outer wall": {
+          "changed_lines": 1,
+          "extrusion_only": 1
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    },
+    "benchy-classic-on": {
+      "appendix_changed_lines": [
+        "; estimated printing time (normal mode) = 2h 36m 5s",
+        "; filament used [mm] = 6024.54",
+        "; flat_bridge_closing_join = miter"
+      ],
+      "baseline_sha256": "3b8fa86a6c142b4bd1aa727d36d6bcb654d637e1d29c98e30346395f45ac3948",
+      "candidate_sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e",
+      "cell": "benchy-classic-on",
+      "changed_types": {
+        "Bottom surface": {
+          "changed_lines": 413,
+          "extrusion_only": 1,
+          "geometry": 412
+        },
+        "Bridge": {
+          "changed_lines": 713,
+          "extrusion_only": 4,
+          "geometry": 709
+        },
+        "Gap infill": {
+          "appendix": 3,
+          "changed_lines": 3
+        },
+        "Inner wall": {
+          "changed_lines": 7,
+          "extrusion_only": 7
+        },
+        "Internal Bridge": {
+          "changed_lines": 72,
+          "extrusion_only": 1,
+          "geometry": 71
+        },
+        "Internal solid infill": {
+          "changed_lines": 1,
+          "extrusion_only": 1
+        },
+        "Outer wall": {
+          "changed_lines": 8,
+          "extrusion_only": 8
+        },
+        "Sparse infill": {
+          "changed_lines": 16,
+          "geometry": 16
+        },
+        "Support": {
+          "changed_lines": 6,
+          "extrusion_only": 6
+        }
+      },
+      "fill_geometry_lines": 1208,
+      "first_changed_z": {
+        "Bottom surface": 0.4,
+        "Bridge": 0.4,
+        "Gap infill": 48.0,
+        "Inner wall": 19.4,
+        "Internal Bridge": 38.2,
+        "Internal solid infill": 0.4,
+        "Outer wall": 4.0,
+        "Sparse infill": 36.8,
+        "Support": 1.2
+      },
+      "layer_count": 240,
+      "structural_changed_types": {
+        "Inner wall": {
+          "changed_lines": 7,
+          "extrusion_only": 7
+        },
+        "Outer wall": {
+          "changed_lines": 8,
+          "extrusion_only": 8
+        },
+        "Support": {
+          "changed_lines": 6,
+          "extrusion_only": 6
+        }
+      },
+      "structural_geometry_identical": true,
+      "structural_geometry_lines": 0,
+      "structural_geometry_samples": []
+    }
+  },
+  "floor_fraction": 0.008,
+  "output": {
+    "base-arachne-off": {
+      "baseline-accelerated": {
+        "cpu_seconds": 1073.0156,
+        "exit_code": 0,
+        "gcode_bytes": 20846194,
+        "sha256": "7f36b0898a244ce27321ba6e6942387cee4273f3d5b8286f129e2eabffb10a23",
+        "wall_seconds": 102.8407
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 1078.0312,
+        "exit_code": 0,
+        "gcode_bytes": 20846194,
+        "sha256": "7f36b0898a244ce27321ba6e6942387cee4273f3d5b8286f129e2eabffb10a23",
+        "wall_seconds": 102.8459
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 799.1094,
+        "exit_code": 0,
+        "gcode_bytes": 20847171,
+        "sha256": "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f",
+        "wall_seconds": 79.0016
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 801.8125,
+        "exit_code": 0,
+        "gcode_bytes": 20847171,
+        "sha256": "655c99d4f28e21419c70ea802ae90e44743ecd04a9dcbfc5b0bb7b5ffd12044f",
+        "wall_seconds": 79.2038
+      }
+    },
+    "base-arachne-on": {
+      "baseline-accelerated": {
+        "cpu_seconds": 1390.1719,
+        "exit_code": 0,
+        "gcode_bytes": 42330299,
+        "sha256": "d8ef39a53a2f67ba8c2cb8ad365966de41291a260bd8d5b83b4b3d4fee4f4186",
+        "wall_seconds": 173.5324
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 1397.0781,
+        "exit_code": 0,
+        "gcode_bytes": 42330299,
+        "sha256": "d8ef39a53a2f67ba8c2cb8ad365966de41291a260bd8d5b83b4b3d4fee4f4186",
+        "wall_seconds": 174.1977
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 1113.25,
+        "exit_code": 0,
+        "gcode_bytes": 42331252,
+        "sha256": "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee",
+        "wall_seconds": 149.1782
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 1112.5312,
+        "exit_code": 0,
+        "gcode_bytes": 42331252,
+        "sha256": "8b5d1de0beef6a25b9fd28db87bdcfa2f38a18a2b720d32c686a6d6253fb79ee",
+        "wall_seconds": 150.226
+      }
+    },
+    "base-classic-off": {
+      "baseline-accelerated": {
+        "cpu_seconds": 1113.7344,
+        "exit_code": 0,
+        "gcode_bytes": 21023773,
+        "sha256": "910afa320bd19b07962312889aab03347d8a7638723b65c631cc7519c35a9e72",
+        "wall_seconds": 120.3802
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 1118.625,
+        "exit_code": 0,
+        "gcode_bytes": 21023773,
+        "sha256": "910afa320bd19b07962312889aab03347d8a7638723b65c631cc7519c35a9e72",
+        "wall_seconds": 111.6319
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 797.7031,
+        "exit_code": 0,
+        "gcode_bytes": 21026410,
+        "sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131",
+        "wall_seconds": 85.0383
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 803.7656,
+        "exit_code": 0,
+        "gcode_bytes": 21026410,
+        "sha256": "6a6a3d9d5645174a64d08a83f4df4722fdc58e16282900b8be6050403d8fd131",
+        "wall_seconds": 85.7045
+      }
+    },
+    "base-classic-on": {
+      "baseline-accelerated": {
+        "cpu_seconds": 1385.1719,
+        "exit_code": 0,
+        "gcode_bytes": 42507946,
+        "sha256": "4b6d28434d83f6e347dd353ff0300ee25f2c314b46dd9546b589d9a911438bb1",
+        "wall_seconds": 174.9389
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 1400.4844,
+        "exit_code": 0,
+        "gcode_bytes": 42507946,
+        "sha256": "4b6d28434d83f6e347dd353ff0300ee25f2c314b46dd9546b589d9a911438bb1",
+        "wall_seconds": 177.4877
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 1108.1719,
+        "exit_code": 0,
+        "gcode_bytes": 42510534,
+        "sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca",
+        "wall_seconds": 149.5977
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 1109.2031,
+        "exit_code": 0,
+        "gcode_bytes": 42510534,
+        "sha256": "8f46fe9294a3537375a3ccee4952a031b0917b96ba6ecce4e45b9db0a14e3dca",
+        "wall_seconds": 149.3195
+      }
+    },
+    "benchy-arachne-off": {
+      "baseline-accelerated": {
+        "cpu_seconds": 61.1094,
+        "exit_code": 0,
+        "gcode_bytes": 4064304,
+        "sha256": "9ef7617b0eb15d6e9b1bba715b6d3941bcf0326821b12fca7e6981393eea2f1a",
+        "wall_seconds": 7.7629
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 61.0312,
+        "exit_code": 0,
+        "gcode_bytes": 4064304,
+        "sha256": "9ef7617b0eb15d6e9b1bba715b6d3941bcf0326821b12fca7e6981393eea2f1a",
+        "wall_seconds": 7.7181
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 43.9688,
+        "exit_code": 0,
+        "gcode_bytes": 4064091,
+        "sha256": "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219",
+        "wall_seconds": 6.2884
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 44.0781,
+        "exit_code": 0,
+        "gcode_bytes": 4064091,
+        "sha256": "f21df1249e18ecb6d6a3a2fee94d164ef81e5970b68452ae414842e5e6604219",
+        "wall_seconds": 6.217
+      }
+    },
+    "benchy-arachne-on": {
+      "baseline-accelerated": {
+        "cpu_seconds": 76.7969,
+        "exit_code": 0,
+        "gcode_bytes": 8390202,
+        "sha256": "d4644c14e14c8b39e72c20866c6ffe02ea25b21bd8b0004be0019a56886af4fd",
+        "wall_seconds": 11.9086
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 78.0156,
+        "exit_code": 0,
+        "gcode_bytes": 8390202,
+        "sha256": "d4644c14e14c8b39e72c20866c6ffe02ea25b21bd8b0004be0019a56886af4fd",
+        "wall_seconds": 12.1934
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 60.0938,
+        "exit_code": 0,
+        "gcode_bytes": 8390069,
+        "sha256": "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd",
+        "wall_seconds": 10.461
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 59.0312,
+        "exit_code": 0,
+        "gcode_bytes": 8390069,
+        "sha256": "e90f491d9d5a8036f71fadc1a38c01bc38e67d8c013bb5d21cfb4aacbf6294bd",
+        "wall_seconds": 10.5898
+      }
+    },
+    "benchy-classic-off": {
+      "baseline-accelerated": {
+        "cpu_seconds": 59.5625,
+        "exit_code": 0,
+        "gcode_bytes": 3925588,
+        "sha256": "39298f40c129f105811bf50b1e1d8d4e55c2ecd7eb6babfa8050bde63ec82fc5",
+        "wall_seconds": 7.1238
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 59.0781,
+        "exit_code": 0,
+        "gcode_bytes": 3925588,
+        "sha256": "39298f40c129f105811bf50b1e1d8d4e55c2ecd7eb6babfa8050bde63ec82fc5",
+        "wall_seconds": 7.0697
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 47.3438,
+        "exit_code": 0,
+        "gcode_bytes": 3926024,
+        "sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897",
+        "wall_seconds": 6.6064
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 42.7656,
+        "exit_code": 0,
+        "gcode_bytes": 3926024,
+        "sha256": "35600ee4b40e824ef01e3ff1774fcbe8381771d69880f0fa712c7cee66e15897",
+        "wall_seconds": 5.7692
+      }
+    },
+    "benchy-classic-on": {
+      "baseline-accelerated": {
+        "cpu_seconds": 75.8906,
+        "exit_code": 0,
+        "gcode_bytes": 8252446,
+        "sha256": "3b8fa86a6c142b4bd1aa727d36d6bcb654d637e1d29c98e30346395f45ac3948",
+        "wall_seconds": 12.8222
+      },
+      "baseline-ordinary": {
+        "cpu_seconds": 75.3594,
+        "exit_code": 0,
+        "gcode_bytes": 8252446,
+        "sha256": "3b8fa86a6c142b4bd1aa727d36d6bcb654d637e1d29c98e30346395f45ac3948",
+        "wall_seconds": 11.6113
+      },
+      "candidate-accelerated": {
+        "cpu_seconds": 58.2344,
+        "exit_code": 0,
+        "gcode_bytes": 8252846,
+        "sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e",
+        "wall_seconds": 10.1931
+      },
+      "candidate-ordinary": {
+        "cpu_seconds": 58.5781,
+        "exit_code": 0,
+        "gcode_bytes": 8252846,
+        "sha256": "596f6da521612bed1af3846b5fa9283b6836c0bd80682d22c92b4f657212560e",
+        "wall_seconds": 10.0044
+      }
+    }
+  },
+  "reference_check": {
+    "base-arachne-off": {
+      "baseline_ordinary_sha256": "7f36b0898a244ce27321ba6e6942387cee4273f3d5b8286f129e2eabffb10a23",
+      "reproduces": true,
+      "t115_post_sha256": "7f36b0898a244ce27321ba6e6942387cee4273f3d5b8286f129e2eabffb10a23"
+    },
+    "base-arachne-on": {
+      "baseline_ordinary_sha256": "d8ef39a53a2f67ba8c2cb8ad365966de41291a260bd8d5b83b4b3d4fee4f4186",
+      "reproduces": true,
+      "t115_post_sha256": "d8ef39a53a2f67ba8c2cb8ad365966de41291a260bd8d5b83b4b3d4fee4f4186"
+    },
+    "base-classic-off": {
+      "baseline_ordinary_sha256": "910afa320bd19b07962312889aab03347d8a7638723b65c631cc7519c35a9e72",
+      "reproduces": true,
+      "t115_post_sha256": "910afa320bd19b07962312889aab03347d8a7638723b65c631cc7519c35a9e72"
+    },
+    "base-classic-on": {
+      "baseline_ordinary_sha256": "4b6d28434d83f6e347dd353ff0300ee25f2c314b46dd9546b589d9a911438bb1",
+      "reproduces": true,
+      "t115_post_sha256": "4b6d28434d83f6e347dd353ff0300ee25f2c314b46dd9546b589d9a911438bb1"
+    },
+    "benchy-arachne-off": {
+      "baseline_ordinary_sha256": "9ef7617b0eb15d6e9b1bba715b6d3941bcf0326821b12fca7e6981393eea2f1a",
+      "reproduces": true,
+      "t115_post_sha256": "9ef7617b0eb15d6e9b1bba715b6d3941bcf0326821b12fca7e6981393eea2f1a"
+    },
+    "benchy-arachne-on": {
+      "baseline_ordinary_sha256": "d4644c14e14c8b39e72c20866c6ffe02ea25b21bd8b0004be0019a56886af4fd",
+      "reproduces": true,
+      "t115_post_sha256": "d4644c14e14c8b39e72c20866c6ffe02ea25b21bd8b0004be0019a56886af4fd"
+    },
+    "benchy-classic-off": {
+      "baseline_ordinary_sha256": "39298f40c129f105811bf50b1e1d8d4e55c2ecd7eb6babfa8050bde63ec82fc5",
+      "reproduces": true,
+      "t115_post_sha256": "39298f40c129f105811bf50b1e1d8d4e55c2ecd7eb6babfa8050bde63ec82fc5"
+    },
+    "benchy-classic-on": {
+      "baseline_ordinary_sha256": "3b8fa86a6c142b4bd1aa727d36d6bcb654d637e1d29c98e30346395f45ac3948",
+      "reproduces": true,
+      "t115_post_sha256": "3b8fa86a6c142b4bd1aa727d36d6bcb654d637e1d29c98e30346395f45ac3948"
+    }
+  },
+  "ticket": "116"
+}

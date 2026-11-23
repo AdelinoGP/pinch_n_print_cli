@@ -75,6 +75,8 @@ fn paint_with_plan(points: &[(f32, f32)]) -> PaintRegionLayerView {
         capabilities: vec![],
         provenance: vec!["test".into()],
         decline_reason: None,
+        // Chain-less fixture region: empty chain is the exact query identity.
+        variant_chain: vec![],
     };
     PaintRegionLayerView::new(0).with_support_plan(Arc::new(SupportPlanIR {
         entries: vec![entry],

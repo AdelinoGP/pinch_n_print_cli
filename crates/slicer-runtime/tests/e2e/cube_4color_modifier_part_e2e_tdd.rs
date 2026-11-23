@@ -737,6 +737,19 @@ fn cube_4color_full_pipeline_paint_diagnostic() {
             },
             RegionPlan::default(),
         );
+        // Declare the material paint axis this diagnostic asserts. The
+        // declared_by_object gate retains a painted layer only when the region
+        // map names that semantic for the object; it reads names only, and the
+        // default plan keeps the default config, so this is an axis marker.
+        entries.insert(
+            RegionKey {
+                global_layer_index: idx as u32,
+                object_id: object_id.clone(),
+                region_id: 0,
+                variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(0))],
+            },
+            RegionPlan::default(),
+        );
     }
     let region_map = Arc::new(RegionMapIR {
         schema_version: SemVer {

@@ -1,0 +1,293 @@
+# Windows feasibility: the OpenRSCAD SCAD adapter
+
+This file records the **adapter-prerequisite** disposition of the G-SCAD gate. It
+covers the optional `slicer-scad` adapter only. Full G-SCAD closure — recipe
+generation and shrink measurements, final eligible property profiles — belongs to
+`docs/spec_packets/proptest-openrscad_04_pbt-scripted/`. Those generation,
+render and shrink measurements and the eligible scripted profiles are recorded in
+[`docs/testing/proptest-scripted-evidence.md`](../testing/proptest-scripted-evidence.md).
+
+The engine remains an exact stimulus source, never the slicer's correctness
+oracle: a successful render says nothing about whether the slicer consumed the
+converted geometry correctly, and the scripted witnesses are independently
+derived from the recipe dimensions rather than from the engine's own output.
+
+Upstream CI or source inspection alone does not satisfy this prerequisite. What
+follows is measured on this machine.
+
+## Host and toolchain
+
+| Item | Value |
+|---|---|
+| OS | Windows 10.0.26300.9711 (x86_64) |
+| Rust | `rustc 1.96.0 (ac68faa20 2026-05-25)` |
+| Cargo | `cargo 1.96.0 (30a34c2 2026-05-25)` |
+| Toolchain policy | `rust-toolchain.toml` pins `1.96.0`; the repository MSRV is `1.91.0` and was **not** changed |
+| CMake | `cmake version 4.4.3` |
+| MSVC | Visual Studio 18 Community, installation version `18.9.12112.369`; toolsets `14.51.36231` and `14.52.36615` installed, selected by CMake's default generator discovery (the exact toolset was not separately pinned) |
+| Engine native dependency | `manifold-csg` 0.3 (C++ Manifold via CMake) |
+
+The upstream engine declares `rust-version = "1.85"`. It was built and tested under
+this repository's pinned 1.96.0; the repository toolchain was not changed to obtain
+a pass.
+
+## Source provenance
+
+| Item | Value |
+|---|---|
+| `source_revision` (this repo) | `1b0f0f6537c672a892a5a959e5ca3bb072246588` |
+| Working tree during measurement | dirty: `Cargo.toml`, `Cargo.lock`, `.github/workflows/ci.yml`, `docs/01_system_architecture.md`, `docs/08_coordinate_system.md` modified; `crates/slicer-scad/`, `docs/scad/`, `vendor/openrscad/` new |
+| Engine base revision | `1a45bd33f2886c32bda32fe6e8358a67ab03f5ef` (`matthova/openrscad`, 0.14.2) |
+| Engine patch set | `vendor/openrscad/patches/0001-eval-adapter-seams.patch`, `0002-geom-adapter-seams.patch` |
+| Engine patch digest | see `vendor/openrscad/PATCHES.md`; recomputed at test time by `tests/scad_feature_contract.rs` |
+| Engine resolution | `vendor/openrscad/Cargo.lock`, committed with the vendored tree |
+
+The vendored tree reproduces byte-for-byte from base + patches (verified by
+applying the patch files to a pristine checkout and diffing the four engine
+crates).
+
+## Build evidence
+
+Both configurations build, and the default build does not touch the engine.
+
+| Command | Result |
+|---|---|
+| `cargo build --workspace` | PASS — the workspace member's default feature set is empty, so no engine crate is compiled |
+| `cargo check --workspace --all-targets` | PASS |
+| `cargo clippy --workspace --all-targets -- -D warnings` | PASS |
+| `cargo build -p slicer-scad --no-default-features` | PASS |
+| `cargo build -p slicer-scad --features openrscad` | PASS (C++ Manifold compiled by CMake/MSVC) |
+| `cargo check -p slicer-scad --all-targets --features openrscad` | PASS |
+| `cargo clippy -p slicer-scad --all-targets --features openrscad -- -D warnings` | PASS |
+| `cargo xtask check-literals` | PASS — 0 violations |
+| `cargo xtask check-test-quality --report` | PASS — 0 findings |
+
+### Dependency isolation
+
+| Graph | Evidence |
+|---|---|
+| `cargo tree -p slicer-scad --no-default-features -e normal,build,features` | no `openrscad*`, no `manifold-csg`, no `rustybuzz`/`fontdb`, no `slicer-sdk`, no `slicer-runtime`, no `proptest` |
+| `cargo tree -p slicer-scad --features openrscad ...` | adds the four vendored engine crates and their native deps; still no `slicer-sdk`, `slicer-runtime` or `proptest` |
+| Default CLI graph | unchanged: `pnp-cli` has no `slicer-scad` edge, so no SCAD-enabled CLI claim is made here (that belongs to the ingestion packet) |
+| Discovered guest graphs | unchanged; this packet edits no guest input, so no guest rebuild was required |
+
+A default workspace build therefore does not compile engine or native
+dependencies merely because the adapter is a workspace member.
+
+### Build cost, measured separately from adapter cost
+
+| Measurement | Value |
+|---|---|
+| Vendored engine cold build in a scratch target directory (`cargo build`, `dev`, `jobs = 1`) | 3 m 26 s |
+| Full cold `cargo build -p slicer-scad --features openrscad` in a fresh `CARGO_TARGET_DIR`, `dev`, `jobs = 1` | 4 m 26 s (267 s; 1.1 GB target directory) |
+
+The second figure is the whole adapter edge: registry dependencies, the C++
+Manifold kernel, the four vendored engine crates and the adapter itself. It is a
+build cost, not a per-evaluation cost.
+
+Build cost is **not** a per-evaluation cost and is not folded into the adapter
+measurements.
+
+## Measured adapter costs
+
+`scad_measure_representative_costs` (in `tests/scad_adapter_contracts.rs`) times
+one warm `evaluate` call — parse, parameter evaluation, program evaluation, exact
+render and checked conversion — for AC-3's fixtures, over 10 runs after a warm-up:
+
+| Fixture | Median | p95 |
+|---|---|---|
+| holed 2D profile, `Contours` | 276.2 µs | 309.9 µs |
+| the same profile, `extrude_height_mm = 2.0` → `Mesh` | 536.7 µs | 998.5 µs |
+| drilled 3D solid → `Mesh` | 671.5 µs | 713.1 µs |
+
+These are `dev`-profile numbers on this host. They describe adapter overhead, not
+engine capability, and they are not property profiles.
+
+## Derived adapter defaults
+
+`ScadLimits::default()` is a caller-visible contract. Each value is bounded, and
+the basis is recorded so a later change can be justified rather than guessed.
+
+| Field | Default | Basis |
+|---|---|---|
+| `evaluation_steps` | 20 000 000 | The AC-2 fixtures need well under 100 000 steps; 20 M leaves two orders of magnitude of headroom while still bounding an adversarial program. The budget tests use 100 000 deliberately. |
+| `max_source_bytes` | 1 048 576 | 1 MiB of checked UTF-8 across source plus every override name/expression. |
+| `max_ast_nodes` | 200 000 | Above any measured fixture by orders of magnitude; bounds a pathological generated program before traversal. |
+| `max_ast_depth` | 256 | A real parametric model nests far below this; the AC-N4 fixture trips it at 8. |
+| `max_geometry_nodes` | 100 000 | Bounds the evaluated CSG tree before rendering. |
+| `max_facets` | 360 | The engine's own default tessellation cap; a larger explicit `$fn` is `ComplexityLimit`. |
+| `max_vertices` | 1 000 000 | Output allocation bound for one render. |
+| `max_triangles` | 2 000 000 | Output allocation bound for one render. |
+| `max_abs_coordinate_mm` | 10 000.0 | 10 m, two orders above any printer envelope; keeps the integer grid and the documented `i128` proofs well inside range. |
+| `worker_stack_bytes` | 256 MiB | Comfortably above the measured floor below; matches the engine's own CLI stack budget. |
+
+### Worker stack policy (measured)
+
+The engine's contained recursion guard trips at 6 000 native frames. A stack too
+small to hold those frames overflows *before* the guard fires, turning a
+diagnosable `PartialOutput` into a process abort. Measured with the `cum`
+non-tail-recursion fixture on this host, `dev` profile:
+
+| `worker_stack_bytes` | Outcome |
+|---|---|
+| 16 MiB, 24 MiB, 32 MiB, 36 MiB, 40 MiB, 44 MiB | `STATUS_STACK_OVERFLOW` on the `scad-eval` worker thread |
+| 48 MiB, 64 MiB, 96 MiB | `Err(PartialOutput)` with `recursion_aborted` — the guard fires and is classified |
+
+`MIN_WORKER_STACK_BYTES` is therefore **64 MiB**: the measured debug floor plus
+margin. A `dev` frame is far larger than upstream's ≈ 1.6 KiB release estimate,
+which is exactly why this was measured rather than derived from that estimate.
+
+## Narrow test results
+
+| Lane | Command | Result |
+|---|---|---|
+| `F` | `cargo test -p slicer-scad --no-default-features --test scad_feature_contract` | PASS — 1 test executed (not a zero-test binary); asserts `engine_info().is_none()` and `BackendDisabled` even for a source that does not parse |
+| `F`+`A` | the same target with `--features openrscad` | PASS — asserts the pinned revision, the recomputed patch digest and `backend = "manifold_cpp"`, and a non-empty cube mesh |
+| `A` | `cargo test -p slicer-scad --features openrscad --test scad_adapter_contracts` | PASS — 9 tests; 1 measurement entry point ignored by default |
+| `U` | `cargo test -p slicer-scad --features openrscad --lib -- scad_` | PASS — 20 tests, including `scad_conversion_contour_forest`, `scad_rejects_conversion_damage` and `scad_diagnostic_channels_fail_closed` |
+| `L` | `cargo test -p slicer-scad --features openrscad --test scad_process_limits` | PASS — 3 tests, ≈ 20 s wall clock (the hard-deadline probe) |
+
+No workspace test run was required: the packet touches no guest input, and the
+narrow lanes above exercise every changed surface.
+
+## The `scad-adapter-windows` lane
+
+`.github/workflows/ci.yml` gains a self-contained `scad-adapter-windows` job on
+`windows-latest`. It does not depend on the property-foundation job. It:
+
+1. installs the checked-in Rust policy plus the CMake/MSVC prerequisites present on
+   the runner image, and records `rustc -vV`, `cargo -V`, `cmake --version`,
+   `where cl`, the source revision and the dirty tree;
+2. records the default and enabled `cargo tree` graphs and **fails** if the default
+   graph reaches the engine or if the enabled normal/build graph reaches SDK,
+   runtime or Proptest;
+3. runs `F`, asserting that a test actually executed;
+4. runs the enabled identity contract, `A`, `U` and `L`, asserting that the `scad_`
+   filter selected real tests;
+5. runs the narrow clippy gate;
+6. uploads `target/scad-adapter/` (logs, trees, reproducers) with `if: always()`.
+
+**Execution status: executed and passing.**
+
+| Field | Value |
+|---|---|
+| Workflow run | `43131961268` (`CI`, pull request) |
+| Head | `800aabde` |
+| Job | `SCAD adapter (Windows)`, id `130898010397` — **success** |
+| `F` | `1 passed` |
+| `F`+`A` identity | `1 passed` |
+| `A` | `9 passed`, `1 ignored` (measurement entry point) |
+| `U` | `22 passed` |
+| `L` | `3 passed` in 20.45 s |
+| Artifact | `scad-adapter-windows`, id `13906171026`, 16 260 bytes, uploaded |
+
+Superseded history: run `43113651822`, head `65f6acf`, job `130835934489`, artifact
+`13897616839`. That run proved the lane and upload worked before the final engine
+patch changes; it does not certify them.
+
+### Measurement context
+
+| Field | Value |
+|---|---|
+| `CARGO_TARGET_DIR` (local gates) | `D:/slicerProject/pinch_n_print_cli/target` (the repository default; not overridden) |
+| `CARGO_TARGET_DIR` (cold build) | `target/scad-cold`, a fresh directory created for the measurement and removed afterwards |
+| Build profile | `dev` (`cargo test` / `cargo build` defaults), `jobs = 1` from `~/.cargo/config.toml` |
+| Features | `default = []` for the feature-off gate; `openrscad` for every enabled gate |
+| Lockfile | root `Cargo.lock` plus `vendor/openrscad/Cargo.lock` |
+| Retained full logs | CI artifact `scad-adapter-windows` (id `13897616839`) contains the per-step logs, trees and reproducers; local copies are written to `target/scad-adapter/*.log` by the commands in the `F`/`A`/`U`/`L` table every run |
+
+The local logs are build output, not committed source: `target/` is ignored, and
+every row above is reproducible by re-running the listed command with the recorded
+`CARGO_TARGET_DIR`, profile and feature set.
+
+The run also passed `Clippy`, `Format`, `Docs staleness guard`, `Dist editions` and
+`Properties (Windows)`.
+
+The `Test` job in that run was red, and it was **not** this packet. It is fixed
+now, and the record keeps the diagnosis because the same three defects would
+otherwise be rediscovered:
+
+- **Unsatisfiable index assertions.** `perimeter_spatial_capture_and_nonvacuity`
+  asserted `indexed_queries > 0`, `exact_evaluations > 0` and a pruning inequality
+  unconditionally, but `default_dispatch()` compiles `indexed: false` unless the
+  controlled perimeter driver injects `pnp_perimeter_spatial_accelerated`. Those
+  assertions are now guarded by `slicer_core::perimeter_spatial::is_accelerated()`
+  — a probe inside the crate that owns the mode, because a `#[cfg]` in the
+  integration test is permanently false in every mode and would silently delete
+  the coverage.
+- **A recorder racing its own pins.** `record_perimeter_spatial_fixtures` was an
+  ordinary `#[test]`, so every suite run rewrote the three committed `.bin`
+  baselines that the pins read in the same process, making them order-dependent.
+  It is now `#[ignore]`d and run with `--ignored`.
+- **Stale self-baselines.** Commit `0dfbfe25` ported canonical contour
+  simplification (`resolution`, default 0.01 mm) before walls and infill — a
+  disclosed output-changing change — without recapturing the self-baselines.
+  They were recaptured with the recorder; two independent recordings agree
+  byte-for-byte, and `indexed == legacy == wasm` still holds as the provenance
+  requires.
+
+Recorded in run `43131961268` at `800aabde` the four tests failed as
+`377 passed / 4 failed`, identically to run `42535615636` on `master@49f6e7bf`
+before any commit of this work. They pass from `c6acb2c7`. One residual issue is
+**not** fixed and is documented rather than hidden: the accelerated gate still
+reports `indexed_queries == 0` because `DIAGNOSTIC_STATE` is `thread_local!` while
+per-layer query work runs on rayon workers, so the counts are invisible from the
+test thread. That needs atomic counters and is independent of this packet.
+
+## Disposition of G-SCAD
+
+**Adapter prerequisite: PASSED on Windows, on the delivered head.** The
+`scad-adapter-windows` job and its artifact upload executed and passed on
+`800aabde` — the head that carries the final engine patch set, patch digest,
+`robust` dependency and adapter source. An earlier run on `65f6acf` proved the
+lane and upload worked; it is superseded by this one and is kept only as history.
+The packet-status commit that follows this record changes documentation and front
+matter only, no code. The following are demonstrated:
+
+- the engine builds and runs on Windows with the repository's pinned toolchain;
+- exact evaluation and rendering work through the vendored, patched engine;
+- checked conversion rejects damage rather than repairing it;
+- the diagnostic classifier is fail-closed on both the mesh and contour paths;
+- seeded evaluation repeats across calls, interleaved sources and concurrent
+  callers;
+- process supervision distinguishes a hard-deadline kill from evaluator budget
+  exhaustion;
+- representative adapter evaluation and exact-render costs are measured above.
+
+**Still `pending` for packet #4 (`proptest-scripted-evidence`):**
+
+- recipe generation and shrink-cost measurements for the scripted property domain;
+- final eligible property profiles;
+- the combined G-GEOMETRY decision;
+- full G-SCAD closure.
+
+This packet therefore closes only the adapter prerequisite it owns. Full G-SCAD
+remains incomplete until #4 supplies the rows above.
+
+## Honest limitations
+
+- **No in-process render deadline.** `evaluation_steps` bounds the evaluator, not
+  native rendering. A wall-clock guarantee requires a supervised, killable child
+  process; a thread timeout or `catch_unwind` is not sufficient.
+- **`max_facets` bounds explicit `$fn` and derived counts for the primitives that
+  expose them.** `circle`/`sphere`/`cylinder` carry `r` and `FragmentSpec`, so the
+  engine's own `fragments` formula is evaluated before rendering and bounded.
+  `offset`, extrusion and `import` nodes are bounded by their explicit `$fn` only;
+  their derived counts are bounded after the fact by `max_vertices` and
+  `max_triangles`.
+- **The pre-quantization contact pass is exact, not a finer grid.** Self-contact and
+  cross-ring contact are validated on the original millimetre `f64` rings with
+  `robust::orient2d`, an adaptive-precision predicate whose sign is exact for every
+  finite input. An earlier revision used a 1 nm surrogate grid, which a crossing
+  narrower than the grid could defeat; that was a real gap and is gone. The
+  post-quantization pass remains the authoritative check on the emitted grid.
+- **Edge-incidence validation does not claim arbitrary 3D self-intersection
+  freedom.** It checks closed, consistently oriented incidence by exact position
+  identity, which is what the fixtures require and no more.
+- **`DegradedOutput` has real source fixtures.** A `polyhedron` whose faces do not
+  form a closed manifold is a non-manifold boolean operand, so a `union()` around it
+  degrades to un-combined operands — plainly and under `projection()`. Both forms
+  are committed fixtures that assert the `boolean_fallback` diagnostic.
+- **Unsupported platforms are not acceptance claims.** Only Windows was exercised.
+- **This host is not a controlled-perimeter runner.** The measurements above are
+  `dev`-profile numbers on this machine, not accelerated-mode evidence.

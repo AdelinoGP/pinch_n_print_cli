@@ -10,6 +10,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use slicer_ir::slice_ir::SupportSourceKey;
 use slicer_ir::{
     ExPolygon, IndexedTriangleSet, MeshIR, ObjectMesh, Point2, Point3, Polygon, SupportAnalysisIR,
     SupportPlanEntry, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
@@ -55,6 +56,7 @@ fn entry(body_id: &str, body: ExPolygon) -> SupportPlanEntry {
         capabilities: Vec::new(),
         provenance: vec!["traditional".into()],
         decline_reason: None,
+        variant_chain: Vec::new(),
     }
 }
 
@@ -107,7 +109,11 @@ fn union_merges_same_region_entries_regardless_of_distance() {
     let far = entry("body-far", polygon(3_000_000, 0, 3_200_000, 200_000));
     let analysis = SupportAnalysisIR {
         family_assignments: BTreeMap::from([(
-            ("object".to_string(), 7),
+            SupportSourceKey {
+                object_id: "object".to_string(),
+                region_id: 7,
+                variant_chain: Vec::new(),
+            },
             "traditional".to_string(),
         )]),
         ..SupportAnalysisIR::default()
@@ -174,7 +180,16 @@ fn analysis(assignments: &[(u64, &str)]) -> SupportAnalysisIR {
     SupportAnalysisIR {
         family_assignments: assignments
             .iter()
-            .map(|(region_id, family)| (("object".to_string(), *region_id), (*family).to_string()))
+            .map(|(region_id, family)| {
+                (
+                    SupportSourceKey {
+                        object_id: "object".to_string(),
+                        region_id: *region_id,
+                        variant_chain: Vec::new(),
+                    },
+                    (*family).to_string(),
+                )
+            })
             .collect::<BTreeMap<_, _>>(),
         ..SupportAnalysisIR::default()
     }

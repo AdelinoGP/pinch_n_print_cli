@@ -1,0 +1,603 @@
+{
+ "cells": {
+  "benchy-classic-off": {
+   "per_layer_ms": {
+    "pre": [
+     2608,
+     1893,
+     2767
+    ],
+    "post": [
+     4807,
+     5860,
+     5816
+    ]
+   }
+  },
+  "benchy-classic-on": {
+   "per_layer_ms": {
+    "pre": [
+     2847,
+     3119,
+     3357
+    ],
+    "post": [
+     5949,
+     6703,
+     5200
+    ]
+   }
+  },
+  "base-classic-off": {
+   "per_layer_ms": {
+    "pre": [
+     15648,
+     14755,
+     15341
+    ],
+    "post": [
+     92418,
+     95958,
+     73731
+    ]
+   }
+  },
+  "base-classic-on": {
+   "per_layer_ms": {
+    "pre": [
+     20876,
+     27340,
+     15311
+    ],
+    "post": [
+     122254,
+     106103,
+     45073
+    ]
+   }
+  }
+ },
+ "instrumented_base_classic_off": {
+  "phases_ms": {
+   "pre": {
+    "validation": 3,
+    "prepass": 70662,
+    "per_layer": 7265,
+    "postpass": 892
+   },
+   "post": {
+    "validation": 3,
+    "prepass": 70463,
+    "per_layer": 42886,
+    "postpass": 915
+   }
+  },
+  "module_bracket_ms": {
+   "com.core.classic-perimeters": {
+    "pre": 42082.0,
+    "post": 69194.0,
+    "calls_pre": 495,
+    "calls_post": 495
+   },
+   "com.core.fuzzy-skin": {
+    "pre": 162.0,
+    "post": 56068.0,
+    "calls_pre": 495,
+    "calls_post": 495
+   },
+   "com.core.gyroid-infill": {
+    "pre": 554.0,
+    "post": 28678.0,
+    "calls_pre": 495,
+    "calls_post": 495
+   },
+   "com.core.infill-linker": {
+    "pre": 4314.0,
+    "post": 32266.0,
+    "calls_pre": 495,
+    "calls_post": 495
+   },
+   "com.core.layer-planner-default": {
+    "pre": 1.0,
+    "post": 1.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "com.core.lightning-infill": {
+    "pre": 412.0,
+    "post": 28510.0,
+    "calls_pre": 495,
+    "calls_post": 495
+   },
+   "com.core.machine-gcode-emit": {
+    "pre": 251.0,
+    "post": 270.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "com.core.overhang-classifier-default": {
+    "pre": 50.0,
+    "post": 59.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "com.core.part-cooling": {
+    "pre": 63.0,
+    "post": 54.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "com.core.path-optimization-default": {
+    "pre": 68.0,
+    "post": 28398.0,
+    "calls_pre": 495,
+    "calls_post": 495
+   },
+   "com.core.raft-default": {
+    "pre": 28869.0,
+    "post": 56918.0,
+    "calls_pre": 495,
+    "calls_post": 495
+   },
+   "com.core.rectilinear-infill": {
+    "pre": 434.0,
+    "post": 28887.0,
+    "calls_pre": 495,
+    "calls_post": 495
+   },
+   "com.core.seam-placer": {
+    "pre": 211.0,
+    "post": 56226.0,
+    "calls_pre": 495,
+    "calls_post": 495
+   },
+   "com.core.seam-planner-default": {
+    "pre": 1922.0,
+    "post": 1858.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "com.core.skirt-brim": {
+    "pre": 49.0,
+    "post": 52.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "com.core.support-surface-ironing": {
+    "pre": 398.0,
+    "post": 28541.0,
+    "calls_pre": 495,
+    "calls_post": 495
+   },
+   "com.core.top-surface-ironing": {
+    "pre": 399.0,
+    "post": 28843.0,
+    "calls_pre": 495,
+    "calls_post": 495
+   },
+   "com.core.traditional-support-planner": {
+    "pre": 131.0,
+    "post": 149.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "com.core.tree-support": {
+    "pre": 477.0,
+    "post": 28729.0,
+    "calls_pre": 495,
+    "calls_post": 495
+   },
+   "com.core.tree-support-planner": {
+    "pre": 135.0,
+    "post": 138.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "com.core.wave-overhangs": {
+    "pre": 400.0,
+    "post": 28494.0,
+    "calls_pre": 495,
+    "calls_post": 495
+   },
+   "com.core.wipe-tower": {
+    "pre": 49.0,
+    "post": 53.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "host:gcode_emit": {
+    "pre": 62.0,
+    "post": 70.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "host:gcode_serialize": {
+    "pre": 361.0,
+    "post": 349.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "host:mesh_analysis": {
+    "pre": 4083.0,
+    "post": 5123.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "host:overhang_annotation": {
+    "pre": 10324.0,
+    "post": 9553.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "host:paint_annotator": {
+    "pre": 0.0,
+    "post": 0.0,
+    "calls_pre": 495,
+    "calls_post": 495
+   },
+   "host:paint_segmentation": {
+    "pre": 51.0,
+    "post": 44.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "host:region_mapping": {
+    "pre": 13.0,
+    "post": 14.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "host:shell_classification": {
+    "pre": 16087.0,
+    "post": 14851.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "host:slice": {
+    "pre": 37897.0,
+    "post": 38505.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "host:support_analysis": {
+    "pre": 0.0,
+    "post": 0.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   },
+   "host:support_geometry": {
+    "pre": 3.0,
+    "post": 4.0,
+    "calls_pre": 1,
+    "calls_post": 1
+   }
+  }
+ },
+ "output_audit": {
+  "benchy-classic-off": {
+   "pre_sha256": "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d",
+   "pre_bytes": 3925554,
+   "post_sha256": "39298f40c129f105811bf50b1e1d8d4e55c2ecd7eb6babfa8050bde63ec82fc5",
+   "post_bytes": 3925588,
+   "byte_delta": 34
+  },
+  "benchy-classic-on": {
+   "pre_sha256": "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714",
+   "pre_bytes": 8252412,
+   "post_sha256": "3b8fa86a6c142b4bd1aa727d36d6bcb654d637e1d29c98e30346395f45ac3948",
+   "post_bytes": 8252446,
+   "byte_delta": 34
+  },
+  "base-classic-off": {
+   "pre_sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+   "pre_bytes": 21023739,
+   "post_sha256": "910afa320bd19b07962312889aab03347d8a7638723b65c631cc7519c35a9e72",
+   "post_bytes": 21023773,
+   "byte_delta": 34
+  },
+  "base-classic-on": {
+   "pre_sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+   "pre_bytes": 42507912,
+   "post_sha256": "4b6d28434d83f6e347dd353ff0300ee25f2c314b46dd9546b589d9a911438bb1",
+   "post_bytes": 42507946,
+   "byte_delta": 34
+  },
+  "benchy-arachne-off": {
+   "pre_sha256": "5158539849b0ed1b6b1fb89a9f222480cfb30e68027ee4c284e2f60505eda85b",
+   "pre_bytes": 4064270,
+   "post_sha256": "9ef7617b0eb15d6e9b1bba715b6d3941bcf0326821b12fca7e6981393eea2f1a",
+   "post_bytes": 4064304,
+   "byte_delta": 34
+  },
+  "benchy-arachne-on": {
+   "pre_sha256": "6b8a0074ca7ac4e8142af764dce669495bd411b45ad47f94a29dc57451146e05",
+   "pre_bytes": 8390168,
+   "post_sha256": "d4644c14e14c8b39e72c20866c6ffe02ea25b21bd8b0004be0019a56886af4fd",
+   "post_bytes": 8390202,
+   "byte_delta": 34
+  },
+  "base-arachne-off": {
+   "pre_sha256": "01a1434c6ab5bbe965e37985e78137b739b47dccf2d364a5d3dbd0156cad7e97",
+   "pre_bytes": 20846160,
+   "post_sha256": "7f36b0898a244ce27321ba6e6942387cee4273f3d5b8286f129e2eabffb10a23",
+   "post_bytes": 20846194,
+   "byte_delta": 34
+  },
+  "base-arachne-on": {
+   "pre_sha256": "0b29e1bf928f1c0a160ebdedf08245edfd1d0433b3807ad1118b4578a378981c",
+   "pre_bytes": 42330265,
+   "post_sha256": "d8ef39a53a2f67ba8c2cb8ad365966de41291a260bd8d5b83b4b3d4fee4f4186",
+   "post_bytes": 42330299,
+   "byte_delta": 34
+  }
+ },
+ "paint_audit": {
+  "cube_4color": {
+   "pre": {
+    "moves": 19137,
+    "tool_moves": {
+     "T0": 2247,
+     "T2": 6063,
+     "T1": 4561,
+     "T3": 6266
+    },
+    "tool_e": {
+     "T0": 793.157,
+     "T2": 2568.029,
+     "T1": 2115.004,
+     "T3": 1579.506
+    },
+    "total_e": 7055.694,
+    "type_counts": {
+     "kirt": 3,
+     "uter wall": 708,
+     "nner wall": 651,
+     "ottom surface": 2,
+     "rime tower": 329,
+     "nternal solid infill": 19,
+     "parse infill": 392,
+     "ridge": 7,
+     "op surface": 2
+    }
+   },
+   "post": {
+    "moves": 18894,
+    "tool_moves": {
+     "T0": 2339,
+     "T2": 6020,
+     "T1": 4492,
+     "T3": 6043
+    },
+    "tool_e": {
+     "T0": 728.234,
+     "T2": 2612.393,
+     "T1": 2047.71,
+     "T3": 1659.501
+    },
+    "total_e": 7047.839,
+    "type_counts": {
+     "kirt": 3,
+     "uter wall": 703,
+     "nner wall": 647,
+     "ottom surface": 2,
+     "rime tower": 327,
+     "nternal solid infill": 14,
+     "parse infill": 394,
+     "ridge": 7,
+     "op surface": 2
+    }
+   },
+   "bytes": {
+    "pre": 1050129,
+    "post": 1038805
+   },
+   "sha256": {
+    "pre": "70eeb597d3ff98fd83d2e027c2efdb3b2a7d664bdc7e0af67a7bb23b9691b3e8",
+    "post": "566730cb53d7e0214edf2e32e0f52bad8574ceb9f27a13c9489a40673b0266b3"
+   },
+   "repeat_identical": {
+    "pre": true,
+    "post": true
+   }
+  },
+  "painted_seams": {
+   "bytes": {
+    "pre": 4682386,
+    "post": 4682219
+   },
+   "sha256": {
+    "pre": "e23af6b8dc659c7554fcae54489c04755088d5841940f58d18538db002211037",
+    "post": "1a0b25643d643e69b1be4562007656e04b90f04a925a38591658cda052e9741b"
+   },
+   "diff_lines": 9608,
+   "type_counts": {
+    "pre": {
+     "rim": 1,
+     "uter wall": 549,
+     "ottom surface": 1,
+     "nner wall": 546,
+     "nternal solid infill": 2,
+     "parse infill": 324,
+     "nternal Bridge": 4,
+     "op surface": 2
+    },
+    "post": {
+     "rim": 1,
+     "uter wall": 548,
+     "ottom surface": 1,
+     "nner wall": 546,
+     "nternal solid infill": 2,
+     "parse infill": 324,
+     "nternal Bridge": 4,
+     "op surface": 2
+    }
+   },
+   "moves": {
+    "pre": 111958,
+    "post": 111958
+   }
+  }
+ },
+ "merge_ab": {
+  "benchy-classic-off": {
+   "pairs": {
+    "1": {
+     "wall_pre": 14.9604,
+     "wall_post": 15.2092,
+     "wall_delta_pct": 1.66,
+     "cpu_pre": 53.4688,
+     "cpu_post": 66.3594,
+     "cpu_delta_pct": 24.11
+    },
+    "2": {
+     "wall_pre": 12.1082,
+     "wall_post": 17.7458,
+     "wall_delta_pct": 46.56,
+     "cpu_pre": 51.8281,
+     "cpu_post": 62.0781,
+     "cpu_delta_pct": 19.78
+    },
+    "3": {
+     "wall_pre": 15.1987,
+     "wall_post": 18.1257,
+     "wall_delta_pct": 19.26,
+     "cpu_pre": 53.6719,
+     "cpu_post": 67.8281,
+     "cpu_delta_pct": 26.38
+    }
+   },
+   "median_wall_pre": 14.96,
+   "median_wall_post": 17.75,
+   "median_wall_delta_pct": 19.26,
+   "median_cpu_pre": 53.5,
+   "median_cpu_post": 66.4,
+   "median_cpu_delta_pct": 24.11,
+   "sha_pre": [
+    "3672dc7e1649cab69a0ffab2ebd293233a9af0504d0f98666746da933d8c641d"
+   ],
+   "sha_post": [
+    "39298f40c129f105811bf50b1e1d8d4e55c2ecd7eb6babfa8050bde63ec82fc5"
+   ]
+  },
+  "benchy-classic-on": {
+   "pairs": {
+    "1": {
+     "wall_pre": 21.4699,
+     "wall_post": 23.5542,
+     "wall_delta_pct": 9.71,
+     "cpu_pre": 68.9062,
+     "cpu_post": 80.5938,
+     "cpu_delta_pct": 16.96
+    },
+    "2": {
+     "wall_pre": 23.1754,
+     "wall_post": 21.9929,
+     "wall_delta_pct": -5.1,
+     "cpu_pre": 71.8125,
+     "cpu_post": 84.5156,
+     "cpu_delta_pct": 17.69
+    },
+    "3": {
+     "wall_pre": 20.3716,
+     "wall_post": 21.3345,
+     "wall_delta_pct": 4.73,
+     "cpu_pre": 70.0156,
+     "cpu_post": 81.7969,
+     "cpu_delta_pct": 16.83
+    }
+   },
+   "median_wall_pre": 21.47,
+   "median_wall_post": 21.99,
+   "median_wall_delta_pct": 4.73,
+   "median_cpu_pre": 70.0,
+   "median_cpu_post": 81.8,
+   "median_cpu_delta_pct": 16.96,
+   "sha_pre": [
+    "eb4817b4be28c0a30e906bed9d960cd59282fa20d95afb509e48c8e39ab4b714"
+   ],
+   "sha_post": [
+    "3b8fa86a6c142b4bd1aa727d36d6bcb654d637e1d29c98e30346395f45ac3948"
+   ]
+  },
+  "base-classic-off": {
+   "pairs": {
+    "1": {
+     "wall_pre": 169.3373,
+     "wall_post": 240.9528,
+     "wall_delta_pct": 42.29,
+     "cpu_pre": 799.875,
+     "cpu_post": 1228.4062,
+     "cpu_delta_pct": 53.57
+    },
+    "2": {
+     "wall_pre": 170.2576,
+     "wall_post": 255.4848,
+     "wall_delta_pct": 50.06,
+     "cpu_pre": 806.4844,
+     "cpu_post": 1243.1094,
+     "cpu_delta_pct": 54.14
+    },
+    "3": {
+     "wall_pre": 164.722,
+     "wall_post": 203.464,
+     "wall_delta_pct": 23.52,
+     "cpu_pre": 798.0312,
+     "cpu_post": 1182.5469,
+     "cpu_delta_pct": 48.18
+    }
+   },
+   "median_wall_pre": 169.34,
+   "median_wall_post": 240.95,
+   "median_wall_delta_pct": 42.29,
+   "median_cpu_pre": 799.9,
+   "median_cpu_post": 1228.4,
+   "median_cpu_delta_pct": 53.57,
+   "sha_pre": [
+    "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80"
+   ],
+   "sha_post": [
+    "910afa320bd19b07962312889aab03347d8a7638723b65c631cc7519c35a9e72"
+   ]
+  },
+  "base-classic-on": {
+   "pairs": {
+    "1": {
+     "wall_pre": 260.4127,
+     "wall_post": 296.4782,
+     "wall_delta_pct": 13.85,
+     "cpu_pre": 1158.4844,
+     "cpu_post": 1562.6094,
+     "cpu_delta_pct": 34.88
+    },
+    "2": {
+     "wall_pre": 298.2312,
+     "wall_post": 379.1032,
+     "wall_delta_pct": 27.12,
+     "cpu_pre": 1132.6406,
+     "cpu_post": 1612.9688,
+     "cpu_delta_pct": 42.41
+    },
+    "3": {
+     "wall_pre": 272.8456,
+     "wall_post": 191.7966,
+     "wall_delta_pct": -29.71,
+     "cpu_pre": 1124.6562,
+     "cpu_post": 1412.2969,
+     "cpu_delta_pct": 25.58
+    }
+   },
+   "median_wall_pre": 272.85,
+   "median_wall_post": 296.48,
+   "median_wall_delta_pct": 13.85,
+   "median_cpu_pre": 1132.6,
+   "median_cpu_post": 1562.6,
+   "median_cpu_delta_pct": 34.88,
+   "sha_pre": [
+    "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d"
+   ],
+   "sha_post": [
+    "4b6d28434d83f6e347dd353ff0300ee25f2c314b46dd9546b589d9a911438bb1"
+   ]
+  }
+ }
+}

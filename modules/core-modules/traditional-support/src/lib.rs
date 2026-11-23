@@ -239,10 +239,16 @@ impl LayerModule for TraditionalSupport {
             let bottom_interface_line_spacing = slicer_ir::mm_to_units(bottom_interface_pitch_mm);
 
             // Structural support plans carry semantic regions, not printable
-            // paths. A missing entry means this demand was declined; do not
+            // paths. The lookup is the exact full source identity (object,
+            // source region and ordered variant chain), so a same-number
+            // different-chain sibling cannot lend this region its entries.
+            // A missing entry means this demand was declined; do not
             // resurrect it with a legacy filler.
-            let planned_entries =
-                paint.support_plan_entries_for(region.object_id().as_str(), *region.region_id());
+            let planned_entries = paint.support_plan_entries_for(
+                region.object_id().as_str(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
 
             if planned_entries.is_empty() {
                 continue;
@@ -662,13 +668,23 @@ impl TraditionalSupport {
             centroid_xs.sort();
             let mut i = 0;
             while i + 1 < centroid_xs.len() {
+                // Same degeneracy rejection the scan-line branch applies: a
+                // coincident pair is a zero-length span, not a stroke. Without
+                // it a two-point ring emits one zero-length path.
+                if centroid_xs[i] == centroid_xs[i + 1] {
+                    i += 2;
+                    continue;
+                }
                 let (start_x, start_y) = rotate_point(centroid_xs[i], centroid_y, cos_a, sin_a);
                 let (end_x, end_y) = rotate_point(centroid_xs[i + 1], centroid_y, cos_a, sin_a);
                 paths.push(ExtrusionPath3D {
                     points: vec![
                         Point3WithWidth {
-                            x: slicer_ir::units_to_mm(start_x),
-                            y: slicer_ir::units_to_mm(start_y),
+                            // `rotate_point` works in bbox-centre-relative
+                            // coordinates, so the fallback needs the same
+                            // translation back that the scan-line branch adds.
+                            x: slicer_ir::units_to_mm(start_x + refpt_x),
+                            y: slicer_ir::units_to_mm(start_y + refpt_y),
                             z,
                             width: path_width,
                             flow_factor: 1.0,
@@ -677,8 +693,8 @@ impl TraditionalSupport {
                             overhang_distance_mm: None,
                         },
                         Point3WithWidth {
-                            x: slicer_ir::units_to_mm(end_x),
-                            y: slicer_ir::units_to_mm(end_y),
+                            x: slicer_ir::units_to_mm(end_x + refpt_x),
+                            y: slicer_ir::units_to_mm(end_y + refpt_y),
                             z,
                             width: path_width,
                             flow_factor: 1.0,
@@ -753,6 +769,10 @@ fn rotate_point(x: i64, y: i64, cos_a: f64, sin_a: f64) -> (i64, i64) {
     let ry = (xf * sin_a + yf * cos_a).round() as i64;
     (rx, ry)
 }
+
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;
 
 #[cfg(test)]
 mod tests {
@@ -869,6 +889,105 @@ mod tests {
             (slicer_ir::units_to_mm(top) - 0.757).abs() < 0.002,
             "measured Orca pitch is 0.757 mm, got {}",
             slicer_ir::units_to_mm(top)
+        );
+    }
+
+    /// Regression for the centroid fallback's missing bbox-centre translation.
+    ///
+    /// Root cause: `fill_expolygon` rotates every edge into bbox-centre-relative
+    /// coordinates once, runs the scan there, and adds `refpt_x`/`refpt_y` back
+    /// when it converts a crossing to millimetres. The centroid fallback —
+    /// reached when the scan loop emits no pair — did the same rotation but
+    /// omitted that translation, so on any polygon whose bbox centre is not the
+    /// origin it emitted a band around the *relative* centroid, i.e. outside the
+    /// polygon. Because the fallback runs before the interface-contour branch,
+    /// its bogus output also suppressed a correct printable fallback.
+    ///
+    /// Previously failing input: the downward-pointing triangle
+    /// `(5,4), (6,4.5), (4,4.5)` mm at angle 0 with `line_spacing = 2 mm`
+    /// (greater than the 0.5 mm height, so only the apex row is scanned and its
+    /// two crossings coincide), `z = 1.0`, `speed_factor = 1.0`,
+    /// `path_width = 0.4`, `interface = false`. The bbox centre is
+    /// `(5, 4.25)` mm, so the fallback must emit exactly one band from
+    /// `(4.5, 4.25)` to `(5.5, 4.25)` mm; pre-fix it emitted
+    /// `(-0.5, 0) -> (0.5, 0)` mm.
+    #[test]
+    fn narrow_translated_tip_fallback_is_placed_at_the_bbox_centre_regression() {
+        let config = seeded_config();
+        let module = TraditionalSupport::from_config(&config).unwrap();
+        let triangle = ExPolygon {
+            contour: slicer_ir::Polygon {
+                points: vec![
+                    slicer_ir::Point2::from_mm(5.0, 4.0),
+                    slicer_ir::Point2::from_mm(6.0, 4.5),
+                    slicer_ir::Point2::from_mm(4.0, 4.5),
+                ],
+            },
+            holes: vec![],
+        };
+        let paths = module.fill_expolygon(
+            &triangle,
+            slicer_ir::mm_to_units(2.0),
+            1.0,
+            0.0,
+            1.0,
+            1.0,
+            false,
+            0.4,
+        );
+        assert_eq!(paths.len(), 1, "the fallback must emit exactly one band");
+        let starts = &paths[0].points;
+        assert_eq!(starts.len(), 2);
+        for (actual, expected) in starts.iter().zip([(4.5_f32, 4.25_f32), (5.5, 4.25)]) {
+            assert_eq!(
+                (actual.x, actual.y),
+                expected,
+                "the fallback band must sit on the bbox centre, not the relative origin"
+            );
+        }
+        assert_eq!(paths[0].role, ExtrusionRole::SupportMaterial);
+    }
+
+    /// Regression for the centroid fallback emitting a zero-length stroke.
+    ///
+    /// Root cause: the scan-line branch drops a crossing pair whose endpoints
+    /// coincide (`x_start == x_end`), but the centroid fallback pushed every
+    /// pair unconditionally. A two-point ring is traversed once in each
+    /// direction, so its two centroid-row crossings always coincide and the
+    /// branch emitted one zero-length path at the bbox centre. That path is an
+    /// extruded move to its own start point, so it carries no material and only
+    /// adds a degenerate travel.
+    ///
+    /// Previously failing input: contour `(0,0), (1,1)` mm at angle 0 with
+    /// `line_spacing = 2 mm`, `z = 1.0`, `speed_factor = 1.0`,
+    /// `path_width = 0.4`, `interface = false`. Pre-fix this returned one path
+    /// whose two points were both `(0.5, 0.5)` mm; post-fix it returns none.
+    #[test]
+    fn two_point_ring_emits_no_zero_length_fallback_regression() {
+        let config = seeded_config();
+        let module = TraditionalSupport::from_config(&config).unwrap();
+        let ring = ExPolygon {
+            contour: slicer_ir::Polygon {
+                points: vec![
+                    slicer_ir::Point2::from_mm(0.0, 0.0),
+                    slicer_ir::Point2::from_mm(1.0, 1.0),
+                ],
+            },
+            holes: vec![],
+        };
+        let paths = module.fill_expolygon(
+            &ring,
+            slicer_ir::mm_to_units(2.0),
+            1.0,
+            0.0,
+            1.0,
+            1.0,
+            false,
+            0.4,
+        );
+        assert!(
+            paths.is_empty(),
+            "a two-point ring must not emit a zero-length fallback stroke, got {paths:?}"
         );
     }
 }

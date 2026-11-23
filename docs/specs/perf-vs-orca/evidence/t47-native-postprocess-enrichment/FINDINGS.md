@@ -148,8 +148,10 @@ stale `pnp_cli.exe` binary — green after `cargo build -p pnp-cli`).
    `1b71f83d…`) are outdated for any stage whose output includes fan
    commands; future takes must re-derive or pin the post-repair sha
    (`e1088b3d…` classic-off / `11e7d38a…` t44-job) or strip fan lines before
-   comparing. Ticket 46's drift-boundary question is unaffected (it concerns
-   pre-annotation-repair drift, still unattributed).
+   comparing. Ticket 46's drift-boundary question was **resolved 2026-10-05
+   (intended behavior; see its ## Answer)** — its pre-annotation-repair drift
+   is the config-scope-resolution resolved-view program, and current
+   references are `5a61a106…` (t44 job) / `e1088b3d…`+alias (classic-off).
 4. Recommended NEXT: re-run the human's keep/drop review on integrated
    timing; no timing campaign, adoption retry or default switch is authorized
    by this take alone.

@@ -223,6 +223,9 @@ fn matrix_config(as_percent: bool, bridge_width_mm: Option<f64>) -> ConfigView {
     resolved
         .extensions
         .insert("line_width".to_owned(), ConfigValue::Float(0.45));
+    resolved
+        .extensions
+        .insert("resolution".to_owned(), ConfigValue::Float(0.01));
     resolved.extensions.insert(
         "initial_layer_line_width".to_owned(),
         ConfigValue::Float(0.0),

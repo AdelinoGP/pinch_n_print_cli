@@ -539,6 +539,29 @@ fn aggregated(semantics: &[&str]) -> BTreeMap<String, AggregatedRegionSplitEntry
     out
 }
 
+/// Declarations carrying the **real** registry priorities, so the canonical
+/// axis order differs from raw `BTreeMap` name order. `material` is 100 and
+/// `fuzzy_skin` is 200 (`CORE_REGION_SPLIT_PRIORITIES`), so `material` precedes
+/// `fuzzy_skin` even though the name sort puts `fuzzy_skin` first. Community
+/// names carry their own `(name, priority)` pair at or above
+/// `COMMUNITY_PRIORITY_FLOOR` (1000).
+fn aggregated_with_priorities(
+    semantics: &[(&str, u32)],
+) -> BTreeMap<String, AggregatedRegionSplitEntry> {
+    let mut out = BTreeMap::new();
+    for (name, priority) in semantics {
+        out.insert(
+            (*name).to_string(),
+            AggregatedRegionSplitEntry {
+                priority: *priority,
+                value_type: RegionSplitValueType::ToolIndex,
+                declaring_modules: Vec::new(),
+            },
+        );
+    }
+    out
+}
+
 /// One-layer one-object one-region plan, used by the new variant-chain tests
 /// where the cross-product cardinality assertions are sensitive to baseline shape.
 fn single_region_plan(object_id: &str) -> LayerPlanIR {
@@ -1070,7 +1093,10 @@ fn region_mapping_two_semantics_produces_cross_product_cardinality() {
         stage_invocations: &stage_invocations,
     };
     let configs = no_paint_configs();
-    let agg = aggregated(&["material", "fuzzy_skin"]);
+    // Real registry priorities: `material` (100) < `fuzzy_skin` (200), so the
+    // canonical axis order is material-first — the opposite of raw name order.
+    // The equal-priority `aggregated` helper cannot distinguish the two.
+    let agg = aggregated_with_priorities(&[("material", 100), ("fuzzy_skin", 200)]);
 
     let paints = vec![
         (
@@ -1094,14 +1120,15 @@ fn region_mapping_two_semantics_produces_cross_product_cardinality() {
     // 1 × 1 × (1+2) × (1+1) = 6 entries.
     assert_eq!(region_map.entries.len(), 6);
 
-    // Canonical axis order (from BTreeMap keys): "fuzzy_skin" < "material".
+    // Canonical axis order is `(priority, semantic name)`: material (100) then
+    // fuzzy_skin (200). Raw name order would put "fuzzy_skin" first.
     // Expected six chains:
     //   []
-    //   [fuzzy_skin=Flag(true)]
     //   [material=ToolIndex(1)]
     //   [material=ToolIndex(2)]
-    //   [fuzzy_skin=Flag(true), material=ToolIndex(1)]
-    //   [fuzzy_skin=Flag(true), material=ToolIndex(2)]
+    //   [fuzzy_skin=Flag(true)]
+    //   [material=ToolIndex(1), fuzzy_skin=Flag(true)]
+    //   [material=ToolIndex(2), fuzzy_skin=Flag(true)]
     let fs = "fuzzy_skin".to_string();
     let mat = "material".to_string();
     let expected: HashSet<Vec<(String, PaintValue)>> = [
@@ -1110,12 +1137,12 @@ fn region_mapping_two_semantics_produces_cross_product_cardinality() {
         vec![(mat.clone(), PaintValue::ToolIndex(1))],
         vec![(mat.clone(), PaintValue::ToolIndex(2))],
         vec![
-            (fs.clone(), PaintValue::Flag(true)),
             (mat.clone(), PaintValue::ToolIndex(1)),
+            (fs.clone(), PaintValue::Flag(true)),
         ],
         vec![
-            (fs.clone(), PaintValue::Flag(true)),
             (mat.clone(), PaintValue::ToolIndex(2)),
+            (fs.clone(), PaintValue::Flag(true)),
         ],
     ]
     .into_iter()
@@ -1129,10 +1156,10 @@ fn region_mapping_two_semantics_produces_cross_product_cardinality() {
 }
 
 /// AC-9 (d): within any non-empty chain, the `(semantic, value)` pairs appear
-/// in `aggregated_region_split` BTreeMap order (alphabetical). We pick names
-/// `alpha_semantic` and `zeta_semantic` to make the canonical order
-/// unambiguous and assert that for every chain containing both axes, the
-/// indices in `canonical_order` are strictly ascending.
+/// in canonical `(priority, semantic name)` order. `zeta_semantic` carries the
+/// *higher* priority number so it sorts first, which makes the sequence
+/// distinguishable from both raw name order (`alpha` first) and a pure lexical
+/// tie-break.
 #[test]
 fn region_mapping_chains_ordered_by_aggregated_region_split_canonical_order() {
     let plan = single_region_plan("obj_a");
@@ -1141,8 +1168,9 @@ fn region_mapping_chains_ordered_by_aggregated_region_split_canonical_order() {
         stage_invocations: &stage_invocations,
     };
     let configs = no_paint_configs();
-    let agg = aggregated(&["alpha_semantic", "zeta_semantic"]);
-    let canonical_order = vec!["alpha_semantic".to_string(), "zeta_semantic".to_string()];
+    // Community priorities: alpha 1100 > zeta 1000, so zeta is canonical-first.
+    let agg = aggregated_with_priorities(&[("alpha_semantic", 1100), ("zeta_semantic", 1000)]);
+    let canonical_order = vec!["zeta_semantic".to_string(), "alpha_semantic".to_string()];
 
     let paints = vec![
         ("alpha_semantic", vec![PaintValue::ToolIndex(1)]),

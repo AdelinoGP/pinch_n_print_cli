@@ -108,7 +108,7 @@ fn integrated_parity_skirt_brim() {
             config,
             native_entry: SkirtBrim::__slicer_native_entry(),
         },
-        |dispatcher, native_live, wasm_live| {
+        |dispatcher, native_live, wasm_live, _native_module, _wasm_module| {
             let mut native_layers = layers();
             let mut wasm_layers = native_layers.clone();
             FinalizationStageRunner::run_stage(

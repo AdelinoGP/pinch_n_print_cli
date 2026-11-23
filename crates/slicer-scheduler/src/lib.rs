@@ -14,6 +14,7 @@ pub mod execution_plan;
 pub mod instrumentation;
 pub mod manifest;
 pub mod module_search_path;
+pub mod preparation;
 pub mod region_split;
 pub mod stage_order;
 pub mod topology;

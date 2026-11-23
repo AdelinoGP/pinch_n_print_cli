@@ -142,18 +142,22 @@ fn square(size: f32) -> ExPolygon {
 /// `assemble_ordered_entities` builds `variant_tool_by_region` from exactly
 /// this `variant_chain`, so it is the host's own answer for the staged infill.
 fn painted_slice_ir() -> SliceIR {
+    let variant_chain = vec![(
+        String::from("material"),
+        PaintValue::ToolIndex(REGION_DEFAULT_TOOL),
+    )];
     SliceIR {
         global_layer_index: 0,
         regions: vec![SlicedRegion {
             object_id: OBJECT_ID.into(),
-            region_id: REGION_ID,
+            region_id: slicer_core::algos::paint_segmentation::paint_variant_region_id(
+                REGION_ID,
+                &variant_chain,
+            ),
             polygons: vec![square(10.0)],
             infill_areas: vec![square(10.0)],
             effective_layer_height: 0.2,
-            variant_chain: vec![(
-                String::from("material"),
-                PaintValue::ToolIndex(REGION_DEFAULT_TOOL),
-            )],
+            variant_chain,
             ..Default::default()
         }],
         ..Default::default()
@@ -235,6 +239,33 @@ fn committed_tool_index(tool_index: Option<u32>, tool_count: u32) -> u32 {
     blackboard
         .commit_slice_ir(Arc::new(vec![painted_slice_ir()]))
         .expect("commit painted slice_ir");
+
+    let mut region_map = slicer_ir::RegionMapIR::default();
+    let config = region_map.intern_config(
+        plan.global_layers[0].active_regions[0]
+            .resolved_config
+            .clone(),
+    );
+    region_map.entries.insert(
+        slicer_ir::RegionKey {
+            global_layer_index: 0,
+            object_id: OBJECT_ID.into(),
+            region_id: REGION_ID,
+            variant_chain: vec![(
+                String::from("material"),
+                PaintValue::ToolIndex(REGION_DEFAULT_TOOL),
+            )],
+        },
+        slicer_ir::RegionPlan {
+            config,
+            ..Default::default()
+        },
+    );
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("commit exact painted region map");
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
 
     let runner = InfillStagingRunner {
         infill: Mutex::new(Some(infill_ir(tool_index))),

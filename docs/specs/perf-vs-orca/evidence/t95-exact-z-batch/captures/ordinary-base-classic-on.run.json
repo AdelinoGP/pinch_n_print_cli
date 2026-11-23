@@ -1,0 +1,17 @@
+{
+  "id": "ordinary-base-classic-on",
+  "mode": "ordinary",
+  "fixture": "base",
+  "generator": "classic",
+  "supports": "on",
+  "threads": 12,
+  "exit_code": 0,
+  "probe": "PNP_T95_PROBE",
+  "wall_seconds": 174.58894,
+  "cpu_seconds": 1090.890625,
+  "cpu_wall_ratio": 6.248337523556761,
+  "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+  "bytes": 42507912,
+  "reference_sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+  "exe_sha256": "daac315095c43bc81eea4b80875a846f5de28ff20520e79b9435fcba01280c6c"
+}

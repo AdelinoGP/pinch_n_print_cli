@@ -1,0 +1,51 @@
+[module]
+id = "com.test.whole-print-input-infill"
+version = "0.1.0"
+display-name = "Whole-print input Infill fixture"
+description = "Typed committed-input observations; ordinary stage performs no work"
+author = "Pinch 'n Print Team"
+license = "MIT"
+
+[stage]
+id = "Layer::Infill"
+
+# This parser-required legacy section is spelled ir-access, not ir_access:
+# ingest_manifest_text in crates/slicer-scheduler/src/manifest.rs requires it.
+# No ordinary input/output is used as preparation evidence.
+[ir-access]
+reads = []
+writes = []
+
+[claims]
+holds = ["claim:top-fill", "claim:sparse-fill", "support-family:traditional"]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires = []
+min-host-version = "0.1.0"
+min-ir-schema = "1.0.0"
+max-ir-schema = "5.0.0"
+
+[preparation]
+interface = "slicer:layer-preparation/prepare@1.0.0"
+# Other shared-observer reads intentionally record AccessDenied.
+input_reads = ["slices", "region_map", "selected_targets"]
+views = ["observations"]
+
+[config.schema.line_width]
+type = "float"
+default = 0.8
+
+[config.schema.whole_print_fixture_mode]
+type = "enum"
+values = ["standard", "publish_read_errors", "fail_after_staging"]
+default = "standard"
+
+[config.schema.whole_print_batch_ops]
+type = "string"
+default = ""
+
+# private_probe is deliberately undeclared: every visible config records absence.
+[hints]
+layer-parallel-safe = true

@@ -1,0 +1,24 @@
+{
+  "stale_y": {
+    "native_exit": 101,
+    "native_assertion_rejected": true,
+    "wasm_exit": 1,
+    "wasm_assertion_rejected": true,
+    "sabotage": {
+      "old": "&& self.y == y",
+      "new": "&& true"
+    },
+    "source_sha256": "03255d56d468c202fb6698a080e705659eeab84ebf92bf7131ff5b43872158f1"
+  },
+  "wrong_projection": {
+    "native_exit": 101,
+    "native_assertion_rejected": true,
+    "wasm_exit": 1,
+    "wasm_assertion_rejected": true,
+    "sabotage": {
+      "old": "            x,\n",
+      "new": "            x: x + 1,\n"
+    },
+    "source_sha256": "d3a83f317f46dfa5d4b3c7cbabb198df3f6841b03fa491ead3dc72798f2d26ee"
+  }
+}

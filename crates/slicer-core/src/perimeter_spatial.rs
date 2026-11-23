@@ -37,6 +37,9 @@ pub enum PathAnnotationMode {
     Planar,
     /// Emit previous-layer distance annotations without quartiles.
     NonPlanarNoQuartile,
+    /// Emit neither annotation: no downstream consumer reads them on this
+    /// slice, so both per-vertex queries are skipped.
+    Unconsumed,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -294,6 +297,16 @@ fn dispatch() -> Dispatch {
 #[cfg(not(feature = "perimeter-spatial-test-support"))]
 fn dispatch() -> Dispatch {
     default_dispatch()
+}
+
+/// Whether this build compiles the accelerated perimeter spatial path.
+///
+/// The controlled perimeter driver injects `pnp_perimeter_spatial_accelerated`
+/// only into canonical `slicer-core` compilations, so a test in another crate
+/// cannot observe that cfg directly — `#[cfg(...)]` there would be permanently
+/// false and silently delete coverage. Callers ask the library instead.
+pub const fn is_accelerated() -> bool {
+    cfg!(pnp_perimeter_spatial_accelerated)
 }
 
 fn default_dispatch() -> Dispatch {
@@ -734,12 +747,17 @@ pub fn expolygon_to_path3d_indexed(
             let y = slicer_ir::units_to_mm(point.y);
             let overhang_quartile = match mode {
                 PathAnnotationMode::Planar => context.overhang_quartile(x, y),
-                PathAnnotationMode::NonPlanarNoQuartile => None,
+                PathAnnotationMode::NonPlanarNoQuartile | PathAnnotationMode::Unconsumed => None,
             };
-            let overhang_distance_mm = if context.boundary.is_empty() {
-                None
-            } else {
-                Some(context.signed_distance_to_boundary(x, y) + 0.5 * width)
+            let overhang_distance_mm = match mode {
+                PathAnnotationMode::Planar | PathAnnotationMode::NonPlanarNoQuartile => {
+                    if context.boundary.is_empty() {
+                        None
+                    } else {
+                        Some(context.signed_distance_to_boundary(x, y) + 0.5 * width)
+                    }
+                }
+                PathAnnotationMode::Unconsumed => None,
             };
             Point3WithWidth {
                 x,

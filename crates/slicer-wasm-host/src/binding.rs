@@ -13,13 +13,14 @@
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigView, InfillIR, LayerCollectionIR, LayerPlanIR, LightningTreeIR, MeshIR, ModuleId,
-    PerimeterIR, PreparedRegionData, RegionMapIR, SeamPlanIR, SliceIR, SupportAnalysisIR,
-    SupportGeometryIR, SupportPlanIR, SurfaceClassificationIR,
+    ConfigView, InfillIR, LayerCollectionIR, LayerPlanIR, MeshIR, ModuleId, PerimeterIR,
+    PreparedRegionData, RegionMapIR, SeamPlanIR, SliceIR, SupportAnalysisIR, SupportGeometryIR,
+    SupportPlanIR, SurfaceClassificationIR,
 };
 
 use crate::instance::WasmComponent;
 use crate::pool::WasmInstancePool;
+use crate::selection::LayerSelection;
 use slicer_sdk::native::NativeStageEntry;
 
 /// Wasm-host-side view of a `CompiledModule` valid for the duration of one dispatch call.
@@ -86,6 +87,8 @@ impl<'a> CompiledModuleLive<'a> {
 /// Input borrow struct for `LayerStageRunner::run_stage`. Carries IR-typed borrows
 /// projected from the runtime-side Blackboard + LayerArena before the dispatch call.
 pub struct LayerStageInput<'a> {
+    /// Call-local selection borrowed from the committed layer selection index.
+    pub selection: Option<&'a LayerSelection>,
     /// Arc-cloned from `blackboard.mesh()` at the call site.
     pub mesh: Arc<MeshIR>,
     /// Reserved: paint annotations are now in SliceIR segment_annotations (AC-16).
@@ -94,9 +97,6 @@ pub struct LayerStageInput<'a> {
     pub seam_plan: Option<Arc<SeamPlanIR>>,
     /// From `blackboard.support_plan()`.
     pub support_plan: Option<Arc<SupportPlanIR>>,
-    /// Packet 137: from `blackboard.lightning_tree_ir()`. `None` when the
-    /// prepass producer was skipped (no lightning holder).
-    pub lightning_tree_ir: Option<Arc<LightningTreeIR>>,
     /// From `blackboard.region_map()`.
     pub region_map: Option<Arc<RegionMapIR>>,
     /// Pre-call read from `arena.slice()`.

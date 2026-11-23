@@ -10,6 +10,21 @@ use slicer_wasm_host::WasmRuntimeDispatcher;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
+fn single_region_map(layer_index: u32, spacing: Option<f64>) -> slicer_ir::RegionMapIR {
+    let mut config = ResolvedConfig::default();
+    if let Some(spacing) = spacing {
+        config.extensions.insert(
+            "infill-spacing".into(),
+            slicer_ir::ConfigValue::Float(spacing),
+        );
+    }
+    dispatch_fixture::region_map_for_slice(
+        &ir_builders::slice_ir::with_count(1).build(),
+        layer_index,
+        config,
+    )
+}
+
 struct MinimalEmitter;
 impl GCodeEmitter for MinimalEmitter {
     fn emit_gcode(
@@ -373,6 +388,7 @@ fn full_pipeline_multi_tier_with_typed_layer() {
 #[test]
 fn guest_infill_output_committed_to_arena() {
     let mut fx = dispatch_fixture::for_stage("Layer::Infill")
+        .with_region_map(single_region_map(7, None))
         .with_slice(
             ir_builders::slice_ir::with_count(1)
                 .at_layer(7)
@@ -417,6 +433,7 @@ fn guest_infill_output_committed_to_arena() {
 #[test]
 fn output_commitment_deterministic_across_repeated_runs() {
     let fx = dispatch_fixture::for_stage("Layer::Infill")
+        .with_region_map(single_region_map(0, None))
         .with_slice(ir_builders::slice_ir::with_count(1).build())
         .build();
 
@@ -587,6 +604,7 @@ fn infill_output_correct_when_slice_regions_present() {
                 .at_z(1.0)
                 .build(),
         )
+        .with_region_map(single_region_map(5, Some(3.0)))
         .with_config(slicer_ir::ConfigView::from_map(fields))
         .build();
 
@@ -662,6 +680,11 @@ fn stage_without_perimeter_input_does_not_see_perimeter_state() {
     // observe it — with zero slice regions, the guest emits no geometry.
     let mut fx = dispatch_fixture::for_stage("Layer::Infill")
         // Stage perimeter data only; no slice data.
+        .with_region_map(dispatch_fixture::region_map_for_slice(
+            &ir_builders::slice_ir::with_count(4).build(),
+            0,
+            ResolvedConfig::default(),
+        ))
         .with_perimeter(
             ir_builders::perimeter_ir::with_count(4)
                 .at_layer(0)
@@ -697,6 +720,7 @@ fn failed_commit_does_not_leak_into_next_call() {
     // infill, second (for perimeters) with empty output should not see leaked
     // infill.
     let mut fx = dispatch_fixture::for_stage("Layer::Infill")
+        .with_region_map(single_region_map(0, None))
         .with_slice(ir_builders::slice_ir::with_count(1).build())
         .build();
 

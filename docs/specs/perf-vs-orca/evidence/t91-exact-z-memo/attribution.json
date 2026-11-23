@@ -1,0 +1,117 @@
+{
+ "note": "Instrumented captures: attribution only, never a wall claim (docs/17_agent_debugging.md). Each arm is one `--instrument-stderr --profile --profile-verbose` run. `post_planner_gap_ms` is the support-geometry stage wall minus the planner module walls \u2014 the bracket that carries the exact-Z validation loop \u2014 so its drop is where the memo removes work, not the cell's wall delta.",
+ "cells": {
+  "accelerated-base-arachne-on": {
+   "baseline": {
+    "slice_ms": 167985,
+    "prepass_phase_ms": 141547,
+    "support_geometry_stage_ms": 66208,
+    "planner_module_ms": 52369,
+    "aggregation_module_ms": null,
+    "post_planner_gap_ms": 13839
+   },
+   "candidate": {
+    "slice_ms": 160208,
+    "prepass_phase_ms": 141081,
+    "support_geometry_stage_ms": 65918,
+    "planner_module_ms": 53825,
+    "aggregation_module_ms": null,
+    "post_planner_gap_ms": 12093
+   },
+   "post_planner_gap_drop_ms": 1746,
+   "post_planner_gap_drop_pct": 12.616518534576198,
+   "support_geometry_stage_drop_ms": 290
+  },
+  "accelerated-base-classic-on": {
+   "baseline": {
+    "slice_ms": 168319,
+    "prepass_phase_ms": 149723,
+    "support_geometry_stage_ms": 73992,
+    "planner_module_ms": 52224,
+    "aggregation_module_ms": null,
+    "post_planner_gap_ms": 21768
+   },
+   "candidate": {
+    "slice_ms": 157844,
+    "prepass_phase_ms": 137783,
+    "support_geometry_stage_ms": 62428,
+    "planner_module_ms": 52539,
+    "aggregation_module_ms": null,
+    "post_planner_gap_ms": 9889
+   },
+   "post_planner_gap_drop_ms": 11879,
+   "post_planner_gap_drop_pct": 54.57092980521867,
+   "support_geometry_stage_drop_ms": 11564
+  },
+  "ordinary-base-arachne-on": {
+   "baseline": {
+    "slice_ms": 168841,
+    "prepass_phase_ms": 147538,
+    "support_geometry_stage_ms": 71714,
+    "planner_module_ms": 53313,
+    "aggregation_module_ms": null,
+    "post_planner_gap_ms": 18401
+   },
+   "candidate": {
+    "slice_ms": 154724,
+    "prepass_phase_ms": 135362,
+    "support_geometry_stage_ms": 59789,
+    "planner_module_ms": 52405,
+    "aggregation_module_ms": null,
+    "post_planner_gap_ms": 7384
+   },
+   "post_planner_gap_drop_ms": 11017,
+   "post_planner_gap_drop_pct": 59.871746100755395,
+   "support_geometry_stage_drop_ms": 11925
+  },
+  "ordinary-base-classic-on": {
+   "baseline": {
+    "slice_ms": 162618,
+    "prepass_phase_ms": 142772,
+    "support_geometry_stage_ms": 67211,
+    "planner_module_ms": 52506,
+    "aggregation_module_ms": null,
+    "post_planner_gap_ms": 14705
+   },
+   "candidate": {
+    "slice_ms": 161751,
+    "prepass_phase_ms": 138185,
+    "support_geometry_stage_ms": 62510,
+    "planner_module_ms": 52636,
+    "aggregation_module_ms": null,
+    "post_planner_gap_ms": 9874
+   },
+   "post_planner_gap_drop_ms": 4831,
+   "post_planner_gap_drop_pct": 32.852771166269974,
+   "support_geometry_stage_drop_ms": 4701
+  }
+ },
+ "memo_probe": {
+  "available": true,
+  "note": "Direct memo attribution from the probe snapshots (probe/build-probe.ps1 + run-probe.ps1), ordinary base classic-on. Instrumented: never a wall claim.",
+  "cell": "ordinary-base-classic-on",
+  "arms": {
+   "baseline": {
+    "queries": 431,
+    "misses": 431,
+    "builds": 431,
+    "query_ms": 22636.3,
+    "validate_calls": 431,
+    "validate_ms": 24335.0
+   },
+   "candidate": {
+    "queries": 431,
+    "misses": 431,
+    "builds": 1,
+    "query_ms": 8922.3,
+    "validate_calls": 431,
+    "validate_ms": 10004.3
+   }
+  },
+  "query_ms_drop": 13714.0,
+  "query_ms_drop_pct": 60.584106059735916,
+  "validate_ms_drop": 14330.7,
+  "geometry_builds_before": 431,
+  "geometry_builds_after": 1
+ }
+}

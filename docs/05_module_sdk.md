@@ -961,11 +961,357 @@ the active region (packet 179); they must not assume a fixed 0.4 mm width.
 No state is retained across calls. Per-print state lives in the prepass tier +
 Blackboard (ADR-0029).
 
+The SDK retains neither module values nor prepared plans between calls; prepared-plan storage is host-owned.
+
+## Prepared-plan transport and native facade
+
+Row 03 adds opaque prepared-plan transport without retaining module instances
+or changing ordinary per-call reconstruction. In `crates/slicer-sdk/src/preparation.rs`,
+the additive non-WASM constructors adapt native host capabilities:
+
+- `PrintPreparationInput::from_host_reader` accepts an `Arc` reader callback
+  taking `(offset, max_bytes)` and returning bytes or `PreparationTransportError`.
+- `PreparedPlanOutput::from_host_writer` accepts an `Arc` writer callback
+  taking a name and complete byte slice, returning success or a transport error.
+- `PreparedPlanView::from_host_view` wraps an
+  `Arc<dyn PreparedPlanRead + Send + Sync>`; resource validity remains the
+  host's responsibility.
+
+The read traits in the same SDK file are `PreparedPlanRead`, with
+`check_ready` and `open`, and `PreparedPieceRead`, with `len`, `is_empty`, and
+bounded `read(offset, max_bytes)`. `open` returns an optional
+`Arc<dyn PreparedPieceRead + Send + Sync>` without interpreting the bytes.
+`PreparedPlanView::require(name)` converts optional absence to fatal
+`ModuleError` code `57401`, with message
+`required preparation piece missing: <name>`. It does not decode payloads;
+module-owned decoders retain their own errors (for example, the transport
+fixture's malformed-payload code `57403`).
+
+`with_prepared_plan_view(view, call)` binds a native host read facade for one
+synchronous call. It delegates to the existing scope guard, restoring any
+previous thread-local binding on both return and unwind, including nested
+calls; call-scoped wrappers cannot keep the expired scope alive. The
+pre-existing `with_prepared_plan` signature is unchanged:
+`with_prepared_plan<R>(current: impl Fn() -> Result<PreparedPlanCallbacks, PreparationError> + 'static, body: impl FnOnce() -> R) -> R`.
+
+Host adapters freeze the selected artifact and its declaration rather than a
+live module: `freeze_native` (`crates/slicer-wasm-host/src/preparation_native.rs`)
+keeps the prepared/ordinary native entry pairing, while `freeze_wasm`
+(`crates/slicer-wasm-host/src/preparation.rs`) validates the selected
+component's capability and ordinary stage. `FrozenPreparationBinding::with_native_plan`
+(`crates/slicer-wasm-host/src/preparation_native.rs`) supplies the paired ordinary
+entry under a fresh owner-bound read scope; `FrozenPreparationBinding::with_wasm_plan`
+(`crates/slicer-wasm-host/src/preparation.rs`) supplies the frozen component
+and a fresh call-local store. Both check owner authority and hold active-call
+guards. These are explicit mechanisms only, not scheduling or module selection.
+
+Transport errors map one-to-one between schema `PreparationTransportError`,
+SDK `PreparationError` (`crates/slicer-sdk/src/preparation.rs`), and the WIT
+variants via `boundary` (`crates/slicer-wasm-host/src/preparation_host.rs`):
+
+| Rust variant | WIT variant |
+|---|---|
+| `NotReady` | `not-ready` |
+| `InvalidName` | `invalid-name` |
+| `DuplicateName` | `duplicate-name` |
+| `PoisonedOutput` | `poisoned-output` |
+| `RangeError` | `range-error` |
+| `ArithmeticOverflow` | `arithmetic-overflow` |
+| `AccessDenied` | `access-denied` |
+
+Row 03 does not supply row-04 typed input projections, row-05 scheduling,
+cancellation or release orchestration, or row-06 diagnostic geometry.
+
+### Prepared plan lifetime (Normative — TASK-574 row 5)
+
+Ordinary `from_config` reconstruction remains per call: preparation does not
+retain a module value between Layer invocations. Each ordinary native or
+component call receives fresh owner-bound view/resource adapters over the
+same immutable print-private plan. Call scopes expire on return or unwind;
+the host retains storage until all active calls and the applicable anchored
+host closure finish, then disposes it.
+The public SDK `dispose_prepared_plan` entry delegates through a callback bound to the runtime's `PrintPreparationScope::dispose`, returning typed `PreparationFailure::Busy` during an active call without waiting, retrying, or forcing revocation, then succeeding after the runtime caller joins.
+
+Reads are cursorless: each request supplies its own offset and bound.
+Concurrent immutable reads do not share cursor state and remain subject to
+the module's existing parallel-safety limits; preparation grants no new
+permission for parallel execution.
+
+Ready-empty is ready, not an unready plan. `PreparedPlanView::open` may return
+`None` for an optional missing piece; `PreparedPlanView::require` converts a
+missing required piece to the module's fatal `ModuleError` code `57401`.
+A present malformed piece is not absence: its module-owned decoder returns
+its own error. Modules own all plan-payload decoding; the host transports
+opaque bytes and never decodes their format.
+
+### Preparation capability pilot authoring
+
+**PILOT evidence only — not production availability.** This controlled-fixture
+opt-in preserves the single-stage-per-impl constraint and ordinary per-Layer
+`from_config` reconstruction; it does not retain a live module between calls
+or activate production preparation.
+
+Implement the required
+`LayerPreparation::prepare_print(input: &PrintPreparationInput, output: &mut PreparedPlanOutput) -> Result<(), ModuleError>`
+(`crates/slicer-sdk/src/preparation.rs`), which has no default body and no
+print-wide constructor configuration. Apply `#[slicer_module(preparation)]`
+to the single ordinary `impl LayerModule for T`; plain `#[slicer_module]`
+is unchanged. Omitting `prepare_print` while opting in fails compilation,
+as proved by the pilot compile matrix's negative case.
+
+The `PrintPreparationInput`, `PreparedPlanOutput`, `PreparedPlanView`, and
+`PreparedPiece` wrappers (`crates/slicer-sdk/src/preparation.rs`) expose the
+pilot transport. `PreparedPlanView::current()` yields a fresh call-local read
+facade; `with_prepared_plan` (`crates/slicer-sdk/src/preparation.rs`) provides
+an unwind-safe, thread-local scoped binding restored on return and unwind.
+The macro generates `T::__slicer_prepared_native_entry() -> NativePreparedStageEntry`
+on non-WASM targets and `T::__SLICER_PREPARATION_SCHEMA: PreparationExportSchema`
+(`crates/slicer-macros/src/lib.rs`), while preserving ordinary reconstruction
+per Layer call.
+
+Two real authoring fixtures are registered for guest discovery:
+
+- `crates/slicer-wasm-host/test-guests/preparation-pilot-infill`: module-owned
+  numeric codec, publishing `numbers` and an empty `π`, then emitting
+  two-point sparse-infill paths.
+- `crates/slicer-wasm-host/test-guests/preparation-pilot-path`: module-owned
+  text codec, interpreting `alpha|beta` as comments `alpha` and `beta`.
+
+These guest crates are native dev-dependencies of `slicer-wasm-host` and root
+workspace members: they **must not** declare a `[workspace]` sentinel. A
+sentinel combined with a member path dependency causes the "multiple workspace
+roots" manifest error. Non-dev-dependency guests keep their sentinel.
+
+Executed evidence: `cargo test -p slicer-wasm-host --test contract preparation_pilot_`
+passed 9 tests in `preparation_capability_pilot_tdd`
+(`crates/slicer-wasm-host/tests/contract/preparation_capability_pilot_tdd.rs`).
+Within that module's `preparation_pilot_stage_surface`, the observed stage
+set exactly equalled the 9 runtime-derived Layer rows; 18 plain/prepared
+scratch crates compiled across native and componentized WASM, covering
+36 configurations, with the missing-method opt-in rejected. Fresh-instance
+WASM and native consumers, isolation, publication failures, bounded ranges,
+and ordinary-guest compatibility were also covered. The scoped store's
+release after consumer unwinding was proved with weak references.
+
+**Scope boundary:** this is controlled-fixture evidence only. Row 03 still
+owns production declaration parsing/validation and normalized host storage
+(test-local staging and `read-fixture` are not its production API). Row 04
+owns typed whole-print input projections; row 05 owns scheduling, selection,
+override, and cancellation lifecycle activation; row 06 owns diagnostic/visual
+projections. None is marked complete here. No lightning algorithm, migration,
+or parity claim is made. Allocator/process overhead and process peak memory
+are **UNMEASURED**; observed durations are evidence, not a bound, and no
+latency acceptance threshold is claimed.
+
+### Optional preparation projection sink (Normative)
+
+`PreparedPlanOutput::projection()` is the only acquisition point for the
+optional diagnostic sink:
+
+```rust
+pub fn projection(
+    &self,
+) -> Result<Option<PreparationProjectionOutput>, PreparationProjectionError>
+```
+
+Sink presence is ordinary data returned by the existing host-provided
+`prepared-plan-output` resource, never an optional WIT export: no guest exports
+a projection interface, no manifest key enables one, and the `prepare` export
+signature is unchanged. When the invocation requested no diagnostic views, the
+method returns `Ok(None)`; it allocates no diagnostic collections, creates no
+staging, and leaves `PreparationDiagnosticAccounting` at zero. A module may call
+`projection()` unconditionally and still publish only opaque pieces.
+
+The SDK types live in `crates/slicer-sdk/src/preparation_visual.rs` and are
+re-exported from `slicer_sdk::preparation`:
+
+- `PreparationProjectionScene { scene_id: String, view: String, classes:
+  Vec<String>, primitives: Vec<PreparationProjectionPrimitive> }` is one
+  completed whole-print diagnostic view.
+- `PreparationProjectionPrimitive { id: String, global_layer_index: u32,
+  class: String, label: Option<String>, geometry:
+  PreparationProjectionGeometry }` is one labeled primitive on a committed
+  global schedule layer.
+- `PreparationProjectionGeometry::{Point(Point2), Polyline(Vec<Point2>),
+  Polygon { polygon: ExPolygon, filled: bool }}` is typed XY geometry in exact
+  integer units (1 unit = 100 nm); `Point2`/`ExPolygon` are `slicer_ir`
+  geometry, never private algorithm plan types.
+- `PreparationProjectionWrite: Send + Sync` is the host-owned writer trait:
+  `requested_views(&self) -> Result<Vec<String>, PreparationProjectionError>`
+  and `publish(&self, scene: &PreparationProjectionScene) ->
+  Result<(), PreparationProjectionError>`.
+- `PreparationProjectionOutput` is the private-field, call-local facade with the
+  same two methods. Native hosts adapt a writer through
+  `PreparationProjectionOutput::from_host_writer(Arc<dyn
+  PreparationProjectionWrite + Send + Sync>)`; the WASM path uses
+  `from_callbacks`, which retains no raw resource index.
+- `PreparationProjectionError` is re-exported from `slicer_sdk::preparation`; it
+  is defined in `crates/slicer-schema/src/preparation.rs` with variants
+  `AccessDenied`, `NotRequested`, `UndeclaredView`, `DuplicateScene`,
+  `MissingScene`, `InvalidReference`, `InvalidShape`, `InvalidCoordinate`,
+  `ArithmeticOverflow`, and `PoisonedOutput`.
+
+`requested_views()` returns the exact requested view names, preserving UTF-8
+identities and order; it never substitutes an empty-success fallback. It returns
+`NotRequested` when no projection was requested for the invocation,
+`AccessDenied` when the sink is foreign, disposed, or used outside its owning
+call, and `PoisonedOutput` after an earlier rejection. `publish()` returns
+`UndeclaredView` for a view not declared by the owner, `NotRequested` for a
+declared view not requested this run, `DuplicateScene` for a second scene for
+the same view, `InvalidReference` for empty/duplicate identities or unknown
+class/layer references, `InvalidShape`/`InvalidCoordinate` for invalid geometry,
+and `ArithmeticOverflow` for checked staging overflow. `MissingScene` is raised
+by the host at transaction finish, not by `publish()`: a requested view with no
+scene still fails publication, including when the module never called
+`projection()`. None of these errors use the opaque-plan `PreparationError`
+transport domain.
+
+A rejected `publish()` or `requested_views()` is sticky. The host records the
+first `PreparationProjectionError` in the preparation transaction and poisons
+the output; catching the typed error cannot clear it. Later calls through the
+same sink return `PoisonedOutput`, and `finish` rejects the invocation even if
+the module later publishes a valid scene. `AccessDenied` for a foreign owner is
+checked before the transaction is touched and does not poison that owner's
+output. An original module `ModuleError` or trap remains the reported failure
+when it occurs alongside a caught sink poison.
+
+The host validates and commits the typed DTO. It never decodes the private plan
+payload: `PreparedPlanOutput::put` transports opaque module-owned bytes, and
+`requested_views()`/`publish()` carry only diagnostic identity and geometry.
+Module-owned payload codecs remain module-owned; see "Prepared plan lifetime".
+
+A minimal authoring shape:
+
+```rust
+use slicer_ir::{ExPolygon, Point2, Polygon};
+use slicer_sdk::error::ModuleError;
+use slicer_sdk::preparation::{
+    LayerPreparation, PreparationProjectionError, PreparationProjectionGeometry,
+    PreparationProjectionPrimitive, PreparationProjectionScene, PreparedPlanOutput,
+    PrintPreparationInput,
+};
+
+fn projection_error(error: PreparationProjectionError) -> ModuleError {
+    ModuleError::fatal(57504, format!("preparation projection: {error:?}"))
+}
+
+impl LayerPreparation for MyModule {
+    fn prepare_print(
+        _input: &PrintPreparationInput,
+        output: &mut PreparedPlanOutput,
+    ) -> Result<(), ModuleError> {
+        output.put("plan", b"module-owned-plan-bytes")?;
+
+        if let Some(sink) = output.projection().map_err(projection_error)? {
+            let requested = sink.requested_views().map_err(projection_error)?;
+            if requested.iter().any(|view| view == "xy") {
+                let scene = PreparationProjectionScene {
+                    scene_id: "final".into(),
+                    view: "xy".into(),
+                    classes: vec!["domains".into()],
+                    primitives: vec![PreparationProjectionPrimitive {
+                        id: "domain_a".into(),
+                        // Must name an index in the committed layer schedule.
+                        global_layer_index: 0,
+                        class: "domains".into(),
+                        label: Some("domain".into()),
+                        geometry: PreparationProjectionGeometry::Polygon {
+                            polygon: ExPolygon {
+                                contour: Polygon {
+                                    points: vec![
+                                        Point2 { x: 0, y: 0 },
+                                        Point2 { x: 40_000, y: 0 },
+                                        Point2 { x: 40_000, y: 40_000 },
+                                        Point2 { x: 0, y: 40_000 },
+                                    ],
+                                },
+                                holes: vec![],
+                            },
+                            filled: true,
+                        },
+                    }],
+                };
+                sink.publish(&scene).map_err(projection_error)?;
+            }
+        }
+        Ok(())
+    }
+}
+```
+
 ### Stable Entity IDs (packet 39)
 
 Each `PrintEntity` and `TravelMove` carries a `u64 entity_id` populated at construction by a per-layer `LayerEntityIdGen`. Module producers (perimeter, infill, support modules) receive the generator via the per-layer context and call `id_gen.next()` once per entity. Finalization receives fresh IDs from the host at insert time. Travel anchors reference entities by `entity_id`, not positional index, so finalization mutations cannot invalidate them. See `docs/02_ir_schemas.md` IR 10 "Stable entity IDs" for the full contract.
 
 ---
+
+### Lightning prepared module consumption
+
+The legacy path is retired.
+The selected `com.core.lightning-infill` artifact plans during `prepare_print` from typed committed
+regions, region configs, and layer plan, publishing one module-private `lightning-layer-{global_layer_index}` piece per schedule layer.
+Ordinary `Layer::Infill` consumers require and decode their own layer's piece through the module's own decoder;
+they no longer use the deleted `lightning_tree_segments_for`/`with_lightning_tree_ir` SDK accessors.
+`slicer_integrated_modules::prepared_native_entries()` returns the module's generated
+`NativePreparedStageEntry`/`PreparationExportSchema` pair for AC-2's native arm.
+The advanced, default-`none` `prepared_plan_diagnostic` key accepts `none`, `missing_piece`,
+`malformed_piece`, `unsupported_version`, and `empty_plan`.
+It is a diagnostic publication mode applied only after planning and never reaches the kernel.
+The plan remains module-private `KernelPlan`/`PlanEntry`, never public IR.
+This records behavioural equivalence to the pre-migration producer: ownership moves with no intended output change,
+not a canonical-parity claim; the recorded Gate A/B outcomes remain unchanged.
+
+## Preparation read context and selected sources
+
+`slicer_sdk::preparation::PreparationTargetSource` preserves these source tags:
+- `Model { key, members }`, using `PreparationRegionKey` identities.
+- `SupportCarrier { entry_index, object_id, region_id, variant_chain, family, demand_ids, body_ids, provenance, anchor_layer_index }`.
+- `Raft { global_layer_index }`.
+- `AnchoredStage { anchor_layer_index }`.
+
+`PreparationSelectedTarget` carries `global_layer_index`, `stage_id`, `invoke`,
+the source, filtered `config`, `held_claims`, `authored_coloring`, and
+`resolved_role_tool: Option<u32>`. Sources describe eligible input contexts, never
+predicted Layer, perimeter, or support output. Whole-print read context remains
+separate from selected-target context; carrier `entry_index` is never renumbered.
+`PreparationPaintValue`, `PreparationVariantChain`, and `PreparationRegionKey`
+(`crates/slicer-sdk/src/preparation_input.rs`) preserve lossless identities.
+The four bidirectional `From<&…>` implementations convert `PreparationPaintValue`
+and `PreparationRegionKey` to/from their `slicer_ir` counterparts, including
+variant chains: `Custom` strings remain byte-exact and scalar signed-zero bits
+retain their identity. Ordinary shared WIT is unchanged.
+Support-plan entry `variant_chain` is projected losslessly from native
+`SupportPlanEntry::variant_chain`.
+
+The 15 `PrintPreparationInput` reads (`crates/slicer-sdk/src/preparation.rs`)
+all take `&self`; signatures below abbreviate only `PreparationInputError` as `E`:
+
+| Method and arguments | Return type |
+|---|---|
+| `layer_count()` | `Result<u64, E>` |
+| `layers(offset: u64, max_items: u64)` | `Result<Vec<PreparationLayer>, E>` |
+| `regions(layer_index: u32, offset: u64, max_items: u64)` | `Result<Vec<PreparationRegion>, E>` |
+| `region_configs(layer_index: u32, offset: u64, max_items: u64)` | `Result<Vec<PreparationRegionConfig>, E>` |
+| `surface_objects(offset: u64, max_items: u64)` | `Result<Option<Vec<PreparationSurfaceObject>>, E>` |
+| `surface_layers(layer_index: u32, offset: u64, max_items: u64)` | `Result<Option<Vec<PreparationSurfaceLayer>>, E>` |
+| `mesh_objects(offset: u64, max_items: u64)` | `Result<Vec<PreparationMeshObject>, E>` |
+| `mesh_vertices(object_id: &str, offset: u64, max_items: u64)` | `Result<Vec<slicer_ir::Point3>, E>` |
+| `mesh_triangles(object_id: &str, offset: u64, max_items: u64)` | `Result<Vec<(u32, u32, u32)>, E>` |
+| `mesh_queries(requests: &[PreparationMeshQuery])` | `Result<Vec<PreparationMeshQueryResult>, E>` |
+| `seams(layer_index: u32, offset: u64, max_items: u64)` | `Result<Option<Vec<PreparationSeam>>, E>` |
+| `support_analysis(offset: u64, max_items: u64)` | `Result<Option<PreparationSupportAnalysisBatch>, E>` |
+| `support_geometry(offset: u64, max_items: u64)` | `Result<Option<PreparationSupportGeometryBatch>, E>` |
+| `support_plan(offset: u64, max_items: u64)` | `Result<Option<PreparationSupportPlanBatch>, E>` |
+| `selected_targets(layer_index: u32, offset: u64, max_items: u64)` | `Result<Vec<PreparationSelectedTarget>, E>` |
+
+Offsets are ordinals, not cursors; batches clip to remaining length, while an
+offset beyond length yields `RangeError`. Optional absence stays `None`, distinct
+from present-empty `Some(empty)`. `PrintPreparationRead: Send + Sync` supplies
+the backing through `from_host_input`; WASM glue uses combined
+`from_host_input_with_fixture`, retaining the unchanged row-03 fixture delegate.
+Host `from_committed` (`crates/slicer-wasm-host/src/preparation_input.rs`)
+prevalidates the frozen owner and guard before any invocation. These reads expose
+no Layer-output access and perform no owner payload decoding anywhere.
 
 ## Test Support (slicer-sdk feature)
 
@@ -999,6 +1345,214 @@ Integration-test binaries that reference `slicer_sdk::test_support` must be
 declared as `[[test]]` targets with `required-features = ["test"]`. `cfg(test)`
 on an integration-test source does not enable the linked SDK feature, so bare
 runs may omit these binaries.
+
+### Property testing
+
+The default-off `slicer-sdk/property_testing` feature implies `test` and enables
+the optional Proptest and `serde_json` dependencies. Its
+`slicer_sdk::test_support::property_testing` module is available only on native
+targets; it is not a guest export. Run registered properties through the
+[property-testing workflow](testing/properties.md).
+
+`slicer_sdk::test_support::property_testing::PropertyRun::check` creates a fresh
+`slicer_sdk::test_support::property_testing::CaseGuard` for every generated case
+and every shrink invocation. The guard resets the thread's log and mesh state,
+installs an empty log sink, and owns fresh output captures and entity IDs.
+`CaseGuard` is `!Send + !Sync`; same-thread nesting panics before mutating the
+active guard's state. On drop, including during unwinding, it retains available
+case logs before teardown; `slicer_sdk::test_support::property_testing::take_case_logs`
+returns and clears those retained thread-local logs. The guard does not install
+or change per-case panic hooks.
+
+Property support does not change private-kernel ownership or expose private
+production kernels for tests: test private kernels in their owning crate.
+
+#### Direct input domains, oracles and concrete fixtures
+
+The same feature gates three helper submodules:
+`slicer_sdk::test_support::property_testing::domains` (construction-first input
+strategies), `oracles` (independent reference predicates) and `regression`
+(concrete regression formatting). They are native-only and absent from every
+guest and production graph.
+
+`domains::anchor_cases`, `domain`-specific builders such as `geometry_cases`, and
+the scalar/graph/ID/permutation helpers are validated by
+`crates/slicer-sdk/tests/property_domains.rs` against the registry records
+`D-SCALARS`, `D-GRAPHS`, `D-IR`, `D-GEOMETRY` and `D-MESH`. Those properties check
+the helpers themselves and are not credits toward host or module SUT coverage.
+`GeometryBounds` and `GeometryDomain` (`domains`) provide documented safe `Default`
+values for FRU, but live profiles must supply their measured bounds explicitly;
+`geometry_cases` rejects bounds its bounded catalog cannot satisfy instead of
+narrowing them.
+
+Downstream SUT families consume those helpers directly rather than re-deriving
+input shapes: `H-COORD` consumes `domains::finite_f32` and
+`domains::rounding_boundary_mm`, `H-IDS` consumes `domains::id_text`, and
+`H-IR-SERDE` consumes `domains::entity_layers`. The coordinate family is the SDK's
+own example as well: `slicer_sdk::coords::{mm_to_units, units_to_mm}` and
+`SCALING_FACTOR` are exercised by `H-COORD`, but that agreement is documented as
+**consistency evidence only** — correctness rests on the derived error envelopes,
+not on two implementations of the same shape agreeing. See the
+[property-testing charters](testing/properties.md#h-coord) for the full family set
+(`H-COORD`, `H-IDS`, `H-IR-SERDE`, `H-CONFIG-INTERN`, `H-CONFIG-BOUNDS`,
+`H-CHAINS`).
+
+Validity and shrinking are part of the helper contract. Every value produced or
+retained by `GeometryValueTree::current` passes `oracles::validate_geometry` for the
+requested `GeometryDomain`, must keep its topology class and minimum hole/component
+witnesses, and every accepted simplification must be strictly smaller in
+`domains::geometry_complexity`. `oracles` import only `slicer-ir` data types and
+exact big-rational arithmetic — never Clipper, `geo`, `slicer-core` geometry
+helpers, production validators or the scheduler — so an oracle never calls a
+production computation. For the geometry families the generator also validates
+shrink candidates with `validate_geometry`, so that predicate is shared by design
+between generation and checking; deterministic hand-worked counterexamples, not
+the generator, are what guard against a shared blind spot there. Oracle and shrink
+kernel tests belong in `crates/slicer-sdk/tests/property_domain_contracts.rs`, not
+in guest module tests.
+
+`regression::format_regression_fixture` emits a readable Rust statement block for a
+concrete failing input and never a generated `#[test]`; the owning crate must add
+its own assertion against the real SUT. It needs no Proptest RNG, `PropertyRun`
+context or slicing engine to compile or evaluate. See
+[`docs/testing/properties.md`](testing/properties.md) for the family charters and
+[`docs/testing/proptest-domain-evidence.md`](testing/proptest-domain-evidence.md)
+for the measured Windows pilots.
+
+#### Scripted SCAD recipes (`property_testing_scad`, native only)
+
+The separate `property_testing_scad` feature enables the typed scripted surface:
+
+```toml
+features = ["slicer-sdk/property_testing_scad"]   # implies property_testing
+```
+
+It adds an optional `slicer-scad` dependency with the engine feature and the
+`sha2` digest dependency, and gates
+`slicer_sdk::test_support::property_testing::scripted` with
+`all(feature = "property_testing_scad", not(target_arch = "wasm32"))`. The
+feature is **default-off** and is not enabled by `test`, by the SDK's self
+dev-dependency, by the production prelude, or by any guest manifest: the default
+and `test` graphs resolve neither Proptest nor the engine,
+`slicer-sdk/property_testing` enables Proptest but stays engine-free, and only
+`property_testing_scad` reaches the adapter. `cargo xtask test`'s
+`property_scripted_feature_isolation_and_union` asserts that from resolved
+metadata and `cargo tree` rather than from source text.
+
+Ownership is a typed recipe, not arbitrary source text. `Recipe2d` / `Recipe3d` /
+`ScadRecipe` carry primitive parameters, transforms, Boolean operations and
+extrusions in **canonical units** (1 unit = 100 nm = 10⁻⁴ mm); `emit_scad` renders
+a readable, self-contained program with exact millimetre decimal text, explicit
+facet counts, and no resource loads, ambient variables, text requests, loops,
+recursion or random programs. Emission is a pure function of the recipe and
+`RecipeBounds`, so a retained source can be compared byte for byte. Evaluation
+goes through the public `slicer_scad::evaluate`; it is never a second renderer.
+
+A successful render is **stimulus, not an oracle**. `ScriptedDomain` names the
+converted contour domain (or a bounded constituent profile domain) plus an
+optional `SolidWitness` (`ClosedSolid`, `Cavity`, `Bridge`, `Overhang`,
+`SeparatedBodies`). `scripted_cases` only exposes values that were emitted,
+evaluated and then independently validated: `oracles::validate_geometry` for
+converted contours, mesh closure/volume checks plus an axis-aligned occupancy
+model for solids. A recipe AST being valid says nothing about its converted
+output, and closed edge incidence alone does not prove self-intersection freedom
+or a cavity.
+
+Two isolation layers are distinct on purpose:
+
+- `PropertyRun::check` gives every **SUT callback** a fresh `CaseGuard`, on
+  failure and shrink invocations alike;
+- generation, candidate rendering and shrink rendering happen **outside** that
+  guard. A fatal adapter/artifact/accounting error there is recorded as a
+  generator fault and fails the run as `generator_or_oracle`; reaching a
+  candidate or evaluation limit on a known failure reports
+  `shrink_completed = false` and never a pass. A callback-only timeout cannot
+  certify this lifecycle, so registered `requires_scad` records also carry a
+  positive `bounds.test_process_timeout_ms` that the xtask executor applies to
+  the whole libtest child, killing the Windows process tree on deadline.
+
+Artifacts and replay use fixed filenames under
+`target/property-testing/<run_token>/<property_id>/attempts/<role>-<pid>-<seq>/`:
+`recipe.json`, `recipe-bounds.json`, `source.scad`, `options.json`, `engine.json`
+and an honest `state.json` are written **before** the adapter runs, then
+`geometry.json`, `diagnostics.json`, `output.json` and a final `state.json`
+follow. `write_scripted_artifacts` writes one complete evaluated case with the
+same layout; `replay_scripted_case` re-emits the retained recipe, compares it
+with the retained source bytes, re-checks the source/input digests, generator
+version and active engine identity, and evaluates with the retained options and
+bounds. It never regenerates a seed and never falls back to defaults; changed
+provenance is `ReplayMismatch`, missing/damaged/oversized or escaping files are
+`Artifact`. See
+[`docs/testing/proptest-scripted-evidence.md`](testing/proptest-scripted-evidence.md)
+for the measured Windows profiles and the combined geometry disposition.
+
+### Module-owned private-kernel property files (packet proptest-openrscad_10)
+
+A module that property-tests its own **private** kernels (functions that `tests/**` integration
+tests cannot see) keeps those properties in a crate-internal unit-test module.
+`arachne-perimeters` is the reference layout:
+
+- **Declaration.** `src/lib.rs` declares the module with two stacked, separate gates:
+
+  ```rust
+  #[cfg(test)]
+  #[cfg(feature = "property_testing")]
+  mod property_tests;
+  ```
+
+  `#[cfg(test)]` confines the module to test builds. `#[cfg(feature = "property_testing")]` makes
+  the properties opt-in. The body lives in `src/property_tests.rs`. Production visibility is never
+  widened for tests.
+- **Owner feature.** The module's `Cargo.toml` declares `property_testing = []`, an empty,
+  default-off selection feature. It enables no dependency and never enters a production or guest
+  graph.
+- **Dev-only edges.** `slicer-sdk` (features `test`, `property_testing`) and `proptest` appear
+  only under `[dev-dependencies]`.
+- **Registry paths.** Records use `target_kind = "lib"`, the Cargo lib target name, and the exact
+  libtest path. For example, `target_name = "arachne_perimeters"` and
+  `test_name = "property_tests::proptest_module_arachne_build_walls"`, with
+  `features = ["arachne-perimeters/property_testing"]` and `requires_host_algos = false`. Run them
+  through `cargo xtask test --properties`. Run bare, a `proptest_` body fails with
+  `missing_property_context` by design.
+- **Deterministic controls.** These run under plain
+  `cargo test -p <module> --features property_testing --lib -- property_tests::<name> --exact`.
+
+**Literal-gate blind spot.** `modules/core-modules/*/src` is outside `cargo xtask check-literals`
+scope:
+
+- `collect_enforced_files` (`xtask/src/check_literals.rs`) does not collect that tree.
+- `LiteralVisitor::visit_item_mod` does not follow an out-of-line `mod property_tests;`.
+
+A green `check-literals` therefore says nothing about such a file. Before committing, review it
+manually per `docs/21_data_defaults_and_fixtures.md` §§1, 3, 4: re-derive the watched types, then
+give every watched-type literal a `..` rest (FRU) or an `// exhaustive: <reason>` waiver. Record
+the review in the packet's evidence file.
+
+The worked examples are [`M-ARACHNE-BUILD`](testing/properties.md#m-arachne-build) and
+[`M-ARACHNE-SEQUENCE`](testing/properties.md#m-arachne-sequence). The manual review is recorded in
+[`docs/testing/proptest-arachne-evidence.md`](testing/proptest-arachne-evidence.md). Host-side
+Arachne properties, which need `slicer-core/host-algos`, stay standalone `slicer-core` test
+targets and are not module files.
+
+Packet `proptest-openrscad_12_pbt-walls` applies the same layout to
+`modules/core-modules/classic-perimeters/src/property_tests.rs` and
+`modules/core-modules/fuzzy-skin/src/property_tests.rs`. Their `property_testing` features are
+empty, default-off selectors; the SDK `test`/`property_testing` support and workspace Proptest
+remain dev-only edges, and production visibility is unchanged. The fuzzy file additionally keeps
+the ordered span matcher and widened-f64 displacement oracle local because no shared wall/fuzzy
+oracle is exported. The `src/**` scanner blind spot and required manual FRU/waiver review apply
+unchanged; see
+[`docs/testing/proptest-walls-evidence.md`](testing/proptest-walls-evidence.md).
+
+Packet `proptest-openrscad_13_pbt-infill` extends the same layout to five infill-owner modules:
+`rectilinear-infill`, `gyroid-infill`, `infill-linker`, `wave-overhangs` and
+`top-surface-ironing`. Each carries an empty, default-off `property_testing` feature, a
+`src/property_tests.rs` with the stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`
+declaration, and a manual watched-type ledger; `M-RECTILINEAR-SCAN`, `M-RECTILINEAR-SPACING`,
+`M-GYROID-PHASE`, `M-GYROID-CLIP`, `M-LINKER-GRAPH`, `M-LINKER-CONNECT`, `M-LINKER-CHAIN`,
+`M-WAVE-TRIM` and `M-IRONING-ZIGZAG` are their charters, and the manual review plus measured
+Windows profiles are recorded in
+[`docs/testing/proptest-infill-evidence.md`](testing/proptest-infill-evidence.md).
 
 ### Mock Host
 
@@ -1647,3 +2201,17 @@ first dispatch. The stage packages are additive-safe per stage — a change to
 the perimeters module the monolithic-world era's all-or-nothing contract
 used to sweep in. See `docs/adr/0045-per-stage-versioned-interfaces-over-monolithic-tier-worlds.md`
 for the reasoning.
+
+### Owner-private module properties
+
+A module may keep its own property tests inside its crate instead of a shared SDK
+target. `lightning-infill` is the worked example: the
+`lightning-infill/property_testing` selection feature gates a private
+`kernel::property_tests` lib module (`modules/core-modules/lightning-infill/src/kernel/property_tests.rs`)
+behind `#[cfg(all(test, feature = "property_testing"))]`, so the guest build and a
+default native test run never compile it, and only
+`cargo test -p lightning-infill --features property_testing --lib` (or the
+registry's `--features lightning-infill/property_testing`) reaches it. The crate's
+existing SDK dev edge carries the `property_testing` feature; no new public API is
+exposed for testing. See `docs/testing/properties.md#h-lightning-seeds` and
+`#h-lightning-trees`.

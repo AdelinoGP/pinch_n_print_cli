@@ -65,9 +65,9 @@ authorize a frozen ordinary-reference refresh with provenance before resuming.
 ## Remaining gates
 
 The canonical obligations are packet-254's AC-1, AC-2, AC-3, AC-3N, AC-5,
-AC-N1, AC-N2 and AC-N3 in
-`docs/spec_packets/254-exact-perimeter-spatial-queries/packet.spec.md`, its
-all-target check/clippy and literal gates, plus AC-4's serial real campaign.
+AC-N1, AC-N2 and AC-N3 in the original packet contract (available in Git
+history), its all-target check/clippy and literal gates, plus AC-4's serial real
+campaign. The design digest is `docs/spec_packets/_OLD/254-exact-perimeter-spatial-queries.md`.
 Those tests and build gates were **not run** in this preflight.
 
 After clearing the prerequisites: build complete ordinary and accelerated

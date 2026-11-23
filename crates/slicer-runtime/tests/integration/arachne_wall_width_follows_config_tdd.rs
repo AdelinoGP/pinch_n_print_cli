@@ -76,6 +76,7 @@ fn emitted_widths_for(w_mm: f32) -> Vec<f32> {
         // run_perimeters/arachne_params_from_config are now require_*; the
         // view holds every key the path reads at manifest-default values.
         .float("line_width", 0.45)
+        .float("resolution", 0.01)
         .float("bridge_line_width", 0.0)
         .float("initial_layer_line_width", 0.0)
         .int("extra_perimeters", 0)

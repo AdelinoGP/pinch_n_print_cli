@@ -1,0 +1,13 @@
+{
+  "stage": "ordinary-current-baseline-provenance",
+  "freshness_exit": 0,
+  "differences": {
+    "pnp_cli.exe": {
+      "expected": "6571ae1f67d8ca8d8a120e4609fa4c8833e27c0c5629e560e4797b6831a5b9f3",
+      "actual": "dd62d57a486004c847c673e0e022f437fa9505f31e530df1eca3345267697184"
+    }
+  },
+  "candidate_started": false,
+  "resolution": "driver compared diagnostic-built host with restored production; corrected authority is t55 before-inventory plus restoration, all actual restored files match",
+  "resolved_before_candidate_work": true
+}

@@ -5,8 +5,8 @@ use std::time::SystemTime;
 use slicer_ir::{ConfigValue, ConfigView, SemVer};
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
-    CompiledModuleBuilder, CompiledModuleLive, LoadedModuleBuilder, WasmInstancePool,
-    WasmRuntimeDispatcher,
+    CompiledModule, CompiledModuleBuilder, CompiledModuleLive, LoadedModuleBuilder,
+    WasmInstancePool, WasmRuntimeDispatcher,
 };
 use slicer_sdk::native::NativeStageEntry;
 use slicer_sdk::traits::LayerPlanningObject;
@@ -127,6 +127,8 @@ where
         &WasmRuntimeDispatcher,
         &CompiledModuleLive<'a>,
         &CompiledModuleLive<'a>,
+        &CompiledModule,
+        &CompiledModule,
     ) -> R,
 {
     assert_guest_freshness(&spec.wasm_path);
@@ -140,10 +142,12 @@ where
     let wasm_module = CompiledModuleBuilder::new(spec.module_id.clone())
         .claims(spec.claims.clone())
         .config_view(Arc::clone(&spec.config))
+        .region_split_semantics(manifest.region_split_semantics().clone())
         .build();
     let native_module = CompiledModuleBuilder::new(spec.module_id)
         .claims(spec.claims)
         .config_view(spec.config)
+        .region_split_semantics(manifest.region_split_semantics().clone())
         .build();
     let loaded = LoadedModuleBuilder::new(
         wasm_module.module_id().as_str(),
@@ -189,5 +193,11 @@ where
     .with_ir_writes(manifest.ir_writes());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&wasm_cache::shared_engine()))
         .with_layer_planning_objects(layer_planning_objects);
-    execute(&dispatcher, &native_live, &wasm_live)
+    execute(
+        &dispatcher,
+        &native_live,
+        &wasm_live,
+        &native_module,
+        &wasm_module,
+    )
 }

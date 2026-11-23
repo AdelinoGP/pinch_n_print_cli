@@ -311,6 +311,15 @@ fn width_for_index(widths: &[f32], idx: usize) -> f32 {
         .unwrap_or(0.0)
 }
 
+// Owner-local, opt-in properties for the private fuzzy-skin kernel
+// (`apply_fuzzy_skin`). The two gates stay stacked and separate:
+// `#[cfg(test)]` confines the module to test builds, and
+// `#[cfg(feature = "property_testing")]` makes the properties opt-in. Neither
+// form is a literal-scanner mechanism — see that file's own AC-6 note.
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;

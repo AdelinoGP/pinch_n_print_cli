@@ -1,0 +1,18 @@
+# Post-campaign supplementary reducer regression run; SUPPLEMENTARY ONLY.
+# The frozen exactness log is logs/reducer-regressions.log (six tests).
+# Command: python test-reducers.py   CWD: evidence/t57-topx-cache
+# UTC: 2026-10-07T19:31:53Z
+
+test_cross_cell_relabel_and_identity_mismatch_are_rejected (__main__.ReducerTests.test_cross_cell_relabel_and_identity_mismatch_are_rejected) ... ok
+test_disclosure_rejects_status_generator_and_vacuous_support (__main__.ReducerTests.test_disclosure_rejects_status_generator_and_vacuous_support) ... ok
+test_independent_analytic_favorable_gate (__main__.ReducerTests.test_independent_analytic_favorable_gate) ... ok
+test_outcome_taxonomy_never_conflates_inconclusive_with_drop (__main__.ReducerTests.test_outcome_taxonomy_never_conflates_inconclusive_with_drop) ... ok
+test_output_and_order_sabotage (__main__.ReducerTests.test_output_and_order_sabotage) ... ok
+test_real_streamed_comparison_rejects_vertex_byte_drift (__main__.ReducerTests.test_real_streamed_comparison_rejects_vertex_byte_drift) ... ok
+test_wall_win_cannot_hide_cpu_regression (__main__.ReducerTests.test_wall_win_cannot_hide_cpu_regression) ... ok
+test_whole_pair_starvation_and_no_resampling (__main__.ReducerTests.test_whole_pair_starvation_and_no_resampling) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.010s
+
+OK

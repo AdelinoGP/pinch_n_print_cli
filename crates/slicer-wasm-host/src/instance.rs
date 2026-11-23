@@ -172,23 +172,49 @@ pub trait FuelSampleSink: 'static {
 pub fn new_store<T: FuelSampleSink>(engine: &WasmEngine, data: T) -> wasmtime::Store<T> {
     let mut store = wasmtime::Store::new(&engine.inner, data);
     if engine.profiling_enabled() {
-        store
-            .set_fuel(FUEL_BUDGET)
-            .expect("consume_fuel is enabled whenever profiling is");
-        store.call_hook(|mut cx, hook| {
-            if matches!(hook, wasmtime::CallHook::CallingHost) {
-                // Sample here rather than inside the host method: this is the
-                // last point at which the store is reachable. A mark is a host
-                // call, so this fires immediately before `profile_mark` runs and
-                // the reading it stashes is the one that mark reports.
-                let remaining = cx.get_fuel().unwrap_or(FUEL_BUDGET);
-                cx.data_mut()
-                    .record_host_entry_fuel(FUEL_BUDGET.saturating_sub(remaining));
-            }
-            Ok(())
-        });
+        install_fuel_budget(&mut store);
     }
     store
+}
+
+/// Builds a store from a raw [`wasmtime::Engine`] that may or may not meter.
+///
+/// Preparation freezes a bare engine (the component owns its `Engine`, not the
+/// [`WasmEngine`] wrapper), so it cannot consult `profiling_enabled`. wasmtime
+/// rejects `set_fuel` exactly when the engine did not enable `consume_fuel`,
+/// which is the one case that needs no budget; every metered engine gets the
+/// same budget and host-entry hook as [`new_store`].
+pub fn new_store_for_engine<T: FuelSampleSink>(
+    engine: &wasmtime::Engine,
+    data: T,
+) -> wasmtime::Store<T> {
+    let mut store = wasmtime::Store::new(engine, data);
+    if store.set_fuel(FUEL_BUDGET).is_ok() {
+        install_fuel_hook(&mut store);
+    }
+    store
+}
+
+fn install_fuel_budget<T: FuelSampleSink>(store: &mut wasmtime::Store<T>) {
+    store
+        .set_fuel(FUEL_BUDGET)
+        .expect("consume_fuel is enabled whenever profiling is");
+    install_fuel_hook(store);
+}
+
+fn install_fuel_hook<T: FuelSampleSink>(store: &mut wasmtime::Store<T>) {
+    store.call_hook(|mut cx, hook| {
+        if matches!(hook, wasmtime::CallHook::CallingHost) {
+            // Sample here rather than inside the host method: this is the
+            // last point at which the store is reachable. A mark is a host
+            // call, so this fires immediately before `profile_mark` runs and
+            // the reading it stashes is the one that mark reports.
+            let remaining = cx.get_fuel().unwrap_or(FUEL_BUDGET);
+            cx.data_mut()
+                .record_host_entry_fuel(FUEL_BUDGET.saturating_sub(remaining));
+        }
+        Ok(())
+    });
 }
 
 /// Wrapper around a [`wasmtime::Engine`] with the component model enabled.
@@ -203,9 +229,32 @@ impl fmt::Debug for WasmEngine {
     }
 }
 
+/// Enable wasmtime's validated on-disk compile cache.
+///
+/// A `pnp_cli` invocation is one process, so the process-global component
+/// cache in `component_cache` cannot help it: every invocation would pay the
+/// full debug-mode Cranelift compile of all 24 core modules (~10 s). Wasmtime's
+/// disk cache is keyed on the input bytes and compiler settings, so it can
+/// never serve a stale or wrong artifact; a miss simply compiles and stores.
+///
+/// Set `PNP_DISABLE_WASMTIME_CACHE=1` to opt out, or
+/// `PNP_WASMTIME_CACHE_DIR` to relocate the cache.
+fn apply_disk_compile_cache(config: &mut wasmtime::Config) {
+    if std::env::var_os("PNP_DISABLE_WASMTIME_CACHE").is_some() {
+        return;
+    }
+    let dir = std::env::var_os("PNP_WASMTIME_CACHE_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("pnp-wasmtime-cache-v1"));
+    let mut cache_config = wasmtime::CacheConfig::new();
+    cache_config.with_directory(dir);
+    if let Ok(cache) = wasmtime::Cache::new(cache_config) {
+        let _ = config.cache(Some(cache));
+    }
+}
+
 impl WasmEngine {
     /// Create a new engine with the component model enabled and profiling off.
-    ///
     /// This is the default for every non-profiling call site: fuel metering
     /// costs throughput, so it rides an explicit opt-in (ADR-0055).
     pub fn new() -> Self {
@@ -222,6 +271,7 @@ impl WasmEngine {
         let mut config = wasmtime::Config::new();
         config.wasm_component_model(true);
         config.consume_fuel(profiling);
+        apply_disk_compile_cache(&mut config);
         let engine = wasmtime::Engine::new(&config).expect("failed to create wasmtime engine");
         Self {
             inner: engine,

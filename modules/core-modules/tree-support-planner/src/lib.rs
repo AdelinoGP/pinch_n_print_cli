@@ -65,6 +65,7 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
+use slicer_sdk::host_batch::{clip_polygons_batch, ClipRequest};
 use slicer_sdk::prelude::*;
 
 const DEFAULT_BRANCH_ANGLE_DEG: f32 = 45.0;
@@ -858,6 +859,20 @@ fn region_has_canonical_winding(region: &ExPolygon) -> bool {
     ring_area(&region.contour) > 0.0 && region.holes.iter().all(|hole| ring_area(hole) < 0.0)
 }
 
+/// The canonical per-region carve survivor: the largest part, ties broken on
+/// the contour's point list.
+///
+/// Shared by the serial carve and the batched emit pass (ticket 78) so the two
+/// cannot drift: a batched request must produce exactly the value the serial
+/// call produces today.
+fn largest_part(result: Vec<ExPolygon>) -> Option<ExPolygon> {
+    result.into_iter().max_by(|a, b| {
+        expolygon_area(a)
+            .total_cmp(&expolygon_area(b))
+            .then_with(|| a.contour.points.cmp(&b.contour.points))
+    })
+}
+
 /// The emit-time carve with the ticket-32 bounding-box gate.
 ///
 /// A region whose bounding box is disjoint from the collision set's cannot
@@ -900,19 +915,11 @@ fn carve_emitted_regions_with_bbox_gate(
             carved.push(region.clone());
             continue;
         }
-        carved.extend(
-            host::clip_polygons(
-                std::slice::from_ref(region),
-                collision_polys,
-                ClipOperation::Difference,
-            )
-            .into_iter()
-            .max_by(|a, b| {
-                expolygon_area(a)
-                    .total_cmp(&expolygon_area(b))
-                    .then_with(|| a.contour.points.cmp(&b.contour.points))
-            }),
-        );
+        carved.extend(largest_part(host::clip_polygons(
+            std::slice::from_ref(region),
+            collision_polys,
+            ClipOperation::Difference,
+        )));
     }
     // Every gated region survives the carve, so `carved.len() == 1` with
     // `gated_any` means that lone survivor is the gated one.
@@ -942,17 +949,11 @@ pub fn carve_emitted_regions(
         regions
             .iter()
             .filter_map(|region| {
-                host::clip_polygons(
+                largest_part(host::clip_polygons(
                     std::slice::from_ref(region),
                     collision_polys,
                     ClipOperation::Difference,
-                )
-                .into_iter()
-                .max_by(|a, b| {
-                    expolygon_area(a)
-                        .total_cmp(&expolygon_area(b))
-                        .then_with(|| a.contour.points.cmp(&b.contour.points))
-                })
+                ))
             })
             .collect()
     }
@@ -1068,6 +1069,377 @@ pub fn build_roles(
         });
     }
     roles
+}
+
+/// Number of roles [`build_roles`] produces, in its assembly order.
+const ROLE_COUNT: usize = 4;
+/// Role indices, in the order [`build_roles`] assembles them.
+const ROLE_BODY: usize = 0;
+const ROLE_ROOF: usize = 1;
+const ROLE_BASE: usize = 2;
+const ROLE_FLOOR: usize = 3;
+
+/// Cap on requests per host batch.
+///
+/// The batch API is per-item, so every request carries its own copy of the clip
+/// set. A batch therefore trades memory for fan-out: large enough to keep the
+/// rayon pool busy, small enough that the marshalled payload stays bounded.
+const CLIP_BATCH_MAX_REQUESTS: usize = 256;
+
+/// How many layers' emit inputs are buffered before a batch runs.
+///
+/// Four layers of the matched base job hold a few hundred per-region carves,
+/// well past the host's fan-out threshold at 12 threads, while keeping the
+/// buffered collision sets from stacking up across the whole job.
+const EMIT_BATCH_LAYERS: usize = 4;
+
+/// One buffered [`build_roles`] call.
+///
+/// Ticket 78: 99.03 % of the planner's measured clipper core sits inside
+/// `build_roles`, and every operation there is independent per
+/// `(item, role, region)`. The emit pass buffers a chunk of layers' worth of
+/// these inputs and hands the whole chunk to [`build_roles_batched`], so the
+/// host can fan the work over its rayon pool instead of running one call at a
+/// time from the guest's single thread.
+struct RoleBuildInput {
+    branch_segments: Vec<Vec<Point3WithWidth>>,
+    interface_segments: Vec<Vec<Point3WithWidth>>,
+    base_segments: Vec<Vec<Point3WithWidth>>,
+    floor_segments: Vec<Vec<Point3WithWidth>>,
+    branch_areas: Vec<ExPolygon>,
+    interface_areas: Vec<ExPolygon>,
+    base_areas: Vec<ExPolygon>,
+    floor_areas: Vec<ExPolygon>,
+    branch_radius: f32,
+    collision_polys: Vec<ExPolygon>,
+    avg_node_per_layer: usize,
+    line_width_mm: f32,
+    /// Territory this region owns, when it is a modifier sub-region. Applied
+    /// after role assembly, exactly as the emit pass applies it today.
+    own_territory: Option<Vec<ExPolygon>>,
+}
+
+/// One region inside a role's pre-union set.
+enum CarveSlot {
+    /// The ticket-32 gate fired and the region is kept verbatim.
+    Kept(ExPolygon),
+    /// Carved by the batch request with this index.
+    Clip(usize),
+}
+
+/// The regions one role contributes before any clipping, mirroring the
+/// `with_areas` closure in [`build_roles`].
+fn role_regions(input: &RoleBuildInput, role: usize) -> Vec<ExPolygon> {
+    let (segments, areas) = match role {
+        ROLE_ROOF => (&input.interface_segments, &input.interface_areas),
+        ROLE_BASE => (&input.base_segments, &input.base_areas),
+        ROLE_FLOOR => (&input.floor_segments, &input.floor_areas),
+        _ => (&input.branch_segments, &input.branch_areas),
+    };
+    let mut regions = structural_body_regions(segments, input.branch_radius);
+    regions.extend_from_slice(areas);
+    regions
+}
+
+/// Issue a batch in bounded slices, preserving input order across slices.
+fn run_clip_batches(requests: &[ClipRequest]) -> Vec<Vec<ExPolygon>> {
+    let mut results = Vec::with_capacity(requests.len());
+    for slice in requests.chunks(CLIP_BATCH_MAX_REQUESTS) {
+        results.extend(clip_polygons_batch(slice));
+    }
+    results
+}
+
+/// Batched form of [`build_roles`]: one result per input, in input order.
+///
+/// Each deferred request is the *same single clipper operation with the same
+/// arguments* as the serial path, and the host returns the i-th result for the
+/// i-th request, so exactness is by construction rather than by tolerance.
+/// The phases run in the serial order because each depends on the previous
+/// one's geometry:
+///
+/// 1. per-region carve (ticket-32 gate evaluated in the guest),
+/// 2. the lone-gated re-clip that gate needs under an active simplify
+///    tolerance,
+/// 3. one union per role that carries more than one region,
+/// 4. in-guest simplification,
+/// 5. the set-wide difference against the collision set,
+/// 6. the body-minus-interfaces differences, one round per cut role,
+/// 7. the territory intersect for modifier sub-regions.
+fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::SupportPlanRoleRegion>> {
+    let mut carved: Vec<[Vec<ExPolygon>; ROLE_COUNT]> = inputs
+        .iter()
+        .map(|_| std::array::from_fn(|_| Vec::new()))
+        .collect();
+    let simplify: Vec<[Option<f64>; ROLE_COUNT]> = inputs
+        .iter()
+        .map(|input| {
+            [true, false, false, false].map(|is_base_area| {
+                role_simplify_tolerance(is_base_area, input.avg_node_per_layer, input.line_width_mm)
+            })
+        })
+        .collect();
+    let mut gated_any: Vec<[bool; ROLE_COUNT]> = vec![[false; ROLE_COUNT]; inputs.len()];
+
+    // Phase 1: collect the per-region carves, applying the ticket-32 gate in
+    // the guest (it is a pure bounding-box predicate, not geometry).
+    let mut carve_requests: Vec<ClipRequest> = Vec::new();
+    let mut slot_lists: Vec<[Vec<CarveSlot>; ROLE_COUNT]> = inputs
+        .iter()
+        .map(|_| std::array::from_fn(|_| Vec::new()))
+        .collect();
+    for (i, input) in inputs.iter().enumerate() {
+        let collision_bbox = expolygons_bbox(&input.collision_polys);
+        for role in 0..ROLE_COUNT {
+            let regions = role_regions(input, role);
+            if input.collision_polys.is_empty() || regions.is_empty() {
+                carved[i][role] = regions;
+                continue;
+            }
+            let mut slots = Vec::with_capacity(regions.len());
+            for region in regions {
+                if region_has_canonical_winding(&region)
+                    && bboxes_disjoint(region_bbox(&region), collision_bbox)
+                {
+                    gated_any[i][role] = true;
+                    slots.push(CarveSlot::Kept(region));
+                    continue;
+                }
+                slots.push(CarveSlot::Clip(carve_requests.len()));
+                carve_requests.push(ClipRequest {
+                    subject: vec![region],
+                    clip: input.collision_polys.clone(),
+                    op: ClipOperation::Difference,
+                });
+            }
+            slot_lists[i][role] = slots;
+        }
+    }
+    let mut carve_results: Vec<Option<ExPolygon>> = run_clip_batches(&carve_requests)
+        .into_iter()
+        .map(largest_part)
+        .collect();
+    for i in 0..inputs.len() {
+        for role in 0..ROLE_COUNT {
+            for slot in std::mem::take(&mut slot_lists[i][role]) {
+                match slot {
+                    CarveSlot::Kept(region) => carved[i][role].push(region),
+                    CarveSlot::Clip(index) => {
+                        // One result slot per request, each consumed once.
+                        if let Some(region) = carve_results.get_mut(index).and_then(Option::take) {
+                            carved[i][role].push(region);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Phase 2: the lone-gated repair. `carve_emitted_regions_with_bbox_gate`
+    // re-clips a sole gated survivor under an active simplify tolerance because
+    // Douglas–Peucker's anchor is start-vertex sensitive.
+    let mut lone_slots: Vec<(usize, usize)> = Vec::new();
+    let mut lone_requests: Vec<ClipRequest> = Vec::new();
+    for i in 0..inputs.len() {
+        for role in 0..ROLE_COUNT {
+            if simplify[i][role].is_some() && gated_any[i][role] && carved[i][role].len() == 1 {
+                lone_slots.push((i, role));
+                lone_requests.push(ClipRequest {
+                    subject: carved[i][role].clone(),
+                    clip: inputs[i].collision_polys.clone(),
+                    op: ClipOperation::Difference,
+                });
+            }
+        }
+    }
+    let lone_results = run_clip_batches(&lone_requests);
+    for ((i, role), result) in lone_slots.into_iter().zip(lone_results) {
+        carved[i][role] = largest_part(result).into_iter().collect();
+    }
+
+    // Phase 3: one union per role that carries more than one region.
+    let mut union_slots: Vec<(usize, usize)> = Vec::new();
+    let mut union_requests: Vec<ClipRequest> = Vec::new();
+    for i in 0..inputs.len() {
+        for role in 0..ROLE_COUNT {
+            if carved[i][role].len() <= 1 {
+                continue;
+            }
+            let (head, tail) = carved[i][role].split_at(1);
+            union_requests.push(ClipRequest {
+                subject: head.to_vec(),
+                clip: tail.to_vec(),
+                op: ClipOperation::Union,
+            });
+            union_slots.push((i, role));
+        }
+    }
+    let union_results = run_clip_batches(&union_requests);
+    for ((i, role), result) in union_slots.into_iter().zip(union_results) {
+        carved[i][role] = result;
+    }
+
+    // Phase 4: in-guest simplification, exactly as the serial closure runs it.
+    for i in 0..inputs.len() {
+        for role in 0..ROLE_COUNT {
+            if let Some(tolerance) = simplify[i][role] {
+                carved[i][role] = expolygons_simplify(&carved[i][role], tolerance);
+            }
+        }
+    }
+
+    // Phase 5: the set-wide difference against the collision set.
+    let mut set_slots: Vec<(usize, usize)> = Vec::new();
+    let mut set_requests: Vec<ClipRequest> = Vec::new();
+    for i in 0..inputs.len() {
+        if inputs[i].collision_polys.is_empty() {
+            continue;
+        }
+        for role in 0..ROLE_COUNT {
+            if carved[i][role].is_empty() {
+                continue;
+            }
+            set_requests.push(ClipRequest {
+                subject: carved[i][role].clone(),
+                clip: inputs[i].collision_polys.clone(),
+                op: ClipOperation::Difference,
+            });
+            set_slots.push((i, role));
+        }
+    }
+    let set_results = run_clip_batches(&set_requests);
+    for ((i, role), result) in set_slots.into_iter().zip(set_results) {
+        carved[i][role] = result;
+    }
+
+    // Phase 6: subtract the interface geometry out of the body, one round per
+    // cut role. Each item's own sequence is preserved; items are independent.
+    let mut body: Vec<Vec<ExPolygon>> = (0..inputs.len())
+        .map(|i| std::mem::take(&mut carved[i][ROLE_BODY]))
+        .collect();
+    for cut_role in [ROLE_ROOF, ROLE_BASE, ROLE_FLOOR] {
+        let mut slots: Vec<usize> = Vec::new();
+        let mut requests: Vec<ClipRequest> = Vec::new();
+        for i in 0..inputs.len() {
+            if body[i].is_empty() || carved[i][cut_role].is_empty() {
+                continue;
+            }
+            requests.push(ClipRequest {
+                subject: body[i].clone(),
+                clip: carved[i][cut_role].clone(),
+                op: ClipOperation::Difference,
+            });
+            slots.push(i);
+        }
+        let results = run_clip_batches(&requests);
+        for (i, result) in slots.into_iter().zip(results) {
+            body[i] = result;
+        }
+    }
+    for i in 0..inputs.len() {
+        carved[i][ROLE_BODY] = std::mem::take(&mut body[i]);
+    }
+
+    // Phase 7: the territory intersect for modifier sub-regions.
+    let mut territory_slots: Vec<(usize, usize)> = Vec::new();
+    let mut territory_requests: Vec<ClipRequest> = Vec::new();
+    for i in 0..inputs.len() {
+        let Some(own) = &inputs[i].own_territory else {
+            continue;
+        };
+        for role in 0..ROLE_COUNT {
+            if carved[i][role].is_empty() {
+                continue;
+            }
+            territory_requests.push(ClipRequest {
+                subject: carved[i][role].clone(),
+                clip: own.clone(),
+                op: ClipOperation::Intersection,
+            });
+            territory_slots.push((i, role));
+        }
+    }
+    let territory_results = run_clip_batches(&territory_requests);
+    for ((i, role), result) in territory_slots.into_iter().zip(territory_results) {
+        carved[i][role] = result;
+    }
+
+    // Phase 8: assemble in `build_roles` order, dropping empty roles.
+    let mut out = Vec::with_capacity(inputs.len());
+    for i in 0..inputs.len() {
+        let mut roles = Vec::new();
+        for (index, role) in [
+            slicer_ir::SupportPlanRole::SupportBody,
+            slicer_ir::SupportPlanRole::TopInterface,
+            slicer_ir::SupportPlanRole::BaseInterface,
+            slicer_ir::SupportPlanRole::BottomInterface,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let regions = std::mem::take(&mut carved[i][index]);
+            if !regions.is_empty() {
+                roles.push(slicer_ir::SupportPlanRoleRegion { role, regions });
+            }
+        }
+        out.push(roles);
+    }
+    out
+}
+
+/// Everything an emitted entry needs that is not its role geometry.
+///
+/// Buffered alongside the [`RoleBuildInput`] so a chunk of layers can be
+/// batched before any entry is pushed, while the push order stays the one the
+/// serial path produced.
+struct PendingEmitMeta {
+    global_layer_index: i32,
+    object_id: String,
+    region_id: String,
+    family_id: String,
+    demand_ids: Vec<String>,
+    body_ids: Vec<String>,
+    anchor_layer_index: u32,
+    anchor_z: i64,
+    skeleton: Option<slicer_ir::SupportPlanSkeleton>,
+    capabilities: Vec<String>,
+    provenance: Vec<String>,
+    variant_chain: Vec<(String, PaintValue)>,
+}
+
+/// Resolve a chunk of buffered emit items into `out`, in buffered order.
+fn flush_pending_emits(
+    meta: &mut Vec<PendingEmitMeta>,
+    inputs: &mut Vec<RoleBuildInput>,
+    out: &mut Vec<SupportPlanEntry>,
+) {
+    if inputs.is_empty() {
+        return;
+    }
+    let refs: Vec<&RoleBuildInput> = inputs.iter().collect();
+    let roles = build_roles_batched(&refs);
+    for (meta, roles) in std::mem::take(meta).into_iter().zip(roles) {
+        if roles.is_empty() {
+            continue;
+        }
+        out.push(SupportPlanEntry {
+            global_layer_index: meta.global_layer_index,
+            object_id: meta.object_id,
+            region_id: meta.region_id,
+            family_id: meta.family_id,
+            demand_ids: meta.demand_ids,
+            body_ids: meta.body_ids,
+            anchor_layer_index: meta.anchor_layer_index,
+            anchor_z: meta.anchor_z,
+            roles,
+            skeleton: meta.skeleton,
+            capabilities: meta.capabilities,
+            provenance: meta.provenance,
+            decline_reason: None,
+            variant_chain: meta.variant_chain,
+        });
+    }
+    inputs.clear();
 }
 
 fn role_simplify_tolerance(
@@ -1493,8 +1865,10 @@ impl TreeVolumes {
             if layer_idx >= layer_count {
                 continue;
             }
+            // Exact full source origin lookup: a chain variant is never
+            // classified by its chain-less sibling's family.
             let owned_by_tree = support_analysis
-                .family_of(&entry.object_id, &entry.region_id)
+                .family_of(&entry.object_id, &entry.region_id, &entry.variant_chain)
                 .is_some_and(|family| canonical_support_family_alias(Some(family)) == "tree");
             if !owned_by_tree {
                 foreign_territory[layer_idx].extend(entry.polygons.iter().cloned());
@@ -2144,17 +2518,25 @@ impl SupportPlanner {
         // an independent compatibility input for collision avoidance below.
         let mut arena = NodeArena::default();
         let mut contacts_by_layer: Vec<Vec<NodeId>> = vec![Vec::new(); num_layers as usize];
-        // Region ids the RegionMap carries for this object on *any* layer.
-        // Family assignments are per `(object, region)`, not per layer, so an
-        // assigned region that segmentation already carries must take its
-        // layer presence from segmentation; widening it below would stamp one
-        // region's column onto every layer of the object (packet 241b).
-        let segmented_region_ids: std::collections::BTreeSet<&str> = region_segmentation
-            .entries
-            .iter()
-            .filter(|entry| entry.object_id == obj.object_id)
-            .flat_map(|entry| entry.region_ids.iter().map(String::as_str))
-            .collect();
+        // Full source origins `(region_id, ordered variant_chain)` the
+        // RegionMap carries for this object on *any* layer. Family assignments
+        // are per full source origin, not per layer, so an assigned origin
+        // segmentation already carries must take its layer presence from
+        // segmentation; widening it below would stamp one origin's column onto
+        // every layer of the object (packet 241b). Chains stay exact so a
+        // chain-bearing origin is never confused with its chain-less sibling.
+        let segmented_sources: std::collections::BTreeSet<(&str, &[(String, PaintValue)])> =
+            region_segmentation
+                .entries
+                .iter()
+                .filter(|entry| entry.object_id == obj.object_id)
+                .flat_map(|entry| {
+                    entry
+                        .region_origins
+                        .iter()
+                        .map(|origin| (origin.region_id.as_str(), origin.variant_chain.as_slice()))
+                })
+                .collect();
         let base_radius = MIN_BRANCH_RADIUS.max(self.tree_support_branch_diameter / 2.0);
         // Canonical builds `grid_points` once per object over the whole-object
         // bounding box, rotated 22 degrees (F-35).
@@ -2320,11 +2702,15 @@ impl SupportPlanner {
         // `entries_in_order`, so the family-assignment stamping pass below
         // cannot see them. Remember their identities or that pass will stamp
         // a second entry onto the same
-        // `(global_layer_index, object_id, region_id)` triple, which
-        // `SupportPlanIR::duplicate_region_identity` rejects at the host
-        // commit seam.
-        let mut declined_identities: std::collections::BTreeSet<(String, i32, String)> =
-            std::collections::BTreeSet::new();
+        // `(global_layer_index, object_id, region_id, variant_chain)` source
+        // origin, which `SupportPlanIR::duplicate_region_identity` rejects at
+        // the host commit seam.
+        let mut declined_identities: std::collections::BTreeSet<(
+            String,
+            i32,
+            String,
+            Vec<(String, PaintValue)>,
+        )> = std::collections::BTreeSet::new();
         for candidate in support_analysis.candidates.iter().filter(|candidate| {
             candidate.object_id == obj.object_id
                 && candidate.blocked
@@ -2334,6 +2720,7 @@ impl SupportPlanner {
                 obj.object_id.clone(),
                 candidate.global_layer_index as i32,
                 candidate.region_id.clone(),
+                candidate.variant_chain.clone(),
             ));
             let _ = output.push_support_plan_entry(slicer_sdk::prepass_types::SupportPlanEntry {
                 global_layer_index: candidate.global_layer_index as i32,
@@ -2349,6 +2736,7 @@ impl SupportPlanner {
                 capabilities: Vec::new(),
                 provenance: vec!["support-planner".to_string()],
                 decline_reason: Some(slicer_ir::SupportPlanDeclineReason::Blocked),
+                variant_chain: candidate.variant_chain.clone(),
             });
         }
         for candidate in support_analysis.candidates.iter().filter(|candidate| {
@@ -2362,10 +2750,10 @@ impl SupportPlanner {
                 && region_segmentation.entries.iter().any(|entry| {
                     entry.object_id == obj.object_id
                         && entry.layer_index == candidate.global_layer_index
-                        && entry
-                            .region_ids
-                            .iter()
-                            .any(|region_id| region_id == &candidate.region_id)
+                        && entry.region_origins.iter().any(|origin| {
+                            origin.region_id == candidate.region_id
+                                && origin.variant_chain == candidate.variant_chain
+                        })
                 })
         }) {
             let layer_idx = layer_plan
@@ -2518,6 +2906,12 @@ impl SupportPlanner {
         // Accumulate entries bottom-up so the plan keeps a deterministic,
         // top-to-bottom layer order in output.
         let mut entries_in_order: Vec<SupportPlanEntry> = Vec::new();
+        // Ticket 78: emit-time role construction is buffered per chunk of
+        // layers so its independent clip calls can be issued as host batches
+        // instead of one serial call at a time. See `build_roles_batched`.
+        let mut pending_emit_meta: Vec<PendingEmitMeta> = Vec::new();
+        let mut pending_emit_inputs: Vec<RoleBuildInput> = Vec::new();
+        let mut pending_emit_layers: usize = 0;
 
         // Canonical `drop_nodes`' `unsupported_branch_leaves` (F-14): branch
         // leaves with no legal footing, drained after every layer has run.
@@ -3629,16 +4023,24 @@ impl SupportPlanner {
                 || !interface_areas.is_empty()
                 || !floor_areas.is_empty()
             {
-                // Find all regions for this (layer, object) pair.
-                let mut regions_for_this: Vec<String> = region_segmentation
-                    .entries
-                    .iter()
-                    .filter(|e| {
-                        e.object_id == obj.object_id && e.layer_index == current_global_layer_index
-                    })
-                    .flat_map(|e| e.region_ids.iter().cloned())
-                    .collect();
-                regions_for_this.extend(
+                // Find all full source origins for this (layer, object) pair.
+                // `(region_id, ordered variant_chain)` is the exact identity:
+                // two origins that differ only by chain stay distinct columns.
+                let mut origins_for_this: Vec<(String, Vec<(String, PaintValue)>)> =
+                    region_segmentation
+                        .entries
+                        .iter()
+                        .filter(|e| {
+                            e.object_id == obj.object_id
+                                && e.layer_index == current_global_layer_index
+                        })
+                        .flat_map(|e| {
+                            e.region_origins.iter().map(|origin| {
+                                (origin.region_id.clone(), origin.variant_chain.clone())
+                            })
+                        })
+                        .collect();
+                origins_for_this.extend(
                     support_analysis
                         .family_assignments
                         .iter()
@@ -3646,28 +4048,32 @@ impl SupportPlanner {
                             assignment.object_id == obj.object_id
                                 && canonical_support_family_alias(Some(&assignment.family_id))
                                     == "tree"
-                                // Only regions segmentation does not carry at
-                                // all (host-minted modifier sub-regions).
-                                && !segmented_region_ids
-                                    .contains(assignment.region_id.as_str())
-                        })
-                        .map(|assignment| assignment.region_id.clone()),
-                );
-                regions_for_this.sort();
-                regions_for_this.dedup();
-                for region_id in regions_for_this {
-                    // No self-default: a region the host did not assign to this
-                    // family is not this planner's to plan. See `candidate_family`.
-                    let Some(support_family) = support_analysis
-                        .family_assignments
-                        .iter()
-                        .find(|assignment| {
-                            assignment.object_id == obj.object_id
-                                && assignment.region_id == *region_id
+                                // Only full origins segmentation does not
+                                // carry at all (host-minted modifier
+                                // sub-regions).
+                                && !segmented_sources.contains(&(
+                                    assignment.region_id.as_str(),
+                                    assignment.variant_chain.as_slice(),
+                                ))
                         })
                         .map(|assignment| {
-                            canonical_support_family_alias(Some(&assignment.family_id))
-                        })
+                            (
+                                assignment.region_id.clone(),
+                                assignment.variant_chain.clone(),
+                            )
+                        }),
+                );
+                origins_for_this.sort();
+                origins_for_this.dedup();
+                for (region_id, variant_chain) in origins_for_this {
+                    // No self-default: an origin the host did not assign to
+                    // this family is not this planner's to plan. The lookup is
+                    // exact over `(object_id, region_id, ordered
+                    // variant_chain)` — a chain-less or chain-shifted sibling
+                    // never matches. See `candidate_family`.
+                    let Some(support_family) = support_analysis
+                        .family_of(&obj.object_id, &region_id, &variant_chain)
+                        .map(|family| canonical_support_family_alias(Some(family)))
                     else {
                         continue;
                     };
@@ -3675,16 +4081,18 @@ impl SupportPlanner {
                         continue;
                     }
                     // A blocked candidate already published a declined record
-                    // for this identity. Emitting a planned entry as well
+                    // for this full origin. Emitting a planned entry as well
                     // would put two entries on the same
-                    // `(global_layer_index, object_id, region_id)` triple,
-                    // which `SupportPlanIR::duplicate_region_identity`
-                    // rejects at the host commit seam — and would contradict
-                    // the decline besides.
+                    // `(global_layer_index, object_id, region_id,
+                    // variant_chain)` origin, which
+                    // `SupportPlanIR::duplicate_region_identity` rejects at
+                    // the host commit seam — and would contradict the decline
+                    // besides.
                     if declined_identities.contains(&(
                         obj.object_id.clone(),
                         current_global_layer_index as i32,
                         region_id.clone(),
+                        variant_chain.clone(),
                     )) {
                         continue;
                     }
@@ -3696,7 +4104,8 @@ impl SupportPlanner {
                                 entry.object_id == obj.object_id
                                     && entry.global_support_layer_index
                                         == current_global_layer_index
-                                    && entry.region_id == *region_id
+                                    && entry.region_id == region_id
+                                    && entry.variant_chain.as_slice() == variant_chain.as_slice()
                             })
                             .flat_map(|entry| entry.polygons.iter().cloned())
                             .collect::<Vec<_>>(),
@@ -3715,11 +4124,13 @@ impl SupportPlanner {
                     // only what falls inside its own footprint; a base region
                     // keeps what the foreign carve above left. Skeleton points
                     // follow the same rule so the renderer never draws a
-                    // branch through the other family's half.
+                    // branch through the other family's half. The lookup is
+                    // exact over the full source origin, chain included.
                     let own_territory = support_analysis.region_territory(
                         &obj.object_id,
                         current_global_layer_index,
                         &region_id,
+                        &variant_chain,
                     );
                     let territory_allows = |x: f32, y: f32| -> bool {
                         match own_territory {
@@ -3730,23 +4141,9 @@ impl SupportPlanner {
                             }
                         }
                     };
-                    let mut roles = build_roles(
-                        &branch_segments,
-                        &interface_segments,
-                        &base_segments,
-                        &floor_segments,
-                        &branch_areas,
-                        &interface_areas,
-                        &base_areas,
-                        &floor_areas,
-                        branch_radius,
-                        role_collision,
-                        contact_stats.avg_node_per_layer,
-                        self.support_line_width_mm,
-                    );
                     // The exact-Z occupancy contract is discharged entirely by
-                    // `build_roles`' carve against `role_collision`, which now
-                    // runs after simplification and is therefore final.
+                    // the carve against `role_collision`, which runs after
+                    // simplification and is therefore final.
                     //
                     // This site used to re-check it with
                     // `role.regions.retain(|r| intersection(r,
@@ -3766,24 +4163,66 @@ impl SupportPlanner {
                     // the plan terminated at z = 8.0 instead of the plate.
                     // Canonical Orca prints tree support down to Z0.2 on this
                     // fixture (`SupportTest_Tree_Orca.gcode`).
-                    if let Some(own) = own_territory {
-                        for role in &mut roles {
-                            role.regions = host::clip_polygons(
-                                &role.regions,
-                                own,
-                                ClipOperation::Intersection,
-                            );
-                        }
-                    }
-                    roles.retain(|role| !role.regions.is_empty());
-                    if roles.is_empty() {
-                        continue;
-                    }
-                    entries_in_order.push(SupportPlanEntry {
+                    //
+                    // Ticket 78: the role construction is buffered for a chunk
+                    // of layers and run as cross-item batches.
+                    // `build_roles_batched` performs the same per-region carve,
+                    // role union, simplification, set-wide difference,
+                    // body-minus-interface difference and territory intersect as
+                    // `build_roles`, in the same order.
+                    let skeleton = {
+                        let skeleton_points: Vec<_> = branch_segments
+                            .iter()
+                            .chain(interface_segments.iter())
+                            .chain(floor_segments.iter())
+                            .flat_map(|segment| segment.iter())
+                            .filter(|point| territory_allows(point.x, point.y))
+                            .collect();
+                        let points = skeleton_points
+                            .iter()
+                            .map(|point| slicer_ir::Point3 {
+                                x: point.x,
+                                y: point.y,
+                                z: point.z,
+                            })
+                            .collect::<Vec<_>>();
+                        let wall_counts = skeleton_points
+                            .iter()
+                            .map(|point| {
+                                u32::from(active_nodes.iter().any(|id| {
+                                    let node = &arena[*id];
+                                    node.need_extra_wall
+                                        && node.x() == point.x
+                                        && node.y() == point.y
+                                }))
+                            })
+                            .collect::<Vec<_>>();
+                        assert_eq!(wall_counts.len(), points.len());
+                        Some(slicer_ir::SupportPlanSkeleton {
+                            points,
+                            wall_counts,
+                        })
+                    };
+                    pending_emit_inputs.push(RoleBuildInput {
+                        branch_segments: branch_segments.clone(),
+                        interface_segments: interface_segments.clone(),
+                        base_segments: base_segments.clone(),
+                        floor_segments: floor_segments.clone(),
+                        branch_areas: branch_areas.clone(),
+                        interface_areas: interface_areas.clone(),
+                        base_areas: base_areas.clone(),
+                        floor_areas: floor_areas.clone(),
+                        branch_radius,
+                        collision_polys: role_collision.to_vec(),
+                        avg_node_per_layer: contact_stats.avg_node_per_layer,
+                        line_width_mm: self.support_line_width_mm,
+                        own_territory: own_territory.map(|territory| territory.to_vec()),
+                    });
+                    pending_emit_meta.push(PendingEmitMeta {
                         global_layer_index: current_global_layer_index as i32,
                         object_id: obj.object_id.clone(),
                         region_id: region_id.clone(),
-                        family_id: support_family,
+                        family_id: support_family.to_string(),
                         demand_ids: active_nodes
                             .iter()
                             .flat_map(|id| arena[*id].demand_ids.iter().cloned())
@@ -3796,40 +4235,7 @@ impl SupportPlanner {
                         // SupportPlanIR stores physical Z in canonical slicer
                         // units (1 unit = 100 nm), not a WIT-specific scale.
                         anchor_z: mm_to_units(z_current),
-                        roles,
-                        skeleton: Some({
-                            let skeleton_points: Vec<_> = branch_segments
-                                .iter()
-                                .chain(interface_segments.iter())
-                                .chain(floor_segments.iter())
-                                .flat_map(|segment| segment.iter())
-                                .filter(|point| territory_allows(point.x, point.y))
-                                .collect();
-                            let points = skeleton_points
-                                .iter()
-                                .map(|point| slicer_ir::Point3 {
-                                    x: point.x,
-                                    y: point.y,
-                                    z: point.z,
-                                })
-                                .collect::<Vec<_>>();
-                            let wall_counts = skeleton_points
-                                .iter()
-                                .map(|point| {
-                                    u32::from(active_nodes.iter().any(|id| {
-                                        let node = &arena[*id];
-                                        node.need_extra_wall
-                                            && node.x() == point.x
-                                            && node.y() == point.y
-                                    }))
-                                })
-                                .collect::<Vec<_>>();
-                            assert_eq!(wall_counts.len(), points.len());
-                            slicer_ir::SupportPlanSkeleton {
-                                points,
-                                wall_counts,
-                            }
-                        }),
+                        skeleton,
                         capabilities: vec!["tree-branch-skeleton".to_string()],
                         provenance: if layer_needs_extra_wall {
                             vec![
@@ -3839,35 +4245,56 @@ impl SupportPlanner {
                         } else {
                             vec!["support-planner".to_string()]
                         },
-                        decline_reason: None,
+                        variant_chain: variant_chain.clone(),
                     });
                 }
             }
+
+            pending_emit_layers += 1;
+            if pending_emit_layers >= EMIT_BATCH_LAYERS {
+                flush_pending_emits(
+                    &mut pending_emit_meta,
+                    &mut pending_emit_inputs,
+                    &mut entries_in_order,
+                );
+                pending_emit_layers = 0;
+            }
         }
 
-        // Family assignments can cover regions absent from either the
-        // segmentation projection or the candidate geometry path. Stamp each
-        // object/layer from one deterministic successful entry, without
-        // replacing a blocked candidate record. Only regions segmentation
+        flush_pending_emits(
+            &mut pending_emit_meta,
+            &mut pending_emit_inputs,
+            &mut entries_in_order,
+        );
+
+        // Family assignments can cover full source origins absent from either
+        // the segmentation projection or the candidate geometry path. Stamp
+        // each object/layer from one deterministic successful entry, without
+        // replacing a blocked candidate record. Only full origins segmentation
         // does not carry at all are stamped: an assignment is per
-        // `(object, region)` and carries no layer extent, so stamping a
-        // segmented region here would copy one region's column onto every
-        // layer of the object (packet 241b).
+        // `(object, region, ordered variant_chain)` and carries no layer
+        // extent, so stamping a segmented origin here would copy one origin's
+        // column onto every layer of the object (packet 241b).
         let mut templates: std::collections::BTreeMap<(String, i32), SupportPlanEntry> =
             std::collections::BTreeMap::new();
-        let mut covered_regions: std::collections::BTreeSet<(String, i32, String)> =
-            declined_identities;
+        let mut covered_regions: std::collections::BTreeSet<(
+            String,
+            i32,
+            String,
+            Vec<(String, PaintValue)>,
+        )> = declined_identities;
         for entry in &entries_in_order {
-            // Coverage is "this (object, layer, region) already has an
+            // Coverage is "this (object, layer, full origin) already has an
             // entry", which includes blocked/declined records: stamping over
             // one would publish two entries sharing
-            // `(global_layer_index, object_id, region_id)` and trip
-            // `SupportPlanIR::duplicate_region_identity` at the host commit
-            // seam. Only *successful* entries may serve as a template.
+            // `(global_layer_index, object_id, region_id, variant_chain)` and
+            // trip `SupportPlanIR::duplicate_region_identity` at the host
+            // commit seam. Only *successful* entries may serve as a template.
             covered_regions.insert((
                 entry.object_id.clone(),
                 entry.global_layer_index,
                 entry.region_id.clone(),
+                entry.variant_chain.clone(),
             ));
             if entry.decline_reason.is_none() && entry.skeleton.is_some() {
                 templates
@@ -3876,22 +4303,36 @@ impl SupportPlanner {
             }
         }
         for ((object_id, layer_index), template) in templates {
-            let mut assigned_regions: Vec<String> = support_analysis
+            let mut assigned_origins: Vec<(String, Vec<(String, PaintValue)>)> = support_analysis
                 .family_assignments
                 .iter()
                 .filter(|assignment| {
                     assignment.object_id == object_id
                         && canonical_support_family_alias(Some(&assignment.family_id)) == "tree"
-                        && !segmented_region_ids.contains(assignment.region_id.as_str())
+                        && !segmented_sources.contains(&(
+                            assignment.region_id.as_str(),
+                            assignment.variant_chain.as_slice(),
+                        ))
                 })
-                .map(|assignment| assignment.region_id.clone())
+                .map(|assignment| {
+                    (
+                        assignment.region_id.clone(),
+                        assignment.variant_chain.clone(),
+                    )
+                })
                 .collect();
-            assigned_regions.sort();
-            assigned_regions.dedup();
-            for region_id in assigned_regions {
-                if covered_regions.insert((object_id.clone(), layer_index, region_id.clone())) {
+            assigned_origins.sort();
+            assigned_origins.dedup();
+            for (region_id, variant_chain) in assigned_origins {
+                if covered_regions.insert((
+                    object_id.clone(),
+                    layer_index,
+                    region_id.clone(),
+                    variant_chain.clone(),
+                )) {
                     let mut stamped = template.clone();
                     stamped.region_id = region_id;
+                    stamped.variant_chain = variant_chain;
                     entries_in_order.push(stamped);
                 }
             }
@@ -3935,12 +4376,12 @@ impl SupportPlanner {
                 .unwrap_or(0.0)
         };
         if self.independent_support_layer_height && self.support_layer_height_mm > 0.0 {
-            // Support-bearing rows, ascending by global layer index. A row
-            // prints iff it survived with real geometry (the same predicate
-            // the template pass above uses); declined/empty rows print
-            // nothing and therefore bracket nothing.
+            // Support-bearing rows, ascending by global layer index, keyed by
+            // full source origin. A row prints iff it survived with real
+            // geometry (the same predicate the template pass above uses);
+            // declined/empty rows print nothing and therefore bracket nothing.
             let mut support_rows_by_object: std::collections::BTreeMap<
-                (String, String),
+                (String, String, Vec<(String, PaintValue)>),
                 std::collections::BTreeMap<u32, Vec<&SupportPlanEntry>>,
             > = std::collections::BTreeMap::new();
             let mut support_rows_239c_by_object: std::collections::BTreeMap<
@@ -3952,7 +4393,11 @@ impl SupportPlanner {
                 .filter(|entry| entry.decline_reason.is_none() && entry.skeleton.is_some())
             {
                 support_rows_by_object
-                    .entry((entry.object_id.clone(), entry.region_id.clone()))
+                    .entry((
+                        entry.object_id.clone(),
+                        entry.region_id.clone(),
+                        entry.variant_chain.clone(),
+                    ))
                     .or_default()
                     .entry(entry.anchor_layer_index)
                     .or_default()
@@ -3970,11 +4415,14 @@ impl SupportPlanner {
             let mut interpolated: Vec<SupportPlanEntry> = Vec::new();
             let mut coarse_candidates = Vec::<(f64, i32, SupportPlanEntry)>::new();
             let mut intermediate_plane_indices = std::collections::BTreeMap::<i64, i32>::new();
-            let mut coarse_ranges = Vec::<(String, String, u32, u32)>::new();
+            let mut coarse_ranges =
+                Vec::<(String, String, Vec<(String, PaintValue)>, u32, u32)>::new();
             let mut coarse_used = false;
             let explicit_pitch = self.support_layer_height_mm > 0.0;
             let pitch_units = slicer_ir::mm_to_units(support_pitch_mm as f32);
-            for ((object_id, region_id), support_rows_by_layer) in &support_rows_by_object {
+            for ((object_id, region_id, variant_chain), support_rows_by_layer) in
+                &support_rows_by_object
+            {
                 let demanded_layers: Vec<u32> = support_rows_by_layer.keys().copied().collect();
                 for run in demanded_layers.chunk_by(|a, b| *b == *a + 1) {
                     if run.len() < 2 {
@@ -4046,6 +4494,7 @@ impl SupportPlanner {
                             coarse_ranges.push((
                                 object_id.clone(),
                                 region_id.clone(),
+                                variant_chain.clone(),
                                 below_layer,
                                 above_layer,
                             ));
@@ -4094,7 +4543,9 @@ impl SupportPlanner {
             if coarse_used {
                 // Coarse brackets replace only their covered row pairs. Every other
                 // pair keeps the 239c candidate multiplicity and insertion order.
-                for ((object_id, region_id), support_rows_by_layer) in &support_rows_by_object {
+                for ((object_id, region_id, variant_chain), support_rows_by_layer) in
+                    &support_rows_by_object
+                {
                     let demanded_layers: Vec<u32> = support_rows_by_layer.keys().copied().collect();
                     for run in demanded_layers.chunk_by(|a, b| *b == *a + 1) {
                         for pair in run.windows(2) {
@@ -4110,9 +4561,16 @@ impl SupportPlanner {
                                 ) {
                                     for lower_entry in &support_rows_by_layer[&prev] {
                                         let belongs_to_coarse_range = coarse_ranges.iter().any(
-                                            |(coarse_object, coarse_region, below, above)| {
+                                            |(
+                                                coarse_object,
+                                                coarse_region,
+                                                coarse_chain,
+                                                below,
+                                                above,
+                                            )| {
                                                 object_id == coarse_object
                                                     && region_id == coarse_region
+                                                    && variant_chain == coarse_chain
                                                     && prev >= *below
                                                     && layer <= *above
                                             },
@@ -4150,8 +4608,14 @@ impl SupportPlanner {
                     }
                 }
 
-                let mut synthesized_seen =
-                    std::collections::BTreeSet::<(i32, String, String, Vec<String>, i64)>::new();
+                let mut synthesized_seen = std::collections::BTreeSet::<(
+                    i32,
+                    String,
+                    String,
+                    Vec<(String, PaintValue)>,
+                    Vec<String>,
+                    i64,
+                )>::new();
                 coarse_candidates.sort_by(|a, b| a.0.total_cmp(&b.0));
                 let mut first = 0;
                 while first < coarse_candidates.len() {
@@ -4184,11 +4648,12 @@ impl SupportPlanner {
                         })
                         .map(|(index, _)| index as u32)
                         .unwrap_or(0);
-                    // One emitted row per `(global_layer_index,
-                    // object_id, region_id)` is the PRODUCER's contract.
+                    // One emitted row per `(global_layer_index, object_id,
+                    // region_id, variant_chain)` full origin is the
+                    // PRODUCER's contract.
                     // Candidates in one EPSILON group all receive this
                     // group's `global_layer_index` / `anchor_z`, so two
-                    // candidates of the same region that came from
+                    // candidates of the same origin that came from
                     // DIFFERENT source layers used to be published as two
                     // rows sharing one region identity -- the exact shape
                     // `SupportPlanIR::duplicate_region_identity` rejects.
@@ -4200,8 +4665,10 @@ impl SupportPlanner {
                     // `union_same_family_entries`, which is what folded the
                     // pair downstream until now, so committed output is
                     // unchanged.
-                    let mut region_slots =
-                        std::collections::BTreeMap::<(String, String), usize>::new();
+                    let mut region_slots = std::collections::BTreeMap::<
+                        (String, String, Vec<(String, PaintValue)>),
+                        usize,
+                    >::new();
                     for (_, source_global_layer_index, mut clone) in
                         coarse_candidates[first..=last].iter().cloned()
                     {
@@ -4212,12 +4679,17 @@ impl SupportPlanner {
                             source_global_layer_index,
                             clone.object_id.clone(),
                             clone.region_id.clone(),
+                            clone.variant_chain.clone(),
                             clone.body_ids.clone(),
                             clone.anchor_z,
                         )) {
                             continue;
                         }
-                        let region_identity = (clone.object_id.clone(), clone.region_id.clone());
+                        let region_identity = (
+                            clone.object_id.clone(),
+                            clone.region_id.clone(),
+                            clone.variant_chain.clone(),
+                        );
                         match region_slots.get(&region_identity) {
                             Some(index) => {
                                 merge_synthesized_region_row(&mut interpolated[*index], clone)
@@ -4231,11 +4703,11 @@ impl SupportPlanner {
                     first = last + 1;
                 }
                 entries_in_order.retain(|entry| {
-                    !coarse_ranges
-                        .iter()
-                        .any(|(object_id, region_id, below, above)| {
+                    !coarse_ranges.iter().any(
+                        |(object_id, region_id, variant_chain, below, above)| {
                             entry.object_id == *object_id
                                 && entry.region_id == *region_id
+                                && entry.variant_chain == *variant_chain
                                 && entry.anchor_layer_index > *below
                                 && entry.anchor_layer_index < *above
                                 && !entry.roles.iter().any(|role| {
@@ -4246,7 +4718,8 @@ impl SupportPlanner {
                                             | slicer_ir::SupportPlanRole::BottomInterface
                                     )
                                 })
-                        })
+                        },
+                    )
                 });
                 entries_in_order.extend(interpolated);
                 // A coarse-active object is emitted Z-first as one stack. A
@@ -4305,13 +4778,21 @@ impl SupportPlanner {
                 // Preserve the pre-239c final identity gate on the finer-only
                 // path. Coarse synthesis has its own source-aware key above;
                 // applying that key here would change legacy identity and
-                // multiplicity semantics.
-                let mut seen = std::collections::BTreeSet::<(String, i32, String, i64)>::new();
+                // multiplicity semantics. The full-source key keeps chain
+                // variants of one region as distinct rows.
+                let mut seen = std::collections::BTreeSet::<(
+                    String,
+                    i32,
+                    String,
+                    Vec<(String, PaintValue)>,
+                    i64,
+                )>::new();
                 entries_in_order.retain(|entry| {
                     seen.insert((
                         entry.object_id.clone(),
                         entry.global_layer_index,
                         entry.region_id.clone(),
+                        entry.variant_chain.clone(),
                         entry.anchor_z,
                     ))
                 });
@@ -4340,7 +4821,8 @@ impl SupportPlanner {
 }
 
 /// Fold `incoming` into `existing`, which already occupies this
-/// physical plane for the same `(object_id, region_id)`.
+/// physical plane for the same `(object_id, region_id, ordered variant_chain)`
+/// full source origin.
 ///
 /// Membership is unioned, never dropped: a synthesized coarse row stands for
 /// every source body that reached its plane. The field-by-field behaviour is
@@ -4895,6 +5377,9 @@ fn canonical_support_family_alias(value: Option<&str>) -> String {
 /// There is deliberately no self-default onto the planner's configured
 /// `support_family` — that would let this planner claim regions the host
 /// never assigned to it, and the host merge point would drop them anyway.
+/// The lookup is exact over the full source origin `(object_id, region_id,
+/// ordered variant_chain)`: a missing-chain or chain-shifted sibling's
+/// assignment is never a fallback.
 fn candidate_family(
     candidate: &SupportAnalysisCandidate,
     analysis: &SupportAnalysisView,
@@ -4905,13 +5390,16 @@ fn candidate_family(
         .find(|assignment| {
             assignment.object_id == candidate.object_id
                 && assignment.region_id == candidate.region_id
+                && assignment.variant_chain == candidate.variant_chain
         })
         .map(|assignment| canonical_support_family_alias(Some(&assignment.family_id)))
 }
 
-/// Group `SupportPlanEntry` indices by `(object_id, region_id)`, each group
+/// Group `SupportPlanEntry` indices by full source origin
+/// `(object_id, region_id, ordered variant_chain)`, each group
 /// sorted by `global_layer_index` descending (tip → root). Returns the list of
-/// index groups referencing positions in the original `entries` slice.
+/// index groups referencing positions in the original `entries` slice. Chain
+/// variants of one region stay in separate columns.
 pub fn group_branches_into_columns(
     entries: &[slicer_sdk::prepass_types::SupportPlanEntry],
 ) -> Vec<Vec<usize>> {
@@ -4919,12 +5407,17 @@ pub fn group_branches_into_columns(
         (
             slicer_sdk::prepass_types::ObjectId,
             slicer_sdk::prepass_types::RegionId,
+            Vec<(String, PaintValue)>,
         ),
         Vec<usize>,
     > = std::collections::BTreeMap::new();
     for (idx, entry) in entries.iter().enumerate() {
         groups
-            .entry((entry.object_id.clone(), entry.region_id.clone()))
+            .entry((
+                entry.object_id.clone(),
+                entry.region_id.clone(),
+                entry.variant_chain.clone(),
+            ))
             .or_default()
             .push(idx);
     }
@@ -5801,6 +6294,10 @@ fn closest_point_on_segment(p0: [f32; 2], p1: [f32; 2], t: [f32; 2]) -> [f32; 2]
 }
 
 #[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;
+
+#[cfg(test)]
 mod tests {
     /// Legacy test width: the pre-P29 `from_config` default. Auto now resolves
     /// to `line_width` (canonical `Flow::support_material_flow`), so this is
@@ -5930,6 +6427,7 @@ mod tests {
     }
 
     use super::*;
+    use slicer_sdk::prepass_types::RegionSourceOrigin;
 
     #[test]
     fn coarse_source_selection_prefers_body_per_membership() {
@@ -6542,6 +7040,7 @@ mod tests {
                 object_id: "outline-order".to_string(),
                 region_id: "0".to_string(),
                 outlines,
+                ..Default::default()
             }],
         };
 
@@ -6617,6 +7116,123 @@ mod tests {
             host::clip_polygons(body, roof, ClipOperation::Intersection).is_empty(),
             "body and roof must be disjoint"
         );
+    }
+
+    /// One buffered emit item with only role areas (no structural segments).
+    fn role_input(
+        body_areas: Vec<ExPolygon>,
+        roof_areas: Vec<ExPolygon>,
+        collision_polys: Vec<ExPolygon>,
+        own_territory: Option<Vec<ExPolygon>>,
+    ) -> RoleBuildInput {
+        RoleBuildInput {
+            branch_segments: Vec::new(),
+            interface_segments: Vec::new(),
+            base_segments: Vec::new(),
+            floor_segments: Vec::new(),
+            branch_areas: body_areas,
+            interface_areas: roof_areas,
+            base_areas: Vec::new(),
+            floor_areas: Vec::new(),
+            branch_radius: 1.0,
+            collision_polys,
+            avg_node_per_layer: 0,
+            line_width_mm: 0.4,
+            own_territory,
+        }
+    }
+
+    /// The serial reference: `build_roles` as the emit pass called it, followed
+    /// by the territory intersect and empty-role drop the caller applied.
+    fn serial_roles(input: &RoleBuildInput) -> Vec<slicer_ir::SupportPlanRoleRegion> {
+        let mut roles = build_roles(
+            &input.branch_segments,
+            &input.interface_segments,
+            &input.base_segments,
+            &input.floor_segments,
+            &input.branch_areas,
+            &input.interface_areas,
+            &input.base_areas,
+            &input.floor_areas,
+            input.branch_radius,
+            &input.collision_polys,
+            input.avg_node_per_layer,
+            input.line_width_mm,
+        );
+        if let Some(own) = &input.own_territory {
+            for role in &mut roles {
+                role.regions = host::clip_polygons(&role.regions, own, ClipOperation::Intersection);
+            }
+        }
+        roles.retain(|role| !role.regions.is_empty());
+        roles
+    }
+
+    /// Ticket 78: the batched emit path must return, for each buffered item,
+    /// exactly what the serial `build_roles` call returns for that item — same
+    /// roles in the same order, same polygons, in input order.
+    ///
+    /// Each item drives a different phase of `build_roles_batched`: the
+    /// lone-gated simplify repair, the per-region carve plus role union, the
+    /// no-collision early return, and the territory intersect. The items carry
+    /// distinguishable geometry, so a misaligned result slot fails here.
+    #[test]
+    fn build_roles_batched_matches_the_serial_path_per_item() {
+        let collision = vec![build_roles_square(10.0, 10.0, 4.0)];
+        // (a) A lone region far from the collision set is gated; with the body
+        // role's simplify tolerance active it takes the re-clip repair.
+        let mut gated = role_input(
+            vec![build_roles_square(0.0, 0.0, 2.0)],
+            Vec::new(),
+            collision.clone(),
+            None,
+        );
+        gated.avg_node_per_layer = COARSE_CIRCLE_NODE_THRESHOLD + 1;
+        // (b) Two regions far from collision (gated) plus one that reaches it:
+        // carve, union, then the set-wide and body-minus-roof differences.
+        let carved = role_input(
+            vec![
+                build_roles_square(0.0, 0.0, 4.0),
+                build_roles_square(2.0, 0.0, 4.0),
+                build_roles_square(9.0, 9.0, 4.0),
+            ],
+            vec![build_roles_square(1.0, 1.0, 2.0)],
+            collision.clone(),
+            None,
+        );
+        // (c) No collision set at all: the carve early-returns and only the
+        // union runs.
+        let union_only = role_input(
+            vec![
+                build_roles_square(0.0, 0.0, 4.0),
+                build_roles_square(2.0, 0.0, 4.0),
+            ],
+            Vec::new(),
+            Vec::new(),
+            None,
+        );
+        // (d) A modifier sub-region keeps only its own territory.
+        let territory = role_input(
+            vec![build_roles_square(0.0, 0.0, 4.0)],
+            Vec::new(),
+            collision,
+            Some(vec![build_roles_square(0.0, 0.0, 2.0)]),
+        );
+        let items = [gated, carved, union_only, territory];
+        let refs: Vec<&RoleBuildInput> = items.iter().collect();
+        let batched = build_roles_batched(&refs);
+        assert_eq!(batched.len(), items.len());
+        assert!(
+            batched.iter().all(|roles| !roles.is_empty()),
+            "every fixture item must produce geometry, otherwise equality is vacuous"
+        );
+        for (index, (input, got)) in items.iter().zip(&batched).enumerate() {
+            assert_eq!(
+                got,
+                &serial_roles(input),
+                "item {index}: batched roles must equal the serial build_roles result"
+            );
+        }
     }
 
     /// Two overlapping node cross-sections on one layer must print as a
@@ -6760,6 +7376,10 @@ mod tests {
                     |region_id| slicer_sdk::prepass_types::SupportFamilyAssignment {
                         object_id: object_id.to_string(),
                         region_id: region_id.to_string(),
+                        // These fixtures describe genuinely chain-less
+                        // sources: the empty chain is an exact identity, not
+                        // a wildcard.
+                        variant_chain: Vec::new(),
                         family_id: "tree".to_string(),
                     },
                 )
@@ -6817,7 +7437,10 @@ mod tests {
                 .map(|i| RegionSegmentationViewEntry {
                     object_id: object_id.to_string(),
                     layer_index: i,
-                    region_ids: vec!["0".to_string()],
+                    region_origins: vec![slicer_sdk::prepass_types::RegionSourceOrigin {
+                        region_id: "0".to_string(),
+                        variant_chain: Vec::new(),
+                    }],
                 })
                 .collect(),
             region_support_configs: Vec::new(),
@@ -6926,12 +7549,22 @@ mod tests {
         let lp = default_layer_plan(10, 0.0, 0.2);
         let mut rs = default_region_segmentation("plate", 10);
         for layer_index in 0..10 {
-            rs.entries[layer_index as usize].region_ids = vec!["0".to_string(), "1".to_string()];
+            rs.entries[layer_index as usize].region_origins = vec![
+                RegionSourceOrigin {
+                    region_id: "0".to_string(),
+                    variant_chain: Vec::new(),
+                },
+                RegionSourceOrigin {
+                    region_id: "1".to_string(),
+                    variant_chain: Vec::new(),
+                },
+            ];
             rs.region_support_configs
                 .push(slicer_sdk::prepass_types::RegionSupportConfig {
                     object_id: "plate".to_string(),
                     layer_index,
                     region_id: "1".to_string(),
+                    variant_chain: Vec::new(),
                     support_family: None,
                     support_type: Some("tree(auto)".to_string()),
                 });
@@ -6940,6 +7573,7 @@ mod tests {
                     object_id: "plate".to_string(),
                     layer_index,
                     region_id: "0".to_string(),
+                    variant_chain: Vec::new(),
                     support_family: Some("traditional".to_string()),
                     support_type: None,
                 });
@@ -7025,6 +7659,7 @@ mod tests {
                     object_id: "lone-contact".to_string(),
                     region_id: "0".to_string(),
                     outlines: vec![collision_box.clone()],
+                    ..Default::default()
                 })
                 .collect(),
         };

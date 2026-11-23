@@ -28,7 +28,8 @@ pub use polygon_predicate::{point_in_contour_winding, point_in_polygon_winding};
 pub use prepared_regions::PreparedRegionData;
 pub use resolved_config::{
     classify_declared_key, is_declared_float_or_percent_key, parse_orca_point_string,
-    ConfigResolutionError, DeclaredKeyKind, ResolvedConfig,
+    ConfigResolutionError, DeclaredKeyKind, ResolvedConfig, DEFAULT_RESOLUTION_MM,
+    RESOLUTION_FLOOR_MM,
 };
 pub use slice_ir::{AggregatedRegionSplitEntry, RegionSplitValueType};
 pub use stage_io::{
@@ -86,8 +87,6 @@ pub use slice_ir::{
     LayerCollectionIR,
     // Layer planning types
     LayerPlanIR,
-    LightningTreeEntry,
-    LightningTreeIR,
     LoopType,
     MaterialBoundarySegment,
     MeshIR,
@@ -206,7 +205,6 @@ pub use slice_ir::{
     CURRENT_INFILL_IR_SCHEMA_VERSION,
     CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION,
     CURRENT_LAYER_PLAN_IR_SCHEMA_VERSION,
-    CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION,
     CURRENT_MESH_IR_SCHEMA_VERSION,
     CURRENT_PERIMETER_IR_SCHEMA_VERSION,
     CURRENT_REGION_MAP_IR_SCHEMA_VERSION,

@@ -7,6 +7,10 @@ version.workspace = true
 
 [dependencies]
 slicer-ir = { path = "../slicer-ir" }
+# Optional geometry-only SCAD adapter. Off by default so the ordinary model-I/O
+# leaf keeps `slicer-ir` as its only first-party normal dependency and never
+# compiles the engine (ADR-0017).
+slicer-scad = { path = "../slicer-scad", optional = true }
 stl_io = "0.11"
 tobj = "4.0"
 zip = { version = "2", default-features = false, features = ["deflate"] }
@@ -17,3 +21,17 @@ serde_json = "1.0"
 
 [dev-dependencies]
 tempfile = "3"
+
+[features]
+default = []
+scad = ["dep:slicer-scad", "slicer-scad/openrscad"]
+
+# Ungated on purpose: this target must build and report real assertions in BOTH
+# feature configurations. A whole-file `#![cfg(feature = "scad")]` gate would
+# make the feature-off run a green zero-test binary.
+[[test]]
+name = "scad_ingest_feature_contract"
+
+[[test]]
+name = "scad_model_ingest"
+required-features = ["scad"]

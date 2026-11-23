@@ -1,0 +1,127 @@
+{
+  "schema_version": "1.0.0",
+  "source": {
+    "kind": "gcode",
+    "model": null,
+    "path": "D:/slicerProject/pinch_n_print_cli_2/target/t44-ab/recon/frozen-exact-flags.gcode"
+  },
+  "resolution_scale": 1,
+  "viewport": {
+    "width": 1024,
+    "height": 1024
+  },
+  "frame": "model",
+  "legend_version": "1.0.0",
+  "ir_schema_version": null,
+  "gcode_parser_version": "pnp-gcode-visual-debug/1",
+  "images": [
+    {
+      "source": "gcode",
+      "tap": "final_gcode",
+      "layer_index": 0,
+      "layer_z": 0.2,
+      "visualization": "filament_lines",
+      "png_path": "images/final_gcode_filament_lines_l0.png",
+      "viewport": {
+        "width": 1024,
+        "height": 1024
+      },
+      "legend_version": "1.0.0",
+      "ir_schema_version": null,
+      "gcode_parser_version": "pnp-gcode-visual-debug/1",
+      "warnings": [
+        "line 16: unsupported G-code construct outside the documented G0/G1 X/Y/Z/E/F subset: M73 P0 R70",
+        "unsupported G-code construct outside the documented G0/G1 X/Y/Z/E/F subset: M73 (first at line 16; 260 occurrences total, 259 suppressed)"
+      ],
+      "typed_capture": null,
+      "world_bounds_mm": {
+        "min_x": 89.28,
+        "min_y": 107.031,
+        "max_x": 156.782,
+        "max_y": 142.97
+      }
+    },
+    {
+      "source": "gcode",
+      "tap": "final_gcode",
+      "layer_index": 25,
+      "layer_z": 5.2,
+      "visualization": "filament_lines",
+      "png_path": "images/final_gcode_filament_lines_l25.png",
+      "viewport": {
+        "width": 1024,
+        "height": 1024
+      },
+      "legend_version": "1.0.0",
+      "ir_schema_version": null,
+      "gcode_parser_version": "pnp-gcode-visual-debug/1",
+      "warnings": [
+        "line 16: unsupported G-code construct outside the documented G0/G1 X/Y/Z/E/F subset: M73 P0 R70",
+        "unsupported G-code construct outside the documented G0/G1 X/Y/Z/E/F subset: M73 (first at line 16; 260 occurrences total, 259 suppressed)"
+      ],
+      "typed_capture": null,
+      "world_bounds_mm": {
+        "min_x": 89.28,
+        "min_y": 107.031,
+        "max_x": 156.782,
+        "max_y": 142.97
+      }
+    },
+    {
+      "source": "gcode",
+      "tap": "final_gcode",
+      "layer_index": 41,
+      "layer_z": 8.4,
+      "visualization": "filament_lines",
+      "png_path": "images/final_gcode_filament_lines_l41.png",
+      "viewport": {
+        "width": 1024,
+        "height": 1024
+      },
+      "legend_version": "1.0.0",
+      "ir_schema_version": null,
+      "gcode_parser_version": "pnp-gcode-visual-debug/1",
+      "warnings": [
+        "line 16: unsupported G-code construct outside the documented G0/G1 X/Y/Z/E/F subset: M73 P0 R70",
+        "unsupported G-code construct outside the documented G0/G1 X/Y/Z/E/F subset: M73 (first at line 16; 260 occurrences total, 259 suppressed)"
+      ],
+      "typed_capture": null,
+      "world_bounds_mm": {
+        "min_x": 89.28,
+        "min_y": 107.031,
+        "max_x": 156.782,
+        "max_y": 142.97
+      }
+    },
+    {
+      "source": "gcode",
+      "tap": "final_gcode",
+      "layer_index": 104,
+      "layer_z": 21.0,
+      "visualization": "filament_lines",
+      "png_path": "images/final_gcode_filament_lines_l104.png",
+      "viewport": {
+        "width": 1024,
+        "height": 1024
+      },
+      "legend_version": "1.0.0",
+      "ir_schema_version": null,
+      "gcode_parser_version": "pnp-gcode-visual-debug/1",
+      "warnings": [
+        "line 16: unsupported G-code construct outside the documented G0/G1 X/Y/Z/E/F subset: M73 P0 R70",
+        "unsupported G-code construct outside the documented G0/G1 X/Y/Z/E/F subset: M73 (first at line 16; 260 occurrences total, 259 suppressed)"
+      ],
+      "typed_capture": null,
+      "world_bounds_mm": {
+        "min_x": 89.28,
+        "min_y": 107.031,
+        "max_x": 156.782,
+        "max_y": 142.97
+      }
+    }
+  ],
+  "warnings": [],
+  "executed_stage_ids": [],
+  "layer_expansions": [],
+  "executed_layer_indices": []
+}

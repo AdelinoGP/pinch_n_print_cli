@@ -1,0 +1,114 @@
+{
+ "cell": "ordinary-base-classic-off",
+ "reference_sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+ "reference_bytes": 21023739,
+ "window_sha256": "5fc8fa72341e661f3c9ca21f4b6d8700ccb8704179f3c86fb55ce4c9eaded171",
+ "window_bytes": 21023889,
+ "differing_block_count": 5,
+ "first_differing_block_index": 568,
+ "differing_blocks": [
+  {
+   "index": 568,
+   "type": ";TYPE:Internal Bridge",
+   "z": ";Z:21.4",
+   "moves_reference": 8,
+   "moves_window": 10,
+   "reference_first_moves": [
+    "G1 X91.729 Y132.637 Z21.4 F2250",
+    "G1 X92.824 Y132.74 Z21.4 E0.05762 F2250",
+    "G1 X92.912 Y133.2 Z21.4 E0.02441 F2250",
+    "G1 X92.234 Y133.137 Z21.4 E0.03564 F2250"
+   ],
+   "window_first_moves": [
+    "G1 X91.483 Y131.534 Z21.4 F2250",
+    "G1 X91.032 Y131.555 Z21.4 E0.02368 F2250",
+    "G1 X91.23 Y131.996 Z21.4 E0.02539 F2250",
+    "G1 X91.88 Y131.967 Z21.4 E0.03394 F2250"
+   ]
+  },
+  {
+   "index": 691,
+   "type": ";TYPE:Outer wall",
+   "z": ";Z:27.4",
+   "moves_reference": 486,
+   "moves_window": 486,
+   "reference_first_moves": [
+    "G1 X170.035 Y126.614 Z27.4 F3000",
+    "G1 X170.127 Y126.661 Z27.4 E0.00342 F3000",
+    "G1 X170.357 Y126.843 Z27.4 E0.00977 F3000",
+    "G1 X170.462 Y126.949 Z27.4 E0.00488 F3000"
+   ],
+   "window_first_moves": [
+    "G1 X170.035 Y126.614 Z27.4 F3000",
+    "G1 X170.127 Y126.661 Z27.4 E0.00342 F3000",
+    "G1 X170.357 Y126.843 Z27.4 E0.00977 F3000",
+    "G1 X170.462 Y126.949 Z27.4 E0.00488 F3000"
+   ]
+  },
+  {
+   "index": 834,
+   "type": ";TYPE:Internal Bridge",
+   "z": ";Z:33",
+   "moves_reference": 4,
+   "moves_window": 5,
+   "reference_first_moves": [
+    "G1 X126.979 Y111.015 Z33 F2250",
+    "G1 X127.353 Y111.201 Z33 E0.02197 F2250",
+    "G1 X127.176 Y111.583 Z33 E0.02197 F2250",
+    "G1 X126.818 Y111.435 Z33 E0.02051 F2250"
+   ],
+   "window_first_moves": [
+    "G1 X127.005 Y111.004 Z33 F2250",
+    "G1 X127.363 Y111.174 Z33 E0.02051 F2250",
+    "G1 X127.273 Y111.388 Z33 E0.01221 F2250",
+    "G1 X127.176 Y111.584 Z33 E0.01123 F2250"
+   ]
+  },
+  {
+   "index": 948,
+   "type": ";TYPE:Inner wall",
+   "z": ";Z:39.4",
+   "moves_reference": 338,
+   "moves_window": 338,
+   "reference_first_moves": [
+    "G1 X81.251 Y119.4 Z39.4 F3000",
+    "G1 X81.272 Y119.451 Z39.4 E0.00195 F3000",
+    "G1 X81.249 Y119.595 Z39.4 E0.00488 F3000",
+    "G1 X81.195 Y119.753 Z39.4 E0.00537 F3000"
+   ],
+   "window_first_moves": [
+    "G1 X81.251 Y119.4 Z39.4 F3000",
+    "G1 X81.272 Y119.451 Z39.4 E0.00195 F3000",
+    "G1 X81.249 Y119.595 Z39.4 E0.00488 F3000",
+    "G1 X81.195 Y119.753 Z39.4 E0.00537 F3000"
+   ]
+  },
+  {
+   "index": 1184,
+   "type": ";TYPE:Outer wall",
+   "z": ";Z:51.6",
+   "moves_reference": 267,
+   "moves_window": 267,
+   "reference_first_moves": [
+    "G1 X145.764 Y101.868 Z51.6 F3000",
+    "G1 X145.806 Y102.069 Z51.6 E0.00684 F3000",
+    "G1 X145.919 Y102.191 Z51.6 E0.00537 F3000",
+    "G1 X146.063 Y102.253 Z51.6 E0.00537 F3000"
+   ],
+   "window_first_moves": [
+    "G1 X145.764 Y101.868 Z51.6 F3000",
+    "G1 X145.806 Y102.069 Z51.6 E0.00684 F3000",
+    "G1 X145.919 Y102.191 Z51.6 E0.00537 F3000",
+    "G1 X146.063 Y102.253 Z51.6 E0.00537 F3000"
+   ]
+  }
+ ],
+ "isolation": {
+  "note": "At the first differing Internal Bridge layer the probe's inside-the-window set check is clean, so the qualification and per-candidate area inputs are unchanged; the bridge direction is not.",
+  "layer": 106,
+  "print_z": 21.4,
+  "mismatch_polys": 0,
+  "mismatch_vertices": 0,
+  "win_area_polys": 1
+ }
+}

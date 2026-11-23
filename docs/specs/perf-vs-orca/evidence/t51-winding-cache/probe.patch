@@ -1,0 +1,138 @@
+--- a/crates/slicer-core/src/perimeter_spatial.rs
++++ b/crates/slicer-core/src/perimeter_spatial.rs
+@@ -12,6 +12,24 @@
+ use slicer_ir::{ExPolygon, Point2, Point3WithWidth, Polygon};
+ 
+ use crate::perimeter_utils::{point_in_any_polygon, signed_distance_to_boundary};
++use crate::profile::{self, ScopeId};
++
++// Temporary, separately marked diagnostic accounting; excluded from timing builds.
++static T51_COUNTS: [std::sync::atomic::AtomicU64; 6] =
++    [const { std::sync::atomic::AtomicU64::new(0) }; 6];
++
++fn t51_add(index: usize, amount: usize) {
++    let _account = profile::scope(ScopeId::T51_ACCOUNT);
++    T51_COUNTS[index].fetch_add(amount as u64, std::sync::atomic::Ordering::Relaxed);
++}
++
++/// Drain temporary cache accounting at the guest invocation boundary.
++pub fn t51_take() -> Vec<u64> {
++    T51_COUNTS
++        .iter()
++        .map(|count| count.swap(0, std::sync::atomic::Ordering::Relaxed))
++        .collect()
++}
+ 
+ const RSTAR_MAX_SIZE: usize = <rstar::DefaultParams as RTreeParams>::MAX_SIZE;
+ 
+@@ -551,10 +569,35 @@
+     ) -> Self {
+         count_context_constructed();
+         let boundary = boundary.to_vec();
+-        let winding_contours = boundary
+-            .iter()
+-            .map(|polygon| PreparedWindingContour::new(&polygon.contour))
+-            .collect();
++        let winding_contours: Vec<PreparedWindingContour> = {
++            let _cache = profile::scope(ScopeId::T51_CACHE);
++            boundary
++                .iter()
++                .map(|polygon| PreparedWindingContour::new(&polygon.contour))
++                .collect()
++        };
++        t51_add(0, 1);
++        t51_add(1, winding_contours.len());
++        t51_add(
++            2,
++            winding_contours.iter().map(|ring| ring.points.len()).sum(),
++        );
++        t51_add(
++            3,
++            winding_contours.capacity() * std::mem::size_of::<PreparedWindingContour>()
++                + winding_contours
++                    .iter()
++                    .map(|ring| ring.points.capacity() * std::mem::size_of::<[f64; 2]>())
++                    .sum::<usize>(),
++        );
++        t51_add(
++            4,
++            usize::from(winding_contours.capacity() > 0)
++                + winding_contours
++                    .iter()
++                    .filter(|ring| ring.points.capacity() > 0)
++                    .count(),
++        );
+         let overhang_bands = overhang_bands.to_vec();
+         let bridge_areas = bridge_areas.to_vec();
+ 
+@@ -584,6 +627,7 @@
+ 
+     /// Return the exact signed distance to the nearest boundary edge.
+     pub fn signed_distance_to_boundary(&self, x: f32, y: f32) -> f32 {
++        t51_add(5, 1);
+         let dispatch = dispatch();
+         if !dispatch.indexed {
+             count_legacy();
+--- a/crates/slicer-core/src/profile.rs
++++ b/crates/slicer-core/src/profile.rs
+@@ -98,6 +98,11 @@
+     /// `polygon_ops::closing_ex` â€” dilate-then-erode. Same `morph_pass`
+     /// bypass as [`ScopeId::OPENING`].
+     pub const CLOSING_EX: ScopeId = ScopeId(5);
++
++    /// Temporary cache-construction diagnostic, never a timing-build scope.
++    pub const T51_CACHE: ScopeId = ScopeId(6);
++    /// Temporary cache-accounting diagnostic bookkeeping.
++    pub const T51_ACCOUNT: ScopeId = ScopeId(7);
+ 
+     /// Every scope id minted by `slicer-core`, in ascending order.
+     ///
+@@ -109,6 +114,8 @@
+         ScopeId::OFFSET2_EX,
+         ScopeId::OPENING,
+         ScopeId::CLOSING_EX,
++        ScopeId::T51_CACHE,
++        ScopeId::T51_ACCOUNT,
+     ];
+ 
+     /// Constructs a scope id from its raw representation.
+@@ -139,6 +146,8 @@
+             3 => Some("polygon_ops::offset2_ex"),
+             4 => Some("polygon_ops::opening"),
+             5 => Some("polygon_ops::closing_ex"),
++            6 => Some("t51::cache_construction"),
++            7 => Some("t51::account"),
+             _ => None,
+         }
+     }
+--- a/modules/core-modules/arachne-perimeters/src/lib.rs
++++ b/modules/core-modules/arachne-perimeters/src/lib.rs
+@@ -92,6 +92,19 @@
+ /// `run_perimeters` rather than cached here, mirroring `classic-perimeters`'
+ /// own R2 convention for per-object/per-layer overridable keys.
+ pub struct ArachnePerimeters;
++
++struct T51Counts;
++impl Drop for T51Counts {
++    fn drop(&mut self) {
++        slicer_sdk::host::log(
++            slicer_sdk::host::LogLevel::Info,
++            &format!(
++                "PERF-T51-COUNTS {:?}",
++                slicer_core::perimeter_spatial::t51_take()
++            ),
++        );
++    }
++}
+ 
+ /// Builds the SDK's [`ArachneParams`] mirror from `config`.
+ ///
+@@ -479,6 +492,8 @@
+         output: &mut PerimeterOutputBuilder,
+         config: &ConfigView,
+     ) -> Result<(), ModuleError> {
++        let _ = slicer_core::perimeter_spatial::t51_take();
++        let _counts = T51Counts;
+         let mut params = arachne_params_from_config(config, layer_index == 0)?;
+         // nozzle_diameter/layer_height (packet 150 step 5): read here (mm,
+         // same config keys + seeded defaults as arachne_params_from_config's

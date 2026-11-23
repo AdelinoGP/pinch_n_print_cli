@@ -1,0 +1,193 @@
+{
+  "floor_pct_of_cell_wall": 0.8,
+  "operand_window": {
+    "prev_points": 2540125,
+    "prev_in_window": 2485164,
+    "retained_frac": 0.978363,
+    "removable_frac": 0.021637,
+    "measured_on": "base-classic-off probe3"
+  },
+  "reference_batch_speedup": 2.6,
+  "cells": {
+    "base-classic-off": {
+      "cell_wall_ms": 92829,
+      "process_wall_s": 94.578,
+      "process_cpu_s": 729.5,
+      "output": {
+        "sha256": "292df50179c4033d6204a0353e038534b4d3a98381126998bb5722a41a571a80",
+        "bytes": 21023739,
+        "status": "ok",
+        "degraded": false
+      },
+      "overhang": {
+        "stage_ms_head": 10008,
+        "stage_ms_probe": 9510,
+        "stage_share_of_cell_pct": 10.781,
+        "kernel_ms": 9482.66,
+        "kernel_share_of_stage_pct": 99.713,
+        "host_terms_ms": 16.748,
+        "host_terms_share_of_stage_pct": 0.176,
+        "native_offset_ms": 95956.664,
+        "native_offset_calls": 1455,
+        "native_clip_ms": 16468.405,
+        "native_clip_calls": 4859,
+        "native_occupancy": 11.856,
+        "offset_share_of_kernel_work_pct": 85.352,
+        "offset_free_saving_ms": 8093.511,
+        "offset_free_saving_pct": 8.719,
+        "counts": {
+          "objects": 1,
+          "layer_entries": 495,
+          "polys": 845,
+          "points": 2553550,
+          "band_layers": 485,
+          "bands": 1431,
+          "prev_layers": 485,
+          "prev_polys": 835,
+          "prev_points": 2547147
+        }
+      },
+      "seam": {
+        "stage_ms_head": 9135,
+        "stage_ms_probe": 8865,
+        "stage_share_of_cell_pct": 9.841,
+        "project_ms": 4.228,
+        "project_share_of_stage_pct": 0.048,
+        "call_ms": 8776.963,
+        "push_ms": 0.041,
+        "pushes": 495,
+        "harvest_ms": 58.142,
+        "harvest_share_of_stage_pct": 0.656,
+        "offset_project_ms": 8195.444,
+        "offset_project_share_of_stage_pct": 92.447,
+        "offset_project_share_of_cell_pct": 8.829,
+        "candidates_ms": 94.582,
+        "candidates_share_of_stage_pct": 1.067,
+        "choose_ms": 16.606,
+        "unscoped_module_ms": 98.361,
+        "unscoped_share_of_stage_pct": 1.11,
+        "counts": {
+          "regions": 495,
+          "polys": 845,
+          "points": 2553550,
+          "annotations": 0,
+          "entries": 495,
+          "candidates": 2553550
+        }
+      },
+      "shapes": [
+        {
+          "name": "seam-batch-inset-offsets",
+          "basis": "495 independent host::offset_polygons calls (one per region) inside the guest loop; t78's existing offset_polygons_batch uses the same input-ordered map_batch fan-out",
+          "ceiling_upper_pct": 8.829,
+          "ceiling_at_reference_speedup_pct": 5.433,
+          "verdict": "GRADUATE"
+        },
+        {
+          "name": "overhang-bbox-window-operand",
+          "basis": "bbox window retains 0.978363 of the previous-layer points, so at most 2.164 % of the operand is removable",
+          "ceiling_upper_pct": 0.189,
+          "ceiling_at_reference_speedup_pct": null,
+          "verdict": "DROP"
+        },
+        {
+          "name": "seam-candidate-list",
+          "basis": "2,553,550 candidates are generated, scored, harvested and retained in SeamPlanIR; no production consumer reads SeamPlanEntry.scored_candidates",
+          "ceiling_upper_pct": 0.288,
+          "ceiling_at_reference_speedup_pct": null,
+          "verdict": "DROP"
+        }
+      ]
+    },
+    "base-classic-on": {
+      "cell_wall_ms": 208632,
+      "process_wall_s": 210.685,
+      "process_cpu_s": 1081.031,
+      "output": {
+        "sha256": "22200671167a97a7efb1b912e9e1661a317b5e81dab169ec154ab5ad4b9f028d",
+        "bytes": 42507912,
+        "status": "ok",
+        "degraded": false
+      },
+      "overhang": {
+        "stage_ms_head": 10304,
+        "stage_ms_probe": 9047,
+        "stage_share_of_cell_pct": 4.939,
+        "kernel_ms": 9022.324,
+        "kernel_share_of_stage_pct": 99.727,
+        "host_terms_ms": 14.994,
+        "host_terms_share_of_stage_pct": 0.166,
+        "native_offset_ms": 91288.987,
+        "native_offset_calls": 1455,
+        "native_clip_ms": 15715.914,
+        "native_clip_calls": 4859,
+        "native_occupancy": 11.86,
+        "offset_share_of_kernel_work_pct": 85.313,
+        "offset_free_saving_ms": 7697.216,
+        "offset_free_saving_pct": 3.689,
+        "counts": {
+          "objects": 1,
+          "layer_entries": 495,
+          "polys": 845,
+          "points": 2553550,
+          "band_layers": 485,
+          "bands": 1431,
+          "prev_layers": 485,
+          "prev_polys": 835,
+          "prev_points": 2547147
+        }
+      },
+      "seam": {
+        "stage_ms_head": 8974,
+        "stage_ms_probe": 8775,
+        "stage_share_of_cell_pct": 4.301,
+        "project_ms": 11.374,
+        "project_share_of_stage_pct": 0.13,
+        "call_ms": 8697.146,
+        "push_ms": 0.052,
+        "pushes": 495,
+        "harvest_ms": 44.705,
+        "harvest_share_of_stage_pct": 0.509,
+        "offset_project_ms": 8177.384,
+        "offset_project_share_of_stage_pct": 93.19,
+        "offset_project_share_of_cell_pct": 3.92,
+        "candidates_ms": 94.33,
+        "candidates_share_of_stage_pct": 1.075,
+        "choose_ms": 16.088,
+        "unscoped_module_ms": 108.965,
+        "unscoped_share_of_stage_pct": 1.242,
+        "counts": {
+          "regions": 495,
+          "polys": 845,
+          "points": 2553550,
+          "annotations": 0,
+          "entries": 495,
+          "candidates": 2553550
+        }
+      },
+      "shapes": [
+        {
+          "name": "seam-batch-inset-offsets",
+          "basis": "495 independent host::offset_polygons calls (one per region) inside the guest loop; t78's existing offset_polygons_batch uses the same input-ordered map_batch fan-out",
+          "ceiling_upper_pct": 3.92,
+          "ceiling_at_reference_speedup_pct": 2.412,
+          "verdict": "GRADUATE"
+        },
+        {
+          "name": "overhang-bbox-window-operand",
+          "basis": "bbox window retains 0.978363 of the previous-layer points, so at most 2.164 % of the operand is removable",
+          "ceiling_upper_pct": 0.08,
+          "ceiling_at_reference_speedup_pct": null,
+          "verdict": "DROP"
+        },
+        {
+          "name": "seam-candidate-list",
+          "basis": "2,553,550 candidates are generated, scored, harvested and retained in SeamPlanIR; no production consumer reads SeamPlanEntry.scored_candidates",
+          "ceiling_upper_pct": 0.127,
+          "ceiling_at_reference_speedup_pct": null,
+          "verdict": "DROP"
+        }
+      ]
+    }
+  }
+}

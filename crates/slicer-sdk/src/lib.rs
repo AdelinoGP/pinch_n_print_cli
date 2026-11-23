@@ -20,7 +20,9 @@
 #![warn(unused_must_use)]
 
 pub mod builders;
+pub mod config_predicates;
 pub mod config_resolution;
+pub mod contour_resolution;
 pub mod coords;
 pub mod error;
 pub mod host;
@@ -32,6 +34,7 @@ pub mod order_lock;
 pub mod postpass_builders;
 pub mod postpass_types;
 pub mod prelude;
+pub mod preparation;
 pub mod prepass_builders;
 pub mod prepass_types;
 pub mod profile;

@@ -1,0 +1,125 @@
+{
+  "recommendation": "DROP",
+  "automatic_commit": false,
+  "automatic_retry": false,
+  "modes": {
+    "ordinary": {
+      "retained_pairs": 6,
+      "excluded_pairs": [],
+      "starvation_cutoffs": {
+        "baseline": 3.9341910723457687,
+        "candidate": 3.712834056965809
+      },
+      "minimum_pairs_satisfied": true,
+      "descriptive_retained_medians_not_acceptance": {
+        "baseline": {
+          "wall_seconds": 14.427372850000001,
+          "cpu_seconds": 69.9453125
+        },
+        "candidate": {
+          "wall_seconds": 14.2330151,
+          "cpu_seconds": 68.4921875
+        }
+      },
+      "descriptive_paired_median_deltas_not_acceptance": {
+        "wall_seconds": -0.13444699999999976,
+        "cpu_seconds": -1.171875
+      },
+      "output": {
+        "sha256": "5a61a1066a4607c6968cc038eb221a38ed39d30b5d26d8448ad87895abc92c4a",
+        "bytes": 3809027,
+        "type_counts": {
+          "Skirt": 1,
+          "Brim": 1,
+          "Outer wall": 698,
+          "Inner wall": 744,
+          "Bottom surface": 23,
+          "Bridge": 18,
+          "Sparse infill": 139,
+          "Internal solid infill": 6,
+          "Top surface": 32,
+          "Internal Bridge": 12
+        },
+        "open_loop_warnings": 1110
+      },
+      "gate_passed": true,
+      "reason": "paired wall/CPU clauses pass"
+    },
+    "accelerated": {
+      "retained_pairs": 6,
+      "excluded_pairs": [],
+      "starvation_cutoffs": {
+        "baseline": 3.893994149265506,
+        "candidate": 3.8683668786403356
+      },
+      "minimum_pairs_satisfied": true,
+      "descriptive_retained_medians_not_acceptance": {
+        "baseline": {
+          "wall_seconds": 12.528307550000001,
+          "cpu_seconds": 64.609375
+        },
+        "candidate": {
+          "wall_seconds": 12.69788215,
+          "cpu_seconds": 63.859375
+        }
+      },
+      "descriptive_paired_median_deltas_not_acceptance": {
+        "wall_seconds": 0.042138799999999144,
+        "cpu_seconds": -0.7890625
+      },
+      "output": {
+        "sha256": "5a61a1066a4607c6968cc038eb221a38ed39d30b5d26d8448ad87895abc92c4a",
+        "bytes": 3809027,
+        "type_counts": {
+          "Skirt": 1,
+          "Brim": 1,
+          "Outer wall": 698,
+          "Inner wall": 744,
+          "Bottom surface": 23,
+          "Bridge": 18,
+          "Sparse infill": 139,
+          "Internal solid infill": 6,
+          "Top surface": 32,
+          "Internal Bridge": 12
+        },
+        "open_loop_warnings": 1110
+      },
+      "gate_passed": false,
+      "reason": "paired wall/CPU clauses fail"
+    }
+  },
+  "construction_accounting": {
+    "ordinary": {
+      "contexts": 240,
+      "contours": 575,
+      "prepared_vertices": 395668,
+      "retained_capacity_bytes_summed_over_contexts_not_peak_rss": 6337588,
+      "backing_buffers_summed_over_contexts_not_allocator_calls": 814,
+      "public_queries": 110293,
+      "public_queries_per_context_mean": 459.5541666666667,
+      "maximum_single_context_retained_capacity_bytes": 60052,
+      "cache_construction_self_fuel": 14114655,
+      "cache_construction_share_of_probed_module_percent": 0.011531325041347495,
+      "bookkeeping_self_fuel": 5017905,
+      "control_module_fuel": 122391815553,
+      "probe_module_fuel": 122402715641,
+      "probe_observer_delta_percent": 0.00890589615878401
+    },
+    "accelerated": {
+      "contexts": 240,
+      "contours": 575,
+      "prepared_vertices": 395668,
+      "retained_capacity_bytes_summed_over_contexts_not_peak_rss": 6337588,
+      "backing_buffers_summed_over_contexts_not_allocator_calls": 814,
+      "public_queries": 110293,
+      "public_queries_per_context_mean": 459.5541666666667,
+      "maximum_single_context_retained_capacity_bytes": 60052,
+      "cache_construction_self_fuel": 14114131,
+      "cache_construction_share_of_probed_module_percent": 0.020362104213891303,
+      "bookkeeping_self_fuel": 5017905,
+      "control_module_fuel": 68373330930,
+      "probe_module_fuel": 69315680009,
+      "probe_observer_delta_percent": 1.3782407061091906
+    }
+  }
+}

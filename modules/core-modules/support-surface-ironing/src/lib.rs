@@ -259,6 +259,10 @@ fn collect_edges(points: &[slicer_ir::Point2], edges: &mut Vec<(i64, i64, i64, i
 }
 
 #[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

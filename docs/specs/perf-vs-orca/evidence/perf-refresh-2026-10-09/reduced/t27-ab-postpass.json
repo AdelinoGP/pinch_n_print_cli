@@ -1,0 +1,202 @@
+{
+  "accelerated/baseline": {
+    "runs": [
+      {
+        "file": "accelerated-base-baseline-m1.stderr.jsonl",
+        "prepass_ms": 308481,
+        "per_layer_ms": 58195,
+        "postpass_ms": 103210,
+        "elapsed_ms": 477931
+      },
+      {
+        "file": "accelerated-base-baseline-m2.stderr.jsonl",
+        "prepass_ms": 345271,
+        "per_layer_ms": 67396,
+        "postpass_ms": 112648,
+        "elapsed_ms": 535036
+      },
+      {
+        "file": "accelerated-base-baseline-m3.stderr.jsonl",
+        "prepass_ms": 347312,
+        "per_layer_ms": 62830,
+        "postpass_ms": 115495,
+        "elapsed_ms": 534462
+      },
+      {
+        "file": "accelerated-base-baseline-m4.stderr.jsonl",
+        "prepass_ms": 339313,
+        "per_layer_ms": 63822,
+        "postpass_ms": 121259,
+        "elapsed_ms": 533218
+      },
+      {
+        "file": "accelerated-base-baseline-m5.stderr.jsonl",
+        "prepass_ms": 336192,
+        "per_layer_ms": 62169,
+        "postpass_ms": 112330,
+        "elapsed_ms": 519438
+      },
+      {
+        "file": "accelerated-base-baseline-m6.stderr.jsonl",
+        "prepass_ms": 329179,
+        "per_layer_ms": 59751,
+        "postpass_ms": 117019,
+        "elapsed_ms": 514779
+      }
+    ],
+    "prepass_ms_median": 337752,
+    "per_layer_ms_median": 62500,
+    "postpass_ms_median": 114072,
+    "elapsed_ms_median": 526328
+  },
+  "accelerated/candidate": {
+    "runs": [
+      {
+        "file": "accelerated-base-candidate-m1.stderr.jsonl",
+        "prepass_ms": 316804,
+        "per_layer_ms": 61096,
+        "postpass_ms": 117006,
+        "elapsed_ms": 504536
+      },
+      {
+        "file": "accelerated-base-candidate-m2.stderr.jsonl",
+        "prepass_ms": 311618,
+        "per_layer_ms": 63403,
+        "postpass_ms": 110270,
+        "elapsed_ms": 494155
+      },
+      {
+        "file": "accelerated-base-candidate-m3.stderr.jsonl",
+        "prepass_ms": 322025,
+        "per_layer_ms": 64519,
+        "postpass_ms": 118519,
+        "elapsed_ms": 514108
+      },
+      {
+        "file": "accelerated-base-candidate-m4.stderr.jsonl",
+        "prepass_ms": 325626,
+        "per_layer_ms": 67774,
+        "postpass_ms": 116023,
+        "elapsed_ms": 518865
+      },
+      {
+        "file": "accelerated-base-candidate-m5.stderr.jsonl",
+        "prepass_ms": 307594,
+        "per_layer_ms": 65771,
+        "postpass_ms": 115517,
+        "elapsed_ms": 497957
+      },
+      {
+        "file": "accelerated-base-candidate-m6.stderr.jsonl",
+        "prepass_ms": 310556,
+        "per_layer_ms": 61416,
+        "postpass_ms": 115672,
+        "elapsed_ms": 496587
+      }
+    ],
+    "prepass_ms_median": 314211,
+    "per_layer_ms_median": 63961,
+    "postpass_ms_median": 115848,
+    "elapsed_ms_median": 501246
+  },
+  "ordinary/baseline": {
+    "runs": [
+      {
+        "file": "ordinary-base-baseline-m1.stderr.jsonl",
+        "prepass_ms": 328258,
+        "per_layer_ms": 105591,
+        "postpass_ms": 107717,
+        "elapsed_ms": 550546
+      },
+      {
+        "file": "ordinary-base-baseline-m2.stderr.jsonl",
+        "prepass_ms": 327979,
+        "per_layer_ms": 102247,
+        "postpass_ms": 106593,
+        "elapsed_ms": 544825
+      },
+      {
+        "file": "ordinary-base-baseline-m3.stderr.jsonl",
+        "prepass_ms": 324961,
+        "per_layer_ms": 100993,
+        "postpass_ms": 110389,
+        "elapsed_ms": 544413
+      },
+      {
+        "file": "ordinary-base-baseline-m4.stderr.jsonl",
+        "prepass_ms": 324647,
+        "per_layer_ms": 97500,
+        "postpass_ms": 103817,
+        "elapsed_ms": 534049
+      },
+      {
+        "file": "ordinary-base-baseline-m5.stderr.jsonl",
+        "prepass_ms": 319395,
+        "per_layer_ms": 98543,
+        "postpass_ms": 105970,
+        "elapsed_ms": 532253
+      },
+      {
+        "file": "ordinary-base-baseline-m6.stderr.jsonl",
+        "prepass_ms": 307610,
+        "per_layer_ms": 93757,
+        "postpass_ms": 100201,
+        "elapsed_ms": 509291
+      }
+    ],
+    "prepass_ms_median": 324804,
+    "per_layer_ms_median": 99768,
+    "postpass_ms_median": 106282,
+    "elapsed_ms_median": 539231
+  },
+  "ordinary/candidate": {
+    "runs": [
+      {
+        "file": "ordinary-base-candidate-m1.stderr.jsonl",
+        "prepass_ms": 308640,
+        "per_layer_ms": 97236,
+        "postpass_ms": 107040,
+        "elapsed_ms": 521332
+      },
+      {
+        "file": "ordinary-base-candidate-m2.stderr.jsonl",
+        "prepass_ms": 308850,
+        "per_layer_ms": 100385,
+        "postpass_ms": 109088,
+        "elapsed_ms": 526926
+      },
+      {
+        "file": "ordinary-base-candidate-m3.stderr.jsonl",
+        "prepass_ms": 308897,
+        "per_layer_ms": 99548,
+        "postpass_ms": 108816,
+        "elapsed_ms": 525851
+      },
+      {
+        "file": "ordinary-base-candidate-m4.stderr.jsonl",
+        "prepass_ms": 304978,
+        "per_layer_ms": 102752,
+        "postpass_ms": 102964,
+        "elapsed_ms": 518579
+      },
+      {
+        "file": "ordinary-base-candidate-m5.stderr.jsonl",
+        "prepass_ms": 296271,
+        "per_layer_ms": 95607,
+        "postpass_ms": 107706,
+        "elapsed_ms": 508232
+      },
+      {
+        "file": "ordinary-base-candidate-m6.stderr.jsonl",
+        "prepass_ms": 293768,
+        "per_layer_ms": 93340,
+        "postpass_ms": 100613,
+        "elapsed_ms": 495470
+      }
+    ],
+    "prepass_ms_median": 306809,
+    "per_layer_ms_median": 98392,
+    "postpass_ms_median": 107373,
+    "elapsed_ms_median": 519956
+  }
+}

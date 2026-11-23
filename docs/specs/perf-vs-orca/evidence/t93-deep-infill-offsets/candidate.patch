@@ -1,0 +1,188 @@
+diff --git a/crates/slicer-runtime/src/slice_postprocess_prepass.rs b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+index 7edead57..04df15ed 100644
+--- a/crates/slicer-runtime/src/slice_postprocess_prepass.rs
++++ b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+@@ -582,6 +582,79 @@ fn resolve_opening_radius(
+ // Internal helpers
+ // ============================================================================
+ 
++/// Bounding box of `polygons` in scaled units: `(min_x, min_y, max_x, max_y)`.
++fn expolygon_bbox(polygons: &[ExPolygon]) -> Option<(i64, i64, i64, i64)> {
++    let mut points = polygons
++        .iter()
++        .flat_map(|polygon| std::iter::once(&polygon.contour).chain(polygon.holes.iter()))
++        .flat_map(|ring| ring.points.iter());
++    let first = points.next()?;
++    let (mut min_x, mut min_y, mut max_x, mut max_y) = (first.x, first.y, first.x, first.y);
++    for point in points {
++        min_x = min_x.min(point.x);
++        min_y = min_y.min(point.y);
++        max_x = max_x.max(point.x);
++        max_y = max_y.max(point.y);
++    }
++    Some((min_x, min_y, max_x, max_y))
++}
++
++/// Erode `deep_infill_area` only where the internal-bridge consumers can
++/// observe it.
++///
++/// Both consumers query the erosion inside the pre-retain qualified set: the
++/// `retain` predicate intersects each qualified polygon against it, and
++/// `internal_bridge_angles`' per-candidate filter intersects
++/// `offset(candidate, spacing)` (reach `2 x spacing`) against it. A Clipper2
++/// Miter offset with the default limit 2.0 displaces no vertex farther than
++/// `2 x |delta|`, so the erosion at those points depends only on input
++/// geometry within `9 x spacing` of them. Clipping the operand to the
++/// qualified bbox grown by `14 x spacing` therefore leaves every observable
++/// point unchanged: the cut is farther than the `9 + 2 = 11 x spacing` reach,
++/// and the remaining `3 x spacing` is margin.
++fn eroded_area_in_qualified_neighbourhood(
++    deep_infill_area: &[ExPolygon],
++    qualified: &[ExPolygon],
++    qualify_spacing_mm: f32,
++) -> Vec<ExPolygon> {
++    use slicer_ir::{Point2, Polygon};
++
++    const MARGIN_SPACING: f64 = 14.0;
++    let Some((min_x, min_y, max_x, max_y)) = expolygon_bbox(qualified) else {
++        return Vec::new();
++    };
++    let margin = (MARGIN_SPACING * f64::from(qualify_spacing_mm) * slicer_ir::UNITS_PER_MM) as i64;
++    let window = [ExPolygon {
++        contour: Polygon {
++            points: vec![
++                Point2 {
++                    x: min_x - margin,
++                    y: min_y - margin,
++                },
++                Point2 {
++                    x: max_x + margin,
++                    y: min_y - margin,
++                },
++                Point2 {
++                    x: max_x + margin,
++                    y: max_y + margin,
++                },
++                Point2 {
++                    x: min_x - margin,
++                    y: max_y + margin,
++                },
++            ],
++        },
++        holes: Vec::new(),
++    }];
++    offset(
++        &intersection(deep_infill_area, &window),
++        -(4.5 * qualify_spacing_mm),
++        OffsetJoinType::Miter,
++        0.0,
++    )
++}
++
+ /// Fully computed internal-bridge commit for one layer. The expensive
+ /// per-layer clipper work depends only on committed geometry and on this
+ /// layer's own fields, so it can run in the independent qualification phase;
+@@ -638,16 +711,13 @@ fn compute_internal_bridge_layer(
+         }
+     }
+     // Only the surviving candidates are filtered against this erosion,
+-    // so an empty candidate set skips the offset entirely.
++    // so an empty candidate set skips the offset entirely. The erosion is
++    // confined to the neighbourhood both consumers can observe — see
++    // `eroded_area_in_qualified_neighbourhood`.
+     let internal_unsupported_area = if qualified.is_empty() || deep_infill_area.is_empty() {
+         Vec::new()
+     } else {
+-        offset(
+-            &deep_infill_area,
+-            -(4.5 * qualify_spacing_mm),
+-            OffsetJoinType::Miter,
+-            0.0,
+-        )
++        eroded_area_in_qualified_neighbourhood(&deep_infill_area, &qualified, qualify_spacing_mm)
+     };
+     qualified.retain(|polygon| {
+         !intersection(std::slice::from_ref(polygon), &internal_unsupported_area).is_empty()
+@@ -1405,6 +1475,82 @@ mod tests {
+         min_unit as f32 / 10_000.0
+     }
+ 
++    /// Windowed erosion must preserve every verdict its two consumers can
++    /// observe: `retain` on each qualified polygon, and
++    /// `internal_bridge_angles`' per-candidate filter.
++    ///
++    /// Fixture: one 200 x 200 mm sparse area with an off-window hole plus a
++    /// disconnected island, and two qualified polygons in one corner — one
++    /// inside the sparse area, one wholly outside it (the disjoint-surface
++    /// case). The window covers a small part of the sparse area.
++    #[test]
++    fn windowed_erosion_preserves_every_observable_qualified_neighbourhood_verdict() {
++        let boxed = |x0: f32, x1: f32, y0: f32, y1: f32| ExPolygon {
++            contour: Polygon {
++                points: vec![
++                    Point2::from_mm(x0, y0),
++                    Point2::from_mm(x1, y0),
++                    Point2::from_mm(x1, y1),
++                    Point2::from_mm(x0, y1),
++                ],
++            },
++            holes: Vec::new(),
++        };
++        let mut sparse = boxed(0.0, 200.0, 0.0, 200.0);
++        sparse.holes.push(Polygon {
++            points: vec![
++                Point2::from_mm(150.0, 150.0),
++                Point2::from_mm(190.0, 150.0),
++                Point2::from_mm(190.0, 190.0),
++                Point2::from_mm(150.0, 190.0),
++            ],
++        });
++        let deep = vec![sparse, boxed(210.0, 240.0, 210.0, 240.0)];
++        let qualified = vec![
++            boxed(10.0, 14.0, 10.0, 14.0),
++            boxed(-30.0, -20.0, 50.0, 60.0),
++        ];
++        let spacing_mm = 0.4_f32;
++        let windowed = eroded_area_in_qualified_neighbourhood(&deep, &qualified, spacing_mm);
++        let full = offset(&deep, -(4.5 * spacing_mm), OffsetJoinType::Miter, 0.0);
++        assert!(!full.is_empty(), "fixture must produce a non-empty erosion");
++        assert!(
++            !intersection(std::slice::from_ref(&qualified[0]), &full).is_empty(),
++            "fixture's in-area qualified polygon must observe the erosion"
++        );
++        assert!(
++            intersection(std::slice::from_ref(&qualified[1]), &full).is_empty(),
++            "fixture's disjoint qualified polygon must not observe the erosion"
++        );
++        for (index, polygon) in qualified.iter().enumerate() {
++            assert_eq!(
++                !intersection(std::slice::from_ref(polygon), &windowed).is_empty(),
++                !intersection(std::slice::from_ref(polygon), &full).is_empty(),
++                "retain verdict changed for qualified[{index}]"
++            );
++            let expanded = offset(
++                std::slice::from_ref(polygon),
++                spacing_mm,
++                OffsetJoinType::Miter,
++                0.0,
++            );
++            assert_eq!(
++                !intersection(&expanded, &windowed).is_empty(),
++                !intersection(&expanded, &full).is_empty(),
++                "internal_bridge_angles filter verdict changed for qualified[{index}]"
++            );
++        }
++        let contour_points = |polygons: &[ExPolygon]| -> usize {
++            polygons.iter().map(|p| p.contour.points.len()).sum()
++        };
++        assert!(
++            contour_points(&windowed) < contour_points(&full),
++            "the window must actually shrink the operand ({} vs {} contour points)",
++            contour_points(&windowed),
++            contour_points(&full)
++        );
++    }
++
+     /// A bottom seed must project its *own* depth-0 surface, not whatever an
+     /// earlier seed already unioned onto it.
+     ///

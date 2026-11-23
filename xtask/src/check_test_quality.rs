@@ -490,6 +490,25 @@ fn scan_source(file_label: &str, src: &str) -> Vec<Violation> {
 
 pub(crate) fn run(ws: &Path, report: bool, path_filters: &[String]) -> i32 {
     let files = collect_enforced_files(ws, path_filters);
+    if files.is_empty() {
+        // A scan that saw nothing proves nothing; exit 0 here would be the
+        // false green of a poisoned workspace root (perf-vs-orca ticket 71).
+        // This guard fires in report mode too: report mode downgrades real
+        // findings, never a missing scan.
+        let scope = if path_filters.is_empty() {
+            String::from("no path filters")
+        } else {
+            format!("path filters {}", path_filters.join(", "))
+        };
+        eprintln!(
+            "check-test-quality: error: scan collected zero files from workspace root {} ({scope}); \
+             refusing to pass. If this root or path is not the checkout you meant, this xtask \
+             binary may have been built in another checkout — purge its cached build units \
+             (target/debug/xtask.exe, deps/xtask-*, .fingerprint/xtask-*) and rebuild.",
+            ws.display()
+        );
+        return 1;
+    }
     let mut violations = Vec::new();
     for path in &files {
         let relative = path.strip_prefix(ws).unwrap_or(path);
@@ -530,7 +549,67 @@ pub(crate) fn run(ws: &Path, report: bool, path_filters: &[String]) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{matches_filter, scan_source};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::{matches_filter, run, scan_source};
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock before unix epoch")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "pnp-xtask-checktestquality-{tag}-{}-{nonce}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).expect("create temporary test directory");
+            Self(path)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn minimal_clean_workspace() -> TempDir {
+        let temp = TempDir::new("fixture");
+        let tests = temp.0.join("crates").join("demo").join("tests");
+        fs::create_dir_all(&tests).expect("create tests dir");
+        fs::write(
+            tests.join("demo.rs"),
+            "#[test]\nfn adds() {\n    let two = 2;\n    assert_eq!(two + two, 4);\n}\n",
+        )
+        .expect("write clean test sample");
+        temp
+    }
+
+    #[test]
+    fn refuses_to_pass_when_enforced_scan_is_empty_even_in_report_mode() {
+        // No crates/ tree at all: the pre-guard behavior was exit 0 with
+        // "0 findings" — the false green (ticket 71). Report mode downgrades
+        // findings, never a missing scan.
+        let temp = TempDir::new("empty");
+        assert_eq!(run(&temp.0, true, &[]), 1);
+    }
+
+    #[test]
+    fn refuses_to_pass_when_path_filters_match_nothing() {
+        let temp = minimal_clean_workspace();
+        assert_eq!(run(&temp.0, false, &["crates/demo/nothing".to_string()]), 1);
+    }
+
+    #[test]
+    fn minimal_clean_workspace_still_passes() {
+        let temp = minimal_clean_workspace();
+        assert_eq!(run(&temp.0, false, &[]), 0);
+    }
 
     #[test]
     fn flags_decorative_assert_true() {

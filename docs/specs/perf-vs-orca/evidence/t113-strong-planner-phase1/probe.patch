@@ -1,0 +1,874 @@
+diff --git a/modules/core-modules/tree-support-planner/src/lib.rs b/modules/core-modules/tree-support-planner/src/lib.rs
+index eb6d97f6..eaf2b67f 100644
+--- a/modules/core-modules/tree-support-planner/src/lib.rs
++++ b/modules/core-modules/tree-support-planner/src/lib.rs
+@@ -120,6 +120,77 @@ const CIRCLE_RESOLUTION_FINE: usize = 100;
+ /// Canonical `draw_circles` picks [`CIRCLE_RESOLUTION_COARSE`] when
+ /// `avg_node_per_layer` exceeds this.
+ const COARSE_CIRCLE_NODE_THRESHOLD: usize = 200;
++
++// ---------------------------------------------------------------------------
++// [PERF-T113-PROBE] Temporary substage wall brackets for wayfinder ticket 113
++// (Strong support planner Phase 1). `host::now_us` is the host clock for this
++// module call; the planner is a single serial dispatch. Probe-only: removed
++// before close; grep `PERF-T113-PROBE` for every site.
++// ---------------------------------------------------------------------------
++thread_local! {
++    static T113_SPANS: std::cell::RefCell<Vec<(&'static str, u64, u64)>> =
++        const { std::cell::RefCell::new(Vec::new()) };
++}
++
++struct T113Span {
++    name: &'static str,
++    start: u64,
++    done: bool,
++}
++
++impl T113Span {
++    fn new(name: &'static str) -> Self {
++        Self {
++            name,
++            start: host::now_us(),
++            done: false,
++        }
++    }
++
++    fn record(&self) {
++        let dt = host::now_us().saturating_sub(self.start);
++        T113_SPANS.with(|spans| {
++            let mut spans = spans.borrow_mut();
++            match spans.iter_mut().find(|(name, _, _)| *name == self.name) {
++                Some(entry) => {
++                    entry.1 += dt;
++                    entry.2 += 1;
++                }
++                None => spans.push((self.name, dt, 1)),
++            }
++        });
++    }
++
++    fn finish(mut self) {
++        self.record();
++        self.done = true;
++    }
++}
++
++impl Drop for T113Span {
++    fn drop(&mut self) {
++        if !self.done {
++            self.record();
++        }
++    }
++}
++
++struct T113CallGuard;
++
++impl Drop for T113CallGuard {
++    fn drop(&mut self) {
++        let spans = T113_SPANS.with(|spans| std::mem::take(&mut *spans.borrow_mut()));
++        if spans.is_empty() {
++            return;
++        }
++        let mut line = String::from("t113-planner-split");
++        for (name, us, calls) in &spans {
++            line.push_str(&format!(" {name}={us}us/{calls}"));
++        }
++        host::log_warn(&line);
++    }
++}
++
+ /// Multi-layer organic tree-support planner.
+ #[allow(dead_code)]
+ pub struct SupportPlanner {
+@@ -596,6 +667,8 @@ fn contact_stats(positions: &[(f32, f32)], nonempty_layers: usize) -> ContactSta
+ /// truncation would otherwise bias every chain toward its head. The kernel,
+ /// the iteration count, and the commit rules are canonical.
+ fn smooth_nodes(arena: &mut NodeArena, layer_records: &[LayerRecord], support_line_width_mm: f32) {
++    // [PERF-T113-PROBE]
++    let _t113 = T113Span::new("p5_smooth");
+     use std::collections::HashSet;
+     // Canonical `float max_move = scale_(m_object_config->support_line_width / 2)`.
+     // 1 unit = 100 nm here, so `mm_to_units` is the local `scale_`.
+@@ -815,6 +888,8 @@ fn node_ellipse(
+ /// (many exactly on it) — e.g. layer 107 vertices at x = 21.0000 and
+ /// x = 29.0000, flush against the model edges at those coordinates.
+ fn inflate_model_occupancy(polys: &[ExPolygon], xy_distance_mm: f32) -> Vec<ExPolygon> {
++    // [PERF-T113-PROBE]
++    let _t113 = T113Span::new("p6d_inflate");
+     if polys.is_empty() || xy_distance_mm <= 0.0 {
+         return polys.to_vec();
+     }
+@@ -1173,6 +1248,8 @@ fn run_clip_batches(requests: &[ClipRequest]) -> Vec<Vec<ExPolygon>> {
+ /// 6. the body-minus-interfaces differences, one round per cut role,
+ /// 7. the territory intersect for modifier sub-regions.
+ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::SupportPlanRoleRegion>> {
++    // [PERF-T113-PROBE]
++    let _t113 = T113Span::new("p6a_build_roles");
+     let mut carved: Vec<[Vec<ExPolygon>; ROLE_COUNT]> = inputs
+         .iter()
+         .map(|_| std::array::from_fn(|_| Vec::new()))
+@@ -1221,10 +1298,14 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             slot_lists[i][role] = slots;
+         }
+     }
+-    let mut carve_results: Vec<Option<ExPolygon>> = run_clip_batches(&carve_requests)
+-        .into_iter()
+-        .map(largest_part)
+-        .collect();
++    let mut carve_results: Vec<Option<ExPolygon>> = {
++        // [PERF-T113-PROBE]
++        let _t113 = T113Span::new("p6a_carve");
++        run_clip_batches(&carve_requests)
++            .into_iter()
++            .map(largest_part)
++            .collect()
++    };
+     for i in 0..inputs.len() {
+         for role in 0..ROLE_COUNT {
+             for slot in std::mem::take(&mut slot_lists[i][role]) {
+@@ -1258,7 +1339,11 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             }
+         }
+     }
+-    let lone_results = run_clip_batches(&lone_requests);
++    let lone_results = {
++        // [PERF-T113-PROBE]
++        let _t113 = T113Span::new("p6a_lone");
++        run_clip_batches(&lone_requests)
++    };
+     for ((i, role), result) in lone_slots.into_iter().zip(lone_results) {
+         carved[i][role] = largest_part(result).into_iter().collect();
+     }
+@@ -1280,16 +1365,24 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             union_slots.push((i, role));
+         }
+     }
+-    let union_results = run_clip_batches(&union_requests);
++    let union_results = {
++        // [PERF-T113-PROBE]
++        let _t113 = T113Span::new("p6a_union");
++        run_clip_batches(&union_requests)
++    };
+     for ((i, role), result) in union_slots.into_iter().zip(union_results) {
+         carved[i][role] = result;
+     }
+ 
+     // Phase 4: in-guest simplification, exactly as the serial closure runs it.
+-    for i in 0..inputs.len() {
+-        for role in 0..ROLE_COUNT {
+-            if let Some(tolerance) = simplify[i][role] {
+-                carved[i][role] = expolygons_simplify(&carved[i][role], tolerance);
++    {
++        // [PERF-T113-PROBE]
++        let _t113 = T113Span::new("p6a_simplify");
++        for i in 0..inputs.len() {
++            for role in 0..ROLE_COUNT {
++                if let Some(tolerance) = simplify[i][role] {
++                    carved[i][role] = expolygons_simplify(&carved[i][role], tolerance);
++                }
+             }
+         }
+     }
+@@ -1313,7 +1406,11 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             set_slots.push((i, role));
+         }
+     }
+-    let set_results = run_clip_batches(&set_requests);
++    let set_results = {
++        // [PERF-T113-PROBE]
++        let _t113 = T113Span::new("p6a_setdiff");
++        run_clip_batches(&set_requests)
++    };
+     for ((i, role), result) in set_slots.into_iter().zip(set_results) {
+         carved[i][role] = result;
+     }
+@@ -1323,23 +1420,27 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+     let mut body: Vec<Vec<ExPolygon>> = (0..inputs.len())
+         .map(|i| std::mem::take(&mut carved[i][ROLE_BODY]))
+         .collect();
+-    for cut_role in [ROLE_ROOF, ROLE_BASE, ROLE_FLOOR] {
+-        let mut slots: Vec<usize> = Vec::new();
+-        let mut requests: Vec<ClipRequest> = Vec::new();
+-        for i in 0..inputs.len() {
+-            if body[i].is_empty() || carved[i][cut_role].is_empty() {
+-                continue;
++    {
++        // [PERF-T113-PROBE]
++        let _t113 = T113Span::new("p6a_bodydiff");
++        for cut_role in [ROLE_ROOF, ROLE_BASE, ROLE_FLOOR] {
++            let mut slots: Vec<usize> = Vec::new();
++            let mut requests: Vec<ClipRequest> = Vec::new();
++            for i in 0..inputs.len() {
++                if body[i].is_empty() || carved[i][cut_role].is_empty() {
++                    continue;
++                }
++                requests.push(ClipRequest {
++                    subject: body[i].clone(),
++                    clip: carved[i][cut_role].clone(),
++                    op: ClipOperation::Difference,
++                });
++                slots.push(i);
++            }
++            let results = run_clip_batches(&requests);
++            for (i, result) in slots.into_iter().zip(results) {
++                body[i] = result;
+             }
+-            requests.push(ClipRequest {
+-                subject: body[i].clone(),
+-                clip: carved[i][cut_role].clone(),
+-                op: ClipOperation::Difference,
+-            });
+-            slots.push(i);
+-        }
+-        let results = run_clip_batches(&requests);
+-        for (i, result) in slots.into_iter().zip(results) {
+-            body[i] = result;
+         }
+     }
+     for i in 0..inputs.len() {
+@@ -1365,7 +1466,11 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             territory_slots.push((i, role));
+         }
+     }
+-    let territory_results = run_clip_batches(&territory_requests);
++    let territory_results = {
++        // [PERF-T113-PROBE]
++        let _t113 = T113Span::new("p6a_territory");
++        run_clip_batches(&territory_requests)
++    };
+     for ((i, role), result) in territory_slots.into_iter().zip(territory_results) {
+         carved[i][role] = result;
+     }
+@@ -1419,6 +1524,8 @@ fn flush_pending_emits(
+     inputs: &mut Vec<RoleBuildInput>,
+     out: &mut Vec<SupportPlanEntry>,
+ ) {
++    // [PERF-T113-PROBE]
++    let _t113 = T113Span::new("p6_flush");
+     if inputs.is_empty() {
+         return;
+     }
+@@ -2021,6 +2128,8 @@ impl TreeVolumes {
+     /// `xy_distance` plays for the model), so the drop gates and the avoidance
+     /// recurrence keep branches out of the other family's half.
+     fn ensure_collision(&self, radius_mm: f32) {
++        // [PERF-T113-PROBE]
++        let _t113 = T113Span::new("p3c_collision_ladder");
+         let key = radius_key(radius_mm);
+         if self.layer_outlines.is_empty() || self.collision.borrow().contains_key(&(key, 0)) {
+             return;
+@@ -2076,6 +2185,8 @@ impl TreeVolumes {
+     /// — so it is walked serially, but iteratively rather than recursively
+     /// (see the module note on canonical's recursion trampoline).
+     fn ensure_avoidance(&self, radius_mm: f32) {
++        // [PERF-T113-PROBE]
++        let _t113 = T113Span::new("p3d_avoidance_ladder");
+         let key = radius_key(radius_mm);
+         if self.layer_outlines.is_empty() || self.avoidance.borrow().contains_key(&(key, 0)) {
+             return;
+@@ -2339,6 +2450,10 @@ impl PrepassModule for SupportPlanner {
+             return Ok(());
+         }
+ 
++        // [PERF-T113-PROBE]
++        let _t113_call = T113CallGuard;
++        let _t113_total = T113Span::new("p1_total");
++
+         if layer_plan.layers.is_empty() {
+             return Err(ModuleError::fatal(1, "empty layer-plan-view"));
+         }
+@@ -2385,14 +2500,18 @@ impl PrepassModule for SupportPlanner {
+         // quantity with no recursion. Canonical inflates collision by
+         // `radius + m_xy_distance` and derives avoidance as a recurrence down
+         // the layer stack, which is what stops a branch being trapped.
+-        let volumes = TreeVolumes::new(
+-            layer_plan,
+-            support_geometry,
+-            support_analysis,
+-            self.branch_angle_deg,
+-            self.support_object_xy_distance,
+-            self.support_line_width_mm,
+-        );
++        let volumes = {
++            // [PERF-T113-PROBE]
++            let _t113 = T113Span::new("p0_volumes_new");
++            TreeVolumes::new(
++                layer_plan,
++                support_geometry,
++                support_analysis,
++                self.branch_angle_deg,
++                self.support_object_xy_distance,
++                self.support_line_width_mm,
++            )
++        };
+         // Both ladders are now keyed on the canonical *avoidance query radius*
+         // `calc_radius(dist_mm_to_top + height)` (global base-radius taper) and
+         // materialise on demand (see `PolySet`). Until packet 224 step 5 the
+@@ -2562,6 +2681,8 @@ impl SupportPlanner {
+         // shared map so per-layer totals are merged across all objects
+         // before emission.
+ 
++        // [PERF-T113-PROBE]
++        let t113_contacts = T113Span::new("p2_contacts");
+         // Canonical `generate_contact_points` reads ONE contact source: the
+         // host-computed per-layer overhang polygons (`layer->loverhangs`).
+         // In-tree that source is `SupportAnalysisView::candidates`, whose
+@@ -2878,6 +2999,8 @@ impl SupportPlanner {
+ 
+         // Bail out when nothing needs support.
+         if contacts_by_layer.iter().all(|v| v.is_empty()) {
++            // [PERF-T113-PROBE]
++            t113_contacts.finish();
+             return Ok(());
+         }
+ 
+@@ -2893,6 +3016,8 @@ impl SupportPlanner {
+             .filter(|layer| !layer.is_empty())
+             .count();
+         let contact_stats = contact_stats(&contact_positions, nonempty_layers);
++        // [PERF-T113-PROBE]
++        t113_contacts.finish();
+ 
+         // ── Step 10: top-down propagation + per-layer MST merging ────────
+         // Walk from top layer down to layer 0. Each iteration:
+@@ -2931,6 +3056,8 @@ impl SupportPlanner {
+ 
+         // Iterate top → bottom.
+         let top = num_layers as usize;
++        // [PERF-T113-PROBE]
++        let t113_drop = T113Span::new("p3_drop");
+         for layer_rev in (0..top).rev() {
+             // Canonical caches `is_line_cut_by_contour` per `drop_nodes` layer
+             // pass; the contours it tests against are this layer's.
+@@ -3518,6 +3645,8 @@ impl SupportPlanner {
+ 
+             active_nodes = next_nodes;
+         }
++        // [PERF-T113-PROBE]
++        t113_drop.finish();
+ 
+         // ── F-14: drain `unsupported_branch_leaves` ──────────────────────
+         //
+@@ -3529,54 +3658,58 @@ impl SupportPlanner {
+         // step 5: `to_buildplate` was decided once at contact creation and a
+         // node that could not descend was simply dropped where it stood,
+         // leaving an orphaned stub in the layers above it.
+-        while let Some(leaf) = unsupported_branch_leaves.pop_front() {
+-            let mut cursor = Some(leaf);
+-            while let Some(i_node) = cursor {
+-                if arena[i_node].is_processed {
+-                    break;
+-                }
+-                arena[i_node].is_processed = true;
+-                arena[i_node].valid = false;
+-                let parent = arena[i_node].parent;
+-                let child = arena[i_node].child;
+-                if let Some(c) = child {
+-                    if arena[c].parent == Some(i_node) {
+-                        arena[c].parent = parent;
++        {
++            // [PERF-T113-PROBE]
++            let _t113 = T113Span::new("p4_drain");
++            while let Some(leaf) = unsupported_branch_leaves.pop_front() {
++                let mut cursor = Some(leaf);
++                while let Some(i_node) = cursor {
++                    if arena[i_node].is_processed {
++                        break;
+                     }
+-                    arena[c].parents.retain(|p| *p != i_node);
+-                    // Canonical `append(i_node->child->parents, i_node->parents)`.
+-                    for p in arena[i_node].parents.clone() {
+-                        if !arena[c].parents.contains(&p) {
+-                            arena[c].parents.push(p);
++                    arena[i_node].is_processed = true;
++                    arena[i_node].valid = false;
++                    let parent = arena[i_node].parent;
++                    let child = arena[i_node].child;
++                    if let Some(c) = child {
++                        if arena[c].parent == Some(i_node) {
++                            arena[c].parent = parent;
++                        }
++                        arena[c].parents.retain(|p| *p != i_node);
++                        // Canonical `append(i_node->child->parents, i_node->parents)`.
++                        for p in arena[i_node].parents.clone() {
++                            if !arena[c].parents.contains(&p) {
++                                arena[c].parents.push(p);
++                            }
+                         }
+                     }
+-                }
+-                for p in arena[i_node].parents.clone() {
+-                    if arena[p].child == Some(i_node) {
+-                        arena[p].child = child;
++                    for p in arena[i_node].parents.clone() {
++                        if arena[p].child == Some(i_node) {
++                            arena[p].child = child;
++                        }
+                     }
+-                }
+-                if let Some(p) = parent {
+-                    if arena[p].child == Some(i_node) {
+-                        arena[p].child = child;
++                    if let Some(p) = parent {
++                        if arena[p].child == Some(i_node) {
++                            arena[p].child = child;
++                        }
+                     }
+-                }
+-                for merged in arena[i_node].merged_neighbours.clone() {
+-                    if !arena[merged].is_processed {
+-                        unsupported_branch_leaves.push_back(merged);
++                    for merged in arena[i_node].merged_neighbours.clone() {
++                        if !arena[merged].is_processed {
++                            unsupported_branch_leaves.push_back(merged);
++                        }
+                     }
++                    cursor = parent;
+                 }
+-                cursor = parent;
+             }
+-        }
+ 
+-        // Canonical `erase_if(is_processed)` across ALL layers, applied here as
+-        // a filter on the recorded per-layer node sets.
+-        for record in &mut layer_records {
+-            record.active.retain(|id| !arena[*id].is_processed);
+-            record
+-                .edges
+-                .retain(|(a, b)| !arena[*a].is_processed && !arena[*b].is_processed);
++            // Canonical `erase_if(is_processed)` across ALL layers, applied here as
++            // a filter on the recorded per-layer node sets.
++            for record in &mut layer_records {
++                record.active.retain(|id| !arena[*id].is_processed);
++                record
++                    .edges
++                    .retain(|(a, b)| !arena[*a].is_processed && !arena[*b].is_processed);
++            }
+         }
+ 
+         // ── Canonical `smooth_nodes` (F-33) ──────────────────────────────
+@@ -3614,6 +3747,8 @@ impl SupportPlanner {
+             },
+         );
+         // ── Emit pass (canonical `draw_circles`) ─────────────────────────
++        // [PERF-T113-PROBE]
++        let t113_emit = T113Span::new("p6_emit");
+         for record in &layer_records {
+             let layer_rev = record.layer_rev;
+             let active_nodes: Vec<NodeId> = record.active.clone();
+@@ -3649,18 +3784,22 @@ impl SupportPlanner {
+             // Host analysis carries the exact per-layer occupancy used by the
+             // closure gate. Prefer it for emission checks when present; the
+             // support-outline cache remains the compatibility fallback.
+-            let model_collision: Vec<ExPolygon> = inflate_model_occupancy(
+-                &support_analysis
+-                    .model_occupancy
+-                    .iter()
+-                    .filter(|entry| {
+-                        entry.object_id == obj.object_id
+-                            && entry.global_support_layer_index == current_global_layer_index
+-                    })
+-                    .flat_map(|entry| entry.polygons.iter().cloned())
+-                    .collect::<Vec<_>>(),
+-                self.support_object_xy_distance,
+-            );
++            let model_collision: Vec<ExPolygon> = {
++                // [PERF-T113-PROBE]
++                let _t113 = T113Span::new("p6d_layer");
++                inflate_model_occupancy(
++                    &support_analysis
++                        .model_occupancy
++                        .iter()
++                        .filter(|entry| {
++                            entry.object_id == obj.object_id
++                                && entry.global_support_layer_index == current_global_layer_index
++                        })
++                        .flat_map(|entry| entry.polygons.iter().cloned())
++                        .collect::<Vec<_>>(),
++                    self.support_object_xy_distance,
++                )
++            };
+             // Ticket 19: foreign support territory (grown by the clearance)
+             // is carved like the model, so no tree role area survives inside
+             // the other family's half.
+@@ -3735,49 +3874,57 @@ impl SupportPlanner {
+             let top_n = self.support_interface_top_layers.max(0) as u32;
+             let base_n = self.num_top_base_interface_layers as usize;
+             let bottom_n = self.support_interface_bottom_layers.max(0) as u32;
+-            let node_roles: Vec<InterfaceRole> = active_nodes
+-                .iter()
+-                .map(|id| {
+-                    let node = &arena[*id];
+-                    // Floor: the branch lands on the model rather than the plate.
+-                    // The lookup is by *global* layer index; it previously mixed
+-                    // in `layer_rev`, the reverse loop counter, and indexed the
+-                    // collision cache with it.
+-                    let is_floor = bottom_n > 0
+-                        && !self.support_on_build_plate_only
+-                        && (1..=bottom_n).any(|k| {
+-                            cache_idx.checked_sub(k as usize).is_some_and(|below| {
+-                                point_in_any_expoly(volumes.outlines_at(below), node.x(), node.y())
+-                            })
+-                        });
+-                    // Roof: canonical `node->support_roof_layers_below > 0`,
+-                    // the per-node counter seeded at contact creation and
+-                    // decremented once per descendant (F-1). The old
+-                    // `roof_band_layers_emitted` object-wide counter is gone:
+-                    // it starved every overhang after the first of interface.
+-                    let is_roof = top_n > 0 && node.is_roof();
+-                    let mut below_roof = 0usize;
+-                    let mut reached_roof = false;
+-                    let mut ancestor = node.parent;
+-                    while let Some(parent_id) = ancestor {
+-                        below_roof += 1;
+-                        if arena[parent_id].is_roof() {
+-                            reached_roof = true;
+-                            break;
++            let node_roles: Vec<InterfaceRole> = {
++                // [PERF-T113-PROBE]
++                let _t113 = T113Span::new("p6e_node_roles");
++                active_nodes
++                    .iter()
++                    .map(|id| {
++                        let node = &arena[*id];
++                        // Floor: the branch lands on the model rather than the plate.
++                        // The lookup is by *global* layer index; it previously mixed
++                        // in `layer_rev`, the reverse loop counter, and indexed the
++                        // collision cache with it.
++                        let is_floor = bottom_n > 0
++                            && !self.support_on_build_plate_only
++                            && (1..=bottom_n).any(|k| {
++                                cache_idx.checked_sub(k as usize).is_some_and(|below| {
++                                    point_in_any_expoly(
++                                        volumes.outlines_at(below),
++                                        node.x(),
++                                        node.y(),
++                                    )
++                                })
++                            });
++                        // Roof: canonical `node->support_roof_layers_below > 0`,
++                        // the per-node counter seeded at contact creation and
++                        // decremented once per descendant (F-1). The old
++                        // `roof_band_layers_emitted` object-wide counter is gone:
++                        // it starved every overhang after the first of interface.
++                        let is_roof = top_n > 0 && node.is_roof();
++                        let mut below_roof = 0usize;
++                        let mut reached_roof = false;
++                        let mut ancestor = node.parent;
++                        while let Some(parent_id) = ancestor {
++                            below_roof += 1;
++                            if arena[parent_id].is_roof() {
++                                reached_roof = true;
++                                break;
++                            }
++                            ancestor = arena[parent_id].parent;
+                         }
+-                        ancestor = arena[parent_id].parent;
+-                    }
+-                    if is_floor {
+-                        InterfaceRole::Floor
+-                    } else if is_roof {
+-                        InterfaceRole::Roof
+-                    } else if reached_roof && below_roof <= base_n {
+-                        InterfaceRole::Base
+-                    } else {
+-                        InterfaceRole::Body
+-                    }
+-                })
+-                .collect();
++                        if is_floor {
++                            InterfaceRole::Floor
++                        } else if is_roof {
++                            InterfaceRole::Roof
++                        } else if reached_roof && below_roof <= base_n {
++                            InterfaceRole::Base
++                        } else {
++                            InterfaceRole::Body
++                        }
++                    })
++                    .collect()
++            };
+             // ── Canonical `draw_circles`: one ellipse per node per layer ──
+             //
+             // Canonical draws every surviving node's own cross-section into
+@@ -3793,46 +3940,50 @@ impl SupportPlanner {
+             let mut base_areas: Vec<ExPolygon> = Vec::new();
+             let mut floor_areas: Vec<ExPolygon> = Vec::new();
+             let mut layer_needs_extra_wall = false;
+-            for (i, id) in active_nodes.iter().enumerate() {
+-                let node = &arena[*id];
+-                // The F-34 virtual top-Z-gap node draws into `roof_gap_areas`,
+-                // which is never extruded.
+-                if node.is_virtual_gap() {
+-                    continue;
+-                }
+-                let radius = node.radius;
+-                // Same gate the contact-tip path applies: a node's own drawn
+-                // cross-section may never sit inside model occupancy,
+-                // whatever role it carries. (The MST-edge gate exempts
+-                // *interface endpoints* because the edge's other endpoint is
+-                // what reaches the model; a node's own ellipse has no such
+-                // partner.)
+-                let direction = if node.movement.x != 0 || node.movement.y != 0 {
+-                    node.movement
+-                } else {
+-                    node.skin_direction
+-                };
+-                let Some(ellipse) = node_ellipse(
+-                    &base_circle,
+-                    node.position,
+-                    (radius / branch_radius) as f64,
+-                    direction,
+-                    branch_radius_units,
+-                    circle_resolution == CIRCLE_RESOLUTION_COARSE,
+-                ) else {
+-                    continue;
+-                };
+-                // Canonical `drop_nodes`: only a cross-section the collision
+-                // volume swallows whole is lost.
+-                if swallowed_by_collision(node.x(), node.y(), radius) {
+-                    continue;
+-                }
+-                layer_needs_extra_wall |= node.need_extra_wall;
+-                match node_roles[i] {
+-                    InterfaceRole::Body => branch_areas.push(ellipse),
+-                    InterfaceRole::Roof => interface_areas.push(ellipse),
+-                    InterfaceRole::Base => base_areas.push(ellipse),
+-                    InterfaceRole::Floor => floor_areas.push(ellipse),
++            {
++                // [PERF-T113-PROBE]
++                let _t113 = T113Span::new("p6f_node_ellipses");
++                for (i, id) in active_nodes.iter().enumerate() {
++                    let node = &arena[*id];
++                    // The F-34 virtual top-Z-gap node draws into `roof_gap_areas`,
++                    // which is never extruded.
++                    if node.is_virtual_gap() {
++                        continue;
++                    }
++                    let radius = node.radius;
++                    // Same gate the contact-tip path applies: a node's own drawn
++                    // cross-section may never sit inside model occupancy,
++                    // whatever role it carries. (The MST-edge gate exempts
++                    // *interface endpoints* because the edge's other endpoint is
++                    // what reaches the model; a node's own ellipse has no such
++                    // partner.)
++                    let direction = if node.movement.x != 0 || node.movement.y != 0 {
++                        node.movement
++                    } else {
++                        node.skin_direction
++                    };
++                    let Some(ellipse) = node_ellipse(
++                        &base_circle,
++                        node.position,
++                        (radius / branch_radius) as f64,
++                        direction,
++                        branch_radius_units,
++                        circle_resolution == CIRCLE_RESOLUTION_COARSE,
++                    ) else {
++                        continue;
++                    };
++                    // Canonical `drop_nodes`: only a cross-section the collision
++                    // volume swallows whole is lost.
++                    if swallowed_by_collision(node.x(), node.y(), radius) {
++                        continue;
++                    }
++                    layer_needs_extra_wall |= node.need_extra_wall;
++                    match node_roles[i] {
++                        InterfaceRole::Body => branch_areas.push(ellipse),
++                        InterfaceRole::Roof => interface_areas.push(ellipse),
++                        InterfaceRole::Base => base_areas.push(ellipse),
++                        InterfaceRole::Floor => floor_areas.push(ellipse),
++                    }
+                 }
+             }
+ 
+@@ -4105,21 +4256,26 @@ impl SupportPlanner {
+                     )) {
+                         continue;
+                     }
+-                    let model_occupancy: Vec<ExPolygon> = inflate_model_occupancy(
+-                        &support_analysis
+-                            .model_occupancy
+-                            .iter()
+-                            .filter(|entry| {
+-                                entry.object_id == obj.object_id
+-                                    && entry.global_support_layer_index
+-                                        == current_global_layer_index
+-                                    && entry.region_id == region_id
+-                                    && entry.variant_chain.as_slice() == variant_chain.as_slice()
+-                            })
+-                            .flat_map(|entry| entry.polygons.iter().cloned())
+-                            .collect::<Vec<_>>(),
+-                        self.support_object_xy_distance,
+-                    );
++                    let model_occupancy: Vec<ExPolygon> = {
++                        // [PERF-T113-PROBE]
++                        let _t113 = T113Span::new("p6d_entry");
++                        inflate_model_occupancy(
++                            &support_analysis
++                                .model_occupancy
++                                .iter()
++                                .filter(|entry| {
++                                    entry.object_id == obj.object_id
++                                        && entry.global_support_layer_index
++                                            == current_global_layer_index
++                                        && entry.region_id == region_id
++                                        && entry.variant_chain.as_slice()
++                                            == variant_chain.as_slice()
++                                })
++                                .flat_map(|entry| entry.polygons.iter().cloned())
++                                .collect::<Vec<_>>(),
++                            self.support_object_xy_distance,
++                        )
++                    };
+                     let role_collision: Vec<ExPolygon> = if model_occupancy.is_empty() {
+                         collision_polys.to_vec()
+                     } else {
+@@ -4275,6 +4431,8 @@ impl SupportPlanner {
+             &mut pending_emit_inputs,
+             &mut entries_in_order,
+         );
++        // [PERF-T113-PROBE]
++        t113_emit.finish();
+ 
+         // Family assignments can cover full source origins absent from either
+         // the segmentation projection or the candidate geometry path. Stamp
+@@ -4284,65 +4442,71 @@ impl SupportPlanner {
+         // `(object, region, ordered variant_chain)` and carries no layer
+         // extent, so stamping a segmented origin here would copy one origin's
+         // column onto every layer of the object (packet 241b).
+-        let mut templates: std::collections::BTreeMap<(String, i32), SupportPlanEntry> =
+-            std::collections::BTreeMap::new();
+-        let mut covered_regions: std::collections::BTreeSet<(
+-            String,
+-            i32,
+-            String,
+-            Vec<(String, PaintValue)>,
+-        )> = declined_identities;
+-        for entry in &entries_in_order {
+-            // Coverage is "this (object, layer, full origin) already has an
+-            // entry", which includes blocked/declined records: stamping over
+-            // one would publish two entries sharing
+-            // `(global_layer_index, object_id, region_id, variant_chain)` and
+-            // trip `SupportPlanIR::duplicate_region_identity` at the host
+-            // commit seam. Only *successful* entries may serve as a template.
+-            covered_regions.insert((
+-                entry.object_id.clone(),
+-                entry.global_layer_index,
+-                entry.region_id.clone(),
+-                entry.variant_chain.clone(),
+-            ));
+-            if entry.decline_reason.is_none() && entry.skeleton.is_some() {
+-                templates
+-                    .entry((entry.object_id.clone(), entry.global_layer_index))
+-                    .or_insert_with(|| entry.clone());
++        {
++            // [PERF-T113-PROBE]
++            let _t113 = T113Span::new("p7_stamp");
++            let mut templates: std::collections::BTreeMap<(String, i32), SupportPlanEntry> =
++                std::collections::BTreeMap::new();
++            let mut covered_regions: std::collections::BTreeSet<(
++                String,
++                i32,
++                String,
++                Vec<(String, PaintValue)>,
++            )> = declined_identities;
++            for entry in &entries_in_order {
++                // Coverage is "this (object, layer, full origin) already has an
++                // entry", which includes blocked/declined records: stamping over
++                // one would publish two entries sharing
++                // `(global_layer_index, object_id, region_id, variant_chain)` and
++                // trip `SupportPlanIR::duplicate_region_identity` at the host
++                // commit seam. Only *successful* entries may serve as a template.
++                covered_regions.insert((
++                    entry.object_id.clone(),
++                    entry.global_layer_index,
++                    entry.region_id.clone(),
++                    entry.variant_chain.clone(),
++                ));
++                if entry.decline_reason.is_none() && entry.skeleton.is_some() {
++                    templates
++                        .entry((entry.object_id.clone(), entry.global_layer_index))
++                        .or_insert_with(|| entry.clone());
++                }
+             }
+-        }
+-        for ((object_id, layer_index), template) in templates {
+-            let mut assigned_origins: Vec<(String, Vec<(String, PaintValue)>)> = support_analysis
+-                .family_assignments
+-                .iter()
+-                .filter(|assignment| {
+-                    assignment.object_id == object_id
+-                        && canonical_support_family_alias(Some(&assignment.family_id)) == "tree"
+-                        && !segmented_sources.contains(&(
+-                            assignment.region_id.as_str(),
+-                            assignment.variant_chain.as_slice(),
+-                        ))
+-                })
+-                .map(|assignment| {
+-                    (
+-                        assignment.region_id.clone(),
+-                        assignment.variant_chain.clone(),
+-                    )
+-                })
+-                .collect();
+-            assigned_origins.sort();
+-            assigned_origins.dedup();
+-            for (region_id, variant_chain) in assigned_origins {
+-                if covered_regions.insert((
+-                    object_id.clone(),
+-                    layer_index,
+-                    region_id.clone(),
+-                    variant_chain.clone(),
+-                )) {
+-                    let mut stamped = template.clone();
+-                    stamped.region_id = region_id;
+-                    stamped.variant_chain = variant_chain;
+-                    entries_in_order.push(stamped);
++            for ((object_id, layer_index), template) in templates {
++                let mut assigned_origins: Vec<(String, Vec<(String, PaintValue)>)> =
++                    support_analysis
++                        .family_assignments
++                        .iter()
++                        .filter(|assignment| {
++                            assignment.object_id == object_id
++                                && canonical_support_family_alias(Some(&assignment.family_id))
++                                    == "tree"
++                                && !segmented_sources.contains(&(
++                                    assignment.region_id.as_str(),
++                                    assignment.variant_chain.as_slice(),
++                                ))
++                        })
++                        .map(|assignment| {
++                            (
++                                assignment.region_id.clone(),
++                                assignment.variant_chain.clone(),
++                            )
++                        })
++                        .collect();
++                assigned_origins.sort();
++                assigned_origins.dedup();
++                for (region_id, variant_chain) in assigned_origins {
++                    if covered_regions.insert((
++                        object_id.clone(),
++                        layer_index,
++                        region_id.clone(),
++                        variant_chain.clone(),
++                    )) {
++                        let mut stamped = template.clone();
++                        stamped.region_id = region_id;
++                        stamped.variant_chain = variant_chain;
++                        entries_in_order.push(stamped);
++                    }
+                 }
+             }
+         }
+@@ -5795,6 +5959,8 @@ pub fn point_in_polygon(poly: &[[f32; 2]], x: f32, y: f32) -> bool {
+ /// The `V` input here is the propagated node count, bounded by
+ /// `support_max_branches_per_layer`.
+ fn prim_mst(nodes: &[(f32, f32)]) -> Vec<(usize, usize, f32)> {
++    // [PERF-T113-PROBE]
++    let _t113 = T113Span::new("p3_mst");
+     let n = nodes.len();
+     if n < 2 {
+         return Vec::new();

@@ -1,0 +1,317 @@
+{
+  "candidate": "SupportAnalysis eligibility-predicate parallel pre-pass (host-only)",
+  "changed_file": "crates/slicer-runtime/src/builtins/support_analysis_producer.rs",
+  "protocol": "protocol-ab.json",
+  "reference_sha256": {
+    "benchy": "76eb4e1df3a47abf9a973be4ac99cd6bac41efa9fb65240786251ec0f7cdf6a8",
+    "base": "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319"
+  },
+  "batches": {
+    "ordinary/benchy": {
+      "rows_csv": "measure/ordinary/benchy/rows.csv",
+      "status": "clean",
+      "measured_rows": 12,
+      "pairs": 6,
+      "retained_pairs": 6,
+      "complete_by_protocol": true,
+      "excluded_pairs": [],
+      "per_arm_exclusions": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "best_cpu_wall_ratio": {
+        "baseline": 5.132149873410719,
+        "candidate": 5.37373013864927
+      },
+      "wall_delta_median": -1.1049662500000004,
+      "cpu_delta_median": -0.828125,
+      "wall_faster_count": 6,
+      "cpu_faster_count": 5,
+      "keep_clause_met": true,
+      "output_sha": "76eb4e1df3a47abf9a973be4ac99cd6bac41efa9fb65240786251ec0f7cdf6a8",
+      "deltas": [
+        {
+          "pair": 1,
+          "wall_delta": -0.6180098000000029,
+          "cpu_delta": -1.796875,
+          "wall_faster": true,
+          "cpu_faster": true
+        },
+        {
+          "pair": 2,
+          "wall_delta": -1.004677000000001,
+          "cpu_delta": -0.140625,
+          "wall_faster": true,
+          "cpu_faster": true
+        },
+        {
+          "pair": 3,
+          "wall_delta": -1.2509998000000024,
+          "cpu_delta": -1.640625,
+          "wall_faster": true,
+          "cpu_faster": true
+        },
+        {
+          "pair": 4,
+          "wall_delta": -1.0541975000000008,
+          "cpu_delta": -0.140625,
+          "wall_faster": true,
+          "cpu_faster": true
+        },
+        {
+          "pair": 5,
+          "wall_delta": -1.155735,
+          "cpu_delta": -1.515625,
+          "wall_faster": true,
+          "cpu_faster": true
+        },
+        {
+          "pair": 6,
+          "wall_delta": -1.219344699999997,
+          "cpu_delta": 0.703125,
+          "wall_faster": true,
+          "cpu_faster": false
+        }
+      ],
+      "notes": [
+        "warmup rows not retained in this CSV (see the proof phase CSV)"
+      ],
+      "errors": [],
+      "negative_controls": {
+        "fabricated reference": true,
+        "output drift": true,
+        "CPU-only win": true,
+        "starvation pair loss": true,
+        "arm order present": true
+      }
+    },
+    "ordinary/base": {
+      "rows_csv": "measure/ordinary/base/rows.csv",
+      "status": "clean",
+      "measured_rows": 12,
+      "pairs": 6,
+      "retained_pairs": 6,
+      "complete_by_protocol": true,
+      "excluded_pairs": [],
+      "per_arm_exclusions": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "best_cpu_wall_ratio": {
+        "baseline": 4.510290953801417,
+        "candidate": 4.676172911074942
+      },
+      "wall_delta_median": -18.19791570000001,
+      "cpu_delta_median": 12.7890625,
+      "wall_faster_count": 6,
+      "cpu_faster_count": 0,
+      "keep_clause_met": false,
+      "output_sha": "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319",
+      "deltas": [
+        {
+          "pair": 1,
+          "wall_delta": -29.284860500000036,
+          "cpu_delta": 13.078125,
+          "wall_faster": true,
+          "cpu_faster": false
+        },
+        {
+          "pair": 2,
+          "wall_delta": -17.90444219999995,
+          "cpu_delta": 12.5,
+          "wall_faster": true,
+          "cpu_faster": false
+        },
+        {
+          "pair": 3,
+          "wall_delta": -18.49138920000007,
+          "cpu_delta": 7.1875,
+          "wall_faster": true,
+          "cpu_faster": false
+        },
+        {
+          "pair": 4,
+          "wall_delta": -15.398918299999991,
+          "cpu_delta": 5.859375,
+          "wall_faster": true,
+          "cpu_faster": false
+        },
+        {
+          "pair": 5,
+          "wall_delta": -24.02089170000005,
+          "cpu_delta": 13.703125,
+          "wall_faster": true,
+          "cpu_faster": false
+        },
+        {
+          "pair": 6,
+          "wall_delta": -13.680696299999966,
+          "cpu_delta": 20.765625,
+          "wall_faster": true,
+          "cpu_faster": false
+        }
+      ],
+      "notes": [],
+      "errors": [],
+      "negative_controls": {
+        "fabricated reference": true,
+        "output drift": true,
+        "CPU-only win": true,
+        "starvation pair loss": true,
+        "arm order present": true
+      }
+    },
+    "accelerated/benchy": {
+      "rows_csv": "measure/accelerated/benchy/rows.csv",
+      "status": "clean",
+      "measured_rows": 12,
+      "pairs": 6,
+      "retained_pairs": 6,
+      "complete_by_protocol": true,
+      "excluded_pairs": [],
+      "per_arm_exclusions": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "best_cpu_wall_ratio": {
+        "baseline": 4.655016264109398,
+        "candidate": 4.8146161435930495
+      },
+      "wall_delta_median": -0.9430191499999996,
+      "cpu_delta_median": 0.046875,
+      "wall_faster_count": 4,
+      "cpu_faster_count": 3,
+      "keep_clause_met": false,
+      "output_sha": "76eb4e1df3a47abf9a973be4ac99cd6bac41efa9fb65240786251ec0f7cdf6a8",
+      "deltas": [
+        {
+          "pair": 1,
+          "wall_delta": 0.5925756,
+          "cpu_delta": -0.046875,
+          "wall_faster": false,
+          "cpu_faster": true
+        },
+        {
+          "pair": 2,
+          "wall_delta": 0.41049870000000155,
+          "cpu_delta": 0.140625,
+          "wall_faster": false,
+          "cpu_faster": false
+        },
+        {
+          "pair": 3,
+          "wall_delta": -1.0284320999999998,
+          "cpu_delta": -0.109375,
+          "wall_faster": true,
+          "cpu_faster": true
+        },
+        {
+          "pair": 4,
+          "wall_delta": -0.9249930000000006,
+          "cpu_delta": 0.140625,
+          "wall_faster": true,
+          "cpu_faster": false
+        },
+        {
+          "pair": 5,
+          "wall_delta": -0.9610452999999985,
+          "cpu_delta": 1.921875,
+          "wall_faster": true,
+          "cpu_faster": false
+        },
+        {
+          "pair": 6,
+          "wall_delta": -1.0042963,
+          "cpu_delta": -0.5,
+          "wall_faster": true,
+          "cpu_faster": true
+        }
+      ],
+      "notes": [],
+      "errors": [],
+      "negative_controls": {
+        "fabricated reference": true,
+        "output drift": true,
+        "CPU-only win": true,
+        "starvation pair loss": true,
+        "arm order present": true
+      }
+    },
+    "accelerated/base": {
+      "rows_csv": "measure/accelerated/base/rows.csv",
+      "status": "clean",
+      "measured_rows": 12,
+      "pairs": 6,
+      "retained_pairs": 6,
+      "complete_by_protocol": true,
+      "excluded_pairs": [],
+      "per_arm_exclusions": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "best_cpu_wall_ratio": {
+        "baseline": 3.927157605132911,
+        "candidate": 3.9019449813459137
+      },
+      "wall_delta_median": -19.38031250000006,
+      "cpu_delta_median": 9.046875,
+      "wall_faster_count": 5,
+      "cpu_faster_count": 2,
+      "keep_clause_met": false,
+      "output_sha": "f60e5e9b8c0d836cf73170e645c18f9193b91d47e694d335cfb1d78032682319",
+      "deltas": [
+        {
+          "pair": 1,
+          "wall_delta": 26.757839400000023,
+          "cpu_delta": 66.390625,
+          "wall_faster": false,
+          "cpu_faster": false
+        },
+        {
+          "pair": 2,
+          "wall_delta": -41.152191800000026,
+          "cpu_delta": -1.015625,
+          "wall_faster": true,
+          "cpu_faster": true
+        },
+        {
+          "pair": 3,
+          "wall_delta": -20.384516000000076,
+          "cpu_delta": 8.25,
+          "wall_faster": true,
+          "cpu_faster": false
+        },
+        {
+          "pair": 4,
+          "wall_delta": -14.349906499999975,
+          "cpu_delta": 12.9375,
+          "wall_faster": true,
+          "cpu_faster": false
+        },
+        {
+          "pair": 5,
+          "wall_delta": -21.554529600000023,
+          "cpu_delta": -4.484375,
+          "wall_faster": true,
+          "cpu_faster": true
+        },
+        {
+          "pair": 6,
+          "wall_delta": -18.376109000000042,
+          "cpu_delta": 9.84375,
+          "wall_faster": true,
+          "cpu_faster": false
+        }
+      ],
+      "notes": [],
+      "errors": [],
+      "negative_controls": {
+        "fabricated reference": true,
+        "output drift": true,
+        "CPU-only win": true,
+        "starvation pair loss": true,
+        "arm order present": true
+      }
+    }
+  }
+}

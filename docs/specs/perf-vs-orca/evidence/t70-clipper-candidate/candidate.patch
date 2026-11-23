@@ -1,0 +1,44 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 62d14e8d..f76208ca 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -11,7 +11,7 @@
+ 
+ [package]
+ edition = "2021"
+-rust-version = "1.70"
++rust-version = "1.77"
+ name = "clipper2-rust"
+ version = "1.1.0"
+ authors = ["Lars Brubaker <larsbrubaker@matterhackers.com>"]
+diff --git a/src/core.rs b/src/core.rs
+index 7a36622c..e08e7bea 100644
+--- a/src/core.rs
++++ b/src/core.rs
+@@ -1501,9 +1501,25 @@ where
+ }
+ 
+ /// Banker's rounding (round half to even), matching C++ nearbyint() behavior.
+-/// MSRV 1.70 does not have f64::round_ties_even(), so we implement it manually.
++/// [t70 candidate] MSRV raised 1.70 → 1.77 for `f64::round_ties_even` (the
++/// hardware round-half-to-even the canonical C++ gets from CVTSD2SI/roundsd);
++/// the software tie-breaking path below is retained only for non-finite
++/// inputs.
+ #[inline]
+ pub fn nearbyint_f64(x: f64) -> f64 {
++    // [t70 candidate] Hardware round-half-to-even for finite inputs — the
++    // only values the engine produces on this path (top_x per non-top edge
++    // per scanline, and intersect-point rounding). The canonical C++ uses a
++    // single CVTSD2SI/roundsd here and documents the software round-trips as
++    // materially slower (clipper.engine.cpp's nearbyint note); the pristine
++    // port emulated the tie-breaking in software on the hottest loop in the
++    // engine. `f64::round_ties_even` is exactly round-half-to-even for every
++    // finite value, so results are bit-identical there; non-finite inputs
++    // keep the original software path so the emulation's NaN-at-infinity
++    // behavior is also preserved verbatim.
++    if x.is_finite() {
++        return x.round_ties_even();
++    }
+     let trunc = x.trunc();
+     let frac = x - trunc;
+     if frac.abs() < 0.5 {

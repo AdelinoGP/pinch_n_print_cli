@@ -76,7 +76,7 @@ fails the slice and the caller's output file is never written.
 *model* metadata — an Orca 3MF stores the full print config in
 `project_settings.config`, so a downloaded model can arm arbitrary host commands. Here
 only an explicit `--config` value is honoured; a model-supplied value is dropped with a
-warning in `run_slice`'s override merge. Filed as **DEV-197** (a), together with the
+warning in `run_slice`'s override merge. Filed as **DEV-206** (a), together with the
 three unported mechanism clauses: the `SLIC3R_<KEY>` environment export, the
 `.output_name` rename sidecar + `slicing_pipeline_plugin` step, and canonical's
 Windows `CommandLineToArgvW` + `CreateProcess` launch semantics (this port runs the

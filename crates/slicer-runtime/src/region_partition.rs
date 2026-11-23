@@ -1,72 +1,77 @@
 //! Host-side fill-polygon partition.
 //!
-//! Runs as a side effect at `Layer::Perimeters` commit (see
-//! `commit_layer_outputs` in `layer_executor.rs`). Mutates the per-layer
+//! Runs as a side effect at `Layer::Perimeters` commit (see `apply` in
+//! `layer_executor.rs`). Mutates the per-layer
 //! arena's `SliceIR` only — the Blackboard's PrePass-committed
 //! `SliceIR` Vec stays canonical (per the slice-prepass-migration invariant
 //! that the Blackboard is read-only during Tier 2).
 //!
-//! For each `(object_id, region_id)` present in `arena.slice()`, the helper
-//! finds the matching entry in `arena.perimeter()` and replaces the five
-//! canonical fill polygons in place. The wall-inset polygon
-//! (`perimeter.infill_areas`) is partitioned by strict precedence
-//! `bridge > bottom > top > internal > sparse`, mirroring OrcaSlicer
-//! `PrintObject::prepare_infill` (see `OrcaSlicerDocumented/src/libslic3r/
-//! canonical `PrintObject` fill preparation):
+//! For each slice region the helper finds the donor in `arena.perimeter()` by
+//! the exact full identity `(object_id, source region_id, ordered
+//! variant_chain)` — never the `(object_id, region_id)` pair, because two
+//! paint variants can share the pair while carrying different ordered chains.
+//! Modifier children look up only their parent's region id (preserving their
+//! own object and chain). The effective wall inset is
+//! `W = donor.infill_areas ∩ slice_region.polygons`; partitioning is
+//! conditional on `W` and on whether the donor has walls:
 //!
 //! ```text
-//! bridge_final   = bridge_areas        ∩ perimeter.infill_areas
-//! bottom_final   = (bottom_solid_fill  ∩ perimeter.infill_areas) − bridge_final
-//! top_final      = (top_solid_fill     ∩ perimeter.infill_areas)
-//!                                     − (bridge_final ∪ bottom_final)
-//! internal_final = (internal_solid_fill ∩ perimeter.infill_areas)
-//!                                     − (bridge_final ∪ bottom_final ∪ top_final)
-//! sparse         = perimeter.infill_areas
-//!                                     − (bridge_final ∪ bottom_final ∪ top_final
-//!                                        ∪ internal_final)
+//! nonempty W:   bridge   = bridge_areas ∩ W
+//!               bottom   = (bottom_solid_fill ∩ W) − bridge
+//!               top      = (top_solid_fill ∩ W) − (bridge ∪ bottom)
+//!               internal = (internal_solid_fill ∩ W) − (bridge ∪ bottom ∪ top)
+//!               sparse   = W − (bridge ∪ bottom ∪ top ∪ internal)
+//! empty W, walls: all five roles empty (the walls consumed the cross-section)
+//! empty W, no walls: bridge = original bridge_areas
+//!                    top    = original top_solid_fill − bridge
+//!                    bottom = internal = sparse = empty
 //! ```
+//!
+//! Precedence is `bridge > bottom > top > internal > sparse`, mirroring
+//! canonical `PrintObject::prepare_infill`. In the nonempty-`W` branch the five
+//! roles are pairwise disjoint subsets of `W` whose union is `W`; the
+//! empty-`W`/no-wall branch makes no subset claim. Fill claim holders
+//! (rectilinear, gyroid, lightning infill modules) emit each role over exactly
+//! one polygon with zero polygon math.
 //!
 //! `internal_solid_fill` carries two contents by construction: the PrePass
 //! shell-band marker (`top_solid_fill − exposed seed`), which carves to empty
 //! here because it is a subset of `top_solid_fill`, and the converted sparse
 //! islands minted by the `minimum_sparse_infill_area` prepass block, which
-//! survive as the only polygons in the bucket. Net effect: `internal_final` is
+//! survive as the only polygons in the bucket. Net effect: `internal` is
 //! exactly the islands — canonical's `stInternalSolid` fill zone.
 //!
-//! After the hook the five canonical fill polygons are pairwise disjoint
-//! subsets of `perimeter.infill_areas`. Fill claim holders (rectilinear,
-//! gyroid, lightning infill modules) emit each role over exactly one
-//! polygon with zero polygon math.
+//! Missing-donor behaviour: a slice region without a matching donor is skipped
+//! (its canonical fill polygons stay at whatever PrePass left them, minus the
+//! shell-band marker carve — see the skip arms in
+//! `sync_perimeter_infill_areas_into_slice`) and the host emits a structured
+//! `log::warn!` naming the offending object/source region (a modifier child's
+//! warning also names its parent) so the failure mode is observable in
+//! production logs. Real configurations exist where a virtual variant region
+//! (region_split work, packets 92–95) is committed to `SliceIR` without a
+//! per-variant perimeter entry — the variant's wall geometry is shared with its
+//! base region. Treating that as fatal would poison the entire layer; the safer
+//! contract is "no donor → no repartition for this region, but log it". The
+//! IR-level fatals (`take_slice` / `arena.perimeter()` both `None`) are
+//! preserved because those represent a genuine stage-ordering violation, not a
+//! per-region absence; a modifier-split rejection is also fatal but restores the
+//! entry-state slice before returning.
 //!
-//! Missing-perimeter behaviour: a `SliceIR` region without a matching
-//! `PerimeterIR` entry is skipped (its canonical fill polygons stay at
-//! whatever PrePass left them, minus the shell-band marker carve — see the
-//! skip arms in `sync_perimeter_infill_areas_into_slice`) and the host emits
-//! a structured `log::warn!`
-//! naming the offending `(object_id, region_id)` so the failure mode is
-//! observable in production logs (`docs/specs/infill-fill-partition-plan.md`
-//! Phase B3 / review finding #3). Real configurations exist where a virtual
-//! variant region (region_split work, packets 92–95) is committed to
-//! `SliceIR` without a per-variant perimeter entry — the variant's wall
-//! geometry is shared with its base region. Treating that as fatal would
-//! poison the entire layer; the safer contract is "no perimeter → no
-//! repartition for this region, but log it". The IR-level fatals
-//! (`take_slice` / `arena.perimeter()` both `None`) are preserved because
-//! those represent a genuine stage-ordering violation, not a per-region
-//! absence.
+//! Empty-wall-inset behaviour is conditional, not a universal "preserve":
 //!
-//! Empty-wall-inset behaviour: a `PerimeterIR` entry whose `infill_areas`
-//! is empty (perimeter stage emitted no infill — thin-walled regions or
-//! painted regions where the perimeters dispatch produced no
-//! `set_infill_areas` call) does NOT collapse `top_solid_fill` /
-//! `bottom_solid_fill` to empty. The intersection with an empty wall inset
-//! would discard the exposed top surface that the shell-classification
-//! step deliberately marked, breaking surface-treatment stages such as
-//! ironing. The fallback preserves the original PrePass fill polygons
-//! (modulo the bridge / bottom precedence zones) for those regions. The
-//! sparse role stays empty by construction (no infill center was produced).
-//! See `cube_4color_ironing_per_painted_top_color_tdd` in
-//! `tests/executor/` for the regression.
+//! - Empty `infill_areas` **with** donor walls means the walls consumed the
+//!   whole cross-section; all five canonical fill roles are empty there (only
+//!   walls print).
+//! - Empty `infill_areas` **without** donor walls keeps the original
+//!   `bridge_areas`, sets `top_solid_fill` to the original top minus that
+//!   bridge, and leaves `bottom_solid_fill`, `internal_solid_fill` and
+//!   `sparse_infill_area` empty. The
+//!   preserved top keeps an exposed surface visible to surface-treatment
+//!   stages such as ironing; no role is claimed to be a subset of the empty
+//!   wall inset. See `cube_4color_ironing_per_painted_top_color_tdd` in
+//!   `tests/executor/` for the regression.
+
+use std::collections::HashMap;
 
 use slicer_core::polygon_ops::{difference, intersection, union};
 use slicer_ir::{LayerStageError, MeshIR, StageId};
@@ -287,12 +292,20 @@ pub fn split_modifier_sub_regions_for_prepass(
 /// for the precedence rule and clip-in-place semantics.
 ///
 /// Errors:
-/// - `LayerStageError::FatalModule` when a slice region has no matching
-///   perimeter region. The message names `(object_id, region_id)`.
-/// - `LayerStageError::FatalModule` when neither `SliceIR` nor
-///   `PerimeterIR` is staged on the arena (the hook must run after both
-///   `Layer::Slice` and `Layer::Perimeters` have committed).
+/// - `LayerStageError::FatalModule` when no `SliceIR` is staged on the arena
+///   (the hook must run after `Layer::Slice` has committed).
+/// - `LayerStageError::FatalModule` when no `PerimeterIR` is staged (the hook
+///   must run after `Layer::Perimeters` has committed). The entry-state slice
+///   is re-staged before the error returns.
+/// - `LayerStageError::FatalModule` when the modifier split rejects its input
+///   (identity collision or an unencodable parent id). The ENTRY-STATE slice is
+///   re-staged before the error returns, so a rejection cannot abandon the slot
+///   taken from the arena; earlier module commits are not rolled back.
 /// - `LayerStageError::ArenaCommit` if the post-mutation `set_slice` fails.
+///
+/// A slice region without a matching perimeter donor is **not** fatal: its fill
+/// roles stay at their PrePass values (minus the shell-band marker carve) and a
+/// warning names the region.
 pub fn sync_perimeter_infill_areas_into_slice(
     arena: &mut LayerArena,
     layer_index: u32,
@@ -300,7 +313,7 @@ pub fn sync_perimeter_infill_areas_into_slice(
     let stage_id: StageId = "Layer::Perimeters".into();
     let module_id = "host:region_partition".to_string();
 
-    let mut slice = arena
+    let entry = arena
         .take_slice()
         .ok_or_else(|| LayerStageError::FatalModule {
             stage_id: stage_id.clone(),
@@ -310,13 +323,17 @@ pub fn sync_perimeter_infill_areas_into_slice(
              (host built-in PrePass::Slice must commit before Layer::Perimeters runs)"
             ),
         })?;
+    // The entry-state value is the rollback snapshot for every error after the
+    // take. Role sync and the modifier split mutate only this working copy, so
+    // a rejected split can never leave the arena without the slice it took.
+    let mut slice = entry.clone();
 
     // Borrow perimeter immutably — we only read infill_areas off it.
     let perimeter = match arena.perimeter() {
         Some(p) => p,
         None => {
-            // Re-stage the slice we just took so callers can recover.
-            let _ = arena.set_slice(slice);
+            // Re-stage the entry-state slice we just took so callers can recover.
+            let _ = arena.set_slice(entry);
             return Err(LayerStageError::FatalModule {
                 stage_id,
                 module_id,
@@ -328,15 +345,28 @@ pub fn sync_perimeter_infill_areas_into_slice(
         }
     };
 
-    // Build a (object_id, region_id) → PerimeterRegion index once before the
-    // slice-region loop. Replaces a linear `perimeter.regions.iter().find()`
-    // per slice region (review finding #7; O(N×M) → O(N+M)). With
-    // variant_chain work (packets 92–95) growing both N and M, the linear
-    // scan was real wall-clock cost on multi-color prints.
-    // Shared with the Layer::InfillPostProcess dispatch arm's wall-source
-    // predicate (ADR-0028 §Amendment): a slice region missing from this index
-    // is a virtual variant sharing its base region's walls.
-    let perim_index = slicer_wasm_host::dispatch::perimeter_region_index(&perimeter);
+    // Build a `(object_id, region_id, variant_chain) → PerimeterRegion` index
+    // once before the slice-region loop — the FULL source identity, not the
+    // `(object_id, region_id)` pair. Two paint-minted variants of one base
+    // region can share the pair while carrying different ordered chains; a
+    // pair-keyed index would collapse them onto whichever perimeter entry was
+    // collected last, silently re-attributing wall geometry across sources
+    // (AC-R7: guest and partition joins must preserve source identity). Chain
+    // equality is exact — never sorted or normalized — and an empty chain is
+    // a real value. A slice region missing from this index is a virtual
+    // variant sharing its base region's walls (ADR-0028 §Amendment).
+    let perim_index: HashMap<
+        (
+            &slicer_ir::ObjectId,
+            slicer_ir::RegionId,
+            &[(String, slicer_ir::PaintValue)],
+        ),
+        &slicer_ir::PerimeterRegion,
+    > = perimeter
+        .regions
+        .iter()
+        .map(|r| ((&r.object_id, r.region_id, r.variant_chain.as_slice()), r))
+        .collect();
 
     for slice_region in &mut slice.regions {
         // Raw footprint staging is consumed after this loop and is never a
@@ -355,7 +385,11 @@ pub fn sync_perimeter_infill_areas_into_slice(
             slice_region.region_id
         };
         let Some(perim) = perim_index
-            .get(&(&slice_region.object_id, perimeter_region_id))
+            .get(&(
+                &slice_region.object_id,
+                perimeter_region_id,
+                slice_region.variant_chain.as_slice(),
+            ))
             .copied()
         else {
             if is_modifier_region {
@@ -410,7 +444,7 @@ pub fn sync_perimeter_infill_areas_into_slice(
         // an unsplit parent here and therefore remains unchanged.
         let wall_inset = intersection(&perim.infill_areas, &slice_region.polygons);
 
-        // Precedence: bridge > bottom > top > sparse.
+        // Precedence: bridge > bottom > top > internal > sparse.
         //
         // Edge case (fix): when the perimeter stage produces no infill area
         // for a region (e.g., a thin-walled region whose inset collapses to
@@ -421,12 +455,14 @@ pub fn sync_perimeter_infill_areas_into_slice(
         // the shell-classification step deliberately marked. Ironing then
         // skips the region (gate at
         // top-surface-ironing's non-empty top-fill gate
-        // requires non-empty `top_solid_fill`). The fallback preserves
-        // the original `top_solid_fill` / `bottom_solid_fill` polygons
-        // (minus the bridge / bottom precedence zones) so that
-        // surface-treatment stages still see the exposed top. For the
-        // common case where `wall_inset` is non-empty the precedence path
-        // is unchanged.
+        // requires non-empty `top_solid_fill`). The no-wall fallback preserves
+        // the original `top_solid_fill` minus the bridge claim so that
+        // surface-treatment stages still see the exposed top; it does NOT
+        // preserve `bottom_solid_fill` (that role is empty in this branch) and
+        // it makes no subset claim against the empty inset. When the donor has
+        // walls, an empty inset means the walls consumed the cross-section and
+        // all four roles are empty. For the common non-empty-inset case the
+        // precedence path below is unchanged.
         //
         // Note (cube_4color diagnostic, 2026-06-30): runtime
         // instrumentation on `resources/cube_4color.3mf` showed
@@ -519,10 +555,16 @@ pub fn sync_perimeter_infill_areas_into_slice(
     // with the base region's four partitioned fill polygons. The base region's
     // polygons are reduced to the difference. Runs AFTER the existing partition
     // so it composes on already-partitioned polygons.
-    split_modifier_footprints(&mut slice).map_err(|message| LayerStageError::FatalModule {
-        stage_id: stage_id.clone(),
-        module_id: module_id.clone(),
-        message,
+    split_modifier_footprints(&mut slice).map_err(|message| {
+        // The split is transactional on its own copy; this hook owns the arena
+        // slot it took, so it must re-stage the entry-state slice before
+        // propagating the rejection.
+        let _ = arena.set_slice(entry);
+        LayerStageError::FatalModule {
+            stage_id: stage_id.clone(),
+            module_id: module_id.clone(),
+            message,
+        }
     })?;
 
     arena
@@ -561,3 +603,16 @@ fn split_modifier_footprints(slice: &mut slicer_ir::SliceIR) -> Result<(), Strin
     *slice = working;
     Ok(())
 }
+
+/// Deterministic controls and registry-backed properties for this kernel
+/// (`H-RUNTIME-MODIFIERS`, `H-RUNTIME-PARTITION`); see
+/// `region_partition/property_tests.rs`.
+///
+/// The attributes are stacked rather than combined into
+/// `#[cfg(all(test, feature = "property_testing"))]`: `xtask`'s literal scanner
+/// recognizes an exact `#[cfg(test)]` ident and treats the module as test-only
+/// code, so the stacked form keeps these fixtures visible to both the
+/// struct-literal and test-quality scanners.
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;

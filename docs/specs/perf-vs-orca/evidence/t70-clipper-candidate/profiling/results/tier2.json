@@ -1,0 +1,536 @@
+{
+  "opclasses": {
+    "difference": {
+      "cases": 68,
+      "median_total_span_ns": 594800.0,
+      "median_total_bytes": 703836.0,
+      "phases": [
+        {
+          "phase": 0,
+          "name": "other/untagged",
+          "cases_present": 68,
+          "median_ns": 0.0,
+          "median_bytes": 27132.0,
+          "median_allocs": 289.5
+        },
+        {
+          "phase": 1,
+          "name": "add_path",
+          "cases_present": 63,
+          "median_ns": 25200,
+          "median_bytes": 380192,
+          "median_allocs": 24
+        },
+        {
+          "phase": 2,
+          "name": "insert_local_minima_into_ael",
+          "cases_present": 63,
+          "median_ns": 64000,
+          "median_bytes": 71296,
+          "median_allocs": 9
+        },
+        {
+          "phase": 3,
+          "name": "do_horizontal",
+          "cases_present": 63,
+          "median_ns": 109300,
+          "median_bytes": 2400,
+          "median_allocs": 2
+        },
+        {
+          "phase": 4,
+          "name": "build_intersect_list",
+          "cases_present": 63,
+          "median_ns": 165600,
+          "median_bytes": 128,
+          "median_allocs": 1
+        },
+        {
+          "phase": 5,
+          "name": "process_intersect_list",
+          "cases_present": 40,
+          "median_ns": 61000.0,
+          "median_bytes": 321648.0,
+          "median_allocs": 9.0
+        },
+        {
+          "phase": 6,
+          "name": "do_top_of_scanbeam",
+          "cases_present": 63,
+          "median_ns": 184400,
+          "median_bytes": 113344,
+          "median_allocs": 6
+        },
+        {
+          "phase": 7,
+          "name": "convert_horz_segs_to_joins",
+          "cases_present": 52,
+          "median_ns": 8300.0,
+          "median_bytes": 0.0,
+          "median_allocs": 0.0
+        },
+        {
+          "phase": 8,
+          "name": "process_horz_joins",
+          "cases_present": 34,
+          "median_ns": 550.0,
+          "median_bytes": 32.0,
+          "median_allocs": 1.0
+        },
+        {
+          "phase": 9,
+          "name": "reset/clean_up",
+          "cases_present": 63,
+          "median_ns": 6400,
+          "median_bytes": 992,
+          "median_allocs": 5
+        },
+        {
+          "phase": 10,
+          "name": "clean_collinear",
+          "cases_present": 63,
+          "median_ns": 27500,
+          "median_bytes": 288,
+          "median_allocs": 8
+        },
+        {
+          "phase": 11,
+          "name": "build_result (tree/paths)",
+          "cases_present": 64,
+          "median_ns": 79300.0,
+          "median_bytes": 87932.0,
+          "median_allocs": 469.0
+        },
+        {
+          "phase": 14,
+          "name": "engine teardown (drop)",
+          "cases_present": 66,
+          "median_ns": 1100.0,
+          "median_bytes": 0.0,
+          "median_allocs": 0.0
+        },
+        {
+          "phase": 16,
+          "name": "scanline admin",
+          "cases_present": 63,
+          "median_ns": 60700,
+          "median_bytes": 0,
+          "median_allocs": 0
+        },
+        {
+          "phase": 17,
+          "name": "list clears",
+          "cases_present": 49,
+          "median_ns": 14500,
+          "median_bytes": 0,
+          "median_allocs": 0
+        }
+      ]
+    },
+    "intersection": {
+      "cases": 34,
+      "median_total_span_ns": 2660950.0,
+      "median_total_bytes": 1410448.0,
+      "phases": [
+        {
+          "phase": 0,
+          "name": "other/untagged",
+          "cases_present": 34,
+          "median_ns": 0.0,
+          "median_bytes": 5912.0,
+          "median_allocs": 8.0
+        },
+        {
+          "phase": 1,
+          "name": "add_path",
+          "cases_present": 34,
+          "median_ns": 72800.0,
+          "median_bytes": 841536.0,
+          "median_allocs": 163.0
+        },
+        {
+          "phase": 2,
+          "name": "insert_local_minima_into_ael",
+          "cases_present": 34,
+          "median_ns": 181650.0,
+          "median_bytes": 285440.0,
+          "median_allocs": 14.0
+        },
+        {
+          "phase": 3,
+          "name": "do_horizontal",
+          "cases_present": 34,
+          "median_ns": 279050.0,
+          "median_bytes": 160.0,
+          "median_allocs": 1.0
+        },
+        {
+          "phase": 4,
+          "name": "build_intersect_list",
+          "cases_present": 34,
+          "median_ns": 971300.0,
+          "median_bytes": 128.0,
+          "median_allocs": 1.0
+        },
+        {
+          "phase": 5,
+          "name": "process_intersect_list",
+          "cases_present": 27,
+          "median_ns": 1300,
+          "median_bytes": 0,
+          "median_allocs": 0
+        },
+        {
+          "phase": 6,
+          "name": "do_top_of_scanbeam",
+          "cases_present": 34,
+          "median_ns": 799950.0,
+          "median_bytes": 28224.0,
+          "median_allocs": 6.0
+        },
+        {
+          "phase": 7,
+          "name": "convert_horz_segs_to_joins",
+          "cases_present": 28,
+          "median_ns": 900.0,
+          "median_bytes": 0.0,
+          "median_allocs": 0.0
+        },
+        {
+          "phase": 8,
+          "name": "process_horz_joins",
+          "cases_present": 15,
+          "median_ns": 100,
+          "median_bytes": 0,
+          "median_allocs": 0
+        },
+        {
+          "phase": 9,
+          "name": "reset/clean_up",
+          "cases_present": 34,
+          "median_ns": 9900.0,
+          "median_bytes": 4064.0,
+          "median_allocs": 7.0
+        },
+        {
+          "phase": 10,
+          "name": "clean_collinear",
+          "cases_present": 34,
+          "median_ns": 5850.0,
+          "median_bytes": 0.0,
+          "median_allocs": 0.0
+        },
+        {
+          "phase": 11,
+          "name": "build_result (tree/paths)",
+          "cases_present": 34,
+          "median_ns": 15000.0,
+          "median_bytes": 20112.0,
+          "median_allocs": 19.0
+        },
+        {
+          "phase": 14,
+          "name": "engine teardown (drop)",
+          "cases_present": 34,
+          "median_ns": 2600.0,
+          "median_bytes": 0.0,
+          "median_allocs": 0.0
+        },
+        {
+          "phase": 16,
+          "name": "scanline admin",
+          "cases_present": 34,
+          "median_ns": 182250.0,
+          "median_bytes": 0.0,
+          "median_allocs": 0.0
+        },
+        {
+          "phase": 17,
+          "name": "list clears",
+          "cases_present": 28,
+          "median_ns": 600.0,
+          "median_bytes": 0.0,
+          "median_allocs": 0.0
+        }
+      ]
+    },
+    "offset": {
+      "cases": 177,
+      "median_total_span_ns": 22290800,
+      "median_total_bytes": 3220216,
+      "phases": [
+        {
+          "phase": 0,
+          "name": "other/untagged",
+          "cases_present": 177,
+          "median_ns": 0,
+          "median_bytes": 65080,
+          "median_allocs": 9
+        },
+        {
+          "phase": 1,
+          "name": "add_path",
+          "cases_present": 177,
+          "median_ns": 50800,
+          "median_bytes": 825432,
+          "median_allocs": 25
+        },
+        {
+          "phase": 2,
+          "name": "insert_local_minima_into_ael",
+          "cases_present": 177,
+          "median_ns": 333100,
+          "median_bytes": 1506592,
+          "median_allocs": 13
+        },
+        {
+          "phase": 3,
+          "name": "do_horizontal",
+          "cases_present": 177,
+          "median_ns": 230100,
+          "median_bytes": 3296,
+          "median_allocs": 4
+        },
+        {
+          "phase": 4,
+          "name": "build_intersect_list",
+          "cases_present": 177,
+          "median_ns": 3408400,
+          "median_bytes": 1920,
+          "median_allocs": 4
+        },
+        {
+          "phase": 5,
+          "name": "process_intersect_list",
+          "cases_present": 177,
+          "median_ns": 103300,
+          "median_bytes": 119904,
+          "median_allocs": 8
+        },
+        {
+          "phase": 6,
+          "name": "do_top_of_scanbeam",
+          "cases_present": 177,
+          "median_ns": 2134100,
+          "median_bytes": 132736,
+          "median_allocs": 6
+        },
+        {
+          "phase": 7,
+          "name": "convert_horz_segs_to_joins",
+          "cases_present": 159,
+          "median_ns": 5700,
+          "median_bytes": 0,
+          "median_allocs": 0
+        },
+        {
+          "phase": 8,
+          "name": "process_horz_joins",
+          "cases_present": 71,
+          "median_ns": 100,
+          "median_bytes": 0,
+          "median_allocs": 0
+        },
+        {
+          "phase": 9,
+          "name": "reset/clean_up",
+          "cases_present": 177,
+          "median_ns": 37800,
+          "median_bytes": 50288,
+          "median_allocs": 11
+        },
+        {
+          "phase": 10,
+          "name": "clean_collinear",
+          "cases_present": 165,
+          "median_ns": 38000,
+          "median_bytes": 0,
+          "median_allocs": 0
+        },
+        {
+          "phase": 11,
+          "name": "build_result (tree/paths)",
+          "cases_present": 168,
+          "median_ns": 51100.0,
+          "median_bytes": 128728.0,
+          "median_allocs": 18.0
+        },
+        {
+          "phase": 12,
+          "name": "do_group_offset",
+          "cases_present": 177,
+          "median_ns": 55800,
+          "median_bytes": 325856,
+          "median_allocs": 19
+        },
+        {
+          "phase": 13,
+          "name": "offset union dispatch",
+          "cases_present": 177,
+          "median_ns": 7737800,
+          "median_bytes": 0,
+          "median_allocs": 0
+        },
+        {
+          "phase": 14,
+          "name": "engine teardown (drop)",
+          "cases_present": 177,
+          "median_ns": 2500,
+          "median_bytes": 0,
+          "median_allocs": 0
+        },
+        {
+          "phase": 15,
+          "name": "union engine total",
+          "cases_present": 177,
+          "median_ns": 7617000,
+          "median_bytes": 0,
+          "median_allocs": 0
+        },
+        {
+          "phase": 16,
+          "name": "scanline admin",
+          "cases_present": 177,
+          "median_ns": 195300,
+          "median_bytes": 0,
+          "median_allocs": 0
+        },
+        {
+          "phase": 17,
+          "name": "list clears",
+          "cases_present": 177,
+          "median_ns": 29200,
+          "median_bytes": 0,
+          "median_allocs": 0
+        }
+      ]
+    },
+    "union": {
+      "cases": 16,
+      "median_total_span_ns": 109794150.0,
+      "median_total_bytes": 5557372.0,
+      "phases": [
+        {
+          "phase": 0,
+          "name": "other/untagged",
+          "cases_present": 16,
+          "median_ns": 0.0,
+          "median_bytes": 43516.0,
+          "median_allocs": 13.0
+        },
+        {
+          "phase": 1,
+          "name": "add_path",
+          "cases_present": 16,
+          "median_ns": 926650.0,
+          "median_bytes": 4674400.0,
+          "median_allocs": 628.5
+        },
+        {
+          "phase": 2,
+          "name": "insert_local_minima_into_ael",
+          "cases_present": 16,
+          "median_ns": 829900.0,
+          "median_bytes": 297728.0,
+          "median_allocs": 14.5
+        },
+        {
+          "phase": 3,
+          "name": "do_horizontal",
+          "cases_present": 16,
+          "median_ns": 1289250.0,
+          "median_bytes": 0.0,
+          "median_allocs": 0.0
+        },
+        {
+          "phase": 4,
+          "name": "build_intersect_list",
+          "cases_present": 16,
+          "median_ns": 65980250.0,
+          "median_bytes": 384.0,
+          "median_allocs": 2.0
+        },
+        {
+          "phase": 5,
+          "name": "process_intersect_list",
+          "cases_present": 16,
+          "median_ns": 231900.0,
+          "median_bytes": 27648.0,
+          "median_allocs": 2.0
+        },
+        {
+          "phase": 6,
+          "name": "do_top_of_scanbeam",
+          "cases_present": 16,
+          "median_ns": 37391000.0,
+          "median_bytes": 458304.0,
+          "median_allocs": 9.5
+        },
+        {
+          "phase": 7,
+          "name": "convert_horz_segs_to_joins",
+          "cases_present": 6,
+          "median_ns": 250.0,
+          "median_bytes": 0.0,
+          "median_allocs": 0.0
+        },
+        {
+          "phase": 8,
+          "name": "process_horz_joins",
+          "cases_present": 14,
+          "median_ns": 100.0,
+          "median_bytes": 0.0,
+          "median_allocs": 0.0
+        },
+        {
+          "phase": 9,
+          "name": "reset/clean_up",
+          "cases_present": 16,
+          "median_ns": 16300.0,
+          "median_bytes": 9448.0,
+          "median_allocs": 8.0
+        },
+        {
+          "phase": 10,
+          "name": "clean_collinear",
+          "cases_present": 16,
+          "median_ns": 60050.0,
+          "median_bytes": 0.0,
+          "median_allocs": 0.0
+        },
+        {
+          "phase": 11,
+          "name": "build_result (tree/paths)",
+          "cases_present": 16,
+          "median_ns": 112150.0,
+          "median_bytes": 162272.0,
+          "median_allocs": 44.5
+        },
+        {
+          "phase": 14,
+          "name": "engine teardown (drop)",
+          "cases_present": 16,
+          "median_ns": 116900.0,
+          "median_bytes": 0.0,
+          "median_allocs": 0.0
+        },
+        {
+          "phase": 16,
+          "name": "scanline admin",
+          "cases_present": 16,
+          "median_ns": 1050950.0,
+          "median_bytes": 0.0,
+          "median_allocs": 0.0
+        },
+        {
+          "phase": 17,
+          "name": "list clears",
+          "cases_present": 16,
+          "median_ns": 103050.0,
+          "median_bytes": 0.0,
+          "median_allocs": 0.0
+        }
+      ]
+    }
+  }
+}

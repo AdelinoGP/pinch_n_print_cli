@@ -1,0 +1,44 @@
+{
+ "cell": "ordinary-base-classic-on",
+ "status": "reduced",
+ "retained_pairs": 3,
+ "wall_delta_pct_paired_median": -5.495095851879473,
+ "cpu_delta_pct_paired_median": 6.775151408243674,
+ "cpu_clause_ceiling_pct": 3.0,
+ "wall_clause": "pass",
+ "cpu_clause": "fail",
+ "output_identity_clause": "pass",
+ "pairs": [
+  {
+   "pair": 1,
+   "baseline_wall_s": 188.3878474,
+   "candidate_wall_s": 172.8798943,
+   "baseline_cpu_s": 1067.9375,
+   "candidate_cpu_s": 1137.453125,
+   "wall_delta_pct": -8.231928605815163,
+   "cpu_delta_pct": 6.509334581845838,
+   "sha_equal": true
+  },
+  {
+   "pair": 2,
+   "baseline_wall_s": 188.6764434,
+   "candidate_wall_s": 178.9251267,
+   "baseline_cpu_s": 1068.640625,
+   "candidate_cpu_s": 1142.3125,
+   "wall_delta_pct": -5.168274599774447,
+   "cpu_delta_pct": 6.893980378108866,
+   "sha_equal": true
+  },
+  {
+   "pair": 3,
+   "baseline_wall_s": 184.444062,
+   "candidate_wall_s": 174.308684,
+   "baseline_cpu_s": 1062.9375,
+   "candidate_cpu_s": 1134.953125,
+   "wall_delta_pct": -5.495095851879473,
+   "cpu_delta_pct": 6.775151408243674,
+   "sha_equal": true
+  }
+ ],
+ "verdict": "GATE NOT MET - wall -5.50 % but process CPU +6.78 % against the pre-declared +3.0 % work-preserving ceiling; measured recommendation: DROP the parallel fold"
+}

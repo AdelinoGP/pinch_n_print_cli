@@ -141,7 +141,13 @@ fn support_postprocess_empty_bypass_when_no_slice_regions() {
 
 #[test]
 fn slice_postprocess_downstream_propagation_preserves_per_region_shape() {
+    let map = dispatch_fixture::region_map_for_slice(
+        &ir_builders::slice_ir::with_count(3).build(),
+        0,
+        slicer_ir::ResolvedConfig::default(),
+    );
     let mut fx = dispatch_fixture::for_stage("Layer::SlicePostProcess")
+        .with_region_map(map.clone())
         .with_slice(ir_builders::slice_ir::with_count(3).build())
         .build();
 
@@ -154,6 +160,7 @@ fn slice_postprocess_downstream_propagation_preserves_per_region_shape() {
 
     // Now dispatch a downstream stage that consumes slice regions (Support).
     let mut fx_sup = dispatch_fixture::for_stage("Layer::SupportPostProcess")
+        .with_region_map(map)
         .with_slice(fx.arena.slice().unwrap().clone())
         .build();
     fx_sup.run_layer(&layer).unwrap();

@@ -61,8 +61,11 @@ The ordered sequence of paint-semantic discriminators that distinguishes a
 **painted variant** from its base region. Two regions of the same object and
 same base region with different variant chains are distinct regions for module
 dispatch and configuration purposes. An empty chain identifies the base region.
-The order is canonical: built-in semantics follow OrcaSlicer precedence
-(Material before FuzzySkin), community-defined semantics layer after.
+The order is canonical: ascending `(region-split priority, semantic name)`, so
+built-in `material` (100) precedes `fuzzy_skin` (200) and community semantics
+(priority ≥ 1000) layer after; ties at one priority break lexically by semantic
+name. RegionMapping, paint composition, selection and exact-chain config lookup
+all use that one order and never re-sort it.
 
 ### Painted variant
 A region distinguished from its base by a non-empty **variant chain**. Each

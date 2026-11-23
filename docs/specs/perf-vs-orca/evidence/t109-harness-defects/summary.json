@@ -1,0 +1,59 @@
+{
+  "ticket": 109,
+  "title": "xtask test feature injection and the stale narrow-run example",
+  "head_sha": "59b1b21f",
+  "files": ["AGENTS.md", "xtask/src/test.rs"],
+  "a1": {
+    "before_command": "cargo xtask test -p xtask --summary",
+    "before_exit": 101,
+    "before_error_contains": "does not contain this feature",
+    "after_command": "cargo xtask test -p xtask --summary",
+    "after_exit": 0,
+    "after_passed": 193,
+    "after_failed": 0,
+    "slicer_core_features_arg": "slicer-core/host-algos",
+    "second_foreign_package": "slicer-config",
+    "manifest_path_arm": "xtask/Cargo.toml",
+    "manifest_path_core_arm": "crates/slicer-core/Cargo.toml"
+  },
+  "a2": {
+    "before_command": "cargo test -p slicer-runtime --test contract core_module_ir_access_contract_tdd",
+    "before_passed": 0,
+    "before_filtered_out": 314,
+    "after_command": "cargo test -p slicer-scheduler --test scheduler_contract core_module_ir_access_contract_tdd",
+    "after_passed": 9,
+    "after_failed": 0,
+    "after_filtered_out": 17,
+    "target": "scheduler_contract",
+    "module": "core_module_ir_access_contract_tdd"
+  },
+  "unit_tests": {
+    "total": 193,
+    "new": 5,
+    "names": [
+      "host_algos_selection_follows_the_package_selector",
+      "foreign_package_selection_does_not_activate_slicer_core_features",
+      "slicer_core_selection_activates_host_algos",
+      "caller_feature_choice_is_not_overridden",
+      "manifest_path_selection_reads_the_package_name"
+    ]
+  },
+  "verification": {
+    "cargo_test_xtask": "193 passed; 0 failed",
+    "clippy_xtask": "exit 0",
+    "clippy_workspace": "exit 0",
+    "fmt_xtask": "exit 0",
+    "check_literals": "0 violations",
+    "check_test_quality": "0 findings"
+  },
+  "adjacent": {
+    "slicer_config_census": {
+      "test": "real_toml_manifest_census_rederives_expected_scope",
+      "expected": 281,
+      "actual": 293,
+      "pre_existing": true
+    },
+    "no_run_summary_false_alarm": true,
+    "ignored_claude_mirror_stale": true
+  }
+}

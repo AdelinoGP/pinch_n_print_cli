@@ -1,3 +1,9 @@
+//! Perimeter spatial index and query contracts.
+//!
+//! Gated on `host-algos` + `perimeter-spatial-test-support`: the counters and
+//! the accelerated dispatch only exist with those features, so this target is
+//! absent from a default `-p slicer-core` run by design.
+
 use slicer_core::perimeter_utils::{
     expolygon_to_path3d, point_in_any_polygon, signed_distance_to_boundary,
 };
@@ -390,6 +396,56 @@ fn assert_observed_equal(expected: &Observed, actual: &Observed) {
         &actual.nonplanar_paths,
         "nonplanar",
     );
+}
+
+#[test]
+fn unconsumed_mode_issues_no_annotation_queries() {
+    let fixture = adversarial_fixture();
+    let context = slicer_core::perimeter_spatial::PerimeterSpatialContext::new(
+        &fixture.boundary,
+        &fixture.overhang_bands,
+        &fixture.bridge_areas,
+    );
+    let planar = slicer_core::perimeter_spatial::expolygon_to_path3d_indexed(
+        &fixture.path_contour,
+        0.2,
+        0.4,
+        &context,
+        slicer_core::perimeter_spatial::PathAnnotationMode::Planar,
+    );
+    let (unconsumed, counters) =
+        slicer_core::perimeter_spatial::diagnostics::with_counters(true, false, || {
+            slicer_core::perimeter_spatial::expolygon_to_path3d_indexed(
+                &fixture.path_contour,
+                0.2,
+                0.4,
+                &context,
+                slicer_core::perimeter_spatial::PathAnnotationMode::Unconsumed,
+            )
+        });
+
+    assert_eq!(planar.len(), unconsumed.len());
+    assert!(!unconsumed.is_empty());
+    for (planar_point, unconsumed_point) in planar.iter().zip(&unconsumed) {
+        assert_eq!(planar_point.x.to_bits(), unconsumed_point.x.to_bits());
+        assert_eq!(planar_point.y.to_bits(), unconsumed_point.y.to_bits());
+        assert_eq!(planar_point.z.to_bits(), unconsumed_point.z.to_bits());
+        assert_eq!(
+            planar_point.width.to_bits(),
+            unconsumed_point.width.to_bits()
+        );
+        assert_eq!(unconsumed_point.overhang_quartile, None);
+        assert_eq!(unconsumed_point.overhang_distance_mm, None);
+    }
+    assert_eq!(
+        counters.indexed_queries, 0,
+        "unconsumed mode queried the index"
+    );
+    assert_eq!(
+        counters.legacy_queries, 0,
+        "unconsumed mode ran a legacy query"
+    );
+    assert_eq!(counters.fallback_queries, 0, "unconsumed mode fell back");
 }
 
 #[test]
