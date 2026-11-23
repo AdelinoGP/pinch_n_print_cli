@@ -3,7 +3,7 @@
 Type: grilling
 Status: open
 Assignee: —
-Blocked by: — (was 126; resolved 2026-09-06 — per-tool overrides now compose onto every declared field)
+Blocked by: 154 (re-ground against `config-scope-resolution` ADRs 0067–0070; `resolve_per_tool_configs` and master's `overlay_resolved` were retired — formerly blocked on 126, resolved 2026-09-06)
 Map: ../map.md
 
 ## Question

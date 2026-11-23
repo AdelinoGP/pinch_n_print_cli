@@ -3,7 +3,7 @@
 Type: grilling
 Status: open
 Assignee: —
-Blocked by: —
+Blocked by: 155 (re-ground against `LayerPreparation::prepare_print`, ADR-0066/0074, and current `STAGE_ORDER`)
 Map: ../map.md
 
 ## Question

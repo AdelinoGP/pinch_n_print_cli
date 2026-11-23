@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Assignee: —
-Blocked by: —
+Blocked by: 155 (re-ground against ADR-0072 context-aware feedrate resolution)
 Map: ../map.md
 
 ## Question

@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Assignee: —
-Blocked by: 06, 100, 118
+Blocked by: 06, 100, 118, 125 (2026-11-23 wiring fix: map Notes already state 119 hangs on 125's per-tool model ruling)
 Map: ../map.md
 
 ## Question

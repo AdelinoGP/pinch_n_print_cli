@@ -77,4 +77,21 @@ false-negative class, in the same direction as the ✅/❌ column it was built t
 `interlocking_beam` and found the behaviour already shipped under a PnP name. Ticket 98 is
 about to hit it head-on.
 
+## Scope expansion (2026-11-23 re-alignment wave)
+
+Since this ticket was filed (2026-09-10), `origin/master` landed
+`ConfigSchemaRegistry` (`crates/slicer-config/src/lib.rs`, ADR-0067) plus new
+keys (such as `infill_shift_step`, `support_base_pattern`,
+`prepared_plan_diagnostic`) across `config-scope-resolution`,
+`layer-module-preparation`, `perf-vs-orca`, and `proptest-openrscad`.
+
+In addition to measuring the original 30-key `ResolvedConfig` blind spot above,
+**mechanically re-derive the current internal live-key inventory directly from
+`ConfigSchemaRegistry` (and `crates/slicer-ir/src/resolved_config.rs` for any
+unregistered fields)** and diff it against `01-asset-gap-inventory.md` /
+`04-asset-tier-assignment.md` so post-Sept master additions and previously
+blind-spotted live keys are both surfaced in one asset before
+[158 — Triage all 52 draft packets for architectural drift, SOTA quality gaps, and Phase 2 batching](./158-triage-draft-packets-for-drift-and-phase2-batching.md)
+runs.
+
 ## Answer

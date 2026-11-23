@@ -11,10 +11,11 @@ scope. Work is ordered **cheapest-first** (smallest diff before new geometry).
 How a feature closes depends on its size, per the **Packets are for complex
 implementation only** rule in Notes: small config-key work is **implemented
 directly in its ticket's session**; only work needing new geometry, a new
-IR/WIT field, a new module, or more than one session gets a **fully authored,
-preflighted spec packet** under `docs/spec_packets/` (`packet.spec.md`,
-`requirements.md`, `design.md`, `implementation-plan.md`, passing
-`/spec-review --preflight`).
+IR/WIT field, a new module, or more than one session gets a **fully authored
+two-file spec packet** under `docs/spec_packets/orca-feature-gaps_<NN>_<slug>/`
+(`packet.spec.md` + `implementation-plan.md`, governed by
+`docs/spec_packets/README.md`, `docs/22_test_quality.md`, and this map's
+Authoring Rules 1–6; `/spec-review --preflight` is optional).
 
 The config keys are the *inventory* of the gap, not the deliverable. A key is
 "covered" only when the behaviour OrcaSlicer attaches to it exists in this
@@ -28,6 +29,45 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
 
 ## Notes
 
+- **⚠ 2026-11-23 RE-ALIGNMENT WAVE ACTIVE — treat pre-2026-11 Notes, open
+  tickets, and draft packets as unverified until re-grounded.** This branch
+  (`orca-feature-gaps`) paused on 2026-09-11 (`fb58aaf6`) while `origin/master`
+  landed `config-scope-resolution` (ADRs 0067–0070), `layer-module-preparation`
+  (ADRs 0066, 0071, 0073, 0074), `test-quality-remediation` (ADRs 0064–0065,
+  `docs/22_test_quality.md`), `perf-vs-orca` (ADR-0072), `proptest-openrscad`,
+  and the 2026-11-05 two-file `<prefix>_<NN>_<name>/` packet standard
+  (`docs/spec_packets/README.md`). User rulings (2026-11-23) govern the
+  recovery wave (`151`–`160` plus `149` and `123`):
+  1. **Two-phase sequencing:** Phase 1 runs now — branch merge-integrity &
+     gates ([151](issues/151-audit-merge-residue-and-bring-branch-gates-green.md)),
+     deep audit + rulings on non-rename "canonicity" branch commits
+     ([152](issues/152-deep-audit-non-rename-branch-behaviour-commits.md) →
+     [153](issues/153-rule-on-questionable-canonicity-and-superseded-branch-commits.md)),
+     architectural re-grounding of config-scope and layer-prep/feedrate
+     ([154](issues/154-reground-config-scope-assumptions-on-map-and-open-tickets.md),
+     [155](issues/155-reground-layer-preparation-and-feedrate-on-map-and-open-tickets.md)
+     → [156](issues/156-reconcile-map-notes-stale-warnings-and-remaining-open-tickets.md)),
+     gap-inventory refresh ([149](issues/149-measure-resolvedconfig-blind-spot-in-gap-inventory.md)
+     and [123](issues/123-audit-gap-source-key-set-completeness.md)), packet
+     directory rename ([157](issues/157-rename-draft-packets-to-orca-feature-gaps-prefix.md)),
+     and 52-packet drift/SOTA triage ([158](issues/158-triage-draft-packets-for-drift-and-phase2-batching.md)).
+     **Phase 2** (eager SOTA 2-file re-authoring of the 52 draft packets,
+     graduated by [160](issues/160-graduate-phase2-sota-packet-reauthoring-batches.md))
+     is gated on [159](issues/159-gate-merge-closed-perf-and-proptest-into-branch.md)
+     — the final merge once `perf-vs-orca` and `proptest-openrscad` close —
+     so all 52 packets are rewritten once against the settled tree.
+  2. **Modern packet & quality standard (supersedes ticket 06's bare-number
+     rule):** all draft and future packets use sequential prefix naming
+     `docs/spec_packets/orca-feature-gaps_<NN>_<slug>/` (eliminating the
+     `_OLD/253` & `_OLD/254` collision), the two-file layout (`packet.spec.md`
+     + `implementation-plan.md`), `docs/22_test_quality.md`, and Authoring
+     Rules 1–6; `/spec-review --preflight` is optional.
+  3. **Branch code stays on `orca-feature-gaps` for now:** do not open an
+     upstream PR to `master` as part of this wave.
+  4. **Older-LLM quality bar:** all pre-2026-11 tickets and draft packets were
+     authored by earlier models; Phase 2 re-authoring tickets may freely
+     redesign seams, fold/split packets, dissolve live/dead ones, or demote
+     small items to direct implementation against current SOTA standards.
 - **Domain:** 3D-printing slicer config/feature parity with OrcaSlicer. The gap
   source is `docs/ORCA_CONFIG_REFERENCE.md` — an upstream snapshot whose
   ✅/❌ "In Codebase" column is **hand-maintained and measurably wrong** (only
@@ -297,16 +337,23 @@ per-key tier table in
      value reaches the consumer" is sufficient evidence *only* when the
      consumer is a live, behaviour-changing decision point. It is never a
      licence to add a consumer that does nothing.
-  6. **Preflight adds two gates for this map:** (a) the packet's disposition
-     table lists zero declaration-only keys; (b) every key has at least one AC
-     asserting a behaviour change at a non-default value, verified by test.
-     `/spec-review --preflight` PASS on a packet violating (a) or (b) is not a
-     PASS for this map.
-  7. **Retroactive.** Packets 253–266 were authored before these rules and
-     must be re-authored to them **before any of them merges or activates**;
-     per-packet findings are marked on their Decisions entries below with
-     ⚠. Open packet tickets keep their key lists but their "Work: declare in
-     the owner's manifest + wire" line is read under rules 1–6.
+  6. **Mandatory authoring & quality gates (updated 2026-11-23):** every
+     packet's disposition table must list zero declaration-only keys, every key
+     must have at least one AC asserting a behaviour change at a non-default
+     value (plus a conservation/coverage assertion for geometric passes) verified
+     by test, and every test AC must comply with `docs/22_test_quality.md`.
+     `/spec-review --preflight` is **optional** (matching `docs/spec_packets/README.md`),
+     but if run, a PASS on a packet violating these gates is not a PASS for
+     this map.
+  7. **Retroactive.** Pre-2026-11 draft packets (`253`–`307`) are queued for
+     Phase 2 SOTA re-alignment into two-file `orca-feature-gaps_<NN>_<slug>/`
+     packets under rules 1–6 and `docs/22_test_quality.md` (via
+     [157](issues/157-rename-draft-packets-to-orca-feature-gaps-prefix.md),
+     [158](issues/158-triage-draft-packets-for-drift-and-phase2-batching.md),
+     [159](issues/159-gate-merge-closed-perf-and-proptest-into-branch.md), and
+     [160](issues/160-graduate-phase2-sota-packet-reauthoring-batches.md))
+     before `/swarm` activates any of them. Open packet tickets keep their key
+     lists under rules 1–6.
 - **The prime tower is a stub, and closing it is in scope at full canonical
   parity (user ruling, 2026-09-03, ticket 29).** This port's tower emits purge
   scan-lines only — no shell, brim, sparse infill, or idle-layer body — so every
@@ -490,18 +537,21 @@ per-key tier table in
      region set. [150](issues/150-phase5-width-limit-drops-area-instead-of-returning-it-to-base.md)
      carries the fix.
 - **Skills every session should consult:** `/grilling` and `/domain-modeling`
-  for decision tickets; `/spec-packet-generator` for authoring; `/spec-review
-  <packet> --preflight` as the authoring gate.
-- **Repo rules that bind this effort** (`CLAUDE.md`): in-tree citations by
-  symbol name + crate-qualified path, never bare line numbers; OrcaSlicer
-  citations by file + function, never line numbers; ledger facts (next free
-  packet number, next `DEV-###`, line counts) must be **re-derived at point of
-  use**, never frozen into a ticket or packet.
-- **Live ledger note:** the map's original 200–205 "untracked" hazard resolved
-  itself — those packets are committed (spec-packets migration `a352c6b5`);
-  206–212 also exist, with live uncommitted edits on 200/201. Numbering is fully
-  decoupled from all of it by ticket 06's Rule 1: one number at a time, derived
-  from disk at authoring time.
+  for decision tickets; `/spec-packet-generator` for authoring (two-file
+  `orca-feature-gaps_<NN>_<slug>/` format per `docs/spec_packets/README.md` and
+  `docs/22_test_quality.md`); `/spec-review <packet> --preflight` optionally
+  for a cold re-check.
+- **Repo rules that bind this effort** (`AGENTS.md` / `CLAUDE.md`): in-tree
+  citations by symbol name + crate-qualified path, never bare line numbers;
+  OrcaSlicer citations by file + function, never line numbers; ledger facts
+  (next free packet number, next `DEV-###`, line counts) must be **re-derived
+  at point of use**, never frozen into a ticket or packet.
+- **Live ledger note (updated 2026-11-23):** ticket 06's bare-number packet
+  allocation rule is **superseded** by `docs/spec_packets/README.md`'s
+  `<prefix>_<NN>_<packet-name>/` convention (`orca-feature-gaps_<NN>_<slug>/`,
+  migrated by [157](issues/157-rename-draft-packets-to-orca-feature-gaps-prefix.md)).
+  Derive the next free `orca-feature-gaps_<NN>` number from disk at authoring
+  time.
 
 ## Decisions so far
 
@@ -1478,6 +1528,34 @@ per-key tier table in
 
 
 ## Not yet specified
+
+- **Phase 2 SOTA re-alignment batches for the 52 draft packets (`orca-feature-gaps_01`..`_52`).**
+  Every existing draft packet must be re-aligned to the modern two-file layout
+  (`packet.spec.md` + `implementation-plan.md`), `docs/22_test_quality.md`,
+  Authoring Rules 1–6, and post-Sept `origin/master` architecture
+  (`config-scope-resolution`, `layer-module-preparation`, ADR-0072 feedrates,
+  `perf-vs-orca`, `proptest-openrscad`), with freedom to redesign seams,
+  fold/split, dissolve already-live/dead packets, or demote small items to
+  direct implementation. Exact batch tickets are deliberately un-sliced until
+  [158 — Triage all 52 draft packets for architectural drift, SOTA quality gaps, and Phase 2 batching](issues/158-triage-draft-packets-for-drift-and-phase2-batching.md),
+  [123 — Audit the gap source's key set for completeness against upstream](issues/123-audit-gap-source-key-set-completeness.md),
+  and [159 — Gate: merge closed `perf-vs-orca` and `proptest-openrscad` into `orca-feature-gaps`](issues/159-gate-merge-closed-perf-and-proptest-into-branch.md)
+  complete, and [160 — Graduate Phase 2 SOTA packet re-authoring batches](issues/160-graduate-phase2-sota-packet-reauthoring-batches.md)
+  graduates them.
+
+- **Post-audit code remediation of questionable "canonicity" and master-superseded commits on `orca-feature-gaps`.**
+  The ~25 non-rename behavioural commits unique to this branch may require
+  targeted reverts, PnP-native redesigns, or test-quality fixes once
+  [152 — Deep audit of non-rename behavioural and "canonicity" commits on `orca-feature-gaps`](issues/152-deep-audit-non-rename-branch-behaviour-commits.md)
+  inventories them and [153 — Rule on questionable "canonicity" and superseded branch commits](issues/153-rule-on-questionable-canonicity-and-superseded-branch-commits.md)
+  settles each disposition with the human. Concrete remediation task tickets
+  graduate from `153`.
+
+- **Upstreaming `orca-feature-gaps`'s landed code to `master`.**
+  User ruling (2026-11-23): keep the branch's landed code on
+  `orca-feature-gaps` for now. Revisit whether/how to upstream once
+  `perf-vs-orca` and `proptest-openrscad` close and the re-alignment wave
+  settles.
 
 - **Canonical's ordinary-layer sharp-tail append is not modelled, and ticket 115's freeze
   does not model it.** Surfaced by ticket 115's scope correction. The retired

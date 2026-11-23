@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Assignee: —
-Blocked by: 125
+Blocked by: 125, 154 (re-verify whether commit `44e10bcb` and `ConfigIngestor` already closed the 5 e2e reds)
 Map: ../map.md
 
 ## Question

@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Assignee: —
-Blocked by: —
+Blocked by: 154 (re-ground against `ConfigSchemaRegistry` metadata before authoring)
 Map: ../map.md
 
 ## Question

@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Assignee: —
-Blocked by: —
+Blocked by: 151, 156 (reconcile post-merge `support_base_pattern` references from `origin/master` first)
 Map: ../map.md
 
 ## Question

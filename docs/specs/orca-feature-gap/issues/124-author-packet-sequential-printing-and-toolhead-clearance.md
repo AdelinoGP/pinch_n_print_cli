@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Assignee: —
-Blocked by: 06
+Blocked by: 06, 156, 157 (reconcile packet numbering/format to `orca-feature-gaps_<NN>_<slug>/` before authoring)
 Map: ../map.md
 
 ## Question

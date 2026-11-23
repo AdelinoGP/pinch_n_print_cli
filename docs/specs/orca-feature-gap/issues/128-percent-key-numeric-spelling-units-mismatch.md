@@ -3,7 +3,7 @@
 Type: grilling
 Status: open
 Assignee: —
-Blocked by: —
+Blocked by: 154 (re-ground against `ConfigIngestor` and `expand_automatic_values` from `config-scope-resolution`)
 Map: ../map.md
 
 ## Question
