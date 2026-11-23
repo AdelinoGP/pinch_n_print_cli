@@ -2,8 +2,8 @@
 
 Type: task / measured candidate (100 % output-preserving exact host acceleration + literal standing 8-cell `0.80 %` paired ordinary + accelerated gate; zero geometry exceptions, zero gate waivers, zero WIT/guest changes)
 Label: wayfinder:task
-Status: open
-Assignee: unclaimed
+Status: resolved (2026-11-23; literal standing all-8-cell `0.80 %` gate PASSED 8/8 on the pre-registered pooled verdict, `448/448` measured runs byte-identical to `t182/reference.json`, zero reference change, zero geometry exceptions, zero gate waivers)
+Assignee: agent (2026-11-23 — resolved)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [`ShellClassification` post-t172 residual attribution and speedup screen](180-shell-classification-post-t172-residual-screen.md) ([`evidence/t180-shell-classification-residual/FINDINGS.md`](../evidence/t180-shell-classification-residual/FINDINGS.md)), which attributed the post-t172 `PrePass::ShellClassification` residual across all 8 cells (`15/15` runs byte-identical to `t175/reference.json`, `100 %` call-count reconciliation against `t177`, `4/4` classic/arachne & supports-off/on invariance) and proved via 12-thread exact IR replay (`240/240` `benchy` + `496/496` `base` layers) that the four-mechanism `EXACT_BUNDLE` (`E1 + E2 + E3 + E4a`) cuts stage wall **`−56.06 %`** (`470.77 → 206.83 ms`, `benchy`) and **`−44.58 %`** (`3,307.57 → 1,833.22 ms`, `base`) with **`EXACT_BIT_IDENTICAL`** output.
@@ -69,4 +69,57 @@ Graduated from: [`ShellClassification` post-t172 residual attribution and speedu
 
 ## Answer
 
-_(open)_
+**Resolved 2026-11-23 — landed.** The literal standing all-8-cell `0.80 %`
+gate passes **8/8** on the pre-registered verdict of record: two pooled ordinary
+windows, 10 interleaved pairs and 6 null pairs per cell
+([`PREREGISTRATION.md`](../evidence/t184-shell-classification-exact-accel/PREREGISTRATION.md)).
+
+- **Wall:** **`+4.99…+16.35 %`**, 78/80 pairs won.
+- **CPU:** lower in 8/8 cells, **`+4.85…+10.68 %`**.
+- **Accelerated arm:** `+7.76…+18.65 %` wall, CPU lower in 8/8.
+- **Output:** all **`448/448`** measured runs are byte-identical to
+  `t182/reference.json`, with zero degraded runs, zero errors and zero code-1200
+  diagnostics. The reference set is unchanged.
+- **Stage:** `host:shell_classification` falls **`−55…−57 %`** on benchy
+  (`~495 → ~215 ms`) and **`−33…−37 %`** on base (`~3.8 → ~2.5 s`).
+
+**Disclosed:**
+
+- Window 1 passed 7/8 (base-classic-on inside a noisy null median) and window 2
+  passed 8/8.
+- The pooled strict any-pair lens is 7/8; base-classic-on is inside window 1's
+  single `11.73 %` null pair.
+- Every guest WASM is recompiled because the guests depend on slicer-core.
+  Module sets and call counts are identical, but fuel drifts by
+  `−0.70…−1.36 %`. A host-only batch (candidate host on the baseline modules)
+  attributes the base CPU cut to the host change.
+
+**What landed differs from the ticket's scope in four exactness-driven ways:**
+
+1. **E3:** drops whole lower-layer polygons and holes outside the window instead
+   of rect-clipping them. Rect clipping creates rounded crossing vertices, so its
+   bit-identity was only empirical.
+2. **E2:** replaces the geometric "`None` stays `None`" skip with dependency
+   clusters plus *validated speculation*. The speculation recomputes every
+   dependent layer in parallel, then confirms in order that each commit equals
+   its precomputed one, falling back to the sequential loop on the first
+   mismatch. There were 0 misses in all 8 cells. The cluster radius comes from
+   the actual `depth_window_start` / `filled_window_start` windows:
+   `BRIDGE_FLOW_HEIGHT_FACTOR` is `1.0`, not the `1.6` this ticket assumed. A
+   layer whose window reaches past the current cluster's head merges the earlier
+   clusters.
+3. **E4a:** uses the prefix-sum cost only as a filter, then re-scores every
+   candidate within a proven error bound with the exact reference cost. A
+   selector that trusts the estimate fails the new quarter-turn tie test.
+4. **E1:** skips the internal-solid difference only for slices no top shadow
+   reached (`A \ A`). It does not take the `seed empty ⇒ clone` shortcut.
+
+The windowed deep-gather check was dropped: once qualify-first was in, the t180
+replay measured no gain from it.
+
+**Route (ESTIMATE ONLY).** Both benchy supports-off cells drop below `1.0x`:
+`0.877x` / `0.885x` on the ordinary arm. The binding cells are
+benchy-classic-on (`~1.33x`) and benchy-arachne-on (`~1.17x`).
+
+Evidence: [`FINDINGS.md`](../evidence/t184-shell-classification-exact-accel/FINDINGS.md),
+`verify.py` PASS, `--self-test` 16/16.

@@ -1,0 +1,1142 @@
+{
+  "schema": 1,
+  "note": "Deterministic WASM guest fuel via --profile, ordinary baseline vs candidate. t184 edits no guest source and no guest calls the edited slicer-core functions, but every guest is recompiled (the freshness fingerprint covers slicer-core) and the recompiled WASM differs, so per-module fuel drifts. Output is byte-identical; the drift is codegen, not behaviour. host_only.json isolates the host change.",
+  "cells": {
+    "benchy-classic-off": {
+      "baseline_total_fuel": 12827534517,
+      "candidate_total_fuel": 12682815452,
+      "total_delta_pct": -1.1281908055535346,
+      "module_count": 22,
+      "same_module_set": true,
+      "calls_identical": true,
+      "modules": {
+        "com.core.classic-perimeters": {
+          "baseline_fuel": 7975768000,
+          "candidate_fuel": 7830593122,
+          "delta_pct": -1.820199358857981,
+          "calls_identical": true
+        },
+        "com.core.fuzzy-skin": {
+          "baseline_fuel": 95709494,
+          "candidate_fuel": 95697635,
+          "delta_pct": -0.01239062030774084,
+          "calls_identical": true
+        },
+        "com.core.gyroid-infill": {
+          "baseline_fuel": 305030547,
+          "candidate_fuel": 305097396,
+          "delta_pct": 0.021915509989889635,
+          "calls_identical": true
+        },
+        "com.core.infill-linker": {
+          "baseline_fuel": 2667860260,
+          "candidate_fuel": 2668270609,
+          "delta_pct": 0.015381202912029582,
+          "calls_identical": true
+        },
+        "com.core.layer-planner-default": {
+          "baseline_fuel": 1420543,
+          "candidate_fuel": 1420494,
+          "delta_pct": -0.0034493851998848328,
+          "calls_identical": true
+        },
+        "com.core.lightning-infill": {
+          "baseline_fuel": 76150035,
+          "candidate_fuel": 76137487,
+          "delta_pct": -0.01647799636598985,
+          "calls_identical": true
+        },
+        "com.core.machine-gcode-emit": {
+          "baseline_fuel": 107537536,
+          "candidate_fuel": 107541742,
+          "delta_pct": 0.003911192460277312,
+          "calls_identical": true
+        },
+        "com.core.overhang-classifier-default": {
+          "baseline_fuel": 34438571,
+          "candidate_fuel": 34439073,
+          "delta_pct": 0.0014576679154312182,
+          "calls_identical": true
+        },
+        "com.core.part-cooling": {
+          "baseline_fuel": 36139819,
+          "candidate_fuel": 36139746,
+          "delta_pct": -0.00020199326399504103,
+          "calls_identical": true
+        },
+        "com.core.path-optimization-default": {
+          "baseline_fuel": 62712829,
+          "candidate_fuel": 62695185,
+          "delta_pct": -0.028134594278947298,
+          "calls_identical": true
+        },
+        "com.core.raft-default": {
+          "baseline_fuel": 62390318,
+          "candidate_fuel": 62376518,
+          "delta_pct": -0.022118816576636138,
+          "calls_identical": true
+        },
+        "com.core.rectilinear-infill": {
+          "baseline_fuel": 141259939,
+          "candidate_fuel": 141280858,
+          "delta_pct": 0.014808869484220858,
+          "calls_identical": true
+        },
+        "com.core.seam-placer": {
+          "baseline_fuel": 149267893,
+          "candidate_fuel": 149256133,
+          "delta_pct": -0.007878452468006633,
+          "calls_identical": true
+        },
+        "com.core.seam-planner-default": {
+          "baseline_fuel": 662564678,
+          "candidate_fuel": 662564629,
+          "delta_pct": -7.395504412929179e-06,
+          "calls_identical": true
+        },
+        "com.core.skirt-brim": {
+          "baseline_fuel": 39592125,
+          "candidate_fuel": 39592256,
+          "delta_pct": 0.00033087387959095403,
+          "calls_identical": true
+        },
+        "com.core.support-surface-ironing": {
+          "baseline_fuel": 66335546,
+          "candidate_fuel": 66329443,
+          "delta_pct": -0.009200195623625378,
+          "calls_identical": true
+        },
+        "com.core.top-surface-ironing": {
+          "baseline_fuel": 67123577,
+          "candidate_fuel": 67123343,
+          "delta_pct": -0.00034861074224337,
+          "calls_identical": true
+        },
+        "com.core.traditional-support-planner": {
+          "baseline_fuel": 32133168,
+          "candidate_fuel": 32133029,
+          "delta_pct": -0.000432574839804155,
+          "calls_identical": true
+        },
+        "com.core.tree-support": {
+          "baseline_fuel": 86388468,
+          "candidate_fuel": 86389413,
+          "delta_pct": 0.0010938960047306315,
+          "calls_identical": true
+        },
+        "com.core.tree-support-planner": {
+          "baseline_fuel": 32184170,
+          "candidate_fuel": 32183972,
+          "delta_pct": -0.0006152092783501951,
+          "calls_identical": true
+        },
+        "com.core.wave-overhangs": {
+          "baseline_fuel": 89466210,
+          "candidate_fuel": 89440521,
+          "delta_pct": -0.028713633895970335,
+          "calls_identical": true
+        },
+        "com.core.wipe-tower": {
+          "baseline_fuel": 36060791,
+          "candidate_fuel": 36112848,
+          "delta_pct": 0.14435900754367811,
+          "calls_identical": true
+        }
+      }
+    },
+    "benchy-classic-on": {
+      "baseline_total_fuel": 20860981051,
+      "candidate_total_fuel": 20715981213,
+      "total_delta_pct": -0.695076792627877,
+      "module_count": 22,
+      "same_module_set": true,
+      "calls_identical": true,
+      "modules": {
+        "com.core.classic-perimeters": {
+          "baseline_fuel": 7976128654,
+          "candidate_fuel": 7830602465,
+          "delta_pct": -1.82452158575726,
+          "calls_identical": true
+        },
+        "com.core.fuzzy-skin": {
+          "baseline_fuel": 95710060,
+          "candidate_fuel": 95698483,
+          "delta_pct": -0.012095907159602659,
+          "calls_identical": true
+        },
+        "com.core.gyroid-infill": {
+          "baseline_fuel": 335539461,
+          "candidate_fuel": 335569005,
+          "delta_pct": 0.00880492562989484,
+          "calls_identical": true
+        },
+        "com.core.infill-linker": {
+          "baseline_fuel": 2667793046,
+          "candidate_fuel": 2668174659,
+          "delta_pct": 0.014304445413116951,
+          "calls_identical": true
+        },
+        "com.core.layer-planner-default": {
+          "baseline_fuel": 1420543,
+          "candidate_fuel": 1420494,
+          "delta_pct": -0.0034493851998848328,
+          "calls_identical": true
+        },
+        "com.core.lightning-infill": {
+          "baseline_fuel": 106455263,
+          "candidate_fuel": 106453533,
+          "delta_pct": -0.0016250957925866005,
+          "calls_identical": true
+        },
+        "com.core.machine-gcode-emit": {
+          "baseline_fuel": 217706969,
+          "candidate_fuel": 217706969,
+          "delta_pct": 0.0,
+          "calls_identical": true
+        },
+        "com.core.overhang-classifier-default": {
+          "baseline_fuel": 143932059,
+          "candidate_fuel": 143931936,
+          "delta_pct": -8.54569863410347e-05,
+          "calls_identical": true
+        },
+        "com.core.part-cooling": {
+          "baseline_fuel": 151768070,
+          "candidate_fuel": 151768054,
+          "delta_pct": -1.0542401969004416e-05,
+          "calls_identical": true
+        },
+        "com.core.path-optimization-default": {
+          "baseline_fuel": 85780010,
+          "candidate_fuel": 85766022,
+          "delta_pct": -0.01630682952823158,
+          "calls_identical": true
+        },
+        "com.core.raft-default": {
+          "baseline_fuel": 92785976,
+          "candidate_fuel": 92772398,
+          "delta_pct": -0.014633676968597064,
+          "calls_identical": true
+        },
+        "com.core.rectilinear-infill": {
+          "baseline_fuel": 171799328,
+          "candidate_fuel": 171752815,
+          "delta_pct": -0.027074029067214976,
+          "calls_identical": true
+        },
+        "com.core.seam-placer": {
+          "baseline_fuel": 149267893,
+          "candidate_fuel": 149256133,
+          "delta_pct": -0.007878452468006633,
+          "calls_identical": true
+        },
+        "com.core.seam-planner-default": {
+          "baseline_fuel": 662564678,
+          "candidate_fuel": 662564629,
+          "delta_pct": -7.395504412929179e-06,
+          "calls_identical": true
+        },
+        "com.core.skirt-brim": {
+          "baseline_fuel": 154510018,
+          "candidate_fuel": 154509815,
+          "delta_pct": -0.00013138306669539058,
+          "calls_identical": true
+        },
+        "com.core.support-surface-ironing": {
+          "baseline_fuel": 66339333,
+          "candidate_fuel": 66326882,
+          "delta_pct": -0.01876865418589602,
+          "calls_identical": true
+        },
+        "com.core.top-surface-ironing": {
+          "baseline_fuel": 97418194,
+          "candidate_fuel": 97376033,
+          "delta_pct": -0.04327836338251149,
+          "calls_identical": true
+        },
+        "com.core.traditional-support-planner": {
+          "baseline_fuel": 65118744,
+          "candidate_fuel": 65118380,
+          "delta_pct": -0.0005589788402552727,
+          "calls_identical": true
+        },
+        "com.core.tree-support": {
+          "baseline_fuel": 1500222555,
+          "candidate_fuel": 1500430414,
+          "delta_pct": 0.013855210969015194,
+          "calls_identical": true
+        },
+        "com.core.tree-support-planner": {
+          "baseline_fuel": 5851954899,
+          "candidate_fuel": 5851955021,
+          "delta_pct": 2.084773415134278e-06,
+          "calls_identical": true
+        },
+        "com.core.wave-overhangs": {
+          "baseline_fuel": 119685135,
+          "candidate_fuel": 119747056,
+          "delta_pct": 0.05173658366178891,
+          "calls_identical": true
+        },
+        "com.core.wipe-tower": {
+          "baseline_fuel": 147080163,
+          "candidate_fuel": 147080017,
+          "delta_pct": -9.926559572822884e-05,
+          "calls_identical": true
+        }
+      }
+    },
+    "benchy-arachne-off": {
+      "baseline_total_fuel": 12352627071,
+      "candidate_total_fuel": 12207485655,
+      "total_delta_pct": -1.1749841970113826,
+      "module_count": 22,
+      "same_module_set": true,
+      "calls_identical": true,
+      "modules": {
+        "com.core.arachne-perimeters": {
+          "baseline_fuel": 7288590922,
+          "candidate_fuel": 7143165758,
+          "delta_pct": -1.9952438757544526,
+          "calls_identical": true
+        },
+        "com.core.fuzzy-skin": {
+          "baseline_fuel": 105642308,
+          "candidate_fuel": 105631259,
+          "delta_pct": -0.010458877895776379,
+          "calls_identical": true
+        },
+        "com.core.gyroid-infill": {
+          "baseline_fuel": 311037238,
+          "candidate_fuel": 310991021,
+          "delta_pct": -0.014858992542880027,
+          "calls_identical": true
+        },
+        "com.core.infill-linker": {
+          "baseline_fuel": 2825893323,
+          "candidate_fuel": 2826350080,
+          "delta_pct": 0.01616327822010994,
+          "calls_identical": true
+        },
+        "com.core.layer-planner-default": {
+          "baseline_fuel": 1420546,
+          "candidate_fuel": 1420494,
+          "delta_pct": -0.003660564318226935,
+          "calls_identical": true
+        },
+        "com.core.lightning-infill": {
+          "baseline_fuel": 76447036,
+          "candidate_fuel": 76427844,
+          "delta_pct": -0.025104962866055396,
+          "calls_identical": true
+        },
+        "com.core.machine-gcode-emit": {
+          "baseline_fuel": 111999271,
+          "candidate_fuel": 111997219,
+          "delta_pct": -0.001832154782507468,
+          "calls_identical": true
+        },
+        "com.core.overhang-classifier-default": {
+          "baseline_fuel": 36703963,
+          "candidate_fuel": 36703385,
+          "delta_pct": -0.0015747618315766067,
+          "calls_identical": true
+        },
+        "com.core.part-cooling": {
+          "baseline_fuel": 38386633,
+          "candidate_fuel": 38386981,
+          "delta_pct": 0.0009065655745321555,
+          "calls_identical": true
+        },
+        "com.core.path-optimization-default": {
+          "baseline_fuel": 67811259,
+          "candidate_fuel": 67795569,
+          "delta_pct": -0.023137750620439004,
+          "calls_identical": true
+        },
+        "com.core.raft-default": {
+          "baseline_fuel": 62591759,
+          "candidate_fuel": 62575588,
+          "delta_pct": -0.025835669516812907,
+          "calls_identical": true
+        },
+        "com.core.rectilinear-infill": {
+          "baseline_fuel": 143760197,
+          "candidate_fuel": 143737182,
+          "delta_pct": -0.016009299152532463,
+          "calls_identical": true
+        },
+        "com.core.seam-placer": {
+          "baseline_fuel": 164783861,
+          "candidate_fuel": 164772101,
+          "delta_pct": -0.007136621225303127,
+          "calls_identical": true
+        },
+        "com.core.seam-planner-default": {
+          "baseline_fuel": 662564678,
+          "candidate_fuel": 662564629,
+          "delta_pct": -7.395504412929179e-06,
+          "calls_identical": true
+        },
+        "com.core.skirt-brim": {
+          "baseline_fuel": 41830410,
+          "candidate_fuel": 41830135,
+          "delta_pct": -0.0006574164585047099,
+          "calls_identical": true
+        },
+        "com.core.support-surface-ironing": {
+          "baseline_fuel": 66574270,
+          "candidate_fuel": 66563394,
+          "delta_pct": -0.016336641768659274,
+          "calls_identical": true
+        },
+        "com.core.top-surface-ironing": {
+          "baseline_fuel": 67307550,
+          "candidate_fuel": 67311177,
+          "delta_pct": 0.005388697107531027,
+          "calls_identical": true
+        },
+        "com.core.traditional-support-planner": {
+          "baseline_fuel": 32133318,
+          "candidate_fuel": 32133068,
+          "delta_pct": -0.0007780086700041371,
+          "calls_identical": true
+        },
+        "com.core.tree-support": {
+          "baseline_fuel": 86735060,
+          "candidate_fuel": 86687462,
+          "delta_pct": -0.05487746247019371,
+          "calls_identical": true
+        },
+        "com.core.tree-support-planner": {
+          "baseline_fuel": 32183838,
+          "candidate_fuel": 32184338,
+          "delta_pct": 0.0015535748098160326,
+          "calls_identical": true
+        },
+        "com.core.wave-overhangs": {
+          "baseline_fuel": 89829878,
+          "candidate_fuel": 89846550,
+          "delta_pct": 0.018559526486276647,
+          "calls_identical": true
+        },
+        "com.core.wipe-tower": {
+          "baseline_fuel": 38399753,
+          "candidate_fuel": 38410421,
+          "delta_pct": 0.0277814286982523,
+          "calls_identical": true
+        }
+      }
+    },
+    "benchy-arachne-on": {
+      "baseline_total_fuel": 20385795787,
+      "candidate_total_fuel": 20240607853,
+      "total_delta_pct": -0.7122014539780006,
+      "module_count": 22,
+      "same_module_set": true,
+      "calls_identical": true,
+      "modules": {
+        "com.core.arachne-perimeters": {
+          "baseline_fuel": 7288718261,
+          "candidate_fuel": 7142748567,
+          "delta_pct": -2.0026798783133812,
+          "calls_identical": true
+        },
+        "com.core.fuzzy-skin": {
+          "baseline_fuel": 105642984,
+          "candidate_fuel": 105632251,
+          "delta_pct": -0.010159690301818814,
+          "calls_identical": true
+        },
+        "com.core.gyroid-infill": {
+          "baseline_fuel": 341110259,
+          "candidate_fuel": 341142854,
+          "delta_pct": 0.009555561329511346,
+          "calls_identical": true
+        },
+        "com.core.infill-linker": {
+          "baseline_fuel": 2825772849,
+          "candidate_fuel": 2826310562,
+          "delta_pct": 0.019028882671524316,
+          "calls_identical": true
+        },
+        "com.core.layer-planner-default": {
+          "baseline_fuel": 1420546,
+          "candidate_fuel": 1420494,
+          "delta_pct": -0.003660564318226935,
+          "calls_identical": true
+        },
+        "com.core.lightning-infill": {
+          "baseline_fuel": 106791973,
+          "candidate_fuel": 106869331,
+          "delta_pct": 0.07243802865220966,
+          "calls_identical": true
+        },
+        "com.core.machine-gcode-emit": {
+          "baseline_fuel": 222866311,
+          "candidate_fuel": 222867527,
+          "delta_pct": 0.0005456185793823276,
+          "calls_identical": true
+        },
+        "com.core.overhang-classifier-default": {
+          "baseline_fuel": 146284028,
+          "candidate_fuel": 146283721,
+          "delta_pct": -0.00020986570044407034,
+          "calls_identical": true
+        },
+        "com.core.part-cooling": {
+          "baseline_fuel": 153998393,
+          "candidate_fuel": 153998397,
+          "delta_pct": 2.5974297017501993e-06,
+          "calls_identical": true
+        },
+        "com.core.path-optimization-default": {
+          "baseline_fuel": 90962909,
+          "candidate_fuel": 90956731,
+          "delta_pct": -0.00679177927346189,
+          "calls_identical": true
+        },
+        "com.core.raft-default": {
+          "baseline_fuel": 92980158,
+          "candidate_fuel": 92968030,
+          "delta_pct": -0.013043643139431963,
+          "calls_identical": true
+        },
+        "com.core.rectilinear-infill": {
+          "baseline_fuel": 174235773,
+          "candidate_fuel": 174202169,
+          "delta_pct": -0.0192865101244163,
+          "calls_identical": true
+        },
+        "com.core.seam-placer": {
+          "baseline_fuel": 164783861,
+          "candidate_fuel": 164772101,
+          "delta_pct": -0.007136621225303127,
+          "calls_identical": true
+        },
+        "com.core.seam-planner-default": {
+          "baseline_fuel": 662564678,
+          "candidate_fuel": 662564629,
+          "delta_pct": -7.395504412929179e-06,
+          "calls_identical": true
+        },
+        "com.core.skirt-brim": {
+          "baseline_fuel": 156506162,
+          "candidate_fuel": 156506086,
+          "delta_pct": -4.8560388312378396e-05,
+          "calls_identical": true
+        },
+        "com.core.support-surface-ironing": {
+          "baseline_fuel": 66574562,
+          "candidate_fuel": 66557673,
+          "delta_pct": -0.025368548425448147,
+          "calls_identical": true
+        },
+        "com.core.top-surface-ironing": {
+          "baseline_fuel": 97802599,
+          "candidate_fuel": 97788336,
+          "delta_pct": -0.014583457030625536,
+          "calls_identical": true
+        },
+        "com.core.traditional-support-planner": {
+          "baseline_fuel": 65118253,
+          "candidate_fuel": 65118246,
+          "delta_pct": -1.0749674135146101e-05,
+          "calls_identical": true
+        },
+        "com.core.tree-support": {
+          "baseline_fuel": 1500085169,
+          "candidate_fuel": 1500320365,
+          "delta_pct": 0.01567884309907473,
+          "calls_identical": true
+        },
+        "com.core.tree-support-planner": {
+          "baseline_fuel": 5851955313,
+          "candidate_fuel": 5851955891,
+          "delta_pct": 9.87704056310862e-06,
+          "calls_identical": true
+        },
+        "com.core.wave-overhangs": {
+          "baseline_fuel": 120198230,
+          "candidate_fuel": 120228729,
+          "delta_pct": 0.02537391773572706,
+          "calls_identical": true
+        },
+        "com.core.wipe-tower": {
+          "baseline_fuel": 149422516,
+          "candidate_fuel": 149395163,
+          "delta_pct": -0.018305808744379596,
+          "calls_identical": true
+        }
+      }
+    },
+    "base-classic-off": {
+      "baseline_total_fuel": 94726522420,
+      "candidate_total_fuel": 93618070258,
+      "total_delta_pct": -1.1701603032415007,
+      "module_count": 22,
+      "same_module_set": true,
+      "calls_identical": true,
+      "modules": {
+        "com.core.classic-perimeters": {
+          "baseline_fuel": 76983472790,
+          "candidate_fuel": 75874888558,
+          "delta_pct": -1.4400288683053577,
+          "calls_identical": true
+        },
+        "com.core.fuzzy-skin": {
+          "baseline_fuel": 389326148,
+          "candidate_fuel": 389301879,
+          "delta_pct": -0.00623359107130919,
+          "calls_identical": true
+        },
+        "com.core.gyroid-infill": {
+          "baseline_fuel": 1012143963,
+          "candidate_fuel": 1012008235,
+          "delta_pct": -0.013409950062607843,
+          "calls_identical": true
+        },
+        "com.core.infill-linker": {
+          "baseline_fuel": 7740722491,
+          "candidate_fuel": 7741233008,
+          "delta_pct": 0.006595211242795088,
+          "calls_identical": true
+        },
+        "com.core.layer-planner-default": {
+          "baseline_fuel": 4498096,
+          "candidate_fuel": 4498047,
+          "delta_pct": -0.0010893498048952267,
+          "calls_identical": true
+        },
+        "com.core.lightning-infill": {
+          "baseline_fuel": 305920689,
+          "candidate_fuel": 305914132,
+          "delta_pct": -0.002143365988561826,
+          "calls_identical": true
+        },
+        "com.core.machine-gcode-emit": {
+          "baseline_fuel": 524169099,
+          "candidate_fuel": 524166849,
+          "delta_pct": -0.0004292507903065075,
+          "calls_identical": true
+        },
+        "com.core.overhang-classifier-default": {
+          "baseline_fuel": 146322112,
+          "candidate_fuel": 146321985,
+          "delta_pct": -8.679481061618356e-05,
+          "calls_identical": true
+        },
+        "com.core.part-cooling": {
+          "baseline_fuel": 149225086,
+          "candidate_fuel": 149224960,
+          "delta_pct": -8.443620531738209e-05,
+          "calls_identical": true
+        },
+        "com.core.path-optimization-default": {
+          "baseline_fuel": 225092398,
+          "candidate_fuel": 225073671,
+          "delta_pct": -0.008319694563829739,
+          "calls_identical": true
+        },
+        "com.core.raft-default": {
+          "baseline_fuel": 277477200,
+          "candidate_fuel": 277453370,
+          "delta_pct": -0.00858809300367742,
+          "calls_identical": true
+        },
+        "com.core.rectilinear-infill": {
+          "baseline_fuel": 368150161,
+          "candidate_fuel": 368118260,
+          "delta_pct": -0.008665214192314315,
+          "calls_identical": true
+        },
+        "com.core.seam-placer": {
+          "baseline_fuel": 687327636,
+          "candidate_fuel": 687303332,
+          "delta_pct": -0.003536013791245257,
+          "calls_identical": true
+        },
+        "com.core.seam-planner-default": {
+          "baseline_fuel": 3903170090,
+          "candidate_fuel": 3903170041,
+          "delta_pct": -1.255389820841756e-06,
+          "calls_identical": true
+        },
+        "com.core.skirt-brim": {
+          "baseline_fuel": 147997798,
+          "candidate_fuel": 147997622,
+          "delta_pct": -0.00011892068826591595,
+          "calls_identical": true
+        },
+        "com.core.support-surface-ironing": {
+          "baseline_fuel": 285583731,
+          "candidate_fuel": 285557453,
+          "delta_pct": -0.009201504549291011,
+          "calls_identical": true
+        },
+        "com.core.top-surface-ironing": {
+          "baseline_fuel": 287122539,
+          "candidate_fuel": 287095439,
+          "delta_pct": -0.009438478809216715,
+          "calls_identical": true
+        },
+        "com.core.traditional-support-planner": {
+          "baseline_fuel": 228038128,
+          "candidate_fuel": 228038045,
+          "delta_pct": -3.6397422101272464e-05,
+          "calls_identical": true
+        },
+        "com.core.tree-support": {
+          "baseline_fuel": 351909824,
+          "candidate_fuel": 351892592,
+          "delta_pct": -0.004896708993267548,
+          "calls_identical": true
+        },
+        "com.core.tree-support-planner": {
+          "baseline_fuel": 228076913,
+          "candidate_fuel": 228076568,
+          "delta_pct": -0.00015126476216380567,
+          "calls_identical": true
+        },
+        "com.core.wave-overhangs": {
+          "baseline_fuel": 333559213,
+          "candidate_fuel": 333520120,
+          "delta_pct": -0.011719958099313539,
+          "calls_identical": true
+        },
+        "com.core.wipe-tower": {
+          "baseline_fuel": 147216315,
+          "candidate_fuel": 147216092,
+          "delta_pct": -0.00015147777608752127,
+          "calls_identical": true
+        }
+      }
+    },
+    "base-classic-on": {
+      "baseline_total_fuel": 158017294141,
+      "candidate_total_fuel": 156908997106,
+      "total_delta_pct": -0.7013770492811112,
+      "module_count": 22,
+      "same_module_set": true,
+      "calls_identical": true,
+      "modules": {
+        "com.core.classic-perimeters": {
+          "baseline_fuel": 76983953387,
+          "candidate_fuel": 75874279542,
+          "delta_pct": -1.4414352552429277,
+          "calls_identical": true
+        },
+        "com.core.fuzzy-skin": {
+          "baseline_fuel": 389326331,
+          "candidate_fuel": 389301509,
+          "delta_pct": -0.006375628367144785,
+          "calls_identical": true
+        },
+        "com.core.gyroid-infill": {
+          "baseline_fuel": 1232511534,
+          "candidate_fuel": 1232627343,
+          "delta_pct": 0.0093961798170077,
+          "calls_identical": true
+        },
+        "com.core.infill-linker": {
+          "baseline_fuel": 7740552996,
+          "candidate_fuel": 7741208247,
+          "delta_pct": 0.00846517038690397,
+          "calls_identical": true
+        },
+        "com.core.layer-planner-default": {
+          "baseline_fuel": 4498093,
+          "candidate_fuel": 4498047,
+          "delta_pct": -0.0010226556009402207,
+          "calls_identical": true
+        },
+        "com.core.lightning-infill": {
+          "baseline_fuel": 522693062,
+          "candidate_fuel": 522366404,
+          "delta_pct": -0.06249518575014107,
+          "calls_identical": true
+        },
+        "com.core.machine-gcode-emit": {
+          "baseline_fuel": 979001478,
+          "candidate_fuel": 979002343,
+          "delta_pct": 8.835533136958144e-05,
+          "calls_identical": true
+        },
+        "com.core.overhang-classifier-default": {
+          "baseline_fuel": 599380539,
+          "candidate_fuel": 599380486,
+          "delta_pct": -8.842462601209014e-06,
+          "calls_identical": true
+        },
+        "com.core.part-cooling": {
+          "baseline_fuel": 628209722,
+          "candidate_fuel": 628209816,
+          "delta_pct": 1.4963155886976229e-05,
+          "calls_identical": true
+        },
+        "com.core.path-optimization-default": {
+          "baseline_fuel": 325732356,
+          "candidate_fuel": 325709315,
+          "delta_pct": -0.007073598792255075,
+          "calls_identical": true
+        },
+        "com.core.raft-default": {
+          "baseline_fuel": 493408313,
+          "candidate_fuel": 493386774,
+          "delta_pct": -0.00436535004224787,
+          "calls_identical": true
+        },
+        "com.core.rectilinear-infill": {
+          "baseline_fuel": 584721844,
+          "candidate_fuel": 584841348,
+          "delta_pct": 0.020437751937312607,
+          "calls_identical": true
+        },
+        "com.core.seam-placer": {
+          "baseline_fuel": 687327636,
+          "candidate_fuel": 687303332,
+          "delta_pct": -0.003536013791245257,
+          "calls_identical": true
+        },
+        "com.core.seam-planner-default": {
+          "baseline_fuel": 3903170090,
+          "candidate_fuel": 3903170041,
+          "delta_pct": -1.255389820841756e-06,
+          "calls_identical": true
+        },
+        "com.core.skirt-brim": {
+          "baseline_fuel": 606566953,
+          "candidate_fuel": 606566754,
+          "delta_pct": -3.2807590162268534e-05,
+          "calls_identical": true
+        },
+        "com.core.support-surface-ironing": {
+          "baseline_fuel": 285579757,
+          "candidate_fuel": 285568511,
+          "delta_pct": -0.003937954187698254,
+          "calls_identical": true
+        },
+        "com.core.top-surface-ironing": {
+          "baseline_fuel": 502792511,
+          "candidate_fuel": 502645035,
+          "delta_pct": -0.02933138357742962,
+          "calls_identical": true
+        },
+        "com.core.traditional-support-planner": {
+          "baseline_fuel": 395888921,
+          "candidate_fuel": 395888412,
+          "delta_pct": -0.00012857141814281788,
+          "calls_identical": true
+        },
+        "com.core.tree-support": {
+          "baseline_fuel": 11437491601,
+          "candidate_fuel": 11437871200,
+          "delta_pct": 0.0033189007978533594,
+          "calls_identical": true
+        },
+        "com.core.tree-support-planner": {
+          "baseline_fuel": 48564812309,
+          "candidate_fuel": 48564812587,
+          "delta_pct": 5.724309160945346e-07,
+          "calls_identical": true
+        },
+        "com.core.wave-overhangs": {
+          "baseline_fuel": 550089018,
+          "candidate_fuel": 550605291,
+          "delta_pct": 0.09385262804864794,
+          "calls_identical": true
+        },
+        "com.core.wipe-tower": {
+          "baseline_fuel": 599585690,
+          "candidate_fuel": 599754769,
+          "delta_pct": 0.028199305423716833,
+          "calls_identical": true
+        }
+      }
+    },
+    "base-arachne-off": {
+      "baseline_total_fuel": 81818798971,
+      "candidate_total_fuel": 80709891824,
+      "total_delta_pct": -1.355320734288758,
+      "module_count": 22,
+      "same_module_set": true,
+      "calls_identical": true,
+      "modules": {
+        "com.core.arachne-perimeters": {
+          "baseline_fuel": 63392586240,
+          "candidate_fuel": 62283541080,
+          "delta_pct": -1.7494871652676085,
+          "calls_identical": true
+        },
+        "com.core.fuzzy-skin": {
+          "baseline_fuel": 373975740,
+          "candidate_fuel": 373951952,
+          "delta_pct": -0.006360840411733659,
+          "calls_identical": true
+        },
+        "com.core.gyroid-infill": {
+          "baseline_fuel": 1025444521,
+          "candidate_fuel": 1025463929,
+          "delta_pct": 0.0018926426152312532,
+          "calls_identical": true
+        },
+        "com.core.infill-linker": {
+          "baseline_fuel": 8452627576,
+          "candidate_fuel": 8453032353,
+          "delta_pct": 0.004788771259120715,
+          "calls_identical": true
+        },
+        "com.core.layer-planner-default": {
+          "baseline_fuel": 4498093,
+          "candidate_fuel": 4498047,
+          "delta_pct": -0.0010226556009402207,
+          "calls_identical": true
+        },
+        "com.core.lightning-infill": {
+          "baseline_fuel": 307227666,
+          "candidate_fuel": 307214354,
+          "delta_pct": -0.0043329431145696365,
+          "calls_identical": true
+        },
+        "com.core.machine-gcode-emit": {
+          "baseline_fuel": 520647422,
+          "candidate_fuel": 520641574,
+          "delta_pct": -0.0011232169320143106,
+          "calls_identical": true
+        },
+        "com.core.overhang-classifier-default": {
+          "baseline_fuel": 146312078,
+          "candidate_fuel": 146311689,
+          "delta_pct": -0.0002658700534620252,
+          "calls_identical": true
+        },
+        "com.core.part-cooling": {
+          "baseline_fuel": 149116806,
+          "candidate_fuel": 149116546,
+          "delta_pct": -0.00017435995779040492,
+          "calls_identical": true
+        },
+        "com.core.path-optimization-default": {
+          "baseline_fuel": 218715443,
+          "candidate_fuel": 218685793,
+          "delta_pct": -0.013556427288950054,
+          "calls_identical": true
+        },
+        "com.core.raft-default": {
+          "baseline_fuel": 278695321,
+          "candidate_fuel": 278667107,
+          "delta_pct": -0.01012360017339509,
+          "calls_identical": true
+        },
+        "com.core.rectilinear-infill": {
+          "baseline_fuel": 376372036,
+          "candidate_fuel": 376328660,
+          "delta_pct": -0.01152476694628822,
+          "calls_identical": true
+        },
+        "com.core.seam-placer": {
+          "baseline_fuel": 655055929,
+          "candidate_fuel": 655031625,
+          "delta_pct": -0.003710217543882425,
+          "calls_identical": true
+        },
+        "com.core.seam-planner-default": {
+          "baseline_fuel": 3903170090,
+          "candidate_fuel": 3903170041,
+          "delta_pct": -1.255389820841756e-06,
+          "calls_identical": true
+        },
+        "com.core.skirt-brim": {
+          "baseline_fuel": 147969796,
+          "candidate_fuel": 147969783,
+          "delta_pct": -8.785576753785618e-06,
+          "calls_identical": true
+        },
+        "com.core.support-surface-ironing": {
+          "baseline_fuel": 286802292,
+          "candidate_fuel": 286778701,
+          "delta_pct": -0.00822552701217604,
+          "calls_identical": true
+        },
+        "com.core.top-surface-ironing": {
+          "baseline_fuel": 288319993,
+          "candidate_fuel": 288304938,
+          "delta_pct": -0.005221628872611689,
+          "calls_identical": true
+        },
+        "com.core.traditional-support-planner": {
+          "baseline_fuel": 228038257,
+          "candidate_fuel": 228037683,
+          "delta_pct": -0.0002517121502117077,
+          "calls_identical": true
+        },
+        "com.core.tree-support": {
+          "baseline_fuel": 353167996,
+          "candidate_fuel": 353147894,
+          "delta_pct": -0.005691908731163738,
+          "calls_identical": true
+        },
+        "com.core.tree-support-planner": {
+          "baseline_fuel": 228076507,
+          "candidate_fuel": 228075696,
+          "delta_pct": -0.00035558243620418124,
+          "calls_identical": true
+        },
+        "com.core.wave-overhangs": {
+          "baseline_fuel": 334831949,
+          "candidate_fuel": 334790549,
+          "delta_pct": -0.012364411497661472,
+          "calls_identical": true
+        },
+        "com.core.wipe-tower": {
+          "baseline_fuel": 147147220,
+          "candidate_fuel": 147131830,
+          "delta_pct": -0.010458913189117675,
+          "calls_identical": true
+        }
+      }
+    },
+    "base-arachne-on": {
+      "baseline_total_fuel": 145110797865,
+      "candidate_total_fuel": 144001350159,
+      "total_delta_pct": -0.7645521369348031,
+      "module_count": 22,
+      "same_module_set": true,
+      "calls_identical": true,
+      "modules": {
+        "com.core.arachne-perimeters": {
+          "baseline_fuel": 63392034319,
+          "candidate_fuel": 62283013450,
+          "delta_pct": -1.7494640784348543,
+          "calls_identical": true
+        },
+        "com.core.fuzzy-skin": {
+          "baseline_fuel": 373976759,
+          "candidate_fuel": 373951341,
+          "delta_pct": -0.006796679041758315,
+          "calls_identical": true
+        },
+        "com.core.gyroid-infill": {
+          "baseline_fuel": 1244023462,
+          "candidate_fuel": 1243969070,
+          "delta_pct": -0.00437226480540445,
+          "calls_identical": true
+        },
+        "com.core.infill-linker": {
+          "baseline_fuel": 8452689465,
+          "candidate_fuel": 8453292101,
+          "delta_pct": 0.007129517800166813,
+          "calls_identical": true
+        },
+        "com.core.layer-planner-default": {
+          "baseline_fuel": 4498096,
+          "candidate_fuel": 4498047,
+          "delta_pct": -0.0010893498048952267,
+          "calls_identical": true
+        },
+        "com.core.lightning-infill": {
+          "baseline_fuel": 524832517,
+          "candidate_fuel": 524726778,
+          "delta_pct": -0.020147189165110362,
+          "calls_identical": true
+        },
+        "com.core.machine-gcode-emit": {
+          "baseline_fuel": 975617712,
+          "candidate_fuel": 975618507,
+          "delta_pct": 8.148683549115393e-05,
+          "calls_identical": true
+        },
+        "com.core.overhang-classifier-default": {
+          "baseline_fuel": 599407889,
+          "candidate_fuel": 599408012,
+          "delta_pct": 2.052025044335044e-05,
+          "calls_identical": true
+        },
+        "com.core.part-cooling": {
+          "baseline_fuel": 626671817,
+          "candidate_fuel": 626671771,
+          "delta_pct": -7.340365204264483e-06,
+          "calls_identical": true
+        },
+        "com.core.path-optimization-default": {
+          "baseline_fuel": 319334579,
+          "candidate_fuel": 319307193,
+          "delta_pct": -0.008575958195870795,
+          "calls_identical": true
+        },
+        "com.core.raft-default": {
+          "baseline_fuel": 495218436,
+          "candidate_fuel": 495194219,
+          "delta_pct": -0.004890165276480135,
+          "calls_identical": true
+        },
+        "com.core.rectilinear-infill": {
+          "baseline_fuel": 593997612,
+          "candidate_fuel": 593741251,
+          "delta_pct": -0.043158591014672294,
+          "calls_identical": true
+        },
+        "com.core.seam-placer": {
+          "baseline_fuel": 655055929,
+          "candidate_fuel": 655031625,
+          "delta_pct": -0.003710217543882425,
+          "calls_identical": true
+        },
+        "com.core.seam-planner-default": {
+          "baseline_fuel": 3903170090,
+          "candidate_fuel": 3903170041,
+          "delta_pct": -1.255389820841756e-06,
+          "calls_identical": true
+        },
+        "com.core.skirt-brim": {
+          "baseline_fuel": 606475359,
+          "candidate_fuel": 606475560,
+          "delta_pct": 3.314231930732077e-05,
+          "calls_identical": true
+        },
+        "com.core.support-surface-ironing": {
+          "baseline_fuel": 286793022,
+          "candidate_fuel": 286763341,
+          "delta_pct": -0.010349275513404924,
+          "calls_identical": true
+        },
+        "com.core.top-surface-ironing": {
+          "baseline_fuel": 505796399,
+          "candidate_fuel": 505551634,
+          "delta_pct": -0.04839200130406622,
+          "calls_identical": true
+        },
+        "com.core.traditional-support-planner": {
+          "baseline_fuel": 395888561,
+          "candidate_fuel": 395888333,
+          "delta_pct": -5.759196462360023e-05,
+          "calls_identical": true
+        },
+        "com.core.tree-support": {
+          "baseline_fuel": 11439684495,
+          "candidate_fuel": 11439430880,
+          "delta_pct": -0.0022169754778713414,
+          "calls_identical": true
+        },
+        "com.core.tree-support-planner": {
+          "baseline_fuel": 48564812709,
+          "candidate_fuel": 48564812424,
+          "delta_pct": -5.868446393641377e-07,
+          "calls_identical": true
+        },
+        "com.core.wave-overhangs": {
+          "baseline_fuel": 551135487,
+          "candidate_fuel": 551151653,
+          "delta_pct": 0.0029332170367029915,
+          "calls_identical": true
+        },
+        "com.core.wipe-tower": {
+          "baseline_fuel": 599683151,
+          "candidate_fuel": 599682928,
+          "delta_pct": -3.7186304072098236e-05,
+          "calls_identical": true
+        }
+      }
+    }
+  }
+}

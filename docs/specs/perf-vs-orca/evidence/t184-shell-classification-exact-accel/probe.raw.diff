@@ -1,0 +1,170 @@
+diff --git a/target/t184-prepass.clean.rs b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+index 4d19221a..6a0ed1e1 100644
+--- a/target/t184-prepass.clean.rs
++++ b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+@@ -67,6 +67,9 @@ use slicer_ir::BlackboardError;
+ 
+ use crate::blackboard::Blackboard;
+ 
++thread_local! { static T184_T0: std::cell::Cell<Option<std::time::Instant>> = const { std::cell::Cell::new(None) }; }
++fn t184_mark(label: &str, t: std::time::Instant) { if std::env::var_os("PNP_T184_PROBE").is_some() { eprintln!("T184PROBE {} {:.3}", label, t.elapsed().as_secs_f64()*1000.0); } }
++
+ /// Structured failures for `PrePass::ShellClassification`.
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub enum ShellClassificationError {
+@@ -133,7 +136,9 @@ pub fn commit_shell_classification_builtin(
+         .map(|layer| layer.index)
+         .collect();
+ 
++    let t_stage = std::time::Instant::now();
+     let mut new_vec: Vec<SliceIR> = old_arc.as_ref().clone();
++    t184_mark("clone", t_stage);
+ 
+     // Build per-region timelines: ordered Vec<usize> of slice indices where the
+     // (object, region) pair appears. Slices retain their `global_layer_index`
+@@ -148,6 +153,7 @@ pub fn commit_shell_classification_builtin(
+     // independent of the others. This loop stays sequential because the axis is
+     // degenerate on ordinary prints (one timeline; see the module header);
+     // `compute_region_updates` parallelises over the timeline instead.
++    let t_p = std::time::Instant::now();
+     let per_region_updates: Vec<Vec<RegionEdit>> = timelines
+         .iter()
+         .map(|((object_id, region_id), timeline)| {
+@@ -167,6 +173,7 @@ pub fn commit_shell_classification_builtin(
+         })
+         .collect();
+ 
++    t184_mark("pass12", t_p);
+     // Apply updates serially. Each update targets a single SlicedRegion (by
+     // object_id + region_id within the SliceIR at slice_idx); regions from
+     // different timelines never collide.
+@@ -202,6 +209,7 @@ pub fn commit_shell_classification_builtin(
+     // the committed lower-layer polygons; it must not subtract a second lower
+     // layer, which here would be the closed region polygons rather than the
+     // raw slices.
++    let t_b4 = std::time::Instant::now();
+     let mut object_layers: HashMap<ObjectId, HashSet<u32>> = HashMap::new();
+     let mut lower_layer_polygons: HashMap<(ObjectId, u32), Vec<ExPolygon>> = HashMap::new();
+     for slice in &new_vec {
+@@ -247,6 +255,8 @@ pub fn commit_shell_classification_builtin(
+     // from it at Perimeters commit, so module sparse infill never covers the
+     // gated area. (`sparse_infill_area` itself is NOT mutated here — it does
+     // not exist yet at this stage and would be overwritten.)
++    t184_mark("b4", t_b4);
++    let t_g = std::time::Instant::now();
+     let gate_stats = gate_internal_bridge_sites(
+         &mut new_vec,
+         &timelines,
+@@ -254,6 +264,7 @@ pub fn commit_shell_classification_builtin(
+         &object_layers,
+         &lower_layer_polygons,
+     );
++    t184_mark("gate", t_g);
+     log::debug!(
+         "internal bridge gate prep_layers={} clusters={} recomputed={}",
+         gate_stats.prep_layers,
+@@ -261,6 +272,7 @@ pub fn commit_shell_classification_builtin(
+         gate_stats.recomputed
+     );
+ 
++    t184_mark("total", t_stage);
+     blackboard.replace_slice_ir(Arc::new(new_vec))?;
+     Ok(())
+ }
+@@ -474,6 +486,7 @@ fn compute_region_updates(
+     // iteration, so the resulting map is identical to the previous sequential
+     // build. This pass performs two `difference` calls and one canonical
+     // `opening_ex` per exposed side, on full-layer geometry.
++    let t_r = std::time::Instant::now();
+     let pass1: Vec<(usize, RegionUpdate)> = timeline
+         .par_iter()
+         .enumerate()
+@@ -517,6 +530,8 @@ fn compute_region_updates(
+             touched.then_some((slice_idx, update))
+         })
+         .collect();
++    t184_mark("p1", t_r);
++    let t_r = std::time::Instant::now();
+     let mut local: HashMap<usize, RegionUpdate> = pass1.into_iter().collect();
+     // Slices that received at least one top Pass-2 shadow. Every other slice's
+     // `top_solid_fill` is still the Pass-1 seed clone.
+@@ -553,7 +568,10 @@ fn compute_region_updates(
+                 )
+             })
+             .collect();
++        t184_mark("p2top_proj", t_r);
++        let t_m = std::time::Instant::now();
+         top_received = merge_shadow_contributions(&mut local, contributions, ShellSide::Top);
++        t184_mark("p2top_merge", t_m);
+     }
+ 
+     // Pass 2: shrinking-shadow projection for bottom (walk forward).
+@@ -568,6 +586,7 @@ fn compute_region_updates(
+     // `slices` / `fill_surfaces` of the target type, and only the *scatter
+     // target* is mutated. Gathering seeds up front restores that, and makes the
+     // chains independent as a side effect. See `docs/DEVIATION_LOG.md`.
++    let t_r = std::time::Instant::now();
+     if k_bot > 1 {
+         let seeds = gather_seeds(timeline, &local, |u| {
+             (u.bottom_shell_index, u.bottom_solid_fill.as_ref())
+@@ -588,7 +607,10 @@ fn compute_region_updates(
+                 )
+             })
+             .collect();
++        t184_mark("p2bot_proj", t_r);
++        let t_m = std::time::Instant::now();
+         merge_shadow_contributions(&mut local, contributions, ShellSide::Bottom);
++        t184_mark("p2bot_merge", t_m);
+     }
+ 
+     // The depth-0 exposed seed remains top solid, not internal solid. Only
+@@ -599,6 +621,7 @@ fn compute_region_updates(
+     // in parallel. A slice that no top Pass-2 shadow reached still holds the
+     // fill Pass 1 wrote, which is a clone of its seed, and `A \ A` is empty:
+     // the clipper call is skipped for it.
++    let t_d = std::time::Instant::now();
+     local.par_iter_mut().for_each(|(slice_idx, update)| {
+         if let Some(top_fill) = update.top_solid_fill.as_ref() {
+             update.internal_solid_fill = Some(if top_received.contains(slice_idx) {
+@@ -610,6 +633,7 @@ fn compute_region_updates(
+         }
+     });
+ 
++    t184_mark("isf_diff", t_d);
+     local
+         .into_iter()
+         .map(|(slice_idx, update)| RegionEdit {
+@@ -1228,6 +1252,7 @@ fn gate_internal_bridge_sites_clustered(
+         // `unsupported_span_areas` alone is four full-layer clipper ops per
+         // layer and was the stage's largest serial block.
+         let slices_ro: &[SliceIR] = slices;
++        let t_a = std::time::Instant::now();
+         let preps: Vec<LayerPrep> = timeline
+             .par_iter()
+             .enumerate()
+@@ -1389,6 +1414,8 @@ fn gate_internal_bridge_sites_clustered(
+         // bridge polygons subtracted by
+         // `remove_filled_polygons_on_lower_layers`; when that set is empty the
+         // result below is exact and phase B merely publishes it.
++        t184_mark("gA", t_a);
++        let t_a = std::time::Instant::now();
+         let no_commits = |_: usize| -> Option<&[ExPolygon]> { None };
+         let mut precomputed: Vec<Option<InternalBridgeLayerResult>> = preps
+             .par_iter()
+@@ -1433,6 +1460,8 @@ fn gate_internal_bridge_sites_clustered(
+             })
+             .collect();
+ 
++        t184_mark("gPre", t_a);
++        let t_a = std::time::Instant::now();
+         // Phase B — commit. A layer reads the commits of earlier layers of
+         // this same pass in exactly two places, both over a window that ends
+         // just below it: `lower_candidates` reads `internal_bridge_areas` over
+@@ -1617,6 +1646,7 @@ fn gate_internal_bridge_sites_clustered(
+             );
+         }
+ 
++        t184_mark("gB", t_a);
+         if extra_bridge_layer {
+             for pair in timeline.windows(2) {
+                 let [current_idx, upper_idx] = pair else {
