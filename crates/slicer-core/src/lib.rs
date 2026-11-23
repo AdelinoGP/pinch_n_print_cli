@@ -29,6 +29,7 @@ pub mod paint_policy;
 pub mod perimeter_spatial;
 pub mod perimeter_utils;
 pub mod polygon_ops;
+mod polygon_ops_spatial_union;
 pub mod polygon_tree;
 /// Profiling-scope seam: `slicer-core` declares the sink, others install it.
 ///

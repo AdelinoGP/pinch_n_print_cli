@@ -2744,11 +2744,15 @@ impl hs::Host for HostExecutionContext {
             |r| {
                 let ir_subject = wit_to_ir_expolygons(&r.subject);
                 let ir_clip = wit_to_ir_expolygons(&r.clip);
-                let result = slicer_core::polygon_ops::clip_polygons(
-                    &ir_subject,
-                    &ir_clip,
-                    ir_clip_op(r.op),
-                );
+                let op = ir_clip_op(r.op);
+                let result = if op == slicer_core::polygon_ops::ClipOperation::Union
+                    && ir_subject.len() + ir_clip.len()
+                        > slicer_core::polygon_ops::DEFAULT_SPATIAL_UNION_CHUNK_SIZE
+                {
+                    slicer_core::polygon_ops::union_spatial_tree(&ir_subject, &ir_clip)
+                } else {
+                    slicer_core::polygon_ops::clip_polygons(&ir_subject, &ir_clip, op)
+                };
                 ir_to_wit_expolygons(&result)
             },
         );

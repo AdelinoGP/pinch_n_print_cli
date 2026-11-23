@@ -14,6 +14,11 @@ use clipper2_rust::Point64;
 use slicer_ir::slice_ir::BoundingBox2;
 use slicer_ir::{ExPolygon, Point2, Polygon};
 
+pub use crate::polygon_ops_spatial_union::{
+    union_spatial_tree, union_spatial_tree_with_options, DEFAULT_SPATIAL_UNION_CHUNK_SIZE,
+    DEFAULT_SPATIAL_UNION_NESTED_PAR,
+};
+
 /// A 2D line segment with endpoints in scaled integer coordinates (1 unit = 100 nm).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Line {
