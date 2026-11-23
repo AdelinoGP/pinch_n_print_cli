@@ -1,0 +1,2449 @@
+diff --git a/crates/slicer-core/src/algos/bridge_over_infill.rs b/crates/slicer-core/src/algos/bridge_over_infill.rs
+index 37ba5be1..077aa90a 100644
+--- a/crates/slicer-core/src/algos/bridge_over_infill.rs
++++ b/crates/slicer-core/src/algos/bridge_over_infill.rs
+@@ -16,6 +16,285 @@ use crate::polygon_ops::{
+ use slicer_ir::{ExPolygon, Point2, Polygon};
+ use std::f32::consts::PI;
+ 
++#[doc(hidden)]
++#[cfg(not(target_arch = "wasm32"))]
++pub mod t180_probe {
++    use slicer_ir::ExPolygon;
++    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
++    use std::time::Instant;
++
++    pub static ACTIVE: AtomicBool = AtomicBool::new(false);
++
++    #[inline]
++    pub fn is_active() -> bool {
++        ACTIVE.load(Ordering::Relaxed)
++    }
++
++    pub fn set_active(v: bool) {
++        ACTIVE.store(v, Ordering::SeqCst);
++    }
++
++    pub struct SiteStats {
++        pub name: &'static str,
++        pub op_kind: &'static str,
++        pub calls: AtomicU64,
++        pub total_ns: AtomicU64,
++        pub max_ns: AtomicU64,
++        pub in_polys: AtomicU64,
++        pub in_verts: AtomicU64,
++        pub out_polys: AtomicU64,
++        pub out_verts: AtomicU64,
++        pub empty_in: AtomicU64,
++        pub empty_out: AtomicU64,
++    }
++
++    impl SiteStats {
++        pub const fn new(name: &'static str, op_kind: &'static str) -> Self {
++            Self {
++                name,
++                op_kind,
++                calls: AtomicU64::new(0),
++                total_ns: AtomicU64::new(0),
++                max_ns: AtomicU64::new(0),
++                in_polys: AtomicU64::new(0),
++                in_verts: AtomicU64::new(0),
++                out_polys: AtomicU64::new(0),
++                out_verts: AtomicU64::new(0),
++                empty_in: AtomicU64::new(0),
++                empty_out: AtomicU64::new(0),
++            }
++        }
++
++        pub fn reset(&self) {
++            self.calls.store(0, Ordering::SeqCst);
++            self.total_ns.store(0, Ordering::SeqCst);
++            self.max_ns.store(0, Ordering::SeqCst);
++            self.in_polys.store(0, Ordering::SeqCst);
++            self.in_verts.store(0, Ordering::SeqCst);
++            self.out_polys.store(0, Ordering::SeqCst);
++            self.out_verts.store(0, Ordering::SeqCst);
++            self.empty_in.store(0, Ordering::SeqCst);
++            self.empty_out.store(0, Ordering::SeqCst);
++        }
++
++        #[inline]
++        pub fn record(
++            &self,
++            dt_ns: u64,
++            in_p: u64,
++            in_v: u64,
++            out_p: u64,
++            out_v: u64,
++            empty_in: bool,
++            empty_out: bool,
++        ) {
++            self.calls.fetch_add(1, Ordering::Relaxed);
++            self.total_ns.fetch_add(dt_ns, Ordering::Relaxed);
++            let mut prev = self.max_ns.load(Ordering::Relaxed);
++            while dt_ns > prev {
++                match self.max_ns.compare_exchange_weak(
++                    prev,
++                    dt_ns,
++                    Ordering::Relaxed,
++                    Ordering::Relaxed,
++                ) {
++                    Ok(_) => break,
++                    Err(cur) => prev = cur,
++                }
++            }
++            self.in_polys.fetch_add(in_p, Ordering::Relaxed);
++            self.in_verts.fetch_add(in_v, Ordering::Relaxed);
++            self.out_polys.fetch_add(out_p, Ordering::Relaxed);
++            self.out_verts.fetch_add(out_v, Ordering::Relaxed);
++            if empty_in {
++                self.empty_in.fetch_add(1, Ordering::Relaxed);
++            }
++            if empty_out {
++                self.empty_out.fetch_add(1, Ordering::Relaxed);
++            }
++        }
++
++        pub fn to_json(&self) -> String {
++            format!(
++                "{{\"name\":\"{}\",\"op_kind\":\"{}\",\"calls\":{},\"total_ns\":{},\"max_ns\":{},\"in_polys\":{},\"in_verts\":{},\"out_polys\":{},\"out_verts\":{},\"empty_in\":{},\"empty_out\":{}}}",
++                self.name,
++                self.op_kind,
++                self.calls.load(Ordering::SeqCst),
++                self.total_ns.load(Ordering::SeqCst),
++                self.max_ns.load(Ordering::SeqCst),
++                self.in_polys.load(Ordering::SeqCst),
++                self.in_verts.load(Ordering::SeqCst),
++                self.out_polys.load(Ordering::SeqCst),
++                self.out_verts.load(Ordering::SeqCst),
++                self.empty_in.load(Ordering::SeqCst),
++                self.empty_out.load(Ordering::SeqCst),
++            )
++        }
++    }
++
++    #[inline]
++    pub fn count_verts(polys: &[ExPolygon]) -> u64 {
++        polys
++            .iter()
++            .map(|e| {
++                e.contour.points.len() as u64
++                    + e.holes.iter().map(|h| h.points.len() as u64).sum::<u64>()
++            })
++            .sum()
++    }
++
++    #[inline]
++    pub fn record_ex<F: FnOnce() -> Vec<ExPolygon>>(
++        site: &SiteStats,
++        a: &[ExPolygon],
++        b: &[ExPolygon],
++        f: F,
++    ) -> Vec<ExPolygon> {
++        if !is_active() {
++            return f();
++        }
++        let in_p = (a.len() + b.len()) as u64;
++        let in_v = count_verts(a) + count_verts(b);
++        let empty_in = a.is_empty() && b.is_empty();
++        let t0 = Instant::now();
++        let out = f();
++        let dt = t0.elapsed().as_nanos() as u64;
++        let out_p = out.len() as u64;
++        let out_v = count_verts(&out);
++        site.record(dt, in_p, in_v, out_p, out_v, empty_in, out.is_empty());
++        out
++    }
++
++    #[inline]
++    pub fn record_single<F: FnOnce() -> Vec<ExPolygon>>(
++        site: &SiteStats,
++        a: &[ExPolygon],
++        f: F,
++    ) -> Vec<ExPolygon> {
++        record_ex(site, a, &[], f)
++    }
++
++    // Core bridge_over_infill & ext_bridge sites
++    pub static IB_GATHER_SPARSE_UNION: SiteStats = SiteStats::new("ib_gather_sparse_union", "clip");
++    pub static IB_GATHER_SPARSE_CLOSING: SiteStats = SiteStats::new("ib_gather_sparse_closing", "closing_ex");
++    pub static IB_GATHER_SOLID_UNION: SiteStats = SiteStats::new("ib_gather_solid_union", "clip");
++    pub static IB_GATHER_SOLID_CLOSING: SiteStats = SiteStats::new("ib_gather_solid_closing", "closing_ex");
++    pub static IB_GATHER_DIFF: SiteStats = SiteStats::new("ib_gather_diff", "clip");
++    pub static IB_GATHER_LAYERS_1: AtomicU64 = AtomicU64::new(0);
++    pub static IB_GATHER_LAYERS_GT1: AtomicU64 = AtomicU64::new(0);
++
++    pub static IB_REM_LOWER_UNION: SiteStats = SiteStats::new("ib_rem_lower_union", "clip");
++    pub static IB_REM_LOWER_DIFF: SiteStats = SiteStats::new("ib_rem_lower_diff", "clip");
++
++    pub static IB_UNSUP_CLOSING: SiteStats = SiteStats::new("ib_unsup_closing", "closing_ex");
++    pub static IB_UNSUP_ERODE: SiteStats = SiteStats::new("ib_unsup_erode", "offset");
++    pub static IB_UNSUP_SOLIDS_SHRINK: SiteStats = SiteStats::new("ib_unsup_solids_shrink", "offset");
++    pub static IB_UNSUP_SOLIDS_GROW: SiteStats = SiteStats::new("ib_unsup_solids_grow", "offset");
++    pub static IB_UNSUP_DIFF: SiteStats = SiteStats::new("ib_unsup_diff", "clip");
++
++    pub static IB_QUAL_UNSUP_INTER: SiteStats = SiteStats::new("ib_qual_unsup_inter", "clip");
++    pub static IB_QUAL_WORTH_OFF: SiteStats = SiteStats::new("ib_qual_worth_off", "offset");
++    pub static IB_QUAL_WORTH_INTER: SiteStats = SiteStats::new("ib_qual_worth_inter", "clip");
++    pub static IB_QUAL_EXP_WORTH_OFF: SiteStats = SiteStats::new("ib_qual_exp_worth_off", "offset");
++    pub static IB_QUAL_REM_DIFF: SiteStats = SiteStats::new("ib_qual_rem_diff", "clip");
++    pub static IB_QUAL_CLOSING: SiteStats = SiteStats::new("ib_qual_closing", "closing_ex");
++    pub static IB_QUAL_FINAL_INTER: SiteStats = SiteStats::new("ib_qual_final_inter", "clip");
++
++    pub static IB_ANG_TOTAL_CLOSING: SiteStats = SiteStats::new("ib_ang_total_closing", "closing_ex");
++    pub static IB_ANG_EXP_CLOSING: SiteStats = SiteStats::new("ib_ang_exp_closing", "closing_ex");
++    pub static IB_ANG_EXP_INTER: SiteStats = SiteStats::new("ib_ang_exp_inter", "clip");
++    pub static IB_ANG_CAND_OFF: SiteStats = SiteStats::new("ib_ang_cand_off", "offset");
++    pub static IB_ANG_CAND_CLIP: SiteStats = SiteStats::new("ib_ang_cand_clip", "clip");
++    pub static IB_ANG_CAND_UNSUP_INTER: SiteStats = SiteStats::new("ib_ang_cand_unsup_inter", "clip");
++    pub static IB_ANG_LIM_UNION: SiteStats = SiteStats::new("ib_ang_lim_union", "clip");
++    pub static IB_ANG_ANCHOR_TOTAL_OFF: SiteStats = SiteStats::new("ib_ang_anchor_total_off", "offset");
++    pub static IB_ANG_ANCHOR_LIM_OFF: SiteStats = SiteStats::new("ib_ang_anchor_lim_off", "offset");
++    pub static IB_ANG_DETERMINE_DEG: SiteStats = SiteStats::new("ib_ang_determine_deg", "cpu");
++    pub static IB_ANG_COLL_OFF: SiteStats = SiteStats::new("ib_ang_coll_off", "offset");
++    pub static IB_ANG_COLL_INTER: SiteStats = SiteStats::new("ib_ang_coll_inter", "clip");
++    pub static IB_ANG_EXP_DIFF: SiteStats = SiteStats::new("ib_ang_exp_diff", "clip");
++
++    pub static EXT_BRIDGE_OVERHANG_DIFF: SiteStats = SiteStats::new("ext_bridge_overhang_diff", "clip");
++    pub static EXT_BRIDGE_ANCHOR_OFF: SiteStats = SiteStats::new("ext_bridge_anchor_off", "offset");
++    pub static EXT_BRIDGE_COMPLEMENT_DIFF: SiteStats = SiteStats::new("ext_bridge_complement_diff", "clip");
++    pub static EXT_BRIDGE_CLIP_POLYLINES: SiteStats = SiteStats::new("ext_bridge_clip_polylines", "cpu");
++    pub static EXT_BRIDGE_SCORE_CPU: SiteStats = SiteStats::new("ext_bridge_score_cpu", "cpu");
++
++    pub const CORE_SITES: &[&SiteStats] = &[
++        &IB_GATHER_SPARSE_UNION,
++        &IB_GATHER_SPARSE_CLOSING,
++        &IB_GATHER_SOLID_UNION,
++        &IB_GATHER_SOLID_CLOSING,
++        &IB_GATHER_DIFF,
++        &IB_REM_LOWER_UNION,
++        &IB_REM_LOWER_DIFF,
++        &IB_UNSUP_CLOSING,
++        &IB_UNSUP_ERODE,
++        &IB_UNSUP_SOLIDS_SHRINK,
++        &IB_UNSUP_SOLIDS_GROW,
++        &IB_UNSUP_DIFF,
++        &IB_QUAL_UNSUP_INTER,
++        &IB_QUAL_WORTH_OFF,
++        &IB_QUAL_WORTH_INTER,
++        &IB_QUAL_EXP_WORTH_OFF,
++        &IB_QUAL_REM_DIFF,
++        &IB_QUAL_CLOSING,
++        &IB_QUAL_FINAL_INTER,
++        &IB_ANG_TOTAL_CLOSING,
++        &IB_ANG_EXP_CLOSING,
++        &IB_ANG_EXP_INTER,
++        &IB_ANG_CAND_OFF,
++        &IB_ANG_CAND_CLIP,
++        &IB_ANG_CAND_UNSUP_INTER,
++        &IB_ANG_LIM_UNION,
++        &IB_ANG_ANCHOR_TOTAL_OFF,
++        &IB_ANG_ANCHOR_LIM_OFF,
++        &IB_ANG_DETERMINE_DEG,
++        &IB_ANG_COLL_OFF,
++        &IB_ANG_COLL_INTER,
++        &IB_ANG_EXP_DIFF,
++        &EXT_BRIDGE_OVERHANG_DIFF,
++        &EXT_BRIDGE_ANCHOR_OFF,
++        &EXT_BRIDGE_COMPLEMENT_DIFF,
++        &EXT_BRIDGE_CLIP_POLYLINES,
++        &EXT_BRIDGE_SCORE_CPU,
++    ];
++
++    pub fn reset_all() {
++        for s in CORE_SITES {
++            s.reset();
++        }
++        IB_GATHER_LAYERS_1.store(0, Ordering::SeqCst);
++        IB_GATHER_LAYERS_GT1.store(0, Ordering::SeqCst);
++    }
++}
++
++#[cfg(not(target_arch = "wasm32"))]
++macro_rules! probe_ex {
++    ($site:ident, $a:expr, $b:expr, $body:expr) => {
++        t180_probe::record_ex(&t180_probe::$site, $a, $b, || $body)
++    };
++}
++#[cfg(target_arch = "wasm32")]
++macro_rules! probe_ex {
++    ($site:ident, $a:expr, $b:expr, $body:expr) => {
++        $body
++    };
++}
++
++#[cfg(not(target_arch = "wasm32"))]
++macro_rules! probe_single {
++    ($site:ident, $a:expr, $body:expr) => {
++        t180_probe::record_single(&t180_probe::$site, $a, || $body)
++    };
++}
++#[cfg(target_arch = "wasm32")]
++macro_rules! probe_single {
++    ($site:ident, $a:expr, $body:expr) => {
++        $body
++    };
++}
++
+ const SAMPLE_STEP: f64 = 20_000.0;
+ 
+ const SCALED_EPSILON_MM: f64 = 0.0001;
+@@ -103,28 +382,40 @@ pub fn gather_areas_w_depth(
+         layer.print_z - target_flow_height * target_flow_height_factor - SCALED_EPSILON_MM as f32;
+     let mut sparse = Vec::new();
+     let mut solid = Vec::new();
++    let mut gathered_layers = 0u64;
+     for i in (0..layer_index).rev() {
+         let lower = &layers[i];
+         if lower.print_z < bottom_z && i < layer_index - 1 {
+             break;
+         }
++        gathered_layers += 1;
+         sparse.extend(lower.sparse_infill.iter().cloned());
+         solid.extend(lower.not_sparse_infill.iter().cloned());
+     }
++    #[cfg(not(target_arch = "wasm32"))]
++    if t180_probe::is_active() {
++        if gathered_layers == 1 {
++            t180_probe::IB_GATHER_LAYERS_1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++        } else if gathered_layers > 1 {
++            t180_probe::IB_GATHER_LAYERS_GT1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++        }
++    }
+     if sparse.is_empty() {
+         return Vec::new();
+     }
+-    let sparse = closing_ex(
+-        &union(&sparse, &[]),
+-        SCALED_EPSILON_MM,
+-        OffsetJoinType::Miter,
++    let sparse_u = probe_single!(IB_GATHER_SPARSE_UNION, &sparse, union(&sparse, &[]));
++    let sparse = probe_single!(
++        IB_GATHER_SPARSE_CLOSING,
++        &sparse_u,
++        closing_ex(&sparse_u, SCALED_EPSILON_MM, OffsetJoinType::Miter)
+     );
+-    let solid = closing_ex(
+-        &union(&solid, &[]),
+-        SCALED_EPSILON_MM,
+-        OffsetJoinType::Miter,
++    let solid_u = probe_single!(IB_GATHER_SOLID_UNION, &solid, union(&solid, &[]));
++    let solid = probe_single!(
++        IB_GATHER_SOLID_CLOSING,
++        &solid_u,
++        closing_ex(&solid_u, SCALED_EPSILON_MM, OffsetJoinType::Miter)
+     );
+-    difference(&sparse, &solid)
++    probe_ex!(IB_GATHER_DIFF, &sparse, &solid, difference(&sparse, &solid))
+ }
+ 
+ /// Group consecutive candidate layers when both their Z gap and area overlap
+@@ -168,7 +459,13 @@ pub fn remove_filled_polygons_on_lower_layers(
+     if filled.is_empty() {
+         deep_infill_area.to_vec()
+     } else {
+-        difference(deep_infill_area, &union(&filled, &[]))
++        let filled_u = probe_single!(IB_REM_LOWER_UNION, &filled, union(&filled, &[]));
++        probe_ex!(
++            IB_REM_LOWER_DIFF,
++            deep_infill_area,
++            &filled_u,
++            difference(deep_infill_area, &filled_u)
++        )
+     }
+ }
+ 
+@@ -187,24 +484,45 @@ pub fn unsupported_span_areas(
+     // Canonical: initially consider the whole layer unsupported — the carrier
+     // is the lower fills themselves (closing(SCALED_EPSILON)), NOT the bbox
+     // complement of the fills. RC-A fix.
+-    let mut unsupported = closing_ex(lower_fills, SCALED_EPSILON_MM, OffsetJoinType::Miter);
+-    unsupported = offset(
++    let mut unsupported = probe_single!(
++        IB_UNSUP_CLOSING,
++        lower_fills,
++        closing_ex(lower_fills, SCALED_EPSILON_MM, OffsetJoinType::Miter)
++    );
++    unsupported = probe_single!(
++        IB_UNSUP_ERODE,
+         &unsupported,
+-        -(expansion_multiplier * spacing) as f32,
+-        OffsetJoinType::Miter,
+-        0.0,
++        offset(
++            &unsupported,
++            -(expansion_multiplier * spacing) as f32,
++            OffsetJoinType::Miter,
++            0.0,
++        )
+     );
+     if lower_solids.is_empty() || unsupported.is_empty() {
+         return unsupported;
+     }
+-    let solids_shrunk = offset(lower_solids, -spacing as f32, OffsetJoinType::Miter, 0.0);
+-    let solids_grown = offset(
++    let solids_shrunk = probe_single!(
++        IB_UNSUP_SOLIDS_SHRINK,
++        lower_solids,
++        offset(lower_solids, -spacing as f32, OffsetJoinType::Miter, 0.0)
++    );
++    let solids_grown = probe_single!(
++        IB_UNSUP_SOLIDS_GROW,
+         &solids_shrunk,
+-        ((1.0 + expansion_multiplier) * spacing) as f32,
+-        OffsetJoinType::Miter,
+-        0.0,
++        offset(
++            &solids_shrunk,
++            ((1.0 + expansion_multiplier) * spacing) as f32,
++            OffsetJoinType::Miter,
++            0.0,
++        )
+     );
+-    difference(&unsupported, &solids_grown)
++    probe_ex!(
++        IB_UNSUP_DIFF,
++        &unsupported,
++        &solids_grown,
++        difference(&unsupported, &solids_grown)
++    )
+ }
+ 
+ /// Qualify the genuinely unsupported part of one internal bridge surface.
+@@ -217,7 +535,13 @@ pub fn qualify_internal_bridge_surface(
+     if spacing_mm <= 0.0 {
+         return None;
+     }
+-    let unsupported_surface = intersection(std::slice::from_ref(surface), unsupported);
++    let surf_slice = std::slice::from_ref(surface);
++    let unsupported_surface = probe_ex!(
++        IB_QUAL_UNSUP_INTER,
++        surf_slice,
++        unsupported,
++        intersection(surf_slice, unsupported)
++    );
+     if unsupported_surface.is_empty() {
+         return None;
+     }
+@@ -229,24 +553,50 @@ pub fn qualify_internal_bridge_surface(
+         return None;
+     }
+ 
+-    let mut worth = intersection(
+-        std::slice::from_ref(surface),
+-        &offset(
++    let worth_off = probe_single!(
++        IB_QUAL_WORTH_OFF,
++        &unsupported_surface,
++        offset(
+             &unsupported_surface,
+             4.0 * spacing_mm,
+             OffsetJoinType::Miter,
+             0.0,
+-        ),
++        )
++    );
++    let mut worth = probe_ex!(
++        IB_QUAL_WORTH_INTER,
++        surf_slice,
++        &worth_off,
++        intersection(surf_slice, &worth_off)
++    );
++    let expanded_worth = probe_single!(
++        IB_QUAL_EXP_WORTH_OFF,
++        &worth,
++        offset(&worth, spacing_mm, OffsetJoinType::Miter, 0.0)
+     );
+-    let expanded_worth = offset(&worth, spacing_mm, OffsetJoinType::Miter, 0.0);
+-    for polygon in difference(std::slice::from_ref(surface), &expanded_worth) {
++    let rem = probe_ex!(
++        IB_QUAL_REM_DIFF,
++        surf_slice,
++        &expanded_worth,
++        difference(surf_slice, &expanded_worth)
++    );
++    for polygon in rem {
+         let area = expolygon_area(&polygon);
+         if area > spacing_units * spacing_units && area < spacing_units * 120_000.0 {
+             worth.push(polygon);
+         }
+     }
+-    let closed = closing_ex(&worth, SCALED_EPSILON_MM, OffsetJoinType::Miter);
+-    Some(intersection(&closed, std::slice::from_ref(surface)))
++    let closed = probe_single!(
++        IB_QUAL_CLOSING,
++        &worth,
++        closing_ex(&worth, SCALED_EPSILON_MM, OffsetJoinType::Miter)
++    );
++    Some(probe_ex!(
++        IB_QUAL_FINAL_INTER,
++        &closed,
++        surf_slice,
++        intersection(&closed, surf_slice)
++    ))
+ }
+ 
+ fn expolygons_area(polygons: &[ExPolygon]) -> f64 {
+@@ -441,8 +791,18 @@ pub fn boundary_anchor_polylines(
+     spacing_mm: f32,
+ ) -> Vec<Vec<Point2>> {
+     let mut rings = Vec::new();
+-    for (area, factor) in [(total_fill_area, 1.3_f32), (limiting_area, 0.3_f32)] {
+-        for polygon in offset(area, factor * spacing_mm, OffsetJoinType::Miter, 0.0) {
++    let total_off = probe_single!(
++        IB_ANG_ANCHOR_TOTAL_OFF,
++        total_fill_area,
++        offset(total_fill_area, 1.3_f32 * spacing_mm, OffsetJoinType::Miter, 0.0)
++    );
++    let lim_off = probe_single!(
++        IB_ANG_ANCHOR_LIM_OFF,
++        limiting_area,
++        offset(limiting_area, 0.3_f32 * spacing_mm, OffsetJoinType::Miter, 0.0)
++    );
++    for poly_set in [total_off, lim_off] {
++        for polygon in poly_set {
+             for ring in std::iter::once(&polygon.contour).chain(polygon.holes.iter()) {
+                 if ring.points.len() < 2 {
+                     continue;
+@@ -516,57 +876,122 @@ pub fn internal_bridge_angles(
+     inputs: &InternalBridgeAngleInputs<'_>,
+ ) -> Vec<f32> {
+     let spacing = inputs.spacing_mm;
+-    let total_fill_area = closing_ex(
++    let total_fill_area = probe_single!(
++        IB_ANG_TOTAL_CLOSING,
+         inputs.total_fill_area,
+-        SCALED_EPSILON_MM,
+-        OffsetJoinType::Miter,
++        closing_ex(
++            inputs.total_fill_area,
++            SCALED_EPSILON_MM,
++            OffsetJoinType::Miter,
++        )
+     );
+-    let mut expansion_area = intersection(
+-        &closing_ex(
++    let exp_closed = probe_single!(
++        IB_ANG_EXP_CLOSING,
++        inputs.expansion_area,
++        closing_ex(
+             inputs.expansion_area,
+             SCALED_EPSILON_MM,
+             OffsetJoinType::Miter,
+-        ),
++        )
++    );
++    let mut expansion_area = probe_ex!(
++        IB_ANG_EXP_INTER,
++        &exp_closed,
+         inputs.deep_infill_clip_area,
++        intersection(&exp_closed, inputs.deep_infill_clip_area)
+     );
+     let mut angles: Vec<f32> = Vec::with_capacity(candidates.len());
+     let mut bridge_areas: Vec<Vec<ExPolygon>> = Vec::with_capacity(candidates.len());
+     for (index, candidate) in candidates.iter().enumerate() {
+         let candidate = std::slice::from_ref(candidate);
+-        let mut area: Vec<ExPolygon> = intersection(
+-            &offset(candidate, spacing, OffsetJoinType::Miter, 0.0),
++        let cand_off = probe_single!(
++            IB_ANG_CAND_OFF,
++            candidate,
++            offset(candidate, spacing, OffsetJoinType::Miter, 0.0)
++        );
++        let clipped = probe_ex!(
++            IB_ANG_CAND_CLIP,
++            &cand_off,
+             inputs.deep_infill_clip_area,
+-        )
+-        .into_iter()
+-        .filter(|part| {
+-            !intersection(std::slice::from_ref(part), inputs.internal_unsupported_area).is_empty()
+-        })
+-        .collect();
++            intersection(&cand_off, inputs.deep_infill_clip_area)
++        );
++        let mut area: Vec<ExPolygon> = clipped
++            .into_iter()
++            .filter(|part| {
++                !probe_ex!(
++                    IB_ANG_CAND_UNSUP_INTER,
++                    std::slice::from_ref(part),
++                    inputs.internal_unsupported_area,
++                    intersection(std::slice::from_ref(part), inputs.internal_unsupported_area)
++                )
++                .is_empty()
++            })
++            .collect();
+         if area.is_empty() {
+             // The caller only passes candidates that reach the unsupported
+             // area, so this is a degenerate clip; sample the candidate itself.
+             area = candidate.to_vec();
+         }
+-        let limiting_area = union(&area, &expansion_area);
++        let limiting_area = probe_ex!(
++            IB_ANG_LIM_UNION,
++            &area,
++            &expansion_area,
++            union(&area, &expansion_area)
++        );
+         let anchors = boundary_anchor_polylines(&total_fill_area, &limiting_area, spacing);
+         let edges: Vec<Vec<Point2>> = area
+             .iter()
+             .flat_map(|polygon| std::iter::once(&polygon.contour).chain(polygon.holes.iter()))
+             .map(|ring| ring.points.clone())
+             .collect();
++        #[cfg(not(target_arch = "wasm32"))]
++        let mut angle = if t180_probe::is_active() {
++            let t0 = std::time::Instant::now();
++            let a = determine_bridging_angle(&anchors, &edges, inputs.override_deg);
++            let dt = t0.elapsed().as_nanos() as u64;
++            let anc_pts: u64 = anchors.iter().map(|r| r.len() as u64).sum();
++            let edge_pts: u64 = edges.iter().map(|r| r.len() as u64).sum();
++            t180_probe::IB_ANG_DETERMINE_DEG.record(
++                dt,
++                (anchors.len() + edges.len()) as u64,
++                anc_pts + edge_pts,
++                1,
++                1,
++                false,
++                false,
++            );
++            a
++        } else {
++            determine_bridging_angle(&anchors, &edges, inputs.override_deg)
++        };
++        #[cfg(target_arch = "wasm32")]
+         let mut angle = determine_bridging_angle(&anchors, &edges, inputs.override_deg);
+         // Canonical collision check (`expand(bridging_area, 3 × spacing)` vs
+         // each earlier `new_polys`): both operands are the area-class bridging
+         // region, not the raw candidate. See the note above.
+-        let grown = offset(&area, 3.0 * spacing, OffsetJoinType::Miter, 0.0);
+-        if let Some(earlier) = bridge_areas[..index]
+-            .iter()
+-            .position(|earlier| !intersection(earlier, &grown).is_empty())
+-        {
++        let grown = probe_single!(
++            IB_ANG_COLL_OFF,
++            &area,
++            offset(&area, 3.0 * spacing, OffsetJoinType::Miter, 0.0)
++        );
++        if let Some(earlier) = bridge_areas[..index].iter().position(|earlier| {
++            !probe_ex!(
++                IB_ANG_COLL_INTER,
++                earlier,
++                &grown,
++                intersection(earlier, &grown)
++            )
++            .is_empty()
++        }) {
+             angle = angles[earlier];
+         }
+         angles.push(angle);
+-        expansion_area = difference(&expansion_area, &area);
++        expansion_area = probe_ex!(
++            IB_ANG_EXP_DIFF,
++            &expansion_area,
++            &area,
++            difference(&expansion_area, &area)
++        );
+         bridge_areas.push(area);
+     }
+     angles
+diff --git a/crates/slicer-core/src/algos/prepass_slice.rs b/crates/slicer-core/src/algos/prepass_slice.rs
+index 4e92e52d..5fd66bc5 100644
+--- a/crates/slicer-core/src/algos/prepass_slice.rs
++++ b/crates/slicer-core/src/algos/prepass_slice.rs
+@@ -228,7 +228,11 @@ pub fn floating_edges_of_gated_area(
+         return Vec::new();
+     }
+ 
+-    let grown_anchors = offset(anchors, BRIDGE_ANCHOR_GROWTH_MM, OffsetJoinType::Miter, 0.0);
++    let grown_anchors = crate::algos::bridge_over_infill::t180_probe::record_single(
++        &crate::algos::bridge_over_infill::t180_probe::EXT_BRIDGE_ANCHOR_OFF,
++        anchors,
++        || offset(anchors, BRIDGE_ANCHOR_GROWTH_MM, OffsetJoinType::Miter, 0.0),
++    );
+     let kept: Vec<Vec<Point2>> = if grown_anchors.is_empty() {
+         rings
+     } else {
+@@ -275,11 +279,36 @@ pub fn floating_edges_of_gated_area(
+             },
+             holes: vec![],
+         };
+-        let complement = difference(&[bbox], &grown_anchors);
++        let bbox_slice = std::slice::from_ref(&bbox);
++        let complement = crate::algos::bridge_over_infill::t180_probe::record_ex(
++            &crate::algos::bridge_over_infill::t180_probe::EXT_BRIDGE_COMPLEMENT_DIFF,
++            bbox_slice,
++            &grown_anchors,
++            || difference(bbox_slice, &grown_anchors),
++        );
+         if complement.is_empty() {
+             return Vec::new();
+         }
+-        clip_polylines(&rings, &complement)
++        if crate::algos::bridge_over_infill::t180_probe::is_active() {
++            let t0 = std::time::Instant::now();
++            let out = clip_polylines(&rings, &complement);
++            let dt = t0.elapsed().as_nanos() as u64;
++            let in_v: u64 = rings.iter().map(|r| r.len() as u64).sum::<u64>()
++                + crate::algos::bridge_over_infill::t180_probe::count_verts(&complement);
++            let out_v: u64 = out.iter().map(|r| r.len() as u64).sum();
++            crate::algos::bridge_over_infill::t180_probe::EXT_BRIDGE_CLIP_POLYLINES.record(
++                dt,
++                (rings.len() + complement.len()) as u64,
++                in_v,
++                out.len() as u64,
++                out_v,
++                false,
++                out.is_empty(),
++            );
++            out
++        } else {
++            clip_polylines(&rings, &complement)
++        }
+     };
+ 
+     let mut segments = Vec::new();
+@@ -406,9 +435,19 @@ pub fn detect_bridging_direction_deg(to_cover: &[ExPolygon], anchors: &[ExPolygo
+     let overhang = if anchors.is_empty() {
+         to_cover.to_vec()
+     } else {
+-        difference(to_cover, anchors)
++        crate::algos::bridge_over_infill::t180_probe::record_ex(
++            &crate::algos::bridge_over_infill::t180_probe::EXT_BRIDGE_OVERHANG_DIFF,
++            to_cover,
++            anchors,
++            || difference(to_cover, anchors),
++        )
+     };
+     let floating = floating_edges_of_gated_area(&overhang, anchors);
++    let score_t0 = if crate::algos::bridge_over_infill::t180_probe::is_active() {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
+ 
+     // Candidate set: right normal (dy, -dx) of each floating edge,
+     // unit-normalized, deduped by quantized angle (first-seen wins).
+@@ -462,6 +501,17 @@ pub fn detect_bridging_direction_deg(to_cover: &[ExPolygon], anchors: &[ExPolygo
+     }
+     let (_, nx, ny) = best.expect("candidates is non-empty");
+ 
++    if let Some(t0) = score_t0 {
++        crate::algos::bridge_over_infill::t180_probe::EXT_BRIDGE_SCORE_CPU.record(
++            t0.elapsed().as_nanos() as u64,
++            candidates.len() as u64,
++            edges.len() as u64,
++            1,
++            1,
++            false,
++            false,
++        );
++    }
+     // Return direction = winning normal flipped: parallel to the winning
+     // floating edge, in degrees mod 180, half-open [0, 180).
+     direction_deg(ny, -nx)
+diff --git a/crates/slicer-runtime/src/slice_postprocess_prepass.rs b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+index f027319d..247f1e07 100644
+--- a/crates/slicer-runtime/src/slice_postprocess_prepass.rs
++++ b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+@@ -67,6 +67,392 @@ use slicer_ir::BlackboardError;
+ 
+ use crate::blackboard::Blackboard;
+ 
++mod t180_stage_probe {
++    use slicer_core::algos::bridge_over_infill::t180_probe::{self, SiteStats, CORE_SITES};
++    use slicer_ir::ExPolygon;
++    use std::sync::atomic::{AtomicU64, Ordering};
++    use std::sync::Mutex;
++
++    pub static P1_TOP_DIFF: SiteStats = SiteStats::new("p1_top_diff", "clip");
++    pub static P1_TOP_OPEN: SiteStats = SiteStats::new("p1_top_open", "offset2_ex");
++    pub static P1_BOT_DIFF: SiteStats = SiteStats::new("p1_bot_diff", "clip");
++    pub static P1_BOT_OPEN: SiteStats = SiteStats::new("p1_bot_open", "offset2_ex");
++    pub static P2T_INTERSECT: SiteStats = SiteStats::new("p2t_intersect", "clip");
++    pub static P2T_OFFSET: SiteStats = SiteStats::new("p2t_offset", "offset");
++    pub static P2T_MERGE_UNION: SiteStats = SiteStats::new("p2t_merge_union", "clip");
++    pub static P2B_INTERSECT: SiteStats = SiteStats::new("p2b_intersect", "clip");
++    pub static P2B_OFFSET: SiteStats = SiteStats::new("p2b_offset", "offset");
++    pub static P2B_MERGE_UNION: SiteStats = SiteStats::new("p2b_merge_union", "clip");
++    pub static P2E_INT_SOLID_DIFF: SiteStats = SiteStats::new("p2e_int_solid_diff", "clip");
++    pub static IB_COMP_POS_OFFSET: SiteStats = SiteStats::new("ib_comp_pos_offset", "offset");
++    pub static IB_COMP_SURF_OFFSET: SiteStats = SiteStats::new("ib_comp_surf_offset", "offset");
++    pub static IB_COMP_SURF_CLIP: SiteStats = SiteStats::new("ib_comp_surf_clip", "clip");
++    pub static IB_COMP_WIN_INTER: SiteStats = SiteStats::new("ib_comp_win_inter", "clip");
++    pub static IB_COMP_NEG_OFFSET: SiteStats = SiteStats::new("ib_comp_neg_offset", "offset");
++    pub static IB_COMP_RETAIN_INTER: SiteStats = SiteStats::new("ib_comp_retain_inter", "clip");
++    pub static IB_COMP_EXP_UNION1: SiteStats = SiteStats::new("ib_comp_exp_union1", "clip");
++    pub static IB_COMP_EXP_UNION2: SiteStats = SiteStats::new("ib_comp_exp_union2", "clip");
++    pub static IB_COMP_EXP_DIFF: SiteStats = SiteStats::new("ib_comp_exp_diff", "clip");
++    pub static IB_COMP_EXP_UNION3: SiteStats = SiteStats::new("ib_comp_exp_union3", "clip");
++    pub static IB_EXTRA_OPEN1: SiteStats = SiteStats::new("ib_extra_open1", "opening");
++    pub static IB_EXTRA_CONV_OPS: SiteStats = SiteStats::new("ib_extra_conv_ops", "clip");
++    pub static IB_EXTRA_INTER: SiteStats = SiteStats::new("ib_extra_inter", "clip");
++    pub static IB_EXTRA_DIFF_EXIST: SiteStats = SiteStats::new("ib_extra_diff_exist", "clip");
++    pub static IB_EXTRA_OPEN2: SiteStats = SiteStats::new("ib_extra_open2", "opening");
++    pub static IB_EXTRA_DIFF_UPPER: SiteStats = SiteStats::new("ib_extra_diff_upper", "clip");
++
++    pub const STAGE_SITES: &[&SiteStats] = &[
++        &P1_TOP_DIFF,
++        &P1_TOP_OPEN,
++        &P1_BOT_DIFF,
++        &P1_BOT_OPEN,
++        &P2T_INTERSECT,
++        &P2T_OFFSET,
++        &P2T_MERGE_UNION,
++        &P2B_INTERSECT,
++        &P2B_OFFSET,
++        &P2B_MERGE_UNION,
++        &P2E_INT_SOLID_DIFF,
++        &IB_COMP_POS_OFFSET,
++        &IB_COMP_SURF_OFFSET,
++        &IB_COMP_SURF_CLIP,
++        &IB_COMP_WIN_INTER,
++        &IB_COMP_NEG_OFFSET,
++        &IB_COMP_RETAIN_INTER,
++        &IB_COMP_EXP_UNION1,
++        &IB_COMP_EXP_UNION2,
++        &IB_COMP_EXP_DIFF,
++        &IB_COMP_EXP_UNION3,
++        &IB_EXTRA_OPEN1,
++        &IB_EXTRA_CONV_OPS,
++        &IB_EXTRA_INTER,
++        &IB_EXTRA_DIFF_EXIST,
++        &IB_EXTRA_OPEN2,
++        &IB_EXTRA_DIFF_UPPER,
++    ];
++
++    pub struct Counters {
++        // Brackets (wall ns)
++        pub stage_wall_ns: AtomicU64,
++        pub b0_setup_ns: AtomicU64,
++        pub b1_pass1_wall_ns: AtomicU64,
++        pub b2a_p2t_proj_wall_ns: AtomicU64,
++        pub b2b_p2t_merge_wall_ns: AtomicU64,
++        pub b2c_p2b_proj_wall_ns: AtomicU64,
++        pub b2d_p2b_merge_wall_ns: AtomicU64,
++        pub b2e_int_solid_wall_ns: AtomicU64,
++        pub b3_apply_and_maps_wall_ns: AtomicU64,
++        pub b3a_apply_edits_ns: AtomicU64,
++        pub b3b_lower_maps_ns: AtomicU64,
++        pub b4_ext_bridge_wall_ns: AtomicU64,
++        pub b5a_lower_solids_cfg_wall_ns: AtomicU64,
++        pub b5b_ib_phase_a_wall_ns: AtomicU64,
++        pub b5c_ib_phase_b_precomp_wall_ns: AtomicU64,
++        pub b5d_ib_phase_b_commit_wall_ns: AtomicU64,
++        pub b5e_ib_extra_wall_ns: AtomicU64,
++        pub b6_replace_wall_ns: AtomicU64,
++
++        // Params
++        pub timelines_count: AtomicU64,
++        pub timeline_len: AtomicU64,
++        pub k_top: AtomicU64,
++        pub k_bot: AtomicU64,
++        pub opening_radius_um: AtomicU64,
++        pub shell_width_um: AtomicU64,
++        pub extra_bridge_enabled: AtomicU64,
++        pub nofilter_enabled: AtomicU64,
++
++        // Pass 1 structural
++        pub p1_top_identical: AtomicU64,
++        pub p1_bot_identical: AtomicU64,
++        pub p1_top_empty_clip: AtomicU64,
++        pub p1_bot_empty_clip: AtomicU64,
++        pub p1_top_diff_polys: AtomicU64,
++        pub p1_top_diff_slivers: AtomicU64,
++        pub p1_bot_diff_polys: AtomicU64,
++        pub p1_bot_diff_slivers: AtomicU64,
++        pub p1_sum_layer_polys: AtomicU64,
++        pub p1_max_layer_polys: AtomicU64,
++
++        // Pass 2 structural & locality (top / bot)
++        pub p2t_seeds: AtomicU64,
++        pub p2t_steps: AtomicU64,
++        pub p2t_break_inter_empty: AtomicU64,
++        pub p2t_break_off_empty: AtomicU64,
++        pub p2t_nbr_polys_tot: AtomicU64,
++        pub p2t_nbr_polys_ovl: AtomicU64,
++        pub p2t_nbr_verts_tot: AtomicU64,
++        pub p2t_nbr_verts_in_bbox: AtomicU64,
++        pub p2t_inter_polys_tot: AtomicU64,
++        pub p2t_inter_slivers: AtomicU64,
++        pub p2t_merge_contribs: AtomicU64,
++        pub p2t_merge_unique_targets: AtomicU64,
++        pub p2t_merge_empty_existing: AtomicU64,
++        pub p2t_merge_max_per_target: AtomicU64,
++
++        pub p2b_seeds: AtomicU64,
++        pub p2b_steps: AtomicU64,
++        pub p2b_break_inter_empty: AtomicU64,
++        pub p2b_break_off_empty: AtomicU64,
++        pub p2b_nbr_polys_tot: AtomicU64,
++        pub p2b_nbr_polys_ovl: AtomicU64,
++        pub p2b_nbr_verts_tot: AtomicU64,
++        pub p2b_nbr_verts_in_bbox: AtomicU64,
++        pub p2b_inter_polys_tot: AtomicU64,
++        pub p2b_inter_slivers: AtomicU64,
++        pub p2b_merge_contribs: AtomicU64,
++        pub p2b_merge_unique_targets: AtomicU64,
++        pub p2b_merge_empty_existing: AtomicU64,
++        pub p2b_merge_max_per_target: AtomicU64,
++
++        // Pass 2e internal_solid_fill
++        pub p2e_total: AtomicU64,
++        pub p2e_seed_empty: AtomicU64,
++        pub p2e_no_p2_contrib: AtomicU64,
++        pub p2e_both_nonempty: AtomicU64,
++        pub p2e_nonempty_out: AtomicU64,
++
++        // B4 ext bridge
++        pub b4_nonempty_layers: AtomicU64,
++
++        // B5 internal bridges
++        pub ib_a_total: AtomicU64,
++        pub ib_a_no_lower: AtomicU64,
++        pub ib_a_empty_is: AtomicU64,
++        pub ib_a_ran_unsup: AtomicU64,
++        pub ib_a_unsup_empty: AtomicU64,
++        pub ib_a_survived: AtomicU64,
++        pub ib_a_lf_verts_tot: AtomicU64,
++        pub ib_a_lf_verts_in_box: AtomicU64,
++        pub ib_a_ls_verts_tot: AtomicU64,
++        pub ib_a_ls_verts_in_box: AtomicU64,
++
++        pub ib_b_precomp_total: AtomicU64,
++        pub ib_b_precomp_some: AtomicU64,
++        pub ib_b_precomp_none: AtomicU64,
++        pub ib_b_wasted_none_thread_ns: AtomicU64,
++        pub ib_b_wasted_none_gather_ns: AtomicU64,
++        pub ib_b_wasted_none_pos_off_ns: AtomicU64,
++        pub ib_b_kept_some_gather_ns: AtomicU64,
++        pub ib_b_kept_some_pos_off_ns: AtomicU64,
++        pub ib_b_surf_total: AtomicU64,
++        pub ib_b_surf_deep_empty: AtomicU64,
++        pub ib_b_surf_qual_some: AtomicU64,
++        pub ib_b_surf_qual_none: AtomicU64,
++        pub ib_b_qual_layers: AtomicU64,
++        pub ib_b_qual_cands_total: AtomicU64,
++        pub ib_b_qual_cands_max: AtomicU64,
++
++        pub ib_b_commit_recomputes: AtomicU64,
++        pub ib_b_commit_published: AtomicU64,
++        pub ib_b_commit_recomp_wall_ns: AtomicU64,
++        pub ib_b_commit_recomp_gather_ns: AtomicU64,
++        pub ib_b_commit_recomp_remove_ns: AtomicU64,
++        pub ib_b_commit_recomp_compute_ns: AtomicU64,
++        pub ib_b_commit_recomp_ovl_is: AtomicU64,
++
++        pub ib_extra_windows: AtomicU64,
++        pub ib_extra_converted: AtomicU64,
++    }
++
++    macro_rules! zero_counters {
++        ($($f:ident),* $(,)?) => {
++            impl Counters {
++                pub const fn new() -> Self {
++                    Self { $($f: AtomicU64::new(0)),* }
++                }
++                pub fn reset(&self) {
++                    $(self.$f.store(0, Ordering::SeqCst);)*
++                }
++                pub fn to_json(&self) -> String {
++                    let mut parts = Vec::new();
++                    $(parts.push(format!("\"{}\":{}", stringify!($f), self.$f.load(Ordering::SeqCst)));)*
++                    format!("{{{}}}", parts.join(","))
++                }
++            }
++        };
++    }
++
++    zero_counters!(
++        stage_wall_ns, b0_setup_ns, b1_pass1_wall_ns,
++        b2a_p2t_proj_wall_ns, b2b_p2t_merge_wall_ns, b2c_p2b_proj_wall_ns, b2d_p2b_merge_wall_ns,
++        b2e_int_solid_wall_ns, b3_apply_and_maps_wall_ns, b3a_apply_edits_ns, b3b_lower_maps_ns,
++        b4_ext_bridge_wall_ns, b5a_lower_solids_cfg_wall_ns, b5b_ib_phase_a_wall_ns,
++        b5c_ib_phase_b_precomp_wall_ns, b5d_ib_phase_b_commit_wall_ns, b5e_ib_extra_wall_ns,
++        b6_replace_wall_ns,
++        timelines_count, timeline_len, k_top, k_bot, opening_radius_um, shell_width_um,
++        extra_bridge_enabled, nofilter_enabled,
++        p1_top_identical, p1_bot_identical, p1_top_empty_clip, p1_bot_empty_clip,
++        p1_top_diff_polys, p1_top_diff_slivers, p1_bot_diff_polys, p1_bot_diff_slivers,
++        p1_sum_layer_polys, p1_max_layer_polys,
++        p2t_seeds, p2t_steps, p2t_break_inter_empty, p2t_break_off_empty,
++        p2t_nbr_polys_tot, p2t_nbr_polys_ovl, p2t_nbr_verts_tot, p2t_nbr_verts_in_bbox,
++        p2t_inter_polys_tot, p2t_inter_slivers,
++        p2t_merge_contribs, p2t_merge_unique_targets, p2t_merge_empty_existing, p2t_merge_max_per_target,
++        p2b_seeds, p2b_steps, p2b_break_inter_empty, p2b_break_off_empty,
++        p2b_nbr_polys_tot, p2b_nbr_polys_ovl, p2b_nbr_verts_tot, p2b_nbr_verts_in_bbox,
++        p2b_inter_polys_tot, p2b_inter_slivers,
++        p2b_merge_contribs, p2b_merge_unique_targets, p2b_merge_empty_existing, p2b_merge_max_per_target,
++        p2e_total, p2e_seed_empty, p2e_no_p2_contrib, p2e_both_nonempty, p2e_nonempty_out,
++        b4_nonempty_layers,
++        ib_a_total, ib_a_no_lower, ib_a_empty_is, ib_a_ran_unsup, ib_a_unsup_empty, ib_a_survived,
++        ib_a_lf_verts_tot, ib_a_lf_verts_in_box, ib_a_ls_verts_tot, ib_a_ls_verts_in_box,
++        ib_b_precomp_total, ib_b_precomp_some, ib_b_precomp_none,
++        ib_b_wasted_none_thread_ns, ib_b_wasted_none_gather_ns, ib_b_wasted_none_pos_off_ns,
++        ib_b_kept_some_gather_ns, ib_b_kept_some_pos_off_ns,
++        ib_b_surf_total, ib_b_surf_deep_empty, ib_b_surf_qual_some, ib_b_surf_qual_none,
++        ib_b_qual_layers, ib_b_qual_cands_total, ib_b_qual_cands_max,
++        ib_b_commit_recomputes, ib_b_commit_published,
++        ib_b_commit_recomp_wall_ns, ib_b_commit_recomp_gather_ns, ib_b_commit_recomp_remove_ns,
++        ib_b_commit_recomp_compute_ns, ib_b_commit_recomp_ovl_is,
++        ib_extra_windows, ib_extra_converted,
++    );
++
++    pub static C: Counters = Counters::new();
++
++    #[derive(Default)]
++    pub struct DistStore {
++        pub pass1_items: Vec<(u32, u64)>,
++        pub p2t_items: Vec<(u32, u64)>,
++        pub p2b_items: Vec<(u32, u64)>,
++        pub b4_items: Vec<(u32, u64)>,
++        pub ib_a_items: Vec<(u32, u64)>,
++        pub ib_b_items: Vec<(u32, u64)>,
++        pub ib_recomp_layers: Vec<(u32, u64, bool)>,
++    }
++
++    pub static DISTS: Mutex<Option<DistStore>> = Mutex::new(None);
++
++    pub fn start_if_env() -> Option<String> {
++        let out = std::env::var("PNP_T180_PROBE_OUT").ok()?;
++        if out.is_empty() {
++            return None;
++        }
++        t180_probe::reset_all();
++        for s in STAGE_SITES {
++            s.reset();
++        }
++        C.reset();
++        *DISTS.lock().unwrap() = Some(DistStore::default());
++        t180_probe::set_active(true);
++        Some(out)
++    }
++
++    pub fn update_max(atom: &AtomicU64, val: u64) {
++        let mut prev = atom.load(Ordering::Relaxed);
++        while val > prev {
++            match atom.compare_exchange_weak(prev, val, Ordering::Relaxed, Ordering::Relaxed) {
++                Ok(_) => break,
++                Err(cur) => prev = cur,
++            }
++        }
++    }
++
++    pub fn bbox_of(polys: &[ExPolygon]) -> Option<(i64, i64, i64, i64)> {
++        let mut min_x = i64::MAX;
++        let mut min_y = i64::MAX;
++        let mut max_x = i64::MIN;
++        let mut max_y = i64::MIN;
++        let mut any = false;
++        for p in polys {
++            for pt in &p.contour.points {
++                min_x = min_x.min(pt.x);
++                min_y = min_y.min(pt.y);
++                max_x = max_x.max(pt.x);
++                max_y = max_y.max(pt.y);
++                any = true;
++            }
++        }
++        any.then_some((min_x, min_y, max_x, max_y))
++    }
++
++    pub fn bbox_of_one(p: &ExPolygon) -> Option<(i64, i64, i64, i64)> {
++        bbox_of(std::slice::from_ref(p))
++    }
++
++    pub fn bboxes_overlap(a: (i64, i64, i64, i64), b: (i64, i64, i64, i64)) -> bool {
++        a.0 <= b.2 && b.0 <= a.2 && a.1 <= b.3 && b.1 <= a.3
++    }
++
++    pub fn count_slivers(polys: &[ExPolygon], min_dim_units: i64) -> u64 {
++        polys
++            .iter()
++            .filter(|p| {
++                bbox_of_one(p).is_none_or(|(x0, y0, x1, y1)| {
++                    (x1 - x0) <= min_dim_units || (y1 - y0) <= min_dim_units
++                })
++            })
++            .count() as u64
++    }
++
++    pub fn verts_in_bbox(polys: &[ExPolygon], b: (i64, i64, i64, i64)) -> u64 {
++        let mut inside = 0u64;
++        for p in polys {
++            for ring in std::iter::once(&p.contour).chain(p.holes.iter()) {
++                for pt in &ring.points {
++                    if pt.x >= b.0 && pt.x <= b.2 && pt.y >= b.1 && pt.y <= b.3 {
++                        inside += 1;
++                    }
++                }
++            }
++        }
++        inside
++    }
++
++    pub fn dist_json(items: &[(u32, u64)]) -> String {
++        if items.is_empty() {
++            return "{\"count\":0,\"sum_ns\":0,\"p50_ns\":0,\"p90_ns\":0,\"p95_ns\":0,\"p99_ns\":0,\"max_ns\":0,\"max_idx\":0}".into();
++        }
++        let mut sorted: Vec<(u32, u64)> = items.to_vec();
++        sorted.sort_by_key(|&(_, ns)| ns);
++        let n = sorted.len();
++        let sum: u64 = sorted.iter().map(|&(_, ns)| ns).sum();
++        let pct = |p: f64| -> u64 {
++            let idx = ((n - 1) as f64 * p).round() as usize;
++            sorted[idx.min(n - 1)].1
++        };
++        let (max_idx, max_ns) = sorted[n - 1];
++        format!(
++            "{{\"count\":{},\"sum_ns\":{},\"p50_ns\":{},\"p90_ns\":{},\"p95_ns\":{},\"p99_ns\":{},\"max_ns\":{},\"max_idx\":{}}}",
++            n, sum, pct(0.50), pct(0.90), pct(0.95), pct(0.99), max_ns, max_idx
++        )
++    }
++
++    pub fn finish_and_write(path: &str) {
++        t180_probe::set_active(false);
++        let dists = DISTS.lock().unwrap().take().unwrap_or_default();
++        let mut sites_json = Vec::new();
++        for s in STAGE_SITES {
++            sites_json.push(s.to_json());
++        }
++        for s in CORE_SITES {
++            sites_json.push(s.to_json());
++        }
++        let recomp_json: Vec<String> = dists
++            .ib_recomp_layers
++            .iter()
++            .map(|(l, ns, ovl)| format!("{{\"layer\":{},\"ns\":{},\"ovl_is\":{}}}", l, ns, ovl))
++            .collect();
++        let body = format!(
++            "{{\n  \"counters\": {},\n  \"gather_layers\": {{\"layers_1\":{},\"layers_gt1\":{}}},\n  \"dists\": {{\n    \"pass1\": {},\n    \"p2t_proj\": {},\n    \"p2b_proj\": {},\n    \"b4_ext_bridge\": {},\n    \"ib_phase_a\": {},\n    \"ib_phase_b_precomp\": {}\n  }},\n  \"ib_recomp_layers\": [{}],\n  \"sites\": [\n    {}\n  ]\n}}\n",
++            C.to_json(),
++            t180_probe::IB_GATHER_LAYERS_1.load(Ordering::SeqCst),
++            t180_probe::IB_GATHER_LAYERS_GT1.load(Ordering::SeqCst),
++            dist_json(&dists.pass1_items),
++            dist_json(&dists.p2t_items),
++            dist_json(&dists.p2b_items),
++            dist_json(&dists.b4_items),
++            dist_json(&dists.ib_a_items),
++            dist_json(&dists.ib_b_items),
++            recomp_json.join(","),
++            sites_json.join(",\n    ")
++        );
++        let _ = std::fs::write(path, body);
++    }
++
++    pub use t180_probe::{count_verts as cverts, is_active as active, record_ex as rec_ex, record_single as rec1};
++}
++
+ /// Structured failures for `PrePass::ShellClassification`.
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub enum ShellClassificationError {
+@@ -117,6 +503,9 @@ impl std::error::Error for ShellClassificationError {}
+ pub fn commit_shell_classification_builtin(
+     blackboard: &mut Blackboard,
+ ) -> Result<(), ShellClassificationError> {
++    let probe_path = t180_stage_probe::start_if_env();
++    let stage_t0 = probe_path.as_ref().map(|_| std::time::Instant::now());
++    let b0_t0 = stage_t0;
+     let old_arc = blackboard
+         .slice_ir()
+         .ok_or(ShellClassificationError::SliceIRNotCommitted)?
+@@ -140,6 +529,14 @@ pub fn commit_shell_classification_builtin(
+     // ordering by construction (built per the layer plan), so iteration order
+     // is already plan-order.
+     let timelines = build_region_timelines(&new_vec, &raft_layer_indices);
++    if let Some(t0) = b0_t0 {
++        t180_stage_probe::C
++            .b0_setup_ns
++            .store(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++        t180_stage_probe::C
++            .timelines_count
++            .store(timelines.len() as u64, std::sync::atomic::Ordering::SeqCst);
++    }
+ 
+     // Per-region computation produces a Vec<(slice_idx, RegionUpdate)> tagged
+     // with (object_id, region_id). Reads are against the immutable `new_vec`
+@@ -155,6 +552,14 @@ pub fn commit_shell_classification_builtin(
+                 resolve_shell_counts(region_map.as_ref(), object_id, *region_id, timeline);
+             let params =
+                 resolve_opening_params(region_map.as_ref(), object_id, *region_id, timeline);
++            if t180_stage_probe::active() {
++                use std::sync::atomic::Ordering::SeqCst;
++                t180_stage_probe::C.timeline_len.fetch_add(timeline.len() as u64, SeqCst);
++                t180_stage_probe::C.k_top.store(k_top as u64, SeqCst);
++                t180_stage_probe::C.k_bot.store(k_bot as u64, SeqCst);
++                t180_stage_probe::C.opening_radius_um.store((params.opening_radius_mm * 1000.0).round() as u64, SeqCst);
++                t180_stage_probe::C.shell_width_um.store((params.shell_width_mm * 1000.0).round() as u64, SeqCst);
++            }
+             compute_region_updates(
+                 &new_vec,
+                 object_id,
+@@ -170,6 +575,7 @@ pub fn commit_shell_classification_builtin(
+     // Apply updates serially. Each update targets a single SlicedRegion (by
+     // object_id + region_id within the SliceIR at slice_idx); regions from
+     // different timelines never collide.
++    let b3_t0 = probe_path.as_ref().map(|_| std::time::Instant::now());
+     for edits in per_region_updates {
+         for edit in edits {
+             if let Some(region) = find_region_mut(
+@@ -195,6 +601,12 @@ pub fn commit_shell_classification_builtin(
+             }
+         }
+     }
++    let b3b_t0 = probe_path.as_ref().map(|_| std::time::Instant::now());
++    if let Some(t0) = b3_t0 {
++        t180_stage_probe::C
++            .b3a_apply_edits_ns
++            .store(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++    }
+ 
+     // Bridge classification already ran in `PrePass::Slice` against the raw
+     // previous cross-section (canonical `detect_surfaces_type`'s difference).
+@@ -216,28 +628,60 @@ pub fn commit_shell_classification_builtin(
+                 .extend(region.infill_areas.iter().cloned());
+         }
+     }
++    if let Some(t0) = b3b_t0 {
++        t180_stage_probe::C
++            .b3b_lower_maps_ns
++            .store(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++    }
++    if let Some(t0) = b3_t0 {
++        t180_stage_probe::C
++            .b3_apply_and_maps_wall_ns
++            .store(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++    }
+     // Each slice reads only the immutable lower-layer maps and mutates its own
+     // regions, so the axis is embarrassingly parallel.
+-    new_vec.par_iter_mut().for_each(|slice| {
+-        let global_layer_index = slice.global_layer_index;
+-        for region in &mut slice.regions {
+-            let lower_layer_slices = global_layer_index
+-                .checked_sub(1)
+-                .filter(|lower_index| {
+-                    object_layers
+-                        .get(&region.object_id)
+-                        .is_some_and(|layers| layers.contains(lower_index))
+-                })
+-                .and_then(|lower_index| {
+-                    lower_layer_polygons
+-                        .get(&(region.object_id.clone(), lower_index))
+-                        .map(Vec::as_slice)
+-                });
+-            // Packet 235 Step 2: orientation derives from the classified
+-            // geometry + committed lower contours.
+-            update_external_bridge_orientation(region, lower_layer_slices);
++    let b4_t0 = probe_path.as_ref().map(|_| std::time::Instant::now());
++    let b4_items: Vec<(u32, u64)> = new_vec
++        .par_iter_mut()
++        .map(|slice| {
++            let it0 = t180_stage_probe::active().then(std::time::Instant::now);
++            let global_layer_index = slice.global_layer_index;
++            for region in &mut slice.regions {
++                if t180_stage_probe::active() && !region.bridge_areas.is_empty() {
++                    t180_stage_probe::C
++                        .b4_nonempty_layers
++                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                }
++                let lower_layer_slices = global_layer_index
++                    .checked_sub(1)
++                    .filter(|lower_index| {
++                        object_layers
++                            .get(&region.object_id)
++                            .is_some_and(|layers| layers.contains(lower_index))
++                    })
++                    .and_then(|lower_index| {
++                        lower_layer_polygons
++                            .get(&(region.object_id.clone(), lower_index))
++                            .map(Vec::as_slice)
++                    });
++                // Packet 235 Step 2: orientation derives from the classified
++                // geometry + committed lower contours.
++                update_external_bridge_orientation(region, lower_layer_slices);
++            }
++            (
++                global_layer_index,
++                it0.map_or(0, |t| t.elapsed().as_nanos() as u64),
++            )
++        })
++        .collect();
++    if let Some(t0) = b4_t0 {
++        t180_stage_probe::C
++            .b4_ext_bridge_wall_ns
++            .store(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++        if let Some(d) = t180_stage_probe::DISTS.lock().unwrap().as_mut() {
++            d.b4_items = b4_items;
+         }
+-    });
++    }
+ 
+     // Packet 234a: qualify internal-bridge sites against the committed layer
+     // below and author anchored bridge centerlines per region. Runs after the
+@@ -255,7 +699,33 @@ pub fn commit_shell_classification_builtin(
+         &lower_layer_polygons,
+     );
+ 
++    if let Ok(dump_path) = std::env::var("PNP_T180_DUMP_IO") {
++        if !dump_path.is_empty() {
++            let payload = (
++                old_arc.as_ref(),
++                region_map.as_ref(),
++                &raft_layer_indices,
++                &new_vec,
++            );
++            if let Ok(bytes) = postcard::to_allocvec(&payload) {
++                let _ = std::fs::write(&dump_path, bytes);
++            }
++        }
++    }
++
++    let b6_t0 = probe_path.as_ref().map(|_| std::time::Instant::now());
+     blackboard.replace_slice_ir(Arc::new(new_vec))?;
++    if let Some(t0) = b6_t0 {
++        t180_stage_probe::C
++            .b6_replace_wall_ns
++            .store(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++    }
++    if let (Some(path), Some(t0)) = (probe_path, stage_t0) {
++        t180_stage_probe::C
++            .stage_wall_ns
++            .store(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++        t180_stage_probe::finish_and_write(&path);
++    }
+     Ok(())
+ }
+ 
+@@ -339,22 +809,101 @@ fn project_shadow<I>(
+     timeline: &[usize],
+     shrink_mm: f32,
+     steps: I,
++    is_top: bool,
+ ) -> Vec<ShadowContribution>
+ where
+     I: Iterator<Item = (u8, usize)>,
+ {
+     let mut shadow = seed_fill.to_vec();
+     let mut out = Vec::new();
++    let shrink_2_units = (f64::from(shrink_mm) * 2.0 * slicer_ir::UNITS_PER_MM).round() as i64;
+     for (depth, n_pos) in steps {
+         let n_slice_idx = timeline[n_pos];
+         let neighbor_polys = clone_region_polys(&snapshot[n_slice_idx], object_id, region_id);
+-        let intersected = intersection(&shadow, &neighbor_polys);
++        if t180_stage_probe::active() {
++            use std::sync::atomic::Ordering::Relaxed;
++            let (st_steps, st_np, st_npo, st_nv, st_nvb) = if is_top {
++                (
++                    &t180_stage_probe::C.p2t_steps,
++                    &t180_stage_probe::C.p2t_nbr_polys_tot,
++                    &t180_stage_probe::C.p2t_nbr_polys_ovl,
++                    &t180_stage_probe::C.p2t_nbr_verts_tot,
++                    &t180_stage_probe::C.p2t_nbr_verts_in_bbox,
++                )
++            } else {
++                (
++                    &t180_stage_probe::C.p2b_steps,
++                    &t180_stage_probe::C.p2b_nbr_polys_tot,
++                    &t180_stage_probe::C.p2b_nbr_polys_ovl,
++                    &t180_stage_probe::C.p2b_nbr_verts_tot,
++                    &t180_stage_probe::C.p2b_nbr_verts_in_bbox,
++                )
++            };
++            st_steps.fetch_add(1, Relaxed);
++            st_np.fetch_add(neighbor_polys.len() as u64, Relaxed);
++            st_nv.fetch_add(t180_stage_probe::cverts(&neighbor_polys), Relaxed);
++            if let Some(sb) = t180_stage_probe::bbox_of(&shadow) {
++                let ovl = neighbor_polys
++                    .iter()
++                    .filter(|p| {
++                        t180_stage_probe::bbox_of_one(p)
++                            .is_some_and(|pb| t180_stage_probe::bboxes_overlap(sb, pb))
++                    })
++                    .count() as u64;
++                st_npo.fetch_add(ovl, Relaxed);
++                st_nvb.fetch_add(t180_stage_probe::verts_in_bbox(&neighbor_polys, sb), Relaxed);
++            }
++        }
++        let inter_site = if is_top {
++            &t180_stage_probe::P2T_INTERSECT
++        } else {
++            &t180_stage_probe::P2B_INTERSECT
++        };
++        let intersected = t180_stage_probe::rec_ex(inter_site, &shadow, &neighbor_polys, || {
++            intersection(&shadow, &neighbor_polys)
++        });
++        if t180_stage_probe::active() {
++            use std::sync::atomic::Ordering::Relaxed;
++            let (ip, isl, br_i) = if is_top {
++                (
++                    &t180_stage_probe::C.p2t_inter_polys_tot,
++                    &t180_stage_probe::C.p2t_inter_slivers,
++                    &t180_stage_probe::C.p2t_break_inter_empty,
++                )
++            } else {
++                (
++                    &t180_stage_probe::C.p2b_inter_polys_tot,
++                    &t180_stage_probe::C.p2b_inter_slivers,
++                    &t180_stage_probe::C.p2b_break_inter_empty,
++                )
++            };
++            ip.fetch_add(intersected.len() as u64, Relaxed);
++            isl.fetch_add(t180_stage_probe::count_slivers(&intersected, shrink_2_units), Relaxed);
++            if intersected.is_empty() {
++                br_i.fetch_add(1, Relaxed);
++            }
++        }
++        let off_site = if is_top {
++            &t180_stage_probe::P2T_OFFSET
++        } else {
++            &t180_stage_probe::P2B_OFFSET
++        };
+         let new_shadow = if shrink_mm > 0.0 {
+-            offset(&intersected, -shrink_mm, OffsetJoinType::Miter, 0.0)
++            t180_stage_probe::rec1(off_site, &intersected, || {
++                offset(&intersected, -shrink_mm, OffsetJoinType::Miter, 0.0)
++            })
+         } else {
+             intersected
+         };
+         if new_shadow.is_empty() {
++            if t180_stage_probe::active() {
++                let br_o = if is_top {
++                    &t180_stage_probe::C.p2t_break_off_empty
++                } else {
++                    &t180_stage_probe::C.p2b_break_off_empty
++                };
++                br_o.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++            }
+             break;
+         }
+         out.push(ShadowContribution {
+@@ -387,6 +936,7 @@ fn compute_region_updates(
+         opening_radius_mm,
+         shell_width_mm,
+     } = params;
++    let open_2_units = (f64::from(opening_radius_mm) * 2.0 * slicer_ir::UNITS_PER_MM).round() as i64;
+     // Pass 1: depth-0 classification.
+     //
+     // A pure map over the timeline: position `pos` reads only the immutable
+@@ -396,11 +946,19 @@ fn compute_region_updates(
+     // iteration, so the resulting map is identical to the previous sequential
+     // build. This pass performs two `difference` calls and one canonical
+     // `opening_ex` per exposed side, on full-layer geometry.
+-    let pass1: Vec<(usize, RegionUpdate)> = timeline
++    let b1_t0 = t180_stage_probe::active().then(std::time::Instant::now);
++    let pass1_raw: Vec<((u32, u64), Option<(usize, RegionUpdate)>)> = timeline
+         .par_iter()
+         .enumerate()
+-        .filter_map(|(pos, &slice_idx)| {
++        .map(|(pos, &slice_idx)| {
++            let it0 = t180_stage_probe::active().then(std::time::Instant::now);
+             let r_polys = clone_region_polys(&snapshot[slice_idx], object_id, region_id);
++            if t180_stage_probe::active() {
++                t180_stage_probe::C
++                    .p1_sum_layer_polys
++                    .fetch_add(r_polys.len() as u64, std::sync::atomic::Ordering::Relaxed);
++                t180_stage_probe::update_max(&t180_stage_probe::C.p1_max_layer_polys, r_polys.len() as u64);
++            }
+ 
+             let upper_polys = timeline
+                 .get(pos + 1)
+@@ -416,8 +974,34 @@ fn compute_region_updates(
+             let mut touched = false;
+ 
+             if k_top > 0 {
+-                let top_diff =
+-                    apply_opening(&difference(&r_polys, &upper_polys), opening_radius_mm);
++                if t180_stage_probe::active() {
++                    if upper_polys.is_empty() {
++                        t180_stage_probe::C.p1_top_empty_clip.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                    } else if r_polys == upper_polys {
++                        t180_stage_probe::C.p1_top_identical.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                    }
++                }
++                let raw_top_diff = t180_stage_probe::rec_ex(
++                    &t180_stage_probe::P1_TOP_DIFF,
++                    &r_polys,
++                    &upper_polys,
++                    || difference(&r_polys, &upper_polys),
++                );
++                if t180_stage_probe::active() {
++                    t180_stage_probe::C
++                        .p1_top_diff_polys
++                        .fetch_add(raw_top_diff.len() as u64, std::sync::atomic::Ordering::Relaxed);
++                    t180_stage_probe::C
++                        .p1_top_diff_slivers
++                        .fetch_add(t180_stage_probe::count_slivers(&raw_top_diff, open_2_units), std::sync::atomic::Ordering::Relaxed);
++                }
++                let top_diff = if raw_top_diff.is_empty() || !(opening_radius_mm > 0.0) {
++                    apply_opening(&raw_top_diff, opening_radius_mm)
++                } else {
++                    t180_stage_probe::rec1(&t180_stage_probe::P1_TOP_OPEN, &raw_top_diff, || {
++                        apply_opening(&raw_top_diff, opening_radius_mm)
++                    })
++                };
+                 if !top_diff.is_empty() {
+                     update.top_shell_index = Some(0);
+                     update.top_solid_seed = Some(top_diff.clone());
+@@ -427,8 +1011,34 @@ fn compute_region_updates(
+             }
+ 
+             if k_bot > 0 {
+-                let bot_diff =
+-                    apply_opening(&difference(&r_polys, &lower_polys), opening_radius_mm);
++                if t180_stage_probe::active() {
++                    if lower_polys.is_empty() {
++                        t180_stage_probe::C.p1_bot_empty_clip.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                    } else if r_polys == lower_polys {
++                        t180_stage_probe::C.p1_bot_identical.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                    }
++                }
++                let raw_bot_diff = t180_stage_probe::rec_ex(
++                    &t180_stage_probe::P1_BOT_DIFF,
++                    &r_polys,
++                    &lower_polys,
++                    || difference(&r_polys, &lower_polys),
++                );
++                if t180_stage_probe::active() {
++                    t180_stage_probe::C
++                        .p1_bot_diff_polys
++                        .fetch_add(raw_bot_diff.len() as u64, std::sync::atomic::Ordering::Relaxed);
++                    t180_stage_probe::C
++                        .p1_bot_diff_slivers
++                        .fetch_add(t180_stage_probe::count_slivers(&raw_bot_diff, open_2_units), std::sync::atomic::Ordering::Relaxed);
++                }
++                let bot_diff = if raw_bot_diff.is_empty() || !(opening_radius_mm > 0.0) {
++                    apply_opening(&raw_bot_diff, opening_radius_mm)
++                } else {
++                    t180_stage_probe::rec1(&t180_stage_probe::P1_BOT_OPEN, &raw_bot_diff, || {
++                        apply_opening(&raw_bot_diff, opening_radius_mm)
++                    })
++                };
+                 if !bot_diff.is_empty() {
+                     update.bottom_shell_index = Some(0);
+                     update.bottom_solid_fill = Some(bot_diff);
+@@ -436,10 +1046,32 @@ fn compute_region_updates(
+                 }
+             }
+ 
+-            touched.then_some((slice_idx, update))
++            let dt = it0.map_or(0, |t| t.elapsed().as_nanos() as u64);
++            (
++                (snapshot[slice_idx].global_layer_index, dt),
++                touched.then_some((slice_idx, update)),
++            )
+         })
+         .collect();
+-    let mut local: HashMap<usize, RegionUpdate> = pass1.into_iter().collect();
++    let mut pass1_items = Vec::new();
++    let mut local: HashMap<usize, RegionUpdate> = HashMap::new();
++    for (item, entry) in pass1_raw {
++        if t180_stage_probe::active() {
++            pass1_items.push(item);
++        }
++        if let Some((k, v)) = entry {
++            local.insert(k, v);
++        }
++    }
++    if let Some(t0) = b1_t0 {
++        t180_stage_probe::C
++            .b1_pass1_wall_ns
++            .fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++        if let Some(d) = t180_stage_probe::DISTS.lock().unwrap().as_mut() {
++            d.pass1_items.extend(pass1_items);
++        }
++    }
++    let mut top_received_p2: HashSet<usize> = HashSet::new();
+     // Pass 2: shrinking-shadow projection for top (walk backward).
+     //
+     // Seeds are gathered from `local` *before* any Pass-2 write lands, so each
+@@ -450,18 +1082,25 @@ fn compute_region_updates(
+     // previous seed projected onto it. See the bottom walk below for why this
+     // matters there.
+     if k_top > 1 {
++        let b2a_t0 = t180_stage_probe::active().then(std::time::Instant::now);
+         let seeds = gather_seeds(timeline, &local, |u| {
+             (u.top_shell_index, u.top_solid_fill.as_ref())
+         });
++        if t180_stage_probe::active() {
++            t180_stage_probe::C
++                .p2t_seeds
++                .fetch_add(seeds.len() as u64, std::sync::atomic::Ordering::Relaxed);
++        }
+         // Per-seed chains are independent: each reads only its own seed and the
+         // immutable `snapshot`, and writes nothing shared. The merge below is
+         // serial and walks seeds in ascending timeline position — the same order
+         // the sequential version visited them — so the `union` / `min` folds see
+         // an identical sequence and produce identical output.
+-        let contributions: Vec<Vec<ShadowContribution>> = seeds
++        let contributions_raw: Vec<((u32, u64), Vec<ShadowContribution>)> = seeds
+             .par_iter()
+             .map(|(pos, seed_fill)| {
+-                project_shadow(
++                let it0 = t180_stage_probe::active().then(std::time::Instant::now);
++                let out = project_shadow(
+                     seed_fill,
+                     snapshot,
+                     object_id,
+@@ -469,17 +1108,61 @@ fn compute_region_updates(
+                     timeline,
+                     shell_width_mm,
+                     (1..k_top.min((*pos + 1) as u8)).map(|d| (d, *pos - d as usize)),
+-                )
++                    true,
++                );
++                let dt = it0.map_or(0, |t| t.elapsed().as_nanos() as u64);
++                ((snapshot[timeline[*pos]].global_layer_index, dt), out)
+             })
+             .collect();
+-        for contribution in contributions.into_iter().flatten() {
+-            let existing = local.entry(contribution.slice_idx).or_default();
+-            let existing_fill = existing.top_solid_fill.clone().unwrap_or_default();
+-            existing.top_solid_fill = Some(union(&existing_fill, &contribution.shadow));
+-            existing.top_shell_index = Some(match existing.top_shell_index {
+-                None => contribution.depth,
+-                Some(prev) => prev.min(contribution.depth),
+-            });
++        if let Some(t0) = b2a_t0 {
++            t180_stage_probe::C
++                .b2a_p2t_proj_wall_ns
++                .fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++            if let Some(d) = t180_stage_probe::DISTS.lock().unwrap().as_mut() {
++                d.p2t_items.extend(contributions_raw.iter().map(|(x, _)| *x));
++            }
++        }
++        let b2b_t0 = t180_stage_probe::active().then(std::time::Instant::now);
++        let mut target_counts: HashMap<usize, u64> = HashMap::new();
++        for (_, contribs) in contributions_raw {
++            for contribution in contribs {
++                if t180_stage_probe::active() {
++                    top_received_p2.insert(contribution.slice_idx);
++                    *target_counts.entry(contribution.slice_idx).or_default() += 1;
++                    t180_stage_probe::C
++                        .p2t_merge_contribs
++                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                }
++                let existing = local.entry(contribution.slice_idx).or_default();
++                let existing_fill = existing.top_solid_fill.clone().unwrap_or_default();
++                if t180_stage_probe::active() && existing_fill.is_empty() {
++                    t180_stage_probe::C
++                        .p2t_merge_empty_existing
++                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                }
++                let merged = t180_stage_probe::rec_ex(
++                    &t180_stage_probe::P2T_MERGE_UNION,
++                    &existing_fill,
++                    &contribution.shadow,
++                    || union(&existing_fill, &contribution.shadow),
++                );
++                existing.top_solid_fill = Some(merged);
++                existing.top_shell_index = Some(match existing.top_shell_index {
++                    None => contribution.depth,
++                    Some(prev) => prev.min(contribution.depth),
++                });
++            }
++        }
++        if let Some(t0) = b2b_t0 {
++            use std::sync::atomic::Ordering::SeqCst;
++            t180_stage_probe::C
++                .b2b_p2t_merge_wall_ns
++                .fetch_add(t0.elapsed().as_nanos() as u64, SeqCst);
++            t180_stage_probe::C
++                .p2t_merge_unique_targets
++                .fetch_add(target_counts.len() as u64, SeqCst);
++            let max_c = target_counts.values().copied().max().unwrap_or(0);
++            t180_stage_probe::update_max(&t180_stage_probe::C.p2t_merge_max_per_target, max_c);
+         }
+     }
+ 
+@@ -496,14 +1179,21 @@ fn compute_region_updates(
+     // target* is mutated. Gathering seeds up front restores that, and makes the
+     // chains independent as a side effect. See `docs/DEVIATION_LOG.md`.
+     if k_bot > 1 {
++        let b2c_t0 = t180_stage_probe::active().then(std::time::Instant::now);
+         let seeds = gather_seeds(timeline, &local, |u| {
+             (u.bottom_shell_index, u.bottom_solid_fill.as_ref())
+         });
+-        let contributions: Vec<Vec<ShadowContribution>> = seeds
++        if t180_stage_probe::active() {
++            t180_stage_probe::C
++                .p2b_seeds
++                .fetch_add(seeds.len() as u64, std::sync::atomic::Ordering::Relaxed);
++        }
++        let contributions_raw: Vec<((u32, u64), Vec<ShadowContribution>)> = seeds
+             .par_iter()
+             .map(|(pos, seed_fill)| {
++                let it0 = t180_stage_probe::active().then(std::time::Instant::now);
+                 let remaining = timeline.len() - pos - 1;
+-                project_shadow(
++                let out = project_shadow(
+                     seed_fill,
+                     snapshot,
+                     object_id,
+@@ -512,29 +1202,101 @@ fn compute_region_updates(
+                     shell_width_mm,
+                     (1..k_bot.min(remaining.saturating_add(1) as u8))
+                         .map(|d| (d, *pos + d as usize)),
+-                )
++                    false,
++                );
++                let dt = it0.map_or(0, |t| t.elapsed().as_nanos() as u64);
++                ((snapshot[timeline[*pos]].global_layer_index, dt), out)
+             })
+             .collect();
+-        for contribution in contributions.into_iter().flatten() {
+-            let existing = local.entry(contribution.slice_idx).or_default();
+-            let existing_fill = existing.bottom_solid_fill.clone().unwrap_or_default();
+-            existing.bottom_solid_fill = Some(union(&existing_fill, &contribution.shadow));
+-            existing.bottom_shell_index = Some(match existing.bottom_shell_index {
+-                None => contribution.depth,
+-                Some(prev) => prev.min(contribution.depth),
+-            });
++        if let Some(t0) = b2c_t0 {
++            t180_stage_probe::C
++                .b2c_p2b_proj_wall_ns
++                .fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++            if let Some(d) = t180_stage_probe::DISTS.lock().unwrap().as_mut() {
++                d.p2b_items.extend(contributions_raw.iter().map(|(x, _)| *x));
++            }
++        }
++        let b2d_t0 = t180_stage_probe::active().then(std::time::Instant::now);
++        let mut target_counts: HashMap<usize, u64> = HashMap::new();
++        for (_, contribs) in contributions_raw {
++            for contribution in contribs {
++                if t180_stage_probe::active() {
++                    *target_counts.entry(contribution.slice_idx).or_default() += 1;
++                    t180_stage_probe::C
++                        .p2b_merge_contribs
++                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                }
++                let existing = local.entry(contribution.slice_idx).or_default();
++                let existing_fill = existing.bottom_solid_fill.clone().unwrap_or_default();
++                if t180_stage_probe::active() && existing_fill.is_empty() {
++                    t180_stage_probe::C
++                        .p2b_merge_empty_existing
++                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                }
++                let merged = t180_stage_probe::rec_ex(
++                    &t180_stage_probe::P2B_MERGE_UNION,
++                    &existing_fill,
++                    &contribution.shadow,
++                    || union(&existing_fill, &contribution.shadow),
++                );
++                existing.bottom_solid_fill = Some(merged);
++                existing.bottom_shell_index = Some(match existing.bottom_shell_index {
++                    None => contribution.depth,
++                    Some(prev) => prev.min(contribution.depth),
++                });
++            }
++        }
++        if let Some(t0) = b2d_t0 {
++            use std::sync::atomic::Ordering::SeqCst;
++            t180_stage_probe::C
++                .b2d_p2b_merge_wall_ns
++                .fetch_add(t0.elapsed().as_nanos() as u64, SeqCst);
++            t180_stage_probe::C
++                .p2b_merge_unique_targets
++                .fetch_add(target_counts.len() as u64, SeqCst);
++            let max_c = target_counts.values().copied().max().unwrap_or(0);
++            t180_stage_probe::update_max(&t180_stage_probe::C.p2b_merge_max_per_target, max_c);
+         }
+     }
+ 
+     // The depth-0 exposed seed remains top solid, not internal solid. Only
+     // geometry propagated down from an upper shell layer is an internal-solid
+     // bridge candidate.
+-    for update in local.values_mut() {
++    let b2e_t0 = t180_stage_probe::active().then(std::time::Instant::now);
++    for (&slice_idx, update) in local.iter_mut() {
+         if let Some(top_fill) = update.top_solid_fill.as_ref() {
+             let top_seed = update.top_solid_seed.as_deref().unwrap_or_default();
+-            update.internal_solid_fill = Some(difference(top_fill, top_seed));
++            if t180_stage_probe::active() {
++                use std::sync::atomic::Ordering::Relaxed;
++                t180_stage_probe::C.p2e_total.fetch_add(1, Relaxed);
++                let has_p2 = top_received_p2.contains(&slice_idx);
++                if top_seed.is_empty() {
++                    t180_stage_probe::C.p2e_seed_empty.fetch_add(1, Relaxed);
++                } else if !has_p2 {
++                    t180_stage_probe::C.p2e_no_p2_contrib.fetch_add(1, Relaxed);
++                } else {
++                    t180_stage_probe::C.p2e_both_nonempty.fetch_add(1, Relaxed);
++                }
++            }
++            let diff = t180_stage_probe::rec_ex(
++                &t180_stage_probe::P2E_INT_SOLID_DIFF,
++                top_fill,
++                top_seed,
++                || difference(top_fill, top_seed),
++            );
++            if t180_stage_probe::active() && !diff.is_empty() {
++                t180_stage_probe::C
++                    .p2e_nonempty_out
++                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++            }
++            update.internal_solid_fill = Some(diff);
+         }
+     }
++    if let Some(t0) = b2e_t0 {
++        t180_stage_probe::C
++            .b2e_int_solid_wall_ns
++            .fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++    }
+ 
+     local
+         .into_iter()
+@@ -762,22 +1524,46 @@ fn compute_internal_bridge_layer(
+     region_id: RegionId,
+     layer_index: u32,
+     print_z: f32,
+-) -> Option<InternalBridgeLayerResult> {
+-    let deep_infill_clip_area = offset(
++) -> (Option<InternalBridgeLayerResult>, u64) {
++    let pos_t0 = t180_stage_probe::active().then(std::time::Instant::now);
++    let deep_infill_clip_area = t180_stage_probe::rec1(
++        &t180_stage_probe::IB_COMP_POS_OFFSET,
+         &deep_infill_area,
+-        1.5 * qualify_spacing_mm,
+-        OffsetJoinType::Miter,
+-        0.0,
++        || {
++            offset(
++                &deep_infill_area,
++                1.5 * qualify_spacing_mm,
++                OffsetJoinType::Miter,
++                0.0,
++            )
++        },
+     );
++    let pos_ns = pos_t0.map_or(0, |t| t.elapsed().as_nanos() as u64);
+     let mut qualified: Vec<ExPolygon> = Vec::new();
+     for surface in &region.internal_solid_fill {
+-        let expanded_candidate = offset(
+-            std::slice::from_ref(surface),
+-            qualify_spacing_mm,
+-            OffsetJoinType::Miter,
+-            0.0,
++        if t180_stage_probe::active() {
++            t180_stage_probe::C
++                .ib_b_surf_total
++                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++        }
++        let surf_slice = std::slice::from_ref(surface);
++        let expanded_candidate = t180_stage_probe::rec1(
++            &t180_stage_probe::IB_COMP_SURF_OFFSET,
++            surf_slice,
++            || offset(surf_slice, qualify_spacing_mm, OffsetJoinType::Miter, 0.0),
++        );
++        let clip_hit = t180_stage_probe::rec_ex(
++            &t180_stage_probe::IB_COMP_SURF_CLIP,
++            &expanded_candidate,
++            &deep_infill_clip_area,
++            || intersection(&expanded_candidate, &deep_infill_clip_area),
+         );
+-        if intersection(&expanded_candidate, &deep_infill_clip_area).is_empty() {
++        if clip_hit.is_empty() {
++            if t180_stage_probe::active() {
++                t180_stage_probe::C
++                    .ib_b_surf_deep_empty
++                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++            }
+             log::debug!(
+                 "internal bridge skip object={} region={} layer={} print_z={} reason=deep_sparse_clip_empty",
+                 object_id, region_id, layer_index, print_z
+@@ -790,7 +1576,16 @@ fn compute_internal_bridge_layer(
+             qualify_spacing_mm,
+             nofilter,
+         ) {
++            if t180_stage_probe::active() {
++                t180_stage_probe::C
++                    .ib_b_surf_qual_some
++                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++            }
+             qualified.extend(polys);
++        } else if t180_stage_probe::active() {
++            t180_stage_probe::C
++                .ib_b_surf_qual_none
++                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+         }
+     }
+     // Only the surviving candidates are filtered against this erosion,
+@@ -805,20 +1600,33 @@ fn compute_internal_bridge_layer(
+         let clipped;
+         let operand: &[ExPolygon] = match &window {
+             Some(rect) => {
+-                clipped = intersection(&deep_infill_area, std::slice::from_ref(rect));
++                clipped = t180_stage_probe::rec_ex(
++                    &t180_stage_probe::IB_COMP_WIN_INTER,
++                    &deep_infill_area,
++                    std::slice::from_ref(rect),
++                    || intersection(&deep_infill_area, std::slice::from_ref(rect)),
++                );
+                 &clipped
+             }
+             None => &deep_infill_area,
+         };
+-        offset(
+-            operand,
+-            -(4.5 * qualify_spacing_mm),
+-            OffsetJoinType::Miter,
+-            0.0,
+-        )
++        t180_stage_probe::rec1(&t180_stage_probe::IB_COMP_NEG_OFFSET, operand, || {
++            offset(
++                operand,
++                -(4.5 * qualify_spacing_mm),
++                OffsetJoinType::Miter,
++                0.0,
++            )
++        })
+     };
+     qualified.retain(|polygon| {
+-        !intersection(std::slice::from_ref(polygon), &internal_unsupported_area).is_empty()
++        !t180_stage_probe::rec_ex(
++            &t180_stage_probe::IB_COMP_RETAIN_INTER,
++            std::slice::from_ref(polygon),
++            &internal_unsupported_area,
++            || intersection(std::slice::from_ref(polygon), &internal_unsupported_area),
++        )
++        .is_empty()
+     });
+     if qualified.is_empty() {
+         log::debug!(
+@@ -829,7 +1637,15 @@ fn compute_internal_bridge_layer(
+             print_z,
+             region.internal_solid_fill.len()
+         );
+-        return None;
++        return (None, pos_ns);
++    }
++    if t180_stage_probe::active() {
++        use std::sync::atomic::Ordering::Relaxed;
++        t180_stage_probe::C.ib_b_qual_layers.fetch_add(1, Relaxed);
++        t180_stage_probe::C
++            .ib_b_qual_cands_total
++            .fetch_add(qualified.len() as u64, Relaxed);
++        t180_stage_probe::update_max(&t180_stage_probe::C.ib_b_qual_cands_max, qualified.len() as u64);
+     }
+     // One bridge direction per qualified polygon (canonical
+     // `bridge_over_infill` direction step). The fill module draws each
+@@ -837,13 +1653,29 @@ fn compute_internal_bridge_layer(
+     // `bridge_orientation_deg` stays the external-bridge direction.
+     slicer_core::algos::bridge_over_infill::presort_bridge_candidates(&mut qualified);
+     let expansion_area = {
+-        let not_sparse = union(
+-            &union(&region.top_solid_fill, &region.bottom_solid_fill),
++        let u1 = t180_stage_probe::rec_ex(
++            &t180_stage_probe::IB_COMP_EXP_UNION1,
++            &region.top_solid_fill,
++            &region.bottom_solid_fill,
++            || union(&region.top_solid_fill, &region.bottom_solid_fill),
++        );
++        let not_sparse = t180_stage_probe::rec_ex(
++            &t180_stage_probe::IB_COMP_EXP_UNION2,
++            &u1,
+             &region.bridge_areas,
++            || union(&u1, &region.bridge_areas),
++        );
++        let d1 = t180_stage_probe::rec_ex(
++            &t180_stage_probe::IB_COMP_EXP_DIFF,
++            &region.infill_areas,
++            &not_sparse,
++            || difference(&region.infill_areas, &not_sparse),
+         );
+-        union(
+-            &difference(&region.infill_areas, &not_sparse),
++        t180_stage_probe::rec_ex(
++            &t180_stage_probe::IB_COMP_EXP_UNION3,
++            &d1,
+             &region.internal_solid_fill,
++            || union(&d1, &region.internal_solid_fill),
+         )
+     };
+     let angles = slicer_core::algos::bridge_over_infill::internal_bridge_angles(
+@@ -857,7 +1689,7 @@ fn compute_internal_bridge_layer(
+             override_deg: internal_bridge_angle,
+         },
+     );
+-    Some(InternalBridgeLayerResult { qualified, angles })
++    (Some(InternalBridgeLayerResult { qualified, angles }), pos_ns)
+ }
+ 
+ fn build_bridge_depth_layers(
+@@ -951,6 +1783,7 @@ fn gate_internal_bridge_sites(
+     };
+     // Lower-layer solid support is pooled across regions. Dense regions are
+     // wholly solid; sparse regions contribute every persisted solid surface.
++    let b5a_t0 = t180_stage_probe::active().then(std::time::Instant::now);
+     let mut lower_layer_solids: HashMap<(ObjectId, u32), Vec<ExPolygon>> = HashMap::new();
+     for slice in slices.iter() {
+         for region in &slice.regions {
+@@ -968,8 +1801,14 @@ fn gate_internal_bridge_sites(
+             }
+         }
+     }
++    if let Some(t0) = b5a_t0 {
++        t180_stage_probe::C
++            .b5a_lower_solids_cfg_wall_ns
++            .fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++    }
+ 
+     for ((object_id, region_id), timeline) in timelines {
++        let cfg_t0 = t180_stage_probe::active().then(std::time::Instant::now);
+         // Resolve this region's flow settings once from its first timeline
+         // entry, mirroring `resolve_opening_radius`'s key construction and
+         // contains_key guard (`config_for` panics on unknown keys).
+@@ -1027,6 +1866,10 @@ fn gate_internal_bridge_sites(
+                 ConfigValue::String(value) => !value.is_empty() && value != "0" && value != "false",
+                 ConfigValue::List(values) => !values.is_empty(),
+             });
++        if t180_stage_probe::active() {
++            t180_stage_probe::C.extra_bridge_enabled.store(extra_bridge_layer as u64, std::sync::atomic::Ordering::SeqCst);
++            t180_stage_probe::C.nofilter_enabled.store(nofilter as u64, std::sync::atomic::Ordering::SeqCst);
++        }
+         let nozzle_diameter = ext_float("nozzle_diameter", 0.4);
+         let solid_infill_width = slicer_core::flow::resolve_role_width(
+             slicer_ir::ExtrusionRole::InternalSolidInfill,
+@@ -1061,6 +1904,11 @@ fn gate_internal_bridge_sites(
+         // windows below are expressed against it, so neither has to materialise
+         // the layers it will not read.
+         let timeline_zs: Vec<f32> = timeline.iter().map(|&idx| slices[idx].z).collect();
++        if let Some(t0) = cfg_t0 {
++            t180_stage_probe::C
++                .b5a_lower_solids_cfg_wall_ns
++                .fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++        }
+ 
+         // Phase A — qualification. Every step below reads only committed
+         // geometry (`slices`, and the two lower-layer maps built before this
+@@ -1068,21 +1916,35 @@ fn gate_internal_bridge_sites(
+         // independent here even though the commit phase that follows is not.
+         // `unsupported_span_areas` alone is four full-layer clipper ops per
+         // layer and was the stage's largest serial block.
++        let b5b_t0 = t180_stage_probe::active().then(std::time::Instant::now);
+         let slices_ro: &[SliceIR] = slices;
+-        let preps: Vec<LayerPrep> = timeline
++        let preps_raw: Vec<((u32, u64), Option<LayerPrep>)> = timeline
+             .par_iter()
+             .enumerate()
+-            .filter_map(|(timeline_position, &slice_idx)| {
++            .map(|(timeline_position, &slice_idx)| {
++            let it0 = t180_stage_probe::active().then(std::time::Instant::now);
++            let layer_index_for_item = slices_ro[slice_idx].global_layer_index;
++            if t180_stage_probe::active() {
++                t180_stage_probe::C.ib_a_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++            }
+             // The first layer has no lower layer — nothing can span it.
+-            let lower_index = slices_ro[slice_idx]
++            let Some(lower_index) = slices_ro[slice_idx]
+                 .global_layer_index
+                 .checked_sub(1)
+                 .filter(|lower_index| {
+                     object_layers
+                         .get(object_id)
+                         .is_some_and(|layers| layers.contains(lower_index))
+-                })?;
+-            let lower_fills = lower_layer_polygons.get(&(object_id.clone(), lower_index))?;
++                })
++            else {
++                if t180_stage_probe::active() {
++                    t180_stage_probe::C.ib_a_no_lower.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                }
++                return ((layer_index_for_item, it0.map_or(0, |t| t.elapsed().as_nanos() as u64)), None);
++            };
++            let Some(lower_fills) = lower_layer_polygons.get(&(object_id.clone(), lower_index)) else {
++                return ((layer_index_for_item, it0.map_or(0, |t| t.elapsed().as_nanos() as u64)), None);
++            };
+             let empty_solids: Vec<ExPolygon> = Vec::new();
+             let lower_solids = lower_layer_solids
+                 .get(&(object_id.clone(), lower_index))
+@@ -1135,7 +1997,7 @@ fn gate_internal_bridge_sites(
+                     layer_index,
+                     print_z
+                 );
+-                return None;
++                return ((layer_index_for_item, it0.map_or(0, |t| t.elapsed().as_nanos() as u64)), None);
+             };
+             // Both early-outs below are hoisted ahead of the depth gather and
+             // its offsets. They decide the layer entirely from geometry already
+@@ -1146,6 +2008,9 @@ fn gate_internal_bridge_sites(
+             // histogram is unchanged.
+             if candidate.is_none_or(|candidate| candidate.internal_solid_fill.is_empty())
+             {
++                if t180_stage_probe::active() {
++                    t180_stage_probe::C.ib_a_empty_is.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                }
+                 log::debug!(
+                     "internal bridge skip object={} region={} layer={} print_z={} reason=internal_solid_fill_empty",
+                     object_id,
+@@ -1153,7 +2018,23 @@ fn gate_internal_bridge_sites(
+                     layer_index,
+                     print_z
+                 );
+-                return None;
++                return ((layer_index_for_item, it0.map_or(0, |t| t.elapsed().as_nanos() as u64)), None);
++            }
++            if t180_stage_probe::active() {
++                use std::sync::atomic::Ordering::Relaxed;
++                t180_stage_probe::C.ib_a_ran_unsup.fetch_add(1, Relaxed);
++                t180_stage_probe::C.ib_a_lf_verts_tot.fetch_add(t180_stage_probe::cverts(lower_fills), Relaxed);
++                t180_stage_probe::C.ib_a_ls_verts_tot.fetch_add(t180_stage_probe::cverts(lower_solids), Relaxed);
++                if let Some(cand) = candidate {
++                    if let Some((x0, y0, x1, y1)) = t180_stage_probe::bbox_of(&cand.internal_solid_fill) {
++                        // Margin: miter(2.0) * (1 + expansion_multiplier) * spacing + 1 spacing
++                        let pad_mm = (2.0 * (1.0 + expansion_multiplier) + 1.0) * f64::from(qualify_spacing_mm);
++                        let pad = (pad_mm * slicer_ir::UNITS_PER_MM).ceil() as i64;
++                        let padded = (x0 - pad, y0 - pad, x1 + pad, y1 + pad);
++                        t180_stage_probe::C.ib_a_lf_verts_in_box.fetch_add(t180_stage_probe::verts_in_bbox(lower_fills, padded), Relaxed);
++                        t180_stage_probe::C.ib_a_ls_verts_in_box.fetch_add(t180_stage_probe::verts_in_bbox(lower_solids, padded), Relaxed);
++                    }
++                }
+             }
+             let unsupported = slicer_core::algos::bridge_over_infill::unsupported_span_areas(
+                 lower_fills,
+@@ -1162,6 +2043,9 @@ fn gate_internal_bridge_sites(
+                 expansion_multiplier,
+             );
+             if unsupported.is_empty() {
++                if t180_stage_probe::active() {
++                    t180_stage_probe::C.ib_a_unsup_empty.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                }
+                 log::debug!(
+                     "internal bridge skip object={} region={} layer={} print_z={} reason=unsupported_empty",
+                     object_id,
+@@ -1169,31 +2053,60 @@ fn gate_internal_bridge_sites(
+                     layer_index,
+                     print_z
+                 );
+-                return None;
++                return ((layer_index_for_item, it0.map_or(0, |t| t.elapsed().as_nanos() as u64)), None);
+             }
+-            Some(LayerPrep {
+-                timeline_position,
+-                slice_idx,
+-                layer_index,
+-                print_z,
+-                target_flow_height,
+-                qualify_spacing_mm,
+-                unsupported,
+-            })
++            if t180_stage_probe::active() {
++                t180_stage_probe::C.ib_a_survived.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++            }
++            (
++                (layer_index_for_item, it0.map_or(0, |t| t.elapsed().as_nanos() as u64)),
++                Some(LayerPrep {
++                    timeline_position,
++                    slice_idx,
++                    layer_index,
++                    print_z,
++                    target_flow_height,
++                    qualify_spacing_mm,
++                    unsupported,
++                }),
++            )
+             })
+             .collect();
++        let mut preps = Vec::new();
++        let mut ib_a_items = Vec::new();
++        for (item, p) in preps_raw {
++            if t180_stage_probe::active() {
++                ib_a_items.push(item);
++            }
++            if let Some(lp) = p {
++                preps.push(lp);
++            }
++        }
++        if let Some(t0) = b5b_t0 {
++            t180_stage_probe::C
++                .b5b_ib_phase_a_wall_ns
++                .fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++            if let Some(d) = t180_stage_probe::DISTS.lock().unwrap().as_mut() {
++                d.ib_a_items.extend(ib_a_items);
++            }
++        }
+ 
+         // Precompute the exact commit result for every qualified layer in
+         // parallel. The only order-dependent input is the set of lower-layer
+         // bridge polygons subtracted by
+         // `remove_filled_polygons_on_lower_layers`; when that set is empty the
+         // result below is exact and phase B merely publishes it.
+-        let precomputed: Vec<Option<InternalBridgeLayerResult>> = preps
++        let b5c_t0 = t180_stage_probe::active().then(std::time::Instant::now);
++        let precomputed_raw: Vec<((u32, u64), Option<InternalBridgeLayerResult>)> = preps
+             .par_iter()
+             .map(|prep| {
+-                let region = slices_ro[prep.slice_idx].regions.iter().find(|candidate| {
++                let it0 = t180_stage_probe::active().then(std::time::Instant::now);
++                let Some(region) = slices_ro[prep.slice_idx].regions.iter().find(|candidate| {
+                     candidate.object_id == *object_id && candidate.region_id == *region_id
+-                })?;
++                }) else {
++                    return ((prep.layer_index, it0.map_or(0, |t| t.elapsed().as_nanos() as u64)), None);
++                };
++                let g_t0 = t180_stage_probe::active().then(std::time::Instant::now);
+                 let depth_start = slicer_core::algos::bridge_over_infill::depth_window_start(
+                     &timeline_zs[..=prep.timeline_position],
+                     prep.timeline_position,
+@@ -1215,7 +2128,8 @@ fn gate_internal_bridge_sites(
+                     prep.target_flow_height,
+                     slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+                 );
+-                compute_internal_bridge_layer(
++                let g_ns = g_t0.map_or(0, |t| t.elapsed().as_nanos() as u64);
++                let (res, pos_ns) = compute_internal_bridge_layer(
+                     region,
+                     &prep.unsupported,
+                     prep.qualify_spacing_mm,
+@@ -1227,12 +2141,45 @@ fn gate_internal_bridge_sites(
+                     *region_id,
+                     prep.layer_index,
+                     prep.print_z,
+-                )
++                );
++                let dt = it0.map_or(0, |t| t.elapsed().as_nanos() as u64);
++                if t180_stage_probe::active() {
++                    use std::sync::atomic::Ordering::Relaxed;
++                    t180_stage_probe::C.ib_b_precomp_total.fetch_add(1, Relaxed);
++                    if res.is_some() {
++                        t180_stage_probe::C.ib_b_precomp_some.fetch_add(1, Relaxed);
++                        t180_stage_probe::C.ib_b_kept_some_gather_ns.fetch_add(g_ns, Relaxed);
++                        t180_stage_probe::C.ib_b_kept_some_pos_off_ns.fetch_add(pos_ns, Relaxed);
++                    } else {
++                        t180_stage_probe::C.ib_b_precomp_none.fetch_add(1, Relaxed);
++                        t180_stage_probe::C.ib_b_wasted_none_thread_ns.fetch_add(dt, Relaxed);
++                        t180_stage_probe::C.ib_b_wasted_none_gather_ns.fetch_add(g_ns, Relaxed);
++                        t180_stage_probe::C.ib_b_wasted_none_pos_off_ns.fetch_add(pos_ns, Relaxed);
++                    }
++                }
++                ((prep.layer_index, dt), res)
+             })
+             .collect();
++        let mut precomputed = Vec::with_capacity(precomputed_raw.len());
++        let mut ib_b_items = Vec::new();
++        for (item, r) in precomputed_raw {
++            if t180_stage_probe::active() {
++                ib_b_items.push(item);
++            }
++            precomputed.push(r);
++        }
++        if let Some(t0) = b5c_t0 {
++            t180_stage_probe::C
++                .b5c_ib_phase_b_precomp_wall_ns
++                .fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++            if let Some(d) = t180_stage_probe::DISTS.lock().unwrap().as_mut() {
++                d.ib_b_items.extend(ib_b_items);
++            }
++        }
+ 
+         // Phase B — commit. Serial by necessity: `lower_candidates` reads the
+         // `internal_bridge_areas` that earlier layers of this same pass wrote.
++        let b5d_t0 = t180_stage_probe::active().then(std::time::Instant::now);
+         for (
+             LayerPrep {
+                 timeline_position,
+@@ -1278,6 +2225,8 @@ fn gate_internal_bridge_sites(
+                 .iter()
+                 .any(|candidate| !candidate.new_polys.is_empty());
+             let computed = if has_lower_filled {
++                let r_t0 = t180_stage_probe::active().then(std::time::Instant::now);
++                let g_t0 = r_t0;
+                 let depth_start = slicer_core::algos::bridge_over_infill::depth_window_start(
+                     &timeline_zs[..=timeline_position],
+                     timeline_position,
+@@ -1299,6 +2248,12 @@ fn gate_internal_bridge_sites(
+                     target_flow_height,
+                     slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+                 );
++                if let Some(t0) = g_t0 {
++                    t180_stage_probe::C
++                        .ib_b_commit_recomp_gather_ns
++                        .fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
++                }
++                let rem_t0 = t180_stage_probe::active().then(std::time::Instant::now);
+                 let deep_infill_area =
+                     slicer_core::algos::bridge_over_infill::remove_filled_polygons_on_lower_layers(
+                         &deep_infill_area,
+@@ -1306,12 +2261,33 @@ fn gate_internal_bridge_sites(
+                         print_z,
+                         target_flow_height,
+                     );
++                if let Some(t0) = rem_t0 {
++                    t180_stage_probe::C
++                        .ib_b_commit_recomp_remove_ns
++                        .fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
++                }
+                 let Some(region) = slices[slice_idx].regions.iter().find(|candidate| {
+                     candidate.object_id == *object_id && candidate.region_id == *region_id
+                 }) else {
+                     continue;
+                 };
+-                compute_internal_bridge_layer(
++                let ovl_is = if t180_stage_probe::active() {
++                    let lc_polys: Vec<ExPolygon> = lower_candidates
++                        .iter()
++                        .flat_map(|c| c.new_polys.iter().cloned())
++                        .collect();
++                    match (
++                        t180_stage_probe::bbox_of(&lc_polys),
++                        t180_stage_probe::bbox_of(&region.internal_solid_fill),
++                    ) {
++                        (Some(a), Some(b)) => t180_stage_probe::bboxes_overlap(a, b),
++                        _ => false,
++                    }
++                } else {
++                    false
++                };
++                let comp_t0 = t180_stage_probe::active().then(std::time::Instant::now);
++                let (res, _) = compute_internal_bridge_layer(
+                     region,
+                     &unsupported,
+                     qualify_spacing_mm,
+@@ -1323,8 +2299,31 @@ fn gate_internal_bridge_sites(
+                     *region_id,
+                     layer_index,
+                     print_z,
+-                )
++                );
++                if let Some(t0) = comp_t0 {
++                    t180_stage_probe::C
++                        .ib_b_commit_recomp_compute_ns
++                        .fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
++                }
++                if let Some(t0) = r_t0 {
++                    let r_ns = t0.elapsed().as_nanos() as u64;
++                    use std::sync::atomic::Ordering::Relaxed;
++                    t180_stage_probe::C.ib_b_commit_recomputes.fetch_add(1, Relaxed);
++                    t180_stage_probe::C.ib_b_commit_recomp_wall_ns.fetch_add(r_ns, Relaxed);
++                    if ovl_is {
++                        t180_stage_probe::C.ib_b_commit_recomp_ovl_is.fetch_add(1, Relaxed);
++                    }
++                    if let Some(d) = t180_stage_probe::DISTS.lock().unwrap().as_mut() {
++                        d.ib_recomp_layers.push((layer_index, r_ns, ovl_is));
++                    }
++                }
++                res
+             } else {
++                if t180_stage_probe::active() {
++                    t180_stage_probe::C
++                        .ib_b_commit_published
++                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                }
+                 precomputed
+             };
+             let Some(InternalBridgeLayerResult { qualified, angles }) = computed else {
+@@ -1347,7 +2346,13 @@ fn gate_internal_bridge_sites(
+                 (qualified, angles),
+             );
+         }
++        if let Some(t0) = b5d_t0 {
++            t180_stage_probe::C
++                .b5d_ib_phase_b_commit_wall_ns
++                .fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++        }
+ 
++        let b5e_t0 = t180_stage_probe::active().then(std::time::Instant::now);
+         if extra_bridge_layer {
+             for pair in timeline.windows(2) {
+                 let [current_idx, upper_idx] = pair else {
+@@ -1363,6 +2368,9 @@ fn gate_internal_bridge_sites(
+                 else {
+                     continue;
+                 };
++                if t180_stage_probe::active() {
++                    t180_stage_probe::C.ib_extra_windows.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                }
+                 // Canonical caches the source layer's stInternalBridge polys
+                 // with a shrink-expand by the solid-infill extrusion WIDTH
+                 // (`offset_ex(shrink_ex(cache.polys, offset_distance),
+@@ -1371,8 +2379,11 @@ fn gate_internal_bridge_sites(
+                 // applied to the overlap below. `opening` is that
+                 // shrink-then-expand.
+                 let cleanup_width_mm = f64::from(solid_infill_width);
+-                let current_cleaned =
+-                    opening(current_areas, cleanup_width_mm, OffsetJoinType::Miter);
++                let current_cleaned = t180_stage_probe::rec1(
++                    &t180_stage_probe::IB_EXTRA_OPEN1,
++                    current_areas,
++                    || opening(current_areas, cleanup_width_mm, OffsetJoinType::Miter),
++                );
+                 if current_cleaned.is_empty() {
+                     continue;
+                 }
+@@ -1384,18 +2395,39 @@ fn gate_internal_bridge_sites(
+                 // stInternalSolid surfaces; its own internal bridges stay as
+                 // they are, so they are excluded here. See
+                 // `upper_convertible_surfaces` for the class mapping.
+-                let upper_convertible = upper_convertible_surfaces(upper);
+-                let mut duplicates = intersection(&upper_convertible, &current_cleaned);
++                let upper_convertible = t180_stage_probe::rec1(
++                    &t180_stage_probe::IB_EXTRA_CONV_OPS,
++                    &upper.infill_areas,
++                    || upper_convertible_surfaces(upper),
++                );
++                let mut duplicates = t180_stage_probe::rec_ex(
++                    &t180_stage_probe::IB_EXTRA_INTER,
++                    &upper_convertible,
++                    &current_cleaned,
++                    || intersection(&upper_convertible, &current_cleaned),
++                );
+                 if !upper.internal_bridge_areas.is_empty() {
+-                    duplicates = difference(&duplicates, &upper.internal_bridge_areas);
++                    duplicates = t180_stage_probe::rec_ex(
++                        &t180_stage_probe::IB_EXTRA_DIFF_EXIST,
++                        &duplicates,
++                        &upper.internal_bridge_areas,
++                        || difference(&duplicates, &upper.internal_bridge_areas),
++                    );
+                 }
+                 // Shrink-expand to remove trivial overlap slivers
+                 // (canonical `overlap = offset_ex(shrink_ex(overlap,
+                 // offset_distance), offset_distance)`).
+-                duplicates = opening(&duplicates, cleanup_width_mm, OffsetJoinType::Miter);
++                duplicates = t180_stage_probe::rec1(
++                    &t180_stage_probe::IB_EXTRA_OPEN2,
++                    &duplicates,
++                    || opening(&duplicates, cleanup_width_mm, OffsetJoinType::Miter),
++                );
+                 if duplicates.is_empty() {
+                     continue;
+                 }
++                if t180_stage_probe::active() {
++                    t180_stage_probe::C.ib_extra_converted.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                }
+                 // Canonical second internal bridge: the layer's cached bridge
+                 // angle (the last internal bridge on the layer wins) turned by
+                 // 90 degrees, so the second layer crosses the first.
+@@ -1429,13 +2461,28 @@ fn gate_internal_bridge_sites(
+                 // pre-partition perimeters stage — removing from the marker
+                 // alone would make the converted area read as exposed top).
+                 if !upper.internal_solid_fill.is_empty() {
+-                    upper.internal_solid_fill = difference(&upper.internal_solid_fill, &duplicates);
++                    upper.internal_solid_fill = t180_stage_probe::rec_ex(
++                        &t180_stage_probe::IB_EXTRA_DIFF_UPPER,
++                        &upper.internal_solid_fill,
++                        &duplicates,
++                        || difference(&upper.internal_solid_fill, &duplicates),
++                    );
+                 }
+                 if !upper.top_solid_fill.is_empty() {
+-                    upper.top_solid_fill = difference(&upper.top_solid_fill, &duplicates);
++                    upper.top_solid_fill = t180_stage_probe::rec_ex(
++                        &t180_stage_probe::IB_EXTRA_DIFF_UPPER,
++                        &upper.top_solid_fill,
++                        &duplicates,
++                        || difference(&upper.top_solid_fill, &duplicates),
++                    );
+                 }
+             }
+         }
++        if let Some(t0) = b5e_t0 {
++            t180_stage_probe::C
++                .b5e_ib_extra_wall_ns
++                .fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::SeqCst);
++        }
+     }
+ }
+ 
