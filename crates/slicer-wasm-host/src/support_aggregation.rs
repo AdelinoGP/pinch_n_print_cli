@@ -8,6 +8,7 @@ use slicer_ir::{
 use std::collections::{HashMap, HashSet};
 
 use crate::exact_z_query::ExactZQueryService;
+use crate::support_overlap::{expolygon_area, PreparedOverlap};
 use crate::support_territory::TerritoryClipper;
 
 /// Maximum envelope a single support body may span on either axis, in
@@ -134,8 +135,6 @@ pub struct SupportRoutingDiagnostics {
     /// Stable routing rejection reason.
     pub reason: String,
 }
-
-const SUPPORT_OVERLAP_TOLERANCE: i64 = 0;
 
 /// One body trimmed to its family's support territory (ticket 19). Trimming
 /// is expected behaviour where two families meet across a modifier boundary,
@@ -320,15 +319,15 @@ pub fn try_aggregate_support_plans(
 fn check_ownership(
     entry: &SupportPlanEntry,
     plan_index: usize,
-    input: &SupportAggregationInput<'_>,
+    producers: &[SupportPlanProducer],
+    territory: Option<&SupportAnalysisIR>,
 ) -> Result<(), OwnershipViolation> {
-    let producer = input.producers.get(plan_index);
+    let producer = producers.get(plan_index);
     let module_id = producer
         .map(|producer| producer.module_id.clone())
         .unwrap_or_default();
     let required_claim = format!("support-family:{}", entry.family_id);
-    let owner = input
-        .territory
+    let owner = territory
         .and_then(|analysis| {
             analysis.family_assignments.get(&SupportSourceKey {
                 object_id: entry.object_id.clone(),
@@ -382,23 +381,23 @@ pub fn try_aggregate_support_plans_with_policy(
         input.producers.len(),
         "every support plan must carry its producer identity"
     );
+    let SupportAggregationInput {
+        plans,
+        exact_z,
+        territory,
+        producers,
+    } = input;
     let mut result = SupportAggregationResult::default();
-    let mut identities = HashMap::new();
-    let mut entries = input
-        .plans
-        .iter()
-        .enumerate()
-        .flat_map(|(plan_index, plan)| {
-            plan.entries
-                .iter()
-                .map(move |entry| (plan_index, entry.clone()))
-        })
-        .collect::<Vec<_>>();
+    // The plans are owned here, so their entries move into the work list
+    // rather than being cloned out of it; the raft plans fold in plan order as
+    // before.
+    let mut entries = Vec::with_capacity(plans.iter().map(|plan| plan.entries.len()).sum());
+    for (plan_index, plan) in plans.into_iter().enumerate() {
+        result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan);
+        entries.extend(plan.entries.into_iter().map(|entry| (plan_index, entry)));
+    }
     // Purely for output determinism: ownership no longer depends on order.
     entries.sort_by(|left, right| compare_entries(&left.1, &right.1));
-    for plan in &input.plans {
-        result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan.clone());
-    }
     // Serve every exact-Z cross-section this aggregation needs from one batched
     // mesh walk per object. All entries are in hand before the occupancy gate
     // runs, and `slice_mesh_ex` builds each plane independently, so the batched
@@ -418,20 +417,10 @@ pub fn try_aggregate_support_plans_with_policy(
         }
     }
     for (object_id, zs) in exact_z_planes {
-        input.exact_z.prefetch_cross_sections(&object_id, &zs);
+        exact_z.prefetch_cross_sections(&object_id, &zs);
     }
     for (plan_index, entry) in entries {
-        // The conflict identity is the full source origin: entries for two
-        // chain-differing regions of one object never collapse into one row.
-        let identity = (
-            entry.global_layer_index,
-            SupportSourceKey {
-                object_id: entry.object_id.clone(),
-                region_id: entry.region_id,
-                variant_chain: entry.variant_chain.clone(),
-            },
-        );
-        if let Err(violation) = check_ownership(&entry, plan_index, &input) {
+        if let Err(violation) = check_ownership(&entry, plan_index, &producers, territory) {
             match conflict_policy {
                 FamilyConflictPolicy::Fail => {
                     return Err(SupportAggregationError {
@@ -456,9 +445,6 @@ pub fn try_aggregate_support_plans_with_policy(
         // `union_same_family_entries` below and carries no diagnostic. Dropping
         // it made whichever role sorted first authoritative for the identity,
         // losing interfaces or body geometry from the other entry.
-        identities
-            .entry(identity.clone())
-            .or_insert_with(|| entry.family_id.clone());
         if let Some(decline_reason) = entry.decline_reason {
             let reason = format!("declined: {decline_reason:?}");
             for body_id in &entry.body_ids {
@@ -473,7 +459,7 @@ pub fn try_aggregate_support_plans_with_policy(
             }
             continue;
         }
-        match validate_entry(&entry, input.exact_z) {
+        match validate_entry(&entry, exact_z) {
             None => result.retained.push(entry),
             Some(reason) => {
                 result.degraded = true;
@@ -499,7 +485,7 @@ pub fn try_aggregate_support_plans_with_policy(
     // outcome there, so the clip is recorded as Info 1205 and the reject-both
     // guard below is skipped for those layers. Layers without territory keep
     // the guard unchanged.
-    let clipper = input.territory.and_then(TerritoryClipper::from_ir);
+    let clipper = territory.and_then(TerritoryClipper::from_ir);
     let has_territory = |entry: &SupportPlanEntry| {
         entry.global_layer_index >= 0
             && clipper.as_ref().is_some_and(|clipper| {
@@ -649,15 +635,15 @@ fn compare_entries(left: &SupportPlanEntry, right: &SupportPlanEntry) -> std::cm
         ))
 }
 
+/// The exact-Z gate.
+///
+/// It reads only the occupancy at the entry's plane
+/// ([`ExactZQueryService::with_occupancy`]: the full query's `occupancy`, with
+/// the same refusals) and decides overlap with [`PreparedOverlap`], which
+/// returns exactly the Clipper2 positive-area test it replaces.
 fn validate_entry(entry: &SupportPlanEntry, exact_z: &ExactZQueryService) -> Option<&'static str> {
     exact_z
-        .query(
-            &entry.object_id,
-            entry.region_id,
-            &entry.variant_chain,
-            units_to_mm(entry.anchor_z),
-        )
-        .map(|query| {
+        .with_occupancy(&entry.object_id, units_to_mm(entry.anchor_z), |occupancy| {
             if !in_routing_cell(entry) {
                 // Per-body extent-bound violation: the body's own bbox spans
                 // more than `MAX_BODY_EXTENT_UNITS` on an axis. This is not a
@@ -665,16 +651,17 @@ fn validate_entry(entry: &SupportPlanEntry, exact_z: &ExactZQueryService) -> Opt
                 // verbatim by assertions in
                 // `crates/slicer-runtime/tests/integration/support_family_routing.rs`,
                 // so renaming it must land together with those.
-                Some("body rejected: max-body-extent violation")
-            } else if entry.roles.iter().any(|role| {
-                role.regions
-                    .iter()
-                    .any(|body| overlaps_any(body, &query.occupancy))
-            }) {
-                Some("body rejected: exact-Z occupancy")
-            } else {
-                None
+                return Some("body rejected: max-body-extent violation");
             }
+            let occupancy: Vec<PreparedOverlap<'_>> =
+                occupancy.iter().map(PreparedOverlap::new).collect();
+            let overlaps = entry.roles.iter().any(|role| {
+                role.regions.iter().any(|body| {
+                    let body = PreparedOverlap::new(body);
+                    occupancy.iter().any(|other| body.overlaps(other))
+                })
+            });
+            overlaps.then_some("body rejected: exact-Z occupancy")
         })
         .unwrap_or(Some("body rejected: exact-Z query unavailable"))
 }
@@ -847,15 +834,6 @@ pub fn aggregate_support_plan_irs_with_policy_attributed(
         .first()
         .map(|plan| plan.schema_version)
         .unwrap_or_default();
-    let aggregate = try_aggregate_support_plans_with_policy(
-        SupportAggregationInput {
-            plans: plans.clone(),
-            exact_z,
-            territory,
-            producers,
-        },
-        conflict_policy,
-    )?;
     // Attribution indices. Aggregation flattens every family's entries into
     // one list, so the post-hoc diagnostics carry only `family_id` / `body_id`
     // rather than a plan ordinal; these maps invert that back to the producing
@@ -863,18 +841,55 @@ pub fn aggregate_support_plan_irs_with_policy_attributed(
     // (and a body identity) is written by a single module -- the property the
     // `(layer, object, region, variant_chain)` conflict logic above already
     // enforces.
-    let mut family_to_plan: HashMap<&str, usize> = HashMap::new();
-    let mut body_to_plan: HashMap<&str, usize> = HashMap::new();
+    //
+    // Declines are minted straight from the input plans, so the producing plan
+    // index is exact here -- no inversion needed. The family is also named in
+    // the message so the diagnostic stays self-describing once it is detached
+    // from its `AttributedDiagnostic` wrapper (e.g. in a log line).
+    //
+    // Both are read before the plans move into the aggregation, which consumes
+    // them; the declines are appended last, where they always were.
+    let mut family_to_plan: HashMap<String, usize> = HashMap::new();
+    let mut body_to_plan: HashMap<String, usize> = HashMap::new();
+    let mut declines: Vec<AttributedDiagnostic> = Vec::new();
     for (plan_index, plan) in plans.iter().enumerate() {
         for entry in &plan.entries {
-            family_to_plan
-                .entry(entry.family_id.as_str())
-                .or_insert(plan_index);
+            if !family_to_plan.contains_key(&entry.family_id) {
+                family_to_plan.insert(entry.family_id.clone(), plan_index);
+            }
             for body_id in &entry.body_ids {
-                body_to_plan.entry(body_id.as_str()).or_insert(plan_index);
+                if !body_to_plan.contains_key(body_id) {
+                    body_to_plan.insert(body_id.clone(), plan_index);
+                }
+            }
+            if let Some(reason) = entry.decline_reason {
+                for demand_id in &entry.demand_ids {
+                    declines.push(AttributedDiagnostic {
+                        plan_index: Some(plan_index),
+                        diagnostic: slicer_ir::Diagnostic {
+                            severity: slicer_ir::DiagnosticSeverity::Warn,
+                            code: 1201,
+                            layer: Some(entry.global_layer_index),
+                            object_id: Some(entry.object_id.clone()),
+                            message: format!(
+                                "support demand '{}' declined by family '{}': {:?}",
+                                demand_id, entry.family_id, reason
+                            ),
+                        },
+                    });
+                }
             }
         }
     }
+    let aggregate = try_aggregate_support_plans_with_policy(
+        SupportAggregationInput {
+            plans,
+            exact_z,
+            territory,
+            producers,
+        },
+        conflict_policy,
+    )?;
 
     let mut diagnostics = aggregate
         .unmet
@@ -970,33 +985,7 @@ pub fn aggregate_support_plan_irs_with_policy_attributed(
             ),
         },
     }));
-    // Declines are minted straight from the input plans, so the producing plan
-    // index is exact here -- no inversion needed. The family is also named in
-    // the message so the diagnostic stays self-describing once it is detached
-    // from its `AttributedDiagnostic` wrapper (e.g. in a log line).
-    for (plan_index, entry) in plans
-        .iter()
-        .enumerate()
-        .flat_map(|(plan_index, plan)| plan.entries.iter().map(move |e| (plan_index, e)))
-    {
-        if let Some(reason) = entry.decline_reason {
-            for demand_id in &entry.demand_ids {
-                diagnostics.push(AttributedDiagnostic {
-                    plan_index: Some(plan_index),
-                    diagnostic: slicer_ir::Diagnostic {
-                        severity: slicer_ir::DiagnosticSeverity::Warn,
-                        code: 1201,
-                        layer: Some(entry.global_layer_index),
-                        object_id: Some(entry.object_id.clone()),
-                        message: format!(
-                            "support demand '{}' declined by family '{}': {:?}",
-                            demand_id, entry.family_id, reason
-                        ),
-                    },
-                });
-            }
-        }
-    }
+    diagnostics.extend(declines);
     Ok((
         SupportPlanIR {
             schema_version,
@@ -1058,47 +1047,20 @@ fn in_routing_cell(entry: &SupportPlanEntry) -> bool {
         })
 }
 
-fn overlaps_any(a: &ExPolygon, others: &[ExPolygon]) -> bool {
-    others.iter().any(|other| {
-        let overlap = slicer_core::polygon_ops::intersection(
-            std::slice::from_ref(a),
-            std::slice::from_ref(other),
-        );
-        overlap.iter().map(expolygon_area).sum::<f64>() > SUPPORT_OVERLAP_TOLERANCE as f64
-    })
-}
-
 fn entries_overlap(a: &SupportPlanEntry, b: &SupportPlanEntry) -> bool {
-    let a_regions = a.roles.iter().flat_map(|role| role.regions.iter());
-    let b_regions = b.roles.iter().flat_map(|role| role.regions.iter());
-    a_regions.clone().any(|left| {
-        b_regions.clone().any(|right| {
-            let overlap = slicer_core::polygon_ops::intersection(
-                std::slice::from_ref(left),
-                std::slice::from_ref(right),
-            );
-            overlap.iter().map(expolygon_area).sum::<f64>() > SUPPORT_OVERLAP_TOLERANCE as f64
+    let b_regions: Vec<PreparedOverlap<'_>> = b
+        .roles
+        .iter()
+        .flat_map(|role| role.regions.iter())
+        .map(PreparedOverlap::new)
+        .collect();
+    a.roles
+        .iter()
+        .flat_map(|role| role.regions.iter())
+        .any(|left| {
+            let left = PreparedOverlap::new(left);
+            b_regions.iter().any(|right| left.overlaps(right))
         })
-    })
-}
-
-fn expolygon_area(poly: &ExPolygon) -> f64 {
-    fn ring_area(points: &[slicer_ir::Point2]) -> f64 {
-        if points.len() < 3 {
-            return 0.0;
-        }
-        points
-            .iter()
-            .enumerate()
-            .map(|(i, a)| {
-                let b = &points[(i + 1) % points.len()];
-                (a.x as f64) * (b.y as f64) - (b.x as f64) * (a.y as f64)
-            })
-            .sum::<f64>()
-            .abs()
-            * 0.5
-    }
-    ring_area(&poly.contour.points) - poly.holes.iter().map(|h| ring_area(&h.points)).sum::<f64>()
 }
 
 fn bounds(poly: &ExPolygon) -> Option<(i64, i64, i64, i64)> {

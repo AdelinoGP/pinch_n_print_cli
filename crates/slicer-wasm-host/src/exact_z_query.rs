@@ -7,7 +7,10 @@ use std::sync::{Arc, Mutex};
 
 use slicer_core::algos::mesh_cross_section::cross_section_at_z;
 use slicer_core::slice_mesh_ex;
-use slicer_ir::{mm_to_units, ExPolygon, MeshIR, ObjectMesh, PaintValue, Point2, Point3, Polygon};
+use slicer_ir::{
+    mm_to_units, units_to_mm, ExPolygon, MeshIR, ObjectMesh, PaintValue, Point2, Point3, Polygon,
+    SliceIR, SupportAnalysisIR,
+};
 
 /// Immutable result of one normalized support geometry query.
 #[derive(Debug, Clone, PartialEq)]
@@ -53,6 +56,11 @@ pub struct ExactZQueryService {
     cache: Mutex<HashMap<QueryKey, Arc<ExactZSupportQuery>>>,
     object_geometry: Mutex<HashMap<String, Arc<ObjectGeometry>>>,
     geometry_builds: AtomicUsize,
+    /// Host print-plane occupancy this service may serve without slicing (see
+    /// [`ExactZQueryService::with_print_plane_occupancy`]).
+    print_planes: Option<Arc<SupportAnalysisIR>>,
+    /// `object_id -> plane f32 bits -> index into print_planes' entries`.
+    seeded: HashMap<String, HashMap<u32, usize>>,
 }
 
 impl ExactZQueryService {
@@ -63,7 +71,129 @@ impl ExactZQueryService {
             cache: Mutex::new(HashMap::new()),
             object_geometry: Mutex::new(HashMap::new()),
             geometry_builds: AtomicUsize::new(0),
+            print_planes: None,
+            seeded: HashMap::new(),
         }
+    }
+
+    /// A service that serves the host's own print-plane occupancy instead of
+    /// re-slicing the mesh at those planes.
+    ///
+    /// `SupportAnalysisIR::print_plane_occupancy` is, per `(object, layer)`,
+    /// `slice_mesh_ex(object_world_mesh(object), [units_to_mm(mm_to_units(z))])`
+    /// with `z` the layer's slice Z (`collect_print_plane_occupancy`,
+    /// `crates/slicer-runtime/src/builtins/support_analysis_producer.rs`). The
+    /// occupancy this service would compute for the same object at the same
+    /// `f32` plane is `slice_mesh_ex(world_mesh(object), [plane])`, and
+    /// `slice_mesh_ex` builds each plane independently of the rest of its
+    /// batch. The two are therefore identical whenever the two world meshes
+    /// are, and an entry is seeded only when that holds by construction:
+    ///
+    /// - the object exists in `mesh` with at least one vertex, so the per-query
+    ///   path would have answered rather than refused;
+    /// - its transform is affine with `m[15] == 1`, where
+    ///   `slicer_core::transform_point3` and this module's `transform` perform
+    ///   the identical `f64` arithmetic (they differ only for projective or
+    ///   all-zero matrices);
+    /// - the plane is keyed by its exact `f32` bits, recomputed from `slices`
+    ///   exactly as the producer computed it.
+    ///
+    /// Anything else — another object, a plane that is not a print plane, an
+    /// unseedable object — falls through to the unchanged slicing path. The
+    /// caller must pass the analysis committed from this same `mesh` (the
+    /// prepass passes its blackboard's, which only the host builtin writes).
+    pub fn with_print_plane_occupancy(
+        mesh: Arc<MeshIR>,
+        analysis: Arc<SupportAnalysisIR>,
+        slices: &[SliceIR],
+    ) -> Self {
+        let mut seeded: HashMap<String, HashMap<u32, usize>> = HashMap::new();
+        for (index, entry) in analysis.print_plane_occupancy.iter().enumerate() {
+            let Some(object) = mesh.objects.iter().find(|object| object.id == entry.object_id)
+            else {
+                continue;
+            };
+            if object.mesh.vertices.is_empty() || !is_plain_affine(&object.transform.matrix) {
+                continue;
+            }
+            // The producer's plane for this (object, layer): the first slice of
+            // that layer carrying a non-empty region of the object.
+            let Some(slice) = slices.iter().find(|slice| {
+                slice.global_layer_index == entry.global_support_layer_index
+                    && slice.regions.iter().any(|region| {
+                        region.object_id == entry.object_id && !region.polygons.is_empty()
+                    })
+            }) else {
+                continue;
+            };
+            let plane = units_to_mm(mm_to_units(slice.z));
+            seeded
+                .entry(entry.object_id.clone())
+                .or_default()
+                .entry(plane.to_bits())
+                .or_insert(index);
+        }
+        Self {
+            print_planes: Some(analysis),
+            seeded,
+            ..Self::new(mesh)
+        }
+    }
+
+    /// Number of `(object, plane)` print planes served without slicing.
+    pub fn seeded_plane_count(&self) -> usize {
+        self.seeded.values().map(HashMap::len).sum()
+    }
+
+    fn seeded_occupancy(&self, object_id: &str, physical_z_mm: f32) -> Option<&[ExPolygon]> {
+        let index = *self.seeded.get(object_id)?.get(&physical_z_mm.to_bits())?;
+        Some(&self.print_planes.as_ref()?.print_plane_occupancy[index].polygons)
+    }
+
+    /// Run `read` on the model occupancy at `physical_z_mm` — exactly
+    /// [`ExactZQueryService::query`]'s `occupancy`, with the same refusals —
+    /// without building the rest of the query result.
+    pub fn with_occupancy<R>(
+        &self,
+        object_id: &str,
+        physical_z_mm: f32,
+        read: impl FnOnce(&[ExPolygon]) -> R,
+    ) -> Result<R, String> {
+        if !physical_z_mm.is_finite() {
+            return Err("exact-z-support-query: Z must be finite".into());
+        }
+        if let Some(occupancy) = self.seeded_occupancy(object_id, physical_z_mm) {
+            return Ok(read(occupancy));
+        }
+        let geometry = self.object_geometry(object_id)?;
+        let section = Self::cross_section(&geometry, mm_to_units(physical_z_mm), physical_z_mm)?;
+        Ok(read(&section))
+    }
+
+    /// The memoized cross-section at `z_units`, computing it at
+    /// `physical_z_mm` on a miss.
+    fn cross_section(
+        geometry: &ObjectGeometry,
+        z_units: i64,
+        physical_z_mm: f32,
+    ) -> Result<Arc<Vec<ExPolygon>>, String> {
+        if let Some(section) = geometry
+            .cross_sections
+            .lock()
+            .map_err(|_| "exact-z-support-query: cache poisoned")?
+            .get(&z_units)
+        {
+            return Ok(Arc::clone(section));
+        }
+        let section = Arc::new(cross_section_at_z(&geometry.world_mesh, physical_z_mm));
+        Ok(Arc::clone(
+            geometry
+                .cross_sections
+                .lock()
+                .map_err(|_| "exact-z-support-query: cache poisoned")?
+                .entry(z_units)
+                .or_insert(section),
+        ))
     }
 
     /// Number of per-object geometry entries this service has built.
@@ -107,25 +237,7 @@ impl ExactZQueryService {
         }
 
         let geometry = self.object_geometry(object_id)?;
-        let memoized = geometry
-            .cross_sections
-            .lock()
-            .map_err(|_| "exact-z-support-query: cache poisoned")?
-            .get(&z_units)
-            .cloned();
-        let occupancy = match memoized {
-            Some(section) => (*section).clone(),
-            None => {
-                let section = cross_section_at_z(&geometry.world_mesh, physical_z_mm);
-                geometry
-                    .cross_sections
-                    .lock()
-                    .map_err(|_| "exact-z-support-query: cache poisoned")?
-                    .entry(z_units)
-                    .or_insert_with(|| Arc::new(section.clone()));
-                section
-            }
-        };
+        let occupancy = (*Self::cross_section(&geometry, z_units, physical_z_mm)?).clone();
         let result = Arc::new(ExactZSupportQuery {
             z_units,
             blockers: occupancy.clone(),
@@ -159,6 +271,16 @@ impl ExactZQueryService {
     /// degrades that entry exactly as it does today
     /// (`body rejected: exact-Z query unavailable`).
     pub fn prefetch_cross_sections(&self, object_id: &str, zs_mm: &[f32]) {
+        // Seeded print planes are never read from the memo, so they are not
+        // sliced; an all-seeded object needs no geometry at all.
+        let zs_mm: Vec<f32> = zs_mm
+            .iter()
+            .copied()
+            .filter(|&z| self.seeded_occupancy(object_id, z).is_none())
+            .collect();
+        if zs_mm.is_empty() {
+            return;
+        }
         let Ok(geometry) = self.object_geometry(object_id) else {
             return;
         };
@@ -168,7 +290,7 @@ impl ExactZQueryService {
                 return;
             };
             let mut seen = std::collections::HashSet::new();
-            for &z in zs_mm {
+            for &z in &zs_mm {
                 if !z.is_finite() {
                     return;
                 }
@@ -242,6 +364,14 @@ impl ExactZQueryService {
             }
         }
     }
+}
+
+/// Affine with `m[15] == 1` and no projective row: the matrices for which this
+/// module's `transform` and `slicer_core::transform_point3` agree bit for bit
+/// (`transform_point3` divides by `w = 1.0` and only special-cases the all-zero
+/// matrix, which `m[15] == 1` excludes).
+fn is_plain_affine(matrix: &[f64; 16]) -> bool {
+    matrix[3] == 0.0 && matrix[7] == 0.0 && matrix[11] == 0.0 && matrix[15] == 1.0
 }
 
 fn world_mesh(object: &ObjectMesh) -> slicer_ir::IndexedTriangleSet {

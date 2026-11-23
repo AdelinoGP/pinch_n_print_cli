@@ -384,7 +384,8 @@ fn execute_prepass_with_instrumentation_collecting(
                 let PrepassStageOutput::SupportPlan(plan) = output else {
                     unreachable!("matched support plan output")
                 };
-                support_plans.push((*plan).clone());
+                // Usually the only reference: take it instead of deep-copying.
+                support_plans.push(Arc::unwrap_or_clone(plan));
                 support_plan_audits.push(None);
                 support_plan_producers.push(SupportPlanProducer {
                     module_id: module.module_id().to_string(),
@@ -442,7 +443,18 @@ fn execute_prepass_with_instrumentation_collecting(
                         .flat_map(|support_plan| support_plan.entries.iter().cloned()),
                 );
             }
-            let exact_z = ExactZQueryService::new(Arc::clone(blackboard.mesh()));
+            // Serve the print planes the support analysis already sliced from
+            // this blackboard's mesh instead of slicing them again (see
+            // `ExactZQueryService::with_print_plane_occupancy` for why the
+            // result is identical); every other plane is sliced as before.
+            let exact_z = match (blackboard.support_analysis(), blackboard.slice_ir()) {
+                (Some(analysis), Some(slices)) => ExactZQueryService::with_print_plane_occupancy(
+                    Arc::clone(blackboard.mesh()),
+                    Arc::clone(analysis),
+                    slices,
+                ),
+                _ => ExactZQueryService::new(Arc::clone(blackboard.mesh())),
+            };
             // Degrading policy: two families claiming one
             // `(layer, object, region)` is a planner defect, but it must not
             // discard every other retained entry and abort the prepass. The
