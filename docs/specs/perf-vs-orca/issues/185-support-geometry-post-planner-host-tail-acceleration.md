@@ -2,8 +2,8 @@
 
 Type: task / measured candidate (100 % output-preserving exact host acceleration + standing `t137` 4-cell planner gate; zero geometry exceptions, zero gate waivers, zero WIT/guest changes, zero weakening of exact-Z zero-tolerance validation)
 Label: wayfinder:task
-Status: open
-Assignee: unclaimed
+Status: resolved (2026-11-23)
+Assignee: agent (2026-11-23 — autonomous continuation after t184, per human instruction)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [`SupportGeometry` post-planner host tail attribution and reduction screen](181-support-geometry-post-planner-host-tail.md) ([`evidence/t181-support-geometry-host-tail/FINDINGS.md`](../evidence/t181-support-geometry-host-tail/FINDINGS.md)), which attributed the entire post-planner host tail (`212.91–214.61 ms` `benchy-on`, `1,939.31–1,946.49 ms` `base-on`, `100 %` single-threaded `1.0×`; `22/22` runs byte-identical to `t175/reference.json`, `6/6` `--instrument-stderr` qual clean, `2/2` supports-off inert, `200/200` `benchy` and `432/432` `base` `print_plane_occupancy` planes polygon-for-polygon identical) and proved via 12-thread exact IR replay + a `10,918`-pair adversarial falsification suite (`0` FN / `0` FP) that `M12345_full_exact_bundle` (`M1 + M2 + M3 + M4 + M5`) cuts the host tail **`−99.66 %`** (`210.83 → 0.71 ms`, `benchy`) and **`−99.85 %`** (`1,971.68 → 2.95 ms`, `base`) with zero Clipper2 fallbacks and bit-identical `SupportPlanIR` output.
@@ -61,4 +61,46 @@ Graduated from: [`SupportGeometry` post-planner host tail attribution and reduct
 
 ## Answer
 
-_(open)_
+**Yes: landed.** `M1`–`M4` pass the standing t137 4-cell planner gate on the
+pre-registered pooled two windows, with zero output drift
+([`evidence/t185-support-geometry-host-tail-accel/FINDINGS.md`](../evidence/t185-support-geometry-host-tail-accel/FINDINGS.md),
+`verify.py` PASS, self-test 15/15).
+
+- **Supports-on (gated):** pooled paired wall saving is
+  - benchy-classic-on **`+9.28 %`**;
+  - benchy-arachne-on **`+7.21 %`**;
+  - base-classic-on **`+8.81 %`**;
+  - base-arachne-on **`+8.48 %`**.
+
+  That is 36/40 pair wins and `9.0×`–`11.6×` the floor. Every cell is above its
+  pooled null median with process CPU lower (`+1.11 %`…`+2.55 %`). Accelerated
+  corroborates 4/4 (`+5.92 %`…`+10.92 %` wall, CPU lower, 3/3 pair wins
+  everywhere).
+- **Supports-off (inert):** pooled `+0.54 %`…`+1.70 %`. These cells run no
+  planner tail.
+- **Output:** 384/384 runs are byte-identical to t182's active currency (t175's
+  set was superseded by t182). Zero degraded runs, errors or code-1200
+  diagnostics. Guest module trees are identical between arms, and both
+  freshness checks exit `0`.
+- **Tail:** the instrumented post-planner host tail drops from
+  `254/236 → 4 ms` (benchy) and `2,390/2,180 → 18/17 ms` (base).
+- **Zero tolerance kept.**
+  - Seeded occupancy covers only the producer's own print planes, for plainly
+    affine non-empty objects. Every other plane is sliced as before.
+  - The disjointness certificate is stricter than sketched: a 4-unit edge
+    margin against Clipper2's rounding and a `2^30` coordinate cap. Anything
+    uncertain falls back to the unchanged zero-tolerance Clipper2 test.
+- **Not landed:**
+  - `M5` (parallel validation): a few ms of the remaining tail.
+  - `union_same_family_entries` restructuring: bounded by the `4–18 ms`
+    residual.
+- **Disclosed, not gated:**
+  - Window 1's benchy-arachne-off reads `−8.11 %` against a `7.99 %` null
+    median on an inert cell.
+  - Under the strict any-pair null lens, base-classic-on sits below one
+    `10.32 %` null pair.
+  - Three `support_agg_rasterizer_tdd` tests fail identically on baseline
+    `5761e533` (pre-existing tracked-baseline drift).
+- **Route (ESTIMATE ONLY):** ordinary base supports-on cells reach
+  `0.84x`/`0.83x`; benchy supports-on reach `1.20x`/`1.08x`. The estimated
+  `< 1.0x` count stays 6/8.
