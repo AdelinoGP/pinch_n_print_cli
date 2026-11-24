@@ -2,8 +2,8 @@
 
 Type: task / measured candidate (100 % output-preserving pure-guest acceleration + standing `t137` 4-cell planner gate; zero host/WIT changes, zero geometry exceptions, zero gate waivers)
 Label: wayfinder:task
-Status: open
-Assignee: unassigned
+Status: resolved (2026-11-24; LANDED — standing t137 4-cell planner gate PASSED 4/4 supports-on & 4/4 supports-off INERT-PASS, 264/264 runs 100 % byte-identical to t182/reference.json, pure-guest isolation verified, verify.py PASS / 18/18 self-test)
+Assignee: 2026-11-24 Antigravity wayfinder session (conversation 99dca6fe)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [`PrePass::SupportGeometry` remainder (`com.core.tree-support-planner`) attribution and speedup screen](187-tree-support-planner-post-t182-residual-screen.md) ([`evidence/t187-tree-support-planner-residual/FINDINGS.md`](../evidence/t187-tree-support-planner-residual/FINDINGS.md)), which attributed the entire post-t185 `PrePass::SupportGeometry` stage (`16/16` probe runs byte-identical to `t182/reference.json`, `4/4` qual clean, classic ≡ arachne bit-exact inside `run_support_geometry_with_analysis`) and screened the pure-guest exact bundle `P1 + P2 + P3 + P4 + P5_zeroclone` across `42` measured + `2` warmup runs (`44/44` byte-identical to `t182/reference.json`, `12/12` A/B wall wins, `+3.96…+10.98 %` wall = `4.95×–13.72×` floor, CPU corroborating `4/4`, `tree-support-planner` `−34.1…−36.5 %`, deterministic planner fuel `−38.85 / −41.03 %`, `host:native` calls `−23.9…−25.6 %`, supports-off structurally inert `2/2`).
@@ -72,3 +72,38 @@ All production edits stay strictly inside `modules/core-modules/tree-support-pla
 - Clean, tested production implementation strictly within `modules/core-modules/tree-support-planner/` (zero host/WIT/Clipper2 edits; both `cargo xtask build-guests --check` and `--accelerated --check` exit `0`).
 - Evidence directory `docs/specs/perf-vs-orca/evidence/t190-tree-support-planner-exact-accel/` with reduced paired ordinary + null + accelerated + `--profile` JSONs, `FINDINGS.md`, `REPRODUCE.md`, and checkout-only `verify.py` (`verify.py --self-test` exit `0`).
 - Updated `## Answer`, `map.md` update, and clean commit after all gates pass (zero reference-set change).
+
+## Answer
+
+**Yes — LANDED (`P1 + P2 + P2k + P3 + P4 + P5_zeroclone` strictly inside `modules/core-modules/tree-support-planner/src/lib.rs`, zero host/WIT/Clipper2 changes, zero reference changes, zero gate waivers).**
+
+### Verdict & Standing `t137` 4-Cell Planner Gate
+
+- **Output parity (fail-closed, zero reference change):** `264/264` measured runs across all batches (`16` ordinary output, `16` accelerated output, `80` ordinary A/B, `48` null, `48` accelerated A/B, `48` instrumented stage, `8` `--profile`) exited `0` with `0` degraded runs, `0` fatal/non-fatal errors, `0` code-1200 diagnostics, and **`0/264` hash mismatches** against `t182`'s active `reference.json`.
+- **Pure-guest isolation:** `exe_identical = true` and `other_modules_identical = true` in both ordinary and accelerated modes; only `tree-support-planner.wasm` differs between arms (`git diff -- crates/ vendor/ xtask/` is empty).
+- **Supports-on cells (5 interleaved pairs/cell ordinary, 3 null pairs/cell, 3 accelerated pairs/cell, `RAYON_NUM_THREADS=12`):**
+  - `benchy-classic-on`: **`+11.07 %`** wall (`2.783 → 2.418 s`, `13.83×` floor, `5/5` wins, null `2.68 / 4.43 %`), **`+5.71 %`** CPU (`4/5`), accel **`+16.32 %` wall / `+2.44 %` CPU**, planner `723.0 → 490.0 ms` (`−32.23 %`), fuel `5.852 → 3.575 B` (`−38.91 %`), `host:native` `41,609 → 31,276` (`−10,333 / −24.83 %`) → **PASS**.
+  - `benchy-arachne-on`: **`+7.74 %`** wall (`2.828 → 2.535 s`, `9.67×` floor, `5/5` wins, null `1.37 / 2.47 %`), **`+2.68 %`** CPU (`4/5`), accel **`+8.56 %` wall / `+5.21 %` CPU**, planner `733.0 → 481.0 ms` (`−34.38 %`), fuel `5.852 → 3.575 B` (`−38.91 %`), `host:native` `40,396 → 30,063` (`−10,333 / −25.58 %`) → **PASS**.
+  - `base-classic-on`: **`+8.84 %`** wall (`21.921 → 19.369 s`, `11.05×` floor, `5/5` wins, null `1.91 / 4.73 %`), **`+2.24 %`** CPU (`4/5`), accel **`+1.22 %` wall / `+0.93 %` CPU**, planner `5,710.0 → 4,023.0 ms` (`−29.54 %`), fuel `48.565 → 28.953 B` (`−40.38 %`), `host:native` `145,921 → 111,104` (`−34,817 / −23.86 %`) → **PASS**.
+  - `base-arachne-on`: **`+15.86 %`** wall (`22.908 → 19.298 s`, `19.83×` floor, `5/5` wins strict separation, null `1.24 / 3.24 %`), **`+3.17 %`** CPU (`5/5` strict separation), accel **`+9.57 %` wall / `+1.51 %` CPU**, planner `6,306.0 → 3,942.0 ms` (`−37.49 %`), fuel `48.565 → 28.953 B` (`−40.38 %`), `host:native` `143,484 → 108,667` (`−34,817 / −24.27 %`) → **PASS**.
+  - **Strict any-pair null lens:** **4/4 PASS** (every supports-on cell clears its largest single same-binary null pair).
+  - **Classic ≡ Arachne invariance:** exact `−10,333` (`benchy`) and `−34,817` (`base`) `host:native` call reductions across classic and arachne.
+- **Supports-off cells (structurally inert, floor `−0.80 %`):** `benchy-classic-off` `+1.22 %`, `benchy-arachne-off` `+2.45 %`, `base-classic-off` `−0.48 %`, `base-arachne-off` `−0.80 %` (`−0.796 %`, inside `4.68 %` null median) → **4/4 INERT-PASS**.
+- **Route (`ESTIMATE ONLY`, `t185/reduced/route.json × t190`, not a ratio of record):**
+  - `benchy-classic-on`: `1.2036x → 1.0704x` ord (`1.2221x → 1.0227x` acc)
+  - `benchy-arachne-on`: `1.0846x → 1.0007x` ord (`1.0759x → 0.9838x` acc — crosses `< 1.00x` accelerated!)
+  - `base-classic-on`: `0.8434x → 0.7688x` ord (`0.7684x → 0.7590x` acc)
+  - `base-arachne-on`: `0.8334x → 0.7012x` ord (`0.7315x → 0.6615x` acc)
+
+### Implementation & Verification
+
+- **Production edits (`modules/core-modules/tree-support-planner/src/lib.rs` only):**
+  - `P1`: `TreeVolumes::new` batched `tv_simplify_union`, `run_offset_batches`, `run_exact_union_batch` with `BATCH_UNION_EXACT_POLY_LIMIT = 8` guard (preventing `t182`'s `> 8` `union_spatial_tree` trigger), `drop_bucket_max` height caps, `prefetch_drop_ladders_keyed`, and `prefetch_collision_cells_keyed` (fixing IEEE-754 `f32` non-idempotent `ceil_radius` at e.g. `2.2 mm` by calling `ceil_radius` strictly once at the entry boundary).
+  - `P2` + `P2k`: `RingBboxF32` / `IndexedPolySet`, `LayerOutlineEdgeIndex`, $O(1)$ `extra_wall_xy` `HashSet`, `node_roles` short-circuit, `swallowed_cache` pre-ellipse check, squared-distance `prim_mst`, `TreeVolumes::move_out_cache`, `assign_node_group_indexed`, `Rc<Vec<String>>` `demand_ids`, and `smooth_nodes` flat alive bitmap + ping-pong scratch buffers.
+  - `P3`: pre-indexed layer maps + `prefetch_occupancy_memo_all` in 256-request chunks.
+  - `P4`: `seg_origin_set` $O(1)$ lookup + batched `sample_contact_points_with_erodes` + `collision(0.0)` prefetch.
+  - `P5_zeroclone`: `build_roles_batched_owned` / `role_regions_owned` + final-origin moves.
+  - `P5_tile` and `H1` excluded as specified.
+- **Tests & Gates:** Added 5 unit/regression tests (`t190_indexed_polyset_matches_reference_contains_projection_and_grouping`, `t190_layer_outline_edge_index_matches_unindexed_contour_scan`, `t190_tree_volumes_height_capped_prefetch_matches_serial_and_union_guard`, `t190_prim_mst_squared_distance_matches_sqrt_reference_on_ties`, `t190_enable_support_false_is_structurally_inert`). All gates green: `cargo test -p tree-support-planner --no-fail-fast` (`160/160` across 9 active test binaries; only the pre-existing `slicer_module_binding_tdd::binding_surface_matches_manifest` baseline mismatch fails identically on `36c096aa`), `cargo clippy --workspace --all-targets -- -D warnings` (exit `0`), `cargo xtask check-literals` (`0` violations), `cargo xtask check-test-quality --report` (`0` findings), `cargo xtask build-guests --check` (exit `0`), `cargo xtask build-guests --accelerated --check` (exit `0`).
+- **Evidence:** [`evidence/t190-tree-support-planner-exact-accel/FINDINGS.md`](../evidence/t190-tree-support-planner-exact-accel/FINDINGS.md) and [`REPRODUCE.md`](../evidence/t190-tree-support-planner-exact-accel/REPRODUCE.md); checkout-only `verify.py` → `VERIFY PASS`, `verify.py --self-test` → `18/18` rejected.
+
