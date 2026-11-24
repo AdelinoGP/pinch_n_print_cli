@@ -362,8 +362,9 @@ struct PlannedSupportNode {
     #[allow(dead_code)]
     merged_neighbours: Vec<NodeId>,
     /// Stable analysis demands represented by this routed node. PnP-specific;
-    /// canonical has no equivalent.
-    demand_ids: Vec<String>,
+    /// canonical has no equivalent. Shared via `Rc` so unmerged downward
+    /// propagation avoids cloning `Vec<String>` on every layer.
+    demand_ids: std::rc::Rc<Vec<String>>,
 }
 
 impl PlannedSupportNode {
@@ -458,7 +459,7 @@ impl NodeArena {
             child: None,
             parents: parent.into_iter().collect(),
             merged_neighbours: Vec::new(),
-            demand_ids: Vec::new(),
+            demand_ids: std::rc::Rc::new(Vec::new()),
         });
         if let Some(parent) = parent {
             self.nodes[parent.0].child = Some(id);
@@ -602,19 +603,30 @@ fn contact_stats(positions: &[(f32, f32)], nonempty_layers: usize) -> ContactSta
 /// truncation would otherwise bias every chain toward its head. The kernel,
 /// the iteration count, and the commit rules are canonical.
 fn smooth_nodes(arena: &mut NodeArena, layer_records: &[LayerRecord], support_line_width_mm: f32) {
-    use std::collections::HashSet;
     // Canonical `float max_move = scale_(m_object_config->support_line_width / 2)`.
     // 1 unit = 100 nm here, so `mm_to_units` is the local `scale_`.
     let max_move_units = mm_to_units(support_line_width_mm / 2.0) as f64;
     // Only nodes that survived the F-14 prune are chain members: canonical
     // has already erased the rest from `contact_nodes` by this point.
-    let alive: HashSet<NodeId> = layer_records
-        .iter()
-        .flat_map(|record| record.active.iter().copied())
-        .collect();
-    for id in alive.iter() {
-        arena[*id].is_processed = false;
+    // `NodeId(usize)` is dense in `0..arena.len()`, so a flat `Vec<bool>` gives
+    // O(1) membership without hashing.
+    let mut alive = vec![false; arena.len()];
+    for record in layer_records {
+        for &id in &record.active {
+            if let Some(slot) = alive.get_mut(id.0) {
+                *slot = true;
+            }
+            arena[id].is_processed = false;
+        }
     }
+    // Reusable scratch buffers across chains (ping-pong swap avoids 99 vector
+    // copies per chain while keeping `pts` as the final pass' input and `out`
+    // as its output).
+    let mut branch: Vec<NodeId> = Vec::new();
+    let mut pts: Vec<(f64, f64)> = Vec::new();
+    let mut radii: Vec<f64> = Vec::new();
+    let mut out: Vec<(f64, f64)> = Vec::new();
+    let mut radii_out: Vec<f64> = Vec::new();
     // Canonical walks layers **bottom-up** here while the chain walk goes
     // parent-ward (upward), so the first chain started from a column's root
     // covers the whole column. `layer_records` is pushed top-first by
@@ -626,21 +638,23 @@ fn smooth_nodes(arena: &mut NodeArena, layer_records: &[LayerRecord], support_li
             if arena[*start].is_processed {
                 continue;
             }
-            let mut branch: Vec<NodeId> = Vec::new();
+            branch.clear();
             let mut total_height_mm = 0.0f32;
             // Canonical: "add a fixed head if it's not a polygon node, see
             // STUDIO-4403. Polygon node can't be added because the move
             // distance might be huge, making the nodes in between jump and
             // dangling."
             if let Some(child) = arena[*start].child {
-                if alive.contains(&child) && arena[child].type_ != TreeNodeType::Polygon {
+                if alive.get(child.0).copied().unwrap_or(false)
+                    && arena[child].type_ != TreeNodeType::Polygon
+                {
                     branch.push(child);
                     total_height_mm += arena[child].height;
                 }
             }
             let mut cursor = Some(*start);
             while let Some(current) = cursor {
-                if !alive.contains(&current) || arena[current].is_processed {
+                if !alive.get(current.0).copied().unwrap_or(false) || arena[current].is_processed {
                     break;
                 }
                 branch.push(current);
@@ -651,13 +665,18 @@ fn smooth_nodes(arena: &mut NodeArena, layer_records: &[LayerRecord], support_li
                 continue;
             }
             // f64 in scaled units: see the arithmetic deviation above.
-            let mut pts: Vec<(f64, f64)> = branch
-                .iter()
-                .map(|id| (arena[*id].position.x as f64, arena[*id].position.y as f64))
-                .collect();
-            let mut radii: Vec<f64> = branch.iter().map(|id| arena[*id].radius as f64).collect();
-            let mut out = pts.clone();
-            let mut radii_out = radii.clone();
+            pts.clear();
+            pts.extend(
+                branch
+                    .iter()
+                    .map(|id| (arena[*id].position.x as f64, arena[*id].position.y as f64)),
+            );
+            radii.clear();
+            radii.extend(branch.iter().map(|id| arena[*id].radius as f64));
+            out.clear();
+            out.extend_from_slice(&pts);
+            radii_out.clear();
+            radii_out.extend_from_slice(&radii);
             let last = pts.len() - 1;
             for iteration in 0..SMOOTH_NODES_ITERATIONS {
                 for i in 1..last {
@@ -670,8 +689,8 @@ fn smooth_nodes(arena: &mut NodeArena, layer_records: &[LayerRecord], support_li
                     radii_out[i] = (radii[lo] + radii[i] + radii[hi]) / 3.0;
                 }
                 if iteration + 1 < SMOOTH_NODES_ITERATIONS {
-                    pts.clone_from(&out);
-                    radii.clone_from(&radii_out);
+                    std::mem::swap(&mut pts, &mut out);
+                    std::mem::swap(&mut radii, &mut radii_out);
                 }
             }
             for i in 1..last {
@@ -913,6 +932,7 @@ fn inflate_model_occupancy_memoized(
 /// byte-identical argument tuple `inflate_model_occupancy` is memoized on; if
 /// the two sites drifted apart the memo would miss and the batch would not
 /// serve the emit-time ask.
+#[cfg(test)]
 fn layer_occupancy_payload(
     support_analysis: &SupportAnalysisView,
     object_id: &str,
@@ -936,6 +956,7 @@ fn layer_occupancy_payload(
 /// `SupportPlanEntry::anchor_z`, i.e. the print plane. Carving against both
 /// keeps emitted roles disjoint from the validated plane without moving the
 /// gate to the midpoint. Object-wide, matching the query service.
+#[cfg(test)]
 fn print_plane_occupancy_payload(
     support_analysis: &SupportAnalysisView,
     object_id: &str,
@@ -967,6 +988,7 @@ fn print_plane_occupancy_payload(
 /// Exactness is by construction rather than tolerance: each request is the same
 /// single clipper operation with the same arguments as the serial path, and the
 /// host returns the i-th result for the i-th request (ADR-0049).
+#[cfg(test)]
 fn prefetch_occupancy_memo(
     memo: &mut std::collections::HashMap<u64, OccupancyMemoEntry>,
     records: &[&LayerRecord],
@@ -1012,6 +1034,82 @@ fn prefetch_occupancy_memo(
         })
         .collect();
     let inflated = slicer_sdk::host_batch::offset_polygons_batch(&requests);
+    for ((key, payload), inflated) in keys.into_iter().zip(payloads).zip(inflated) {
+        memo.insert(key, OccupancyMemoEntry { payload, inflated });
+    }
+}
+
+/// Ticket 190 (`P3`): whole-object occupancy prefetch using pre-indexed
+/// per-layer maps and `CLIP_BATCH_MAX_REQUESTS` (256) batches instead of
+/// 12-layer mini-batches.
+fn prefetch_occupancy_memo_all(
+    memo: &mut std::collections::HashMap<u64, OccupancyMemoEntry>,
+    records: &[LayerRecord],
+    layer_plan: &LayerPlanView,
+    model_occ_by_layer: &std::collections::HashMap<
+        u32,
+        Vec<&slicer_sdk::prepass_types::SupportAnalysisGeometryEntry>,
+    >,
+    print_occ_by_layer: &std::collections::HashMap<
+        u32,
+        Vec<&slicer_sdk::prepass_types::SupportAnalysisPlaneEntry>,
+    >,
+    xy_distance_mm: f32,
+) {
+    if xy_distance_mm <= 0.0 {
+        return;
+    }
+    let mut payloads: Vec<Vec<ExPolygon>> = Vec::with_capacity(records.len() * 2);
+    let mut keys: Vec<u64> = Vec::with_capacity(records.len() * 2);
+    let mut seen_keys: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    for record in records {
+        if record.active.is_empty() {
+            continue;
+        }
+        let global_layer_index = layer_plan.layers[record.layer_rev].global_layer_index;
+        let model_payload: Vec<ExPolygon> = model_occ_by_layer
+            .get(&global_layer_index)
+            .map(|entries| {
+                entries
+                    .iter()
+                    .flat_map(|entry| entry.polygons.iter().cloned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let print_payload: Vec<ExPolygon> = print_occ_by_layer
+            .get(&global_layer_index)
+            .map(|entries| {
+                entries
+                    .iter()
+                    .flat_map(|entry| entry.polygons.iter().cloned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        for payload in [model_payload, print_payload] {
+            if payload.is_empty() {
+                continue;
+            }
+            let key = occupancy_offset_key(&payload, xy_distance_mm);
+            if seen_keys.insert(key) {
+                keys.push(key);
+                payloads.push(payload);
+            }
+        }
+    }
+    if payloads.is_empty() {
+        return;
+    }
+    let requests: Vec<OffsetRequest> = payloads
+        .iter()
+        .map(|payload| OffsetRequest {
+            polygons: payload.clone(),
+            delta_mm: xy_distance_mm,
+            join: OffsetJoinType::Miter,
+            arc_tolerance_mm: 0.0,
+            miter_limit: None,
+        })
+        .collect();
+    let inflated = run_offset_batches(&requests);
     for ((key, payload), inflated) in keys.into_iter().zip(payloads).zip(inflated) {
         memo.insert(key, OccupancyMemoEntry { payload, inflated });
     }
@@ -1309,6 +1407,7 @@ const EMIT_BATCH_LAYERS: usize = 12;
 /// these inputs and hands the whole chunk to [`build_roles_batched`], so the
 /// host can fan the work over its rayon pool instead of running one call at a
 /// time from the guest's single thread.
+#[derive(Clone)]
 struct RoleBuildInput {
     branch_segments: Vec<Vec<Point3WithWidth>>,
     interface_segments: Vec<Vec<Point3WithWidth>>,
@@ -1335,27 +1434,82 @@ enum CarveSlot {
     Clip(usize),
 }
 
-/// The regions one role contributes before any clipping, mirroring the
-/// `with_areas` closure in [`build_roles`].
-fn role_regions(input: &RoleBuildInput, role: usize) -> Vec<ExPolygon> {
+/// The regions one role contributes before any clipping, moving the owned
+/// `areas` vector out of `input` to avoid redundant polygon clones.
+fn role_regions_owned(input: &mut RoleBuildInput, role: usize) -> Vec<ExPolygon> {
     let (segments, areas) = match role {
-        ROLE_ROOF => (&input.interface_segments, &input.interface_areas),
-        ROLE_BASE => (&input.base_segments, &input.base_areas),
-        ROLE_FLOOR => (&input.floor_segments, &input.floor_areas),
-        _ => (&input.branch_segments, &input.branch_areas),
+        ROLE_ROOF => (&input.interface_segments, &mut input.interface_areas),
+        ROLE_BASE => (&input.base_segments, &mut input.base_areas),
+        ROLE_FLOOR => (&input.floor_segments, &mut input.floor_areas),
+        _ => (&input.branch_segments, &mut input.branch_areas),
     };
     let mut regions = structural_body_regions(segments, input.branch_radius);
-    regions.extend_from_slice(areas);
+    regions.extend(std::mem::take(areas));
     regions
 }
 
-/// Issue a batch in bounded slices, preserving input order across slices.
+/// Issue a clip batch in bounded slices, preserving input order across slices.
 fn run_clip_batches(requests: &[ClipRequest]) -> Vec<Vec<ExPolygon>> {
     let mut results = Vec::with_capacity(requests.len());
     for slice in requests.chunks(CLIP_BATCH_MAX_REQUESTS) {
         results.extend(clip_polygons_batch(slice));
     }
     results
+}
+
+/// Issue an offset batch in bounded slices, preserving input order across slices.
+fn run_offset_batches(requests: &[OffsetRequest]) -> Vec<Vec<ExPolygon>> {
+    let mut results = Vec::with_capacity(requests.len());
+    for slice in requests.chunks(CLIP_BATCH_MAX_REQUESTS) {
+        results.extend(slicer_sdk::host_batch::offset_polygons_batch(slice));
+    }
+    results
+}
+
+/// Host `clip_polygons_batch` dispatches `ClipOperation::Union` through
+/// `union_spatial_tree` whenever `subject.len() + clip.len() > 8` (`t182`).
+/// For `TreeVolumes` and outline normalizations where exact single-op Clipper2
+/// semantics are required, only batch unions within this exact threshold and
+/// route larger sets through direct `host::clip_polygons`.
+const BATCH_UNION_EXACT_POLY_LIMIT: usize = 8;
+
+/// Execute independent `Union` operations with exact single-op Clipper2
+/// semantics, preserving request order.
+fn run_exact_union_batch(
+    requests: Vec<(Vec<ExPolygon>, Vec<ExPolygon>)>,
+) -> Vec<Vec<ExPolygon>> {
+    if requests.is_empty() {
+        return Vec::new();
+    }
+    let mut out: Vec<Option<Vec<ExPolygon>>> = vec![None; requests.len()];
+    let mut batch_slots: Vec<usize> = Vec::new();
+    let mut batch_reqs: Vec<ClipRequest> = Vec::new();
+    for (idx, (subject, clip)) in requests.into_iter().enumerate() {
+        if subject.len() + clip.len() <= BATCH_UNION_EXACT_POLY_LIMIT {
+            batch_slots.push(idx);
+            batch_reqs.push(ClipRequest {
+                subject,
+                clip,
+                op: ClipOperation::Union,
+            });
+        } else {
+            out[idx] = Some(host::clip_polygons(&subject, &clip, ClipOperation::Union));
+        }
+    }
+    if batch_reqs.len() == 1 {
+        let req = &batch_reqs[0];
+        out[batch_slots[0]] = Some(host::clip_polygons(
+            &req.subject,
+            &req.clip,
+            ClipOperation::Union,
+        ));
+    } else if !batch_reqs.is_empty() {
+        let results = run_clip_batches(&batch_reqs);
+        for (slot, res) in batch_slots.into_iter().zip(results) {
+            out[slot] = Some(res);
+        }
+    }
+    out.into_iter().map(Option::unwrap_or_default).collect()
 }
 
 /// Batched form of [`build_roles`]: one result per input, in input order.
@@ -1374,7 +1528,17 @@ fn run_clip_batches(requests: &[ClipRequest]) -> Vec<Vec<ExPolygon>> {
 /// 5. the set-wide difference against the collision set,
 /// 6. the body-minus-interfaces differences, one round per cut role,
 /// 7. the territory intersect for modifier sub-regions.
+#[cfg(test)]
 fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::SupportPlanRoleRegion>> {
+    let owned: Vec<RoleBuildInput> = inputs.iter().map(|&input| input.clone()).collect();
+    build_roles_batched_owned(owned)
+}
+
+/// Owned-input variant of `build_roles_batched` (`P5_zeroclone`) that moves
+/// per-phase polygon vectors instead of cloning them between phases.
+fn build_roles_batched_owned(
+    mut inputs: Vec<RoleBuildInput>,
+) -> Vec<Vec<slicer_ir::SupportPlanRoleRegion>> {
     let mut carved: Vec<[Vec<ExPolygon>; ROLE_COUNT]> = inputs
         .iter()
         .map(|_| std::array::from_fn(|_| Vec::new()))
@@ -1396,13 +1560,14 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
         .iter()
         .map(|_| std::array::from_fn(|_| Vec::new()))
         .collect();
-    for (i, input) in inputs.iter().enumerate() {
+    for (i, input) in inputs.iter_mut().enumerate() {
         let collision_bbox = expolygons_bbox(&input.collision_polys);
         let use_tile_index =
             count_expolygon_points(&input.collision_polys) >= MIN_INDEXED_COLLISION_VERTICES;
+        let role_sets: [Vec<ExPolygon>; ROLE_COUNT] =
+            std::array::from_fn(|role| role_regions_owned(input, role));
         let mut tile_index: Option<Option<CollisionTileIndex<'_>>> = None;
-        for role in 0..ROLE_COUNT {
-            let regions = role_regions(input, role);
+        for (role, regions) in role_sets.into_iter().enumerate() {
             if input.collision_polys.is_empty() || regions.is_empty() {
                 carved[i][role] = regions;
                 continue;
@@ -1498,7 +1663,7 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
             if simplify[i][role].is_some() && gated_any[i][role] && carved[i][role].len() == 1 {
                 lone_slots.push((i, role));
                 lone_requests.push(ClipRequest {
-                    subject: carved[i][role].clone(),
+                    subject: std::mem::take(&mut carved[i][role]),
                     clip: inputs[i].collision_polys.clone(),
                     op: ClipOperation::Difference,
                 });
@@ -1518,10 +1683,11 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
             if carved[i][role].len() <= 1 {
                 continue;
             }
-            let (head, tail) = carved[i][role].split_at(1);
+            let mut polys = std::mem::take(&mut carved[i][role]);
+            let tail = polys.split_off(1);
             union_requests.push(ClipRequest {
-                subject: head.to_vec(),
-                clip: tail.to_vec(),
+                subject: polys,
+                clip: tail,
                 op: ClipOperation::Union,
             });
             union_slots.push((i, role));
@@ -1548,13 +1714,22 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
         if inputs[i].collision_polys.is_empty() {
             continue;
         }
+        let last_non_empty = (0..ROLE_COUNT).rev().find(|&r| !carved[i][r].is_empty());
+        let Some(last_role) = last_non_empty else {
+            continue;
+        };
         for role in 0..ROLE_COUNT {
             if carved[i][role].is_empty() {
                 continue;
             }
+            let clip = if role == last_role {
+                std::mem::take(&mut inputs[i].collision_polys)
+            } else {
+                inputs[i].collision_polys.clone()
+            };
             set_requests.push(ClipRequest {
-                subject: carved[i][role].clone(),
-                clip: inputs[i].collision_polys.clone(),
+                subject: std::mem::take(&mut carved[i][role]),
+                clip,
                 op: ClipOperation::Difference,
             });
             set_slots.push((i, role));
@@ -1578,7 +1753,7 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
                 continue;
             }
             requests.push(ClipRequest {
-                subject: body[i].clone(),
+                subject: std::mem::take(&mut body[i]),
                 clip: carved[i][cut_role].clone(),
                 op: ClipOperation::Difference,
             });
@@ -1597,16 +1772,25 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
     let mut territory_slots: Vec<(usize, usize)> = Vec::new();
     let mut territory_requests: Vec<ClipRequest> = Vec::new();
     for i in 0..inputs.len() {
-        let Some(own) = &inputs[i].own_territory else {
+        if inputs[i].own_territory.is_none() {
+            continue;
+        }
+        let last_non_empty = (0..ROLE_COUNT).rev().find(|&r| !carved[i][r].is_empty());
+        let Some(last_role) = last_non_empty else {
             continue;
         };
         for role in 0..ROLE_COUNT {
             if carved[i][role].is_empty() {
                 continue;
             }
+            let clip = if role == last_role {
+                inputs[i].own_territory.take().unwrap_or_default()
+            } else {
+                inputs[i].own_territory.clone().unwrap_or_default()
+            };
             territory_requests.push(ClipRequest {
-                subject: carved[i][role].clone(),
-                clip: own.clone(),
+                subject: std::mem::take(&mut carved[i][role]),
+                clip,
                 op: ClipOperation::Intersection,
             });
             territory_slots.push((i, role));
@@ -1669,8 +1853,7 @@ fn flush_pending_emits(
     if inputs.is_empty() {
         return;
     }
-    let refs: Vec<&RoleBuildInput> = inputs.iter().collect();
-    let roles = build_roles_batched(&refs);
+    let roles = build_roles_batched_owned(std::mem::take(inputs));
     for (meta, roles) in std::mem::take(meta).into_iter().zip(roles) {
         if roles.is_empty() {
             continue;
@@ -1692,7 +1875,6 @@ fn flush_pending_emits(
             variant_chain: meta.variant_chain,
         });
     }
-    inputs.clear();
 }
 
 fn role_simplify_tolerance(
@@ -2016,6 +2198,7 @@ fn expolygons_simplify(polys: &[ExPolygon], tolerance_units: f64) -> Vec<ExPolyg
 
 /// Canonical `ExPolygon::simplify`: simplify each ring, then normalize the
 /// resulting paths through a union so touching holes and parts may merge.
+#[cfg(test)]
 fn expolygons_simplify_union(polys: &[ExPolygon], tolerance_units: f64) -> Vec<ExPolygon> {
     let simplified = expolygons_simplify(polys, tolerance_units);
     if simplified.is_empty() {
@@ -2034,21 +2217,258 @@ fn union_expolys(polys: Vec<ExPolygon>) -> Vec<ExPolygon> {
     host::clip_polygons(head, tail, ClipOperation::Union)
 }
 
+/// Precomputed `f32` axis-aligned bounding box of a polygon ring in scaled
+/// integer units (1 unit = 100 nm).
+#[derive(Clone, Copy, Debug)]
+struct RingBboxF32 {
+    min_x: f32,
+    max_x: f32,
+    min_y: f32,
+    max_y: f32,
+}
+
+impl RingBboxF32 {
+    fn from_points(points: &[Point2]) -> Option<Self> {
+        if points.len() < 3 {
+            return None;
+        }
+        let mut min_x = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        for p in points {
+            let x = p.x as f32;
+            let y = p.y as f32;
+            if x < min_x {
+                min_x = x;
+            }
+            if x > max_x {
+                max_x = x;
+            }
+            if y < min_y {
+                min_y = y;
+            }
+            if y > max_y {
+                max_y = y;
+            }
+        }
+        Some(Self {
+            min_x,
+            max_x,
+            min_y,
+            max_y,
+        })
+    }
+
+    #[inline]
+    fn union(self, other: Self) -> Self {
+        Self {
+            min_x: self.min_x.min(other.min_x),
+            max_x: self.max_x.max(other.max_x),
+            min_y: self.min_y.min(other.min_y),
+            max_y: self.max_y.max(other.max_y),
+        }
+    }
+
+    /// Exact ray-cast containment screen matching `point_in_ring_pts`.
+    ///
+    /// - `sy < min_y` => every vertex satisfies `piy > sy`, so no edge crosses.
+    /// - `sy >= max_y` => every vertex satisfies `!(piy > sy)`, so no edge crosses.
+    /// - Outside `[min_x - eps, max_x + eps]` => every crossing lies strictly on
+    ///   one side of `sx`, yielding an even (0 or 2k) crossing count on a closed ring.
+    #[inline]
+    fn contains_for_raycast(self, sx: f32, sy: f32) -> bool {
+        if sy < self.min_y || sy >= self.max_y {
+            return false;
+        }
+        let eps = (self.max_x.abs().max(self.min_x.abs()) * 1e-4_f32).max(1.0);
+        sx >= self.min_x - eps && sx <= self.max_x + eps
+    }
+
+    /// Conservative lower bound on squared distance (in scaled units) from
+    /// `(qx, qy)` to any point on any edge of this ring, shrunk by 1 unit
+    /// (100 nm) to stay strictly `<=` any `f32` edge projection rounding.
+    #[inline]
+    fn min_dist_sq_lower_bound(self, qx: f32, qy: f32) -> f32 {
+        let dx = if qx < self.min_x {
+            (self.min_x - qx - 1.0).max(0.0)
+        } else if qx > self.max_x {
+            (qx - self.max_x - 1.0).max(0.0)
+        } else {
+            0.0
+        };
+        let dy = if qy < self.min_y {
+            (self.min_y - qy - 1.0).max(0.0)
+        } else if qy > self.max_y {
+            (qy - self.max_y - 1.0).max(0.0)
+        } else {
+            0.0
+        };
+        dx * dx + dy * dy
+    }
+}
+
+struct IndexedExPoly {
+    contour_bbox: Option<RingBboxF32>,
+    hole_bboxes: Vec<Option<RingBboxF32>>,
+}
+
+/// `ExPolygon` set paired with precomputed per-ring `f32` AABBs for zero-alloc
+/// exact point-in-polygon and nearest-point projection queries (`t190` `P2`).
+struct IndexedPolySet {
+    polys: Vec<ExPolygon>,
+    overall_bbox: Option<RingBboxF32>,
+    index: Vec<IndexedExPoly>,
+}
+
+impl IndexedPolySet {
+    fn new(polys: Vec<ExPolygon>) -> Self {
+        let mut overall_bbox: Option<RingBboxF32> = None;
+        let mut index = Vec::with_capacity(polys.len());
+        for ex in &polys {
+            let contour_bbox = RingBboxF32::from_points(&ex.contour.points);
+            if let Some(cb) = contour_bbox {
+                overall_bbox = Some(match overall_bbox {
+                    Some(ob) => ob.union(cb),
+                    None => cb,
+                });
+            }
+            let hole_bboxes = ex
+                .holes
+                .iter()
+                .map(|h| RingBboxF32::from_points(&h.points))
+                .collect();
+            index.push(IndexedExPoly {
+                contour_bbox,
+                hole_bboxes,
+            });
+        }
+        Self {
+            polys,
+            overall_bbox,
+            index,
+        }
+    }
+
+    fn empty() -> Self {
+        Self {
+            polys: Vec::new(),
+            overall_bbox: None,
+            index: Vec::new(),
+        }
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.polys.is_empty()
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.polys.len()
+    }
+
+    #[inline]
+    fn as_slice(&self) -> &[ExPolygon] {
+        self.polys.as_slice()
+    }
+
+    #[inline]
+    fn contains_poly_scaled(&self, poly_idx: usize, sx: f32, sy: f32) -> bool {
+        let idx = &self.index[poly_idx];
+        let Some(cb) = idx.contour_bbox else {
+            return false;
+        };
+        if !cb.contains_for_raycast(sx, sy) {
+            return false;
+        }
+        let ex = &self.polys[poly_idx];
+        if !point_in_ring_pts(&ex.contour.points, sx, sy) {
+            return false;
+        }
+        !ex.holes.iter().zip(&idx.hole_bboxes).any(|(h, hb)| {
+            hb.is_some_and(|b| b.contains_for_raycast(sx, sy)) && point_in_ring_pts(&h.points, sx, sy)
+        })
+    }
+
+    /// Exact zero-alloc equivalent of `point_in_any_expoly(self.as_slice(), x, y)`.
+    fn contains(&self, x: f32, y: f32) -> bool {
+        let Some(ob) = self.overall_bbox else {
+            return false;
+        };
+        let sx = x * SCALING_FACTOR as f32;
+        let sy = y * SCALING_FACTOR as f32;
+        if !ob.contains_for_raycast(sx, sy) {
+            return false;
+        }
+        for i in 0..self.polys.len() {
+            if self.contains_poly_scaled(i, sx, sy) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Exact zero-alloc equivalent of `projection_onto(self.as_slice(), pt)`.
+    fn projection_onto(&self, pt: (f32, f32)) -> (f32, f32) {
+        if self.polys.is_empty() {
+            return pt;
+        }
+        let qx = pt.0 * SCALING_FACTOR as f32;
+        let qy = pt.1 * SCALING_FACTOR as f32;
+        let mut best_dist = f32::INFINITY;
+        let mut best_dist_sq = f32::INFINITY;
+        let mut best: Option<[f32; 2]> = None;
+        for (ex, idx) in self.polys.iter().zip(&self.index) {
+            if let Some(cb) = idx.contour_bbox {
+                if cb.min_dist_sq_lower_bound(qx, qy) <= best_dist_sq {
+                    closest_point_on_ring_sq(
+                        &ex.contour.points,
+                        qx,
+                        qy,
+                        &mut best_dist,
+                        &mut best_dist_sq,
+                        &mut best,
+                    );
+                }
+            }
+            for (hole, hb) in ex.holes.iter().zip(&idx.hole_bboxes) {
+                if let Some(b) = hb {
+                    if b.min_dist_sq_lower_bound(qx, qy) <= best_dist_sq {
+                        closest_point_on_ring_sq(
+                            &hole.points,
+                            qx,
+                            qy,
+                            &mut best_dist,
+                            &mut best_dist_sq,
+                            &mut best,
+                        );
+                    }
+                }
+            }
+        }
+        match best {
+            Some(cp) => (cp[0] / SCALING_FACTOR as f32, cp[1] / SCALING_FACTOR as f32),
+            None => pt,
+        }
+    }
+}
+
 /// Canonical `TreeSupportData` — the radius-keyed collision / avoidance volumes
 /// a tree-support run is planned against.
 ///
 /// `collision` and `avoidance` are keyed by `(radius_key, layer_index)`. Call
-/// [`TreeVolumes::ensure_radius`] once per radius bucket before reading; the
-/// getters return an empty slice for an unfilled bucket rather than computing
-/// on demand, so the expensive host offsets stay out of the inner node loops.
+/// [`TreeVolumes::prefetch_drop_ladders`] / [`TreeVolumes::prefetch_collision_cells`]
+/// before a pass to fill needed buckets in parallel host batches; `get_collision`
+/// and `get_avoidance` retain cell-exact lazy fallback for any unprefetched query.
 struct TreeVolumes {
     /// Canonical `m_layer_outlines`: each global support layer simplified at
     /// `m_radius_sample_resolution` during construction.
-    layer_outlines: Vec<Vec<ExPolygon>>,
+    layer_outlines: Vec<IndexedPolySet>,
     /// Canonical `m_layer_outlines_below`: the running union of every outline
     /// at or below each layer, built in the `TreeSupportData` constructor.
     /// Consumed by the per-part MST and `to_buildplate` passes.
-    layer_outlines_below: Vec<Vec<ExPolygon>>,
+    layer_outlines_below: Vec<IndexedPolySet>,
     /// Canonical `m_max_move_distances[l] = layer->height * branch_scale_factor`
     /// with `branch_scale_factor = tan(tree_support_branch_angle)`, in mm.
     max_move_distances: Vec<f32>,
@@ -2080,21 +2500,21 @@ struct TreeVolumes {
     territory_clearance: f32,
     collision: std::cell::RefCell<std::collections::HashMap<(i64, usize), PolySet>>,
     avoidance: std::cell::RefCell<std::collections::HashMap<(i64, usize), PolySet>>,
+    /// Memo for `move_out_expolys` dilated volumes keyed by
+    /// `(is_avoidance, radius_key, layer, min_dist_bits)`.
+    move_out_cache: std::cell::RefCell<std::collections::HashMap<(bool, i64, usize, u32), PolySet>>,
 }
 
 /// Shared, cheaply-cloned handle to one cached `(radius, layer)` volume.
 ///
 /// The move pass (F-13) queries collision and avoidance at each node's *own*
-/// tapered radius, so the bucket set is no longer known before the layer loop
-/// and cannot be filled by a pair of `ensure_*` calls up front. The caches
-/// therefore materialise lazily behind a `RefCell` and hand out `Rc`s rather
-/// than borrows, so a caller can hold a volume across a further `get_*` call
-/// that fills a different bucket. The guest is single-threaded, so neither
-/// `Rc` nor `RefCell` costs anything here.
-type PolySet = std::rc::Rc<Vec<ExPolygon>>;
+/// tapered radius, so the caches hand out `Rc<IndexedPolySet>` handles rather
+/// than borrows, allowing a caller to hold a volume across a further `get_*`
+/// call while reusing precomputed per-ring AABBs across thousands of queries.
+type PolySet = std::rc::Rc<IndexedPolySet>;
 
 fn empty_poly_set() -> PolySet {
-    std::rc::Rc::new(Vec::new())
+    std::rc::Rc::new(IndexedPolySet::empty())
 }
 
 impl TreeVolumes {
@@ -2153,7 +2573,7 @@ impl TreeVolumes {
                 foreign_keepout[*layer] = foreign_territory[*layer].clone();
             }
         }
-        let mut layer_outlines: Vec<Vec<ExPolygon>> = vec![Vec::new(); layer_count];
+        let mut layer_outlines_raw: Vec<Vec<ExPolygon>> = vec![Vec::new(); layer_count];
         for entry in &support_geometry.entries {
             let layer_idx = entry.global_support_layer_index as usize;
             if layer_idx >= layer_count {
@@ -2161,23 +2581,40 @@ impl TreeVolumes {
             }
             for expoly in &entry.outlines {
                 if expoly.contour.points.len() >= 3 {
-                    layer_outlines[layer_idx].push(expoly.clone());
+                    layer_outlines_raw[layer_idx].push(expoly.clone());
                 }
             }
         }
 
+        // Batch `expolygons_simplify_union` across all non-empty layers with
+        // the `<= 8`-polygon exact-union guard (`t190` `P1`).
         let outline_tolerance = mm_to_units(RADIUS_SAMPLE_RESOLUTION_MM) as f64;
-        for outlines in &mut layer_outlines {
-            *outlines = expolygons_simplify_union(outlines, outline_tolerance);
+        let mut union_slots: Vec<usize> = Vec::new();
+        let mut union_reqs: Vec<(Vec<ExPolygon>, Vec<ExPolygon>)> = Vec::new();
+        for (layer_idx, outlines) in layer_outlines_raw.iter_mut().enumerate() {
+            let mut simplified = expolygons_simplify(outlines, outline_tolerance);
+            if simplified.is_empty() {
+                outlines.clear();
+                continue;
+            }
+            let tail = simplified.split_off(1);
+            union_slots.push(layer_idx);
+            union_reqs.push((simplified, tail));
+        }
+        for (layer_idx, normalized) in union_slots
+            .into_iter()
+            .zip(run_exact_union_batch(union_reqs))
+        {
+            layer_outlines_raw[layer_idx] = normalized;
         }
 
         // Canonical builds `m_layer_outlines_below` as a running union in the
         // `TreeSupportData` constructor. Layers that contribute nothing reuse
         // the accumulator verbatim, which keeps the host call count down to the
         // number of layers that actually carry outlines.
-        let mut layer_outlines_below: Vec<Vec<ExPolygon>> = Vec::with_capacity(layer_count);
+        let mut layer_outlines_below: Vec<IndexedPolySet> = Vec::with_capacity(layer_count);
         let mut below: Vec<ExPolygon> = Vec::new();
-        for outlines in &layer_outlines {
+        for outlines in &layer_outlines_raw {
             if !outlines.is_empty() {
                 below = if below.is_empty() {
                     union_expolys(outlines.clone())
@@ -2185,8 +2622,13 @@ impl TreeVolumes {
                     host::clip_polygons(&below, outlines, ClipOperation::Union)
                 };
             }
-            layer_outlines_below.push(below.clone());
+            layer_outlines_below.push(IndexedPolySet::new(below.clone()));
         }
+
+        let layer_outlines: Vec<IndexedPolySet> = layer_outlines_raw
+            .into_iter()
+            .map(IndexedPolySet::new)
+            .collect();
 
         let branch_scale_factor = branch_angle_deg.to_radians().tan().max(0.0);
         let max_move_distances = layer_plan
@@ -2205,6 +2647,7 @@ impl TreeVolumes {
             territory_clearance,
             collision: std::cell::RefCell::new(std::collections::HashMap::new()),
             avoidance: std::cell::RefCell::new(std::collections::HashMap::new()),
+            move_out_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
         }
     }
 
@@ -2224,147 +2667,412 @@ impl TreeVolumes {
     fn outlines_at(&self, layer: usize) -> &[ExPolygon] {
         self.layer_outlines
             .get(layer)
-            .map_or(&[][..], |v| v.as_slice())
+            .map_or(&[][..], IndexedPolySet::as_slice)
     }
 
-    /// Canonical `m_layer_outlines_below` at a layer. The F-12 per-part
-    /// spanning trees group nodes by the part of this set they fall in.
+    /// Indexed object outlines at a layer for zero-alloc containment queries.
+    fn outlines_indexed_at(&self, layer: usize) -> Option<&IndexedPolySet> {
+        self.layer_outlines.get(layer)
+    }
+
+    /// Canonical `m_layer_outlines_below` at a layer (slice form).
+    #[cfg(test)]
     fn outlines_below(&self, layer: usize) -> &[ExPolygon] {
         self.layer_outlines_below
             .get(layer)
-            .map_or(&[][..], |v| v.as_slice())
+            .map_or(&[][..], IndexedPolySet::as_slice)
     }
 
-    /// Canonical `TreeSupportData::get_collision`. Materialises the radius
-    /// bucket on first use, exactly as canonical's cache does.
-    fn get_collision(&self, radius_mm: f32, layer: usize) -> PolySet {
-        self.ensure_collision(radius_mm);
-        self.collision
-            .borrow()
-            .get(&(radius_key(radius_mm), layer))
-            .cloned()
-            .unwrap_or_else(empty_poly_set)
+    /// Indexed `m_layer_outlines_below` at a layer for zero-alloc per-part grouping.
+    fn outlines_below_indexed(&self, layer: usize) -> Option<&IndexedPolySet> {
+        self.layer_outlines_below.get(layer)
     }
 
-    /// Canonical `TreeSupportData::get_avoidance`. Materialises the radius
-    /// bucket on first use.
-    fn get_avoidance(&self, radius_mm: f32, layer: usize) -> PolySet {
-        self.ensure_avoidance(radius_mm);
-        self.avoidance
-            .borrow()
-            .get(&(radius_key(radius_mm), layer))
-            .cloned()
-            .unwrap_or_else(empty_poly_set)
-    }
-
-    /// Fill the collision ladder for one radius bucket.
+    /// Materialize an exact set of `(radius_mm, layer)` collision cells in one
+    /// parallel `offset_polygons_batch` pass + one `<= 8`-guarded union pass.
     ///
-    /// `collision(r, l) = simplify(offset_ex(outlines[l], r + xy_distance))`.
-    /// Every layer's inflation is independent, so the whole stack goes to the
-    /// host in one batch (ADR-0049) rather than one call per layer.
-    ///
-    /// Ticket 19: foreign support territory joins the ladder at
-    /// `radius + territory_clearance` (the clearance plays the role
-    /// `xy_distance` plays for the model), so the drop gates and the avoidance
-    /// recurrence keep branches out of the other family's half.
-    fn ensure_collision(&self, radius_mm: f32) {
-        let key = radius_key(radius_mm);
-        if self.layer_outlines.is_empty() || self.collision.borrow().contains_key(&(key, 0)) {
+    /// Applies `ceil_radius` once at the boundary and delegates to
+    /// [`Self::prefetch_collision_cells_keyed`] so `ceil_radius` is never
+    /// double-applied (in `f32`, `(k * 0.2_f32 / 0.2_f32).ceil()` can jump to
+    /// `k + 1` for values like `k = 11` / `2.2 mm`).
+    fn prefetch_collision_cells(&self, cells: &[(f32, usize)]) {
+        if self.layer_outlines.is_empty() || cells.is_empty() {
             return;
         }
-        let inflate = ceil_radius(radius_mm) + self.xy_distance;
-        let inflate_foreign = ceil_radius(radius_mm) + self.territory_clearance;
-        let tolerance_units = mm_to_units(RADIUS_SAMPLE_RESOLUTION_MM) as f64;
-        // `(layer, is_foreign)`: one request per non-empty source per layer.
-        let indexed: Vec<(usize, bool)> = (0..self.layer_count())
-            .flat_map(|l| {
-                let outlines = (!self.layer_outlines[l].is_empty()).then_some((l, false));
-                let foreign = (!self.foreign_territory[l].is_empty()).then_some((l, true));
-                outlines.into_iter().chain(foreign)
+        let keyed: Vec<(i64, f32, usize)> = cells
+            .iter()
+            .map(|&(radius_mm, layer)| {
+                let r_ceil = ceil_radius(radius_mm);
+                (mm_to_units(r_ceil), r_ceil, layer)
             })
             .collect();
-        let inflated = slicer_sdk::host_batch::batch_offset(&indexed, |(layer, is_foreign)| {
-            slicer_sdk::host_batch::OffsetRequest {
-                polygons: if *is_foreign {
-                    self.foreign_territory[*layer].clone()
-                } else {
-                    self.layer_outlines[*layer].clone()
-                },
-                delta_mm: if *is_foreign {
-                    inflate_foreign
-                } else {
-                    inflate
-                },
-                join: OffsetJoinType::Miter,
-                arc_tolerance_mm: 0.0,
-                miter_limit: Some(3.0),
-            }
-        });
-        let mut raw_by_layer: Vec<Vec<ExPolygon>> = vec![Vec::new(); self.layer_count()];
-        for ((layer, _), polys) in inflated {
-            raw_by_layer[*layer].extend(polys);
+        self.prefetch_collision_cells_keyed(&keyed);
+    }
+
+    /// Keyed inner implementation of [`Self::prefetch_collision_cells`]: each
+    /// entry carries an already-ceiled `(radius_key, r_ceil, layer)` tuple.
+    fn prefetch_collision_cells_keyed(&self, cells: &[(i64, f32, usize)]) {
+        if self.layer_outlines.is_empty() || cells.is_empty() {
+            return;
         }
-        let mut by_layer: Vec<Vec<ExPolygon>> = vec![Vec::new(); self.layer_count()];
-        for (layer, polys) in raw_by_layer.into_iter().enumerate() {
-            if polys.is_empty() {
-                continue;
+        let layer_count = self.layer_count();
+        let mut missing: Vec<(i64, f32, usize)> = Vec::new();
+        {
+            let cache = self.collision.borrow();
+            let mut seen: std::collections::HashSet<(i64, usize)> =
+                std::collections::HashSet::new();
+            for &(key, r_ceil, layer) in cells {
+                if layer >= layer_count {
+                    continue;
+                }
+                if !cache.contains_key(&(key, layer)) && seen.insert((key, layer)) {
+                    missing.push((key, r_ceil, layer));
+                }
             }
-            by_layer[layer] = expolygons_simplify(&union_expolys(polys), tolerance_units);
+        }
+        if missing.is_empty() {
+            return;
+        }
+        let tolerance_units = mm_to_units(RADIUS_SAMPLE_RESOLUTION_MM) as f64;
+        let mut offset_owners: Vec<usize> = Vec::with_capacity(missing.len());
+        let mut offset_reqs: Vec<OffsetRequest> = Vec::with_capacity(missing.len());
+        for (cell_idx, &(_key, r_ceil, layer)) in missing.iter().enumerate() {
+            let outlines = self.layer_outlines[layer].as_slice();
+            if !outlines.is_empty() {
+                offset_owners.push(cell_idx);
+                offset_reqs.push(OffsetRequest {
+                    polygons: outlines.to_vec(),
+                    delta_mm: r_ceil + self.xy_distance,
+                    join: OffsetJoinType::Miter,
+                    arc_tolerance_mm: 0.0,
+                    miter_limit: Some(3.0),
+                });
+            }
+            let foreign = &self.foreign_territory[layer];
+            if !foreign.is_empty() {
+                offset_owners.push(cell_idx);
+                offset_reqs.push(OffsetRequest {
+                    polygons: foreign.clone(),
+                    delta_mm: r_ceil + self.territory_clearance,
+                    join: OffsetJoinType::Miter,
+                    arc_tolerance_mm: 0.0,
+                    miter_limit: Some(3.0),
+                });
+            }
+        }
+        let mut raw_by_cell: Vec<Vec<ExPolygon>> = vec![Vec::new(); missing.len()];
+        if offset_reqs.len() == 1 {
+            let req = &offset_reqs[0];
+            let res = host::offset_polygons_with_miter_limit(
+                &req.polygons,
+                req.delta_mm,
+                req.join,
+                req.arc_tolerance_mm,
+                req.miter_limit.unwrap_or(3.0),
+            );
+            raw_by_cell[offset_owners[0]].extend(res);
+        } else if !offset_reqs.is_empty() {
+            let inflated = run_offset_batches(&offset_reqs);
+            for (owner, polys) in offset_owners.into_iter().zip(inflated) {
+                raw_by_cell[owner].extend(polys);
+            }
+        }
+        let mut union_slots: Vec<usize> = Vec::new();
+        let mut union_reqs: Vec<(Vec<ExPolygon>, Vec<ExPolygon>)> = Vec::new();
+        for (cell_idx, polys) in raw_by_cell.iter_mut().enumerate() {
+            if polys.len() > 1 {
+                let mut taken = std::mem::take(polys);
+                let tail = taken.split_off(1);
+                union_slots.push(cell_idx);
+                union_reqs.push((taken, tail));
+            }
+        }
+        for (cell_idx, unioned) in union_slots
+            .into_iter()
+            .zip(run_exact_union_batch(union_reqs))
+        {
+            raw_by_cell[cell_idx] = unioned;
         }
         let mut cache = self.collision.borrow_mut();
-        for (layer, polys) in by_layer.into_iter().enumerate() {
-            cache.insert((key, layer), std::rc::Rc::new(polys));
+        for ((key, _r_ceil, layer), polys) in missing.into_iter().zip(raw_by_cell) {
+            let simplified = if polys.is_empty() {
+                Vec::new()
+            } else {
+                expolygons_simplify(&polys, tolerance_units)
+            };
+            cache.insert((key, layer), std::rc::Rc::new(IndexedPolySet::new(simplified)));
         }
     }
 
-    /// Fill the avoidance ladder for one radius bucket, bottom-up.
+    /// Height-capped, bucket-parallel prefetch for the drop pass (`t190` `P1`).
     ///
-    /// Avoidance is a strict recurrence — each layer erodes the layer below it
-    /// — so it is walked serially, but iteratively rather than recursively
-    /// (see the module note on canonical's recursion trampoline).
-    fn ensure_avoidance(&self, radius_mm: f32) {
-        let key = radius_key(radius_mm);
-        if self.layer_outlines.is_empty() || self.avoidance.borrow().contains_key(&(key, 0)) {
+    /// Materializes `collision(r, 0..=max_layer)` in one batched offset+union
+    /// pass (plus optional `collision(0.0, 0..=collision0_max_layer)`), then
+    /// advances the avoidance recurrence layer-by-layer in parallel across all
+    /// active radius buckets up to each bucket's exact `max_layer`, strictly
+    /// obeying `BATCH_UNION_EXACT_POLY_LIMIT` (`<= 8`) for every union.
+    fn prefetch_drop_ladders(
+        &self,
+        bucket_max_layers: &[(f32, usize)],
+        collision0_max_layer: Option<usize>,
+    ) {
+        let keyed: Vec<(i64, f32, usize)> = bucket_max_layers
+            .iter()
+            .map(|&(r_mm, max_layer)| {
+                let r_ceil = ceil_radius(r_mm);
+                (mm_to_units(r_ceil), r_ceil, max_layer)
+            })
+            .collect();
+        self.prefetch_drop_ladders_keyed(&keyed, collision0_max_layer);
+    }
+
+    /// Keyed inner implementation of [`Self::prefetch_drop_ladders`]: each
+    /// entry carries an already-ceiled `(radius_key, r_ceil, max_layer)` tuple
+    /// so `ceil_radius` is never applied twice.
+    fn prefetch_drop_ladders_keyed(
+        &self,
+        bucket_max_layers: &[(i64, f32, usize)],
+        collision0_max_layer: Option<usize>,
+    ) {
+        let layer_count = self.layer_count();
+        if layer_count == 0 {
             return;
         }
-        self.ensure_collision(radius_mm);
-        let mut previous: Vec<ExPolygon> = Vec::new();
-        for layer in 0..self.layer_count() {
-            let collision = self.get_collision(radius_mm, layer).as_ref().clone();
-            let avoidance = if layer == 0 || previous.is_empty() {
-                collision
-            } else {
-                // `offset_polygons` takes a SIGNED delta in mm and erodes on a
-                // negative one, so it serves canonical's negative `offset_ex`.
-                let step = self
-                    .max_move_distances
+        let max_valid = layer_count - 1;
+        let mut buckets_map: std::collections::BTreeMap<i64, (f32, usize)> =
+            std::collections::BTreeMap::new();
+        for &(key, r_ceil, max_layer) in bucket_max_layers {
+            let clamped = max_layer.min(max_valid);
+            buckets_map
+                .entry(key)
+                .and_modify(|(_, ml)| {
+                    if clamped > *ml {
+                        *ml = clamped;
+                    }
+                })
+                .or_insert((r_ceil, clamped));
+        }
+
+        // Step 1: batch every needed collision cell across all buckets + r=0.0.
+        let mut needed_coll: Vec<(i64, f32, usize)> = Vec::new();
+        if let Some(c0_max) = collision0_max_layer {
+            let clamped = c0_max.min(max_valid);
+            let r0 = ceil_radius(0.0);
+            let k0 = mm_to_units(r0);
+            for layer in 0..=clamped {
+                needed_coll.push((k0, r0, layer));
+            }
+        }
+        for (&key, &(r_ceil, max_layer)) in &buckets_map {
+            for layer in 0..=max_layer {
+                needed_coll.push((key, r_ceil, layer));
+            }
+        }
+        self.prefetch_collision_cells_keyed(&needed_coll);
+
+        if buckets_map.is_empty() {
+            return;
+        }
+
+        // Step 2: advance avoidance layer-by-layer in parallel across active buckets.
+        let buckets: Vec<(i64, f32, usize)> = buckets_map
+            .into_iter()
+            .map(|(key, (r_ceil, max_layer))| (key, r_ceil, max_layer))
+            .collect();
+        let global_max_layer = buckets.iter().map(|(_, _, ml)| *ml).max().unwrap_or(0);
+        let mut prev_by_bucket: Vec<Option<PolySet>> = vec![None; buckets.len()];
+
+        for layer in 0..=global_max_layer {
+            let step = if layer > 0 {
+                self.max_move_distances
                     .get(layer - 1)
                     .copied()
-                    .unwrap_or(0.0);
-                let eroded = if step <= 0.0 {
-                    previous.clone()
-                } else {
-                    host::offset_polygons_with_miter_limit(
-                        &previous,
-                        -step,
-                        OffsetJoinType::Miter,
-                        0.0,
-                        3.0,
-                    )
-                };
-                if eroded.is_empty() {
-                    collision
-                } else if collision.is_empty() {
-                    eroded
-                } else {
-                    host::clip_polygons(&eroded, &collision, ClipOperation::Union)
-                }
+                    .unwrap_or(0.0)
+            } else {
+                0.0
             };
-            previous = avoidance.clone();
-            self.avoidance
-                .borrow_mut()
-                .insert((key, layer), std::rc::Rc::new(avoidance));
+            let mut eroded_ready: Vec<(usize, Vec<ExPolygon>)> = Vec::new();
+            let mut erode_slots: Vec<usize> = Vec::new();
+            let mut erode_reqs: Vec<OffsetRequest> = Vec::new();
+
+            for (b_idx, &(key, _r_ceil, max_layer)) in buckets.iter().enumerate() {
+                if layer > max_layer {
+                    continue;
+                }
+                if let Some(existing) = self.avoidance.borrow().get(&(key, layer)).cloned() {
+                    prev_by_bucket[b_idx] = Some(existing);
+                    continue;
+                }
+                let prev_empty = layer == 0
+                    || prev_by_bucket[b_idx]
+                        .as_ref()
+                        .is_none_or(|p| p.is_empty());
+                if prev_empty {
+                    let coll = self
+                        .collision
+                        .borrow()
+                        .get(&(key, layer))
+                        .cloned()
+                        .unwrap_or_else(empty_poly_set);
+                    self.avoidance
+                        .borrow_mut()
+                        .insert((key, layer), std::rc::Rc::clone(&coll));
+                    prev_by_bucket[b_idx] = Some(coll);
+                    continue;
+                }
+                let prev = prev_by_bucket[b_idx].as_ref().unwrap();
+                if step <= 0.0 {
+                    eroded_ready.push((b_idx, prev.as_slice().to_vec()));
+                } else {
+                    erode_slots.push(b_idx);
+                    erode_reqs.push(OffsetRequest {
+                        polygons: prev.as_slice().to_vec(),
+                        delta_mm: -step,
+                        join: OffsetJoinType::Miter,
+                        arc_tolerance_mm: 0.0,
+                        miter_limit: Some(3.0),
+                    });
+                }
+            }
+
+            if erode_reqs.len() == 1 {
+                let req = &erode_reqs[0];
+                let res = host::offset_polygons_with_miter_limit(
+                    &req.polygons,
+                    req.delta_mm,
+                    req.join,
+                    req.arc_tolerance_mm,
+                    req.miter_limit.unwrap_or(3.0),
+                );
+                eroded_ready.push((erode_slots[0], res));
+            } else if !erode_reqs.is_empty() {
+                let results = run_offset_batches(&erode_reqs);
+                for (b_idx, res) in erode_slots.into_iter().zip(results) {
+                    eroded_ready.push((b_idx, res));
+                }
+            }
+
+            let mut union_slots: Vec<usize> = Vec::new();
+            let mut union_reqs: Vec<(Vec<ExPolygon>, Vec<ExPolygon>)> = Vec::new();
+            for (b_idx, eroded) in eroded_ready {
+                let (key, _r_ceil, _max_layer) = buckets[b_idx];
+                let coll = self
+                    .collision
+                    .borrow()
+                    .get(&(key, layer))
+                    .cloned()
+                    .unwrap_or_else(empty_poly_set);
+                if eroded.is_empty() {
+                    self.avoidance
+                        .borrow_mut()
+                        .insert((key, layer), std::rc::Rc::clone(&coll));
+                    prev_by_bucket[b_idx] = Some(coll);
+                } else if coll.is_empty() {
+                    let ps = std::rc::Rc::new(IndexedPolySet::new(eroded));
+                    self.avoidance
+                        .borrow_mut()
+                        .insert((key, layer), std::rc::Rc::clone(&ps));
+                    prev_by_bucket[b_idx] = Some(ps);
+                } else {
+                    union_slots.push(b_idx);
+                    union_reqs.push((eroded, coll.as_slice().to_vec()));
+                }
+            }
+
+            if !union_reqs.is_empty() {
+                let union_results = run_exact_union_batch(union_reqs);
+                let mut av_cache = self.avoidance.borrow_mut();
+                for (b_idx, res) in union_slots.into_iter().zip(union_results) {
+                    let (key, _r_ceil, _max_layer) = buckets[b_idx];
+                    let ps = std::rc::Rc::new(IndexedPolySet::new(res));
+                    av_cache.insert((key, layer), std::rc::Rc::clone(&ps));
+                    prev_by_bucket[b_idx] = Some(ps);
+                }
+            }
         }
+    }
+
+    /// Canonical `TreeSupportData::get_collision`. Returns the prefetched cell
+    /// on hit, or lazily materializes the exact `(radius_key, layer)` cell.
+    fn get_collision(&self, radius_mm: f32, layer: usize) -> PolySet {
+        if layer >= self.layer_count() {
+            return empty_poly_set();
+        }
+        let key = radius_key(radius_mm);
+        if let Some(hit) = self.collision.borrow().get(&(key, layer)).cloned() {
+            return hit;
+        }
+        self.prefetch_collision_cells(&[(radius_mm, layer)]);
+        self.collision
+            .borrow()
+            .get(&(key, layer))
+            .cloned()
+            .unwrap_or_else(empty_poly_set)
+    }
+
+    /// Canonical `TreeSupportData::get_avoidance`. Returns the prefetched cell
+    /// on hit, or lazily advances `0..=layer` for this radius bucket.
+    fn get_avoidance(&self, radius_mm: f32, layer: usize) -> PolySet {
+        if layer >= self.layer_count() {
+            return empty_poly_set();
+        }
+        let key = radius_key(radius_mm);
+        if let Some(hit) = self.avoidance.borrow().get(&(key, layer)).cloned() {
+            return hit;
+        }
+        self.prefetch_drop_ladders(&[(radius_mm, layer)], None);
+        self.avoidance
+            .borrow()
+            .get(&(key, layer))
+            .cloned()
+            .unwrap_or_else(empty_poly_set)
+    }
+
+    /// Memoized `move_out_expolys` against a cached collision/avoidance volume
+    /// (`t190` `P2`). Eliminates duplicate serial host dilations when multiple
+    /// nodes on a layer escape the same `(is_avoidance, radius_key, layer, min_dist)`.
+    #[allow(clippy::too_many_arguments)]
+    fn move_out_cached(
+        &self,
+        is_avoidance: bool,
+        radius_mm: f32,
+        layer: usize,
+        base: &IndexedPolySet,
+        from: &mut (f32, f32),
+        min_dist: f32,
+        max_dist: f32,
+    ) -> bool {
+        let from0 = *from;
+        if base.is_empty() || !base.contains(from0.0, from0.1) {
+            return false;
+        }
+        let cache_key = (is_avoidance, radius_key(radius_mm), layer, min_dist.to_bits());
+        let cached = self.move_out_cache.borrow().get(&cache_key).cloned();
+        let dilated = if let Some(hit) = cached {
+            hit
+        } else {
+            let polys = union_expolys(host::offset_polygons(
+                base.as_slice(),
+                min_dist,
+                OffsetJoinType::Miter,
+                0.0,
+            ));
+            let ps = std::rc::Rc::new(IndexedPolySet::new(polys));
+            self.move_out_cache
+                .borrow_mut()
+                .insert(cache_key, std::rc::Rc::clone(&ps));
+            ps
+        };
+        let target = dilated.projection_onto(from0);
+        let outward_dir = (target.0 - from0.0, target.1 - from0.1);
+        let dist2 = outward_dir.0 * outward_dir.0 + outward_dir.1 * outward_dir.1;
+        *from = if dist2 > max_dist * max_dist {
+            let clamped = normal_to_length(outward_dir, max_dist);
+            (from0.0 + clamped.0, from0.1 + clamped.1)
+        } else {
+            target
+        };
+        *from != from0
     }
 }
 
@@ -2793,6 +3501,61 @@ impl SupportPlanner {
                         .map(|origin| (origin.region_id.as_str(), origin.variant_chain.as_slice()))
                 })
                 .collect();
+        // Ticket 190 (`P3` + `P4`): build per-object O(1) lookup maps once
+        // instead of O(L^2) linear scans over `region_segmentation`,
+        // `model_occupancy`, `print_plane_occupancy`, and `layer_plan`.
+        let layer_idx_by_global: std::collections::HashMap<u32, usize> = layer_plan
+            .layers
+            .iter()
+            .enumerate()
+            .map(|(idx, layer)| (layer.global_layer_index, idx))
+            .collect();
+        let mut seg_origins_by_layer: std::collections::HashMap<
+            u32,
+            Vec<(&str, &[(String, PaintValue)])>,
+        > = std::collections::HashMap::new();
+        let mut seg_origin_set: std::collections::HashSet<(u32, &str, &[(String, PaintValue)])> =
+            std::collections::HashSet::new();
+        for entry in region_segmentation
+            .entries
+            .iter()
+            .filter(|e| e.object_id == obj.object_id)
+        {
+            let layer_list = seg_origins_by_layer.entry(entry.layer_index).or_default();
+            for origin in &entry.region_origins {
+                let pair = (origin.region_id.as_str(), origin.variant_chain.as_slice());
+                layer_list.push(pair);
+                seg_origin_set.insert((entry.layer_index, pair.0, pair.1));
+            }
+        }
+        let mut model_occ_by_layer: std::collections::HashMap<
+            u32,
+            Vec<&slicer_sdk::prepass_types::SupportAnalysisGeometryEntry>,
+        > = std::collections::HashMap::new();
+        for entry in support_analysis
+            .model_occupancy
+            .iter()
+            .filter(|e| e.object_id == obj.object_id)
+        {
+            model_occ_by_layer
+                .entry(entry.global_support_layer_index)
+                .or_default()
+                .push(entry);
+        }
+        let mut print_occ_by_layer: std::collections::HashMap<
+            u32,
+            Vec<&slicer_sdk::prepass_types::SupportAnalysisPlaneEntry>,
+        > = std::collections::HashMap::new();
+        for entry in support_analysis
+            .print_plane_occupancy
+            .iter()
+            .filter(|e| e.object_id == obj.object_id)
+        {
+            print_occ_by_layer
+                .entry(entry.global_support_layer_index)
+                .or_default()
+                .push(entry);
+        }
         let base_radius = MIN_BRANCH_RADIUS.max(self.tree_support_branch_diameter / 2.0);
         // Canonical builds `grid_points` once per object over the whole-object
         // bounding box, rotated 22 degrees (F-35).
@@ -2995,71 +3758,115 @@ impl SupportPlanner {
                 variant_chain: candidate.variant_chain.clone(),
             });
         }
-        for candidate in support_analysis.candidates.iter().filter(|candidate| {
-            candidate.object_id == obj.object_id
-                && !candidate.blocked
-                && candidate_family(candidate, support_analysis).as_deref() == Some("tree")
-                && candidate
-                    .geometry
-                    .iter()
-                    .any(|polygon| polygon.contour.points.len() >= 3)
-                && region_segmentation.entries.iter().any(|entry| {
-                    entry.object_id == obj.object_id
-                        && entry.layer_index == candidate.global_layer_index
-                        && entry.region_origins.iter().any(|origin| {
-                            origin.region_id == candidate.region_id
-                                && origin.variant_chain == candidate.variant_chain
-                        })
-                })
-        }) {
-            let layer_idx = layer_plan
-                .layers
+        // Ticket 190 (`P4`): collect eligible tree candidates via O(1)
+        // `seg_origin_set`, batch all overhang contact erodes into a single
+        // `offset_polygons_batch` pass (and prefetch the exact `collision(0)`
+        // target layers), preserving exact candidate and polygon order.
+        let eligible_candidates: Vec<(_, usize)> = support_analysis
+                .candidates
                 .iter()
-                .position(|layer| layer.global_layer_index == candidate.global_layer_index)
-                .unwrap_or_else(|| candidate.global_layer_index.min(num_layers - 1) as usize);
-            let samples = sample_contact_points(
-                &candidate.geometry,
-                object_grid.as_deref(),
-                self.tree_support_branch_distance,
-                base_radius,
-                self.max_bridge_length_mm,
-                false,
-            );
-            for (sample_idx, sample) in samples.into_iter().enumerate() {
-                let overhang = &candidate.geometry[sample.overhang];
-                let oc = OverhangContext {
-                    ctx: &contact_ctx,
-                    overhang,
-                    add_interface: expolygon_area(overhang) > minimum_roof_area(),
-                    is_sharp_tail: false,
-                };
-                // Canonical `generate_contact_points` has exactly ONE contact
-                // seeding rule: the node goes on `layer_nr - 1` and starts at
-                // `distance_to_top = -gap_layers` (the virtual top-Z-gap node
-                // that `draw_circles` diverts into `roof_gap_areas`). Step 2
-                // gave analysis candidates their own unshifted rule on the
-                // reasoning that the host hands over a *contact* layer rather
-                // than an overhang layer; it does not — `detect_support_over-
-                // hangs` reports the layer that CONTAINS the overhang, the
-                // same input canonical shifts. Running two rules seeded two
-                // roof bands one layer apart for the same overhang, and their
-                // union gave N+1..N+2 interface layers instead of N
-                // (measured: top=1 -> 2, top=2 -> 4, top=3 -> 5 on
-                // SupportTest.stl).
-                insert_contact_point(
-                    &mut arena,
-                    &mut contacts_by_layer,
-                    layer_plan,
-                    self,
-                    volumes,
-                    dropped_by_layer,
-                    layer_idx,
-                    (sample.x, sample.y),
-                    sample.radius,
-                    sample.is_corner,
-                    &oc,
-                    format!("demand-{}-{}", candidate.id, sample_idx),
+                .filter(|candidate| {
+                    candidate.object_id == obj.object_id
+                        && !candidate.blocked
+                        && candidate_family(candidate, support_analysis).as_deref() == Some("tree")
+                        && candidate
+                            .geometry
+                            .iter()
+                            .any(|polygon| polygon.contour.points.len() >= 3)
+                        && seg_origin_set.contains(&(
+                            candidate.global_layer_index,
+                            candidate.region_id.as_str(),
+                            candidate.variant_chain.as_slice(),
+                        ))
+                })
+                .map(|candidate| {
+                    let layer_idx = layer_idx_by_global
+                        .get(&candidate.global_layer_index)
+                        .copied()
+                        .unwrap_or_else(|| candidate.global_layer_index.min(num_layers - 1) as usize);
+                    (candidate, layer_idx)
+                })
+                .collect();
+        if !eligible_candidates.is_empty() {
+            let contact_coll_cells: Vec<(f32, usize)> = eligible_candidates
+                .iter()
+                .filter_map(|&(_, layer_idx)| {
+                    (layer_idx > 0 && layer_idx < layer_plan.layers.len())
+                        .then_some((0.0_f32, layer_idx - 1))
+                })
+                .collect();
+            volumes.prefetch_collision_cells(&contact_coll_cells);
+
+            let has_object_grid = object_grid.as_ref().is_some_and(|g| !g.is_empty());
+            let mut erode_slots: Vec<(usize, usize)> = Vec::new();
+            let mut erode_reqs: Vec<OffsetRequest> = Vec::new();
+            for (cand_idx, &(candidate, _)) in eligible_candidates.iter().enumerate() {
+                let candidate_has_grid =
+                    has_object_grid || expolygons_bbox(&candidate.geometry).is_some();
+                if !candidate_has_grid {
+                    continue;
+                }
+                for (poly_idx, polygon) in candidate.geometry.iter().enumerate() {
+                    if polygon.contour.points.len() < 3 {
+                        continue;
+                    }
+                    let Some(bbox) = expolygons_bbox(std::slice::from_ref(polygon)) else {
+                        continue;
+                    };
+                    let radius = bbox_radius_mm(bbox)
+                        .clamp(MIN_BRANCH_RADIUS, base_radius.max(MIN_BRANCH_RADIUS));
+                    erode_slots.push((cand_idx, poly_idx));
+                    erode_reqs.push(OffsetRequest {
+                        polygons: vec![polygon.clone()],
+                        delta_mm: -radius,
+                        join: OffsetJoinType::Miter,
+                        arc_tolerance_mm: 0.0,
+                        miter_limit: Some(3.0),
+                    });
+                }
+            }
+            let erode_results = run_offset_batches(&erode_reqs);
+            let mut erodes_by_cand: Vec<Vec<Option<Vec<ExPolygon>>>> = eligible_candidates
+                .iter()
+                .map(|&(c, _)| vec![None; c.geometry.len()])
+                .collect();
+            for ((cand_idx, poly_idx), eroded) in erode_slots.into_iter().zip(erode_results) {
+                erodes_by_cand[cand_idx][poly_idx] = Some(eroded);
+            }
+
+            for (cand_idx, (candidate, layer_idx)) in eligible_candidates.into_iter().enumerate() {
+                let samples = sample_contact_points_with_erodes(
+                    &candidate.geometry,
+                    object_grid.as_deref(),
+                    self.tree_support_branch_distance,
+                    base_radius,
+                    self.max_bridge_length_mm,
+                    false,
+                    Some(&erodes_by_cand[cand_idx]),
                 );
+                for (sample_idx, sample) in samples.into_iter().enumerate() {
+                    let overhang = &candidate.geometry[sample.overhang];
+                    let oc = OverhangContext {
+                        ctx: &contact_ctx,
+                        overhang,
+                        add_interface: expolygon_area(overhang) > minimum_roof_area(),
+                        is_sharp_tail: false,
+                    };
+                    insert_contact_point(
+                        &mut arena,
+                        &mut contacts_by_layer,
+                        layer_plan,
+                        self,
+                        volumes,
+                        dropped_by_layer,
+                        layer_idx,
+                        (sample.x, sample.y),
+                        sample.radius,
+                        sample.is_corner,
+                        &oc,
+                        format!("demand-{}-{}", candidate.id, sample_idx),
+                    );
+                }
             }
         }
 
@@ -3178,6 +3985,54 @@ impl SupportPlanner {
 
         // Iterate top → bottom.
         let top = num_layers as usize;
+
+        // Ticket 190 (`P1`): compute the exact per-radius-bucket `max_layer`
+        // upper bound from `contacts_by_layer` and prefetch the drop-pass
+        // collision + avoidance ladders in height-capped, bucket-parallel host
+        // batches. Layers strictly above a bucket's `max_layer` are never
+        // queried and never materialized.
+        let mut drop_bucket_max: std::collections::BTreeMap<i64, (f32, usize)> =
+            std::collections::BTreeMap::new();
+        let mut max_contact_cache_idx: usize = 0;
+        for c in 0..top {
+            if contacts_by_layer[c].is_empty() {
+                continue;
+            }
+            let c_cache = layer_plan.layers[c].global_layer_index as usize;
+            if c_cache > max_contact_cache_idx {
+                max_contact_cache_idx = c_cache;
+            }
+            let mut next_dist_mm = contact_ctx.z_distance_top;
+            for l in (0..=c).rev() {
+                if l < c {
+                    next_dist_mm += layer_plan.layers[l].effective_layer_height;
+                }
+                let next_cache =
+                    (layer_plan.layers[l].global_layer_index as usize).saturating_sub(1);
+                let r = calc_radius(
+                    branch_radius,
+                    tan_diameter_angle,
+                    next_dist_mm,
+                    self.support_interface_top_layers,
+                );
+                let r_ceil = ceil_radius(r);
+                let key = mm_to_units(r_ceil);
+                drop_bucket_max
+                    .entry(key)
+                    .and_modify(|(_, ml)| {
+                        if next_cache > *ml {
+                            *ml = next_cache;
+                        }
+                    })
+                    .or_insert((r_ceil, next_cache));
+            }
+        }
+        let drop_buckets: Vec<(i64, f32, usize)> = drop_bucket_max
+            .into_iter()
+            .map(|(key, (r_ceil, ml))| (key, r_ceil, ml))
+            .collect();
+        volumes.prefetch_drop_ladders_keyed(&drop_buckets, Some(max_contact_cache_idx));
+
         for layer_rev in (0..top).rev() {
             // Canonical caches `is_line_cut_by_contour` per `drop_nodes` layer
             // pass; the contours it tests against are this layer's.
@@ -3236,12 +4091,18 @@ impl SupportPlanner {
             // to run one global Prim MST over every active node, so nodes on
             // opposite sides of the object could become MST neighbours, merge,
             // and drag each other across it.
-            let parts: Vec<ExPolygon> = volumes.outlines_below(cache_idx).to_vec();
+            let parts_indexed = volumes.outlines_below_indexed(cache_idx);
+            let parts_len = parts_indexed.map_or(0, IndexedPolySet::len);
             let group_of: Vec<usize> = active_nodes
                 .iter()
                 .map(|id| {
                     let node = &arena[*id];
-                    assign_node_group(&parts, node.to_buildplate, node.x(), node.y())
+                    match parts_indexed {
+                        Some(parts) => {
+                            assign_node_group_indexed(parts, node.to_buildplate, node.x(), node.y())
+                        }
+                        None => 0,
+                    }
                 })
                 .collect();
             // F-14: the canonical grouping loop drops a node that must reach
@@ -3257,7 +4118,7 @@ impl SupportPlanner {
                 }
             }
             let mut mst_edges: Vec<(usize, usize, f32)> = Vec::new();
-            for group in 0..=parts.len() {
+            for group in 0..=parts_len {
                 let members: Vec<usize> = (0..active_nodes.len())
                     .filter(|i| group_of[*i] == group)
                     .collect();
@@ -3364,20 +4225,27 @@ impl SupportPlanner {
                         );
                         let avoidance = volumes.get_avoidance(avoid_radius, next_cache_idx);
                         let (dilation, max_move) = branch_a_move_out_args(max_move_xy);
-                        let _ =
-                            move_out_expolys(&avoidance, &mut next_position, dilation, max_move);
+                        let _ = volumes.move_out_cached(
+                            true,
+                            avoid_radius,
+                            next_cache_idx,
+                            &avoidance,
+                            &mut next_position,
+                            dilation,
+                            max_move,
+                        );
                     }
                     let collision = volumes.get_collision(0.0, next_cache_idx);
-                    let to_buildplate = branch_a_to_buildplate(&collision, next_position);
+                    let to_buildplate = !collision.contains(next_position.0, next_position.1);
                     let roof_below = branch_a_roof_counter(
                         arena[parent_id].support_roof_layers_below,
                         arena[parent_id].distance_to_top,
                     );
                     let is_sharp_tail = arena[id].is_sharp_tail || arena[nid].is_sharp_tail;
-                    let mut demand_ids = arena[id].demand_ids.clone();
-                    for d in arena[nid].demand_ids.clone() {
-                        if !demand_ids.contains(&d) {
-                            demand_ids.push(d);
+                    let mut demand_ids = (*arena[id].demand_ids).clone();
+                    for d in arena[nid].demand_ids.iter() {
+                        if !demand_ids.contains(d) {
+                            demand_ids.push(d.clone());
                         }
                     }
                     let (parent_x, parent_y) = arena[parent_id].xy();
@@ -3402,7 +4270,7 @@ impl SupportPlanner {
                         Point2::from_mm(next_position.0 - parent_x, next_position.1 - parent_y);
                     arena[new_id].max_move_dist = max_move_xy;
                     arena[new_id].is_sharp_tail = is_sharp_tail;
-                    arena[new_id].demand_ids = demand_ids;
+                    arena[new_id].demand_ids = std::rc::Rc::new(demand_ids);
                     // Both originals feed the merged node: `create_node`'s
                     // ctor loop wired `other_id.child` / `parents` from the
                     // `merged_neighbours` push above.
@@ -3434,10 +4302,11 @@ impl SupportPlanner {
                         if node_dist_mm_to_top < arena[nid].dist_mm_to_top {
                             continue;
                         }
-                        let ids = arena[nid].demand_ids.clone();
-                        for d in ids {
-                            if !arena[id].demand_ids.contains(&d) {
-                                arena[id].demand_ids.push(d);
+                        let ids = std::rc::Rc::clone(&arena[nid].demand_ids);
+                        let keep_demands = std::rc::Rc::make_mut(&mut arena[id].demand_ids);
+                        for d in ids.iter() {
+                            if !keep_demands.contains(d) {
+                                keep_demands.push(d.clone());
                             }
                         }
                         let (dist, roof) = {
@@ -3504,7 +4373,7 @@ impl SupportPlanner {
             } else {
                 DO_NOT_MOVER_UNDER_MM
             };
-            let layer_outlines = volumes.outlines_at(cache_idx).to_vec();
+            let layer_outlines = volumes.outlines_at(cache_idx);
 
             for i in 0..active_nodes.len() {
                 if drop[i] {
@@ -3522,7 +4391,7 @@ impl SupportPlanner {
                 let dist_mm_to_top = arena[id].dist_mm_to_top;
                 let print_z = arena[id].print_z;
                 let skin_direction = arena[id].skin_direction;
-                let demand_ids = arena[id].demand_ids.clone();
+                let demand_ids = std::rc::Rc::clone(&arena[id].demand_ids);
 
                 // Canonical: "If the branch falls completely inside a collision
                 // area (the entire branch would be removed by the X/Y offset),
@@ -3532,8 +4401,8 @@ impl SupportPlanner {
                 // its own layer — that is how a branch terminates on the model.
                 if group_of[i] > 0 {
                     let collision = volumes.get_collision(0.0, cache_idx);
-                    if is_inside_ex(&collision, node_x, node_y) {
-                        let to_outside = projection_onto(&collision, (node_x, node_y));
+                    if collision.contains(node_x, node_y) {
+                        let to_outside = collision.projection_onto((node_x, node_y));
                         let dist2_to_outside = (to_outside.0 - node_x) * (to_outside.0 - node_x)
                             + (to_outside.1 - node_y) * (to_outside.1 - node_y);
                         if dist2_to_outside >= radius * radius {
@@ -3549,7 +4418,7 @@ impl SupportPlanner {
                             // contours, mark current as bottom contact node".
                             let parent_xy = arena[parent].xy();
                             if line_cut.is_line_cut_by_contour(
-                                &layer_outlines,
+                                layer_outlines,
                                 (node_x, node_y),
                                 parent_xy,
                             ) {
@@ -3617,7 +4486,7 @@ impl SupportPlanner {
                             continue;
                         }
                         if line_cut.is_line_cut_by_contour(
-                            &layer_outlines,
+                            layer_outlines,
                             (node_x, node_y),
                             (nx, ny),
                         ) {
@@ -3651,16 +4520,16 @@ impl SupportPlanner {
                     self.support_interface_top_layers,
                 );
                 let avoidance_next = volumes.get_avoidance(next_avoid_radius, next_cache_idx);
-                let to_outside = projection_onto(&avoidance_next, (node_x, node_y));
+                let to_outside = avoidance_next.projection_onto((node_x, node_y));
                 let mut direction_to_outer = (to_outside.0 - node_x, to_outside.1 - node_y);
                 let mut dist2_to_outer = direction_to_outer.0 * direction_to_outer.0
                     + direction_to_outer.1 * direction_to_outer.1;
                 // `max_move_distance2 * SQ(obj_layer_nr)`: the further from the
                 // plate, the further a branch is allowed to jump outward.
                 let layer_scale = (cache_idx as f32) * (cache_idx as f32);
-                if line_cut.is_line_cut_by_contour(&layer_outlines, (node_x, node_y), to_outside)
+                if line_cut.is_line_cut_by_contour(layer_outlines, (node_x, node_y), to_outside)
                     || dist2_to_outer > max_move2 * layer_scale
-                    || !is_inside_ex(&avoidance_next, node_x, node_y)
+                    || !avoidance_next.contains(node_x, node_y)
                 {
                     // STUDIO-4252 retries the escape against **collision**,
                     // not avoidance: avoidance is the accumulated no-go cone,
@@ -3668,7 +4537,10 @@ impl SupportPlanner {
                     let collision_next = volumes.get_collision(next_avoid_radius, next_cache_idx);
                     let mut candidate = (node_x, node_y);
                     let (dilation, max_move_between_samples) = studio_4252_move_out_args(max_move);
-                    let _ = move_out_expolys(
+                    let _ = volumes.move_out_cached(
+                        false,
+                        next_avoid_radius,
+                        next_cache_idx,
                         &collision_next,
                         &mut candidate,
                         dilation,
@@ -3703,8 +4575,9 @@ impl SupportPlanner {
                 // LOCKED: move-pass recompute tests RAW outlines forever.
                 // Canonical deliberately differs from contact seeding and the
                 // branch-A merge here, which test collision(0) instead.
-                let to_buildplate =
-                    move_pass_to_buildplate(volumes.outlines_at(next_cache_idx), (next_x, next_y));
+                let to_buildplate = !volumes
+                    .outlines_indexed_at(next_cache_idx)
+                    .is_some_and(|outlines| outlines.contains(next_x, next_y));
 
                 // The node one layer down is a *new* arena node whose `parent`
                 // points back up, so later steps can walk the column in either
@@ -3715,7 +4588,7 @@ impl SupportPlanner {
                 // to the model, and may never shrink below its parent.
                 let collision_here = volumes.get_collision(0.0, next_cache_idx);
                 if !collision_here.is_empty() {
-                    let projected = projection_onto(&collision_here, (next_x, next_y));
+                    let projected = collision_here.projection_onto((next_x, next_y));
                     let dist_to_outer = ((projected.0 - next_x) * (projected.0 - next_x)
                         + (projected.1 - next_y) * (projected.1 - next_y))
                         .sqrt();
@@ -3861,46 +4734,44 @@ impl SupportPlanner {
             },
         );
         // ── Emit pass (canonical `draw_circles`) ─────────────────────────
-        // Ticket 135 Stage 2: the pass walks a chunk of layers at a time so the
-        // chunk's independent occupancy offsets can be issued as one host
-        // batch. `occupancy_memo` spans the chunk, and `chunk_layers_left`
-        // mirrors the role-clip flush cadence below so the occupancy batch and
-        // the flush share a boundary. Empty layers `continue` before any work
-        // and do not consume a chunk slot.
+        // Ticket 190 (`P1` + `P3`):
+        //   1. Prefetch only the exact `(radius, cache_idx)` collision cells
+        //      that surviving smoothed nodes will query in `emit_pass`.
+        //   2. Prefetch all active layers' occupancy offsets in 256-request
+        //      batches using the O(1) per-layer maps (`model_occ_by_layer` /
+        //      `print_occ_by_layer`) instead of 12-layer mini-batches.
+        let mut emit_coll_cells: Vec<(f32, usize)> = Vec::new();
+        for record in &layer_records {
+            if record.active.is_empty() {
+                continue;
+            }
+            let cache_idx = layer_plan.layers[record.layer_rev].global_layer_index as usize;
+            emit_coll_cells.push((0.0, cache_idx));
+            for &id in &record.active {
+                let node = &arena[id];
+                if !node.is_virtual_gap() || node.distance_to_top > 0 {
+                    emit_coll_cells.push((node.radius, cache_idx));
+                }
+            }
+        }
+        volumes.prefetch_collision_cells(&emit_coll_cells);
+
         let mut occupancy_memo: std::collections::HashMap<u64, OccupancyMemoEntry> =
             std::collections::HashMap::new();
-        let mut chunk_layers_left: usize = 0;
-        for (record_index, record) in layer_records.iter().enumerate() {
+        prefetch_occupancy_memo_all(
+            &mut occupancy_memo,
+            &layer_records,
+            layer_plan,
+            &model_occ_by_layer,
+            &print_occ_by_layer,
+            self.support_object_xy_distance,
+        );
+        for record in &layer_records {
             let layer_rev = record.layer_rev;
-            let active_nodes: Vec<NodeId> = record.active.clone();
+            let active_nodes: &[NodeId] = record.active.as_slice();
             if active_nodes.is_empty() {
                 continue;
             }
-            if chunk_layers_left == 0 {
-                occupancy_memo.clear();
-                // The current record plus the next `EMIT_BATCH_LAYERS - 1`
-                // non-empty records. The prefix is a plain scan: it reads
-                // `active`, which is already committed for every layer.
-                let mut chunk: Vec<&LayerRecord> = vec![record];
-                for later in &layer_records[record_index + 1..] {
-                    if chunk.len() >= EMIT_BATCH_LAYERS {
-                        break;
-                    }
-                    if !later.active.is_empty() {
-                        chunk.push(later);
-                    }
-                }
-                prefetch_occupancy_memo(
-                    &mut occupancy_memo,
-                    &chunk,
-                    layer_plan,
-                    support_analysis,
-                    &obj.object_id,
-                    self.support_object_xy_distance,
-                );
-                chunk_layers_left = chunk.len();
-            }
-            chunk_layers_left -= 1;
             let current_global_layer_index = layer_plan.layers[layer_rev].global_layer_index;
             let cache_idx = current_global_layer_index as usize;
             let z_current = layer_plan.layers[layer_rev].z;
@@ -3930,13 +4801,18 @@ impl SupportPlanner {
             // Host analysis carries the exact per-layer occupancy used by the
             // closure gate. Prefer it for emission checks when present; the
             // support-outline cache remains the compatibility fallback.
+            let layer_model_occ_payload: Vec<ExPolygon> = model_occ_by_layer
+                .get(&current_global_layer_index)
+                .map(|entries| {
+                    entries
+                        .iter()
+                        .flat_map(|entry| entry.polygons.iter().cloned())
+                        .collect()
+                })
+                .unwrap_or_default();
             let mut model_collision: Vec<ExPolygon> = inflate_model_occupancy_memoized(
                 &mut occupancy_memo,
-                layer_occupancy_payload(
-                    support_analysis,
-                    &obj.object_id,
-                    current_global_layer_index,
-                ),
+                layer_model_occ_payload,
                 self.support_object_xy_distance,
             );
             // Ticket 148: the host gate validates exact-Z occupancy at
@@ -3944,13 +4820,18 @@ impl SupportPlanner {
             // carries that plane too. Both sets are inflated by the same
             // clearance; the carve below is set-monotone, so the extra plane
             // can only remove material the gate would have rejected.
+            let layer_print_occ_payload: Vec<ExPolygon> = print_occ_by_layer
+                .get(&current_global_layer_index)
+                .map(|entries| {
+                    entries
+                        .iter()
+                        .flat_map(|entry| entry.polygons.iter().cloned())
+                        .collect()
+                })
+                .unwrap_or_default();
             let print_plane_collision: Vec<ExPolygon> = inflate_model_occupancy_memoized(
                 &mut occupancy_memo,
-                print_plane_occupancy_payload(
-                    support_analysis,
-                    &obj.object_id,
-                    current_global_layer_index,
-                ),
+                layer_print_occ_payload,
                 self.support_object_xy_distance,
             );
             model_collision.extend(print_plane_collision.iter().cloned());
@@ -3970,43 +4851,19 @@ impl SupportPlanner {
             let collision_polys: &[ExPolygon] = collision_with_territory.as_slice();
             // ── Drop only what the model swallows whole ───────────────────
             //
-            // Canonical has two distinct rules and this module had collapsed
-            // them into one that is stronger than either.
-            //
-            // 1. `drop_nodes` deletes a node only when "the branch falls
-            //    completely inside a collision area (the entire branch would
-            //    be removed by the X/Y offset)". `get_collision(r, l)` is
-            //    `outlines ⊕ (r + m_xy_distance)`, so "the whole footprint of
-            //    radius r lies inside that volume" is exactly that test.
-            // 2. `draw_circles` never drops a node whose cross-section merely
-            //    *touches* the model: it computes
-            //    `avoid_object_remove_extra_small_parts(circle, collision)` —
-            //    a difference that keeps the largest surviving part — so a
-            //    branch running alongside a wall still prints the sliver that
-            //    clears it. `build_roles` performs that same difference here.
-            //
-            // Until this fix the emit pass rejected a node (and an MST edge)
-            // on any *overlap* between the node's full tapered radius and the
-            // model, which is strictly stronger than both. On real geometry it
-            // is catastrophic, because canonical expects nodes to sit inside
-            // collision: `move_out_expolys` clamps an over-budget push-out to
-            // `pt_max`, which may leave a branch beside a wall intersecting
-            // collision and relying on the carve. Measured on
-            // `resources/regression_wedge.stl` before the fix: 68 of 72 nodes
-            // and 69 of 70 MST edges rejected on layer 99, every node lost on
-            // layers 145-151, and ten layers emitted role areas with an EMPTY
-            // skeleton. The synthetic fixtures never caught it because they
-            // run with an empty `model_occupancy`.
-            //
-            // The drop gate reads the radius-bucketed ladder (rule 1); the
-            // carve in `build_roles` reads `collision_polys` (rule 2).
-            let swallowed_by_collision = |x: f32, y: f32, radius: f32| -> bool {
-                let gate = volumes.get_collision(radius, cache_idx);
-                !gate.is_empty() && point_inside_collision_volume(&gate, x, y)
-            };
-            let node_swallowed = |x: f32, y: f32, radius: f32| -> bool {
-                let gate = volumes.get_collision(radius, cache_idx);
-                !gate.is_empty() && point_inside_collision_volume(&gate, x, y)
+            // Ticket 190 (`P2`): memoize `swallowed_by_collision` per active
+            // node on this layer (`swallowed_cache`) using `IndexedPolySet`,
+            // avoiding 2.2× redundant point-in-polygon queries per node.
+            let mut swallowed_cache: Vec<Option<bool>> = vec![None; active_nodes.len()];
+            let mut is_node_swallowed = |idx: usize| -> bool {
+                if let Some(cached) = swallowed_cache[idx] {
+                    return cached;
+                }
+                let node = &arena[active_nodes[idx]];
+                let gate = volumes.get_collision(node.radius, cache_idx);
+                let result = !gate.is_empty() && gate.contains(node.x(), node.y());
+                swallowed_cache[idx] = Some(result);
+                result
             };
 
             // Emit branch segments with radius tapering (Step 5 AC-2)
@@ -4033,54 +4890,42 @@ impl SupportPlanner {
                 .map(|id| {
                     let node = &arena[*id];
                     // Floor: the branch lands on the model rather than the plate.
-                    // The lookup is by *global* layer index; it previously mixed
-                    // in `layer_rev`, the reverse loop counter, and indexed the
-                    // collision cache with it.
                     let is_floor = bottom_n > 0
                         && !self.support_on_build_plate_only
                         && (1..=bottom_n).any(|k| {
                             cache_idx.checked_sub(k as usize).is_some_and(|below| {
-                                point_in_any_expoly(volumes.outlines_at(below), node.x(), node.y())
+                                volumes
+                                    .outlines_indexed_at(below)
+                                    .is_some_and(|outlines| outlines.contains(node.x(), node.y()))
                             })
                         });
-                    // Roof: canonical `node->support_roof_layers_below > 0`,
-                    // the per-node counter seeded at contact creation and
-                    // decremented once per descendant (F-1). The old
-                    // `roof_band_layers_emitted` object-wide counter is gone:
-                    // it starved every overhang after the first of interface.
-                    let is_roof = top_n > 0 && node.is_roof();
-                    let mut below_roof = 0usize;
-                    let mut reached_roof = false;
-                    let mut ancestor = node.parent;
-                    while let Some(parent_id) = ancestor {
-                        below_roof += 1;
-                        if arena[parent_id].is_roof() {
-                            reached_roof = true;
-                            break;
-                        }
-                        ancestor = arena[parent_id].parent;
-                    }
                     if is_floor {
-                        InterfaceRole::Floor
-                    } else if is_roof {
-                        InterfaceRole::Roof
-                    } else if reached_roof && below_roof <= base_n {
-                        InterfaceRole::Base
-                    } else {
-                        InterfaceRole::Body
+                        return InterfaceRole::Floor;
                     }
+                    // Roof: canonical `node->support_roof_layers_below > 0`.
+                    if top_n > 0 && node.is_roof() {
+                        return InterfaceRole::Roof;
+                    }
+                    // Short-circuit ancestor walk when `base_n == 0` or once
+                    // `below_roof > base_n` (`t190` `P2`).
+                    if base_n > 0 {
+                        let mut below_roof = 0usize;
+                        let mut ancestor = node.parent;
+                        while let Some(parent_id) = ancestor {
+                            below_roof += 1;
+                            if below_roof > base_n {
+                                break;
+                            }
+                            if arena[parent_id].is_roof() {
+                                return InterfaceRole::Base;
+                            }
+                            ancestor = arena[parent_id].parent;
+                        }
+                    }
+                    InterfaceRole::Body
                 })
                 .collect();
             // ── Canonical `draw_circles`: one ellipse per node per layer ──
-            //
-            // Canonical draws every surviving node's own cross-section into
-            // `base_areas` / `roof_areas`, oriented by the `movement` the
-            // `smooth_nodes` pass above just produced (falling back to the
-            // node's `skin_direction`, which is the direction canonical gives
-            // a sharp tail that never moved). Until packet 224 step 6 this
-            // module drew nothing per node at all — only the swept capsules
-            // between MST endpoints — so an isolated or terminal node
-            // contributed no area and a leaning branch had no elongation.
             let mut branch_areas: Vec<ExPolygon> = Vec::new();
             let mut interface_areas: Vec<ExPolygon> = Vec::new();
             let mut base_areas: Vec<ExPolygon> = Vec::new();
@@ -4093,13 +4938,12 @@ impl SupportPlanner {
                 if node.is_virtual_gap() {
                     continue;
                 }
+                // Check `swallowed_cache` BEFORE constructing the 100-vertex
+                // `node_ellipse` (`t190` `P2`).
+                if is_node_swallowed(i) {
+                    continue;
+                }
                 let radius = node.radius;
-                // Same gate the contact-tip path applies: a node's own drawn
-                // cross-section may never sit inside model occupancy,
-                // whatever role it carries. (The MST-edge gate exempts
-                // *interface endpoints* because the edge's other endpoint is
-                // what reaches the model; a node's own ellipse has no such
-                // partner.)
                 let direction = if node.movement.x != 0 || node.movement.y != 0 {
                     node.movement
                 } else {
@@ -4115,11 +4959,6 @@ impl SupportPlanner {
                 ) else {
                     continue;
                 };
-                // Canonical `drop_nodes`: only a cross-section the collision
-                // volume swallows whole is lost.
-                if swallowed_by_collision(node.x(), node.y(), radius) {
-                    continue;
-                }
                 layer_needs_extra_wall |= node.need_extra_wall;
                 match node_roles[i] {
                     InterfaceRole::Body => branch_areas.push(ellipse),
@@ -4134,12 +4973,6 @@ impl SupportPlanner {
             for (a_idx, b_idx) in &mst_edges {
                 let na = &arena[active_nodes[*a_idx]];
                 let nb = &arena[active_nodes[*b_idx]];
-                // The F-34 virtual top-Z-gap node is propagated but never
-                // extruded: canonical `draw_circles` sends
-                // `distance_to_top < 0 && !is_sharp_tail` into
-                // `roof_gap_areas`, which `generate_toolpaths` never fills.
-                // Sharp tails are exempt — that is how canonical gives them a
-                // zero contact distance.
                 if na.is_virtual_gap() || nb.is_virtual_gap() {
                     continue;
                 }
@@ -4147,15 +4980,7 @@ impl SupportPlanner {
                 let radius_a = na.radius;
                 let radius_b = nb.radius;
 
-                // The swept capsule follows the same canonical carve rule as
-                // a node's own cross-section: `build_roles` differences it
-                // against this collision set, so only a capsule the model
-                // swallows entirely has nothing left to print. Rejecting on
-                // mere *intersection* — which is what this gate used to do,
-                // plus a per-endpoint disc test — discarded almost every edge
-                // on real geometry (69 of 70 on wedge layer 99).
-                let segment_swallowed = swallowed_by_collision(na.x(), na.y(), radius_a)
-                    && swallowed_by_collision(nb.x(), nb.y(), radius_b);
+                let segment_swallowed = is_node_swallowed(*a_idx) && is_node_swallowed(*b_idx);
                 if segment_swallowed {
                     if self.support_interface_top_layers > 0 {
                         let _ = output.push_diagnostic(Diagnostic {
@@ -4177,11 +5002,6 @@ impl SupportPlanner {
                     });
                     continue;
                 }
-                // Only an edge that actually contributes geometry counts as
-                // emitted. Setting this before the rejection above left a node
-                // whose sole edge was refused with no representation at all —
-                // the degenerate-node fallback below skipped it — so the layer
-                // produced role areas with an EMPTY skeleton.
                 mst_emitted[*a_idx] = true;
                 mst_emitted[*b_idx] = true;
 
@@ -4231,17 +5051,11 @@ impl SupportPlanner {
             // propagated nodes remain subject to collision exclusion below.
             for (i, id) in active_nodes.iter().enumerate() {
                 let node = &arena[*id];
-                // A sharp-tail contact is a tip on its own layer even though
-                // its `distance_to_top` is negative (see `is_virtual_gap`).
                 if node.distance_to_top > 0 || node.is_virtual_gap() || origin_contacts_emitted[i] {
                     continue;
                 }
-                // A contact tip used to be emitted with `width = 0.0` and was
-                // then dropped by `structural_body_regions`, so the layer that
-                // meets the overhang produced no printable geometry. It now
-                // carries the tapered radius like any other node.
                 let radius = node.radius;
-                if node_swallowed(node.x(), node.y(), radius) {
+                if is_node_swallowed(i) {
                     let _ = output.push_diagnostic(Diagnostic {
                         severity: DiagnosticSeverity::Warn,
                         code: 1203,
@@ -4253,9 +5067,6 @@ impl SupportPlanner {
                     continue;
                 }
                 let width = radius * 2.0;
-                // Origin contacts are the support tips required to reach the
-                // overhang centroid. They may intentionally lie in model
-                // collision geometry; propagated nodes remain guarded below.
                 let (contact_x, contact_y) = node.xy();
                 let point = Point3WithWidth {
                     x: contact_x,
@@ -4285,38 +5096,33 @@ impl SupportPlanner {
                 if mst_emitted[i] || node.distance_to_top <= 0 {
                     continue;
                 }
-                {
-                    let radius = node.radius;
-                    if node_swallowed(node.x(), node.y(), radius) {
-                        continue;
-                    }
-                    let width = radius * 2.0;
-                    let dist_mm = node.distance_to_top as f32 * effective_height;
-                    let point = Point3WithWidth {
-                        x: node.x(),
-                        y: node.y(),
-                        z: z_current,
-                        width,
-                        flow_factor: 1.0,
-                        overhang_quartile: None,
-                        dist_to_top_mm: dist_mm,
-                        overhang_distance_mm: None,
-                    };
-                    InterfaceRole::target_for_node(
-                        node_roles[i],
-                        &mut branch_segments,
-                        &mut interface_segments,
-                        &mut base_segments,
-                        &mut floor_segments,
-                    )
-                    .push(vec![point, point]);
+                let radius = node.radius;
+                if is_node_swallowed(i) {
+                    continue;
                 }
+                let width = radius * 2.0;
+                let dist_mm = node.distance_to_top as f32 * effective_height;
+                let point = Point3WithWidth {
+                    x: node.x(),
+                    y: node.y(),
+                    z: z_current,
+                    width,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                    dist_to_top_mm: dist_mm,
+                    overhang_distance_mm: None,
+                };
+                InterfaceRole::target_for_node(
+                    node_roles[i],
+                    &mut branch_segments,
+                    &mut interface_segments,
+                    &mut base_segments,
+                    &mut floor_segments,
+                )
+                .push(vec![point, point]);
             }
 
-            // Emit when *either* structural or interface geometry exists. Gating
-            // on `branch_segments` alone was what collapsed the branch shaft in
-            // an earlier attempt at this split: layers carrying only interface
-            // geometry produced no entry at all.
+            // Emit when *either* structural or interface geometry exists.
             if !branch_segments.is_empty()
                 || !interface_segments.is_empty()
                 || !base_segments.is_empty()
@@ -4325,23 +5131,18 @@ impl SupportPlanner {
                 || !interface_areas.is_empty()
                 || !floor_areas.is_empty()
             {
-                // Find all full source origins for this (layer, object) pair.
-                // `(region_id, ordered variant_chain)` is the exact identity:
-                // two origins that differ only by chain stay distinct columns.
+                // Find all full source origins for this (layer, object) pair
+                // via the pre-indexed `seg_origins_by_layer` map (`t190` `P3`).
                 let mut origins_for_this: Vec<(String, Vec<(String, PaintValue)>)> =
-                    region_segmentation
-                        .entries
-                        .iter()
-                        .filter(|e| {
-                            e.object_id == obj.object_id
-                                && e.layer_index == current_global_layer_index
+                    seg_origins_by_layer
+                        .get(&current_global_layer_index)
+                        .map(|origins| {
+                            origins
+                                .iter()
+                                .map(|(rid, chain)| ((*rid).to_string(), chain.to_vec()))
+                                .collect()
                         })
-                        .flat_map(|e| {
-                            e.region_origins.iter().map(|origin| {
-                                (origin.region_id.clone(), origin.variant_chain.clone())
-                            })
-                        })
-                        .collect();
+                        .unwrap_or_default();
                 origins_for_this.extend(
                     support_analysis
                         .family_assignments
@@ -4350,9 +5151,6 @@ impl SupportPlanner {
                             assignment.object_id == obj.object_id
                                 && canonical_support_family_alias(Some(&assignment.family_id))
                                     == "tree"
-                                // Only full origins segmentation does not
-                                // carry at all (host-minted modifier
-                                // sub-regions).
                                 && !segmented_sources.contains(&(
                                     assignment.region_id.as_str(),
                                     assignment.variant_chain.as_slice(),
@@ -4367,192 +5165,188 @@ impl SupportPlanner {
                 );
                 origins_for_this.sort();
                 origins_for_this.dedup();
-                for (region_id, variant_chain) in origins_for_this {
-                    // No self-default: an origin the host did not assign to
-                    // this family is not this planner's to plan. The lookup is
-                    // exact over `(object_id, region_id, ordered
-                    // variant_chain)` — a chain-less or chain-shifted sibling
-                    // never matches. See `candidate_family`.
-                    let Some(support_family) = support_analysis
-                        .family_of(&obj.object_id, &region_id, &variant_chain)
-                        .map(|family| canonical_support_family_alias(Some(family)))
-                    else {
-                        continue;
-                    };
-                    if support_family != "tree" {
-                        continue;
-                    }
-                    // A blocked candidate already published a declined record
-                    // for this full origin. Emitting a planned entry as well
-                    // would put two entries on the same
-                    // `(global_layer_index, object_id, region_id,
-                    // variant_chain)` origin, which
-                    // `SupportPlanIR::duplicate_region_identity` rejects at
-                    // the host commit seam — and would contradict the decline
-                    // besides.
-                    if declined_identities.contains(&(
-                        obj.object_id.clone(),
-                        current_global_layer_index as i32,
-                        region_id.clone(),
-                        variant_chain.clone(),
-                    )) {
-                        continue;
-                    }
-                    let model_occupancy: Vec<ExPolygon> = inflate_model_occupancy_memoized(
-                        &mut occupancy_memo,
-                        support_analysis
-                            .model_occupancy
-                            .iter()
-                            .filter(|entry| {
-                                entry.object_id == obj.object_id
-                                    && entry.global_support_layer_index
-                                        == current_global_layer_index
-                                    && entry.region_id == region_id
-                                    && entry.variant_chain.as_slice() == variant_chain.as_slice()
-                            })
-                            .flat_map(|entry| entry.polygons.iter().cloned())
-                            .collect::<Vec<_>>(),
-                        self.support_object_xy_distance,
-                    );
-                    let role_collision: Vec<ExPolygon> = if model_occupancy.is_empty() {
-                        collision_polys.to_vec()
-                    } else {
-                        model_occupancy
-                            .into_iter()
-                            // Ticket 148: the print plane the host gate
-                            // validates, beside the midpoint payload.
-                            .chain(print_plane_collision.iter().cloned())
-                            .chain(foreign_keepout.iter().cloned())
-                            .collect()
-                    };
-                    let role_collision = role_collision.as_slice();
-                    // Ticket 19: a tree sub-region minted by a modifier keeps
-                    // only what falls inside its own footprint; a base region
-                    // keeps what the foreign carve above left. Skeleton points
-                    // follow the same rule so the renderer never draws a
-                    // branch through the other family's half. The lookup is
-                    // exact over the full source origin, chain included.
-                    let own_territory = support_analysis.region_territory(
-                        &obj.object_id,
-                        current_global_layer_index,
-                        &region_id,
-                        &variant_chain,
-                    );
-                    let territory_allows = |x: f32, y: f32| -> bool {
-                        match own_territory {
-                            Some(own) => point_inside_collision_volume(own, x, y),
-                            None => {
-                                foreign_keepout.is_empty()
-                                    || !point_inside_collision_volume(foreign_keepout, x, y)
+                let eligible_origins: Vec<(String, Vec<(String, PaintValue)>, String)> =
+                    origins_for_this
+                        .into_iter()
+                        .filter_map(|(region_id, variant_chain)| {
+                            let support_family = support_analysis
+                                .family_of(&obj.object_id, &region_id, &variant_chain)
+                                .map(|family| canonical_support_family_alias(Some(family)))?;
+                            if support_family != "tree" {
+                                return None;
                             }
-                        }
-                    };
-                    // The exact-Z occupancy contract is discharged entirely by
-                    // the carve against `role_collision`, which runs after
-                    // simplification and is therefore final.
-                    //
-                    // This site used to re-check it with
-                    // `role.regions.retain(|r| intersection(r,
-                    // role_collision).is_empty())` — an ALL-OR-NOTHING
-                    // rejection that discarded a whole connected region
-                    // because one of its lobes touched the model. Canonical
-                    // `draw_circles` never does that: it uses
-                    // `avoid_object_remove_extra_small_parts(circle,
-                    // get_collision(...))`, a difference that keeps what
-                    // survives. Measured on `SupportTest.stl` (AC-1
-                    // `fixture_invariants`): the tree column below the
-                    // cantilever is ONE connected body — the wall-hugging
-                    // nodes at x = 0, the MST capsules and the free branch at
-                    // x ≈ 12 union into a single ExPolygon — so a
-                    // simplification nudge of the wall-side contour threw the
-                    // free branch away on every layer from 38 down to 0 and
-                    // the plan terminated at z = 8.0 instead of the plate.
-                    // Canonical Orca prints tree support down to Z0.2 on this
-                    // fixture (`SupportTest_Tree_Orca.gcode`).
-                    //
-                    // Ticket 78: the role construction is buffered for a chunk
-                    // of layers and run as cross-item batches.
-                    // `build_roles_batched` performs the same per-region carve,
-                    // role union, simplification, set-wide difference,
-                    // body-minus-interface difference and territory intersect as
-                    // `build_roles`, in the same order.
-                    let skeleton = {
-                        let skeleton_points: Vec<_> = branch_segments
-                            .iter()
-                            .chain(interface_segments.iter())
-                            .chain(floor_segments.iter())
-                            .flat_map(|segment| segment.iter())
-                            .filter(|point| territory_allows(point.x, point.y))
-                            .collect();
-                        let points = skeleton_points
-                            .iter()
-                            .map(|point| slicer_ir::Point3 {
-                                x: point.x,
-                                y: point.y,
-                                z: point.z,
-                            })
-                            .collect::<Vec<_>>();
-                        let wall_counts = skeleton_points
-                            .iter()
-                            .map(|point| {
-                                u32::from(active_nodes.iter().any(|id| {
-                                    let node = &arena[*id];
-                                    node.need_extra_wall
-                                        && node.x() == point.x
-                                        && node.y() == point.y
-                                }))
-                            })
-                            .collect::<Vec<_>>();
-                        assert_eq!(wall_counts.len(), points.len());
-                        Some(slicer_ir::SupportPlanSkeleton {
-                            points,
-                            wall_counts,
+                            if declined_identities.contains(&(
+                                obj.object_id.clone(),
+                                current_global_layer_index as i32,
+                                region_id.clone(),
+                                variant_chain.clone(),
+                            )) {
+                                return None;
+                            }
+                            Some((region_id, variant_chain, support_family))
                         })
-                    };
-                    pending_emit_inputs.push(RoleBuildInput {
-                        branch_segments: branch_segments.clone(),
-                        interface_segments: interface_segments.clone(),
-                        base_segments: base_segments.clone(),
-                        floor_segments: floor_segments.clone(),
-                        branch_areas: branch_areas.clone(),
-                        interface_areas: interface_areas.clone(),
-                        base_areas: base_areas.clone(),
-                        floor_areas: floor_areas.clone(),
-                        branch_radius,
-                        collision_polys: role_collision.to_vec(),
-                        avg_node_per_layer: contact_stats.avg_node_per_layer,
-                        line_width_mm: self.support_line_width_mm,
-                        own_territory: own_territory.map(|territory| territory.to_vec()),
-                    });
-                    pending_emit_meta.push(PendingEmitMeta {
-                        global_layer_index: current_global_layer_index as i32,
-                        object_id: obj.object_id.clone(),
-                        region_id: region_id.clone(),
-                        family_id: support_family.to_string(),
-                        demand_ids: active_nodes
-                            .iter()
-                            .flat_map(|id| arena[*id].demand_ids.iter().cloned())
-                            .collect(),
-                        body_ids: vec![format!(
-                            "tree-body-{}-{}",
-                            obj.object_id, current_global_layer_index
-                        )],
-                        anchor_layer_index: layer_rev as u32,
-                        // SupportPlanIR stores physical Z in canonical slicer
-                        // units (1 unit = 100 nm), not a WIT-specific scale.
-                        anchor_z: mm_to_units(z_current),
-                        skeleton,
-                        capabilities: vec!["tree-branch-skeleton".to_string()],
-                        provenance: if layer_needs_extra_wall {
-                            vec![
-                                "support-planner".to_string(),
-                                "tree-branch-extra-wall".to_string(),
-                            ]
+                        .collect();
+
+                if !eligible_origins.is_empty() {
+                    // O(1) lookup set for `skeleton.wall_counts` (`t190` `P2`).
+                    let extra_wall_xy: std::collections::HashSet<(u32, u32)> = active_nodes
+                        .iter()
+                        .filter_map(|id| {
+                            let node = &arena[*id];
+                            node.need_extra_wall
+                                .then_some((f32_eq_key(node.x()), f32_eq_key(node.y())))
+                        })
+                        .collect();
+                    let origin_count = eligible_origins.len();
+                    for (origin_idx, (region_id, variant_chain, support_family)) in
+                        eligible_origins.into_iter().enumerate()
+                    {
+                        let is_last_origin = origin_idx + 1 == origin_count;
+                        let origin_occ_payload: Vec<ExPolygon> = model_occ_by_layer
+                            .get(&current_global_layer_index)
+                            .map(|entries| {
+                                entries
+                                    .iter()
+                                    .filter(|entry| {
+                                        entry.region_id == region_id
+                                            && entry.variant_chain.as_slice()
+                                                == variant_chain.as_slice()
+                                    })
+                                    .flat_map(|entry| entry.polygons.iter().cloned())
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        let model_occupancy: Vec<ExPolygon> = inflate_model_occupancy_memoized(
+                            &mut occupancy_memo,
+                            origin_occ_payload,
+                            self.support_object_xy_distance,
+                        );
+                        let role_collision: Vec<ExPolygon> = if model_occupancy.is_empty() {
+                            collision_polys.to_vec()
                         } else {
-                            vec!["support-planner".to_string()]
-                        },
-                        variant_chain: variant_chain.clone(),
-                    });
+                            model_occupancy
+                                .into_iter()
+                                .chain(print_plane_collision.iter().cloned())
+                                .chain(foreign_keepout.iter().cloned())
+                                .collect()
+                        };
+                        let own_territory = support_analysis.region_territory(
+                            &obj.object_id,
+                            current_global_layer_index,
+                            &region_id,
+                            &variant_chain,
+                        );
+                        let territory_allows = |x: f32, y: f32| -> bool {
+                            match own_territory {
+                                Some(own) => point_inside_collision_volume(own, x, y),
+                                None => {
+                                    foreign_keepout.is_empty()
+                                        || !point_inside_collision_volume(foreign_keepout, x, y)
+                                }
+                            }
+                        };
+                        let skeleton = {
+                            let skeleton_points: Vec<_> = branch_segments
+                                .iter()
+                                .chain(interface_segments.iter())
+                                .chain(floor_segments.iter())
+                                .flat_map(|segment| segment.iter())
+                                .filter(|point| territory_allows(point.x, point.y))
+                                .collect();
+                            let points = skeleton_points
+                                .iter()
+                                .map(|point| slicer_ir::Point3 {
+                                    x: point.x,
+                                    y: point.y,
+                                    z: point.z,
+                                })
+                                .collect::<Vec<_>>();
+                            let wall_counts = if extra_wall_xy.is_empty() {
+                                vec![0u32; skeleton_points.len()]
+                            } else {
+                                skeleton_points
+                                    .iter()
+                                    .map(|point| {
+                                        u32::from(extra_wall_xy.contains(&(
+                                            f32_eq_key(point.x),
+                                            f32_eq_key(point.y),
+                                        )))
+                                    })
+                                    .collect::<Vec<_>>()
+                            };
+                            assert_eq!(wall_counts.len(), points.len());
+                            Some(slicer_ir::SupportPlanSkeleton {
+                                points,
+                                wall_counts,
+                            })
+                        };
+                        // Ticket 190 (`P5_zeroclone`): move the final (and on
+                        // single-origin layers, only) origin's vectors directly
+                        // into `RoleBuildInput` instead of cloning.
+                        let role_input = if is_last_origin {
+                            RoleBuildInput {
+                                branch_segments: std::mem::take(&mut branch_segments),
+                                interface_segments: std::mem::take(&mut interface_segments),
+                                base_segments: std::mem::take(&mut base_segments),
+                                floor_segments: std::mem::take(&mut floor_segments),
+                                branch_areas: std::mem::take(&mut branch_areas),
+                                interface_areas: std::mem::take(&mut interface_areas),
+                                base_areas: std::mem::take(&mut base_areas),
+                                floor_areas: std::mem::take(&mut floor_areas),
+                                branch_radius,
+                                collision_polys: role_collision,
+                                avg_node_per_layer: contact_stats.avg_node_per_layer,
+                                line_width_mm: self.support_line_width_mm,
+                                own_territory: own_territory.map(|territory| territory.to_vec()),
+                            }
+                        } else {
+                            RoleBuildInput {
+                                branch_segments: branch_segments.clone(),
+                                interface_segments: interface_segments.clone(),
+                                base_segments: base_segments.clone(),
+                                floor_segments: floor_segments.clone(),
+                                branch_areas: branch_areas.clone(),
+                                interface_areas: interface_areas.clone(),
+                                base_areas: base_areas.clone(),
+                                floor_areas: floor_areas.clone(),
+                                branch_radius,
+                                collision_polys: role_collision,
+                                avg_node_per_layer: contact_stats.avg_node_per_layer,
+                                line_width_mm: self.support_line_width_mm,
+                                own_territory: own_territory.map(|territory| territory.to_vec()),
+                            }
+                        };
+                        pending_emit_inputs.push(role_input);
+                        pending_emit_meta.push(PendingEmitMeta {
+                            global_layer_index: current_global_layer_index as i32,
+                            object_id: obj.object_id.clone(),
+                            region_id,
+                            family_id: support_family,
+                            demand_ids: active_nodes
+                                .iter()
+                                .flat_map(|id| arena[*id].demand_ids.iter().cloned())
+                                .collect(),
+                            body_ids: vec![format!(
+                                "tree-body-{}-{}",
+                                obj.object_id, current_global_layer_index
+                            )],
+                            anchor_layer_index: layer_rev as u32,
+                            // SupportPlanIR stores physical Z in canonical slicer
+                            // units (1 unit = 100 nm), not a WIT-specific scale.
+                            anchor_z: mm_to_units(z_current),
+                            skeleton,
+                            capabilities: vec!["tree-branch-skeleton".to_string()],
+                            provenance: if layer_needs_extra_wall {
+                                vec![
+                                    "support-planner".to_string(),
+                                    "tree-branch-extra-wall".to_string(),
+                                ]
+                            } else {
+                                vec!["support-planner".to_string()]
+                            },
+                            variant_chain,
+                        });
+                    }
                 }
             }
 
@@ -5410,6 +6204,29 @@ fn sample_contact_points(
     max_bridge_length_mm: f32,
     is_sharp_tail: bool,
 ) -> Vec<ContactSample> {
+    sample_contact_points_with_erodes(
+        polygons,
+        grid_points,
+        point_spread,
+        base_radius,
+        max_bridge_length_mm,
+        is_sharp_tail,
+        None,
+    )
+}
+
+/// Core contact sampler that optionally consumes pre-batched overhang erodes
+/// (`t190` `P4`), falling back to per-polygon host erosion when `precomputed_erodes`
+/// is `None` or has a missing slot.
+fn sample_contact_points_with_erodes(
+    polygons: &[ExPolygon],
+    grid_points: Option<&[(f32, f32)]>,
+    point_spread: f32,
+    base_radius: f32,
+    max_bridge_length_mm: f32,
+    is_sharp_tail: bool,
+    precomputed_erodes: Option<&[Option<Vec<ExPolygon>>]>,
+) -> Vec<ContactSample> {
     let mut result: Vec<ContactSample> = Vec::new();
     let mut buckets = std::collections::HashSet::new();
     let cell = mm_to_units(base_radius).max(1) + 1;
@@ -5521,22 +6338,33 @@ fn sample_contact_points(
         // the point must be inside the overhang bbox AND inside the overhang
         // eroded by the per-overhang radius.
         let (min_x, max_x, min_y, max_y) = bbox;
-        let eroded = host::offset_polygons_with_miter_limit(
-            std::slice::from_ref(polygon),
-            -radius,
-            OffsetJoinType::Miter,
-            0.0,
-            3.0,
-        );
-        if eroded.is_empty() {
+        let eroded_owned;
+        let eroded_slice: &[ExPolygon] = match precomputed_erodes
+            .and_then(|slice| slice.get(poly_idx))
+            .and_then(Option::as_deref)
+        {
+            Some(pre) => pre,
+            None => {
+                eroded_owned = host::offset_polygons_with_miter_limit(
+                    std::slice::from_ref(polygon),
+                    -radius,
+                    OffsetJoinType::Miter,
+                    0.0,
+                    3.0,
+                );
+                &eroded_owned
+            }
+        };
+        if eroded_slice.is_empty() {
             continue;
         }
+        let eroded_indexed = IndexedPolySet::new(eroded_slice.to_vec());
         for &(x, y) in grid_points {
             let (ux, uy) = (mm_to_units(x), mm_to_units(y));
             if ux < min_x || ux > max_x || uy < min_y || uy > max_y {
                 continue;
             }
-            if point_in_any_expoly(&eroded, x, y) {
+            if eroded_indexed.contains(x, y) {
                 add(mk(x, y, false), &mut result);
             }
         }
@@ -5625,7 +6453,7 @@ fn insert_contact_point(
     let (x, y) = sample;
     let global_layer = layer_plan.layers[target_idx].global_layer_index;
     let collision = volumes.get_collision(0.0, target_idx);
-    let to_buildplate = contact_seed_to_buildplate(&collision, (x, y));
+    let to_buildplate = !collision.contains(x, y);
     if contacts[target_idx].len() >= planner.max_branches_per_layer {
         *dropped.entry(global_layer).or_insert(0) += 1;
         return None;
@@ -5650,7 +6478,7 @@ fn insert_contact_point(
     }
     arena[id].is_sharp_tail = oc.is_sharp_tail;
     arena[id].is_corner = is_corner;
-    arena[id].demand_ids = vec![demand_id];
+    arena[id].demand_ids = std::rc::Rc::new(vec![demand_id]);
     contacts[target_idx].push(id);
     Some(id)
 }
@@ -5962,6 +6790,44 @@ fn collect_paint_blocker_polygons(obj: &MeshObjectView) -> Vec<Vec<[f32; 2]>> {
     result
 }
 
+/// Normalize `-0.0` to `+0.0` so bit-key equality matches `f32` `==` on finite
+/// coordinates.
+#[inline]
+fn f32_eq_key(v: f32) -> u32 {
+    if v == 0.0 {
+        0.0_f32.to_bits()
+    } else {
+        v.to_bits()
+    }
+}
+
+/// Zero-allocation ray-casting point-in-polygon test directly over `Point2`
+/// scaled integer vertices, reproducing [`point_in_polygon`]'s `f32` arithmetic
+/// bit for bit (`t190` `P2`).
+#[inline]
+fn point_in_ring_pts(points: &[Point2], x: f32, y: f32) -> bool {
+    let n = points.len();
+    if n < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let pix = points[i].x as f32;
+        let piy = points[i].y as f32;
+        let pjx = points[j].x as f32;
+        let pjy = points[j].y as f32;
+        if (piy > y) != (pjy > y) {
+            let x_intersect = (pjx - pix) * (y - piy) / (pjy - piy) + pix;
+            if x < x_intersect {
+                inside = !inside;
+            }
+        }
+        j = i;
+    }
+    inside
+}
+
 fn point_in_any_polygon(polygons: &[Vec<[f32; 2]>], x: f32, y: f32) -> bool {
     polygons.iter().any(|poly| point_in_polygon(poly, x, y))
 }
@@ -5970,23 +6836,11 @@ fn point_in_any_expoly(polygons: &[ExPolygon], x: f32, y: f32) -> bool {
     let sx = x * SCALING_FACTOR as f32;
     let sy = y * SCALING_FACTOR as f32;
     polygons.iter().any(|ex| {
-        let outer: Vec<[f32; 2]> = ex
-            .contour
-            .points
-            .iter()
-            .map(|p| [p.x as f32, p.y as f32])
-            .collect();
-        point_in_polygon(&outer, sx, sy)
-            && !ex.holes.iter().any(|h| {
-                point_in_polygon(
-                    &h.points
-                        .iter()
-                        .map(|p| [p.x as f32, p.y as f32])
-                        .collect::<Vec<_>>(),
-                    sx,
-                    sy,
-                )
-            })
+        point_in_ring_pts(&ex.contour.points, sx, sy)
+            && !ex
+                .holes
+                .iter()
+                .any(|h| point_in_ring_pts(&h.points, sx, sy))
     })
 }
 
@@ -6097,23 +6951,25 @@ fn prim_mst(nodes: &[(f32, f32)]) -> Vec<(usize, usize, f32)> {
         return Vec::new();
     }
     let mut in_tree = vec![false; n];
-    let mut min_dist = vec![f32::INFINITY; n];
+    let mut min_dist_sq = vec![f32::INFINITY; n];
     let mut parent: Vec<Option<usize>> = vec![None; n];
 
     in_tree[0] = true;
+    let (x0, y0) = nodes[0];
     for i in 1..n {
-        let d = euclidean_distance(nodes[0], nodes[i]);
-        min_dist[i] = d;
+        let dx = x0 - nodes[i].0;
+        let dy = y0 - nodes[i].1;
+        min_dist_sq[i] = dx * dx + dy * dy;
         parent[i] = Some(0);
     }
 
     let mut edges = Vec::with_capacity(n - 1);
     for _ in 1..n {
         let mut best = None;
-        let mut best_dist = f32::INFINITY;
+        let mut best_dist_sq = f32::INFINITY;
         for i in 0..n {
-            if !in_tree[i] && min_dist[i] < best_dist {
-                best_dist = min_dist[i];
+            if !in_tree[i] && min_dist_sq[i] < best_dist_sq {
+                best_dist_sq = min_dist_sq[i];
                 best = Some(i);
             }
         }
@@ -6122,13 +6978,16 @@ fn prim_mst(nodes: &[(f32, f32)]) -> Vec<(usize, usize, f32)> {
         if let Some(p) = parent[next] {
             let a = next.min(p);
             let b = next.max(p);
-            edges.push((a, b, best_dist));
+            edges.push((a, b, best_dist_sq.sqrt()));
         }
+        let (nx, ny) = nodes[next];
         for i in 0..n {
             if !in_tree[i] {
-                let d = euclidean_distance(nodes[next], nodes[i]);
-                if d < min_dist[i] {
-                    min_dist[i] = d;
+                let dx = nx - nodes[i].0;
+                let dy = ny - nodes[i].1;
+                let d_sq = dx * dx + dy * dy;
+                if d_sq < min_dist_sq[i] {
+                    min_dist_sq[i] = d_sq;
                     parent[i] = Some(next);
                 }
             }
@@ -6140,12 +6999,6 @@ fn prim_mst(nodes: &[(f32, f32)]) -> Vec<(usize, usize, f32)> {
             .then(a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
     });
     edges
-}
-
-fn euclidean_distance(a: (f32, f32), b: (f32, f32)) -> f32 {
-    let dx = a.0 - b.0;
-    let dy = a.1 - b.1;
-    (dx * dx + dy * dy).sqrt()
 }
 
 /// Canonical `drop_nodes`' `sum_direction` accumulator: the sum over MST
@@ -6281,31 +7134,156 @@ fn normal_to_length(v: (f32, f32), len: f32) -> (f32, f32) {
 /// Guest-side because `slicer_core::polygon_ops` is `host-algos`-gated and the
 /// WIT surface exposes no nearest-point query. Coordinates in and out are mm.
 /// Returns `pt` unchanged when there is no ring to project onto.
+#[cfg(test)]
 fn projection_onto(expolys: &[ExPolygon], pt: (f32, f32)) -> (f32, f32) {
     let qx = pt.0 * SCALING_FACTOR as f32;
     let qy = pt.1 * SCALING_FACTOR as f32;
     let mut best_dist = f32::INFINITY;
+    let mut best_dist_sq = f32::INFINITY;
     let mut best: Option<[f32; 2]> = None;
     for ex in expolys {
         for ring in std::iter::once(&ex.contour).chain(ex.holes.iter()) {
-            if ring.points.len() < 3 {
-                continue;
-            }
-            let poly: Vec<[f32; 2]> = ring
-                .points
-                .iter()
-                .map(|p| [p.x as f32, p.y as f32])
-                .collect();
-            let (cp, cd) = closest_point_on_polygon(&poly, qx, qy);
-            if cd < best_dist {
-                best_dist = cd;
-                best = Some(cp);
-            }
+            closest_point_on_ring_sq(
+                &ring.points,
+                qx,
+                qy,
+                &mut best_dist,
+                &mut best_dist_sq,
+                &mut best,
+            );
         }
     }
     match best {
         Some(cp) => (cp[0] / SCALING_FACTOR as f32, cp[1] / SCALING_FACTOR as f32),
         None => pt,
+    }
+}
+
+/// Precomputed `f64` edge with exact axis-aligned bounding box for
+/// [`LayerOutlineEdgeIndex`].
+struct EdgeF64 {
+    cx: f64,
+    cy: f64,
+    dx: f64,
+    dy: f64,
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
+}
+
+/// One ring's precomputed `f64` edges plus ring-level exact AABB.
+struct IndexedRingEdges {
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
+    edges: Vec<EdgeF64>,
+}
+
+/// Per-layer precomputed `f64` ring and edge AABBs for exact
+/// `is_line_cut_by_contour` pruning (`t190` `P2`).
+struct LayerOutlineEdgeIndex {
+    rings: Vec<IndexedRingEdges>,
+}
+
+impl LayerOutlineEdgeIndex {
+    fn build(outlines: &[ExPolygon]) -> Self {
+        let mut rings = Vec::new();
+        for ex in outlines {
+            for ring in std::iter::once(&ex.contour).chain(ex.holes.iter()) {
+                let n = ring.points.len();
+                if n < 2 {
+                    continue;
+                }
+                let mut r_min_x = f64::INFINITY;
+                let mut r_max_x = f64::NEG_INFINITY;
+                let mut r_min_y = f64::INFINITY;
+                let mut r_max_y = f64::NEG_INFINITY;
+                let mut edges = Vec::with_capacity(n);
+                let first = (
+                    units_to_mm(ring.points[0].x) as f64,
+                    units_to_mm(ring.points[0].y) as f64,
+                );
+                let mut prev = first;
+                for i in 0..n {
+                    let next = if i + 1 < n {
+                        (
+                            units_to_mm(ring.points[i + 1].x) as f64,
+                            units_to_mm(ring.points[i + 1].y) as f64,
+                        )
+                    } else {
+                        first
+                    };
+                    let min_x = prev.0.min(next.0);
+                    let max_x = prev.0.max(next.0);
+                    let min_y = prev.1.min(next.1);
+                    let max_y = prev.1.max(next.1);
+                    if min_x < r_min_x {
+                        r_min_x = min_x;
+                    }
+                    if max_x > r_max_x {
+                        r_max_x = max_x;
+                    }
+                    if min_y < r_min_y {
+                        r_min_y = min_y;
+                    }
+                    if max_y > r_max_y {
+                        r_max_y = max_y;
+                    }
+                    edges.push(EdgeF64 {
+                        cx: prev.0,
+                        cy: prev.1,
+                        dx: next.0,
+                        dy: next.1,
+                        min_x,
+                        max_x,
+                        min_y,
+                        max_y,
+                    });
+                    prev = next;
+                }
+                rings.push(IndexedRingEdges {
+                    min_x: r_min_x,
+                    max_x: r_max_x,
+                    min_y: r_min_y,
+                    max_y: r_max_y,
+                    edges,
+                });
+            }
+        }
+        Self { rings }
+    }
+
+    fn is_line_cut(&self, a: (f32, f32), b: (f32, f32)) -> bool {
+        let p1 = (a.0 as f64, a.1 as f64);
+        let p2 = (b.0 as f64, b.1 as f64);
+        let q_min_x = p1.0.min(p2.0);
+        let q_max_x = p1.0.max(p2.0);
+        let q_min_y = p1.1.min(p2.1);
+        let q_max_y = p1.1.max(p2.1);
+        for ring in &self.rings {
+            if q_max_x < ring.min_x
+                || q_min_x > ring.max_x
+                || q_max_y < ring.min_y
+                || q_min_y > ring.max_y
+            {
+                continue;
+            }
+            for e in &ring.edges {
+                if q_max_x < e.min_x
+                    || q_min_x > e.max_x
+                    || q_max_y < e.min_y
+                    || q_min_y > e.max_y
+                {
+                    continue;
+                }
+                if segments_intersect(p1, p2, (e.cx, e.cy), (e.dx, e.dy)) {
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
@@ -6316,13 +7294,15 @@ fn projection_onto(expolys: &[ExPolygon], pt: (f32, f32)) -> (f32, f32) {
 /// keyed under **both** orderings of the endpoint pair, because `drop_nodes`
 /// asks the same question from both ends of an MST edge. This port keeps that
 /// cache (`LineCutCache`), keyed on the scaled integer coordinates so the key
-/// is hashable and exactly reproduces canonical's `Point` equality.
+/// is hashable and exactly reproduces canonical's `Point` equality, plus a
+/// lazily built [`LayerOutlineEdgeIndex`] for exact AABB ring/edge pruning.
 ///
 /// Both contours and holes are tested: a branch that would pass through a hole
 /// wall is cut just as surely as one crossing the outer wall.
 #[derive(Default)]
 struct LineCutCache {
     cache: std::collections::HashMap<((i64, i64), (i64, i64)), bool>,
+    edge_index: Option<LayerOutlineEdgeIndex>,
 }
 
 impl LineCutCache {
@@ -6337,26 +7317,10 @@ impl LineCutCache {
         if let Some(hit) = self.cache.get(&(ka, kb)) {
             return *hit;
         }
-        let mut cut = false;
-        'outer: for ex in outlines {
-            for ring in std::iter::once(&ex.contour).chain(ex.holes.iter()) {
-                let n = ring.points.len();
-                if n < 2 {
-                    continue;
-                }
-                for i in 0..n {
-                    let p0 = &ring.points[i];
-                    let p1 = &ring.points[(i + 1) % n];
-                    let c = (units_to_mm(p0.x) as f64, units_to_mm(p0.y) as f64);
-                    let d = (units_to_mm(p1.x) as f64, units_to_mm(p1.y) as f64);
-                    if segments_intersect((a.0 as f64, a.1 as f64), (b.0 as f64, b.1 as f64), c, d)
-                    {
-                        cut = true;
-                        break 'outer;
-                    }
-                }
-            }
-        }
+        let idx = self
+            .edge_index
+            .get_or_insert_with(|| LayerOutlineEdgeIndex::build(outlines));
+        let cut = idx.is_line_cut(a, b);
         // Canonical inserts under both orderings.
         self.cache.insert((ka, kb), cut);
         self.cache.insert((kb, ka), cut);
@@ -6475,6 +7439,7 @@ fn is_inside_ex(expolys: &[ExPolygon], x: f32, y: f32) -> bool {
 /// restored. Returns whether the point moved.
 ///
 /// Distances are in mm. Iterative (no recursion — wasm stack).
+#[cfg(test)]
 fn move_out_expolys(
     polygons: &[ExPolygon],
     from: &mut (f32, f32),
@@ -6513,6 +7478,7 @@ fn move_out_expolys(
 /// `vsize2_with_unscale(position - *parts[i].contour.closest_point(position))`
 /// — a squared mm distance; this compares the un-squared scaled distance
 /// [`closest_point_on_polygon`] already returns, which is order-equivalent.
+#[cfg(test)]
 fn assign_node_group(parts: &[ExPolygon], to_buildplate: bool, x: f32, y: f32) -> usize {
     if to_buildplate || parts.is_empty() {
         return 0;
@@ -6543,6 +7509,48 @@ fn assign_node_group(parts: &[ExPolygon], to_buildplate: bool, x: f32, y: f32) -
     closest_part + 1
 }
 
+/// Zero-alloc indexed equivalent of `assign_node_group` (`t190` `P2`).
+fn assign_node_group_indexed(
+    parts: &IndexedPolySet,
+    to_buildplate: bool,
+    x: f32,
+    y: f32,
+) -> usize {
+    if to_buildplate || parts.is_empty() {
+        return 0;
+    }
+    let qx = x * SCALING_FACTOR as f32;
+    let qy = y * SCALING_FACTOR as f32;
+    let mut closest_part = 0usize;
+    let mut closest_dist = f32::INFINITY;
+    let mut closest_dist_sq = f32::INFINITY;
+    let mut scratch_pt: Option<[f32; 2]> = None;
+    for (i, (part, idx)) in parts.polys.iter().zip(&parts.index).enumerate() {
+        if parts.contains_poly_scaled(i, qx, qy) {
+            return i + 1;
+        }
+        let Some(cb) = idx.contour_bbox else {
+            continue;
+        };
+        if cb.min_dist_sq_lower_bound(qx, qy) > closest_dist_sq {
+            continue;
+        }
+        let prev_dist = closest_dist;
+        closest_point_on_ring_sq(
+            &part.contour.points,
+            qx,
+            qy,
+            &mut closest_dist,
+            &mut closest_dist_sq,
+            &mut scratch_pt,
+        );
+        if closest_dist < prev_dist {
+            closest_part = i;
+        }
+    }
+    closest_part + 1
+}
+
 /// Canonical `TreeSupport::get_max_move_dist(node, power)`:
 /// `min(tan_angle * node->height, support_extrusion_width)`, in mm.
 /// `power == 2` returns the SQUARE, which is what the F-11 merge tests
@@ -6563,7 +7571,49 @@ fn get_max_move_dist(
     }
 }
 
-/// Returns the closest point on polygon boundary to (x, y) and its squared distance.
+/// Zero-alloc closest point on a `Point2` ring to `(x, y)` in scaled units.
+///
+/// Compares squared distance first to skip `.sqrt()` on non-improving edges,
+/// then confirms `d < *best_dist` whenever `d_sq < *best_dist_sq` so IEEE-754
+/// tie-breaking matches [`closest_point_on_polygon`] bit for bit (`t190` `P2`).
+#[inline]
+fn closest_point_on_ring_sq(
+    points: &[Point2],
+    x: f32,
+    y: f32,
+    best_dist: &mut f32,
+    best_dist_sq: &mut f32,
+    best: &mut Option<[f32; 2]>,
+) {
+    let n = points.len();
+    if n < 3 {
+        return;
+    }
+    let first = [points[0].x as f32, points[0].y as f32];
+    let mut p0 = first;
+    for i in 0..n {
+        let p1 = if i + 1 < n {
+            [points[i + 1].x as f32, points[i + 1].y as f32]
+        } else {
+            first
+        };
+        let cp = closest_point_on_segment(p0, p1, [x, y]);
+        let dx = cp[0] - x;
+        let dy = cp[1] - y;
+        let d_sq = dx * dx + dy * dy;
+        if d_sq < *best_dist_sq {
+            let d = d_sq.sqrt();
+            if d < *best_dist {
+                *best_dist = d;
+                *best_dist_sq = d_sq;
+                *best = Some(cp);
+            }
+        }
+        p0 = p1;
+    }
+}
+
+/// Returns the closest point on polygon boundary to (x, y) and its Euclidean distance.
 fn closest_point_on_polygon(poly: &[[f32; 2]], x: f32, y: f32) -> ([f32; 2], f32) {
     let n = poly.len();
     let mut min_dist = f32::INFINITY;
@@ -9774,5 +10824,364 @@ mod tests {
             "[t32-gate] unsafe case: naive gate diverges, production gate repairs; naive delta={}",
             t32_repr_delta(&naive, body)
         );
+    }
+
+    /// Reference allocating point-in-ExPolygon for `t190` equivalence tests.
+    fn ref_point_in_any_expoly(polygons: &[ExPolygon], x: f32, y: f32) -> bool {
+        let sx = x * SCALING_FACTOR as f32;
+        let sy = y * SCALING_FACTOR as f32;
+        polygons.iter().any(|ex| {
+            let outer: Vec<[f32; 2]> = ex
+                .contour
+                .points
+                .iter()
+                .map(|p| [p.x as f32, p.y as f32])
+                .collect();
+            point_in_polygon(&outer, sx, sy)
+                && !ex.holes.iter().any(|h| {
+                    point_in_polygon(
+                        &h.points
+                            .iter()
+                            .map(|p| [p.x as f32, p.y as f32])
+                            .collect::<Vec<_>>(),
+                        sx,
+                        sy,
+                    )
+                })
+        })
+    }
+
+    /// Reference allocating `projection_onto` for `t190` equivalence tests.
+    fn ref_projection_onto(expolys: &[ExPolygon], pt: (f32, f32)) -> (f32, f32) {
+        let qx = pt.0 * SCALING_FACTOR as f32;
+        let qy = pt.1 * SCALING_FACTOR as f32;
+        let mut best_dist = f32::INFINITY;
+        let mut best: Option<[f32; 2]> = None;
+        for ex in expolys {
+            for ring in std::iter::once(&ex.contour).chain(ex.holes.iter()) {
+                if ring.points.len() < 3 {
+                    continue;
+                }
+                let poly: Vec<[f32; 2]> = ring
+                    .points
+                    .iter()
+                    .map(|p| [p.x as f32, p.y as f32])
+                    .collect();
+                let (cp, cd) = closest_point_on_polygon(&poly, qx, qy);
+                if cd < best_dist {
+                    best_dist = cd;
+                    best = Some(cp);
+                }
+            }
+        }
+        match best {
+            Some(cp) => (cp[0] / SCALING_FACTOR as f32, cp[1] / SCALING_FACTOR as f32),
+            None => pt,
+        }
+    }
+
+    #[test]
+    fn t190_indexed_polyset_matches_reference_contains_projection_and_grouping() {
+        let degenerate = ExPolygon {
+            contour: Polygon {
+                points: vec![Point2::from_mm(0.0, 0.0), Point2::from_mm(1.0, 0.0)],
+            },
+            holes: Vec::new(),
+        };
+        let polys = vec![
+            degenerate,
+            t32_rect(0.0, 0.0, 4.0, 4.0),
+            t32_l_shape(),
+            t32_holed(),
+            square_mm(20.0, 20.0, 6.0),
+        ];
+        let indexed = IndexedPolySet::new(polys.clone());
+        let probes: &[(f32, f32)] = &[
+            (-5.0, -5.0),
+            (0.0, 0.0),
+            (2.0, 2.0),
+            (4.0, 4.0),
+            (2.5, 2.5),  // concave bay of L-shape / inside rect
+            (0.5, 2.5),  // inside L-shape stem
+            (2.5, 0.5),  // inside L-shape foot
+            (3.0, 3.0),  // inside holed exterior or hole depending on coords
+            (5.0, 5.0),  // inside holed cavity / outside rect
+            (10.0, 10.0),
+            (19.9999, 20.0),
+            (20.0, 20.0),
+            (23.0, 23.0),
+            (26.0, 26.0),
+            (26.0001, 23.0),
+            (100.0, -50.0),
+        ];
+        let mut saw_inside = false;
+        let mut saw_outside = false;
+        for &(x, y) in probes {
+            let ref_in = ref_point_in_any_expoly(&polys, x, y);
+            let idx_in = indexed.contains(x, y);
+            let slice_in = point_in_any_expoly(&polys, x, y);
+            assert_eq!(idx_in, ref_in, "contains mismatch at ({x}, {y})");
+            assert_eq!(slice_in, ref_in, "zero-alloc slice contains mismatch at ({x}, {y})");
+            saw_inside |= ref_in;
+            saw_outside |= !ref_in;
+
+            let ref_proj = ref_projection_onto(&polys, (x, y));
+            let idx_proj = indexed.projection_onto((x, y));
+            let slice_proj = projection_onto(&polys, (x, y));
+            assert_eq!(
+                (idx_proj.0.to_bits(), idx_proj.1.to_bits()),
+                (ref_proj.0.to_bits(), ref_proj.1.to_bits()),
+                "projection_onto mismatch at ({x}, {y})"
+            );
+            assert_eq!(
+                (slice_proj.0.to_bits(), slice_proj.1.to_bits()),
+                (ref_proj.0.to_bits(), ref_proj.1.to_bits()),
+                "slice projection_onto mismatch at ({x}, {y})"
+            );
+
+            for to_buildplate in [false, true] {
+                let ref_grp = assign_node_group(&polys, to_buildplate, x, y);
+                let idx_grp = assign_node_group_indexed(&indexed, to_buildplate, x, y);
+                assert_eq!(
+                    idx_grp, ref_grp,
+                    "assign_node_group mismatch at ({x}, {y}) to_buildplate={to_buildplate}"
+                );
+            }
+        }
+        assert!(saw_inside && saw_outside, "probes must exercise both inside and outside");
+    }
+
+    #[test]
+    fn t190_layer_outline_edge_index_matches_unindexed_contour_scan() {
+        let outlines = vec![t32_holed(), t32_l_shape(), square_mm(30.0, 30.0, 5.0)];
+        let ref_cut = |a: (f32, f32), b: (f32, f32)| -> bool {
+            for ex in &outlines {
+                for ring in std::iter::once(&ex.contour).chain(ex.holes.iter()) {
+                    let n = ring.points.len();
+                    if n < 2 {
+                        continue;
+                    }
+                    for i in 0..n {
+                        let p0 = &ring.points[i];
+                        let p1 = &ring.points[(i + 1) % n];
+                        let c = (units_to_mm(p0.x) as f64, units_to_mm(p0.y) as f64);
+                        let d = (units_to_mm(p1.x) as f64, units_to_mm(p1.y) as f64);
+                        if segments_intersect(
+                            (a.0 as f64, a.1 as f64),
+                            (b.0 as f64, b.1 as f64),
+                            c,
+                            d,
+                        ) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            false
+        };
+        let segments: &[((f32, f32), (f32, f32))] = &[
+            ((-10.0, -10.0), (-5.0, -5.0)), // disjoint
+            ((-1.0, 1.0), (12.0, 1.0)),     // crossing outer + hole
+            ((0.0, 0.0), (4.0, 0.0)),       // collinear on edge
+            ((30.0, 29.0), (30.0, 30.0)),   // endpoint grazing corner
+            ((30.0, 30.0), (35.0, 35.0)),   // diagonal through square
+            ((31.0, 31.0), (34.0, 34.0)),   // strictly inside square, no edge cut
+            ((15.0, 15.0), (25.0, 25.0)),   // disjoint between shapes
+            ((2.0, 2.0), (5.0, 5.0)),       // crossing hole wall
+        ];
+        let mut cache = LineCutCache::default();
+        let mut saw_cut = false;
+        let mut saw_clear = false;
+        for &(a, b) in segments {
+            let expected = ref_cut(a, b);
+            let got_fwd = cache.is_line_cut_by_contour(&outlines, a, b);
+            let got_rev = cache.is_line_cut_by_contour(&outlines, b, a);
+            assert_eq!(got_fwd, expected, "forward cut mismatch on {a:?} -> {b:?}");
+            assert_eq!(got_rev, expected, "reverse cached cut mismatch on {b:?} -> {a:?}");
+            saw_cut |= expected;
+            saw_clear |= !expected;
+        }
+        assert!(saw_cut && saw_clear, "segments must exercise both cut and uncut cases");
+    }
+
+    #[test]
+    fn t190_tree_volumes_height_capped_prefetch_matches_serial_and_union_guard() {
+        let layer_count = 6usize;
+        let layer_plan = default_layer_plan(layer_count as u32, 0.2, 0.2);
+        let mut entries = Vec::new();
+        for l in 0..layer_count {
+            let side = 10.0 - l as f32 * 0.5;
+            entries.push(SupportGeometryViewEntry {
+                global_support_layer_index: l as u32,
+                object_id: "obj".to_string(),
+                region_id: "0".to_string(),
+                outlines: vec![square_mm(0.0, 0.0, side), square_mm(15.0, 0.0, 4.0)],
+                ..Default::default()
+            });
+        }
+        let sg = SupportGeometryView { entries };
+        let sa = SupportAnalysisView::default();
+
+        // Instance A: height-capped bucket-parallel prefetch across multiple
+        // buckets including non-idempotent f32 radii (`2.2`, `2.6`) where
+        // double-calling `ceil_radius` would shift the bucket key.
+        let vol_prefetched = TreeVolumes::new(&layer_plan, &sg, &sa, 45.0, 0.35, 0.35);
+        vol_prefetched.prefetch_drop_ladders(&[(0.6, 3), (1.2, 2), (2.2, 3), (2.6, 2)], Some(4));
+
+        // Prove height cap did NOT eagerly materialize avoidance above `max_layer`.
+        assert!(
+            !vol_prefetched
+                .avoidance
+                .borrow()
+                .contains_key(&(radius_key(1.2), 3)),
+            "bucket r=1.2 must not materialize avoidance above max_layer=2"
+        );
+        assert!(
+            vol_prefetched
+                .avoidance
+                .borrow()
+                .contains_key(&(radius_key(2.2), 3)),
+            "bucket r=2.2 must have prefetched avoidance at max_layer=3 without double-ceil shift"
+        );
+
+        // Instance B: full-height serial reference materialization via lazy calls
+        // on layer_count - 1 (which walks 0..layer_count).
+        let vol_reference = TreeVolumes::new(&layer_plan, &sg, &sa, 45.0, 0.35, 0.35);
+        for r in [0.0_f32, 0.6, 1.2, 2.2, 2.6] {
+            let _ = vol_reference.get_avoidance(r, layer_count - 1);
+        }
+
+        // Compare every (r, layer) — both prefetched and lazy-fallback layers!
+        for r in [0.0_f32, 0.6, 1.2, 2.2, 2.6] {
+            for l in 0..layer_count {
+                assert_eq!(
+                    vol_prefetched.get_collision(r, l).as_slice(),
+                    vol_reference.get_collision(r, l).as_slice(),
+                    "collision mismatch at r={r}, layer={l}"
+                );
+                assert_eq!(
+                    vol_prefetched.get_avoidance(r, l).as_slice(),
+                    vol_reference.get_avoidance(r, l).as_slice(),
+                    "avoidance mismatch at r={r}, layer={l}"
+                );
+            }
+        }
+
+        // Verify `run_exact_union_batch` matches direct `host::clip_polygons`
+        // both within (`<= 8`) and above (`> 8`, guarding against `union_spatial_tree`)
+        // `BATCH_UNION_EXACT_POLY_LIMIT`.
+        let small_sub = vec![square_mm(0.0, 0.0, 3.0)];
+        let small_clip: Vec<ExPolygon> = (1..=4)
+            .map(|k| square_mm(k as f32 * 2.0, 0.0, 3.0))
+            .collect();
+        let large_sub = vec![square_mm(0.0, 0.0, 3.0)];
+        let large_clip: Vec<ExPolygon> = (1..=10)
+            .map(|k| square_mm(k as f32 * 2.0, (k % 3) as f32 * 1.5, 3.0))
+            .collect();
+        assert!(large_sub.len() + large_clip.len() > BATCH_UNION_EXACT_POLY_LIMIT);
+        let batched = run_exact_union_batch(vec![
+            (small_sub.clone(), small_clip.clone()),
+            (large_sub.clone(), large_clip.clone()),
+        ]);
+        let direct_small = host::clip_polygons(&small_sub, &small_clip, ClipOperation::Union);
+        let direct_large = host::clip_polygons(&large_sub, &large_clip, ClipOperation::Union);
+        assert_eq!(batched[0], direct_small, "<= 8 union must match direct clip_polygons");
+        assert_eq!(batched[1], direct_large, "> 8 union must match direct clip_polygons");
+    }
+
+    #[test]
+    fn t190_prim_mst_squared_distance_matches_sqrt_reference_on_ties() {
+        // Regular grid + diamond with many exact equal-distance ties.
+        let pts: Vec<(f32, f32)> = vec![
+            (0.0, 0.0),
+            (1.0, 0.0),
+            (2.0, 0.0),
+            (0.0, 1.0),
+            (1.0, 1.0),
+            (2.0, 1.0),
+            (0.0, 2.0),
+            (1.0, 2.0),
+            (2.0, 2.0),
+            (1.0, -1.0),
+        ];
+        // Reference Prim using explicit `.sqrt()` in every comparison.
+        let ref_prim = |nodes: &[(f32, f32)]| -> Vec<(usize, usize, f32)> {
+            let n = nodes.len();
+            let dist = |a: (f32, f32), b: (f32, f32)| -> f32 {
+                let dx = a.0 - b.0;
+                let dy = a.1 - b.1;
+                (dx * dx + dy * dy).sqrt()
+            };
+            let mut in_tree = vec![false; n];
+            let mut min_dist = vec![f32::INFINITY; n];
+            let mut parent: Vec<Option<usize>> = vec![None; n];
+            in_tree[0] = true;
+            for i in 1..n {
+                min_dist[i] = dist(nodes[0], nodes[i]);
+                parent[i] = Some(0);
+            }
+            let mut edges = Vec::with_capacity(n - 1);
+            for _ in 1..n {
+                let mut best = None;
+                let mut best_d = f32::INFINITY;
+                for i in 0..n {
+                    if !in_tree[i] && min_dist[i] < best_d {
+                        best_d = min_dist[i];
+                        best = Some(i);
+                    }
+                }
+                let Some(next) = best else { break };
+                in_tree[next] = true;
+                if let Some(p) = parent[next] {
+                    edges.push((next.min(p), next.max(p), best_d));
+                }
+                for i in 0..n {
+                    if !in_tree[i] {
+                        let d = dist(nodes[next], nodes[i]);
+                        if d < min_dist[i] {
+                            min_dist[i] = d;
+                            parent[i] = Some(next);
+                        }
+                    }
+                }
+            }
+            edges.sort_by(|a, b| {
+                a.0.cmp(&b.0)
+                    .then(a.1.cmp(&b.1))
+                    .then(a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
+            });
+            edges
+        };
+        let got = prim_mst(&pts);
+        let expected = ref_prim(&pts);
+        assert_eq!(got.len(), pts.len() - 1);
+        assert_eq!(got, expected, "squared-distance prim_mst must match sqrt reference on ties");
+        let got_len: f32 = got.iter().map(|e| e.2).sum();
+        let exp_len: f32 = expected.iter().map(|e| e.2).sum();
+        assert_eq!(got_len.to_bits(), exp_len.to_bits());
+    }
+
+    #[test]
+    fn t190_enable_support_false_is_structurally_inert() {
+        let mut planner = default_planner();
+        planner.enabled = false;
+        // Pass an empty LayerPlanView: an enabled planner returns fatal error
+        // ("empty layer-plan-view"), proving `enable_support: false` returns
+        // immediately before touching layer_plan, volumes, or objects.
+        let mut output = SupportGeometryOutput::new();
+        let res = planner.run_support_geometry_with_analysis(
+            &[],
+            &LayerPlanView { layers: Vec::new() },
+            &RegionSegmentationView::default(),
+            &SupportAnalysisView::default(),
+            &SupportGeometryView {
+                entries: Vec::new(),
+            },
+            &mut output,
+            &ConfigView::default(),
+        );
+        assert!(res.is_ok(), "enable_support: false must return Ok immediately");
+        assert!(output.entries().is_empty());
+        assert!(output.diagnostics().is_empty());
     }
 }
