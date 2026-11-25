@@ -148,6 +148,7 @@ pub use slice_ir::{
     StageId,
     // Support types
     SupportAnalysisIR,
+    SupportAnalysisPrintPlaneEntry,
     SupportEntityIdentity,
     SupportEntry,
     SupportGeometryIR,

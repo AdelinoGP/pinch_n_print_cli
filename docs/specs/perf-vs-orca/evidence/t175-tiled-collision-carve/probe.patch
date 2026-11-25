@@ -1,0 +1,192 @@
+diff --git a/modules/core-modules/tree-support-planner/Cargo.toml b/modules/core-modules/tree-support-planner/Cargo.toml
+index 0917e956..a505e409 100644
+--- a/modules/core-modules/tree-support-planner/Cargo.toml
++++ b/modules/core-modules/tree-support-planner/Cargo.toml
+@@ -6,6 +6,7 @@ authors.workspace = true
+ description = "Emits SupportPlanIR from coarse SupportGeometryIR inside PrePass::SupportGeometry"
+ 
+ [dependencies]
++slicer-core = { path = "../../../crates/slicer-core" }
+ slicer-sdk = { path = "../../../crates/slicer-sdk" }
+ slicer-schema = { path = "../../../crates/slicer-schema" }
+ slicer-ir = { path = "../../../crates/slicer-ir" }
+diff --git a/modules/core-modules/tree-support-planner/src/collision_tile_index.rs b/modules/core-modules/tree-support-planner/src/collision_tile_index.rs
+index a191df39..7459baaa 100644
+--- a/modules/core-modules/tree-support-planner/src/collision_tile_index.rs
++++ b/modules/core-modules/tree-support-planner/src/collision_tile_index.rs
+@@ -64,6 +64,9 @@ pub(crate) const MIN_INDEXED_COLLISION_VERTICES: usize = 64;
+ /// `base classic-on`.
+ pub(crate) const DEFAULT_COLLISION_TILE_UNITS: i64 = 20_000;
+ 
++/// Temporary t175 attribution probe switch (reverted after probe).
++pub(crate) const PROBE_ENABLE_TILING: bool = true;
++
+ /// Exact collision operand for a subject region's tile-union window.
+ #[derive(Debug, Clone)]
+ pub(crate) enum WindowedCollision {
+@@ -330,6 +333,10 @@ impl<'a> CollisionTileIndex<'a> {
+         self.stats
+     }
+ 
++    pub(crate) fn grid_stats(&self) -> (usize, usize, usize) {
++        (self.cols * self.rows, self.cell_entries.len(), self.row_entries.len())
++    }
++
+     fn compute_window(
+         &mut self,
+         tx0_raw: i64,
+diff --git a/modules/core-modules/tree-support-planner/src/lib.rs b/modules/core-modules/tree-support-planner/src/lib.rs
+index aa397096..66afb137 100644
+--- a/modules/core-modules/tree-support-planner/src/lib.rs
++++ b/modules/core-modules/tree-support-planner/src/lib.rs
+@@ -1391,6 +1391,23 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+ 
+     // Phase 1: collect the per-region carves, applying the ticket-32 gate and
+     // the ticket-175 per-layer exact collision tile index in the guest.
++    let sc_build = slicer_sdk::profile::register_scope("t175::tile_index_build");
++    let sc_query = slicer_sdk::profile::register_scope("t175::tile_index_query");
++    let sc_clip = slicer_sdk::profile::register_scope("t175::phase1_clip_batches");
++    let probe_on = sc_clip.is_some();
++    let mut p_layers_indexed: u64 = 0;
++    let mut p_regions_total: u64 = 0;
++    let mut p_outer_gated: u64 = 0;
++    let mut p_empty_gated: u64 = 0;
++    let mut p_covered_dropped: u64 = 0;
++    let mut p_cache_hits: u64 = 0;
++    let mut p_orig_clip_pts: u64 = 0;
++    let mut p_win_clip_pts: u64 = 0;
++    let mut p_sent_subj_pts: u64 = 0;
++    let mut p_grid_cells: u64 = 0;
++    let mut p_cell_entries: u64 = 0;
++    let mut p_row_entries: u64 = 0;
++
+     let mut carve_requests: Vec<ClipRequest> = Vec::new();
+     let mut slot_lists: Vec<[Vec<CarveSlot>; ROLE_COUNT]> = inputs
+         .iter()
+@@ -1398,8 +1415,9 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+         .collect();
+     for (i, input) in inputs.iter().enumerate() {
+         let collision_bbox = expolygons_bbox(&input.collision_polys);
+-        let use_tile_index =
+-            count_expolygon_points(&input.collision_polys) >= MIN_INDEXED_COLLISION_VERTICES;
++        let coll_pts = count_expolygon_points(&input.collision_polys);
++        let use_tile_index = collision_tile_index::PROBE_ENABLE_TILING
++            && coll_pts >= MIN_INDEXED_COLLISION_VERTICES;
+         let mut tile_index: Option<Option<CollisionTileIndex<'_>>> = None;
+         for role in 0..ROLE_COUNT {
+             let regions = role_regions(input, role);
+@@ -1409,9 +1427,11 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             }
+             let mut slots = Vec::with_capacity(regions.len());
+             for region in regions {
++                p_regions_total += 1;
+                 let rbbox = region_bbox(&region);
+                 let canonical = region_has_canonical_winding(&region);
+                 if canonical && bboxes_disjoint(rbbox, collision_bbox) {
++                    p_outer_gated += 1;
+                     gated_any[i][role] = true;
+                     slots.push(CarveSlot::Kept(region));
+                     continue;
+@@ -1419,19 +1439,26 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+                 if use_tile_index {
+                     if let Some(rb) = rbbox {
+                         let idx_opt = tile_index.get_or_insert_with(|| {
++                            let _g = sc_build.map(slicer_core::profile::scope);
+                             CollisionTileIndex::build(
+                                 &input.collision_polys,
+                                 DEFAULT_COLLISION_TILE_UNITS,
+                             )
+                         });
+                         if let Some(idx) = idx_opt.as_mut() {
+-                            match idx.window_for_bbox(rb) {
++                            let win = {
++                                let _g = sc_query.map(slicer_core::profile::scope);
++                                idx.window_for_bbox(rb)
++                            };
++                            match win {
+                                 WindowedCollision::Empty => {
++                                    p_empty_gated += 1;
+                                     if canonical {
+                                         gated_any[i][role] = true;
+                                         slots.push(CarveSlot::Kept(region));
+                                         continue;
+                                     }
++                                    p_sent_subj_pts += count_expolygon_points(std::slice::from_ref(&region)) as u64;
+                                     slots.push(CarveSlot::Clip(carve_requests.len()));
+                                     carve_requests.push(ClipRequest {
+                                         subject: vec![region],
+@@ -1441,11 +1468,11 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+                                     continue;
+                                 }
+                                 WindowedCollision::Covered => {
+-                                    // Subject lies strictly inside collision_polys:
+-                                    // Difference is provably empty (`largest_part == None`).
++                                    p_covered_dropped += 1;
+                                     continue;
+                                 }
+                                 WindowedCollision::Polys(windowed_clip) => {
++                                    p_sent_subj_pts += count_expolygon_points(std::slice::from_ref(&region)) as u64;
+                                     slots.push(CarveSlot::Clip(carve_requests.len()));
+                                     carve_requests.push(ClipRequest {
+                                         subject: vec![region],
+@@ -1458,6 +1485,9 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+                         }
+                     }
+                 }
++                p_orig_clip_pts += coll_pts as u64;
++                p_win_clip_pts += coll_pts as u64;
++                p_sent_subj_pts += count_expolygon_points(std::slice::from_ref(&region)) as u64;
+                 slots.push(CarveSlot::Clip(carve_requests.len()));
+                 carve_requests.push(ClipRequest {
+                     subject: vec![region],
+@@ -1467,11 +1497,45 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             }
+             slot_lists[i][role] = slots;
+         }
+-    }
+-    let mut carve_results: Vec<Option<ExPolygon>> = run_clip_batches(&carve_requests)
+-        .into_iter()
+-        .map(largest_part)
+-        .collect();
++        if let Some(Some(idx)) = tile_index {
++            p_layers_indexed += 1;
++            let st = idx.stats();
++            p_cache_hits += st.cache_hits;
++            p_orig_clip_pts += st.original_clip_points;
++            p_win_clip_pts += st.windowed_clip_points;
++            let (gc, ce, re) = idx.grid_stats();
++            p_grid_cells += gc as u64;
++            p_cell_entries += ce as u64;
++            p_row_entries += re as u64;
++        }
++    }
++    if probe_on {
++        slicer_sdk::host::log_warn(&format!(
++            "T175_PROBE_BATCH {{\"tile_units\":{},\"tiling\":{},\"layers_indexed\":{},\"regions_total\":{},\"outer_gated\":{},\"empty_gated\":{},\"covered_dropped\":{},\"clip_requests\":{},\"cache_hits\":{},\"orig_clip_pts\":{},\"win_clip_pts\":{},\"sent_subj_pts\":{},\"grid_cells\":{},\"cell_entries\":{},\"row_entries\":{}}}",
++            DEFAULT_COLLISION_TILE_UNITS,
++            collision_tile_index::PROBE_ENABLE_TILING,
++            p_layers_indexed,
++            p_regions_total,
++            p_outer_gated,
++            p_empty_gated,
++            p_covered_dropped,
++            carve_requests.len(),
++            p_cache_hits,
++            p_orig_clip_pts,
++            p_win_clip_pts,
++            p_sent_subj_pts,
++            p_grid_cells,
++            p_cell_entries,
++            p_row_entries,
++        ));
++    }
++    let mut carve_results: Vec<Option<ExPolygon>> = {
++        let _g = sc_clip.map(slicer_core::profile::scope);
++        run_clip_batches(&carve_requests)
++    }
++    .into_iter()
++    .map(largest_part)
++    .collect();
+     for i in 0..inputs.len() {
+         for role in 0..ROLE_COUNT {
+             for slot in std::mem::take(&mut slot_lists[i][role]) {

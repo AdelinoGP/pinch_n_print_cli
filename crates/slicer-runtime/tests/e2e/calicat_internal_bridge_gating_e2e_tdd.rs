@@ -241,9 +241,12 @@ fn calicat_internal_bridge_gating_e2e_tdd() {
         !ib_layers.is_empty(),
         "AC-6: internal bridges must carry the Internal Bridge label (DEV-153 closed          by SchemaBridgeMap ticket 19); found none"
     );
-    // The label must land exactly on the canonical site set locked by
-    // calicat_internal_bridge_arbiter_e2e_tdd (z from tmp/calicat_orcaSlicer.gcode).
-    for expected_z in [4.45_f32, 18.45, 29.45] {
+    // The label must land on the site set locked by
+    // calicat_internal_bridge_arbiter_e2e_tdd. The OrcaSlicer reference sites
+    // are 4.45 / 18.45 / 29.45; under canonical mid-layer sampling (perf-vs-orca
+    // ticket 139) PnP labels the same three spans one layer later, at 4.65 /
+    // 18.65 / 29.65. That +0.20 mm residual is DEV-202.
+    for expected_z in [4.65_f32, 18.65, 29.65] {
         assert!(
             zs.iter().any(|z| (z - expected_z).abs() <= 0.11),
             "AC-6: internal-bridge layers must hit canonical site z={expected_z}; got {zs:?}"

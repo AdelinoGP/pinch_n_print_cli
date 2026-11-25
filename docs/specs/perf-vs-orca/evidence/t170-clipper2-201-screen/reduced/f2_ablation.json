@@ -1,0 +1,6753 @@
+{
+  "corpus": "docs/specs/perf-vs-orca/evidence/t167-canonical-clipperutils-replay/corpus/base-prepass-t167.corpus",
+  "corpus_sha256": "74c2b553659d71d67d6327b766fa929280eec520d6dafdf6317213c2084260a0",
+  "case_count": 118,
+  "method": "forward+reverse, 10 repeats median per case, single-thread",
+  "engines": {
+    "rust_pnp": "t167-rust-driver.exe",
+    "cpp_152": "driver-cpp-c2-152.exe",
+    "cpp_152_concave": "driver-c152-concave.exe",
+    "v250_nodecim": "driver-v250-nodecim.exe",
+    "v250_nodecim_noX": "driver-v250-noconcave-nodecim.exe",
+    "v250_decim": "driver-v250-baseline.exe",
+    "v250_decim_noX": "driver-v250-noconcave.exe"
+  },
+  "by_site": {
+    "IB_CAND_POS": {
+      "n": 16,
+      "sum_ms": {
+        "rust_pnp": 0.2334,
+        "cpp_152": 0.2341,
+        "cpp_152_concave": 0.153,
+        "v250_nodecim": 0.1638,
+        "v250_nodecim_noX": 0.2512,
+        "v250_decim": 0.1532,
+        "v250_decim_noX": 0.2174
+      },
+      "f1_rust_over_cpp152": 0.997,
+      "f2_total_cpp152_over_v250_nodecim": 1.4292,
+      "f2_noconcave_cpp152_over_v250_nodecim_noX": 0.9319,
+      "f2_patch_v250_nodecim_noX_over_v250_nodecim": 1.5336,
+      "patch_152_cpp152_over_cpp152_concave": 1.5301,
+      "patch_201_v250_decim_noX_over_v250_decim": 1.4191
+    },
+    "IB_DEEP_NEG": {
+      "n": 16,
+      "sum_ms": {
+        "rust_pnp": 586.6193,
+        "cpp_152": 467.5992,
+        "cpp_152_concave": 47.123,
+        "v250_nodecim": 392.0632,
+        "v250_nodecim_noX": 487.0239,
+        "v250_decim": 47.0312,
+        "v250_decim_noX": 98.4429
+      },
+      "f1_rust_over_cpp152": 1.2545,
+      "f2_total_cpp152_over_v250_nodecim": 1.1927,
+      "f2_noconcave_cpp152_over_v250_nodecim_noX": 0.9601,
+      "f2_patch_v250_nodecim_noX_over_v250_nodecim": 1.2422,
+      "patch_152_cpp152_over_cpp152_concave": 9.923,
+      "patch_201_v250_decim_noX_over_v250_decim": 2.0931
+    },
+    "IB_DEEP_POS": {
+      "n": 24,
+      "sum_ms": {
+        "rust_pnp": 3053.8023,
+        "cpp_152": 2390.1838,
+        "cpp_152_concave": 595.1616,
+        "v250_nodecim": 2281.8713,
+        "v250_nodecim_noX": 2767.3487,
+        "v250_decim": 584.7203,
+        "v250_decim_noX": 1206.5485
+      },
+      "f1_rust_over_cpp152": 1.2776,
+      "f2_total_cpp152_over_v250_nodecim": 1.0475,
+      "f2_noconcave_cpp152_over_v250_nodecim_noX": 0.8637,
+      "f2_patch_v250_nodecim_noX_over_v250_nodecim": 1.2128,
+      "patch_152_cpp152_over_cpp152_concave": 4.016,
+      "patch_201_v250_decim_noX_over_v250_decim": 2.0635
+    },
+    "SH_OPEN_BOT_CANON": {
+      "n": 15,
+      "sum_ms": {
+        "rust_pnp": 100.5392,
+        "cpp_152": 79.1317,
+        "cpp_152_concave": 39.0626,
+        "v250_nodecim": 44.3665,
+        "v250_nodecim_noX": 101.2537,
+        "v250_decim": 35.5279,
+        "v250_decim_noX": 119.2462
+      },
+      "f1_rust_over_cpp152": 1.2705,
+      "f2_total_cpp152_over_v250_nodecim": 1.7836,
+      "f2_noconcave_cpp152_over_v250_nodecim_noX": 0.7815,
+      "f2_patch_v250_nodecim_noX_over_v250_nodecim": 2.2822,
+      "patch_152_cpp152_over_cpp152_concave": 2.0258,
+      "patch_201_v250_decim_noX_over_v250_decim": 3.3564
+    },
+    "SH_OPEN_BOT_LEGACY": {
+      "n": 15,
+      "sum_ms": {
+        "rust_pnp": 455.6142,
+        "cpp_152": 298.3983,
+        "cpp_152_concave": 160.1568,
+        "v250_nodecim": 345.3353,
+        "v250_nodecim_noX": 551.077,
+        "v250_decim": 159.6984,
+        "v250_decim_noX": 309.3506
+      },
+      "f1_rust_over_cpp152": 1.5269,
+      "f2_total_cpp152_over_v250_nodecim": 0.8641,
+      "f2_noconcave_cpp152_over_v250_nodecim_noX": 0.5415,
+      "f2_patch_v250_nodecim_noX_over_v250_nodecim": 1.5958,
+      "patch_152_cpp152_over_cpp152_concave": 1.8632,
+      "patch_201_v250_decim_noX_over_v250_decim": 1.9371
+    },
+    "SH_OPEN_TOP_CANON": {
+      "n": 16,
+      "sum_ms": {
+        "rust_pnp": 164.8998,
+        "cpp_152": 101.1853,
+        "cpp_152_concave": 43.3957,
+        "v250_nodecim": 68.529,
+        "v250_nodecim_noX": 116.4237,
+        "v250_decim": 45.0384,
+        "v250_decim_noX": 104.4608
+      },
+      "f1_rust_over_cpp152": 1.6297,
+      "f2_total_cpp152_over_v250_nodecim": 1.4765,
+      "f2_noconcave_cpp152_over_v250_nodecim_noX": 0.8691,
+      "f2_patch_v250_nodecim_noX_over_v250_nodecim": 1.6989,
+      "patch_152_cpp152_over_cpp152_concave": 2.3317,
+      "patch_201_v250_decim_noX_over_v250_decim": 2.3194
+    },
+    "SH_OPEN_TOP_LEGACY": {
+      "n": 16,
+      "sum_ms": {
+        "rust_pnp": 727.218,
+        "cpp_152": 414.3238,
+        "cpp_152_concave": 248.2979,
+        "v250_nodecim": 475.7027,
+        "v250_nodecim_noX": 650.3837,
+        "v250_decim": 203.8096,
+        "v250_decim_noX": 348.5607
+      },
+      "f1_rust_over_cpp152": 1.7552,
+      "f2_total_cpp152_over_v250_nodecim": 0.871,
+      "f2_noconcave_cpp152_over_v250_nodecim_noX": 0.637,
+      "f2_patch_v250_nodecim_noX_over_v250_nodecim": 1.3672,
+      "patch_152_cpp152_over_cpp152_concave": 1.6687,
+      "patch_201_v250_decim_noX_over_v250_decim": 1.7102
+    }
+  },
+  "cases": [
+    {
+      "case_index": 0,
+      "site": "IB_CAND_POS",
+      "layer": 22,
+      "opcode": 0,
+      "in_verts": 21,
+      "rust_pnp": {
+        "median_ns": 5800,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 100166259.5,
+        "out_hash": "77fcc23b0f41ccaf"
+      },
+      "cpp_152": {
+        "median_ns": 6250,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 100166259.5,
+        "out_hash": "77fcc23b0f41ccaf"
+      },
+      "cpp_152_concave": {
+        "median_ns": 5200,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 100160758.2609,
+        "out_hash": "7bd99dec43a71904"
+      },
+      "v250_nodecim": {
+        "median_ns": 5400,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 100160786.86915,
+        "out_hash": "d83d8ee1f7d73d41"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 9850,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 100160787.577,
+        "out_hash": "73322e079bd39e13"
+      },
+      "v250_decim": {
+        "median_ns": 4900,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 100160758.2609,
+        "out_hash": "7bd99dec43a71904"
+      },
+      "v250_decim_noX": {
+        "median_ns": 6550,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 100160755.851,
+        "out_hash": "89b19452861eab6d"
+      }
+    },
+    {
+      "case_index": 1,
+      "site": "IB_CAND_POS",
+      "layer": 42,
+      "opcode": 0,
+      "in_verts": 3,
+      "rust_pnp": {
+        "median_ns": 900,
+        "out_paths": 1,
+        "out_verts": 5,
+        "out_area_u2": 48276436.0,
+        "out_hash": "9bad95800c9c2f4a"
+      },
+      "cpp_152": {
+        "median_ns": 1400,
+        "out_paths": 1,
+        "out_verts": 5,
+        "out_area_u2": 48276436,
+        "out_hash": "9bad95800c9c2f4a"
+      },
+      "cpp_152_concave": {
+        "median_ns": 1500,
+        "out_paths": 1,
+        "out_verts": 5,
+        "out_area_u2": 48277034.11825,
+        "out_hash": "a2372ebef1d40d6b"
+      },
+      "v250_nodecim": {
+        "median_ns": 1500,
+        "out_paths": 1,
+        "out_verts": 5,
+        "out_area_u2": 48277034.11825,
+        "out_hash": "a2372ebef1d40d6b"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 1550,
+        "out_paths": 1,
+        "out_verts": 5,
+        "out_area_u2": 48277034.11825,
+        "out_hash": "a2372ebef1d40d6b"
+      },
+      "v250_decim": {
+        "median_ns": 1500,
+        "out_paths": 1,
+        "out_verts": 5,
+        "out_area_u2": 48277034.11825,
+        "out_hash": "a2372ebef1d40d6b"
+      },
+      "v250_decim_noX": {
+        "median_ns": 1500,
+        "out_paths": 1,
+        "out_verts": 5,
+        "out_area_u2": 48277034.11825,
+        "out_hash": "a2372ebef1d40d6b"
+      }
+    },
+    {
+      "case_index": 2,
+      "site": "IB_CAND_POS",
+      "layer": 45,
+      "opcode": 0,
+      "in_verts": 6,
+      "rust_pnp": {
+        "median_ns": 1300,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53259565.0,
+        "out_hash": "88ba662fcf597b5f"
+      },
+      "cpp_152": {
+        "median_ns": 1900,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53259565,
+        "out_hash": "88ba662fcf597b5f"
+      },
+      "cpp_152_concave": {
+        "median_ns": 2050,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53256318.35865,
+        "out_hash": "9fe07fdc054edff7"
+      },
+      "v250_nodecim": {
+        "median_ns": 2050,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53256318.35865,
+        "out_hash": "9fe07fdc054edff7"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 2750,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53256318.35865,
+        "out_hash": "9fe07fdc054edff7"
+      },
+      "v250_decim": {
+        "median_ns": 2100,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53256318.35865,
+        "out_hash": "9fe07fdc054edff7"
+      },
+      "v250_decim_noX": {
+        "median_ns": 2000,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53256318.35865,
+        "out_hash": "9fe07fdc054edff7"
+      }
+    },
+    {
+      "case_index": 3,
+      "site": "IB_CAND_POS",
+      "layer": 46,
+      "opcode": 0,
+      "in_verts": 179,
+      "rust_pnp": {
+        "median_ns": 123350,
+        "out_paths": 1,
+        "out_verts": 152,
+        "out_area_u2": 700670949.0,
+        "out_hash": "6147563163ca49a3"
+      },
+      "cpp_152": {
+        "median_ns": 115300,
+        "out_paths": 1,
+        "out_verts": 152,
+        "out_area_u2": 700670949,
+        "out_hash": "6147563163ca49a3"
+      },
+      "cpp_152_concave": {
+        "median_ns": 66700,
+        "out_paths": 1,
+        "out_verts": 155,
+        "out_area_u2": 700653594.3219,
+        "out_hash": "c33f1d564e46f910"
+      },
+      "v250_nodecim": {
+        "median_ns": 71700,
+        "out_paths": 1,
+        "out_verts": 154,
+        "out_area_u2": 700664071.0134,
+        "out_hash": "385e0f9fcbe89291"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 128800,
+        "out_paths": 1,
+        "out_verts": 154,
+        "out_area_u2": 700664127.0161,
+        "out_hash": "bc8526969bb56c4f"
+      },
+      "v250_decim": {
+        "median_ns": 66600,
+        "out_paths": 1,
+        "out_verts": 155,
+        "out_area_u2": 700653594.3219,
+        "out_hash": "c33f1d564e46f910"
+      },
+      "v250_decim_noX": {
+        "median_ns": 106250,
+        "out_paths": 1,
+        "out_verts": 155,
+        "out_area_u2": 700653648.6419,
+        "out_hash": "14b85ca78441b513"
+      }
+    },
+    {
+      "case_index": 4,
+      "site": "IB_CAND_POS",
+      "layer": 47,
+      "opcode": 0,
+      "in_verts": 70,
+      "rust_pnp": {
+        "median_ns": 17800,
+        "out_paths": 1,
+        "out_verts": 57,
+        "out_area_u2": 291620484.5,
+        "out_hash": "d8f422e3d4a9618b"
+      },
+      "cpp_152": {
+        "median_ns": 17300,
+        "out_paths": 1,
+        "out_verts": 57,
+        "out_area_u2": 291620484.5,
+        "out_hash": "d8f422e3d4a9618b"
+      },
+      "cpp_152_concave": {
+        "median_ns": 12900,
+        "out_paths": 1,
+        "out_verts": 62,
+        "out_area_u2": 291614686.82585,
+        "out_hash": "481cc531fd2beb12"
+      },
+      "v250_nodecim": {
+        "median_ns": 14100,
+        "out_paths": 1,
+        "out_verts": 58,
+        "out_area_u2": 291621129.92445,
+        "out_hash": "296c29efb4558e0f"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 17750,
+        "out_paths": 1,
+        "out_verts": 58,
+        "out_area_u2": 291621147.68095,
+        "out_hash": "d8d1b8bd98aabcfd"
+      },
+      "v250_decim": {
+        "median_ns": 12800,
+        "out_paths": 1,
+        "out_verts": 62,
+        "out_area_u2": 291614686.82585,
+        "out_hash": "481cc531fd2beb12"
+      },
+      "v250_decim_noX": {
+        "median_ns": 16450,
+        "out_paths": 1,
+        "out_verts": 62,
+        "out_area_u2": 291614729.3893,
+        "out_hash": "843cfd9d293d6126"
+      }
+    },
+    {
+      "case_index": 5,
+      "site": "IB_CAND_POS",
+      "layer": 57,
+      "opcode": 0,
+      "in_verts": 4,
+      "rust_pnp": {
+        "median_ns": 1150,
+        "out_paths": 1,
+        "out_verts": 6,
+        "out_area_u2": 49396445.5,
+        "out_hash": "3816cac13ac3e1cb"
+      },
+      "cpp_152": {
+        "median_ns": 1750,
+        "out_paths": 1,
+        "out_verts": 6,
+        "out_area_u2": 49396445.5,
+        "out_hash": "3816cac13ac3e1cb"
+      },
+      "cpp_152_concave": {
+        "median_ns": 1800,
+        "out_paths": 1,
+        "out_verts": 6,
+        "out_area_u2": 49392008.6425,
+        "out_hash": "c6ca2b31526abf56"
+      },
+      "v250_nodecim": {
+        "median_ns": 1800,
+        "out_paths": 1,
+        "out_verts": 6,
+        "out_area_u2": 49392008.6425,
+        "out_hash": "c6ca2b31526abf56"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 1800,
+        "out_paths": 1,
+        "out_verts": 6,
+        "out_area_u2": 49392008.6425,
+        "out_hash": "c6ca2b31526abf56"
+      },
+      "v250_decim": {
+        "median_ns": 1750,
+        "out_paths": 1,
+        "out_verts": 6,
+        "out_area_u2": 49392008.6425,
+        "out_hash": "c6ca2b31526abf56"
+      },
+      "v250_decim_noX": {
+        "median_ns": 1800,
+        "out_paths": 1,
+        "out_verts": 6,
+        "out_area_u2": 49392008.6425,
+        "out_hash": "c6ca2b31526abf56"
+      }
+    },
+    {
+      "case_index": 6,
+      "site": "IB_CAND_POS",
+      "layer": 69,
+      "opcode": 0,
+      "in_verts": 17,
+      "rust_pnp": {
+        "median_ns": 2700,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 67047625.0,
+        "out_hash": "4b99dac715dc99f7"
+      },
+      "cpp_152": {
+        "median_ns": 3500,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 67047625,
+        "out_hash": "4b99dac715dc99f7"
+      },
+      "cpp_152_concave": {
+        "median_ns": 3500,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 67046127.87725,
+        "out_hash": "a50b263bc075bf44"
+      },
+      "v250_nodecim": {
+        "median_ns": 3500,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 67046127.87725,
+        "out_hash": "a50b263bc075bf44"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 3800,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 67046117.1398,
+        "out_hash": "642c141b67b19019"
+      },
+      "v250_decim": {
+        "median_ns": 3600,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 67046127.87725,
+        "out_hash": "a50b263bc075bf44"
+      },
+      "v250_decim_noX": {
+        "median_ns": 3850,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 67046117.1398,
+        "out_hash": "642c141b67b19019"
+      }
+    },
+    {
+      "case_index": 7,
+      "site": "IB_CAND_POS",
+      "layer": 87,
+      "opcode": 0,
+      "in_verts": 53,
+      "rust_pnp": {
+        "median_ns": 8850,
+        "out_paths": 1,
+        "out_verts": 50,
+        "out_area_u2": 139105063.0,
+        "out_hash": "e335acaefba6b8fc"
+      },
+      "cpp_152": {
+        "median_ns": 11450,
+        "out_paths": 1,
+        "out_verts": 50,
+        "out_area_u2": 139105063,
+        "out_hash": "e335acaefba6b8fc"
+      },
+      "cpp_152_concave": {
+        "median_ns": 8450,
+        "out_paths": 1,
+        "out_verts": 52,
+        "out_area_u2": 139099575.15015,
+        "out_hash": "e9ecd4dac3d3e5a0"
+      },
+      "v250_nodecim": {
+        "median_ns": 9150,
+        "out_paths": 1,
+        "out_verts": 50,
+        "out_area_u2": 139101396.89785,
+        "out_hash": "aea8f2b7c0ca1b1e"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 10150,
+        "out_paths": 1,
+        "out_verts": 50,
+        "out_area_u2": 139101405.1008,
+        "out_hash": "41f1cfaf56b8cbd6"
+      },
+      "v250_decim": {
+        "median_ns": 8500,
+        "out_paths": 1,
+        "out_verts": 52,
+        "out_area_u2": 139099575.15015,
+        "out_hash": "e9ecd4dac3d3e5a0"
+      },
+      "v250_decim_noX": {
+        "median_ns": 9500,
+        "out_paths": 1,
+        "out_verts": 52,
+        "out_area_u2": 139099580.07025,
+        "out_hash": "b1bd09b20ea54034"
+      }
+    },
+    {
+      "case_index": 8,
+      "site": "IB_CAND_POS",
+      "layer": 117,
+      "opcode": 0,
+      "in_verts": 8,
+      "rust_pnp": {
+        "median_ns": 1850,
+        "out_paths": 1,
+        "out_verts": 10,
+        "out_area_u2": 56193640.5,
+        "out_hash": "30171458a54c8cad"
+      },
+      "cpp_152": {
+        "median_ns": 2500,
+        "out_paths": 1,
+        "out_verts": 10,
+        "out_area_u2": 56193640.5,
+        "out_hash": "30171458a54c8cad"
+      },
+      "cpp_152_concave": {
+        "median_ns": 2000,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53685480.07415,
+        "out_hash": "c9baf989dd8d6f9d"
+      },
+      "v250_nodecim": {
+        "median_ns": 2600,
+        "out_paths": 1,
+        "out_verts": 10,
+        "out_area_u2": 56193341.27135,
+        "out_hash": "f3d97a948166bff5"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 2650,
+        "out_paths": 1,
+        "out_verts": 10,
+        "out_area_u2": 56193341.27135,
+        "out_hash": "f3d97a948166bff5"
+      },
+      "v250_decim": {
+        "median_ns": 2050,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53685480.07415,
+        "out_hash": "c9baf989dd8d6f9d"
+      },
+      "v250_decim_noX": {
+        "median_ns": 2000,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53685480.07415,
+        "out_hash": "c9baf989dd8d6f9d"
+      }
+    },
+    {
+      "case_index": 9,
+      "site": "IB_CAND_POS",
+      "layer": 163,
+      "opcode": 0,
+      "in_verts": 11,
+      "rust_pnp": {
+        "median_ns": 2100,
+        "out_paths": 1,
+        "out_verts": 16,
+        "out_area_u2": 72266732.0,
+        "out_hash": "289ec535ea3ac69c"
+      },
+      "cpp_152": {
+        "median_ns": 2900,
+        "out_paths": 1,
+        "out_verts": 16,
+        "out_area_u2": 72266732,
+        "out_hash": "289ec535ea3ac69c"
+      },
+      "cpp_152_concave": {
+        "median_ns": 3150,
+        "out_paths": 1,
+        "out_verts": 16,
+        "out_area_u2": 72271641.9708,
+        "out_hash": "31f14726f6959437"
+      },
+      "v250_nodecim": {
+        "median_ns": 3100,
+        "out_paths": 1,
+        "out_verts": 16,
+        "out_area_u2": 72271641.9708,
+        "out_hash": "31f14726f6959437"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 3100,
+        "out_paths": 1,
+        "out_verts": 16,
+        "out_area_u2": 72271641.9708,
+        "out_hash": "31f14726f6959437"
+      },
+      "v250_decim": {
+        "median_ns": 3250,
+        "out_paths": 1,
+        "out_verts": 16,
+        "out_area_u2": 72271641.9708,
+        "out_hash": "31f14726f6959437"
+      },
+      "v250_decim_noX": {
+        "median_ns": 3100,
+        "out_paths": 1,
+        "out_verts": 16,
+        "out_area_u2": 72271641.9708,
+        "out_hash": "31f14726f6959437"
+      }
+    },
+    {
+      "case_index": 10,
+      "site": "IB_CAND_POS",
+      "layer": 164,
+      "opcode": 0,
+      "in_verts": 27,
+      "rust_pnp": {
+        "median_ns": 5250,
+        "out_paths": 1,
+        "out_verts": 26,
+        "out_area_u2": 118236722.0,
+        "out_hash": "c6562383c2fad66f"
+      },
+      "cpp_152": {
+        "median_ns": 5850,
+        "out_paths": 1,
+        "out_verts": 26,
+        "out_area_u2": 118236722,
+        "out_hash": "c6562383c2fad66f"
+      },
+      "cpp_152_concave": {
+        "median_ns": 6250,
+        "out_paths": 1,
+        "out_verts": 26,
+        "out_area_u2": 118235649.66285,
+        "out_hash": "976ce8226644078f"
+      },
+      "v250_nodecim": {
+        "median_ns": 6200,
+        "out_paths": 1,
+        "out_verts": 26,
+        "out_area_u2": 118235649.66285,
+        "out_hash": "976ce8226644078f"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 6100,
+        "out_paths": 1,
+        "out_verts": 26,
+        "out_area_u2": 118235649.66285,
+        "out_hash": "976ce8226644078f"
+      },
+      "v250_decim": {
+        "median_ns": 6200,
+        "out_paths": 1,
+        "out_verts": 26,
+        "out_area_u2": 118235649.66285,
+        "out_hash": "976ce8226644078f"
+      },
+      "v250_decim_noX": {
+        "median_ns": 6100,
+        "out_paths": 1,
+        "out_verts": 26,
+        "out_area_u2": 118235649.66285,
+        "out_hash": "976ce8226644078f"
+      }
+    },
+    {
+      "case_index": 11,
+      "site": "IB_CAND_POS",
+      "layer": 165,
+      "opcode": 0,
+      "in_verts": 43,
+      "rust_pnp": {
+        "median_ns": 8200,
+        "out_paths": 1,
+        "out_verts": 46,
+        "out_area_u2": 142268796.5,
+        "out_hash": "d23d3f1d0e765852"
+      },
+      "cpp_152": {
+        "median_ns": 10750,
+        "out_paths": 1,
+        "out_verts": 46,
+        "out_area_u2": 142268796.5,
+        "out_hash": "d23d3f1d0e765852"
+      },
+      "cpp_152_concave": {
+        "median_ns": 7250,
+        "out_paths": 1,
+        "out_verts": 43,
+        "out_area_u2": 142270661.9708,
+        "out_hash": "00ca9285cfc2f14e"
+      },
+      "v250_nodecim": {
+        "median_ns": 7600,
+        "out_paths": 1,
+        "out_verts": 46,
+        "out_area_u2": 142270932.6252,
+        "out_hash": "2bd173acd02e46a9"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 9750,
+        "out_paths": 1,
+        "out_verts": 46,
+        "out_area_u2": 142270941.04555,
+        "out_hash": "24d6ef380da91531"
+      },
+      "v250_decim": {
+        "median_ns": 7550,
+        "out_paths": 1,
+        "out_verts": 43,
+        "out_area_u2": 142270661.9708,
+        "out_hash": "00ca9285cfc2f14e"
+      },
+      "v250_decim_noX": {
+        "median_ns": 9250,
+        "out_paths": 1,
+        "out_verts": 43,
+        "out_area_u2": 142270670.39115,
+        "out_hash": "7e4c8ef82680240e"
+      }
+    },
+    {
+      "case_index": 12,
+      "site": "IB_CAND_POS",
+      "layer": 298,
+      "opcode": 0,
+      "in_verts": 14,
+      "rust_pnp": {
+        "median_ns": 3000,
+        "out_paths": 1,
+        "out_verts": 15,
+        "out_area_u2": 84128075.0,
+        "out_hash": "0267850ab998d9a1"
+      },
+      "cpp_152": {
+        "median_ns": 3800,
+        "out_paths": 1,
+        "out_verts": 15,
+        "out_area_u2": 84128075,
+        "out_hash": "0267850ab998d9a1"
+      },
+      "cpp_152_concave": {
+        "median_ns": 3350,
+        "out_paths": 1,
+        "out_verts": 14,
+        "out_area_u2": 84103358.40655,
+        "out_hash": "9aafad851a5ed115"
+      },
+      "v250_nodecim": {
+        "median_ns": 3800,
+        "out_paths": 1,
+        "out_verts": 15,
+        "out_area_u2": 84129852.97765,
+        "out_hash": "ea6710737e5911f1"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 4100,
+        "out_paths": 1,
+        "out_verts": 15,
+        "out_area_u2": 84129852.60045,
+        "out_hash": "5ec2dc3de4edaa3f"
+      },
+      "v250_decim": {
+        "median_ns": 3300,
+        "out_paths": 1,
+        "out_verts": 14,
+        "out_area_u2": 84103358.40655,
+        "out_hash": "9aafad851a5ed115"
+      },
+      "v250_decim_noX": {
+        "median_ns": 3450,
+        "out_paths": 1,
+        "out_verts": 14,
+        "out_area_u2": 84103358.02935,
+        "out_hash": "c0a61bf2652735b3"
+      }
+    },
+    {
+      "case_index": 13,
+      "site": "IB_CAND_POS",
+      "layer": 328,
+      "opcode": 0,
+      "in_verts": 32,
+      "rust_pnp": {
+        "median_ns": 7750,
+        "out_paths": 1,
+        "out_verts": 32,
+        "out_area_u2": 126687618.0,
+        "out_hash": "27c56646c6d52ae3"
+      },
+      "cpp_152": {
+        "median_ns": 8450,
+        "out_paths": 1,
+        "out_verts": 32,
+        "out_area_u2": 126687618,
+        "out_hash": "27c56646c6d52ae3"
+      },
+      "cpp_152_concave": {
+        "median_ns": 5800,
+        "out_paths": 1,
+        "out_verts": 32,
+        "out_area_u2": 126686308.62645,
+        "out_hash": "19bac65b7c4a4ae7"
+      },
+      "v250_nodecim": {
+        "median_ns": 5950,
+        "out_paths": 1,
+        "out_verts": 32,
+        "out_area_u2": 126686308.62645,
+        "out_hash": "19bac65b7c4a4ae7"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 8800,
+        "out_paths": 1,
+        "out_verts": 32,
+        "out_area_u2": 126686253.0207,
+        "out_hash": "19a2ec95fbf97217"
+      },
+      "v250_decim": {
+        "median_ns": 6000,
+        "out_paths": 1,
+        "out_verts": 32,
+        "out_area_u2": 126686308.62645,
+        "out_hash": "19bac65b7c4a4ae7"
+      },
+      "v250_decim_noX": {
+        "median_ns": 8500,
+        "out_paths": 1,
+        "out_verts": 32,
+        "out_area_u2": 126686253.0207,
+        "out_hash": "19a2ec95fbf97217"
+      }
+    },
+    {
+      "case_index": 14,
+      "site": "IB_CAND_POS",
+      "layer": 355,
+      "opcode": 0,
+      "in_verts": 37,
+      "rust_pnp": {
+        "median_ns": 9400,
+        "out_paths": 1,
+        "out_verts": 37,
+        "out_area_u2": 175670105.0,
+        "out_hash": "510fe969e67a52aa"
+      },
+      "cpp_152": {
+        "median_ns": 10150,
+        "out_paths": 1,
+        "out_verts": 37,
+        "out_area_u2": 175670105,
+        "out_hash": "510fe969e67a52aa"
+      },
+      "cpp_152_concave": {
+        "median_ns": 6500,
+        "out_paths": 1,
+        "out_verts": 36,
+        "out_area_u2": 175667011.1904,
+        "out_hash": "9b553d5d205cee0b"
+      },
+      "v250_nodecim": {
+        "median_ns": 6950,
+        "out_paths": 1,
+        "out_verts": 37,
+        "out_area_u2": 175666904.9874,
+        "out_hash": "085f92f110563150"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 10250,
+        "out_paths": 1,
+        "out_verts": 37,
+        "out_area_u2": 175666914.771,
+        "out_hash": "021cbc2a8679aae9"
+      },
+      "v250_decim": {
+        "median_ns": 6600,
+        "out_paths": 1,
+        "out_verts": 36,
+        "out_area_u2": 175667011.1904,
+        "out_hash": "9b553d5d205cee0b"
+      },
+      "v250_decim_noX": {
+        "median_ns": 10450,
+        "out_paths": 1,
+        "out_verts": 36,
+        "out_area_u2": 175667020.974,
+        "out_hash": "489bb1cf41e07e5a"
+      }
+    },
+    {
+      "case_index": 15,
+      "site": "IB_CAND_POS",
+      "layer": 493,
+      "opcode": 0,
+      "in_verts": 87,
+      "rust_pnp": {
+        "median_ns": 34000,
+        "out_paths": 1,
+        "out_verts": 83,
+        "out_area_u2": 455853666.0,
+        "out_hash": "63b9156f701f43be"
+      },
+      "cpp_152": {
+        "median_ns": 30900,
+        "out_paths": 1,
+        "out_verts": 83,
+        "out_area_u2": 455853666,
+        "out_hash": "63b9156f701f43be"
+      },
+      "cpp_152_concave": {
+        "median_ns": 16550,
+        "out_paths": 1,
+        "out_verts": 79,
+        "out_area_u2": 455720220.5881,
+        "out_hash": "791aa4db9aebd329"
+      },
+      "v250_nodecim": {
+        "median_ns": 18400,
+        "out_paths": 1,
+        "out_verts": 80,
+        "out_area_u2": 455847815.70475,
+        "out_hash": "697492901e8538b8"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 30000,
+        "out_paths": 1,
+        "out_verts": 82,
+        "out_area_u2": 455847815.90495,
+        "out_hash": "2733d7d70729c238"
+      },
+      "v250_decim": {
+        "median_ns": 16500,
+        "out_paths": 1,
+        "out_verts": 79,
+        "out_area_u2": 455720220.5881,
+        "out_hash": "791aa4db9aebd329"
+      },
+      "v250_decim_noX": {
+        "median_ns": 26650,
+        "out_paths": 1,
+        "out_verts": 81,
+        "out_area_u2": 455720242.66535,
+        "out_hash": "4a6af7645c834df7"
+      }
+    },
+    {
+      "case_index": 16,
+      "site": "IB_DEEP_NEG",
+      "layer": 38,
+      "opcode": 0,
+      "in_verts": 378,
+      "rust_pnp": {
+        "median_ns": 1112000,
+        "out_paths": 1,
+        "out_verts": 10,
+        "out_area_u2": 597037901.5,
+        "out_hash": "0d9c42dbe452e8e1"
+      },
+      "cpp_152": {
+        "median_ns": 797700,
+        "out_paths": 1,
+        "out_verts": 10,
+        "out_area_u2": 597037901.5,
+        "out_hash": "0d9c42dbe452e8e1"
+      },
+      "cpp_152_concave": {
+        "median_ns": 139650,
+        "out_paths": 2,
+        "out_verts": 13,
+        "out_area_u2": 623704592.5642501,
+        "out_hash": "4fae39b0f0217fbb"
+      },
+      "v250_nodecim": {
+        "median_ns": 669300,
+        "out_paths": 1,
+        "out_verts": 10,
+        "out_area_u2": 597061112.8848,
+        "out_hash": "d14719a22eeca5f6"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 791900,
+        "out_paths": 1,
+        "out_verts": 10,
+        "out_area_u2": 597061112.8848,
+        "out_hash": "d14719a22eeca5f6"
+      },
+      "v250_decim": {
+        "median_ns": 141700,
+        "out_paths": 2,
+        "out_verts": 13,
+        "out_area_u2": 623704592.5642501,
+        "out_hash": "4fae39b0f0217fbb"
+      },
+      "v250_decim_noX": {
+        "median_ns": 195350,
+        "out_paths": 2,
+        "out_verts": 13,
+        "out_area_u2": 623704592.5642501,
+        "out_hash": "4fae39b0f0217fbb"
+      }
+    },
+    {
+      "case_index": 17,
+      "site": "IB_DEEP_NEG",
+      "layer": 41,
+      "opcode": 0,
+      "in_verts": 1303,
+      "rust_pnp": {
+        "median_ns": 8103750,
+        "out_paths": 1,
+        "out_verts": 139,
+        "out_area_u2": 4439329802.5,
+        "out_hash": "8e08537c8d2df7b2"
+      },
+      "cpp_152": {
+        "median_ns": 5643650,
+        "out_paths": 1,
+        "out_verts": 139,
+        "out_area_u2": 4439329802.5,
+        "out_hash": "8e08537c8d2df7b2"
+      },
+      "cpp_152_concave": {
+        "median_ns": 862200,
+        "out_paths": 1,
+        "out_verts": 197,
+        "out_area_u2": 4588289700.45215,
+        "out_hash": "d45f591953d484e4"
+      },
+      "v250_nodecim": {
+        "median_ns": 4085850,
+        "out_paths": 1,
+        "out_verts": 140,
+        "out_area_u2": 4439412852.30175,
+        "out_hash": "d3c811abeb9c5922"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 5532900,
+        "out_paths": 1,
+        "out_verts": 140,
+        "out_area_u2": 4439412709.22065,
+        "out_hash": "9225aebdc83d2b48"
+      },
+      "v250_decim": {
+        "median_ns": 866850,
+        "out_paths": 1,
+        "out_verts": 197,
+        "out_area_u2": 4588289700.45215,
+        "out_hash": "d45f591953d484e4"
+      },
+      "v250_decim_noX": {
+        "median_ns": 1450400,
+        "out_paths": 1,
+        "out_verts": 197,
+        "out_area_u2": 4588289596.42915,
+        "out_hash": "fe0e051235473499"
+      }
+    },
+    {
+      "case_index": 18,
+      "site": "IB_DEEP_NEG",
+      "layer": 42,
+      "opcode": 0,
+      "in_verts": 2523,
+      "rust_pnp": {
+        "median_ns": 75090100,
+        "out_paths": 1,
+        "out_verts": 34,
+        "out_area_u2": 1097636920.0,
+        "out_hash": "599ef640021dd08c"
+      },
+      "cpp_152": {
+        "median_ns": 59795800,
+        "out_paths": 1,
+        "out_verts": 34,
+        "out_area_u2": 1097636920,
+        "out_hash": "599ef640021dd08c"
+      },
+      "cpp_152_concave": {
+        "median_ns": 5338050,
+        "out_paths": 2,
+        "out_verts": 43,
+        "out_area_u2": 1281000757.4962,
+        "out_hash": "9fef7175c4b43b89"
+      },
+      "v250_nodecim": {
+        "median_ns": 56492450,
+        "out_paths": 1,
+        "out_verts": 35,
+        "out_area_u2": 1097638996.2021,
+        "out_hash": "606afc102cb17d8a"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 60912750,
+        "out_paths": 1,
+        "out_verts": 35,
+        "out_area_u2": 1097638996.2021,
+        "out_hash": "606afc102cb17d8a"
+      },
+      "v250_decim": {
+        "median_ns": 5379550,
+        "out_paths": 2,
+        "out_verts": 43,
+        "out_area_u2": 1281000757.4962,
+        "out_hash": "9fef7175c4b43b89"
+      },
+      "v250_decim_noX": {
+        "median_ns": 7676000,
+        "out_paths": 2,
+        "out_verts": 43,
+        "out_area_u2": 1281000805.25105,
+        "out_hash": "37caf9d654133888"
+      }
+    },
+    {
+      "case_index": 19,
+      "site": "IB_DEEP_NEG",
+      "layer": 56,
+      "opcode": 0,
+      "in_verts": 3083,
+      "rust_pnp": {
+        "median_ns": 36657850,
+        "out_paths": 2,
+        "out_verts": 55,
+        "out_area_u2": 1455000810.0,
+        "out_hash": "3d1b7a5bac266571"
+      },
+      "cpp_152": {
+        "median_ns": 27228450,
+        "out_paths": 2,
+        "out_verts": 55,
+        "out_area_u2": 1455000810,
+        "out_hash": "3d1b7a5bac266571"
+      },
+      "cpp_152_concave": {
+        "median_ns": 2919750,
+        "out_paths": 4,
+        "out_verts": 91,
+        "out_area_u2": 1410199772.4115999,
+        "out_hash": "0fc68554f7388d2e"
+      },
+      "v250_nodecim": {
+        "median_ns": 21103650,
+        "out_paths": 2,
+        "out_verts": 54,
+        "out_area_u2": 1455069362.5778,
+        "out_hash": "0d34955cb1b8dcbd"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 27266000,
+        "out_paths": 2,
+        "out_verts": 54,
+        "out_area_u2": 1455069360.27305,
+        "out_hash": "5c603a76da912392"
+      },
+      "v250_decim": {
+        "median_ns": 2904450,
+        "out_paths": 4,
+        "out_verts": 91,
+        "out_area_u2": 1410199772.4115999,
+        "out_hash": "0fc68554f7388d2e"
+      },
+      "v250_decim_noX": {
+        "median_ns": 5638550,
+        "out_paths": 4,
+        "out_verts": 91,
+        "out_area_u2": 1410199734.2001002,
+        "out_hash": "c7229ba8577869a2"
+      }
+    },
+    {
+      "case_index": 20,
+      "site": "IB_DEEP_NEG",
+      "layer": 58,
+      "opcode": 0,
+      "in_verts": 1002,
+      "rust_pnp": {
+        "median_ns": 14937000,
+        "out_paths": 1,
+        "out_verts": 48,
+        "out_area_u2": 877111840.5,
+        "out_hash": "c8b1232492eb05c4"
+      },
+      "cpp_152": {
+        "median_ns": 11613050,
+        "out_paths": 1,
+        "out_verts": 48,
+        "out_area_u2": 877111840.5,
+        "out_hash": "c8b1232492eb05c4"
+      },
+      "cpp_152_concave": {
+        "median_ns": 1116250,
+        "out_paths": 1,
+        "out_verts": 63,
+        "out_area_u2": 924593459.00175,
+        "out_hash": "eeda96a2d96cffba"
+      },
+      "v250_nodecim": {
+        "median_ns": 10182300,
+        "out_paths": 1,
+        "out_verts": 48,
+        "out_area_u2": 877164469.7201,
+        "out_hash": "ce561227f67f1f81"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 11650550,
+        "out_paths": 1,
+        "out_verts": 48,
+        "out_area_u2": 877164471.0667,
+        "out_hash": "3cd83b130875020f"
+      },
+      "v250_decim": {
+        "median_ns": 1100950,
+        "out_paths": 1,
+        "out_verts": 63,
+        "out_area_u2": 924593459.00175,
+        "out_hash": "eeda96a2d96cffba"
+      },
+      "v250_decim_noX": {
+        "median_ns": 1784200,
+        "out_paths": 1,
+        "out_verts": 63,
+        "out_area_u2": 924593447.73155,
+        "out_hash": "add32ec4e3f3e8c6"
+      }
+    },
+    {
+      "case_index": 21,
+      "site": "IB_DEEP_NEG",
+      "layer": 68,
+      "opcode": 0,
+      "in_verts": 3867,
+      "rust_pnp": {
+        "median_ns": 49630900,
+        "out_paths": 10,
+        "out_verts": 475,
+        "out_area_u2": 5112535065.0,
+        "out_hash": "5345b8931b8f4f28"
+      },
+      "cpp_152": {
+        "median_ns": 37042500,
+        "out_paths": 10,
+        "out_verts": 475,
+        "out_area_u2": 5112535065,
+        "out_hash": "5345b8931b8f4f28"
+      },
+      "cpp_152_concave": {
+        "median_ns": 3338250,
+        "out_paths": 5,
+        "out_verts": 510,
+        "out_area_u2": 5542098217.095851,
+        "out_hash": "9250c81ad0c20911"
+      },
+      "v250_nodecim": {
+        "median_ns": 25621300,
+        "out_paths": 10,
+        "out_verts": 435,
+        "out_area_u2": 5112742244.09235,
+        "out_hash": "bbcfd3bc4b27afe8"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 37275200,
+        "out_paths": 10,
+        "out_verts": 437,
+        "out_area_u2": 5112741788.4953,
+        "out_hash": "a203ce2c2a473a55"
+      },
+      "v250_decim": {
+        "median_ns": 3327550,
+        "out_paths": 5,
+        "out_verts": 510,
+        "out_area_u2": 5542098217.095851,
+        "out_hash": "9250c81ad0c20911"
+      },
+      "v250_decim_noX": {
+        "median_ns": 8316850,
+        "out_paths": 5,
+        "out_verts": 513,
+        "out_area_u2": 5542097779.402349,
+        "out_hash": "b907b81b773eaf73"
+      }
+    },
+    {
+      "case_index": 22,
+      "site": "IB_DEEP_NEG",
+      "layer": 100,
+      "opcode": 0,
+      "in_verts": 845,
+      "rust_pnp": {
+        "median_ns": 7506050,
+        "out_paths": 1,
+        "out_verts": 20,
+        "out_area_u2": 99097346.5,
+        "out_hash": "eaa8d99efb1df679"
+      },
+      "cpp_152": {
+        "median_ns": 5692450,
+        "out_paths": 1,
+        "out_verts": 20,
+        "out_area_u2": 99097346.5,
+        "out_hash": "eaa8d99efb1df679"
+      },
+      "cpp_152_concave": {
+        "median_ns": 779450,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 195115446.863,
+        "out_hash": "f1e82848de600e92"
+      },
+      "v250_nodecim": {
+        "median_ns": 4816100,
+        "out_paths": 1,
+        "out_verts": 20,
+        "out_area_u2": 99133258.765,
+        "out_hash": "7733bbeeff5655cf"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 5525850,
+        "out_paths": 1,
+        "out_verts": 20,
+        "out_area_u2": 99133258.765,
+        "out_hash": "7733bbeeff5655cf"
+      },
+      "v250_decim": {
+        "median_ns": 782650,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 195115446.863,
+        "out_hash": "f1e82848de600e92"
+      },
+      "v250_decim_noX": {
+        "median_ns": 1205250,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 195115446.863,
+        "out_hash": "f1e82848de600e92"
+      }
+    },
+    {
+      "case_index": 23,
+      "site": "IB_DEEP_NEG",
+      "layer": 133,
+      "opcode": 0,
+      "in_verts": 1174,
+      "rust_pnp": {
+        "median_ns": 18257700,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152": {
+        "median_ns": 14381350,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152_concave": {
+        "median_ns": 1378950,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim": {
+        "median_ns": 9953850,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 13927050,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 1439200,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim_noX": {
+        "median_ns": 3739250,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 24,
+      "site": "IB_DEEP_NEG",
+      "layer": 165,
+      "opcode": 0,
+      "in_verts": 4610,
+      "rust_pnp": {
+        "median_ns": 215746800,
+        "out_paths": 4,
+        "out_verts": 325,
+        "out_area_u2": 2984727643.5,
+        "out_hash": "d329d13db30ee7e5"
+      },
+      "cpp_152": {
+        "median_ns": 179963050,
+        "out_paths": 4,
+        "out_verts": 325,
+        "out_area_u2": 2984727643.5,
+        "out_hash": "d329d13db30ee7e5"
+      },
+      "cpp_152_concave": {
+        "median_ns": 20717000,
+        "out_paths": 7,
+        "out_verts": 334,
+        "out_area_u2": 3262696506.9291,
+        "out_hash": "ceb2ba10dcd872e6"
+      },
+      "v250_nodecim": {
+        "median_ns": 154072050,
+        "out_paths": 4,
+        "out_verts": 298,
+        "out_area_u2": 2984897844.2714996,
+        "out_hash": "20a28a56c1d2e8ed"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 193351950,
+        "out_paths": 4,
+        "out_verts": 302,
+        "out_area_u2": 2984897809.53965,
+        "out_hash": "53ddcf5e7d5d93d0"
+      },
+      "v250_decim": {
+        "median_ns": 20564650,
+        "out_paths": 7,
+        "out_verts": 334,
+        "out_area_u2": 3262696506.9291,
+        "out_hash": "ceb2ba10dcd872e6"
+      },
+      "v250_decim_noX": {
+        "median_ns": 43859350,
+        "out_paths": 7,
+        "out_verts": 341,
+        "out_area_u2": 3262696572.5556,
+        "out_hash": "65e363dbfc1e8511"
+      }
+    },
+    {
+      "case_index": 25,
+      "site": "IB_DEEP_NEG",
+      "layer": 210,
+      "opcode": 0,
+      "in_verts": 1057,
+      "rust_pnp": {
+        "median_ns": 19608300,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 1011176488.5,
+        "out_hash": "aec73917a3f8b4db"
+      },
+      "cpp_152": {
+        "median_ns": 15163850,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 1011176488.5,
+        "out_hash": "aec73917a3f8b4db"
+      },
+      "cpp_152_concave": {
+        "median_ns": 1040050,
+        "out_paths": 2,
+        "out_verts": 39,
+        "out_area_u2": 1143041556.7488,
+        "out_hash": "8cc42316aea80489"
+      },
+      "v250_nodecim": {
+        "median_ns": 12950500,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 1011232418.8745,
+        "out_hash": "d90653489b22070c"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 15396550,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 1011232418.8745,
+        "out_hash": "f8160fb514f07360"
+      },
+      "v250_decim": {
+        "median_ns": 1022200,
+        "out_paths": 2,
+        "out_verts": 39,
+        "out_area_u2": 1143041556.7488,
+        "out_hash": "8cc42316aea80489"
+      },
+      "v250_decim_noX": {
+        "median_ns": 2104900,
+        "out_paths": 2,
+        "out_verts": 39,
+        "out_area_u2": 1143041535.9487,
+        "out_hash": "fb5870d160ec8da0"
+      }
+    },
+    {
+      "case_index": 26,
+      "site": "IB_DEEP_NEG",
+      "layer": 268,
+      "opcode": 0,
+      "in_verts": 718,
+      "rust_pnp": {
+        "median_ns": 8025950,
+        "out_paths": 1,
+        "out_verts": 23,
+        "out_area_u2": 718610363.0,
+        "out_hash": "9a241b82072ca4d0"
+      },
+      "cpp_152": {
+        "median_ns": 5935700,
+        "out_paths": 1,
+        "out_verts": 23,
+        "out_area_u2": 718610363,
+        "out_hash": "9a241b82072ca4d0"
+      },
+      "cpp_152_concave": {
+        "median_ns": 356150,
+        "out_paths": 1,
+        "out_verts": 49,
+        "out_area_u2": 796807464.86555,
+        "out_hash": "2def1da544d4cbdc"
+      },
+      "v250_nodecim": {
+        "median_ns": 5176850,
+        "out_paths": 1,
+        "out_verts": 23,
+        "out_area_u2": 718658755.2464,
+        "out_hash": "a324d85c1357c923"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 5936700,
+        "out_paths": 1,
+        "out_verts": 23,
+        "out_area_u2": 718658755.2464,
+        "out_hash": "48e39d335e4bc6e3"
+      },
+      "v250_decim": {
+        "median_ns": 348700,
+        "out_paths": 1,
+        "out_verts": 49,
+        "out_area_u2": 796807464.86555,
+        "out_hash": "2def1da544d4cbdc"
+      },
+      "v250_decim_noX": {
+        "median_ns": 646350,
+        "out_paths": 1,
+        "out_verts": 49,
+        "out_area_u2": 796807421.0799,
+        "out_hash": "938a3207a6126b46"
+      }
+    },
+    {
+      "case_index": 27,
+      "site": "IB_DEEP_NEG",
+      "layer": 379,
+      "opcode": 0,
+      "in_verts": 2320,
+      "rust_pnp": {
+        "median_ns": 99949500,
+        "out_paths": 4,
+        "out_verts": 483,
+        "out_area_u2": 8452052446.5,
+        "out_hash": "99f4a0d3c9f183a4"
+      },
+      "cpp_152": {
+        "median_ns": 80907050,
+        "out_paths": 4,
+        "out_verts": 483,
+        "out_area_u2": 8452052446.5,
+        "out_hash": "99f4a0d3c9f183a4"
+      },
+      "cpp_152_concave": {
+        "median_ns": 7394600,
+        "out_paths": 3,
+        "out_verts": 426,
+        "out_area_u2": 8674889702.5156,
+        "out_hash": "66eb779dde79dbd9"
+      },
+      "v250_nodecim": {
+        "median_ns": 66807600,
+        "out_paths": 4,
+        "out_verts": 446,
+        "out_area_u2": 8452417371.294899,
+        "out_hash": "bdcc28e79dedf8dc"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 86200500,
+        "out_paths": 4,
+        "out_verts": 452,
+        "out_area_u2": 8452416912.1967,
+        "out_hash": "56f90ebb07a5ef16"
+      },
+      "v250_decim": {
+        "median_ns": 7430000,
+        "out_paths": 3,
+        "out_verts": 426,
+        "out_area_u2": 8674889702.5156,
+        "out_hash": "66eb779dde79dbd9"
+      },
+      "v250_decim_noX": {
+        "median_ns": 18295050,
+        "out_paths": 3,
+        "out_verts": 435,
+        "out_area_u2": 8674889131.7616,
+        "out_hash": "78aea888ab23eeb4"
+      }
+    },
+    {
+      "case_index": 28,
+      "site": "IB_DEEP_NEG",
+      "layer": 386,
+      "opcode": 0,
+      "in_verts": 690,
+      "rust_pnp": {
+        "median_ns": 8392650,
+        "out_paths": 1,
+        "out_verts": 18,
+        "out_area_u2": 297679209.0,
+        "out_hash": "f6e2c6670539bae5"
+      },
+      "cpp_152": {
+        "median_ns": 6078900,
+        "out_paths": 1,
+        "out_verts": 18,
+        "out_area_u2": 297679209,
+        "out_hash": "f6e2c6670539bae5"
+      },
+      "cpp_152_concave": {
+        "median_ns": 274200,
+        "out_paths": 1,
+        "out_verts": 35,
+        "out_area_u2": 422521459.67655,
+        "out_hash": "e1aad2994c9a066e"
+      },
+      "v250_nodecim": {
+        "median_ns": 5467750,
+        "out_paths": 1,
+        "out_verts": 18,
+        "out_area_u2": 297710983.4812,
+        "out_hash": "dd6359c69817e175"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 6108550,
+        "out_paths": 1,
+        "out_verts": 18,
+        "out_area_u2": 297710983.4812,
+        "out_hash": "915d31db2e848e41"
+      },
+      "v250_decim": {
+        "median_ns": 262700,
+        "out_paths": 1,
+        "out_verts": 35,
+        "out_area_u2": 422521459.67655,
+        "out_hash": "e1aad2994c9a066e"
+      },
+      "v250_decim_noX": {
+        "median_ns": 471900,
+        "out_paths": 1,
+        "out_verts": 35,
+        "out_area_u2": 422521467.17595,
+        "out_hash": "151e761d565cf742"
+      }
+    },
+    {
+      "case_index": 29,
+      "site": "IB_DEEP_NEG",
+      "layer": 468,
+      "opcode": 0,
+      "in_verts": 559,
+      "rust_pnp": {
+        "median_ns": 4582850,
+        "out_paths": 1,
+        "out_verts": 23,
+        "out_area_u2": 171596728.5,
+        "out_hash": "158fa1fc8ac25bb9"
+      },
+      "cpp_152": {
+        "median_ns": 3182250,
+        "out_paths": 1,
+        "out_verts": 23,
+        "out_area_u2": 171596728.5,
+        "out_hash": "158fa1fc8ac25bb9"
+      },
+      "cpp_152_concave": {
+        "median_ns": 218950,
+        "out_paths": 1,
+        "out_verts": 14,
+        "out_area_u2": 180756187.7856,
+        "out_hash": "76206631b8f9bcf6"
+      },
+      "v250_nodecim": {
+        "median_ns": 2471750,
+        "out_paths": 1,
+        "out_verts": 22,
+        "out_area_u2": 171611799.57455,
+        "out_hash": "07aecd7dc1af7df5"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 3136700,
+        "out_paths": 1,
+        "out_verts": 22,
+        "out_area_u2": 171611816.71275,
+        "out_hash": "f983279dc20d8a63"
+      },
+      "v250_decim": {
+        "median_ns": 205200,
+        "out_paths": 1,
+        "out_verts": 14,
+        "out_area_u2": 180756187.7856,
+        "out_hash": "76206631b8f9bcf6"
+      },
+      "v250_decim_noX": {
+        "median_ns": 480100,
+        "out_paths": 1,
+        "out_verts": 14,
+        "out_area_u2": 180756239.98445,
+        "out_hash": "8e349366f76e6d4d"
+      }
+    },
+    {
+      "case_index": 30,
+      "site": "IB_DEEP_NEG",
+      "layer": 492,
+      "opcode": 0,
+      "in_verts": 759,
+      "rust_pnp": {
+        "median_ns": 7716150,
+        "out_paths": 3,
+        "out_verts": 38,
+        "out_area_u2": 66720387.5,
+        "out_hash": "92d3b03da12c0b58"
+      },
+      "cpp_152": {
+        "median_ns": 5694450,
+        "out_paths": 3,
+        "out_verts": 38,
+        "out_area_u2": 66720387.5,
+        "out_hash": "92d3b03da12c0b58"
+      },
+      "cpp_152_concave": {
+        "median_ns": 604400,
+        "out_paths": 1,
+        "out_verts": 47,
+        "out_area_u2": 112376914.56805,
+        "out_hash": "37cdd1ceb16d1475"
+      },
+      "v250_nodecim": {
+        "median_ns": 4832650,
+        "out_paths": 3,
+        "out_verts": 38,
+        "out_area_u2": 66723466.2404,
+        "out_hash": "41fa96bc173c1311"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 5632600,
+        "out_paths": 3,
+        "out_verts": 38,
+        "out_area_u2": 66723464.26845,
+        "out_hash": "d4f3506fe225019c"
+      },
+      "v250_decim": {
+        "median_ns": 611300,
+        "out_paths": 1,
+        "out_verts": 47,
+        "out_area_u2": 112376914.56805,
+        "out_hash": "37cdd1ceb16d1475"
+      },
+      "v250_decim_noX": {
+        "median_ns": 1069700,
+        "out_paths": 1,
+        "out_verts": 47,
+        "out_area_u2": 112376900.9406,
+        "out_hash": "5af41dfe2a52a424"
+      }
+    },
+    {
+      "case_index": 31,
+      "site": "IB_DEEP_NEG",
+      "layer": 493,
+      "opcode": 0,
+      "in_verts": 812,
+      "rust_pnp": {
+        "median_ns": 11301750,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152": {
+        "median_ns": 8479000,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152_concave": {
+        "median_ns": 645100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim": {
+        "median_ns": 7359250,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 8378150,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 643550,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim_noX": {
+        "median_ns": 1509650,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 32,
+      "site": "IB_DEEP_POS",
+      "layer": 23,
+      "opcode": 0,
+      "in_verts": 5741,
+      "rust_pnp": {
+        "median_ns": 24582950,
+        "out_paths": 3,
+        "out_verts": 1329,
+        "out_area_u2": 48454307829.5,
+        "out_hash": "a7926e4d54776b71"
+      },
+      "cpp_152": {
+        "median_ns": 17067850,
+        "out_paths": 3,
+        "out_verts": 1329,
+        "out_area_u2": 48454307829.5,
+        "out_hash": "a7926e4d54776b71"
+      },
+      "cpp_152_concave": {
+        "median_ns": 3517750,
+        "out_paths": 3,
+        "out_verts": 1281,
+        "out_area_u2": 47887604361.282646,
+        "out_hash": "dd274a8591ff51d0"
+      },
+      "v250_nodecim": {
+        "median_ns": 14381250,
+        "out_paths": 3,
+        "out_verts": 1319,
+        "out_area_u2": 48454433796.661545,
+        "out_hash": "f678db2fbe153023"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 17533850,
+        "out_paths": 3,
+        "out_verts": 1321,
+        "out_area_u2": 48454433555.9224,
+        "out_hash": "2e9da44d3aadc08a"
+      },
+      "v250_decim": {
+        "median_ns": 3494650,
+        "out_paths": 3,
+        "out_verts": 1281,
+        "out_area_u2": 47887604361.282646,
+        "out_hash": "dd274a8591ff51d0"
+      },
+      "v250_decim_noX": {
+        "median_ns": 5722900,
+        "out_paths": 3,
+        "out_verts": 1285,
+        "out_area_u2": 47887604278.13531,
+        "out_hash": "d480c75bc4626eaa"
+      }
+    },
+    {
+      "case_index": 33,
+      "site": "IB_DEEP_POS",
+      "layer": 37,
+      "opcode": 0,
+      "in_verts": 8630,
+      "rust_pnp": {
+        "median_ns": 41016550,
+        "out_paths": 3,
+        "out_verts": 2183,
+        "out_area_u2": 88602375111.0,
+        "out_hash": "d8b56ca87b542415"
+      },
+      "cpp_152": {
+        "median_ns": 29681350,
+        "out_paths": 3,
+        "out_verts": 2183,
+        "out_area_u2": 88602375111,
+        "out_hash": "d8b56ca87b542415"
+      },
+      "cpp_152_concave": {
+        "median_ns": 6169800,
+        "out_paths": 4,
+        "out_verts": 2099,
+        "out_area_u2": 87555848449.4361,
+        "out_hash": "4372b9ecd2627a12"
+      },
+      "v250_nodecim": {
+        "median_ns": 25331200,
+        "out_paths": 3,
+        "out_verts": 2156,
+        "out_area_u2": 88602482373.64174,
+        "out_hash": "c631945eddab63ef"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 29832350,
+        "out_paths": 3,
+        "out_verts": 2166,
+        "out_area_u2": 88602481495.85829,
+        "out_hash": "ee656c1662d9ffaa"
+      },
+      "v250_decim": {
+        "median_ns": 6165150,
+        "out_paths": 4,
+        "out_verts": 2099,
+        "out_area_u2": 87555848449.4361,
+        "out_hash": "4372b9ecd2627a12"
+      },
+      "v250_decim_noX": {
+        "median_ns": 10298750,
+        "out_paths": 4,
+        "out_verts": 2110,
+        "out_area_u2": 87555847750.03194,
+        "out_hash": "27a513e8d6e4f90c"
+      }
+    },
+    {
+      "case_index": 34,
+      "site": "IB_DEEP_POS",
+      "layer": 46,
+      "opcode": 0,
+      "in_verts": 13758,
+      "rust_pnp": {
+        "median_ns": 156203250,
+        "out_paths": 4,
+        "out_verts": 3091,
+        "out_area_u2": 118791037501.0,
+        "out_hash": "9925460098f95ee7"
+      },
+      "cpp_152": {
+        "median_ns": 120847700,
+        "out_paths": 4,
+        "out_verts": 3091,
+        "out_area_u2": 118791037501,
+        "out_hash": "9925460098f95ee7"
+      },
+      "cpp_152_concave": {
+        "median_ns": 20424350,
+        "out_paths": 4,
+        "out_verts": 2965,
+        "out_area_u2": 117697891166.54213,
+        "out_hash": "0104650e06ac7935"
+      },
+      "v250_nodecim": {
+        "median_ns": 109359900,
+        "out_paths": 4,
+        "out_verts": 3090,
+        "out_area_u2": 118791167099.98592,
+        "out_hash": "ed0f2bdf67737bbc"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 129043350,
+        "out_paths": 4,
+        "out_verts": 3100,
+        "out_area_u2": 118791166603.32066,
+        "out_hash": "1eb86d130dd953e2"
+      },
+      "v250_decim": {
+        "median_ns": 20942650,
+        "out_paths": 4,
+        "out_verts": 2965,
+        "out_area_u2": 117697891166.54213,
+        "out_hash": "0104650e06ac7935"
+      },
+      "v250_decim_noX": {
+        "median_ns": 37766150,
+        "out_paths": 4,
+        "out_verts": 2981,
+        "out_area_u2": 117697890697.32045,
+        "out_hash": "bfeb08fbdee839f4"
+      }
+    },
+    {
+      "case_index": 35,
+      "site": "IB_DEEP_POS",
+      "layer": 48,
+      "opcode": 0,
+      "in_verts": 14536,
+      "rust_pnp": {
+        "median_ns": 169264450,
+        "out_paths": 3,
+        "out_verts": 3269,
+        "out_area_u2": 119503694250.5,
+        "out_hash": "bded0b773aec7205"
+      },
+      "cpp_152": {
+        "median_ns": 129300600,
+        "out_paths": 3,
+        "out_verts": 3269,
+        "out_area_u2": 119503694250.5,
+        "out_hash": "bded0b773aec7205"
+      },
+      "cpp_152_concave": {
+        "median_ns": 24851250,
+        "out_paths": 3,
+        "out_verts": 3007,
+        "out_area_u2": 118309348175.9006,
+        "out_hash": "781d959c0cee08a1"
+      },
+      "v250_nodecim": {
+        "median_ns": 115244700,
+        "out_paths": 3,
+        "out_verts": 3244,
+        "out_area_u2": 119503854910.30406,
+        "out_hash": "4f07afa4c05314e5"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 135933450,
+        "out_paths": 3,
+        "out_verts": 3253,
+        "out_area_u2": 119503854037.96771,
+        "out_hash": "8b98bd537f8be353"
+      },
+      "v250_decim": {
+        "median_ns": 25232100,
+        "out_paths": 3,
+        "out_verts": 3007,
+        "out_area_u2": 118309348175.9006,
+        "out_hash": "781d959c0cee08a1"
+      },
+      "v250_decim_noX": {
+        "median_ns": 43317450,
+        "out_paths": 3,
+        "out_verts": 3019,
+        "out_area_u2": 118309347189.1268,
+        "out_hash": "3349e628f2ddf6a5"
+      }
+    },
+    {
+      "case_index": 36,
+      "site": "IB_DEEP_POS",
+      "layer": 57,
+      "opcode": 0,
+      "in_verts": 10246,
+      "rust_pnp": {
+        "median_ns": 67963350,
+        "out_paths": 1,
+        "out_verts": 2238,
+        "out_area_u2": 118696295036.0,
+        "out_hash": "b736097572219db8"
+      },
+      "cpp_152": {
+        "median_ns": 56822300,
+        "out_paths": 1,
+        "out_verts": 2238,
+        "out_area_u2": 118696295036,
+        "out_hash": "b736097572219db8"
+      },
+      "cpp_152_concave": {
+        "median_ns": 9815600,
+        "out_paths": 1,
+        "out_verts": 2224,
+        "out_area_u2": 117737557204.03305,
+        "out_hash": "e3eb8f3993db205d"
+      },
+      "v250_nodecim": {
+        "median_ns": 41639550,
+        "out_paths": 1,
+        "out_verts": 2233,
+        "out_area_u2": 118696413017.94965,
+        "out_hash": "3bdf06b0378fe2f1"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 51268100,
+        "out_paths": 1,
+        "out_verts": 2241,
+        "out_area_u2": 118696412559.23215,
+        "out_hash": "44aca0369c790dc5"
+      },
+      "v250_decim": {
+        "median_ns": 9938100,
+        "out_paths": 1,
+        "out_verts": 2224,
+        "out_area_u2": 117737557204.03305,
+        "out_hash": "e3eb8f3993db205d"
+      },
+      "v250_decim_noX": {
+        "median_ns": 16340850,
+        "out_paths": 1,
+        "out_verts": 2237,
+        "out_area_u2": 117737557267.67715,
+        "out_hash": "660346472aabc38c"
+      }
+    },
+    {
+      "case_index": 37,
+      "site": "IB_DEEP_POS",
+      "layer": 66,
+      "opcode": 0,
+      "in_verts": 8080,
+      "rust_pnp": {
+        "median_ns": 47877700,
+        "out_paths": 1,
+        "out_verts": 2098,
+        "out_area_u2": 119440537592.5,
+        "out_hash": "001f3885a90b1acb"
+      },
+      "cpp_152": {
+        "median_ns": 39689400,
+        "out_paths": 1,
+        "out_verts": 2098,
+        "out_area_u2": 119440537592.5,
+        "out_hash": "001f3885a90b1acb"
+      },
+      "cpp_152_concave": {
+        "median_ns": 5342400,
+        "out_paths": 1,
+        "out_verts": 2039,
+        "out_area_u2": 118825897210.95026,
+        "out_hash": "30c431b591e8d608"
+      },
+      "v250_nodecim": {
+        "median_ns": 29120700,
+        "out_paths": 1,
+        "out_verts": 2080,
+        "out_area_u2": 119440611546.35374,
+        "out_hash": "63186bd1319eae59"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 35646000,
+        "out_paths": 1,
+        "out_verts": 2091,
+        "out_area_u2": 119440611450.76825,
+        "out_hash": "803e2586a1cd6fd4"
+      },
+      "v250_decim": {
+        "median_ns": 5370600,
+        "out_paths": 1,
+        "out_verts": 2039,
+        "out_area_u2": 118825897210.95026,
+        "out_hash": "30c431b591e8d608"
+      },
+      "v250_decim_noX": {
+        "median_ns": 10141700,
+        "out_paths": 1,
+        "out_verts": 2057,
+        "out_area_u2": 118825897273.47835,
+        "out_hash": "1dbf8dd6ff83b33c"
+      }
+    },
+    {
+      "case_index": 38,
+      "site": "IB_DEEP_POS",
+      "layer": 99,
+      "opcode": 0,
+      "in_verts": 9986,
+      "rust_pnp": {
+        "median_ns": 61041200,
+        "out_paths": 1,
+        "out_verts": 2634,
+        "out_area_u2": 137821725973.0,
+        "out_hash": "74eec0b1ddbe8cbc"
+      },
+      "cpp_152": {
+        "median_ns": 52987450,
+        "out_paths": 1,
+        "out_verts": 2634,
+        "out_area_u2": 137821725973,
+        "out_hash": "74eec0b1ddbe8cbc"
+      },
+      "cpp_152_concave": {
+        "median_ns": 8695750,
+        "out_paths": 1,
+        "out_verts": 2417,
+        "out_area_u2": 137297460076.6174,
+        "out_hash": "2ed2373726eb120e"
+      },
+      "v250_nodecim": {
+        "median_ns": 35997650,
+        "out_paths": 1,
+        "out_verts": 2581,
+        "out_area_u2": 137821964173.8566,
+        "out_hash": "01d4ca026ba94f94"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 46949400,
+        "out_paths": 1,
+        "out_verts": 2598,
+        "out_area_u2": 137821964073.80386,
+        "out_hash": "1c03eac2fd146cb9"
+      },
+      "v250_decim": {
+        "median_ns": 8626500,
+        "out_paths": 1,
+        "out_verts": 2417,
+        "out_area_u2": 137297460076.6174,
+        "out_hash": "2ed2373726eb120e"
+      },
+      "v250_decim_noX": {
+        "median_ns": 17486450,
+        "out_paths": 1,
+        "out_verts": 2442,
+        "out_area_u2": 137297459690.46585,
+        "out_hash": "5dd7d774dfef0546"
+      }
+    },
+    {
+      "case_index": 39,
+      "site": "IB_DEEP_POS",
+      "layer": 116,
+      "opcode": 0,
+      "in_verts": 10550,
+      "rust_pnp": {
+        "median_ns": 71696750,
+        "out_paths": 1,
+        "out_verts": 2942,
+        "out_area_u2": 130527815523.0,
+        "out_hash": "fc6cd5d51ff50059"
+      },
+      "cpp_152": {
+        "median_ns": 62748400,
+        "out_paths": 1,
+        "out_verts": 2942,
+        "out_area_u2": 130527815523,
+        "out_hash": "fc6cd5d51ff50059"
+      },
+      "cpp_152_concave": {
+        "median_ns": 10584800,
+        "out_paths": 1,
+        "out_verts": 2721,
+        "out_area_u2": 130200839680.94855,
+        "out_hash": "2b5c3c7078578ca1"
+      },
+      "v250_nodecim": {
+        "median_ns": 46159400,
+        "out_paths": 1,
+        "out_verts": 2875,
+        "out_area_u2": 130528097439.8743,
+        "out_hash": "fbd0230d10faac76"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 60522900,
+        "out_paths": 1,
+        "out_verts": 2896,
+        "out_area_u2": 130528096944.2921,
+        "out_hash": "60dd30ae33c4641e"
+      },
+      "v250_decim": {
+        "median_ns": 10597650,
+        "out_paths": 1,
+        "out_verts": 2721,
+        "out_area_u2": 130200839680.94855,
+        "out_hash": "2b5c3c7078578ca1"
+      },
+      "v250_decim_noX": {
+        "median_ns": 20498500,
+        "out_paths": 1,
+        "out_verts": 2749,
+        "out_area_u2": 130200838519.2131,
+        "out_hash": "8ed2e3b4b7363526"
+      }
+    },
+    {
+      "case_index": 40,
+      "site": "IB_DEEP_POS",
+      "layer": 132,
+      "opcode": 0,
+      "in_verts": 9760,
+      "rust_pnp": {
+        "median_ns": 142414050,
+        "out_paths": 4,
+        "out_verts": 2827,
+        "out_area_u2": 117757675008.0,
+        "out_hash": "effe8672dc5bf795"
+      },
+      "cpp_152": {
+        "median_ns": 150506950,
+        "out_paths": 4,
+        "out_verts": 2827,
+        "out_area_u2": 117757675008,
+        "out_hash": "effe8672dc5bf795"
+      },
+      "cpp_152_concave": {
+        "median_ns": 34218500,
+        "out_paths": 4,
+        "out_verts": 2482,
+        "out_area_u2": 117210006675.94205,
+        "out_hash": "e1989260cdbd7ae5"
+      },
+      "v250_nodecim": {
+        "median_ns": 108320650,
+        "out_paths": 4,
+        "out_verts": 2750,
+        "out_area_u2": 117757901154.33319,
+        "out_hash": "2f36c45d8ec5631b"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 158886500,
+        "out_paths": 4,
+        "out_verts": 2760,
+        "out_area_u2": 117757899888.57776,
+        "out_hash": "239f853c5282d0f1"
+      },
+      "v250_decim": {
+        "median_ns": 34180700,
+        "out_paths": 4,
+        "out_verts": 2482,
+        "out_area_u2": 117210006675.94205,
+        "out_hash": "e1989260cdbd7ae5"
+      },
+      "v250_decim_noX": {
+        "median_ns": 61960100,
+        "out_paths": 4,
+        "out_verts": 2505,
+        "out_area_u2": 117210005651.2881,
+        "out_hash": "7b7b47b609da8a92"
+      }
+    },
+    {
+      "case_index": 41,
+      "site": "IB_DEEP_POS",
+      "layer": 157,
+      "opcode": 0,
+      "in_verts": 11766,
+      "rust_pnp": {
+        "median_ns": 229818800,
+        "out_paths": 2,
+        "out_verts": 3022,
+        "out_area_u2": 121426703021.5,
+        "out_hash": "304d79da7b443f07"
+      },
+      "cpp_152": {
+        "median_ns": 233184550,
+        "out_paths": 2,
+        "out_verts": 3022,
+        "out_area_u2": 121426703021.5,
+        "out_hash": "304d79da7b443f07"
+      },
+      "cpp_152_concave": {
+        "median_ns": 43557850,
+        "out_paths": 2,
+        "out_verts": 2902,
+        "out_area_u2": 120825924579.79385,
+        "out_hash": "74b8470c8a271b85"
+      },
+      "v250_nodecim": {
+        "median_ns": 224941900,
+        "out_paths": 2,
+        "out_verts": 2994,
+        "out_area_u2": 121426921157.4412,
+        "out_hash": "7614c43186d686bc"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 251506000,
+        "out_paths": 2,
+        "out_verts": 3008,
+        "out_area_u2": 121426920773.42389,
+        "out_hash": "4c46111a72adb1e4"
+      },
+      "v250_decim": {
+        "median_ns": 43829200,
+        "out_paths": 2,
+        "out_verts": 2902,
+        "out_area_u2": 120825924579.79385,
+        "out_hash": "74b8470c8a271b85"
+      },
+      "v250_decim_noX": {
+        "median_ns": 80611650,
+        "out_paths": 2,
+        "out_verts": 2921,
+        "out_area_u2": 120825923568.64626,
+        "out_hash": "1758bf05519d9cb8"
+      }
+    },
+    {
+      "case_index": 42,
+      "site": "IB_DEEP_POS",
+      "layer": 210,
+      "opcode": 0,
+      "in_verts": 9622,
+      "rust_pnp": {
+        "median_ns": 226424750,
+        "out_paths": 1,
+        "out_verts": 2484,
+        "out_area_u2": 121642444612.0,
+        "out_hash": "972f6685929e8fae"
+      },
+      "cpp_152": {
+        "median_ns": 178405150,
+        "out_paths": 1,
+        "out_verts": 2484,
+        "out_area_u2": 121642444612,
+        "out_hash": "972f6685929e8fae"
+      },
+      "cpp_152_concave": {
+        "median_ns": 45724400,
+        "out_paths": 1,
+        "out_verts": 2168,
+        "out_area_u2": 121400765225.4537,
+        "out_hash": "d5c4f333bc28d2e9"
+      },
+      "v250_nodecim": {
+        "median_ns": 180191800,
+        "out_paths": 1,
+        "out_verts": 2451,
+        "out_area_u2": 121642726644.88686,
+        "out_hash": "223f50e7c8c9caa8"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 195879900,
+        "out_paths": 1,
+        "out_verts": 2467,
+        "out_area_u2": 121642726532.83556,
+        "out_hash": "84ff17c111a68fde"
+      },
+      "v250_decim": {
+        "median_ns": 45624700,
+        "out_paths": 1,
+        "out_verts": 2168,
+        "out_area_u2": 121400765225.4537,
+        "out_hash": "d5c4f333bc28d2e9"
+      },
+      "v250_decim_noX": {
+        "median_ns": 79967900,
+        "out_paths": 1,
+        "out_verts": 2188,
+        "out_area_u2": 121400764402.14455,
+        "out_hash": "ede09016a8fc5e3b"
+      }
+    },
+    {
+      "case_index": 43,
+      "site": "IB_DEEP_POS",
+      "layer": 225,
+      "opcode": 0,
+      "in_verts": 9209,
+      "rust_pnp": {
+        "median_ns": 225844050,
+        "out_paths": 1,
+        "out_verts": 2327,
+        "out_area_u2": 116034557816.5,
+        "out_hash": "f304ad1790d814b2"
+      },
+      "cpp_152": {
+        "median_ns": 148324300,
+        "out_paths": 1,
+        "out_verts": 2327,
+        "out_area_u2": 116034557816.5,
+        "out_hash": "f304ad1790d814b2"
+      },
+      "cpp_152_concave": {
+        "median_ns": 40419550,
+        "out_paths": 1,
+        "out_verts": 1993,
+        "out_area_u2": 115730201074.41576,
+        "out_hash": "7a22c0d9517a2853"
+      },
+      "v250_nodecim": {
+        "median_ns": 161849500,
+        "out_paths": 1,
+        "out_verts": 2298,
+        "out_area_u2": 116034794878.6407,
+        "out_hash": "83c7eaa4f067e147"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 194748000,
+        "out_paths": 1,
+        "out_verts": 2316,
+        "out_area_u2": 116034794577.37505,
+        "out_hash": "68ad854eaef788b3"
+      },
+      "v250_decim": {
+        "median_ns": 40635500,
+        "out_paths": 1,
+        "out_verts": 1993,
+        "out_area_u2": 115730201074.41576,
+        "out_hash": "7a22c0d9517a2853"
+      },
+      "v250_decim_noX": {
+        "median_ns": 86044550,
+        "out_paths": 1,
+        "out_verts": 2014,
+        "out_area_u2": 115730199596.4363,
+        "out_hash": "3467a760a94c8099"
+      }
+    },
+    {
+      "case_index": 44,
+      "site": "IB_DEEP_POS",
+      "layer": 231,
+      "opcode": 0,
+      "in_verts": 8264,
+      "rust_pnp": {
+        "median_ns": 208776050,
+        "out_paths": 1,
+        "out_verts": 2102,
+        "out_area_u2": 113866344404.5,
+        "out_hash": "d21abceb048b6f56"
+      },
+      "cpp_152": {
+        "median_ns": 146600900,
+        "out_paths": 1,
+        "out_verts": 2102,
+        "out_area_u2": 113866344404.5,
+        "out_hash": "d21abceb048b6f56"
+      },
+      "cpp_152_concave": {
+        "median_ns": 47703600,
+        "out_paths": 1,
+        "out_verts": 1900,
+        "out_area_u2": 113560289748.08345,
+        "out_hash": "a02da9585dd5ab96"
+      },
+      "v250_nodecim": {
+        "median_ns": 163484350,
+        "out_paths": 1,
+        "out_verts": 2040,
+        "out_area_u2": 113866576398.07124,
+        "out_hash": "2f3072b1948f83fe"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 176517450,
+        "out_paths": 1,
+        "out_verts": 2058,
+        "out_area_u2": 113866576053.33195,
+        "out_hash": "3ff46c9335440b0e"
+      },
+      "v250_decim": {
+        "median_ns": 47575500,
+        "out_paths": 1,
+        "out_verts": 1900,
+        "out_area_u2": 113560289748.08345,
+        "out_hash": "a02da9585dd5ab96"
+      },
+      "v250_decim_noX": {
+        "median_ns": 93114450,
+        "out_paths": 1,
+        "out_verts": 1923,
+        "out_area_u2": 113560288267.891,
+        "out_hash": "e4452905844ee79a"
+      }
+    },
+    {
+      "case_index": 45,
+      "site": "IB_DEEP_POS",
+      "layer": 250,
+      "opcode": 0,
+      "in_verts": 8485,
+      "rust_pnp": {
+        "median_ns": 209714950,
+        "out_paths": 1,
+        "out_verts": 2213,
+        "out_area_u2": 114130353225.5,
+        "out_hash": "a9dc7b8900fd2425"
+      },
+      "cpp_152": {
+        "median_ns": 156252700,
+        "out_paths": 1,
+        "out_verts": 2213,
+        "out_area_u2": 114130353225.5,
+        "out_hash": "a9dc7b8900fd2425"
+      },
+      "cpp_152_concave": {
+        "median_ns": 41500600,
+        "out_paths": 1,
+        "out_verts": 2045,
+        "out_area_u2": 113822350078.1849,
+        "out_hash": "2b4d4b8f64fd3bfe"
+      },
+      "v250_nodecim": {
+        "median_ns": 168772300,
+        "out_paths": 1,
+        "out_verts": 2132,
+        "out_area_u2": 114130642401.15936,
+        "out_hash": "de7d70ea2fc54dcf"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 198952100,
+        "out_paths": 1,
+        "out_verts": 2144,
+        "out_area_u2": 114130642005.90286,
+        "out_hash": "61724bc62f79e9fa"
+      },
+      "v250_decim": {
+        "median_ns": 41621150,
+        "out_paths": 1,
+        "out_verts": 2045,
+        "out_area_u2": 113822350078.1849,
+        "out_hash": "2b4d4b8f64fd3bfe"
+      },
+      "v250_decim_noX": {
+        "median_ns": 102102250,
+        "out_paths": 1,
+        "out_verts": 2068,
+        "out_area_u2": 113822348904.81134,
+        "out_hash": "72582ee93433f69e"
+      }
+    },
+    {
+      "case_index": 46,
+      "site": "IB_DEEP_POS",
+      "layer": 298,
+      "opcode": 0,
+      "in_verts": 7920,
+      "rust_pnp": {
+        "median_ns": 148211050,
+        "out_paths": 1,
+        "out_verts": 2262,
+        "out_area_u2": 99559578817.0,
+        "out_hash": "b90f2c109563ce32"
+      },
+      "cpp_152": {
+        "median_ns": 110175950,
+        "out_paths": 1,
+        "out_verts": 2262,
+        "out_area_u2": 99559578817,
+        "out_hash": "b90f2c109563ce32"
+      },
+      "cpp_152_concave": {
+        "median_ns": 35579000,
+        "out_paths": 1,
+        "out_verts": 2034,
+        "out_area_u2": 99296721313.71895,
+        "out_hash": "2cd0ef5f20a65866"
+      },
+      "v250_nodecim": {
+        "median_ns": 108127950,
+        "out_paths": 1,
+        "out_verts": 2227,
+        "out_area_u2": 99559833873.6912,
+        "out_hash": "ed85d9136225cd7e"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 146405250,
+        "out_paths": 1,
+        "out_verts": 2243,
+        "out_area_u2": 99559833648.36,
+        "out_hash": "359302881ce43bbf"
+      },
+      "v250_decim": {
+        "median_ns": 35389650,
+        "out_paths": 1,
+        "out_verts": 2034,
+        "out_area_u2": 99296721313.71895,
+        "out_hash": "2cd0ef5f20a65866"
+      },
+      "v250_decim_noX": {
+        "median_ns": 83483300,
+        "out_paths": 1,
+        "out_verts": 2066,
+        "out_area_u2": 99296719486.6352,
+        "out_hash": "0f39952976a12ae9"
+      }
+    },
+    {
+      "case_index": 47,
+      "site": "IB_DEEP_POS",
+      "layer": 311,
+      "opcode": 0,
+      "in_verts": 6713,
+      "rust_pnp": {
+        "median_ns": 181051350,
+        "out_paths": 1,
+        "out_verts": 1677,
+        "out_area_u2": 86885409587.0,
+        "out_hash": "413153a1be41693d"
+      },
+      "cpp_152": {
+        "median_ns": 155293950,
+        "out_paths": 1,
+        "out_verts": 1677,
+        "out_area_u2": 86885409587,
+        "out_hash": "413153a1be41693d"
+      },
+      "cpp_152_concave": {
+        "median_ns": 40294950,
+        "out_paths": 1,
+        "out_verts": 1479,
+        "out_area_u2": 86713694211.08624,
+        "out_hash": "3cc425bca07759a9"
+      },
+      "v250_nodecim": {
+        "median_ns": 152061500,
+        "out_paths": 1,
+        "out_verts": 1653,
+        "out_area_u2": 86885598617.1652,
+        "out_hash": "455b2641a9413b89"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 191939700,
+        "out_paths": 1,
+        "out_verts": 1666,
+        "out_area_u2": 86885596216.11826,
+        "out_hash": "c11a3195ba49c9c2"
+      },
+      "v250_decim": {
+        "median_ns": 40207700,
+        "out_paths": 1,
+        "out_verts": 1479,
+        "out_area_u2": 86713694211.08624,
+        "out_hash": "3cc425bca07759a9"
+      },
+      "v250_decim_noX": {
+        "median_ns": 88777600,
+        "out_paths": 1,
+        "out_verts": 1500,
+        "out_area_u2": 86713690819.0366,
+        "out_hash": "3e205f95eb701f52"
+      }
+    },
+    {
+      "case_index": 48,
+      "site": "IB_DEEP_POS",
+      "layer": 318,
+      "opcode": 0,
+      "in_verts": 7536,
+      "rust_pnp": {
+        "median_ns": 269194550,
+        "out_paths": 1,
+        "out_verts": 1829,
+        "out_area_u2": 86917794945.5,
+        "out_hash": "e842bd7aaaef4399"
+      },
+      "cpp_152": {
+        "median_ns": 185596250,
+        "out_paths": 1,
+        "out_verts": 1829,
+        "out_area_u2": 86917794945.5,
+        "out_hash": "e842bd7aaaef4399"
+      },
+      "cpp_152_concave": {
+        "median_ns": 55496000,
+        "out_paths": 1,
+        "out_verts": 1717,
+        "out_area_u2": 86554174993.82664,
+        "out_hash": "c5fa77405e853fa4"
+      },
+      "v250_nodecim": {
+        "median_ns": 207771400,
+        "out_paths": 1,
+        "out_verts": 1806,
+        "out_area_u2": 86918010766.22371,
+        "out_hash": "5dc46467054762b8"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 275460450,
+        "out_paths": 1,
+        "out_verts": 1821,
+        "out_area_u2": 86918010584.42224,
+        "out_hash": "b471465a6db0873e"
+      },
+      "v250_decim": {
+        "median_ns": 55344450,
+        "out_paths": 1,
+        "out_verts": 1717,
+        "out_area_u2": 86554174993.82664,
+        "out_hash": "c5fa77405e853fa4"
+      },
+      "v250_decim_noX": {
+        "median_ns": 117969150,
+        "out_paths": 1,
+        "out_verts": 1743,
+        "out_area_u2": 86554173747.2865,
+        "out_hash": "75cea4d9e4e83048"
+      }
+    },
+    {
+      "case_index": 49,
+      "site": "IB_DEEP_POS",
+      "layer": 320,
+      "opcode": 0,
+      "in_verts": 6090,
+      "rust_pnp": {
+        "median_ns": 148715800,
+        "out_paths": 1,
+        "out_verts": 1458,
+        "out_area_u2": 87007930053.5,
+        "out_hash": "2b337f88e605c3ae"
+      },
+      "cpp_152": {
+        "median_ns": 107591700,
+        "out_paths": 1,
+        "out_verts": 1458,
+        "out_area_u2": 87007930053.5,
+        "out_hash": "2b337f88e605c3ae"
+      },
+      "cpp_152_concave": {
+        "median_ns": 34189750,
+        "out_paths": 1,
+        "out_verts": 1344,
+        "out_area_u2": 86836984087.34785,
+        "out_hash": "282e387ee1c65ce2"
+      },
+      "v250_nodecim": {
+        "median_ns": 94885050,
+        "out_paths": 1,
+        "out_verts": 1440,
+        "out_area_u2": 87008169614.64995,
+        "out_hash": "7773b4b8ea856d43"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 123624000,
+        "out_paths": 1,
+        "out_verts": 1454,
+        "out_area_u2": 87008169396.12415,
+        "out_hash": "886d3105134773ff"
+      },
+      "v250_decim": {
+        "median_ns": 30042100,
+        "out_paths": 1,
+        "out_verts": 1344,
+        "out_area_u2": 86836984087.34785,
+        "out_hash": "282e387ee1c65ce2"
+      },
+      "v250_decim_noX": {
+        "median_ns": 71118750,
+        "out_paths": 1,
+        "out_verts": 1366,
+        "out_area_u2": 86836983228.0896,
+        "out_hash": "2ddea879bf32f9fa"
+      }
+    },
+    {
+      "case_index": 50,
+      "site": "IB_DEEP_POS",
+      "layer": 322,
+      "opcode": 0,
+      "in_verts": 5351,
+      "rust_pnp": {
+        "median_ns": 106694400,
+        "out_paths": 1,
+        "out_verts": 1457,
+        "out_area_u2": 85085378491.0,
+        "out_hash": "248d5e35a33c79d4"
+      },
+      "cpp_152": {
+        "median_ns": 74115850,
+        "out_paths": 1,
+        "out_verts": 1457,
+        "out_area_u2": 85085378491,
+        "out_hash": "248d5e35a33c79d4"
+      },
+      "cpp_152_concave": {
+        "median_ns": 20492250,
+        "out_paths": 1,
+        "out_verts": 1323,
+        "out_area_u2": 84814308871.5942,
+        "out_hash": "a7e6681e227170d4"
+      },
+      "v250_nodecim": {
+        "median_ns": 65605900,
+        "out_paths": 1,
+        "out_verts": 1419,
+        "out_area_u2": 85085599573.6555,
+        "out_hash": "1e5e697d05b2e8d0"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 84129400,
+        "out_paths": 1,
+        "out_verts": 1431,
+        "out_area_u2": 85085599203.2485,
+        "out_hash": "900be9070609568d"
+      },
+      "v250_decim": {
+        "median_ns": 18256700,
+        "out_paths": 1,
+        "out_verts": 1323,
+        "out_area_u2": 84814308871.5942,
+        "out_hash": "a7e6681e227170d4"
+      },
+      "v250_decim_noX": {
+        "median_ns": 43584750,
+        "out_paths": 1,
+        "out_verts": 1340,
+        "out_area_u2": 84814307373.34735,
+        "out_hash": "b035bb9208d501e3"
+      }
+    },
+    {
+      "case_index": 51,
+      "site": "IB_DEEP_POS",
+      "layer": 379,
+      "opcode": 0,
+      "in_verts": 4254,
+      "rust_pnp": {
+        "median_ns": 81360550,
+        "out_paths": 1,
+        "out_verts": 1277,
+        "out_area_u2": 75608286244.5,
+        "out_hash": "3e6714b57ffa2c26"
+      },
+      "cpp_152": {
+        "median_ns": 54204100,
+        "out_paths": 1,
+        "out_verts": 1277,
+        "out_area_u2": 75608286244.5,
+        "out_hash": "3e6714b57ffa2c26"
+      },
+      "cpp_152_concave": {
+        "median_ns": 16571500,
+        "out_paths": 1,
+        "out_verts": 1121,
+        "out_area_u2": 75496210914.10036,
+        "out_hash": "4e290f5149e00362"
+      },
+      "v250_nodecim": {
+        "median_ns": 47630650,
+        "out_paths": 1,
+        "out_verts": 1253,
+        "out_area_u2": 75608502468.96484,
+        "out_hash": "3691f2051d37756d"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 58548850,
+        "out_paths": 1,
+        "out_verts": 1263,
+        "out_area_u2": 75608502008.8481,
+        "out_hash": "7ec62ed70853627c"
+      },
+      "v250_decim": {
+        "median_ns": 14461350,
+        "out_paths": 1,
+        "out_verts": 1121,
+        "out_area_u2": 75496210914.10036,
+        "out_hash": "4e290f5149e00362"
+      },
+      "v250_decim_noX": {
+        "median_ns": 35001850,
+        "out_paths": 1,
+        "out_verts": 1138,
+        "out_area_u2": 75496209629.3393,
+        "out_hash": "5825d5e935440421"
+      }
+    },
+    {
+      "case_index": 52,
+      "site": "IB_DEEP_POS",
+      "layer": 386,
+      "opcode": 0,
+      "in_verts": 4487,
+      "rust_pnp": {
+        "median_ns": 83530450,
+        "out_paths": 1,
+        "out_verts": 1224,
+        "out_area_u2": 71302653271.0,
+        "out_hash": "540838c4cd01bd53"
+      },
+      "cpp_152": {
+        "median_ns": 59102600,
+        "out_paths": 1,
+        "out_verts": 1224,
+        "out_area_u2": 71302653271,
+        "out_hash": "540838c4cd01bd53"
+      },
+      "cpp_152_concave": {
+        "median_ns": 13840050,
+        "out_paths": 1,
+        "out_verts": 1037,
+        "out_area_u2": 71175617642.3612,
+        "out_hash": "c4f3029ac3c28550"
+      },
+      "v250_nodecim": {
+        "median_ns": 53717100,
+        "out_paths": 1,
+        "out_verts": 1240,
+        "out_area_u2": 71302881865.3009,
+        "out_hash": "cd4eab26a39cfd36"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 65003150,
+        "out_paths": 1,
+        "out_verts": 1252,
+        "out_area_u2": 71302881825.14395,
+        "out_hash": "9036a45b63ca5c92"
+      },
+      "v250_decim": {
+        "median_ns": 11735200,
+        "out_paths": 1,
+        "out_verts": 1037,
+        "out_area_u2": 71175617642.3612,
+        "out_hash": "c4f3029ac3c28550"
+      },
+      "v250_decim_noX": {
+        "median_ns": 32909150,
+        "out_paths": 1,
+        "out_verts": 1056,
+        "out_area_u2": 71175617087.24805,
+        "out_hash": "39f4ae98b54d8a04"
+      }
+    },
+    {
+      "case_index": 53,
+      "site": "IB_DEEP_POS",
+      "layer": 397,
+      "opcode": 0,
+      "in_verts": 4997,
+      "rust_pnp": {
+        "median_ns": 134511900,
+        "out_paths": 1,
+        "out_verts": 1406,
+        "out_area_u2": 68247940316.5,
+        "out_hash": "768c68f2cbb3d647"
+      },
+      "cpp_152": {
+        "median_ns": 109030300,
+        "out_paths": 1,
+        "out_verts": 1406,
+        "out_area_u2": 68247940316.5,
+        "out_hash": "768c68f2cbb3d647"
+      },
+      "cpp_152_concave": {
+        "median_ns": 33653800,
+        "out_paths": 1,
+        "out_verts": 1199,
+        "out_area_u2": 68086735407.86255,
+        "out_hash": "f6b93abc815869fc"
+      },
+      "v250_nodecim": {
+        "median_ns": 115971100,
+        "out_paths": 1,
+        "out_verts": 1423,
+        "out_area_u2": 68248124160.392,
+        "out_hash": "0f54c2ec6514c022"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 126172850,
+        "out_paths": 1,
+        "out_verts": 1435,
+        "out_area_u2": 68248124164.419304,
+        "out_hash": "ea5fba5ddb81375c"
+      },
+      "v250_decim": {
+        "median_ns": 33145900,
+        "out_paths": 1,
+        "out_verts": 1199,
+        "out_area_u2": 68086735407.86255,
+        "out_hash": "f6b93abc815869fc"
+      },
+      "v250_decim_noX": {
+        "median_ns": 62095150,
+        "out_paths": 1,
+        "out_verts": 1211,
+        "out_area_u2": 68086734823.36785,
+        "out_hash": "23174b74fa65d85e"
+      }
+    },
+    {
+      "case_index": 54,
+      "site": "IB_DEEP_POS",
+      "layer": 469,
+      "opcode": 0,
+      "in_verts": 2271,
+      "rust_pnp": {
+        "median_ns": 14483400,
+        "out_paths": 1,
+        "out_verts": 662,
+        "out_area_u2": 26389256450.0,
+        "out_hash": "f14784cf5dece91e"
+      },
+      "cpp_152": {
+        "median_ns": 10330700,
+        "out_paths": 1,
+        "out_verts": 662,
+        "out_area_u2": 26389256450,
+        "out_hash": "f14784cf5dece91e"
+      },
+      "cpp_152_concave": {
+        "median_ns": 2036250,
+        "out_paths": 1,
+        "out_verts": 622,
+        "out_area_u2": 26169802372.2805,
+        "out_hash": "e254dfcd29233011"
+      },
+      "v250_nodecim": {
+        "median_ns": 9209350,
+        "out_paths": 1,
+        "out_verts": 661,
+        "out_area_u2": 26389328734.9355,
+        "out_hash": "899f21900632492e"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 10480550,
+        "out_paths": 1,
+        "out_verts": 664,
+        "out_area_u2": 26389328722.0091,
+        "out_hash": "3e21bc70ad41e1f9"
+      },
+      "v250_decim": {
+        "median_ns": 1825400,
+        "out_paths": 1,
+        "out_verts": 622,
+        "out_area_u2": 26169802372.2805,
+        "out_hash": "e254dfcd29233011"
+      },
+      "v250_decim_noX": {
+        "median_ns": 5054450,
+        "out_paths": 1,
+        "out_verts": 627,
+        "out_area_u2": 26169801993.5616,
+        "out_hash": "56559cd2b37df39f"
+      }
+    },
+    {
+      "case_index": 55,
+      "site": "IB_DEEP_POS",
+      "layer": 493,
+      "opcode": 0,
+      "in_verts": 844,
+      "rust_pnp": {
+        "median_ns": 3410050,
+        "out_paths": 1,
+        "out_verts": 200,
+        "out_area_u2": 3141954113.0,
+        "out_hash": "0eae42667ad96d14"
+      },
+      "cpp_152": {
+        "median_ns": 2322800,
+        "out_paths": 1,
+        "out_verts": 200,
+        "out_area_u2": 3141954113,
+        "out_hash": "0eae42667ad96d14"
+      },
+      "cpp_152_concave": {
+        "median_ns": 481850,
+        "out_paths": 1,
+        "out_verts": 169,
+        "out_area_u2": 3078307548.3677,
+        "out_hash": "8bb8949f22d58868"
+      },
+      "v250_nodecim": {
+        "median_ns": 2096400,
+        "out_paths": 1,
+        "out_verts": 200,
+        "out_area_u2": 3141959888.333,
+        "out_hash": "a032d6841c330f07"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 2365150,
+        "out_paths": 1,
+        "out_verts": 200,
+        "out_area_u2": 3141959854.06,
+        "out_hash": "66518ba02e6ae11f"
+      },
+      "v250_decim": {
+        "median_ns": 477700,
+        "out_paths": 1,
+        "out_verts": 169,
+        "out_area_u2": 3078307548.3677,
+        "out_hash": "8bb8949f22d58868"
+      },
+      "v250_decim_noX": {
+        "median_ns": 1180700,
+        "out_paths": 1,
+        "out_verts": 169,
+        "out_area_u2": 3078307559.285,
+        "out_hash": "4fd60ff386ad9fd9"
+      }
+    },
+    {
+      "case_index": 56,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 0,
+      "opcode": 5,
+      "in_verts": 277,
+      "rust_pnp": {
+        "median_ns": 198200,
+        "out_paths": 1,
+        "out_verts": 224,
+        "out_area_u2": 231513727.5,
+        "out_hash": "7b4a4c4bc37b955d"
+      },
+      "cpp_152": {
+        "median_ns": 176900,
+        "out_paths": 1,
+        "out_verts": 224,
+        "out_area_u2": 231513727.5,
+        "out_hash": "7b4a4c4bc37b955d"
+      },
+      "cpp_152_concave": {
+        "median_ns": 72500,
+        "out_paths": 1,
+        "out_verts": 207,
+        "out_area_u2": 231413285.72495,
+        "out_hash": "2f0137ecd4b013af"
+      },
+      "v250_nodecim": {
+        "median_ns": 82050,
+        "out_paths": 1,
+        "out_verts": 209,
+        "out_area_u2": 231415580.21355,
+        "out_hash": "b0aa2a4d14469f6f"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 161650,
+        "out_paths": 1,
+        "out_verts": 211,
+        "out_area_u2": 231415533.6372,
+        "out_hash": "8dd9b8be6d3be263"
+      },
+      "v250_decim": {
+        "median_ns": 69300,
+        "out_paths": 1,
+        "out_verts": 207,
+        "out_area_u2": 231413285.72495,
+        "out_hash": "2f0137ecd4b013af"
+      },
+      "v250_decim_noX": {
+        "median_ns": 278100,
+        "out_paths": 1,
+        "out_verts": 208,
+        "out_area_u2": 231413281.58445,
+        "out_hash": "c187897d89079a31"
+      }
+    },
+    {
+      "case_index": 57,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 40,
+      "opcode": 5,
+      "in_verts": 11117,
+      "rust_pnp": {
+        "median_ns": 13696950,
+        "out_paths": 14,
+        "out_verts": 7455,
+        "out_area_u2": 4421485037.0,
+        "out_hash": "af3648aed9ddc8aa"
+      },
+      "cpp_152": {
+        "median_ns": 11748650,
+        "out_paths": 14,
+        "out_verts": 7455,
+        "out_area_u2": 4421485037,
+        "out_hash": "af3648aed9ddc8aa"
+      },
+      "cpp_152_concave": {
+        "median_ns": 5035700,
+        "out_paths": 14,
+        "out_verts": 7272,
+        "out_area_u2": 4417338592.6395,
+        "out_hash": "eeee115763c6adfe"
+      },
+      "v250_nodecim": {
+        "median_ns": 5762750,
+        "out_paths": 14,
+        "out_verts": 7328,
+        "out_area_u2": 4416374855.00305,
+        "out_hash": "c4e57773733d365d"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 10913050,
+        "out_paths": 14,
+        "out_verts": 7422,
+        "out_area_u2": 4416429511.09715,
+        "out_hash": "8d0dffbde1f9665f"
+      },
+      "v250_decim": {
+        "median_ns": 4729450,
+        "out_paths": 14,
+        "out_verts": 7272,
+        "out_area_u2": 4417338592.6395,
+        "out_hash": "eeee115763c6adfe"
+      },
+      "v250_decim_noX": {
+        "median_ns": 15265850,
+        "out_paths": 14,
+        "out_verts": 7363,
+        "out_area_u2": 4417335949.8244,
+        "out_hash": "13c6ac93fe1b4ed4"
+      }
+    },
+    {
+      "case_index": 58,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 80,
+      "opcode": 5,
+      "in_verts": 7701,
+      "rust_pnp": {
+        "median_ns": 7942550,
+        "out_paths": 11,
+        "out_verts": 4679,
+        "out_area_u2": 1653069297.0,
+        "out_hash": "704075d63a9610c0"
+      },
+      "cpp_152": {
+        "median_ns": 6749750,
+        "out_paths": 11,
+        "out_verts": 4679,
+        "out_area_u2": 1653069297,
+        "out_hash": "704075d63a9610c0"
+      },
+      "cpp_152_concave": {
+        "median_ns": 3360250,
+        "out_paths": 11,
+        "out_verts": 4514,
+        "out_area_u2": 1651464055.9330497,
+        "out_hash": "a5747a47967f44a8"
+      },
+      "v250_nodecim": {
+        "median_ns": 3736000,
+        "out_paths": 11,
+        "out_verts": 4537,
+        "out_area_u2": 1651472597.37045,
+        "out_hash": "cfbe1ba128d682c1"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 6429150,
+        "out_paths": 11,
+        "out_verts": 4616,
+        "out_area_u2": 1651495313.2187002,
+        "out_hash": "b65be5d59a828a97"
+      },
+      "v250_decim": {
+        "median_ns": 3287550,
+        "out_paths": 11,
+        "out_verts": 4514,
+        "out_area_u2": 1651464055.9330497,
+        "out_hash": "a5747a47967f44a8"
+      },
+      "v250_decim_noX": {
+        "median_ns": 9328600,
+        "out_paths": 11,
+        "out_verts": 4588,
+        "out_area_u2": 1651463945.5443501,
+        "out_hash": "ba28f7e36a5be2e3"
+      }
+    },
+    {
+      "case_index": 59,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 120,
+      "opcode": 5,
+      "in_verts": 5031,
+      "rust_pnp": {
+        "median_ns": 4834600,
+        "out_paths": 8,
+        "out_verts": 1280,
+        "out_area_u2": 294324977.0,
+        "out_hash": "c160ae631db484dc"
+      },
+      "cpp_152": {
+        "median_ns": 3835250,
+        "out_paths": 8,
+        "out_verts": 1280,
+        "out_area_u2": 294324977,
+        "out_hash": "c160ae631db484dc"
+      },
+      "cpp_152_concave": {
+        "median_ns": 2236250,
+        "out_paths": 8,
+        "out_verts": 1235,
+        "out_area_u2": 294152124.3262,
+        "out_hash": "64af1424169d6bba"
+      },
+      "v250_nodecim": {
+        "median_ns": 2275950,
+        "out_paths": 8,
+        "out_verts": 1243,
+        "out_area_u2": 293952831.10595,
+        "out_hash": "414901d77c0bcf1f"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 4211400,
+        "out_paths": 8,
+        "out_verts": 1250,
+        "out_area_u2": 293979235.57285005,
+        "out_hash": "d1c10b6774a6e394"
+      },
+      "v250_decim": {
+        "median_ns": 1787250,
+        "out_paths": 8,
+        "out_verts": 1235,
+        "out_area_u2": 294152124.3262,
+        "out_hash": "64af1424169d6bba"
+      },
+      "v250_decim_noX": {
+        "median_ns": 5653950,
+        "out_paths": 8,
+        "out_verts": 1249,
+        "out_area_u2": 294151967.8849,
+        "out_hash": "44891f28e3c8d8ea"
+      }
+    },
+    {
+      "case_index": 60,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 160,
+      "opcode": 5,
+      "in_verts": 8263,
+      "rust_pnp": {
+        "median_ns": 12720200,
+        "out_paths": 13,
+        "out_verts": 3169,
+        "out_area_u2": 948586215.5,
+        "out_hash": "551c96bb1086ed1a"
+      },
+      "cpp_152": {
+        "median_ns": 9721900,
+        "out_paths": 13,
+        "out_verts": 3169,
+        "out_area_u2": 948586215.5,
+        "out_hash": "551c96bb1086ed1a"
+      },
+      "cpp_152_concave": {
+        "median_ns": 5298700,
+        "out_paths": 13,
+        "out_verts": 3054,
+        "out_area_u2": 947126579.4030001,
+        "out_hash": "2af0df4063004c92"
+      },
+      "v250_nodecim": {
+        "median_ns": 5046400,
+        "out_paths": 13,
+        "out_verts": 3097,
+        "out_area_u2": 946967696.4908001,
+        "out_hash": "8702f8323ec59899"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 10210450,
+        "out_paths": 13,
+        "out_verts": 3129,
+        "out_area_u2": 946977364.79855,
+        "out_hash": "5a3f5eb10aabd4ab"
+      },
+      "v250_decim": {
+        "median_ns": 4116300,
+        "out_paths": 13,
+        "out_verts": 3054,
+        "out_area_u2": 947126579.4030001,
+        "out_hash": "2af0df4063004c92"
+      },
+      "v250_decim_noX": {
+        "median_ns": 14433800,
+        "out_paths": 13,
+        "out_verts": 3094,
+        "out_area_u2": 947124914.2386498,
+        "out_hash": "eb8cea329167da50"
+      }
+    },
+    {
+      "case_index": 61,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 200,
+      "opcode": 5,
+      "in_verts": 7136,
+      "rust_pnp": {
+        "median_ns": 9290200,
+        "out_paths": 15,
+        "out_verts": 2623,
+        "out_area_u2": 692947204.5,
+        "out_hash": "a2f834f2df75535b"
+      },
+      "cpp_152": {
+        "median_ns": 7483500,
+        "out_paths": 15,
+        "out_verts": 2623,
+        "out_area_u2": 692947204.5,
+        "out_hash": "a2f834f2df75535b"
+      },
+      "cpp_152_concave": {
+        "median_ns": 4684400,
+        "out_paths": 15,
+        "out_verts": 2609,
+        "out_area_u2": 692069761.77505,
+        "out_hash": "f27204f1a9c988ba"
+      },
+      "v250_nodecim": {
+        "median_ns": 4153950,
+        "out_paths": 15,
+        "out_verts": 2670,
+        "out_area_u2": 692069141.9519501,
+        "out_hash": "be1e2ece3c7bc7fd"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 8018000,
+        "out_paths": 15,
+        "out_verts": 2708,
+        "out_area_u2": 692082008.7528999,
+        "out_hash": "5aa2cd4a9e96c2ea"
+      },
+      "v250_decim": {
+        "median_ns": 3449600,
+        "out_paths": 15,
+        "out_verts": 2609,
+        "out_area_u2": 692069761.77505,
+        "out_hash": "f27204f1a9c988ba"
+      },
+      "v250_decim_noX": {
+        "median_ns": 11299050,
+        "out_paths": 15,
+        "out_verts": 2651,
+        "out_area_u2": 692070603.1673999,
+        "out_hash": "fd3cbb746aabd68c"
+      }
+    },
+    {
+      "case_index": 62,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 239,
+      "opcode": 5,
+      "in_verts": 5404,
+      "rust_pnp": {
+        "median_ns": 8966150,
+        "out_paths": 9,
+        "out_verts": 1129,
+        "out_area_u2": 327406679.0,
+        "out_hash": "c74fce5fdb631053"
+      },
+      "cpp_152": {
+        "median_ns": 6797650,
+        "out_paths": 9,
+        "out_verts": 1129,
+        "out_area_u2": 327406679,
+        "out_hash": "c74fce5fdb631053"
+      },
+      "cpp_152_concave": {
+        "median_ns": 3183050,
+        "out_paths": 9,
+        "out_verts": 1167,
+        "out_area_u2": 327056476.8735,
+        "out_hash": "ab2796063c68b815"
+      },
+      "v250_nodecim": {
+        "median_ns": 3797000,
+        "out_paths": 9,
+        "out_verts": 1181,
+        "out_area_u2": 327039938.29239994,
+        "out_hash": "3a4d268deffb0368"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 9302350,
+        "out_paths": 9,
+        "out_verts": 1189,
+        "out_area_u2": 327042957.5820501,
+        "out_hash": "3ef3e25d4d06d3f7"
+      },
+      "v250_decim": {
+        "median_ns": 3042450,
+        "out_paths": 9,
+        "out_verts": 1167,
+        "out_area_u2": 327056476.8735,
+        "out_hash": "ab2796063c68b815"
+      },
+      "v250_decim_noX": {
+        "median_ns": 11564200,
+        "out_paths": 9,
+        "out_verts": 1178,
+        "out_area_u2": 327056277.805,
+        "out_hash": "01ba701a09109ac4"
+      }
+    },
+    {
+      "case_index": 63,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 240,
+      "opcode": 5,
+      "in_verts": 5452,
+      "rust_pnp": {
+        "median_ns": 8982000,
+        "out_paths": 12,
+        "out_verts": 1288,
+        "out_area_u2": 350925078.0,
+        "out_hash": "2873752332806b82"
+      },
+      "cpp_152": {
+        "median_ns": 6807900,
+        "out_paths": 12,
+        "out_verts": 1288,
+        "out_area_u2": 350925078,
+        "out_hash": "2873752332806b82"
+      },
+      "cpp_152_concave": {
+        "median_ns": 3222800,
+        "out_paths": 12,
+        "out_verts": 1310,
+        "out_area_u2": 350650055.28055,
+        "out_hash": "5cfb04d04260a918"
+      },
+      "v250_nodecim": {
+        "median_ns": 4192050,
+        "out_paths": 12,
+        "out_verts": 1314,
+        "out_area_u2": 350626335.67885,
+        "out_hash": "188ba38690c766b4"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 11198900,
+        "out_paths": 12,
+        "out_verts": 1325,
+        "out_area_u2": 350646995.5636999,
+        "out_hash": "c799336937432a31"
+      },
+      "v250_decim": {
+        "median_ns": 3188100,
+        "out_paths": 12,
+        "out_verts": 1310,
+        "out_area_u2": 350650055.28055,
+        "out_hash": "5cfb04d04260a918"
+      },
+      "v250_decim_noX": {
+        "median_ns": 11418450,
+        "out_paths": 12,
+        "out_verts": 1325,
+        "out_area_u2": 350649999.3281999,
+        "out_hash": "2eaa5a70f1480457"
+      }
+    },
+    {
+      "case_index": 64,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 270,
+      "opcode": 5,
+      "in_verts": 4476,
+      "rust_pnp": {
+        "median_ns": 4672650,
+        "out_paths": 7,
+        "out_verts": 1646,
+        "out_area_u2": 441882428.0,
+        "out_hash": "dd0cdd809b069964"
+      },
+      "cpp_152": {
+        "median_ns": 3885700,
+        "out_paths": 7,
+        "out_verts": 1646,
+        "out_area_u2": 441882428,
+        "out_hash": "dd0cdd809b069964"
+      },
+      "cpp_152_concave": {
+        "median_ns": 2204800,
+        "out_paths": 7,
+        "out_verts": 1599,
+        "out_area_u2": 441227861.28134996,
+        "out_hash": "5ca84965701b5fbf"
+      },
+      "v250_nodecim": {
+        "median_ns": 2565450,
+        "out_paths": 7,
+        "out_verts": 1635,
+        "out_area_u2": 441308041.55929995,
+        "out_hash": "cc3d093a99610227"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 5475150,
+        "out_paths": 7,
+        "out_verts": 1652,
+        "out_area_u2": 441319641.58460003,
+        "out_hash": "3ba424b731ca6dd7"
+      },
+      "v250_decim": {
+        "median_ns": 2143650,
+        "out_paths": 7,
+        "out_verts": 1599,
+        "out_area_u2": 441227861.28134996,
+        "out_hash": "5ca84965701b5fbf"
+      },
+      "v250_decim_noX": {
+        "median_ns": 6318200,
+        "out_paths": 7,
+        "out_verts": 1616,
+        "out_area_u2": 441227773.3680499,
+        "out_hash": "c4a877fb226b1d63"
+      }
+    },
+    {
+      "case_index": 65,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 280,
+      "opcode": 5,
+      "in_verts": 4864,
+      "rust_pnp": {
+        "median_ns": 9604000,
+        "out_paths": 8,
+        "out_verts": 1720,
+        "out_area_u2": 680490823.5,
+        "out_hash": "51863a0d59d6d71f"
+      },
+      "cpp_152": {
+        "median_ns": 7604350,
+        "out_paths": 8,
+        "out_verts": 1720,
+        "out_area_u2": 680490823.5,
+        "out_hash": "51863a0d59d6d71f"
+      },
+      "cpp_152_concave": {
+        "median_ns": 3715750,
+        "out_paths": 8,
+        "out_verts": 1650,
+        "out_area_u2": 679221125.312,
+        "out_hash": "c022a13dab09b3e6"
+      },
+      "v250_nodecim": {
+        "median_ns": 4904150,
+        "out_paths": 8,
+        "out_verts": 1686,
+        "out_area_u2": 679246499.50855,
+        "out_hash": "b7880ad23a3830d6"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 12492150,
+        "out_paths": 8,
+        "out_verts": 1717,
+        "out_area_u2": 679262623.8465,
+        "out_hash": "4f68b89dea14a7f7"
+      },
+      "v250_decim": {
+        "median_ns": 3711000,
+        "out_paths": 8,
+        "out_verts": 1650,
+        "out_area_u2": 679221125.312,
+        "out_hash": "c022a13dab09b3e6"
+      },
+      "v250_decim_noX": {
+        "median_ns": 12659450,
+        "out_paths": 8,
+        "out_verts": 1670,
+        "out_area_u2": 679221074.7788,
+        "out_hash": "03ec33e80000c70a"
+      }
+    },
+    {
+      "case_index": 66,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 320,
+      "opcode": 5,
+      "in_verts": 3543,
+      "rust_pnp": {
+        "median_ns": 6434300,
+        "out_paths": 13,
+        "out_verts": 827,
+        "out_area_u2": 135427676.0,
+        "out_hash": "71c6caadb825c31b"
+      },
+      "cpp_152": {
+        "median_ns": 4416900,
+        "out_paths": 13,
+        "out_verts": 827,
+        "out_area_u2": 135427676,
+        "out_hash": "71c6caadb825c31b"
+      },
+      "cpp_152_concave": {
+        "median_ns": 1905000,
+        "out_paths": 13,
+        "out_verts": 876,
+        "out_area_u2": 135377024.77549997,
+        "out_hash": "58134448bc00891a"
+      },
+      "v250_nodecim": {
+        "median_ns": 2485800,
+        "out_paths": 13,
+        "out_verts": 873,
+        "out_area_u2": 135421483.82489997,
+        "out_hash": "303990abe11494ab"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 7247750,
+        "out_paths": 13,
+        "out_verts": 884,
+        "out_area_u2": 135422388.6568,
+        "out_hash": "9688c78c3588f3f3"
+      },
+      "v250_decim": {
+        "median_ns": 1904450,
+        "out_paths": 13,
+        "out_verts": 876,
+        "out_area_u2": 135377024.77549997,
+        "out_hash": "58134448bc00891a"
+      },
+      "v250_decim_noX": {
+        "median_ns": 6015150,
+        "out_paths": 13,
+        "out_verts": 885,
+        "out_area_u2": 135376492.2008,
+        "out_hash": "a46941a75b6d2993"
+      }
+    },
+    {
+      "case_index": 67,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 360,
+      "opcode": 5,
+      "in_verts": 3537,
+      "rust_pnp": {
+        "median_ns": 8645550,
+        "out_paths": 9,
+        "out_verts": 1174,
+        "out_area_u2": 512009441.5,
+        "out_hash": "17fc10ac53ee8a71"
+      },
+      "cpp_152": {
+        "median_ns": 6472100,
+        "out_paths": 9,
+        "out_verts": 1174,
+        "out_area_u2": 512009441.5,
+        "out_hash": "17fc10ac53ee8a71"
+      },
+      "cpp_152_concave": {
+        "median_ns": 2450600,
+        "out_paths": 9,
+        "out_verts": 1195,
+        "out_area_u2": 511675706.5856,
+        "out_hash": "41bfa73294fab547"
+      },
+      "v250_nodecim": {
+        "median_ns": 3354100,
+        "out_paths": 9,
+        "out_verts": 1210,
+        "out_area_u2": 511687219.05689996,
+        "out_hash": "36b52a2d970d9f80"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 10888800,
+        "out_paths": 9,
+        "out_verts": 1222,
+        "out_area_u2": 511687415.4229,
+        "out_hash": "176366aa5f938056"
+      },
+      "v250_decim": {
+        "median_ns": 2412950,
+        "out_paths": 9,
+        "out_verts": 1195,
+        "out_area_u2": 511675706.5856,
+        "out_hash": "41bfa73294fab547"
+      },
+      "v250_decim_noX": {
+        "median_ns": 10381700,
+        "out_paths": 9,
+        "out_verts": 1204,
+        "out_area_u2": 511675740.54715,
+        "out_hash": "46ec9e9bff37241b"
+      }
+    },
+    {
+      "case_index": 68,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 400,
+      "opcode": 5,
+      "in_verts": 2350,
+      "rust_pnp": {
+        "median_ns": 3161400,
+        "out_paths": 5,
+        "out_verts": 1084,
+        "out_area_u2": 410946873.5,
+        "out_hash": "b454b17962b5f624"
+      },
+      "cpp_152": {
+        "median_ns": 2354900,
+        "out_paths": 5,
+        "out_verts": 1084,
+        "out_area_u2": 410946873.5,
+        "out_hash": "b454b17962b5f624"
+      },
+      "cpp_152_concave": {
+        "median_ns": 1195600,
+        "out_paths": 5,
+        "out_verts": 1074,
+        "out_area_u2": 410017702.34835,
+        "out_hash": "7277e61e068d9260"
+      },
+      "v250_nodecim": {
+        "median_ns": 1380750,
+        "out_paths": 5,
+        "out_verts": 1102,
+        "out_area_u2": 410018993.9234,
+        "out_hash": "51f6b77d695cb380"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 3247750,
+        "out_paths": 5,
+        "out_verts": 1112,
+        "out_area_u2": 410029028.98679996,
+        "out_hash": "4011d52ededc6ae6"
+      },
+      "v250_decim": {
+        "median_ns": 1191650,
+        "out_paths": 5,
+        "out_verts": 1074,
+        "out_area_u2": 410017702.34835,
+        "out_hash": "7277e61e068d9260"
+      },
+      "v250_decim_noX": {
+        "median_ns": 3243650,
+        "out_paths": 5,
+        "out_verts": 1092,
+        "out_area_u2": 410018333.29244995,
+        "out_hash": "8358581772bfa6eb"
+      }
+    },
+    {
+      "case_index": 69,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 440,
+      "opcode": 5,
+      "in_verts": 1640,
+      "rust_pnp": {
+        "median_ns": 1376500,
+        "out_paths": 1,
+        "out_verts": 101,
+        "out_area_u2": 14093159.0,
+        "out_hash": "1ac8075d3df0f0b1"
+      },
+      "cpp_152": {
+        "median_ns": 1064850,
+        "out_paths": 1,
+        "out_verts": 101,
+        "out_area_u2": 14093159,
+        "out_hash": "1ac8075d3df0f0b1"
+      },
+      "cpp_152_concave": {
+        "median_ns": 489900,
+        "out_paths": 1,
+        "out_verts": 109,
+        "out_area_u2": 14060751.96765,
+        "out_hash": "847fd723f432882b"
+      },
+      "v250_nodecim": {
+        "median_ns": 621050,
+        "out_paths": 1,
+        "out_verts": 110,
+        "out_area_u2": 14060964.8119,
+        "out_hash": "8fd9754c4a6b4bdc"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 1439400,
+        "out_paths": 1,
+        "out_verts": 110,
+        "out_area_u2": 14060935.5164,
+        "out_hash": "a917d9ea97f77689"
+      },
+      "v250_decim": {
+        "median_ns": 486900,
+        "out_paths": 1,
+        "out_verts": 109,
+        "out_area_u2": 14060751.96765,
+        "out_hash": "847fd723f432882b"
+      },
+      "v250_decim_noX": {
+        "median_ns": 1369200,
+        "out_paths": 1,
+        "out_verts": 110,
+        "out_area_u2": 14060729.1875,
+        "out_hash": "bb8f7420b9abc784"
+      }
+    },
+    {
+      "case_index": 70,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 480,
+      "opcode": 5,
+      "in_verts": 36,
+      "rust_pnp": {
+        "median_ns": 14000,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152": {
+        "median_ns": 11400,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152_concave": {
+        "median_ns": 7300,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim": {
+        "median_ns": 9000,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 17750,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 7350,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim_noX": {
+        "median_ns": 16800,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 71,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 0,
+      "opcode": 5,
+      "in_verts": 277,
+      "rust_pnp": {
+        "median_ns": 750650,
+        "out_paths": 1,
+        "out_verts": 332,
+        "out_area_u2": 227790222.5,
+        "out_hash": "07493daf13c3f1f4"
+      },
+      "cpp_152": {
+        "median_ns": 573250,
+        "out_paths": 1,
+        "out_verts": 332,
+        "out_area_u2": 227790222.5,
+        "out_hash": "07493daf13c3f1f4"
+      },
+      "cpp_152_concave": {
+        "median_ns": 198150,
+        "out_paths": 1,
+        "out_verts": 317,
+        "out_area_u2": 227779803.9657,
+        "out_hash": "acb5a26b5bee6f9c"
+      },
+      "v250_nodecim": {
+        "median_ns": 319000,
+        "out_paths": 1,
+        "out_verts": 328,
+        "out_area_u2": 227784653.65135,
+        "out_hash": "0b44a4ae7d064057"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 707400,
+        "out_paths": 1,
+        "out_verts": 330,
+        "out_area_u2": 227784703.4314,
+        "out_hash": "e5c2b339121073fe"
+      },
+      "v250_decim": {
+        "median_ns": 201100,
+        "out_paths": 1,
+        "out_verts": 312,
+        "out_area_u2": 227775776.2629,
+        "out_hash": "c1945a02ce20497c"
+      },
+      "v250_decim_noX": {
+        "median_ns": 548400,
+        "out_paths": 1,
+        "out_verts": 314,
+        "out_area_u2": 227775811.99885,
+        "out_hash": "501173963e48a736"
+      }
+    },
+    {
+      "case_index": 72,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 40,
+      "opcode": 5,
+      "in_verts": 11117,
+      "rust_pnp": {
+        "median_ns": 42088700,
+        "out_paths": 10,
+        "out_verts": 3097,
+        "out_area_u2": 2415695774.5,
+        "out_hash": "06002b606879d0f5"
+      },
+      "cpp_152": {
+        "median_ns": 30085900,
+        "out_paths": 10,
+        "out_verts": 3095,
+        "out_area_u2": 2415695774.5,
+        "out_hash": "8a87767e6604f24a"
+      },
+      "cpp_152_concave": {
+        "median_ns": 8212250,
+        "out_paths": 10,
+        "out_verts": 2856,
+        "out_area_u2": 2415744270.8274503,
+        "out_hash": "5a966ce5bb2e934d"
+      },
+      "v250_nodecim": {
+        "median_ns": 22165400,
+        "out_paths": 10,
+        "out_verts": 3201,
+        "out_area_u2": 2415704954.1170497,
+        "out_hash": "1680d12293185e0d"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 48816400,
+        "out_paths": 10,
+        "out_verts": 3217,
+        "out_area_u2": 2415705034.37405,
+        "out_hash": "278c6afb188e7507"
+      },
+      "v250_decim": {
+        "median_ns": 8196350,
+        "out_paths": 10,
+        "out_verts": 2812,
+        "out_area_u2": 2415719071.0617,
+        "out_hash": "bad578a37357febc"
+      },
+      "v250_decim_noX": {
+        "median_ns": 19269600,
+        "out_paths": 10,
+        "out_verts": 2838,
+        "out_area_u2": 2415719138.00285,
+        "out_hash": "ad35521358533a80"
+      }
+    },
+    {
+      "case_index": 73,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 80,
+      "opcode": 5,
+      "in_verts": 7701,
+      "rust_pnp": {
+        "median_ns": 20725700,
+        "out_paths": 2,
+        "out_verts": 457,
+        "out_area_u2": 257792356.0,
+        "out_hash": "d3562266b876ec35"
+      },
+      "cpp_152": {
+        "median_ns": 14064350,
+        "out_paths": 2,
+        "out_verts": 457,
+        "out_area_u2": 257792356,
+        "out_hash": "d3562266b876ec35"
+      },
+      "cpp_152_concave": {
+        "median_ns": 5070300,
+        "out_paths": 2,
+        "out_verts": 430,
+        "out_area_u2": 257787235.6402,
+        "out_hash": "126448b2e7145de3"
+      },
+      "v250_nodecim": {
+        "median_ns": 11401300,
+        "out_paths": 2,
+        "out_verts": 451,
+        "out_area_u2": 257778589.93684998,
+        "out_hash": "1b78b9576572dd08"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 24380600,
+        "out_paths": 2,
+        "out_verts": 452,
+        "out_area_u2": 257778567.09475,
+        "out_hash": "dabe605fa9fb01fb"
+      },
+      "v250_decim": {
+        "median_ns": 5126550,
+        "out_paths": 2,
+        "out_verts": 412,
+        "out_area_u2": 257779030.42195,
+        "out_hash": "f0170f67562f7a11"
+      },
+      "v250_decim_noX": {
+        "median_ns": 12980300,
+        "out_paths": 2,
+        "out_verts": 416,
+        "out_area_u2": 257778947.16369998,
+        "out_hash": "4b162d7ffb25388b"
+      }
+    },
+    {
+      "case_index": 74,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 120,
+      "opcode": 5,
+      "in_verts": 5031,
+      "rust_pnp": {
+        "median_ns": 19562400,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152": {
+        "median_ns": 13358450,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152_concave": {
+        "median_ns": 4910800,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim": {
+        "median_ns": 11296100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 26213300,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 4789350,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim_noX": {
+        "median_ns": 14035450,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 75,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 160,
+      "opcode": 5,
+      "in_verts": 8263,
+      "rust_pnp": {
+        "median_ns": 50874600,
+        "out_paths": 2,
+        "out_verts": 315,
+        "out_area_u2": 262283301.0,
+        "out_hash": "567139a1dc0d7b89"
+      },
+      "cpp_152": {
+        "median_ns": 35349850,
+        "out_paths": 2,
+        "out_verts": 315,
+        "out_area_u2": 262283301,
+        "out_hash": "567139a1dc0d7b89"
+      },
+      "cpp_152_concave": {
+        "median_ns": 11742800,
+        "out_paths": 2,
+        "out_verts": 297,
+        "out_area_u2": 262277594.93705,
+        "out_hash": "644b4c8f038dafd7"
+      },
+      "v250_nodecim": {
+        "median_ns": 28663300,
+        "out_paths": 2,
+        "out_verts": 328,
+        "out_area_u2": 262275699.19785002,
+        "out_hash": "1678bbba8ffdaa62"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 64546450,
+        "out_paths": 2,
+        "out_verts": 328,
+        "out_area_u2": 262275634.40895,
+        "out_hash": "f678d22114570d6f"
+      },
+      "v250_decim": {
+        "median_ns": 11584150,
+        "out_paths": 2,
+        "out_verts": 296,
+        "out_area_u2": 262274933.28855002,
+        "out_hash": "e58001e2745e02aa"
+      },
+      "v250_decim_noX": {
+        "median_ns": 33521100,
+        "out_paths": 2,
+        "out_verts": 298,
+        "out_area_u2": 262275060.68695,
+        "out_hash": "6fbfc77e41c510cb"
+      }
+    },
+    {
+      "case_index": 76,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 200,
+      "opcode": 5,
+      "in_verts": 7136,
+      "rust_pnp": {
+        "median_ns": 37683500,
+        "out_paths": 1,
+        "out_verts": 54,
+        "out_area_u2": 15174455.0,
+        "out_hash": "0d579ce3ab5c79b9"
+      },
+      "cpp_152": {
+        "median_ns": 26343150,
+        "out_paths": 1,
+        "out_verts": 54,
+        "out_area_u2": 15174455,
+        "out_hash": "0d579ce3ab5c79b9"
+      },
+      "cpp_152_concave": {
+        "median_ns": 10479450,
+        "out_paths": 1,
+        "out_verts": 54,
+        "out_area_u2": 15179759.63785,
+        "out_hash": "5368594e2620b788"
+      },
+      "v250_nodecim": {
+        "median_ns": 24313300,
+        "out_paths": 1,
+        "out_verts": 52,
+        "out_area_u2": 15184183.32005,
+        "out_hash": "156e5f070a9f51a9"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 48906350,
+        "out_paths": 1,
+        "out_verts": 52,
+        "out_area_u2": 15184228.48465,
+        "out_hash": "e0446b0116b76e6b"
+      },
+      "v250_decim": {
+        "median_ns": 10422150,
+        "out_paths": 1,
+        "out_verts": 52,
+        "out_area_u2": 15184183.32005,
+        "out_hash": "156e5f070a9f51a9"
+      },
+      "v250_decim_noX": {
+        "median_ns": 23684800,
+        "out_paths": 1,
+        "out_verts": 52,
+        "out_area_u2": 15184228.48465,
+        "out_hash": "e0446b0116b76e6b"
+      }
+    },
+    {
+      "case_index": 77,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 239,
+      "opcode": 5,
+      "in_verts": 5404,
+      "rust_pnp": {
+        "median_ns": 49547900,
+        "out_paths": 2,
+        "out_verts": 188,
+        "out_area_u2": 55193992.5,
+        "out_hash": "d3da2c8750139ab2"
+      },
+      "cpp_152": {
+        "median_ns": 32158100,
+        "out_paths": 2,
+        "out_verts": 188,
+        "out_area_u2": 55193992.5,
+        "out_hash": "d3da2c8750139ab2"
+      },
+      "cpp_152_concave": {
+        "median_ns": 21538950,
+        "out_paths": 2,
+        "out_verts": 189,
+        "out_area_u2": 55182096.198,
+        "out_hash": "c3f00c132ba0867a"
+      },
+      "v250_nodecim": {
+        "median_ns": 40985850,
+        "out_paths": 2,
+        "out_verts": 187,
+        "out_area_u2": 55189236.76369999,
+        "out_hash": "e8ce5ef710661c87"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 68768400,
+        "out_paths": 2,
+        "out_verts": 186,
+        "out_area_u2": 55189267.35935,
+        "out_hash": "6761e989ad5d1890"
+      },
+      "v250_decim": {
+        "median_ns": 21698450,
+        "out_paths": 2,
+        "out_verts": 185,
+        "out_area_u2": 55181111.1066,
+        "out_hash": "53e76fce5f573e76"
+      },
+      "v250_decim_noX": {
+        "median_ns": 39764000,
+        "out_paths": 2,
+        "out_verts": 185,
+        "out_area_u2": 55181080.2638,
+        "out_hash": "483f013028d38a0b"
+      }
+    },
+    {
+      "case_index": 78,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 240,
+      "opcode": 5,
+      "in_verts": 5452,
+      "rust_pnp": {
+        "median_ns": 45998350,
+        "out_paths": 2,
+        "out_verts": 203,
+        "out_area_u2": 60519359.0,
+        "out_hash": "c9d3788d0916c392"
+      },
+      "cpp_152": {
+        "median_ns": 31187850,
+        "out_paths": 2,
+        "out_verts": 203,
+        "out_area_u2": 60519359,
+        "out_hash": "c9d3788d0916c392"
+      },
+      "cpp_152_concave": {
+        "median_ns": 21443850,
+        "out_paths": 2,
+        "out_verts": 190,
+        "out_area_u2": 60492049.3473,
+        "out_hash": "f93dfdd4aa3df177"
+      },
+      "v250_nodecim": {
+        "median_ns": 39131050,
+        "out_paths": 2,
+        "out_verts": 194,
+        "out_area_u2": 60492408.09905,
+        "out_hash": "67c353a6205aa2d3"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 65588400,
+        "out_paths": 2,
+        "out_verts": 196,
+        "out_area_u2": 60492486.263349995,
+        "out_hash": "3f243a987796f756"
+      },
+      "v250_decim": {
+        "median_ns": 22216500,
+        "out_paths": 2,
+        "out_verts": 184,
+        "out_area_u2": 60490927.021299995,
+        "out_hash": "8daf80334dd81a28"
+      },
+      "v250_decim_noX": {
+        "median_ns": 38411050,
+        "out_paths": 2,
+        "out_verts": 185,
+        "out_area_u2": 60490805.52755,
+        "out_hash": "5b5db5859db085b7"
+      }
+    },
+    {
+      "case_index": 79,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 270,
+      "opcode": 5,
+      "in_verts": 4476,
+      "rust_pnp": {
+        "median_ns": 19577900,
+        "out_paths": 2,
+        "out_verts": 129,
+        "out_area_u2": 30573015.5,
+        "out_hash": "885898c618831985"
+      },
+      "cpp_152": {
+        "median_ns": 12719050,
+        "out_paths": 2,
+        "out_verts": 129,
+        "out_area_u2": 30573015.5,
+        "out_hash": "885898c618831985"
+      },
+      "cpp_152_concave": {
+        "median_ns": 7877150,
+        "out_paths": 2,
+        "out_verts": 125,
+        "out_area_u2": 30571661.20125,
+        "out_hash": "7b2c4fed56980fc9"
+      },
+      "v250_nodecim": {
+        "median_ns": 14267050,
+        "out_paths": 2,
+        "out_verts": 124,
+        "out_area_u2": 30577018.27745,
+        "out_hash": "5c7d39ae9a498863"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 26452400,
+        "out_paths": 2,
+        "out_verts": 124,
+        "out_area_u2": 30577006.853550002,
+        "out_hash": "a00a062cc98c4bee"
+      },
+      "v250_decim": {
+        "median_ns": 7806500,
+        "out_paths": 2,
+        "out_verts": 121,
+        "out_area_u2": 30570006.83015,
+        "out_hash": "c1dd9e5c1a54ddc3"
+      },
+      "v250_decim_noX": {
+        "median_ns": 14776700,
+        "out_paths": 2,
+        "out_verts": 121,
+        "out_area_u2": 30569979.19445,
+        "out_hash": "b5228151f842841c"
+      }
+    },
+    {
+      "case_index": 80,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 280,
+      "opcode": 5,
+      "in_verts": 4864,
+      "rust_pnp": {
+        "median_ns": 55834100,
+        "out_paths": 3,
+        "out_verts": 557,
+        "out_area_u2": 317171083.0,
+        "out_hash": "0e62d4dc845763b3"
+      },
+      "cpp_152": {
+        "median_ns": 38542850,
+        "out_paths": 3,
+        "out_verts": 557,
+        "out_area_u2": 317171083,
+        "out_hash": "0e62d4dc845763b3"
+      },
+      "cpp_152_concave": {
+        "median_ns": 28512700,
+        "out_paths": 3,
+        "out_verts": 524,
+        "out_area_u2": 317075688.4505,
+        "out_hash": "eeec2982072853fd"
+      },
+      "v250_nodecim": {
+        "median_ns": 57860850,
+        "out_paths": 3,
+        "out_verts": 596,
+        "out_area_u2": 317108697.75380003,
+        "out_hash": "5c50f489a1e32cb5"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 72902400,
+        "out_paths": 3,
+        "out_verts": 599,
+        "out_area_u2": 317108947.6261,
+        "out_hash": "52912c75507e6965"
+      },
+      "v250_decim": {
+        "median_ns": 28274000,
+        "out_paths": 3,
+        "out_verts": 511,
+        "out_area_u2": 317067482.773,
+        "out_hash": "44579f5a3f782970"
+      },
+      "v250_decim_noX": {
+        "median_ns": 45376900,
+        "out_paths": 3,
+        "out_verts": 513,
+        "out_area_u2": 317067965.42609996,
+        "out_hash": "14285f96f59b6503"
+      }
+    },
+    {
+      "case_index": 81,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 320,
+      "opcode": 5,
+      "in_verts": 3543,
+      "rust_pnp": {
+        "median_ns": 31139750,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152": {
+        "median_ns": 18901300,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152_concave": {
+        "median_ns": 12512200,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim": {
+        "median_ns": 30212050,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 30993500,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 12322850,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim_noX": {
+        "median_ns": 19821050,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 82,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 360,
+      "opcode": 5,
+      "in_verts": 3537,
+      "rust_pnp": {
+        "median_ns": 56587600,
+        "out_paths": 1,
+        "out_verts": 170,
+        "out_area_u2": 82543788.0,
+        "out_hash": "21ec9d2d2a53f3e8"
+      },
+      "cpp_152": {
+        "median_ns": 33624550,
+        "out_paths": 1,
+        "out_verts": 170,
+        "out_area_u2": 82543788,
+        "out_hash": "21ec9d2d2a53f3e8"
+      },
+      "cpp_152_concave": {
+        "median_ns": 22026400,
+        "out_paths": 1,
+        "out_verts": 175,
+        "out_area_u2": 82541880.4368,
+        "out_hash": "6e0e3798e7eafda9"
+      },
+      "v250_nodecim": {
+        "median_ns": 51203250,
+        "out_paths": 1,
+        "out_verts": 186,
+        "out_area_u2": 82540679.73915,
+        "out_hash": "c916ac55832d7fec"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 58174850,
+        "out_paths": 1,
+        "out_verts": 184,
+        "out_area_u2": 82540815.2983,
+        "out_hash": "2b36b4ee92fafee2"
+      },
+      "v250_decim": {
+        "median_ns": 21527300,
+        "out_paths": 1,
+        "out_verts": 167,
+        "out_area_u2": 82540705.3501,
+        "out_hash": "1985b986772c0f30"
+      },
+      "v250_decim_noX": {
+        "median_ns": 37835050,
+        "out_paths": 1,
+        "out_verts": 168,
+        "out_area_u2": 82540843.5399,
+        "out_hash": "d6f67436f58b53f9"
+      }
+    },
+    {
+      "case_index": 83,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 400,
+      "opcode": 5,
+      "in_verts": 2350,
+      "rust_pnp": {
+        "median_ns": 16049900,
+        "out_paths": 1,
+        "out_verts": 66,
+        "out_area_u2": 17208547.5,
+        "out_hash": "5924f07422ec6e33"
+      },
+      "cpp_152": {
+        "median_ns": 7036400,
+        "out_paths": 1,
+        "out_verts": 66,
+        "out_area_u2": 17208547.5,
+        "out_hash": "5924f07422ec6e33"
+      },
+      "cpp_152_concave": {
+        "median_ns": 3608100,
+        "out_paths": 1,
+        "out_verts": 66,
+        "out_area_u2": 17224801.7462,
+        "out_hash": "9add9138b3e8b6be"
+      },
+      "v250_nodecim": {
+        "median_ns": 8333400,
+        "out_paths": 1,
+        "out_verts": 64,
+        "out_area_u2": 17223597.42085,
+        "out_hash": "1fdf2f7a969d3582"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 9022350,
+        "out_paths": 1,
+        "out_verts": 64,
+        "out_area_u2": 17223597.76655,
+        "out_hash": "02a02a6af45fecc7"
+      },
+      "v250_decim": {
+        "median_ns": 3528100,
+        "out_paths": 1,
+        "out_verts": 63,
+        "out_area_u2": 17222277.6055,
+        "out_hash": "d992739256f78f76"
+      },
+      "v250_decim_noX": {
+        "median_ns": 5738950,
+        "out_paths": 1,
+        "out_verts": 63,
+        "out_area_u2": 17222140.9724,
+        "out_hash": "0a56019afdffd6e0"
+      }
+    },
+    {
+      "case_index": 84,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 440,
+      "opcode": 5,
+      "in_verts": 1640,
+      "rust_pnp": {
+        "median_ns": 9089800,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152": {
+        "median_ns": 4401750,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152_concave": {
+        "median_ns": 1998200,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim": {
+        "median_ns": 5128300,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 5541800,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 1979550,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim_noX": {
+        "median_ns": 3545600,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 85,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 480,
+      "opcode": 5,
+      "in_verts": 36,
+      "rust_pnp": {
+        "median_ns": 103350,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152": {
+        "median_ns": 51550,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152_concave": {
+        "median_ns": 25550,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim": {
+        "median_ns": 55100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 62350,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 25500,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim_noX": {
+        "median_ns": 41650,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 86,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 40,
+      "opcode": 5,
+      "in_verts": 6789,
+      "rust_pnp": {
+        "median_ns": 7451250,
+        "out_paths": 10,
+        "out_verts": 4187,
+        "out_area_u2": 1407773781.5,
+        "out_hash": "4b8be65ae2eed81e"
+      },
+      "cpp_152": {
+        "median_ns": 5535850,
+        "out_paths": 10,
+        "out_verts": 4187,
+        "out_area_u2": 1407773781.5,
+        "out_hash": "4b8be65ae2eed81e"
+      },
+      "cpp_152_concave": {
+        "median_ns": 2505550,
+        "out_paths": 10,
+        "out_verts": 4098,
+        "out_area_u2": 1405618978.76805,
+        "out_hash": "8263c37ddf08d7b6"
+      },
+      "v250_nodecim": {
+        "median_ns": 3750050,
+        "out_paths": 10,
+        "out_verts": 4144,
+        "out_area_u2": 1405603086.9775999,
+        "out_hash": "dc70867a4bfb7a03"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 5065350,
+        "out_paths": 10,
+        "out_verts": 4160,
+        "out_area_u2": 1405649556.90265,
+        "out_hash": "74765bfa5fb2ff56"
+      },
+      "v250_decim": {
+        "median_ns": 2341100,
+        "out_paths": 10,
+        "out_verts": 4098,
+        "out_area_u2": 1405618978.76805,
+        "out_hash": "8263c37ddf08d7b6"
+      },
+      "v250_decim_noX": {
+        "median_ns": 4683000,
+        "out_paths": 10,
+        "out_verts": 4121,
+        "out_area_u2": 1405619257.7252,
+        "out_hash": "a3f35379efcbacb2"
+      }
+    },
+    {
+      "case_index": 87,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 80,
+      "opcode": 5,
+      "in_verts": 5865,
+      "rust_pnp": {
+        "median_ns": 7699150,
+        "out_paths": 7,
+        "out_verts": 3450,
+        "out_area_u2": 1180252547.5,
+        "out_hash": "c86ff27705523eb1"
+      },
+      "cpp_152": {
+        "median_ns": 4647500,
+        "out_paths": 7,
+        "out_verts": 3450,
+        "out_area_u2": 1180252547.5,
+        "out_hash": "c86ff27705523eb1"
+      },
+      "cpp_152_concave": {
+        "median_ns": 1950850,
+        "out_paths": 7,
+        "out_verts": 3318,
+        "out_area_u2": 1177862851.61205,
+        "out_hash": "35525e4d70136ef4"
+      },
+      "v250_nodecim": {
+        "median_ns": 2673750,
+        "out_paths": 7,
+        "out_verts": 3339,
+        "out_area_u2": 1177878763.0577002,
+        "out_hash": "d7e678d5675a5461"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 4377600,
+        "out_paths": 7,
+        "out_verts": 3360,
+        "out_area_u2": 1177888806.76905,
+        "out_hash": "ae29cb0b32c1e6de"
+      },
+      "v250_decim": {
+        "median_ns": 1941600,
+        "out_paths": 7,
+        "out_verts": 3318,
+        "out_area_u2": 1177862851.61205,
+        "out_hash": "35525e4d70136ef4"
+      },
+      "v250_decim_noX": {
+        "median_ns": 4010800,
+        "out_paths": 7,
+        "out_verts": 3362,
+        "out_area_u2": 1177862921.8187,
+        "out_hash": "09cdcbd489dc9fec"
+      }
+    },
+    {
+      "case_index": 88,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 120,
+      "opcode": 5,
+      "in_verts": 8091,
+      "rust_pnp": {
+        "median_ns": 12110000,
+        "out_paths": 12,
+        "out_verts": 3450,
+        "out_area_u2": 1101260608.0,
+        "out_hash": "33893ed04515577f"
+      },
+      "cpp_152": {
+        "median_ns": 6834450,
+        "out_paths": 12,
+        "out_verts": 3450,
+        "out_area_u2": 1101260608,
+        "out_hash": "33893ed04515577f"
+      },
+      "cpp_152_concave": {
+        "median_ns": 3138450,
+        "out_paths": 12,
+        "out_verts": 3397,
+        "out_area_u2": 1099782588.5811498,
+        "out_hash": "6dd4950b2aa8c4a4"
+      },
+      "v250_nodecim": {
+        "median_ns": 4614750,
+        "out_paths": 12,
+        "out_verts": 3428,
+        "out_area_u2": 1099754130.15175,
+        "out_hash": "13b9fbb78d6e75f4"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 6667900,
+        "out_paths": 12,
+        "out_verts": 3472,
+        "out_area_u2": 1099760314.3459,
+        "out_hash": "1933810923292a46"
+      },
+      "v250_decim": {
+        "median_ns": 2949450,
+        "out_paths": 12,
+        "out_verts": 3397,
+        "out_area_u2": 1099782588.5811498,
+        "out_hash": "6dd4950b2aa8c4a4"
+      },
+      "v250_decim_noX": {
+        "median_ns": 6287650,
+        "out_paths": 12,
+        "out_verts": 3441,
+        "out_area_u2": 1099782706.80295,
+        "out_hash": "646d1faeaf0690f8"
+      }
+    },
+    {
+      "case_index": 89,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 160,
+      "opcode": 5,
+      "in_verts": 8250,
+      "rust_pnp": {
+        "median_ns": 18159100,
+        "out_paths": 19,
+        "out_verts": 3926,
+        "out_area_u2": 1453235086.5,
+        "out_hash": "d3124ee4c310e029"
+      },
+      "cpp_152": {
+        "median_ns": 12261700,
+        "out_paths": 19,
+        "out_verts": 3926,
+        "out_area_u2": 1453235086.5,
+        "out_hash": "d3124ee4c310e029"
+      },
+      "cpp_152_concave": {
+        "median_ns": 4248750,
+        "out_paths": 20,
+        "out_verts": 3862,
+        "out_area_u2": 1452787567.6925998,
+        "out_hash": "8ace3fdbfac4fc7a"
+      },
+      "v250_nodecim": {
+        "median_ns": 6314350,
+        "out_paths": 20,
+        "out_verts": 3947,
+        "out_area_u2": 1452768965.3539503,
+        "out_hash": "c0fc19b64ecb41df"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 10450600,
+        "out_paths": 20,
+        "out_verts": 4012,
+        "out_area_u2": 1452796351.6111002,
+        "out_hash": "26f7bddf8b5e6f88"
+      },
+      "v250_decim": {
+        "median_ns": 4353300,
+        "out_paths": 20,
+        "out_verts": 3862,
+        "out_area_u2": 1452787567.6925998,
+        "out_hash": "8ace3fdbfac4fc7a"
+      },
+      "v250_decim_noX": {
+        "median_ns": 10003050,
+        "out_paths": 20,
+        "out_verts": 3921,
+        "out_area_u2": 1452783848.9627001,
+        "out_hash": "5481fbabab5dc3fe"
+      }
+    },
+    {
+      "case_index": 90,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 200,
+      "opcode": 5,
+      "in_verts": 7731,
+      "rust_pnp": {
+        "median_ns": 12208400,
+        "out_paths": 18,
+        "out_verts": 1792,
+        "out_area_u2": 333372682.5,
+        "out_hash": "1339ab80372172e4"
+      },
+      "cpp_152": {
+        "median_ns": 8118800,
+        "out_paths": 18,
+        "out_verts": 1792,
+        "out_area_u2": 333372682.5,
+        "out_hash": "1339ab80372172e4"
+      },
+      "cpp_152_concave": {
+        "median_ns": 3372850,
+        "out_paths": 18,
+        "out_verts": 1826,
+        "out_area_u2": 332807666.7628,
+        "out_hash": "68f1da0af1cc6838"
+      },
+      "v250_nodecim": {
+        "median_ns": 5090200,
+        "out_paths": 18,
+        "out_verts": 1859,
+        "out_area_u2": 332570942.2859,
+        "out_hash": "56a11e4972510d81"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 9316800,
+        "out_paths": 18,
+        "out_verts": 1862,
+        "out_area_u2": 332580852.0907,
+        "out_hash": "d3a18e8b2e2ab494"
+      },
+      "v250_decim": {
+        "median_ns": 3350400,
+        "out_paths": 18,
+        "out_verts": 1826,
+        "out_area_u2": 332807666.7628,
+        "out_hash": "68f1da0af1cc6838"
+      },
+      "v250_decim_noX": {
+        "median_ns": 8346900,
+        "out_paths": 18,
+        "out_verts": 1842,
+        "out_area_u2": 332809008.44585,
+        "out_hash": "7f8ea953fef232e0"
+      }
+    },
+    {
+      "case_index": 91,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 239,
+      "opcode": 5,
+      "in_verts": 5839,
+      "rust_pnp": {
+        "median_ns": 15103050,
+        "out_paths": 7,
+        "out_verts": 553,
+        "out_area_u2": 116244400.0,
+        "out_hash": "664539c5eb7df164"
+      },
+      "cpp_152": {
+        "median_ns": 7651800,
+        "out_paths": 7,
+        "out_verts": 553,
+        "out_area_u2": 116244400,
+        "out_hash": "664539c5eb7df164"
+      },
+      "cpp_152_concave": {
+        "median_ns": 3237700,
+        "out_paths": 7,
+        "out_verts": 553,
+        "out_area_u2": 116020676.5127,
+        "out_hash": "a2dcada07139447f"
+      },
+      "v250_nodecim": {
+        "median_ns": 5496800,
+        "out_paths": 7,
+        "out_verts": 585,
+        "out_area_u2": 116009764.67995,
+        "out_hash": "3842d80376977427"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 9814800,
+        "out_paths": 7,
+        "out_verts": 593,
+        "out_area_u2": 116019500.64285003,
+        "out_hash": "e06e9c9d34da66f2"
+      },
+      "v250_decim": {
+        "median_ns": 3256100,
+        "out_paths": 7,
+        "out_verts": 553,
+        "out_area_u2": 116020676.5127,
+        "out_hash": "a2dcada07139447f"
+      },
+      "v250_decim_noX": {
+        "median_ns": 8988000,
+        "out_paths": 7,
+        "out_verts": 564,
+        "out_area_u2": 116020869.71635,
+        "out_hash": "f096293891f7edd5"
+      }
+    },
+    {
+      "case_index": 92,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 240,
+      "opcode": 5,
+      "in_verts": 5660,
+      "rust_pnp": {
+        "median_ns": 13315900,
+        "out_paths": 6,
+        "out_verts": 528,
+        "out_area_u2": 100934709.0,
+        "out_hash": "d966dbd3bffdd533"
+      },
+      "cpp_152": {
+        "median_ns": 6518600,
+        "out_paths": 6,
+        "out_verts": 528,
+        "out_area_u2": 100934709,
+        "out_hash": "d966dbd3bffdd533"
+      },
+      "cpp_152_concave": {
+        "median_ns": 2913750,
+        "out_paths": 6,
+        "out_verts": 530,
+        "out_area_u2": 100642602.79419999,
+        "out_hash": "4903327c75b5fcca"
+      },
+      "v250_nodecim": {
+        "median_ns": 4636900,
+        "out_paths": 6,
+        "out_verts": 555,
+        "out_area_u2": 100800859.86785,
+        "out_hash": "d583305c61e0217b"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 8074750,
+        "out_paths": 6,
+        "out_verts": 569,
+        "out_area_u2": 100801327.5916,
+        "out_hash": "66cd702c4475d790"
+      },
+      "v250_decim": {
+        "median_ns": 2916650,
+        "out_paths": 6,
+        "out_verts": 530,
+        "out_area_u2": 100642602.79419999,
+        "out_hash": "4903327c75b5fcca"
+      },
+      "v250_decim_noX": {
+        "median_ns": 7437650,
+        "out_paths": 6,
+        "out_verts": 542,
+        "out_area_u2": 100642666.57475002,
+        "out_hash": "2c78ad637448c096"
+      }
+    },
+    {
+      "case_index": 93,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 270,
+      "opcode": 5,
+      "in_verts": 8615,
+      "rust_pnp": {
+        "median_ns": 27634450,
+        "out_paths": 21,
+        "out_verts": 3009,
+        "out_area_u2": 1288143346.5,
+        "out_hash": "99bd8ee71789252f"
+      },
+      "cpp_152": {
+        "median_ns": 17132000,
+        "out_paths": 21,
+        "out_verts": 3009,
+        "out_area_u2": 1288143346.5,
+        "out_hash": "99bd8ee71789252f"
+      },
+      "cpp_152_concave": {
+        "median_ns": 7447850,
+        "out_paths": 21,
+        "out_verts": 2930,
+        "out_area_u2": 1286479596.3199,
+        "out_hash": "49c96348f7e81ba0"
+      },
+      "v250_nodecim": {
+        "median_ns": 12411300,
+        "out_paths": 21,
+        "out_verts": 2947,
+        "out_area_u2": 1286442704.34365,
+        "out_hash": "e59e1be2c5cfc912"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 24287250,
+        "out_paths": 21,
+        "out_verts": 2974,
+        "out_area_u2": 1286453407.3180494,
+        "out_hash": "14842a2e77205a0e"
+      },
+      "v250_decim": {
+        "median_ns": 7931200,
+        "out_paths": 21,
+        "out_verts": 2930,
+        "out_area_u2": 1286479596.3199,
+        "out_hash": "49c96348f7e81ba0"
+      },
+      "v250_decim_noX": {
+        "median_ns": 20363350,
+        "out_paths": 21,
+        "out_verts": 2963,
+        "out_area_u2": 1286479484.1923,
+        "out_hash": "68fa61fa6c14eb90"
+      }
+    },
+    {
+      "case_index": 94,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 280,
+      "opcode": 5,
+      "in_verts": 7952,
+      "rust_pnp": {
+        "median_ns": 17312750,
+        "out_paths": 10,
+        "out_verts": 2449,
+        "out_area_u2": 797429728.5,
+        "out_hash": "8cf069c2bcc2f2c5"
+      },
+      "cpp_152": {
+        "median_ns": 11498600,
+        "out_paths": 10,
+        "out_verts": 2449,
+        "out_area_u2": 797429728.5,
+        "out_hash": "8cf069c2bcc2f2c5"
+      },
+      "cpp_152_concave": {
+        "median_ns": 5469900,
+        "out_paths": 10,
+        "out_verts": 2392,
+        "out_area_u2": 796589654.5921998,
+        "out_hash": "8ee70237ff2c11e2"
+      },
+      "v250_nodecim": {
+        "median_ns": 8629200,
+        "out_paths": 10,
+        "out_verts": 2429,
+        "out_area_u2": 796377702.5430502,
+        "out_hash": "a280e0a8aa909552"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 15100000,
+        "out_paths": 10,
+        "out_verts": 2483,
+        "out_area_u2": 796387835.8661499,
+        "out_hash": "60787b89cb6f2d9b"
+      },
+      "v250_decim": {
+        "median_ns": 6694400,
+        "out_paths": 10,
+        "out_verts": 2392,
+        "out_area_u2": 796589654.5921998,
+        "out_hash": "8ee70237ff2c11e2"
+      },
+      "v250_decim_noX": {
+        "median_ns": 13195200,
+        "out_paths": 10,
+        "out_verts": 2428,
+        "out_area_u2": 796589419.6538,
+        "out_hash": "08e3e58cabecc6fc"
+      }
+    },
+    {
+      "case_index": 95,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 320,
+      "opcode": 5,
+      "in_verts": 5114,
+      "rust_pnp": {
+        "median_ns": 10112900,
+        "out_paths": 15,
+        "out_verts": 1541,
+        "out_area_u2": 1035750420.0,
+        "out_hash": "281d6081eaee913a"
+      },
+      "cpp_152": {
+        "median_ns": 6201450,
+        "out_paths": 15,
+        "out_verts": 1541,
+        "out_area_u2": 1035750420,
+        "out_hash": "281d6081eaee913a"
+      },
+      "cpp_152_concave": {
+        "median_ns": 2688350,
+        "out_paths": 15,
+        "out_verts": 1609,
+        "out_area_u2": 1035143752.27475,
+        "out_hash": "be06384608e46e1c"
+      },
+      "v250_nodecim": {
+        "median_ns": 4472850,
+        "out_paths": 15,
+        "out_verts": 1611,
+        "out_area_u2": 1034956152.5158498,
+        "out_hash": "f8888168db504791"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 7119400,
+        "out_paths": 15,
+        "out_verts": 1649,
+        "out_area_u2": 1034967718.7711499,
+        "out_hash": "f3b7ac3c31ac2f3d"
+      },
+      "v250_decim": {
+        "median_ns": 2833700,
+        "out_paths": 15,
+        "out_verts": 1609,
+        "out_area_u2": 1035143752.27475,
+        "out_hash": "be06384608e46e1c"
+      },
+      "v250_decim_noX": {
+        "median_ns": 6503650,
+        "out_paths": 15,
+        "out_verts": 1633,
+        "out_area_u2": 1035144081.67045,
+        "out_hash": "df97351cac74ad11"
+      }
+    },
+    {
+      "case_index": 96,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 360,
+      "opcode": 5,
+      "in_verts": 4686,
+      "rust_pnp": {
+        "median_ns": 8998600,
+        "out_paths": 10,
+        "out_verts": 1184,
+        "out_area_u2": 416223340.5,
+        "out_hash": "7486b2ee497c874f"
+      },
+      "cpp_152": {
+        "median_ns": 5234550,
+        "out_paths": 10,
+        "out_verts": 1184,
+        "out_area_u2": 416223340.5,
+        "out_hash": "7486b2ee497c874f"
+      },
+      "cpp_152_concave": {
+        "median_ns": 2138100,
+        "out_paths": 10,
+        "out_verts": 1190,
+        "out_area_u2": 415831377.83225,
+        "out_hash": "6914fc0e6df1ef00"
+      },
+      "v250_nodecim": {
+        "median_ns": 3540450,
+        "out_paths": 10,
+        "out_verts": 1227,
+        "out_area_u2": 416138104.07615006,
+        "out_hash": "16d552336a7ddfaf"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 6228400,
+        "out_paths": 10,
+        "out_verts": 1242,
+        "out_area_u2": 416147288.00829995,
+        "out_hash": "72ce17d164504fe2"
+      },
+      "v250_decim": {
+        "median_ns": 2182300,
+        "out_paths": 10,
+        "out_verts": 1190,
+        "out_area_u2": 415831377.83225,
+        "out_hash": "6914fc0e6df1ef00"
+      },
+      "v250_decim_noX": {
+        "median_ns": 5565900,
+        "out_paths": 10,
+        "out_verts": 1195,
+        "out_area_u2": 415831326.6678,
+        "out_hash": "e9f809b8d9ca5113"
+      }
+    },
+    {
+      "case_index": 97,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 400,
+      "opcode": 5,
+      "in_verts": 3921,
+      "rust_pnp": {
+        "median_ns": 5270150,
+        "out_paths": 5,
+        "out_verts": 1382,
+        "out_area_u2": 294634364.0,
+        "out_hash": "b5c902c01349a5cc"
+      },
+      "cpp_152": {
+        "median_ns": 3445000,
+        "out_paths": 5,
+        "out_verts": 1382,
+        "out_area_u2": 294634364,
+        "out_hash": "b5c902c01349a5cc"
+      },
+      "cpp_152_concave": {
+        "median_ns": 1631800,
+        "out_paths": 5,
+        "out_verts": 1356,
+        "out_area_u2": 293545225.32860005,
+        "out_hash": "b82651296c75ea9b"
+      },
+      "v250_nodecim": {
+        "median_ns": 2703400,
+        "out_paths": 5,
+        "out_verts": 1393,
+        "out_area_u2": 293722100.08895,
+        "out_hash": "e67779059c6e1bd3"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 3741600,
+        "out_paths": 5,
+        "out_verts": 1413,
+        "out_area_u2": 293740230.61175,
+        "out_hash": "88861917b37b4341"
+      },
+      "v250_decim": {
+        "median_ns": 1636000,
+        "out_paths": 5,
+        "out_verts": 1356,
+        "out_area_u2": 293545225.32860005,
+        "out_hash": "b82651296c75ea9b"
+      },
+      "v250_decim_noX": {
+        "median_ns": 3411200,
+        "out_paths": 5,
+        "out_verts": 1375,
+        "out_area_u2": 293546581.8988,
+        "out_hash": "6cac7e067752d646"
+      }
+    },
+    {
+      "case_index": 98,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 440,
+      "opcode": 5,
+      "in_verts": 3549,
+      "rust_pnp": {
+        "median_ns": 5184500,
+        "out_paths": 7,
+        "out_verts": 1168,
+        "out_area_u2": 478527193.5,
+        "out_hash": "a9f5e20fb34f706c"
+      },
+      "cpp_152": {
+        "median_ns": 3279800,
+        "out_paths": 7,
+        "out_verts": 1168,
+        "out_area_u2": 478527193.5,
+        "out_hash": "a9f5e20fb34f706c"
+      },
+      "cpp_152_concave": {
+        "median_ns": 1392000,
+        "out_paths": 7,
+        "out_verts": 1164,
+        "out_area_u2": 478298310.34915,
+        "out_hash": "1bcbbdcb1241d7b5"
+      },
+      "v250_nodecim": {
+        "median_ns": 2272900,
+        "out_paths": 7,
+        "out_verts": 1217,
+        "out_area_u2": 478240670.2364,
+        "out_hash": "61a1419946be9307"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 3457850,
+        "out_paths": 7,
+        "out_verts": 1236,
+        "out_area_u2": 478241118.429,
+        "out_hash": "a1c75727bf903faa"
+      },
+      "v250_decim": {
+        "median_ns": 1390100,
+        "out_paths": 7,
+        "out_verts": 1164,
+        "out_area_u2": 478298310.34915,
+        "out_hash": "1bcbbdcb1241d7b5"
+      },
+      "v250_decim_noX": {
+        "median_ns": 3154100,
+        "out_paths": 7,
+        "out_verts": 1181,
+        "out_area_u2": 478296523.4519,
+        "out_hash": "d5e30495019a0dc3"
+      }
+    },
+    {
+      "case_index": 99,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 480,
+      "opcode": 5,
+      "in_verts": 2502,
+      "rust_pnp": {
+        "median_ns": 3698800,
+        "out_paths": 4,
+        "out_verts": 1700,
+        "out_area_u2": 864424860.5,
+        "out_hash": "9da876a7e10c34f5"
+      },
+      "cpp_152": {
+        "median_ns": 2403200,
+        "out_paths": 4,
+        "out_verts": 1700,
+        "out_area_u2": 864424860.5,
+        "out_hash": "9da876a7e10c34f5"
+      },
+      "cpp_152_concave": {
+        "median_ns": 1071450,
+        "out_paths": 4,
+        "out_verts": 1648,
+        "out_area_u2": 863827939.2730999,
+        "out_hash": "cfd4bc1e761c6ba3"
+      },
+      "v250_nodecim": {
+        "median_ns": 1573500,
+        "out_paths": 4,
+        "out_verts": 1652,
+        "out_area_u2": 863773708.2341499,
+        "out_hash": "fd5976e24c014129"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 2312150,
+        "out_paths": 4,
+        "out_verts": 1690,
+        "out_area_u2": 863775995.2547,
+        "out_hash": "531e8786054bc906"
+      },
+      "v250_decim": {
+        "median_ns": 1076150,
+        "out_paths": 4,
+        "out_verts": 1648,
+        "out_area_u2": 863827939.2730999,
+        "out_hash": "cfd4bc1e761c6ba3"
+      },
+      "v250_decim_noX": {
+        "median_ns": 2136400,
+        "out_paths": 4,
+        "out_verts": 1670,
+        "out_area_u2": 863827901.0174,
+        "out_hash": "9bb02427d7152a1b"
+      }
+    },
+    {
+      "case_index": 100,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 494,
+      "opcode": 5,
+      "in_verts": 432,
+      "rust_pnp": {
+        "median_ns": 498450,
+        "out_paths": 1,
+        "out_verts": 366,
+        "out_area_u2": 678813703.5,
+        "out_hash": "1306e5928dbeff80"
+      },
+      "cpp_152": {
+        "median_ns": 328450,
+        "out_paths": 1,
+        "out_verts": 366,
+        "out_area_u2": 678813703.5,
+        "out_hash": "1306e5928dbeff80"
+      },
+      "cpp_152_concave": {
+        "median_ns": 134900,
+        "out_paths": 1,
+        "out_verts": 357,
+        "out_area_u2": 678689313.1309,
+        "out_hash": "b949099bac940a7f"
+      },
+      "v250_nodecim": {
+        "median_ns": 263950,
+        "out_paths": 1,
+        "out_verts": 364,
+        "out_area_u2": 678686384.80855,
+        "out_hash": "0a8234839d6d34ee"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 309350,
+        "out_paths": 1,
+        "out_verts": 372,
+        "out_area_u2": 678687770.2263,
+        "out_hash": "ae3c5a25f99b7f61"
+      },
+      "v250_decim": {
+        "median_ns": 133700,
+        "out_paths": 1,
+        "out_verts": 357,
+        "out_area_u2": 678689313.1309,
+        "out_hash": "b949099bac940a7f"
+      },
+      "v250_decim_noX": {
+        "median_ns": 285500,
+        "out_paths": 1,
+        "out_verts": 358,
+        "out_area_u2": 678689257.3475001,
+        "out_hash": "ef84448819ebe42c"
+      }
+    },
+    {
+      "case_index": 101,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 495,
+      "opcode": 5,
+      "in_verts": 151,
+      "rust_pnp": {
+        "median_ns": 142400,
+        "out_paths": 1,
+        "out_verts": 120,
+        "out_area_u2": 82327637.5,
+        "out_hash": "4153a8b9d040e6d9"
+      },
+      "cpp_152": {
+        "median_ns": 93550,
+        "out_paths": 1,
+        "out_verts": 120,
+        "out_area_u2": 82327637.5,
+        "out_hash": "4153a8b9d040e6d9"
+      },
+      "cpp_152_concave": {
+        "median_ns": 53400,
+        "out_paths": 1,
+        "out_verts": 109,
+        "out_area_u2": 82294001.5191,
+        "out_hash": "44ea53ce30e4925b"
+      },
+      "v250_nodecim": {
+        "median_ns": 84650,
+        "out_paths": 1,
+        "out_verts": 112,
+        "out_area_u2": 82306318.88605,
+        "out_hash": "f2e62df0e1eca67c"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 99900,
+        "out_paths": 1,
+        "out_verts": 113,
+        "out_area_u2": 82306285.79845,
+        "out_hash": "bfdb6c630e1a703b"
+      },
+      "v250_decim": {
+        "median_ns": 52300,
+        "out_paths": 1,
+        "out_verts": 109,
+        "out_area_u2": 82294001.5191,
+        "out_hash": "44ea53ce30e4925b"
+      },
+      "v250_decim_noX": {
+        "median_ns": 88500,
+        "out_paths": 1,
+        "out_verts": 110,
+        "out_area_u2": 82293981.5415,
+        "out_hash": "dd6cb427019cfcc5"
+      }
+    },
+    {
+      "case_index": 102,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 40,
+      "opcode": 5,
+      "in_verts": 6789,
+      "rust_pnp": {
+        "median_ns": 19029500,
+        "out_paths": 6,
+        "out_verts": 1126,
+        "out_area_u2": 577971511.5,
+        "out_hash": "0c5cece04a167bd2"
+      },
+      "cpp_152": {
+        "median_ns": 10523550,
+        "out_paths": 6,
+        "out_verts": 1126,
+        "out_area_u2": 577971511.5,
+        "out_hash": "0c5cece04a167bd2"
+      },
+      "cpp_152_concave": {
+        "median_ns": 4320250,
+        "out_paths": 6,
+        "out_verts": 1066,
+        "out_area_u2": 577938683.8883,
+        "out_hash": "6344c22213916b3b"
+      },
+      "v250_nodecim": {
+        "median_ns": 11410400,
+        "out_paths": 6,
+        "out_verts": 1167,
+        "out_area_u2": 577951167.0953,
+        "out_hash": "f41df15f5a7e39a2"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 10940900,
+        "out_paths": 6,
+        "out_verts": 1167,
+        "out_area_u2": 577951296.3339,
+        "out_hash": "453eea789854cc47"
+      },
+      "v250_decim": {
+        "median_ns": 4142800,
+        "out_paths": 6,
+        "out_verts": 1041,
+        "out_area_u2": 577927125.13085,
+        "out_hash": "51035a73955efab6"
+      },
+      "v250_decim_noX": {
+        "median_ns": 6352950,
+        "out_paths": 6,
+        "out_verts": 1039,
+        "out_area_u2": 577927174.68265,
+        "out_hash": "12164bde6a9b30f7"
+      }
+    },
+    {
+      "case_index": 103,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 80,
+      "opcode": 5,
+      "in_verts": 5865,
+      "rust_pnp": {
+        "median_ns": 18464350,
+        "out_paths": 3,
+        "out_verts": 371,
+        "out_area_u2": 171778092.5,
+        "out_hash": "d9ede088387138c6"
+      },
+      "cpp_152": {
+        "median_ns": 10088100,
+        "out_paths": 3,
+        "out_verts": 371,
+        "out_area_u2": 171778092.5,
+        "out_hash": "d9ede088387138c6"
+      },
+      "cpp_152_concave": {
+        "median_ns": 4486200,
+        "out_paths": 3,
+        "out_verts": 367,
+        "out_area_u2": 171757655.9906,
+        "out_hash": "9758e400e40b6558"
+      },
+      "v250_nodecim": {
+        "median_ns": 10420800,
+        "out_paths": 3,
+        "out_verts": 386,
+        "out_area_u2": 171755654.10689998,
+        "out_hash": "3e5a8a83d670a14d"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 11067650,
+        "out_paths": 3,
+        "out_verts": 388,
+        "out_area_u2": 171755760.22280002,
+        "out_hash": "5184ff7145d4e2c9"
+      },
+      "v250_decim": {
+        "median_ns": 3526450,
+        "out_paths": 3,
+        "out_verts": 357,
+        "out_area_u2": 171751515.58685,
+        "out_hash": "cb00d109dab3e2b7"
+      },
+      "v250_decim_noX": {
+        "median_ns": 6514550,
+        "out_paths": 3,
+        "out_verts": 357,
+        "out_area_u2": 171751773.74765,
+        "out_hash": "156e9fba61098681"
+      }
+    },
+    {
+      "case_index": 104,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 120,
+      "opcode": 5,
+      "in_verts": 8091,
+      "rust_pnp": {
+        "median_ns": 40226800,
+        "out_paths": 4,
+        "out_verts": 707,
+        "out_area_u2": 277766220.5,
+        "out_hash": "3b60198e26f73c41"
+      },
+      "cpp_152": {
+        "median_ns": 19337350,
+        "out_paths": 4,
+        "out_verts": 707,
+        "out_area_u2": 277766220.5,
+        "out_hash": "3b60198e26f73c41"
+      },
+      "cpp_152_concave": {
+        "median_ns": 9511650,
+        "out_paths": 4,
+        "out_verts": 680,
+        "out_area_u2": 277789775.3447,
+        "out_hash": "24c6f5fd05fc687a"
+      },
+      "v250_nodecim": {
+        "median_ns": 20000050,
+        "out_paths": 4,
+        "out_verts": 710,
+        "out_area_u2": 277768163.08545,
+        "out_hash": "8b46ef1fc608fa8d"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 23444250,
+        "out_paths": 4,
+        "out_verts": 719,
+        "out_area_u2": 277768013.3308,
+        "out_hash": "85b984fa1a838233"
+      },
+      "v250_decim": {
+        "median_ns": 7262850,
+        "out_paths": 4,
+        "out_verts": 673,
+        "out_area_u2": 277786185.16015,
+        "out_hash": "cb4fcd36505e6a3f"
+      },
+      "v250_decim_noX": {
+        "median_ns": 13765250,
+        "out_paths": 4,
+        "out_verts": 671,
+        "out_area_u2": 277786029.89405,
+        "out_hash": "670223a07b98e8e7"
+      }
+    },
+    {
+      "case_index": 105,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 160,
+      "opcode": 5,
+      "in_verts": 8250,
+      "rust_pnp": {
+        "median_ns": 63724350,
+        "out_paths": 4,
+        "out_verts": 572,
+        "out_area_u2": 286425891.0,
+        "out_hash": "37a9851d9fe57917"
+      },
+      "cpp_152": {
+        "median_ns": 30866850,
+        "out_paths": 4,
+        "out_verts": 572,
+        "out_area_u2": 286425891,
+        "out_hash": "37a9851d9fe57917"
+      },
+      "cpp_152_concave": {
+        "median_ns": 17505500,
+        "out_paths": 4,
+        "out_verts": 525,
+        "out_area_u2": 286406504.3467,
+        "out_hash": "b53bb59f16480da4"
+      },
+      "v250_nodecim": {
+        "median_ns": 41514750,
+        "out_paths": 4,
+        "out_verts": 594,
+        "out_area_u2": 286418886.5656,
+        "out_hash": "3d661302d0c794b1"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 43403000,
+        "out_paths": 4,
+        "out_verts": 596,
+        "out_area_u2": 286418801.49685,
+        "out_hash": "cdc40355d90ce086"
+      },
+      "v250_decim": {
+        "median_ns": 14088400,
+        "out_paths": 4,
+        "out_verts": 518,
+        "out_area_u2": 286408136.1839,
+        "out_hash": "3b5d4e4e1196e084"
+      },
+      "v250_decim_noX": {
+        "median_ns": 28032200,
+        "out_paths": 4,
+        "out_verts": 525,
+        "out_area_u2": 286408036.63444996,
+        "out_hash": "dec598ec12c0d829"
+      }
+    },
+    {
+      "case_index": 106,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 200,
+      "opcode": 5,
+      "in_verts": 7731,
+      "rust_pnp": {
+        "median_ns": 59576850,
+        "out_paths": 1,
+        "out_verts": 95,
+        "out_area_u2": 25565537.5,
+        "out_hash": "ac6fd03200335816"
+      },
+      "cpp_152": {
+        "median_ns": 29902600,
+        "out_paths": 1,
+        "out_verts": 95,
+        "out_area_u2": 25565537.5,
+        "out_hash": "ac6fd03200335816"
+      },
+      "cpp_152_concave": {
+        "median_ns": 18596950,
+        "out_paths": 1,
+        "out_verts": 98,
+        "out_area_u2": 25563337.32075,
+        "out_hash": "7c4b7bd1459a9970"
+      },
+      "v250_nodecim": {
+        "median_ns": 34374650,
+        "out_paths": 1,
+        "out_verts": 95,
+        "out_area_u2": 25560193.73215,
+        "out_hash": "2753acbf2e63bc78"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 42029450,
+        "out_paths": 1,
+        "out_verts": 96,
+        "out_area_u2": 25560195.96415,
+        "out_hash": "17d564b621f8e87d"
+      },
+      "v250_decim": {
+        "median_ns": 14642250,
+        "out_paths": 1,
+        "out_verts": 95,
+        "out_area_u2": 25574665.7536,
+        "out_hash": "e1cece57c0379c97"
+      },
+      "v250_decim_noX": {
+        "median_ns": 26982050,
+        "out_paths": 1,
+        "out_verts": 95,
+        "out_area_u2": 25574670.23505,
+        "out_hash": "b3b06d42962ce37f"
+      }
+    },
+    {
+      "case_index": 107,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 239,
+      "opcode": 5,
+      "in_verts": 5839,
+      "rust_pnp": {
+        "median_ns": 69574350,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152": {
+        "median_ns": 37068050,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152_concave": {
+        "median_ns": 17529050,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim": {
+        "median_ns": 43190100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 53674200,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 14484650,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim_noX": {
+        "median_ns": 28140800,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 108,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 240,
+      "opcode": 5,
+      "in_verts": 5660,
+      "rust_pnp": {
+        "median_ns": 59332450,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152": {
+        "median_ns": 30774700,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152_concave": {
+        "median_ns": 16274000,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim": {
+        "median_ns": 32312000,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 43222300,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 12752450,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim_noX": {
+        "median_ns": 25586350,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 109,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 270,
+      "opcode": 5,
+      "in_verts": 8615,
+      "rust_pnp": {
+        "median_ns": 140533000,
+        "out_paths": 3,
+        "out_verts": 808,
+        "out_area_u2": 761841224.0,
+        "out_hash": "b46b0c7eca9e0d2a"
+      },
+      "cpp_152": {
+        "median_ns": 85917250,
+        "out_paths": 3,
+        "out_verts": 808,
+        "out_area_u2": 761841224,
+        "out_hash": "b46b0c7eca9e0d2a"
+      },
+      "cpp_152_concave": {
+        "median_ns": 63988000,
+        "out_paths": 3,
+        "out_verts": 746,
+        "out_area_u2": 761842494.7768,
+        "out_hash": "7a2b9447f034aef4"
+      },
+      "v250_nodecim": {
+        "median_ns": 119710400,
+        "out_paths": 3,
+        "out_verts": 806,
+        "out_area_u2": 761847687.32635,
+        "out_hash": "6a59c68dd6259e4f"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 155331100,
+        "out_paths": 3,
+        "out_verts": 814,
+        "out_area_u2": 761847547.6687,
+        "out_hash": "a23dcdcfdef42597"
+      },
+      "v250_decim": {
+        "median_ns": 55594600,
+        "out_paths": 3,
+        "out_verts": 725,
+        "out_area_u2": 761838922.3686999,
+        "out_hash": "923523ce061e4bd6"
+      },
+      "v250_decim_noX": {
+        "median_ns": 85071600,
+        "out_paths": 3,
+        "out_verts": 731,
+        "out_area_u2": 761838951.3914,
+        "out_hash": "7dc81c305e11e923"
+      }
+    },
+    {
+      "case_index": 110,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 280,
+      "opcode": 5,
+      "in_verts": 7952,
+      "rust_pnp": {
+        "median_ns": 100609800,
+        "out_paths": 2,
+        "out_verts": 252,
+        "out_area_u2": 91006535.5,
+        "out_hash": "edb507cb44b559ee"
+      },
+      "cpp_152": {
+        "median_ns": 61066850,
+        "out_paths": 2,
+        "out_verts": 252,
+        "out_area_u2": 91006535.5,
+        "out_hash": "edb507cb44b559ee"
+      },
+      "cpp_152_concave": {
+        "median_ns": 53065750,
+        "out_paths": 2,
+        "out_verts": 237,
+        "out_area_u2": 90996206.26385,
+        "out_hash": "f8b7f79e2fcb3e7c"
+      },
+      "v250_nodecim": {
+        "median_ns": 82152000,
+        "out_paths": 2,
+        "out_verts": 244,
+        "out_area_u2": 90990352.26585001,
+        "out_hash": "f60d764960c015e1"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 121851100,
+        "out_paths": 2,
+        "out_verts": 244,
+        "out_area_u2": 90990295.95475,
+        "out_hash": "b7239e4fdb293fbc"
+      },
+      "v250_decim": {
+        "median_ns": 42539150,
+        "out_paths": 2,
+        "out_verts": 228,
+        "out_area_u2": 90991947.3308,
+        "out_hash": "f84d3372cf6971e7"
+      },
+      "v250_decim_noX": {
+        "median_ns": 64029300,
+        "out_paths": 2,
+        "out_verts": 228,
+        "out_area_u2": 90991939.45215,
+        "out_hash": "10fdc3b3863d5140"
+      }
+    },
+    {
+      "case_index": 111,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 320,
+      "opcode": 5,
+      "in_verts": 5114,
+      "rust_pnp": {
+        "median_ns": 49720750,
+        "out_paths": 1,
+        "out_verts": 274,
+        "out_area_u2": 651387863.5,
+        "out_hash": "5479337a54b3ab41"
+      },
+      "cpp_152": {
+        "median_ns": 38635200,
+        "out_paths": 1,
+        "out_verts": 274,
+        "out_area_u2": 651387863.5,
+        "out_hash": "5479337a54b3ab41"
+      },
+      "cpp_152_concave": {
+        "median_ns": 15660100,
+        "out_paths": 1,
+        "out_verts": 254,
+        "out_area_u2": 651396963.1289,
+        "out_hash": "358e6d1ebee97b0a"
+      },
+      "v250_nodecim": {
+        "median_ns": 29616300,
+        "out_paths": 1,
+        "out_verts": 269,
+        "out_area_u2": 651392731.21655,
+        "out_hash": "44ea9a4ff719ed94"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 51251000,
+        "out_paths": 1,
+        "out_verts": 272,
+        "out_area_u2": 651392817.7231,
+        "out_hash": "69029773c42eca2a"
+      },
+      "v250_decim": {
+        "median_ns": 12869050,
+        "out_paths": 1,
+        "out_verts": 247,
+        "out_area_u2": 651391743.6638,
+        "out_hash": "d2ff49d8d16b302a"
+      },
+      "v250_decim_noX": {
+        "median_ns": 22867750,
+        "out_paths": 1,
+        "out_verts": 255,
+        "out_area_u2": 651391864.83315,
+        "out_hash": "d89de4895ac31663"
+      }
+    },
+    {
+      "case_index": 112,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 360,
+      "opcode": 5,
+      "in_verts": 4686,
+      "rust_pnp": {
+        "median_ns": 44830100,
+        "out_paths": 2,
+        "out_verts": 425,
+        "out_area_u2": 207518226.0,
+        "out_hash": "bb10524d635cb8a2"
+      },
+      "cpp_152": {
+        "median_ns": 25911450,
+        "out_paths": 2,
+        "out_verts": 425,
+        "out_area_u2": 207518226,
+        "out_hash": "bb10524d635cb8a2"
+      },
+      "cpp_152_concave": {
+        "median_ns": 12765550,
+        "out_paths": 2,
+        "out_verts": 394,
+        "out_area_u2": 207513077.81375,
+        "out_hash": "070b05f7bf432038"
+      },
+      "v250_nodecim": {
+        "median_ns": 24023650,
+        "out_paths": 2,
+        "out_verts": 422,
+        "out_area_u2": 207511655.16085,
+        "out_hash": "09092c7f20c2d634"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 41222500,
+        "out_paths": 2,
+        "out_verts": 421,
+        "out_area_u2": 207511651.66745,
+        "out_hash": "e51bd35f2fdb2134"
+      },
+      "v250_decim": {
+        "median_ns": 10272100,
+        "out_paths": 2,
+        "out_verts": 387,
+        "out_area_u2": 207508218.13645,
+        "out_hash": "69a8a0d6a28c3175"
+      },
+      "v250_decim_noX": {
+        "median_ns": 19884900,
+        "out_paths": 2,
+        "out_verts": 384,
+        "out_area_u2": 207508128.16615,
+        "out_hash": "1fdeaefcc77df5db"
+      }
+    },
+    {
+      "case_index": 113,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 400,
+      "opcode": 5,
+      "in_verts": 3921,
+      "rust_pnp": {
+        "median_ns": 26388200,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152": {
+        "median_ns": 13998100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152_concave": {
+        "median_ns": 6572100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim": {
+        "median_ns": 10857900,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 22250050,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 5162500,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim_noX": {
+        "median_ns": 9494150,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 114,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 440,
+      "opcode": 5,
+      "in_verts": 3549,
+      "rust_pnp": {
+        "median_ns": 23003150,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152": {
+        "median_ns": 13398700,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_152_concave": {
+        "median_ns": 5408250,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim": {
+        "median_ns": 10688200,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 22452150,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 4221150,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim_noX": {
+        "median_ns": 7998250,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 115,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 480,
+      "opcode": 5,
+      "in_verts": 2502,
+      "rust_pnp": {
+        "median_ns": 9775300,
+        "out_paths": 2,
+        "out_verts": 497,
+        "out_area_u2": 267302399.5,
+        "out_hash": "aebddb0f0fee6942"
+      },
+      "cpp_152": {
+        "median_ns": 5461750,
+        "out_paths": 2,
+        "out_verts": 497,
+        "out_area_u2": 267302399.5,
+        "out_hash": "aebddb0f0fee6942"
+      },
+      "cpp_152_concave": {
+        "median_ns": 1961150,
+        "out_paths": 2,
+        "out_verts": 469,
+        "out_area_u2": 267303147.23865002,
+        "out_hash": "6850daf6971031b0"
+      },
+      "v250_nodecim": {
+        "median_ns": 4470700,
+        "out_paths": 2,
+        "out_verts": 524,
+        "out_area_u2": 267300638.3017,
+        "out_hash": "55e2ec6d5dfbd77d"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 6876550,
+        "out_paths": 2,
+        "out_verts": 528,
+        "out_area_u2": 267300752.43659997,
+        "out_hash": "01b9d57e2ea8e688"
+      },
+      "v250_decim": {
+        "median_ns": 1786550,
+        "out_paths": 2,
+        "out_verts": 457,
+        "out_area_u2": 267297185.57475,
+        "out_hash": "8a54f211b4ca3736"
+      },
+      "v250_decim_noX": {
+        "median_ns": 3011100,
+        "out_paths": 2,
+        "out_verts": 460,
+        "out_area_u2": 267297210.9542,
+        "out_hash": "eaf452b443c18cd4"
+      }
+    },
+    {
+      "case_index": 116,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 494,
+      "opcode": 5,
+      "in_verts": 432,
+      "rust_pnp": {
+        "median_ns": 1951650,
+        "out_paths": 1,
+        "out_verts": 526,
+        "out_area_u2": 663946972.0,
+        "out_hash": "39ac020d0c3a7a3f"
+      },
+      "cpp_152": {
+        "median_ns": 1100400,
+        "out_paths": 1,
+        "out_verts": 526,
+        "out_area_u2": 663946972,
+        "out_hash": "39ac020d0c3a7a3f"
+      },
+      "cpp_152_concave": {
+        "median_ns": 474850,
+        "out_paths": 1,
+        "out_verts": 477,
+        "out_area_u2": 663964590.0951,
+        "out_hash": "be8edaa3112f8c41"
+      },
+      "v250_nodecim": {
+        "median_ns": 748150,
+        "out_paths": 1,
+        "out_verts": 550,
+        "out_area_u2": 663958855.44335,
+        "out_hash": "723201dfc352d178"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 1090950,
+        "out_paths": 1,
+        "out_verts": 551,
+        "out_area_u2": 663958859.612,
+        "out_hash": "3be62627bbbb46a6"
+      },
+      "v250_decim": {
+        "median_ns": 339100,
+        "out_paths": 1,
+        "out_verts": 474,
+        "out_area_u2": 663963903.01375,
+        "out_hash": "cdbfac17972aaddb"
+      },
+      "v250_decim_noX": {
+        "median_ns": 642050,
+        "out_paths": 1,
+        "out_verts": 474,
+        "out_area_u2": 663963778.13505,
+        "out_hash": "abba10f54af901c0"
+      }
+    },
+    {
+      "case_index": 117,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 495,
+      "opcode": 5,
+      "in_verts": 151,
+      "rust_pnp": {
+        "median_ns": 477450,
+        "out_paths": 1,
+        "out_verts": 140,
+        "out_area_u2": 74895283.0,
+        "out_hash": "7f5e2e0802a56824"
+      },
+      "cpp_152": {
+        "median_ns": 272950,
+        "out_paths": 1,
+        "out_verts": 140,
+        "out_area_u2": 74895283,
+        "out_hash": "7f5e2e0802a56824"
+      },
+      "cpp_152_concave": {
+        "median_ns": 178500,
+        "out_paths": 1,
+        "out_verts": 137,
+        "out_area_u2": 74885039.98735,
+        "out_hash": "476cc2ff4f6adc61"
+      },
+      "v250_nodecim": {
+        "median_ns": 212650,
+        "out_paths": 1,
+        "out_verts": 141,
+        "out_area_u2": 74884419.7916,
+        "out_hash": "858595c6ef371bd6"
+      },
+      "v250_nodecim_noX": {
+        "median_ns": 276600,
+        "out_paths": 1,
+        "out_verts": 142,
+        "out_area_u2": 74884425.352,
+        "out_hash": "99da0db86d6b7f09"
+      },
+      "v250_decim": {
+        "median_ns": 125550,
+        "out_paths": 1,
+        "out_verts": 133,
+        "out_area_u2": 74883844.06755,
+        "out_hash": "8978ff3a9c4857d9"
+      },
+      "v250_decim_noX": {
+        "median_ns": 187500,
+        "out_paths": 1,
+        "out_verts": 135,
+        "out_area_u2": 74883852.6095,
+        "out_hash": "07a190d3861e999a"
+      }
+    }
+  ]
+}

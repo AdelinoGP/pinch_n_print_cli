@@ -600,12 +600,10 @@ fn geometry_points_mm(ir: &CapturedIr) -> Vec<(f32, f32)> {
                     }
                 }
             }
-            for bands_by_layer in sc.overhang_quartile_polygons.values() {
-                for bands in bands_by_layer.values() {
-                    for band in bands {
-                        for poly in &band.polygons {
-                            push_expolygon_points(poly, &mut pts);
-                        }
+            for (object_id, layer_index) in overhang_layers(sc) {
+                for band in reconstructed_overhang_bands(sc, &object_id, layer_index) {
+                    for poly in &band.polygons {
+                        push_expolygon_points(poly, &mut pts);
                     }
                 }
             }
@@ -690,6 +688,68 @@ fn push_polygon_points(poly: &Polygon, out: &mut Vec<(f32, f32)>) {
     for p in &poly.points {
         out.push(point2_to_mm(*p));
     }
+}
+
+/// Reconstruct the 4 quartile band polygons for one object/layer.
+///
+/// Ticket 142 removed the bands from the production slice path (the per-vertex
+/// quartile is derived from the signed distance), so the renderer rebuilds them
+/// here from the annotation the stage still commits: the unsupported area, the
+/// previous-layer boundary and the producer's band width. An explicit band set
+/// in the IR (a diagnostic producer, or a test fixture) wins over
+/// reconstruction. Diagnostics only — this never runs on a slice.
+fn reconstructed_overhang_bands(
+    classification: &slicer_ir::SurfaceClassificationIR,
+    object_id: &str,
+    layer_index: u32,
+) -> Vec<slicer_ir::slice_ir::QuartileBand> {
+    if let Some(bands) = classification
+        .overhang_quartile_polygons
+        .get(object_id)
+        .and_then(|by_layer| by_layer.get(&layer_index))
+    {
+        if !bands.is_empty() {
+            return bands.clone();
+        }
+    }
+    let Some(previous) = classification
+        .prev_layer_boundaries
+        .get(object_id)
+        .and_then(|by_layer| by_layer.get(&layer_index))
+    else {
+        return Vec::new();
+    };
+    let Some(area) = classification
+        .overhang_areas
+        .get(object_id)
+        .and_then(|by_layer| by_layer.get(&layer_index))
+    else {
+        return Vec::new();
+    };
+    if previous.is_empty() || area.is_empty() {
+        return Vec::new();
+    }
+    slicer_core::algos::overhang_annotation::partition_into_bands(
+        previous,
+        area,
+        classification.overhang_band_width_mm,
+    )
+}
+
+/// Every `(object_id, layer_index)` either map of the annotation carries.
+fn overhang_layers(classification: &slicer_ir::SurfaceClassificationIR) -> Vec<(String, u32)> {
+    let mut layers = std::collections::BTreeSet::new();
+    for (object_id, by_layer) in &classification.overhang_quartile_polygons {
+        for layer_index in by_layer.keys() {
+            layers.insert((object_id.clone(), *layer_index));
+        }
+    }
+    for (object_id, by_layer) in &classification.overhang_areas {
+        for layer_index in by_layer.keys() {
+            layers.insert((object_id.clone(), *layer_index));
+        }
+    }
+    layers.into_iter().collect()
 }
 
 fn point2_to_mm(p: Point2) -> (f32, f32) {
@@ -1163,19 +1223,21 @@ fn surface_classification_shapes(
             }
         }
     }
-    // Render the selected layer's quartile bands from every object.
-    for bands_by_layer in sc.overhang_quartile_polygons.values() {
-        if let Some(bands) = bands_by_layer.get(&layer_index) {
-            for band in bands {
-                for poly in &band.polygons {
-                    match view {
-                        GeometryView::FilledAreas => {
-                            shapes.push(expolygon_fill_shape(poly, palette::SURFACE_OVERHANG));
-                        }
-                        GeometryView::FilamentLines => {
-                            shapes
-                                .extend(expolygon_outline_shapes(poly, palette::SURFACE_OVERHANG));
-                        }
+    // Render the selected layer's quartile bands from every object. The bands
+    // are reconstructed from the committed annotation when the IR does not
+    // carry them explicitly (ticket 142).
+    for (object_id, band_layer_index) in overhang_layers(sc) {
+        if band_layer_index != layer_index {
+            continue;
+        }
+        for band in reconstructed_overhang_bands(sc, &object_id, band_layer_index) {
+            for poly in &band.polygons {
+                match view {
+                    GeometryView::FilledAreas => {
+                        shapes.push(expolygon_fill_shape(poly, palette::SURFACE_OVERHANG));
+                    }
+                    GeometryView::FilamentLines => {
+                        shapes.extend(expolygon_outline_shapes(poly, palette::SURFACE_OVERHANG));
                     }
                 }
             }
@@ -3744,19 +3806,14 @@ pub fn render_silhouette_overhang_composite(
         let CapturedIr::SurfaceClassification(sc) = &capture.ir else {
             continue;
         };
-        let mut objects = sc.overhang_quartile_polygons.iter().collect::<Vec<_>>();
-        objects.sort_by_key(|(object_id, _)| *object_id);
-        let layer_bands = objects
+        let layer_bands: Vec<slicer_ir::slice_ir::QuartileBand> = overhang_layers(sc)
             .into_iter()
-            .filter_map(|(_, by_layer)| by_layer.get(&capture.layer_index))
-            .flatten()
-            .collect::<Vec<_>>();
-        if layer_bands.is_empty()
-            && !sc
-                .overhang_quartile_polygons
-                .values()
-                .any(|by_layer| by_layer.contains_key(&capture.layer_index))
-        {
+            .filter(|(_, band_layer_index)| *band_layer_index == capture.layer_index)
+            .flat_map(|(object_id, band_layer_index)| {
+                reconstructed_overhang_bands(sc, &object_id, band_layer_index)
+            })
+            .collect();
+        if layer_bands.is_empty() {
             continue;
         }
         if first.is_none() {

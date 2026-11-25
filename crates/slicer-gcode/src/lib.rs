@@ -15,7 +15,10 @@ pub mod thumbnail;
 pub mod thumbnail_btt;
 pub mod thumbnail_colpic;
 
-pub use emit::{reconcile_finalization_travel, DefaultGCodeEmitter, GCodeEmitter};
+pub use emit::{
+    reconcile_finalization_travel, take_last_emit_estimate, CachedEmitEstimate,
+    DefaultGCodeEmitter, GCodeEmitter,
+};
 pub use error::GCodeEmitError;
 pub use estimator::{estimate_print, EstimatorLimits, PrintEstimate};
 pub use m73::{filament_stats_comment_block, inject_m73};

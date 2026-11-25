@@ -15,9 +15,10 @@
 //! - OrcaSlicerDocumented/src/libslic3r/GCodeWriter.cpp — G-code emission patterns
 //! - OrcaSlicerDocumented/tests/fff_print/test_gcodewriter.cpp — test patterns
 
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap};
 
-use slicer_helpers::{drop_short_segments_mm, simplify_polyline_mm};
+use rayon::prelude::*;
 use slicer_ir::feedrate::resolve_internal_bridge_speed_mm;
 use slicer_ir::FeedrateConfig;
 use slicer_ir::{
@@ -27,7 +28,163 @@ use slicer_ir::{
 
 use crate::error::GCodeEmitError;
 use crate::flavor::GcodeFlavor;
+use crate::estimator::{EstimatorLimits, PrintEstimate};
 use crate::serialize::{format_xyz, tolerance_for_role};
+
+/// Cached print estimate produced by `DefaultGCodeEmitter::emit_from_reconciled_layers`,
+/// keyed by the exact `(EstimatorLimits, tool_diameters)` inputs used to compute it.
+pub type CachedEmitEstimate = (PrintEstimate, EstimatorLimits, BTreeMap<u32, f32>);
+
+thread_local! {
+    static LAST_EMIT_ESTIMATE: RefCell<Option<CachedEmitEstimate>> = const { RefCell::new(None) };
+}
+
+/// Take (and clear) the `PrintEstimate` stashed by the most recent
+/// `DefaultGCodeEmitter` run on this thread.
+pub fn take_last_emit_estimate() -> Option<CachedEmitEstimate> {
+    LAST_EMIT_ESTIMATE.with(|cell| cell.borrow_mut().take())
+}
+
+fn stash_last_emit_estimate(estimate: CachedEmitEstimate) {
+    LAST_EMIT_ESTIMATE.with(|cell| *cell.borrow_mut() = Some(estimate));
+}
+
+/// Minimum layer count before `emit_gcode_owned` uses coarse-chunk parallel drop.
+const PARALLEL_DROP_MIN_LAYERS: usize = 32;
+/// Minimum total entity count before `emit_gcode_owned` uses coarse-chunk parallel drop.
+const PARALLEL_DROP_MIN_ENTITIES: usize = 4_000;
+/// Target coarse chunk count for parallel layer teardown (bounds allocator lock contention).
+const PARALLEL_DROP_TARGET_CHUNKS: usize = 6;
+
+/// Zero-alloc in-place Douglas-Peucker + short-segment pruning directly over
+/// `&[Point3WithWidth]`, writing the surviving original indices into `out`.
+///
+/// Matches `simplify_polyline_mm` followed by `drop_short_segments_mm` bit-for-bit
+/// without allocating intermediate `Vec<(f32, f32)>` buffers per entity.
+pub(crate) fn simplify_and_prune_indices(
+    points: &[slicer_ir::Point3WithWidth],
+    tol: f32,
+    min_len: f32,
+    is_travel: bool,
+    keep_buf: &mut Vec<bool>,
+    stack_buf: &mut Vec<(usize, usize)>,
+    out: &mut Vec<usize>,
+) {
+    out.clear();
+    let n = points.len();
+    if n == 0 {
+        return;
+    }
+    if n <= 2 {
+        for i in 0..n {
+            out.push(i);
+        }
+        return;
+    }
+
+    let do_dp = tol > 0.0;
+    let do_prune = min_len > 0.0 && !is_travel;
+
+    if !do_dp && !do_prune {
+        for i in 0..n {
+            out.push(i);
+        }
+        return;
+    }
+
+    let last = n - 1;
+    if do_dp {
+        keep_buf.clear();
+        keep_buf.resize(n, false);
+        keep_buf[0] = true;
+        keep_buf[last] = true;
+
+        let tol_sq = tol * tol;
+        stack_buf.clear();
+        stack_buf.push((0, last));
+
+        while let Some((start, end)) = stack_buf.pop() {
+            if end - start < 2 {
+                continue;
+            }
+            let sx = points[start].x;
+            let sy = points[start].y;
+            let ex = points[end].x;
+            let ey = points[end].y;
+            let dx = ex - sx;
+            let dy = ey - sy;
+            let chord_len_sq = dx * dx + dy * dy;
+
+            let mut max_dist_sq = 0.0f32;
+            let mut max_idx = start + 1;
+
+            for (i, pt) in points.iter().enumerate().take(end).skip(start + 1) {
+                let dist_sq = if chord_len_sq == 0.0 {
+                    let ox = pt.x - sx;
+                    let oy = pt.y - sy;
+                    ox * ox + oy * oy
+                } else {
+                    let cross = dx * (pt.y - sy) - dy * (pt.x - sx);
+                    cross * cross / chord_len_sq
+                };
+                if dist_sq > max_dist_sq {
+                    max_dist_sq = dist_sq;
+                    max_idx = i;
+                }
+            }
+
+            if max_dist_sq > tol_sq {
+                keep_buf[max_idx] = true;
+                stack_buf.push((start, max_idx));
+                stack_buf.push((max_idx, end));
+            }
+        }
+    }
+
+    if !do_prune {
+        for (i, &kept) in keep_buf.iter().enumerate() {
+            if kept {
+                out.push(i);
+            }
+        }
+        return;
+    }
+
+    let min_len_sq = min_len * min_len;
+    out.push(0);
+    let mut last_x = points[0].x;
+    let mut last_y = points[0].y;
+
+    if do_dp {
+        for i in 1..last {
+            if !keep_buf[i] {
+                continue;
+            }
+            let px = points[i].x;
+            let py = points[i].y;
+            let dx = px - last_x;
+            let dy = py - last_y;
+            if dx * dx + dy * dy >= min_len_sq {
+                out.push(i);
+                last_x = px;
+                last_y = py;
+            }
+        }
+    } else {
+        for i in 1..last {
+            let px = points[i].x;
+            let py = points[i].y;
+            let dx = px - last_x;
+            let dy = py - last_y;
+            if dx * dx + dy * dy >= min_len_sq {
+                out.push(i);
+                last_x = px;
+                last_y = py;
+            }
+        }
+    }
+    out.push(last);
+}
 
 /// Maximum plausible number of extruder/tool slots.
 ///
@@ -523,16 +680,21 @@ impl GCodeEmitter for DefaultGCodeEmitter {
         &self,
         mut layer_irs: Vec<LayerCollectionIR>,
     ) -> Result<GCodeIR, GCodeEmitError> {
-        // Apply cross-layer tool rotation before classification and emission.
-        // This rotates each layer's entity clusters so the first cluster's tool
-        // matches the previous layer's ending tool, avoiding redundant T<n>
-        // commands at every layer boundary. The WASM module always orders
-        // clusters in ascending tool order (H1: module state doesn't survive
-        // across calls), so the host performs the rotation post-dispatch. The
-        // rotation is a no-op on single-tool layers; only a layer whose leading
-        // cluster's tool differs from the previous layer's ending tool moves.
         apply_cross_layer_tool_rotation(&mut layer_irs);
-        self.emit_from_reconciled_layers(&layer_irs)
+        let result = self.emit_from_reconciled_layers(&layer_irs);
+        let total_entities: usize = layer_irs.iter().map(|l| l.ordered_entities.len()).sum();
+        if layer_irs.len() >= PARALLEL_DROP_MIN_LAYERS
+            && total_entities >= PARALLEL_DROP_MIN_ENTITIES
+        {
+            let chunk_size = layer_irs.len().div_ceil(PARALLEL_DROP_TARGET_CHUNKS).max(1);
+            layer_irs.par_chunks_mut(chunk_size).for_each(|chunk| {
+                for layer in chunk.iter_mut() {
+                    let _ = std::mem::take(layer);
+                }
+            });
+        }
+        drop(layer_irs);
+        result
     }
 
     /// Resolved travel feedrate in mm/min for finalization-aware travel inserts.
@@ -567,9 +729,21 @@ impl DefaultGCodeEmitter {
         // by `machine_start_gcode_precedes_m73_and_extrusion_mode` in
         // `modules/core-modules/machine-gcode-emit/tests/machine_gcode_emit_tdd.rs`;
         // do not reintroduce an index-0 assumption here.
-        let mut commands = vec![GCodeCommand::ExtrusionMode {
+        let estimated_cmds: usize = layer_irs
+            .iter()
+            .map(|l| {
+                let pts: usize = l.ordered_entities.iter().map(|e| e.path.points.len()).sum();
+                pts + l.travel_moves.len() + l.retracts.len() + l.annotations.len() + 8
+            })
+            .sum::<usize>()
+            .saturating_add(16);
+        let mut commands = Vec::with_capacity(estimated_cmds);
+        commands.push(GCodeCommand::ExtrusionMode {
             absolute: !self.relative,
-        }];
+        });
+        let mut dp_keep_buf: Vec<bool> = Vec::new();
+        let mut dp_stack_buf: Vec<(usize, usize)> = Vec::new();
+        let mut kept_indices_buf: Vec<usize> = Vec::new();
         // Track filament used per tool (tool index -> filament mm)
         let mut filament_per_tool: HashMap<u32, f32> = HashMap::new();
         // Current tool (default 0 — the physical starting tool; the
@@ -745,6 +919,24 @@ impl DefaultGCodeEmitter {
                 .iter()
                 .map(|sp| (sp.entity_id, &sp.factors))
                 .collect();
+            let entity_count = layer.ordered_entities.len() as u32;
+            let mut annotations_by_entity: std::collections::HashMap<
+                u32,
+                Vec<&slicer_ir::LayerAnnotation>,
+            > = std::collections::HashMap::new();
+            let mut trailing_annotations: Vec<&slicer_ir::LayerAnnotation> = Vec::new();
+            if !layer.annotations.is_empty() {
+                for ann in &layer.annotations {
+                    if ann.after_entity_index < entity_count {
+                        annotations_by_entity
+                            .entry(ann.after_entity_index)
+                            .or_default()
+                            .push(ann);
+                    } else {
+                        trailing_annotations.push(ann);
+                    }
+                }
+            }
 
             // Process each entity
             let mut seen_entity_ids: std::collections::HashSet<u64> =
@@ -805,59 +997,32 @@ impl DefaultGCodeEmitter {
                 }
                 prev_role = Some(role.clone());
 
-                // Apply per-role polyline simplification (D-P + min-segment).
-                // Extract XY mm-pairs for the helpers, then remap kept indices
-                // back onto the original Point3WithWidth slice so metadata is preserved.
+                // Apply per-role polyline simplification (D-P + min-segment)
+                // directly over `&[Point3WithWidth]` using reusable scratch buffers.
                 let tol = tolerance_for_role(role, &self.resolved_config);
                 let is_travel = matches!(role, ExtrusionRole::Custom(s) if s == "Travel");
-                // Each surviving point keeps its ORIGINAL index so a per-point
-                // speed profile (indexed against the unsimplified path) stays
-                // aligned even when simplification drops interior vertices.
-                let simplified_points: Vec<(usize, &slicer_ir::Point3WithWidth)> =
-                    if entity.path.order_lock.is_some() {
-                        points.iter().enumerate().collect()
-                    } else if points.len() >= 2 {
-                        let xy: Vec<(f32, f32)> = points.iter().map(|p| (p.x, p.y)).collect();
-                        let simplified_xy = if tol > 0.0 {
-                            simplify_polyline_mm(&xy, tol)
-                        } else {
-                            xy.clone()
-                        };
-                        let pruned_xy =
-                            if self.resolved_config.min_segment_length > 0.0 && !is_travel {
-                                drop_short_segments_mm(
-                                    &simplified_xy,
-                                    self.resolved_config.min_segment_length,
-                                )
-                            } else {
-                                simplified_xy
-                            };
-                        // Map kept (x,y) pairs back to original point indices.
-                        // Both slices are in emission order; match on coordinate identity.
-                        let mut kept = Vec::with_capacity(pruned_xy.len());
-                        let mut search_from = 0usize;
-                        for (kx, ky) in &pruned_xy {
-                            for i in search_from..points.len() {
-                                if (points[i].x - kx).abs() < f32::EPSILON
-                                    && (points[i].y - ky).abs() < f32::EPSILON
-                                {
-                                    kept.push((i, &points[i]));
-                                    search_from = i + 1;
-                                    break;
-                                }
-                            }
-                        }
-                        kept
-                    } else {
-                        points.iter().enumerate().collect()
-                    };
+                if entity.path.order_lock.is_some() || points.len() < 2 {
+                    kept_indices_buf.clear();
+                    kept_indices_buf.extend(0..points.len());
+                } else {
+                    simplify_and_prune_indices(
+                        points,
+                        tol,
+                        self.resolved_config.min_segment_length,
+                        is_travel,
+                        &mut dp_keep_buf,
+                        &mut dp_stack_buf,
+                        &mut kept_indices_buf,
+                    );
+                }
 
                 // Per-point speed factors for this entity, if any.
                 let profile = speed_profiles_by_entity.get(&entity.entity_id).copied();
 
                 // Emit Move commands for each point in the path
                 let mut prev_point: Option<&slicer_ir::Point3WithWidth> = None;
-                for (original_index, point) in simplified_points {
+                for &original_index in &kept_indices_buf {
+                    let point = &points[original_index];
                     // Calculate extrusion (E) based on travel distance and width
                     let e_delta = if let Some(prev) = prev_point {
                         // Calculate 3D distance
@@ -1033,17 +1198,15 @@ impl DefaultGCodeEmitter {
 
                 // 5. Emit Comment/Raw annotations attached to this entity index,
                 // in the deterministic order they appear in `annotations`.
-                for ann in layer
-                    .annotations
-                    .iter()
-                    .filter(|a| a.after_entity_index == entity_idx)
-                {
-                    match &ann.kind {
-                        LayerAnnotationKind::Comment(text) => {
-                            commands.push(GCodeCommand::Comment { text: text.clone() });
-                        }
-                        LayerAnnotationKind::Raw(text) => {
-                            commands.push(GCodeCommand::Raw { text: text.clone() });
+                if let Some(anns) = annotations_by_entity.get(&entity_idx) {
+                    for ann in anns {
+                        match &ann.kind {
+                            LayerAnnotationKind::Comment(text) => {
+                                commands.push(GCodeCommand::Comment { text: text.clone() });
+                            }
+                            LayerAnnotationKind::Raw(text) => {
+                                commands.push(GCodeCommand::Raw { text: text.clone() });
+                            }
                         }
                     }
                 }
@@ -1076,12 +1239,7 @@ impl DefaultGCodeEmitter {
             // (e.g. layer with no ordered_entities) are still emitted in
             // declaration order so guest-emitted comments/raw lines are not
             // silently dropped.
-            let entity_count = layer.ordered_entities.len() as u32;
-            for ann in layer
-                .annotations
-                .iter()
-                .filter(|a| a.after_entity_index >= entity_count)
-            {
+            for ann in trailing_annotations {
                 match &ann.kind {
                     LayerAnnotationKind::Comment(text) => {
                         commands.push(GCodeCommand::Comment { text: text.clone() });
@@ -1145,6 +1303,7 @@ impl DefaultGCodeEmitter {
                 &self.resolved_config.filament_density,
             ));
         gcode_ir.metadata.estimated_print_time_s = estimate.total_time_s.round() as u32;
+        stash_last_emit_estimate((estimate, limits, tool_diameters));
         Ok(gcode_ir)
     }
 }
@@ -1664,5 +1823,70 @@ mod tests {
             layers[1].annotations[0].after_entity_index, 0,
             "Annotation anchor must remap from old 2 to new 0"
         );
+    }
+
+    #[test]
+    fn simplify_and_prune_indices_matches_legacy_helpers() {
+        use slicer_helpers::{drop_short_segments_mm, simplify_polyline_mm};
+        use slicer_ir::Point3WithWidth;
+
+        let pts: Vec<Point3WithWidth> = vec![
+            (0.0, 0.0),
+            (0.005, 0.001),
+            (1.0, 0.002),
+            (2.0, 0.0),
+            (2.01, 0.01),
+            (2.0, 3.0),
+            (1.5, 3.005),
+            (0.0, 3.0),
+            (0.0, 0.0),
+        ]
+        .into_iter()
+        .map(|(x, y)| Point3WithWidth {
+            x,
+            y,
+            z: 0.2,
+            width: 0.4,
+            ..Default::default()
+        })
+        .collect();
+
+        let xy: Vec<(f32, f32)> = pts.iter().map(|p| (p.x, p.y)).collect();
+        let mut keep_buf = Vec::new();
+        let mut stack_buf = Vec::new();
+        let mut out_idx = Vec::new();
+
+        for (tol, min_len, is_travel) in [
+            (0.0, 0.0, false),
+            (0.025, 0.0, false),
+            (0.0, 0.05, false),
+            (0.025, 0.05, false),
+            (0.025, 0.05, true),
+        ] {
+            let legacy_dp = if tol > 0.0 {
+                simplify_polyline_mm(&xy, tol)
+            } else {
+                xy.clone()
+            };
+            let legacy_pruned = if min_len > 0.0 && !is_travel {
+                drop_short_segments_mm(&legacy_dp, min_len)
+            } else {
+                legacy_dp
+            };
+            simplify_and_prune_indices(
+                &pts,
+                tol,
+                min_len,
+                is_travel,
+                &mut keep_buf,
+                &mut stack_buf,
+                &mut out_idx,
+            );
+            let got_xy: Vec<(f32, f32)> = out_idx.iter().map(|&i| (pts[i].x, pts[i].y)).collect();
+            assert_eq!(
+                got_xy, legacy_pruned,
+                "mismatch for tol={tol}, min_len={min_len}, is_travel={is_travel}"
+            );
+        }
     }
 }

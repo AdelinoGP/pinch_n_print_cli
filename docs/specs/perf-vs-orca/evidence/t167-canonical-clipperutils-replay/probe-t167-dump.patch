@@ -1,0 +1,191 @@
+diff --git a/crates/slicer-runtime/src/slice_postprocess_prepass.rs b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+index 0a35de9e..721e0f16 100644
+--- a/crates/slicer-runtime/src/slice_postprocess_prepass.rs
++++ b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+@@ -416,8 +416,9 @@ fn compute_region_updates(
+             let mut touched = false;
+ 
+             if k_top > 0 {
+-                let top_diff =
+-                    apply_opening(&difference(&r_polys, &upper_polys), opening_radius_mm);
++                let raw_top = difference(&r_polys, &upper_polys);
++                t167_maybe_dump_opening("SH_OPEN_TOP", snapshot[slice_idx].global_layer_index, &raw_top, opening_radius_mm);
++                let top_diff = apply_opening(&raw_top, opening_radius_mm);
+                 if !top_diff.is_empty() {
+                     update.top_shell_index = Some(0);
+                     update.top_solid_seed = Some(top_diff.clone());
+@@ -427,8 +428,9 @@ fn compute_region_updates(
+             }
+ 
+             if k_bot > 0 {
+-                let bot_diff =
+-                    apply_opening(&difference(&r_polys, &lower_polys), opening_radius_mm);
++                let raw_bot = difference(&r_polys, &lower_polys);
++                t167_maybe_dump_opening("SH_OPEN_BOT", snapshot[slice_idx].global_layer_index, &raw_bot, opening_radius_mm);
++                let bot_diff = apply_opening(&raw_bot, opening_radius_mm);
+                 if !bot_diff.is_empty() {
+                     update.bottom_shell_index = Some(0);
+                     update.bottom_solid_fill = Some(bot_diff);
+@@ -607,6 +609,136 @@ fn apply_opening(polys: &[ExPolygon], r: f32) -> Vec<ExPolygon> {
+     opening_ex(polys, r as f64, OffsetJoinType::Miter, OPENING_MITER_LIMIT)
+ }
+ 
++fn t167_write_case(
++    dir: &str,
++    filename: &str,
++    site: &str,
++    layer: u32,
++    opcode: u64,
++    args: &[(u64, u64)],
++    polys: &[ExPolygon],
++) {
++    use std::io::Write;
++    let path = std::path::Path::new(dir).join(filename);
++    let mut buf = String::new();
++    buf.push_str(&format!("case {site} {layer} {opcode}\n"));
++    for (k, v) in args {
++        buf.push_str(&format!("arg {k} {v}\n"));
++    }
++    buf.push_str(&format!("subj {}\n", polys.len()));
++    for exp in polys {
++        buf.push_str(&format!("{}\n", 1 + exp.holes.len()));
++        buf.push_str(&format!("{}", exp.contour.points.len()));
++        for pt in &exp.contour.points {
++            buf.push_str(&format!(" {} {}", pt.x, pt.y));
++        }
++        buf.push('\n');
++        for hole in &exp.holes {
++            buf.push_str(&format!("{}", hole.points.len()));
++            for pt in &hole.points {
++                buf.push_str(&format!(" {} {}", pt.x, pt.y));
++            }
++            buf.push('\n');
++        }
++    }
++    buf.push_str("end\n");
++    if let Ok(mut f) = std::fs::File::create(path) {
++        let _ = f.write_all(buf.as_bytes());
++    }
++}
++
++fn t167_log_census(dir: &str, site: &str, layer: u32, polys: &[ExPolygon], delta_mm: f64) {
++    use std::io::Write;
++    use std::sync::Mutex;
++    static LOCK: Mutex<()> = Mutex::new(());
++    let nrings: usize = polys.iter().map(|e| 1 + e.holes.len()).sum();
++    let nverts: usize = polys
++        .iter()
++        .map(|e| e.contour.points.len() + e.holes.iter().map(|h| h.points.len()).sum::<usize>())
++        .sum();
++    let _g = LOCK.lock().unwrap();
++    let path = std::path::Path::new(dir).join("census.jsonl");
++    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
++        let _ = writeln!(
++            f,
++            "{{\"site\":\"{site}\",\"layer\":{layer},\"npolys\":{},\"nrings\":{nrings},\"nverts\":{nverts},\"delta_mm\":{delta_mm}}}",
++            polys.len()
++        );
++    }
++}
++
++fn t167_maybe_dump_opening(site: &str, layer: u32, polys: &[ExPolygon], r_mm: f32) {
++    let Ok(dir) = std::env::var("PNP_T167_DUMP_DIR") else {
++        return;
++    };
++    if polys.is_empty() || !(r_mm > 0.0) {
++        return;
++    }
++    t167_log_census(&dir, site, layer, polys, r_mm as f64);
++    let sampled = layer % 40 == 0 || matches!(layer, 239 | 270 | 494 | 495);
++    if !sampled {
++        return;
++    }
++    let canon_delta = (r_mm as f64) * slicer_ir::UNITS_PER_MM;
++    t167_write_case(
++        &dir,
++        &format!("{site}_CANON_L{layer:04}.case"),
++        &format!("{site}_CANON"),
++        layer,
++        5,
++        &[
++            (1, canon_delta.to_bits()),
++            (2, 3), // Miter
++            (3, 0), // Polygon
++            (4, OPENING_MITER_LIMIT.to_bits()),
++            (5, 0.0f64.to_bits()),
++        ],
++        polys,
++    );
++    let legacy_delta = 0.2_f64 * slicer_ir::UNITS_PER_MM;
++    t167_write_case(
++        &dir,
++        &format!("{site}_LEGACY_L{layer:04}.case"),
++        &format!("{site}_LEGACY"),
++        layer,
++        5,
++        &[
++            (1, legacy_delta.to_bits()),
++            (2, 2), // Round
++            (3, 0), // Polygon
++            (4, 2.0_f64.to_bits()),
++            (5, 0.0f64.to_bits()),
++        ],
++        polys,
++    );
++}
++
++fn t167_maybe_dump_ib_offset(site: &str, layer: u32, seq: usize, polys: &[ExPolygon], delta_mm: f32) {
++    let Ok(dir) = std::env::var("PNP_T167_DUMP_DIR") else {
++        return;
++    };
++    if polys.is_empty() {
++        return;
++    }
++    t167_log_census(&dir, site, layer, polys, delta_mm as f64);
++    let delta_units = (delta_mm as f64) * slicer_ir::UNITS_PER_MM;
++    t167_write_case(
++        &dir,
++        &format!("{site}_L{layer:04}_S{seq:03}.case"),
++        site,
++        layer,
++        0,
++        &[
++            (1, delta_units.to_bits()),
++            (2, 3), // Miter
++            (3, 0), // Polygon
++            (4, 2.0_f64.to_bits()),
++            (5, 0.0f64.to_bits()),
++        ],
++        polys,
++    );
++}
++
+ /// Resolve the external-perimeter extrusion width (mm) that canonical's
+ /// `flow(frExternalPerimeter).scaled_width()` would report for this region.
+ ///
+@@ -776,6 +908,7 @@ fn compute_internal_bridge_layer(
+     layer_index: u32,
+     print_z: f32,
+ ) -> Option<InternalBridgeLayerResult> {
++    t167_maybe_dump_ib_offset("IB_DEEP_POS", layer_index, 0, &deep_infill_area, 1.5 * qualify_spacing_mm);
+     let deep_infill_clip_area = offset(
+         &deep_infill_area,
+         1.5 * qualify_spacing_mm,
+@@ -783,7 +916,8 @@ fn compute_internal_bridge_layer(
+         0.0,
+     );
+     let mut qualified: Vec<ExPolygon> = Vec::new();
+-    for surface in &region.internal_solid_fill {
++    for (cand_idx, surface) in region.internal_solid_fill.iter().enumerate() {
++        t167_maybe_dump_ib_offset("IB_CAND_POS", layer_index, cand_idx, std::slice::from_ref(surface), qualify_spacing_mm);
+         let expanded_candidate = offset(
+             std::slice::from_ref(surface),
+             qualify_spacing_mm,
+@@ -823,6 +957,7 @@ fn compute_internal_bridge_layer(
+             }
+             None => &deep_infill_area,
+         };
++        t167_maybe_dump_ib_offset("IB_DEEP_NEG", layer_index, 0, operand, -(4.5 * qualify_spacing_mm));
+         offset(
+             operand,
+             -(4.5 * qualify_spacing_mm),

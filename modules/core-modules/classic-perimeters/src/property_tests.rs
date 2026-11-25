@@ -711,7 +711,7 @@ fn run_classic(
     case: &ClassicCase,
 ) -> Result<ClassicOutput, ModuleError> {
     let mut output = PerimeterOutputBuilder::new();
-    let context = PerimeterSpatialContext::new(&[], &[], &[]);
+    let context = PerimeterSpatialContext::new(&[], 0.0, &[]);
     let annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> = HashMap::new();
     let (emit_outer, emit_inner) = case.emit.gates();
     module.emit_walls(

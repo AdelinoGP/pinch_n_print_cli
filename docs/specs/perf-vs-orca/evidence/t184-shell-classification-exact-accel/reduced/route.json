@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "note": "ESTIMATE ONLY (cross-window composition of t174 quiet-board official ratios x t175 x t182 x t183 x t184 paired savings). Not a scoreboard ratio of record.",
+  "cells": {
+    "benchy-classic-off": {
+      "supports": "off",
+      "est_post_t183_ratio_ordinary": 1.034110573735549,
+      "t184_wall_saving_ordinary_pct": 15.149750052728969,
+      "est_post_t184_ratio_ordinary": 0.8774454065457717,
+      "est_post_t184_required_cut_ordinary_pct": 0.0,
+      "est_post_t183_ratio_accelerated": 1.0370260734170815,
+      "t184_wall_saving_accelerated_pct": 15.25843598943031,
+      "est_post_t184_ratio_accelerated": 0.8787921138110336,
+      "est_post_t184_required_cut_accelerated_pct": 0.0
+    },
+    "benchy-classic-on": {
+      "supports": "on",
+      "est_post_t183_ratio_ordinary": 1.453899669483185,
+      "t184_wall_saving_ordinary_pct": 8.752587014792166,
+      "est_post_t184_ratio_ordinary": 1.3266458358038935,
+      "est_post_t184_required_cut_ordinary_pct": 24.621932017444536,
+      "est_post_t183_ratio_accelerated": 1.413046213541877,
+      "t184_wall_saving_accelerated_pct": 8.068398112949819,
+      "est_post_t184_ratio_accelerated": 1.2990360195133555,
+      "est_post_t184_required_cut_accelerated_pct": 23.019840483359367
+    },
+    "benchy-arachne-off": {
+      "supports": "off",
+      "est_post_t183_ratio_ordinary": 1.0582739180760288,
+      "t184_wall_saving_ordinary_pct": 16.354175627610665,
+      "est_post_t184_ratio_ordinary": 0.8852019428926784,
+      "est_post_t184_required_cut_ordinary_pct": 0.0,
+      "est_post_t183_ratio_accelerated": 0.9885231844281537,
+      "t184_wall_saving_accelerated_pct": 17.775235470686308,
+      "est_post_t184_ratio_accelerated": 0.8128108607137227,
+      "est_post_t184_required_cut_accelerated_pct": 0.0
+    },
+    "benchy-arachne-on": {
+      "supports": "on",
+      "est_post_t183_ratio_ordinary": 1.2773196905937974,
+      "t184_wall_saving_ordinary_pct": 8.48601576151075,
+      "est_post_t184_ratio_ordinary": 1.1689261403251274,
+      "est_post_t184_required_cut_ordinary_pct": 14.451395558503123,
+      "est_post_t183_ratio_accelerated": 1.2637136154887856,
+      "t184_wall_saving_accelerated_pct": 9.355124960939577,
+      "est_post_t184_ratio_accelerated": 1.1454916276114022,
+      "est_post_t184_required_cut_accelerated_pct": 12.70123884840466
+    },
+    "base-classic-off": {
+      "supports": "off",
+      "est_post_t183_ratio_ordinary": 0.718089381399269,
+      "t184_wall_saving_ordinary_pct": 12.30923896101979,
+      "est_post_t184_ratio_ordinary": 0.6296980434891243,
+      "est_post_t184_required_cut_ordinary_pct": 0.0,
+      "est_post_t183_ratio_accelerated": 0.7472850789185916,
+      "t184_wall_saving_accelerated_pct": 18.65264511850981,
+      "est_post_t184_ratio_accelerated": 0.6078966451243307,
+      "est_post_t184_required_cut_accelerated_pct": 0.0
+    },
+    "base-classic-on": {
+      "supports": "on",
+      "est_post_t183_ratio_ordinary": 0.9734155207010063,
+      "t184_wall_saving_ordinary_pct": 4.988401079128085,
+      "est_post_t184_ratio_ordinary": 0.9248576503619571,
+      "est_post_t184_required_cut_ordinary_pct": 0.0,
+      "est_post_t183_ratio_accelerated": 0.9255065901346231,
+      "t184_wall_saving_accelerated_pct": 7.7603576720129075,
+      "est_post_t184_ratio_accelerated": 0.8536839684621258,
+      "est_post_t184_required_cut_accelerated_pct": 0.0
+    },
+    "base-arachne-off": {
+      "supports": "off",
+      "est_post_t183_ratio_ordinary": 0.7746887570277996,
+      "t184_wall_saving_ordinary_pct": 10.72440439373353,
+      "est_post_t184_ratio_ordinary": 0.6916080019313505,
+      "est_post_t184_required_cut_ordinary_pct": 0.0,
+      "est_post_t183_ratio_accelerated": 0.7596196007441272,
+      "t184_wall_saving_accelerated_pct": 10.495577968885648,
+      "est_post_t184_ratio_accelerated": 0.6798931332810894,
+      "est_post_t184_required_cut_accelerated_pct": 0.0
+    },
+    "base-arachne-on": {
+      "supports": "on",
+      "est_post_t183_ratio_ordinary": 0.9662436155192778,
+      "t184_wall_saving_ordinary_pct": 5.759500754319696,
+      "est_post_t184_ratio_ordinary": 0.9105928071948792,
+      "est_post_t184_required_cut_ordinary_pct": 0.0,
+      "est_post_t183_ratio_accelerated": 0.9173289219395886,
+      "t184_wall_saving_accelerated_pct": 10.48500117520291,
+      "est_post_t184_ratio_accelerated": 0.8211469736937466,
+      "est_post_t184_required_cut_accelerated_pct": 0.0
+    }
+  }
+}

@@ -240,7 +240,7 @@ pub const STAGES: &[StageSpec] = &[
         tier_id: TIER_PREPASS,
         trait_name: "PrepassModule",
         wit_dir: "prepass-support-geometry",
-        wit_package: "slicer:prepass-support-geometry@2.0.0",
+        wit_package: "slicer:prepass-support-geometry@2.1.0",
         wit_interface: "support-geometry",
         wit_world: "support-geometry-module",
     },

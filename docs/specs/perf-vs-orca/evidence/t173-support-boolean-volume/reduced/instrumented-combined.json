@@ -1,0 +1,1337 @@
+{
+ "note": "Reduced by reduce_instrumented_t173.py from gitignored raw event streams in target/t173-instrumented/. Phase and stage brackets are instrumented attribution only; per-layer module and stage sums are thread-accumulated and never wall claims. The `median` block is the per-phase median share across this cell's passes.",
+ "cells": {
+  "base-arachne-on": {
+   "passes": [
+    {
+     "raw_events": 23324,
+     "slice_complete_ms": 46960,
+     "phases_ms": {
+      "validation": 3,
+      "prepass": 39334,
+      "per_layer": 5349,
+      "postpass": 2191
+     },
+     "outside_phases_ms": 83,
+     "phase_detail": {
+      "validation": {
+       "wall_ms": 3,
+       "module_busy_union_ms": 0,
+       "host_gap_ms": 3,
+       "host_gap_fraction": 1.0
+      },
+      "prepass": {
+       "wall_ms": 39334,
+       "module_busy_union_ms": 36928,
+       "host_gap_ms": 2406,
+       "host_gap_fraction": 0.0612
+      },
+      "per_layer": {
+       "wall_ms": 5349,
+       "module_busy_union_ms": 5348,
+       "host_gap_ms": 1,
+       "host_gap_fraction": 0.0002
+      },
+      "postpass": {
+       "wall_ms": 2191,
+       "module_busy_union_ms": 2188,
+       "host_gap_ms": 3,
+       "host_gap_fraction": 0.0014
+      }
+     },
+     "layer_count": 496,
+     "degraded": false,
+     "fatal_error_count": 0,
+     "non_fatal_error_count": 0,
+     "prepass_stages_ms": {
+      "PrePass::SupportGeometry": 29125,
+      "PrePass::ShellClassification": 3871,
+      "PrePass::SupportAnalysis": 2973,
+      "PrePass::Slice": 1571,
+      "PrePass::SeamPlanning": 829,
+      "PrePass::MeshAnalysis": 612,
+      "PrePass::OverhangAnnotation": 163,
+      "PrePass::PaintSegmentation": 30,
+      "PrePass::RegionMapping": 10,
+      "PrePass::LayerPlanning": 1
+     },
+     "per_layer_stages_thread_sum_ms": {
+      "Layer::Support": 27415,
+      "Layer::Perimeters": 18598,
+      "Layer::Infill": 6949,
+      "Layer::InfillPostProcess": 4769,
+      "Layer::PerimetersPostProcess": 2926,
+      "Layer::SupportPostProcess": 473,
+      "Layer::PathOptimization": 238,
+      "Layer::PaintRegionAnnotation": 2
+     },
+     "postpass_stages_ms": {
+      "PostPass::LayerFinalization": 761,
+      "PostPass::GCodeSerialize": 546,
+      "PostPass::GCodeEmit": 488,
+      "PostPass::GCodePostProcess": 394
+     },
+     "module_thread_sum_ms": {
+      "prepass": {
+       "com.core.tree-support-planner": 26653,
+       "host:shell_classification": 3871,
+       "host:support_analysis": 2973,
+       "host:slice": 1571,
+       "com.core.seam-planner-default": 829,
+       "host:mesh_analysis": 612,
+       "com.core.traditional-support-planner": 204,
+       "host:overhang_annotation": 163,
+       "host:paint_segmentation": 30,
+       "host:region_mapping": 10,
+       "host:support_geometry": 3,
+       "com.core.layer-planner-default": 1
+      },
+      "per_layer": {
+       "com.core.tree-support": 27400,
+       "com.core.arachne-perimeters": 16761,
+       "com.core.infill-linker": 4733,
+       "com.core.raft-default": 2636,
+       "com.core.gyroid-infill": 740,
+       "com.core.lightning-infill": 553,
+       "com.core.rectilinear-infill": 551,
+       "com.core.wave-overhangs": 528,
+       "com.core.top-surface-ironing": 514,
+       "com.core.support-surface-ironing": 440,
+       "com.core.seam-placer": 264,
+       "com.core.path-optimization-default": 208,
+       "com.core.fuzzy-skin": 182,
+       "host:paint_annotator": 0
+      },
+      "postpass": {
+       "host:gcode_serialize": 545,
+       "host:gcode_emit": 488,
+       "com.core.machine-gcode-emit": 391,
+       "com.core.skirt-brim": 206,
+       "com.core.overhang-classifier-default": 196,
+       "com.core.part-cooling": 189,
+       "com.core.wipe-tower": 169
+      }
+     },
+     "module_calls": {
+      "prepass": {
+       "host:mesh_analysis": 1,
+       "com.core.layer-planner-default": 1,
+       "host:region_mapping": 1,
+       "host:slice": 1,
+       "host:overhang_annotation": 1,
+       "host:shell_classification": 1,
+       "host:paint_segmentation": 1,
+       "host:support_analysis": 1,
+       "host:support_geometry": 1,
+       "com.core.seam-planner-default": 1,
+       "com.core.traditional-support-planner": 1,
+       "com.core.tree-support-planner": 1
+      },
+      "per_layer": {
+       "host:paint_annotator": 496,
+       "com.core.arachne-perimeters": 496,
+       "com.core.fuzzy-skin": 496,
+       "com.core.seam-placer": 496,
+       "com.core.raft-default": 496,
+       "com.core.gyroid-infill": 496,
+       "com.core.lightning-infill": 496,
+       "com.core.rectilinear-infill": 496,
+       "com.core.top-surface-ironing": 496,
+       "com.core.wave-overhangs": 496,
+       "com.core.infill-linker": 496,
+       "com.core.tree-support": 496,
+       "com.core.support-surface-ironing": 496,
+       "com.core.path-optimization-default": 496
+      },
+      "postpass": {
+       "com.core.overhang-classifier-default": 1,
+       "com.core.part-cooling": 1,
+       "com.core.skirt-brim": 1,
+       "com.core.wipe-tower": 1,
+       "host:gcode_emit": 1,
+       "com.core.machine-gcode-emit": 1,
+       "host:gcode_serialize": 1
+      }
+     },
+     "module_spans_ms": {
+      "prepass": {
+       "com.core.tree-support-planner": 26654,
+       "host:shell_classification": 3872,
+       "host:support_analysis": 2974,
+       "host:slice": 1571,
+       "com.core.seam-planner-default": 830,
+       "host:mesh_analysis": 612,
+       "com.core.traditional-support-planner": 205,
+       "host:overhang_annotation": 164,
+       "host:paint_segmentation": 31,
+       "host:region_mapping": 11,
+       "host:support_geometry": 3,
+       "com.core.layer-planner-default": 1
+      },
+      "per_layer": {
+       "com.core.tree-support": 27644,
+       "com.core.arachne-perimeters": 17019,
+       "com.core.infill-linker": 4990,
+       "com.core.raft-default": 2885,
+       "com.core.gyroid-infill": 1002,
+       "com.core.rectilinear-infill": 819,
+       "com.core.lightning-infill": 809,
+       "com.core.wave-overhangs": 783,
+       "com.core.top-surface-ironing": 769,
+       "com.core.support-surface-ironing": 681,
+       "com.core.seam-placer": 556,
+       "com.core.path-optimization-default": 483,
+       "com.core.fuzzy-skin": 481,
+       "host:paint_annotator": 7
+      },
+      "postpass": {
+       "host:gcode_serialize": 546,
+       "host:gcode_emit": 488,
+       "com.core.machine-gcode-emit": 392,
+       "com.core.skirt-brim": 206,
+       "com.core.overhang-classifier-default": 197,
+       "com.core.part-cooling": 189,
+       "com.core.wipe-tower": 170
+      }
+     },
+     "module_call_stats": {
+      "prepass": {
+       "host:mesh_analysis": {
+        "calls": 1,
+        "thread_sum_ms": 612,
+        "spans_ms": 612,
+        "max_ms": 612,
+        "max_layer_index": null,
+        "p50_ms": 612,
+        "p90_ms": 612,
+        "p99_ms": 612,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "com.core.layer-planner-default": {
+        "calls": 1,
+        "thread_sum_ms": 1,
+        "spans_ms": 1,
+        "max_ms": 1,
+        "max_layer_index": null,
+        "p50_ms": 1,
+        "p90_ms": 1,
+        "p99_ms": 1,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "host:region_mapping": {
+        "calls": 1,
+        "thread_sum_ms": 10,
+        "spans_ms": 11,
+        "max_ms": 10,
+        "max_layer_index": null,
+        "p50_ms": 10,
+        "p90_ms": 10,
+        "p99_ms": 10,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "host:slice": {
+        "calls": 1,
+        "thread_sum_ms": 1571,
+        "spans_ms": 1571,
+        "max_ms": 1571,
+        "max_layer_index": null,
+        "p50_ms": 1571,
+        "p90_ms": 1571,
+        "p99_ms": 1571,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "host:overhang_annotation": {
+        "calls": 1,
+        "thread_sum_ms": 163,
+        "spans_ms": 164,
+        "max_ms": 163,
+        "max_layer_index": null,
+        "p50_ms": 163,
+        "p90_ms": 163,
+        "p99_ms": 163,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "host:shell_classification": {
+        "calls": 1,
+        "thread_sum_ms": 3871,
+        "spans_ms": 3872,
+        "max_ms": 3871,
+        "max_layer_index": null,
+        "p50_ms": 3871,
+        "p90_ms": 3871,
+        "p99_ms": 3871,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "host:paint_segmentation": {
+        "calls": 1,
+        "thread_sum_ms": 30,
+        "spans_ms": 31,
+        "max_ms": 30,
+        "max_layer_index": null,
+        "p50_ms": 30,
+        "p90_ms": 30,
+        "p99_ms": 30,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 0
+       },
+       "host:support_analysis": {
+        "calls": 1,
+        "thread_sum_ms": 2973,
+        "spans_ms": 2974,
+        "max_ms": 2973,
+        "max_layer_index": null,
+        "p50_ms": 2973,
+        "p90_ms": 2973,
+        "p99_ms": 2973,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "host:support_geometry": {
+        "calls": 1,
+        "thread_sum_ms": 3,
+        "spans_ms": 3,
+        "max_ms": 3,
+        "max_layer_index": null,
+        "p50_ms": 3,
+        "p90_ms": 3,
+        "p99_ms": 3,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.seam-planner-default": {
+        "calls": 1,
+        "thread_sum_ms": 829,
+        "spans_ms": 830,
+        "max_ms": 829,
+        "max_layer_index": null,
+        "p50_ms": 829,
+        "p90_ms": 829,
+        "p99_ms": 829,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "com.core.traditional-support-planner": {
+        "calls": 1,
+        "thread_sum_ms": 204,
+        "spans_ms": 205,
+        "max_ms": 204,
+        "max_layer_index": null,
+        "p50_ms": 204,
+        "p90_ms": 204,
+        "p99_ms": 204,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "com.core.tree-support-planner": {
+        "calls": 1,
+        "thread_sum_ms": 26653,
+        "spans_ms": 26654,
+        "max_ms": 26653,
+        "max_layer_index": null,
+        "p50_ms": 26653,
+        "p90_ms": 26653,
+        "p99_ms": 26653,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       }
+      },
+      "per_layer": {
+       "host:paint_annotator": {
+        "calls": 496,
+        "thread_sum_ms": 0,
+        "spans_ms": 7,
+        "max_ms": 0,
+        "max_layer_index": 107,
+        "p50_ms": 0,
+        "p90_ms": 0,
+        "p99_ms": 0,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.arachne-perimeters": {
+        "calls": 496,
+        "thread_sum_ms": 16761,
+        "spans_ms": 17019,
+        "max_ms": 135,
+        "max_layer_index": 226,
+        "p50_ms": 34,
+        "p90_ms": 59,
+        "p99_ms": 97,
+        "calls_gt_10ms": 428,
+        "calls_gt_50ms": 88
+       },
+       "com.core.fuzzy-skin": {
+        "calls": 496,
+        "thread_sum_ms": 182,
+        "spans_ms": 481,
+        "max_ms": 9,
+        "max_layer_index": 60,
+        "p50_ms": 0,
+        "p90_ms": 1,
+        "p99_ms": 3,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.seam-placer": {
+        "calls": 496,
+        "thread_sum_ms": 264,
+        "spans_ms": 556,
+        "max_ms": 6,
+        "max_layer_index": 153,
+        "p50_ms": 0,
+        "p90_ms": 1,
+        "p99_ms": 4,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.raft-default": {
+        "calls": 496,
+        "thread_sum_ms": 2636,
+        "spans_ms": 2885,
+        "max_ms": 30,
+        "max_layer_index": 226,
+        "p50_ms": 5,
+        "p90_ms": 10,
+        "p99_ms": 21,
+        "calls_gt_10ms": 32,
+        "calls_gt_50ms": 0
+       },
+       "com.core.gyroid-infill": {
+        "calls": 496,
+        "thread_sum_ms": 740,
+        "spans_ms": 1002,
+        "max_ms": 15,
+        "max_layer_index": 295,
+        "p50_ms": 1,
+        "p90_ms": 3,
+        "p99_ms": 6,
+        "calls_gt_10ms": 3,
+        "calls_gt_50ms": 0
+       },
+       "com.core.lightning-infill": {
+        "calls": 496,
+        "thread_sum_ms": 553,
+        "spans_ms": 809,
+        "max_ms": 10,
+        "max_layer_index": 236,
+        "p50_ms": 1,
+        "p90_ms": 2,
+        "p99_ms": 5,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.rectilinear-infill": {
+        "calls": 496,
+        "thread_sum_ms": 551,
+        "spans_ms": 819,
+        "max_ms": 7,
+        "max_layer_index": 382,
+        "p50_ms": 1,
+        "p90_ms": 2,
+        "p99_ms": 5,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.top-surface-ironing": {
+        "calls": 496,
+        "thread_sum_ms": 514,
+        "spans_ms": 769,
+        "max_ms": 10,
+        "max_layer_index": 226,
+        "p50_ms": 1,
+        "p90_ms": 2,
+        "p99_ms": 4,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.wave-overhangs": {
+        "calls": 496,
+        "thread_sum_ms": 528,
+        "spans_ms": 783,
+        "max_ms": 7,
+        "max_layer_index": 236,
+        "p50_ms": 1,
+        "p90_ms": 2,
+        "p99_ms": 4,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.infill-linker": {
+        "calls": 496,
+        "thread_sum_ms": 4733,
+        "spans_ms": 4990,
+        "max_ms": 39,
+        "max_layer_index": 236,
+        "p50_ms": 9,
+        "p90_ms": 18,
+        "p99_ms": 30,
+        "calls_gt_10ms": 206,
+        "calls_gt_50ms": 0
+       },
+       "com.core.tree-support": {
+        "calls": 496,
+        "thread_sum_ms": 27400,
+        "spans_ms": 27644,
+        "max_ms": 218,
+        "max_layer_index": 39,
+        "p50_ms": 57,
+        "p90_ms": 101,
+        "p99_ms": 159,
+        "calls_gt_10ms": 402,
+        "calls_gt_50ms": 288
+       },
+       "com.core.support-surface-ironing": {
+        "calls": 496,
+        "thread_sum_ms": 440,
+        "spans_ms": 681,
+        "max_ms": 5,
+        "max_layer_index": 88,
+        "p50_ms": 1,
+        "p90_ms": 2,
+        "p99_ms": 4,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.path-optimization-default": {
+        "calls": 496,
+        "thread_sum_ms": 208,
+        "spans_ms": 483,
+        "max_ms": 6,
+        "max_layer_index": 235,
+        "p50_ms": 0,
+        "p90_ms": 1,
+        "p99_ms": 4,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       }
+      },
+      "postpass": {
+       "com.core.overhang-classifier-default": {
+        "calls": 1,
+        "thread_sum_ms": 196,
+        "spans_ms": 197,
+        "max_ms": 196,
+        "max_layer_index": null,
+        "p50_ms": 196,
+        "p90_ms": 196,
+        "p99_ms": 196,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "com.core.part-cooling": {
+        "calls": 1,
+        "thread_sum_ms": 189,
+        "spans_ms": 189,
+        "max_ms": 189,
+        "max_layer_index": null,
+        "p50_ms": 189,
+        "p90_ms": 189,
+        "p99_ms": 189,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "com.core.skirt-brim": {
+        "calls": 1,
+        "thread_sum_ms": 206,
+        "spans_ms": 206,
+        "max_ms": 206,
+        "max_layer_index": null,
+        "p50_ms": 206,
+        "p90_ms": 206,
+        "p99_ms": 206,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "com.core.wipe-tower": {
+        "calls": 1,
+        "thread_sum_ms": 169,
+        "spans_ms": 170,
+        "max_ms": 169,
+        "max_layer_index": null,
+        "p50_ms": 169,
+        "p90_ms": 169,
+        "p99_ms": 169,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "host:gcode_emit": {
+        "calls": 1,
+        "thread_sum_ms": 488,
+        "spans_ms": 488,
+        "max_ms": 488,
+        "max_layer_index": null,
+        "p50_ms": 488,
+        "p90_ms": 488,
+        "p99_ms": 488,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "com.core.machine-gcode-emit": {
+        "calls": 1,
+        "thread_sum_ms": 391,
+        "spans_ms": 392,
+        "max_ms": 391,
+        "max_layer_index": null,
+        "p50_ms": 391,
+        "p90_ms": 391,
+        "p99_ms": 391,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "host:gcode_serialize": {
+        "calls": 1,
+        "thread_sum_ms": 545,
+        "spans_ms": 546,
+        "max_ms": 545,
+        "max_layer_index": null,
+        "p50_ms": 545,
+        "p90_ms": 545,
+        "p99_ms": 545,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       }
+      }
+     },
+     "module_first_in_stage": {
+      "per_layer": {
+       "host:paint_annotator": {
+        "groups": 496,
+        "first_thread_sum_ms": 0
+       },
+       "com.core.arachne-perimeters": {
+        "groups": 496,
+        "first_thread_sum_ms": 16761
+       },
+       "com.core.fuzzy-skin": {
+        "groups": 496,
+        "first_thread_sum_ms": 182
+       },
+       "com.core.raft-default": {
+        "groups": 480,
+        "first_thread_sum_ms": 2625
+       },
+       "com.core.infill-linker": {
+        "groups": 496,
+        "first_thread_sum_ms": 4733
+       },
+       "com.core.tree-support": {
+        "groups": 496,
+        "first_thread_sum_ms": 27400
+       },
+       "com.core.support-surface-ironing": {
+        "groups": 496,
+        "first_thread_sum_ms": 440
+       },
+       "com.core.path-optimization-default": {
+        "groups": 496,
+        "first_thread_sum_ms": 208
+       },
+       "com.core.gyroid-infill": {
+        "groups": 16,
+        "first_thread_sum_ms": 0
+       }
+      }
+     },
+     "gcode_sha256": "adf87012b498f717689331b0003d39ba9d3dc446e541d7ab58acaae35d2a18c0",
+     "gcode_bytes": 39417496
+    }
+   ],
+   "pass_shares": [
+    {
+     "validation": 6.4e-05,
+     "prepass": 0.837606,
+     "per_layer": 0.113905,
+     "postpass": 0.046657,
+     "outside": 0.001767
+    }
+   ],
+   "median": {
+    "slice_complete_ms": 46960,
+    "layer_count": 496,
+    "shares": {
+     "outside": 0.001767,
+     "per_layer": 0.113905,
+     "postpass": 0.046657,
+     "prepass": 0.837606,
+     "validation": 6.4e-05
+    },
+    "outside_share": 0.001767,
+    "gcode_sha256": "adf87012b498f717689331b0003d39ba9d3dc446e541d7ab58acaae35d2a18c0"
+   },
+   "repeat_count": 1,
+   "repeat_max_share_delta_pp": 0.0
+  },
+  "base-classic-on": {
+   "passes": [
+    {
+     "raw_events": 23325,
+     "slice_complete_ms": 52290,
+     "phases_ms": {
+      "validation": 3,
+      "prepass": 44797,
+      "per_layer": 5177,
+      "postpass": 2221
+     },
+     "outside_phases_ms": 92,
+     "phase_detail": {
+      "validation": {
+       "wall_ms": 3,
+       "module_busy_union_ms": 0,
+       "host_gap_ms": 3,
+       "host_gap_fraction": 1.0
+      },
+      "prepass": {
+       "wall_ms": 44797,
+       "module_busy_union_ms": 41972,
+       "host_gap_ms": 2825,
+       "host_gap_fraction": 0.0631
+      },
+      "per_layer": {
+       "wall_ms": 5177,
+       "module_busy_union_ms": 5165,
+       "host_gap_ms": 12,
+       "host_gap_fraction": 0.0023
+      },
+      "postpass": {
+       "wall_ms": 2221,
+       "module_busy_union_ms": 2218,
+       "host_gap_ms": 3,
+       "host_gap_fraction": 0.0014
+      }
+     },
+     "layer_count": 496,
+     "degraded": false,
+     "fatal_error_count": 0,
+     "non_fatal_error_count": 0,
+     "prepass_stages_ms": {
+      "PrePass::SupportGeometry": 32454,
+      "PrePass::ShellClassification": 4649,
+      "PrePass::SupportAnalysis": 3580,
+      "PrePass::Slice": 1939,
+      "PrePass::SeamPlanning": 964,
+      "PrePass::MeshAnalysis": 768,
+      "PrePass::OverhangAnnotation": 217,
+      "PrePass::PaintSegmentation": 35,
+      "PrePass::RegionMapping": 11,
+      "PrePass::LayerPlanning": 1
+     },
+     "per_layer_stages_thread_sum_ms": {
+      "Layer::Support": 29628,
+      "Layer::Perimeters": 11837,
+      "Layer::Infill": 6796,
+      "Layer::InfillPostProcess": 4703,
+      "Layer::PerimetersPostProcess": 2910,
+      "Layer::SupportPostProcess": 465,
+      "Layer::PathOptimization": 230,
+      "Layer::PaintRegionAnnotation": 16
+     },
+     "postpass_stages_ms": {
+      "PostPass::LayerFinalization": 829,
+      "PostPass::GCodeSerialize": 571,
+      "PostPass::GCodeEmit": 416,
+      "PostPass::GCodePostProcess": 404
+     },
+     "module_thread_sum_ms": {
+      "prepass": {
+       "com.core.tree-support-planner": 29573,
+       "host:shell_classification": 4649,
+       "host:support_analysis": 3580,
+       "host:slice": 1939,
+       "com.core.seam-planner-default": 963,
+       "host:mesh_analysis": 768,
+       "com.core.traditional-support-planner": 227,
+       "host:overhang_annotation": 217,
+       "host:paint_segmentation": 35,
+       "host:region_mapping": 11,
+       "host:support_geometry": 3,
+       "com.core.layer-planner-default": 1
+      },
+      "per_layer": {
+       "com.core.tree-support": 29579,
+       "com.core.classic-perimeters": 10043,
+       "com.core.infill-linker": 4673,
+       "com.core.raft-default": 2543,
+       "com.core.gyroid-infill": 692,
+       "com.core.lightning-infill": 558,
+       "com.core.rectilinear-infill": 535,
+       "com.core.top-surface-ironing": 535,
+       "com.core.wave-overhangs": 523,
+       "com.core.support-surface-ironing": 427,
+       "com.core.seam-placer": 284,
+       "com.core.fuzzy-skin": 237,
+       "com.core.path-optimization-default": 188,
+       "host:paint_annotator": 2
+      },
+      "postpass": {
+       "host:gcode_serialize": 571,
+       "host:gcode_emit": 416,
+       "com.core.machine-gcode-emit": 400,
+       "com.core.overhang-classifier-default": 229,
+       "com.core.part-cooling": 218,
+       "com.core.skirt-brim": 191,
+       "com.core.wipe-tower": 190
+      }
+     },
+     "module_calls": {
+      "prepass": {
+       "host:mesh_analysis": 1,
+       "com.core.layer-planner-default": 1,
+       "host:region_mapping": 1,
+       "host:slice": 1,
+       "host:overhang_annotation": 1,
+       "host:shell_classification": 1,
+       "host:paint_segmentation": 1,
+       "host:support_analysis": 1,
+       "host:support_geometry": 1,
+       "com.core.seam-planner-default": 1,
+       "com.core.traditional-support-planner": 1,
+       "com.core.tree-support-planner": 1
+      },
+      "per_layer": {
+       "host:paint_annotator": 496,
+       "com.core.classic-perimeters": 496,
+       "com.core.fuzzy-skin": 496,
+       "com.core.seam-placer": 496,
+       "com.core.raft-default": 496,
+       "com.core.gyroid-infill": 496,
+       "com.core.lightning-infill": 496,
+       "com.core.rectilinear-infill": 496,
+       "com.core.top-surface-ironing": 496,
+       "com.core.wave-overhangs": 496,
+       "com.core.infill-linker": 496,
+       "com.core.tree-support": 496,
+       "com.core.support-surface-ironing": 496,
+       "com.core.path-optimization-default": 496
+      },
+      "postpass": {
+       "com.core.overhang-classifier-default": 1,
+       "com.core.part-cooling": 1,
+       "com.core.skirt-brim": 1,
+       "com.core.wipe-tower": 1,
+       "host:gcode_emit": 1,
+       "com.core.machine-gcode-emit": 1,
+       "host:gcode_serialize": 1
+      }
+     },
+     "module_spans_ms": {
+      "prepass": {
+       "com.core.tree-support-planner": 29574,
+       "host:shell_classification": 4650,
+       "host:support_analysis": 3580,
+       "host:slice": 1939,
+       "com.core.seam-planner-default": 964,
+       "host:mesh_analysis": 768,
+       "com.core.traditional-support-planner": 228,
+       "host:overhang_annotation": 217,
+       "host:paint_segmentation": 36,
+       "host:region_mapping": 12,
+       "host:support_geometry": 3,
+       "com.core.layer-planner-default": 1
+      },
+      "per_layer": {
+       "com.core.tree-support": 29842,
+       "com.core.classic-perimeters": 10289,
+       "com.core.infill-linker": 4921,
+       "com.core.raft-default": 2781,
+       "com.core.gyroid-infill": 966,
+       "com.core.lightning-infill": 795,
+       "com.core.rectilinear-infill": 795,
+       "com.core.top-surface-ironing": 781,
+       "com.core.wave-overhangs": 781,
+       "com.core.support-surface-ironing": 651,
+       "com.core.seam-placer": 568,
+       "com.core.fuzzy-skin": 542,
+       "com.core.path-optimization-default": 510,
+       "host:paint_annotator": 11
+      },
+      "postpass": {
+       "host:gcode_serialize": 571,
+       "host:gcode_emit": 416,
+       "com.core.machine-gcode-emit": 401,
+       "com.core.overhang-classifier-default": 229,
+       "com.core.part-cooling": 218,
+       "com.core.skirt-brim": 192,
+       "com.core.wipe-tower": 191
+      }
+     },
+     "module_call_stats": {
+      "prepass": {
+       "host:mesh_analysis": {
+        "calls": 1,
+        "thread_sum_ms": 768,
+        "spans_ms": 768,
+        "max_ms": 768,
+        "max_layer_index": null,
+        "p50_ms": 768,
+        "p90_ms": 768,
+        "p99_ms": 768,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "com.core.layer-planner-default": {
+        "calls": 1,
+        "thread_sum_ms": 1,
+        "spans_ms": 1,
+        "max_ms": 1,
+        "max_layer_index": null,
+        "p50_ms": 1,
+        "p90_ms": 1,
+        "p99_ms": 1,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "host:region_mapping": {
+        "calls": 1,
+        "thread_sum_ms": 11,
+        "spans_ms": 12,
+        "max_ms": 11,
+        "max_layer_index": null,
+        "p50_ms": 11,
+        "p90_ms": 11,
+        "p99_ms": 11,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 0
+       },
+       "host:slice": {
+        "calls": 1,
+        "thread_sum_ms": 1939,
+        "spans_ms": 1939,
+        "max_ms": 1939,
+        "max_layer_index": null,
+        "p50_ms": 1939,
+        "p90_ms": 1939,
+        "p99_ms": 1939,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "host:overhang_annotation": {
+        "calls": 1,
+        "thread_sum_ms": 217,
+        "spans_ms": 217,
+        "max_ms": 217,
+        "max_layer_index": null,
+        "p50_ms": 217,
+        "p90_ms": 217,
+        "p99_ms": 217,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "host:shell_classification": {
+        "calls": 1,
+        "thread_sum_ms": 4649,
+        "spans_ms": 4650,
+        "max_ms": 4649,
+        "max_layer_index": null,
+        "p50_ms": 4649,
+        "p90_ms": 4649,
+        "p99_ms": 4649,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "host:paint_segmentation": {
+        "calls": 1,
+        "thread_sum_ms": 35,
+        "spans_ms": 36,
+        "max_ms": 35,
+        "max_layer_index": null,
+        "p50_ms": 35,
+        "p90_ms": 35,
+        "p99_ms": 35,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 0
+       },
+       "host:support_analysis": {
+        "calls": 1,
+        "thread_sum_ms": 3580,
+        "spans_ms": 3580,
+        "max_ms": 3580,
+        "max_layer_index": null,
+        "p50_ms": 3580,
+        "p90_ms": 3580,
+        "p99_ms": 3580,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "host:support_geometry": {
+        "calls": 1,
+        "thread_sum_ms": 3,
+        "spans_ms": 3,
+        "max_ms": 3,
+        "max_layer_index": null,
+        "p50_ms": 3,
+        "p90_ms": 3,
+        "p99_ms": 3,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.seam-planner-default": {
+        "calls": 1,
+        "thread_sum_ms": 963,
+        "spans_ms": 964,
+        "max_ms": 963,
+        "max_layer_index": null,
+        "p50_ms": 963,
+        "p90_ms": 963,
+        "p99_ms": 963,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "com.core.traditional-support-planner": {
+        "calls": 1,
+        "thread_sum_ms": 227,
+        "spans_ms": 228,
+        "max_ms": 227,
+        "max_layer_index": null,
+        "p50_ms": 227,
+        "p90_ms": 227,
+        "p99_ms": 227,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "com.core.tree-support-planner": {
+        "calls": 1,
+        "thread_sum_ms": 29573,
+        "spans_ms": 29574,
+        "max_ms": 29573,
+        "max_layer_index": null,
+        "p50_ms": 29573,
+        "p90_ms": 29573,
+        "p99_ms": 29573,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       }
+      },
+      "per_layer": {
+       "host:paint_annotator": {
+        "calls": 496,
+        "thread_sum_ms": 2,
+        "spans_ms": 11,
+        "max_ms": 2,
+        "max_layer_index": 31,
+        "p50_ms": 0,
+        "p90_ms": 0,
+        "p99_ms": 0,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.classic-perimeters": {
+        "calls": 496,
+        "thread_sum_ms": 10043,
+        "spans_ms": 10289,
+        "max_ms": 73,
+        "max_layer_index": 96,
+        "p50_ms": 20,
+        "p90_ms": 38,
+        "p99_ms": 49,
+        "calls_gt_10ms": 355,
+        "calls_gt_50ms": 4
+       },
+       "com.core.fuzzy-skin": {
+        "calls": 496,
+        "thread_sum_ms": 237,
+        "spans_ms": 542,
+        "max_ms": 6,
+        "max_layer_index": 281,
+        "p50_ms": 0,
+        "p90_ms": 2,
+        "p99_ms": 4,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.seam-placer": {
+        "calls": 496,
+        "thread_sum_ms": 284,
+        "spans_ms": 568,
+        "max_ms": 9,
+        "max_layer_index": 294,
+        "p50_ms": 0,
+        "p90_ms": 2,
+        "p99_ms": 4,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.raft-default": {
+        "calls": 496,
+        "thread_sum_ms": 2543,
+        "spans_ms": 2781,
+        "max_ms": 17,
+        "max_layer_index": 273,
+        "p50_ms": 5,
+        "p90_ms": 9,
+        "p99_ms": 14,
+        "calls_gt_10ms": 29,
+        "calls_gt_50ms": 0
+       },
+       "com.core.gyroid-infill": {
+        "calls": 496,
+        "thread_sum_ms": 692,
+        "spans_ms": 966,
+        "max_ms": 7,
+        "max_layer_index": 264,
+        "p50_ms": 1,
+        "p90_ms": 3,
+        "p99_ms": 5,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.lightning-infill": {
+        "calls": 496,
+        "thread_sum_ms": 558,
+        "spans_ms": 795,
+        "max_ms": 7,
+        "max_layer_index": 383,
+        "p50_ms": 1,
+        "p90_ms": 3,
+        "p99_ms": 5,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.rectilinear-infill": {
+        "calls": 496,
+        "thread_sum_ms": 535,
+        "spans_ms": 795,
+        "max_ms": 5,
+        "max_layer_index": 92,
+        "p50_ms": 1,
+        "p90_ms": 3,
+        "p99_ms": 5,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.top-surface-ironing": {
+        "calls": 496,
+        "thread_sum_ms": 535,
+        "spans_ms": 781,
+        "max_ms": 11,
+        "max_layer_index": 383,
+        "p50_ms": 1,
+        "p90_ms": 3,
+        "p99_ms": 5,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 0
+       },
+       "com.core.wave-overhangs": {
+        "calls": 496,
+        "thread_sum_ms": 523,
+        "spans_ms": 781,
+        "max_ms": 12,
+        "max_layer_index": 95,
+        "p50_ms": 1,
+        "p90_ms": 2,
+        "p99_ms": 5,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 0
+       },
+       "com.core.infill-linker": {
+        "calls": 496,
+        "thread_sum_ms": 4673,
+        "spans_ms": 4921,
+        "max_ms": 66,
+        "max_layer_index": 95,
+        "p50_ms": 9,
+        "p90_ms": 18,
+        "p99_ms": 33,
+        "calls_gt_10ms": 191,
+        "calls_gt_50ms": 1
+       },
+       "com.core.tree-support": {
+        "calls": 496,
+        "thread_sum_ms": 29579,
+        "spans_ms": 29842,
+        "max_ms": 230,
+        "max_layer_index": 218,
+        "p50_ms": 60,
+        "p90_ms": 117,
+        "p99_ms": 170,
+        "calls_gt_10ms": 399,
+        "calls_gt_50ms": 294
+       },
+       "com.core.support-surface-ironing": {
+        "calls": 496,
+        "thread_sum_ms": 427,
+        "spans_ms": 651,
+        "max_ms": 9,
+        "max_layer_index": 95,
+        "p50_ms": 1,
+        "p90_ms": 2,
+        "p99_ms": 4,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       },
+       "com.core.path-optimization-default": {
+        "calls": 496,
+        "thread_sum_ms": 188,
+        "spans_ms": 510,
+        "max_ms": 8,
+        "max_layer_index": 95,
+        "p50_ms": 0,
+        "p90_ms": 1,
+        "p99_ms": 4,
+        "calls_gt_10ms": 0,
+        "calls_gt_50ms": 0
+       }
+      },
+      "postpass": {
+       "com.core.overhang-classifier-default": {
+        "calls": 1,
+        "thread_sum_ms": 229,
+        "spans_ms": 229,
+        "max_ms": 229,
+        "max_layer_index": null,
+        "p50_ms": 229,
+        "p90_ms": 229,
+        "p99_ms": 229,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "com.core.part-cooling": {
+        "calls": 1,
+        "thread_sum_ms": 218,
+        "spans_ms": 218,
+        "max_ms": 218,
+        "max_layer_index": null,
+        "p50_ms": 218,
+        "p90_ms": 218,
+        "p99_ms": 218,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "com.core.skirt-brim": {
+        "calls": 1,
+        "thread_sum_ms": 191,
+        "spans_ms": 192,
+        "max_ms": 191,
+        "max_layer_index": null,
+        "p50_ms": 191,
+        "p90_ms": 191,
+        "p99_ms": 191,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "com.core.wipe-tower": {
+        "calls": 1,
+        "thread_sum_ms": 190,
+        "spans_ms": 191,
+        "max_ms": 190,
+        "max_layer_index": null,
+        "p50_ms": 190,
+        "p90_ms": 190,
+        "p99_ms": 190,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "host:gcode_emit": {
+        "calls": 1,
+        "thread_sum_ms": 416,
+        "spans_ms": 416,
+        "max_ms": 416,
+        "max_layer_index": null,
+        "p50_ms": 416,
+        "p90_ms": 416,
+        "p99_ms": 416,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "com.core.machine-gcode-emit": {
+        "calls": 1,
+        "thread_sum_ms": 400,
+        "spans_ms": 401,
+        "max_ms": 400,
+        "max_layer_index": null,
+        "p50_ms": 400,
+        "p90_ms": 400,
+        "p99_ms": 400,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       },
+       "host:gcode_serialize": {
+        "calls": 1,
+        "thread_sum_ms": 571,
+        "spans_ms": 571,
+        "max_ms": 571,
+        "max_layer_index": null,
+        "p50_ms": 571,
+        "p90_ms": 571,
+        "p99_ms": 571,
+        "calls_gt_10ms": 1,
+        "calls_gt_50ms": 1
+       }
+      }
+     },
+     "module_first_in_stage": {
+      "per_layer": {
+       "host:paint_annotator": {
+        "groups": 496,
+        "first_thread_sum_ms": 2
+       },
+       "com.core.classic-perimeters": {
+        "groups": 496,
+        "first_thread_sum_ms": 10043
+       },
+       "com.core.fuzzy-skin": {
+        "groups": 496,
+        "first_thread_sum_ms": 237
+       },
+       "com.core.raft-default": {
+        "groups": 473,
+        "first_thread_sum_ms": 2524
+       },
+       "com.core.infill-linker": {
+        "groups": 496,
+        "first_thread_sum_ms": 4673
+       },
+       "com.core.tree-support": {
+        "groups": 496,
+        "first_thread_sum_ms": 29579
+       },
+       "com.core.support-surface-ironing": {
+        "groups": 496,
+        "first_thread_sum_ms": 427
+       },
+       "com.core.path-optimization-default": {
+        "groups": 496,
+        "first_thread_sum_ms": 188
+       },
+       "com.core.gyroid-infill": {
+        "groups": 23,
+        "first_thread_sum_ms": 0
+       }
+      }
+     },
+     "gcode_sha256": "0e13ff7be58c67700fa51501a423c5e0166228815f3696a7c44bb1a65b99ca08",
+     "gcode_bytes": 39605535
+    }
+   ],
+   "pass_shares": [
+    {
+     "validation": 5.7e-05,
+     "prepass": 0.856703,
+     "per_layer": 0.099006,
+     "postpass": 0.042475,
+     "outside": 0.001759
+    }
+   ],
+   "median": {
+    "slice_complete_ms": 52290,
+    "layer_count": 496,
+    "shares": {
+     "outside": 0.001759,
+     "per_layer": 0.099006,
+     "postpass": 0.042475,
+     "prepass": 0.856703,
+     "validation": 5.7e-05
+    },
+    "outside_share": 0.001759,
+    "gcode_sha256": "0e13ff7be58c67700fa51501a423c5e0166228815f3696a7c44bb1a65b99ca08"
+   },
+   "repeat_count": 1,
+   "repeat_max_share_delta_pp": 0.0
+  }
+ }
+}

@@ -14,8 +14,11 @@ use slicer_runtime::run::{prepare_prepass_context, run_slice_with_collector, Sli
 const OBJECT_ID: &str = "scope-resolution-cube";
 const SECOND_OBJECT_ID: &str = "scope-resolution-cube-b";
 const MODIFIER_ID: &str = "scope-resolution-modifier";
-const EXPECTED_ZS: [f32; 4] = [0.3, 0.5, 0.7, 0.9];
-const EXPECTED_MODEL_LAYER_COUNT: usize = 4;
+// Canonical `generate_object_layers` keeps a layer while its band midpoint is
+// below the object height, so a 1.0 mm object with a 0.3 first layer and 0.2
+// steps keeps the 1.1 top (midpoint 0.999…): five model layers, not four.
+const EXPECTED_ZS: [f32; 5] = [0.3, 0.5, 0.7, 0.9, 1.1];
+const EXPECTED_MODEL_LAYER_COUNT: usize = 5;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -162,7 +165,7 @@ fn expected_planning() -> ResolvedObjectLayerConfig {
         layer_height: 0.2,
         first_layer_height: 0.3,
         support_raft_layers: 0,
-        layer_z_tops: vec![0.3, 0.5, 0.7, 0.9],
+        layer_z_tops: vec![0.3, 0.5, 0.7, 0.9, 1.1],
     }
 }
 

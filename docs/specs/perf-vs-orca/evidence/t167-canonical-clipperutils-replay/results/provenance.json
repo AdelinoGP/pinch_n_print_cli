@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "campaign_case_count": 413,
+  "loaded12_case_count": 320,
+  "loaded12_workers": 12,
+  "cpu_load_start_pct": 11.0,
+  "sources": {
+    "pnp_git_rev": "8220a901e3510532a1a9dbabe6ebe5562eadaa68",
+    "pnp_clipper2_rust": "vendor/clipper2-rust 1.1.0 (t70-optimized)",
+    "orca_v250_git_rev": "40ecc66f78ed72dc368e0c1ebe40d77f00cc8a19",
+    "orca_v250_clipper2_version": "2.0.1",
+    "orca_v250_clipper2_migration_commit": "222c6a2df50e4dee7139ff7bf27b7fac56a36c5d",
+    "orca_documented_git_rev": "3e1daccd7c567a0a3d2b5721841d30845f21307e",
+    "orca_documented_clipper1_version": "6.2.6",
+    "orca_documented_clipper2_version": "1.5.2"
+  },
+  "compilers": {
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "rustc_full": "rustc 1.96.0 (ac68faa20 2026-05-25)\nbinary: rustc\ncommit-hash: ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96\ncommit-date: 2026-05-25\nhost: x86_64-pc-windows-msvc\nrelease: 1.96.0\nLLVM version: 22.1.2",
+    "gxx": "g++ (x86_64-posix-seh-rev0, Built by MinGW-Builds project) 16.1.0",
+    "cxx_flags": [
+      "g++",
+      "-O3",
+      "-std=c++17",
+      "-static",
+      "-static-libgcc",
+      "-static-libstdc++"
+    ],
+    "rust_profile": "release (cargo build --release --offline)"
+  },
+  "allocator_disclosure": {
+    "rust_pnp": "mimalloc::MiMalloc (matching pnp_cli production global allocator)",
+    "cpp_c2_1_5_2": "MinGW g++ default CRT malloc (no tbbmalloc)",
+    "orca_v2_5_0": "MinGW g++ default CRT malloc (tbb::scalable_allocator shimmed to std::malloc/std::allocator)",
+    "orca_clipper1": "MinGW g++ default CRT malloc (tbb::scalable_allocator shimmed to std::malloc/std::allocator)",
+    "note": "Any allocator advantage favors rust_pnp (mimalloc) over the C++ shims; C++ speedups are conservative lower bounds vs Orca's native tbbmalloc build."
+  },
+  "binaries_sha256": {
+    "rust_pnp": "ffbdc5df4d1713c2370243421a0776beb4a2d8a606940b5e9ffc9423737e5f69",
+    "cpp_c2_1_5_2": "f3253ef1539b1d9eb97c03c00d4f6d2df0122caab37610c7a73ba33aadd0ee92",
+    "orca_v2_5_0": "dd302f85709a3e2934572ae2fafdd08f5b67b4169e13bcfa4adb4bc0b55026db",
+    "orca_clipper1": "7a42b8883d295c190518f1579b8623fb866e14cf9b73fe7b7efe80ee7ad2872b"
+  },
+  "driver_sources_sha256": {
+    "driver_rust.rs": "7b36140f24217b82efd95c50d31356cc156c3a15b07894f68f49f35694ae7229",
+    "driver_cpp_c2.cpp": "2fd6338b709355665928548d9585230dfac67d64e805efeb7b285b037117f32f",
+    "driver_orca_v250.cpp": "266a381ae10912b89b9e1f2c4a7916405b53c1332f29dea94d477822520a5b7b",
+    "driver_orca_c1.cpp": "3fc5b62f739eae30ceb227b872b9019740c2eccc53f2cf986e2797d623e36ec7",
+    "shims/oneapi/tbb/scalable_allocator.h": "e71d6fe204415603c81d97683c34b850f315938a88a2c6a9530c129589106810",
+    "shims/Eigen/Geometry": "c0c91d61ff77e3d926cd7ea4070ab9d840557da3bffdbb491074df941e8273d4",
+    "setup_engines.py": "25549fe6440eab862c0f485efea5b925d9e2a6f6ee4783fa813eb6e7ebc2f3e0",
+    "verify_drivers.py": "99cf2b1f3ffeb4d691b2afd5f05d6befb67c822a29457b538e20dbd39372c07a",
+    "campaign.py": "3274d8a1befa62aeaf2ce9edf79ea6ea27fe1a4496325ac40e2d9d8a6a2ad811",
+    "reduce_prepass.py": "06049868f1cd9691c1f73c06d280cfec9d78a80c8dd617012e7bc4dd6782e554",
+    "ablation_decimation.py": "2e9f602666f299074f0754e5c5fa014d2a7a0efa2d6464a9da3cb2e65657dd0d"
+  },
+  "corpus_files_sha256": {
+    "t68sites/base-region-prep.corpus": "0251a77241f8bef6445b8b64b7224d08d77a2ba2f8bd4d6c70b02a614c9849ed",
+    "t68sites/base-t68sites.corpus": "9153ed4c0b00c36b83fb68f63104ea56175c3ef9e8f085e1c60502128ebca4ed",
+    "t68sites/benchy-region-prep.corpus": "7fc94e638c4d80f19918711d5cc5e4e9a2cb73984f0477b4749c8fbfa2788ac3",
+    "t68sites/benchy-t68sites.corpus": "81e234a8b22e1d581f2982d509a69f74268ee1bb0cc7f66ff0e3dd50fd0e9800",
+    "t55/accelerated-base.cases": "8328f87aebf39a68c6e606b40888b411f9a68c4b3d26dbe6bf497292e03cfca7",
+    "t55/accelerated-benchy.cases": "3c1db8031ddef7c4e0269d5774b4896052e9cd89432f88ba60ec57850000ef42",
+    "t55/ordinary-base.cases": "8328f87aebf39a68c6e606b40888b411f9a68c4b3d26dbe6bf497292e03cfca7",
+    "t55/ordinary-benchy.cases": "3c1db8031ddef7c4e0269d5774b4896052e9cd89432f88ba60ec57850000ef42",
+    "t167/base-prepass-t167.corpus": "74c2b553659d71d67d6327b766fa929280eec520d6dafdf6317213c2084260a0"
+  },
+  "reduced_results_sha256": {
+    "single_forward": "a1841342ae06839fee86ed746b1775d7c473f249c3cb69e78d8f64006649803f",
+    "single_reverse": "50c87fdf878b02c8330e22ccdc1d7aea81fe1cd6bd6b01a3295b85621d0a670f",
+    "loaded12_forward": "99f0f0fe87e898a92c4307e50a128ef8d6f022182abbd4edebcddd1a53c98aa9",
+    "loaded12_reverse": "7609deb21caa0f9b99e8ee81bab645ada2fbc924fc672e366daa742a02e29365",
+    "summary": "83f73dab5d1cd6c268bfe1b720391fd5ae430cbb246d6cb2d0865cbc2838215e",
+    "ablation_decimation": "d260da360e45749bd21acb4d23e726a20ef553d9934065f4512607612366ccbe"
+  }
+}

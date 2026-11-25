@@ -1,0 +1,61 @@
+{
+  "note": "ESTIMATE, not a ratio of record: t164 board ratios x (1 - t166 paired median saving). Cross-window composition; no fresh Orca arm was run.",
+  "cells": {
+    "benchy-classic-off": {
+      "t164_ratio": 1.9783,
+      "t164_cut_pct": 49.45,
+      "post_t166_ratio_estimate": 1.574,
+      "post_t166_cut_pct_estimate": 36.47,
+      "saving_pct": 20.435
+    },
+    "benchy-classic-on": {
+      "t164_ratio": 2.8843,
+      "t164_cut_pct": 65.33,
+      "post_t166_ratio_estimate": 2.656,
+      "post_t166_cut_pct_estimate": 62.35,
+      "saving_pct": 7.915
+    },
+    "benchy-arachne-off": {
+      "t164_ratio": 1.8942,
+      "t164_cut_pct": 47.21,
+      "post_t166_ratio_estimate": 1.4889,
+      "post_t166_cut_pct_estimate": 32.84,
+      "saving_pct": 21.395
+    },
+    "benchy-arachne-on": {
+      "t164_ratio": 2.7837,
+      "t164_cut_pct": 64.08,
+      "post_t166_ratio_estimate": 2.5255,
+      "post_t166_cut_pct_estimate": 60.4,
+      "saving_pct": 9.277
+    },
+    "base-classic-off": {
+      "t164_ratio": 1.501,
+      "t164_cut_pct": 33.38,
+      "post_t166_ratio_estimate": 1.4493,
+      "post_t166_cut_pct_estimate": 31.0,
+      "saving_pct": 3.448
+    },
+    "base-classic-on": {
+      "t164_ratio": 2.812,
+      "t164_cut_pct": 64.44,
+      "post_t166_ratio_estimate": 2.7426,
+      "post_t166_cut_pct_estimate": 63.54,
+      "saving_pct": 2.468
+    },
+    "base-arachne-off": {
+      "t164_ratio": 1.3787,
+      "t164_cut_pct": 27.47,
+      "post_t166_ratio_estimate": 1.3744,
+      "post_t166_cut_pct_estimate": 27.24,
+      "saving_pct": 0.31
+    },
+    "base-arachne-on": {
+      "t164_ratio": 2.5781,
+      "t164_cut_pct": 61.21,
+      "post_t166_ratio_estimate": 2.5592,
+      "post_t166_cut_pct_estimate": 60.92,
+      "saving_pct": 0.734
+    }
+  }
+}

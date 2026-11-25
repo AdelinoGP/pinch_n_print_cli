@@ -1,0 +1,3 @@
+mode,pair,order,cell,arm,wall_seconds,cpu_seconds,gcode_bytes,sha256,exit_code,timestamp_utc
+output,0,baseline-ordinary,base-classic-off,baseline-ordinary,26.2542,211.2188,21187100,9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e,0,2026-11-14T04:57:42.1886500Z
+output,0,candidate-ordinary,base-classic-off,candidate-ordinary,24.7625,195,21188258,4265d619dbf127ef9440858127b65c151d100ec8073614e6e2fe40bb80ae42d7,0,2026-11-14T04:58:06.9897552Z

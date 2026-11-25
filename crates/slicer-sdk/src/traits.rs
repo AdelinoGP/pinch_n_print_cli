@@ -233,6 +233,9 @@ impl PaintRegionLayerView {
         let mut blocked = false;
         let mut enforced = false;
         for region in &slice.regions {
+            if !slicer_core::paint_policy::has_support_paint(&region.segment_annotations) {
+                continue;
+            }
             if !region_covers_expoly(&region.polygons, expoly) {
                 continue;
             }
@@ -240,7 +243,10 @@ impl PaintRegionLayerView {
                 &region.polygons,
                 &region.segment_annotations,
             ) {
-                SupportPaintPolicy::Blocked => blocked = true,
+                SupportPaintPolicy::Blocked => {
+                    blocked = true;
+                    break;
+                }
                 SupportPaintPolicy::Enforced => enforced = true,
                 SupportPaintPolicy::DefaultEligible => {}
             }
@@ -808,46 +814,131 @@ pub trait PostpassModule: Sized {
 ///     z-hops: func() -> list<z-hop-view>;
 /// }
 /// ```
-#[derive(Debug, Clone)]
+type OrderedEntitiesLoader = std::rc::Rc<dyn Fn() -> Vec<slicer_ir::PrintEntity>>;
+
+/// Read-only view of a finalized layer collection passed to `FinalizationModule::run_finalization`.
+///
+/// Metadata (`layer_index`, `z`, `entity_count`, `tool_changes`, `z_hops`) is
+/// immediately available; `ordered_entities()` may be backed by a lazy `OnceCell`
+/// loader so modules that skip layers never cross the WIT boundary for unused payloads.
 pub struct LayerCollectionView {
-    layer: LayerCollectionIR,
+    layer_index: u32,
+    z: f32,
+    entity_count: u32,
+    tool_changes: Vec<slicer_ir::ToolChange>,
+    z_hops: Vec<slicer_ir::ZHop>,
+    ordered_entities: std::cell::OnceCell<Vec<slicer_ir::PrintEntity>>,
+    ordered_entities_loader: Option<OrderedEntitiesLoader>,
+}
+
+impl std::fmt::Debug for LayerCollectionView {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LayerCollectionView")
+            .field("layer_index", &self.layer_index)
+            .field("z", &self.z)
+            .field("entity_count", &self.entity_count)
+            .field("tool_changes", &self.tool_changes)
+            .field("z_hops", &self.z_hops)
+            .field(
+                "ordered_entities_loaded",
+                &self.ordered_entities.get().is_some(),
+            )
+            .finish()
+    }
+}
+
+impl Clone for LayerCollectionView {
+    fn clone(&self) -> Self {
+        let ordered_entities = match self.ordered_entities.get() {
+            Some(entities) => std::cell::OnceCell::from(entities.clone()),
+            None => std::cell::OnceCell::new(),
+        };
+        Self {
+            layer_index: self.layer_index,
+            z: self.z,
+            entity_count: self.entity_count,
+            tool_changes: self.tool_changes.clone(),
+            z_hops: self.z_hops.clone(),
+            ordered_entities,
+            ordered_entities_loader: self.ordered_entities_loader.clone(),
+        }
+    }
 }
 
 impl LayerCollectionView {
-    /// Create a new LayerCollectionView wrapping a completed layer.
+    /// Create a new LayerCollectionView wrapping a completed layer eagerly.
     #[doc(hidden)]
     pub fn new(layer: LayerCollectionIR) -> Self {
-        Self { layer }
+        let entity_count = layer.ordered_entities.len() as u32;
+        Self {
+            layer_index: layer.global_layer_index,
+            z: layer.z,
+            entity_count,
+            tool_changes: layer.tool_changes,
+            z_hops: layer.z_hops,
+            ordered_entities: std::cell::OnceCell::from(layer.ordered_entities),
+            ordered_entities_loader: None,
+        }
+    }
+
+    /// Create a new LayerCollectionView whose `ordered_entities()` payload is
+    /// materialized lazily on first access via `loader` and cached in a `OnceCell`.
+    #[doc(hidden)]
+    pub fn new_lazy<F>(
+        layer_index: u32,
+        z: f32,
+        entity_count: u32,
+        tool_changes: Vec<slicer_ir::ToolChange>,
+        z_hops: Vec<slicer_ir::ZHop>,
+        loader: F,
+    ) -> Self
+    where
+        F: Fn() -> Vec<slicer_ir::PrintEntity> + 'static,
+    {
+        Self {
+            layer_index,
+            z,
+            entity_count,
+            tool_changes,
+            z_hops,
+            ordered_entities: std::cell::OnceCell::new(),
+            ordered_entities_loader: Some(std::rc::Rc::new(loader)),
+        }
     }
 
     /// Returns the global layer index.
     pub fn layer_index(&self) -> u32 {
-        self.layer.global_layer_index
+        self.layer_index
     }
 
     /// Returns the Z height of this layer.
     pub fn z(&self) -> f32 {
-        self.layer.z
+        self.z
     }
 
     /// Returns the number of extrusion entities in this layer.
     pub fn entity_count(&self) -> u32 {
-        self.layer.ordered_entities.len() as u32
+        self.entity_count
     }
 
     /// Returns tool changes in this layer as (after_entity_index, from_tool, to_tool).
     pub fn tool_changes(&self) -> &[slicer_ir::ToolChange] {
-        &self.layer.tool_changes
+        &self.tool_changes
     }
 
     /// Returns the ordered extrusion entities in this layer.
     pub fn ordered_entities(&self) -> &[slicer_ir::PrintEntity] {
-        &self.layer.ordered_entities
+        self.ordered_entities
+            .get_or_init(|| match &self.ordered_entities_loader {
+                Some(loader) => loader(),
+                None => Vec::new(),
+            })
+            .as_slice()
     }
 
     /// Returns the Z hops in this layer.
     pub fn z_hops(&self) -> &[slicer_ir::ZHop] {
-        &self.layer.z_hops
+        &self.z_hops
     }
 }
 
@@ -1942,5 +2033,277 @@ pub trait FinalizationModule: Sized {
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod paint_policy_tests {
+    use super::*;
+    use slicer_ir::{Point2, Polygon, SlicedRegion};
+    use std::collections::HashMap;
+
+    fn rect_expoly(x0: f32, y0: f32, x1: f32, y1: f32) -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(x0, y0),
+                    Point2::from_mm(x1, y0),
+                    Point2::from_mm(x1, y1),
+                    Point2::from_mm(x0, y1),
+                ],
+            },
+            holes: Vec::new(),
+        }
+    }
+
+    /// Non-convex L-shape whose vertex-mean centroid lies inside its cut-out notch.
+    fn l_shape_expoly() -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(10.0, 0.0),
+                    Point2::from_mm(10.0, 2.0),
+                    Point2::from_mm(2.0, 2.0),
+                    Point2::from_mm(2.0, 10.0),
+                    Point2::from_mm(0.0, 10.0),
+                ],
+            },
+            holes: Vec::new(),
+        }
+    }
+
+    fn region_with(
+        region_id: u64,
+        polygons: Vec<ExPolygon>,
+        segment_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    ) -> SlicedRegion {
+        SlicedRegion {
+            region_id,
+            polygons,
+            segment_annotations,
+            ..Default::default()
+        }
+    }
+
+    fn paint_map(
+        entries: &[(PaintSemantic, Vec<Option<PaintValue>>)],
+    ) -> HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> {
+        let mut map = HashMap::new();
+        for (sem, vals) in entries {
+            map.insert(sem.clone(), vec![vals.clone()]);
+        }
+        map
+    }
+
+    #[test]
+    fn paint_policy_honors_support_blocker_and_enforcer() {
+        let region_poly = rect_expoly(0.0, 0.0, 20.0, 20.0);
+        let probe = rect_expoly(5.0, 5.0, 15.0, 15.0);
+
+        let blocker_slice = SliceIR {
+            regions: vec![region_with(
+                1,
+                vec![region_poly.clone()],
+                paint_map(&[(
+                    PaintSemantic::SupportBlocker,
+                    vec![Some(PaintValue::Flag(true))],
+                )]),
+            )],
+            ..Default::default()
+        };
+        let view_blocked = PaintRegionLayerView::new(0).with_slice_ir(Arc::new(blocker_slice));
+        assert_eq!(
+            view_blocked.paint_policy_for(&probe),
+            SupportPaintPolicy::Blocked
+        );
+
+        let enforcer_slice = SliceIR {
+            regions: vec![region_with(
+                2,
+                vec![region_poly],
+                paint_map(&[(
+                    PaintSemantic::SupportEnforcer,
+                    vec![Some(PaintValue::Flag(true))],
+                )]),
+            )],
+            ..Default::default()
+        };
+        let view_enforced = PaintRegionLayerView::new(0).with_slice_ir(Arc::new(enforcer_slice));
+        assert_eq!(
+            view_enforced.paint_policy_for(&probe),
+            SupportPaintPolicy::Enforced
+        );
+    }
+
+    #[test]
+    fn paint_policy_blocker_overrides_enforcer_across_mixed_regions() {
+        let big = rect_expoly(0.0, 0.0, 30.0, 30.0);
+        let probe = rect_expoly(5.0, 5.0, 10.0, 10.0);
+
+        // Unpainted region first, then enforcer, then fuzzy-only, then blocker:
+        // blocker must still win regardless of ordering or interleaved unpainted regions.
+        let slice = SliceIR {
+            regions: vec![
+                region_with(1, vec![big.clone()], HashMap::new()),
+                region_with(
+                    2,
+                    vec![big.clone()],
+                    paint_map(&[(
+                        PaintSemantic::SupportEnforcer,
+                        vec![Some(PaintValue::Flag(true))],
+                    )]),
+                ),
+                region_with(
+                    3,
+                    vec![big.clone()],
+                    paint_map(&[(PaintSemantic::FuzzySkin, vec![Some(PaintValue::Flag(true))])]),
+                ),
+                region_with(
+                    4,
+                    vec![big],
+                    paint_map(&[(
+                        PaintSemantic::SupportBlocker,
+                        vec![Some(PaintValue::Flag(true))],
+                    )]),
+                ),
+            ],
+            ..Default::default()
+        };
+        let view = PaintRegionLayerView::new(0).with_slice_ir(Arc::new(slice));
+        assert_eq!(view.paint_policy_for(&probe), SupportPaintPolicy::Blocked);
+    }
+
+    #[test]
+    fn paint_policy_matches_non_convex_l_shape_probe() {
+        let l_region = l_shape_expoly();
+        // Probe strictly inside the L-shape arm, whose own centroid lies in the notch (4, 4).
+        let l_probe = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.5, 0.5),
+                    Point2::from_mm(9.5, 0.5),
+                    Point2::from_mm(9.5, 1.5),
+                    Point2::from_mm(1.5, 1.5),
+                    Point2::from_mm(1.5, 9.5),
+                    Point2::from_mm(0.5, 9.5),
+                ],
+            },
+            holes: Vec::new(),
+        };
+        let slice = SliceIR {
+            regions: vec![region_with(
+                10,
+                vec![l_region],
+                paint_map(&[(
+                    PaintSemantic::SupportEnforcer,
+                    vec![Some(PaintValue::Flag(true))],
+                )]),
+            )],
+            ..Default::default()
+        };
+        let view = PaintRegionLayerView::new(0).with_slice_ir(Arc::new(slice));
+        assert_eq!(
+            view.paint_policy_for(&l_probe),
+            SupportPaintPolicy::Enforced
+        );
+
+        // Probe inside the cut-out notch (not covered by the L-shape) must stay DefaultEligible.
+        let notch_probe = rect_expoly(4.0, 4.0, 8.0, 8.0);
+        assert_eq!(
+            view.paint_policy_for(&notch_probe),
+            SupportPaintPolicy::DefaultEligible
+        );
+    }
+
+    #[test]
+    fn paint_policy_unpainted_and_non_support_annotations_stay_default_eligible() {
+        let region_poly = rect_expoly(0.0, 0.0, 20.0, 20.0);
+        let probe = rect_expoly(5.0, 5.0, 15.0, 15.0);
+
+        let slice = SliceIR {
+            regions: vec![
+                region_with(1, vec![region_poly.clone()], HashMap::new()),
+                region_with(
+                    2,
+                    vec![region_poly.clone()],
+                    paint_map(&[
+                        (PaintSemantic::FuzzySkin, vec![Some(PaintValue::Flag(true))]),
+                        (
+                            PaintSemantic::Material,
+                            vec![Some(PaintValue::ToolIndex(1))],
+                        ),
+                    ]),
+                ),
+                region_with(
+                    3,
+                    vec![region_poly],
+                    paint_map(&[
+                        (PaintSemantic::SupportBlocker, vec![None, None]),
+                        (PaintSemantic::SupportEnforcer, vec![None]),
+                    ]),
+                ),
+            ],
+            ..Default::default()
+        };
+        let view = PaintRegionLayerView::new(0).with_slice_ir(Arc::new(slice));
+        assert_eq!(
+            view.paint_policy_for(&probe),
+            SupportPaintPolicy::DefaultEligible
+        );
+    }
+
+    #[test]
+    fn layer_collection_view_new_lazy_loads_once_on_first_entities_access() {
+        let calls = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let calls_clone = std::rc::Rc::clone(&calls);
+        let view = LayerCollectionView::new_lazy(7, 1.4, 2, Vec::new(), Vec::new(), move || {
+            calls_clone.set(calls_clone.get() + 1);
+            // exhaustive: PrintEntity does not implement Default
+            vec![slicer_ir::PrintEntity {
+                entity_id: 42,
+                // exhaustive: ExtrusionPath3D does not implement Default
+                path: slicer_ir::ExtrusionPath3D {
+                    points: Vec::new(),
+                    role: slicer_ir::ExtrusionRole::OuterWall,
+                    speed_factor: 1.0,
+                    tool_index: None,
+                    order_lock: None,
+                },
+                role: slicer_ir::ExtrusionRole::OuterWall,
+                tool_index: 0,
+                region_key: slicer_ir::RegionKey {
+                    global_layer_index: 7,
+                    object_id: "obj".to_string(),
+                    region_id: 1,
+                    variant_chain: Vec::new(),
+                },
+                topo_order: 0,
+            }]
+        });
+
+        assert_eq!(view.layer_index(), 7);
+        assert!((view.z() - 1.4).abs() < f32::EPSILON);
+        assert_eq!(view.entity_count(), 2);
+        assert!(view.tool_changes().is_empty());
+        assert!(view.z_hops().is_empty());
+        assert_eq!(
+            calls.get(),
+            0,
+            "metadata reads must not trigger ordered_entities loader"
+        );
+
+        let first = view.ordered_entities();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].entity_id, 42);
+        assert_eq!(calls.get(), 1);
+
+        let second = view.ordered_entities();
+        assert_eq!(second.len(), 1);
+        assert_eq!(
+            calls.get(),
+            1,
+            "OnceCell must cache ordered_entities across repeated reads"
+        );
     }
 }

@@ -379,7 +379,7 @@ impl LayerModule for ClassicPerimeters {
             let prev_layer_boundary = region.prev_layer_boundary();
             let spatial_context = PerimeterSpatialContext::new(
                 prev_layer_boundary,
-                region.overhang_quartile_polygons(),
+                region.overhang_band_width_mm(),
                 region.bridge_areas(),
             );
             // ── Non-planar shell branch (T-074b/c/d, P108) ──────────────

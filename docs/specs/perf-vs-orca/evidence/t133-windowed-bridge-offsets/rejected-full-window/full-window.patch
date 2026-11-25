@@ -1,0 +1,165 @@
+diff --git a/crates/slicer-runtime/src/slice_postprocess_prepass.rs b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+index 471fbc45..279934f5 100644
+--- a/crates/slicer-runtime/src/slice_postprocess_prepass.rs
++++ b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+@@ -590,6 +590,71 @@ struct InternalBridgeLayerResult {
+     angles: Vec<f32>,
+ }
+ 
++/// Rectangular clip window for the two `deep_infill_area` offsets: the union
++/// bounding box of the layer's internal-bridge candidates, grown by enough to
++/// cover the largest offset delta plus Clipper's miter reach (`miter_limit` is
++/// 2.0 in [`offset`]). Every point whose offset can reach a candidate lies
++/// inside the window, so the offsets computed on the clipped operand agree
++/// with the whole-layer offsets wherever a candidate consumes them.
++///
++/// The window exists because the offsets are local operations: a point farther
++/// than `miter_limit x |delta|` from the candidate bounding box cannot change
++/// the clipped area inside it. `deep_infill_area` on a large plate extends far
++/// beyond the candidate set, and paying to offset that geometry is what the
++/// window removes.
++fn internal_bridge_offset_window(
++    region: &slicer_ir::SlicedRegion,
++    qualify_spacing_mm: f32,
++) -> Option<ExPolygon> {
++    let mut min_x = i64::MAX;
++    let mut min_y = i64::MAX;
++    let mut max_x = i64::MIN;
++    let mut max_y = i64::MIN;
++    let mut any = false;
++    for surface in &region.internal_solid_fill {
++        for ring in std::iter::once(&surface.contour).chain(surface.holes.iter()) {
++            for point in &ring.points {
++                min_x = min_x.min(point.x);
++                min_y = min_y.min(point.y);
++                max_x = max_x.max(point.x);
++                max_y = max_y.max(point.y);
++                any = true;
++            }
++        }
++    }
++    if !any {
++        return None;
++    }
++    // 4.5 * spacing is the largest of the two deltas; miter_limit 2.0 doubles
++    // its reach. One extra spacing keeps the rectangle clear of the offset
++    // boundary so the clipped operand is not itself the clip boundary.
++    let margin_mm = (2.0 * 4.5 + 1.0) * qualify_spacing_mm;
++    let margin = (f64::from(margin_mm) * slicer_ir::UNITS_PER_MM).ceil() as i64;
++    Some(ExPolygon {
++        contour: slicer_ir::Polygon {
++            points: vec![
++                slicer_ir::Point2 {
++                    x: min_x - margin,
++                    y: min_y - margin,
++                },
++                slicer_ir::Point2 {
++                    x: max_x + margin,
++                    y: min_y - margin,
++                },
++                slicer_ir::Point2 {
++                    x: max_x + margin,
++                    y: max_y + margin,
++                },
++                slicer_ir::Point2 {
++                    x: min_x - margin,
++                    y: max_y + margin,
++                },
++            ],
++        },
++        holes: Vec::new(),
++    })
++}
++
+ /// Compute the exact commit result for one layer from `deep_infill_area`
+ /// (already lower-candidate-subtracted by the caller when required).
+ #[allow(clippy::too_many_arguments)]
+@@ -606,8 +671,17 @@ fn compute_internal_bridge_layer(
+     layer_index: u32,
+     print_z: f32,
+ ) -> Option<InternalBridgeLayerResult> {
++    let window = internal_bridge_offset_window(region, qualify_spacing_mm);
++    let clipped_deep_infill;
++    let deep_infill_operand: &[ExPolygon] = match &window {
++        Some(rect) => {
++            clipped_deep_infill = intersection(&deep_infill_area, std::slice::from_ref(rect));
++            &clipped_deep_infill
++        }
++        None => &deep_infill_area,
++    };
+     let deep_infill_clip_area = offset(
+-        &deep_infill_area,
++        deep_infill_operand,
+         1.5 * qualify_spacing_mm,
+         OffsetJoinType::Miter,
+         0.0,
+@@ -638,11 +712,11 @@ fn compute_internal_bridge_layer(
+     }
+     // Only the surviving candidates are filtered against this erosion,
+     // so an empty candidate set skips the offset entirely.
+-    let internal_unsupported_area = if qualified.is_empty() || deep_infill_area.is_empty() {
++    let internal_unsupported_area = if qualified.is_empty() || deep_infill_operand.is_empty() {
+         Vec::new()
+     } else {
+         offset(
+-            &deep_infill_area,
++            deep_infill_operand,
+             -(4.5 * qualify_spacing_mm),
+             OffsetJoinType::Miter,
+             0.0,
+@@ -1626,4 +1700,38 @@ mod tests {
+             "no stInternal/stInternalSolid surface means nothing to convert"
+         );
+     }
++
++    /// The offset window is a locality bound, not an approximation: clipping
++    /// the deep-infill operand to the candidate bbox plus the miter reach must
++    /// leave both offsets identical *inside the candidate bbox*, even when the
++    /// operand carries a separate island far outside the window.
++    #[test]
++    fn internal_bridge_window_preserves_offsets_inside_the_candidate_bbox() {
++        let mut region = slicer_ir::SlicedRegion {
++            object_id: String::from("o"),
++            region_id: 0,
++            ..Default::default()
++        };
++        region.internal_solid_fill = vec![rect(20.0, 30.0)];
++        let deep_infill_area = vec![rect(0.0, 10.0), rect(20.0, 30.0)];
++        let qualify_spacing_mm = 0.4;
++        let window = internal_bridge_offset_window(&region, qualify_spacing_mm)
++            .expect("a non-empty candidate set has a window");
++        let clipped = intersection(&deep_infill_area, std::slice::from_ref(&window));
++        assert_ne!(
++            clipped, deep_infill_area,
++            "the far island must be clipped away or the fixture proves nothing"
++        );
++        let candidate_bbox = vec![rect(20.0, 30.0)];
++        for delta in [1.5 * qualify_spacing_mm, -4.5 * qualify_spacing_mm] {
++            let whole = offset(&deep_infill_area, delta, OffsetJoinType::Miter, 0.0);
++            let windowed = offset(&clipped, delta, OffsetJoinType::Miter, 0.0);
++            let whole_inside = intersection(&whole, &candidate_bbox);
++            let windowed_inside = intersection(&windowed, &candidate_bbox);
++            assert_eq!(
++                whole_inside, windowed_inside,
++                "offset {delta} mm moved inside the candidate bbox"
++            );
++        }
++    }
+ }
+diff --git a/docs/specs/perf-vs-orca/issues/133-internal-bridge-windowed-offsets.md b/docs/specs/perf-vs-orca/issues/133-internal-bridge-windowed-offsets.md
+index 1f264c0c..5c4deef8 100644
+--- a/docs/specs/perf-vs-orca/issues/133-internal-bridge-windowed-offsets.md
++++ b/docs/specs/perf-vs-orca/issues/133-internal-bridge-windowed-offsets.md
+@@ -2,8 +2,10 @@
+ 
+ Type: task / measured candidate
+ Label: wayfinder:task
+-Status: open (unclaimed)
+-Assignee: —
++Status: claimed (2026-11-09, in progress)
++Assignee: 2026-11-09 OpenCode wayfinder session — the human said "Continue the
++  perf vs orca map" (no ticket named); 133 is the first unblocked, unclaimed
++  AFK frontier ticket in order (130 is the human's grilling).
+ Parent: [Slice performance vs OrcaSlicer](../map.md)
+ Blocked by: none
+ Graduated from: [Common-stage per-op cost decomposition](131-common-stage-per-op-cost-decomposition.md)'s

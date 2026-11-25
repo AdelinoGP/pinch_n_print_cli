@@ -140,65 +140,64 @@ pub fn paint_partition_controls() {
     super::paint::observe_and_verify(&single).expect("a single-axis case must verify");
 }
 
-/// `prepass_overhang_band_controls` — the analytic band model rejects swapped
-/// quartiles, a wrong predecessor and a capped fourth band.
-pub fn overhang_band_controls() {
-    use super::overhang::{observe, verify, verify_observation, OverhangCase};
+/// `prepass_overhang_area_controls` — the analytic area model rejects a wrong
+/// predecessor, a missing area, and an area that was not differenced against
+/// the previous footprint.
+pub fn overhang_area_controls() {
+    use super::overhang::{observe, verify, verify_annotation, OverhangCase};
 
     let case = OverhangCase {
-        line_width_mm: 0.4,
         shift_mm: 1.2,
         cuts: vec![
             100_000, 102_000, 101_000, 104_000, 103_000, 106_000, 105_000, 112_000,
         ],
     };
     verify(&case).expect("the live X-strip witness must satisfy the model");
-    let (bands, previous) = observe(&case);
-    let layer_bands = bands.get(&1).cloned().expect("layer 1 bands");
-    let quartiles: Vec<u8> = layer_bands.iter().map(|band| band.quartile).collect();
+    let annotation = observe(&case);
+    let layer_areas = annotation
+        .overhang_areas
+        .get(&1)
+        .cloned()
+        .expect("layer 1 unsupported area");
     assert!(
-        quartiles.contains(&4),
-        "the witness must observe the uncapped fourth band"
+        !layer_areas.is_empty(),
+        "the witness must observe a nonempty unsupported strip"
     );
 
-    // 1. Swapped quartiles: band 1 and 2 exchange labels.
-    let mut swapped = layer_bands.clone();
-    for band in &mut swapped {
-        band.quartile = match band.quartile {
-            1 => 2,
-            2 => 1,
-            other => other,
-        };
-    }
-    let mut swapped_map = bands.clone();
-    swapped_map.insert(1, swapped);
+    // 1. Wrong predecessor: the current footprint stands in for the previous.
+    let mut wrong_previous = annotation.clone();
+    wrong_previous
+        .prev_layer_boundaries
+        .insert(1, case.current());
     assert!(
-        verify_observation(&case, &swapped_map, &previous).is_err(),
-        "swapped quartiles must fail the checker"
-    );
-
-    // 2. Wrong predecessor: the current footprint stands in for the previous.
-    let mut wrong_previous = previous.clone();
-    wrong_previous.insert(1, case.current());
-    assert!(
-        verify_observation(&case, &bands, &wrong_previous).is_err(),
+        verify_annotation(&case, &wrong_previous).is_err(),
         "a substituted previous-boundary footprint must fail the checker"
     );
 
-    // 3. Capped fourth band: everything past 2 x line width is dropped.
-    let cap = case.strip_start() + ((0.8_f32 * 10_000.0) as i64);
-    let mut capped = layer_bands.clone();
-    for band in &mut capped {
-        if band.quartile == 4 {
-            band.polygons
-                .retain(|polygon| polygon.contour.points.iter().all(|point| point.x <= cap));
-        }
-    }
-    let mut capped_map = bands.clone();
-    capped_map.insert(1, capped);
+    // 2. Missing area: drop layer 1 from the area map.
+    let mut missing = annotation.clone();
+    missing.overhang_areas.remove(&1);
     assert!(
-        verify_observation(&case, &capped_map, &previous).is_err(),
-        "a fourth band capped at 2.0 x line width must fail the checker"
+        verify_annotation(&case, &missing).is_err(),
+        "a missing unsupported area must fail the checker"
+    );
+
+    // 3. Un-differenced: the whole current footprint is reported, so points
+    //    inside the previous footprint are wrongly classified as unsupported.
+    let mut undifferenced = annotation.clone();
+    undifferenced.overhang_areas.insert(1, case.current());
+    assert!(
+        verify_annotation(&case, &undifferenced).is_err(),
+        "an area that was not differenced against the previous footprint must fail"
+    );
+
+    // 4. Wrong side: the previous footprint stands in for the strip, so every
+    //    cell midpoint of the unsupported area is missing.
+    let mut wrong_side = annotation.clone();
+    wrong_side.overhang_areas.insert(1, case.previous());
+    assert!(
+        verify_annotation(&case, &wrong_side).is_err(),
+        "the previous footprint is not the unsupported area"
     );
 }
 

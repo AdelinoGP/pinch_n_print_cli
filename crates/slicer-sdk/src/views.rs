@@ -77,11 +77,14 @@ pub struct SliceRegionView {
     /// the module holds no fill claims for this region (suppresses all fill
     /// emission via `should_emit`).
     held_claims: Vec<String>,
-    /// Overhang area polygons for this region, flattened across all severity
-    /// quartiles. Populated by the host populator from
-    /// `SurfaceClassificationIR.overhang_quartile_polygons` at this region's
-    /// layer, pre-filtered to overlap the region (packet 107).
+    /// Overhang area polygons for this region, clipped exactly to the region
+    /// footprint. Populated by the host populator from
+    /// `SurfaceClassificationIR.overhang_areas` at this region's layer
+    /// (ticket 142; previously flattened from the quartile bands).
     overhang_areas: Vec<ExPolygon>,
+    /// Producer-resolved band width (mm) that the overhang-quartile thresholds
+    /// are multiples of. `0.0` when no width was resolved.
+    overhang_band_width_mm: f32,
     /// Quartile-banded overhang polygons for this region's layer, pre-filtered
     /// to overlap the region (packet 107). Preserves the per-quartile grouping
     /// that `overhang_areas` flattens away, for callers that need
@@ -129,6 +132,7 @@ impl Default for SliceRegionView {
             raft_fill: Vec::new(),
             held_claims: Vec::new(),
             overhang_areas: Vec::new(),
+            overhang_band_width_mm: 0.0,
             overhang_quartile_polygons: Vec::new(),
             prev_layer_boundary: Vec::new(),
             surface_group: None,
@@ -378,9 +382,7 @@ impl SliceRegionView {
         let mut found_non_empty_footprint = false;
         for overhang in non_empty_footprints {
             found_non_empty_footprint = true;
-            if !slicer_core::polygon_ops::intersection_ex(&self.polygons, &overhang.xy_footprint)
-                .is_empty()
-            {
+            if expolygons_intersect_area_positive(&self.polygons, &overhang.xy_footprint) {
                 return true;
             }
         }
@@ -594,17 +596,29 @@ impl SliceRegionView {
         &self.held_claims
     }
 
-    /// Returns the overhang area polygons for this region, flattened across
-    /// all severity quartiles.
+    /// Returns the overhang area polygons for this region, clipped exactly to
+    /// the region footprint.
     ///
-    /// Populated by the host populator from
-    /// `SurfaceClassificationIR.overhang_quartile_polygons` for this region's
-    /// layer, pre-filtered to overlap the region (packet 107). Empty when the
-    /// PrePass has not yet run `PrePass::OverhangAnnotation`, or when this
-    /// region has no overlapping overhang polygons at its layer. Safe to call
-    /// at any stage; callers must handle the empty case.
+    /// Populated by the host populator from `SurfaceClassificationIR.overhang_areas`
+    /// for this region's layer (ticket 142). Empty when the PrePass has not yet
+    /// run `PrePass::OverhangAnnotation`, or when this region has no overlapping
+    /// overhang polygons at its layer. Safe to call at any stage; callers must
+    /// handle the empty case.
     pub fn overhang_areas(&self) -> &[ExPolygon] {
         &self.overhang_areas
+    }
+
+    /// Returns the producer-resolved band width (mm) behind the overhang
+    /// quartile thresholds. `0.0` when no width was resolved.
+    pub fn overhang_band_width_mm(&self) -> f32 {
+        self.overhang_band_width_mm
+    }
+
+    /// Override the producer-resolved overhang band width (host-only, for
+    /// testing).
+    #[doc(hidden)]
+    pub fn set_overhang_band_width_mm(&mut self, overhang_band_width_mm: f32) {
+        self.overhang_band_width_mm = overhang_band_width_mm;
     }
 
     /// Override the overhang quartile polygons (host-only, for testing).
@@ -616,7 +630,7 @@ impl SliceRegionView {
     /// Override the flattened overhang area polygons (host-only, for testing).
     ///
     /// Production code populates `overhang_areas` from
-    /// `SurfaceClassificationIR.overhang_quartile_polygons` at the WASM
+    /// `SurfaceClassificationIR.overhang_areas` at the WASM
     /// marshal boundary (`crates/slicer-wasm-host/src/marshal/in_.rs`). Tests
     /// that exercise overhang consumers directly (bypassing the WASM
     /// boundary) can populate it here (P108 T-077).
@@ -978,4 +992,218 @@ pub struct OrderedEntityView {
     pub point_count: u32,
     /// Optional stable ordering lock carried by the extrusion path.
     pub order_lock: Option<u64>,
+}
+
+fn poly_bbox(pts: &[slicer_ir::Point2]) -> Option<(i64, i64, i64, i64)> {
+    let first = pts.first()?;
+    let mut min_x = first.x;
+    let mut max_x = first.x;
+    let mut min_y = first.y;
+    let mut max_y = first.y;
+    for p in &pts[1..] {
+        if p.x < min_x {
+            min_x = p.x;
+        }
+        if p.x > max_x {
+            max_x = p.x;
+        }
+        if p.y < min_y {
+            min_y = p.y;
+        }
+        if p.y > max_y {
+            max_y = p.y;
+        }
+    }
+    Some((min_x, min_y, max_x, max_y))
+}
+
+fn bboxes_strictly_overlap(a: (i64, i64, i64, i64), b: (i64, i64, i64, i64)) -> bool {
+    a.0 < b.2 && b.0 < a.2 && a.1 < b.3 && b.1 < a.3
+}
+
+/// Classifies `pt` relative to closed polygon `ring`:
+/// - `1` if `pt` lies strictly inside `ring`
+/// - `0` if `pt` lies on an edge or vertex of `ring`
+/// - `-1` if `pt` lies strictly outside `ring`
+fn point_in_ring(pt: slicer_ir::Point2, ring: &[slicer_ir::Point2]) -> i8 {
+    let n = ring.len();
+    if n < 3 {
+        return -1;
+    }
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let pi = ring[i];
+        let pj = ring[j];
+        if pi.x == pt.x && pi.y == pt.y {
+            return 0;
+        }
+        let min_x = pi.x.min(pj.x);
+        let max_x = pi.x.max(pj.x);
+        let min_y = pi.y.min(pj.y);
+        let max_y = pi.y.max(pj.y);
+        if pt.x >= min_x && pt.x <= max_x && pt.y >= min_y && pt.y <= max_y {
+            let cross = (pj.x as i128 - pi.x as i128) * (pt.y as i128 - pi.y as i128)
+                - (pj.y as i128 - pi.y as i128) * (pt.x as i128 - pi.x as i128);
+            if cross == 0 {
+                return 0;
+            }
+        }
+        if (pi.y > pt.y) != (pj.y > pt.y) {
+            let dy = pj.y as i128 - pi.y as i128;
+            let lhs = (pt.x as i128 - pi.x as i128) * dy;
+            let rhs = (pj.x as i128 - pi.x as i128) * (pt.y as i128 - pi.y as i128);
+            let crosses_right = if dy > 0 { lhs < rhs } else { lhs > rhs };
+            if crosses_right {
+                inside = !inside;
+            }
+        }
+        j = i;
+    }
+    if inside {
+        1
+    } else {
+        -1
+    }
+}
+
+fn point_strictly_inside_expoly(
+    pt: slicer_ir::Point2,
+    expoly: &ExPolygon,
+    bbox: (i64, i64, i64, i64),
+) -> bool {
+    if pt.x <= bbox.0 || pt.x >= bbox.2 || pt.y <= bbox.1 || pt.y >= bbox.3 {
+        return false;
+    }
+    if point_in_ring(pt, &expoly.contour.points) <= 0 {
+        return false;
+    }
+    for hole in &expoly.holes {
+        if point_in_ring(pt, &hole.points) >= 0 {
+            return false;
+        }
+    }
+    true
+}
+
+/// Exact boolean equivalent of `!slicer_core::polygon_ops::intersection_ex(a, b).is_empty()`.
+///
+/// Rejects disjoint and boundary-touching-only `ExPolygon` pairs via a strict
+/// axis-aligned bounding-box prefilter (`a.min_x < b.max_x`, etc.), then checks
+/// for a strict-interior contour vertex witness in exact `i128` arithmetic
+/// (strictly inside the outer contour and strictly outside every hole; boundary
+/// hits return `0` and are never accepted as a witness). If bbox-overlapping
+/// pairs exist and no strict-interior vertex witness is found (e.g., two
+/// polygons crossing edge-over-edge with all vertices outside each other),
+/// delegates the overlapping subset to `slicer_core::polygon_ops::intersection_ex`.
+fn expolygons_intersect_area_positive(a: &[ExPolygon], b: &[ExPolygon]) -> bool {
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+
+    let a_bboxes: Vec<Option<(i64, i64, i64, i64)>> =
+        a.iter().map(|ep| poly_bbox(&ep.contour.points)).collect();
+    let Some(a_union) = a_bboxes
+        .iter()
+        .flatten()
+        .copied()
+        .reduce(|u, bb| (u.0.min(bb.0), u.1.min(bb.1), u.2.max(bb.2), u.3.max(bb.3)))
+    else {
+        return false;
+    };
+
+    let mut b_candidates: Vec<(usize, (i64, i64, i64, i64))> = Vec::new();
+    for (bi, ep_b) in b.iter().enumerate() {
+        if let Some(bb_b) = poly_bbox(&ep_b.contour.points) {
+            if bboxes_strictly_overlap(a_union, bb_b) {
+                b_candidates.push((bi, bb_b));
+            }
+        }
+    }
+    if b_candidates.is_empty() {
+        return false;
+    }
+
+    let mut overlapping_pairs: Vec<(usize, (i64, i64, i64, i64), usize, (i64, i64, i64, i64))> =
+        Vec::new();
+    for (ai, bb_a_opt) in a_bboxes.iter().enumerate() {
+        let Some(bb_a) = *bb_a_opt else {
+            continue;
+        };
+        for &(bi, bb_b) in &b_candidates {
+            if bboxes_strictly_overlap(bb_a, bb_b) {
+                overlapping_pairs.push((ai, bb_a, bi, bb_b));
+            }
+        }
+    }
+    if overlapping_pairs.is_empty() {
+        return false;
+    }
+
+    // Pass 1: sampled contour vertices of B strictly inside A.
+    for &(ai, bb_a, bi, _bb_b) in &overlapping_pairs {
+        let ep_a = &a[ai];
+        let ep_b = &b[bi];
+        let pts = &ep_b.contour.points;
+        if !pts.is_empty() {
+            let step = (pts.len() / 8).max(1);
+            for idx in (0..pts.len()).step_by(step) {
+                if point_strictly_inside_expoly(pts[idx], ep_a, bb_a) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Pass 2: sampled contour vertices of A strictly inside B.
+    for &(ai, _bb_a, bi, bb_b) in &overlapping_pairs {
+        let ep_a = &a[ai];
+        let ep_b = &b[bi];
+        let pts = &ep_a.contour.points;
+        if !pts.is_empty() {
+            let step = (pts.len() / 8).max(1);
+            for idx in (0..pts.len()).step_by(step) {
+                if point_strictly_inside_expoly(pts[idx], ep_b, bb_b) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Pass 3: full scan of contour vertices of B in A, then A in B.
+    for &(ai, bb_a, bi, _bb_b) in &overlapping_pairs {
+        let ep_a = &a[ai];
+        let ep_b = &b[bi];
+        for &pt in &ep_b.contour.points {
+            if point_strictly_inside_expoly(pt, ep_a, bb_a) {
+                return true;
+            }
+        }
+    }
+    for &(ai, _bb_a, bi, bb_b) in &overlapping_pairs {
+        let ep_a = &a[ai];
+        let ep_b = &b[bi];
+        for &pt in &ep_a.contour.points {
+            if point_strictly_inside_expoly(pt, ep_b, bb_b) {
+                return true;
+            }
+        }
+    }
+
+    // Fallback: Clipper2 boolean intersection on the overlapping subset only.
+    let mut a_sub: Vec<ExPolygon> = Vec::new();
+    let mut b_sub: Vec<ExPolygon> = Vec::new();
+    let mut a_seen = vec![false; a.len()];
+    let mut b_seen = vec![false; b.len()];
+    for &(ai, _bb_a, bi, _bb_b) in &overlapping_pairs {
+        if !a_seen[ai] {
+            a_seen[ai] = true;
+            a_sub.push(a[ai].clone());
+        }
+        if !b_seen[bi] {
+            b_seen[bi] = true;
+            b_sub.push(b[bi].clone());
+        }
+    }
+    !slicer_core::polygon_ops::intersection_ex(&a_sub, &b_sub).is_empty()
 }

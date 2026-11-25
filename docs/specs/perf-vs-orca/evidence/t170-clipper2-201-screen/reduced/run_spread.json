@@ -1,0 +1,46 @@
+{
+  "window1": {
+    "prepass_offset": {
+      "rust_base": 1275.204,
+      "rust_patched": 690.235,
+      "v250_decim": 642.334
+    },
+    "prepass_two_pass": {
+      "rust_base": 781.296,
+      "rust_patched": 410.54,
+      "v250_decim": 460.398
+    },
+    "t68_base_offset": {
+      "rust_base": 732.239,
+      "rust_patched": 226.609,
+      "v250_decim": 191.573
+    },
+    "t68_benchy_offset": {
+      "rust_base": 117.078,
+      "rust_patched": 44.727,
+      "v250_decim": 40.516
+    }
+  },
+  "window2": {
+    "prepass_offset": {
+      "rust_base": 1326.341,
+      "rust_patched": 711.399,
+      "v250_decim": 631.462
+    },
+    "prepass_two_pass": {
+      "rust_base": 751.399,
+      "rust_patched": 459.61,
+      "v250_decim": 439.862
+    },
+    "t68_base_offset": {
+      "rust_base": 713.672,
+      "rust_patched": 225.181,
+      "v250_decim": 187.946
+    },
+    "t68_benchy_offset": {
+      "rust_base": 116.123,
+      "rust_patched": 45.353,
+      "v250_decim": 40.942
+    }
+  }
+}

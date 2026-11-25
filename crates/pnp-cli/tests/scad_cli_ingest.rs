@@ -745,10 +745,16 @@ fn scad_cli_slice_places_and_emits() {
         );
     }
 
-    // Every extruding move, decoration included: the default skirt/brim offset
-    // plus a line width stays well under 8 mm, so the placed footprint inflated
-    // by that margin bounds the whole print.
-    const DECORATION_MARGIN_MM: f64 = 8.0;
+    // Every extruding move, decoration included. Since the canonical skirt/brim
+    // port (modules/core-modules/skirt-brim/skirt-brim.toml) the brim ring sits
+    // `brim_width` (8 mm) outside the part outline and the skirt is anchored to
+    // the convex hull of part+brim at `skirt_distance` (3 mm) with `skirt_loops`
+    // (6) x `line_width` (0.4 mm) of loops, so decoration reaches ~13 mm beyond
+    // the placed part rather than the old `well under 8 mm`. The inflated
+    // footprint below still bounds the whole print; 16 mm leaves headroom for
+    // the rounded hull. Part placement itself is asserted separately via
+    // `part_extrusions` (which excludes Skirt/Brim).
+    const DECORATION_MARGIN_MM: f64 = 16.0;
     let moves = extrusions(&gcode);
     assert!(
         !moves.is_empty(),

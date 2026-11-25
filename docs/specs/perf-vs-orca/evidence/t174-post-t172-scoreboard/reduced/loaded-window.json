@@ -1,0 +1,1791 @@
+{
+ "ticket": 174,
+ "window": "loaded-first-take",
+ "batch_id": "t174-post-t172-scoreboard",
+ "generated_by": "reduce.py",
+ "question": "Post-t172 three-tool eight-cell board (OrcaSlicer 2.5.1 vs PnP ordinary and accelerated): official ratios of record, remaining cuts, and destination win tally.",
+ "window_utc": {
+  "first_row_completed": "2026-11-21T03:01:35.462Z",
+  "last_row_completed": "2026-11-21T03:43:29.553Z"
+ },
+ "raw_sources": {
+  "campaign_csv": "target/matched-pair/t174-post-t172-scoreboard/scoreboard-rows.csv",
+  "load_samples": "docs/specs/perf-vs-orca/evidence/t174-post-t172-scoreboard/reduced/loaded-window-load-samples.csv"
+ },
+ "currency_artifact": "docs/specs/perf-vs-orca/evidence/t172-offset-concave-crossing/reference.json",
+ "identities": {
+  "git_head": "0ce4be393eeb06ea21cc07834e293a94fc33b45e",
+  "last_code_commit": "48a5e58312d202897554f0f48b4a807434c75719",
+  "ordinary_guests_check_exit": 0,
+  "accelerated_guests_check_exit": 0,
+  "orca": {
+   "version": "2.5.1",
+   "vendor_profile_version": "02.08.00.16",
+   "exe_path": "C:/Program Files/OrcaSlicer/orca-slicer.exe",
+   "exe_bytes": 292160,
+   "exe_mtime": "2026-11-13T23:59:44-03:00",
+   "exe_sha256": "5013b1bdeb52a097e1fe2357178342461cf56cc5dccd58479ccd3999f997853c",
+   "support_style_pin": "tree_strong"
+  },
+  "pnp-ordinary": {
+   "exe_path": "target/release/pnp_cli.exe",
+   "exe_sha256": "06b05b6b2c4e8a5616272dde4baf90b8b09b0ee402613b62c8ce5736b3df17e9",
+   "module_dir": "modules/core-modules",
+   "module_count": 24,
+   "wasm_tree_sha256": "e75be5c0744101314803d874bbe92b400fc8e103f1e484c25bdfa2015464da3d"
+  },
+  "pnp-accelerated": {
+   "exe_path": "target/dist-accelerated/developer/pnp_cli.exe",
+   "exe_sha256": "490c6dc251eade2f7c42c8973d5ab567234092f1b7d88f021987a20534c3a46a",
+   "module_dir": "target/dist-accelerated/developer/modules",
+   "module_count": 24,
+   "wasm_tree_sha256": "481ff759cedd02d133f3e9dd78fff036d33ebfa016a16d129c030d436a4ab284"
+  }
+ },
+ "protocol": {
+  "cells": 8,
+  "tools": [
+   "orca",
+   "pnp-ordinary",
+   "pnp-accelerated"
+  ],
+  "runs_per_cell_tool": 3,
+  "warmups_per_cell_tool": 1,
+  "threads": 12,
+  "interleaved": true,
+  "measured_rows": 72,
+  "warmup_rows": 24
+ },
+ "cells": {
+  "benchy-classic-off": {
+   "fixture": "benchy",
+   "generator": "classic",
+   "supports": "off",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     3.323,
+     3.8159,
+     3.8096
+    ],
+    "cpu_s": [
+     8.2031,
+     7.125,
+     7.5781
+    ],
+    "cpu_wall_ratio": [
+     2.4686,
+     1.8672,
+     1.9892
+    ],
+    "wall_median_s": 3.8096,
+    "cpu_median_s": 7.5781,
+    "cpu_wall_ratio_median": 1.9892,
+    "wall_spread_pct": 12.94,
+    "cpu_spread_pct": 14.23,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     4.5936,
+     4.0863,
+     4.3062
+    ],
+    "cpu_s": [
+     10.75,
+     9.3125,
+     9.4375
+    ],
+    "cpu_wall_ratio": [
+     2.3402,
+     2.2789,
+     2.1916
+    ],
+    "wall_median_s": 4.3062,
+    "cpu_median_s": 9.4375,
+    "cpu_wall_ratio_median": 2.2789,
+    "wall_spread_pct": 11.78,
+    "cpu_spread_pct": 15.23,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     3.9709,
+     3.8742,
+     3.953
+    ],
+    "cpu_s": [
+     10.4062,
+     10.5781,
+     11.6719
+    ],
+    "cpu_wall_ratio": [
+     2.6206,
+     2.7304,
+     2.9527
+    ],
+    "wall_median_s": 3.953,
+    "cpu_median_s": 10.5781,
+    "cpu_wall_ratio_median": 2.7304,
+    "wall_spread_pct": 2.45,
+    "cpu_spread_pct": 11.97,
+    "starved_indices_075": []
+   },
+   "ratio_ordinary_over_orca": 1.1304,
+   "cpu_ratio_ordinary_over_orca": 1.2454,
+   "required_cut_ordinary_pct": 11.53,
+   "wall_win_ordinary": false,
+   "strict_separation_ordinary": false,
+   "cpu_corroborates_ordinary": false,
+   "destination_win_ordinary": false,
+   "ratio_accelerated_over_orca": 1.0376,
+   "cpu_ratio_accelerated_over_orca": 1.3959,
+   "required_cut_accelerated_pct": 3.63,
+   "wall_win_accelerated": false,
+   "strict_separation_accelerated": false,
+   "cpu_corroborates_accelerated": false,
+   "destination_win_accelerated": false,
+   "accel_vs_ordinary_wall_pct": -8.2,
+   "accel_vs_ordinary_cpu_pct": 12.09,
+   "t172_estimated_ratio_ordinary": 1.26,
+   "identity_ordinary": true,
+   "hash_ordinary": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+   "gcode_bytes_ordinary": 4077945,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+   "gcode_bytes_accelerated": 4077945,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+   "reference_bytes": 4077945,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "default",
+     "resolved": [
+      "default"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    4077463
+   ]
+  },
+  "benchy-classic-on": {
+   "fixture": "benchy",
+   "generator": "classic",
+   "supports": "on",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     4.9534,
+     4.994,
+     4.9083
+    ],
+    "cpu_s": [
+     11.4062,
+     12.0,
+     11.7031
+    ],
+    "cpu_wall_ratio": [
+     2.3027,
+     2.4029,
+     2.3844
+    ],
+    "wall_median_s": 4.9534,
+    "cpu_median_s": 11.7031,
+    "cpu_wall_ratio_median": 2.3844,
+    "wall_spread_pct": 1.73,
+    "cpu_spread_pct": 5.07,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     8.2382,
+     9.3909,
+     9.465
+    ],
+    "cpu_s": [
+     26.3438,
+     24.3906,
+     24.9062
+    ],
+    "cpu_wall_ratio": [
+     3.1978,
+     2.5973,
+     2.6314
+    ],
+    "wall_median_s": 9.3909,
+    "cpu_median_s": 24.9062,
+    "cpu_wall_ratio_median": 2.6314,
+    "wall_spread_pct": 13.06,
+    "cpu_spread_pct": 7.84,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     8.8538,
+     7.8954,
+     8.5076
+    ],
+    "cpu_s": [
+     22.5,
+     22.3594,
+     24.7188
+    ],
+    "cpu_wall_ratio": [
+     2.5413,
+     2.832,
+     2.9055
+    ],
+    "wall_median_s": 8.5076,
+    "cpu_median_s": 22.5,
+    "cpu_wall_ratio_median": 2.832,
+    "wall_spread_pct": 11.27,
+    "cpu_spread_pct": 10.49,
+    "starved_indices_075": []
+   },
+   "ratio_ordinary_over_orca": 1.8958,
+   "cpu_ratio_ordinary_over_orca": 2.1282,
+   "required_cut_ordinary_pct": 47.25,
+   "wall_win_ordinary": false,
+   "strict_separation_ordinary": false,
+   "cpu_corroborates_ordinary": false,
+   "destination_win_ordinary": false,
+   "ratio_accelerated_over_orca": 1.7175,
+   "cpu_ratio_accelerated_over_orca": 1.9226,
+   "required_cut_accelerated_pct": 41.78,
+   "wall_win_accelerated": false,
+   "strict_separation_accelerated": false,
+   "cpu_corroborates_accelerated": false,
+   "destination_win_accelerated": false,
+   "accel_vs_ordinary_wall_pct": -9.41,
+   "accel_vs_ordinary_cpu_pct": -9.66,
+   "t172_estimated_ratio_ordinary": 1.94,
+   "identity_ordinary": true,
+   "hash_ordinary": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+   "gcode_bytes_ordinary": 8544096,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+   "gcode_bytes_accelerated": 8544096,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+   "reference_bytes": 8544096,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "tree_strong",
+     "resolved": [
+      "tree_strong"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    9564191
+   ]
+  },
+  "benchy-arachne-off": {
+   "fixture": "benchy",
+   "generator": "arachne",
+   "supports": "off",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     3.7969,
+     4.0623,
+     4.3101
+    ],
+    "cpu_s": [
+     9.6094,
+     8.9219,
+     8.6875
+    ],
+    "cpu_wall_ratio": [
+     2.5308,
+     2.1963,
+     2.0156
+    ],
+    "wall_median_s": 4.0623,
+    "cpu_median_s": 8.9219,
+    "cpu_wall_ratio_median": 2.1963,
+    "wall_spread_pct": 12.63,
+    "cpu_spread_pct": 10.33,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     3.9242,
+     4.339,
+     4.0934
+    ],
+    "cpu_s": [
+     10.6562,
+     9.9531,
+     11.2031
+    ],
+    "cpu_wall_ratio": [
+     2.7155,
+     2.2939,
+     2.7369
+    ],
+    "wall_median_s": 4.0934,
+    "cpu_median_s": 10.6562,
+    "cpu_wall_ratio_median": 2.7155,
+    "wall_spread_pct": 10.13,
+    "cpu_spread_pct": 11.73,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     3.5823,
+     4.1624,
+     4.3307
+    ],
+    "cpu_s": [
+     11.1094,
+     9.8281,
+     11.125
+    ],
+    "cpu_wall_ratio": [
+     3.1012,
+     2.3612,
+     2.5688
+    ],
+    "wall_median_s": 4.1624,
+    "cpu_median_s": 11.1094,
+    "cpu_wall_ratio_median": 2.5688,
+    "wall_spread_pct": 17.98,
+    "cpu_spread_pct": 11.67,
+    "starved_indices_075": []
+   },
+   "ratio_ordinary_over_orca": 1.0077,
+   "cpu_ratio_ordinary_over_orca": 1.1944,
+   "required_cut_ordinary_pct": 0.76,
+   "wall_win_ordinary": false,
+   "strict_separation_ordinary": false,
+   "cpu_corroborates_ordinary": false,
+   "destination_win_ordinary": false,
+   "ratio_accelerated_over_orca": 1.0246,
+   "cpu_ratio_accelerated_over_orca": 1.2452,
+   "required_cut_accelerated_pct": 2.4,
+   "wall_win_accelerated": false,
+   "strict_separation_accelerated": false,
+   "cpu_corroborates_accelerated": false,
+   "destination_win_accelerated": false,
+   "accel_vs_ordinary_wall_pct": 1.69,
+   "accel_vs_ordinary_cpu_pct": 4.25,
+   "t172_estimated_ratio_ordinary": 1.44,
+   "identity_ordinary": true,
+   "hash_ordinary": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+   "gcode_bytes_ordinary": 4225196,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+   "gcode_bytes_accelerated": 4225196,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+   "reference_bytes": 4225196,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "default",
+     "resolved": [
+      "default"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    4837989
+   ]
+  },
+  "benchy-arachne-on": {
+   "fixture": "benchy",
+   "generator": "arachne",
+   "supports": "on",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     4.7143,
+     4.0767,
+     3.7233
+    ],
+    "cpu_s": [
+     13.75,
+     13.7969,
+     13.7344
+    ],
+    "cpu_wall_ratio": [
+     2.9167,
+     3.3843,
+     3.6887
+    ],
+    "wall_median_s": 4.0767,
+    "cpu_median_s": 13.75,
+    "cpu_wall_ratio_median": 3.3843,
+    "wall_spread_pct": 24.31,
+    "cpu_spread_pct": 0.45,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     8.2949,
+     7.9109,
+     6.9817
+    ],
+    "cpu_s": [
+     23.7344,
+     24.0781,
+     23.2656
+    ],
+    "cpu_wall_ratio": [
+     2.8613,
+     3.0437,
+     3.3324
+    ],
+    "wall_median_s": 7.9109,
+    "cpu_median_s": 23.7344,
+    "cpu_wall_ratio_median": 3.0437,
+    "wall_spread_pct": 16.6,
+    "cpu_spread_pct": 3.42,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     9.2487,
+     6.4156,
+     6.424
+    ],
+    "cpu_s": [
+     25.5312,
+     22.75,
+     23.2969
+    ],
+    "cpu_wall_ratio": [
+     2.7605,
+     3.5461,
+     3.6265
+    ],
+    "wall_median_s": 6.424,
+    "cpu_median_s": 23.2969,
+    "cpu_wall_ratio_median": 3.5461,
+    "wall_spread_pct": 44.1,
+    "cpu_spread_pct": 11.94,
+    "starved_indices_075": []
+   },
+   "ratio_ordinary_over_orca": 1.9405,
+   "cpu_ratio_ordinary_over_orca": 1.7261,
+   "required_cut_ordinary_pct": 48.47,
+   "wall_win_ordinary": false,
+   "strict_separation_ordinary": false,
+   "cpu_corroborates_ordinary": false,
+   "destination_win_ordinary": false,
+   "ratio_accelerated_over_orca": 1.5758,
+   "cpu_ratio_accelerated_over_orca": 1.6943,
+   "required_cut_accelerated_pct": 36.54,
+   "wall_win_accelerated": false,
+   "strict_separation_accelerated": false,
+   "cpu_corroborates_accelerated": false,
+   "destination_win_accelerated": false,
+   "accel_vs_ordinary_wall_pct": -18.8,
+   "accel_vs_ordinary_cpu_pct": -1.84,
+   "t172_estimated_ratio_ordinary": 1.99,
+   "identity_ordinary": true,
+   "hash_ordinary": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+   "gcode_bytes_ordinary": 8688374,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+   "gcode_bytes_accelerated": 8688374,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+   "reference_bytes": 8688374,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "tree_strong",
+     "resolved": [
+      "tree_strong"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    10404208
+   ]
+  },
+  "base-classic-off": {
+   "fixture": "base",
+   "generator": "classic",
+   "supports": "off",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     28.712,
+     31.5321,
+     29.8983
+    ],
+    "cpu_s": [
+     40.3594,
+     40.2031,
+     40.4688
+    ],
+    "cpu_wall_ratio": [
+     1.4057,
+     1.275,
+     1.3535
+    ],
+    "wall_median_s": 29.8983,
+    "cpu_median_s": 40.3594,
+    "cpu_wall_ratio_median": 1.3535,
+    "wall_spread_pct": 9.43,
+    "cpu_spread_pct": 0.66,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     24.8819,
+     24.8694,
+     25.6376
+    ],
+    "cpu_s": [
+     80.0312,
+     85.2969,
+     76.7812
+    ],
+    "cpu_wall_ratio": [
+     3.2164,
+     3.4298,
+     2.9949
+    ],
+    "wall_median_s": 24.8819,
+    "cpu_median_s": 80.0312,
+    "cpu_wall_ratio_median": 3.2164,
+    "wall_spread_pct": 3.09,
+    "cpu_spread_pct": 10.64,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     24.0708,
+     24.8364,
+     25.1508
+    ],
+    "cpu_s": [
+     80.7031,
+     80.8125,
+     68.4844
+    ],
+    "cpu_wall_ratio": [
+     3.3527,
+     3.2538,
+     2.723
+    ],
+    "wall_median_s": 24.8364,
+    "cpu_median_s": 80.7031,
+    "cpu_wall_ratio_median": 3.2538,
+    "wall_spread_pct": 4.35,
+    "cpu_spread_pct": 15.28,
+    "starved_indices_075": []
+   },
+   "ratio_ordinary_over_orca": 0.8322,
+   "cpu_ratio_ordinary_over_orca": 1.983,
+   "required_cut_ordinary_pct": -20.16,
+   "wall_win_ordinary": true,
+   "strict_separation_ordinary": true,
+   "cpu_corroborates_ordinary": false,
+   "destination_win_ordinary": false,
+   "ratio_accelerated_over_orca": 0.8307,
+   "cpu_ratio_accelerated_over_orca": 1.9996,
+   "required_cut_accelerated_pct": -20.38,
+   "wall_win_accelerated": true,
+   "strict_separation_accelerated": true,
+   "cpu_corroborates_accelerated": false,
+   "destination_win_accelerated": false,
+   "accel_vs_ordinary_wall_pct": -0.18,
+   "accel_vs_ordinary_cpu_pct": 0.84,
+   "t172_estimated_ratio_ordinary": 0.82,
+   "identity_ordinary": true,
+   "hash_ordinary": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+   "gcode_bytes_ordinary": 21230739,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+   "gcode_bytes_accelerated": 21230739,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+   "reference_bytes": 21230739,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "default",
+     "resolved": [
+      "default"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    20336099
+   ]
+  },
+  "base-classic-on": {
+   "fixture": "base",
+   "generator": "classic",
+   "supports": "on",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     50.126,
+     51.1037,
+     41.8985
+    ],
+    "cpu_s": [
+     118.5625,
+     112.5,
+     111.0625
+    ],
+    "cpu_wall_ratio": [
+     2.3653,
+     2.2014,
+     2.6508
+    ],
+    "wall_median_s": 50.126,
+    "cpu_median_s": 112.5,
+    "cpu_wall_ratio_median": 2.3653,
+    "wall_spread_pct": 18.36,
+    "cpu_spread_pct": 6.67,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     87.8106,
+     85.4489,
+     69.4257
+    ],
+    "cpu_s": [
+     321.1094,
+     306.4688,
+     311.7344
+    ],
+    "cpu_wall_ratio": [
+     3.6568,
+     3.5866,
+     4.4902
+    ],
+    "wall_median_s": 85.4489,
+    "cpu_median_s": 311.7344,
+    "cpu_wall_ratio_median": 3.6568,
+    "wall_spread_pct": 21.52,
+    "cpu_spread_pct": 4.7,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     86.433,
+     72.7539,
+     87.3366
+    ],
+    "cpu_s": [
+     324.6562,
+     308.3906,
+     307.7969
+    ],
+    "cpu_wall_ratio": [
+     3.7562,
+     4.2388,
+     3.5243
+    ],
+    "wall_median_s": 86.433,
+    "cpu_median_s": 308.3906,
+    "cpu_wall_ratio_median": 3.7562,
+    "wall_spread_pct": 16.87,
+    "cpu_spread_pct": 5.47,
+    "starved_indices_075": []
+   },
+   "ratio_ordinary_over_orca": 1.7047,
+   "cpu_ratio_ordinary_over_orca": 2.771,
+   "required_cut_ordinary_pct": 41.34,
+   "wall_win_ordinary": false,
+   "strict_separation_ordinary": false,
+   "cpu_corroborates_ordinary": false,
+   "destination_win_ordinary": false,
+   "ratio_accelerated_over_orca": 1.7243,
+   "cpu_ratio_accelerated_over_orca": 2.7412,
+   "required_cut_accelerated_pct": 42.01,
+   "wall_win_accelerated": false,
+   "strict_separation_accelerated": false,
+   "cpu_corroborates_accelerated": false,
+   "destination_win_accelerated": false,
+   "accel_vs_ordinary_wall_pct": 1.15,
+   "accel_vs_ordinary_cpu_pct": -1.07,
+   "t172_estimated_ratio_ordinary": 1.8,
+   "identity_ordinary": true,
+   "hash_ordinary": "0e13ff7be58c67700fa51501a423c5e0166228815f3696a7c44bb1a65b99ca08",
+   "gcode_bytes_ordinary": 39605535,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "0e13ff7be58c67700fa51501a423c5e0166228815f3696a7c44bb1a65b99ca08",
+   "gcode_bytes_accelerated": 39605535,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "0e13ff7be58c67700fa51501a423c5e0166228815f3696a7c44bb1a65b99ca08",
+   "reference_bytes": 39605535,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "tree_strong",
+     "resolved": [
+      "tree_strong"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    44955689
+   ]
+  },
+  "base-arachne-off": {
+   "fixture": "base",
+   "generator": "arachne",
+   "supports": "off",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     30.4174,
+     27.3398,
+     22.8285
+    ],
+    "cpu_s": [
+     48.9219,
+     48.0,
+     45.8594
+    ],
+    "cpu_wall_ratio": [
+     1.6084,
+     1.7557,
+     2.0089
+    ],
+    "wall_median_s": 27.3398,
+    "cpu_median_s": 48.0,
+    "cpu_wall_ratio_median": 1.7557,
+    "wall_spread_pct": 27.76,
+    "cpu_spread_pct": 6.38,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     25.5134,
+     23.5923,
+     23.5075
+    ],
+    "cpu_s": [
+     79.0,
+     77.7344,
+     80.4688
+    ],
+    "cpu_wall_ratio": [
+     3.0964,
+     3.2949,
+     3.4231
+    ],
+    "wall_median_s": 23.5923,
+    "cpu_median_s": 79.0,
+    "cpu_wall_ratio_median": 3.2949,
+    "wall_spread_pct": 8.5,
+    "cpu_spread_pct": 3.46,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     23.3183,
+     26.106,
+     18.1084
+    ],
+    "cpu_s": [
+     84.0,
+     78.8281,
+     80.2344
+    ],
+    "cpu_wall_ratio": [
+     3.6023,
+     3.0195,
+     4.4308
+    ],
+    "wall_median_s": 23.3183,
+    "cpu_median_s": 80.2344,
+    "cpu_wall_ratio_median": 3.6023,
+    "wall_spread_pct": 34.3,
+    "cpu_spread_pct": 6.45,
+    "starved_indices_075": [
+     1
+    ]
+   },
+   "ratio_ordinary_over_orca": 0.8629,
+   "cpu_ratio_ordinary_over_orca": 1.6458,
+   "required_cut_ordinary_pct": -15.88,
+   "wall_win_ordinary": true,
+   "strict_separation_ordinary": false,
+   "cpu_corroborates_ordinary": false,
+   "destination_win_ordinary": false,
+   "ratio_accelerated_over_orca": 0.8529,
+   "cpu_ratio_accelerated_over_orca": 1.6715,
+   "required_cut_accelerated_pct": -17.25,
+   "wall_win_accelerated": true,
+   "strict_separation_accelerated": false,
+   "cpu_corroborates_accelerated": false,
+   "destination_win_accelerated": false,
+   "accel_vs_ordinary_wall_pct": -1.16,
+   "accel_vs_ordinary_cpu_pct": 1.56,
+   "t172_estimated_ratio_ordinary": 0.89,
+   "identity_ordinary": true,
+   "hash_ordinary": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+   "gcode_bytes_ordinary": 21041068,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+   "gcode_bytes_accelerated": 21041068,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+   "reference_bytes": 21041068,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "default",
+     "resolved": [
+      "default"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    19328597
+   ]
+  },
+  "base-arachne-on": {
+   "fixture": "base",
+   "generator": "arachne",
+   "supports": "on",
+   "orca": {
+    "runs": 3,
+    "wall_s": [
+     59.0776,
+     29.5648,
+     30.1695
+    ],
+    "cpu_s": [
+     129.375,
+     110.8906,
+     110.875
+    ],
+    "cpu_wall_ratio": [
+     2.1899,
+     3.7508,
+     3.6751
+    ],
+    "wall_median_s": 30.1695,
+    "cpu_median_s": 110.8906,
+    "cpu_wall_ratio_median": 3.6751,
+    "wall_spread_pct": 97.82,
+    "cpu_spread_pct": 16.68,
+    "starved_indices_075": [
+     0
+    ]
+   },
+   "pnp-ordinary": {
+    "runs": 3,
+    "wall_s": [
+     91.5089,
+     56.1005,
+     55.5049
+    ],
+    "cpu_s": [
+     318.6562,
+     311.5781,
+     306.75
+    ],
+    "cpu_wall_ratio": [
+     3.4822,
+     5.5539,
+     5.5265
+    ],
+    "wall_median_s": 56.1005,
+    "cpu_median_s": 311.5781,
+    "cpu_wall_ratio_median": 5.5265,
+    "wall_spread_pct": 64.18,
+    "cpu_spread_pct": 3.82,
+    "starved_indices_075": [
+     0
+    ]
+   },
+   "pnp-accelerated": {
+    "runs": 3,
+    "wall_s": [
+     87.9844,
+     49.2,
+     51.3533
+    ],
+    "cpu_s": [
+     321.7344,
+     308.4375,
+     303.2344
+    ],
+    "cpu_wall_ratio": [
+     3.6567,
+     6.2691,
+     5.9049
+    ],
+    "wall_median_s": 51.3533,
+    "cpu_median_s": 308.4375,
+    "cpu_wall_ratio_median": 5.9049,
+    "wall_spread_pct": 75.52,
+    "cpu_spread_pct": 6.0,
+    "starved_indices_075": [
+     0
+    ]
+   },
+   "ratio_ordinary_over_orca": 1.8595,
+   "cpu_ratio_ordinary_over_orca": 2.8098,
+   "required_cut_ordinary_pct": 46.22,
+   "wall_win_ordinary": false,
+   "strict_separation_ordinary": false,
+   "cpu_corroborates_ordinary": false,
+   "destination_win_ordinary": false,
+   "ratio_accelerated_over_orca": 1.7022,
+   "cpu_ratio_accelerated_over_orca": 2.7815,
+   "required_cut_accelerated_pct": 41.25,
+   "wall_win_accelerated": false,
+   "strict_separation_accelerated": false,
+   "cpu_corroborates_accelerated": false,
+   "destination_win_accelerated": false,
+   "accel_vs_ordinary_wall_pct": -8.46,
+   "accel_vs_ordinary_cpu_pct": -1.01,
+   "t172_estimated_ratio_ordinary": 1.73,
+   "identity_ordinary": true,
+   "hash_ordinary": "adf87012b498f717689331b0003d39ba9d3dc446e541d7ab58acaae35d2a18c0",
+   "gcode_bytes_ordinary": 39417496,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "adf87012b498f717689331b0003d39ba9d3dc446e541d7ab58acaae35d2a18c0",
+   "gcode_bytes_accelerated": 39417496,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "adf87012b498f717689331b0003d39ba9d3dc446e541d7ab58acaae35d2a18c0",
+   "reference_bytes": 39417496,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "tree_strong",
+     "resolved": [
+      "tree_strong"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    43948962
+   ]
+  }
+ },
+ "ranges": {
+  "ratio_ordinary_over_orca": [
+   0.8322,
+   1.9405
+  ],
+  "ratio_accelerated_over_orca": [
+   0.8307,
+   1.7243
+  ],
+  "cpu_ratio_ordinary_over_orca": [
+   1.1944,
+   2.8098
+  ],
+  "cpu_ratio_accelerated_over_orca": [
+   1.2452,
+   2.7815
+  ],
+  "accel_vs_ordinary_wall_pct": [
+   -18.8,
+   1.69
+  ],
+  "accel_vs_ordinary_cpu_pct": [
+   -9.66,
+   12.09
+  ]
+ },
+ "destination_tally": {
+  "ordinary_wall_wins": 2,
+  "ordinary_wall_win_cells": [
+   "base-classic-off",
+   "base-arachne-off"
+  ],
+  "ordinary_cpu_corroborated_wins": 0,
+  "ordinary_cpu_corroborated_win_cells": [],
+  "accelerated_wall_wins": 2,
+  "accelerated_wall_win_cells": [
+   "base-classic-off",
+   "base-arachne-off"
+  ],
+  "accelerated_cpu_corroborated_wins": 0,
+  "accelerated_cpu_corroborated_win_cells": []
+ },
+ "identity": {
+  "ordinary_all_eight": true,
+  "accelerated_all_eight": true,
+  "ordinary_missing": [],
+  "accelerated_missing": [],
+  "code_1200_total": 0
+ },
+ "matched_keys": {
+  "all_eight": true
+ },
+ "box_load_pct": {
+  "samples": 121,
+  "min": 6.0,
+  "median": 79.0,
+  "max": 100.0
+ },
+ "free_memory_mb": {
+  "samples": 121,
+  "min": 3656.9,
+  "median": 6261.2,
+  "max": 15674.1
+ },
+ "cells_accelerated_faster": 6,
+ "cells_accelerated_slower": 2
+}

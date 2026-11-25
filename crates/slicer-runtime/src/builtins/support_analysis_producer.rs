@@ -64,14 +64,15 @@ pub fn commit_support_analysis_builtin(
         if let (Some(slices), Some(plan)) = (blackboard.slice_ir(), blackboard.layer_plan()) {
             let mut id = 0_u64;
             let mut object_bounds: BTreeMap<String, (i64, i64, i64, i64)> = BTreeMap::new();
-            let mut object_tops: BTreeMap<String, (u32, Vec<ExPolygon>)> = BTreeMap::new();
+            let mut object_tops: BTreeMap<String, (u32, &[ExPolygon])> = BTreeMap::new();
             // Layer-major contact detection state. Canonical `detect_overhangs`
             // reads `object.layers()[layer_id - 1]->lslices` -- the union of
             // *all* regions of the layer below, at object level -- and diffs
             // each of the current layer's regions against it. So we accumulate
-            // (a) the per-(object, layer) polygon set that becomes that union
-            // and (b) one work item per (layer, object, region).
-            let mut object_layer_polygons: BTreeMap<(String, u32), Vec<ExPolygon>> =
+            // (a) the per-(object, layer) region polygon slices that become that
+            // union (zero-clone on single-region layers) and (b) one work item
+            // per (layer, object, region) borrowing its polygons from `slices`.
+            let mut object_layer_slices: BTreeMap<(String, u32), Vec<&[ExPolygon]>> =
                 BTreeMap::new();
             let surface_classification = blackboard.surface_classification().cloned();
             // Parallel eligibility pre-pass. `derive_needs_support` is a pure
@@ -97,7 +98,7 @@ pub fn commit_support_analysis_builtin(
                 })
                 .collect();
             let mut needs_support_index = 0_usize;
-            let mut contact_work: Vec<ContactWork> = Vec::new();
+            let mut contact_work: Vec<ContactWork<'_>> = Vec::new();
             for slice in slices.iter() {
                 for region in &slice.regions {
                     if region.polygons.is_empty() {
@@ -126,17 +127,17 @@ pub fn commit_support_analysis_builtin(
                     }
                     let top = object_tops
                         .entry(region.object_id.clone())
-                        .or_insert((slice.global_layer_index, region.polygons.clone()));
+                        .or_insert((slice.global_layer_index, region.polygons.as_slice()));
                     if slice.global_layer_index > top.0 {
-                        *top = (slice.global_layer_index, region.polygons.clone());
+                        *top = (slice.global_layer_index, region.polygons.as_slice());
                     }
                     // Feed the layer-major detection state: this region's
                     // polygons join its object's layer union, and the region
                     // itself becomes one unit of contact-detection work.
-                    object_layer_polygons
+                    object_layer_slices
                         .entry((region.object_id.clone(), slice.global_layer_index))
                         .or_default()
-                        .extend(region.polygons.iter().cloned());
+                        .push(region.polygons.as_slice());
                     // The pre-pass visits regions in exactly this order (flat
                     // map over `slices` × `regions` with the same empty filter).
                     let needs_support = needs_support_by_region[needs_support_index];
@@ -145,8 +146,8 @@ pub fn commit_support_analysis_builtin(
                         layer_index: slice.global_layer_index,
                         object_id: region.object_id.clone(),
                         region_id: region.region_id,
-                        polygons: region.polygons.clone(),
-                        bridge_polygons: region.bridge_areas.clone(),
+                        polygons: region.polygons.as_slice(),
+                        bridge_polygons: region.bridge_areas.as_slice(),
                         needs_support,
                         variant_chain: region.variant_chain.clone(),
                         // Captured once from this actual `SlicedRegion`: the
@@ -158,35 +159,10 @@ pub fn commit_support_analysis_builtin(
                     });
                 }
             }
-
-            // Angle-thresholded contact detection, layer-major then
-            // region-major, mirroring canonical `detect_overhangs`
-            // (`SupportMaterial.cpp`). The lower-layer set is the object's
-            // whole layer below, unioned once, and every region of the layer
-            // above is diffed against that same union. Keying the lower layer
-            // per-region instead (the pre-parity shape) made a region that
-            // first appears at layer `k` while sitting squarely on a *different*
-            // region below emit its entire cross-section as a contact --
-            // spurious full-area support on every multi-region object.
-            let object_layer_union: BTreeMap<(String, u32), Vec<ExPolygon>> = object_layer_polygons
-                .into_iter()
-                .map(|(key, polygons)| (key, union_ex(&polygons)))
-                .collect();
-            let base_params = resolve_contact_params(config, threshold_angle_deg);
-            // F-19: sliced support-enforcer / support-blocker modifier volumes.
-            // `crates/slicer-core/src/algos/region_mapping.rs` deliberately
-            // excludes these two paint subtypes from region splitting, so they
-            // never appear as a `variant_chain` entry -- slicing the modifier
-            // volumes here is the only way this stage can see them.
-            let layer_zs: Vec<f32> = plan.global_layers.iter().map(|layer| layer.z).collect();
-            let modifiers =
-                ModifierGeometry::slice(blackboard.mesh(), &layer_zs, &plan.global_layers);
-            // Deterministic order regardless of `SliceIR` ordering; the
-            // parallel pass below reads only shared immutable state and
-            // `rayon`'s `collect` into a `Vec` preserves this order, so the
-            // committed candidate stream is byte-stable (the same
-            // order-independence property the previous per-series `par_iter`
-            // had).
+            // Deterministic canonical order regardless of `SliceIR` ordering.
+            // Contact work is scheduled in LPT weight order below for load
+            // balance, then re-sorted by canonical index so the committed
+            // candidate stream is 100 % bit-identical.
             contact_work.sort_by(|a, b| {
                 (a.layer_index, &a.object_id, a.region_id).cmp(&(
                     b.layer_index,
@@ -194,101 +170,187 @@ pub fn commit_support_analysis_builtin(
                     b.region_id,
                 ))
             });
-            let contacts: Vec<Contact> = contact_work
-                .par_iter()
-                .filter_map(|work| {
-                    let ContactWork {
-                        layer_index,
-                        object_id,
-                        region_id,
-                        polygons,
-                        bridge_polygons,
-                        needs_support,
-                        variant_chain,
-                        address,
-                    } = work;
-                    // Layer 0 rests on the bed and has no layer below it.
-                    let lower_index = layer_index.checked_sub(1)?;
-                    let empty: Vec<ExPolygon> = Vec::new();
-                    let lower = object_layer_union
-                        .get(&(object_id.clone(), lower_index))
-                        .unwrap_or(&empty);
-                    let params = SupportContactParams {
-                        // Canonical scales the offset by the *lower* layer's
-                        // height.
-                        lower_layer_height_mm: layer_height_mm(&plan.global_layers, lower_index),
-                        bridge_polygons: bridge_polygons.clone(),
-                        // `layer_id` is trivially available here;
-                        // `enforce_support_layers` still rides neutral from
-                        // `base_params` (see `resolve_contact_params`).
-                        // Clone (not move) the base because this `Fn` closure
-                        // may run multiple times under rayon.
-                        layer_id: *layer_index,
-                        ..base_params.clone()
-                    };
-                    let enforcers = modifiers.enforcers_at(object_id, *layer_index);
-                    let blockers = modifiers.blockers_at(object_id, *layer_index);
-                    // F-19: the auto/manual axis is a *per-region* setting --
-                    // an object's regions may carry different `support_type`
-                    // values -- so it is resolved from the region's own config,
-                    // never from the run config. The address was captured from
-                    // the actual `SlicedRegion` above: exact `entries.get`, no
-                    // smallest-chain or sibling-region fallback.
-                    let region_config = region_map.as_deref().and_then(|map| {
-                        map.entries
-                            .get(address)
-                            .map(|plan| map.config_for_raw(plan.config))
-                    });
-                    let support_type = effective_support_type(region_config.unwrap_or(config));
-                    // Canonical `detect_contacts` applies enforcers under every
-                    // support type; only its angle-thresholded branch is
-                    // auto-gated. Keep the annotation attached to the
-                    // thresholded result, before the enforcer union.
-                    let mut cantilever_surfaces = Vec::new();
-                    let mut geometry = if support_type.is_auto() && *needs_support {
-                        let annotations = detect_support_contacts_with_annotations(
-                            polygons, lower, blockers, &params,
-                        );
-                        cantilever_surfaces = annotations.cantilever_surfaces;
-                        annotations.contacts
-                    } else {
-                        Vec::new()
-                    };
-                    if !enforcers.is_empty() {
-                        if let Some(enforcer_geometry) = enforcer_contacts(
-                            polygons,
-                            lower,
-                            enforcers,
-                            blockers,
-                            params.external_perimeter_width_mm,
-                        ) {
-                            geometry.extend(enforcer_geometry);
-                            geometry = union_ex(&geometry);
-                        }
-                    }
-                    if geometry.is_empty() {
-                        return None;
-                    }
-                    // `enforced` / `blocked` describe how the region relates to
-                    // the painted modifier volumes. `blocked` is tested against
-                    // the region's own cross-section, not the surviving
-                    // geometry, so it stays true for a candidate whose blocked
-                    // part has already been subtracted away.
-                    let enforced = !intersection_ex(&geometry, enforcers).is_empty();
-                    let blocked = !intersection_ex(polygons, blockers).is_empty();
-                    Some(Contact {
-                        layer_index: *layer_index,
-                        object_id: object_id.clone(),
-                        region_id: *region_id,
-                        variant_chain: variant_chain.clone(),
-                        address: address.clone(),
-                        geometry,
-                        cantilever_surfaces,
-                        enforced,
-                        blocked,
-                    })
-                })
-                .collect();
+            let base_params = resolve_contact_params(config, threshold_angle_deg);
+            let mesh = blackboard.mesh();
+
+            // Overlap the independent print-plane occupancy slicing (SA-1) with
+            // the contact pipeline (SA-2 parallel layer union -> modifier
+            // slicing -> SA-6 LPT-scheduled contacts) via `rayon::join` (SA-5).
+            let (print_plane_occupancy, contacts) = rayon::join(
+                || collect_print_plane_occupancy(mesh, slices),
+                || {
+                    // Angle-thresholded contact detection, layer-major then
+                    // region-major, mirroring canonical `detect_overhangs`
+                    // (`SupportMaterial.cpp`). The lower-layer set is the
+                    // object's whole layer below, unioned once in parallel
+                    // (SA-2), and every region of the layer above is diffed
+                    // against that same union.
+                    let layer_union_work: Vec<((String, u32), Vec<&[ExPolygon]>)> =
+                        object_layer_slices.into_iter().collect();
+                    let object_layer_union: BTreeMap<(String, u32), Vec<ExPolygon>> =
+                        layer_union_work
+                            .into_par_iter()
+                            .map(|(key, region_slices)| {
+                                let unioned = if region_slices.len() == 1 {
+                                    union_ex(region_slices[0])
+                                } else {
+                                    let total: usize = region_slices.iter().map(|s| s.len()).sum();
+                                    let mut combined = Vec::with_capacity(total);
+                                    for s in region_slices {
+                                        combined.extend_from_slice(s);
+                                    }
+                                    union_ex(&combined)
+                                };
+                                (key, unioned)
+                            })
+                            .collect();
+
+                    // F-19: sliced support-enforcer / support-blocker modifier volumes.
+                    // `crates/slicer-core/src/algos/region_mapping.rs` deliberately
+                    // excludes these two paint subtypes from region splitting, so they
+                    // never appear as a `variant_chain` entry -- slicing the modifier
+                    // volumes here is the only way this stage can see them.
+                    let modifiers = ModifierGeometry::slice(mesh, &plan.global_layers);
+
+                    // SA-6: LPT scheduling (descending lower + region vertex
+                    // count, tie-broken by canonical index) with `with_max_len(1)`
+                    // so heavy bottom layers never coalesce into one Rayon chunk.
+                    let layer_union_verts: BTreeMap<(&str, u32), usize> = object_layer_union
+                        .iter()
+                        .map(|((obj, layer), polys)| {
+                            ((obj.as_str(), *layer), expolygon_vertex_count(polys))
+                        })
+                        .collect();
+                    let mut scheduled: Vec<(usize, usize)> = contact_work
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(idx, work)| {
+                            let lower_index = work.layer_index.checked_sub(1)?;
+                            let lower_v = layer_union_verts
+                                .get(&(work.object_id.as_str(), lower_index))
+                                .copied()
+                                .unwrap_or(0);
+                            let region_v = expolygon_vertex_count(work.polygons);
+                            Some((idx, lower_v.saturating_add(region_v)))
+                        })
+                        .collect();
+                    scheduled.sort_unstable_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+                    let mut indexed_contacts: Vec<(usize, Contact)> = scheduled
+                        .into_par_iter()
+                        .with_max_len(1)
+                        .filter_map(|(idx, _weight)| {
+                            let ContactWork {
+                                layer_index,
+                                object_id,
+                                region_id,
+                                polygons,
+                                bridge_polygons,
+                                needs_support,
+                                variant_chain,
+                                address,
+                            } = &contact_work[idx];
+                            // Layer 0 rests on the bed and has no layer below it.
+                            let lower_index = layer_index.checked_sub(1)?;
+                            let empty: Vec<ExPolygon> = Vec::new();
+                            let lower = object_layer_union
+                                .get(&(object_id.clone(), lower_index))
+                                .unwrap_or(&empty);
+                            let params = SupportContactParams {
+                                // Canonical scales the offset by the *lower* layer's
+                                // height.
+                                lower_layer_height_mm: layer_height_mm(
+                                    &plan.global_layers,
+                                    lower_index,
+                                ),
+                                bridge_polygons: bridge_polygons.to_vec(),
+                                // `layer_id` is trivially available here;
+                                // `enforce_support_layers` still rides neutral from
+                                // `base_params` (see `resolve_contact_params`).
+                                // Clone (not move) the base: `bridge_polygons` is a
+                                // non-Copy field and this `Fn` closure may run
+                                // multiple times under rayon.
+                                layer_id: *layer_index,
+                                ..base_params.clone()
+                            };
+                            let enforcers = modifiers.enforcers_at(object_id, *layer_index);
+                            let blockers = modifiers.blockers_at(object_id, *layer_index);
+                            // F-19: the auto/manual axis is a *per-region* setting --
+                            // an object's regions may carry different `support_type`
+                            // values -- so it is resolved from the region's own config,
+                            // never from the run config. The address was captured from
+                            // the actual `SlicedRegion` above: exact `entries.get`, no
+                            // smallest-chain or sibling-region fallback.
+                            let region_config = region_map.as_deref().and_then(|map| {
+                                map.entries
+                                    .get(address)
+                                    .map(|plan| map.config_for_raw(plan.config))
+                            });
+                            let support_type =
+                                effective_support_type(region_config.unwrap_or(config));
+                            // Canonical `detect_contacts` applies enforcers under every
+                            // support type; only its angle-thresholded branch is
+                            // auto-gated. Keep the annotation attached to the
+                            // thresholded result, before the enforcer union.
+                            let mut cantilever_surfaces = Vec::new();
+                            let mut geometry = if support_type.is_auto() && *needs_support {
+                                let annotations = detect_support_contacts_with_annotations(
+                                    polygons, lower, blockers, &params,
+                                );
+                                cantilever_surfaces = annotations.cantilever_surfaces;
+                                annotations.contacts
+                            } else {
+                                Vec::new()
+                            };
+                            if !enforcers.is_empty() {
+                                if let Some(enforcer_geometry) = enforcer_contacts(
+                                    polygons,
+                                    lower,
+                                    enforcers,
+                                    blockers,
+                                    params.external_perimeter_width_mm,
+                                ) {
+                                    geometry.extend(enforcer_geometry);
+                                    geometry = union_ex(&geometry);
+                                }
+                            }
+                            if geometry.is_empty() {
+                                return None;
+                            }
+                            // `enforced` / `blocked` describe how the region relates to
+                            // the painted modifier volumes. `blocked` is tested against
+                            // the region's own cross-section, not the surviving
+                            // geometry, so it stays true for a candidate whose blocked
+                            // part has already been subtracted away. Guard empty slices
+                            // (SA-3) to skip no-op Clipper2 intersections.
+                            let enforced = !enforcers.is_empty()
+                                && !intersection_ex(&geometry, enforcers).is_empty();
+                            let blocked = !blockers.is_empty()
+                                && !intersection_ex(polygons, blockers).is_empty();
+                            Some((
+                                idx,
+                                Contact {
+                                    layer_index: *layer_index,
+                                    object_id: object_id.clone(),
+                                    region_id: *region_id,
+                                    variant_chain: variant_chain.clone(),
+                                    address: address.clone(),
+                                    geometry,
+                                    cantilever_surfaces,
+                                    enforced,
+                                    blocked,
+                                },
+                            ))
+                        })
+                        .collect();
+                    indexed_contacts.sort_unstable_by_key(|(idx, _)| *idx);
+                    indexed_contacts
+                        .into_iter()
+                        .map(|(_, c)| c)
+                        .collect::<Vec<_>>()
+                },
+            );
+            ir.print_plane_occupancy = print_plane_occupancy;
 
             let mut candidate_addresses: BTreeMap<SupportSourceKey, RegionKey> = BTreeMap::new();
             for Contact {
@@ -413,8 +475,8 @@ pub fn commit_support_analysis_builtin(
                         ir.termination_surfaces.insert(
                             key.clone(),
                             top_polygons
-                                .clone()
-                                .into_iter()
+                                .iter()
+                                .cloned()
                                 .chain(std::iter::once(plate.clone()))
                                 .collect(),
                         );
@@ -427,10 +489,65 @@ pub fn commit_support_analysis_builtin(
     blackboard.commit_support_analysis(Arc::new(ir))
 }
 
-/// Clearance base-family bodies keep from foreign territory: the resolved
-/// support line width, so the two families never share an extrusion path.
-/// Mirrors the resolution in `slicer_runtime::run` (percent of the nozzle;
-/// auto resolves to `line_width`, then the nozzle).
+/// Fill `SupportAnalysisIR::print_plane_occupancy` with each object's model
+/// cross-section at every layer's **print plane** (`layer.z`).
+///
+/// The host's `validate_entry` gate queries exact-Z occupancy at
+/// `SupportPlanEntry::anchor_z`, which is `mm_to_units(layer.z)`; the planner's
+/// `model_occupancy` carve is midpoint-sampled instead, so a body that clears
+/// the midpoint can still overlap the print plane. Publishing the validated
+/// plane lets the planner carve against both.
+///
+/// The plane is quantized through `mm_to_units` → `units_to_mm` because that is
+/// the exact argument `validate_entry` passes to the query service; slicing at
+/// the unquantized `layer.z` would leave a sub-unit plane difference and a
+/// sliver overlap the zero-tolerance gate then rejects.
+///
+/// Planes are batched per object (`slice_mesh_ex` takes a plane list) and kept
+/// ascending, so the cost is one mesh walk per object, not one per layer.
+fn collect_print_plane_occupancy(
+    mesh: &slicer_ir::MeshIR,
+    slices: &[slicer_ir::SliceIR],
+) -> Vec<slicer_ir::SupportAnalysisPrintPlaneEntry> {
+    // (object, layer) is the identity: the exact-Z query is object-wide, so a
+    // second region on the same layer must not duplicate the cross-section.
+    let mut layers_by_object: BTreeMap<&str, BTreeMap<u32, f32>> = BTreeMap::new();
+    for slice in slices {
+        let plane_z = slicer_ir::units_to_mm(slicer_ir::mm_to_units(slice.z));
+        for region in &slice.regions {
+            if region.polygons.is_empty() {
+                continue;
+            }
+            layers_by_object
+                .entry(region.object_id.as_str())
+                .or_default()
+                .entry(slice.global_layer_index)
+                .or_insert(plane_z);
+        }
+    }
+
+    let mut entries = Vec::new();
+    for (object_id, layers) in layers_by_object {
+        let Some(object) = mesh.objects.iter().find(|object| object.id == object_id) else {
+            continue;
+        };
+        let world_mesh = slicer_core::algos::prepass_slice::object_world_mesh(object);
+        let planes: Vec<f32> = layers.values().copied().collect();
+        let sections = slicer_core::slice_mesh_ex_parallel(&world_mesh, &planes);
+        for ((layer_index, _), polygons) in layers.into_iter().zip(sections) {
+            entries.push(slicer_ir::SupportAnalysisPrintPlaneEntry {
+                global_support_layer_index: layer_index,
+                object_id: object_id.to_string(),
+                polygons,
+            });
+        }
+    }
+    entries
+}
+
+/// Clearance base-family bodies keep from foreign territory: the already
+/// expanded support line width, so the two families never share an extrusion
+/// path.
 fn support_territory_clearance_mm(config: &ResolvedConfig) -> f32 {
     let nozzle_diameter_mm = match config.extensions.get("nozzle_diameter") {
         Some(ConfigValue::Float(value)) => *value as f32,
@@ -587,20 +704,29 @@ fn enforcer_contacts(
     (!contacts.is_empty()).then(|| union_ex(&contacts))
 }
 
+/// Total contour + hole vertex count of a polygon slice, used as the LPT
+/// scheduling weight for contact work items.
+fn expolygon_vertex_count(polys: &[ExPolygon]) -> usize {
+    polys
+        .iter()
+        .map(|ep| ep.contour.points.len() + ep.holes.iter().map(|h| h.points.len()).sum::<usize>())
+        .sum()
+}
+
 /// One unit of contact-detection work, captured per actual `SlicedRegion`.
 ///
 /// Carries the SOURCE ordered chain (candidate identity) and the exact PREPASS
 /// config address (derived once via `region_map_key_for_sliced_region`) side by
 /// side; the two are never conflated. `address` is kept so the parallel pass
 /// does not re-derive or widen it into a sibling lookup.
-struct ContactWork {
+struct ContactWork<'a> {
     layer_index: u32,
     object_id: String,
     region_id: u64,
-    polygons: Vec<ExPolygon>,
+    polygons: &'a [ExPolygon],
     /// The region's host-derived `SlicedRegion::bridge_areas`, consumed by the
     /// `bridge_no_support` gate (P30).
-    bridge_polygons: Vec<ExPolygon>,
+    bridge_polygons: &'a [ExPolygon],
     needs_support: bool,
     variant_chain: Vec<(String, PaintValue)>,
     address: RegionKey,
@@ -643,11 +769,7 @@ struct ModifierGeometry {
 }
 
 impl ModifierGeometry {
-    fn slice(
-        mesh: &slicer_ir::MeshIR,
-        layer_zs: &[f32],
-        global_layers: &[slicer_ir::slice_ir::GlobalLayer],
-    ) -> Self {
+    fn slice(mesh: &slicer_ir::MeshIR, global_layers: &[slicer_ir::slice_ir::GlobalLayer]) -> Self {
         let mut geometry = ModifierGeometry::default();
         for object in &mesh.objects {
             if object.modifier_volumes.is_empty() {
@@ -667,7 +789,22 @@ impl ModifierGeometry {
                 }],
                 build_volume: mesh.build_volume,
             };
-            for (position, entries) in slice_modifier_volumes(&scoped, layer_zs)
+            // Support enforcer/blocker volumes are sampled on the same plane as
+            // the object cross-section (canonical `compute_slice_z`), using the
+            // widest band among this object's active regions at the layer.
+            let object_zs: Vec<f32> = global_layers
+                .iter()
+                .map(|layer| {
+                    let band = layer
+                        .active_regions
+                        .iter()
+                        .filter(|region| region.object_id == object.id)
+                        .map(|region| region.effective_layer_height)
+                        .fold(0.0_f32, f32::max);
+                    slicer_core::algos::prepass_slice::layer_sample_plane_z(layer.z, band)
+                })
+                .collect();
+            for (position, entries) in slice_modifier_volumes(&scoped, &object_zs)
                 .into_iter()
                 .enumerate()
             {
@@ -2112,5 +2249,390 @@ mod tests {
             blackboard.support_analysis().unwrap().candidates.is_empty(),
             "a manual region config must suppress auto detection even under an auto run config"
         );
+    }
+
+    /// A frustum whose cross-section shrinks with Z: 10x10 mm at z = -1 and
+    /// 4x4 mm at z = +1. A print-plane slice is therefore distinguishable from
+    /// the midpoint slice by area alone.
+    fn tapered_frustum() -> slicer_ir::IndexedTriangleSet {
+        use slicer_ir::{IndexedTriangleSet, Point3};
+        let vertices = [
+            (-5.0_f32, -5.0_f32, -1.0_f32),
+            (5.0, -5.0, -1.0),
+            (5.0, 5.0, -1.0),
+            (-5.0, 5.0, -1.0),
+            (-2.0, -2.0, 1.0),
+            (2.0, -2.0, 1.0),
+            (2.0, 2.0, 1.0),
+            (-2.0, 2.0, 1.0),
+        ]
+        .into_iter()
+        .map(|(x, y, z)| Point3 { x, y, z })
+        .collect();
+        IndexedTriangleSet {
+            vertices,
+            indices: vec![
+                0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 0, 4, 7, 0,
+                7, 3, 1, 2, 6, 1, 6, 5,
+            ],
+        }
+    }
+
+    #[test]
+    fn print_plane_occupancy_is_one_entry_per_object_and_layer_at_the_print_plane() {
+        use slicer_ir::{ObjectMesh, SupportAnalysisPrintPlaneEntry};
+
+        let mesh = MeshIR {
+            objects: vec![ObjectMesh {
+                id: "object".to_string(),
+                mesh: tapered_frustum(),
+                ..ObjectMesh::default()
+            }],
+            ..MeshIR::default()
+        };
+        // Two regions on each layer must not duplicate the object-wide section.
+        let slices = vec![
+            SliceIR {
+                global_layer_index: 0,
+                z: 0.2,
+                regions: vec![
+                    SlicedRegion {
+                        object_id: "object".to_string(),
+                        region_id: 0,
+                        polygons: vec![square(0.0, 0.0, 1.0)],
+                        ..SlicedRegion::default()
+                    },
+                    SlicedRegion {
+                        object_id: "object".to_string(),
+                        region_id: 1,
+                        polygons: vec![square(2.0, 0.0, 1.0)],
+                        ..SlicedRegion::default()
+                    },
+                ],
+                ..SliceIR::default()
+            },
+            SliceIR {
+                global_layer_index: 1,
+                z: 0.4,
+                regions: vec![SlicedRegion {
+                    object_id: "object".to_string(),
+                    region_id: 0,
+                    polygons: vec![square(0.0, 0.0, 1.0)],
+                    ..SlicedRegion::default()
+                }],
+                ..SliceIR::default()
+            },
+        ];
+
+        let entries = collect_print_plane_occupancy(&mesh, &slices);
+        assert_eq!(
+            entries.len(),
+            2,
+            "one entry per (object, layer), no region copies"
+        );
+        assert_eq!(entries[0].global_support_layer_index, 0);
+        assert_eq!(entries[1].global_support_layer_index, 1);
+        assert!(entries.iter().all(|entry| entry.object_id == "object"));
+
+        // The payload is the mesh cross-section at the layer's print plane, not
+        // the per-region midpoint polygons the slice carries.
+        let object = &mesh.objects[0];
+        let world = slicer_core::algos::prepass_slice::object_world_mesh(object);
+        for (index, zone) in [(0, 0.2_f32), (1, 0.4_f32)] {
+            let expected = slicer_core::slice_mesh_ex(&world, &[zone])
+                .into_iter()
+                .next()
+                .unwrap();
+            assert_eq!(
+                entries[index].polygons, expected,
+                "entry {index} must be the exact cross-section at z = {zone}"
+            );
+        }
+        // Areas shrink with Z, so print-plane sampling is distinguishable from
+        // the midpoint sample (which would repeat one of the two areas).
+        let area = |entry: &SupportAnalysisPrintPlaneEntry| {
+            entry
+                .polygons
+                .iter()
+                .map(|polygon| {
+                    let points = &polygon.contour.points;
+                    let mut sum = 0_i128;
+                    for (i, point) in points.iter().enumerate() {
+                        let next = &points[(i + 1) % points.len()];
+                        sum += point.x as i128 * next.y as i128 - next.x as i128 * point.y as i128;
+                    }
+                    (sum as f64 / 2.0 * 1e-8).abs()
+                })
+                .sum::<f64>()
+        };
+        assert!(
+            area(&entries[0]) > area(&entries[1]) + 1.0,
+            "the frustum must narrow between the two print planes: {} vs {}",
+            area(&entries[0]),
+            area(&entries[1])
+        );
+    }
+
+    #[test]
+    fn t191_multi_region_layer_union_prevents_spurious_cross_region_contact() {
+        // Layer 0 has two adjacent regions (region 1 and region 2) that together
+        // cover [0, 10] x [0, 4]. Layer 1 has a single region (region 2) covering
+        // the exact same union [0, 10] x [0, 4]. Under parallel `SA-2` union,
+        // layer 1 sits squarely on layer 0's object union and must emit 0 contacts.
+        let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 2);
+        blackboard
+            .commit_layer_plan(Arc::new(LayerPlanIR {
+                global_layers: vec![
+                    GlobalLayer {
+                        index: 0,
+                        z: 0.2,
+                        ..GlobalLayer::default()
+                    },
+                    GlobalLayer {
+                        index: 1,
+                        z: 0.4,
+                        ..GlobalLayer::default()
+                    },
+                ],
+                ..LayerPlanIR::default()
+            }))
+            .unwrap();
+        blackboard
+            .commit_slice_ir(Arc::new(vec![
+                SliceIR {
+                    global_layer_index: 0,
+                    z: 0.2,
+                    regions: vec![
+                        SlicedRegion {
+                            object_id: "obj".to_string(),
+                            region_id: 1,
+                            polygons: vec![rect_xy(0.0, 0.0, 5.0, 4.0)],
+                            ..SlicedRegion::default()
+                        },
+                        SlicedRegion {
+                            object_id: "obj".to_string(),
+                            region_id: 2,
+                            polygons: vec![rect_xy(5.0, 0.0, 10.0, 4.0)],
+                            ..SlicedRegion::default()
+                        },
+                    ],
+                    ..SliceIR::default()
+                },
+                SliceIR {
+                    global_layer_index: 1,
+                    z: 0.4,
+                    regions: vec![SlicedRegion {
+                        object_id: "obj".to_string(),
+                        region_id: 2,
+                        polygons: vec![rect_xy(0.0, 0.0, 10.0, 4.0)],
+                        ..SlicedRegion::default()
+                    }],
+                    ..SliceIR::default()
+                },
+            ]))
+            .unwrap();
+
+        commit_support_analysis_builtin(&mut blackboard, &config_with_support_type("normal(auto)"))
+            .unwrap();
+        let sa = blackboard.support_analysis().unwrap();
+        assert!(
+            sa.candidates.is_empty(),
+            "layer 1 covered by multi-region layer 0 union must emit zero contacts"
+        );
+    }
+
+    fn rect_xy(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(min_x, min_y),
+                    Point2::from_mm(max_x, min_y),
+                    Point2::from_mm(max_x, max_y),
+                    Point2::from_mm(min_x, max_y),
+                ],
+            },
+            holes: Vec::new(),
+        }
+    }
+
+    fn dense_ngon(cx: f32, cy: f32, r: f32, sides: usize) -> ExPolygon {
+        let mut points = Vec::with_capacity(sides);
+        for i in 0..sides {
+            let angle = std::f32::consts::TAU * (i as f32) / (sides as f32);
+            points.push(Point2::from_mm(cx + r * angle.cos(), cy + r * angle.sin()));
+        }
+        ExPolygon {
+            contour: Polygon { points },
+            holes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn t191_lpt_scheduling_preserves_canonical_candidate_order_and_empty_modifier_flags() {
+        // Build 4 layers where layer 3 has a very dense overhang polygon (high
+        // LPT weight -> scheduled FIRST) and layer 1 has a simple 4-vertex
+        // overhang (low LPT weight -> scheduled LAST), plus two objects in
+        // reverse SliceIR insertion order. Committed candidates must still be in
+        // exact ascending `(layer_index, object_id, region_id)` order with
+        // sequential ids `0, 1, ...`, and empty modifier flags must be `false`.
+        let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 4);
+        blackboard
+            .commit_layer_plan(Arc::new(LayerPlanIR {
+                global_layers: (0..4)
+                    .map(|idx| GlobalLayer {
+                        index: idx,
+                        z: (idx + 1) as f32 * 0.2,
+                        ..GlobalLayer::default()
+                    })
+                    .collect(),
+                ..LayerPlanIR::default()
+            }))
+            .unwrap();
+        blackboard
+            .commit_slice_ir(Arc::new(vec![
+                SliceIR {
+                    global_layer_index: 0,
+                    z: 0.2,
+                    regions: vec![
+                        SlicedRegion {
+                            object_id: "obj_b".to_string(),
+                            region_id: 0,
+                            polygons: vec![rect_xy(0.0, 0.0, 2.0, 2.0)],
+                            ..SlicedRegion::default()
+                        },
+                        SlicedRegion {
+                            object_id: "obj_a".to_string(),
+                            region_id: 0,
+                            polygons: vec![rect_xy(0.0, 0.0, 2.0, 2.0)],
+                            ..SlicedRegion::default()
+                        },
+                    ],
+                    ..SliceIR::default()
+                },
+                SliceIR {
+                    global_layer_index: 1,
+                    z: 0.4,
+                    regions: vec![
+                        SlicedRegion {
+                            object_id: "obj_b".to_string(),
+                            region_id: 0,
+                            polygons: vec![rect_xy(-4.0, 0.0, 6.0, 2.0)],
+                            ..SlicedRegion::default()
+                        },
+                        SlicedRegion {
+                            object_id: "obj_a".to_string(),
+                            region_id: 0,
+                            polygons: vec![rect_xy(-4.0, 0.0, 6.0, 2.0)],
+                            ..SlicedRegion::default()
+                        },
+                    ],
+                    ..SliceIR::default()
+                },
+                SliceIR {
+                    global_layer_index: 2,
+                    z: 0.6,
+                    regions: vec![SlicedRegion {
+                        object_id: "obj_a".to_string(),
+                        region_id: 0,
+                        polygons: vec![dense_ngon(1.0, 1.0, 1.0, 128)],
+                        ..SlicedRegion::default()
+                    }],
+                    ..SliceIR::default()
+                },
+                SliceIR {
+                    global_layer_index: 3,
+                    z: 0.8,
+                    regions: vec![SlicedRegion {
+                        object_id: "obj_a".to_string(),
+                        region_id: 0,
+                        polygons: vec![dense_ngon(1.0, 1.0, 8.0, 256)],
+                        ..SlicedRegion::default()
+                    }],
+                    ..SliceIR::default()
+                },
+            ]))
+            .unwrap();
+
+        commit_support_analysis_builtin(&mut blackboard, &config_with_support_type("normal(auto)"))
+            .unwrap();
+        let sa = blackboard.support_analysis().unwrap();
+        let order: Vec<(u64, u32, &str, u64)> = sa
+            .candidates
+            .iter()
+            .map(|c| {
+                (
+                    c.id,
+                    c.source.global_layer_index,
+                    c.source.object_id.as_str(),
+                    c.source.region_id,
+                )
+            })
+            .collect();
+        assert_eq!(
+            order,
+            vec![(0, 1, "obj_a", 0), (1, 1, "obj_b", 0), (2, 3, "obj_a", 0)],
+            "LPT scheduling must preserve canonical (layer, object, region) order and sequential ids"
+        );
+        // SA-3: with no modifier volumes, enforced/blocked flags are false on every candidate.
+        assert!(sa.candidates.iter().all(|c| !c.enforced && !c.blocked));
+    }
+
+    #[test]
+    fn t191_enable_support_false_is_structurally_inert() {
+        let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 2);
+        blackboard
+            .commit_layer_plan(Arc::new(LayerPlanIR {
+                global_layers: vec![
+                    GlobalLayer {
+                        index: 0,
+                        z: 0.2,
+                        ..GlobalLayer::default()
+                    },
+                    GlobalLayer {
+                        index: 1,
+                        z: 0.4,
+                        ..GlobalLayer::default()
+                    },
+                ],
+                ..LayerPlanIR::default()
+            }))
+            .unwrap();
+        blackboard
+            .commit_slice_ir(Arc::new(vec![
+                SliceIR {
+                    global_layer_index: 0,
+                    z: 0.2,
+                    regions: vec![SlicedRegion {
+                        object_id: "obj".to_string(),
+                        region_id: 0,
+                        polygons: vec![rect_xy(0.0, 0.0, 2.0, 2.0)],
+                        ..SlicedRegion::default()
+                    }],
+                    ..SliceIR::default()
+                },
+                SliceIR {
+                    global_layer_index: 1,
+                    z: 0.4,
+                    regions: vec![SlicedRegion {
+                        object_id: "obj".to_string(),
+                        region_id: 0,
+                        polygons: vec![rect_xy(-5.0, 0.0, 7.0, 2.0)],
+                        ..SlicedRegion::default()
+                    }],
+                    ..SliceIR::default()
+                },
+            ]))
+            .unwrap();
+
+        let cfg = ResolvedConfig {
+            support_enabled: false,
+            ..ResolvedConfig::default()
+        };
+        commit_support_analysis_builtin(&mut blackboard, &cfg).unwrap();
+        let sa = blackboard.support_analysis().unwrap();
+        assert!(sa.candidates.is_empty());
+        assert!(sa.print_plane_occupancy.is_empty());
+        assert!(sa.model_occupancy.is_empty());
+        assert!(sa.cantilever_surfaces.is_empty());
     }
 }

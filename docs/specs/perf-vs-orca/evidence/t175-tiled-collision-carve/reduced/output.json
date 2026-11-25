@@ -1,0 +1,218 @@
+{
+  "schema": 1,
+  "t172_active": {
+    "benchy-classic-off": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+    "benchy-classic-on": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+    "benchy-arachne-off": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+    "benchy-arachne-on": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+    "base-classic-off": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+    "base-classic-on": "0e13ff7be58c67700fa51501a423c5e0166228815f3696a7c44bb1a65b99ca08",
+    "base-arachne-off": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+    "base-arachne-on": "adf87012b498f717689331b0003d39ba9d3dc446e541d7ab58acaae35d2a18c0"
+  },
+  "manifest": {
+    "baseline-accelerated": {
+      "exe_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t175-baseline-accelerated\\pnp_cli-accelerated.exe",
+      "exe_sha256": "490c6dc251eade2f7c42c8973d5ab567234092f1b7d88f021987a20534c3a46a",
+      "exe_bytes": 48424960,
+      "modules_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t175-baseline-accelerated\\modules",
+      "modules_tree_sha256": "91821d614b108efbcf22633e511a8f2a1ffeedd36bc685260a0a92b4c821f387",
+      "planner_wasm_sha256": "355851e870c78e10f6df84fc25254700738409fc037f4bef184784706dc2d9dc"
+    },
+    "baseline-ordinary": {
+      "exe_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t175-baseline\\pnp_cli-ordinary.exe",
+      "exe_sha256": "9f3fcba8a10f864ff12530ab16cc7fddd96363a952e9d7f908613080ff0ca34e",
+      "exe_bytes": 48442368,
+      "modules_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t175-baseline\\modules",
+      "modules_tree_sha256": "bd132f43a30366bb3eb82ee0925c50a0159409ed8f2cc3ee68529b5842d7a1f7",
+      "planner_wasm_sha256": "d6a56af5116681dba117389c050295dd5774c64ad3fb3e09022dde4150d59b78"
+    },
+    "candidate-accelerated": {
+      "exe_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t175-candidate-accelerated\\pnp_cli-accelerated.exe",
+      "exe_sha256": "490c6dc251eade2f7c42c8973d5ab567234092f1b7d88f021987a20534c3a46a",
+      "exe_bytes": 48424960,
+      "modules_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t175-candidate-accelerated\\modules",
+      "modules_tree_sha256": "2df7e114ffef60be9a9f6ffe39d955485e77a5db4845318dd340bd6f968c96f6",
+      "planner_wasm_sha256": "902dc921fdc9b3632f0a7e6abe89c102388899f6c722036abdc57e19b69fcca8"
+    },
+    "candidate-ordinary": {
+      "exe_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t175-candidate\\pnp_cli-ordinary.exe",
+      "exe_sha256": "9f3fcba8a10f864ff12530ab16cc7fddd96363a952e9d7f908613080ff0ca34e",
+      "exe_bytes": 48442368,
+      "modules_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t175-candidate\\modules",
+      "modules_tree_sha256": "96f3b3b0ca5f826066b5da849d6bc51298fff31b5006397006ba866c8c90d947",
+      "planner_wasm_sha256": "c56f07b33594573b86cea64d932e427d417a4bd044bfa0116eeaa2a1f951eaef"
+    }
+  },
+  "cells": {
+    "benchy-classic-off": {
+      "baseline-ordinary": {
+        "sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+        "bytes": 4077945,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+        "bytes": 4077945,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    },
+    "benchy-classic-on": {
+      "baseline-ordinary": {
+        "sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+        "bytes": 8544096,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+        "bytes": 8544096,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    },
+    "benchy-arachne-off": {
+      "baseline-ordinary": {
+        "sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+        "bytes": 4225196,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+        "bytes": 4225196,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    },
+    "benchy-arachne-on": {
+      "baseline-ordinary": {
+        "sha256": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+        "bytes": 8688374,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+        "bytes": 8688374,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    },
+    "base-classic-off": {
+      "baseline-ordinary": {
+        "sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+        "bytes": 21230739,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+        "bytes": 21230739,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    },
+    "base-classic-on": {
+      "baseline-ordinary": {
+        "sha256": "0e13ff7be58c67700fa51501a423c5e0166228815f3696a7c44bb1a65b99ca08",
+        "bytes": 39605535,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+        "bytes": 39605534,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    },
+    "base-arachne-off": {
+      "baseline-ordinary": {
+        "sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+        "bytes": 21041068,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+        "bytes": 21041068,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    },
+    "base-arachne-on": {
+      "baseline-ordinary": {
+        "sha256": "adf87012b498f717689331b0003d39ba9d3dc446e541d7ab58acaae35d2a18c0",
+        "bytes": 39417496,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "f77633affab2fbea4f3b3b546aa564ba1a151a457fd20b2c4991f34526a58d5c",
+        "bytes": 39417495,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    }
+  },
+  "accelerated": {
+    "benchy-classic-off": {
+      "baseline-accelerated": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+      "candidate-accelerated": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73"
+    },
+    "benchy-classic-on": {
+      "baseline-accelerated": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+      "candidate-accelerated": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82"
+    },
+    "benchy-arachne-off": {
+      "baseline-accelerated": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+      "candidate-accelerated": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1"
+    },
+    "benchy-arachne-on": {
+      "baseline-accelerated": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+      "candidate-accelerated": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c"
+    },
+    "base-classic-off": {
+      "baseline-accelerated": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+      "candidate-accelerated": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab"
+    },
+    "base-classic-on": {
+      "baseline-accelerated": "0e13ff7be58c67700fa51501a423c5e0166228815f3696a7c44bb1a65b99ca08",
+      "candidate-accelerated": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799"
+    },
+    "base-arachne-off": {
+      "baseline-accelerated": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+      "candidate-accelerated": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c"
+    },
+    "base-arachne-on": {
+      "baseline-accelerated": "adf87012b498f717689331b0003d39ba9d3dc446e541d7ab58acaae35d2a18c0",
+      "candidate-accelerated": "f77633affab2fbea4f3b3b546aa564ba1a151a457fd20b2c4991f34526a58d5c"
+    }
+  },
+  "diagnostics": {
+    "total_runs_checked": 208,
+    "nonzero_exit_runs": 0,
+    "degraded_runs": 0,
+    "fatal_error_runs": 0,
+    "code_1200_total": 0
+  }
+}

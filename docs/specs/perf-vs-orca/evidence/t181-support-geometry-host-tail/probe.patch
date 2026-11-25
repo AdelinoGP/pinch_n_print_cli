@@ -1,0 +1,1274 @@
+diff --git a/crates/slicer-runtime/src/prepass.rs b/crates/slicer-runtime/src/prepass.rs
+index 6dd5f2db..c86324a2 100644
+--- a/crates/slicer-runtime/src/prepass.rs
++++ b/crates/slicer-runtime/src/prepass.rs
+@@ -300,9 +300,42 @@ fn execute_prepass_with_instrumentation_collecting(
+         // the producing module's id and claims, not just the plan contents.
+         let mut support_plan_producers: Vec<SupportPlanProducer> = Vec::new();
+ 
++        let is_sg_stage = stage.stage_id.as_str() == "PrePass::SupportGeometry";
++        let t181_probe_out = if is_sg_stage {
++            std::env::var("PNP_T181_PROBE_OUT").ok()
++        } else {
++            None
++        };
++        let t181_probe_on = t181_probe_out.is_some();
++        if t181_probe_on {
++            slicer_wasm_host::support_aggregation::t181_reset_agg_stats();
++        }
++        let mut t181_modules: Vec<(String, u64, u64, u64)> = Vec::new();
++        let mut t181_tail_start: Option<std::time::Instant> = None;
++        let mut t181_t1_total_ns: u64 = 0;
++        let mut t181_t1a_runner_drain_ns: u64 = 0;
++        let mut t181_t1b_arc_clone_ns: u64 = 0;
++        let mut t181_t1c_audit_push_ns: u64 = 0;
++        let mut t181_t2_exact_z_new_ns: u64 = 0;
++        let mut t181_t3_aggregate_ns: u64 = 0;
++        let mut t181_t4a_attach_diags_ns: u64 = 0;
++        let mut t181_t4b_commit_ns: u64 = 0;
++        let mut t181_t5_drop_ns: u64 = 0;
++        let mut t181_ppo_verify: Option<(u64, u64, u64, u64)> = None;
++
+         instrumentation.on_stage_start(&stage.stage_id, None);
++        let t181_stage_start = if t181_probe_on {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
+         for module in &stage.modules {
+             instrumentation.on_module_start(&stage.stage_id, None, module.module_id());
++            let t181_mod_start = if t181_probe_on {
++                Some(std::time::Instant::now())
++            } else {
++                None
++            };
+             // Build IR-typed borrow structs for the new slicer-wasm-host trait boundary.
+             let (instance_pool, wasm_component, native_entry) = wasm_handles
+                 .get(module.module_id().as_str())
+@@ -339,6 +372,20 @@ fn execute_prepass_with_instrumentation_collecting(
+                 runner.last_call_fuel(),
+             );
+             instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
++            let t181_mod_run_ns = t181_mod_start
++                .map(|t| t.elapsed().as_nanos() as u64)
++                .unwrap_or(0);
++            let is_tree_planner =
++                t181_probe_on && module.module_id().as_str() == "com.core.tree-support-planner";
++            let t181_post_mod_start = if t181_probe_on {
++                let now = std::time::Instant::now();
++                if is_tree_planner {
++                    t181_tail_start = Some(now);
++                }
++                Some(now)
++            } else {
++                None
++            };
+             // Map PrepassRunnerError → PrepassExecutionError via the From impl.
+             let output = match run_result {
+                 Ok(o) => o,
+@@ -354,6 +401,11 @@ fn execute_prepass_with_instrumentation_collecting(
+                     return Err(PrepassExecutionError::from(e));
+                 }
+             };
++            let t181_t1a_start = if is_tree_planner {
++                Some(std::time::Instant::now())
++            } else {
++                None
++            };
+             let runtime_reads: Vec<String> = runner.last_runtime_reads();
+             let batch_calls: Vec<(String, u32)> = runner.last_batch_calls();
+             // Drain module log messages (already forwarded to the human `log`
+@@ -369,6 +421,9 @@ fn execute_prepass_with_instrumentation_collecting(
+                     &message,
+                 );
+             }
++            if let Some(t) = t181_t1a_start {
++                t181_t1a_runner_drain_ns += t.elapsed().as_nanos() as u64;
++            }
+ 
+             // Determine IR path before committing (output is moved into commit).
+             let ir_path = ir_path_for_prepass_output(&output);
+@@ -380,11 +435,22 @@ fn execute_prepass_with_instrumentation_collecting(
+                     PrepassStageOutput::SupportPlan(_)
+                 )
+             );
++            let mut mod_plan_entries: u64 = 0;
+             if support_plan_output {
++                let t181_t1b_start = if is_tree_planner {
++                    Some(std::time::Instant::now())
++                } else {
++                    None
++                };
+                 let PrepassStageOutput::SupportPlan(plan) = output else {
+                     unreachable!("matched support plan output")
+                 };
++                mod_plan_entries = plan.entries.len() as u64;
+                 support_plans.push((*plan).clone());
++                drop(plan);
++                if let Some(t) = t181_t1b_start {
++                    t181_t1b_arc_clone_ns += t.elapsed().as_nanos() as u64;
++                }
+                 support_plan_audits.push(None);
+                 support_plan_producers.push(SupportPlanProducer {
+                     module_id: module.module_id().to_string(),
+@@ -404,6 +470,11 @@ fn execute_prepass_with_instrumentation_collecting(
+                 return Err(e);
+             }
+ 
++            let t181_t1c_start = if is_tree_planner {
++                Some(std::time::Instant::now())
++            } else {
++                None
++            };
+             // Record runtime audit if the module produced output.
+             // Always record the audit when there is a runtime_reads vector,
+             // even if the output is None (read-performing modules that produce
+@@ -433,6 +504,21 @@ fn execute_prepass_with_instrumentation_collecting(
+                     diagnostics,
+                 });
+             }
++            if let Some(t) = t181_t1c_start {
++                t181_t1c_audit_push_ns += t.elapsed().as_nanos() as u64;
++            }
++            if let Some(t_pm) = t181_post_mod_start {
++                let pm_ns = t_pm.elapsed().as_nanos() as u64;
++                if is_tree_planner {
++                    t181_t1_total_ns += pm_ns;
++                }
++                t181_modules.push((
++                    module.module_id().to_string(),
++                    t181_mod_run_ns,
++                    pm_ns,
++                    mod_plan_entries,
++                ));
++            }
+         }
+         if !support_plans.is_empty() {
+             if let Some(entries) = harvested_plan_entries.as_deref_mut() {
+@@ -442,7 +528,54 @@ fn execute_prepass_with_instrumentation_collecting(
+                         .flat_map(|support_plan| support_plan.entries.iter().cloned()),
+                 );
+             }
++            let t181_dump_path = if is_sg_stage {
++                std::env::var("PNP_T181_DUMP_IO").ok()
++            } else {
++                None
++            };
++            let t181_dump_snapshot = if t181_dump_path.is_some() {
++                let producers_ser: Vec<(String, Vec<String>)> = support_plan_producers
++                    .iter()
++                    .map(|p| (p.module_id.clone(), p.claims.clone()))
++                    .collect();
++                let slice_layer_zs: Vec<(u32, String, f32)> = blackboard
++                    .slice_ir()
++                    .map(|slices| {
++                        let mut out = Vec::new();
++                        for s in slices.iter() {
++                            for r in &s.regions {
++                                if !r.polygons.is_empty() {
++                                    out.push((s.global_layer_index, r.object_id.clone(), s.z));
++                                }
++                            }
++                        }
++                        out
++                    })
++                    .unwrap_or_default();
++                Some((
++                    blackboard.mesh().as_ref().clone(),
++                    support_plans.clone(),
++                    producers_ser,
++                    blackboard.support_analysis().map(|a| a.as_ref().clone()),
++                    slice_layer_zs,
++                ))
++            } else {
++                None
++            };
++            let t181_t2_start = if t181_probe_on {
++                Some(std::time::Instant::now())
++            } else {
++                None
++            };
+             let exact_z = ExactZQueryService::new(Arc::clone(blackboard.mesh()));
++            if let Some(t) = t181_t2_start {
++                t181_t2_exact_z_new_ns += t.elapsed().as_nanos() as u64;
++            }
++            let t181_t3_start = if t181_probe_on {
++                Some(std::time::Instant::now())
++            } else {
++                None
++            };
+             // Degrading policy: two families claiming one
+             // `(layer, object, region)` is a planner defect, but it must not
+             // discard every other retained entry and abort the prepass. The
+@@ -455,6 +588,37 @@ fn execute_prepass_with_instrumentation_collecting(
+                     &exact_z,
+                     blackboard.support_analysis().map(Arc::as_ref),
+                 );
++            if let Some(t) = t181_t3_start {
++                t181_t3_aggregate_ns += t.elapsed().as_nanos() as u64;
++            }
++            if is_sg_stage && std::env::var_os("PNP_T181_VERIFY_PPO").is_some() {
++                if let (Some(analysis), Some(slices)) =
++                    (blackboard.support_analysis(), blackboard.slice_ir())
++                {
++                    t181_ppo_verify = Some(
++                        exact_z.t181_verify_against_print_plane_occupancy(
++                            analysis.as_ref(),
++                            slices.as_ref(),
++                        ),
++                    );
++                }
++            }
++            if let (Some(dump_path), Some((mesh_s, plans_s, prod_s, analysis_s, layer_zs_s))) =
++                (t181_dump_path, t181_dump_snapshot)
++            {
++                let payload = (
++                    mesh_s,
++                    plans_s,
++                    prod_s,
++                    analysis_s,
++                    layer_zs_s,
++                    plan.clone(),
++                    diagnostics.len() as u64,
++                );
++                if let Ok(bytes) = postcard::to_allocvec(&payload) {
++                    let _ = std::fs::write(&dump_path, bytes);
++                }
++            }
+             let aggregation_module = ModuleId::from("host:support_plan_aggregation");
+             // The aggregate is a host-owned stage result, but its diagnostics
+             // are per-family. Attach each one to the audit of the module that
+@@ -472,6 +636,11 @@ fn execute_prepass_with_instrumentation_collecting(
+             // Unattributable diagnostics go onto a host audit rather than onto
+             // an arbitrary module: "the host said so" is honest, naming the
+             // wrong module is not.
++            let t181_t4a_start = if t181_probe_on {
++                Some(std::time::Instant::now())
++            } else {
++                None
++            };
+             let mut host_audit_index: Option<usize> = None;
+             for entry in diagnostics {
+                 let target = entry
+@@ -492,6 +661,14 @@ fn execute_prepass_with_instrumentation_collecting(
+                 };
+                 audits[target].diagnostics.push(entry.diagnostic);
+             }
++            if let Some(t) = t181_t4a_start {
++                t181_t4a_attach_diags_ns += t.elapsed().as_nanos() as u64;
++            }
++            let t181_t4b_start = if t181_probe_on {
++                Some(std::time::Instant::now())
++            } else {
++                None
++            };
+             if let Err(e) = commit_stage_output(
+                 &stage.stage_id,
+                 &aggregation_module,
+@@ -501,8 +678,127 @@ fn execute_prepass_with_instrumentation_collecting(
+                 instrumentation.on_stage_end(&stage.stage_id, None);
+                 return Err(e);
+             }
++            if let Some(t) = t181_t4b_start {
++                t181_t4b_commit_ns += t.elapsed().as_nanos() as u64;
++            }
++            let t181_t5_start = if t181_probe_on {
++                Some(std::time::Instant::now())
++            } else {
++                None
++            };
++            drop(exact_z);
++            drop(support_plan_audits);
++            if let Some(t) = t181_t5_start {
++                t181_t5_drop_ns += t.elapsed().as_nanos() as u64;
++            }
+         }
++        let t181_tail_total_ns = t181_tail_start
++            .map(|t| t.elapsed().as_nanos() as u64)
++            .unwrap_or(0);
++        let t181_stage_total_ns = t181_stage_start
++            .map(|t| t.elapsed().as_nanos() as u64)
++            .unwrap_or(0);
+         instrumentation.on_stage_end(&stage.stage_id, None);
++        if let Some(out_path) = t181_probe_out {
++            let agg = slicer_wasm_host::support_aggregation::t181_take_agg_stats();
++            let mods_json: Vec<serde_json::Value> = t181_modules
++                .iter()
++                .map(|(id, run_ns, post_ns, entries)| {
++                    serde_json::json!({
++                        "module_id": id,
++                        "run_stage_ns": run_ns,
++                        "post_module_ns": post_ns,
++                        "plan_entries": entries,
++                    })
++                })
++                .collect();
++            let ppo_json = t181_ppo_verify.map(|(tot, found, eq, miss)| {
++                serde_json::json!({
++                    "total_planes": tot,
++                    "found_in_ppo": found,
++                    "exact_poly_equal": eq,
++                    "missing_from_ppo": miss,
++                })
++            });
++            let report = serde_json::json!({
++                "stage_total_ns": t181_stage_total_ns,
++                "post_planner_tail_ns": t181_tail_total_ns,
++                "modules": mods_json,
++                "brackets_ns": {
++                    "t1_post_module_loop_tail_ns": t181_t1_total_ns,
++                    "t1a_runner_drain_ns": t181_t1a_runner_drain_ns,
++                    "t1b_arc_clone_ns": t181_t1b_arc_clone_ns,
++                    "t1c_audit_push_ns": t181_t1c_audit_push_ns,
++                    "t2_exact_z_new_ns": t181_t2_exact_z_new_ns,
++                    "t3_aggregate_total_ns": t181_t3_aggregate_ns,
++                    "t3a_plans_clone_ns": agg.t3a_plans_clone_ns,
++                    "t3b_entries_flatten_clone_ns": agg.t3b_entries_flatten_clone_ns,
++                    "t3c_entries_sort_and_raft_ns": agg.t3c_entries_sort_and_raft_ns,
++                    "t3d_collect_exact_z_planes_ns": agg.t3d_collect_exact_z_planes_ns,
++                    "t3e_prefetch_total_ns": agg.t3e_prefetch_total_ns,
++                    "t3e1_object_geometry_ns": agg.t3e1_object_geometry_ns,
++                    "t3e1a_world_mesh_ns": agg.t3e1a_world_mesh_ns,
++                    "t3e1b_world_bounds_ns": agg.t3e1b_world_bounds_ns,
++                    "t3e1c_top_cross_section_ns": agg.t3e1c_top_cross_section_ns,
++                    "t3e2_dedup_sort_planes_ns": agg.t3e2_dedup_sort_planes_ns,
++                    "t3e3_slice_mesh_ex_ns": agg.t3e3_slice_mesh_ex_ns,
++                    "t3e4_memo_insert_ns": agg.t3e4_memo_insert_ns,
++                    "t3f_validate_loop_total_ns": agg.t3f_validate_loop_total_ns,
++                    "t3f1_identity_and_ownership_ns": agg.t3f1_identity_and_ownership_ns,
++                    "t3f2_exact_z_query_ns": agg.t3f2_exact_z_query_ns,
++                    "t3f2_exact_z_query_inner_ns": agg.t3f2_exact_z_query_inner_ns,
++                    "t3f3_in_routing_cell_ns": agg.t3f3_in_routing_cell_ns,
++                    "t3f4_overlaps_any_ns": agg.t3f4_overlaps_any_ns,
++                    "t3f4a_overlaps_strict_disjoint_ns": agg.t3f4a_overlaps_strict_disjoint_ns,
++                    "t3f4b_overlaps_touch_only_ns": agg.t3f4b_overlaps_touch_only_ns,
++                    "t3f4c_overlaps_bbox_intersect_ns": agg.t3f4c_overlaps_bbox_intersect_ns,
++                    "t3g_union_same_family_ns": agg.t3g_union_same_family_ns,
++                    "t3h_territory_clipper_ns": agg.t3h_territory_clipper_ns,
++                    "t3i_cross_family_overlap_ns": agg.t3i_cross_family_overlap_ns,
++                    "t3j_try_agg_drop_ns": agg.t3j_try_agg_drop_ns,
++                    "t3k_attribution_indices_and_diags_ns": agg.t3k_attribution_indices_and_diags_ns,
++                    "t3_drop_plans_ns": agg.t3_drop_plans_ns,
++                    "t4a_attach_diags_ns": t181_t4a_attach_diags_ns,
++                    "t4b_commit_ns": t181_t4b_commit_ns,
++                    "t5_drop_ns": t181_t5_drop_ns,
++                },
++                "counters": {
++                    "plans_count": agg.plans_count,
++                    "entries_per_plan": agg.entries_per_plan,
++                    "active_entries": agg.active_entries,
++                    "declined_entries": agg.declined_entries,
++                    "total_roles": agg.total_roles,
++                    "total_body_polys": agg.total_body_polys,
++                    "total_body_verts": agg.total_body_verts,
++                    "world_mesh_vertices": agg.world_mesh_vertices,
++                    "world_mesh_triangles": agg.world_mesh_triangles,
++                    "prefetch_plane_count": agg.prefetch_plane_count,
++                    "prefetch_polys_total": agg.prefetch_polys_total,
++                    "prefetch_verts_total": agg.prefetch_verts_total,
++                    "query_cache_hits": agg.query_cache_hits,
++                    "query_cache_misses": agg.query_cache_misses,
++                    "query_section_hits": agg.query_section_hits,
++                    "query_section_misses": agg.query_section_misses,
++                    "overlap_pairs_total": agg.overlap_pairs_total,
++                    "overlap_pairs_strict_disjoint": agg.overlap_pairs_strict_disjoint,
++                    "overlap_pairs_touch_only": agg.overlap_pairs_touch_only,
++                    "overlap_pairs_bbox_intersect": agg.overlap_pairs_bbox_intersect,
++                    "overlap_pairs_positive": agg.overlap_pairs_positive,
++                    "overlap_calls_body_verts": agg.overlap_calls_body_verts,
++                    "overlap_calls_occ_verts": agg.overlap_calls_occ_verts,
++                    "union_before_count": agg.union_before_count,
++                    "union_after_count": agg.union_after_count,
++                    "territory_active": agg.territory_active,
++                    "cross_family_pairs_checked": agg.cross_family_pairs_checked,
++                    "retained_count": agg.retained_count,
++                    "diagnostics_count": agg.diagnostics_count,
++                },
++                "ppo_verify": ppo_json,
++            });
++            if let Ok(s) = serde_json::to_string_pretty(&report) {
++                let _ = std::fs::write(&out_path, s);
++            }
++        }
+     }
+ 
+     Ok(audits)
+diff --git a/crates/slicer-wasm-host/src/exact_z_query.rs b/crates/slicer-wasm-host/src/exact_z_query.rs
+index cc4596dc..a32932cf 100644
+--- a/crates/slicer-wasm-host/src/exact_z_query.rs
++++ b/crates/slicer-wasm-host/src/exact_z_query.rs
+@@ -97,12 +97,25 @@ impl ExactZQueryService {
+             variant_chain.to_vec(),
+             z_units,
+         );
++        let probe_on = crate::support_aggregation::t181_probe_enabled();
++        let t_q0 = if probe_on {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
+         if let Some(result) = self
+             .cache
+             .lock()
+             .map_err(|_| "exact-z-support-query: cache poisoned")?
+             .get(&key)
+         {
++            if let Some(t0) = t_q0 {
++                crate::support_aggregation::t181_record_query(
++                    true,
++                    false,
++                    t0.elapsed().as_nanos() as u64,
++                );
++            }
+             return Ok(Arc::clone(result));
+         }
+ 
+@@ -113,6 +126,7 @@ impl ExactZQueryService {
+             .map_err(|_| "exact-z-support-query: cache poisoned")?
+             .get(&z_units)
+             .cloned();
++        let section_hit = memoized.is_some();
+         let occupancy = match memoized {
+             Some(section) => (*section).clone(),
+             None => {
+@@ -142,6 +156,13 @@ impl ExactZQueryService {
+             .lock()
+             .map_err(|_| "exact-z-support-query: cache poisoned")?
+             .insert(key, Arc::clone(&result));
++        if let Some(t0) = t_q0 {
++            crate::support_aggregation::t181_record_query(
++                false,
++                section_hit,
++                t0.elapsed().as_nanos() as u64,
++            );
++        }
+         Ok(result)
+     }
+ 
+@@ -159,9 +180,21 @@ impl ExactZQueryService {
+     /// degrades that entry exactly as it does today
+     /// (`body rejected: exact-Z query unavailable`).
+     pub fn prefetch_cross_sections(&self, object_id: &str, zs_mm: &[f32]) {
++        let probe_on = crate::support_aggregation::t181_probe_enabled();
++        let t_og0 = if probe_on {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
+         let Ok(geometry) = self.object_geometry(object_id) else {
+             return;
+         };
++        let og_ns = t_og0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++        let t_dedup0 = if probe_on {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
+         let mut pending: Vec<(f32, i64)> = Vec::new();
+         {
+             let Ok(memo) = geometry.cross_sections.lock() else {
+@@ -190,13 +223,101 @@ impl ExactZQueryService {
+                 .unwrap_or(std::cmp::Ordering::Equal)
+         });
+         let planes: Vec<f32> = pending.iter().map(|(z, _)| *z).collect();
++        let dedup_ns = t_dedup0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++        let t_slice0 = if probe_on {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
+         let sections = slice_mesh_ex(&geometry.world_mesh, &planes);
++        let slice_ns = t_slice0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++        let t_ins0 = if probe_on {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
++        let mut total_polys: u64 = 0;
++        let mut total_verts: u64 = 0;
++        let plane_count = planes.len() as u64;
++        if probe_on {
++            for sec in &sections {
++                total_polys += sec.len() as u64;
++                for ep in sec {
++                    total_verts += ep.contour.points.len() as u64;
++                    for h in &ep.holes {
++                        total_verts += h.points.len() as u64;
++                    }
++                }
++            }
++        }
+         let Ok(mut memo) = geometry.cross_sections.lock() else {
+             return;
+         };
+         for ((_, z_units), section) in pending.into_iter().zip(sections) {
+             memo.entry(z_units).or_insert_with(|| Arc::new(section));
+         }
++        let ins_ns = t_ins0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++        if probe_on {
++            crate::support_aggregation::t181_record_prefetch(
++                og_ns,
++                dedup_ns,
++                slice_ns,
++                ins_ns,
++                plane_count,
++                total_polys,
++                total_verts,
++            );
++        }
++    }
++
++    /// Observation-only helper for t181: compares every memoized cross-section
++    /// against `SupportAnalysisIR::print_plane_occupancy` mapped through `SliceIR`.
++    pub fn t181_verify_against_print_plane_occupancy(
++        &self,
++        analysis: &slicer_ir::SupportAnalysisIR,
++        slices: &[slicer_ir::SliceIR],
++    ) -> (u64, u64, u64, u64) {
++        let mut slice_z_by_obj_layer: HashMap<(&str, u32), i64> = HashMap::new();
++        for slice in slices {
++            let z_units = mm_to_units(slice.z);
++            for reg in &slice.regions {
++                if !reg.polygons.is_empty() {
++                    slice_z_by_obj_layer
++                        .entry((reg.object_id.as_str(), slice.global_layer_index))
++                        .or_insert(z_units);
++                }
++            }
++        }
++        let mut ppo_by_obj_z: HashMap<(&str, i64), &Vec<ExPolygon>> = HashMap::new();
++        for entry in &analysis.print_plane_occupancy {
++            if let Some(&z_units) =
++                slice_z_by_obj_layer.get(&(entry.object_id.as_str(), entry.global_support_layer_index))
++            {
++                ppo_by_obj_z.insert((entry.object_id.as_str(), z_units), &entry.polygons);
++            }
++        }
++        let mut total_planes = 0u64;
++        let mut found_in_ppo = 0u64;
++        let mut exact_poly_equal = 0u64;
++        let mut missing_from_ppo = 0u64;
++        if let Ok(og_map) = self.object_geometry.lock() {
++            for (obj_id, og) in og_map.iter() {
++                if let Ok(cs_map) = og.cross_sections.lock() {
++                    for (&z_units, section) in cs_map.iter() {
++                        total_planes += 1;
++                        if let Some(ppo_polys) = ppo_by_obj_z.get(&(obj_id.as_str(), z_units)) {
++                            found_in_ppo += 1;
++                            if section.as_ref() == *ppo_polys {
++                                exact_poly_equal += 1;
++                            }
++                        } else {
++                            missing_from_ppo += 1;
++                        }
++                    }
++                }
++            }
++        }
++        (total_planes, found_in_ppo, exact_poly_equal, missing_from_ppo)
+     }
+ 
+     /// Resolve (building once per object) the terms that do not depend on Z.
+@@ -221,12 +342,41 @@ impl ExactZQueryService {
+             .iter()
+             .find(|object| object.id == object_id)
+             .ok_or_else(|| format!("exact-z-support-query: object '{object_id}' not found"))?;
++        let probe_on = crate::support_aggregation::t181_probe_enabled();
++        let t_wm0 = if probe_on {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
+         let world_mesh = world_mesh(object);
++        let wm_ns = t_wm0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++        let t_wb0 = if probe_on {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
+         let bbox = world_bounds(&world_mesh)
+             .ok_or_else(|| format!("exact-z-support-query: object '{object_id}' has empty mesh"))?;
++        let wb_ns = t_wb0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++        let t_top0 = if probe_on {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
++        let top = cross_section_at_z(&world_mesh, bbox.5);
++        let top_ns = t_top0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++        if probe_on {
++            crate::support_aggregation::t181_record_object_geometry(
++                wm_ns,
++                wb_ns,
++                top_ns,
++                world_mesh.vertices.len() as u64,
++                (world_mesh.indices.len() / 3) as u64,
++            );
++        }
+         let geometry = Arc::new(ObjectGeometry {
+             plate: rectangle(bbox.0, bbox.1, bbox.2, bbox.3),
+-            top: cross_section_at_z(&world_mesh, bbox.5),
++            top,
+             world_mesh,
+             cross_sections: Mutex::new(HashMap::new()),
+         });
+diff --git a/crates/slicer-wasm-host/src/support_aggregation.rs b/crates/slicer-wasm-host/src/support_aggregation.rs
+index 5837c299..0c043501 100644
+--- a/crates/slicer-wasm-host/src/support_aggregation.rs
++++ b/crates/slicer-wasm-host/src/support_aggregation.rs
+@@ -6,10 +6,152 @@ use slicer_ir::{
+     SupportPlanEntry, SupportPlanIR,
+ };
+ use std::collections::{HashMap, HashSet};
++use std::sync::{Mutex, OnceLock};
+ 
+ use crate::exact_z_query::ExactZQueryService;
+ use crate::support_territory::TerritoryClipper;
+ 
++/// Observation-only probe state for wayfinder ticket 181 (`PNP_T181_PROBE_OUT`).
++#[derive(Debug, Default, Clone)]
++pub struct T181AggStats {
++    pub plans_count: u64,
++    pub entries_per_plan: Vec<u64>,
++    pub active_entries: u64,
++    pub declined_entries: u64,
++    pub total_roles: u64,
++    pub total_body_polys: u64,
++    pub total_body_verts: u64,
++    pub world_mesh_vertices: u64,
++    pub world_mesh_triangles: u64,
++    pub prefetch_plane_count: u64,
++    pub prefetch_polys_total: u64,
++    pub prefetch_verts_total: u64,
++    pub query_cache_hits: u64,
++    pub query_cache_misses: u64,
++    pub query_section_hits: u64,
++    pub query_section_misses: u64,
++    pub overlap_pairs_total: u64,
++    pub overlap_pairs_strict_disjoint: u64,
++    pub overlap_pairs_touch_only: u64,
++    pub overlap_pairs_bbox_intersect: u64,
++    pub overlap_pairs_positive: u64,
++    pub overlap_calls_body_verts: u64,
++    pub overlap_calls_occ_verts: u64,
++    pub union_before_count: u64,
++    pub union_after_count: u64,
++    pub territory_active: bool,
++    pub cross_family_pairs_checked: u64,
++    pub retained_count: u64,
++    pub diagnostics_count: u64,
++    // Sub-bracket timings in nanoseconds (exhaustive inside aggregate_support_plan_irs_with_policy_attributed)
++    pub t3a_plans_clone_ns: u64,
++    pub t3b_entries_flatten_clone_ns: u64,
++    pub t3c_entries_sort_and_raft_ns: u64,
++    pub t3d_collect_exact_z_planes_ns: u64,
++    pub t3e_prefetch_total_ns: u64,
++    pub t3e1_object_geometry_ns: u64,
++    pub t3e1a_world_mesh_ns: u64,
++    pub t3e1b_world_bounds_ns: u64,
++    pub t3e1c_top_cross_section_ns: u64,
++    pub t3e2_dedup_sort_planes_ns: u64,
++    pub t3e3_slice_mesh_ex_ns: u64,
++    pub t3e4_memo_insert_ns: u64,
++    pub t3f_validate_loop_total_ns: u64,
++    pub t3f1_identity_and_ownership_ns: u64,
++    pub t3f2_exact_z_query_ns: u64,
++    pub t3f2_exact_z_query_inner_ns: u64,
++    pub t3f3_in_routing_cell_ns: u64,
++    pub t3f4_overlaps_any_ns: u64,
++    pub t3f4a_overlaps_strict_disjoint_ns: u64,
++    pub t3f4b_overlaps_touch_only_ns: u64,
++    pub t3f4c_overlaps_bbox_intersect_ns: u64,
++    pub t3g_union_same_family_ns: u64,
++    pub t3h_territory_clipper_ns: u64,
++    pub t3i_cross_family_overlap_ns: u64,
++    pub t3j_try_agg_drop_ns: u64,
++    pub t3k_attribution_indices_and_diags_ns: u64,
++    pub t3_drop_plans_ns: u64,
++}
++
++static T181_PROBE_FLAG: OnceLock<bool> = OnceLock::new();
++static T181_STATS: OnceLock<Mutex<T181AggStats>> = OnceLock::new();
++
++pub fn t181_probe_enabled() -> bool {
++    *T181_PROBE_FLAG.get_or_init(|| std::env::var_os("PNP_T181_PROBE_OUT").is_some())
++}
++
++fn t181_stats() -> &'static Mutex<T181AggStats> {
++    T181_STATS.get_or_init(|| Mutex::new(T181AggStats::default()))
++}
++
++pub fn t181_reset_agg_stats() {
++    if t181_probe_enabled() {
++        if let Ok(mut g) = t181_stats().lock() {
++            *g = T181AggStats::default();
++        }
++    }
++}
++
++pub fn t181_take_agg_stats() -> T181AggStats {
++    if let Ok(mut g) = t181_stats().lock() {
++        std::mem::take(&mut *g)
++    } else {
++        T181AggStats::default()
++    }
++}
++
++pub(crate) fn t181_record_object_geometry(
++    wm_ns: u64,
++    wb_ns: u64,
++    top_ns: u64,
++    verts: u64,
++    tris: u64,
++) {
++    if let Ok(mut g) = t181_stats().lock() {
++        g.t3e1a_world_mesh_ns += wm_ns;
++        g.t3e1b_world_bounds_ns += wb_ns;
++        g.t3e1c_top_cross_section_ns += top_ns;
++        g.world_mesh_vertices += verts;
++        g.world_mesh_triangles += tris;
++    }
++}
++
++pub(crate) fn t181_record_prefetch(
++    og_ns: u64,
++    dedup_ns: u64,
++    slice_ns: u64,
++    ins_ns: u64,
++    planes: u64,
++    polys: u64,
++    verts: u64,
++) {
++    if let Ok(mut g) = t181_stats().lock() {
++        g.t3e1_object_geometry_ns += og_ns;
++        g.t3e2_dedup_sort_planes_ns += dedup_ns;
++        g.t3e3_slice_mesh_ex_ns += slice_ns;
++        g.t3e4_memo_insert_ns += ins_ns;
++        g.prefetch_plane_count += planes;
++        g.prefetch_polys_total += polys;
++        g.prefetch_verts_total += verts;
++    }
++}
++
++pub(crate) fn t181_record_query(cache_hit: bool, section_hit: bool, ns: u64) {
++    if let Ok(mut g) = t181_stats().lock() {
++        if cache_hit {
++            g.query_cache_hits += 1;
++        } else {
++            g.query_cache_misses += 1;
++            if section_hit {
++                g.query_section_hits += 1;
++            } else {
++                g.query_section_misses += 1;
++            }
++        }
++        g.t3f2_exact_z_query_inner_ns += ns;
++    }
++}
++
+ /// Maximum envelope a single support body may span on either axis, in
+ /// canonical coordinate units. `1 << 22` units = 419.43 mm, larger than the
+ /// diagonal of the matched BBL X1C 256 mm bed: any single body that fits the
+@@ -374,6 +516,7 @@ pub fn try_aggregate_support_plans_with_policy(
+     input: SupportAggregationInput<'_>,
+     conflict_policy: FamilyConflictPolicy,
+ ) -> Result<SupportAggregationResult, SupportAggregationError> {
++    let probe_on = t181_probe_enabled();
+     // Producers are index-parallel to plans by construction at every call site;
+     // a mismatch is a host bug, and it denies rather than publishing anything
+     // unowned (see `check_ownership`).
+@@ -384,6 +527,11 @@ pub fn try_aggregate_support_plans_with_policy(
+     );
+     let mut result = SupportAggregationResult::default();
+     let mut identities = HashMap::new();
++    let t_b0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
+     let mut entries = input
+         .plans
+         .iter()
+@@ -394,11 +542,18 @@ pub fn try_aggregate_support_plans_with_policy(
+                 .map(move |entry| (plan_index, entry.clone()))
+         })
+         .collect::<Vec<_>>();
++    let t3b_ns = t_b0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++    let t_c0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
+     // Purely for output determinism: ownership no longer depends on order.
+     entries.sort_by(|left, right| compare_entries(&left.1, &right.1));
+     for plan in &input.plans {
+         result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan.clone());
+     }
++    let t3c_ns = t_c0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
+     // Serve every exact-Z cross-section this aggregation needs from one batched
+     // mesh walk per object. All entries are in hand before the occupancy gate
+     // runs, and `slice_mesh_ex` builds each plane independently, so the batched
+@@ -406,6 +561,11 @@ pub fn try_aggregate_support_plans_with_policy(
+     // computes (t95 measured 431 of 431 planes equal, polygon for polygon, on
+     // the base supports-on cells). A prefetch that cannot run leaves the
+     // per-query path untouched.
++    let t_d0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
+     let mut exact_z_planes: HashMap<String, Vec<f32>> = HashMap::new();
+     for (_, entry) in &entries {
+         // A declined entry never reaches `validate_entry`, so it must not pay
+@@ -417,10 +577,33 @@ pub fn try_aggregate_support_plans_with_policy(
+                 .push(units_to_mm(entry.anchor_z));
+         }
+     }
++    let t3d_ns = t_d0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++    let t_e0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
+     for (object_id, zs) in exact_z_planes {
+         input.exact_z.prefetch_cross_sections(&object_id, &zs);
+     }
++    let t3e_ns = t_e0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++    let t_f0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++    let mut t3f1_ns: u64 = 0;
++    let mut active_entries: u64 = 0;
++    let mut declined_entries: u64 = 0;
++    let mut total_roles: u64 = 0;
++    let mut total_body_polys: u64 = 0;
++    let mut total_body_verts: u64 = 0;
+     for (plan_index, entry) in entries {
++        let t_f1 = if probe_on {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
+         // The conflict identity is the full source origin: entries for two
+         // chain-differing regions of one object never collapse into one row.
+         let identity = (
+@@ -446,6 +629,9 @@ pub fn try_aggregate_support_plans_with_policy(
+                 FamilyConflictPolicy::Degrade => {
+                     result.degraded = true;
+                     result.ownership_violations.push(violation);
++                    if let Some(t) = t_f1 {
++                        t3f1_ns += t.elapsed().as_nanos() as u64;
++                    }
+                     continue;
+                 }
+             }
+@@ -460,6 +646,7 @@ pub fn try_aggregate_support_plans_with_policy(
+             .entry(identity.clone())
+             .or_insert_with(|| entry.family_id.clone());
+         if let Some(decline_reason) = entry.decline_reason {
++            declined_entries += 1;
+             let reason = format!("declined: {decline_reason:?}");
+             for body_id in &entry.body_ids {
+                 for demand_id in &entry.demand_ids {
+@@ -471,8 +658,27 @@ pub fn try_aggregate_support_plans_with_policy(
+                     });
+                 }
+             }
++            if let Some(t) = t_f1 {
++                t3f1_ns += t.elapsed().as_nanos() as u64;
++            }
+             continue;
+         }
++        if let Some(t) = t_f1 {
++            t3f1_ns += t.elapsed().as_nanos() as u64;
++        }
++        if probe_on {
++            active_entries += 1;
++            total_roles += entry.roles.len() as u64;
++            for r in &entry.roles {
++                total_body_polys += r.regions.len() as u64;
++                for ep in &r.regions {
++                    total_body_verts += ep.contour.points.len() as u64;
++                    for h in &ep.holes {
++                        total_body_verts += h.points.len() as u64;
++                    }
++                }
++            }
++        }
+         match validate_entry(&entry, input.exact_z) {
+             None => result.retained.push(entry),
+             Some(reason) => {
+@@ -481,6 +687,13 @@ pub fn try_aggregate_support_plans_with_policy(
+             }
+         }
+     }
++    let t3f_ns = t_f0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++    let union_before = result.retained.len() as u64;
++    let t_g0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
+     // Validation is a *per-body* gate and runs only here, before union.
+     // Re-running it on merged groups was a category error: a merged group is by
+     // construction not one planner-emitted body, so the per-body max-body-extent
+@@ -492,6 +705,8 @@ pub fn try_aggregate_support_plans_with_policy(
+     // union cannot introduce an overlap that was absent from every input -- so
+     // re-checking it after merging would be redundant as well.
+     union_same_family_entries(&mut result.retained);
++    let t3g_ns = t_g0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++    let union_after = result.retained.len() as u64;
+     // Ticket 19: where the host published support territory for an
+     // `(object, layer)`, each retained body is clipped to the side its family
+     // owns (sub-region: `∩ own`; base: `- inflate(foreign, clearance)`).
+@@ -499,7 +714,13 @@ pub fn try_aggregate_support_plans_with_policy(
+     // outcome there, so the clip is recorded as Info 1205 and the reject-both
+     // guard below is skipped for those layers. Layers without territory keep
+     // the guard unchanged.
++    let t_h0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
+     let clipper = input.territory.and_then(TerritoryClipper::from_ir);
++    let territory_active = clipper.is_some();
+     let has_territory = |entry: &SupportPlanEntry| {
+         entry.global_layer_index >= 0
+             && clipper.as_ref().is_some_and(|clipper| {
+@@ -547,6 +768,7 @@ pub fn try_aggregate_support_plans_with_policy(
+             }
+         }
+     }
++    let t3h_ns = t_h0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
+     // Cross-family overlap is a FAMILY-ARBITRATION guard, not a plate-wide
+     // collision check: it exists because two families that both claim positive
+     // area for the same slice of the same object would double-extrude there,
+@@ -563,6 +785,12 @@ pub fn try_aggregate_support_plans_with_policy(
+     // collide at all, annihilated each other too. Measured on
+     // `resources/bridge_support_enforcers.3mf`: one tree object plus two
+     // traditional objects yielded a slice with no `;TYPE:Support` whatsoever.
++    let t_i0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++    let mut cross_family_pairs: u64 = 0;
+     let mut rejected = vec![false; result.retained.len()];
+     for left in 0..result.retained.len() {
+         for right in (left + 1)..result.retained.len() {
+@@ -572,10 +800,12 @@ pub fn try_aggregate_support_plans_with_policy(
+                 && a.global_layer_index == b.global_layer_index
+                 && a.family_id != b.family_id
+                 && !has_territory(a)
+-                && entries_overlap(a, b)
+             {
+-                rejected[left] = true;
+-                rejected[right] = true;
++                cross_family_pairs += 1;
++                if entries_overlap(a, b) {
++                    rejected[left] = true;
++                    rejected[right] = true;
++                }
+             }
+         }
+     }
+@@ -604,6 +834,41 @@ pub fn try_aggregate_support_plans_with_policy(
+             }
+         }
+     }
++    let t3i_ns = t_i0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++    let t_j0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++    drop(rejected);
++    drop(clipper);
++    drop(identities);
++    drop(input);
++    let t3j_ns = t_j0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++    if probe_on {
++        if let Ok(mut g) = t181_stats().lock() {
++            g.active_entries += active_entries;
++            g.declined_entries += declined_entries;
++            g.total_roles += total_roles;
++            g.total_body_polys += total_body_polys;
++            g.total_body_verts += total_body_verts;
++            g.union_before_count = union_before;
++            g.union_after_count = union_after;
++            g.territory_active = territory_active;
++            g.cross_family_pairs_checked += cross_family_pairs;
++            g.retained_count = result.retained.len() as u64;
++            g.t3b_entries_flatten_clone_ns += t3b_ns;
++            g.t3c_entries_sort_and_raft_ns += t3c_ns;
++            g.t3d_collect_exact_z_planes_ns += t3d_ns;
++            g.t3e_prefetch_total_ns += t3e_ns;
++            g.t3f_validate_loop_total_ns += t3f_ns;
++            g.t3f1_identity_and_ownership_ns += t3f1_ns;
++            g.t3g_union_same_family_ns += t3g_ns;
++            g.t3h_territory_clipper_ns += t3h_ns;
++            g.t3i_cross_family_overlap_ns += t3i_ns;
++            g.t3j_try_agg_drop_ns += t3j_ns;
++        }
++    }
+     Ok(result)
+ }
+ 
+@@ -650,33 +915,72 @@ fn compare_entries(left: &SupportPlanEntry, right: &SupportPlanEntry) -> std::cm
+ }
+ 
+ fn validate_entry(entry: &SupportPlanEntry, exact_z: &ExactZQueryService) -> Option<&'static str> {
+-    exact_z
+-        .query(
+-            &entry.object_id,
+-            entry.region_id,
+-            &entry.variant_chain,
+-            units_to_mm(entry.anchor_z),
+-        )
+-        .map(|query| {
+-            if !in_routing_cell(entry) {
+-                // Per-body extent-bound violation: the body's own bbox spans
+-                // more than `MAX_BODY_EXTENT_UNITS` on an axis. This is not a
+-                // cell assignment and nothing collides. The string is pinned
+-                // verbatim by assertions in
+-                // `crates/slicer-runtime/tests/integration/support_family_routing.rs`,
+-                // so renaming it must land together with those.
+-                Some("body rejected: max-body-extent violation")
+-            } else if entry.roles.iter().any(|role| {
+-                role.regions
+-                    .iter()
+-                    .any(|body| overlaps_any(body, &query.occupancy))
+-            }) {
+-                Some("body rejected: exact-Z occupancy")
+-            } else {
+-                None
++    let probe_on = t181_probe_enabled();
++    let t_q0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++    let q_res = exact_z.query(
++        &entry.object_id,
++        entry.region_id,
++        &entry.variant_chain,
++        units_to_mm(entry.anchor_z),
++    );
++    let q_ns = t_q0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++    let Ok(query) = q_res else {
++        if probe_on {
++            if let Ok(mut g) = t181_stats().lock() {
++                g.t3f2_exact_z_query_ns += q_ns;
+             }
+-        })
+-        .unwrap_or(Some("body rejected: exact-Z query unavailable"))
++        }
++        return Some("body rejected: exact-Z query unavailable");
++    };
++    let t_rc0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++    let in_rc = in_routing_cell(entry);
++    let rc_ns = t_rc0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++    if !in_rc {
++        if probe_on {
++            if let Ok(mut g) = t181_stats().lock() {
++                g.t3f2_exact_z_query_ns += q_ns;
++                g.t3f3_in_routing_cell_ns += rc_ns;
++            }
++        }
++        // Per-body extent-bound violation: the body's own bbox spans
++        // more than `MAX_BODY_EXTENT_UNITS` on an axis. This is not a
++        // cell assignment and nothing collides. The string is pinned
++        // verbatim by assertions in
++        // `crates/slicer-runtime/tests/integration/support_family_routing.rs`,
++        // so renaming it must land together with those.
++        return Some("body rejected: max-body-extent violation");
++    }
++    let t_ov0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++    let has_overlap = entry.roles.iter().any(|role| {
++        role.regions
++            .iter()
++            .any(|body| overlaps_any(body, &query.occupancy))
++    });
++    let ov_ns = t_ov0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++    if probe_on {
++        if let Ok(mut g) = t181_stats().lock() {
++            g.t3f2_exact_z_query_ns += q_ns;
++            g.t3f3_in_routing_cell_ns += rc_ns;
++            g.t3f4_overlaps_any_ns += ov_ns;
++        }
++    }
++    if has_overlap {
++        Some("body rejected: exact-Z occupancy")
++    } else {
++        None
++    }
+ }
+ 
+ fn record_rejection(result: &mut SupportAggregationResult, entry: &SupportPlanEntry, reason: &str) {
+@@ -843,19 +1147,39 @@ pub fn aggregate_support_plan_irs_with_policy_attributed(
+     territory: Option<&SupportAnalysisIR>,
+     conflict_policy: FamilyConflictPolicy,
+ ) -> Result<(SupportPlanIR, Vec<AttributedDiagnostic>), SupportAggregationError> {
++    let probe_on = t181_probe_enabled();
+     let schema_version = plans
+         .first()
+         .map(|plan| plan.schema_version)
+         .unwrap_or_default();
++    let t_a0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++    let cloned_plans = plans.clone();
++    let t3a_ns = t_a0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++    if probe_on {
++        if let Ok(mut g) = t181_stats().lock() {
++            g.plans_count = plans.len() as u64;
++            g.entries_per_plan = plans.iter().map(|p| p.entries.len() as u64).collect();
++            g.t3a_plans_clone_ns += t3a_ns;
++        }
++    }
+     let aggregate = try_aggregate_support_plans_with_policy(
+         SupportAggregationInput {
+-            plans: plans.clone(),
++            plans: cloned_plans,
+             exact_z,
+             territory,
+             producers,
+         },
+         conflict_policy,
+     )?;
++    let t_k0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
+     // Attribution indices. Aggregation flattens every family's entries into
+     // one list, so the post-hoc diagnostics carry only `family_id` / `body_id`
+     // rather than a plan ordinal; these maps invert that back to the producing
+@@ -997,6 +1321,23 @@ pub fn aggregate_support_plan_irs_with_policy_attributed(
+             }
+         }
+     }
++    let t3k_ns = t_k0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++    let t_dp0 = if probe_on {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
++    drop(family_to_plan);
++    drop(body_to_plan);
++    drop(plans);
++    let t3_drop_plans_ns = t_dp0.map(|t| t.elapsed().as_nanos() as u64).unwrap_or(0);
++    if probe_on {
++        if let Ok(mut g) = t181_stats().lock() {
++            g.diagnostics_count = diagnostics.len() as u64;
++            g.t3k_attribution_indices_and_diags_ns += t3k_ns;
++            g.t3_drop_plans_ns += t3_drop_plans_ns;
++        }
++    }
+     Ok((
+         SupportPlanIR {
+             schema_version,
+@@ -1059,13 +1400,88 @@ fn in_routing_cell(entry: &SupportPlanEntry) -> bool {
+ }
+ 
+ fn overlaps_any(a: &ExPolygon, others: &[ExPolygon]) -> bool {
+-    others.iter().any(|other| {
++    if !t181_probe_enabled() {
++        return others.iter().any(|other| {
++            let overlap = slicer_core::polygon_ops::intersection(
++                std::slice::from_ref(a),
++                std::slice::from_ref(other),
++            );
++            overlap.iter().map(expolygon_area).sum::<f64>() > SUPPORT_OVERLAP_TOLERANCE as f64
++        });
++    }
++    let ab = bounds(a);
++    let a_verts = (a.contour.points.len()
++        + a.holes.iter().map(|h| h.points.len()).sum::<usize>()) as u64;
++    let mut pairs_total = 0u64;
++    let mut pairs_sd = 0u64;
++    let mut pairs_to = 0u64;
++    let mut pairs_bi = 0u64;
++    let mut pairs_pos = 0u64;
++    let mut body_verts = 0u64;
++    let mut occ_verts = 0u64;
++    let mut ns_sd = 0u64;
++    let mut ns_to = 0u64;
++    let mut ns_bi = 0u64;
++    let mut found = false;
++    for other in others {
++        pairs_total += 1;
++        body_verts += a_verts;
++        occ_verts += (other.contour.points.len()
++            + other.holes.iter().map(|h| h.points.len()).sum::<usize>()) as u64;
++        let ob = bounds(other);
++        let cls = match (ab, ob) {
++            (Some((ax0, ax1, ay0, ay1)), Some((bx0, bx1, by0, by1))) => {
++                if ax1 < bx0 || bx1 < ax0 || ay1 < by0 || by1 < ay0 {
++                    0u8 // strictly disjoint
++                } else if ax1 == bx0 || bx1 == ax0 || ay1 == by0 || by1 == ay0 {
++                    1u8 // touch only
++                } else {
++                    2u8 // strict bbox overlap
++                }
++            }
++            _ => 0u8,
++        };
++        let t0 = std::time::Instant::now();
+         let overlap = slicer_core::polygon_ops::intersection(
+             std::slice::from_ref(a),
+             std::slice::from_ref(other),
+         );
+-        overlap.iter().map(expolygon_area).sum::<f64>() > SUPPORT_OVERLAP_TOLERANCE as f64
+-    })
++        let pos =
++            overlap.iter().map(expolygon_area).sum::<f64>() > SUPPORT_OVERLAP_TOLERANCE as f64;
++        let dt = t0.elapsed().as_nanos() as u64;
++        match cls {
++            0 => {
++                pairs_sd += 1;
++                ns_sd += dt;
++            }
++            1 => {
++                pairs_to += 1;
++                ns_to += dt;
++            }
++            _ => {
++                pairs_bi += 1;
++                ns_bi += dt;
++            }
++        }
++        if pos {
++            pairs_pos += 1;
++            found = true;
++            break;
++        }
++    }
++    if let Ok(mut g) = t181_stats().lock() {
++        g.overlap_pairs_total += pairs_total;
++        g.overlap_pairs_strict_disjoint += pairs_sd;
++        g.overlap_pairs_touch_only += pairs_to;
++        g.overlap_pairs_bbox_intersect += pairs_bi;
++        g.overlap_pairs_positive += pairs_pos;
++        g.overlap_calls_body_verts += body_verts;
++        g.overlap_calls_occ_verts += occ_verts;
++        g.t3f4a_overlaps_strict_disjoint_ns += ns_sd;
++        g.t3f4b_overlaps_touch_only_ns += ns_to;
++        g.t3f4c_overlaps_bbox_intersect_ns += ns_bi;
++    }
++    found
+ }
+ 
+ fn entries_overlap(a: &SupportPlanEntry, b: &SupportPlanEntry) -> bool {

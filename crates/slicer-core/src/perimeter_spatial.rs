@@ -8,10 +8,11 @@ use std::collections::BTreeSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use rstar::{PointDistance, RTree, RTreeObject, RTreeParams, AABB};
-use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{ExPolygon, Point2, Point3WithWidth, Polygon};
 
-use crate::perimeter_utils::{point_in_any_polygon, signed_distance_to_boundary};
+use crate::perimeter_utils::{
+    overhang_quartile_from_distance, point_in_any_polygon, signed_distance_to_boundary,
+};
 
 const RSTAR_MAX_SIZE: usize = <rstar::DefaultParams as RTreeParams>::MAX_SIZE;
 
@@ -497,21 +498,6 @@ impl RTreeObject for BoundaryYRecord {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct QuartileYRecord {
-    band_index: usize,
-    polygon_index: usize,
-    envelope: AABB<[f64; 2]>,
-}
-
-impl RTreeObject for QuartileYRecord {
-    type Envelope = AABB<[f64; 2]>;
-
-    fn envelope(&self) -> Self::Envelope {
-        self.envelope
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
 struct BridgeRecord {
     polygon_index: usize,
     envelope: AABB<[i64; 2]>,
@@ -538,11 +524,13 @@ struct BridgeBounds {
 /// Immutable indexes and source geometry for one perimeter region.
 pub struct PerimeterSpatialContext {
     boundary: Vec<ExPolygon>,
-    overhang_bands: Vec<QuartileBand>,
+    /// Producer-resolved band width (mm) behind the quartile thresholds. The
+    /// quartile itself is derived from the signed distance to `boundary`
+    /// (ticket 142), so no band polygons are held here.
+    overhang_band_width_mm: f32,
     bridge_areas: Vec<ExPolygon>,
     distance_index: IndexState<DistanceEdgeRecord>,
     boundary_y_index: IndexState<BoundaryYRecord>,
-    quartile_y_index: IndexState<QuartileYRecord>,
     bridge_index: IndexState<BridgeRecord>,
     bridge_bounds: Option<BridgeBounds>,
     construction_failed: bool,
@@ -552,31 +540,27 @@ impl PerimeterSpatialContext {
     /// Prepare exact candidate-reduction indexes for a perimeter region.
     pub fn new(
         boundary: &[ExPolygon],
-        overhang_bands: &[QuartileBand],
+        overhang_band_width_mm: f32,
         bridge_areas: &[ExPolygon],
     ) -> Self {
         count_context_constructed();
         let boundary = boundary.to_vec();
-        let overhang_bands = overhang_bands.to_vec();
         let bridge_areas = bridge_areas.to_vec();
 
         let distance_index = build_index(distance_records(&boundary));
         let boundary_y_index = build_index(boundary_y_records(&boundary));
-        let quartile_y_index = build_index(quartile_y_records(&overhang_bands));
         let (bridge_records, bridge_bounds) = bridge_records(&bridge_areas);
         let bridge_index = build_index(bridge_records);
         let construction_failed = index_failed(&distance_index)
             || index_failed(&boundary_y_index)
-            || index_failed(&quartile_y_index)
             || index_failed(&bridge_index);
 
         Self {
             boundary,
-            overhang_bands,
+            overhang_band_width_mm,
             bridge_areas,
             distance_index,
             boundary_y_index,
-            quartile_y_index,
             bridge_index,
             bridge_bounds,
             construction_failed,
@@ -640,34 +624,24 @@ impl PerimeterSpatialContext {
     }
 
     /// Return the most severe overhang quartile containing `(x, y)`.
+    ///
+    /// Since ticket 142 the quartile is derived from the signed distance to
+    /// the previous-layer boundary, which is what the old 4-band polygon
+    /// partition encoded: a point is overhanging exactly when it lies outside
+    /// `previous`. This is the same query the annotation already answers for
+    /// `overhang_distance_mm`, so the band-polygon index is gone.
     pub fn overhang_quartile(&self, x: f32, y: f32) -> Option<u8> {
-        let dispatch = dispatch();
-        if !dispatch.indexed {
-            count_legacy();
-            return legacy_overhang_quartile(x, y, &self.overhang_bands);
+        if self.boundary.is_empty() {
+            return None;
         }
-        if dispatch.inject_pruning_fault
-            || self.construction_failed
-            || !x.is_finite()
-            || !y.is_finite()
-            || index_failed(&self.quartile_y_index)
-            || matches!(&self.quartile_y_index, IndexState::Linear)
-        {
-            return self.fallback_overhang_quartile(x, y);
-        }
+        self.overhang_quartile_from_raw_distance(self.signed_distance_to_boundary(x, y))
+    }
 
-        match &self.quartile_y_index {
-            IndexState::Linear => self.fallback_overhang_quartile(x, y),
-            IndexState::Indexed(tree) => {
-                let quartile = match indexed_overhang_quartile(tree, x, y, &self.overhang_bands) {
-                    Some(quartile) => quartile,
-                    None => return self.fallback_overhang_quartile(x, y),
-                };
-                count_indexed();
-                quartile
-            }
-            IndexState::Failed => self.fallback_overhang_quartile(x, y),
-        }
+    /// Bucket an already-computed signed distance without re-querying the
+    /// boundary. Callers that stamp both `overhang_distance_mm` and
+    /// `overhang_quartile` use this so the distance is measured once.
+    pub fn overhang_quartile_from_raw_distance(&self, raw_signed_distance_mm: f32) -> Option<u8> {
+        overhang_quartile_from_distance(raw_signed_distance_mm, self.overhang_band_width_mm)
     }
 
     /// Return whether an integer point is strictly inside any bridge area.
@@ -717,12 +691,6 @@ impl PerimeterSpatialContext {
         distance
     }
 
-    fn fallback_overhang_quartile(&self, x: f32, y: f32) -> Option<u8> {
-        count_fallback();
-        count_legacy();
-        legacy_overhang_quartile(x, y, &self.overhang_bands)
-    }
-
     fn fallback_bridge(&self, point: &Point2) -> bool {
         count_fallback();
         count_legacy();
@@ -745,20 +713,22 @@ pub fn expolygon_to_path3d_indexed(
         .map(|point| {
             let x = slicer_ir::units_to_mm(point.x);
             let y = slicer_ir::units_to_mm(point.y);
-            let overhang_quartile = match mode {
-                PathAnnotationMode::Planar => context.overhang_quartile(x, y),
-                PathAnnotationMode::NonPlanarNoQuartile | PathAnnotationMode::Unconsumed => None,
-            };
-            let overhang_distance_mm = match mode {
+            let raw_distance = match mode {
                 PathAnnotationMode::Planar | PathAnnotationMode::NonPlanarNoQuartile => {
                     if context.boundary.is_empty() {
                         None
                     } else {
-                        Some(context.signed_distance_to_boundary(x, y) + 0.5 * width)
+                        Some(context.signed_distance_to_boundary(x, y))
                     }
                 }
                 PathAnnotationMode::Unconsumed => None,
             };
+            let overhang_quartile = match mode {
+                PathAnnotationMode::Planar => raw_distance
+                    .and_then(|distance| context.overhang_quartile_from_raw_distance(distance)),
+                PathAnnotationMode::NonPlanarNoQuartile | PathAnnotationMode::Unconsumed => None,
+            };
+            let overhang_distance_mm = raw_distance.map(|distance| distance + 0.5 * width);
             Point3WithWidth {
                 x,
                 y,
@@ -815,26 +785,6 @@ fn boundary_y_records(boundary: &[ExPolygon]) -> Vec<BoundaryYRecord> {
                     points[(edge_index + 1) % points.len()],
                 ),
             });
-        }
-    }
-    records
-}
-
-fn quartile_y_records(bands: &[QuartileBand]) -> Vec<QuartileYRecord> {
-    let mut records = Vec::new();
-    for (band_index, band) in bands.iter().enumerate() {
-        for (polygon_index, expolygon) in band.polygons.iter().enumerate() {
-            let points = &expolygon.contour.points;
-            for edge_index in 0..points.len() {
-                records.push(QuartileYRecord {
-                    band_index,
-                    polygon_index,
-                    envelope: y_interval_envelope(
-                        points[edge_index],
-                        points[(edge_index + 1) % points.len()],
-                    ),
-                });
-            }
         }
     }
     records
@@ -1051,31 +1001,6 @@ fn indexed_inside(
     Some(inside)
 }
 
-fn indexed_overhang_quartile(
-    tree: &RTree<QuartileYRecord>,
-    x: f32,
-    y: f32,
-    bands: &[QuartileBand],
-) -> Option<Option<u8>> {
-    let query = [0.0, f64::from(y)];
-    let envelope = AABB::from_corners(query, query);
-    let mut candidates = BTreeSet::new();
-    for record in tree.locate_in_envelope_intersecting(&envelope) {
-        candidates.insert((record.band_index, record.polygon_index));
-    }
-
-    let mut quartile: Option<u8> = None;
-    for (band_index, polygon_index) in candidates {
-        let band = bands.get(band_index)?;
-        let polygon = band.polygons.get(polygon_index)?;
-        count_exact_evaluation();
-        if slicer_ir::point_in_polygon_winding(polygon, f64::from(x), f64::from(y), 0.0) {
-            quartile = Some(quartile.map_or(band.quartile, |current| current.max(band.quartile)));
-        }
-    }
-    Some(quartile)
-}
-
 fn indexed_bridge(tree: &RTree<BridgeRecord>, point: &Point2, areas: &[ExPolygon]) -> bool {
     let query = [point.x, point.y];
     let envelope = AABB::from_corners(query, query);
@@ -1130,18 +1055,6 @@ fn legacy_distance_ordinal(x: f32, y: f32, boundary: &[ExPolygon]) -> Option<usi
         }
     }
     nearest.map(|(_, source_ordinal)| source_ordinal)
-}
-
-fn legacy_overhang_quartile(x: f32, y: f32, bands: &[QuartileBand]) -> Option<u8> {
-    bands
-        .iter()
-        .filter(|band| {
-            band.polygons.iter().any(|polygon| {
-                slicer_ir::point_in_polygon_winding(polygon, f64::from(x), f64::from(y), 0.0)
-            })
-        })
-        .map(|band| band.quartile)
-        .max()
 }
 
 fn bridge_arithmetic_safe(bounds: BridgeBounds, point: &Point2) -> bool {

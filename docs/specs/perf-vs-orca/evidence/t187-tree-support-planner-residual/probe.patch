@@ -1,0 +1,2300 @@
+diff --git a/crates/slicer-wasm-host/src/dispatch.rs b/crates/slicer-wasm-host/src/dispatch.rs
+index 15f499ec..86e7c9ad 100644
+--- a/crates/slicer-wasm-host/src/dispatch.rs
++++ b/crates/slicer-wasm-host/src/dispatch.rs
+@@ -1537,6 +1537,7 @@ impl WasmRuntimeDispatcher {
+                 Ok((call_result, store))
+             }
+             "PrePass::SupportGeometry" => {
++                let t_all = std::time::Instant::now();
+                 let component = wasm_component.ok_or_else(|| DispatchError {
+                     module_id: module_id.to_string(),
+                     stage_id: stage_id.clone(),
+@@ -1544,6 +1545,7 @@ impl WasmRuntimeDispatcher {
+                     phase: DispatchPhase::MissingComponent,
+                     reason: "no compiled WASM component available".to_string(),
+                 })?;
++                let t_inst = std::time::Instant::now();
+                 let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                 add_wasi_to_linker(&mut linker);
+                 host::prepass_support_geometry::PrepassModule::add_to_linker::<
+@@ -1574,15 +1576,21 @@ impl WasmRuntimeDispatcher {
+                     &linker,
+                 )
+                 .map_err(mk_inst_err)?;
++                let instantiate_ns = t_inst.elapsed().as_nanos() as u64;
++                let t_mesh = std::time::Instant::now();
+                 let mesh_object_views: Vec<_> = mesh_ir
+                     .objects
+                     .iter()
+                     .map(host::object_mesh_to_wit_mesh_object_view)
+                     .collect();
++                let project_mesh_ns = t_mesh.elapsed().as_nanos() as u64;
++                let t_lp = std::time::Instant::now();
+                 let layer_plan_view = layer_plan
+                     .as_deref()
+                     .map(|lp| host::project_layer_plan_view(lp))
+                     .unwrap_or_else(|| host::prepass::LayerPlanView { layers: Vec::new() });
++                let project_layer_plan_ns = t_lp.elapsed().as_nanos() as u64;
++                let t_rs = std::time::Instant::now();
+                 let region_segmentation_view = region_map
+                     .as_deref()
+                     .map(|rm| {
+@@ -1595,12 +1603,16 @@ impl WasmRuntimeDispatcher {
+                         entries: Vec::new(),
+                         region_support_configs: Vec::new(),
+                     });
++                let project_region_seg_ns = t_rs.elapsed().as_nanos() as u64;
++                let t_sg = std::time::Instant::now();
+                 let support_geometry_view = support_geometry
+                     .as_deref()
+                     .map(|sg| host::project_support_geometry_view(sg))
+                     .unwrap_or_else(|| host::prepass::SupportGeometryView {
+                         entries: Vec::new(),
+                     });
++                let project_support_geom_ns = t_sg.elapsed().as_nanos() as u64;
++                let t_sa = std::time::Instant::now();
+                 let support_analysis_view = support_analysis
+                     .as_deref()
+                     .map(crate::marshal::in_::project_support_analysis_view)
+@@ -1611,10 +1623,16 @@ impl WasmRuntimeDispatcher {
+                         shared_settings: Vec::new(), baseline_feasible_envelope: Vec::new(), family_assignments: Vec::new(),
+                         support_territory: Vec::new(),
+                     });
++                let project_support_analysis_ns = t_sa.elapsed().as_nanos() as u64;
+                 let output = store
+                     .data_mut()
+                     .push_support_geometry_output()
+                     .map_err(mk_ctx_err)?;
++                let is_tree = module_id == "com.core.tree-support-planner";
++                if is_tree {
++                    crate::t187_probe::set_in_planner(true, store.data().profiling_enabled);
++                }
++                let t_call = std::time::Instant::now();
+                 let call_result = bindings
+                     .slicer_prepass_support_geometry_support_geometry()
+                     .call_run(
+@@ -1628,6 +1646,23 @@ impl WasmRuntimeDispatcher {
+                         own(config_handle),
+                     )
+                     .map_err(mk_call_err)?;
++                let call_run_ns = t_call.elapsed().as_nanos() as u64;
++                if is_tree {
++                    crate::t187_probe::set_in_planner(false, false);
++                }
++                let total_ns = t_all.elapsed().as_nanos() as u64;
++                crate::t187_probe::record_dispatch(
++                    module_id,
++                    instantiate_ns,
++                    project_mesh_ns,
++                    project_layer_plan_ns,
++                    project_region_seg_ns,
++                    project_support_geom_ns,
++                    project_support_analysis_ns,
++                    call_run_ns,
++                    0,
++                    total_ns,
++                );
+                 Ok((call_result, store))
+             }
+             _ => Err(DispatchError {
+@@ -2996,6 +3031,7 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
+         }
+ 
+         if stage_id == "PrePass::SupportGeometry" {
++            let t_harvest = std::time::Instant::now();
+             let ir = harvest_support_plan_ir(stage_id, module_id_str, ctx).map_err(|msg| {
+                 slicer_ir::PrepassRunnerError::FatalModule {
+                     stage_id: stage_id.clone(),
+@@ -3003,6 +3039,11 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
+                     message: msg,
+                 }
+             })?;
++            let harvest_ns = t_harvest.elapsed().as_nanos() as u64;
++            crate::t187_probe::record_dispatch(module_id_str, 0, 0, 0, 0, 0, 0, 0, harvest_ns, 0);
++            if module_id_str == "com.core.tree-support-planner" {
++                crate::t187_probe::flush_to_disk();
++            }
+             return Ok(slicer_core::PrepassStageOutput::SupportPlan(
+                 std::sync::Arc::new(ir),
+             ));
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index ba325ad9..446e30c7 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -2592,6 +2592,9 @@ fn ir_bounds_to_layer(bounds: slicer_ir::BoundingBox3) -> BoundingBox3 {
+ 
+ impl hs::Host for HostExecutionContext {
+     fn log(&mut self, level: hs::LogLevel, message: String) -> wasmtime::Result<()> {
++        if crate::t187_probe::handle_log(&message, self.host_entry_fuel, self.profiling_enabled) {
++            return Ok(());
++        }
+         let level_str = match level {
+             hs::LogLevel::Trace => "trace",
+             hs::LogLevel::Debug => "debug",
+@@ -2635,6 +2638,33 @@ impl hs::Host for HostExecutionContext {
+         clip: Vec<ExPolygon>,
+         op: hs::ClipOperation,
+     ) -> wasmtime::Result<Vec<ExPolygon>> {
++        if crate::t187_probe::in_planner() {
++            let t0 = std::time::Instant::now();
++            let ir_subject = wit_to_ir_expolygons(&subject);
++            let ir_clip = wit_to_ir_expolygons(&clip);
++            let tc = std::time::Instant::now();
++            let ir_op = ir_clip_op(op);
++            let result = slicer_core::polygon_ops::clip_polygons(&ir_subject, &ir_clip, ir_op);
++            let clip_ns = tc.elapsed().as_nanos() as u64;
++            let wit_out = ir_to_wit_expolygons(&result);
++            let total_ns = t0.elapsed().as_nanos() as u64;
++            let op_name = match ir_op {
++                slicer_core::polygon_ops::ClipOperation::Intersection => "Intersection",
++                slicer_core::polygon_ops::ClipOperation::Union => "Union",
++                slicer_core::polygon_ops::ClipOperation::Difference => "Difference",
++                slicer_core::polygon_ops::ClipOperation::Xor => "Xor",
++            };
++            crate::t187_probe::record_single_clip(
++                op_name,
++                &ir_subject,
++                &ir_clip,
++                &result,
++                total_ns,
++                total_ns.saturating_sub(clip_ns),
++                clip_ns,
++            );
++            return Ok(wit_out);
++        }
+         let ir_subject = wit_to_ir_expolygons(&subject);
+         let ir_clip = wit_to_ir_expolygons(&clip);
+         let result = slicer_core::polygon_ops::clip_polygons(&ir_subject, &ir_clip, ir_clip_op(op));
+@@ -2649,6 +2679,39 @@ impl hs::Host for HostExecutionContext {
+         arc_tolerance_mm: f32,
+         miter_limit: Option<f32>,
+     ) -> wasmtime::Result<Vec<ExPolygon>> {
++        if crate::t187_probe::in_planner() {
++            let t0 = std::time::Instant::now();
++            let ir_polys = wit_to_ir_expolygons(&polygons);
++            let tc = std::time::Instant::now();
++            let result = match miter_limit {
++                Some(miter_limit) => slicer_core::polygon_ops::offset_with_miter_limit(
++                    &ir_polys,
++                    delta_mm,
++                    ir_join(join),
++                    miter_limit,
++                    arc_tolerance_mm,
++                ),
++                None => slicer_core::polygon_ops::offset(
++                    &ir_polys,
++                    delta_mm,
++                    ir_join(join),
++                    arc_tolerance_mm,
++                ),
++            };
++            let clip_ns = tc.elapsed().as_nanos() as u64;
++            let wit_out = ir_to_wit_expolygons(&result);
++            let total_ns = t0.elapsed().as_nanos() as u64;
++            crate::t187_probe::record_single_offset(
++                &ir_polys,
++                &result,
++                delta_mm,
++                miter_limit,
++                total_ns,
++                total_ns.saturating_sub(clip_ns),
++                clip_ns,
++            );
++            return Ok(wit_out);
++        }
+         let ir_polys = wit_to_ir_expolygons(&polygons);
+         let result = match miter_limit {
+             Some(miter_limit) => slicer_core::polygon_ops::offset_with_miter_limit(
+@@ -2708,6 +2771,68 @@ impl hs::Host for HostExecutionContext {
+         &mut self,
+         requests: Vec<hs::OffsetRequest>,
+     ) -> wasmtime::Result<Vec<Vec<ExPolygon>>> {
++        if crate::t187_probe::in_planner() {
++            let t_batch = std::time::Instant::now();
++            let (pairs, _mode) = crate::batch::map_batch(
++                &requests,
++                |r| expolygon_vertex_count(&r.polygons),
++                |r| {
++                    let tw = std::time::Instant::now();
++                    let ir_polys = wit_to_ir_expolygons(&r.polygons);
++                    let tc = std::time::Instant::now();
++                    let result = match r.miter_limit {
++                        Some(miter_limit) => slicer_core::polygon_ops::offset_with_miter_limit(
++                            &ir_polys,
++                            r.delta_mm,
++                            ir_join(r.join),
++                            miter_limit,
++                            r.arc_tolerance_mm,
++                        ),
++                        None => slicer_core::polygon_ops::offset(
++                            &ir_polys,
++                            r.delta_mm,
++                            ir_join(r.join),
++                            r.arc_tolerance_mm,
++                        ),
++                    };
++                    let clip_ns = tc.elapsed().as_nanos() as u64;
++                    let wit_out = ir_to_wit_expolygons(&result);
++                    let worker_ns = tw.elapsed().as_nanos() as u64;
++                    let (ip, iv) = crate::t187_probe::count_expolys(&ir_polys);
++                    let (op, ov) = crate::t187_probe::count_expolys(&result);
++                    let key = crate::t187_probe::hash_expolys(
++                        &ir_polys,
++                        u64::from(r.delta_mm.to_bits()),
++                        u64::from(r.miter_limit.map_or(u32::MAX, f32::to_bits)),
++                    );
++                    (
++                        wit_out,
++                        crate::t187_probe::BatchReqStat {
++                            worker_ns,
++                            wit_conv_ns: worker_ns.saturating_sub(clip_ns),
++                            clipper_ns: clip_ns,
++                            in_polys: ip,
++                            in_verts: iv,
++                            out_polys: op,
++                            out_verts: ov,
++                            content_key: key,
++                            phase5_exact_eq: None,
++                            phase5_area_diff_u2: 0.0,
++                            phase5_emptied: false,
++                        },
++                    )
++                },
++            );
++            let batch_wall_ns = t_batch.elapsed().as_nanos() as u64;
++            let mut results = Vec::with_capacity(pairs.len());
++            let mut stats = Vec::with_capacity(pairs.len());
++            for (w, st) in pairs {
++                results.push(w);
++                stats.push(st);
++            }
++            crate::t187_probe::record_batch("offset_batch", batch_wall_ns, &stats);
++            return Ok(results);
++        }
+         let (results, _mode) = crate::batch::map_batch(
+             &requests,
+             |r| expolygon_vertex_count(&r.polygons),
+@@ -2738,6 +2863,68 @@ impl hs::Host for HostExecutionContext {
+         &mut self,
+         requests: Vec<hs::ClipRequest>,
+     ) -> wasmtime::Result<Vec<Vec<ExPolygon>>> {
++        if crate::t187_probe::in_planner() {
++            let check_p5 = crate::t187_probe::active_site_is_phase5();
++            let t_batch = std::time::Instant::now();
++            let (pairs, _mode) = crate::batch::map_batch(
++                &requests,
++                |r| expolygon_vertex_count(&r.subject) + expolygon_vertex_count(&r.clip),
++                |r| {
++                    let tw = std::time::Instant::now();
++                    let ir_subject = wit_to_ir_expolygons(&r.subject);
++                    let ir_clip = wit_to_ir_expolygons(&r.clip);
++                    let op = ir_clip_op(r.op);
++                    let tc = std::time::Instant::now();
++                    let result = if op == slicer_core::polygon_ops::ClipOperation::Union
++                        && ir_subject.len() + ir_clip.len()
++                            > slicer_core::polygon_ops::DEFAULT_SPATIAL_UNION_CHUNK_SIZE
++                    {
++                        slicer_core::polygon_ops::union_spatial_tree(&ir_subject, &ir_clip)
++                    } else {
++                        slicer_core::polygon_ops::clip_polygons(&ir_subject, &ir_clip, op)
++                    };
++                    let clip_ns = tc.elapsed().as_nanos() as u64;
++                    let wit_out = ir_to_wit_expolygons(&result);
++                    let worker_ns = tw.elapsed().as_nanos() as u64;
++                    let (sp, sv) = crate::t187_probe::count_expolys(&ir_subject);
++                    let (cp, cv) = crate::t187_probe::count_expolys(&ir_clip);
++                    let (op_p, ov) = crate::t187_probe::count_expolys(&result);
++                    let h1 = crate::t187_probe::hash_expolys(&ir_subject, 1, 0);
++                    let key = crate::t187_probe::hash_expolys(&ir_clip, 2, h1);
++                    let (p5_eq, p5_area, p5_emp) = if check_p5 {
++                        let (eq, ad, emp) = crate::t187_probe::phase5_check(&ir_subject, &result);
++                        (Some(eq), ad, emp)
++                    } else {
++                        (None, 0.0, false)
++                    };
++                    (
++                        wit_out,
++                        crate::t187_probe::BatchReqStat {
++                            worker_ns,
++                            wit_conv_ns: worker_ns.saturating_sub(clip_ns),
++                            clipper_ns: clip_ns,
++                            in_polys: sp + cp,
++                            in_verts: sv + cv,
++                            out_polys: op_p,
++                            out_verts: ov,
++                            content_key: key,
++                            phase5_exact_eq: p5_eq,
++                            phase5_area_diff_u2: p5_area,
++                            phase5_emptied: p5_emp,
++                        },
++                    )
++                },
++            );
++            let batch_wall_ns = t_batch.elapsed().as_nanos() as u64;
++            let mut results = Vec::with_capacity(pairs.len());
++            let mut stats = Vec::with_capacity(pairs.len());
++            for (w, st) in pairs {
++                results.push(w);
++                stats.push(st);
++            }
++            crate::t187_probe::record_batch("clip_batch", batch_wall_ns, &stats);
++            return Ok(results);
++        }
+         let (results, _mode) = crate::batch::map_batch(
+             &requests,
+             |r| expolygon_vertex_count(&r.subject) + expolygon_vertex_count(&r.clip),
+diff --git a/crates/slicer-wasm-host/src/lib.rs b/crates/slicer-wasm-host/src/lib.rs
+index 1d8ccae7..586b0a0b 100644
+--- a/crates/slicer-wasm-host/src/lib.rs
++++ b/crates/slicer-wasm-host/src/lib.rs
+@@ -27,6 +27,7 @@ pub mod selection;
+ pub mod support_aggregation;
+ mod support_overlap;
+ pub mod support_territory;
++pub mod t187_probe;
+ pub mod traits;
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/modules/core-modules/tree-support-planner/src/lib.rs b/modules/core-modules/tree-support-planner/src/lib.rs
+index aa397096..3519b12d 100644
+--- a/modules/core-modules/tree-support-planner/src/lib.rs
++++ b/modules/core-modules/tree-support-planner/src/lib.rs
+@@ -67,6 +67,181 @@
+ 
+ mod collision_tile_index;
+ 
++#[allow(missing_docs, dead_code)]
++mod t187_probe {
++    use std::cell::{Cell, RefCell};
++    use std::collections::{BTreeMap, HashSet};
++
++    thread_local! {
++        static HOT_FUEL: Cell<bool> = const { Cell::new(false) };
++        static C_EMIT_ACTIVE_NODES: Cell<u64> = const { Cell::new(0) };
++        static C_EMIT_ANCESTOR_STEPS: Cell<u64> = const { Cell::new(0) };
++        static C_EMIT_SKEL_POINTS: Cell<u64> = const { Cell::new(0) };
++        static C_EMIT_SKEL_ITERS: Cell<u64> = const { Cell::new(0) };
++        static C_EMIT_SWALLOWED: Cell<u64> = const { Cell::new(0) };
++        static C_LINE_CUT_CALLS: Cell<u64> = const { Cell::new(0) };
++        static C_LINE_CUT_HITS: Cell<u64> = const { Cell::new(0) };
++        static C_MOVE_OUT_CALLS: Cell<u64> = const { Cell::new(0) };
++        static C_MOVE_OUT_EARLY: Cell<u64> = const { Cell::new(0) };
++        static C_MOVE_OUT_OFFSETS: Cell<u64> = const { Cell::new(0) };
++        static C_PIP_CALLS: Cell<u64> = const { Cell::new(0) };
++        static C_PROJ_CALLS: Cell<u64> = const { Cell::new(0) };
++        static C_TV_COLL_QUERIES: Cell<u64> = const { Cell::new(0) };
++        static C_TV_AVOID_QUERIES: Cell<u64> = const { Cell::new(0) };
++        static COUNTERS: RefCell<BTreeMap<&'static str, u64>> = const { RefCell::new(BTreeMap::new()) };
++        static COLLISION_QUERIED: RefCell<HashSet<(i64, usize)>> = RefCell::new(HashSet::new());
++        static AVOIDANCE_QUERIED: RefCell<HashSet<(i64, usize)>> = RefCell::new(HashSet::new());
++        static COLLISION_MAX_LAYER: RefCell<BTreeMap<i64, usize>> = const { RefCell::new(BTreeMap::new()) };
++        static AVOIDANCE_MAX_LAYER: RefCell<BTreeMap<i64, usize>> = const { RefCell::new(BTreeMap::new()) };
++    }
++
++    pub fn init() {
++        let hot = slicer_sdk::profile::register_scope("__t187_hot__").is_some();
++        HOT_FUEL.with(|c| c.set(hot));
++        C_EMIT_ACTIVE_NODES.with(|c| c.set(0));
++        C_EMIT_ANCESTOR_STEPS.with(|c| c.set(0));
++        C_EMIT_SKEL_POINTS.with(|c| c.set(0));
++        C_EMIT_SKEL_ITERS.with(|c| c.set(0));
++        C_EMIT_SWALLOWED.with(|c| c.set(0));
++        C_LINE_CUT_CALLS.with(|c| c.set(0));
++        C_LINE_CUT_HITS.with(|c| c.set(0));
++        C_MOVE_OUT_CALLS.with(|c| c.set(0));
++        C_MOVE_OUT_EARLY.with(|c| c.set(0));
++        C_MOVE_OUT_OFFSETS.with(|c| c.set(0));
++        C_PIP_CALLS.with(|c| c.set(0));
++        C_PROJ_CALLS.with(|c| c.set(0));
++        C_TV_COLL_QUERIES.with(|c| c.set(0));
++        C_TV_AVOID_QUERIES.with(|c| c.set(0));
++        COUNTERS.with(|m| m.borrow_mut().clear());
++        COLLISION_QUERIED.with(|s| s.borrow_mut().clear());
++        AVOIDANCE_QUERIED.with(|s| s.borrow_mut().clear());
++        COLLISION_MAX_LAYER.with(|m| m.borrow_mut().clear());
++        AVOIDANCE_MAX_LAYER.with(|m| m.borrow_mut().clear());
++    }
++
++    #[inline]
++    pub fn hot_fuel() -> bool {
++        HOT_FUEL.with(Cell::get)
++    }
++
++    pub fn site(name: &str) {
++        slicer_sdk::host::log_info(&format!("__T187__:SITE:{name}"));
++    }
++
++    pub struct ScopeGuard {
++        name: &'static str,
++        active: bool,
++    }
++
++    pub fn scope(name: &'static str) -> ScopeGuard {
++        slicer_sdk::host::log_info(&format!("__T187__:ENTER:{name}"));
++        ScopeGuard { name, active: true }
++    }
++
++    #[inline]
++    pub fn hot_scope(name: &'static str) -> ScopeGuard {
++        if hot_fuel() {
++            slicer_sdk::host::log_info(&format!("__T187__:ENTER:{name}"));
++            ScopeGuard { name, active: true }
++        } else {
++            ScopeGuard {
++                name,
++                active: false,
++            }
++        }
++    }
++
++    impl Drop for ScopeGuard {
++        fn drop(&mut self) {
++            if self.active {
++                slicer_sdk::host::log_info(&format!("__T187__:EXIT:{}", self.name));
++            }
++        }
++    }
++
++    #[inline]
++    pub fn add(key: &'static str, delta: u64) {
++        match key {
++            "emit_active_nodes_total" => C_EMIT_ACTIVE_NODES.with(|c| c.set(c.get() + delta)),
++            "emit_ancestor_walk_steps" => C_EMIT_ANCESTOR_STEPS.with(|c| c.set(c.get() + delta)),
++            "emit_skeleton_points" => C_EMIT_SKEL_POINTS.with(|c| c.set(c.get() + delta)),
++            "emit_skeleton_inner_iters" => C_EMIT_SKEL_ITERS.with(|c| c.set(c.get() + delta)),
++            "emit_swallowed_calls" => C_EMIT_SWALLOWED.with(|c| c.set(c.get() + delta)),
++            "line_cut_calls" => C_LINE_CUT_CALLS.with(|c| c.set(c.get() + delta)),
++            "line_cut_cache_hits" => C_LINE_CUT_HITS.with(|c| c.set(c.get() + delta)),
++            "move_out_total_calls" => C_MOVE_OUT_CALLS.with(|c| c.set(c.get() + delta)),
++            "move_out_early_outside" => C_MOVE_OUT_EARLY.with(|c| c.set(c.get() + delta)),
++            "move_out_offset_calls" => C_MOVE_OUT_OFFSETS.with(|c| c.set(c.get() + delta)),
++            "point_in_any_expoly_calls" => C_PIP_CALLS.with(|c| c.set(c.get() + delta)),
++            "projection_onto_calls" => C_PROJ_CALLS.with(|c| c.set(c.get() + delta)),
++            _ => COUNTERS.with(|m| {
++                *m.borrow_mut().entry(key).or_insert(0) += delta;
++            }),
++        }
++    }
++
++    #[inline]
++    pub fn record_collision_query(rkey: i64, layer: usize) {
++        C_TV_COLL_QUERIES.with(|c| c.set(c.get() + 1));
++        COLLISION_QUERIED.with(|s| {
++            s.borrow_mut().insert((rkey, layer));
++        });
++        COLLISION_MAX_LAYER.with(|m| {
++            let mut map = m.borrow_mut();
++            let e = map.entry(rkey).or_insert(0);
++            if layer > *e {
++                *e = layer;
++            }
++        });
++    }
++
++    #[inline]
++    pub fn record_avoidance_query(rkey: i64, layer: usize) {
++        C_TV_AVOID_QUERIES.with(|c| c.set(c.get() + 1));
++        AVOIDANCE_QUERIED.with(|s| {
++            s.borrow_mut().insert((rkey, layer));
++        });
++        AVOIDANCE_MAX_LAYER.with(|m| {
++            let mut map = m.borrow_mut();
++            let e = map.entry(rkey).or_insert(0);
++            if layer > *e {
++                *e = layer;
++            }
++        });
++    }
++
++    pub fn flush_counters() {
++        let cq = COLLISION_QUERIED.with(|s| s.borrow().len() as u64);
++        let aq = AVOIDANCE_QUERIED.with(|s| s.borrow().len() as u64);
++        let cmax_sum: u64 = COLLISION_MAX_LAYER.with(|m| m.borrow().values().map(|&v| v as u64 + 1).sum());
++        let amax_sum: u64 = AVOIDANCE_MAX_LAYER.with(|m| m.borrow().values().map(|&v| v as u64 + 1).sum());
++        COUNTERS.with(|m| {
++            let mut map = m.borrow_mut();
++            map.insert("emit_active_nodes_total", C_EMIT_ACTIVE_NODES.with(Cell::get));
++            map.insert("emit_ancestor_walk_steps", C_EMIT_ANCESTOR_STEPS.with(Cell::get));
++            map.insert("emit_skeleton_points", C_EMIT_SKEL_POINTS.with(Cell::get));
++            map.insert("emit_skeleton_inner_iters", C_EMIT_SKEL_ITERS.with(Cell::get));
++            map.insert("emit_swallowed_calls", C_EMIT_SWALLOWED.with(Cell::get));
++            map.insert("line_cut_calls", C_LINE_CUT_CALLS.with(Cell::get));
++            map.insert("line_cut_cache_hits", C_LINE_CUT_HITS.with(Cell::get));
++            map.insert("move_out_total_calls", C_MOVE_OUT_CALLS.with(Cell::get));
++            map.insert("move_out_early_outside", C_MOVE_OUT_EARLY.with(Cell::get));
++            map.insert("move_out_offset_calls", C_MOVE_OUT_OFFSETS.with(Cell::get));
++            map.insert("point_in_any_expoly_calls", C_PIP_CALLS.with(Cell::get));
++            map.insert("projection_onto_calls", C_PROJ_CALLS.with(Cell::get));
++            map.insert("tv_collision_queries", C_TV_COLL_QUERIES.with(Cell::get));
++            map.insert("tv_avoidance_queries", C_TV_AVOID_QUERIES.with(Cell::get));
++            map.insert("tv_collision_distinct_layers_queried", cq);
++            map.insert("tv_avoidance_distinct_layers_queried", aq);
++            map.insert("tv_collision_max_layer_plus1_sum", cmax_sum);
++            map.insert("tv_avoidance_max_layer_plus1_sum", amax_sum);
++            for (k, v) in map.iter() {
++                slicer_sdk::host::log_info(&format!("__T187__:COUNTER:{k}:{v}"));
++            }
++        });
++    }
++}
++
+ use collision_tile_index::{
+     count_expolygon_points, CollisionTileIndex, WindowedCollision, DEFAULT_COLLISION_TILE_UNITS,
+     MIN_INDEXED_COLLISION_VERTICES,
+@@ -602,6 +777,7 @@ fn contact_stats(positions: &[(f32, f32)], nonempty_layers: usize) -> ContactSta
+ /// truncation would otherwise bias every chain toward its head. The kernel,
+ /// the iteration count, and the commit rules are canonical.
+ fn smooth_nodes(arena: &mut NodeArena, layer_records: &[LayerRecord], support_line_width_mm: f32) {
++    let _g = t187_probe::scope("smooth_nodes");
+     use std::collections::HashSet;
+     // Canonical `float max_move = scale_(m_object_config->support_line_width / 2)`.
+     // 1 unit = 100 nm here, so `mm_to_units` is the local `scale_`.
+@@ -765,6 +941,7 @@ fn node_ellipse(
+     branch_radius_units: f64,
+     square_support: bool,
+ ) -> Option<ExPolygon> {
++    let _g = t187_probe::hot_scope("fuel::node_ellipse");
+     if base_circle.len() < 3 || scale <= 0.0 || branch_radius_units <= 0.0 {
+         return None;
+     }
+@@ -824,6 +1001,7 @@ fn inflate_model_occupancy(polys: &[ExPolygon], xy_distance_mm: f32) -> Vec<ExPo
+     if polys.is_empty() || xy_distance_mm <= 0.0 {
+         return polys.to_vec();
+     }
++    t187_probe::site("emit_occupancy_memo_miss");
+     host::offset_polygons(polys, xy_distance_mm, OffsetJoinType::Miter, 0.0)
+ }
+ 
+@@ -886,15 +1064,18 @@ fn inflate_model_occupancy_memoized(
+     polys: Vec<ExPolygon>,
+     xy_distance_mm: f32,
+ ) -> Vec<ExPolygon> {
++    let _g = t187_probe::hot_scope("fuel::occupancy_memo_lookup");
+     if polys.is_empty() || xy_distance_mm <= 0.0 {
+         return polys;
+     }
+     let key = occupancy_offset_key(&polys, xy_distance_mm);
+     if let Some(entry) = memo.get(&key) {
+         if entry.payload == polys {
++            t187_probe::add("occupancy_memo_hits", 1);
+             return entry.inflated.clone();
+         }
+     }
++    t187_probe::add("occupancy_memo_misses", 1);
+     let inflated = inflate_model_occupancy(&polys, xy_distance_mm);
+     memo.insert(
+         key,
+@@ -975,6 +1156,7 @@ fn prefetch_occupancy_memo(
+     object_id: &str,
+     xy_distance_mm: f32,
+ ) {
++    let _g = t187_probe::scope("emit_prefetch_occupancy");
+     if xy_distance_mm <= 0.0 {
+         return;
+     }
+@@ -982,11 +1164,6 @@ fn prefetch_occupancy_memo(
+     let mut keys: Vec<u64> = Vec::with_capacity(records.len());
+     for record in records {
+         let global_layer_index = layer_plan.layers[record.layer_rev].global_layer_index;
+-        // Both planes the role carve uses: the midpoint payload (canonical
+-        // `compute_slice_z`) and the print plane the host gate validates
+-        // (ticket 148). Each is an independent offset request; an empty payload
+-        // is not a host call in either path, so it is not a batch request
+-        // either.
+         for payload in [
+             layer_occupancy_payload(support_analysis, object_id, global_layer_index),
+             print_plane_occupancy_payload(support_analysis, object_id, global_layer_index),
+@@ -1011,6 +1188,7 @@ fn prefetch_occupancy_memo(
+             miter_limit: None,
+         })
+         .collect();
++    t187_probe::site("emit_prefetch_occupancy");
+     let inflated = slicer_sdk::host_batch::offset_polygons_batch(&requests);
+     for ((key, payload), inflated) in keys.into_iter().zip(payloads).zip(inflated) {
+         memo.insert(key, OccupancyMemoEntry { payload, inflated });
+@@ -1375,6 +1553,7 @@ fn run_clip_batches(requests: &[ClipRequest]) -> Vec<Vec<ExPolygon>> {
+ /// 6. the body-minus-interfaces differences, one round per cut role,
+ /// 7. the territory intersect for modifier sub-regions.
+ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::SupportPlanRoleRegion>> {
++    let _g_all = t187_probe::scope("emit_build_roles_batched");
+     let mut carved: Vec<[Vec<ExPolygon>; ROLE_COUNT]> = inputs
+         .iter()
+         .map(|_| std::array::from_fn(|_| Vec::new()))
+@@ -1396,82 +1575,105 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+         .iter()
+         .map(|_| std::array::from_fn(|_| Vec::new()))
+         .collect();
+-    for (i, input) in inputs.iter().enumerate() {
+-        let collision_bbox = expolygons_bbox(&input.collision_polys);
+-        let use_tile_index =
+-            count_expolygon_points(&input.collision_polys) >= MIN_INDEXED_COLLISION_VERTICES;
+-        let mut tile_index: Option<Option<CollisionTileIndex<'_>>> = None;
+-        for role in 0..ROLE_COUNT {
+-            let regions = role_regions(input, role);
+-            if input.collision_polys.is_empty() || regions.is_empty() {
+-                carved[i][role] = regions;
+-                continue;
+-            }
+-            let mut slots = Vec::with_capacity(regions.len());
+-            for region in regions {
+-                let rbbox = region_bbox(&region);
+-                let canonical = region_has_canonical_winding(&region);
+-                if canonical && bboxes_disjoint(rbbox, collision_bbox) {
+-                    gated_any[i][role] = true;
+-                    slots.push(CarveSlot::Kept(region));
++    {
++        let _g_p1g = t187_probe::scope("br_phase1_guest");
++        for (i, input) in inputs.iter().enumerate() {
++            let collision_bbox = expolygons_bbox(&input.collision_polys);
++            let use_tile_index =
++                count_expolygon_points(&input.collision_polys) >= MIN_INDEXED_COLLISION_VERTICES;
++            let mut tile_index: Option<Option<CollisionTileIndex<'_>>> = None;
++            for role in 0..ROLE_COUNT {
++                let regions = role_regions(input, role);
++                if input.collision_polys.is_empty() || regions.is_empty() {
++                    carved[i][role] = regions;
+                     continue;
+                 }
+-                if use_tile_index {
+-                    if let Some(rb) = rbbox {
+-                        let idx_opt = tile_index.get_or_insert_with(|| {
+-                            CollisionTileIndex::build(
+-                                &input.collision_polys,
+-                                DEFAULT_COLLISION_TILE_UNITS,
+-                            )
+-                        });
+-                        if let Some(idx) = idx_opt.as_mut() {
+-                            match idx.window_for_bbox(rb) {
+-                                WindowedCollision::Empty => {
+-                                    if canonical {
+-                                        gated_any[i][role] = true;
+-                                        slots.push(CarveSlot::Kept(region));
++                let mut slots = Vec::with_capacity(regions.len());
++                for region in regions {
++                    let (rbbox, canonical) = {
++                        let _gh = t187_probe::hot_scope("fuel::region_bbox_and_winding");
++                        (region_bbox(&region), region_has_canonical_winding(&region))
++                    };
++                    if canonical && bboxes_disjoint(rbbox, collision_bbox) {
++                        t187_probe::add("p1_bbox_disjoint_hits", 1);
++                        gated_any[i][role] = true;
++                        slots.push(CarveSlot::Kept(region));
++                        continue;
++                    }
++                    if use_tile_index {
++                        if let Some(rb) = rbbox {
++                            let idx_opt = tile_index.get_or_insert_with(|| {
++                                let _gh = t187_probe::hot_scope("fuel::tile_index_build");
++                                t187_probe::add("tile_index_builds", 1);
++                                CollisionTileIndex::build(
++                                    &input.collision_polys,
++                                    DEFAULT_COLLISION_TILE_UNITS,
++                                )
++                            });
++                            if let Some(idx) = idx_opt.as_mut() {
++                                let win = {
++                                    let _gh = t187_probe::hot_scope("fuel::tile_index_query");
++                                    idx.window_for_bbox(rb)
++                                };
++                                match win {
++                                    WindowedCollision::Empty => {
++                                        if canonical {
++                                            gated_any[i][role] = true;
++                                            slots.push(CarveSlot::Kept(region));
++                                            continue;
++                                        }
++                                        slots.push(CarveSlot::Clip(carve_requests.len()));
++                                        carve_requests.push(ClipRequest {
++                                            subject: vec![region],
++                                            clip: Vec::new(),
++                                            op: ClipOperation::Difference,
++                                        });
++                                        continue;
++                                    }
++                                    WindowedCollision::Covered => {
++                                        continue;
++                                    }
++                                    WindowedCollision::Polys(windowed_clip) => {
++                                        slots.push(CarveSlot::Clip(carve_requests.len()));
++                                        carve_requests.push(ClipRequest {
++                                            subject: vec![region],
++                                            clip: windowed_clip,
++                                            op: ClipOperation::Difference,
++                                        });
+                                         continue;
+                                     }
+-                                    slots.push(CarveSlot::Clip(carve_requests.len()));
+-                                    carve_requests.push(ClipRequest {
+-                                        subject: vec![region],
+-                                        clip: Vec::new(),
+-                                        op: ClipOperation::Difference,
+-                                    });
+-                                    continue;
+-                                }
+-                                WindowedCollision::Covered => {
+-                                    // Subject lies strictly inside collision_polys:
+-                                    // Difference is provably empty (`largest_part == None`).
+-                                    continue;
+-                                }
+-                                WindowedCollision::Polys(windowed_clip) => {
+-                                    slots.push(CarveSlot::Clip(carve_requests.len()));
+-                                    carve_requests.push(ClipRequest {
+-                                        subject: vec![region],
+-                                        clip: windowed_clip,
+-                                        op: ClipOperation::Difference,
+-                                    });
+-                                    continue;
+                                 }
+                             }
+                         }
+                     }
++                    slots.push(CarveSlot::Clip(carve_requests.len()));
++                    carve_requests.push(ClipRequest {
++                        subject: vec![region],
++                        clip: input.collision_polys.clone(),
++                        op: ClipOperation::Difference,
++                    });
+                 }
+-                slots.push(CarveSlot::Clip(carve_requests.len()));
+-                carve_requests.push(ClipRequest {
+-                    subject: vec![region],
+-                    clip: input.collision_polys.clone(),
+-                    op: ClipOperation::Difference,
+-                });
++                slot_lists[i][role] = slots;
++            }
++            if let Some(Some(idx)) = tile_index {
++                let st = idx.stats();
++                t187_probe::add("tile_queries", st.queries);
++                t187_probe::add("tile_cache_hits", st.cache_hits);
++                t187_probe::add("tile_empty_hits", st.empty_hits);
++                t187_probe::add("tile_covered_hits", st.covered_hits);
++                t187_probe::add("tile_poly_hits", st.poly_hits);
++                t187_probe::add("tile_orig_pts", st.original_clip_points);
++                t187_probe::add("tile_win_pts", st.windowed_clip_points);
+             }
+-            slot_lists[i][role] = slots;
+         }
+     }
+-    let mut carve_results: Vec<Option<ExPolygon>> = run_clip_batches(&carve_requests)
+-        .into_iter()
+-        .map(largest_part)
+-        .collect();
++    let mut carve_results: Vec<Option<ExPolygon>> = {
++        let _g_p1b = t187_probe::scope("br_phase1_batch");
++        t187_probe::site("br_phase1_carve");
++        let raw = run_clip_batches(&carve_requests);
++        let _g_lp = t187_probe::hot_scope("fuel::largest_part");
++        raw.into_iter().map(largest_part).collect()
++    };
+     for i in 0..inputs.len() {
+         for role in 0..ROLE_COUNT {
+             for slot in std::mem::take(&mut slot_lists[i][role]) {
+@@ -1488,136 +1690,158 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+         }
+     }
+ 
+-    // Phase 2: the lone-gated repair. `carve_emitted_regions_with_bbox_gate`
+-    // re-clips a sole gated survivor under an active simplify tolerance because
+-    // Douglas–Peucker's anchor is start-vertex sensitive.
+-    let mut lone_slots: Vec<(usize, usize)> = Vec::new();
+-    let mut lone_requests: Vec<ClipRequest> = Vec::new();
+-    for i in 0..inputs.len() {
+-        for role in 0..ROLE_COUNT {
+-            if simplify[i][role].is_some() && gated_any[i][role] && carved[i][role].len() == 1 {
+-                lone_slots.push((i, role));
+-                lone_requests.push(ClipRequest {
+-                    subject: carved[i][role].clone(),
+-                    clip: inputs[i].collision_polys.clone(),
+-                    op: ClipOperation::Difference,
+-                });
++    // Phase 2: the lone-gated repair.
++    {
++        let _g_p2 = t187_probe::scope("br_phase2_lone");
++        let mut lone_slots: Vec<(usize, usize)> = Vec::new();
++        let mut lone_requests: Vec<ClipRequest> = Vec::new();
++        for i in 0..inputs.len() {
++            for role in 0..ROLE_COUNT {
++                if simplify[i][role].is_some() && gated_any[i][role] && carved[i][role].len() == 1 {
++                    lone_slots.push((i, role));
++                    lone_requests.push(ClipRequest {
++                        subject: carved[i][role].clone(),
++                        clip: inputs[i].collision_polys.clone(),
++                        op: ClipOperation::Difference,
++                    });
++                }
+             }
+         }
+-    }
+-    let lone_results = run_clip_batches(&lone_requests);
+-    for ((i, role), result) in lone_slots.into_iter().zip(lone_results) {
+-        carved[i][role] = largest_part(result).into_iter().collect();
++        t187_probe::site("br_phase2_lone");
++        let lone_results = run_clip_batches(&lone_requests);
++        for ((i, role), result) in lone_slots.into_iter().zip(lone_results) {
++            carved[i][role] = largest_part(result).into_iter().collect();
++        }
+     }
+ 
+     // Phase 3: one union per role that carries more than one region.
+-    let mut union_slots: Vec<(usize, usize)> = Vec::new();
+-    let mut union_requests: Vec<ClipRequest> = Vec::new();
+-    for i in 0..inputs.len() {
+-        for role in 0..ROLE_COUNT {
+-            if carved[i][role].len() <= 1 {
+-                continue;
++    {
++        let _g_p3 = t187_probe::scope("br_phase3_union");
++        let mut union_slots: Vec<(usize, usize)> = Vec::new();
++        let mut union_requests: Vec<ClipRequest> = Vec::new();
++        for i in 0..inputs.len() {
++            for role in 0..ROLE_COUNT {
++                if carved[i][role].len() <= 1 {
++                    continue;
++                }
++                let (head, tail) = carved[i][role].split_at(1);
++                union_requests.push(ClipRequest {
++                    subject: head.to_vec(),
++                    clip: tail.to_vec(),
++                    op: ClipOperation::Union,
++                });
++                union_slots.push((i, role));
+             }
+-            let (head, tail) = carved[i][role].split_at(1);
+-            union_requests.push(ClipRequest {
+-                subject: head.to_vec(),
+-                clip: tail.to_vec(),
+-                op: ClipOperation::Union,
+-            });
+-            union_slots.push((i, role));
+         }
+-    }
+-    let union_results = run_clip_batches(&union_requests);
+-    for ((i, role), result) in union_slots.into_iter().zip(union_results) {
+-        carved[i][role] = result;
++        t187_probe::site("br_phase3_union");
++        let union_results = run_clip_batches(&union_requests);
++        for ((i, role), result) in union_slots.into_iter().zip(union_results) {
++            carved[i][role] = result;
++        }
+     }
+ 
+     // Phase 4: in-guest simplification, exactly as the serial closure runs it.
+-    for i in 0..inputs.len() {
+-        for role in 0..ROLE_COUNT {
+-            if let Some(tolerance) = simplify[i][role] {
+-                carved[i][role] = expolygons_simplify(&carved[i][role], tolerance);
++    {
++        let _g_p4 = t187_probe::scope("br_phase4_simplify");
++        for i in 0..inputs.len() {
++            for role in 0..ROLE_COUNT {
++                if let Some(tolerance) = simplify[i][role] {
++                    carved[i][role] = expolygons_simplify(&carved[i][role], tolerance);
++                }
+             }
+         }
+     }
+ 
+     // Phase 5: the set-wide difference against the collision set.
+-    let mut set_slots: Vec<(usize, usize)> = Vec::new();
+-    let mut set_requests: Vec<ClipRequest> = Vec::new();
+-    for i in 0..inputs.len() {
+-        if inputs[i].collision_polys.is_empty() {
+-            continue;
+-        }
+-        for role in 0..ROLE_COUNT {
+-            if carved[i][role].is_empty() {
++    {
++        let _g_p5 = t187_probe::scope("br_phase5_set_diff");
++        let mut set_slots: Vec<(usize, usize)> = Vec::new();
++        let mut set_requests: Vec<ClipRequest> = Vec::new();
++        for i in 0..inputs.len() {
++            if inputs[i].collision_polys.is_empty() {
+                 continue;
+             }
+-            set_requests.push(ClipRequest {
+-                subject: carved[i][role].clone(),
+-                clip: inputs[i].collision_polys.clone(),
+-                op: ClipOperation::Difference,
+-            });
+-            set_slots.push((i, role));
++            for role in 0..ROLE_COUNT {
++                if carved[i][role].is_empty() {
++                    continue;
++                }
++                set_requests.push(ClipRequest {
++                    subject: carved[i][role].clone(),
++                    clip: inputs[i].collision_polys.clone(),
++                    op: ClipOperation::Difference,
++                });
++                set_slots.push((i, role));
++            }
++        }
++        t187_probe::site("br_phase5_set_diff");
++        let set_results = run_clip_batches(&set_requests);
++        for ((i, role), result) in set_slots.into_iter().zip(set_results) {
++            carved[i][role] = result;
+         }
+-    }
+-    let set_results = run_clip_batches(&set_requests);
+-    for ((i, role), result) in set_slots.into_iter().zip(set_results) {
+-        carved[i][role] = result;
+     }
+ 
+     // Phase 6: subtract the interface geometry out of the body, one round per
+     // cut role. Each item's own sequence is preserved; items are independent.
+-    let mut body: Vec<Vec<ExPolygon>> = (0..inputs.len())
+-        .map(|i| std::mem::take(&mut carved[i][ROLE_BODY]))
+-        .collect();
+-    for cut_role in [ROLE_ROOF, ROLE_BASE, ROLE_FLOOR] {
+-        let mut slots: Vec<usize> = Vec::new();
+-        let mut requests: Vec<ClipRequest> = Vec::new();
+-        for i in 0..inputs.len() {
+-            if body[i].is_empty() || carved[i][cut_role].is_empty() {
+-                continue;
++    {
++        let _g_p6 = t187_probe::scope("br_phase6_iface_diff");
++        let mut body: Vec<Vec<ExPolygon>> = (0..inputs.len())
++            .map(|i| std::mem::take(&mut carved[i][ROLE_BODY]))
++            .collect();
++        for cut_role in [ROLE_ROOF, ROLE_BASE, ROLE_FLOOR] {
++            let mut slots: Vec<usize> = Vec::new();
++            let mut requests: Vec<ClipRequest> = Vec::new();
++            for i in 0..inputs.len() {
++                if body[i].is_empty() || carved[i][cut_role].is_empty() {
++                    continue;
++                }
++                requests.push(ClipRequest {
++                    subject: body[i].clone(),
++                    clip: carved[i][cut_role].clone(),
++                    op: ClipOperation::Difference,
++                });
++                slots.push(i);
++            }
++            t187_probe::site("br_phase6_iface_diff");
++            let results = run_clip_batches(&requests);
++            for (i, result) in slots.into_iter().zip(results) {
++                body[i] = result;
+             }
+-            requests.push(ClipRequest {
+-                subject: body[i].clone(),
+-                clip: carved[i][cut_role].clone(),
+-                op: ClipOperation::Difference,
+-            });
+-            slots.push(i);
+         }
+-        let results = run_clip_batches(&requests);
+-        for (i, result) in slots.into_iter().zip(results) {
+-            body[i] = result;
++        for i in 0..inputs.len() {
++            carved[i][ROLE_BODY] = std::mem::take(&mut body[i]);
+         }
+     }
+-    for i in 0..inputs.len() {
+-        carved[i][ROLE_BODY] = std::mem::take(&mut body[i]);
+-    }
+ 
+     // Phase 7: the territory intersect for modifier sub-regions.
+-    let mut territory_slots: Vec<(usize, usize)> = Vec::new();
+-    let mut territory_requests: Vec<ClipRequest> = Vec::new();
+-    for i in 0..inputs.len() {
+-        let Some(own) = &inputs[i].own_territory else {
+-            continue;
+-        };
+-        for role in 0..ROLE_COUNT {
+-            if carved[i][role].is_empty() {
++    {
++        let _g_p7 = t187_probe::scope("br_phase7_territory");
++        let mut territory_slots: Vec<(usize, usize)> = Vec::new();
++        let mut territory_requests: Vec<ClipRequest> = Vec::new();
++        for i in 0..inputs.len() {
++            let Some(own) = &inputs[i].own_territory else {
+                 continue;
++            };
++            for role in 0..ROLE_COUNT {
++                if carved[i][role].is_empty() {
++                    continue;
++                }
++                territory_requests.push(ClipRequest {
++                    subject: carved[i][role].clone(),
++                    clip: own.clone(),
++                    op: ClipOperation::Intersection,
++                });
++                territory_slots.push((i, role));
+             }
+-            territory_requests.push(ClipRequest {
+-                subject: carved[i][role].clone(),
+-                clip: own.clone(),
+-                op: ClipOperation::Intersection,
+-            });
+-            territory_slots.push((i, role));
+         }
+-    }
+-    let territory_results = run_clip_batches(&territory_requests);
+-    for ((i, role), result) in territory_slots.into_iter().zip(territory_results) {
+-        carved[i][role] = result;
++        t187_probe::site("br_phase7_territory");
++        let territory_results = run_clip_batches(&territory_requests);
++        for ((i, role), result) in territory_slots.into_iter().zip(territory_results) {
++            carved[i][role] = result;
++        }
+     }
+ 
+     // Phase 8: assemble in `build_roles` order, dropping empty roles.
++    let _g_p8 = t187_probe::scope("br_phase8_assemble");
+     let mut out = Vec::with_capacity(inputs.len());
+     for i in 0..inputs.len() {
+         let mut roles = Vec::new();
+@@ -1996,6 +2220,7 @@ fn simplify_ring(ring: &Polygon, tolerance_units: f64) -> Polygon {
+ 
+ /// Canonical `expolygons_simplify`.
+ fn expolygons_simplify(polys: &[ExPolygon], tolerance_units: f64) -> Vec<ExPolygon> {
++    let _gh = t187_probe::hot_scope("fuel::expolygons_simplify");
+     polys
+         .iter()
+         .filter_map(|ex| {
+@@ -2108,84 +2333,89 @@ impl TreeVolumes {
+         xy_distance: f32,
+         territory_clearance: f32,
+     ) -> Self {
++        let _g_tv = t187_probe::scope("tree_volumes_new");
+         let layer_count = layer_plan.layers.len();
+         let territory_clearance = territory_clearance.max(0.0);
+-        // Ticket 19: territory owned by any family other than tree is an
+-        // obstacle for every tree branch on that layer.
+         let mut foreign_territory: Vec<Vec<ExPolygon>> = vec![Vec::new(); layer_count];
+-        for entry in &support_analysis.support_territory {
+-            let layer_idx = entry.global_support_layer_index as usize;
+-            if layer_idx >= layer_count {
+-                continue;
+-            }
+-            // Exact full source origin lookup: a chain variant is never
+-            // classified by its chain-less sibling's family.
+-            let owned_by_tree = support_analysis
+-                .family_of(&entry.object_id, &entry.region_id, &entry.variant_chain)
+-                .is_some_and(|family| canonical_support_family_alias(Some(family)) == "tree");
+-            if !owned_by_tree {
+-                foreign_territory[layer_idx].extend(entry.polygons.iter().cloned());
+-            }
+-        }
+-        let foreign_layers: Vec<usize> = (0..layer_count)
+-            .filter(|l| !foreign_territory[*l].is_empty())
+-            .collect();
+         let mut foreign_keepout: Vec<Vec<ExPolygon>> = vec![Vec::new(); layer_count];
+-        if territory_clearance > 0.0 {
+-            let inflated = slicer_sdk::host_batch::batch_offset(&foreign_layers, |layer| {
+-                slicer_sdk::host_batch::OffsetRequest {
+-                    polygons: foreign_territory[*layer].clone(),
+-                    delta_mm: territory_clearance,
+-                    join: OffsetJoinType::Miter,
+-                    arc_tolerance_mm: 0.0,
+-                    miter_limit: Some(3.0),
++        {
++            let _g_f = t187_probe::scope("tv_foreign_territory");
++            for entry in &support_analysis.support_territory {
++                let layer_idx = entry.global_support_layer_index as usize;
++                if layer_idx >= layer_count {
++                    continue;
++                }
++                let owned_by_tree = support_analysis
++                    .family_of(&entry.object_id, &entry.region_id, &entry.variant_chain)
++                    .is_some_and(|family| canonical_support_family_alias(Some(family)) == "tree");
++                if !owned_by_tree {
++                    foreign_territory[layer_idx].extend(entry.polygons.iter().cloned());
+                 }
+-            });
+-            for (layer, polys) in inflated {
+-                foreign_keepout[*layer] = if polys.is_empty() {
+-                    foreign_territory[*layer].clone()
+-                } else {
+-                    polys
+-                };
+             }
+-        } else {
+-            for layer in &foreign_layers {
+-                foreign_keepout[*layer] = foreign_territory[*layer].clone();
++            let foreign_layers: Vec<usize> = (0..layer_count)
++                .filter(|l| !foreign_territory[*l].is_empty())
++                .collect();
++            if territory_clearance > 0.0 {
++                t187_probe::site("tv_foreign_offset");
++                let inflated = slicer_sdk::host_batch::batch_offset(&foreign_layers, |layer| {
++                    slicer_sdk::host_batch::OffsetRequest {
++                        polygons: foreign_territory[*layer].clone(),
++                        delta_mm: territory_clearance,
++                        join: OffsetJoinType::Miter,
++                        arc_tolerance_mm: 0.0,
++                        miter_limit: Some(3.0),
++                    }
++                });
++                for (layer, polys) in inflated {
++                    foreign_keepout[*layer] = if polys.is_empty() {
++                        foreign_territory[*layer].clone()
++                    } else {
++                        polys
++                    };
++                }
++            } else {
++                for layer in &foreign_layers {
++                    foreign_keepout[*layer] = foreign_territory[*layer].clone();
++                }
+             }
+         }
+         let mut layer_outlines: Vec<Vec<ExPolygon>> = vec![Vec::new(); layer_count];
+-        for entry in &support_geometry.entries {
+-            let layer_idx = entry.global_support_layer_index as usize;
+-            if layer_idx >= layer_count {
+-                continue;
+-            }
+-            for expoly in &entry.outlines {
+-                if expoly.contour.points.len() >= 3 {
+-                    layer_outlines[layer_idx].push(expoly.clone());
++        {
++            let _g_s = t187_probe::scope("tv_simplify_union");
++            for entry in &support_geometry.entries {
++                let layer_idx = entry.global_support_layer_index as usize;
++                if layer_idx >= layer_count {
++                    continue;
++                }
++                for expoly in &entry.outlines {
++                    if expoly.contour.points.len() >= 3 {
++                        layer_outlines[layer_idx].push(expoly.clone());
++                    }
+                 }
+             }
+-        }
+ 
+-        let outline_tolerance = mm_to_units(RADIUS_SAMPLE_RESOLUTION_MM) as f64;
+-        for outlines in &mut layer_outlines {
+-            *outlines = expolygons_simplify_union(outlines, outline_tolerance);
++            let outline_tolerance = mm_to_units(RADIUS_SAMPLE_RESOLUTION_MM) as f64;
++            t187_probe::site("tv_simplify_union");
++            for outlines in &mut layer_outlines {
++                *outlines = expolygons_simplify_union(outlines, outline_tolerance);
++            }
+         }
+ 
+-        // Canonical builds `m_layer_outlines_below` as a running union in the
+-        // `TreeSupportData` constructor. Layers that contribute nothing reuse
+-        // the accumulator verbatim, which keeps the host call count down to the
+-        // number of layers that actually carry outlines.
+         let mut layer_outlines_below: Vec<Vec<ExPolygon>> = Vec::with_capacity(layer_count);
+-        let mut below: Vec<ExPolygon> = Vec::new();
+-        for outlines in &layer_outlines {
+-            if !outlines.is_empty() {
+-                below = if below.is_empty() {
+-                    union_expolys(outlines.clone())
+-                } else {
+-                    host::clip_polygons(&below, outlines, ClipOperation::Union)
+-                };
++        {
++            let _g_b = t187_probe::scope("tv_outlines_below");
++            t187_probe::site("tv_outlines_below");
++            let mut below: Vec<ExPolygon> = Vec::new();
++            for outlines in &layer_outlines {
++                if !outlines.is_empty() {
++                    below = if below.is_empty() {
++                        union_expolys(outlines.clone())
++                    } else {
++                        host::clip_polygons(&below, outlines, ClipOperation::Union)
++                    };
++                }
++                layer_outlines_below.push(below.clone());
+             }
+-            layer_outlines_below.push(below.clone());
+         }
+ 
+         let branch_scale_factor = branch_angle_deg.to_radians().tan().max(0.0);
+@@ -2239,9 +2469,11 @@ impl TreeVolumes {
+     /// bucket on first use, exactly as canonical's cache does.
+     fn get_collision(&self, radius_mm: f32, layer: usize) -> PolySet {
+         self.ensure_collision(radius_mm);
++        let rkey = radius_key(radius_mm);
++        t187_probe::record_collision_query(rkey, layer);
+         self.collision
+             .borrow()
+-            .get(&(radius_key(radius_mm), layer))
++            .get(&(rkey, layer))
+             .cloned()
+             .unwrap_or_else(empty_poly_set)
+     }
+@@ -2250,28 +2482,23 @@ impl TreeVolumes {
+     /// bucket on first use.
+     fn get_avoidance(&self, radius_mm: f32, layer: usize) -> PolySet {
+         self.ensure_avoidance(radius_mm);
++        let rkey = radius_key(radius_mm);
++        t187_probe::record_avoidance_query(rkey, layer);
+         self.avoidance
+             .borrow()
+-            .get(&(radius_key(radius_mm), layer))
++            .get(&(rkey, layer))
+             .cloned()
+             .unwrap_or_else(empty_poly_set)
+     }
+ 
+-    /// Fill the collision ladder for one radius bucket.
+-    ///
+-    /// `collision(r, l) = simplify(offset_ex(outlines[l], r + xy_distance))`.
+-    /// Every layer's inflation is independent, so the whole stack goes to the
+-    /// host in one batch (ADR-0049) rather than one call per layer.
+-    ///
+-    /// Ticket 19: foreign support territory joins the ladder at
+-    /// `radius + territory_clearance` (the clearance plays the role
+-    /// `xy_distance` plays for the model), so the drop gates and the avoidance
+-    /// recurrence keep branches out of the other family's half.
+     fn ensure_collision(&self, radius_mm: f32) {
+         let key = radius_key(radius_mm);
+         if self.layer_outlines.is_empty() || self.collision.borrow().contains_key(&(key, 0)) {
+             return;
+         }
++        let _g = t187_probe::scope("tv_ensure_collision");
++        t187_probe::add("tv_collision_buckets_materialized", 1);
++        t187_probe::add("tv_collision_layers_materialized", self.layer_count() as u64);
+         let inflate = ceil_radius(radius_mm) + self.xy_distance;
+         let inflate_foreign = ceil_radius(radius_mm) + self.territory_clearance;
+         let tolerance_units = mm_to_units(RADIUS_SAMPLE_RESOLUTION_MM) as f64;
+@@ -2283,6 +2510,7 @@ impl TreeVolumes {
+                 outlines.into_iter().chain(foreign)
+             })
+             .collect();
++        t187_probe::site("tv_ensure_collision_offset");
+         let inflated = slicer_sdk::host_batch::batch_offset(&indexed, |(layer, is_foreign)| {
+             slicer_sdk::host_batch::OffsetRequest {
+                 polygons: if *is_foreign {
+@@ -2305,6 +2533,7 @@ impl TreeVolumes {
+             raw_by_layer[*layer].extend(polys);
+         }
+         let mut by_layer: Vec<Vec<ExPolygon>> = vec![Vec::new(); self.layer_count()];
++        t187_probe::site("tv_ensure_collision_union");
+         for (layer, polys) in raw_by_layer.into_iter().enumerate() {
+             if polys.is_empty() {
+                 continue;
+@@ -2317,25 +2546,28 @@ impl TreeVolumes {
+         }
+     }
+ 
+-    /// Fill the avoidance ladder for one radius bucket, bottom-up.
+-    ///
+-    /// Avoidance is a strict recurrence — each layer erodes the layer below it
+-    /// — so it is walked serially, but iteratively rather than recursively
+-    /// (see the module note on canonical's recursion trampoline).
+     fn ensure_avoidance(&self, radius_mm: f32) {
+         let key = radius_key(radius_mm);
+         if self.layer_outlines.is_empty() || self.avoidance.borrow().contains_key(&(key, 0)) {
+             return;
+         }
+         self.ensure_collision(radius_mm);
++        let _g = t187_probe::scope("tv_ensure_avoidance");
++        t187_probe::add("tv_avoidance_buckets_materialized", 1);
++        t187_probe::add("tv_avoidance_layers_materialized", self.layer_count() as u64);
+         let mut previous: Vec<ExPolygon> = Vec::new();
+         for layer in 0..self.layer_count() {
+-            let collision = self.get_collision(radius_mm, layer).as_ref().clone();
++            let collision = self
++                .collision
++                .borrow()
++                .get(&(key, layer))
++                .cloned()
++                .unwrap_or_else(empty_poly_set)
++                .as_ref()
++                .clone();
+             let avoidance = if layer == 0 || previous.is_empty() {
+                 collision
+             } else {
+-                // `offset_polygons` takes a SIGNED delta in mm and erodes on a
+-                // negative one, so it serves canonical's negative `offset_ex`.
+                 let step = self
+                     .max_move_distances
+                     .get(layer - 1)
+@@ -2344,6 +2576,7 @@ impl TreeVolumes {
+                 let eroded = if step <= 0.0 {
+                     previous.clone()
+                 } else {
++                    t187_probe::site("tv_ensure_avoidance_erode");
+                     host::offset_polygons_with_miter_limit(
+                         &previous,
+                         -step,
+@@ -2357,6 +2590,7 @@ impl TreeVolumes {
+                 } else if collision.is_empty() {
+                     eroded
+                 } else {
++                    t187_probe::site("tv_ensure_avoidance_union");
+                     host::clip_polygons(&eroded, &collision, ClipOperation::Union)
+                 }
+             };
+@@ -2586,6 +2820,9 @@ impl PrepassModule for SupportPlanner {
+             return Ok(());
+         }
+ 
++        t187_probe::init();
++        let _g_run = t187_probe::scope("run_support_geometry_total");
++
+         if layer_plan.layers.is_empty() {
+             return Err(ModuleError::fatal(1, "empty layer-plan-view"));
+         }
+@@ -2705,6 +2942,7 @@ impl PrepassModule for SupportPlanner {
+             });
+         }
+ 
++        t187_probe::flush_counters();
+         Ok(())
+     }
+ }
+@@ -2772,6 +3010,7 @@ impl SupportPlanner {
+ 
+         // Host analysis owns candidate discovery and policy. Geometry remains
+         // an independent compatibility input for collision avoidance below.
++        let _g_contacts = t187_probe::scope("contact_generation");
+         let mut arena = NodeArena::default();
+         let mut contacts_by_layer: Vec<Vec<NodeId>> = vec![Vec::new(); num_layers as usize];
+         // Full source origins `(region_id, ordered variant_chain)` the
+@@ -3140,6 +3379,7 @@ impl SupportPlanner {
+             .filter(|layer| !layer.is_empty())
+             .count();
+         let contact_stats = contact_stats(&contact_positions, nonempty_layers);
++        drop(_g_contacts);
+ 
+         // ── Step 10: top-down propagation + per-layer MST merging ────────
+         // Walk from top layer down to layer 0. Each iteration:
+@@ -3177,6 +3417,7 @@ impl SupportPlanner {
+         let mut layer_records: Vec<LayerRecord> = Vec::new();
+ 
+         // Iterate top → bottom.
++        let _g_drop_total = t187_probe::scope("drop_nodes_total");
+         let top = num_layers as usize;
+         for layer_rev in (0..top).rev() {
+             // Canonical caches `is_line_cut_by_contour` per `drop_nodes` layer
+@@ -3229,13 +3470,7 @@ impl SupportPlanner {
+             };
+ 
+             // -- F-12: per-part spanning trees ---------------------------
+-            // Canonical `drop_nodes` sizes `nodes_per_part` at
+-            // `1 + parts.size()`, with
+-            // `parts = m_ts_data->m_layer_outlines_below[obj_layer_nr]`, and
+-            // runs `MinimumSpanningTree` once **per group**. The module used
+-            // to run one global Prim MST over every active node, so nodes on
+-            // opposite sides of the object could become MST neighbours, merge,
+-            // and drag each other across it.
++            let _g_drop_mst = t187_probe::scope("drop_group_and_mst");
+             let parts: Vec<ExPolygon> = volumes.outlines_below(cache_idx).to_vec();
+             let group_of: Vec<usize> = active_nodes
+                 .iter()
+@@ -3278,8 +3513,10 @@ impl SupportPlanner {
+                     .then(a.1.cmp(&b.1))
+                     .then(a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
+             });
++            drop(_g_drop_mst);
+ 
+             // -- F-11: canonical merge -----------------------------------
++            let _g_drop_merge = t187_probe::scope("drop_merge_pass");
+             // The previous rule was `if edge_length < merge_distance_mm { drop
+             // the higher-INDEX endpoint }` - a flat invented constant with no
+             // leaf-degree test, no midpoint node and no `dist_mm_to_top`
+@@ -3459,7 +3696,9 @@ impl SupportPlanner {
+                     }
+                 }
+             }
++            std::mem::drop(_g_drop_merge);
+             // ── F-13: canonical `drop_nodes` move pass ───────────────────
++            let _g_drop_move = t187_probe::scope("drop_move_pass");
+             //
+             // Until packet 224 step 5 this stepped toward a 1/d^2 weighted
+             // *mean of neighbour positions*, capped the displacement at
+@@ -3742,6 +3981,7 @@ impl SupportPlanner {
+             }
+ 
+             // Record what this layer committed so the emit pass can replay it
++            std::mem::drop(_g_drop_move);
+             // after F-14 pruning has run. Canonical runs `drop_nodes` to
+             // completion over every layer and only then calls `draw_circles`;
+             // pruning walks *up* the parent chain, so a single interleaved
+@@ -3765,8 +4005,10 @@ impl SupportPlanner {
+ 
+             active_nodes = next_nodes;
+         }
++        drop(_g_drop_total);
+ 
+         // ── F-14: drain `unsupported_branch_leaves` ──────────────────────
++        let _g_prune = t187_probe::scope("prune_unsupported");
+         //
+         // Canonical `drop_nodes` collects every branch leaf it decided cannot
+         // reach a legal footing, then walks each one *up* its parent chain
+@@ -3825,6 +4067,7 @@ impl SupportPlanner {
+                 .edges
+                 .retain(|(a, b)| !arena[*a].is_processed && !arena[*b].is_processed);
+         }
++        drop(_g_prune);
+ 
+         // ── Canonical `smooth_nodes` (F-33) ──────────────────────────────
+         //
+@@ -3861,12 +4104,7 @@ impl SupportPlanner {
+             },
+         );
+         // ── Emit pass (canonical `draw_circles`) ─────────────────────────
+-        // Ticket 135 Stage 2: the pass walks a chunk of layers at a time so the
+-        // chunk's independent occupancy offsets can be issued as one host
+-        // batch. `occupancy_memo` spans the chunk, and `chunk_layers_left`
+-        // mirrors the role-clip flush cadence below so the occupancy batch and
+-        // the flush share a boundary. Empty layers `continue` before any work
+-        // and do not consume a chunk slot.
++        let _g_emit_total = t187_probe::scope("emit_pass_total");
+         let mut occupancy_memo: std::collections::HashMap<u64, OccupancyMemoEntry> =
+             std::collections::HashMap::new();
+         let mut chunk_layers_left: usize = 0;
+@@ -3901,6 +4139,8 @@ impl SupportPlanner {
+                 chunk_layers_left = chunk.len();
+             }
+             chunk_layers_left -= 1;
++            let _g_emit_layer_setup = t187_probe::scope("emit_layer_setup");
++            t187_probe::add("emit_active_nodes_total", active_nodes.len() as u64);
+             let current_global_layer_index = layer_plan.layers[layer_rev].global_layer_index;
+             let cache_idx = current_global_layer_index as usize;
+             let z_current = layer_plan.layers[layer_rev].z;
+@@ -4001,15 +4241,21 @@ impl SupportPlanner {
+             // The drop gate reads the radius-bucketed ladder (rule 1); the
+             // carve in `build_roles` reads `collision_polys` (rule 2).
+             let swallowed_by_collision = |x: f32, y: f32, radius: f32| -> bool {
++                let _gh = t187_probe::hot_scope("fuel::swallowed_by_collision");
++                t187_probe::add("emit_swallowed_calls", 1);
+                 let gate = volumes.get_collision(radius, cache_idx);
+                 !gate.is_empty() && point_inside_collision_volume(&gate, x, y)
+             };
+             let node_swallowed = |x: f32, y: f32, radius: f32| -> bool {
++                let _gh = t187_probe::hot_scope("fuel::swallowed_by_collision");
++                t187_probe::add("emit_swallowed_calls", 1);
+                 let gate = volumes.get_collision(radius, cache_idx);
+                 !gate.is_empty() && point_inside_collision_volume(&gate, x, y)
+             };
++            drop(_g_emit_layer_setup);
+ 
+             // Emit branch segments with radius tapering (Step 5 AC-2)
++            let _g_emit_roles = t187_probe::scope("emit_node_roles");
+             let mut branch_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
+             let mut interface_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
+             let mut base_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
+@@ -4036,29 +4282,35 @@ impl SupportPlanner {
+                     // The lookup is by *global* layer index; it previously mixed
+                     // in `layer_rev`, the reverse loop counter, and indexed the
+                     // collision cache with it.
+-                    let is_floor = bottom_n > 0
+-                        && !self.support_on_build_plate_only
+-                        && (1..=bottom_n).any(|k| {
+-                            cache_idx.checked_sub(k as usize).is_some_and(|below| {
+-                                point_in_any_expoly(volumes.outlines_at(below), node.x(), node.y())
++                    let is_floor = {
++                        let _gh = t187_probe::hot_scope("fuel::node_roles_is_floor");
++                        bottom_n > 0
++                            && !self.support_on_build_plate_only
++                            && (1..=bottom_n).any(|k| {
++                                cache_idx.checked_sub(k as usize).is_some_and(|below| {
++                                    point_in_any_expoly(
++                                        volumes.outlines_at(below),
++                                        node.x(),
++                                        node.y(),
++                                    )
++                                })
+                             })
+-                        });
+-                    // Roof: canonical `node->support_roof_layers_below > 0`,
+-                    // the per-node counter seeded at contact creation and
+-                    // decremented once per descendant (F-1). The old
+-                    // `roof_band_layers_emitted` object-wide counter is gone:
+-                    // it starved every overhang after the first of interface.
++                    };
+                     let is_roof = top_n > 0 && node.is_roof();
+                     let mut below_roof = 0usize;
+                     let mut reached_roof = false;
+-                    let mut ancestor = node.parent;
+-                    while let Some(parent_id) = ancestor {
+-                        below_roof += 1;
+-                        if arena[parent_id].is_roof() {
+-                            reached_roof = true;
+-                            break;
++                    {
++                        let _gh = t187_probe::hot_scope("fuel::node_roles_ancestor_walk");
++                        let mut ancestor = node.parent;
++                        while let Some(parent_id) = ancestor {
++                            below_roof += 1;
++                            if arena[parent_id].is_roof() {
++                                reached_roof = true;
++                                break;
++                            }
++                            ancestor = arena[parent_id].parent;
+                         }
+-                        ancestor = arena[parent_id].parent;
++                        t187_probe::add("emit_ancestor_walk_steps", below_roof as u64);
+                     }
+                     if is_floor {
+                         InterfaceRole::Floor
+@@ -4071,7 +4323,9 @@ impl SupportPlanner {
+                     }
+                 })
+                 .collect();
++            drop(_g_emit_roles);
+             // ── Canonical `draw_circles`: one ellipse per node per layer ──
++            let _g_emit_ellipses = t187_probe::scope("emit_draw_ellipses");
+             //
+             // Canonical draws every surviving node's own cross-section into
+             // `base_areas` / `roof_areas`, oriented by the `movement` the
+@@ -4128,7 +4382,9 @@ impl SupportPlanner {
+                     InterfaceRole::Floor => floor_areas.push(ellipse),
+                 }
+             }
++            drop(_g_emit_ellipses);
+ 
++            let _g_emit_mst = t187_probe::scope("emit_mst_and_tips");
+             let mut origin_contacts_emitted = vec![false; active_nodes.len()];
+             let mut mst_emitted = vec![false; active_nodes.len()];
+             for (a_idx, b_idx) in &mst_edges {
+@@ -4314,6 +4570,8 @@ impl SupportPlanner {
+             }
+ 
+             // Emit when *either* structural or interface geometry exists. Gating
++            drop(_g_emit_mst);
++            let _g_emit_origin = t187_probe::scope("emit_origin_and_skeleton");
+             // on `branch_segments` alone was what collapsed the branch shaft in
+             // an earlier attempt at this split: layers carrying only interface
+             // geometry produced no entry at all.
+@@ -4492,17 +4750,25 @@ impl SupportPlanner {
+                                 z: point.z,
+                             })
+                             .collect::<Vec<_>>();
+-                        let wall_counts = skeleton_points
+-                            .iter()
+-                            .map(|point| {
+-                                u32::from(active_nodes.iter().any(|id| {
+-                                    let node = &arena[*id];
+-                                    node.need_extra_wall
+-                                        && node.x() == point.x
+-                                        && node.y() == point.y
+-                                }))
+-                            })
+-                            .collect::<Vec<_>>();
++                        let wall_counts = {
++                            let _gh = t187_probe::hot_scope("fuel::skeleton_wall_counts");
++                            t187_probe::add("emit_skeleton_points", skeleton_points.len() as u64);
++                            let mut inner_iters = 0u64;
++                            let res = skeleton_points
++                                .iter()
++                                .map(|point| {
++                                    u32::from(active_nodes.iter().any(|id| {
++                                        inner_iters += 1;
++                                        let node = &arena[*id];
++                                        node.need_extra_wall
++                                            && node.x() == point.x
++                                            && node.y() == point.y
++                                    }))
++                                })
++                                .collect::<Vec<_>>();
++                            t187_probe::add("emit_skeleton_inner_iters", inner_iters);
++                            res
++                        };
+                         assert_eq!(wall_counts.len(), points.len());
+                         Some(slicer_ir::SupportPlanSkeleton {
+                             points,
+@@ -4556,6 +4822,7 @@ impl SupportPlanner {
+                 }
+             }
+ 
++            drop(_g_emit_origin);
+             pending_emit_layers += 1;
+             if pending_emit_layers >= EMIT_BATCH_LAYERS {
+                 flush_pending_emits(
+@@ -4572,6 +4839,9 @@ impl SupportPlanner {
+             &mut pending_emit_inputs,
+             &mut entries_in_order,
+         );
++        drop(_g_emit_total);
++
++        let _g_post_emit = t187_probe::scope("post_emit_stamping_and_offgrid");
+ 
+         // Family assignments can cover full source origins absent from either
+         // the segmentation projection or the candidate geometry path. Stamp
+@@ -5116,7 +5386,10 @@ impl SupportPlanner {
+         // processed, so the diagnostic is one per affected global layer
+         // across all objects, not one per (object, layer) pair.)
+ 
++        drop(_g_post_emit);
+         // Emit entries in top-to-bottom order.
++        let _g_push = t187_probe::scope("output_push_entries");
++        t187_probe::add("output_entries_pushed", entries_in_order.len() as u64);
+         for entry in entries_in_order {
+             output
+                 .push_support_plan_entry(entry)
+@@ -5521,6 +5794,7 @@ fn sample_contact_points(
+         // the point must be inside the overhang bbox AND inside the overhang
+         // eroded by the per-overhang radius.
+         let (min_x, max_x, min_y, max_y) = bbox;
++        t187_probe::site("contact_sample_erode");
+         let eroded = host::offset_polygons_with_miter_limit(
+             std::slice::from_ref(polygon),
+             -radius,
+@@ -5967,6 +6241,8 @@ fn point_in_any_polygon(polygons: &[Vec<[f32; 2]>], x: f32, y: f32) -> bool {
+ }
+ 
+ fn point_in_any_expoly(polygons: &[ExPolygon], x: f32, y: f32) -> bool {
++    let _gh = t187_probe::hot_scope("fuel::point_in_any_expoly");
++    t187_probe::add("point_in_any_expoly_calls", 1);
+     let sx = x * SCALING_FACTOR as f32;
+     let sy = y * SCALING_FACTOR as f32;
+     polygons.iter().any(|ex| {
+@@ -6092,6 +6368,7 @@ pub fn point_in_polygon(poly: &[[f32; 2]], x: f32, y: f32) -> bool {
+ /// The `V` input here is the propagated node count, bounded by
+ /// `support_max_branches_per_layer`.
+ fn prim_mst(nodes: &[(f32, f32)]) -> Vec<(usize, usize, f32)> {
++    let _gh = t187_probe::hot_scope("fuel::prim_mst");
+     let n = nodes.len();
+     if n < 2 {
+         return Vec::new();
+@@ -6282,6 +6559,8 @@ fn normal_to_length(v: (f32, f32), len: f32) -> (f32, f32) {
+ /// WIT surface exposes no nearest-point query. Coordinates in and out are mm.
+ /// Returns `pt` unchanged when there is no ring to project onto.
+ fn projection_onto(expolys: &[ExPolygon], pt: (f32, f32)) -> (f32, f32) {
++    let _gh = t187_probe::hot_scope("fuel::projection_onto");
++    t187_probe::add("projection_onto_calls", 1);
+     let qx = pt.0 * SCALING_FACTOR as f32;
+     let qy = pt.1 * SCALING_FACTOR as f32;
+     let mut best_dist = f32::INFINITY;
+@@ -6332,9 +6611,12 @@ impl LineCutCache {
+         a: (f32, f32),
+         b: (f32, f32),
+     ) -> bool {
++        let _gh = t187_probe::hot_scope("fuel::is_line_cut_by_contour");
++        t187_probe::add("line_cut_calls", 1);
+         let ka = (mm_to_units(a.0), mm_to_units(a.1));
+         let kb = (mm_to_units(b.0), mm_to_units(b.1));
+         if let Some(hit) = self.cache.get(&(ka, kb)) {
++            t187_probe::add("line_cut_cache_hits", 1);
+             return *hit;
+         }
+         let mut cut = false;
+@@ -6481,17 +6763,19 @@ fn move_out_expolys(
+     min_dist: f32,
+     max_dist: f32,
+ ) -> bool {
++    let _gh = t187_probe::hot_scope("fuel::move_out_expolys");
++    t187_probe::add("move_out_total_calls", 1);
+     let from0 = *from;
+     let (x, y) = from0;
+     if polygons.is_empty() || !is_inside_ex(polygons, x, y) {
++        t187_probe::add("move_out_early_outside", 1);
+         return false;
+     }
+-    let polygons_dilated = union_expolys(host::offset_polygons(
+-        polygons,
+-        min_dist,
+-        OffsetJoinType::Miter,
+-        0.0,
+-    ));
++    t187_probe::add("move_out_offset_calls", 1);
++    t187_probe::site("move_out_expolys_offset");
++    let offset_res = host::offset_polygons(polygons, min_dist, OffsetJoinType::Miter, 0.0);
++    t187_probe::site("move_out_expolys_union");
++    let polygons_dilated = union_expolys(offset_res);
+     let target = projection_onto(&polygons_dilated, from0);
+     let outward_dir = (target.0 - from0.0, target.1 - from0.1);
+     let dist2 = outward_dir.0 * outward_dir.0 + outward_dir.1 * outward_dir.1;
+@@ -6514,6 +6798,7 @@ fn move_out_expolys(
+ /// — a squared mm distance; this compares the un-squared scaled distance
+ /// [`closest_point_on_polygon`] already returns, which is order-equivalent.
+ fn assign_node_group(parts: &[ExPolygon], to_buildplate: bool, x: f32, y: f32) -> usize {
++    let _gh = t187_probe::hot_scope("fuel::assign_node_group");
+     if to_buildplate || parts.is_empty() {
+         return 0;
+     }
+diff --git a/crates/slicer-wasm-host/src/t187_probe.rs b/crates/slicer-wasm-host/src/t187_probe.rs
+new file mode 100644
+index 00000000..44835085
+--- /dev/null
++++ b/crates/slicer-wasm-host/src/t187_probe.rs
+@@ -0,0 +1,589 @@
++//! TEMPORARY observation-only probe for wayfinder ticket 187 —
++//! `PrePass::SupportGeometry` remainder (`com.core.tree-support-planner`)
++//! substage, host-op, duplicate-op, and guest-fuel attribution.
++//!
++//! Zero production behavior changes; gated on `T187_PROBE_OUT` env var and
++//! cleanly reverted before ticket resolution.
++
++#![allow(missing_docs, dead_code)]
++
++use std::collections::{BTreeMap, HashMap};
++use std::sync::{Mutex, OnceLock};
++use std::time::Instant;
++
++use slicer_ir::ExPolygon;
++
++#[derive(Default)]
++struct ScopeAgg {
++    calls: u64,
++    inclusive_wall_ns: u64,
++    exclusive_wall_ns: u64,
++    inclusive_fuel: u64,
++    exclusive_fuel: u64,
++}
++
++#[derive(Clone)]
++struct ActiveFrame {
++    name: String,
++    enter_wall: Instant,
++    enter_fuel: u64,
++    child_wall_ns: u64,
++    child_fuel: u64,
++}
++
++#[derive(Default)]
++struct HostOpAgg {
++    wit_calls: u64,
++    requests: u64,
++    batch_wall_ns: u64,
++    worker_total_ns: u64,
++    wit_conv_ns: u64,
++    clipper_ns: u64,
++    in_polys: u64,
++    in_verts: u64,
++    out_polys: u64,
++    out_verts: u64,
++    max_batch_wall_ns: u64,
++    max_req_clipper_ns: u64,
++    // For batch parallelism audit: sum of max(worker_total_ns) across batches
++    sum_batch_max_req_ns: u64,
++    // For dedup census (offset_polygons & move_out & prefetch)
++    unique_keys: u64,
++    dup_requests: u64,
++    dup_wall_ns: u64,
++    dup_clipper_ns: u64,
++    // For union/clip extra diagnostics
++    singleton_inputs: u64,
++}
++
++#[derive(Default)]
++struct Phase5Audit {
++    total_reqs: u64,
++    exact_eq: u64,
++    same_area_within_1u2: u64,
++    area_changed: u64,
++    max_area_diff_mm2: f64,
++    total_abs_area_diff_mm2: f64,
++    emptied_count: u64,
++}
++
++#[derive(Default)]
++struct DispatchTiming {
++    instantiate_ns: u64,
++    project_mesh_ns: u64,
++    project_layer_plan_ns: u64,
++    project_region_seg_ns: u64,
++    project_support_geom_ns: u64,
++    project_support_analysis_ns: u64,
++    call_run_ns: u64,
++    harvest_ns: u64,
++    total_ns: u64,
++}
++
++struct ProbeState {
++    in_planner: bool,
++    active_site: String,
++    scope_stack: Vec<ActiveFrame>,
++    scopes: BTreeMap<String, ScopeAgg>,
++    host_ops: BTreeMap<String, HostOpAgg>,
++    counters: BTreeMap<String, u64>,
++    dispatch: BTreeMap<String, DispatchTiming>,
++    seen_offset_keys: HashMap<(String, u64), bool>,
++    seen_clip_keys: HashMap<(String, u64), bool>,
++    phase5: Phase5Audit,
++    last_fuel: u64,
++    profiling_active: bool,
++}
++
++impl Default for ProbeState {
++    fn default() -> Self {
++        Self {
++            in_planner: false,
++            active_site: String::from("untagged"),
++            scope_stack: Vec::new(),
++            scopes: BTreeMap::new(),
++            host_ops: BTreeMap::new(),
++            counters: BTreeMap::new(),
++            dispatch: BTreeMap::new(),
++            seen_offset_keys: HashMap::new(),
++            seen_clip_keys: HashMap::new(),
++            phase5: Phase5Audit::default(),
++            last_fuel: 0,
++            profiling_active: false,
++        }
++    }
++}
++
++fn out_path() -> Option<&'static str> {
++    static PATH: OnceLock<Option<String>> = OnceLock::new();
++    PATH.get_or_init(|| std::env::var("T187_PROBE_OUT").ok().filter(|s| !s.is_empty()))
++        .as_deref()
++}
++
++pub fn enabled() -> bool {
++    out_path().is_some()
++}
++
++fn state() -> &'static Mutex<ProbeState> {
++    static STATE: OnceLock<Mutex<ProbeState>> = OnceLock::new();
++    STATE.get_or_init(|| Mutex::new(ProbeState::default()))
++}
++
++pub fn in_planner() -> bool {
++    if !enabled() {
++        return false;
++    }
++    state().lock().unwrap().in_planner
++}
++
++pub fn set_in_planner(active: bool, profiling_active: bool) {
++    if !enabled() {
++        return;
++    }
++    let mut s = state().lock().unwrap();
++    s.in_planner = active;
++    if active {
++        s.profiling_active = profiling_active;
++        s.active_site = String::from("untagged");
++    }
++}
++
++pub fn record_dispatch(
++    module_id: &str,
++    instantiate_ns: u64,
++    project_mesh_ns: u64,
++    project_layer_plan_ns: u64,
++    project_region_seg_ns: u64,
++    project_support_geom_ns: u64,
++    project_support_analysis_ns: u64,
++    call_run_ns: u64,
++    harvest_ns: u64,
++    total_ns: u64,
++) {
++    if !enabled() {
++        return;
++    }
++    let mut s = state().lock().unwrap();
++    let d = s.dispatch.entry(module_id.to_string()).or_default();
++    d.instantiate_ns += instantiate_ns;
++    d.project_mesh_ns += project_mesh_ns;
++    d.project_layer_plan_ns += project_layer_plan_ns;
++    d.project_region_seg_ns += project_region_seg_ns;
++    d.project_support_geom_ns += project_support_geom_ns;
++    d.project_support_analysis_ns += project_support_analysis_ns;
++    d.call_run_ns += call_run_ns;
++    d.harvest_ns += harvest_ns;
++    d.total_ns += total_ns;
++}
++
++pub fn handle_log(message: &str, host_entry_fuel: u64, profiling_enabled: bool) -> bool {
++    let Some(rest) = message.strip_prefix("__T187__:") else {
++        return false;
++    };
++    if !enabled() {
++        return true;
++    }
++    let now = Instant::now();
++    let mut s = state().lock().unwrap();
++    s.profiling_active |= profiling_enabled;
++    s.last_fuel = host_entry_fuel;
++
++    if let Some(name) = rest.strip_prefix("ENTER:") {
++        s.scope_stack.push(ActiveFrame {
++            name: name.to_string(),
++            enter_wall: now,
++            enter_fuel: host_entry_fuel,
++            child_wall_ns: 0,
++            child_fuel: 0,
++        });
++    } else if let Some(name) = rest.strip_prefix("EXIT:") {
++        if let Some(top) = s.scope_stack.last() {
++            if top.name == name {
++                let frame = s.scope_stack.pop().unwrap();
++                let inc_wall = now.saturating_duration_since(frame.enter_wall).as_nanos() as u64;
++                let inc_fuel = host_entry_fuel.saturating_sub(frame.enter_fuel);
++                let exc_wall = inc_wall.saturating_sub(frame.child_wall_ns);
++                let exc_fuel = inc_fuel.saturating_sub(frame.child_fuel);
++                if let Some(parent) = s.scope_stack.last_mut() {
++                    parent.child_wall_ns = parent.child_wall_ns.saturating_add(inc_wall);
++                    parent.child_fuel = parent.child_fuel.saturating_add(inc_fuel);
++                }
++                let agg = s.scopes.entry(frame.name).or_default();
++                agg.calls += 1;
++                agg.inclusive_wall_ns += inc_wall;
++                agg.exclusive_wall_ns += exc_wall;
++                agg.inclusive_fuel += inc_fuel;
++                agg.exclusive_fuel += exc_fuel;
++            }
++        }
++    } else if let Some(site) = rest.strip_prefix("SITE:") {
++        s.active_site = site.to_string();
++    } else if let Some(kv) = rest.strip_prefix("COUNTER:") {
++        if let Some((k, v)) = kv.split_once(':') {
++            if let Ok(val) = v.parse::<u64>() {
++                *s.counters.entry(k.to_string()).or_insert(0) += val;
++            }
++        }
++    } else if rest == "FLUSH" {
++        drop(s);
++        flush_to_disk();
++    }
++    true
++}
++
++pub fn count_expolys(polys: &[ExPolygon]) -> (u64, u64) {
++    let mut verts = 0u64;
++    for p in polys {
++        verts += p.contour.points.len() as u64;
++        for h in &p.holes {
++            verts += h.points.len() as u64;
++        }
++    }
++    (polys.len() as u64, verts)
++}
++
++pub fn hash_expolys(polys: &[ExPolygon], extra1: u64, extra2: u64) -> u64 {
++    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
++    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
++    let mut h = FNV_OFFSET;
++    let mut mix = |w: u64| {
++        h ^= w;
++        h = h.wrapping_mul(FNV_PRIME);
++    };
++    mix(extra1);
++    mix(extra2);
++    mix(polys.len() as u64);
++    for p in polys {
++        mix(p.contour.points.len() as u64);
++        for pt in &p.contour.points {
++            mix(pt.x as u64);
++            mix(pt.y as u64);
++        }
++        mix(p.holes.len() as u64);
++        for hole in &p.holes {
++            mix(hole.points.len() as u64);
++            for pt in &hole.points {
++                mix(pt.x as u64);
++                mix(pt.y as u64);
++            }
++        }
++    }
++    h
++}
++
++fn ring_area_u2(pts: &[slicer_ir::Point2]) -> f64 {
++    if pts.len() < 3 {
++        return 0.0;
++    }
++    let mut sum = 0.0_f64;
++    let mut j = pts.len() - 1;
++    for i in 0..pts.len() {
++        sum += (pts[j].x as f64) * (pts[i].y as f64) - (pts[i].x as f64) * (pts[j].y as f64);
++        j = i;
++    }
++    0.5 * sum
++}
++
++fn expolys_area_u2(polys: &[ExPolygon]) -> f64 {
++    let mut total = 0.0_f64;
++    for p in polys {
++        total += ring_area_u2(&p.contour.points).abs();
++        for h in &p.holes {
++            total -= ring_area_u2(&h.points).abs();
++        }
++    }
++    total
++}
++
++pub fn record_single_clip(
++    op_name: &str,
++    subject: &[ExPolygon],
++    clip: &[ExPolygon],
++    result: &[ExPolygon],
++    total_ns: u64,
++    wit_conv_ns: u64,
++    clipper_ns: u64,
++) {
++    if !enabled() {
++        return;
++    }
++    let (sp, sv) = count_expolys(subject);
++    let (cp, cv) = count_expolys(clip);
++    let (op, ov) = count_expolys(result);
++    let h1 = hash_expolys(subject, 1, 0);
++    let h2 = hash_expolys(clip, 2, h1);
++    let mut s = state().lock().unwrap();
++    if !s.in_planner {
++        return;
++    }
++    let key_name = format!("{}::clip_single({})", s.active_site, op_name);
++    let is_dup = s
++        .seen_clip_keys
++        .insert((key_name.clone(), h2), true)
++        .is_some();
++    let agg = s.host_ops.entry(key_name).or_default();
++    agg.wit_calls += 1;
++    agg.requests += 1;
++    agg.batch_wall_ns += total_ns;
++    agg.worker_total_ns += total_ns;
++    agg.wit_conv_ns += wit_conv_ns;
++    agg.clipper_ns += clipper_ns;
++    agg.in_polys += sp + cp;
++    agg.in_verts += sv + cv;
++    agg.out_polys += op;
++    agg.out_verts += ov;
++    agg.max_batch_wall_ns = agg.max_batch_wall_ns.max(total_ns);
++    agg.max_req_clipper_ns = agg.max_req_clipper_ns.max(clipper_ns);
++    agg.sum_batch_max_req_ns += total_ns;
++    if sp + cp <= 1 {
++        agg.singleton_inputs += 1;
++    }
++    if is_dup {
++        agg.dup_requests += 1;
++        agg.dup_wall_ns += total_ns;
++        agg.dup_clipper_ns += clipper_ns;
++    } else {
++        agg.unique_keys += 1;
++    }
++}
++
++pub fn record_single_offset(
++    polys: &[ExPolygon],
++    result: &[ExPolygon],
++    delta_mm: f32,
++    miter_limit: Option<f32>,
++    total_ns: u64,
++    wit_conv_ns: u64,
++    clipper_ns: u64,
++) {
++    if !enabled() {
++        return;
++    }
++    let (ip, iv) = count_expolys(polys);
++    let (op, ov) = count_expolys(result);
++    let key = hash_expolys(
++        polys,
++        u64::from(delta_mm.to_bits()),
++        u64::from(miter_limit.map_or(u32::MAX, f32::to_bits)),
++    );
++    let mut s = state().lock().unwrap();
++    if !s.in_planner {
++        return;
++    }
++    let key_name = format!("{}::offset_single", s.active_site);
++    let is_dup = s
++        .seen_offset_keys
++        .insert((key_name.clone(), key), true)
++        .is_some();
++    let agg = s.host_ops.entry(key_name).or_default();
++    agg.wit_calls += 1;
++    agg.requests += 1;
++    agg.batch_wall_ns += total_ns;
++    agg.worker_total_ns += total_ns;
++    agg.wit_conv_ns += wit_conv_ns;
++    agg.clipper_ns += clipper_ns;
++    agg.in_polys += ip;
++    agg.in_verts += iv;
++    agg.out_polys += op;
++    agg.out_verts += ov;
++    agg.max_batch_wall_ns = agg.max_batch_wall_ns.max(total_ns);
++    agg.max_req_clipper_ns = agg.max_req_clipper_ns.max(clipper_ns);
++    agg.sum_batch_max_req_ns += total_ns;
++    if is_dup {
++        agg.dup_requests += 1;
++        agg.dup_wall_ns += total_ns;
++        agg.dup_clipper_ns += clipper_ns;
++    } else {
++        agg.unique_keys += 1;
++    }
++}
++
++pub struct BatchReqStat {
++    pub worker_ns: u64,
++    pub wit_conv_ns: u64,
++    pub clipper_ns: u64,
++    pub in_polys: u64,
++    pub in_verts: u64,
++    pub out_polys: u64,
++    pub out_verts: u64,
++    pub content_key: u64,
++    pub phase5_exact_eq: Option<bool>,
++    pub phase5_area_diff_u2: f64,
++    pub phase5_emptied: bool,
++}
++
++pub fn record_batch(kind: &str, batch_wall_ns: u64, rows: &[BatchReqStat]) {
++    if !enabled() {
++        return;
++    }
++    let mut s = state().lock().unwrap();
++    if !s.in_planner {
++        return;
++    }
++    let is_phase5 = s.active_site == "br_phase5_set_diff";
++    let key_name = format!("{}::{}", s.active_site, kind);
++    let mut max_req_worker = 0u64;
++    let mut batch_dups = 0u64;
++    let mut batch_uniques = 0u64;
++    let mut batch_dup_clip = 0u64;
++    let mut batch_dup_worker = 0u64;
++
++    let mut p5_total = 0u64;
++    let mut p5_exact = 0u64;
++    let mut p5_same_area = 0u64;
++    let mut p5_changed = 0u64;
++    let mut p5_max_mm2 = 0.0_f64;
++    let mut p5_sum_mm2 = 0.0_f64;
++    let mut p5_emptied = 0u64;
++
++    for r in rows {
++        max_req_worker = max_req_worker.max(r.worker_ns);
++        let is_dup = if kind.starts_with("offset") {
++            s.seen_offset_keys
++                .insert((key_name.clone(), r.content_key), true)
++                .is_some()
++        } else {
++            s.seen_clip_keys
++                .insert((key_name.clone(), r.content_key), true)
++                .is_some()
++        };
++        if is_dup {
++            batch_dups += 1;
++            batch_dup_clip += r.clipper_ns;
++            batch_dup_worker += r.worker_ns;
++        } else {
++            batch_uniques += 1;
++        }
++        if is_phase5 {
++            if let Some(exact) = r.phase5_exact_eq {
++                p5_total += 1;
++                let diff_mm2 = r.phase5_area_diff_u2 / 1e8_f64;
++                if exact {
++                    p5_exact += 1;
++                } else if r.phase5_area_diff_u2 <= 1.0 {
++                    p5_same_area += 1;
++                } else {
++                    p5_changed += 1;
++                }
++                if r.phase5_emptied {
++                    p5_emptied += 1;
++                }
++                p5_max_mm2 = p5_max_mm2.max(diff_mm2);
++                p5_sum_mm2 += diff_mm2;
++            }
++        }
++    }
++
++    if is_phase5 {
++        s.phase5.total_reqs += p5_total;
++        s.phase5.exact_eq += p5_exact;
++        s.phase5.same_area_within_1u2 += p5_same_area;
++        s.phase5.area_changed += p5_changed;
++        s.phase5.max_area_diff_mm2 = s.phase5.max_area_diff_mm2.max(p5_max_mm2);
++        s.phase5.total_abs_area_diff_mm2 += p5_sum_mm2;
++        s.phase5.emptied_count += p5_emptied;
++    }
++
++    let agg = s.host_ops.entry(key_name).or_default();
++    agg.wit_calls += 1;
++    agg.requests += rows.len() as u64;
++    agg.batch_wall_ns += batch_wall_ns;
++    agg.max_batch_wall_ns = agg.max_batch_wall_ns.max(batch_wall_ns);
++    agg.sum_batch_max_req_ns += max_req_worker;
++    agg.unique_keys += batch_uniques;
++    agg.dup_requests += batch_dups;
++    agg.dup_wall_ns += batch_dup_worker;
++    agg.dup_clipper_ns += batch_dup_clip;
++    for r in rows {
++        agg.worker_total_ns += r.worker_ns;
++        agg.wit_conv_ns += r.wit_conv_ns;
++        agg.clipper_ns += r.clipper_ns;
++        agg.in_polys += r.in_polys;
++        agg.in_verts += r.in_verts;
++        agg.out_polys += r.out_polys;
++        agg.out_verts += r.out_verts;
++        agg.max_req_clipper_ns = agg.max_req_clipper_ns.max(r.clipper_ns);
++    }
++}
++
++pub fn phase5_check(subject: &[ExPolygon], result: &[ExPolygon]) -> (bool, f64, bool) {
++    let exact = subject == result;
++    if exact {
++        return (true, 0.0, false);
++    }
++    let a_sub = expolys_area_u2(subject);
++    let a_res = expolys_area_u2(result);
++    (false, (a_sub - a_res).abs(), !subject.is_empty() && result.is_empty())
++}
++
++pub fn active_site_is_phase5() -> bool {
++    if !enabled() {
++        return false;
++    }
++    state().lock().unwrap().active_site == "br_phase5_set_diff"
++}
++
++pub fn flush_to_disk() {
++    let Some(path) = out_path() else {
++        return;
++    };
++    let s = state().lock().unwrap();
++    let mut out = String::from("{\n");
++    out.push_str(&format!("  \"profiling_active\": {},\n", s.profiling_active));
++    out.push_str(&format!("  \"last_fuel\": {},\n", s.last_fuel));
++
++    out.push_str("  \"dispatch\": {\n");
++    for (idx, (k, d)) in s.dispatch.iter().enumerate() {
++        let comma = if idx + 1 < s.dispatch.len() { "," } else { "" };
++        out.push_str(&format!(
++            "    {:?}: {{\"instantiate_ns\": {}, \"project_mesh_ns\": {}, \"project_layer_plan_ns\": {}, \"project_region_seg_ns\": {}, \"project_support_geom_ns\": {}, \"project_support_analysis_ns\": {}, \"call_run_ns\": {}, \"harvest_ns\": {}, \"total_ns\": {}}}{}\n",
++            k, d.instantiate_ns, d.project_mesh_ns, d.project_layer_plan_ns,
++            d.project_region_seg_ns, d.project_support_geom_ns, d.project_support_analysis_ns,
++            d.call_run_ns, d.harvest_ns, d.total_ns, comma
++        ));
++    }
++    out.push_str("  },\n");
++
++    out.push_str("  \"scopes\": {\n");
++    for (idx, (k, a)) in s.scopes.iter().enumerate() {
++        let comma = if idx + 1 < s.scopes.len() { "," } else { "" };
++        out.push_str(&format!(
++            "    {:?}: {{\"calls\": {}, \"inc_wall_ns\": {}, \"exc_wall_ns\": {}, \"inc_fuel\": {}, \"exc_fuel\": {}}}{}\n",
++            k, a.calls, a.inclusive_wall_ns, a.exclusive_wall_ns, a.inclusive_fuel, a.exclusive_fuel, comma
++        ));
++    }
++    out.push_str("  },\n");
++
++    out.push_str("  \"host_ops\": {\n");
++    for (idx, (k, a)) in s.host_ops.iter().enumerate() {
++        let comma = if idx + 1 < s.host_ops.len() { "," } else { "" };
++        out.push_str(&format!(
++            "    {:?}: {{\"wit_calls\": {}, \"requests\": {}, \"batch_wall_ns\": {}, \"worker_total_ns\": {}, \"wit_conv_ns\": {}, \"clipper_ns\": {}, \"in_polys\": {}, \"in_verts\": {}, \"out_polys\": {}, \"out_verts\": {}, \"max_batch_wall_ns\": {}, \"max_req_clipper_ns\": {}, \"sum_batch_max_req_ns\": {}, \"unique_keys\": {}, \"dup_requests\": {}, \"dup_wall_ns\": {}, \"dup_clipper_ns\": {}, \"singleton_inputs\": {}}}{}\n",
++            k, a.wit_calls, a.requests, a.batch_wall_ns, a.worker_total_ns, a.wit_conv_ns,
++            a.clipper_ns, a.in_polys, a.in_verts, a.out_polys, a.out_verts,
++            a.max_batch_wall_ns, a.max_req_clipper_ns, a.sum_batch_max_req_ns,
++            a.unique_keys, a.dup_requests, a.dup_wall_ns, a.dup_clipper_ns, a.singleton_inputs, comma
++        ));
++    }
++    out.push_str("  },\n");
++
++    out.push_str(&format!(
++        "  \"phase5_audit\": {{\"total_reqs\": {}, \"exact_eq\": {}, \"same_area_within_1u2\": {}, \"area_changed\": {}, \"max_area_diff_mm2\": {:.9}, \"total_abs_area_diff_mm2\": {:.9}, \"emptied_count\": {}}},\n",
++        s.phase5.total_reqs, s.phase5.exact_eq, s.phase5.same_area_within_1u2,
++        s.phase5.area_changed, s.phase5.max_area_diff_mm2, s.phase5.total_abs_area_diff_mm2,
++        s.phase5.emptied_count
++    ));
++
++    out.push_str("  \"counters\": {\n");
++    for (idx, (k, v)) in s.counters.iter().enumerate() {
++        let comma = if idx + 1 < s.counters.len() { "," } else { "" };
++        out.push_str(&format!("    {:?}: {}{}\n", k, v, comma));
++    }
++    out.push_str("  }\n");
++    out.push_str("}\n");
++
++    if let Some(parent) = std::path::Path::new(path).parent() {
++        let _ = std::fs::create_dir_all(parent);
++    }
++    let _ = std::fs::write(path, out);
++}

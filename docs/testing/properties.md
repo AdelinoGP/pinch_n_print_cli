@@ -4508,7 +4508,7 @@ live combined material/fuzzy cell plus a BASE residual.
 
 Registry record: `id = "H-PAINT-OVERHANG"`, `package = "slicer-core"`,
 `target_kind = "test"`, `target_name = "property_prepass"`,
-`test_name = "proptest_overhang_adjacent_layer_bands"`,
+`test_name = "proptest_overhang_adjacent_layer_areas"`,
 `production_symbol = "slicer_core::algos::overhang_annotation::annotate_overhangs"`,
 `production_path = "crates/slicer-core/src/algos/overhang_annotation.rs"`,
 `features = ["slicer-core/property_testing", "slicer-core/host-algos"]`,
@@ -4517,82 +4517,95 @@ Registry record: `id = "H-PAINT-OVERHANG"`, `package = "slicer-core"`,
 
 ### Stable property ID
 
-`H-PAINT-OVERHANG` — the four-band distance partition of one object's adjacent
-layer footprints.
+`H-PAINT-OVERHANG` — the unsupported area and previous-boundary identity of one
+object's adjacent layer footprints.
+
+Since ticket 142 the producer no longer partitions that area into four distance
+bands: the consumer derives the quartile from the signed distance to the
+previous boundary and `SurfaceClassificationIR.overhang_band_width_mm`. This
+record therefore checks the annotation's area and predecessor identity; the
+per-point quartile is checked by `M-ARACHNE-BUILD` and `M-CLASSIC-*`.
 
 ### Owner
 
 Package `slicer-core`; target `property_prepass`; test
-`proptest_overhang_adjacent_layer_bands`. Production surface: `annotate_overhangs`
-(`crates/slicer-core/src/algos/overhang_annotation.rs`). Model:
-`crates/slicer-core/tests/property_prepass_common/overhang.rs`. Controls:
-`prepass_overhang_band_controls` in
+`proptest_overhang_adjacent_layer_areas`. Production surface:
+`annotate_overhangs` (`crates/slicer-core/src/algos/overhang_annotation.rs`).
+Model: `crates/slicer-core/tests/property_prepass_common/overhang.rs`. Controls:
+`prepass_overhang_area_controls` in
 `crates/slicer-core/tests/property_prepass_common/controls_paint.rs`.
 
 ### Contract
 
-For one object's consecutive footprints, `current \ previous` is partitioned into
-four bands: band 1 within `0.5 x line_width` of the previous boundary, band 2 up
-to `1.0 x`, band 3 up to `1.5 x`, and band 4 the remaining strip — **not** capped
-at `2.0 x`. Layers with no overhang have **no key** in either returned map; an
-overhang's previous-boundary map holds the actual previous footprint. A single
-layer, identical consecutive footprints and an empty current slice are the
-no-overhang modes. The first layer has no predecessor and never overhangs.
+For one object's consecutive footprints, `overhang_areas` holds the unsupported
+area `current \ previous` — never a band partition — and
+`prev_layer_boundaries` holds the actual previous footprint for the same layer.
+Layers with no overhang have **no key** in either returned map. A single layer,
+identical consecutive footprints and an empty current slice are the no-overhang
+modes; the first layer has no predecessor and never overhangs. A nonempty
+current after an explicitly empty predecessor is the separate positive mode:
+the whole current footprint is unsupported and the present predecessor entry is
+an empty vector.
 
 ### Domain
 
 `max_layers = 2 / 2`, `max_abs_units = 200000 / 200000`,
 `max_band_width_units = 12000 / 24000`, `max_cells = 32 / 64`. The scene is the
 packet's X-strip fixture: two rectangles with the same Y extent, the current one
-wider by `shift > 2 x line_width`, so all four bands are observable. Line widths
-are `0.4`, `0.5` or `0.6` mm and the classification row sits far from the
-rounded corners, where the band boundaries are exact X intervals.
+wider by a positive `shift`; the unsupported area is the exact X strip
+`[WIDTH, WIDTH + shift] x [Y0, Y1]`. The registry's `max_band_width_units` now
+caps that strip width, since the annotation no longer emits band polygons.
 
 ### Strategy
 
-A `(line width, shift)` pair; the grid is derived from the thresholds and the
-strip edges with quarter-point cuts, so at least one cell lies strictly inside
-each band whenever the band is wide enough.
+A positive `shift` capped by `max_band_width_units`; the classification grid is
+derived from the strip edges with a midpoint and quarter-point cuts, so every
+cell midpoint is strictly inside the strip.
 
 ### Oracle
 
-`property_prepass_common::overhang` derives each cell's band from its X midpoint
-and the declared `0.5 / 1.0 / 1.5 x line_width` thresholds, then classifies the
-returned bands with `oracles::point_in_region`. `Boundary` is rejected. The
-offset's `0.01 mm` arc tolerance cannot flip a midpoint because every cell is at
-least a quarter band away from a threshold.
+`property_prepass_common::overhang` asserts that every cell midpoint of the
+analytically derived strip is inside the reported unsupported area and that a
+point well inside the previous footprint is outside it, using
+`oracles::point_in_region`; `Boundary` is rejected. Every reported vertex must
+stay inside the current footprint's extent, and both maps must carry exactly
+the overhanging layer.
 
 ### Tolerance
 
-Exact cell ownership plus a `0.01 mm`-clearance argument for the offset
-boundaries. Areas are compared through cell counts, not float sums.
+Exact cell ownership. Every midpoint sits at least a quarter strip-width from
+the strip edges, while the reported difference may round the fixture's corners,
+so no ownership decision depends on a rounded vertex.
 
 ### Shrinking
 
-Shrinks the line width and the shift; the grid is re-derived from the shrunk
-thresholds, and the four-band positive witness is deterministic, so shrinking
-never needs to preserve it probabilistically.
+Shrinks the shift; the grid is re-derived from the shrunk strip, and the
+positive witness is deterministic, so shrinking never needs to preserve it
+probabilistically.
 
 ### Execution
 
 Both tiers, `in_process`, chacha, `timeout_ms = 0`, zero rejection budgets.
-Measured on Windows on 2026-11-19: routine `cases = 64` in 0.33 s, extended
-`cases = 256` in 1.24 s.
+Measured libtest wall for the routine selection on Windows on 2026-11-25:
+16.8 s. The extended selection was not re-measured this session.
 
 ### Failure record
 
 Artifacts under `target/property-testing/<run-token>/H-PAINT-OVERHANG/`. Root
-cause regression destination: `prepass_overhang_band_controls`, never a seed.
+cause regression destination: `prepass_overhang_area_controls`, never a seed.
 
 ### Acceptance
 
-Every classified cell lies in exactly its analytic band; the quartile set equals
-the scene's observable set; band 4 extends past `2.0 x line width`; both maps
-hold the actual previous footprint; and the three no-overhang modes leave both
-maps without the layer key. The controls refute swapped quartiles, a substituted
-previous footprint and a fourth band capped at `2.0 x`. The runtime
-object-delivery half of AC-2 (`prepass_overhang_object_delivery`) is not yet
-implemented; it is recorded as remaining work in the evidence file.
+Every cell midpoint of the analytic strip is inside the reported unsupported
+area; a previous-footprint interior point is outside it; both maps hold exactly
+the overhanging layer and the actual previous footprint; and the three
+no-overhang modes leave both maps without the layer key. The controls refute a
+substituted previous footprint, a missing area, an un-differenced current
+footprint and the previous footprint standing in for the strip. The runtime
+object-delivery half of AC-2 is covered by
+`prepass_overhang_object_delivery`, which asserts each object's own published
+`overhang_areas`, its own previous boundary, and the empty post-ticket-142
+`overhang_quartile_polygons` map.
 
 ## H-PAINT-DRIVER
 

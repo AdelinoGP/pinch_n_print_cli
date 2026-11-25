@@ -346,9 +346,15 @@ pub const CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION: SemVer = SemVer {
 /// Versioning Contract table), and `family_assignments` moves from
 /// `(ObjectId, RegionId)` to the chain-bearing `SupportSourceKey`. Both changes
 /// alter source-selection identity at the same owner.
+///
+/// Minor bump to 2.1.0 by wayfinder ticket 148: additive
+/// `print_plane_occupancy` carrier (object-wide print-plane cross-sections).
+/// `#[serde(default)]` keeps every pre-2.1.0 payload parseable; a host that
+/// does not publish the map gives planners nothing extra to carve, so the
+/// pre-2.1.0 behaviour is preserved exactly.
 pub const CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 2,
-    minor: 0,
+    minor: 1,
     patch: 0,
 };
 
@@ -863,13 +869,33 @@ pub struct SurfaceClassificationIR {
     /// Overhang polygons bucketed by severity quartile, keyed by object ID and
     /// global layer index. Host-only aggregation populated by the PrePass
     /// overhang annotation pipeline; not mirrored in the WIT boundary.
+    ///
+    /// Since ticket 142 the production slice path leaves this **empty**: the
+    /// quartile is derived per vertex from the signed distance to
+    /// `prev_layer_boundaries` (`overhang_quartile_from_distance`), and the
+    /// band polygons are only reconstructed for diagnostics (the visual-debug
+    /// renderer). The field is retained so a diagnostic producer can still
+    /// carry explicit bands.
     #[serde(default)]
     pub overhang_quartile_polygons: HashMap<ObjectId, HashMap<u32, Vec<QuartileBand>>>,
+    /// Unsupported (overhanging) area per object and global layer index: the
+    /// polygons of layer `n` that layer `n - 1` does not support. Host-only
+    /// aggregation populated by the PrePass overhang annotation pipeline;
+    /// absent on layers with no overhang.
+    #[serde(default)]
+    pub overhang_areas: HashMap<ObjectId, HashMap<u32, Vec<ExPolygon>>>,
     /// Previous-layer slice boundary contours keyed by object ID and global
     /// layer index. Host-only aggregation populated by the PrePass overhang
     /// annotation pipeline; not mirrored in the WIT boundary.
     #[serde(default)]
     pub prev_layer_boundaries: HashMap<ObjectId, HashMap<u32, Vec<ExPolygon>>>,
+    /// Producer-resolved band width (mm) that the overhang-quartile thresholds
+    /// are multiples of (`outer_wall_line_width`, then `line_width`, then
+    /// `0.4`). Transported to layer modules so the producer's width — not the
+    /// consumer's per-point extrusion width — decides the buckets. `0.0` means
+    /// "no width was resolved"; presence still follows the distance sign.
+    #[serde(default)]
+    pub overhang_band_width_mm: f32,
 }
 
 impl Default for SurfaceClassificationIR {
@@ -878,7 +904,9 @@ impl Default for SurfaceClassificationIR {
             schema_version: CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
             per_object: HashMap::new(),
             overhang_quartile_polygons: HashMap::new(),
+            overhang_areas: HashMap::new(),
             prev_layer_boundaries: HashMap::new(),
+            overhang_band_width_mm: 0.0,
         }
     }
 }
@@ -1919,6 +1947,20 @@ pub struct SupportCandidate {
     pub blocked: bool,
 }
 
+/// One object's model cross-section at one layer's print plane (`layer.z`).
+///
+/// See [`SupportAnalysisIR::print_plane_occupancy`] for why the planner needs
+/// it beside the midpoint-sampled [`SupportAnalysisIR::model_occupancy`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupportAnalysisPrintPlaneEntry {
+    /// Global model layer whose print plane this cross-section is taken at.
+    pub global_support_layer_index: u32,
+    /// Object the cross-section belongs to.
+    pub object_id: ObjectId,
+    /// World-space cross-section polygons at `layer.z`.
+    pub polygons: Vec<ExPolygon>,
+}
+
 /// Host-owned support inputs shared by all support family planners.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SupportAnalysisIR {
@@ -1927,7 +1969,22 @@ pub struct SupportAnalysisIR {
     /// Strategy-neutral candidates shared by support families.
     pub candidates: Vec<SupportCandidate>,
     /// Model occupancy keyed by support geometry identity.
+    ///
+    /// Each region's cross-section is sampled at its layer **midpoint**
+    /// (`layer_sample_plane_z`), which is canonical's `compute_slice_z`.
     pub model_occupancy: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
+    /// Model occupancy at each layer's **print plane** (`layer.z`), one entry
+    /// per `(global layer, object)`, additive schema 2.1.0.
+    ///
+    /// `validate_entry` in `crates/slicer-wasm-host/src/support_aggregation.rs`
+    /// queries exact-Z occupancy at `SupportPlanEntry::anchor_z`, i.e. this
+    /// plane, while `model_occupancy` carries the midpoint. Carving planner
+    /// output against the union keeps it disjoint from the plane the host gate
+    /// validates without moving that gate to the midpoint (which would hide a
+    /// real collision where the cross-section grows between the two planes).
+    /// Object-wide by construction: the exact-Z query is object-wide too.
+    #[serde(default)]
+    pub print_plane_occupancy: Vec<SupportAnalysisPrintPlaneEntry>,
     /// Wide cantilever surfaces keyed by support geometry identity. Host-only
     /// annotation, not mirrored in the WIT boundary.
     #[serde(default)]
@@ -1961,6 +2018,7 @@ impl Default for SupportAnalysisIR {
             schema_version: CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION,
             candidates: Vec::new(),
             model_occupancy: HashMap::new(),
+            print_plane_occupancy: Vec::new(),
             cantilever_surfaces: HashMap::new(),
             termination_surfaces: HashMap::new(),
             shared_settings: BTreeMap::new(),

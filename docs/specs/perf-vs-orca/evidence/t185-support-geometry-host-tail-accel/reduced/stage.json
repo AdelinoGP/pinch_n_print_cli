@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "note": "Instrumented (--instrument-stderr) pairs; post-planner host tail = planner SupportGeometry stage_complete minus its last planner module_complete. Attribution only.",
+  "cells": {
+    "benchy-classic-on": {
+      "baseline_median_ms": 254.0,
+      "candidate_median_ms": 4.0,
+      "pairs_ms": [
+        {
+          "pair": 1,
+          "baseline_ms": 255.0,
+          "candidate_ms": 4.0
+        },
+        {
+          "pair": 2,
+          "baseline_ms": 223.0,
+          "candidate_ms": 4.0
+        },
+        {
+          "pair": 3,
+          "baseline_ms": 254.0,
+          "candidate_ms": 5.0
+        }
+      ]
+    },
+    "benchy-arachne-on": {
+      "baseline_median_ms": 236.0,
+      "candidate_median_ms": 4.0,
+      "pairs_ms": [
+        {
+          "pair": 1,
+          "baseline_ms": 236.0,
+          "candidate_ms": 4.0
+        },
+        {
+          "pair": 2,
+          "baseline_ms": 224.0,
+          "candidate_ms": 4.0
+        },
+        {
+          "pair": 3,
+          "baseline_ms": 242.0,
+          "candidate_ms": 4.0
+        }
+      ]
+    },
+    "base-classic-on": {
+      "baseline_median_ms": 2390.0,
+      "candidate_median_ms": 18.0,
+      "pairs_ms": [
+        {
+          "pair": 1,
+          "baseline_ms": 2349.0,
+          "candidate_ms": 18.0
+        },
+        {
+          "pair": 2,
+          "baseline_ms": 2494.0,
+          "candidate_ms": 21.0
+        },
+        {
+          "pair": 3,
+          "baseline_ms": 2390.0,
+          "candidate_ms": 16.0
+        }
+      ]
+    },
+    "base-arachne-on": {
+      "baseline_median_ms": 2180.0,
+      "candidate_median_ms": 17.0,
+      "pairs_ms": [
+        {
+          "pair": 1,
+          "baseline_ms": 2180.0,
+          "candidate_ms": 17.0
+        },
+        {
+          "pair": 2,
+          "baseline_ms": 2226.0,
+          "candidate_ms": 17.0
+        },
+        {
+          "pair": 3,
+          "baseline_ms": 1929.0,
+          "candidate_ms": 16.0
+        }
+      ]
+    }
+  },
+  "inert_cells_tail_ms": {
+    "base-arachne-off": 0.0,
+    "base-classic-off": 0.0,
+    "benchy-arachne-off": 0.0,
+    "benchy-classic-off": 0.0
+  }
+}

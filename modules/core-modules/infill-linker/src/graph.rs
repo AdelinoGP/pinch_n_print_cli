@@ -27,6 +27,21 @@ pub enum RingDirection {
     Backward,
 }
 
+/// Precomputed geometry for one closed boundary ring edge (`start -> next`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct BoundaryEdge {
+    pub(crate) start: Point2,
+    pub(crate) dx: f64,
+    pub(crate) dy: f64,
+    pub(crate) len: f64,
+    pub(crate) len_sq: f64,
+    pub(crate) start_arc: f64,
+    pub(crate) min_x: i64,
+    pub(crate) min_y: i64,
+    pub(crate) max_x: i64,
+    pub(crate) max_y: i64,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoundaryRing {
     /// Ring polygon in deterministic traversal order.
@@ -39,9 +54,99 @@ pub struct BoundaryRing {
     pub polygon_index: usize,
     /// Source hole index, or `None` for an outer contour.
     pub hole_index: Option<usize>,
+    /// Tight axis-aligned bounding box of the ring in IR units (`i64`).
+    pub(crate) bbox: (i64, i64, i64, i64),
+    /// Precomputed per-edge geometry and cumulative arc offsets.
+    pub(crate) edges: Vec<BoundaryEdge>,
 }
 
 impl BoundaryRing {
+    /// True when `point` lies inside (or on) this ring's tight bounding box.
+    #[inline]
+    pub(crate) fn contains_bbox(&self, point: Point2) -> bool {
+        let (min_x, min_y, max_x, max_y) = self.bbox;
+        point.x >= min_x && point.x <= max_x && point.y >= min_y && point.y <= max_y
+    }
+
+    /// Exact squared distance from `point` to this ring's tight bounding box.
+    #[inline]
+    pub(crate) fn bbox_dist_sq(&self, point: Point2) -> f64 {
+        let (min_x, min_y, max_x, max_y) = self.bbox;
+        let px = point.x as f64;
+        let py = point.y as f64;
+        let dx = if px < min_x as f64 {
+            min_x as f64 - px
+        } else if px > max_x as f64 {
+            px - max_x as f64
+        } else {
+            0.0
+        };
+        let dy = if py < min_y as f64 {
+            min_y as f64 - py
+        } else if py > max_y as f64 {
+            py - max_y as f64
+        } else {
+            0.0
+        };
+        dx * dx + dy * dy
+    }
+
+    /// Projects `point` onto this ring, returning `(distance_squared, local_arc)`
+    /// only when strictly closer than `best_d2` (pass `f64::INFINITY` for an
+    /// unbounded query). Produces bit-identical results to an unpruned edge scan.
+    #[must_use]
+    pub(crate) fn project_bounded(&self, point: Point2, mut best_d2: f64) -> Option<(f64, f64)> {
+        if self.edges.is_empty() || self.bbox_dist_sq(point) >= best_d2 {
+            return None;
+        }
+        let px = point.x as f64;
+        let py = point.y as f64;
+        let mut best: Option<(f64, f64)> = None;
+        for edge in &self.edges {
+            let bx = if px < edge.min_x as f64 {
+                edge.min_x as f64 - px
+            } else if px > edge.max_x as f64 {
+                px - edge.max_x as f64
+            } else {
+                0.0
+            };
+            let bx2 = bx * bx;
+            if bx2 >= best_d2 {
+                continue;
+            }
+            let by = if py < edge.min_y as f64 {
+                edge.min_y as f64 - py
+            } else if py > edge.max_y as f64 {
+                py - edge.max_y as f64
+            } else {
+                0.0
+            };
+            if bx2 + by * by >= best_d2 {
+                continue;
+            }
+            let parameter = if edge.len == 0.0 {
+                0.0
+            } else {
+                let point_dx = px - edge.start.x as f64;
+                let point_dy = py - edge.start.y as f64;
+                ((point_dx * edge.dx + point_dy * edge.dy) / edge.len_sq).clamp(0.0, 1.0)
+            };
+            let projected_x = edge.start.x as f64 + parameter * edge.dx;
+            let projected_y = edge.start.y as f64 + parameter * edge.dy;
+            let distance_x = px - projected_x;
+            let distance_y = py - projected_y;
+            let distance_squared = distance_x * distance_x + distance_y * distance_y;
+            if distance_squared < best_d2 {
+                best_d2 = distance_squared;
+                best = Some((distance_squared, edge.start_arc + parameter * edge.len));
+                if best_d2 == 0.0 {
+                    break;
+                }
+            }
+        }
+        best
+    }
+
     /// Converts a graph-global arc position into a ring-local one.
     #[must_use]
     pub fn local_position(&self, position: f64) -> f64 {
@@ -94,8 +199,8 @@ impl BoundaryRing {
         };
 
         let mut walked = Vec::new();
-        let mut vertex_arc = 0.0;
-        for index in 0..count {
+        for (index, edge) in self.edges.iter().enumerate() {
+            let vertex_arc = edge.start_arc;
             let offset = match direction {
                 RingDirection::Forward => (vertex_arc - from).rem_euclid(self.length),
                 RingDirection::Backward => (from - vertex_arc).rem_euclid(self.length),
@@ -103,10 +208,6 @@ impl BoundaryRing {
             if offset > ARC_EPSILON_UNITS && offset < span - ARC_EPSILON_UNITS {
                 walked.push((offset, self.polygon.points[index]));
             }
-            let current = self.polygon.points[index];
-            let next = self.polygon.points[(index + 1) % count];
-            vertex_arc +=
-                (next.x as f64 - current.x as f64).hypot(next.y as f64 - current.y as f64);
         }
         walked.sort_by(|(left, _), (right, _)| left.total_cmp(right));
         walked.into_iter().map(|(_, point)| point).collect()
@@ -184,15 +285,8 @@ pub fn contour_stub(
 
     let points = &ring.polygon.points;
     let count = points.len();
-    let mut lengths = Vec::with_capacity(count);
-    let mut perimeter = 0.0;
-    for index in 0..count {
-        let current = points[index];
-        let next = points[(index + 1) % count];
-        let length = (next.x as f64 - current.x as f64).hypot(next.y as f64 - current.y as f64);
-        lengths.push(length);
-        perimeter += length;
-    }
+    let lengths: Vec<f64> = ring.edges.iter().map(|edge| edge.len).collect();
+    let perimeter = ring.length;
     if !perimeter.is_finite() || perimeter <= 0.0 {
         return Vec::new();
     }
@@ -377,50 +471,20 @@ impl BoundaryInfillGraph {
     /// Projects a point to the nearest boundary arc position.
     #[must_use]
     pub fn project(&self, point: Point2) -> Option<f64> {
+        let mut best_d2 = f64::INFINITY;
         let mut nearest = None;
 
         for ring in &self.rings {
-            let points = &ring.polygon.points;
-            if points.is_empty() {
-                continue;
-            }
-
-            let mut segment_start = 0.0;
-            for index in 0..points.len() {
-                let start = points[index];
-                let end = points[(index + 1) % points.len()];
-                let dx = end.x as f64 - start.x as f64;
-                let dy = end.y as f64 - start.y as f64;
-                let segment_len = dx.hypot(dy);
-                let (parameter, projected_x, projected_y) = if segment_len == 0.0 {
-                    (0.0, start.x as f64, start.y as f64)
-                } else {
-                    let point_dx = point.x as f64 - start.x as f64;
-                    let point_dy = point.y as f64 - start.y as f64;
-                    let parameter = ((point_dx * dx + point_dy * dy) / (segment_len * segment_len))
-                        .clamp(0.0, 1.0);
-                    (
-                        parameter,
-                        start.x as f64 + parameter * dx,
-                        start.y as f64 + parameter * dy,
-                    )
-                };
-                let distance_x = point.x as f64 - projected_x;
-                let distance_y = point.y as f64 - projected_y;
-                let distance_squared = distance_x * distance_x + distance_y * distance_y;
-                let position = ring.pos_of_first_point + segment_start + parameter * segment_len;
-
-                if nearest
-                    .as_ref()
-                    .is_none_or(|candidate: &(f64, f64)| distance_squared < candidate.0)
-                {
-                    nearest = Some((distance_squared, position));
+            if let Some((distance_squared, local_arc)) = ring.project_bounded(point, best_d2) {
+                best_d2 = distance_squared;
+                nearest = Some(ring.pos_of_first_point + local_arc);
+                if best_d2 == 0.0 {
+                    break;
                 }
-                segment_start += segment_len;
             }
         }
 
-        nearest.map(|(_, position)| position)
+        nearest
     }
 
     /// Returns the forward boundary distance from one arc position to another.
@@ -452,32 +516,48 @@ impl BoundaryInfillGraph {
         polygon_index: usize,
         hole_index: Option<usize>,
     ) {
-        let length = polygon_length(polygon);
+        let points = &polygon.points;
+        let n = points.len();
+        let mut min_x = i64::MAX;
+        let mut min_y = i64::MAX;
+        let mut max_x = i64::MIN;
+        let mut max_y = i64::MIN;
+        let mut edges = Vec::with_capacity(n);
+        let mut cumulative = 0.0;
+        for index in 0..n {
+            let start = points[index];
+            let end = points[(index + 1) % n];
+            min_x = min_x.min(start.x);
+            min_y = min_y.min(start.y);
+            max_x = max_x.max(start.x);
+            max_y = max_y.max(start.y);
+            let dx = end.x as f64 - start.x as f64;
+            let dy = end.y as f64 - start.y as f64;
+            let len = dx.hypot(dy);
+            let len_sq = len * len;
+            edges.push(BoundaryEdge {
+                start,
+                dx,
+                dy,
+                len,
+                len_sq,
+                start_arc: cumulative,
+                min_x: start.x.min(end.x),
+                min_y: start.y.min(end.y),
+                max_x: start.x.max(end.x),
+                max_y: start.y.max(end.y),
+            });
+            cumulative += len;
+        }
         rings.push(BoundaryRing {
             polygon: polygon.clone(),
             pos_of_first_point: *next_position,
-            length,
+            length: cumulative,
             polygon_index,
             hole_index,
+            bbox: (min_x, min_y, max_x, max_y),
+            edges,
         });
-        *next_position += length;
+        *next_position += cumulative;
     }
-}
-
-fn polygon_length(polygon: &Polygon) -> f64 {
-    if polygon.points.is_empty() {
-        return 0.0;
-    }
-
-    polygon
-        .points
-        .iter()
-        .enumerate()
-        .map(|(index, start)| {
-            let end = polygon.points[(index + 1) % polygon.points.len()];
-            let dx = end.x as f64 - start.x as f64;
-            let dy = end.y as f64 - start.y as f64;
-            dx.hypot(dy)
-        })
-        .sum()
 }

@@ -1,0 +1,1054 @@
+{
+ "ticket": 161,
+ "generated_by": "reduce_t161.py",
+ "question": "Post-t158 eight-cell scoreboard on the current tree, one window.",
+ "raw_sources": {
+  "campaign_csv": "target/matched-pair/t161-scoreboard/scoreboard-rows.csv",
+  "stats_dir": "target/matched-pair/t161-scoreboard/stats",
+  "load_samples": "docs/specs/perf-vs-orca/evidence/t161-scoreboard-refresh/reduced/load-samples.csv"
+ },
+ "currency_artifact": "docs/specs/perf-vs-orca/evidence/t151-skirt-hull-contour/reference.json",
+ "protocol": {
+  "cells": 8,
+  "tools": [
+   "orca",
+   "pnp-ordinary"
+  ],
+  "runs_per_cell": 3,
+  "warmups_per_cell_tool": 1,
+  "interleaved": true,
+  "ordinary_arm_only": true,
+  "measured_rows": 48,
+  "warmup_rows": 16
+ },
+ "cells": {
+  "benchy-classic-off": {
+   "fixture": "benchy",
+   "generator": "classic",
+   "supports": "off",
+   "pnp_runs": 3,
+   "orca_runs": 3,
+   "pnp_wall_s": [
+    4.0838,
+    4.0686,
+    4.0756
+   ],
+   "pnp_cpu_s": [
+    17.4375,
+    17.6875,
+    17.8125
+   ],
+   "orca_wall_s": [
+    2.278,
+    2.2695,
+    2.2379
+   ],
+   "pnp_wall_median_s": 4.0756,
+   "orca_wall_median_s": 2.2695,
+   "pnp_cpu_median_s": 17.6875,
+   "ratio_pnp_over_orca": 1.7958,
+   "required_cut_pct": 44.31,
+   "required_cut_1_5x_pct": 16.47,
+   "pnp_spread_pct": 0.37,
+   "orca_spread_pct": 1.77,
+   "pnp_hashes": [
+    "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c"
+   ],
+   "reference_hash": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+   "identity": true,
+   "pnp_exit_codes": [
+    "0"
+   ],
+   "orca_exit_codes": [
+    "0"
+   ],
+   "pnp_degraded": [
+    "false"
+   ],
+   "diagnostics_1200": [
+    0,
+    0,
+    0
+   ],
+   "support_demand_pairs": [
+    null,
+    null,
+    null
+   ],
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true
+  },
+  "benchy-classic-on": {
+   "fixture": "benchy",
+   "generator": "classic",
+   "supports": "on",
+   "pnp_runs": 3,
+   "orca_runs": 3,
+   "pnp_wall_s": [
+    7.9261,
+    8.1444,
+    8.2092
+   ],
+   "pnp_cpu_s": [
+    38.1406,
+    39.2969,
+    37.8438
+   ],
+   "orca_wall_s": [
+    3.0497,
+    3.0023,
+    3.0528
+   ],
+   "pnp_wall_median_s": 8.1444,
+   "orca_wall_median_s": 3.0497,
+   "pnp_cpu_median_s": 38.1406,
+   "ratio_pnp_over_orca": 2.6706,
+   "required_cut_pct": 62.55,
+   "required_cut_1_5x_pct": 43.83,
+   "pnp_spread_pct": 3.48,
+   "orca_spread_pct": 1.66,
+   "pnp_hashes": [
+    "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0"
+   ],
+   "reference_hash": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+   "identity": true,
+   "pnp_exit_codes": [
+    "0"
+   ],
+   "orca_exit_codes": [
+    "0"
+   ],
+   "pnp_degraded": [
+    "false"
+   ],
+   "diagnostics_1200": [
+    0,
+    0,
+    0
+   ],
+   "support_demand_pairs": [
+    null,
+    null,
+    null
+   ],
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true
+  },
+  "benchy-arachne-off": {
+   "fixture": "benchy",
+   "generator": "arachne",
+   "supports": "off",
+   "pnp_runs": 3,
+   "orca_runs": 3,
+   "pnp_wall_s": [
+    3.7666,
+    3.7898,
+    3.9742
+   ],
+   "pnp_cpu_s": [
+    18.2969,
+    17.8594,
+    18.3594
+   ],
+   "orca_wall_s": [
+    2.2957,
+    2.113,
+    2.077
+   ],
+   "pnp_wall_median_s": 3.7898,
+   "orca_wall_median_s": 2.113,
+   "pnp_cpu_median_s": 18.2969,
+   "ratio_pnp_over_orca": 1.7936,
+   "required_cut_pct": 44.25,
+   "required_cut_1_5x_pct": 16.37,
+   "pnp_spread_pct": 5.48,
+   "orca_spread_pct": 10.35,
+   "pnp_hashes": [
+    "39ad6289b681529e89ed9feb64c5731915e6c384c5f26974b1f14c110501f165"
+   ],
+   "reference_hash": "39ad6289b681529e89ed9feb64c5731915e6c384c5f26974b1f14c110501f165",
+   "identity": true,
+   "pnp_exit_codes": [
+    "0"
+   ],
+   "orca_exit_codes": [
+    "0"
+   ],
+   "pnp_degraded": [
+    "false"
+   ],
+   "diagnostics_1200": [
+    0,
+    0,
+    0
+   ],
+   "support_demand_pairs": [
+    null,
+    null,
+    null
+   ],
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true
+  },
+  "benchy-arachne-on": {
+   "fixture": "benchy",
+   "generator": "arachne",
+   "supports": "on",
+   "pnp_runs": 3,
+   "orca_runs": 3,
+   "pnp_wall_s": [
+    7.3365,
+    7.2406,
+    7.3454
+   ],
+   "pnp_cpu_s": [
+    38.625,
+    38.2188,
+    38.3438
+   ],
+   "orca_wall_s": [
+    2.8311,
+    2.7768,
+    2.8567
+   ],
+   "pnp_wall_median_s": 7.3365,
+   "orca_wall_median_s": 2.8311,
+   "pnp_cpu_median_s": 38.3438,
+   "ratio_pnp_over_orca": 2.5914,
+   "required_cut_pct": 61.41,
+   "required_cut_1_5x_pct": 42.12,
+   "pnp_spread_pct": 1.43,
+   "orca_spread_pct": 2.82,
+   "pnp_hashes": [
+    "77c3c578aa28382cd398ff007e529804b088668f1a6844ae76bb5950e25464d2"
+   ],
+   "reference_hash": "77c3c578aa28382cd398ff007e529804b088668f1a6844ae76bb5950e25464d2",
+   "identity": true,
+   "pnp_exit_codes": [
+    "0"
+   ],
+   "orca_exit_codes": [
+    "0"
+   ],
+   "pnp_degraded": [
+    "false"
+   ],
+   "diagnostics_1200": [
+    0,
+    0,
+    0
+   ],
+   "support_demand_pairs": [
+    null,
+    null,
+    null
+   ],
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true
+  },
+  "base-classic-off": {
+   "fixture": "base",
+   "generator": "classic",
+   "supports": "off",
+   "pnp_runs": 3,
+   "orca_runs": 3,
+   "pnp_wall_s": [
+    22.6029,
+    22.8182,
+    21.6136
+   ],
+   "pnp_cpu_s": [
+    162.6719,
+    163.0156,
+    163.3438
+   ],
+   "orca_wall_s": [
+    15.8123,
+    29.8073,
+    15.2016
+   ],
+   "pnp_wall_median_s": 22.6029,
+   "orca_wall_median_s": 15.8123,
+   "pnp_cpu_median_s": 163.0156,
+   "ratio_pnp_over_orca": 1.4295,
+   "required_cut_pct": 30.04,
+   "required_cut_1_5x_pct": -4.94,
+   "pnp_spread_pct": 5.33,
+   "orca_spread_pct": 92.37,
+   "pnp_hashes": [
+    "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e"
+   ],
+   "reference_hash": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+   "identity": true,
+   "pnp_exit_codes": [
+    "0"
+   ],
+   "orca_exit_codes": [
+    "0"
+   ],
+   "pnp_degraded": [
+    "false"
+   ],
+   "diagnostics_1200": [
+    0,
+    0,
+    0
+   ],
+   "support_demand_pairs": [
+    null,
+    null,
+    null
+   ],
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true
+  },
+  "base-classic-on": {
+   "fixture": "base",
+   "generator": "classic",
+   "supports": "on",
+   "pnp_runs": 3,
+   "orca_runs": 3,
+   "pnp_wall_s": [
+    69.283,
+    70.7543,
+    71.3994
+   ],
+   "pnp_cpu_s": [
+    529.1094,
+    531.0938,
+    533.375
+   ],
+   "orca_wall_s": [
+    27.292,
+    25.941,
+    26.0304
+   ],
+   "pnp_wall_median_s": 70.7543,
+   "orca_wall_median_s": 26.0304,
+   "pnp_cpu_median_s": 531.0938,
+   "ratio_pnp_over_orca": 2.7181,
+   "required_cut_pct": 63.21,
+   "required_cut_1_5x_pct": 44.82,
+   "pnp_spread_pct": 2.99,
+   "orca_spread_pct": 5.19,
+   "pnp_hashes": [
+    "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656"
+   ],
+   "reference_hash": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+   "identity": true,
+   "pnp_exit_codes": [
+    "0"
+   ],
+   "orca_exit_codes": [
+    "0"
+   ],
+   "pnp_degraded": [
+    "false"
+   ],
+   "diagnostics_1200": [
+    0,
+    0,
+    0
+   ],
+   "support_demand_pairs": [
+    null,
+    null,
+    null
+   ],
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true
+  },
+  "base-arachne-off": {
+   "fixture": "base",
+   "generator": "arachne",
+   "supports": "off",
+   "pnp_runs": 3,
+   "orca_runs": 3,
+   "pnp_wall_s": [
+    22.4974,
+    22.6075,
+    22.5053
+   ],
+   "pnp_cpu_s": [
+    166.8125,
+    167.9688,
+    166.8438
+   ],
+   "orca_wall_s": [
+    16.4742,
+    16.5393,
+    16.1592
+   ],
+   "pnp_wall_median_s": 22.5053,
+   "orca_wall_median_s": 16.4742,
+   "pnp_cpu_median_s": 166.8438,
+   "ratio_pnp_over_orca": 1.3661,
+   "required_cut_pct": 26.8,
+   "required_cut_1_5x_pct": -9.8,
+   "pnp_spread_pct": 0.49,
+   "orca_spread_pct": 2.31,
+   "pnp_hashes": [
+    "2f249cdb8fd2c570b0a818debfa2340f9925509e9e164abdaaf3e993c6324770"
+   ],
+   "reference_hash": "2f249cdb8fd2c570b0a818debfa2340f9925509e9e164abdaaf3e993c6324770",
+   "identity": true,
+   "pnp_exit_codes": [
+    "0"
+   ],
+   "orca_exit_codes": [
+    "0"
+   ],
+   "pnp_degraded": [
+    "false"
+   ],
+   "diagnostics_1200": [
+    0,
+    0,
+    0
+   ],
+   "support_demand_pairs": [
+    null,
+    null,
+    null
+   ],
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true
+  },
+  "base-arachne-on": {
+   "fixture": "base",
+   "generator": "arachne",
+   "supports": "on",
+   "pnp_runs": 3,
+   "orca_runs": 3,
+   "pnp_wall_s": [
+    71.1008,
+    71.3769,
+    72.4274
+   ],
+   "pnp_cpu_s": [
+    534.5312,
+    534.8438,
+    538.9375
+   ],
+   "orca_wall_s": [
+    27.2193,
+    27.7147,
+    26.7844
+   ],
+   "pnp_wall_median_s": 71.3769,
+   "orca_wall_median_s": 27.2193,
+   "pnp_cpu_median_s": 534.8438,
+   "ratio_pnp_over_orca": 2.6223,
+   "required_cut_pct": 61.87,
+   "required_cut_1_5x_pct": 42.8,
+   "pnp_spread_pct": 1.86,
+   "orca_spread_pct": 3.42,
+   "pnp_hashes": [
+    "1811425ffccda686c9b86448cf30169e6d09859991e1a2d5e7ac9d4cb49b6285"
+   ],
+   "reference_hash": "1811425ffccda686c9b86448cf30169e6d09859991e1a2d5e7ac9d4cb49b6285",
+   "identity": true,
+   "pnp_exit_codes": [
+    "0"
+   ],
+   "orca_exit_codes": [
+    "0"
+   ],
+   "pnp_degraded": [
+    "false"
+   ],
+   "diagnostics_1200": [
+    0,
+    0,
+    0
+   ],
+   "support_demand_pairs": [
+    null,
+    null,
+    null
+   ],
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true
+  }
+ },
+ "ranges": {
+  "ratio_overall": [
+   1.3661,
+   2.7181
+  ],
+  "ratio_benchy": [
+   1.7936,
+   2.6706
+  ],
+  "ratio_base": [
+   1.3661,
+   2.7181
+  ],
+  "required_cut_pct": [
+   26.8,
+   63.21
+  ],
+  "required_cut_1_5x_pct": [
+   -9.8,
+   44.82
+  ]
+ },
+ "identity": {
+  "all_eight": true,
+  "cells_matching": [
+   "benchy-classic-off",
+   "benchy-classic-on",
+   "benchy-arachne-off",
+   "benchy-arachne-on",
+   "base-classic-off",
+   "base-classic-on",
+   "base-arachne-off",
+   "base-arachne-on"
+  ],
+  "cells_missing": []
+ },
+ "matched_keys": {
+  "all_eight": true
+ },
+ "box_load_pct": {
+  "samples": 62,
+  "min": 2.0,
+  "median": 69.5,
+  "max": 100.0
+ },
+ "state_control": {
+  "cell": "benchy-classic-off",
+  "purpose": "box-state control taken after the batch: did the window's slower state persist?",
+  "pnp_wall_s": [
+   5.4075,
+   4.7636,
+   4.8429
+  ],
+  "orca_wall_s": [
+   2.3313,
+   2.7851,
+   2.5758
+  ],
+  "pnp_wall_median_s": 4.8429,
+  "orca_wall_median_s": 2.5758,
+  "ratio_pnp_over_orca": 1.8802,
+  "pnp_cpu_s": [
+   18.0312,
+   18.1406,
+   18.7812
+  ]
+ },
+ "cells_won": 0
+}

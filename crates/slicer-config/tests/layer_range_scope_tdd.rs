@@ -506,6 +506,59 @@ fn raft_offset_skips_world_range_below_object() {
     assert_top_zs(&layer_top_zs(&profile, 1.0), &[0.2, 0.4, 0.6, 0.8, 1.0]);
 }
 
+/// Canonical `generate_object_layers` (`Slicing.cpp`) terminates on the layer
+/// **midpoint** (`slice_z = print_z + 0.5 × height >= object_print_z_height`),
+/// not on the print top. A 0.55 mm object with 0.2 mm layers therefore keeps a
+/// third layer whose top (0.6) overshoots the object because its midpoint (0.5)
+/// is still below it; a top-based walk would stop at 0.4.
+#[test]
+fn layer_top_zs_terminates_on_the_midpoint_not_the_top() {
+    let profile = vec![HeightProfileSegment {
+        z_start: 0.0,
+        z_end: 0.55,
+        height: 0.2,
+    }];
+
+    assert_top_zs(&layer_top_zs(&profile, 0.55), &[0.2, 0.4, 0.6]);
+}
+
+/// The exact-boundary case must not gain a layer: a 0.4 mm object's third
+/// layer has its midpoint (0.5) at/above the object height, and canonical
+/// breaks on `slice_z >= object_print_z_height`.
+#[test]
+fn layer_top_zs_exact_boundary_gains_no_layer() {
+    let profile = vec![HeightProfileSegment {
+        z_start: 0.0,
+        z_end: 0.4,
+        height: 0.2,
+    }];
+
+    assert_top_zs(&layer_top_zs(&profile, 0.4), &[0.2, 0.4]);
+}
+
+/// The base fixture's measured shape: a 99.1598 mm object with 0.2 mm layers
+/// keeps OrcaSlicer's 496th layer at a 99.2 print top (midpoint 99.1 is still
+/// inside the object), which is the layer-count parity this ticket adopts.
+/// The negative control is explicit: a top-based walk stops at 99.0 (495).
+#[test]
+fn layer_top_zs_keeps_the_canonical_final_layer_on_a_fractional_height() {
+    let profile = vec![HeightProfileSegment {
+        z_start: 0.0,
+        z_end: 99.1598,
+        height: 0.2,
+    }];
+
+    let tops = layer_top_zs(&profile, 99.1598);
+    assert_eq!(tops.len(), 496, "canonical base layer count");
+    assert!((tops[494] - 99.0).abs() <= 1.0e-9);
+    assert!((tops[495] - 99.2).abs() <= 1.0e-9);
+    assert!(
+        tops[495] > 99.1598,
+        "the final print top overshoots the object height; a top-based walk \
+         would have stopped at 99.0 and produced 495 layers"
+    );
+}
+
 /// A zero offset preserves the fixture's original no-raft profile and tops.
 #[test]
 fn zero_raft_offset_preserves_no_raft_fixture() {

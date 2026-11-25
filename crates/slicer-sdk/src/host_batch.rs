@@ -190,7 +190,16 @@ pub fn clip_polygons_batch(requests: &[ClipRequest]) -> Vec<Vec<ExPolygon>> {
     {
         requests
             .iter()
-            .map(|r| crate::host::clip_polygons(&r.subject, &r.clip, r.op))
+            .map(|r| {
+                if r.op == ClipOperation::Union
+                    && r.subject.len() + r.clip.len()
+                        > slicer_core::polygon_ops::DEFAULT_SPATIAL_UNION_CHUNK_SIZE
+                {
+                    slicer_core::polygon_ops::union_spatial_tree(&r.subject, &r.clip)
+                } else {
+                    crate::host::clip_polygons(&r.subject, &r.clip, r.op)
+                }
+            })
             .collect()
     }
     #[cfg(target_arch = "wasm32")]
@@ -483,6 +492,34 @@ mod tests {
             .collect();
 
         assert_eq!(batched, one_by_one);
+    }
+
+    #[test]
+    fn clip_polygons_batch_large_union_and_difference_match_geometry() {
+        let polys: Vec<ExPolygon> = (0..12)
+            .map(|i| square(i as f32 * 5.0, i as f32 * 5.0 + 10.0))
+            .collect();
+        let reqs = vec![
+            ClipRequest {
+                subject: polys[..1].to_vec(),
+                clip: polys[1..].to_vec(),
+                op: ClipOperation::Union,
+            },
+            ClipRequest {
+                subject: vec![square(0.0, 20.0)],
+                clip: vec![square(5.0, 15.0)],
+                op: ClipOperation::Difference,
+            },
+        ];
+        let results = clip_polygons_batch(&reqs);
+        assert_eq!(results.len(), 2);
+        // 12 overlapping 10x10 squares stepped by 5mm merge into one contiguous
+        // staircase spanning 0..65 mm in both X and Y.
+        assert_eq!(results[0].len(), 1);
+        assert!((result_width_mm(&results[0]) - 65.0).abs() < 0.01);
+        // 20x20 square minus centered 10x10 square yields one ExPolygon with 1 hole.
+        assert_eq!(results[1].len(), 1);
+        assert_eq!(results[1][0].holes.len(), 1);
     }
 
     fn result_width_mm(polys: &[ExPolygon]) -> f32 {

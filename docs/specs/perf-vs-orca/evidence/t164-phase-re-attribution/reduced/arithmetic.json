@@ -1,0 +1,312 @@
+{
+ "note": "ESTIMATE, not a ratio of record. Shares are this take's instrumented split (per-phase median over three passes per cell); walls are this take's paired scoreboard medians (one window, Orca 2.5.1, PnP ordinary); canonical prepass costs are t110's tap split held fixed. `prepass_at_canonical` replaces the prepass with canonical's cost and holds every other phase at this take's measured share. No instrumented wall is a wall claim.",
+ "canonical_prepass_s": {
+  "benchy-off": 0.0505,
+  "benchy-on": 0.5498,
+  "base-off": 2.103,
+  "base-on": 10.4448
+ },
+ "cells": {
+  "benchy-classic-off": {
+   "estimate": true,
+   "orca_s": 1.9038,
+   "pnp_s": 3.7662,
+   "ratio_of_record": 1.9783,
+   "required_cut": 0.4945,
+   "phase_shares": {
+    "outside": 0.0229,
+    "per_layer": 0.2251,
+    "postpass": 0.0485,
+    "prepass": 0.7046,
+    "validation": 0.0009
+   },
+   "implied_phase_walls_s": {
+    "outside": 0.0862,
+    "per_layer": 0.8478,
+    "postpass": 0.1827,
+    "prepass": 2.6537,
+    "validation": 0.0034
+   },
+   "prepass_s": 2.6537,
+   "other_than_prepass_s": 1.1125,
+   "canonical_prepass_s": 0.0505,
+   "prepass_budget_s": 0.7913,
+   "required_prepass_cut": 0.7018,
+   "prepass_at_canonical_result": 0.6109,
+   "margin_at_canonical": 0.3891,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0,
+   "per_layer_s": 0.8478,
+   "postpass_s": 0.1827,
+   "outside_s": 0.0862,
+   "repeat_max_share_delta_pp": 0.72
+  },
+  "benchy-classic-on": {
+   "estimate": true,
+   "orca_s": 2.5716,
+   "pnp_s": 7.4172,
+   "ratio_of_record": 2.8843,
+   "required_cut": 0.6533,
+   "phase_shares": {
+    "outside": 0.0108,
+    "per_layer": 0.1517,
+    "postpass": 0.066,
+    "prepass": 0.7711,
+    "validation": 0.0004
+   },
+   "implied_phase_walls_s": {
+    "outside": 0.0801,
+    "per_layer": 1.1252,
+    "postpass": 0.4895,
+    "prepass": 5.7194,
+    "validation": 0.003
+   },
+   "prepass_s": 5.7194,
+   "other_than_prepass_s": 1.6978,
+   "canonical_prepass_s": 0.5498,
+   "prepass_budget_s": 0.8738,
+   "required_prepass_cut": 0.8472,
+   "prepass_at_canonical_result": 0.874,
+   "margin_at_canonical": 0.126,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0,
+   "per_layer_s": 1.1252,
+   "postpass_s": 0.4895,
+   "outside_s": 0.0801,
+   "repeat_max_share_delta_pp": 1.88
+  },
+  "benchy-arachne-off": {
+   "estimate": true,
+   "orca_s": 2.0795,
+   "pnp_s": 3.939,
+   "ratio_of_record": 1.8942,
+   "required_cut": 0.4721,
+   "phase_shares": {
+    "outside": 0.0212,
+    "per_layer": 0.2632,
+    "postpass": 0.0485,
+    "prepass": 0.67,
+    "validation": 0.0009
+   },
+   "implied_phase_walls_s": {
+    "outside": 0.0835,
+    "per_layer": 1.0367,
+    "postpass": 0.191,
+    "prepass": 2.6391,
+    "validation": 0.0035
+   },
+   "prepass_s": 2.6391,
+   "other_than_prepass_s": 1.2999,
+   "canonical_prepass_s": 0.0505,
+   "prepass_budget_s": 0.7796,
+   "required_prepass_cut": 0.7046,
+   "prepass_at_canonical_result": 0.6494,
+   "margin_at_canonical": 0.3506,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0,
+   "per_layer_s": 1.0367,
+   "postpass_s": 0.191,
+   "outside_s": 0.0835,
+   "repeat_max_share_delta_pp": 3.91
+  },
+  "benchy-arachne-on": {
+   "estimate": true,
+   "orca_s": 2.6462,
+   "pnp_s": 7.3661,
+   "ratio_of_record": 2.7837,
+   "required_cut": 0.6408,
+   "phase_shares": {
+    "outside": 0.0107,
+    "per_layer": 0.1629,
+    "postpass": 0.0682,
+    "prepass": 0.7548,
+    "validation": 0.0004
+   },
+   "implied_phase_walls_s": {
+    "outside": 0.0788,
+    "per_layer": 1.1999,
+    "postpass": 0.5024,
+    "prepass": 5.5599,
+    "validation": 0.0029
+   },
+   "prepass_s": 5.5599,
+   "other_than_prepass_s": 1.8062,
+   "canonical_prepass_s": 0.5498,
+   "prepass_budget_s": 0.84,
+   "required_prepass_cut": 0.8489,
+   "prepass_at_canonical_result": 0.8903,
+   "margin_at_canonical": 0.1097,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0,
+   "per_layer_s": 1.1999,
+   "postpass_s": 0.5024,
+   "outside_s": 0.0788,
+   "repeat_max_share_delta_pp": 1.94
+  },
+  "base-classic-off": {
+   "estimate": true,
+   "orca_s": 14.8733,
+   "pnp_s": 22.3241,
+   "ratio_of_record": 1.501,
+   "required_cut": 0.3338,
+   "phase_shares": {
+    "outside": 0.004,
+    "per_layer": 0.1324,
+    "postpass": 0.0343,
+    "prepass": 0.8275,
+    "validation": 0.0002
+   },
+   "implied_phase_walls_s": {
+    "outside": 0.0893,
+    "per_layer": 2.9557,
+    "postpass": 0.7657,
+    "prepass": 18.4732,
+    "validation": 0.0045
+   },
+   "prepass_s": 18.4732,
+   "other_than_prepass_s": 3.8509,
+   "canonical_prepass_s": 2.103,
+   "prepass_budget_s": 11.0224,
+   "required_prepass_cut": 0.4033,
+   "prepass_at_canonical_result": 0.4003,
+   "margin_at_canonical": 0.5997,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0,
+   "per_layer_s": 2.9557,
+   "postpass_s": 0.7657,
+   "outside_s": 0.0893,
+   "repeat_max_share_delta_pp": 0.96
+  },
+  "base-classic-on": {
+   "estimate": true,
+   "orca_s": 24.5128,
+   "pnp_s": 68.9298,
+   "ratio_of_record": 2.812,
+   "required_cut": 0.6444,
+   "phase_shares": {
+    "outside": 0.0011,
+    "per_layer": 0.0927,
+    "postpass": 0.0338,
+    "prepass": 0.872,
+    "validation": 0.0
+   },
+   "implied_phase_walls_s": {
+    "outside": 0.0758,
+    "per_layer": 6.3898,
+    "postpass": 2.3298,
+    "prepass": 60.1068,
+    "validation": 0.0
+   },
+   "prepass_s": 60.1068,
+   "other_than_prepass_s": 8.823,
+   "canonical_prepass_s": 10.4448,
+   "prepass_budget_s": 15.6898,
+   "required_prepass_cut": 0.739,
+   "prepass_at_canonical_result": 0.786,
+   "margin_at_canonical": 0.214,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0,
+   "per_layer_s": 6.3898,
+   "postpass_s": 2.3298,
+   "outside_s": 0.0758,
+   "repeat_max_share_delta_pp": 1.04
+  },
+  "base-arachne-off": {
+   "estimate": true,
+   "orca_s": 16.4134,
+   "pnp_s": 22.6291,
+   "ratio_of_record": 1.3787,
+   "required_cut": 0.2747,
+   "phase_shares": {
+    "outside": 0.0039,
+    "per_layer": 0.1557,
+    "postpass": 0.0347,
+    "prepass": 0.8056,
+    "validation": 0.0001
+   },
+   "implied_phase_walls_s": {
+    "outside": 0.0883,
+    "per_layer": 3.5234,
+    "postpass": 0.7852,
+    "prepass": 18.23,
+    "validation": 0.0023
+   },
+   "prepass_s": 18.23,
+   "other_than_prepass_s": 4.3991,
+   "canonical_prepass_s": 2.103,
+   "prepass_budget_s": 12.0143,
+   "required_prepass_cut": 0.341,
+   "prepass_at_canonical_result": 0.3961,
+   "margin_at_canonical": 0.6039,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0,
+   "per_layer_s": 3.5234,
+   "postpass_s": 0.7852,
+   "outside_s": 0.0883,
+   "repeat_max_share_delta_pp": 1.15
+  },
+  "base-arachne-on": {
+   "estimate": true,
+   "orca_s": 27.5659,
+   "pnp_s": 71.067,
+   "ratio_of_record": 2.5781,
+   "required_cut": 0.6121,
+   "phase_shares": {
+    "outside": 0.0013,
+    "per_layer": 0.0983,
+    "postpass": 0.0319,
+    "prepass": 0.8686,
+    "validation": 0.0
+   },
+   "implied_phase_walls_s": {
+    "outside": 0.0924,
+    "per_layer": 6.9859,
+    "postpass": 2.267,
+    "prepass": 61.7288,
+    "validation": 0.0
+   },
+   "prepass_s": 61.7288,
+   "other_than_prepass_s": 9.3382,
+   "canonical_prepass_s": 10.4448,
+   "prepass_budget_s": 18.2277,
+   "required_prepass_cut": 0.7047,
+   "prepass_at_canonical_result": 0.7177,
+   "margin_at_canonical": 0.2823,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0,
+   "per_layer_s": 6.9859,
+   "postpass_s": 2.267,
+   "outside_s": 0.0924,
+   "repeat_max_share_delta_pp": 1.88
+  }
+ },
+ "summary": {
+  "cells_winning_at_canonical_prepass": 8,
+  "winning_cells": [
+   "benchy-classic-off",
+   "benchy-classic-on",
+   "benchy-arachne-off",
+   "benchy-arachne-on",
+   "base-classic-off",
+   "base-classic-on",
+   "base-arachne-off",
+   "base-arachne-on"
+  ],
+  "losing_cells": [],
+  "binding_cell": "benchy-arachne-on",
+  "binding_result": 0.8903,
+  "binding_needs_from_other_s": 0.0,
+  "required_prepass_cut_range": [
+   0.341,
+   0.8489
+  ],
+  "prepass_share_range": [
+   0.67,
+   0.872
+  ],
+  "per_layer_share_range": [
+   0.0927,
+   0.2632
+  ]
+ }
+}

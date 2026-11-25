@@ -20,7 +20,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{
     BridgeRegion, ExPolygon, MeshIR, ObjectSurfaceData, OverhangRegion, PaintSemantic, PaintValue,
     Point2, Point3WithWidth, Polygon, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
@@ -94,8 +93,10 @@ fn blackboard_with_committed_slice(slice_ir: SliceIR) -> Blackboard {
 /// A `SurfaceClassificationIR` with every field the `PrePass::MeshAnalysis`/
 /// `PrePass::OverhangAnnotation` taps document as their source populated
 /// with a distinguishable, non-default value: `per_object` (via
-/// `bridge_regions[].xy_footprint` and `overhang_regions[].xy_footprint`)
-/// and `overhang_quartile_polygons`.
+/// `bridge_regions[].xy_footprint` and `overhang_regions[].xy_footprint`),
+/// `overhang_areas`, `prev_layer_boundaries` and `overhang_band_width_mm`.
+/// `overhang_quartile_polygons` is empty exactly as the post-ticket-142
+/// production path leaves it.
 fn seeded_surface_classification() -> SurfaceClassificationIR {
     let mut per_object = HashMap::new();
     per_object.insert(
@@ -114,24 +115,23 @@ fn seeded_surface_classification() -> SurfaceClassificationIR {
             ..ObjectSurfaceData::default()
         },
     );
-    let mut overhang_quartile_polygons = HashMap::new();
-    overhang_quartile_polygons.insert(
+    let mut overhang_areas = HashMap::new();
+    overhang_areas.insert(
         "obj-0".to_string(),
-        [(
-            0u32,
-            vec![QuartileBand {
-                quartile: 3,
-                polygons: vec![triangle_expolygon()],
-            }],
-        )]
-        .into_iter()
-        .collect(),
+        [(0u32, vec![triangle_expolygon()])].into_iter().collect(),
+    );
+    let mut prev_layer_boundaries = HashMap::new();
+    prev_layer_boundaries.insert(
+        "obj-0".to_string(),
+        [(0u32, vec![triangle_expolygon()])].into_iter().collect(),
     );
     SurfaceClassificationIR {
         schema_version: CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
         per_object,
-        overhang_quartile_polygons,
-        prev_layer_boundaries: HashMap::new(),
+        overhang_areas,
+        prev_layer_boundaries,
+        overhang_band_width_mm: 0.4,
+        ..SurfaceClassificationIR::default()
     }
 }
 

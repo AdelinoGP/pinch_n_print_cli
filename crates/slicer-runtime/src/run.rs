@@ -2378,22 +2378,26 @@ fn run_slice_shared(
     let wallclock_ms = t0.elapsed().as_millis() as u64;
 
     // Derive layer_count: count layer-change markers in gcode (best-effort proxy).
-    let layer_count = pipeline_output
-        .gcode_text
-        .lines()
-        .filter(|l| l.starts_with(";LAYER_CHANGE") || l.starts_with("; layer"))
-        .count() as u32;
+    let layer_count = count_layer_change_markers(pipeline_output.gcode_text.as_bytes());
 
     // slice_stats + slice_complete (packet 169 Step 3): slice_stats is
     // emitted whenever the slice produced a G-code artifact (including
     // degraded-but-successful runs), strictly before the success-only,
     // exactly-once slice_complete (docs/09 §Required Events). On fatal
-    // failure the stream ends at the error event with neither. The whole-print
-    // numbers come from `estimate_print` over the final post-postprocess
-    // `GCodeIR` surfaced by `crate::postpass::take_final_gcode_ir` — no
-    // estimator math is re-implemented here.
+    // failure the stream ends at the error event with neither. Reuse the
+    // `PrintEstimate` already computed by `DefaultGCodeEmitter` when
+    // `GCodePostProcess` proved kinematic invariance and the estimator inputs
+    // match; otherwise fall back to full `estimate_print`.
+    let cached_estimate = crate::postpass::take_final_gcode_estimate();
     let stats = crate::postpass::take_final_gcode_ir().map(|ir| {
-        let estimate = estimate_print(&ir, &estimator_limits, &stats_tool_diameters);
+        let estimate = match cached_estimate {
+            Some((est, limits, diameters))
+                if limits == estimator_limits && diameters == stats_tool_diameters =>
+            {
+                est
+            }
+            _ => estimate_print(&ir, &estimator_limits, &stats_tool_diameters),
+        };
         // Weight is summed per tool, each priced with its own filament's
         // density (Orca `filament_density` is `coFloats`, one entry per
         // filament — canonical reads it as `filament_density.get_at(m_id)` in
@@ -2666,6 +2670,27 @@ fn shell_quote(path: &Path) -> String {
     }
     quoted.push('\'');
     quoted
+}
+
+/// Fast byte-slice counter matching
+/// `gcode_text.lines().filter(|l| l.starts_with(";LAYER_CHANGE") || l.starts_with("; layer")).count()`.
+fn count_layer_change_markers(bytes: &[u8]) -> u32 {
+    const LAYER_CHANGE: &[u8] = b";LAYER_CHANGE";
+    const LAYER_COMMENT: &[u8] = b"; layer";
+    let mut count = 0u32;
+    let mut pos = 0usize;
+    let len = bytes.len();
+    while pos < len {
+        let rest = &bytes[pos..];
+        if rest.starts_with(LAYER_CHANGE) || rest.starts_with(LAYER_COMMENT) {
+            count += 1;
+        }
+        match rest.iter().position(|&b| b == b'\n') {
+            Some(nl) => pos += nl + 1,
+            None => break,
+        }
+    }
+    count
 }
 
 /// Assembled scheduler/runtime context after prepass execution, ready for a

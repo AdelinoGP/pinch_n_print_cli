@@ -48,24 +48,32 @@ fn straight_cube_has_no_overhang_at_any_layer() {
     let mesh = straight_cube_mesh();
     let layer_zs = vec![1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32, 5.0_f32];
 
-    let (result, _) = annotate_overhangs(&footprints(&mesh, &layer_zs), 0.4);
+    let result = annotate_overhangs(&footprints(&mesh, &layer_zs));
 
     assert!(
-        result.is_empty(),
-        "a straight (non-overhanging) cube must yield an empty map (every key absent), got {result:?}"
+        result.overhang_areas.is_empty(),
+        "a straight (non-overhanging) cube must yield an empty map (every key absent), got {:?}",
+        result.overhang_areas
+    );
+    assert!(
+        result.prev_layer_boundaries.is_empty(),
+        "no overhang means no previous-boundary anchors either, got {:?}",
+        result.prev_layer_boundaries
     );
 }
 
 #[test]
 fn empty_layer_list_does_not_panic() {
     let mesh = straight_cube_mesh();
-    let (result, _) = annotate_overhangs(&footprints(&mesh, &[]), 0.4);
-    assert!(result.is_empty());
+    let result = annotate_overhangs(&footprints(&mesh, &[]));
+    assert!(result.overhang_areas.is_empty());
+    assert!(result.prev_layer_boundaries.is_empty());
 }
 
 #[test]
 fn single_layer_has_no_previous_and_does_not_panic() {
     let mesh = straight_cube_mesh();
-    let (result, _) = annotate_overhangs(&footprints(&mesh, &[5.0]), 0.4);
-    assert!(result.is_empty());
+    let result = annotate_overhangs(&footprints(&mesh, &[5.0]));
+    assert!(result.overhang_areas.is_empty());
+    assert!(result.prev_layer_boundaries.is_empty());
 }

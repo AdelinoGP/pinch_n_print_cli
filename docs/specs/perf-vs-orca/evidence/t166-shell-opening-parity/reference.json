@@ -1,0 +1,63 @@
+{
+  "note": "Active reference set after t166 (canonical top/bottom opening). Replaces t151's set; the t151 set is reproduced by the same campaign's baseline arm in 8/8.",
+  "schema": 1,
+  "take": "2026-11-19",
+  "cells": {
+    "benchy-classic-off": {
+      "sha256": "276782a7ce35cfd18705149fd7ce1e2e58d8c929acf001ce07e99943724dd1d7",
+      "bytes": 4093868,
+      "superseded_t151_sha256": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c"
+    },
+    "benchy-classic-on": {
+      "sha256": "44564d29d98937c4c217778317a5138625f7169518dfa968cf7cb7dbd9fedf58",
+      "bytes": 8681875,
+      "superseded_t151_sha256": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0"
+    },
+    "benchy-arachne-off": {
+      "sha256": "46111bb0ee0d86a7dc68bcc759bb2a3b90a8e8b278671f9a41524080b57c45f6",
+      "bytes": 4224959,
+      "superseded_t151_sha256": "39ad6289b681529e89ed9feb64c5731915e6c384c5f26974b1f14c110501f165"
+    },
+    "benchy-arachne-on": {
+      "sha256": "12c5e45c7da449d4af198c393e0e79d5ca593c4548725a8a4bde1ceb25e5af7e",
+      "bytes": 8812828,
+      "superseded_t151_sha256": "77c3c578aa28382cd398ff007e529804b088668f1a6844ae76bb5950e25464d2"
+    },
+    "base-classic-off": {
+      "sha256": "0a1ee3df67e5e9713f8acf8428fb44d2a8a3bde2b236de5bdf8ecb03b903af9e",
+      "bytes": 21224238,
+      "superseded_t151_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e"
+    },
+    "base-classic-on": {
+      "sha256": "bc5cb5e1532248dccc7da573ca42b52624b51594c90e1579a6671c8ac75576de",
+      "bytes": 39769463,
+      "superseded_t151_sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656"
+    },
+    "base-arachne-off": {
+      "sha256": "cadebffa6f8c2613db06cd285c5c9bddc4fc17ed459681bf90b3f40c5e9c7b4b",
+      "bytes": 21059489,
+      "superseded_t151_sha256": "2f249cdb8fd2c570b0a818debfa2340f9925509e9e164abdaaf3e993c6324770"
+    },
+    "base-arachne-on": {
+      "sha256": "77f2b6551183889e9b06e1bad15fa4f9b4196da72246a8f09f0e6bead749a975",
+      "bytes": 39607314,
+      "superseded_t151_sha256": "1811425ffccda686c9b86448cf30169e6d09859991e1a2d5e7ac9d4cb49b6285"
+    }
+  },
+  "manifest": {
+    "baseline-ordinary": {
+      "exe_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t166-baseline\\pnp_cli-ordinary.exe",
+      "exe_sha256": "a9a21bd655a72898d343f8a86f5d3abc13b4b479e5b60000e7a7e2543a0e1565",
+      "exe_bytes": 48438784,
+      "modules_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t166-baseline\\modules",
+      "modules_tree_sha256": "6899f824b8313d96179c6840792a77539d7d5af2cf92bc0c5560a9a365a5232d"
+    },
+    "candidate-ordinary": {
+      "exe_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t166-candidate\\pnp_cli-ordinary.exe",
+      "exe_sha256": "68b11890a9fb2132dd372f3cda823d1379f0e7341b83ed0d11134bd842fc3662",
+      "exe_bytes": 48437760,
+      "modules_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t166-candidate\\modules",
+      "modules_tree_sha256": "6899f824b8313d96179c6840792a77539d7d5af2cf92bc0c5560a9a365a5232d"
+    }
+  }
+}

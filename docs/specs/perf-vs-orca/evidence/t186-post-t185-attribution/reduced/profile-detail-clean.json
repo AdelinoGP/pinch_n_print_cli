@@ -1,0 +1,1983 @@
+{
+ "schema": 1,
+ "tag": "clean",
+ "note": "Attribution only. Fuel is deterministic executed guest instructions; wall is accumulated thread-time under --profile, inflated by mark overhead and summed across concurrent workers. Neither is a wall claim.",
+ "cells": {
+  "benchy-classic-off": {
+   "fuel": {
+    "total": 12682767264,
+    "modules": {
+     "com.core.classic-perimeters": {
+      "amount": 7830552661,
+      "calls": 240,
+      "self": 6317964335,
+      "scopes": {
+       "polygon_ops::offset2_ex": {
+        "amount": 1512588326,
+        "calls": 720
+       }
+      }
+     },
+     "com.core.infill-linker": {
+      "amount": 2668321665,
+      "calls": 240,
+      "self": 2664824256,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 3497409,
+        "calls": 302
+       }
+      }
+     },
+     "com.core.seam-planner-default": {
+      "amount": 662564629,
+      "calls": 1,
+      "self": 662564629,
+      "scopes": {}
+     },
+     "com.core.gyroid-infill": {
+      "amount": 305089927,
+      "calls": 240,
+      "self": 305089927,
+      "scopes": {}
+     },
+     "com.core.seam-placer": {
+      "amount": 149256133,
+      "calls": 240,
+      "self": 149256133,
+      "scopes": {}
+     },
+     "com.core.rectilinear-infill": {
+      "amount": 141262935,
+      "calls": 240,
+      "self": 141262935,
+      "scopes": {}
+     },
+     "com.core.machine-gcode-emit": {
+      "amount": 107541755,
+      "calls": 1,
+      "self": 107541755,
+      "scopes": {}
+     },
+     "com.core.fuzzy-skin": {
+      "amount": 95698748,
+      "calls": 240,
+      "self": 95698748,
+      "scopes": {}
+     },
+     "com.core.wave-overhangs": {
+      "amount": 89437014,
+      "calls": 240,
+      "self": 89437014,
+      "scopes": {}
+     },
+     "com.core.tree-support": {
+      "amount": 86385610,
+      "calls": 240,
+      "self": 86385610,
+      "scopes": {}
+     },
+     "com.core.lightning-infill": {
+      "amount": 76139596,
+      "calls": 240,
+      "self": 76139596,
+      "scopes": {}
+     },
+     "com.core.top-surface-ironing": {
+      "amount": 67117160,
+      "calls": 240,
+      "self": 67117160,
+      "scopes": {}
+     },
+     "com.core.support-surface-ironing": {
+      "amount": 66328538,
+      "calls": 240,
+      "self": 66328538,
+      "scopes": {}
+     },
+     "com.core.path-optimization-default": {
+      "amount": 62701371,
+      "calls": 240,
+      "self": 62701371,
+      "scopes": {}
+     },
+     "com.core.raft-default": {
+      "amount": 62382305,
+      "calls": 240,
+      "self": 62382305,
+      "scopes": {}
+     },
+     "com.core.skirt-brim": {
+      "amount": 39591923,
+      "calls": 1,
+      "self": 39591923,
+      "scopes": {}
+     },
+     "com.core.part-cooling": {
+      "amount": 36139644,
+      "calls": 1,
+      "self": 36139644,
+      "scopes": {}
+     },
+     "com.core.wipe-tower": {
+      "amount": 36079760,
+      "calls": 1,
+      "self": 36079760,
+      "scopes": {}
+     },
+     "com.core.overhang-classifier-default": {
+      "amount": 34438866,
+      "calls": 1,
+      "self": 34438866,
+      "scopes": {}
+     },
+     "com.core.tree-support-planner": {
+      "amount": 32183588,
+      "calls": 1,
+      "self": 32183588,
+      "scopes": {}
+     },
+     "com.core.traditional-support-planner": {
+      "amount": 32132939,
+      "calls": 1,
+      "self": 32132939,
+      "scopes": {}
+     },
+     "com.core.layer-planner-default": {
+      "amount": 1420497,
+      "calls": 1,
+      "self": 1420497,
+      "scopes": {}
+     }
+    }
+   },
+   "wall": {
+    "total": 4085000000,
+    "builtins": {
+     "host:shell_classification": {
+      "amount": 1733000000,
+      "calls": 3520,
+      "self": 89000,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 767100000,
+        "calls": 1941
+       },
+       "polygon_ops::offset": {
+        "amount": 447300000,
+        "calls": 941
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 434100000,
+        "calls": 462
+       },
+       "polygon_ops::closing_ex": {
+        "amount": 84500000,
+        "calls": 176
+       }
+      }
+     },
+     "host:native": {
+      "amount": 1287000000,
+      "calls": 10302,
+      "self": 273900,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 929300000,
+        "calls": 7827
+       },
+       "polygon_ops::offset": {
+        "amount": 357000000,
+        "calls": 2475
+       }
+      }
+     },
+     "host:slice": {
+      "amount": 779900000,
+      "calls": 1410,
+      "self": 37300,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 378100000,
+        "calls": 719
+       },
+       "polygon_ops::clip_polygons": {
+        "amount": 235000000,
+        "calls": 465
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 166800000,
+        "calls": 226
+       }
+      }
+     },
+     "host:overhang_annotation": {
+      "amount": 209400000,
+      "calls": 239,
+      "self": 5900,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 209400000,
+        "calls": 239
+       }
+      }
+     },
+     "host:mesh_analysis": {
+      "amount": 75900000,
+      "calls": 1,
+      "self": 0,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 75900000,
+        "calls": 1
+       }
+      }
+     }
+    }
+   }
+  },
+  "benchy-classic-on": {
+   "fuel": {
+    "total": 20715692832,
+    "modules": {
+     "com.core.classic-perimeters": {
+      "amount": 7830373986,
+      "calls": 240,
+      "self": 6317890801,
+      "scopes": {
+       "polygon_ops::offset2_ex": {
+        "amount": 1512483185,
+        "calls": 720
+       }
+      }
+     },
+     "com.core.tree-support-planner": {
+      "amount": 5851955473,
+      "calls": 1,
+      "self": 5851955473,
+      "scopes": {}
+     },
+     "com.core.infill-linker": {
+      "amount": 2668145861,
+      "calls": 240,
+      "self": 2664648363,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 3497498,
+        "calls": 302
+       }
+      }
+     },
+     "com.core.tree-support": {
+      "amount": 1500382401,
+      "calls": 240,
+      "self": 497319402,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 985688400,
+        "calls": 171
+       },
+       "polygon_ops::offset": {
+        "amount": 17374599,
+        "calls": 12
+       }
+      }
+     },
+     "com.core.seam-planner-default": {
+      "amount": 662564629,
+      "calls": 1,
+      "self": 662564629,
+      "scopes": {}
+     },
+     "com.core.gyroid-infill": {
+      "amount": 335546700,
+      "calls": 240,
+      "self": 335546700,
+      "scopes": {}
+     },
+     "com.core.machine-gcode-emit": {
+      "amount": 217705654,
+      "calls": 1,
+      "self": 217705654,
+      "scopes": {}
+     },
+     "com.core.rectilinear-infill": {
+      "amount": 171779915,
+      "calls": 240,
+      "self": 171779915,
+      "scopes": {}
+     },
+     "com.core.skirt-brim": {
+      "amount": 154509924,
+      "calls": 1,
+      "self": 154509924,
+      "scopes": {}
+     },
+     "com.core.part-cooling": {
+      "amount": 151767894,
+      "calls": 1,
+      "self": 151767894,
+      "scopes": {}
+     },
+     "com.core.seam-placer": {
+      "amount": 149256133,
+      "calls": 240,
+      "self": 149256133,
+      "scopes": {}
+     },
+     "com.core.wipe-tower": {
+      "amount": 147079951,
+      "calls": 1,
+      "self": 147079951,
+      "scopes": {}
+     },
+     "com.core.overhang-classifier-default": {
+      "amount": 143931854,
+      "calls": 1,
+      "self": 143931854,
+      "scopes": {}
+     },
+     "com.core.wave-overhangs": {
+      "amount": 119765210,
+      "calls": 240,
+      "self": 119765210,
+      "scopes": {}
+     },
+     "com.core.lightning-infill": {
+      "amount": 106398292,
+      "calls": 240,
+      "self": 106398292,
+      "scopes": {}
+     },
+     "com.core.top-surface-ironing": {
+      "amount": 97419444,
+      "calls": 240,
+      "self": 97419444,
+      "scopes": {}
+     },
+     "com.core.fuzzy-skin": {
+      "amount": 95699152,
+      "calls": 240,
+      "self": 95699152,
+      "scopes": {}
+     },
+     "com.core.raft-default": {
+      "amount": 92774477,
+      "calls": 240,
+      "self": 92774477,
+      "scopes": {}
+     },
+     "com.core.path-optimization-default": {
+      "amount": 85766943,
+      "calls": 240,
+      "self": 85766943,
+      "scopes": {}
+     },
+     "com.core.support-surface-ironing": {
+      "amount": 66329900,
+      "calls": 240,
+      "self": 66329900,
+      "scopes": {}
+     },
+     "com.core.traditional-support-planner": {
+      "amount": 65118542,
+      "calls": 1,
+      "self": 65118542,
+      "scopes": {}
+     },
+     "com.core.layer-planner-default": {
+      "amount": 1420497,
+      "calls": 1,
+      "self": 1420497,
+      "scopes": {}
+     }
+    }
+   },
+   "wall": {
+    "total": 6782000000,
+    "builtins": {
+     "host:native": {
+      "amount": 3149000000,
+      "calls": 41609,
+      "self": 1100000,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 1721000000,
+        "calls": 23578
+       },
+       "polygon_ops::offset": {
+        "amount": 1427000000,
+        "calls": 18031
+       }
+      }
+     },
+     "host:shell_classification": {
+      "amount": 1751000000,
+      "calls": 3520,
+      "self": 92300,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 778000000,
+        "calls": 1941
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 443100000,
+        "calls": 462
+       },
+       "polygon_ops::offset": {
+        "amount": 441100000,
+        "calls": 941
+       },
+       "polygon_ops::closing_ex": {
+        "amount": 88200000,
+        "calls": 176
+       }
+      }
+     },
+     "host:support_analysis": {
+      "amount": 861800000,
+      "calls": 1366,
+      "self": 34400,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 614100000,
+        "calls": 401
+       },
+       "polygon_ops::clip_polygons": {
+        "amount": 247700000,
+        "calls": 965
+       }
+      }
+     },
+     "host:slice": {
+      "amount": 756100000,
+      "calls": 1410,
+      "self": 35000,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 362100000,
+        "calls": 719
+       },
+       "polygon_ops::clip_polygons": {
+        "amount": 238500000,
+        "calls": 465
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 155500000,
+        "calls": 226
+       }
+      }
+     },
+     "host:overhang_annotation": {
+      "amount": 187200000,
+      "calls": 239,
+      "self": 7200,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 187200000,
+        "calls": 239
+       }
+      }
+     },
+     "host:mesh_analysis": {
+      "amount": 77600000,
+      "calls": 1,
+      "self": 100,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 77600000,
+        "calls": 1
+       }
+      }
+     }
+    }
+   }
+  },
+  "benchy-arachne-off": {
+   "fuel": {
+    "total": 12207819995,
+    "modules": {
+     "com.core.arachne-perimeters": {
+      "amount": 7143455879,
+      "calls": 240,
+      "self": 6995924476,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 147531403,
+        "calls": 240
+       }
+      }
+     },
+     "com.core.infill-linker": {
+      "amount": 2826371884,
+      "calls": 240,
+      "self": 2822349463,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 4022421,
+        "calls": 316
+       }
+      }
+     },
+     "com.core.seam-planner-default": {
+      "amount": 662564629,
+      "calls": 1,
+      "self": 662564629,
+      "scopes": {}
+     },
+     "com.core.gyroid-infill": {
+      "amount": 310956887,
+      "calls": 240,
+      "self": 310956887,
+      "scopes": {}
+     },
+     "com.core.seam-placer": {
+      "amount": 164772101,
+      "calls": 240,
+      "self": 164772101,
+      "scopes": {}
+     },
+     "com.core.rectilinear-infill": {
+      "amount": 143730740,
+      "calls": 240,
+      "self": 143730740,
+      "scopes": {}
+     },
+     "com.core.machine-gcode-emit": {
+      "amount": 111997557,
+      "calls": 1,
+      "self": 111997557,
+      "scopes": {}
+     },
+     "com.core.fuzzy-skin": {
+      "amount": 105630902,
+      "calls": 240,
+      "self": 105630902,
+      "scopes": {}
+     },
+     "com.core.wave-overhangs": {
+      "amount": 89860327,
+      "calls": 240,
+      "self": 89860327,
+      "scopes": {}
+     },
+     "com.core.tree-support": {
+      "amount": 86706344,
+      "calls": 240,
+      "self": 86706344,
+      "scopes": {}
+     },
+     "com.core.lightning-infill": {
+      "amount": 76433654,
+      "calls": 240,
+      "self": 76433654,
+      "scopes": {}
+     },
+     "com.core.path-optimization-default": {
+      "amount": 67805806,
+      "calls": 240,
+      "self": 67805806,
+      "scopes": {}
+     },
+     "com.core.top-surface-ironing": {
+      "amount": 67319311,
+      "calls": 240,
+      "self": 67319311,
+      "scopes": {}
+     },
+     "com.core.support-surface-ironing": {
+      "amount": 66560689,
+      "calls": 240,
+      "self": 66560689,
+      "scopes": {}
+     },
+     "com.core.raft-default": {
+      "amount": 62579780,
+      "calls": 240,
+      "self": 62579780,
+      "scopes": {}
+     },
+     "com.core.skirt-brim": {
+      "amount": 41830387,
+      "calls": 1,
+      "self": 41830387,
+      "scopes": {}
+     },
+     "com.core.wipe-tower": {
+      "amount": 38415605,
+      "calls": 1,
+      "self": 38415605,
+      "scopes": {}
+     },
+     "com.core.part-cooling": {
+      "amount": 38386963,
+      "calls": 1,
+      "self": 38386963,
+      "scopes": {}
+     },
+     "com.core.overhang-classifier-default": {
+      "amount": 36703570,
+      "calls": 1,
+      "self": 36703570,
+      "scopes": {}
+     },
+     "com.core.tree-support-planner": {
+      "amount": 32183553,
+      "calls": 1,
+      "self": 32183553,
+      "scopes": {}
+     },
+     "com.core.traditional-support-planner": {
+      "amount": 32132933,
+      "calls": 1,
+      "self": 32132933,
+      "scopes": {}
+     },
+     "com.core.layer-planner-default": {
+      "amount": 1420494,
+      "calls": 1,
+      "self": 1420494,
+      "scopes": {}
+     }
+    }
+   },
+   "wall": {
+    "total": 4049000000,
+    "builtins": {
+     "host:shell_classification": {
+      "amount": 1732000000,
+      "calls": 3520,
+      "self": 217500,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 762000000,
+        "calls": 1941
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 444200000,
+        "calls": 462
+       },
+       "polygon_ops::offset": {
+        "amount": 441100000,
+        "calls": 941
+       },
+       "polygon_ops::closing_ex": {
+        "amount": 84400000,
+        "calls": 176
+       }
+      }
+     },
+     "host:native": {
+      "amount": 1256000000,
+      "calls": 9089,
+      "self": 243100,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 940000000,
+        "calls": 8040
+       },
+       "polygon_ops::offset": {
+        "amount": 296900000,
+        "calls": 809
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 19300000,
+        "calls": 240
+       }
+      }
+     },
+     "host:slice": {
+      "amount": 793300000,
+      "calls": 1410,
+      "self": 35200,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 372600000,
+        "calls": 719
+       },
+       "polygon_ops::clip_polygons": {
+        "amount": 253300000,
+        "calls": 465
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 167400000,
+        "calls": 226
+       }
+      }
+     },
+     "host:overhang_annotation": {
+      "amount": 189800000,
+      "calls": 239,
+      "self": 6400,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 189800000,
+        "calls": 239
+       }
+      }
+     },
+     "host:mesh_analysis": {
+      "amount": 77300000,
+      "calls": 1,
+      "self": 0,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 77300000,
+        "calls": 1
+       }
+      }
+     }
+    }
+   }
+  },
+  "benchy-arachne-on": {
+   "fuel": {
+    "total": 20241305837,
+    "modules": {
+     "com.core.arachne-perimeters": {
+      "amount": 7143326526,
+      "calls": 240,
+      "self": 6995814721,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 147511805,
+        "calls": 240
+       }
+      }
+     },
+     "com.core.tree-support-planner": {
+      "amount": 5851955135,
+      "calls": 1,
+      "self": 5851955135,
+      "scopes": {}
+     },
+     "com.core.infill-linker": {
+      "amount": 2826358597,
+      "calls": 240,
+      "self": 2822336245,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 4022352,
+        "calls": 316
+       }
+      }
+     },
+     "com.core.tree-support": {
+      "amount": 1500251299,
+      "calls": 240,
+      "self": 497277491,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 985627952,
+        "calls": 171
+       },
+       "polygon_ops::offset": {
+        "amount": 17345856,
+        "calls": 12
+       }
+      }
+     },
+     "com.core.seam-planner-default": {
+      "amount": 662564629,
+      "calls": 1,
+      "self": 662564629,
+      "scopes": {}
+     },
+     "com.core.gyroid-infill": {
+      "amount": 341204207,
+      "calls": 240,
+      "self": 341204207,
+      "scopes": {}
+     },
+     "com.core.machine-gcode-emit": {
+      "amount": 222874056,
+      "calls": 1,
+      "self": 222874056,
+      "scopes": {}
+     },
+     "com.core.rectilinear-infill": {
+      "amount": 174260320,
+      "calls": 240,
+      "self": 174260320,
+      "scopes": {}
+     },
+     "com.core.seam-placer": {
+      "amount": 164772101,
+      "calls": 240,
+      "self": 164772101,
+      "scopes": {}
+     },
+     "com.core.skirt-brim": {
+      "amount": 156506585,
+      "calls": 1,
+      "self": 156506585,
+      "scopes": {}
+     },
+     "com.core.part-cooling": {
+      "amount": 153998541,
+      "calls": 1,
+      "self": 153998541,
+      "scopes": {}
+     },
+     "com.core.wipe-tower": {
+      "amount": 149422169,
+      "calls": 1,
+      "self": 149422169,
+      "scopes": {}
+     },
+     "com.core.overhang-classifier-default": {
+      "amount": 146284277,
+      "calls": 1,
+      "self": 146284277,
+      "scopes": {}
+     },
+     "com.core.wave-overhangs": {
+      "amount": 120227137,
+      "calls": 240,
+      "self": 120227137,
+      "scopes": {}
+     },
+     "com.core.lightning-infill": {
+      "amount": 106895172,
+      "calls": 240,
+      "self": 106895172,
+      "scopes": {}
+     },
+     "com.core.fuzzy-skin": {
+      "amount": 105631334,
+      "calls": 240,
+      "self": 105631334,
+      "scopes": {}
+     },
+     "com.core.top-surface-ironing": {
+      "amount": 97741742,
+      "calls": 240,
+      "self": 97741742,
+      "scopes": {}
+     },
+     "com.core.raft-default": {
+      "amount": 92969745,
+      "calls": 240,
+      "self": 92969745,
+      "scopes": {}
+     },
+     "com.core.path-optimization-default": {
+      "amount": 90962242,
+      "calls": 240,
+      "self": 90962242,
+      "scopes": {}
+     },
+     "com.core.support-surface-ironing": {
+      "amount": 66561113,
+      "calls": 240,
+      "self": 66561113,
+      "scopes": {}
+     },
+     "com.core.traditional-support-planner": {
+      "amount": 65118413,
+      "calls": 1,
+      "self": 65118413,
+      "scopes": {}
+     },
+     "com.core.layer-planner-default": {
+      "amount": 1420497,
+      "calls": 1,
+      "self": 1420497,
+      "scopes": {}
+     }
+    }
+   },
+   "wall": {
+    "total": 6780000000,
+    "builtins": {
+     "host:native": {
+      "amount": 3140000000,
+      "calls": 40396,
+      "self": 1100000,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 1738000000,
+        "calls": 23791
+       },
+       "polygon_ops::offset": {
+        "amount": 1383000000,
+        "calls": 16365
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 18100000,
+        "calls": 240
+       }
+      }
+     },
+     "host:shell_classification": {
+      "amount": 1739000000,
+      "calls": 3520,
+      "self": 92800,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 770600000,
+        "calls": 1941
+       },
+       "polygon_ops::offset": {
+        "amount": 442400000,
+        "calls": 941
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 438600000,
+        "calls": 462
+       },
+       "polygon_ops::closing_ex": {
+        "amount": 87200000,
+        "calls": 176
+       }
+      }
+     },
+     "host:support_analysis": {
+      "amount": 869500000,
+      "calls": 1366,
+      "self": 35700,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 618900000,
+        "calls": 401
+       },
+       "polygon_ops::clip_polygons": {
+        "amount": 250600000,
+        "calls": 965
+       }
+      }
+     },
+     "host:slice": {
+      "amount": 767700000,
+      "calls": 1410,
+      "self": 36100,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 362300000,
+        "calls": 719
+       },
+       "polygon_ops::clip_polygons": {
+        "amount": 245400000,
+        "calls": 465
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 160000000,
+        "calls": 226
+       }
+      }
+     },
+     "host:overhang_annotation": {
+      "amount": 185800000,
+      "calls": 239,
+      "self": 5200,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 185800000,
+        "calls": 239
+       }
+      }
+     },
+     "host:mesh_analysis": {
+      "amount": 77600000,
+      "calls": 1,
+      "self": 100,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 77600000,
+        "calls": 1
+       }
+      }
+     }
+    }
+   }
+  },
+  "base-classic-off": {
+   "fuel": {
+    "total": 93617631886,
+    "modules": {
+     "com.core.classic-perimeters": {
+      "amount": 75874481248,
+      "calls": 496,
+      "self": 62319966214,
+      "scopes": {
+       "polygon_ops::offset2_ex": {
+        "amount": 13554515034,
+        "calls": 1486
+       }
+      }
+     },
+     "com.core.infill-linker": {
+      "amount": 7741153742,
+      "calls": 496,
+      "self": 7740368649,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 785093,
+        "calls": 767
+       }
+      }
+     },
+     "com.core.seam-planner-default": {
+      "amount": 3903170041,
+      "calls": 1,
+      "self": 3903170041,
+      "scopes": {}
+     },
+     "com.core.gyroid-infill": {
+      "amount": 1012067698,
+      "calls": 496,
+      "self": 1012067698,
+      "scopes": {}
+     },
+     "com.core.seam-placer": {
+      "amount": 687303332,
+      "calls": 496,
+      "self": 687303332,
+      "scopes": {}
+     },
+     "com.core.machine-gcode-emit": {
+      "amount": 524164654,
+      "calls": 1,
+      "self": 524164654,
+      "scopes": {}
+     },
+     "com.core.fuzzy-skin": {
+      "amount": 389302278,
+      "calls": 496,
+      "self": 389302278,
+      "scopes": {}
+     },
+     "com.core.rectilinear-infill": {
+      "amount": 368114114,
+      "calls": 496,
+      "self": 368114114,
+      "scopes": {}
+     },
+     "com.core.tree-support": {
+      "amount": 351883724,
+      "calls": 496,
+      "self": 351883724,
+      "scopes": {}
+     },
+     "com.core.wave-overhangs": {
+      "amount": 333562387,
+      "calls": 496,
+      "self": 333562387,
+      "scopes": {}
+     },
+     "com.core.lightning-infill": {
+      "amount": 305886496,
+      "calls": 496,
+      "self": 305886496,
+      "scopes": {}
+     },
+     "com.core.top-surface-ironing": {
+      "amount": 287104315,
+      "calls": 496,
+      "self": 287104315,
+      "scopes": {}
+     },
+     "com.core.support-surface-ironing": {
+      "amount": 285561448,
+      "calls": 496,
+      "self": 285561448,
+      "scopes": {}
+     },
+     "com.core.raft-default": {
+      "amount": 277450473,
+      "calls": 496,
+      "self": 277450473,
+      "scopes": {}
+     },
+     "com.core.tree-support-planner": {
+      "amount": 228076456,
+      "calls": 1,
+      "self": 228076456,
+      "scopes": {}
+     },
+     "com.core.traditional-support-planner": {
+      "amount": 228038319,
+      "calls": 1,
+      "self": 228038319,
+      "scopes": {}
+     },
+     "com.core.path-optimization-default": {
+      "amount": 225078454,
+      "calls": 496,
+      "self": 225078454,
+      "scopes": {}
+     },
+     "com.core.part-cooling": {
+      "amount": 149225097,
+      "calls": 1,
+      "self": 149225097,
+      "scopes": {}
+     },
+     "com.core.skirt-brim": {
+      "amount": 147997813,
+      "calls": 1,
+      "self": 147997813,
+      "scopes": {}
+     },
+     "com.core.wipe-tower": {
+      "amount": 147189722,
+      "calls": 1,
+      "self": 147189722,
+      "scopes": {}
+     },
+     "com.core.overhang-classifier-default": {
+      "amount": 146322031,
+      "calls": 1,
+      "self": 146322031,
+      "scopes": {}
+     },
+     "com.core.layer-planner-default": {
+      "amount": 4498044,
+      "calls": 1,
+      "self": 4498044,
+      "scopes": {}
+     }
+    }
+   },
+   "wall": {
+    "total": 48862000000,
+    "builtins": {
+     "host:shell_classification": {
+      "amount": 25372000000,
+      "calls": 7806,
+      "self": 214200,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 10430000000,
+        "calls": 4269
+       },
+       "polygon_ops::offset": {
+        "amount": 8062000000,
+        "calls": 2273
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 5924000000,
+        "calls": 974
+       },
+       "polygon_ops::closing_ex": {
+        "amount": 955800000,
+        "calls": 290
+       }
+      }
+     },
+     "host:native": {
+      "amount": 10555000000,
+      "calls": 22077,
+      "self": 615300,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 6731000000,
+        "calls": 16829
+       },
+       "polygon_ops::offset": {
+        "amount": 3824000000,
+        "calls": 5248
+       }
+      }
+     },
+     "host:slice": {
+      "amount": 8362000000,
+      "calls": 2954,
+      "self": 77500,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 3804000000,
+        "calls": 1487
+       },
+       "polygon_ops::clip_polygons": {
+        "amount": 2833000000,
+        "calls": 981
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 1726000000,
+        "calls": 486
+       }
+      }
+     },
+     "host:mesh_analysis": {
+      "amount": 2728000000,
+      "calls": 49,
+      "self": 1500,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 2728000000,
+        "calls": 49
+       }
+      }
+     },
+     "host:overhang_annotation": {
+      "amount": 1844000000,
+      "calls": 495,
+      "self": 13300,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 1844000000,
+        "calls": 495
+       }
+      }
+     }
+    }
+   }
+  },
+  "base-classic-on": {
+   "fuel": {
+    "total": 156909309586,
+    "modules": {
+     "com.core.classic-perimeters": {
+      "amount": 75874563576,
+      "calls": 496,
+      "self": 62320049539,
+      "scopes": {
+       "polygon_ops::offset2_ex": {
+        "amount": 13554514037,
+        "calls": 1486
+       }
+      }
+     },
+     "com.core.tree-support-planner": {
+      "amount": 48564812718,
+      "calls": 1,
+      "self": 48564812718,
+      "scopes": {}
+     },
+     "com.core.tree-support": {
+      "amount": 11438142733,
+      "calls": 496,
+      "self": 2200739219,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 9069007450,
+        "calls": 764
+       },
+       "polygon_ops::offset": {
+        "amount": 168396064,
+        "calls": 170
+       }
+      }
+     },
+     "com.core.infill-linker": {
+      "amount": 7741192821,
+      "calls": 496,
+      "self": 7740407656,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 785165,
+        "calls": 767
+       }
+      }
+     },
+     "com.core.seam-planner-default": {
+      "amount": 3903170041,
+      "calls": 1,
+      "self": 3903170041,
+      "scopes": {}
+     },
+     "com.core.gyroid-infill": {
+      "amount": 1232486952,
+      "calls": 496,
+      "self": 1232486952,
+      "scopes": {}
+     },
+     "com.core.machine-gcode-emit": {
+      "amount": 979002857,
+      "calls": 1,
+      "self": 979002857,
+      "scopes": {}
+     },
+     "com.core.seam-placer": {
+      "amount": 687303332,
+      "calls": 496,
+      "self": 687303332,
+      "scopes": {}
+     },
+     "com.core.part-cooling": {
+      "amount": 628209634,
+      "calls": 1,
+      "self": 628209634,
+      "scopes": {}
+     },
+     "com.core.skirt-brim": {
+      "amount": 606567100,
+      "calls": 1,
+      "self": 606567100,
+      "scopes": {}
+     },
+     "com.core.wipe-tower": {
+      "amount": 599754814,
+      "calls": 1,
+      "self": 599754814,
+      "scopes": {}
+     },
+     "com.core.overhang-classifier-default": {
+      "amount": 599380689,
+      "calls": 1,
+      "self": 599380689,
+      "scopes": {}
+     },
+     "com.core.rectilinear-infill": {
+      "amount": 584682522,
+      "calls": 496,
+      "self": 584682522,
+      "scopes": {}
+     },
+     "com.core.wave-overhangs": {
+      "amount": 550121784,
+      "calls": 496,
+      "self": 550121784,
+      "scopes": {}
+     },
+     "com.core.lightning-infill": {
+      "amount": 522869882,
+      "calls": 496,
+      "self": 522869882,
+      "scopes": {}
+     },
+     "com.core.top-surface-ironing": {
+      "amount": 502708882,
+      "calls": 496,
+      "self": 502708882,
+      "scopes": {}
+     },
+     "com.core.raft-default": {
+      "amount": 493383634,
+      "calls": 496,
+      "self": 493383634,
+      "scopes": {}
+     },
+     "com.core.traditional-support-planner": {
+      "amount": 395888318,
+      "calls": 1,
+      "self": 395888318,
+      "scopes": {}
+     },
+     "com.core.fuzzy-skin": {
+      "amount": 389301064,
+      "calls": 496,
+      "self": 389301064,
+      "scopes": {}
+     },
+     "com.core.path-optimization-default": {
+      "amount": 325696834,
+      "calls": 496,
+      "self": 325696834,
+      "scopes": {}
+     },
+     "com.core.support-surface-ironing": {
+      "amount": 285571355,
+      "calls": 496,
+      "self": 285571355,
+      "scopes": {}
+     },
+     "com.core.layer-planner-default": {
+      "amount": 4498044,
+      "calls": 1,
+      "self": 4498044,
+      "scopes": {}
+     }
+    }
+   },
+   "wall": {
+    "total": 86464000000,
+    "builtins": {
+     "host:native": {
+      "amount": 32312000000,
+      "calls": 145921,
+      "self": 4600000,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 17487000000,
+        "calls": 59372
+       },
+       "polygon_ops::clip_polygons": {
+        "amount": 14820000000,
+        "calls": 86549
+       }
+      }
+     },
+     "host:shell_classification": {
+      "amount": 23965000000,
+      "calls": 7806,
+      "self": 211700,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 9650000000,
+        "calls": 4269
+       },
+       "polygon_ops::offset": {
+        "amount": 7771000000,
+        "calls": 2273
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 5521000000,
+        "calls": 974
+       },
+       "polygon_ops::closing_ex": {
+        "amount": 1023000000,
+        "calls": 290
+       }
+      }
+     },
+     "host:support_analysis": {
+      "amount": 18450000000,
+      "calls": 4430,
+      "self": 110700,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 15545000000,
+        "calls": 1231
+       },
+       "polygon_ops::clip_polygons": {
+        "amount": 2905000000,
+        "calls": 3199
+       }
+      }
+     },
+     "host:slice": {
+      "amount": 7410000000,
+      "calls": 2954,
+      "self": 77800,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 3373000000,
+        "calls": 1487
+       },
+       "polygon_ops::clip_polygons": {
+        "amount": 2518000000,
+        "calls": 981
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 1520000000,
+        "calls": 486
+       }
+      }
+     },
+     "host:mesh_analysis": {
+      "amount": 2631000000,
+      "calls": 49,
+      "self": 1100,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 2631000000,
+        "calls": 49
+       }
+      }
+     },
+     "host:overhang_annotation": {
+      "amount": 1696000000,
+      "calls": 495,
+      "self": 14000,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 1696000000,
+        "calls": 495
+       }
+      }
+     }
+    }
+   }
+  },
+  "base-arachne-off": {
+   "fuel": {
+    "total": 80709536458,
+    "modules": {
+     "com.core.arachne-perimeters": {
+      "amount": 62283258376,
+      "calls": 496,
+      "self": 61302078219,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 981180157,
+        "calls": 496
+       }
+      }
+     },
+     "com.core.infill-linker": {
+      "amount": 8453051747,
+      "calls": 496,
+      "self": 8452225588,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 826159,
+        "calls": 807
+       }
+      }
+     },
+     "com.core.seam-planner-default": {
+      "amount": 3903170041,
+      "calls": 1,
+      "self": 3903170041,
+      "scopes": {}
+     },
+     "com.core.gyroid-infill": {
+      "amount": 1025437286,
+      "calls": 496,
+      "self": 1025437286,
+      "scopes": {}
+     },
+     "com.core.seam-placer": {
+      "amount": 655031625,
+      "calls": 496,
+      "self": 655031625,
+      "scopes": {}
+     },
+     "com.core.machine-gcode-emit": {
+      "amount": 520647658,
+      "calls": 1,
+      "self": 520647658,
+      "scopes": {}
+     },
+     "com.core.rectilinear-infill": {
+      "amount": 376356649,
+      "calls": 496,
+      "self": 376356649,
+      "scopes": {}
+     },
+     "com.core.fuzzy-skin": {
+      "amount": 373951316,
+      "calls": 496,
+      "self": 373951316,
+      "scopes": {}
+     },
+     "com.core.tree-support": {
+      "amount": 353126653,
+      "calls": 496,
+      "self": 353126653,
+      "scopes": {}
+     },
+     "com.core.wave-overhangs": {
+      "amount": 334782515,
+      "calls": 496,
+      "self": 334782515,
+      "scopes": {}
+     },
+     "com.core.lightning-infill": {
+      "amount": 307206383,
+      "calls": 496,
+      "self": 307206383,
+      "scopes": {}
+     },
+     "com.core.top-surface-ironing": {
+      "amount": 288311197,
+      "calls": 496,
+      "self": 288311197,
+      "scopes": {}
+     },
+     "com.core.support-surface-ironing": {
+      "amount": 286757752,
+      "calls": 496,
+      "self": 286757752,
+      "scopes": {}
+     },
+     "com.core.raft-default": {
+      "amount": 278669196,
+      "calls": 496,
+      "self": 278669196,
+      "scopes": {}
+     },
+     "com.core.tree-support-planner": {
+      "amount": 228076274,
+      "calls": 1,
+      "self": 228076274,
+      "scopes": {}
+     },
+     "com.core.traditional-support-planner": {
+      "amount": 228038100,
+      "calls": 1,
+      "self": 228038100,
+      "scopes": {}
+     },
+     "com.core.path-optimization-default": {
+      "amount": 218691012,
+      "calls": 496,
+      "self": 218691012,
+      "scopes": {}
+     },
+     "com.core.part-cooling": {
+      "amount": 149116280,
+      "calls": 1,
+      "self": 149116280,
+      "scopes": {}
+     },
+     "com.core.skirt-brim": {
+      "amount": 147969696,
+      "calls": 1,
+      "self": 147969696,
+      "scopes": {}
+     },
+     "com.core.wipe-tower": {
+      "amount": 147076991,
+      "calls": 1,
+      "self": 147076991,
+      "scopes": {}
+     },
+     "com.core.overhang-classifier-default": {
+      "amount": 146311667,
+      "calls": 1,
+      "self": 146311667,
+      "scopes": {}
+     },
+     "com.core.layer-planner-default": {
+      "amount": 4498044,
+      "calls": 1,
+      "self": 4498044,
+      "scopes": {}
+     }
+    }
+   },
+   "wall": {
+    "total": 51971000000,
+    "builtins": {
+     "host:shell_classification": {
+      "amount": 27715000000,
+      "calls": 7806,
+      "self": 250700,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 10855000000,
+        "calls": 4269
+       },
+       "polygon_ops::offset": {
+        "amount": 9803000000,
+        "calls": 2273
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 5732000000,
+        "calls": 974
+       },
+       "polygon_ops::closing_ex": {
+        "amount": 1325000000,
+        "calls": 290
+       }
+      }
+     },
+     "host:native": {
+      "amount": 12655000000,
+      "calls": 19640,
+      "self": 538100,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 8593000000,
+        "calls": 17324
+       },
+       "polygon_ops::offset": {
+        "amount": 3910000000,
+        "calls": 1820
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 152000000,
+        "calls": 496
+       }
+      }
+     },
+     "host:slice": {
+      "amount": 6791000000,
+      "calls": 2954,
+      "self": 79900,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 3098000000,
+        "calls": 1487
+       },
+       "polygon_ops::clip_polygons": {
+        "amount": 2311000000,
+        "calls": 981
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 1382000000,
+        "calls": 486
+       }
+      }
+     },
+     "host:mesh_analysis": {
+      "amount": 2684000000,
+      "calls": 49,
+      "self": 2100,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 2684000000,
+        "calls": 49
+       }
+      }
+     },
+     "host:overhang_annotation": {
+      "amount": 2126000000,
+      "calls": 495,
+      "self": 11500,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 2126000000,
+        "calls": 495
+       }
+      }
+     }
+    }
+   }
+  },
+  "base-arachne-on": {
+   "fuel": {
+    "total": 144000751909,
+    "modules": {
+     "com.core.arachne-perimeters": {
+      "amount": 62283289973,
+      "calls": 496,
+      "self": 61301859986,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 981429987,
+        "calls": 496
+       }
+      }
+     },
+     "com.core.tree-support-planner": {
+      "amount": 48564812419,
+      "calls": 1,
+      "self": 48564812419,
+      "scopes": {}
+     },
+     "com.core.tree-support": {
+      "amount": 11437995049,
+      "calls": 496,
+      "self": 2200453237,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 9069386361,
+        "calls": 764
+       },
+       "polygon_ops::offset": {
+        "amount": 168155451,
+        "calls": 170
+       }
+      }
+     },
+     "com.core.infill-linker": {
+      "amount": 8453192200,
+      "calls": 496,
+      "self": 8452365672,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 826528,
+        "calls": 807
+       }
+      }
+     },
+     "com.core.seam-planner-default": {
+      "amount": 3903170041,
+      "calls": 1,
+      "self": 3903170041,
+      "scopes": {}
+     },
+     "com.core.gyroid-infill": {
+      "amount": 1243959510,
+      "calls": 496,
+      "self": 1243959510,
+      "scopes": {}
+     },
+     "com.core.machine-gcode-emit": {
+      "amount": 975617996,
+      "calls": 1,
+      "self": 975617996,
+      "scopes": {}
+     },
+     "com.core.seam-placer": {
+      "amount": 655031625,
+      "calls": 496,
+      "self": 655031625,
+      "scopes": {}
+     },
+     "com.core.part-cooling": {
+      "amount": 626672016,
+      "calls": 1,
+      "self": 626672016,
+      "scopes": {}
+     },
+     "com.core.skirt-brim": {
+      "amount": 606475666,
+      "calls": 1,
+      "self": 606475666,
+      "scopes": {}
+     },
+     "com.core.wipe-tower": {
+      "amount": 599683053,
+      "calls": 1,
+      "self": 599683053,
+      "scopes": {}
+     },
+     "com.core.overhang-classifier-default": {
+      "amount": 599408064,
+      "calls": 1,
+      "self": 599408064,
+      "scopes": {}
+     },
+     "com.core.rectilinear-infill": {
+      "amount": 593647549,
+      "calls": 496,
+      "self": 593647549,
+      "scopes": {}
+     },
+     "com.core.wave-overhangs": {
+      "amount": 551395386,
+      "calls": 496,
+      "self": 551395386,
+      "scopes": {}
+     },
+     "com.core.lightning-infill": {
+      "amount": 525153271,
+      "calls": 496,
+      "self": 525153271,
+      "scopes": {}
+     },
+     "com.core.top-surface-ironing": {
+      "amount": 505634580,
+      "calls": 496,
+      "self": 505634580,
+      "scopes": {}
+     },
+     "com.core.raft-default": {
+      "amount": 495191176,
+      "calls": 496,
+      "self": 495191176,
+      "scopes": {}
+     },
+     "com.core.traditional-support-planner": {
+      "amount": 395888599,
+      "calls": 1,
+      "self": 395888599,
+      "scopes": {}
+     },
+     "com.core.fuzzy-skin": {
+      "amount": 373950539,
+      "calls": 496,
+      "self": 373950539,
+      "scopes": {}
+     },
+     "com.core.path-optimization-default": {
+      "amount": 319308982,
+      "calls": 496,
+      "self": 319308982,
+      "scopes": {}
+     },
+     "com.core.support-surface-ironing": {
+      "amount": 286776171,
+      "calls": 496,
+      "self": 286776171,
+      "scopes": {}
+     },
+     "com.core.layer-planner-default": {
+      "amount": 4498044,
+      "calls": 1,
+      "self": 4498044,
+      "scopes": {}
+     }
+    }
+   },
+   "wall": {
+    "total": 90866000000,
+    "builtins": {
+     "host:native": {
+      "amount": 31746000000,
+      "calls": 143484,
+      "self": 3900000,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 17670000000,
+        "calls": 55944
+       },
+       "polygon_ops::clip_polygons": {
+        "amount": 13945000000,
+        "calls": 87044
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 126400000,
+        "calls": 496
+       }
+      }
+     },
+     "host:shell_classification": {
+      "amount": 25536000000,
+      "calls": 7806,
+      "self": 209400,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 10268000000,
+        "calls": 4269
+       },
+       "polygon_ops::offset": {
+        "amount": 8089000000,
+        "calls": 2273
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 6124000000,
+        "calls": 974
+       },
+       "polygon_ops::closing_ex": {
+        "amount": 1055000000,
+        "calls": 290
+       }
+      }
+     },
+     "host:support_analysis": {
+      "amount": 21528000000,
+      "calls": 4430,
+      "self": 119800,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 18112000000,
+        "calls": 1231
+       },
+       "polygon_ops::clip_polygons": {
+        "amount": 3415000000,
+        "calls": 3199
+       }
+      }
+     },
+     "host:slice": {
+      "amount": 7202000000,
+      "calls": 2954,
+      "self": 81300,
+      "scopes": {
+       "polygon_ops::offset": {
+        "amount": 3289000000,
+        "calls": 1487
+       },
+       "polygon_ops::clip_polygons": {
+        "amount": 2438000000,
+        "calls": 981
+       },
+       "polygon_ops::offset2_ex": {
+        "amount": 1475000000,
+        "calls": 486
+       }
+      }
+     },
+     "host:mesh_analysis": {
+      "amount": 2882000000,
+      "calls": 49,
+      "self": 1700,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 2882000000,
+        "calls": 49
+       }
+      }
+     },
+     "host:overhang_annotation": {
+      "amount": 1972000000,
+      "calls": 495,
+      "self": 13900,
+      "scopes": {
+       "polygon_ops::clip_polygons": {
+        "amount": 1972000000,
+        "calls": 495
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

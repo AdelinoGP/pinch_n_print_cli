@@ -812,3 +812,80 @@ fn explicit_first_layer_credit_survives_a_preceding_catch_up() {
         "A's first native plane keeps the first_layer_height credit despite the 0.3 catch-up"
     );
 }
+
+// =============================================================================
+// Test 12: canonical midpoint termination (`generate_object_layers`)
+// =============================================================================
+
+/// Canonical `generate_object_layers` (`Slicing.cpp`) keeps a layer while its
+/// midpoint (`print_z + 0.5 × height`) is below the object height, so a
+/// fractional object height gains a final layer whose print top overshoots it.
+/// A 0.55 mm object with 0.2 mm layers therefore plans three layers
+/// (0.2 / 0.4 / **0.6**); a top-based loop plans two.
+#[test]
+fn uniform_plan_keeps_the_canonical_final_layer_on_a_fractional_height() {
+    let config = make_config(0.2, 0.2);
+    let module = DefaultLayerPlanner::from_config(&config).unwrap();
+
+    // exhaustive: all fields define this fractional-height fixture.
+    let objects = vec![LayerPlanningObject {
+        object_id: "obj-1".to_string(),
+        object_height: 0.55,
+        layer_height: 0.2,
+        first_layer_height: 0.2,
+        support_raft_layers: 0,
+        layer_zs: Vec::new(),
+    }];
+    let mut output = LayerPlanOutput::new();
+
+    module
+        .run_layer_planning(&objects, &mut output, &config)
+        .expect("should succeed");
+
+    let zs: Vec<f32> = output.layers().iter().map(|layer| layer.z).collect();
+    assert_eq!(zs, vec![0.2f32, 0.4, 0.6]);
+}
+
+/// The host-derived explicit schedule is authoritative, so its native planes
+/// must survive the merge even when a plane's print top is above the object
+/// height: the schedule's own midpoint termination already decided the plane
+/// belongs to the object. This is the base fixture's 496th layer (99.2 on a
+/// 99.1598 mm object); the merge's own top-based filter used to drop it and
+/// silently keep 495.
+#[test]
+fn explicit_schedule_keeps_a_native_plane_above_the_object_height() {
+    let config = make_config(0.2, 0.2);
+    let module = DefaultLayerPlanner::from_config(&config).unwrap();
+
+    // exhaustive: all fields define this above-height native-plane fixture.
+    let objects = vec![LayerPlanningObject {
+        object_id: "obj-1".to_string(),
+        object_height: 0.55,
+        layer_height: 0.2,
+        first_layer_height: 0.2,
+        support_raft_layers: 0,
+        layer_zs: vec![0.2, 0.4, 0.6],
+    }];
+    let mut output = LayerPlanOutput::new();
+
+    module
+        .run_layer_planning(&objects, &mut output, &config)
+        .expect("should succeed");
+
+    let layers = output.layers();
+    let zs: Vec<f32> = layers.iter().map(|layer| layer.z).collect();
+    assert_eq!(zs, vec![0.2f32, 0.4, 0.6]);
+
+    let last = layers.last().expect("three layers");
+    assert_eq!(last.active_regions.len(), 1);
+    let region = &last.active_regions[0];
+    assert!(
+        !region.is_catchup,
+        "the 0.6 plane is native, not a catch-up"
+    );
+    assert!(
+        (region.effective_layer_height - 0.2).abs() < 1e-6,
+        "the native step is 0.2, got {}",
+        region.effective_layer_height
+    );
+}

@@ -12,10 +12,12 @@
 //! - the stage refuses to run without a committed `SliceIR` (its dependency on,
 //!   and ordering after, `PrePass::Slice`);
 //! - `STAGE_ORDER` places it after `PrePass::Slice`;
-//! - it populates `overhang_quartile_polygons` from the slices, including for a
-//!   non-identity object transform (which `PrePass::Slice` bakes into its
-//!   world-space cross-sections) and for a multi-object mesh (bands merged by
-//!   object).
+//! - it populates `overhang_areas` + `prev_layer_boundaries` from the slices,
+//!   including for a non-identity object transform (which `PrePass::Slice`
+//!   bakes into its world-space cross-sections) and for a multi-object mesh
+//!   (areas keyed by object). Since ticket 142 the stage no longer builds
+//!   quartile-band polygons; the per-vertex quartile is derived downstream from
+//!   the signed distance to `prev_layer_boundaries`.
 
 #![allow(missing_docs)]
 
@@ -276,10 +278,11 @@ fn stage_order_places_overhang_annotation_after_slice() {
     );
 }
 
-/// Positive: overhang bands are populated from the committed slices for the
-/// layer that overhangs its predecessor.
+/// Positive: overhang areas are populated from the committed slices for the
+/// layer that overhangs its predecessor, together with the previous-layer
+/// anchor and the producer-resolved band width.
 #[test]
-fn overhang_annotation_populates_bands_from_committed_slices() {
+fn overhang_annotation_populates_areas_from_committed_slices() {
     let mut bb = seed_and_slice(
         overhang_ramp_mesh(),
         vec![
@@ -295,21 +298,42 @@ fn overhang_annotation_populates_bands_from_committed_slices() {
         .expect("SurfaceClassificationIR committed");
     // Layer 0 has no predecessor and is never overhanging; global layer 1 is.
     assert!(
-        !sc.overhang_quartile_polygons
+        !sc.overhang_areas
             .get("ramp")
             .is_some_and(|by_layer| by_layer.contains_key(&0u32)),
-        "layer 0 has no previous layer and must carry no overhang bands"
+        "layer 0 has no previous layer and must carry no overhang area"
+    );
+    let areas = sc
+        .overhang_areas
+        .get("ramp")
+        .and_then(|by_layer| by_layer.get(&1u32))
+        .unwrap_or_else(|| {
+            panic!(
+                "expected overhang areas at global layer index 1, got keys {:?}",
+                sc.overhang_areas.keys().collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        !areas.is_empty(),
+        "layer 1's overhang area must be non-empty"
     );
     assert!(
-        sc.overhang_quartile_polygons
+        sc.prev_layer_boundaries
             .get("ramp")
             .is_some_and(|by_layer| by_layer.contains_key(&1u32)),
-        "expected overhang bands at global layer index 1, got keys {:?}",
-        sc.overhang_quartile_polygons.keys().collect::<Vec<_>>()
+        "layer 1 must carry the previous-layer anchor the quartile is measured against"
+    );
+    assert_eq!(
+        sc.overhang_band_width_mm, 0.4,
+        "the empty raw config falls back to the 0.4mm producer band width"
+    );
+    assert!(
+        sc.overhang_quartile_polygons.is_empty(),
+        "the production path must not build band polygons (ticket 142)"
     );
 }
 
-/// The object transform must reach the overhang bands *through* `PrePass::Slice`:
+/// The object transform must reach the overhang areas *through* `PrePass::Slice`:
 /// the mesh is authored in LOCAL space z:[0,2] but carries a `+5mm` Z transform
 /// into GLOBAL space z:[5,7], and the layers are declared at global Z (5.5,
 /// 6.5). `PrePass::Slice` bakes the transform into its world-space cross-sections
@@ -333,19 +357,19 @@ fn overhang_annotation_reflects_slice_object_transform() {
         .surface_classification()
         .expect("SurfaceClassificationIR committed");
     assert!(
-        sc.overhang_quartile_polygons
+        sc.overhang_areas
             .get("ramp")
             .is_some_and(|by_layer| by_layer.contains_key(&1u32)),
-        "expected overhang bands at global layer index 1 once PrePass::Slice applies the \
+        "expected overhang areas at global layer index 1 once PrePass::Slice applies the \
          +{z_offset_mm}mm object transform (empty iff Slice wrongly sliced the untransformed \
          local mesh against global-space Zs); got keys {:?}",
-        sc.overhang_quartile_polygons.keys().collect::<Vec<_>>()
+        sc.overhang_areas.keys().collect::<Vec<_>>()
     );
 }
 
-/// Each object's bands must remain isolated from every other object's bands.
+/// Each object's areas must remain isolated from every other object's areas.
 #[test]
-fn overhang_annotation_scopes_bands_by_object() {
+fn overhang_annotation_scopes_areas_by_object() {
     let mut bb = seed_and_slice(
         two_object_overhang_mesh(),
         vec![
@@ -359,33 +383,29 @@ fn overhang_annotation_scopes_bands_by_object() {
     let sc = bb
         .surface_classification()
         .expect("SurfaceClassificationIR committed");
-    assert_eq!(sc.overhang_quartile_polygons.len(), 2);
-    let bands_a = sc
-        .overhang_quartile_polygons
+    assert_eq!(sc.overhang_areas.len(), 2);
+    let areas_a = sc
+        .overhang_areas
         .get("ramp-a")
         .and_then(|by_layer| by_layer.get(&1))
         .expect("ramp-a overhangs at global layer index 1");
-    let bands_b = sc
-        .overhang_quartile_polygons
+    let areas_b = sc
+        .overhang_areas
         .get("ramp-b")
         .and_then(|by_layer| by_layer.get(&1))
         .expect("ramp-b overhangs at global layer index 1");
-    assert!(!bands_a.is_empty());
-    assert!(!bands_b.is_empty());
-    for band in bands_a {
+    assert!(!areas_a.is_empty());
+    assert!(!areas_b.is_empty());
+    for area in areas_a {
         assert!(
-            band.polygons
-                .iter()
-                .all(|p| p.contour.points.iter().all(|p| p.y <= 100_000)),
-            "ramp-a band contains a polygon from ramp-b"
+            area.contour.points.iter().all(|p| p.y <= 100_000),
+            "ramp-a area contains a polygon from ramp-b"
         );
     }
-    for band in bands_b {
+    for area in areas_b {
         assert!(
-            band.polygons
-                .iter()
-                .all(|p| p.contour.points.iter().all(|p| p.y >= 200_000)),
-            "ramp-b band contains a polygon from ramp-a"
+            area.contour.points.iter().all(|p| p.y >= 200_000),
+            "ramp-b area contains a polygon from ramp-a"
         );
     }
 }

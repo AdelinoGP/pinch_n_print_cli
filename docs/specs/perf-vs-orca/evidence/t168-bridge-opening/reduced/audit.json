@@ -1,0 +1,1963 @@
+{
+  "schema": 1,
+  "cells": {
+    "benchy-classic-off": {
+      "sections": {
+        "Bridge": {
+          "baseline_mm": 898.9665744828723,
+          "candidate_mm": 888.4546837484846,
+          "delta_mm": -10.511890734387634,
+          "layers_compared": 7,
+          "layers_more": 2,
+          "layers_less": 4,
+          "layers_equal": 1,
+          "first_differing_layer": 3
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1099.9458849071345,
+          "candidate_mm": 1103.5492748364384,
+          "delta_mm": 3.6033899293038303,
+          "layers_compared": 11,
+          "layers_more": 1,
+          "layers_less": 2,
+          "layers_equal": 8,
+          "first_differing_layer": 31
+        },
+        "Sparse infill": {
+          "baseline_mm": 24267.30155210002,
+          "candidate_mm": 24262.345952781798,
+          "delta_mm": -4.9555993182220845,
+          "layers_compared": 144,
+          "layers_more": 1,
+          "layers_less": 1,
+          "layers_equal": 142,
+          "first_differing_layer": 3
+        },
+        "Gap infill": {
+          "baseline_mm": 614.7200562687755,
+          "candidate_mm": 614.7200562687755,
+          "delta_mm": 0.0,
+          "layers_compared": 51,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 51,
+          "first_differing_layer": null
+        }
+      },
+      "bridge_direction": {
+        "layers": 7,
+        "flips_ge_45deg": 2,
+        "flip_layers": [
+          160,
+          172
+        ],
+        "per_layer": [
+          {
+            "layer": 3,
+            "baseline_deg": 179.60841903369953,
+            "candidate_deg": 178.24875082410216,
+            "delta_deg": 1.3596682095973733
+          },
+          {
+            "layer": 14,
+            "baseline_deg": 1.361552737701705,
+            "candidate_deg": 180.0,
+            "delta_deg": 1.3615527377017145
+          },
+          {
+            "layer": 115,
+            "baseline_deg": 90.0,
+            "candidate_deg": 90.0,
+            "delta_deg": 0.0
+          },
+          {
+            "layer": 160,
+            "baseline_deg": 5.271848194720418,
+            "candidate_deg": 90.0,
+            "delta_deg": 84.72815180527958
+          },
+          {
+            "layer": 161,
+            "baseline_deg": 2.859178436785216,
+            "candidate_deg": 2.696627729829396,
+            "delta_deg": 0.16255070695582008
+          },
+          {
+            "layer": 172,
+            "baseline_deg": 5.6728054828147005,
+            "candidate_deg": 90.0,
+            "delta_deg": 84.3271945171853
+          },
+          {
+            "layer": 184,
+            "baseline_deg": 178.82475554667786,
+            "candidate_deg": 0.4664269309119122,
+            "delta_deg": 1.6416713842340585
+          }
+        ]
+      },
+      "direction_verdict": "mixed"
+    },
+    "benchy-classic-on": {
+      "sections": {
+        "Bridge": {
+          "baseline_mm": 898.9665744828723,
+          "candidate_mm": 888.4546837484846,
+          "delta_mm": -10.511890734387634,
+          "layers_compared": 7,
+          "layers_more": 2,
+          "layers_less": 4,
+          "layers_equal": 1,
+          "first_differing_layer": 3
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1099.9458849071345,
+          "candidate_mm": 1103.5492748364384,
+          "delta_mm": 3.6033899293038303,
+          "layers_compared": 11,
+          "layers_more": 1,
+          "layers_less": 2,
+          "layers_equal": 8,
+          "first_differing_layer": 31
+        },
+        "Sparse infill": {
+          "baseline_mm": 24267.30155210002,
+          "candidate_mm": 24262.345952781798,
+          "delta_mm": -4.9555993182220845,
+          "layers_compared": 144,
+          "layers_more": 1,
+          "layers_less": 1,
+          "layers_equal": 142,
+          "first_differing_layer": 3
+        },
+        "Gap infill": {
+          "baseline_mm": 614.7200562687755,
+          "candidate_mm": 614.7200562687755,
+          "delta_mm": 0.0,
+          "layers_compared": 51,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 51,
+          "first_differing_layer": null
+        }
+      },
+      "bridge_direction": {
+        "layers": 7,
+        "flips_ge_45deg": 2,
+        "flip_layers": [
+          160,
+          172
+        ],
+        "per_layer": [
+          {
+            "layer": 3,
+            "baseline_deg": 179.60841903369953,
+            "candidate_deg": 178.24875082410216,
+            "delta_deg": 1.3596682095973733
+          },
+          {
+            "layer": 14,
+            "baseline_deg": 1.361552737701705,
+            "candidate_deg": 180.0,
+            "delta_deg": 1.3615527377017145
+          },
+          {
+            "layer": 115,
+            "baseline_deg": 90.0,
+            "candidate_deg": 90.0,
+            "delta_deg": 0.0
+          },
+          {
+            "layer": 160,
+            "baseline_deg": 5.271848194720418,
+            "candidate_deg": 90.0,
+            "delta_deg": 84.72815180527958
+          },
+          {
+            "layer": 161,
+            "baseline_deg": 2.859178436785216,
+            "candidate_deg": 2.696627729829396,
+            "delta_deg": 0.16255070695582008
+          },
+          {
+            "layer": 172,
+            "baseline_deg": 5.6728054828147005,
+            "candidate_deg": 90.0,
+            "delta_deg": 84.3271945171853
+          },
+          {
+            "layer": 184,
+            "baseline_deg": 178.82475554667786,
+            "candidate_deg": 0.4664269309119122,
+            "delta_deg": 1.6416713842340585
+          }
+        ]
+      },
+      "direction_verdict": "mixed"
+    },
+    "benchy-arachne-off": {
+      "sections": {
+        "Bridge": {
+          "baseline_mm": 908.0691856086211,
+          "candidate_mm": 903.0239507374341,
+          "delta_mm": -5.045234871186949,
+          "layers_compared": 7,
+          "layers_more": 3,
+          "layers_less": 3,
+          "layers_equal": 1,
+          "first_differing_layer": 3
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1099.9458849071345,
+          "candidate_mm": 1103.5492748364384,
+          "delta_mm": 3.6033899293038303,
+          "layers_compared": 11,
+          "layers_more": 1,
+          "layers_less": 2,
+          "layers_equal": 8,
+          "first_differing_layer": 31
+        },
+        "Sparse infill": {
+          "baseline_mm": 25229.378472537628,
+          "candidate_mm": 25224.422873219406,
+          "delta_mm": -4.9555993182220845,
+          "layers_compared": 177,
+          "layers_more": 1,
+          "layers_less": 1,
+          "layers_equal": 175,
+          "first_differing_layer": 3
+        },
+        "Gap infill": {
+          "baseline_mm": 0,
+          "candidate_mm": 0,
+          "delta_mm": 0,
+          "layers_compared": 0,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 0,
+          "first_differing_layer": null
+        }
+      },
+      "bridge_direction": {
+        "layers": 7,
+        "flips_ge_45deg": 2,
+        "flip_layers": [
+          160,
+          172
+        ],
+        "per_layer": [
+          {
+            "layer": 3,
+            "baseline_deg": 179.60841903369953,
+            "candidate_deg": 178.24875082410216,
+            "delta_deg": 1.3596682095973733
+          },
+          {
+            "layer": 14,
+            "baseline_deg": 1.3634015080777293,
+            "candidate_deg": 180.0,
+            "delta_deg": 1.363401508077743
+          },
+          {
+            "layer": 115,
+            "baseline_deg": 90.0,
+            "candidate_deg": 90.0,
+            "delta_deg": 0.0
+          },
+          {
+            "layer": 160,
+            "baseline_deg": 3.9227009848919976,
+            "candidate_deg": 88.58008032145275,
+            "delta_deg": 84.65737933656075
+          },
+          {
+            "layer": 161,
+            "baseline_deg": 3.5269507147104346,
+            "candidate_deg": 3.354202559850744,
+            "delta_deg": 0.17274815485969075
+          },
+          {
+            "layer": 172,
+            "baseline_deg": 4.479226119936628,
+            "candidate_deg": 90.0,
+            "delta_deg": 85.52077388006337
+          },
+          {
+            "layer": 184,
+            "baseline_deg": 178.82475554667786,
+            "candidate_deg": 0.4664269309119122,
+            "delta_deg": 1.6416713842340585
+          }
+        ]
+      },
+      "direction_verdict": "mixed"
+    },
+    "benchy-arachne-on": {
+      "sections": {
+        "Bridge": {
+          "baseline_mm": 908.0691856086211,
+          "candidate_mm": 903.0239507374341,
+          "delta_mm": -5.045234871186949,
+          "layers_compared": 7,
+          "layers_more": 3,
+          "layers_less": 3,
+          "layers_equal": 1,
+          "first_differing_layer": 3
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1099.9458849071345,
+          "candidate_mm": 1103.5492748364384,
+          "delta_mm": 3.6033899293038303,
+          "layers_compared": 11,
+          "layers_more": 1,
+          "layers_less": 2,
+          "layers_equal": 8,
+          "first_differing_layer": 31
+        },
+        "Sparse infill": {
+          "baseline_mm": 25229.378472537628,
+          "candidate_mm": 25224.422873219406,
+          "delta_mm": -4.9555993182220845,
+          "layers_compared": 177,
+          "layers_more": 1,
+          "layers_less": 1,
+          "layers_equal": 175,
+          "first_differing_layer": 3
+        },
+        "Gap infill": {
+          "baseline_mm": 0,
+          "candidate_mm": 0,
+          "delta_mm": 0,
+          "layers_compared": 0,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 0,
+          "first_differing_layer": null
+        }
+      },
+      "bridge_direction": {
+        "layers": 7,
+        "flips_ge_45deg": 2,
+        "flip_layers": [
+          160,
+          172
+        ],
+        "per_layer": [
+          {
+            "layer": 3,
+            "baseline_deg": 179.60841903369953,
+            "candidate_deg": 178.24875082410216,
+            "delta_deg": 1.3596682095973733
+          },
+          {
+            "layer": 14,
+            "baseline_deg": 1.3634015080777293,
+            "candidate_deg": 180.0,
+            "delta_deg": 1.363401508077743
+          },
+          {
+            "layer": 115,
+            "baseline_deg": 90.0,
+            "candidate_deg": 90.0,
+            "delta_deg": 0.0
+          },
+          {
+            "layer": 160,
+            "baseline_deg": 3.9227009848919976,
+            "candidate_deg": 88.58008032145275,
+            "delta_deg": 84.65737933656075
+          },
+          {
+            "layer": 161,
+            "baseline_deg": 3.5269507147104346,
+            "candidate_deg": 3.354202559850744,
+            "delta_deg": 0.17274815485969075
+          },
+          {
+            "layer": 172,
+            "baseline_deg": 4.479226119936628,
+            "candidate_deg": 90.0,
+            "delta_deg": 85.52077388006337
+          },
+          {
+            "layer": 184,
+            "baseline_deg": 178.82475554667786,
+            "candidate_deg": 0.4664269309119122,
+            "delta_deg": 1.6416713842340585
+          }
+        ]
+      },
+      "direction_verdict": "mixed"
+    },
+    "base-classic-off": {
+      "sections": {
+        "Bridge": {
+          "baseline_mm": 152.72366190565432,
+          "candidate_mm": 141.36722853403953,
+          "delta_mm": -11.356433371614798,
+          "layers_compared": 48,
+          "layers_more": 19,
+          "layers_less": 27,
+          "layers_equal": 2,
+          "first_differing_layer": 3
+        },
+        "Internal Bridge": {
+          "baseline_mm": 10.862357279779832,
+          "candidate_mm": 12.846769341909356,
+          "delta_mm": 1.9844120621295236,
+          "layers_compared": 4,
+          "layers_more": 1,
+          "layers_less": 0,
+          "layers_equal": 3,
+          "first_differing_layer": 41
+        },
+        "Sparse infill": {
+          "baseline_mm": 173943.18324114522,
+          "candidate_mm": 174433.34930198448,
+          "delta_mm": 490.1660608392558,
+          "layers_compared": 490,
+          "layers_more": 23,
+          "layers_less": 23,
+          "layers_equal": 444,
+          "first_differing_layer": 11
+        },
+        "Gap infill": {
+          "baseline_mm": 364.0283554357742,
+          "candidate_mm": 364.0283554357742,
+          "delta_mm": 0.0,
+          "layers_compared": 171,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 171,
+          "first_differing_layer": null
+        }
+      },
+      "bridge_direction": {
+        "layers": 48,
+        "flips_ge_45deg": 12,
+        "flip_layers": [
+          79,
+          86,
+          96,
+          97,
+          143,
+          157,
+          234,
+          235,
+          261,
+          319,
+          320,
+          364
+        ],
+        "per_layer": [
+          {
+            "layer": 3,
+            "baseline_deg": 148.34431800563678,
+            "candidate_deg": 148.33375834754665,
+            "delta_deg": 0.010559658090130597
+          },
+          {
+            "layer": 4,
+            "baseline_deg": 147.74811148471736,
+            "candidate_deg": 147.8523415365325,
+            "delta_deg": 0.10423005181513645
+          },
+          {
+            "layer": 14,
+            "baseline_deg": 155.69545073406343,
+            "candidate_deg": 155.0279318761674,
+            "delta_deg": 0.6675188578960274
+          },
+          {
+            "layer": 20,
+            "baseline_deg": 158.855102224424,
+            "candidate_deg": null,
+            "delta_deg": null
+          },
+          {
+            "layer": 21,
+            "baseline_deg": 158.40833617650483,
+            "candidate_deg": 157.63026912070785,
+            "delta_deg": 0.7780670557969813
+          },
+          {
+            "layer": 24,
+            "baseline_deg": 154.56108700035676,
+            "candidate_deg": 161.0003275302314,
+            "delta_deg": 6.439240529874638
+          },
+          {
+            "layer": 25,
+            "baseline_deg": 151.20717500238752,
+            "candidate_deg": 161.9636318313195,
+            "delta_deg": 10.756456828931988
+          },
+          {
+            "layer": 30,
+            "baseline_deg": 145.83007954340673,
+            "candidate_deg": 134.31444219420095,
+            "delta_deg": 11.515637349205775
+          },
+          {
+            "layer": 32,
+            "baseline_deg": 148.78159723565372,
+            "candidate_deg": 142.11415047011715,
+            "delta_deg": 6.6674467655365675
+          },
+          {
+            "layer": 33,
+            "baseline_deg": 151.98891049700592,
+            "candidate_deg": 145.51454780916777,
+            "delta_deg": 6.474362687838152
+          },
+          {
+            "layer": 36,
+            "baseline_deg": 143.88740262863476,
+            "candidate_deg": 132.92658726546568,
+            "delta_deg": 10.960815363169075
+          },
+          {
+            "layer": 37,
+            "baseline_deg": 146.94071581125098,
+            "candidate_deg": 142.71985799863063,
+            "delta_deg": 4.220857812620352
+          },
+          {
+            "layer": 42,
+            "baseline_deg": 143.22148100762257,
+            "candidate_deg": 136.67329539459774,
+            "delta_deg": 6.5481856130248275
+          },
+          {
+            "layer": 43,
+            "baseline_deg": 141.38955073239447,
+            "candidate_deg": 134.80346471498345,
+            "delta_deg": 6.58608601741102
+          },
+          {
+            "layer": 44,
+            "baseline_deg": 137.02931642934013,
+            "candidate_deg": 131.20170477960662,
+            "delta_deg": 5.827611649733512
+          },
+          {
+            "layer": 45,
+            "baseline_deg": 135.82237098000758,
+            "candidate_deg": 130.42531635164394,
+            "delta_deg": 5.397054628363634
+          },
+          {
+            "layer": 49,
+            "baseline_deg": 140.52377242761895,
+            "candidate_deg": 128.6691733699787,
+            "delta_deg": 11.854599057640257
+          },
+          {
+            "layer": 53,
+            "baseline_deg": 135.44276837938781,
+            "candidate_deg": 131.09034840238047,
+            "delta_deg": 4.352419977007344
+          },
+          {
+            "layer": 58,
+            "baseline_deg": null,
+            "candidate_deg": 147.92213640108756,
+            "delta_deg": null
+          },
+          {
+            "layer": 79,
+            "baseline_deg": 8.950712221507894,
+            "candidate_deg": 67.37619690237617,
+            "delta_deg": 58.42548468086827
+          },
+          {
+            "layer": 86,
+            "baseline_deg": 1.9913728121129988,
+            "candidate_deg": 99.94775664681092,
+            "delta_deg": 82.04361616530208
+          },
+          {
+            "layer": 96,
+            "baseline_deg": 6.90136469042555,
+            "candidate_deg": 102.9259991247052,
+            "delta_deg": 83.97536556572035
+          },
+          {
+            "layer": 97,
+            "baseline_deg": 178.45894335305726,
+            "candidate_deg": 101.92029505301268,
+            "delta_deg": 76.53864830004458
+          },
+          {
+            "layer": 143,
+            "baseline_deg": 178.2479959078044,
+            "candidate_deg": 108.90162848927265,
+            "delta_deg": 69.34636741853176
+          },
+          {
+            "layer": 157,
+            "baseline_deg": 4.048429844088764,
+            "candidate_deg": 128.2558154966555,
+            "delta_deg": 55.79261434743327
+          },
+          {
+            "layer": 158,
+            "baseline_deg": 6.26932501703447,
+            "candidate_deg": null,
+            "delta_deg": null
+          },
+          {
+            "layer": 219,
+            "baseline_deg": 136.2587951675179,
+            "candidate_deg": 137.74476430122385,
+            "delta_deg": 1.4859691337059644
+          },
+          {
+            "layer": 220,
+            "baseline_deg": 127.1895855964978,
+            "candidate_deg": 127.40535663140653,
+            "delta_deg": 0.21577103490872673
+          },
+          {
+            "layer": 234,
+            "baseline_deg": 178.0942436054792,
+            "candidate_deg": 79.45446020721417,
+            "delta_deg": 81.36021660173498
+          },
+          {
+            "layer": 235,
+            "baseline_deg": 12.368763012665022,
+            "candidate_deg": 134.14124106363587,
+            "delta_deg": 58.22752194902915
+          },
+          {
+            "layer": 260,
+            "baseline_deg": 179.1998316406676,
+            "candidate_deg": null,
+            "delta_deg": null
+          },
+          {
+            "layer": 261,
+            "baseline_deg": 166.08187070035007,
+            "candidate_deg": 48.13122142269269,
+            "delta_deg": 62.04935072234262
+          },
+          {
+            "layer": 278,
+            "baseline_deg": 160.31667245355825,
+            "candidate_deg": 150.43752417653224,
+            "delta_deg": 9.879148277026019
+          },
+          {
+            "layer": 317,
+            "baseline_deg": 3.0213555137340227,
+            "candidate_deg": 3.0213555137340227,
+            "delta_deg": 0.0
+          },
+          {
+            "layer": 318,
+            "baseline_deg": 0.0,
+            "candidate_deg": 0.0,
+            "delta_deg": 0.0
+          },
+          {
+            "layer": 319,
+            "baseline_deg": 172.80812003977448,
+            "candidate_deg": 116.10950925833703,
+            "delta_deg": 56.69861078143745
+          },
+          {
+            "layer": 320,
+            "baseline_deg": 4.338984108609003,
+            "candidate_deg": 119.97938293464534,
+            "delta_deg": 64.35960117396365
+          },
+          {
+            "layer": 350,
+            "baseline_deg": 174.45144890743623,
+            "candidate_deg": null,
+            "delta_deg": null
+          },
+          {
+            "layer": 351,
+            "baseline_deg": 170.56519783067242,
+            "candidate_deg": 164.79056649703293,
+            "delta_deg": 5.7746313336394905
+          },
+          {
+            "layer": 352,
+            "baseline_deg": 169.90874528886798,
+            "candidate_deg": 170.39244146247313,
+            "delta_deg": 0.4836961736051535
+          },
+          {
+            "layer": 353,
+            "baseline_deg": 175.21044428762283,
+            "candidate_deg": 171.2145324331314,
+            "delta_deg": 3.9959118544914247
+          },
+          {
+            "layer": 354,
+            "baseline_deg": 170.33007180613987,
+            "candidate_deg": 166.20975112411497,
+            "delta_deg": 4.1203206820248965
+          },
+          {
+            "layer": 355,
+            "baseline_deg": 170.45093125351937,
+            "candidate_deg": 169.6367407192451,
+            "delta_deg": 0.8141905342742746
+          },
+          {
+            "layer": 356,
+            "baseline_deg": 0.0,
+            "candidate_deg": 171.5678137339963,
+            "delta_deg": 8.432186266003697
+          },
+          {
+            "layer": 364,
+            "baseline_deg": 1.803275913714866,
+            "candidate_deg": 95.32686270732513,
+            "delta_deg": 86.47641320638974
+          },
+          {
+            "layer": 389,
+            "baseline_deg": 3.3433761443269803,
+            "candidate_deg": 0.25019832019732324,
+            "delta_deg": 3.093177824129657
+          },
+          {
+            "layer": 397,
+            "baseline_deg": 176.7990780693271,
+            "candidate_deg": 13.57413933477548,
+            "delta_deg": 16.775061265448386
+          },
+          {
+            "layer": 398,
+            "baseline_deg": 1.7121357792708065,
+            "candidate_deg": 15.49648970071819,
+            "delta_deg": 13.784353921447384
+          }
+        ]
+      },
+      "direction_verdict": "expected (fewer bridge, more sparse)"
+    },
+    "base-classic-on": {
+      "sections": {
+        "Bridge": {
+          "baseline_mm": 152.72366190565432,
+          "candidate_mm": 141.36722853403953,
+          "delta_mm": -11.356433371614798,
+          "layers_compared": 48,
+          "layers_more": 19,
+          "layers_less": 27,
+          "layers_equal": 2,
+          "first_differing_layer": 3
+        },
+        "Internal Bridge": {
+          "baseline_mm": 10.862357279779832,
+          "candidate_mm": 12.846769341909356,
+          "delta_mm": 1.9844120621295236,
+          "layers_compared": 4,
+          "layers_more": 1,
+          "layers_less": 0,
+          "layers_equal": 3,
+          "first_differing_layer": 41
+        },
+        "Sparse infill": {
+          "baseline_mm": 173943.18324114522,
+          "candidate_mm": 174433.34930198448,
+          "delta_mm": 490.1660608392558,
+          "layers_compared": 490,
+          "layers_more": 23,
+          "layers_less": 23,
+          "layers_equal": 444,
+          "first_differing_layer": 11
+        },
+        "Gap infill": {
+          "baseline_mm": 364.0283554357742,
+          "candidate_mm": 364.0283554357742,
+          "delta_mm": 0.0,
+          "layers_compared": 171,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 171,
+          "first_differing_layer": null
+        }
+      },
+      "bridge_direction": {
+        "layers": 48,
+        "flips_ge_45deg": 12,
+        "flip_layers": [
+          79,
+          86,
+          96,
+          97,
+          143,
+          157,
+          234,
+          235,
+          261,
+          319,
+          320,
+          364
+        ],
+        "per_layer": [
+          {
+            "layer": 3,
+            "baseline_deg": 148.34431800563678,
+            "candidate_deg": 148.33375834754665,
+            "delta_deg": 0.010559658090130597
+          },
+          {
+            "layer": 4,
+            "baseline_deg": 147.74811148471736,
+            "candidate_deg": 147.8523415365325,
+            "delta_deg": 0.10423005181513645
+          },
+          {
+            "layer": 14,
+            "baseline_deg": 155.69545073406343,
+            "candidate_deg": 155.0279318761674,
+            "delta_deg": 0.6675188578960274
+          },
+          {
+            "layer": 20,
+            "baseline_deg": 158.855102224424,
+            "candidate_deg": null,
+            "delta_deg": null
+          },
+          {
+            "layer": 21,
+            "baseline_deg": 158.40833617650483,
+            "candidate_deg": 157.63026912070785,
+            "delta_deg": 0.7780670557969813
+          },
+          {
+            "layer": 24,
+            "baseline_deg": 154.56108700035676,
+            "candidate_deg": 161.0003275302314,
+            "delta_deg": 6.439240529874638
+          },
+          {
+            "layer": 25,
+            "baseline_deg": 151.20717500238752,
+            "candidate_deg": 161.9636318313195,
+            "delta_deg": 10.756456828931988
+          },
+          {
+            "layer": 30,
+            "baseline_deg": 145.83007954340673,
+            "candidate_deg": 134.31444219420095,
+            "delta_deg": 11.515637349205775
+          },
+          {
+            "layer": 32,
+            "baseline_deg": 148.78159723565372,
+            "candidate_deg": 142.11415047011715,
+            "delta_deg": 6.6674467655365675
+          },
+          {
+            "layer": 33,
+            "baseline_deg": 151.98891049700592,
+            "candidate_deg": 145.51454780916777,
+            "delta_deg": 6.474362687838152
+          },
+          {
+            "layer": 36,
+            "baseline_deg": 143.88740262863476,
+            "candidate_deg": 132.92658726546568,
+            "delta_deg": 10.960815363169075
+          },
+          {
+            "layer": 37,
+            "baseline_deg": 146.94071581125098,
+            "candidate_deg": 142.71985799863063,
+            "delta_deg": 4.220857812620352
+          },
+          {
+            "layer": 42,
+            "baseline_deg": 143.22148100762257,
+            "candidate_deg": 136.67329539459774,
+            "delta_deg": 6.5481856130248275
+          },
+          {
+            "layer": 43,
+            "baseline_deg": 141.38955073239447,
+            "candidate_deg": 134.80346471498345,
+            "delta_deg": 6.58608601741102
+          },
+          {
+            "layer": 44,
+            "baseline_deg": 137.02931642934013,
+            "candidate_deg": 131.20170477960662,
+            "delta_deg": 5.827611649733512
+          },
+          {
+            "layer": 45,
+            "baseline_deg": 135.82237098000758,
+            "candidate_deg": 130.42531635164394,
+            "delta_deg": 5.397054628363634
+          },
+          {
+            "layer": 49,
+            "baseline_deg": 140.52377242761895,
+            "candidate_deg": 128.6691733699787,
+            "delta_deg": 11.854599057640257
+          },
+          {
+            "layer": 53,
+            "baseline_deg": 135.44276837938781,
+            "candidate_deg": 131.09034840238047,
+            "delta_deg": 4.352419977007344
+          },
+          {
+            "layer": 58,
+            "baseline_deg": null,
+            "candidate_deg": 147.92213640108756,
+            "delta_deg": null
+          },
+          {
+            "layer": 79,
+            "baseline_deg": 8.950712221507894,
+            "candidate_deg": 67.37619690237617,
+            "delta_deg": 58.42548468086827
+          },
+          {
+            "layer": 86,
+            "baseline_deg": 1.9913728121129988,
+            "candidate_deg": 99.94775664681092,
+            "delta_deg": 82.04361616530208
+          },
+          {
+            "layer": 96,
+            "baseline_deg": 6.90136469042555,
+            "candidate_deg": 102.9259991247052,
+            "delta_deg": 83.97536556572035
+          },
+          {
+            "layer": 97,
+            "baseline_deg": 178.45894335305726,
+            "candidate_deg": 101.92029505301268,
+            "delta_deg": 76.53864830004458
+          },
+          {
+            "layer": 143,
+            "baseline_deg": 178.2479959078044,
+            "candidate_deg": 108.90162848927265,
+            "delta_deg": 69.34636741853176
+          },
+          {
+            "layer": 157,
+            "baseline_deg": 4.048429844088764,
+            "candidate_deg": 128.2558154966555,
+            "delta_deg": 55.79261434743327
+          },
+          {
+            "layer": 158,
+            "baseline_deg": 6.26932501703447,
+            "candidate_deg": null,
+            "delta_deg": null
+          },
+          {
+            "layer": 219,
+            "baseline_deg": 136.2587951675179,
+            "candidate_deg": 137.74476430122385,
+            "delta_deg": 1.4859691337059644
+          },
+          {
+            "layer": 220,
+            "baseline_deg": 127.1895855964978,
+            "candidate_deg": 127.40535663140653,
+            "delta_deg": 0.21577103490872673
+          },
+          {
+            "layer": 234,
+            "baseline_deg": 178.0942436054792,
+            "candidate_deg": 79.45446020721417,
+            "delta_deg": 81.36021660173498
+          },
+          {
+            "layer": 235,
+            "baseline_deg": 12.368763012665022,
+            "candidate_deg": 134.14124106363587,
+            "delta_deg": 58.22752194902915
+          },
+          {
+            "layer": 260,
+            "baseline_deg": 179.1998316406676,
+            "candidate_deg": null,
+            "delta_deg": null
+          },
+          {
+            "layer": 261,
+            "baseline_deg": 166.08187070035007,
+            "candidate_deg": 48.13122142269269,
+            "delta_deg": 62.04935072234262
+          },
+          {
+            "layer": 278,
+            "baseline_deg": 160.31667245355825,
+            "candidate_deg": 150.43752417653224,
+            "delta_deg": 9.879148277026019
+          },
+          {
+            "layer": 317,
+            "baseline_deg": 3.0213555137340227,
+            "candidate_deg": 3.0213555137340227,
+            "delta_deg": 0.0
+          },
+          {
+            "layer": 318,
+            "baseline_deg": 0.0,
+            "candidate_deg": 0.0,
+            "delta_deg": 0.0
+          },
+          {
+            "layer": 319,
+            "baseline_deg": 172.80812003977448,
+            "candidate_deg": 116.10950925833703,
+            "delta_deg": 56.69861078143745
+          },
+          {
+            "layer": 320,
+            "baseline_deg": 4.338984108609003,
+            "candidate_deg": 119.97938293464534,
+            "delta_deg": 64.35960117396365
+          },
+          {
+            "layer": 350,
+            "baseline_deg": 174.45144890743623,
+            "candidate_deg": null,
+            "delta_deg": null
+          },
+          {
+            "layer": 351,
+            "baseline_deg": 170.56519783067242,
+            "candidate_deg": 164.79056649703293,
+            "delta_deg": 5.7746313336394905
+          },
+          {
+            "layer": 352,
+            "baseline_deg": 169.90874528886798,
+            "candidate_deg": 170.39244146247313,
+            "delta_deg": 0.4836961736051535
+          },
+          {
+            "layer": 353,
+            "baseline_deg": 175.21044428762283,
+            "candidate_deg": 171.2145324331314,
+            "delta_deg": 3.9959118544914247
+          },
+          {
+            "layer": 354,
+            "baseline_deg": 170.33007180613987,
+            "candidate_deg": 166.20975112411497,
+            "delta_deg": 4.1203206820248965
+          },
+          {
+            "layer": 355,
+            "baseline_deg": 170.45093125351937,
+            "candidate_deg": 169.6367407192451,
+            "delta_deg": 0.8141905342742746
+          },
+          {
+            "layer": 356,
+            "baseline_deg": 0.0,
+            "candidate_deg": 171.5678137339963,
+            "delta_deg": 8.432186266003697
+          },
+          {
+            "layer": 364,
+            "baseline_deg": 1.803275913714866,
+            "candidate_deg": 95.32686270732513,
+            "delta_deg": 86.47641320638974
+          },
+          {
+            "layer": 389,
+            "baseline_deg": 3.3433761443269803,
+            "candidate_deg": 0.25019832019732324,
+            "delta_deg": 3.093177824129657
+          },
+          {
+            "layer": 397,
+            "baseline_deg": 176.7990780693271,
+            "candidate_deg": 13.57413933477548,
+            "delta_deg": 16.775061265448386
+          },
+          {
+            "layer": 398,
+            "baseline_deg": 1.7121357792708065,
+            "candidate_deg": 15.49648970071819,
+            "delta_deg": 13.784353921447384
+          }
+        ]
+      },
+      "direction_verdict": "expected (fewer bridge, more sparse)"
+    },
+    "base-arachne-off": {
+      "sections": {
+        "Bridge": {
+          "baseline_mm": 199.34112320512213,
+          "candidate_mm": 191.2353563700096,
+          "delta_mm": -8.105766835112519,
+          "layers_compared": 61,
+          "layers_more": 26,
+          "layers_less": 33,
+          "layers_equal": 2,
+          "first_differing_layer": 3
+        },
+        "Internal Bridge": {
+          "baseline_mm": 11.447043495253524,
+          "candidate_mm": 13.431455557383048,
+          "delta_mm": 1.9844120621295236,
+          "layers_compared": 4,
+          "layers_more": 1,
+          "layers_less": 0,
+          "layers_equal": 3,
+          "first_differing_layer": 41
+        },
+        "Sparse infill": {
+          "baseline_mm": 179110.27129471602,
+          "candidate_mm": 179092.2493035077,
+          "delta_mm": -18.0219912083121,
+          "layers_compared": 490,
+          "layers_more": 25,
+          "layers_less": 33,
+          "layers_equal": 432,
+          "first_differing_layer": 12
+        },
+        "Gap infill": {
+          "baseline_mm": 0,
+          "candidate_mm": 0,
+          "delta_mm": 0,
+          "layers_compared": 0,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 0,
+          "first_differing_layer": null
+        }
+      },
+      "bridge_direction": {
+        "layers": 61,
+        "flips_ge_45deg": 13,
+        "flip_layers": [
+          79,
+          86,
+          96,
+          97,
+          143,
+          158,
+          234,
+          235,
+          260,
+          319,
+          320,
+          323,
+          364
+        ],
+        "per_layer": [
+          {
+            "layer": 3,
+            "baseline_deg": 147.8244170863842,
+            "candidate_deg": 147.8319272407834,
+            "delta_deg": 0.007510154399199109
+          },
+          {
+            "layer": 4,
+            "baseline_deg": 147.85747906804454,
+            "candidate_deg": 147.92970609428323,
+            "delta_deg": 0.07222702623869282
+          },
+          {
+            "layer": 13,
+            "baseline_deg": 153.28942287246832,
+            "candidate_deg": 152.6312531311187,
+            "delta_deg": 0.6581697413496101
+          },
+          {
+            "layer": 14,
+            "baseline_deg": 155.72315279410947,
+            "candidate_deg": 155.1334057506338,
+            "delta_deg": 0.5897470434756542
+          },
+          {
+            "layer": 20,
+            "baseline_deg": 158.87144013939306,
+            "candidate_deg": 158.1856276678257,
+            "delta_deg": 0.6858124715673455
+          },
+          {
+            "layer": 21,
+            "baseline_deg": 158.43038001330126,
+            "candidate_deg": 157.47764931502408,
+            "delta_deg": 0.952730698277179
+          },
+          {
+            "layer": 24,
+            "baseline_deg": 154.5317168101519,
+            "candidate_deg": 160.89988095161794,
+            "delta_deg": 6.368164141466053
+          },
+          {
+            "layer": 25,
+            "baseline_deg": 151.21546285034165,
+            "candidate_deg": 161.0170486400427,
+            "delta_deg": 9.80158578970105
+          },
+          {
+            "layer": 26,
+            "baseline_deg": 153.12814704567063,
+            "candidate_deg": 159.2722829200965,
+            "delta_deg": 6.144135874425871
+          },
+          {
+            "layer": 30,
+            "baseline_deg": 145.84030545433112,
+            "candidate_deg": 134.1951313958985,
+            "delta_deg": 11.645174058432616
+          },
+          {
+            "layer": 32,
+            "baseline_deg": 159.2359978603992,
+            "candidate_deg": 151.8952512652999,
+            "delta_deg": 7.3407465950993185
+          },
+          {
+            "layer": 33,
+            "baseline_deg": 151.98891049700592,
+            "candidate_deg": 145.51454780916777,
+            "delta_deg": 6.474362687838152
+          },
+          {
+            "layer": 36,
+            "baseline_deg": 144.08056554208358,
+            "candidate_deg": 136.45836171866253,
+            "delta_deg": 7.622203823421046
+          },
+          {
+            "layer": 37,
+            "baseline_deg": 147.60599199126327,
+            "candidate_deg": 143.7401713167429,
+            "delta_deg": 3.8658206745203643
+          },
+          {
+            "layer": 38,
+            "baseline_deg": 123.07977869439947,
+            "candidate_deg": 123.36033013404912,
+            "delta_deg": 0.28055143964965623
+          },
+          {
+            "layer": 41,
+            "baseline_deg": 142.59464336859193,
+            "candidate_deg": 138.01278750418334,
+            "delta_deg": 4.581855864408595
+          },
+          {
+            "layer": 42,
+            "baseline_deg": 146.04849259944638,
+            "candidate_deg": 140.0028886562185,
+            "delta_deg": 6.0456039432278885
+          },
+          {
+            "layer": 43,
+            "baseline_deg": 141.73933606313656,
+            "candidate_deg": 134.72187995928374,
+            "delta_deg": 7.0174561038528225
+          },
+          {
+            "layer": 44,
+            "baseline_deg": 122.60925497179562,
+            "candidate_deg": 118.59394408049234,
+            "delta_deg": 4.015310891303287
+          },
+          {
+            "layer": 45,
+            "baseline_deg": 135.82787551637367,
+            "candidate_deg": 130.42542567022178,
+            "delta_deg": 5.402449846151882
+          },
+          {
+            "layer": 46,
+            "baseline_deg": 133.4833581281581,
+            "candidate_deg": 130.88181029601108,
+            "delta_deg": 2.60154783214702
+          },
+          {
+            "layer": 47,
+            "baseline_deg": 137.2620668137567,
+            "candidate_deg": 131.09950625761647,
+            "delta_deg": 6.162560556140221
+          },
+          {
+            "layer": 49,
+            "baseline_deg": 128.39857180198243,
+            "candidate_deg": 128.64229196618857,
+            "delta_deg": 0.24372016420613818
+          },
+          {
+            "layer": 53,
+            "baseline_deg": 139.37210649853714,
+            "candidate_deg": 131.8688328557381,
+            "delta_deg": 7.50327364279903
+          },
+          {
+            "layer": 58,
+            "baseline_deg": null,
+            "candidate_deg": 147.84189628417144,
+            "delta_deg": null
+          },
+          {
+            "layer": 79,
+            "baseline_deg": 8.857402666448417,
+            "candidate_deg": 68.66310232115228,
+            "delta_deg": 59.805699654703865
+          },
+          {
+            "layer": 86,
+            "baseline_deg": 2.285491612885947,
+            "candidate_deg": 98.57154607278768,
+            "delta_deg": 83.71394554009827
+          },
+          {
+            "layer": 95,
+            "baseline_deg": 6.881723630637227,
+            "candidate_deg": null,
+            "delta_deg": null
+          },
+          {
+            "layer": 96,
+            "baseline_deg": 6.8605975774052705,
+            "candidate_deg": 102.97270636104834,
+            "delta_deg": 83.88789121635693
+          },
+          {
+            "layer": 97,
+            "baseline_deg": 178.64973836672607,
+            "candidate_deg": 102.07926382426099,
+            "delta_deg": 76.57047454246508
+          },
+          {
+            "layer": 143,
+            "baseline_deg": 178.7734668297765,
+            "candidate_deg": 108.29280771890915,
+            "delta_deg": 70.48065911086736
+          },
+          {
+            "layer": 156,
+            "baseline_deg": 3.557052605738722,
+            "candidate_deg": null,
+            "delta_deg": null
+          },
+          {
+            "layer": 157,
+            "baseline_deg": 167.8081349074618,
+            "candidate_deg": 128.234398955745,
+            "delta_deg": 39.5737359517168
+          },
+          {
+            "layer": 158,
+            "baseline_deg": 6.371398594409021,
+            "candidate_deg": 126.76273608841925,
+            "delta_deg": 59.60866250598977
+          },
+          {
+            "layer": 215,
+            "baseline_deg": 133.57065141951298,
+            "candidate_deg": 130.3529040934057,
+            "delta_deg": 3.217747326107286
+          },
+          {
+            "layer": 219,
+            "baseline_deg": 131.0349372311498,
+            "candidate_deg": 132.78285862545036,
+            "delta_deg": 1.7479213943005618
+          },
+          {
+            "layer": 220,
+            "baseline_deg": 108.37962023427313,
+            "candidate_deg": 108.4235156592022,
+            "delta_deg": 0.04389542492906173
+          },
+          {
+            "layer": 221,
+            "baseline_deg": null,
+            "candidate_deg": 123.88265765615235,
+            "delta_deg": null
+          },
+          {
+            "layer": 234,
+            "baseline_deg": 179.20361624858688,
+            "candidate_deg": 80.45077105738183,
+            "delta_deg": 81.24715480879495
+          },
+          {
+            "layer": 235,
+            "baseline_deg": 11.513106872775651,
+            "candidate_deg": 144.37655012631566,
+            "delta_deg": 47.13655674645997
+          },
+          {
+            "layer": 236,
+            "baseline_deg": 172.56859202882907,
+            "candidate_deg": null,
+            "delta_deg": null
+          },
+          {
+            "layer": 260,
+            "baseline_deg": 179.17480920704622,
+            "candidate_deg": 54.29330859939764,
+            "delta_deg": 55.118499392351424
+          },
+          {
+            "layer": 261,
+            "baseline_deg": 7.612751141778351,
+            "candidate_deg": 48.06741212250191,
+            "delta_deg": 40.45466098072356
+          },
+          {
+            "layer": 278,
+            "baseline_deg": 160.31775071878832,
+            "candidate_deg": 150.32321983522598,
+            "delta_deg": 9.994530883562334
+          },
+          {
+            "layer": 317,
+            "baseline_deg": 175.81222882412698,
+            "candidate_deg": 175.81222882412698,
+            "delta_deg": 0.0
+          },
+          {
+            "layer": 318,
+            "baseline_deg": 0.0,
+            "candidate_deg": 0.0,
+            "delta_deg": 0.0
+          },
+          {
+            "layer": 319,
+            "baseline_deg": 173.6915234973124,
+            "candidate_deg": 116.98197923334956,
+            "delta_deg": 56.70954426396284
+          },
+          {
+            "layer": 320,
+            "baseline_deg": 4.732839242597507,
+            "candidate_deg": 119.97938293464534,
+            "delta_deg": 64.75345630795216
+          },
+          {
+            "layer": 323,
+            "baseline_deg": 179.4093427853547,
+            "candidate_deg": 95.9709609567727,
+            "delta_deg": 83.43838182858201
+          },
+          {
+            "layer": 330,
+            "baseline_deg": null,
+            "candidate_deg": 77.61924307119249,
+            "delta_deg": null
+          },
+          {
+            "layer": 350,
+            "baseline_deg": 174.73171130327543,
+            "candidate_deg": 165.0029686482785,
+            "delta_deg": 9.728742654996921
+          },
+          {
+            "layer": 351,
+            "baseline_deg": 172.50046324245434,
+            "candidate_deg": 164.80590821198967,
+            "delta_deg": 7.69455503046467
+          },
+          {
+            "layer": 352,
+            "baseline_deg": 172.9172869214233,
+            "candidate_deg": 169.41972763586105,
+            "delta_deg": 3.497559285562261
+          },
+          {
+            "layer": 353,
+            "baseline_deg": 174.71593829053455,
+            "candidate_deg": 170.35214277727104,
+            "delta_deg": 4.363795513263511
+          },
+          {
+            "layer": 354,
+            "baseline_deg": 170.9585444969283,
+            "candidate_deg": 166.63873581934354,
+            "delta_deg": 4.319808677584774
+          },
+          {
+            "layer": 355,
+            "baseline_deg": 173.0564831401148,
+            "candidate_deg": 170.96579130323022,
+            "delta_deg": 2.090691836884588
+          },
+          {
+            "layer": 356,
+            "baseline_deg": 0.0,
+            "candidate_deg": 171.59757009774873,
+            "delta_deg": 8.40242990225127
+          },
+          {
+            "layer": 364,
+            "baseline_deg": 1.3037585526289563,
+            "candidate_deg": 97.67850822394719,
+            "delta_deg": 83.62525032868177
+          },
+          {
+            "layer": 389,
+            "baseline_deg": 3.351331067923296,
+            "candidate_deg": 0.2622214163965582,
+            "delta_deg": 3.0891096515267376
+          },
+          {
+            "layer": 397,
+            "baseline_deg": 177.4763315431097,
+            "candidate_deg": 12.676852500298981,
+            "delta_deg": 15.200520957189298
+          },
+          {
+            "layer": 398,
+            "baseline_deg": 1.7013546053262034,
+            "candidate_deg": 15.561510325328022,
+            "delta_deg": 13.860155720001819
+          }
+        ]
+      },
+      "direction_verdict": "mixed"
+    },
+    "base-arachne-on": {
+      "sections": {
+        "Bridge": {
+          "baseline_mm": 199.34112320512213,
+          "candidate_mm": 191.2353563700096,
+          "delta_mm": -8.105766835112519,
+          "layers_compared": 61,
+          "layers_more": 26,
+          "layers_less": 33,
+          "layers_equal": 2,
+          "first_differing_layer": 3
+        },
+        "Internal Bridge": {
+          "baseline_mm": 11.447043495253524,
+          "candidate_mm": 13.431455557383048,
+          "delta_mm": 1.9844120621295236,
+          "layers_compared": 4,
+          "layers_more": 1,
+          "layers_less": 0,
+          "layers_equal": 3,
+          "first_differing_layer": 41
+        },
+        "Sparse infill": {
+          "baseline_mm": 179110.27129471602,
+          "candidate_mm": 179092.2493035077,
+          "delta_mm": -18.0219912083121,
+          "layers_compared": 490,
+          "layers_more": 25,
+          "layers_less": 33,
+          "layers_equal": 432,
+          "first_differing_layer": 12
+        },
+        "Gap infill": {
+          "baseline_mm": 0,
+          "candidate_mm": 0,
+          "delta_mm": 0,
+          "layers_compared": 0,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 0,
+          "first_differing_layer": null
+        }
+      },
+      "bridge_direction": {
+        "layers": 61,
+        "flips_ge_45deg": 13,
+        "flip_layers": [
+          79,
+          86,
+          96,
+          97,
+          143,
+          158,
+          234,
+          235,
+          260,
+          319,
+          320,
+          323,
+          364
+        ],
+        "per_layer": [
+          {
+            "layer": 3,
+            "baseline_deg": 147.8244170863842,
+            "candidate_deg": 147.8319272407834,
+            "delta_deg": 0.007510154399199109
+          },
+          {
+            "layer": 4,
+            "baseline_deg": 147.85747906804454,
+            "candidate_deg": 147.92970609428323,
+            "delta_deg": 0.07222702623869282
+          },
+          {
+            "layer": 13,
+            "baseline_deg": 153.28942287246832,
+            "candidate_deg": 152.6312531311187,
+            "delta_deg": 0.6581697413496101
+          },
+          {
+            "layer": 14,
+            "baseline_deg": 155.72315279410947,
+            "candidate_deg": 155.1334057506338,
+            "delta_deg": 0.5897470434756542
+          },
+          {
+            "layer": 20,
+            "baseline_deg": 158.87144013939306,
+            "candidate_deg": 158.1856276678257,
+            "delta_deg": 0.6858124715673455
+          },
+          {
+            "layer": 21,
+            "baseline_deg": 158.43038001330126,
+            "candidate_deg": 157.47764931502408,
+            "delta_deg": 0.952730698277179
+          },
+          {
+            "layer": 24,
+            "baseline_deg": 154.5317168101519,
+            "candidate_deg": 160.89988095161794,
+            "delta_deg": 6.368164141466053
+          },
+          {
+            "layer": 25,
+            "baseline_deg": 151.21546285034165,
+            "candidate_deg": 161.0170486400427,
+            "delta_deg": 9.80158578970105
+          },
+          {
+            "layer": 26,
+            "baseline_deg": 153.12814704567063,
+            "candidate_deg": 159.2722829200965,
+            "delta_deg": 6.144135874425871
+          },
+          {
+            "layer": 30,
+            "baseline_deg": 145.84030545433112,
+            "candidate_deg": 134.1951313958985,
+            "delta_deg": 11.645174058432616
+          },
+          {
+            "layer": 32,
+            "baseline_deg": 159.2359978603992,
+            "candidate_deg": 151.8952512652999,
+            "delta_deg": 7.3407465950993185
+          },
+          {
+            "layer": 33,
+            "baseline_deg": 151.98891049700592,
+            "candidate_deg": 145.51454780916777,
+            "delta_deg": 6.474362687838152
+          },
+          {
+            "layer": 36,
+            "baseline_deg": 144.08056554208358,
+            "candidate_deg": 136.45836171866253,
+            "delta_deg": 7.622203823421046
+          },
+          {
+            "layer": 37,
+            "baseline_deg": 147.60599199126327,
+            "candidate_deg": 143.7401713167429,
+            "delta_deg": 3.8658206745203643
+          },
+          {
+            "layer": 38,
+            "baseline_deg": 123.07977869439947,
+            "candidate_deg": 123.36033013404912,
+            "delta_deg": 0.28055143964965623
+          },
+          {
+            "layer": 41,
+            "baseline_deg": 142.59464336859193,
+            "candidate_deg": 138.01278750418334,
+            "delta_deg": 4.581855864408595
+          },
+          {
+            "layer": 42,
+            "baseline_deg": 146.04849259944638,
+            "candidate_deg": 140.0028886562185,
+            "delta_deg": 6.0456039432278885
+          },
+          {
+            "layer": 43,
+            "baseline_deg": 141.73933606313656,
+            "candidate_deg": 134.72187995928374,
+            "delta_deg": 7.0174561038528225
+          },
+          {
+            "layer": 44,
+            "baseline_deg": 122.60925497179562,
+            "candidate_deg": 118.59394408049234,
+            "delta_deg": 4.015310891303287
+          },
+          {
+            "layer": 45,
+            "baseline_deg": 135.82787551637367,
+            "candidate_deg": 130.42542567022178,
+            "delta_deg": 5.402449846151882
+          },
+          {
+            "layer": 46,
+            "baseline_deg": 133.4833581281581,
+            "candidate_deg": 130.88181029601108,
+            "delta_deg": 2.60154783214702
+          },
+          {
+            "layer": 47,
+            "baseline_deg": 137.2620668137567,
+            "candidate_deg": 131.09950625761647,
+            "delta_deg": 6.162560556140221
+          },
+          {
+            "layer": 49,
+            "baseline_deg": 128.39857180198243,
+            "candidate_deg": 128.64229196618857,
+            "delta_deg": 0.24372016420613818
+          },
+          {
+            "layer": 53,
+            "baseline_deg": 139.37210649853714,
+            "candidate_deg": 131.8688328557381,
+            "delta_deg": 7.50327364279903
+          },
+          {
+            "layer": 58,
+            "baseline_deg": null,
+            "candidate_deg": 147.84189628417144,
+            "delta_deg": null
+          },
+          {
+            "layer": 79,
+            "baseline_deg": 8.857402666448417,
+            "candidate_deg": 68.66310232115228,
+            "delta_deg": 59.805699654703865
+          },
+          {
+            "layer": 86,
+            "baseline_deg": 2.285491612885947,
+            "candidate_deg": 98.57154607278768,
+            "delta_deg": 83.71394554009827
+          },
+          {
+            "layer": 95,
+            "baseline_deg": 6.881723630637227,
+            "candidate_deg": null,
+            "delta_deg": null
+          },
+          {
+            "layer": 96,
+            "baseline_deg": 6.8605975774052705,
+            "candidate_deg": 102.97270636104834,
+            "delta_deg": 83.88789121635693
+          },
+          {
+            "layer": 97,
+            "baseline_deg": 178.64973836672607,
+            "candidate_deg": 102.07926382426099,
+            "delta_deg": 76.57047454246508
+          },
+          {
+            "layer": 143,
+            "baseline_deg": 178.7734668297765,
+            "candidate_deg": 108.29280771890915,
+            "delta_deg": 70.48065911086736
+          },
+          {
+            "layer": 156,
+            "baseline_deg": 3.557052605738722,
+            "candidate_deg": null,
+            "delta_deg": null
+          },
+          {
+            "layer": 157,
+            "baseline_deg": 167.8081349074618,
+            "candidate_deg": 128.234398955745,
+            "delta_deg": 39.5737359517168
+          },
+          {
+            "layer": 158,
+            "baseline_deg": 6.371398594409021,
+            "candidate_deg": 126.76273608841925,
+            "delta_deg": 59.60866250598977
+          },
+          {
+            "layer": 215,
+            "baseline_deg": 133.57065141951298,
+            "candidate_deg": 130.3529040934057,
+            "delta_deg": 3.217747326107286
+          },
+          {
+            "layer": 219,
+            "baseline_deg": 131.0349372311498,
+            "candidate_deg": 132.78285862545036,
+            "delta_deg": 1.7479213943005618
+          },
+          {
+            "layer": 220,
+            "baseline_deg": 108.37962023427313,
+            "candidate_deg": 108.4235156592022,
+            "delta_deg": 0.04389542492906173
+          },
+          {
+            "layer": 221,
+            "baseline_deg": null,
+            "candidate_deg": 123.88265765615235,
+            "delta_deg": null
+          },
+          {
+            "layer": 234,
+            "baseline_deg": 179.20361624858688,
+            "candidate_deg": 80.45077105738183,
+            "delta_deg": 81.24715480879495
+          },
+          {
+            "layer": 235,
+            "baseline_deg": 11.513106872775651,
+            "candidate_deg": 144.37655012631566,
+            "delta_deg": 47.13655674645997
+          },
+          {
+            "layer": 236,
+            "baseline_deg": 172.56859202882907,
+            "candidate_deg": null,
+            "delta_deg": null
+          },
+          {
+            "layer": 260,
+            "baseline_deg": 179.17480920704622,
+            "candidate_deg": 54.29330859939764,
+            "delta_deg": 55.118499392351424
+          },
+          {
+            "layer": 261,
+            "baseline_deg": 7.612751141778351,
+            "candidate_deg": 48.06741212250191,
+            "delta_deg": 40.45466098072356
+          },
+          {
+            "layer": 278,
+            "baseline_deg": 160.31775071878832,
+            "candidate_deg": 150.32321983522598,
+            "delta_deg": 9.994530883562334
+          },
+          {
+            "layer": 317,
+            "baseline_deg": 175.81222882412698,
+            "candidate_deg": 175.81222882412698,
+            "delta_deg": 0.0
+          },
+          {
+            "layer": 318,
+            "baseline_deg": 0.0,
+            "candidate_deg": 0.0,
+            "delta_deg": 0.0
+          },
+          {
+            "layer": 319,
+            "baseline_deg": 173.6915234973124,
+            "candidate_deg": 116.98197923334956,
+            "delta_deg": 56.70954426396284
+          },
+          {
+            "layer": 320,
+            "baseline_deg": 4.732839242597507,
+            "candidate_deg": 119.97938293464534,
+            "delta_deg": 64.75345630795216
+          },
+          {
+            "layer": 323,
+            "baseline_deg": 179.4093427853547,
+            "candidate_deg": 95.9709609567727,
+            "delta_deg": 83.43838182858201
+          },
+          {
+            "layer": 330,
+            "baseline_deg": null,
+            "candidate_deg": 77.61924307119249,
+            "delta_deg": null
+          },
+          {
+            "layer": 350,
+            "baseline_deg": 174.73171130327543,
+            "candidate_deg": 165.0029686482785,
+            "delta_deg": 9.728742654996921
+          },
+          {
+            "layer": 351,
+            "baseline_deg": 172.50046324245434,
+            "candidate_deg": 164.80590821198967,
+            "delta_deg": 7.69455503046467
+          },
+          {
+            "layer": 352,
+            "baseline_deg": 172.9172869214233,
+            "candidate_deg": 169.41972763586105,
+            "delta_deg": 3.497559285562261
+          },
+          {
+            "layer": 353,
+            "baseline_deg": 174.71593829053455,
+            "candidate_deg": 170.35214277727104,
+            "delta_deg": 4.363795513263511
+          },
+          {
+            "layer": 354,
+            "baseline_deg": 170.9585444969283,
+            "candidate_deg": 166.63873581934354,
+            "delta_deg": 4.319808677584774
+          },
+          {
+            "layer": 355,
+            "baseline_deg": 173.0564831401148,
+            "candidate_deg": 170.96579130323022,
+            "delta_deg": 2.090691836884588
+          },
+          {
+            "layer": 356,
+            "baseline_deg": 0.0,
+            "candidate_deg": 171.59757009774873,
+            "delta_deg": 8.40242990225127
+          },
+          {
+            "layer": 364,
+            "baseline_deg": 1.3037585526289563,
+            "candidate_deg": 97.67850822394719,
+            "delta_deg": 83.62525032868177
+          },
+          {
+            "layer": 389,
+            "baseline_deg": 3.351331067923296,
+            "candidate_deg": 0.2622214163965582,
+            "delta_deg": 3.0891096515267376
+          },
+          {
+            "layer": 397,
+            "baseline_deg": 177.4763315431097,
+            "candidate_deg": 12.676852500298981,
+            "delta_deg": 15.200520957189298
+          },
+          {
+            "layer": 398,
+            "baseline_deg": 1.7013546053262034,
+            "candidate_deg": 15.561510325328022,
+            "delta_deg": 13.860155720001819
+          }
+        ]
+      },
+      "direction_verdict": "mixed"
+    }
+  }
+}

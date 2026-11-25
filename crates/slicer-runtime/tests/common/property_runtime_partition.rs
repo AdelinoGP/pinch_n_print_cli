@@ -884,28 +884,48 @@ fn perimeter_of(donors: Vec<PerimeterRegion>) -> PerimeterIR {
     }
 }
 
-/// One overhang band covering the lower half of the lattice, keyed by both
+/// One overhang area covering the lower half of the lattice, keyed by both
 /// objects, so every prepared region index derives nonempty clipped geometry.
+///
+/// Ticket 142 replaced the producer-side four-band partition with the
+/// authoritative unsupported area: `PreparedRegionData::overhang_areas` is
+/// clipped from `SurfaceClassificationIR::overhang_areas`. The quartile map is
+/// given a *different* (upper) band so a regression that reads the old source
+/// cannot pass this fixture.
 fn classification_for(step: i64) -> SurfaceClassificationIR {
-    let band = LatticeRect {
+    let area_rect = LatticeRect {
         c0: 0,
         r0: 0,
         c1: LATTICE,
         r1: 3,
     };
+    let quartile_rect = LatticeRect {
+        c0: 0,
+        r0: 3,
+        c1: LATTICE,
+        r1: LATTICE,
+    };
+    let area = area_rect.expolygon(step);
     let mut by_layer = HashMap::new();
     by_layer.insert(
         0u32,
         vec![QuartileBand {
             quartile: 1,
-            polygons: vec![band.expolygon(step)],
+            polygons: vec![quartile_rect.expolygon(step)],
         }],
     );
+    let mut overhang_areas_by_layer = HashMap::new();
+    overhang_areas_by_layer.insert(0u32, vec![area]);
     let mut overhang_quartile_polygons = HashMap::new();
     overhang_quartile_polygons.insert(OBJECT_A.to_string(), by_layer.clone());
     overhang_quartile_polygons.insert(OBJECT_B.to_string(), by_layer);
+    let mut overhang_areas = HashMap::new();
+    overhang_areas.insert(OBJECT_A.to_string(), overhang_areas_by_layer.clone());
+    overhang_areas.insert(OBJECT_B.to_string(), overhang_areas_by_layer);
     SurfaceClassificationIR {
         overhang_quartile_polygons,
+        overhang_areas,
+        overhang_band_width_mm: 0.4,
         ..SurfaceClassificationIR::default()
     }
 }
@@ -1152,16 +1172,14 @@ fn check_scene_inner(scene: &PartitionScene, limits: &PartitionLimits) -> Result
     }
     let step = lattice_step(limits.max_abs_units);
     let classification = classification_for(step);
+    // The prepared view clips the authoritative unsupported area
+    // (`SurfaceClassificationIR::overhang_areas`) to each region's polygons;
+    // since ticket 142 the quartile bands are not the prepared source.
     let band: Vec<ExPolygon> = classification
-        .overhang_quartile_polygons
+        .overhang_areas
         .get(OBJECT_A)
         .and_then(|by_layer| by_layer.get(&0))
-        .map(|bands| {
-            bands
-                .iter()
-                .flat_map(|band| band.polygons.iter().cloned())
-                .collect()
-        })
+        .cloned()
         .unwrap_or_default();
 
     // The arena-only partition must never touch the immutable Blackboard data.

@@ -85,6 +85,12 @@ fn integrated_parity_skirt_brim() {
             ("skirt_height".into(), ConfigValue::Int(1)),
             ("brim_width".into(), ConfigValue::Float(0.0)),
             ("skirt_distance".into(), ConfigValue::Float(3.0)),
+            // Both keys are declared in `skirt-brim.toml` and read with
+            // `require_*`; the registry seeds them in production, so a fixture
+            // that omits them fails closed before any geometry runs (the
+            // pre-existing red recorded by t142).
+            ("brim_object_gap".into(), ConfigValue::Float(0.1)),
+            ("min_skirt_length".into(), ConfigValue::Float(0.0)),
             ("line_width".into(), ConfigValue::Float(0.4)),
         ]
         .into_iter()

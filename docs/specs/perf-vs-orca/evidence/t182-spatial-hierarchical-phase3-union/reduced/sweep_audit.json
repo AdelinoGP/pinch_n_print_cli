@@ -1,0 +1,912 @@
+{
+  "schema": 1,
+  "cell": "base-classic-on",
+  "arms": {
+    "worker-k4": {
+      "byte_identical": false,
+      "baseline_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "candidate_sha256": "9cd6c27fbe25ca1f22a8422e84cace72432503ba0e8d66c99d80574b1d82a9c7",
+      "baseline_bytes": 39605534,
+      "candidate_bytes": 39605621,
+      "delta_bytes": 87,
+      "baseline_lines": 976781,
+      "candidate_lines": 976784,
+      "delta_lines": 3,
+      "part_motion_sha256_equal": true,
+      "part_geometry_audit": {
+        "non_support_g1_lines_checked": 514432,
+        "non_support_xy_mismatches": 0,
+        "non_support_max_abs_de_mm": 3e-05,
+        "examples": []
+      },
+      "moved_sections": [
+        "Support"
+      ],
+      "part_sections_moved": [],
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 72.16122041290184,
+          "candidate_mm": 72.16122041290184,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 41,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 41,
+          "first_differing_layer": null
+        },
+        "Bridge": {
+          "baseline_mm": 144.58972763419575,
+          "candidate_mm": 144.58972763419575,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 44,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 44,
+          "first_differing_layer": null
+        },
+        "Gap infill": {
+          "baseline_mm": 358.60335895494376,
+          "candidate_mm": 358.60335895494376,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 167,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 167,
+          "first_differing_layer": null
+        },
+        "Inner wall": {
+          "baseline_mm": 103714.95271621335,
+          "candidate_mm": 103714.95271621335,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 494,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 494,
+          "first_differing_layer": null
+        },
+        "Internal Bridge": {
+          "baseline_mm": 4.213869448410168,
+          "candidate_mm": 4.213869448410168,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 3,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 3,
+          "first_differing_layer": null
+        },
+        "Outer wall": {
+          "baseline_mm": 106704.70052455703,
+          "candidate_mm": 106704.70052455703,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 496,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 496,
+          "first_differing_layer": null
+        },
+        "Skirt": {
+          "baseline_mm": 1731.0715601970967,
+          "candidate_mm": 1731.0715601970967,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Sparse infill": {
+          "baseline_mm": 174185.96385417777,
+          "candidate_mm": 174185.96385417777,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 490,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 490,
+          "first_differing_layer": null
+        },
+        "Support": {
+          "baseline_mm": 390678.16192213696,
+          "candidate_mm": 390676.9670252305,
+          "delta_mm": -1.1948969064396806,
+          "delta_pct_of_section": -0.000305851983269499,
+          "layers_compared": 432,
+          "layers_more": 167,
+          "layers_less": 201,
+          "layers_equal": 64,
+          "first_differing_layer": 1
+        },
+        "Support interface": {
+          "baseline_mm": 2613.623311163165,
+          "candidate_mm": 2613.623311163165,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 82,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 82,
+          "first_differing_layer": null
+        },
+        "Top surface": {
+          "baseline_mm": 225.1286792337096,
+          "candidate_mm": 225.1286792337096,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 69,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 69,
+          "first_differing_layer": null
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 780433.1707441296,
+        "candidate": 780431.9758472231,
+        "delta_mm": -1.1948969064978883,
+        "delta_pct": -0.0001531068836244588
+      }
+    },
+    "worker-k8": {
+      "byte_identical": false,
+      "baseline_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "candidate_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+      "baseline_bytes": 39605534,
+      "candidate_bytes": 39605478,
+      "delta_bytes": -56,
+      "baseline_lines": 976781,
+      "candidate_lines": 976780,
+      "delta_lines": -1,
+      "part_motion_sha256_equal": true,
+      "part_geometry_audit": {
+        "non_support_g1_lines_checked": 514432,
+        "non_support_xy_mismatches": 0,
+        "non_support_max_abs_de_mm": 0.0,
+        "examples": []
+      },
+      "moved_sections": [
+        "Support"
+      ],
+      "part_sections_moved": [],
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 72.16122041290184,
+          "candidate_mm": 72.16122041290184,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 41,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 41,
+          "first_differing_layer": null
+        },
+        "Bridge": {
+          "baseline_mm": 144.58972763419575,
+          "candidate_mm": 144.58972763419575,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 44,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 44,
+          "first_differing_layer": null
+        },
+        "Gap infill": {
+          "baseline_mm": 358.60335895494376,
+          "candidate_mm": 358.60335895494376,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 167,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 167,
+          "first_differing_layer": null
+        },
+        "Inner wall": {
+          "baseline_mm": 103714.95271621335,
+          "candidate_mm": 103714.95271621335,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 494,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 494,
+          "first_differing_layer": null
+        },
+        "Internal Bridge": {
+          "baseline_mm": 4.213869448410168,
+          "candidate_mm": 4.213869448410168,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 3,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 3,
+          "first_differing_layer": null
+        },
+        "Outer wall": {
+          "baseline_mm": 106704.70052455703,
+          "candidate_mm": 106704.70052455703,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 496,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 496,
+          "first_differing_layer": null
+        },
+        "Skirt": {
+          "baseline_mm": 1731.0715601970967,
+          "candidate_mm": 1731.0715601970967,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Sparse infill": {
+          "baseline_mm": 174185.96385417777,
+          "candidate_mm": 174185.96385417777,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 490,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 490,
+          "first_differing_layer": null
+        },
+        "Support": {
+          "baseline_mm": 390678.16192213696,
+          "candidate_mm": 390677.9195404588,
+          "delta_mm": -0.2423816781374626,
+          "delta_pct_of_section": -6.20412661268151e-05,
+          "layers_compared": 432,
+          "layers_more": 145,
+          "layers_less": 194,
+          "layers_equal": 93,
+          "first_differing_layer": 1
+        },
+        "Support interface": {
+          "baseline_mm": 2613.623311163165,
+          "candidate_mm": 2613.623311163165,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 82,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 82,
+          "first_differing_layer": null
+        },
+        "Top surface": {
+          "baseline_mm": 225.1286792337096,
+          "candidate_mm": 225.1286792337096,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 69,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 69,
+          "first_differing_layer": null
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 780433.1707441296,
+        "candidate": 780432.9283624514,
+        "delta_mm": -0.24238167819567025,
+        "delta_pct": -3.1057326531183126e-05
+      }
+    },
+    "worker-k16": {
+      "byte_identical": false,
+      "baseline_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "candidate_sha256": "097b6dbd9edd1c237963ad21849ff5ddc22131e35d6fcea6372624827f5ffb69",
+      "baseline_bytes": 39605534,
+      "candidate_bytes": 39605595,
+      "delta_bytes": 61,
+      "baseline_lines": 976781,
+      "candidate_lines": 976783,
+      "delta_lines": 2,
+      "part_motion_sha256_equal": true,
+      "part_geometry_audit": {
+        "non_support_g1_lines_checked": 514432,
+        "non_support_xy_mismatches": 0,
+        "non_support_max_abs_de_mm": 0.0,
+        "examples": []
+      },
+      "moved_sections": [
+        "Support"
+      ],
+      "part_sections_moved": [],
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 72.16122041290184,
+          "candidate_mm": 72.16122041290184,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 41,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 41,
+          "first_differing_layer": null
+        },
+        "Bridge": {
+          "baseline_mm": 144.58972763419575,
+          "candidate_mm": 144.58972763419575,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 44,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 44,
+          "first_differing_layer": null
+        },
+        "Gap infill": {
+          "baseline_mm": 358.60335895494376,
+          "candidate_mm": 358.60335895494376,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 167,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 167,
+          "first_differing_layer": null
+        },
+        "Inner wall": {
+          "baseline_mm": 103714.95271621335,
+          "candidate_mm": 103714.95271621335,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 494,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 494,
+          "first_differing_layer": null
+        },
+        "Internal Bridge": {
+          "baseline_mm": 4.213869448410168,
+          "candidate_mm": 4.213869448410168,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 3,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 3,
+          "first_differing_layer": null
+        },
+        "Outer wall": {
+          "baseline_mm": 106704.70052455703,
+          "candidate_mm": 106704.70052455703,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 496,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 496,
+          "first_differing_layer": null
+        },
+        "Skirt": {
+          "baseline_mm": 1731.0715601970967,
+          "candidate_mm": 1731.0715601970967,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Sparse infill": {
+          "baseline_mm": 174185.96385417777,
+          "candidate_mm": 174185.96385417777,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 490,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 490,
+          "first_differing_layer": null
+        },
+        "Support": {
+          "baseline_mm": 390678.16192213696,
+          "candidate_mm": 390678.0455966466,
+          "delta_mm": -0.11632549035130069,
+          "delta_pct_of_section": -2.9775273278388317e-05,
+          "layers_compared": 432,
+          "layers_more": 139,
+          "layers_less": 174,
+          "layers_equal": 119,
+          "first_differing_layer": 1
+        },
+        "Support interface": {
+          "baseline_mm": 2613.623311163165,
+          "candidate_mm": 2613.623311163165,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 82,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 82,
+          "first_differing_layer": null
+        },
+        "Top surface": {
+          "baseline_mm": 225.1286792337096,
+          "candidate_mm": 225.1286792337096,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 69,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 69,
+          "first_differing_layer": null
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 780433.1707441296,
+        "candidate": 780433.0544186392,
+        "delta_mm": -0.11632549040950835,
+        "delta_pct": -1.4905246825758829e-05
+      }
+    },
+    "nested-k4": {
+      "byte_identical": false,
+      "baseline_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "candidate_sha256": "9cd6c27fbe25ca1f22a8422e84cace72432503ba0e8d66c99d80574b1d82a9c7",
+      "baseline_bytes": 39605534,
+      "candidate_bytes": 39605621,
+      "delta_bytes": 87,
+      "baseline_lines": 976781,
+      "candidate_lines": 976784,
+      "delta_lines": 3,
+      "part_motion_sha256_equal": true,
+      "part_geometry_audit": {
+        "non_support_g1_lines_checked": 514432,
+        "non_support_xy_mismatches": 0,
+        "non_support_max_abs_de_mm": 3e-05,
+        "examples": []
+      },
+      "moved_sections": [
+        "Support"
+      ],
+      "part_sections_moved": [],
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 72.16122041290184,
+          "candidate_mm": 72.16122041290184,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 41,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 41,
+          "first_differing_layer": null
+        },
+        "Bridge": {
+          "baseline_mm": 144.58972763419575,
+          "candidate_mm": 144.58972763419575,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 44,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 44,
+          "first_differing_layer": null
+        },
+        "Gap infill": {
+          "baseline_mm": 358.60335895494376,
+          "candidate_mm": 358.60335895494376,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 167,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 167,
+          "first_differing_layer": null
+        },
+        "Inner wall": {
+          "baseline_mm": 103714.95271621335,
+          "candidate_mm": 103714.95271621335,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 494,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 494,
+          "first_differing_layer": null
+        },
+        "Internal Bridge": {
+          "baseline_mm": 4.213869448410168,
+          "candidate_mm": 4.213869448410168,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 3,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 3,
+          "first_differing_layer": null
+        },
+        "Outer wall": {
+          "baseline_mm": 106704.70052455703,
+          "candidate_mm": 106704.70052455703,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 496,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 496,
+          "first_differing_layer": null
+        },
+        "Skirt": {
+          "baseline_mm": 1731.0715601970967,
+          "candidate_mm": 1731.0715601970967,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Sparse infill": {
+          "baseline_mm": 174185.96385417777,
+          "candidate_mm": 174185.96385417777,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 490,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 490,
+          "first_differing_layer": null
+        },
+        "Support": {
+          "baseline_mm": 390678.16192213696,
+          "candidate_mm": 390676.9670252305,
+          "delta_mm": -1.1948969064396806,
+          "delta_pct_of_section": -0.000305851983269499,
+          "layers_compared": 432,
+          "layers_more": 167,
+          "layers_less": 201,
+          "layers_equal": 64,
+          "first_differing_layer": 1
+        },
+        "Support interface": {
+          "baseline_mm": 2613.623311163165,
+          "candidate_mm": 2613.623311163165,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 82,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 82,
+          "first_differing_layer": null
+        },
+        "Top surface": {
+          "baseline_mm": 225.1286792337096,
+          "candidate_mm": 225.1286792337096,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 69,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 69,
+          "first_differing_layer": null
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 780433.1707441296,
+        "candidate": 780431.9758472231,
+        "delta_mm": -1.1948969064978883,
+        "delta_pct": -0.0001531068836244588
+      }
+    },
+    "nested-k8": {
+      "byte_identical": false,
+      "baseline_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "candidate_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+      "baseline_bytes": 39605534,
+      "candidate_bytes": 39605478,
+      "delta_bytes": -56,
+      "baseline_lines": 976781,
+      "candidate_lines": 976780,
+      "delta_lines": -1,
+      "part_motion_sha256_equal": true,
+      "part_geometry_audit": {
+        "non_support_g1_lines_checked": 514432,
+        "non_support_xy_mismatches": 0,
+        "non_support_max_abs_de_mm": 0.0,
+        "examples": []
+      },
+      "moved_sections": [
+        "Support"
+      ],
+      "part_sections_moved": [],
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 72.16122041290184,
+          "candidate_mm": 72.16122041290184,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 41,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 41,
+          "first_differing_layer": null
+        },
+        "Bridge": {
+          "baseline_mm": 144.58972763419575,
+          "candidate_mm": 144.58972763419575,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 44,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 44,
+          "first_differing_layer": null
+        },
+        "Gap infill": {
+          "baseline_mm": 358.60335895494376,
+          "candidate_mm": 358.60335895494376,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 167,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 167,
+          "first_differing_layer": null
+        },
+        "Inner wall": {
+          "baseline_mm": 103714.95271621335,
+          "candidate_mm": 103714.95271621335,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 494,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 494,
+          "first_differing_layer": null
+        },
+        "Internal Bridge": {
+          "baseline_mm": 4.213869448410168,
+          "candidate_mm": 4.213869448410168,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 3,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 3,
+          "first_differing_layer": null
+        },
+        "Outer wall": {
+          "baseline_mm": 106704.70052455703,
+          "candidate_mm": 106704.70052455703,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 496,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 496,
+          "first_differing_layer": null
+        },
+        "Skirt": {
+          "baseline_mm": 1731.0715601970967,
+          "candidate_mm": 1731.0715601970967,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Sparse infill": {
+          "baseline_mm": 174185.96385417777,
+          "candidate_mm": 174185.96385417777,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 490,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 490,
+          "first_differing_layer": null
+        },
+        "Support": {
+          "baseline_mm": 390678.16192213696,
+          "candidate_mm": 390677.9195404588,
+          "delta_mm": -0.2423816781374626,
+          "delta_pct_of_section": -6.20412661268151e-05,
+          "layers_compared": 432,
+          "layers_more": 145,
+          "layers_less": 194,
+          "layers_equal": 93,
+          "first_differing_layer": 1
+        },
+        "Support interface": {
+          "baseline_mm": 2613.623311163165,
+          "candidate_mm": 2613.623311163165,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 82,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 82,
+          "first_differing_layer": null
+        },
+        "Top surface": {
+          "baseline_mm": 225.1286792337096,
+          "candidate_mm": 225.1286792337096,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 69,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 69,
+          "first_differing_layer": null
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 780433.1707441296,
+        "candidate": 780432.9283624514,
+        "delta_mm": -0.24238167819567025,
+        "delta_pct": -3.1057326531183126e-05
+      }
+    },
+    "nested-k16": {
+      "byte_identical": false,
+      "baseline_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "candidate_sha256": "097b6dbd9edd1c237963ad21849ff5ddc22131e35d6fcea6372624827f5ffb69",
+      "baseline_bytes": 39605534,
+      "candidate_bytes": 39605595,
+      "delta_bytes": 61,
+      "baseline_lines": 976781,
+      "candidate_lines": 976783,
+      "delta_lines": 2,
+      "part_motion_sha256_equal": true,
+      "part_geometry_audit": {
+        "non_support_g1_lines_checked": 514432,
+        "non_support_xy_mismatches": 0,
+        "non_support_max_abs_de_mm": 0.0,
+        "examples": []
+      },
+      "moved_sections": [
+        "Support"
+      ],
+      "part_sections_moved": [],
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 72.16122041290184,
+          "candidate_mm": 72.16122041290184,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 41,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 41,
+          "first_differing_layer": null
+        },
+        "Bridge": {
+          "baseline_mm": 144.58972763419575,
+          "candidate_mm": 144.58972763419575,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 44,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 44,
+          "first_differing_layer": null
+        },
+        "Gap infill": {
+          "baseline_mm": 358.60335895494376,
+          "candidate_mm": 358.60335895494376,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 167,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 167,
+          "first_differing_layer": null
+        },
+        "Inner wall": {
+          "baseline_mm": 103714.95271621335,
+          "candidate_mm": 103714.95271621335,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 494,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 494,
+          "first_differing_layer": null
+        },
+        "Internal Bridge": {
+          "baseline_mm": 4.213869448410168,
+          "candidate_mm": 4.213869448410168,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 3,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 3,
+          "first_differing_layer": null
+        },
+        "Outer wall": {
+          "baseline_mm": 106704.70052455703,
+          "candidate_mm": 106704.70052455703,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 496,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 496,
+          "first_differing_layer": null
+        },
+        "Skirt": {
+          "baseline_mm": 1731.0715601970967,
+          "candidate_mm": 1731.0715601970967,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Sparse infill": {
+          "baseline_mm": 174185.96385417777,
+          "candidate_mm": 174185.96385417777,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 490,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 490,
+          "first_differing_layer": null
+        },
+        "Support": {
+          "baseline_mm": 390678.16192213696,
+          "candidate_mm": 390678.0455966466,
+          "delta_mm": -0.11632549035130069,
+          "delta_pct_of_section": -2.9775273278388317e-05,
+          "layers_compared": 432,
+          "layers_more": 139,
+          "layers_less": 174,
+          "layers_equal": 119,
+          "first_differing_layer": 1
+        },
+        "Support interface": {
+          "baseline_mm": 2613.623311163165,
+          "candidate_mm": 2613.623311163165,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 82,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 82,
+          "first_differing_layer": null
+        },
+        "Top surface": {
+          "baseline_mm": 225.1286792337096,
+          "candidate_mm": 225.1286792337096,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 69,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 69,
+          "first_differing_layer": null
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 780433.1707441296,
+        "candidate": 780433.0544186392,
+        "delta_mm": -0.11632549040950835,
+        "delta_pct": -1.4905246825758829e-05
+      }
+    }
+  }
+}

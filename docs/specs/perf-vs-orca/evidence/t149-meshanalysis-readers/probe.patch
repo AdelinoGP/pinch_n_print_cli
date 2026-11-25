@@ -1,0 +1,62 @@
+diff --git a/crates/slicer-core/src/algos/mesh_analysis.rs b/crates/slicer-core/src/algos/mesh_analysis.rs
+index 5e5ed85d..6b50a4b1 100644
+--- a/crates/slicer-core/src/algos/mesh_analysis.rs
++++ b/crates/slicer-core/src/algos/mesh_analysis.rs
+@@ -151,6 +151,7 @@ fn classify_object(
+     }
+ 
+     let tri_count = mesh.indices.len() / 3;
++    let probe_all = std::time::Instant::now();
+     let mut facet_classes: Vec<FacetClass> = Vec::with_capacity(tri_count);
+     let mut overhang_facets: Vec<u32> = Vec::new();
+     let mut overhang_max_angle: f32 = 0.0;
+@@ -197,6 +198,8 @@ fn classify_object(
+         facet_normals.push(normal);
+     }
+ 
++    let probe_classify_ms = probe_all.elapsed().as_secs_f64() * 1000.0;
++
+     if tri_count == 0 {
+         z_min = 0.0;
+         z_max = 0.0;
+@@ -219,23 +222,39 @@ fn classify_object(
+     let overhang_regions: Vec<OverhangRegion> = if overhang_facets.is_empty() {
+         Vec::new()
+     } else {
++        let probe_footprint = std::time::Instant::now();
+         let xy_footprint = compute_xy_footprint(mesh, transform, &overhang_facets);
++        let probe_footprint_ms = probe_footprint.elapsed().as_secs_f64() * 1000.0;
+         let overhang_set: std::collections::HashSet<u32> =
+             overhang_facets.iter().copied().collect();
+         let region_facets: Vec<u32> = (0..tri_count as u32)
+             .filter(|facet| !overhang_set.contains(facet))
+             .collect();
++        let probe_needs = std::time::Instant::now();
++        let needs_support = region_needs_support(mesh, transform, &region_facets, &xy_footprint);
++        let probe_needs_ms = probe_needs.elapsed().as_secs_f64() * 1000.0;
++        eprintln!(
++            "PROBE mesh_analysis object={object_id} tris={tri_count} overhang={} classify_ms={probe_classify_ms:.1} footprint_ms={probe_footprint_ms:.1} needs_support_ms={probe_needs_ms:.1}",
++            overhang_facets.len()
++        );
+         vec![OverhangRegion {
+             id: 0,
+             facet_indices: overhang_facets,
+             max_angle_deg: overhang_max_angle,
+-            needs_support: region_needs_support(mesh, transform, &region_facets, &xy_footprint),
++            needs_support,
+             xy_footprint,
+         }]
+     };
+ 
++    let probe_bridge = std::time::Instant::now();
+     let bridge_regions =
+         compute_bridge_metrics(mesh, transform, &facet_classes, &facet_normals, config);
++    let probe_bridge_ms = probe_bridge.elapsed().as_secs_f64() * 1000.0;
++    eprintln!(
++        "PROBE mesh_analysis object={object_id} bridge_ms={probe_bridge_ms:.1} bridge_regions={} total_ms={:.1}",
++        bridge_regions.len(),
++        probe_all.elapsed().as_secs_f64() * 1000.0
++    );
+ 
+     Ok(ObjectSurfaceData {
+         facet_classes,

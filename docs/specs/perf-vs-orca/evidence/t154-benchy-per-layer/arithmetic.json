@@ -1,0 +1,189 @@
+{
+ "note": "ESTIMATE, not a ratio of record. Phase shares are t154's instrumented split (HEAD, 2026-11-14); walls are t145/t148 medians carried by t150's measured per-cell deltas; canonical prepass costs are t110's tap split. Prepass-at-canonical holds every other phase at today's measured share. An instrumented share is attribution only; no instrumented wall is a wall claim.",
+ "cells": {
+  "base-arachne-off": {
+   "estimate": true,
+   "provenance": "t145 paired scoreboard; ratio carried by t150's -9.37% PnP delta",
+   "orca_s": 14.92,
+   "ratio_of_record": 1.798099,
+   "pnp_s": 26.8276,
+   "phase_shares": {
+    "validation": 0.0001,
+    "prepass": 0.6905,
+    "per_layer": 0.2791,
+    "postpass": 0.0276
+   },
+   "outside_share": 0.0027,
+   "prepass_s": 18.5246,
+   "other_than_prepass_s": 8.3031,
+   "per_layer_s": 7.4878,
+   "canonical_prepass_s": 2.103,
+   "prepass_at_canonical_result": 0.6975,
+   "margin_at_canonical": 0.3025,
+   "required_prepass_cut": 0.6428,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0
+  },
+  "base-arachne-on": {
+   "estimate": true,
+   "provenance": "t148 ratio on t145's Orca arm; t150's -5.78% delta",
+   "orca_s": 25.822,
+   "ratio_of_record": 3.060266,
+   "pnp_s": 79.0222,
+   "phase_shares": {
+    "validation": 0.0,
+    "prepass": 0.8163,
+    "per_layer": 0.1563,
+    "postpass": 0.0264
+   },
+   "outside_share": 0.001,
+   "prepass_s": 64.5043,
+   "other_than_prepass_s": 14.5178,
+   "per_layer_s": 12.3514,
+   "canonical_prepass_s": 10.4448,
+   "prepass_at_canonical_result": 0.9667,
+   "margin_at_canonical": 0.0333,
+   "required_prepass_cut": 0.8248,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0
+  },
+  "base-classic-off": {
+   "estimate": true,
+   "provenance": "t145 paired scoreboard; ratio carried by t150's -12.08% PnP delta",
+   "orca_s": 13.414,
+   "ratio_of_record": 1.826978,
+   "pnp_s": 24.5071,
+   "phase_shares": {
+    "validation": 0.0001,
+    "prepass": 0.6789,
+    "per_layer": 0.2915,
+    "postpass": 0.0263
+   },
+   "outside_share": 0.0032,
+   "prepass_s": 16.639,
+   "other_than_prepass_s": 7.8681,
+   "per_layer_s": 7.1431,
+   "canonical_prepass_s": 2.103,
+   "prepass_at_canonical_result": 0.7433,
+   "margin_at_canonical": 0.2567,
+   "required_prepass_cut": 0.6667,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0
+  },
+  "base-classic-on": {
+   "estimate": true,
+   "provenance": "t148 re-measured Orca arm (23.414 -> 21.598) + t148 ratio; t150's -4.06% delta",
+   "orca_s": 21.598,
+   "ratio_of_record": 3.219746,
+   "pnp_s": 69.5401,
+   "phase_shares": {
+    "validation": 0.0,
+    "prepass": 0.8238,
+    "per_layer": 0.144,
+    "postpass": 0.031
+   },
+   "outside_share": 0.0011,
+   "prepass_s": 57.2905,
+   "other_than_prepass_s": 12.2496,
+   "per_layer_s": 10.0162,
+   "canonical_prepass_s": 10.4448,
+   "prepass_at_canonical_result": 1.0508,
+   "margin_at_canonical": -0.0508,
+   "required_prepass_cut": 0.8368,
+   "needed_from_other_than_prepass_s": 1.0964,
+   "needed_from_other_fraction_of_per_layer": 0.1095
+  },
+  "benchy-arachne-off": {
+   "estimate": true,
+   "provenance": "t145 paired scoreboard; ratio carried by t150's -4.87% PnP delta",
+   "orca_s": 1.983,
+   "ratio_of_record": 1.762759,
+   "pnp_s": 3.4956,
+   "phase_shares": {
+    "validation": 0.0008,
+    "prepass": 0.6352,
+    "per_layer": 0.2958,
+    "postpass": 0.045
+   },
+   "outside_share": 0.0232,
+   "prepass_s": 2.2204,
+   "other_than_prepass_s": 1.2751,
+   "per_layer_s": 1.0339,
+   "canonical_prepass_s": 0.0505,
+   "prepass_at_canonical_result": 0.6685,
+   "margin_at_canonical": 0.3315,
+   "required_prepass_cut": 0.6812,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0
+  },
+  "benchy-arachne-on": {
+   "estimate": true,
+   "provenance": "t145 Orca arm + t148 supports-on ratio; t150's -4.87% delta",
+   "orca_s": 2.591,
+   "ratio_of_record": 2.691228,
+   "pnp_s": 6.973,
+   "phase_shares": {
+    "validation": 0.0005,
+    "prepass": 0.7441,
+    "per_layer": 0.1802,
+    "postpass": 0.0648
+   },
+   "outside_share": 0.0104,
+   "prepass_s": 5.1889,
+   "other_than_prepass_s": 1.7841,
+   "per_layer_s": 1.2564,
+   "canonical_prepass_s": 0.5498,
+   "prepass_at_canonical_result": 0.9008,
+   "margin_at_canonical": 0.0992,
+   "required_prepass_cut": 0.8445,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0
+  },
+  "benchy-classic-off": {
+   "estimate": true,
+   "provenance": "t145 paired scoreboard; ratio carried by t150's -1.77% PnP delta",
+   "orca_s": 1.915,
+   "ratio_of_record": 2.006839,
+   "pnp_s": 3.8431,
+   "phase_shares": {
+    "validation": 0.0008,
+    "prepass": 0.6447,
+    "per_layer": 0.2606,
+    "postpass": 0.0413
+   },
+   "outside_share": 0.0526,
+   "prepass_s": 2.4775,
+   "other_than_prepass_s": 1.3656,
+   "per_layer_s": 1.0015,
+   "canonical_prepass_s": 0.0505,
+   "prepass_at_canonical_result": 0.7395,
+   "margin_at_canonical": 0.2605,
+   "required_prepass_cut": 0.7782,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0
+  },
+  "benchy-classic-on": {
+   "estimate": true,
+   "provenance": "t145 Orca arm + t148 supports-on ratio; t150's -4.95% delta",
+   "orca_s": 2.442,
+   "ratio_of_record": 2.571103,
+   "pnp_s": 6.2786,
+   "phase_shares": {
+    "validation": 0.0004,
+    "prepass": 0.7541,
+    "per_layer": 0.1734,
+    "postpass": 0.0612
+   },
+   "outside_share": 0.0109,
+   "prepass_s": 4.7349,
+   "other_than_prepass_s": 1.5437,
+   "per_layer_s": 1.0888,
+   "canonical_prepass_s": 0.5498,
+   "prepass_at_canonical_result": 0.8573,
+   "margin_at_canonical": 0.1427,
+   "required_prepass_cut": 0.8103,
+   "needed_from_other_than_prepass_s": 0.0,
+   "needed_from_other_fraction_of_per_layer": 0.0
+  }
+ }
+}

@@ -1,0 +1,1420 @@
+{
+  "schema": 1,
+  "cells": {
+    "benchy-classic-off": {
+      "byte_identical": true,
+      "baseline_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+      "candidate_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+      "baseline_bytes": 4077945,
+      "candidate_bytes": 4077945,
+      "delta_bytes": 0,
+      "baseline_lines": 102156,
+      "candidate_lines": 102156,
+      "differing_lines": 0,
+      "diff_examples": [],
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 2900.7340088648243,
+          "candidate_mm": 2900.7340088648243,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 7,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 7,
+          "first_differing_layer": null
+        },
+        "Bridge": {
+          "baseline_mm": 878.8261237839477,
+          "candidate_mm": 878.8261237839477,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 7,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 7,
+          "first_differing_layer": null
+        },
+        "Brim": {
+          "baseline_mm": 2674.7129385044,
+          "candidate_mm": 2674.7129385044,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Gap infill": {
+          "baseline_mm": 620.3234416024472,
+          "candidate_mm": 620.3234416024472,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 54,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 54,
+          "first_differing_layer": null
+        },
+        "Inner wall": {
+          "baseline_mm": 31017.092833009436,
+          "candidate_mm": 31017.092833009436,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 240,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 240,
+          "first_differing_layer": null
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1078.189412526412,
+          "candidate_mm": 1078.189412526412,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 12,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 12,
+          "first_differing_layer": null
+        },
+        "Internal solid infill": {
+          "baseline_mm": 1267.5580527216432,
+          "candidate_mm": 1267.5580527216432,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 7,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 7,
+          "first_differing_layer": null
+        },
+        "Outer wall": {
+          "baseline_mm": 32793.478320976385,
+          "candidate_mm": 32793.478320976385,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 240,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 240,
+          "first_differing_layer": null
+        },
+        "Skirt": {
+          "baseline_mm": 1030.9595070431747,
+          "candidate_mm": 1030.9595070431747,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Sparse infill": {
+          "baseline_mm": 24178.19336189495,
+          "candidate_mm": 24178.19336189495,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 144,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 144,
+          "first_differing_layer": null
+        },
+        "Top surface": {
+          "baseline_mm": 3206.564239035394,
+          "candidate_mm": 3206.564239035394,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 40,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 40,
+          "first_differing_layer": null
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 101646.63223996302,
+        "candidate": 101646.63223996302,
+        "delta_mm": 0.0,
+        "delta_pct": 0.0
+      }
+    },
+    "benchy-classic-on": {
+      "byte_identical": true,
+      "baseline_sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+      "candidate_sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+      "baseline_bytes": 8544096,
+      "candidate_bytes": 8544096,
+      "delta_bytes": 0,
+      "baseline_lines": 212199,
+      "candidate_lines": 212199,
+      "differing_lines": 0,
+      "diff_examples": [],
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 2900.7340088648243,
+          "candidate_mm": 2900.7340088648243,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 7,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 7,
+          "first_differing_layer": null
+        },
+        "Bridge": {
+          "baseline_mm": 878.8261237839477,
+          "candidate_mm": 878.8261237839477,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 7,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 7,
+          "first_differing_layer": null
+        },
+        "Brim": {
+          "baseline_mm": 1971.626848859928,
+          "candidate_mm": 1971.626848859928,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Gap infill": {
+          "baseline_mm": 620.3234416024472,
+          "candidate_mm": 620.3234416024472,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 54,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 54,
+          "first_differing_layer": null
+        },
+        "Inner wall": {
+          "baseline_mm": 31017.092833009436,
+          "candidate_mm": 31017.092833009436,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 240,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 240,
+          "first_differing_layer": null
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1078.189412526412,
+          "candidate_mm": 1078.189412526412,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 12,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 12,
+          "first_differing_layer": null
+        },
+        "Internal solid infill": {
+          "baseline_mm": 1267.5580527216432,
+          "candidate_mm": 1267.5580527216432,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 7,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 7,
+          "first_differing_layer": null
+        },
+        "Outer wall": {
+          "baseline_mm": 32793.478320976385,
+          "candidate_mm": 32793.478320976385,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 240,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 240,
+          "first_differing_layer": null
+        },
+        "Skirt": {
+          "baseline_mm": 1268.9209964624101,
+          "candidate_mm": 1268.9209964624101,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Sparse infill": {
+          "baseline_mm": 24178.19336189495,
+          "candidate_mm": 24178.19336189495,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 144,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 144,
+          "first_differing_layer": null
+        },
+        "Support": {
+          "baseline_mm": 81687.93289866934,
+          "candidate_mm": 81687.93289866934,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 200,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 200,
+          "first_differing_layer": null
+        },
+        "Support interface": {
+          "baseline_mm": 262.0080356197867,
+          "candidate_mm": 262.0080356197867,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 6,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 6,
+          "first_differing_layer": null
+        },
+        "Top surface": {
+          "baseline_mm": 3206.564239035394,
+          "candidate_mm": 3206.564239035394,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 40,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 40,
+          "first_differing_layer": null
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 183131.4485740269,
+        "candidate": 183131.4485740269,
+        "delta_mm": 0.0,
+        "delta_pct": 0.0
+      }
+    },
+    "benchy-arachne-off": {
+      "byte_identical": true,
+      "baseline_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+      "candidate_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+      "baseline_bytes": 4225196,
+      "candidate_bytes": 4225196,
+      "delta_bytes": 0,
+      "baseline_lines": 106206,
+      "candidate_lines": 106206,
+      "differing_lines": 0,
+      "diff_examples": [],
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 3027.5095572342666,
+          "candidate_mm": 3027.5095572342666,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 7,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 7,
+          "first_differing_layer": null
+        },
+        "Bridge": {
+          "baseline_mm": 893.9620776063017,
+          "candidate_mm": 893.9620776063017,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 7,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 7,
+          "first_differing_layer": null
+        },
+        "Brim": {
+          "baseline_mm": 2674.535434365824,
+          "candidate_mm": 2674.535434365824,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Inner wall": {
+          "baseline_mm": 30791.283758043406,
+          "candidate_mm": 30791.283758043406,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 240,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 240,
+          "first_differing_layer": null
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1078.189412526412,
+          "candidate_mm": 1078.189412526412,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 12,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 12,
+          "first_differing_layer": null
+        },
+        "Internal solid infill": {
+          "baseline_mm": 1302.764878614426,
+          "candidate_mm": 1302.764878614426,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 7,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 7,
+          "first_differing_layer": null
+        },
+        "Outer wall": {
+          "baseline_mm": 32742.882948214,
+          "candidate_mm": 32742.882948214,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 240,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 240,
+          "first_differing_layer": null
+        },
+        "Skirt": {
+          "baseline_mm": 1030.882202604647,
+          "candidate_mm": 1030.882202604647,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Sparse infill": {
+          "baseline_mm": 25236.369826120183,
+          "candidate_mm": 25236.369826120183,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 177,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 177,
+          "first_differing_layer": null
+        },
+        "Top surface": {
+          "baseline_mm": 3388.0324034133314,
+          "candidate_mm": 3388.0324034133314,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 44,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 44,
+          "first_differing_layer": null
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 102166.4124987428,
+        "candidate": 102166.4124987428,
+        "delta_mm": 0.0,
+        "delta_pct": 0.0
+      }
+    },
+    "benchy-arachne-on": {
+      "byte_identical": true,
+      "baseline_sha256": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+      "candidate_sha256": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+      "baseline_bytes": 8688374,
+      "candidate_bytes": 8688374,
+      "delta_bytes": 0,
+      "baseline_lines": 216172,
+      "candidate_lines": 216172,
+      "differing_lines": 0,
+      "diff_examples": [],
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 3027.5095572342666,
+          "candidate_mm": 3027.5095572342666,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 7,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 7,
+          "first_differing_layer": null
+        },
+        "Bridge": {
+          "baseline_mm": 893.9620776063017,
+          "candidate_mm": 893.9620776063017,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 7,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 7,
+          "first_differing_layer": null
+        },
+        "Brim": {
+          "baseline_mm": 1971.033070347015,
+          "candidate_mm": 1971.033070347015,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Inner wall": {
+          "baseline_mm": 30791.283758043406,
+          "candidate_mm": 30791.283758043406,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 240,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 240,
+          "first_differing_layer": null
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1078.189412526412,
+          "candidate_mm": 1078.189412526412,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 12,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 12,
+          "first_differing_layer": null
+        },
+        "Internal solid infill": {
+          "baseline_mm": 1302.764878614426,
+          "candidate_mm": 1302.764878614426,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 7,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 7,
+          "first_differing_layer": null
+        },
+        "Outer wall": {
+          "baseline_mm": 32742.882948214,
+          "candidate_mm": 32742.882948214,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 240,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 240,
+          "first_differing_layer": null
+        },
+        "Skirt": {
+          "baseline_mm": 1268.909238975575,
+          "candidate_mm": 1268.909238975575,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Sparse infill": {
+          "baseline_mm": 25236.369826120183,
+          "candidate_mm": 25236.369826120183,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 177,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 177,
+          "first_differing_layer": null
+        },
+        "Support": {
+          "baseline_mm": 81687.93289866934,
+          "candidate_mm": 81687.93289866934,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 200,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 200,
+          "first_differing_layer": null
+        },
+        "Support interface": {
+          "baseline_mm": 262.0080356197867,
+          "candidate_mm": 262.0080356197867,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 6,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 6,
+          "first_differing_layer": null
+        },
+        "Top surface": {
+          "baseline_mm": 3388.0324034133314,
+          "candidate_mm": 3388.0324034133314,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 44,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 44,
+          "first_differing_layer": null
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 183650.87810538404,
+        "candidate": 183650.87810538404,
+        "delta_mm": 0.0,
+        "delta_pct": 0.0
+      }
+    },
+    "base-classic-off": {
+      "byte_identical": true,
+      "baseline_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+      "candidate_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+      "baseline_bytes": 21230739,
+      "candidate_bytes": 21230739,
+      "delta_bytes": 0,
+      "baseline_lines": 522202,
+      "candidate_lines": 522202,
+      "differing_lines": 0,
+      "diff_examples": [],
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 72.16122041290184,
+          "candidate_mm": 72.16122041290184,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 41,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 41,
+          "first_differing_layer": null
+        },
+        "Bridge": {
+          "baseline_mm": 144.58972763419575,
+          "candidate_mm": 144.58972763419575,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 44,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 44,
+          "first_differing_layer": null
+        },
+        "Brim": {
+          "baseline_mm": 714.91241788311,
+          "candidate_mm": 714.91241788311,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Gap infill": {
+          "baseline_mm": 358.60335895494376,
+          "candidate_mm": 358.60335895494376,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 167,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 167,
+          "first_differing_layer": null
+        },
+        "Inner wall": {
+          "baseline_mm": 103714.95271621335,
+          "candidate_mm": 103714.95271621335,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 494,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 494,
+          "first_differing_layer": null
+        },
+        "Internal Bridge": {
+          "baseline_mm": 4.213869448410168,
+          "candidate_mm": 4.213869448410168,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 3,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 3,
+          "first_differing_layer": null
+        },
+        "Outer wall": {
+          "baseline_mm": 106704.70052455703,
+          "candidate_mm": 106704.70052455703,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 496,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 496,
+          "first_differing_layer": null
+        },
+        "Skirt": {
+          "baseline_mm": 496.503461185616,
+          "candidate_mm": 496.503461185616,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Sparse infill": {
+          "baseline_mm": 174185.96385417777,
+          "candidate_mm": 174185.96385417777,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 490,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 490,
+          "first_differing_layer": null
+        },
+        "Top surface": {
+          "baseline_mm": 225.1286792337096,
+          "candidate_mm": 225.1286792337096,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 69,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 69,
+          "first_differing_layer": null
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 386621.729829701,
+        "candidate": 386621.729829701,
+        "delta_mm": 0.0,
+        "delta_pct": 0.0
+      }
+    },
+    "base-classic-on": {
+      "byte_identical": false,
+      "baseline_sha256": "0e13ff7be58c67700fa51501a423c5e0166228815f3696a7c44bb1a65b99ca08",
+      "candidate_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "baseline_bytes": 39605535,
+      "candidate_bytes": 39605534,
+      "delta_bytes": -1,
+      "baseline_lines": 976781,
+      "candidate_lines": 976781,
+      "differing_lines": 7,
+      "diff_examples": [
+        {
+          "line": 90765,
+          "layer": 35,
+          "section": "Support interface",
+          "baseline": "G1 X104.601 Y114.665 Z7 E0.02393 F7680",
+          "candidate": "G1 X104.601 Y114.666 Z7 E0.02393 F7680",
+          "dx_mm": 0.0,
+          "dy_mm": 0.001,
+          "dist_um": 1.0
+        },
+        {
+          "line": 90818,
+          "layer": 35,
+          "section": "Support interface",
+          "baseline": "G1 X103.871 Y113.302 Z7 E0.02197 F7680",
+          "candidate": "G1 X103.87 Y113.302 Z7 E0.02197 F7680",
+          "dx_mm": -0.001,
+          "dy_mm": 0.0,
+          "dist_um": 1.0
+        },
+        {
+          "line": 126810,
+          "layer": 45,
+          "section": "Support",
+          "baseline": "G1 X131.894 Y121.333 Z9 E0.01855 F7680",
+          "candidate": "G1 X131.894 Y121.334 Z9 E0.01831 F7680",
+          "dx_mm": 0.0,
+          "dy_mm": 0.001,
+          "dist_um": 1.0
+        },
+        {
+          "line": 126845,
+          "layer": 45,
+          "section": "Support",
+          "baseline": "G1 X132.198 Y121.594 Z9 E0.02295 F7680",
+          "candidate": "G1 X132.198 Y121.595 Z9 E0.02295 F7680",
+          "dx_mm": 0.0,
+          "dy_mm": 0.001,
+          "dist_um": 1.0
+        },
+        {
+          "line": 138681,
+          "layer": 48,
+          "section": "Support",
+          "baseline": "G1 X124.684 Y85.919 Z9.6 E0.04688 F7680",
+          "candidate": "G1 X124.684 Y85.919 Z9.6 E0.04663 F7680",
+          "dx_mm": 0.0,
+          "dy_mm": 0.0,
+          "dist_um": 0.0
+        },
+        {
+          "line": 293492,
+          "layer": 98,
+          "section": "Support",
+          "baseline": "G1 X119.457 Y132.206 Z19.6 E0.51855 F7680",
+          "candidate": "G1 X119.457 Y132.206 Z19.6 E0.51807 F7680",
+          "dx_mm": 0.0,
+          "dy_mm": 0.0,
+          "dist_um": 0.0
+        },
+        {
+          "line": 596216,
+          "layer": 216,
+          "section": "Support",
+          "baseline": "G1 X112.532 Y99.206 Z43.2 E0.02051 F7680",
+          "candidate": "G1 X112.532 Y99.206 Z43.2 E0.01953 F7680",
+          "dx_mm": 0.0,
+          "dy_mm": 0.0,
+          "dist_um": 0.0
+        }
+      ],
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 72.16122041290184,
+          "candidate_mm": 72.16122041290184,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 41,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 41,
+          "first_differing_layer": null
+        },
+        "Bridge": {
+          "baseline_mm": 144.58972763419575,
+          "candidate_mm": 144.58972763419575,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 44,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 44,
+          "first_differing_layer": null
+        },
+        "Gap infill": {
+          "baseline_mm": 358.60335895494376,
+          "candidate_mm": 358.60335895494376,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 167,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 167,
+          "first_differing_layer": null
+        },
+        "Inner wall": {
+          "baseline_mm": 103714.95271621335,
+          "candidate_mm": 103714.95271621335,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 494,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 494,
+          "first_differing_layer": null
+        },
+        "Internal Bridge": {
+          "baseline_mm": 4.213869448410168,
+          "candidate_mm": 4.213869448410168,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 3,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 3,
+          "first_differing_layer": null
+        },
+        "Outer wall": {
+          "baseline_mm": 106704.70052455703,
+          "candidate_mm": 106704.70052455703,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 496,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 496,
+          "first_differing_layer": null
+        },
+        "Skirt": {
+          "baseline_mm": 1731.0715601970967,
+          "candidate_mm": 1731.0715601970967,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Sparse infill": {
+          "baseline_mm": 174185.96385417777,
+          "candidate_mm": 174185.96385417777,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 490,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 490,
+          "first_differing_layer": null
+        },
+        "Support": {
+          "baseline_mm": 390678.16222317837,
+          "candidate_mm": 390678.16192213696,
+          "delta_mm": -0.00030104140751063824,
+          "delta_pct_of_section": -7.705611334852796e-08,
+          "layers_compared": 432,
+          "layers_more": 0,
+          "layers_less": 1,
+          "layers_equal": 431,
+          "first_differing_layer": 45
+        },
+        "Support interface": {
+          "baseline_mm": 2613.623719707617,
+          "candidate_mm": 2613.623311163165,
+          "delta_mm": -0.0004085444520569581,
+          "delta_pct_of_section": -1.5631341611127617e-05,
+          "layers_compared": 82,
+          "layers_more": 0,
+          "layers_less": 1,
+          "layers_equal": 81,
+          "first_differing_layer": 35
+        },
+        "Top surface": {
+          "baseline_mm": 225.1286792337096,
+          "candidate_mm": 225.1286792337096,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 69,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 69,
+          "first_differing_layer": null
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 780433.1714537154,
+        "candidate": 780433.1707441296,
+        "delta_mm": -0.0007095858454704285,
+        "delta_pct": -9.092205091035285e-08
+      }
+    },
+    "base-arachne-off": {
+      "byte_identical": true,
+      "baseline_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+      "candidate_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+      "baseline_bytes": 21041068,
+      "candidate_bytes": 21041068,
+      "delta_bytes": 0,
+      "baseline_lines": 517618,
+      "candidate_lines": 517618,
+      "differing_lines": 0,
+      "diff_examples": [],
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 80.1381080050632,
+          "candidate_mm": 80.1381080050632,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 44,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 44,
+          "first_differing_layer": null
+        },
+        "Bridge": {
+          "baseline_mm": 190.18745387725227,
+          "candidate_mm": 190.18745387725227,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 58,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 58,
+          "first_differing_layer": null
+        },
+        "Brim": {
+          "baseline_mm": 711.1839403961368,
+          "candidate_mm": 711.1839403961368,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Inner wall": {
+          "baseline_mm": 103293.17375205089,
+          "candidate_mm": 103293.17375205089,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 494,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 494,
+          "first_differing_layer": null
+        },
+        "Internal Bridge": {
+          "baseline_mm": 4.213869448410168,
+          "candidate_mm": 4.213869448410168,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 3,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 3,
+          "first_differing_layer": null
+        },
+        "Outer wall": {
+          "baseline_mm": 106456.15727556855,
+          "candidate_mm": 106456.15727556855,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 496,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 496,
+          "first_differing_layer": null
+        },
+        "Skirt": {
+          "baseline_mm": 495.47922553432306,
+          "candidate_mm": 495.47922553432306,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Sparse infill": {
+          "baseline_mm": 178780.44019611194,
+          "candidate_mm": 178780.44019611194,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 490,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 490,
+          "first_differing_layer": null
+        },
+        "Top surface": {
+          "baseline_mm": 280.58876163932234,
+          "candidate_mm": 280.58876163932234,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 78,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 78,
+          "first_differing_layer": null
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 390291.5625826319,
+        "candidate": 390291.5625826319,
+        "delta_mm": 0.0,
+        "delta_pct": 0.0
+      }
+    },
+    "base-arachne-on": {
+      "byte_identical": false,
+      "baseline_sha256": "adf87012b498f717689331b0003d39ba9d3dc446e541d7ab58acaae35d2a18c0",
+      "candidate_sha256": "f77633affab2fbea4f3b3b546aa564ba1a151a457fd20b2c4991f34526a58d5c",
+      "baseline_bytes": 39417496,
+      "candidate_bytes": 39417495,
+      "delta_bytes": -1,
+      "baseline_lines": 972259,
+      "candidate_lines": 972259,
+      "differing_lines": 5,
+      "diff_examples": [
+        {
+          "line": 90099,
+          "layer": 35,
+          "section": "Support interface",
+          "baseline": "G1 X104.601 Y114.665 Z7 E0.02393 F7680",
+          "candidate": "G1 X104.601 Y114.666 Z7 E0.02393 F7680",
+          "dx_mm": 0.0,
+          "dy_mm": 0.001,
+          "dist_um": 1.0
+        },
+        {
+          "line": 90152,
+          "layer": 35,
+          "section": "Support interface",
+          "baseline": "G1 X103.871 Y113.302 Z7 E0.02197 F7680",
+          "candidate": "G1 X103.87 Y113.302 Z7 E0.02197 F7680",
+          "dx_mm": -0.001,
+          "dy_mm": 0.0,
+          "dist_um": 1.0
+        },
+        {
+          "line": 125222,
+          "layer": 45,
+          "section": "Support",
+          "baseline": "G1 X131.894 Y121.333 Z9 E0.01855 F7680",
+          "candidate": "G1 X131.894 Y121.334 Z9 E0.01831 F7680",
+          "dx_mm": 0.0,
+          "dy_mm": 0.001,
+          "dist_um": 1.0
+        },
+        {
+          "line": 125257,
+          "layer": 45,
+          "section": "Support",
+          "baseline": "G1 X132.198 Y121.594 Z9 E0.02295 F7680",
+          "candidate": "G1 X132.198 Y121.595 Z9 E0.02295 F7680",
+          "dx_mm": 0.0,
+          "dy_mm": 0.001,
+          "dist_um": 1.0
+        },
+        {
+          "line": 135796,
+          "layer": 48,
+          "section": "Support",
+          "baseline": "G1 X143.686 Y119.978 Z9.6 E0.02417 F7680",
+          "candidate": "G1 X143.686 Y119.978 Z9.6 E0.02441 F7680",
+          "dx_mm": 0.0,
+          "dy_mm": 0.0,
+          "dist_um": 0.0
+        }
+      ],
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 80.1381080050632,
+          "candidate_mm": 80.1381080050632,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 44,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 44,
+          "first_differing_layer": null
+        },
+        "Bridge": {
+          "baseline_mm": 190.18745387725227,
+          "candidate_mm": 190.18745387725227,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 58,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 58,
+          "first_differing_layer": null
+        },
+        "Inner wall": {
+          "baseline_mm": 103293.17375205089,
+          "candidate_mm": 103293.17375205089,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 494,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 494,
+          "first_differing_layer": null
+        },
+        "Internal Bridge": {
+          "baseline_mm": 4.213869448410168,
+          "candidate_mm": 4.213869448410168,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 3,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 3,
+          "first_differing_layer": null
+        },
+        "Outer wall": {
+          "baseline_mm": 106456.15727556855,
+          "candidate_mm": 106456.15727556855,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 496,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 496,
+          "first_differing_layer": null
+        },
+        "Skirt": {
+          "baseline_mm": 1731.0715601970967,
+          "candidate_mm": 1731.0715601970967,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 1,
+          "first_differing_layer": null
+        },
+        "Sparse infill": {
+          "baseline_mm": 178780.44019611194,
+          "candidate_mm": 178780.44019611194,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 490,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 490,
+          "first_differing_layer": null
+        },
+        "Support": {
+          "baseline_mm": 390678.16222317837,
+          "candidate_mm": 390678.16192213696,
+          "delta_mm": -0.00030104140751063824,
+          "delta_pct_of_section": -7.705611334852796e-08,
+          "layers_compared": 432,
+          "layers_more": 0,
+          "layers_less": 1,
+          "layers_equal": 431,
+          "first_differing_layer": 45
+        },
+        "Support interface": {
+          "baseline_mm": 2613.623719707617,
+          "candidate_mm": 2613.623311163165,
+          "delta_mm": -0.0004085444520569581,
+          "delta_pct_of_section": -1.5631341611127617e-05,
+          "layers_compared": 82,
+          "layers_more": 0,
+          "layers_less": 1,
+          "layers_equal": 81,
+          "first_differing_layer": 35
+        },
+        "Top surface": {
+          "baseline_mm": 280.58876163932234,
+          "candidate_mm": 280.58876163932234,
+          "delta_mm": 0.0,
+          "delta_pct_of_section": 0.0,
+          "layers_compared": 78,
+          "layers_more": 0,
+          "layers_less": 0,
+          "layers_equal": 78,
+          "first_differing_layer": null
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 784107.7569197846,
+        "candidate": 784107.7562101986,
+        "delta_mm": -0.0007095859618857503,
+        "delta_pct": -9.049597528192059e-08
+      }
+    }
+  },
+  "scanbeam_audit": {
+    "base-classic-on": {
+      "batches": 36,
+      "total_calls_audited": 68381,
+      "empty_mismatches": 0,
+      "empty_calls": 37742,
+      "covered_mismatches": 0,
+      "covered_calls": 0,
+      "polys_mismatches": 9,
+      "polys_calls": 30639,
+      "bulk_dummy_scanline_explained": 8,
+      "mismatches": [
+        {
+          "kind": 2,
+          "rb": [
+            1683748,
+            1720534,
+            1104207,
+            1139761
+          ],
+          "flen": "Some(102)",
+          "wlen": "Some(102)",
+          "diff_v": 1,
+          "max_d_units": 4,
+          "bulk_scanline_explained": true
+        },
+        {
+          "kind": 2,
+          "rb": [
+            1624692,
+            1665984,
+            1196190,
+            1237890
+          ],
+          "flen": "Some(101)",
+          "wlen": "Some(101)",
+          "diff_v": 1,
+          "max_d_units": 2,
+          "bulk_scanline_explained": true
+        },
+        {
+          "kind": 2,
+          "rb": [
+            1631773,
+            1664469,
+            1193653,
+            1226099
+          ],
+          "flen": "Some(108)",
+          "wlen": "Some(108)",
+          "diff_v": 1,
+          "max_d_units": 51,
+          "bulk_scanline_explained": true
+        },
+        {
+          "kind": 2,
+          "rb": [
+            1400414,
+            1431538,
+            1142753,
+            1174783
+          ],
+          "flen": "Some(106)",
+          "wlen": "Some(106)",
+          "diff_v": 1,
+          "max_d_units": 2,
+          "bulk_scanline_explained": true
+        },
+        {
+          "kind": 2,
+          "rb": [
+            1475204,
+            1488264,
+            1138997,
+            1151051
+          ],
+          "flen": "Some(100)",
+          "wlen": "Some(100)",
+          "diff_v": 1,
+          "max_d_units": 2,
+          "bulk_scanline_explained": true
+        },
+        {
+          "kind": 2,
+          "rb": [
+            1318453,
+            1368669,
+            1192384,
+            1242554
+          ],
+          "flen": "Some(111)",
+          "wlen": "Some(111)",
+          "diff_v": 1,
+          "max_d_units": 4,
+          "bulk_scanline_explained": true
+        },
+        {
+          "kind": 2,
+          "rb": [
+            1311781,
+            1363917,
+            1202366,
+            1254456
+          ],
+          "flen": "Some(101)",
+          "wlen": "Some(101)",
+          "diff_v": 1,
+          "max_d_units": 3,
+          "bulk_scanline_explained": true
+        },
+        {
+          "kind": 2,
+          "rb": [
+            1001681,
+            1053255,
+            1128598,
+            1180262
+          ],
+          "flen": "Some(118)",
+          "wlen": "Some(118)",
+          "diff_v": 1,
+          "max_d_units": 3,
+          "bulk_scanline_explained": false
+        },
+        {
+          "kind": 2,
+          "rb": [
+            1103738,
+            1155330,
+            996126,
+            1047456
+          ],
+          "flen": "Some(109)",
+          "wlen": "Some(109)",
+          "diff_v": 1,
+          "max_d_units": 1,
+          "bulk_scanline_explained": true
+        }
+      ]
+    },
+    "benchy-classic-on": {
+      "batches": 18,
+      "total_calls_audited": 10600,
+      "empty_mismatches": 0,
+      "empty_calls": 5435,
+      "covered_mismatches": 0,
+      "covered_calls": 0,
+      "polys_mismatches": 1,
+      "polys_calls": 5165,
+      "bulk_dummy_scanline_explained": 0,
+      "mismatches": [
+        {
+          "kind": 2,
+          "rb": [
+            1216577,
+            1283523,
+            1028119,
+            1095975
+          ],
+          "flen": "Some(125)",
+          "wlen": "Some(124)",
+          "diff_v": 0,
+          "max_d_units": -1,
+          "bulk_scanline_explained": false
+        }
+      ]
+    },
+    "isolated_9th_call_proof": {
+      "far_y_scanline": {
+        "y_units": 1143929,
+        "distant_vertex_count": 2,
+        "samples": "(3, 1415081, 1143929), (3, 1193021, 1143929)"
+      },
+      "dummy_scanline_proof": {
+        "target_rb": [
+          1001681,
+          1053255,
+          1128598,
+          1180262
+        ],
+        "full_eq_win": false,
+        "full_eq_win_with_dummy_far_y": true
+      },
+      "clipper2_site": "vendor/clipper2-rust/src/engine.rs::add_new_intersect_node",
+      "mechanism": "Clipper2 populates global `scanline_list` with the Y coordinate of every vertex in `clip`, including distant unrelated vertices 14-36 mm away. `add_new_intersect_node` clamps shallow intersections to the nearest scanbeam (`bot_y`/`top_y`). Omitting distant vertices removes the spurious scanline, leaving the true unclamped intersection."
+    }
+  }
+}

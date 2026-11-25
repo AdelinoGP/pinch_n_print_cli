@@ -1,0 +1,264 @@
+{
+  "fixture": "base",
+  "dump_file": "base.agg_io.postcard",
+  "rayon_threads": 12,
+  "rounds": 5,
+  "baseline_entries": 432,
+  "baseline_diag_count": 0,
+  "modes": [
+    {
+      "name": "M0_baseline",
+      "exact_bit_identical": true,
+      "wall_rounds_ms": [
+        1971.702,
+        1971.675,
+        1952.032,
+        1963.129,
+        1989.794
+      ],
+      "cpu_rounds_ms": [
+        1968.75,
+        1968.75,
+        1953.125,
+        1968.75,
+        1984.375
+      ],
+      "median_wall_ms": 1971.675,
+      "median_cpu_ms": 1968.75,
+      "wall_cut_pct": 0.0,
+      "cpu_cut_pct": 0.0,
+      "speedup_wall_x": 1.0,
+      "speedup_cpu_x": 1.0,
+      "counters": {
+        "ppo_misses": 0,
+        "bbox_disjoint_skipped": 0,
+        "cert_disjoint_proven": 0,
+        "clipper_fallbacks": 0,
+        "clipper_calls_total": 5292,
+        "positive_overlaps": 0
+      }
+    },
+    {
+      "name": "M1_ppo_reuse",
+      "exact_bit_identical": true,
+      "wall_rounds_ms": [
+        1139.407,
+        1144.794,
+        1154.035,
+        1150.345,
+        1142.754
+      ],
+      "cpu_rounds_ms": [
+        1140.625,
+        1140.625,
+        1140.625,
+        1140.625,
+        1140.625
+      ],
+      "median_wall_ms": 1144.794,
+      "median_cpu_ms": 1140.625,
+      "wall_cut_pct": 41.94,
+      "cpu_cut_pct": 42.06,
+      "speedup_wall_x": 1.72,
+      "speedup_cpu_x": 1.73,
+      "counters": {
+        "ppo_misses": 0,
+        "bbox_disjoint_skipped": 0,
+        "cert_disjoint_proven": 0,
+        "clipper_fallbacks": 0,
+        "clipper_calls_total": 5292,
+        "positive_overlaps": 0
+      }
+    },
+    {
+      "name": "M2_bbox_cull",
+      "exact_bit_identical": true,
+      "wall_rounds_ms": [
+        1498.055,
+        1468.822,
+        1537.664,
+        1479.418,
+        1509.117
+      ],
+      "cpu_rounds_ms": [
+        1500.0,
+        1468.75,
+        1515.625,
+        1484.375,
+        1515.625
+      ],
+      "median_wall_ms": 1498.055,
+      "median_cpu_ms": 1500.0,
+      "wall_cut_pct": 24.02,
+      "cpu_cut_pct": 23.81,
+      "speedup_wall_x": 1.32,
+      "speedup_cpu_x": 1.31,
+      "counters": {
+        "ppo_misses": 0,
+        "bbox_disjoint_skipped": 3199,
+        "cert_disjoint_proven": 0,
+        "clipper_fallbacks": 0,
+        "clipper_calls_total": 2093,
+        "positive_overlaps": 0
+      }
+    },
+    {
+      "name": "M123_ppo_bbox_zeroclone",
+      "exact_bit_identical": true,
+      "wall_rounds_ms": [
+        667.458,
+        677.209,
+        679.163,
+        665.216,
+        675.217
+      ],
+      "cpu_rounds_ms": [
+        656.25,
+        671.875,
+        687.5,
+        671.875,
+        671.875
+      ],
+      "median_wall_ms": 675.217,
+      "median_cpu_ms": 671.875,
+      "wall_cut_pct": 65.75,
+      "cpu_cut_pct": 65.87,
+      "speedup_wall_x": 2.92,
+      "speedup_cpu_x": 2.93,
+      "counters": {
+        "ppo_misses": 0,
+        "bbox_disjoint_skipped": 3199,
+        "cert_disjoint_proven": 0,
+        "clipper_fallbacks": 0,
+        "clipper_calls_total": 2093,
+        "positive_overlaps": 0
+      }
+    },
+    {
+      "name": "M1235_ppo_bbox_zeroclone_par",
+      "exact_bit_identical": true,
+      "wall_rounds_ms": [
+        95.801,
+        94.799,
+        94.708,
+        105.726,
+        95.282
+      ],
+      "cpu_rounds_ms": [
+        1078.125,
+        1125.0,
+        1125.0,
+        1062.5,
+        1125.0
+      ],
+      "median_wall_ms": 95.282,
+      "median_cpu_ms": 1125.0,
+      "wall_cut_pct": 95.17,
+      "cpu_cut_pct": 42.86,
+      "speedup_wall_x": 20.69,
+      "speedup_cpu_x": 1.75,
+      "counters": {
+        "ppo_misses": 0,
+        "bbox_disjoint_skipped": 3199,
+        "cert_disjoint_proven": 0,
+        "clipper_fallbacks": 0,
+        "clipper_calls_total": 2093,
+        "positive_overlaps": 0
+      }
+    },
+    {
+      "name": "M1234_ppo_bbox_zeroclone_cert",
+      "exact_bit_identical": true,
+      "wall_rounds_ms": [
+        14.977,
+        15.025,
+        15.286,
+        15.639,
+        14.981
+      ],
+      "cpu_rounds_ms": [
+        15.625,
+        0.0,
+        15.625,
+        15.625,
+        15.625
+      ],
+      "median_wall_ms": 15.025,
+      "median_cpu_ms": 15.625,
+      "wall_cut_pct": 99.24,
+      "cpu_cut_pct": 99.21,
+      "speedup_wall_x": 131.23,
+      "speedup_cpu_x": 126.0,
+      "counters": {
+        "ppo_misses": 0,
+        "bbox_disjoint_skipped": 3199,
+        "cert_disjoint_proven": 2093,
+        "clipper_fallbacks": 0,
+        "clipper_calls_total": 0,
+        "positive_overlaps": 0
+      }
+    },
+    {
+      "name": "M12345_full_exact_bundle",
+      "exact_bit_identical": true,
+      "wall_rounds_ms": [
+        2.952,
+        2.889,
+        2.966,
+        3.16,
+        2.862
+      ],
+      "cpu_rounds_ms": [
+        0.0,
+        15.625,
+        0.0,
+        0.0,
+        187.5
+      ],
+      "median_wall_ms": 2.952,
+      "median_cpu_ms": 0.0,
+      "wall_cut_pct": 99.85,
+      "cpu_cut_pct": 100.0,
+      "speedup_wall_x": 667.91,
+      "speedup_cpu_x": 0.0,
+      "counters": {
+        "ppo_misses": 0,
+        "bbox_disjoint_skipped": 3199,
+        "cert_disjoint_proven": 2093,
+        "clipper_fallbacks": 0,
+        "clipper_calls_total": 0,
+        "positive_overlaps": 0
+      }
+    }
+  ],
+  "adversarial": {
+    "real_pairs_checked": 5292,
+    "real_pairs_exact_match": 5292,
+    "real_pairs_cert_disjoint": 2093,
+    "real_pairs_bbox_disjoint": 3199,
+    "real_pairs_fallback": 0,
+    "synthetic_cases_checked": 1366,
+    "synthetic_true_overlaps": 1359,
+    "synthetic_true_disjoints": 7,
+    "false_negatives": 0,
+    "false_positives": 0,
+    "synthetic_details": [
+      "OK 1unit_rect_overlap: overlap=true",
+      "OK 1unit2_corner_overlap: overlap=true",
+      "OK shared_edge_touch_zero_area: overlap=false",
+      "OK single_vertex_touch_zero_area: overlap=false",
+      "OK a_strictly_inside_b: overlap=true",
+      "OK b_strictly_inside_a: overlap=true",
+      "OK a_strictly_inside_b_hole: overlap=false",
+      "OK a_inside_hole_touch_edge: overlap=false",
+      "OK a_crosses_hole_edge_1unit: overlap=true",
+      "OK a_surrounds_b_hole_in_solid: overlap=true",
+      "OK b_strictly_inside_a_hole: overlap=false",
+      "OK b_crosses_a_hole_1unit: overlap=true",
+      "OK cw_a_inside_b: overlap=true",
+      "OK concave_u_bay_disjoint: overlap=false",
+      "OK concave_u_bay_1unit_overlap: overlap=true",
+      "OK half_unit2_triangle_overlap: overlap=false"
+    ]
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "cells": {
+    "benchy-classic-on": {
+      "baseline": {
+        "planner_fuel": 5851954923,
+        "tree_support_fuel": 1500445445,
+        "host_native_calls": 41609,
+        "host_native_wall_ns": 3224145200,
+        "host_native_clip_calls": 23578,
+        "host_native_offset_calls": 18031
+      },
+      "candidate": {
+        "planner_fuel": 3575126688,
+        "tree_support_fuel": 1500311768,
+        "host_native_calls": 31276,
+        "host_native_wall_ns": 3111007900,
+        "host_native_clip_calls": 20298,
+        "host_native_offset_calls": 10978
+      },
+      "planner_fuel_saving_pct": 38.90713898104987,
+      "host_native_call_delta": -10333,
+      "host_native_call_saving_pct": 24.833569660410006
+    },
+    "benchy-arachne-on": {
+      "baseline": {
+        "planner_fuel": 5851955761,
+        "tree_support_fuel": 1500256096,
+        "host_native_calls": 40396,
+        "host_native_wall_ns": 3476094000,
+        "host_native_clip_calls": 23791,
+        "host_native_offset_calls": 16365
+      },
+      "candidate": {
+        "planner_fuel": 3575127113,
+        "tree_support_fuel": 1500075517,
+        "host_native_calls": 30063,
+        "host_native_wall_ns": 3070747100,
+        "host_native_clip_calls": 20511,
+        "host_native_offset_calls": 9312
+      },
+      "planner_fuel_saving_pct": 38.90714046701762,
+      "host_native_call_delta": -10333,
+      "host_native_call_saving_pct": 25.57926527378949
+    },
+    "base-classic-on": {
+      "baseline": {
+        "planner_fuel": 48564812254,
+        "tree_support_fuel": 11437261512,
+        "host_native_calls": 145921,
+        "host_native_wall_ns": 33827767500,
+        "host_native_clip_calls": 86549,
+        "host_native_offset_calls": 59372
+      },
+      "candidate": {
+        "planner_fuel": 28953484708,
+        "tree_support_fuel": 11438116593,
+        "host_native_calls": 111104,
+        "host_native_wall_ns": 30206371400,
+        "host_native_clip_calls": 75771,
+        "host_native_offset_calls": 35333
+      },
+      "planner_fuel_saving_pct": 40.38176332985768,
+      "host_native_call_delta": -34817,
+      "host_native_call_saving_pct": 23.860170914398886
+    },
+    "base-arachne-on": {
+      "baseline": {
+        "planner_fuel": 48564812138,
+        "tree_support_fuel": 11440256828,
+        "host_native_calls": 143484,
+        "host_native_wall_ns": 31788902800,
+        "host_native_clip_calls": 87044,
+        "host_native_offset_calls": 55944
+      },
+      "candidate": {
+        "planner_fuel": 28953484371,
+        "tree_support_fuel": 11440189274,
+        "host_native_calls": 108667,
+        "host_native_wall_ns": 32594306600,
+        "host_native_clip_calls": 76266,
+        "host_native_offset_calls": 31905
+      },
+      "planner_fuel_saving_pct": 40.38176388137396,
+      "host_native_call_delta": -34817,
+      "host_native_call_saving_pct": 24.26542332246104
+    }
+  },
+  "classic_arachne_invariance": {
+    "benchy_host_native_delta_equal": true,
+    "base_host_native_delta_equal": true
+  }
+}

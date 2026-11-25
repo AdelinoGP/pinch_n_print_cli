@@ -28,7 +28,7 @@ fn proptest_paint_composition_cells() {
 }
 
 #[test]
-fn proptest_overhang_adjacent_layer_bands() {
+fn proptest_overhang_adjacent_layer_areas() {
     if let Err(error) = property_prepass_common::overhang::run_property() {
         panic!("H-PAINT-OVERHANG failed: {error}");
     }

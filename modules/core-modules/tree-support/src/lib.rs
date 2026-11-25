@@ -172,79 +172,129 @@ impl TreeSupport {
     }
 }
 
-/// Return the largest skeleton-requested wall count whose point lies in a role
-/// region. Counts are positional and default to zero for malformed carriers.
-fn skeleton_wall_count(skeleton: &slicer_ir::SupportPlanSkeleton, expoly: &ExPolygon) -> usize {
-    let contained = skeleton
-        .points
-        .iter()
-        .zip(skeleton.wall_counts.iter().copied())
-        .filter(|(point, _)| point_in_expolygon(expoly, point.x, point.y))
-        .map(|(_, count)| count as usize)
-        .max()
-        .unwrap_or(0);
-    contained
+/// Tight axis-aligned bounding box of a closed ring in workspace scaled units.
+/// Returns an inverted empty box when `points` is empty.
+fn ring_bbox_units(points: &[slicer_ir::Point2]) -> (i64, i64, i64, i64) {
+    let mut min_x = i64::MAX;
+    let mut min_y = i64::MAX;
+    let mut max_x = i64::MIN;
+    let mut max_y = i64::MIN;
+    for pt in points {
+        min_x = min_x.min(pt.x);
+        min_y = min_y.min(pt.y);
+        max_x = max_x.max(pt.x);
+        max_y = max_y.max(pt.y);
+    }
+    (min_x, min_y, max_x, max_y)
 }
 
-/// Ray-cast a millimetre-coordinate point against an IR polygon.
-fn point_in_expolygon(expoly: &ExPolygon, x: f32, y: f32) -> bool {
-    if expoly.contour.points.is_empty() {
-        return false;
+/// Ray-cast a point in workspace scaled units against a single polygon ring.
+fn point_in_ring_units(ring: &[slicer_ir::Point2], x: i64, y: i64) -> bool {
+    let mut result = false;
+    let mut previous = ring.len().saturating_sub(1);
+    for current in 0..ring.len() {
+        let a = ring[current];
+        let b = ring[previous];
+        if (a.y > y) != (b.y > y) {
+            let crossing = (b.x - a.x) as f64 * (y - a.y) as f64 / (b.y - a.y) as f64 + a.x as f64;
+            if (x as f64) < crossing {
+                result = !result;
+            }
+        }
+        previous = current;
     }
-    let min_x = expoly
-        .contour
-        .points
-        .iter()
-        .map(|point| point.x)
-        .min()
-        .unwrap();
-    let max_x = expoly
-        .contour
-        .points
-        .iter()
-        .map(|point| point.x)
-        .max()
-        .unwrap();
-    let min_y = expoly
-        .contour
-        .points
-        .iter()
-        .map(|point| point.y)
-        .min()
-        .unwrap();
-    let max_y = expoly
-        .contour
-        .points
-        .iter()
-        .map(|point| point.y)
-        .max()
-        .unwrap();
-    let point = slicer_ir::Point2::from_mm(x, y);
+    result
+}
+
+/// Ray-cast a scaled-unit point against an IR polygon using precomputed
+/// contour and hole bounding boxes.
+fn point_in_expolygon_with_bboxes(
+    expoly: &ExPolygon,
+    contour_bbox: (i64, i64, i64, i64),
+    hole_bboxes: &[(i64, i64, i64, i64)],
+    point: slicer_ir::Point2,
+) -> bool {
+    let (min_x, min_y, max_x, max_y) = contour_bbox;
     if point.x < min_x || point.x > max_x || point.y < min_y || point.y > max_y {
         return false;
     }
-    fn inside(ring: &[slicer_ir::Point2], x: i64, y: i64) -> bool {
-        let mut result = false;
-        let mut previous = ring.len().saturating_sub(1);
-        for current in 0..ring.len() {
-            let a = ring[current];
-            let b = ring[previous];
-            if (a.y > y) != (b.y > y) {
-                let crossing =
-                    (b.x - a.x) as f64 * (y - a.y) as f64 / (b.y - a.y) as f64 + a.x as f64;
-                if (x as f64) < crossing {
-                    result = !result;
-                }
-            }
-            previous = current;
-        }
-        result
+    if !point_in_ring_units(&expoly.contour.points, point.x, point.y) {
+        return false;
     }
-    inside(&expoly.contour.points, point.x, point.y)
-        && !expoly
-            .holes
-            .iter()
-            .any(|hole| inside(&hole.points, point.x, point.y))
+    for (hole, &(hmin_x, hmin_y, hmax_x, hmax_y)) in expoly.holes.iter().zip(hole_bboxes.iter()) {
+        if point.x >= hmin_x
+            && point.x <= hmax_x
+            && point.y >= hmin_y
+            && point.y <= hmax_y
+            && point_in_ring_units(&hole.points, point.x, point.y)
+        {
+            return false;
+        }
+    }
+    true
+}
+
+/// Return the largest skeleton-requested wall count whose point lies in a role
+/// region. Counts are positional and default to zero for malformed carriers.
+fn skeleton_wall_count(skeleton: &slicer_ir::SupportPlanSkeleton, expoly: &ExPolygon) -> usize {
+    if expoly.contour.points.is_empty() {
+        return 0;
+    }
+    let contour_bbox = ring_bbox_units(&expoly.contour.points);
+    let hole_bboxes: Vec<(i64, i64, i64, i64)> = expoly
+        .holes
+        .iter()
+        .map(|hole| ring_bbox_units(&hole.points))
+        .collect();
+    let mut best = 0usize;
+    for (point, count) in skeleton
+        .points
+        .iter()
+        .zip(skeleton.wall_counts.iter().copied())
+    {
+        let count = count as usize;
+        if count <= best {
+            continue;
+        }
+        let pt = slicer_ir::Point2::from_mm(point.x, point.y);
+        if point_in_expolygon_with_bboxes(expoly, contour_bbox, &hole_bboxes, pt) {
+            best = count;
+        }
+    }
+    best
+}
+
+/// True when every polygon in `regions` is valid (>= 3 contour vertices) and
+/// every pair of contour bounding boxes is strictly disjoint (no overlap and no
+/// shared boundary coordinate).
+fn expolygons_pairwise_bbox_disjoint(regions: &[ExPolygon]) -> bool {
+    let mut bboxes: Vec<(i64, i64, i64, i64)> = Vec::with_capacity(regions.len());
+    for expoly in regions {
+        if expoly.contour.points.len() < 3 {
+            return false;
+        }
+        bboxes.push(ring_bbox_units(&expoly.contour.points));
+    }
+    for i in 0..bboxes.len() {
+        let (ax0, ay0, ax1, ay1) = bboxes[i];
+        for &(bx0, by0, bx1, by1) in &bboxes[(i + 1)..] {
+            if ax1 >= bx0 && bx1 >= ax0 && ay1 >= by0 && by1 >= ay0 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Unifies role polygons only when needed: regularized outputs are already
+/// disjoint Clipper2 boolean results, and singletons or strictly pairwise
+/// bbox-disjoint polygons need no redundant in-guest union.
+fn unify_role_regions(is_regularized: bool, regions: Vec<ExPolygon>) -> Vec<ExPolygon> {
+    if is_regularized || regions.len() <= 1 || expolygons_pairwise_bbox_disjoint(&regions) {
+        regions
+    } else {
+        slicer_core::polygon_ops::union_ex(&regions)
+    }
 }
 
 #[slicer_module]
@@ -436,6 +486,7 @@ impl LayerModule for TreeSupport {
                     bottom_interface_spacing,
                     true,
                 );
+                let is_regularized = regularized.is_some();
                 let rendered: Vec<(slicer_ir::SupportPlanRole, Vec<ExPolygon>)> = regularized
                     .unwrap_or_else(|| {
                         entry
@@ -445,7 +496,7 @@ impl LayerModule for TreeSupport {
                             .collect()
                     })
                     .into_iter()
-                    .map(|(role, regions)| (role, slicer_core::polygon_ops::union_ex(&regions)))
+                    .map(|(role, regions)| (role, unify_role_regions(is_regularized, regions)))
                     .collect();
                 for (role, role_regions) in rendered.iter() {
                     let role = *role;
@@ -1107,6 +1158,95 @@ mod tests {
         };
         let fills = module.scan_fill_region(&region, 2.0, 1.0, 1.0, false);
         assert!(!fills.is_empty(), "a small tip region must not be hollow");
+    }
+
+    #[test]
+    fn skeleton_wall_count_matches_bruteforce_with_holes_and_multiple_counts() {
+        let expoly = ExPolygon {
+            contour: slicer_ir::Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(20.0, 0.0),
+                    Point2::from_mm(20.0, 20.0),
+                    Point2::from_mm(0.0, 20.0),
+                ],
+            },
+            holes: vec![slicer_ir::Polygon {
+                points: vec![
+                    Point2::from_mm(6.0, 6.0),
+                    Point2::from_mm(14.0, 6.0),
+                    Point2::from_mm(14.0, 14.0),
+                    Point2::from_mm(6.0, 14.0),
+                ],
+            }],
+        };
+
+        let pt3 = |x: f32, y: f32, z: f32| slicer_ir::Point3 { x, y, z };
+        let skeleton = slicer_ir::SupportPlanSkeleton {
+            points: vec![
+                pt3(-5.0, 5.0, 1.0),  // outside contour (high count ignored)
+                pt3(10.0, 10.0, 1.0), // inside hole (highest count ignored)
+                pt3(2.0, 2.0, 1.0),   // inside shell: count 2
+                pt3(18.0, 2.0, 1.0),  // inside shell: count 1 (<= best)
+                pt3(18.0, 18.0, 1.0), // inside shell: count 5 (new max)
+                pt3(3.0, 17.0, 1.0),  // inside shell: count 3 (<= best)
+                pt3(10.0, 11.0, 1.0), // inside hole: count 9 (ignored)
+            ],
+            wall_counts: vec![12, 99, 2, 1, 5, 3, 9],
+        };
+        assert_eq!(skeleton_wall_count(&skeleton, &expoly), 5);
+
+        // Empty contour yields 0 even when skeleton points exist.
+        let empty = ExPolygon {
+            contour: slicer_ir::Polygon { points: Vec::new() },
+            holes: Vec::new(),
+        };
+        assert_eq!(skeleton_wall_count(&skeleton, &empty), 0);
+    }
+
+    #[test]
+    fn unify_role_regions_merges_overlapping_unregularized_and_bypasses_disjoint_or_regularized() {
+        let rect = |x0: f32, y0: f32, x1: f32, y1: f32| ExPolygon {
+            contour: slicer_ir::Polygon {
+                points: vec![
+                    Point2::from_mm(x0, y0),
+                    Point2::from_mm(x1, y0),
+                    Point2::from_mm(x1, y1),
+                    Point2::from_mm(x0, y1),
+                ],
+            },
+            holes: Vec::new(),
+        };
+
+        // Negative control: two overlapping polygons on an unregularized entry MUST still
+        // invoke `union_ex` and merge into a single unified polygon.
+        let overlapping = vec![rect(0.0, 0.0, 10.0, 10.0), rect(5.0, 0.0, 15.0, 10.0)];
+        let merged = unify_role_regions(false, overlapping.clone());
+        assert_eq!(
+            merged.len(),
+            1,
+            "overlapping unregularized polygons must be merged via union_ex"
+        );
+        let expected_merged = slicer_core::polygon_ops::union_ex(&overlapping);
+        assert_eq!(merged, expected_merged);
+
+        // Touching edge (max_x == min_x) is NOT strictly bbox-disjoint, so union_ex runs and merges.
+        let touching = vec![rect(0.0, 0.0, 10.0, 10.0), rect(10.0, 0.0, 20.0, 10.0)];
+        let merged_touching = unify_role_regions(false, touching.clone());
+        assert_eq!(
+            merged_touching.len(),
+            1,
+            "edge-touching unregularized polygons must be merged via union_ex"
+        );
+
+        // Strictly disjoint polygons bypass union_ex and preserve both islands identically.
+        let disjoint = vec![rect(0.0, 0.0, 10.0, 10.0), rect(20.0, 0.0, 30.0, 10.0)];
+        let bypassed_disjoint = unify_role_regions(false, disjoint.clone());
+        assert_eq!(bypassed_disjoint, disjoint);
+
+        // Already-regularized entries bypass union_ex directly.
+        let bypassed_regularized = unify_role_regions(true, disjoint.clone());
+        assert_eq!(bypassed_regularized, disjoint);
     }
 
     /// Regression for the vertical-mode extent guard in `scan_fill_region`.

@@ -470,6 +470,7 @@ below is a **generated snapshot** of the open set — do not hand-edit it. Run
 For closed deviations and their closure detail, read the log directly.
 
 <!-- BEGIN GENERATED: open-deviations (cargo xtask check-deviations) -->
+- **DEV-202** (Open — 2026-11-11: re-measured and pinned by perf-vs-orca ticket 139; opt-in-only impact.) — Canonical mid-layer sampling moves two measured fixtures that were recorded on the old top-plane sample — the p241 agg column-continuity arm and the calicat in…
 - **DEV-200** (Open — 2026-11-07: knowingly-kept divergence filed by perf-vs-orca ticket 123; the classification half is canonical, the expansion half is retired to the per-layer stage fog.) — PrePass::Slice classifies canonical's whole unsupported bottom set but does not port the bridge wave expansion or the zone trim.
 - **DEV-196** (Accepted — 2026-09-29: behavior change recorded per ADR-0020 §Amendment precedent; regression `infill_postprocess_empty_replacement_supersedes_prior_ir` watched red (1 resurrected path) then green, with positive control `infill_postprocess_inside_path_survives_so_the_clip_is_real`.) — Layer::InfillPostProcess empty-output protocol: a ran invocation that re-emits nothing now commits the empty replacement set instead of Ok(None).
 - **DEV-173** (Open — 2026-09-04: user-accepted risk. Not reachable on `tmp/3dbenchy.stl` or `tmp/base.stl` after the `mesh_analysis` fix; both slice clean on stock 1.1.0.) — Knowingly shipping on clipper2-rust with an unbounded recursion in check_split_owner.

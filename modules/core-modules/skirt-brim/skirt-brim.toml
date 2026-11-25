@@ -71,6 +71,41 @@ max     = 2.0
 display = "Line Width"
 group   = "Skirt/Brim"
 
+# First-layer height: the brim/skirt flow spacing is
+# `line_width - first_layer_height x (1 - pi/4)` (canonical
+# `Flow::rounded_rectangle_extrusion_spacing`). Declared here so the module's
+# config view carries it (module views expose declared keys, not typed globals);
+# the default mirrors `layer-planner-default`'s declaration.
+[config.schema.first_layer_height]
+type    = "float"
+default = 0.3
+min     = 0.01
+max     = 1.0
+display = "First Layer Height"
+group   = "Skirt/Brim"
+
+# Canonical `brim_object_gap` (OrcaSlicer default 0.1 mm): the brim ring starts
+# this far outside the object outline.
+[config.schema.brim_object_gap]
+type    = "float"
+default = 0.1
+min     = 0.0
+max     = 2.0
+display = "Brim Object Gap"
+group   = "Skirt/Brim"
+
+# Canonical `min_skirt_length` (mm of filament). The port has no filament-flow
+# model, so a non-zero value fails closed at construction instead of silently
+# printing fewer loops than asked for. Author 0 (the canonical default) or
+# raise `skirt_loops`.
+[config.schema.min_skirt_length]
+type    = "float"
+default = 0.0
+min     = 0.0
+max     = 10000.0
+display = "Minimum Skirt Length"
+group   = "Skirt/Brim"
+
 [hints]
 estimated-ms-per-layer = 10
 layer-parallel-safe    = false

@@ -1,0 +1,728 @@
+{
+  "ticket": 157,
+  "slug": "needs-support-predicate-attribution",
+  "kind": "attribution_only",
+  "head_commit": "c74e64ec",
+  "reader_census": {
+    "production_decision_consumers": [
+      {
+        "crate": "slicer-runtime",
+        "file": "crates/slicer-runtime/src/builtins/support_analysis_producer.rs",
+        "symbol": "commit_support_analysis_builtin",
+        "gating": "enable_support == true && support_type.is_auto()",
+        "call_kind": "Direct host call: SliceRegionView::from_ir(region, 0.0, Vec::new()).derive_needs_support(surface_classification.as_deref())"
+      }
+    ],
+    "per_layer_view_preparation_evaluating_derive_needs_support": [
+      {
+        "crate": "slicer-wasm-host",
+        "file": "crates/slicer-wasm-host/src/marshal/prepared.rs",
+        "symbol": "prepare_regions",
+        "called_from": "crates/slicer-runtime/src/layer_executor.rs::prepare_views_for_layer",
+        "stages_triggering_evaluation": [
+          "Layer::Perimeters (via prepare_perimeter_source_region_views)",
+          "Layer::Infill (via prepare_ordinary_region_views after commit_perimeter invalidates cached views)"
+        ]
+      }
+    ],
+    "guest_module_readers_of_slice_region_view_needs_support": [],
+    "retired_guest_readers": [
+      {
+        "crate": "tree-support",
+        "file": "modules/core-modules/tree-support/src/lib.rs",
+        "symbol": "TreeSupport::run_support",
+        "note": "Explicitly retired region.needs_support() from SupportPaintPolicy::DefaultEligible in Packet 224 because PrePass::SupportAnalysis already gates auto-support contact detection on needs_support."
+      }
+    ],
+    "test_only_readers_of_needs_support": [
+      "crates/slicer-runtime/tests/contract/region_preparation_sharing_tdd.rs",
+      "crates/slicer-runtime/tests/executor/region_eligibility_tdd.rs",
+      "crates/slicer-runtime/tests/executor/view_seam_identity_tdd.rs",
+      "crates/slicer-runtime/tests/integration/source_identity_repair_tdd.rs",
+      "crates/slicer-runtime/tests/unit/blackboard_layer_arena_tdd.rs",
+      "crates/slicer-sdk/tests/layer_module_tdd.rs"
+    ]
+  },
+  "equivalence_verification": {
+    "total_dual_calls": 3680,
+    "total_dual_mismatches": 0,
+    "gcode_reference_set": "docs/specs/perf-vs-orca/evidence/t151-skirt-hull-contour/reference.json",
+    "all_8_runs_matched_reference": true
+  },
+  "stop_rule_evaluation": {
+    "base_threshold_s": 1.5,
+    "base_max_priced_wall_saved_s": 7.4144,
+    "passes_base_gate": true,
+    "benchy_threshold_ms": 150.0,
+    "benchy_max_priced_wall_saved_ms": 237.3,
+    "passes_benchy_gate": true,
+    "graduate_phase2_ticket_158": true,
+    "recommended_phase2_shape": "Option A: Exact fast-path boolean intersection predicate inside SliceRegionView::derive_needs_support (strict bbox overlap prefilter + strict-interior point-in-ExPolygon witness in i128, with Clipper2 intersection_ex fallback on overlapping pairs only). Accelerates all three call sites (PrePass::SupportAnalysis, Layer::Perimeters, Layer::Infill) by 91x-134x with zero WIT/schema/lifecycle churn."
+  },
+  "cells": {
+    "benchy-classic-off": {
+      "layer_count": 240,
+      "effective_parallelism_t154": 6.74,
+      "baseline_pnp_s": 3.8431,
+      "baseline_orca_s": 1.915,
+      "baseline_ratio": 2.0068,
+      "predicate_calls_total": 480,
+      "predicate_mismatches": 0,
+      "per_caller_dual": {
+        "Layer::Infill": {
+          "calls": 240,
+          "fast_us_total": 8570,
+          "fast_ms_total": 8.57,
+          "fast_us_mean": 35.708,
+          "full_us_total": 778191,
+          "full_ms_total": 778.191,
+          "full_us_mean": 3242.463,
+          "saved_us_total": 769621,
+          "saved_ms_total": 769.621,
+          "speedup_ratio": 90.8,
+          "mismatches": 0,
+          "true_count": 240,
+          "false_count": 0,
+          "pip_tests_total": 4748,
+          "pip_tests_mean": 19.78,
+          "a_polys_mean": 2.42,
+          "a_verts_mean": 1890.1,
+          "b_polys_mean": 201.0,
+          "b_verts_mean": 6107.0,
+          "branches": {
+            "b_vertex_in_a_sampled": 240
+          }
+        },
+        "Layer::Perimeters": {
+          "calls": 240,
+          "fast_us_total": 8706,
+          "fast_ms_total": 8.706,
+          "fast_us_mean": 36.275,
+          "full_us_total": 793102,
+          "full_ms_total": 793.102,
+          "full_us_mean": 3304.592,
+          "saved_us_total": 784396,
+          "saved_ms_total": 784.396,
+          "speedup_ratio": 91.1,
+          "mismatches": 0,
+          "true_count": 240,
+          "false_count": 0,
+          "pip_tests_total": 4748,
+          "pip_tests_mean": 19.78,
+          "a_polys_mean": 2.42,
+          "a_verts_mean": 1890.1,
+          "b_polys_mean": 201.0,
+          "b_verts_mean": 6107.0,
+          "branches": {
+            "b_vertex_in_a_sampled": 240
+          }
+        }
+      },
+      "per_caller_fast": {
+        "Layer::Infill": {
+          "calls": 240,
+          "fast_us_total": 8443,
+          "fast_ms_total": 8.443,
+          "fast_us_mean": 35.179,
+          "true_count": 240,
+          "false_count": 0,
+          "pip_tests_total": 4748,
+          "pip_tests_mean": 19.78,
+          "a_polys_mean": 2.42,
+          "a_verts_mean": 1890.1,
+          "b_polys_mean": 201.0,
+          "b_verts_mean": 6107.0,
+          "branches": {
+            "b_vertex_in_a_sampled": 240
+          }
+        },
+        "Layer::Perimeters": {
+          "calls": 240,
+          "fast_us_total": 8673,
+          "fast_ms_total": 8.673,
+          "fast_us_mean": 36.138,
+          "true_count": 240,
+          "false_count": 0,
+          "pip_tests_total": 4748,
+          "pip_tests_mean": 19.78,
+          "a_polys_mean": 2.42,
+          "a_verts_mean": 1890.1,
+          "b_polys_mean": 201.0,
+          "b_verts_mean": 6107.0,
+          "branches": {
+            "b_vertex_in_a_sampled": 240
+          }
+        }
+      },
+      "thread_totals_ms": {
+        "per_layer_full_ms": 1571.293,
+        "per_layer_fast_in_dual_ms": 17.276,
+        "per_layer_fast_in_fast_ms": 17.116,
+        "per_layer_saved_ms": 1554.017,
+        "support_analysis_full_ms": 0.0,
+        "support_analysis_fast_in_dual_ms": 0.0,
+        "support_analysis_fast_in_fast_ms": 0.0,
+        "support_analysis_saved_ms": 0.0,
+        "all_sites_full_ms": 1571.293,
+        "all_sites_fast_in_dual_ms": 17.276,
+        "all_sites_saved_ms": 1554.017,
+        "all_sites_speedup_ratio": 90.95
+      },
+      "prep_views_thread_totals_ms": {
+        "perimeters_dual_ms": 1060.972,
+        "perimeters_fast_ms": 240.997,
+        "infill_dual_ms": 1041.621,
+        "infill_fast_ms": 239.538,
+        "combined_dual_ms": 2102.593,
+        "combined_fast_ms": 480.535,
+        "combined_saved_ms": 1622.058,
+        "residual_non_needs_support_prep_ms": 480.535
+      },
+      "priced_wall_savings": {
+        "per_layer_wall_eq_saved_ms": 230.6,
+        "per_layer_wall_eq_saved_s": 0.2306,
+        "support_analysis_eff_parallelism": null,
+        "support_analysis_dual_elig_wall_ms": 0.0,
+        "support_analysis_fast_elig_wall_ms": 0.0,
+        "support_analysis_probe_elig_wall_delta_ms": 0.0,
+        "support_analysis_clean_full_wall_est_ms": 0.0,
+        "support_analysis_clean_fast_wall_est_ms": 0.0,
+        "support_analysis_wall_eq_saved_ms": 0.0,
+        "total_wall_eq_saved_ms": 230.6,
+        "total_wall_eq_saved_s": 0.2306,
+        "pct_of_baseline_pnp_wall": 6.0,
+        "projected_pnp_s": 3.6125,
+        "projected_ratio": 1.8864
+      },
+      "probe_phase_sanity_check_attribution_only": {
+        "per_layer_phase_dual_ms": 849,
+        "per_layer_phase_fast_ms": 757,
+        "per_layer_phase_delta_ms": 92,
+        "slice_complete_dual_ms": 3264,
+        "slice_complete_fast_ms": 3226,
+        "slice_complete_delta_ms": 38
+      }
+    },
+    "benchy-classic-on": {
+      "layer_count": 240,
+      "effective_parallelism_t154": 9.65,
+      "baseline_pnp_s": 6.2786,
+      "baseline_orca_s": 2.442,
+      "baseline_ratio": 2.5711,
+      "predicate_calls_total": 720,
+      "predicate_mismatches": 0,
+      "per_caller_dual": {
+        "Layer::Infill": {
+          "calls": 240,
+          "fast_us_total": 8869,
+          "fast_ms_total": 8.869,
+          "fast_us_mean": 36.954,
+          "full_us_total": 806262,
+          "full_ms_total": 806.262,
+          "full_us_mean": 3359.425,
+          "saved_us_total": 797393,
+          "saved_ms_total": 797.393,
+          "speedup_ratio": 90.91,
+          "mismatches": 0,
+          "true_count": 240,
+          "false_count": 0,
+          "pip_tests_total": 4748,
+          "pip_tests_mean": 19.78,
+          "a_polys_mean": 2.42,
+          "a_verts_mean": 1890.1,
+          "b_polys_mean": 201.0,
+          "b_verts_mean": 6107.0,
+          "branches": {
+            "b_vertex_in_a_sampled": 240
+          }
+        },
+        "Layer::Perimeters": {
+          "calls": 240,
+          "fast_us_total": 8856,
+          "fast_ms_total": 8.856,
+          "fast_us_mean": 36.9,
+          "full_us_total": 814775,
+          "full_ms_total": 814.775,
+          "full_us_mean": 3394.896,
+          "saved_us_total": 805919,
+          "saved_ms_total": 805.919,
+          "speedup_ratio": 92.0,
+          "mismatches": 0,
+          "true_count": 240,
+          "false_count": 0,
+          "pip_tests_total": 4748,
+          "pip_tests_mean": 19.78,
+          "a_polys_mean": 2.42,
+          "a_verts_mean": 1890.1,
+          "b_polys_mean": 201.0,
+          "b_verts_mean": 6107.0,
+          "branches": {
+            "b_vertex_in_a_sampled": 240
+          }
+        },
+        "PrePass::SupportAnalysis": {
+          "calls": 240,
+          "fast_us_total": 8250,
+          "fast_ms_total": 8.25,
+          "fast_us_mean": 34.375,
+          "full_us_total": 782187,
+          "full_ms_total": 782.187,
+          "full_us_mean": 3259.113,
+          "saved_us_total": 773937,
+          "saved_ms_total": 773.937,
+          "speedup_ratio": 94.81,
+          "mismatches": 0,
+          "true_count": 240,
+          "false_count": 0,
+          "pip_tests_total": 4748,
+          "pip_tests_mean": 19.78,
+          "a_polys_mean": 2.42,
+          "a_verts_mean": 1890.1,
+          "b_polys_mean": 201.0,
+          "b_verts_mean": 6107.0,
+          "branches": {
+            "b_vertex_in_a_sampled": 240
+          }
+        }
+      },
+      "per_caller_fast": {
+        "Layer::Infill": {
+          "calls": 240,
+          "fast_us_total": 9358,
+          "fast_ms_total": 9.358,
+          "fast_us_mean": 38.992,
+          "true_count": 240,
+          "false_count": 0,
+          "pip_tests_total": 4748,
+          "pip_tests_mean": 19.78,
+          "a_polys_mean": 2.42,
+          "a_verts_mean": 1890.1,
+          "b_polys_mean": 201.0,
+          "b_verts_mean": 6107.0,
+          "branches": {
+            "b_vertex_in_a_sampled": 240
+          }
+        },
+        "Layer::Perimeters": {
+          "calls": 240,
+          "fast_us_total": 9190,
+          "fast_ms_total": 9.19,
+          "fast_us_mean": 38.292,
+          "true_count": 240,
+          "false_count": 0,
+          "pip_tests_total": 4748,
+          "pip_tests_mean": 19.78,
+          "a_polys_mean": 2.42,
+          "a_verts_mean": 1890.1,
+          "b_polys_mean": 201.0,
+          "b_verts_mean": 6107.0,
+          "branches": {
+            "b_vertex_in_a_sampled": 240
+          }
+        },
+        "PrePass::SupportAnalysis": {
+          "calls": 240,
+          "fast_us_total": 4671,
+          "fast_ms_total": 4.671,
+          "fast_us_mean": 19.462,
+          "true_count": 240,
+          "false_count": 0,
+          "pip_tests_total": 4748,
+          "pip_tests_mean": 19.78,
+          "a_polys_mean": 2.42,
+          "a_verts_mean": 1890.1,
+          "b_polys_mean": 201.0,
+          "b_verts_mean": 6107.0,
+          "branches": {
+            "b_vertex_in_a_sampled": 240
+          }
+        }
+      },
+      "thread_totals_ms": {
+        "per_layer_full_ms": 1621.037,
+        "per_layer_fast_in_dual_ms": 17.725,
+        "per_layer_fast_in_fast_ms": 18.548,
+        "per_layer_saved_ms": 1603.312,
+        "support_analysis_full_ms": 782.187,
+        "support_analysis_fast_in_dual_ms": 8.25,
+        "support_analysis_fast_in_fast_ms": 4.671,
+        "support_analysis_saved_ms": 773.937,
+        "all_sites_full_ms": 2403.224,
+        "all_sites_fast_in_dual_ms": 25.975,
+        "all_sites_saved_ms": 2377.249,
+        "all_sites_speedup_ratio": 92.52
+      },
+      "prep_views_thread_totals_ms": {
+        "perimeters_dual_ms": 1077.53,
+        "perimeters_fast_ms": 260.066,
+        "infill_dual_ms": 1063.062,
+        "infill_fast_ms": 253.214,
+        "combined_dual_ms": 2140.592,
+        "combined_fast_ms": 513.28,
+        "combined_saved_ms": 1627.312,
+        "residual_non_needs_support_prep_ms": 513.28
+      },
+      "priced_wall_savings": {
+        "per_layer_wall_eq_saved_ms": 166.1,
+        "per_layer_wall_eq_saved_s": 0.1661,
+        "support_analysis_eff_parallelism": 10.92,
+        "support_analysis_dual_elig_wall_ms": 72.415,
+        "support_analysis_fast_elig_wall_ms": 16.128,
+        "support_analysis_probe_elig_wall_delta_ms": 56.287,
+        "support_analysis_clean_full_wall_est_ms": 71.6,
+        "support_analysis_clean_fast_wall_est_ms": 0.4,
+        "support_analysis_wall_eq_saved_ms": 71.2,
+        "total_wall_eq_saved_ms": 237.3,
+        "total_wall_eq_saved_s": 0.2373,
+        "pct_of_baseline_pnp_wall": 3.78,
+        "projected_pnp_s": 6.0413,
+        "projected_ratio": 2.4739
+      },
+      "probe_phase_sanity_check_attribution_only": {
+        "per_layer_phase_dual_ms": 1149,
+        "per_layer_phase_fast_ms": 1106,
+        "per_layer_phase_delta_ms": 43,
+        "slice_complete_dual_ms": 7018,
+        "slice_complete_fast_ms": 6845,
+        "slice_complete_delta_ms": 173
+      }
+    },
+    "base-classic-off": {
+      "layer_count": 496,
+      "effective_parallelism_t154": 10.91,
+      "baseline_pnp_s": 24.5071,
+      "baseline_orca_s": 13.414,
+      "baseline_ratio": 1.827,
+      "predicate_calls_total": 992,
+      "predicate_mismatches": 0,
+      "per_caller_dual": {
+        "Layer::Infill": {
+          "calls": 496,
+          "fast_us_total": 228496,
+          "fast_ms_total": 228.496,
+          "fast_us_mean": 460.677,
+          "full_us_total": 25776062,
+          "full_ms_total": 25776.062,
+          "full_us_mean": 51967.867,
+          "saved_us_total": 25547566,
+          "saved_ms_total": 25547.566,
+          "speedup_ratio": 112.81,
+          "mismatches": 0,
+          "true_count": 496,
+          "false_count": 0,
+          "pip_tests_total": 18672,
+          "pip_tests_mean": 37.65,
+          "a_polys_mean": 1.69,
+          "a_verts_mean": 5155.7,
+          "b_polys_mean": 994.0,
+          "b_verts_mean": 26633.0,
+          "branches": {
+            "a_vertex_in_b_sampled": 4,
+            "b_vertex_in_a_sampled": 492
+          }
+        },
+        "Layer::Perimeters": {
+          "calls": 496,
+          "fast_us_total": 228424,
+          "fast_ms_total": 228.424,
+          "fast_us_mean": 460.532,
+          "full_us_total": 25875565,
+          "full_ms_total": 25875.565,
+          "full_us_mean": 52168.478,
+          "saved_us_total": 25647141,
+          "saved_ms_total": 25647.141,
+          "speedup_ratio": 113.28,
+          "mismatches": 0,
+          "true_count": 496,
+          "false_count": 0,
+          "pip_tests_total": 18672,
+          "pip_tests_mean": 37.65,
+          "a_polys_mean": 1.69,
+          "a_verts_mean": 5155.7,
+          "b_polys_mean": 994.0,
+          "b_verts_mean": 26633.0,
+          "branches": {
+            "a_vertex_in_b_sampled": 4,
+            "b_vertex_in_a_sampled": 492
+          }
+        }
+      },
+      "per_caller_fast": {
+        "Layer::Infill": {
+          "calls": 496,
+          "fast_us_total": 224547,
+          "fast_ms_total": 224.547,
+          "fast_us_mean": 452.716,
+          "true_count": 496,
+          "false_count": 0,
+          "pip_tests_total": 18672,
+          "pip_tests_mean": 37.65,
+          "a_polys_mean": 1.69,
+          "a_verts_mean": 5155.7,
+          "b_polys_mean": 994.0,
+          "b_verts_mean": 26633.0,
+          "branches": {
+            "a_vertex_in_b_sampled": 4,
+            "b_vertex_in_a_sampled": 492
+          }
+        },
+        "Layer::Perimeters": {
+          "calls": 496,
+          "fast_us_total": 238290,
+          "fast_ms_total": 238.29,
+          "fast_us_mean": 480.423,
+          "true_count": 496,
+          "false_count": 0,
+          "pip_tests_total": 18672,
+          "pip_tests_mean": 37.65,
+          "a_polys_mean": 1.69,
+          "a_verts_mean": 5155.7,
+          "b_polys_mean": 994.0,
+          "b_verts_mean": 26633.0,
+          "branches": {
+            "a_vertex_in_b_sampled": 4,
+            "b_vertex_in_a_sampled": 492
+          }
+        }
+      },
+      "thread_totals_ms": {
+        "per_layer_full_ms": 51651.627,
+        "per_layer_fast_in_dual_ms": 456.92,
+        "per_layer_fast_in_fast_ms": 462.837,
+        "per_layer_saved_ms": 51194.707,
+        "support_analysis_full_ms": 0.0,
+        "support_analysis_fast_in_dual_ms": 0.0,
+        "support_analysis_fast_in_fast_ms": 0.0,
+        "support_analysis_saved_ms": 0.0,
+        "all_sites_full_ms": 51651.627,
+        "all_sites_fast_in_dual_ms": 456.92,
+        "all_sites_saved_ms": 51194.707,
+        "all_sites_speedup_ratio": 113.04
+      },
+      "prep_views_thread_totals_ms": {
+        "perimeters_dual_ms": 27727.088,
+        "perimeters_fast_ms": 1946.998,
+        "infill_dual_ms": 27603.944,
+        "infill_fast_ms": 1913.939,
+        "combined_dual_ms": 55331.032,
+        "combined_fast_ms": 3860.937,
+        "combined_saved_ms": 51470.095,
+        "residual_non_needs_support_prep_ms": 3860.937
+      },
+      "priced_wall_savings": {
+        "per_layer_wall_eq_saved_ms": 4692.5,
+        "per_layer_wall_eq_saved_s": 4.6925,
+        "support_analysis_eff_parallelism": null,
+        "support_analysis_dual_elig_wall_ms": 0.0,
+        "support_analysis_fast_elig_wall_ms": 0.0,
+        "support_analysis_probe_elig_wall_delta_ms": 0.0,
+        "support_analysis_clean_full_wall_est_ms": 0.0,
+        "support_analysis_clean_fast_wall_est_ms": 0.0,
+        "support_analysis_wall_eq_saved_ms": 0.0,
+        "total_wall_eq_saved_ms": 4692.5,
+        "total_wall_eq_saved_s": 4.6925,
+        "pct_of_baseline_pnp_wall": 19.15,
+        "projected_pnp_s": 19.8146,
+        "projected_ratio": 1.4772
+      },
+      "probe_phase_sanity_check_attribution_only": {
+        "per_layer_phase_dual_ms": 6950,
+        "per_layer_phase_fast_ms": 2758,
+        "per_layer_phase_delta_ms": 4192,
+        "slice_complete_dual_ms": 24018,
+        "slice_complete_fast_ms": 21460,
+        "slice_complete_delta_ms": 2558
+      }
+    },
+    "base-classic-on": {
+      "layer_count": 496,
+      "effective_parallelism_t154": 11.18,
+      "baseline_pnp_s": 69.5401,
+      "baseline_orca_s": 21.598,
+      "baseline_ratio": 3.2197,
+      "predicate_calls_total": 1488,
+      "predicate_mismatches": 0,
+      "per_caller_dual": {
+        "Layer::Infill": {
+          "calls": 496,
+          "fast_us_total": 224787,
+          "fast_ms_total": 224.787,
+          "fast_us_mean": 453.2,
+          "full_us_total": 30065682,
+          "full_ms_total": 30065.682,
+          "full_us_mean": 60616.294,
+          "saved_us_total": 29840895,
+          "saved_ms_total": 29840.895,
+          "speedup_ratio": 133.75,
+          "mismatches": 0,
+          "true_count": 496,
+          "false_count": 0,
+          "pip_tests_total": 18672,
+          "pip_tests_mean": 37.65,
+          "a_polys_mean": 1.69,
+          "a_verts_mean": 5155.7,
+          "b_polys_mean": 994.0,
+          "b_verts_mean": 26633.0,
+          "branches": {
+            "a_vertex_in_b_sampled": 4,
+            "b_vertex_in_a_sampled": 492
+          }
+        },
+        "Layer::Perimeters": {
+          "calls": 496,
+          "fast_us_total": 278568,
+          "fast_ms_total": 278.568,
+          "fast_us_mean": 561.629,
+          "full_us_total": 30203772,
+          "full_ms_total": 30203.772,
+          "full_us_mean": 60894.702,
+          "saved_us_total": 29925204,
+          "saved_ms_total": 29925.204,
+          "speedup_ratio": 108.43,
+          "mismatches": 0,
+          "true_count": 496,
+          "false_count": 0,
+          "pip_tests_total": 18672,
+          "pip_tests_mean": 37.65,
+          "a_polys_mean": 1.69,
+          "a_verts_mean": 5155.7,
+          "b_polys_mean": 994.0,
+          "b_verts_mean": 26633.0,
+          "branches": {
+            "a_vertex_in_b_sampled": 4,
+            "b_vertex_in_a_sampled": 492
+          }
+        },
+        "PrePass::SupportAnalysis": {
+          "calls": 496,
+          "fast_us_total": 203469,
+          "fast_ms_total": 203.469,
+          "fast_us_mean": 410.22,
+          "full_us_total": 24522552,
+          "full_ms_total": 24522.552,
+          "full_us_mean": 49440.629,
+          "saved_us_total": 24319083,
+          "saved_ms_total": 24319.083,
+          "speedup_ratio": 120.52,
+          "mismatches": 0,
+          "true_count": 496,
+          "false_count": 0,
+          "pip_tests_total": 18672,
+          "pip_tests_mean": 37.65,
+          "a_polys_mean": 1.69,
+          "a_verts_mean": 5155.7,
+          "b_polys_mean": 994.0,
+          "b_verts_mean": 26633.0,
+          "branches": {
+            "a_vertex_in_b_sampled": 4,
+            "b_vertex_in_a_sampled": 492
+          }
+        }
+      },
+      "per_caller_fast": {
+        "Layer::Infill": {
+          "calls": 496,
+          "fast_us_total": 252910,
+          "fast_ms_total": 252.91,
+          "fast_us_mean": 509.899,
+          "true_count": 496,
+          "false_count": 0,
+          "pip_tests_total": 18672,
+          "pip_tests_mean": 37.65,
+          "a_polys_mean": 1.69,
+          "a_verts_mean": 5155.7,
+          "b_polys_mean": 994.0,
+          "b_verts_mean": 26633.0,
+          "branches": {
+            "a_vertex_in_b_sampled": 4,
+            "b_vertex_in_a_sampled": 492
+          }
+        },
+        "Layer::Perimeters": {
+          "calls": 496,
+          "fast_us_total": 250710,
+          "fast_ms_total": 250.71,
+          "fast_us_mean": 505.464,
+          "true_count": 496,
+          "false_count": 0,
+          "pip_tests_total": 18672,
+          "pip_tests_mean": 37.65,
+          "a_polys_mean": 1.69,
+          "a_verts_mean": 5155.7,
+          "b_polys_mean": 994.0,
+          "b_verts_mean": 26633.0,
+          "branches": {
+            "a_vertex_in_b_sampled": 4,
+            "b_vertex_in_a_sampled": 492
+          }
+        },
+        "PrePass::SupportAnalysis": {
+          "calls": 496,
+          "fast_us_total": 174790,
+          "fast_ms_total": 174.79,
+          "fast_us_mean": 352.399,
+          "true_count": 496,
+          "false_count": 0,
+          "pip_tests_total": 18672,
+          "pip_tests_mean": 37.65,
+          "a_polys_mean": 1.69,
+          "a_verts_mean": 5155.7,
+          "b_polys_mean": 994.0,
+          "b_verts_mean": 26633.0,
+          "branches": {
+            "a_vertex_in_b_sampled": 4,
+            "b_vertex_in_a_sampled": 492
+          }
+        }
+      },
+      "thread_totals_ms": {
+        "per_layer_full_ms": 60269.454,
+        "per_layer_fast_in_dual_ms": 503.355,
+        "per_layer_fast_in_fast_ms": 503.62,
+        "per_layer_saved_ms": 59766.099,
+        "support_analysis_full_ms": 24522.552,
+        "support_analysis_fast_in_dual_ms": 203.469,
+        "support_analysis_fast_in_fast_ms": 174.79,
+        "support_analysis_saved_ms": 24319.083,
+        "all_sites_full_ms": 84792.006,
+        "all_sites_fast_in_dual_ms": 706.824,
+        "all_sites_saved_ms": 84085.182,
+        "all_sites_speedup_ratio": 119.96
+      },
+      "prep_views_thread_totals_ms": {
+        "perimeters_dual_ms": 32524.999,
+        "perimeters_fast_ms": 2005.586,
+        "infill_dual_ms": 32350.084,
+        "infill_fast_ms": 2005.914,
+        "combined_dual_ms": 64875.083,
+        "combined_fast_ms": 4011.5,
+        "combined_saved_ms": 60863.583,
+        "residual_non_needs_support_prep_ms": 4011.5
+      },
+      "priced_wall_savings": {
+        "per_layer_wall_eq_saved_ms": 5345.8,
+        "per_layer_wall_eq_saved_s": 5.3458,
+        "support_analysis_eff_parallelism": 11.77,
+        "support_analysis_dual_elig_wall_ms": 2100.514,
+        "support_analysis_fast_elig_wall_ms": 41.509,
+        "support_analysis_probe_elig_wall_delta_ms": 2059.005,
+        "support_analysis_clean_full_wall_est_ms": 2083.5,
+        "support_analysis_clean_fast_wall_est_ms": 14.9,
+        "support_analysis_wall_eq_saved_ms": 2068.6,
+        "total_wall_eq_saved_ms": 7414.4,
+        "total_wall_eq_saved_s": 7.4144,
+        "pct_of_baseline_pnp_wall": 10.66,
+        "projected_pnp_s": 62.1257,
+        "projected_ratio": 2.8765
+      },
+      "probe_phase_sanity_check_attribution_only": {
+        "per_layer_phase_dual_ms": 12585,
+        "per_layer_phase_fast_ms": 6892,
+        "per_layer_phase_delta_ms": 5693,
+        "slice_complete_dual_ms": 80930,
+        "slice_complete_fast_ms": 73859,
+        "slice_complete_delta_ms": 7071
+      }
+    }
+  }
+}

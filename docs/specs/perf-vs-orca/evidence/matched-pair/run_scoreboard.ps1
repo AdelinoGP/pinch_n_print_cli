@@ -87,6 +87,29 @@ $Job = @{
     SparseInfillDensity = '20%'
     SparseInfillPattern = 'gyroid'
     SupportType       = 'tree(auto)'
+    # perf-vs-orca ticket 130 ruling (2026-11-09, folded into t135 Stage 1):
+    # one adhesion feature and one priming skirt at shared authored values on
+    # both arms. Orca 2.5's `brim_type = auto_brim` recomputes the width from
+    # adhesion heuristics and ignores an explicit `brim_width`, so the type is
+    # pinned to `outer_only` as well — otherwise `--brim-width=8` is silently
+    # overridden (measured: a ~10 x 5 mm, 3-loop auto brim instead of 8 mm).
+    BrimWidth         = '8'
+    BrimType          = 'outer_only'
+    SkirtLoops        = '6'
+    SkirtDistance     = '3'
+    SkirtHeight       = '1'
+    # t135 Stage 1 follow-through: the adhesion flow model is the *first-layer*
+    # flow. Orca's vendor chain resolves `initial_layer_line_width = 0.5` while
+    # PnP prints layer 0 at its `line_width` (0.4), so the brim quantised to
+    # 7.31 mm on one arm and 8.0 mm on the other and the skirt band was 2.74 mm
+    # vs 2.40 mm. Pinning Orca to 0.4 makes both arms' flow spacing 0.35708 mm
+    # and the adhesion geometry identical.
+    InitialLayerLineWidth = '0.4'
+    # PnP's tree-support module emits no support brim; Orca's chain resolves
+    # `tree_support_brim_width = 3` and prints those loops under the same
+    # `; FEATURE: Brim` label. Pin both arms to none so the adhesion job is the
+    # object brim only (a support-brim port is a separate decision).
+    TreeSupportBrimWidth = '0'
 }
 
 # perf-vs-orca ticket 105 ruling (2026-11-02): the style a supports-on run must
@@ -288,7 +311,18 @@ function Test-OrcaEvidence {
         throw "measurement rejected ($RunId): enable_arc_fitting is '$arc', expected 'disabled' (2.5 flipped this default; the pin must win)"
     }
     Assert-EqualValue 'elefant_foot_compensation' $cfg['elefant_foot_compensation'] '0' $RunId
-    Assert-EqualValue 'brim_width' $cfg['brim_width'] '0' $RunId
+
+    # --- perf-vs-orca ticket 135 Stage 1: the matched adhesion job ------------
+    # One adhesion feature and one priming skirt, asserted from the resolved
+    # appendix so a future version flip cannot silently re-open the asymmetry.
+    # `brim_type` is pinned because `auto_brim` overrides `brim_width`.
+    Assert-EqualValue 'brim_width' $cfg['brim_width'] $Job.BrimWidth $RunId
+    Assert-EqualValue 'brim_type' $cfg['brim_type'] $Job.BrimType $RunId
+    Assert-EqualValue 'skirt_loops' $cfg['skirt_loops'] $Job.SkirtLoops $RunId
+    Assert-EqualValue 'skirt_distance' $cfg['skirt_distance'] $Job.SkirtDistance $RunId
+    Assert-EqualValue 'skirt_height' $cfg['skirt_height'] $Job.SkirtHeight $RunId
+    Assert-EqualValue 'initial_layer_line_width' $cfg['initial_layer_line_width'] $Job.InitialLayerLineWidth $RunId
+    Assert-EqualValue 'tree_support_brim_width' $cfg['tree_support_brim_width'] $Job.TreeSupportBrimWidth $RunId
 
     # --- perf-vs-orca ticket 98 defect: the filament chain must resolve -------
     # Every run records the resolved filament leg, and the archived 2026-10-25
@@ -315,10 +349,45 @@ function Get-PnpAppendixExcerpt {
     param([Parameter(Mandatory = $true)][string]$OutputPath)
     $cfg = Get-AppendixMap -Path $OutputPath
     $excerpt = @{}
-    foreach ($k in @('wall_generator', 'sparse_infill_pattern', 'sparse_infill_density', 'support_type', 'enable_support', 'layer_height', 'nozzle_diameter', 'brim_width')) {
+    foreach ($k in @('wall_generator', 'sparse_infill_pattern', 'sparse_infill_density', 'support_type', 'enable_support', 'layer_height', 'nozzle_diameter', 'brim_width', 'brim_object_gap', 'skirt_loops', 'skirt_distance', 'skirt_height', 'line_width')) {
         if ($cfg.ContainsKey($k)) { $excerpt[$k] = $cfg[$k] }
     }
     return $excerpt
+}
+
+function Test-PnpAdhesionKeys {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutputPath,
+        [Parameter(Mandatory = $true)][string]$RunId
+    )
+    # perf-vs-orca ticket 135 Stage 1: the PnP arm asserts the same four values
+    # from its own resolved-config appendix — the matched job is authored, not
+    # inherited from module defaults.
+    $cfg = Get-AppendixMap -Path $OutputPath
+    $expected = @{
+        'brim_width'    = $Job.BrimWidth
+        'skirt_loops'   = $Job.SkirtLoops
+        'skirt_distance' = $Job.SkirtDistance
+        'skirt_height'  = $Job.SkirtHeight
+    }
+    foreach ($k in $expected.Keys) {
+        $actual = [string]$cfg[$k]
+        if ([string]::IsNullOrWhiteSpace($actual)) {
+            throw "measurement rejected ($RunId): PnP appendix is missing '$k'"
+        }
+        if ([double]$actual -ne [double]$expected[$k]) {
+            throw "measurement rejected ($RunId): PnP appendix $k='$actual', expected '$($expected[$k])'"
+        }
+    }
+    if (-not $cfg.ContainsKey('brim_object_gap')) {
+        throw "measurement rejected ($RunId): PnP appendix is missing 'brim_object_gap'"
+    }
+    # The adhesion flow model is the first-layer flow; PnP resolves it from
+    # `line_width` (its `initial_layer_line_width = 0` is "auto").
+    $lineWidth = [string]$cfg['line_width']
+    if ([double]$lineWidth -ne [double]$Job.InitialLayerLineWidth) {
+        throw "measurement rejected ($RunId): PnP line_width='$lineWidth', expected '$($Job.InitialLayerLineWidth)'"
+    }
 }
 
 function Test-PnpGyroidDispatch {
@@ -367,7 +436,18 @@ function New-OrcaOverrideArgs {
         # resolved values from each run's appendix (fail closed on a version
         # bump instead of drifting silently).
         '--elefant-foot-compensation=0',
-        '--brim-width=0'
+        # perf-vs-orca ticket 135 Stage 1 (t130 ruling): the adhesion/priming
+        # asymmetry closes on both arms at the same authored values. `brim_type`
+        # is pinned because Orca 2.5's `auto_brim` recomputes `brim_width` from
+        # its adhesion heuristic and discards the explicit 8 mm (measured on
+        # benchy classic-off: a ~10 x 5 mm, 3-loop brim).
+        ('--brim-width=' + $Job.BrimWidth),
+        ('--brim-type=' + $Job.BrimType),
+        ('--skirt-loops=' + $Job.SkirtLoops),
+        ('--skirt-distance=' + $Job.SkirtDistance),
+        ('--skirt-height=' + $Job.SkirtHeight),
+        ('--initial-layer-line-width=' + $Job.InitialLayerLineWidth),
+        ('--tree-support-brim-width=' + $Job.TreeSupportBrimWidth)
     )
     if ($OrcaSupportStyle -and $OrcaSupportStyle -ne 'vendor' -and $SupportFlag -eq '1') {
         # Ticket 105 ruling: appended last so it ranks above every loaded preset
@@ -427,7 +507,7 @@ function Assert-Preflight {
 }
 
 # --- CSV ---------------------------------------------------------------------
-$CsvHeader = 'run_id,batch_id,cell,fixture,generator,supports,tool,run_index,warmup,threads,expected_generator,validated_generator,config_path,exe_path,module_dir,model_path,output_path,stderr_path,wall_seconds,cpu_seconds,cpu_wall_ratio,peak_workingset_bytes,gcode_bytes,sha256_of_gcode,type_counts_json,completion_status,fatal_error_count,non_fatal_error_count,degraded,exit_code,timestamp_utc,resolved_brim_width,resolved_enable_arc_fitting,resolved_elefant_foot_compensation,resolved_filament_density,resolved_filament_max_volumetric_speed,resolved_first_layer_temperature'
+$CsvHeader = 'run_id,batch_id,cell,fixture,generator,supports,tool,run_index,warmup,threads,expected_generator,validated_generator,config_path,exe_path,module_dir,model_path,output_path,stderr_path,wall_seconds,cpu_seconds,cpu_wall_ratio,peak_workingset_bytes,gcode_bytes,sha256_of_gcode,type_counts_json,completion_status,fatal_error_count,non_fatal_error_count,degraded,exit_code,timestamp_utc,resolved_brim_width,resolved_brim_type,resolved_skirt_loops,resolved_skirt_distance,resolved_skirt_height,resolved_initial_layer_line_width,resolved_tree_support_brim_width,resolved_enable_arc_fitting,resolved_elefant_foot_compensation,resolved_filament_density,resolved_filament_max_volumetric_speed,resolved_first_layer_temperature'
 if (-not (Test-Path $CsvPath)) {
     Set-Content -Path $CsvPath -Value $CsvHeader -Encoding utf8
 } else {
@@ -447,7 +527,12 @@ function Add-ScoreRow {
         $Row.peak_workingset_bytes, $Row.gcode_bytes, (ConvertTo-CsvField $Row.sha256_of_gcode),
         (ConvertTo-CsvField $Row.type_counts_json), (ConvertTo-CsvField $Row.completion_status),
         $Row.fatal_error_count, $Row.non_fatal_error_count, $Row.degraded, $Row.exit_code, $Row.timestamp_utc,
-        (ConvertTo-CsvField $Row.resolved_brim_width), (ConvertTo-CsvField $Row.resolved_enable_arc_fitting),
+        (ConvertTo-CsvField $Row.resolved_brim_width), (ConvertTo-CsvField $Row.resolved_brim_type),
+        (ConvertTo-CsvField $Row.resolved_skirt_loops), (ConvertTo-CsvField $Row.resolved_skirt_distance),
+        (ConvertTo-CsvField $Row.resolved_skirt_height),
+        (ConvertTo-CsvField $Row.resolved_initial_layer_line_width),
+        (ConvertTo-CsvField $Row.resolved_tree_support_brim_width),
+        (ConvertTo-CsvField $Row.resolved_enable_arc_fitting),
         (ConvertTo-CsvField $Row.resolved_elefant_foot_compensation), (ConvertTo-CsvField $Row.resolved_filament_density),
         (ConvertTo-CsvField $Row.resolved_filament_max_volumetric_speed), (ConvertTo-CsvField $Row.resolved_first_layer_temperature)
     ) -join ','
@@ -510,7 +595,9 @@ function Invoke-ScoreRun {
         $cfg = Test-OrcaEvidence -OutputPath $gcodePath -ExpectedGenerator $Generator -ExpectedSupportFlag $supportFlag -ExitCode $measured.ExitCode -RunId $runId -ExpectedSupportStyle $expectedStyle
         $validatedGenerator = $Generator
         foreach ($k in @('wall_generator', 'wall_loops', 'sparse_infill_density', 'sparse_infill_pattern', 'enable_support', 'support_type', 'support_style', 'layer_height',
-                         'enable_arc_fitting', 'elefant_foot_compensation', 'brim_width',
+                         'enable_arc_fitting', 'elefant_foot_compensation', 'brim_width', 'brim_type',
+                         'skirt_loops', 'skirt_distance', 'skirt_height',
+                         'initial_layer_line_width', 'tree_support_brim_width',
                          'filament_density', 'filament_max_volumetric_speed', 'first_layer_temperature')) {
             $appendixExcerpt[$k] = $cfg[$k]
         }
@@ -534,6 +621,7 @@ function Invoke-ScoreRun {
         $envMap = @{ RAYON_NUM_THREADS = "$Threads" }
         $measured = Invoke-MeasuredProcess -FilePath $spec.Exe -ArgumentList $argList -Environment $envMap -StderrPath $stderrPath
         $evidence = Test-MeasurementEvidence -ConfigPath $configPath -OutputPath $gcodePath -StderrPath $stderrPath -ExpectedGenerator $Generator -ExitCode $measured.ExitCode
+        Test-PnpAdhesionKeys -OutputPath $gcodePath -RunId $runId
         Test-PnpGyroidDispatch -StderrPath $stderrPath -RunId $runId
         $validatedGenerator = $evidence.ValidatedGenerator
         $completionStatus = $evidence.CompletionStatus
@@ -581,6 +669,12 @@ function Invoke-ScoreRun {
         exit_code = $measured.ExitCode
         timestamp_utc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
         resolved_brim_width = (& $resolved 'brim_width')
+        resolved_brim_type = (& $resolved 'brim_type')
+        resolved_skirt_loops = (& $resolved 'skirt_loops')
+        resolved_skirt_distance = (& $resolved 'skirt_distance')
+        resolved_skirt_height = (& $resolved 'skirt_height')
+        resolved_initial_layer_line_width = (& $resolved 'initial_layer_line_width')
+        resolved_tree_support_brim_width = (& $resolved 'tree_support_brim_width')
         resolved_enable_arc_fitting = (& $resolved 'enable_arc_fitting')
         resolved_elefant_foot_compensation = (& $resolved 'elefant_foot_compensation')
         resolved_filament_density = (& $resolved 'filament_density')

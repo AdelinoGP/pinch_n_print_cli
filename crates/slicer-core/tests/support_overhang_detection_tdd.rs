@@ -25,8 +25,10 @@
 //! lower layer by an angle-derived offset before differencing.
 
 use slicer_core::algos::overhang_annotation::{
-    detect_support_contacts, detect_support_contacts_with_annotations, SupportContactParams,
+    certify_covered_by_square_offset, detect_support_contacts,
+    detect_support_contacts_with_annotations, SupportContactParams,
 };
+use slicer_core::polygon_ops::{difference_ex, offset, OffsetJoinType};
 use slicer_ir::{ExPolygon, Point2, Polygon};
 
 /// Axis-aligned rectangle in mm.
@@ -565,4 +567,223 @@ fn degenerate_inputs_do_not_panic() {
     // An unsupported region with nothing below it is wholly a contact.
     assert!(!detect_support_contacts(&square, &[], &[], &params(45.0, 0.2)).is_empty());
     assert!(detect_support_contacts(&[], &[], &[], &params(0.0, 0.0)).is_empty());
+}
+
+fn uncertified_is_covered(contacts: &[ExPolygon], lower: &[ExPolygon], threshold_mm: f32) -> bool {
+    if contacts.is_empty() {
+        return true;
+    }
+    let supported = offset(lower, threshold_mm, OffsetJoinType::Square, 0.01);
+    difference_ex(contacts, &supported).is_empty()
+}
+
+fn rect_with_hole(
+    min_x: f32,
+    min_y: f32,
+    max_x: f32,
+    max_y: f32,
+    h_min_x: f32,
+    h_min_y: f32,
+    h_max_x: f32,
+    h_max_y: f32,
+) -> ExPolygon {
+    let p = |x: f32, y: f32| Point2::from_mm(x, y);
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                p(min_x, min_y),
+                p(max_x, min_y),
+                p(max_x, max_y),
+                p(min_x, max_y),
+            ],
+        },
+        holes: vec![Polygon {
+            // CW hole winding
+            points: vec![
+                p(h_min_x, h_min_y),
+                p(h_min_x, h_max_y),
+                p(h_max_x, h_max_y),
+                p(h_max_x, h_min_y),
+            ],
+        }],
+    }
+}
+
+fn poly_from_mm(coords: &[(f32, f32)]) -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: coords.iter().map(|&(x, y)| Point2::from_mm(x, y)).collect(),
+        },
+        holes: Vec::new(),
+    }
+}
+
+#[test]
+fn t191_cantilever_certificate_matches_uncertified_oracle_across_geometry_classes() {
+    let threshold_mm = slicer_ir::units_to_mm(slicer_ir::mm_to_units(3.0));
+
+    // 1. Covered rims well inside 3.0 mm (must certify true AND agree with oracle).
+    let pillar = vec![rect(0.0, 0.0, 20.0, 20.0)];
+    let rim_contact = vec![rect(-1.5, 0.0, 0.0, 20.0), rect(20.0, 0.0, 21.5, 20.0)];
+    assert!(certify_covered_by_square_offset(
+        &rim_contact,
+        &pillar,
+        threshold_mm
+    ));
+    assert!(uncertified_is_covered(&rim_contact, &pillar, threshold_mm));
+
+    // 2. Near-threshold (2.85 / 2.95 / 3.05 mm) and true cantilever (4.0 mm):
+    // certificate must NEVER return a false positive, and end-to-end
+    // `detect_support_contacts_with_annotations` must match uncertified oracle.
+    for (ledge, expect_cantilever) in [
+        (1.0_f32, false),
+        (2.85, false),
+        (2.95, false),
+        (3.05, true),
+        (4.0, true),
+    ] {
+        let (lower, upper) = pillar_with_ledge(ledge);
+        let ann = detect_support_contacts_with_annotations(
+            &upper,
+            &lower,
+            &[],
+            &plain_difference_params(),
+        );
+        assert!(
+            !ann.contacts.is_empty(),
+            "ledge {ledge} must produce contacts"
+        );
+        let oracle_covered = uncertified_is_covered(&ann.contacts, &lower, threshold_mm);
+        assert_eq!(
+            !oracle_covered, expect_cantilever,
+            "oracle mismatch at ledge {ledge}"
+        );
+        assert_eq!(
+            !ann.cantilever_surfaces.is_empty(),
+            expect_cantilever,
+            "end-to-end cantilever mismatch at ledge {ledge}"
+        );
+        if certify_covered_by_square_offset(&ann.contacts, &lower, threshold_mm) {
+            assert!(
+                oracle_covered,
+                "SOUNDNESS VIOLATION: false positive certificate at ledge {ledge}"
+            );
+        }
+    }
+
+    // 3. C-shaped and L-shaped long strips wrapping a large frame (exercises
+    //    multi-tile coarse-to-fine box cover without single-disk shortcut).
+    let frame = vec![rect(0.0, 0.0, 40.0, 40.0)];
+    let l_strip = vec![poly_from_mm(&[
+        (-1.2, -1.2),
+        (41.2, -1.2),
+        (41.2, 0.0),
+        (0.0, 0.0),
+        (0.0, 41.2),
+        (-1.2, 41.2),
+    ])];
+    let c_strip = vec![poly_from_mm(&[
+        (-1.5, -1.5),
+        (41.5, -1.5),
+        (41.5, 41.5),
+        (40.0, 41.5),
+        (40.0, 0.0),
+        (0.0, 0.0),
+        (0.0, 41.5),
+        (-1.5, 41.5),
+    ])];
+    for strip in [&l_strip, &c_strip] {
+        assert!(certify_covered_by_square_offset(
+            strip,
+            &frame,
+            threshold_mm
+        ));
+        assert!(uncertified_is_covered(strip, &frame, threshold_mm));
+    }
+
+    // 4. Contacts spanning a large hole in `lower`:
+    //    - 1.5 mm rim overhanging into a 20 mm hole -> covered & certified.
+    //    - Bridge spanning across the center of the 20 mm hole (10 mm from rim)
+    //      -> NOT covered (must NOT certify, must flag cantilever).
+    let lower_with_large_hole = vec![rect_with_hole(0.0, 0.0, 40.0, 40.0, 10.0, 10.0, 30.0, 30.0)];
+    let covered_hole_rim = vec![rect(10.0, 10.0, 11.5, 30.0)];
+    assert!(certify_covered_by_square_offset(
+        &covered_hole_rim,
+        &lower_with_large_hole,
+        threshold_mm
+    ));
+    assert!(uncertified_is_covered(
+        &covered_hole_rim,
+        &lower_with_large_hole,
+        threshold_mm
+    ));
+
+    let hole_span_bridge = vec![rect(10.0, 18.0, 30.0, 22.0)];
+    assert!(
+        !certify_covered_by_square_offset(&hole_span_bridge, &lower_with_large_hole, threshold_mm),
+        "bridge across 20 mm hole must NEVER be certified covered"
+    );
+    assert!(!uncertified_is_covered(
+        &hole_span_bridge,
+        &lower_with_large_hole,
+        threshold_mm
+    ));
+    let upper_over_hole = vec![rect(0.0, 0.0, 40.0, 40.0)];
+    let hole_ann = detect_support_contacts_with_annotations(
+        &upper_over_hole,
+        &lower_with_large_hole,
+        &[],
+        &plain_difference_params(),
+    );
+    assert_eq!(hole_ann.cantilever_surfaces, hole_ann.contacts);
+
+    // 5. Degenerate / sub-decimation lower contour (< 0.015 mm = 0.005 * 3.0 mm)
+    //    vanishes under `append_offset_path`, so a contact near it is NOT covered.
+    let sub_decimation_lower = vec![rect(0.0, 0.0, 0.005, 0.005)];
+    let contact_near_tiny = vec![rect(0.5, 0.0, 1.5, 1.0)];
+    assert!(
+        !certify_covered_by_square_offset(&contact_near_tiny, &sub_decimation_lower, threshold_mm),
+        "sub-decimation contour drops under offset_paths and must not certify coverage"
+    );
+    assert!(!uncertified_is_covered(
+        &contact_near_tiny,
+        &sub_decimation_lower,
+        threshold_mm
+    ));
+
+    // Zero-area collinear lower contour must not certify coverage.
+    let collinear_lower = vec![poly_from_mm(&[(0.0, 0.0), (5.0, 0.0), (10.0, 0.0)])];
+    assert!(!certify_covered_by_square_offset(
+        &contact_near_tiny,
+        &collinear_lower,
+        threshold_mm
+    ));
+
+    // 6. Empty lower must return false for non-empty contacts, true for empty contacts.
+    assert!(!certify_covered_by_square_offset(
+        &contact_near_tiny,
+        &[],
+        threshold_mm
+    ));
+    assert!(certify_covered_by_square_offset(&[], &[], threshold_mm));
+
+    // 7. CW / reversed lower contour ring is normalized to CCW by `offset_paths`,
+    //    so certificate and oracle must agree.
+    let mut cw_pillar = rect(0.0, 0.0, 10.0, 10.0);
+    cw_pillar.contour.points.reverse();
+    let cw_lower = vec![cw_pillar];
+    let near_cw = vec![rect(10.0, 0.0, 11.5, 10.0)];
+    let far_cw = vec![rect(10.0, 0.0, 14.0, 10.0)];
+    assert!(certify_covered_by_square_offset(
+        &near_cw,
+        &cw_lower,
+        threshold_mm
+    ));
+    assert!(uncertified_is_covered(&near_cw, &cw_lower, threshold_mm));
+    assert!(!certify_covered_by_square_offset(
+        &far_cw,
+        &cw_lower,
+        threshold_mm
+    ));
+    assert!(!uncertified_is_covered(&far_cw, &cw_lower, threshold_mm));
 }

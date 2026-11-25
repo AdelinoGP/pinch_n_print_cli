@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "design": {
+    "ordinary_windows": [
+      "ab",
+      "ab2"
+    ],
+    "null_windows": [
+      "null",
+      "null2"
+    ],
+    "ordinary_pairs": 5,
+    "null_pairs": 3,
+    "accelerated_pairs": 3,
+    "stage_pairs": 3,
+    "host_only_pairs": 3
+  },
+  "expected_runs": 448
+}

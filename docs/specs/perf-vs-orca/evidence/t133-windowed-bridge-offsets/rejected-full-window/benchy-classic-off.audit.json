@@ -1,0 +1,42 @@
+{
+  "appendix_changed_lines": [
+    "; estimated printing time (normal mode) = 1h 40m 10s",
+    "; filament used [mm] = 3374.74"
+  ],
+  "baseline_sha256": "90638bf3ea9e592d573b223c3eb9af64473efe804578d2478adfbbc5f0e67008",
+  "candidate_sha256": "d4078b3094b3e120cb659f4ac1808ded69c24eed7d41e3eed80d1371672c8c07",
+  "cell": "benchy-classic-off",
+  "changed_types": {
+    "Gap infill": {
+      "appendix": 2,
+      "changed_lines": 2
+    },
+    "Inner wall": {
+      "changed_lines": 4,
+      "extrusion_only": 2,
+      "progress_counter": 2
+    },
+    "Internal Bridge": {
+      "changed_lines": 993,
+      "extrusion_only": 1,
+      "geometry": 992
+    }
+  },
+  "fill_geometry_lines": 992,
+  "first_changed_z": {
+    "Gap infill": 48.0,
+    "Inner wall": 15.8,
+    "Internal Bridge": 6.0
+  },
+  "layer_count": 240,
+  "structural_changed_types": {
+    "Inner wall": {
+      "changed_lines": 4,
+      "extrusion_only": 2,
+      "progress_counter": 2
+    }
+  },
+  "structural_geometry_identical": true,
+  "structural_geometry_lines": 0,
+  "structural_geometry_samples": []
+}

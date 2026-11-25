@@ -1,0 +1,55 @@
+{
+  "note": "Active matched-job reference set after t151 (2026-11-14). The skirt hull's brim input moved from the emitted brim beads' centreline to the brim area's outer contour (canonical `Print::_make_skirt`'s `m_objectBrimAreasByInstance[...]` `area.contour.points`), so the skirt ring shifts outward by half a flow spacing (0.178-0.180 mm measured) and six cells move. The two base supports-on cells are byte-identical BY MEASUREMENT: the first-layer support footprint clips the whole brim area, so `area` - and therefore `brim_points` - is empty and the skirt hull has no brim input to change; the delta audit proves zero moved sections and zero changed E lines there. Every hash reproduced across the ordinary and accelerated output arms (8/8), and the baseline arm reproduced t148's active set in 8/8 in the same campaign.",
+  "active_set": {
+    "benchy-classic-off": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+    "benchy-classic-on": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+    "benchy-arachne-off": "39ad6289b681529e89ed9feb64c5731915e6c384c5f26974b1f14c110501f165",
+    "benchy-arachne-on": "77c3c578aa28382cd398ff007e529804b088668f1a6844ae76bb5950e25464d2",
+    "base-classic-off": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+    "base-classic-on": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+    "base-arachne-off": "2f249cdb8fd2c570b0a818debfa2340f9925509e9e164abdaaf3e993c6324770",
+    "base-arachne-on": "1811425ffccda686c9b86448cf30169e6d09859991e1a2d5e7ac9d4cb49b6285"
+  },
+  "inert_cells": {
+    "cells": [
+      "base-arachne-on",
+      "base-classic-on"
+    ],
+    "reason": "first-layer support footprint clips the whole brim area, so the module's `area` is empty and no brim point enters the skirt hull; unchanged by t151"
+  },
+  "superseded_set": {
+    "note": "t148's active set, which the t151 baseline arm reproduced in 8/8 cells in the same campaign. The two supports-on base hashes are identical to the active set above because those cells are inert.",
+    "benchy-classic-off": "1ae0cfa84d1b5f59893a2c30ab6ca4afe0bb73ad68249cff2ea8ddc5f09c8c5f",
+    "benchy-classic-on": "37788518229dfde60ad7771e6f5bc61d4ebbdf6b88cfd5366ce14184b105aa3f",
+    "benchy-arachne-off": "8faf02b1b473405c3b24f261ab4e9daa630701b3d0caa78de70468c93453a7cb",
+    "benchy-arachne-on": "f86d889757255e874d7ff99ec1e1bc12b28a942ce496be80d7d8f4746934a857",
+    "base-classic-off": "c0b9014f8eff1daee38b4f9f9bf3e1b66c4ef84e75d8b741e46f468dc37fe0ad",
+    "base-classic-on": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+    "base-arachne-off": "17f63e9387bd8d548f7d9df0c4d840742dfe019c22eae4a9e314105bad38e191",
+    "base-arachne-on": "1811425ffccda686c9b86448cf30169e6d09859991e1a2d5e7ac9d4cb49b6285"
+  },
+  "adhesion_oracle": {
+    "scope": "four supports-off cells vs the Orca reference; supports-on is support-engine-limited (t138/t139)",
+    "skirt_outer_loop_area_rel_diff_pct": {
+      "benchy-classic-off": {
+        "baseline": 1.32,
+        "candidate": 0.05
+      },
+      "benchy-arachne-off": {
+        "baseline": 1.34,
+        "candidate": 0.04
+      },
+      "base-classic-off": {
+        "baseline": 2.89,
+        "candidate": 0.37
+      },
+      "base-arachne-off": {
+        "baseline": 3.45,
+        "candidate": 0.94
+      }
+    },
+    "supports_off_passes": "4/4 (was 3/4)",
+    "overall": "4/8"
+  },
+  "source": "docs/specs/perf-vs-orca/evidence/t151-skirt-hull-contour/reduced/summary.json"
+}

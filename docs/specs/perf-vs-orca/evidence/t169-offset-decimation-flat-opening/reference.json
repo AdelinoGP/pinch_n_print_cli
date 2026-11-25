@@ -1,0 +1,34 @@
+{
+  "note": "Active matched-job reference set after t169 (2026-11-20). The port of canonical `ClipperUtils.cpp::append_offset_path` edge decimation (`ClipperOffsetShortestEdgeFactor = 0.005`, `v2.5.0` = `40ecc66f78`) into `polygon_ops` drops vertices closer than `0.005 * |delta|` to the last kept vertex before every `ClipperOffset` call (`offset`, `offset_with_miter_limit`, `opening`, `closing_ex`, both passes of `offset2_ex`) on the host and in the 14 guest modules that link `slicer-core::polygon_ops` directly. It is not output-neutral by construction: sub-threshold pinholes collapse instead of being inflated by a later erosion, exactly as canonical collapses them. All eight cells move. The baseline arm reproduced t168's active set in 8/8 in the same campaign, and every candidate hash is byte-identical between the ordinary and accelerated arms (8/8 + 8/8). Superseded: every t168 hash.",
+  "active_set": {
+    "benchy-classic-off": "f505910c4ca40d51ab2362fcdeb6b93e2b50937a5132be0a43d2e124603a7f9b",
+    "benchy-classic-on": "9b40bf51cb4ec899dd30d5d97238e9eff5f5f52467a12d86b89e8b1b67fe6f25",
+    "benchy-arachne-off": "224fb6f06e9086b04d33e0fa107690395319afd4a45ceb112315be9b1ee7a5e7",
+    "benchy-arachne-on": "f32047c37441f59f5cc39511584b10cc03ac3c933d9d8b4e91cb332aaef39819",
+    "base-classic-off": "33468ea96bb6cd93e5cad33fbd8c6041268b8a3ac4f13106e5fd133fcacba27c",
+    "base-classic-on": "661b9a510669c18f1b342435785c408310bf93ea34ebf878f6dcd736391ab885",
+    "base-arachne-off": "e861766a95fdb1b15827af49feaeeea1a5c54f0b390d34b6256ba0360c39598d",
+    "base-arachne-on": "2124b5f5e82b3cf2f7bf542ded0341c48c674a35267420a2815bcf65fcc9f58e"
+  },
+  "bytes": {
+    "benchy-classic-off": 4079653,
+    "benchy-classic-on": 8591189,
+    "benchy-arachne-off": 4220039,
+    "benchy-arachne-on": 8729598,
+    "base-classic-off": 21263227,
+    "base-classic-on": 39680722,
+    "base-arachne-off": 21063589,
+    "base-arachne-on": 39482545
+  },
+  "superseded_set": {
+    "benchy-classic-off": "d6cb4acd121190228a37122926bee5cacb769949c277d19355769af74464fc80",
+    "benchy-classic-on": "21c6969fac847fb1adf4af33739e7183ff7954b493686088c5a8af76456e73ca",
+    "benchy-arachne-off": "5c0f846e1f0cd61156ddbf38cf122eb485cb4cc6d6913dc171bc89f5c4ea6fc7",
+    "benchy-arachne-on": "6fe4b09b28744d3281af1db28ad527288b512edb9d80d69edae64d1e0a11fbbc",
+    "base-classic-off": "9e360450cd70cec9177cf39be4ce0b1c741268c485cc72da266ac70982715bdc",
+    "base-classic-on": "f77cf265dd920e03b1d50152c199c9590ec01c27dee6428813b4a48fb40f0ccc",
+    "base-arachne-off": "cd896bab798a80faff71554f325d0549f0ba92e734b58fa570e7f73ccdb132a0",
+    "base-arachne-on": "3044c4d619971f9f72cbba3ad58d4cdc29ba8ba5738f2ca9ac4296a8e7aa29e9"
+  },
+  "accelerated_arm": "byte-identical to the ordinary arm in 8/8 cells (16/16 including the baseline arm)"
+}

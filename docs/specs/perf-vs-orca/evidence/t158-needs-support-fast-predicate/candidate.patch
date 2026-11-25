@@ -1,0 +1,379 @@
+diff --git a/crates/slicer-sdk/src/views.rs b/crates/slicer-sdk/src/views.rs
+index d4be6d11..c476c543 100644
+--- a/crates/slicer-sdk/src/views.rs
++++ b/crates/slicer-sdk/src/views.rs
+@@ -382,9 +382,7 @@ impl SliceRegionView {
+         let mut found_non_empty_footprint = false;
+         for overhang in non_empty_footprints {
+             found_non_empty_footprint = true;
+-            if !slicer_core::polygon_ops::intersection_ex(&self.polygons, &overhang.xy_footprint)
+-                .is_empty()
+-            {
++            if expolygons_intersect_area_positive(&self.polygons, &overhang.xy_footprint) {
+                 return true;
+             }
+         }
+@@ -980,3 +978,223 @@ pub struct OrderedEntityView {
+     /// Optional stable ordering lock carried by the extrusion path.
+     pub order_lock: Option<u64>,
+ }
++
++fn poly_bbox(pts: &[slicer_ir::Point2]) -> Option<(i64, i64, i64, i64)> {
++    let first = pts.first()?;
++    let mut min_x = first.x;
++    let mut max_x = first.x;
++    let mut min_y = first.y;
++    let mut max_y = first.y;
++    for p in &pts[1..] {
++        if p.x < min_x {
++            min_x = p.x;
++        }
++        if p.x > max_x {
++            max_x = p.x;
++        }
++        if p.y < min_y {
++            min_y = p.y;
++        }
++        if p.y > max_y {
++            max_y = p.y;
++        }
++    }
++    Some((min_x, min_y, max_x, max_y))
++}
++
++fn bboxes_strictly_overlap(a: (i64, i64, i64, i64), b: (i64, i64, i64, i64)) -> bool {
++    a.0 < b.2 && b.0 < a.2 && a.1 < b.3 && b.1 < a.3
++}
++
++/// Classifies `pt` relative to closed polygon `ring`:
++/// - `1` if `pt` lies strictly inside `ring`
++/// - `0` if `pt` lies on an edge or vertex of `ring`
++/// - `-1` if `pt` lies strictly outside `ring`
++fn point_in_ring(pt: slicer_ir::Point2, ring: &[slicer_ir::Point2]) -> i8 {
++    let n = ring.len();
++    if n < 3 {
++        return -1;
++    }
++    let mut inside = false;
++    let mut j = n - 1;
++    for i in 0..n {
++        let pi = ring[i];
++        let pj = ring[j];
++        if pi.x == pt.x && pi.y == pt.y {
++            return 0;
++        }
++        let min_x = pi.x.min(pj.x);
++        let max_x = pi.x.max(pj.x);
++        let min_y = pi.y.min(pj.y);
++        let max_y = pi.y.max(pj.y);
++        if pt.x >= min_x && pt.x <= max_x && pt.y >= min_y && pt.y <= max_y {
++            let cross = (pj.x as i128 - pi.x as i128) * (pt.y as i128 - pi.y as i128)
++                - (pj.y as i128 - pi.y as i128) * (pt.x as i128 - pi.x as i128);
++            if cross == 0 {
++                return 0;
++            }
++        }
++        if (pi.y > pt.y) != (pj.y > pt.y) {
++            let dy = pj.y as i128 - pi.y as i128;
++            let lhs = (pt.x as i128 - pi.x as i128) * dy;
++            let rhs = (pj.x as i128 - pi.x as i128) * (pt.y as i128 - pi.y as i128);
++            let crosses_right = if dy > 0 { lhs < rhs } else { lhs > rhs };
++            if crosses_right {
++                inside = !inside;
++            }
++        }
++        j = i;
++    }
++    if inside {
++        1
++    } else {
++        -1
++    }
++}
++
++fn point_strictly_inside_expoly(
++    pt: slicer_ir::Point2,
++    expoly: &ExPolygon,
++    bbox: (i64, i64, i64, i64),
++) -> bool {
++    if pt.x <= bbox.0 || pt.x >= bbox.2 || pt.y <= bbox.1 || pt.y >= bbox.3 {
++        return false;
++    }
++    if point_in_ring(pt, &expoly.contour.points) <= 0 {
++        return false;
++    }
++    for hole in &expoly.holes {
++        if point_in_ring(pt, &hole.points) >= 0 {
++            return false;
++        }
++    }
++    true
++}
++
++/// Exact boolean equivalent of `!slicer_core::polygon_ops::intersection_ex(a, b).is_empty()`.
++///
++/// Rejects disjoint and boundary-touching-only `ExPolygon` pairs via a strict
++/// axis-aligned bounding-box prefilter (`a.min_x < b.max_x`, etc.), then checks
++/// for a strict-interior contour vertex witness in exact `i128` arithmetic
++/// (strictly inside the outer contour and strictly outside every hole; boundary
++/// hits return `0` and are never accepted as a witness). If bbox-overlapping
++/// pairs exist and no strict-interior vertex witness is found (e.g., two
++/// polygons crossing edge-over-edge with all vertices outside each other),
++/// delegates the overlapping subset to `slicer_core::polygon_ops::intersection_ex`.
++fn expolygons_intersect_area_positive(a: &[ExPolygon], b: &[ExPolygon]) -> bool {
++    if a.is_empty() || b.is_empty() {
++        return false;
++    }
++
++    let a_bboxes: Vec<Option<(i64, i64, i64, i64)>> = a
++        .iter()
++        .map(|ep| poly_bbox(&ep.contour.points))
++        .collect();
++    let Some(a_union) = a_bboxes
++        .iter()
++        .flatten()
++        .copied()
++        .reduce(|u, bb| (u.0.min(bb.0), u.1.min(bb.1), u.2.max(bb.2), u.3.max(bb.3)))
++    else {
++        return false;
++    };
++
++    let mut b_candidates: Vec<(usize, (i64, i64, i64, i64))> = Vec::new();
++    for (bi, ep_b) in b.iter().enumerate() {
++        if let Some(bb_b) = poly_bbox(&ep_b.contour.points) {
++            if bboxes_strictly_overlap(a_union, bb_b) {
++                b_candidates.push((bi, bb_b));
++            }
++        }
++    }
++    if b_candidates.is_empty() {
++        return false;
++    }
++
++    let mut overlapping_pairs: Vec<(
++        usize,
++        (i64, i64, i64, i64),
++        usize,
++        (i64, i64, i64, i64),
++    )> = Vec::new();
++    for (ai, bb_a_opt) in a_bboxes.iter().enumerate() {
++        let Some(bb_a) = *bb_a_opt else {
++            continue;
++        };
++        for &(bi, bb_b) in &b_candidates {
++            if bboxes_strictly_overlap(bb_a, bb_b) {
++                overlapping_pairs.push((ai, bb_a, bi, bb_b));
++            }
++        }
++    }
++    if overlapping_pairs.is_empty() {
++        return false;
++    }
++
++    // Pass 1: sampled contour vertices of B strictly inside A.
++    for &(ai, bb_a, bi, _bb_b) in &overlapping_pairs {
++        let ep_a = &a[ai];
++        let ep_b = &b[bi];
++        let pts = &ep_b.contour.points;
++        if !pts.is_empty() {
++            let step = (pts.len() / 8).max(1);
++            for idx in (0..pts.len()).step_by(step) {
++                if point_strictly_inside_expoly(pts[idx], ep_a, bb_a) {
++                    return true;
++                }
++            }
++        }
++    }
++
++    // Pass 2: sampled contour vertices of A strictly inside B.
++    for &(ai, _bb_a, bi, bb_b) in &overlapping_pairs {
++        let ep_a = &a[ai];
++        let ep_b = &b[bi];
++        let pts = &ep_a.contour.points;
++        if !pts.is_empty() {
++            let step = (pts.len() / 8).max(1);
++            for idx in (0..pts.len()).step_by(step) {
++                if point_strictly_inside_expoly(pts[idx], ep_b, bb_b) {
++                    return true;
++                }
++            }
++        }
++    }
++
++    // Pass 3: full scan of contour vertices of B in A, then A in B.
++    for &(ai, bb_a, bi, _bb_b) in &overlapping_pairs {
++        let ep_a = &a[ai];
++        let ep_b = &b[bi];
++        for &pt in &ep_b.contour.points {
++            if point_strictly_inside_expoly(pt, ep_a, bb_a) {
++                return true;
++            }
++        }
++    }
++    for &(ai, _bb_a, bi, bb_b) in &overlapping_pairs {
++        let ep_a = &a[ai];
++        let ep_b = &b[bi];
++        for &pt in &ep_a.contour.points {
++            if point_strictly_inside_expoly(pt, ep_b, bb_b) {
++                return true;
++            }
++        }
++    }
++
++    // Fallback: Clipper2 boolean intersection on the overlapping subset only.
++    let mut a_sub: Vec<ExPolygon> = Vec::new();
++    let mut b_sub: Vec<ExPolygon> = Vec::new();
++    let mut a_seen = vec![false; a.len()];
++    let mut b_seen = vec![false; b.len()];
++    for &(ai, _bb_a, bi, _bb_b) in &overlapping_pairs {
++        if !a_seen[ai] {
++            a_seen[ai] = true;
++            a_sub.push(a[ai].clone());
++        }
++        if !b_seen[bi] {
++            b_seen[bi] = true;
++            b_sub.push(b[bi].clone());
++        }
++    }
++    !slicer_core::polygon_ops::intersection_ex(&a_sub, &b_sub).is_empty()
++}
+diff --git a/crates/slicer-sdk/tests/layer_module_tdd.rs b/crates/slicer-sdk/tests/layer_module_tdd.rs
+index 4b656894..d3f9cac2 100644
+--- a/crates/slicer-sdk/tests/layer_module_tdd.rs
++++ b/crates/slicer-sdk/tests/layer_module_tdd.rs
+@@ -1116,6 +1116,135 @@ fn slice_region_view_derive_needs_support_missing_classification_is_true() {
+     assert!(view.derive_needs_support(Some(&SurfaceClassificationIR::default())));
+ }
+ 
++#[test]
++fn slice_region_view_derive_needs_support_edge_and_vertex_touching_zero_area_is_false() {
++    let mut view = SliceRegionView::default();
++    view.set_object_id("obj-1".to_string());
++    view.set_polygons(vec![support_test_square(0.0, 0.0, 1.0)]);
++
++    // Shared vertical edge at x = 1.0 (zero intersection area).
++    let edge_touching = support_test_classification(support_test_square(1.0, 0.0, 1.0));
++    assert!(!view.derive_needs_support(Some(&edge_touching)));
++
++    // Shared corner vertex at (1.0, 1.0) (zero intersection area).
++    let vertex_touching = support_test_classification(support_test_square(1.0, 1.0, 1.0));
++    assert!(!view.derive_needs_support(Some(&vertex_touching)));
++
++    // Shared boundary inside an overlapping bbox (a concave L-shape whose inner
++    // reflex edge touches the footprint's edge without interior overlap).
++    let l_shape = ExPolygon {
++        contour: Polygon {
++            points: vec![
++                Point2::from_mm(0.0, 0.0),
++                Point2::from_mm(3.0, 0.0),
++                Point2::from_mm(3.0, 1.0),
++                Point2::from_mm(1.0, 1.0),
++                Point2::from_mm(1.0, 3.0),
++                Point2::from_mm(0.0, 3.0),
++            ],
++        },
++        holes: vec![],
++    };
++    view.set_polygons(vec![l_shape]);
++    let reflex_touching = support_test_classification(support_test_square(1.0, 1.0, 1.5));
++    assert!(!view.derive_needs_support(Some(&reflex_touching)));
++}
++
++#[test]
++fn slice_region_view_derive_needs_support_footprint_inside_region_hole_is_false() {
++    let annulus = ExPolygon {
++        contour: Polygon {
++            points: vec![
++                Point2::from_mm(0.0, 0.0),
++                Point2::from_mm(10.0, 0.0),
++                Point2::from_mm(10.0, 10.0),
++                Point2::from_mm(0.0, 10.0),
++            ],
++        },
++        holes: vec![Polygon {
++            // CW hole from (2,2) to (8,8)
++            points: vec![
++                Point2::from_mm(2.0, 2.0),
++                Point2::from_mm(2.0, 8.0),
++                Point2::from_mm(8.0, 8.0),
++                Point2::from_mm(8.0, 2.0),
++            ],
++        }],
++    };
++    let mut view = SliceRegionView::default();
++    view.set_object_id("obj-1".to_string());
++    view.set_polygons(vec![annulus]);
++
++    // Strictly inside the hole -> disjoint from the solid annulus.
++    let inside_hole = support_test_classification(support_test_square(3.0, 3.0, 2.0));
++    assert!(!view.derive_needs_support(Some(&inside_hole)));
++
++    // Touching the hole boundary from inside the hole -> still zero-area intersection.
++    let touching_hole_wall = support_test_classification(support_test_square(2.0, 2.0, 6.0));
++    assert!(!view.derive_needs_support(Some(&touching_hole_wall)));
++}
++
++#[test]
++fn slice_region_view_derive_needs_support_region_inside_footprint_hole_is_false() {
++    let footprint_annulus = ExPolygon {
++        contour: Polygon {
++            points: vec![
++                Point2::from_mm(0.0, 0.0),
++                Point2::from_mm(10.0, 0.0),
++                Point2::from_mm(10.0, 10.0),
++                Point2::from_mm(0.0, 10.0),
++            ],
++        },
++        holes: vec![Polygon {
++            points: vec![
++                Point2::from_mm(2.0, 2.0),
++                Point2::from_mm(2.0, 8.0),
++                Point2::from_mm(8.0, 8.0),
++                Point2::from_mm(8.0, 2.0),
++            ],
++        }],
++    };
++    let mut view = SliceRegionView::default();
++    view.set_object_id("obj-1".to_string());
++    view.set_polygons(vec![support_test_square(3.0, 3.0, 2.0)]);
++    let classification = support_test_classification(footprint_annulus);
++    assert!(!view.derive_needs_support(Some(&classification)));
++}
++
++#[test]
++fn slice_region_view_derive_needs_support_crossing_bars_without_interior_vertices_is_true() {
++    // Horizontal bar [0, 10] x [4, 6] crossed by vertical bar [4, 6] x [0, 10]:
++    // neither polygon has a contour vertex inside the other, so the vertex
++    // witness passes find nothing and the Clipper2 fallback decides `true`.
++    let horiz = ExPolygon {
++        contour: Polygon {
++            points: vec![
++                Point2::from_mm(0.0, 4.0),
++                Point2::from_mm(10.0, 4.0),
++                Point2::from_mm(10.0, 6.0),
++                Point2::from_mm(0.0, 6.0),
++            ],
++        },
++        holes: vec![],
++    };
++    let vert = ExPolygon {
++        contour: Polygon {
++            points: vec![
++                Point2::from_mm(4.0, 0.0),
++                Point2::from_mm(6.0, 0.0),
++                Point2::from_mm(6.0, 10.0),
++                Point2::from_mm(4.0, 10.0),
++            ],
++        },
++        holes: vec![],
++    };
++    let mut view = SliceRegionView::default();
++    view.set_object_id("obj-1".to_string());
++    view.set_polygons(vec![horiz]);
++    let classification = support_test_classification(vert);
++    assert!(view.derive_needs_support(Some(&classification)));
++}
++
+ // =============================================================================
+ // Test 11: PerimeterRegionView methods per docs/03_wit_and_manifest.md
+ // =============================================================================

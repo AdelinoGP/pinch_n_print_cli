@@ -1628,7 +1628,9 @@ impl WasmRuntimeDispatcher {
                     .as_deref()
                     .map(crate::marshal::in_::project_support_analysis_view)
                     .unwrap_or_else(|| host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportAnalysisView {
-                        candidates: Vec::new(), model_occupancy: Vec::new(), termination_surfaces: Vec::new(),
+                        candidates: Vec::new(), model_occupancy: Vec::new(),
+                        print_plane_occupancy: Vec::new(),
+                        termination_surfaces: Vec::new(),
                         shared_settings: Vec::new(), baseline_feasible_envelope: Vec::new(), family_assignments: Vec::new(),
                         support_territory: Vec::new(),
                     });
@@ -1707,7 +1709,7 @@ impl WasmRuntimeDispatcher {
         instance_pool: &Arc<crate::pool::WasmInstancePool>,
         config_view: &slicer_ir::ConfigView,
         mesh_ir: Arc<slicer_ir::MeshIR>,
-        layers: &[slicer_ir::LayerCollectionIR],
+        layers: &mut [slicer_ir::LayerCollectionIR],
         ir_writes: &[String],
     ) -> Result<Vec<host::FinalizationBuilderPush>, DispatchError> {
         use slicer_schema::export_for_stage_id;
@@ -1723,133 +1725,138 @@ impl WasmRuntimeDispatcher {
         let _lease = instance_pool.acquire();
         let engine = self.engine.wasmtime_engine();
 
-        let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        add_wasi_to_linker(&mut linker);
-        host::LayerFinalizationModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
-            &mut linker,
-            |ctx| ctx,
-        )
-        .map_err(|e| DispatchError {
-            module_id: module_id.to_string(),
-            stage_id: stage_id.clone(),
-            export_name: export_name.to_string(),
-            phase: DispatchPhase::LinkerSetup,
-            reason: e.to_string(),
-        })?;
-
-        let ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
-            .mesh_ir(Some(mesh_ir))
-            .build()
-            .with_finalization_ir_writes(ir_writes);
-        let mut store = self.new_call_store(ctx);
-
-        let config_handle = store
-            .data_mut()
-            .push_config_view(host::config_view_to_data(config_view))
-            .map_err(|e| DispatchError {
-                module_id: module_id.to_string(),
-                stage_id: stage_id.clone(),
-                export_name: export_name.to_string(),
-                phase: DispatchPhase::ContextCreation,
-                reason: format!("failed to push config resource: {e}"),
-            })?;
-
-        let output_handle = store
-            .data_mut()
-            .push_finalization_output_builder()
-            .map_err(|e| DispatchError {
-                module_id: module_id.to_string(),
-                stage_id: stage_id.clone(),
-                export_name: export_name.to_string(),
-                phase: DispatchPhase::ContextCreation,
-                reason: format!("failed to push finalization output resource: {e}"),
-            })?;
-
-        let mut layer_handles = Vec::with_capacity(layers.len());
-        for layer in layers {
-            let h = store
-                .data_mut()
-                .push_finalization_layer_view(layer)
-                .map_err(|e| DispatchError {
-                    module_id: module_id.to_string(),
-                    stage_id: stage_id.clone(),
-                    export_name: export_name.to_string(),
-                    phase: DispatchPhase::ContextCreation,
-                    reason: format!("failed to push layer-collection-view resource: {e}"),
-                })?;
-            layer_handles.push(own(h));
-        }
-
-        let bindings = host::LayerFinalizationModule::instantiate(
-            &mut store,
-            component.wasmtime_component(),
-            &linker,
-        )
-        .map_err(|e| DispatchError {
-            module_id: module_id.to_string(),
-            stage_id: stage_id.clone(),
-            export_name: export_name.to_string(),
-            phase: DispatchPhase::TypedInstantiation,
-            reason: format!(
-                "{e}; module does not export the interface required by stage {stage_id}: {}",
-                slicer_schema::qualified_export_for_stage_id(stage_id).unwrap_or_default(),
-            ),
-        })?;
-
-        let call_result = bindings
-            .slicer_finalization_layer_finalization_layer_finalization()
-            .call_run(
-                &mut store,
-                &layer_handles,
-                own(output_handle),
-                own(config_handle),
+        // Temporarily move each layer's `ordered_entities` into a shared `Arc`
+        // so the store holds zero deep copies during dispatch. The inner
+        // closure owns `store` and drops it before `Arc::try_unwrap` restores
+        // the original `Vec`s in place without cloning (on both Ok and Err).
+        let mut taken_entities: Vec<Arc<Vec<slicer_ir::PrintEntity>>> =
+            Vec::with_capacity(layers.len());
+        let call_res = (|| -> Result<Vec<host::FinalizationBuilderPush>, DispatchError> {
+            let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+            add_wasi_to_linker(&mut linker);
+            host::LayerFinalizationModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+                &mut linker,
+                |ctx| ctx,
             )
             .map_err(|e| DispatchError {
                 module_id: module_id.to_string(),
                 stage_id: stage_id.clone(),
                 export_name: export_name.to_string(),
-                phase: DispatchPhase::TypedExportCall,
+                phase: DispatchPhase::LinkerSetup,
                 reason: e.to_string(),
             })?;
 
-        if let Some(reason) = store.data().finalization_write_denial.clone() {
-            return Err(DispatchError {
+            let ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
+                .mesh_ir(Some(mesh_ir))
+                .build()
+                .with_finalization_ir_writes(ir_writes);
+            let mut store = self.new_call_store(ctx);
+
+            let config_handle = store
+                .data_mut()
+                .push_config_view(host::config_view_to_data(config_view))
+                .map_err(|e| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::ContextCreation,
+                    reason: format!("failed to push config resource: {e}"),
+                })?;
+
+            let output_handle = store
+                .data_mut()
+                .push_finalization_output_builder()
+                .map_err(|e| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::ContextCreation,
+                    reason: format!("failed to push finalization output resource: {e}"),
+                })?;
+
+            let mut layer_handles = Vec::with_capacity(layers.len());
+            for layer in layers.iter_mut() {
+                let shared = Arc::new(std::mem::take(&mut layer.ordered_entities));
+                let h = store
+                    .data_mut()
+                    .push_finalization_layer_view_shared(layer, Arc::clone(&shared))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push layer-collection-view resource: {e}"),
+                    })?;
+                taken_entities.push(shared);
+                layer_handles.push(own(h));
+            }
+
+            let bindings = host::LayerFinalizationModule::instantiate(
+                &mut store,
+                component.wasmtime_component(),
+                &linker,
+            )
+            .map_err(|e| DispatchError {
                 module_id: module_id.to_string(),
                 stage_id: stage_id.clone(),
                 export_name: export_name.to_string(),
-                phase: DispatchPhase::TypedExportCall,
-                reason,
-            });
-        }
-        if let Err(module_err) = &call_result {
-            if module_err.fatal {
+                phase: DispatchPhase::TypedInstantiation,
+                reason: format!(
+                    "{e}; module does not export the interface required by stage {stage_id}: {}",
+                    slicer_schema::qualified_export_for_stage_id(stage_id).unwrap_or_default(),
+                ),
+            })?;
+
+            let call_result = bindings
+                .slicer_finalization_layer_finalization_layer_finalization()
+                .call_run(
+                    &mut store,
+                    &layer_handles,
+                    own(output_handle),
+                    own(config_handle),
+                )
+                .map_err(|e| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::TypedExportCall,
+                    reason: e.to_string(),
+                })?;
+
+            if let Some(reason) = store.data().finalization_write_denial.clone() {
                 return Err(DispatchError {
                     module_id: module_id.to_string(),
                     stage_id: stage_id.clone(),
                     export_name: export_name.to_string(),
                     phase: DispatchPhase::TypedExportCall,
-                    reason: format!(
-                        "module error (code={}, fatal={}): {}",
-                        module_err.code, module_err.fatal, module_err.message
-                    ),
+                    reason,
                 });
             }
-            log::warn!(
-                "module {} at stage {} reported non-fatal error (code={}): {}",
-                module_id,
-                stage_id,
-                module_err.code,
-                module_err.message
-            );
+            call_result.map_err(|module_err| DispatchError {
+                module_id: module_id.to_string(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::TypedExportCall,
+                reason: format!(
+                    "module error (code={}, fatal={}): {}",
+                    module_err.code, module_err.fatal, module_err.message
+                ),
+            })?;
+
+            // Forward module log messages to the host log facade before the
+            // store (and its HostExecutionContext) is consumed.
+            forward_module_logs(module_id, &store.data().log_messages);
+
+            stash_profile(&mut store);
+
+            Ok(store.data_mut().drain_finalization_output_builder())
+        })();
+
+        for (layer, shared) in layers.iter_mut().zip(taken_entities) {
+            layer.ordered_entities = Arc::try_unwrap(shared).unwrap_or_else(|arc| (*arc).clone());
         }
 
-        // Forward module log messages to the host log facade before the
-        // store (and its HostExecutionContext) is consumed.
-        forward_module_logs(module_id, &store.data().log_messages);
-
-        stash_profile(&mut store);
-
-        Ok(store.data_mut().drain_finalization_output_builder())
+        call_res
     }
 
     // ── Typed postpass-world dispatch ──────────────────────────────────

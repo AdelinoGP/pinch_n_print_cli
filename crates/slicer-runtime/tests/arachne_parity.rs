@@ -57,10 +57,9 @@ mod fixtures;
 use arachne_perimeters::ArachnePerimeters;
 use slicer_core::arachne::{run_arachne_pipeline, ArachneParams};
 use slicer_core::perimeter_utils::point_in_any_polygon;
-use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{
-    mm_to_units, point_in_polygon_winding, units_to_mm, ConfigView, ExPolygon, ExtrusionLine,
-    LoopType, Point2, WallBoundaryType,
+    mm_to_units, units_to_mm, ConfigView, ExPolygon, ExtrusionLine, LoopType, Point2,
+    WallBoundaryType,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::*;
@@ -134,6 +133,16 @@ fn native_wall_config(wall_loops: u32, line_width_mm: f32) -> ConfigView {
         .float("bridge_flow", 1.0)
         .bool("thick_bridges", false)
         .float("seam_candidate_angle_threshold_deg", 30.0)
+        // Classifier liveness predicate. The per-vertex overhang stamps are
+        // only produced when a consumer reads them
+        // (`overhang_annotations_consumed`); without these keys the predicate
+        // short-circuits to false and every quartile stamp stays None. Inert
+        // for fixtures that carry no previous-layer boundary.
+        .bool("enable_overhang_speed", true)
+        .float("overhang_1_4_speed", 0.0)
+        .float("overhang_2_4_speed", 0.0)
+        .float("overhang_3_4_speed", 30.0)
+        .float("overhang_4_4_speed", 0.0)
         .build()
 }
 
@@ -222,12 +231,15 @@ fn native_bridge_region(side_mm: f32, _bridge_side_mm: f32, z: f32) -> SliceRegi
         .build()
 }
 
-/// A square region with a smaller centered overhang-quartile band. Mirrors
-/// `arachne_parity_overhang_quartile_tdd.rs::make_region`.
+/// A square region over a smaller previous-layer boundary.
+///
+/// Ticket 142: the per-vertex quartile is derived from the signed distance to
+/// `previous_layer_boundary`, bucketed at `overhang_band_width_mm`, so this
+/// fixture carries the boundary + width instead of band polygons.
 fn native_overhang_region(
     side_mm: f32,
-    band_side_mm: f32,
-    quartile: u8,
+    boundary_side_mm: f32,
+    band_width_mm: f32,
     z: f32,
 ) -> SliceRegionView {
     SliceRegionViewBuilder::new()
@@ -235,10 +247,8 @@ fn native_overhang_region(
         .region_id(1)
         .z(z)
         .add_polygon(square_polygon(0.0, 0.0, side_mm))
-        .overhang_quartile_polygons(vec![QuartileBand {
-            quartile,
-            polygons: vec![square_polygon(0.0, 0.0, band_side_mm)],
-        }])
+        .previous_layer_boundary(vec![square_polygon(0.0, 0.0, boundary_side_mm)])
+        .overhang_band_width_mm(band_width_mm)
         .build()
 }
 
@@ -356,20 +366,20 @@ fn arachne_parity_stale_doc_manifest_description_not_stale() {
 // per vertex
 // ====================================================================================
 
-/// `overhang_quartile` is now populated per-vertex in the arachne path via
-/// `region.overhang_quartile_polygons()` band lookup, mirroring
-/// `perimeter_utils::expolygon_to_path3d`
-/// (`crates/slicer-core/src/perimeter_utils.rs:316-331`). Rewritten (packet
-/// 148 AC-9) to drive `ArachnePerimeters::run_perimeters` natively instead of
-/// substring-matching source text — mirrors
-/// `arachne_parity_overhang_quartile_tdd.rs`.
+/// `overhang_quartile` is populated per-vertex in the arachne path from the
+/// signed distance to `region.prev_layer_boundary()`, mirroring
+/// `perimeter_utils::expolygon_to_path3d` (ticket 142 replaced the old
+/// band-polygon lookup). Rewritten (packet 148 AC-9) to drive
+/// `ArachnePerimeters::run_perimeters` natively instead of substring-matching
+/// source text — mirrors `arachne_parity_overhang_quartile_tdd.rs`.
 ///
 /// OrcaSlicer ref: `PerimeterGenerator.cpp:2113-2119`, `:370-460`, `:1117-1453`.
 #[test]
 fn arachne_parity_arachne_path_overhang_quartile_set_per_vertex() {
     let config = native_wall_config(2, 0.4_f32);
     let module = ArachnePerimeters::from_config(&config).unwrap();
-    let regions = vec![native_overhang_region(10.0, 4.0, 3, 0.2)];
+    let band_width_mm = 0.4_f32;
+    let regions = vec![native_overhang_region(10.0, 6.0, band_width_mm, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -382,19 +392,23 @@ fn arachne_parity_arachne_path_overhang_quartile_set_per_vertex() {
         "expected at least one wall loop to be emitted"
     );
 
-    let band_polygon = square_polygon(0.0, 0.0, 4.0);
+    let boundary = vec![square_polygon(0.0, 0.0, 6.0)];
     let mut checked_any_point = false;
+    let mut checked_some_overhang = false;
 
     for wall in output.wall_loops() {
         for pt in &wall.path.points {
             checked_any_point = true;
-            let inside = point_in_polygon_winding(&band_polygon, pt.x as f64, pt.y as f64, 0.0);
-            let expected = if inside { Some(3u8) } else { None };
+            let raw =
+                slicer_core::perimeter_utils::signed_distance_to_boundary(pt.x, pt.y, &boundary);
+            let expected =
+                slicer_core::perimeter_utils::overhang_quartile_from_distance(raw, band_width_mm);
+            checked_some_overhang |= expected.is_some();
             assert_eq!(
                 pt.overhang_quartile, expected,
                 "vertex at ({}, {}) mm: expected overhang_quartile == {:?} \
-                 (point-in-band == {}), got {:?}",
-                pt.x, pt.y, expected, inside, pt.overhang_quartile
+                 (signed distance {raw} mm, band width {band_width_mm} mm), got {:?}",
+                pt.x, pt.y, expected, pt.overhang_quartile
             );
         }
     }
@@ -402,6 +416,10 @@ fn arachne_parity_arachne_path_overhang_quartile_set_per_vertex() {
     assert!(
         checked_any_point,
         "expected at least one path point to verify"
+    );
+    assert!(
+        checked_some_overhang,
+        "fixture must actually exercise an overhanging vertex"
     );
 }
 
