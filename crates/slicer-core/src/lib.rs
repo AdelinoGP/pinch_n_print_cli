@@ -64,6 +64,8 @@ pub use stage_io::{
     SurfaceGroupRecord,
 };
 pub use triangle_mesh_slicer::slice_mesh_ex;
+#[cfg(feature = "host-algos")]
+pub use triangle_mesh_slicer::slice_mesh_ex_parallel;
 
 /// Applies a 4×4 column-major transform `matrix` to point `p`.
 ///

@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 use crate::polygon_ops::{self, union_ex, OffsetJoinType};
 
 /// Represents a line segment intersection with a slicing plane.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
 struct IntersectionLine {
     a: Point2,
@@ -84,12 +84,70 @@ pub fn slice_mesh_ex(mesh: &IndexedTriangleSet, zs: &[f32]) -> Vec<Vec<ExPolygon
         .collect()
 }
 
+/// Parallel, bit-for-bit equivalent variant of [`slice_mesh_ex`] for host
+/// stages (e.g. `PrePass::SupportAnalysis`'s print-plane occupancy pass).
+///
+/// Phase 1 partitions `mesh.indices` into deterministic 16,384-triangle chunks
+/// and merges per-layer line buffers in exact chunk order `0..P`, yielding an
+/// element-for-element identical line stream to [`slice_make_lines`]. Phase 2
+/// chains each layer independently via Rayon's order-preserving indexed
+/// parallel iterator.
+#[cfg(feature = "host-algos")]
+pub fn slice_mesh_ex_parallel(mesh: &IndexedTriangleSet, zs: &[f32]) -> Vec<Vec<ExPolygon>> {
+    use rayon::prelude::*;
+
+    if zs.is_empty() || mesh.vertices.is_empty() || mesh.indices.is_empty() {
+        return vec![vec![]; zs.len()];
+    }
+
+    const CHUNK_TRIS: usize = 16_384;
+    let num_tris = mesh.indices.len() / 3;
+
+    // Phase 1: Generate intersection lines in deterministic triangle order.
+    let layers_lines = if num_tris < 2 * CHUNK_TRIS {
+        slice_make_lines(mesh, zs)
+    } else {
+        let full_indices_len = num_tris * 3;
+        let chunk_layers: Vec<Vec<Vec<IntersectionLine>>> = mesh.indices[..full_indices_len]
+            .par_chunks(CHUNK_TRIS * 3)
+            .map(|idx_chunk| slice_make_lines_for_indices(&mesh.vertices, idx_chunk, zs))
+            .collect();
+        let num_layers = zs.len();
+        (0..num_layers)
+            .into_par_iter()
+            .map(|layer_idx| {
+                let total: usize = chunk_layers.iter().map(|c| c[layer_idx].len()).sum();
+                let mut merged = Vec::with_capacity(total);
+                for chunk in &chunk_layers {
+                    merged.extend_from_slice(&chunk[layer_idx]);
+                }
+                merged
+            })
+            .collect()
+    };
+
+    // Phase 2: Chain lines into polygons and convert to ExPolygons in parallel.
+    layers_lines
+        .into_par_iter()
+        .map(chain_lines_to_expolygons)
+        .collect()
+}
+
 /// Phase 1: Generate intersection lines for each layer
 fn slice_make_lines(mesh: &IndexedTriangleSet, zs: &[f32]) -> Vec<Vec<IntersectionLine>> {
+    slice_make_lines_for_indices(&mesh.vertices, &mesh.indices, zs)
+}
+
+/// Phase 1 worker over an arbitrary slice of triangle indices.
+fn slice_make_lines_for_indices(
+    vertices: &[Point3],
+    indices: &[u32],
+    zs: &[f32],
+) -> Vec<Vec<IntersectionLine>> {
     let mut layers_lines: Vec<Vec<IntersectionLine>> = vec![Vec::new(); zs.len()];
 
     // Iterate over all triangles
-    for chunk in mesh.indices.chunks(3) {
+    for chunk in indices.chunks(3) {
         if chunk.len() < 3 {
             continue;
         }
@@ -99,9 +157,9 @@ fn slice_make_lines(mesh: &IndexedTriangleSet, zs: &[f32]) -> Vec<Vec<Intersecti
         let idx2 = chunk[2] as usize;
 
         // Get triangle vertices
-        let v0 = &mesh.vertices[idx0];
-        let v1 = &mesh.vertices[idx1];
-        let v2 = &mesh.vertices[idx2];
+        let v0 = &vertices[idx0];
+        let v1 = &vertices[idx1];
+        let v2 = &vertices[idx2];
 
         // Find min and max Z of the triangle
         let min_z = v0.z.min(v1.z).min(v2.z);
@@ -1817,5 +1875,121 @@ mod tests {
              got {} points (gap-closer chord indicates Z mismatch)",
             layer[0].contour.points.len()
         );
+    }
+
+    #[cfg(feature = "host-algos")]
+    fn append_box_prism(
+        vertices: &mut Vec<Point3>,
+        indices: &mut Vec<u32>,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        z0: f32,
+        z1: f32,
+        inward_hole: bool,
+    ) {
+        let base = vertices.len() as u32;
+        vertices.extend_from_slice(&[
+            Point3 { x: x0, y: y0, z: z0 },
+            Point3 { x: x1, y: y0, z: z0 },
+            Point3 { x: x1, y: y1, z: z0 },
+            Point3 { x: x0, y: y1, z: z0 },
+            Point3 { x: x0, y: y0, z: z1 },
+            Point3 { x: x1, y: y0, z: z1 },
+            Point3 { x: x1, y: y1, z: z1 },
+            Point3 { x: x0, y: y1, z: z1 },
+        ]);
+        let faces: [[u32; 3]; 12] = if inward_hole {
+            [
+                [0, 1, 2],
+                [0, 2, 3],
+                [4, 6, 5],
+                [4, 7, 6],
+                [0, 5, 1],
+                [0, 4, 5],
+                [1, 6, 2],
+                [1, 5, 6],
+                [2, 7, 3],
+                [2, 6, 7],
+                [3, 4, 0],
+                [3, 7, 4],
+            ]
+        } else {
+            [
+                [0, 2, 1],
+                [0, 3, 2],
+                [4, 5, 6],
+                [4, 6, 7],
+                [0, 1, 5],
+                [0, 5, 4],
+                [1, 2, 6],
+                [1, 6, 5],
+                [2, 3, 7],
+                [2, 7, 6],
+                [3, 0, 4],
+                [3, 4, 7],
+            ]
+        };
+        for [a, b, c] in faces {
+            indices.extend_from_slice(&[base + a, base + b, base + c]);
+        }
+    }
+
+    #[cfg(feature = "host-algos")]
+    #[test]
+    fn t191_slice_mesh_ex_parallel_matches_serial_bit_for_bit_across_chunks_holes_grazing_and_empty()
+    {
+        // Empty inputs.
+        let empty = IndexedTriangleSet::default();
+        assert_eq!(slice_mesh_ex_parallel(&empty, &[]), slice_mesh_ex(&empty, &[]));
+        assert_eq!(
+            slice_mesh_ex_parallel(&empty, &[0.2, 0.4]),
+            slice_mesh_ex(&empty, &[0.2, 0.4])
+        );
+
+        // Multi-chunk mesh (> 32,768 triangles => 3+ parallel chunks of 16,384)
+        // containing hollow boxes (holes) and boxes whose top/bottom faces sit
+        // directly on slice planes (grazing facets).
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+        // 1,600 hollow boxes * 24 tris/box = 38,400 triangles (> 2 * 16,384).
+        for i in 0..1_600usize {
+            let col = (i % 40) as f32;
+            let row = (i / 40) as f32;
+            let x0 = col * 10.0;
+            let y0 = row * 10.0;
+            let z0 = if i % 5 == 0 { 1.0 } else { 0.0 };
+            let z1 = if i % 7 == 0 { 2.0 } else { 4.0 };
+            append_box_prism(&mut vertices, &mut indices, x0, y0, x0 + 8.0, y0 + 8.0, z0, z1, false);
+            append_box_prism(
+                &mut vertices,
+                &mut indices,
+                x0 + 2.0,
+                y0 + 2.0,
+                x0 + 6.0,
+                y0 + 6.0,
+                z0,
+                z1,
+                true,
+            );
+        }
+        assert!(
+            indices.len() / 3 > 32_768,
+            "fixture must exceed 2 * CHUNK_TRIS (32,768) to exercise parallel chunking"
+        );
+        let mesh = IndexedTriangleSet { vertices, indices };
+        // Include interior planes (0.5, 1.5, 3.0), exact grazing planes (1.0, 2.0),
+        // and out-of-range planes (-1.0, 5.0).
+        let zs = [-1.0_f32, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0];
+
+        let serial = slice_mesh_ex(&mesh, &zs);
+        let parallel = slice_mesh_ex_parallel(&mesh, &zs);
+        assert_eq!(parallel, serial, "parallel slice must match serial bit-for-bit");
+        // Non-vacuous check: verify holes actually exist on interior planes.
+        assert!(!parallel[1].is_empty());
+        assert!(parallel[1].iter().any(|ep| !ep.holes.is_empty()));
+        assert!(parallel[0].is_empty());
+        assert!(parallel[6].is_empty());
     }
 }
