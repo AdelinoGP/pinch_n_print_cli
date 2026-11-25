@@ -2,8 +2,8 @@
 
 Type: task / measured candidate (100 % output-preserving Zero-WIT host + 4-guest acceleration + literal standing all-8-cell `0.80 %` gate; zero WIT changes, zero geometry exceptions, zero gate waivers)
 Label: wayfinder:task
-Status: open
-Assignee: unassigned
+Status: resolved (2026-11-25; **LANDED** — exact Zero-WIT `PP-1 + PP-2 + PP-3` across `crates/slicer-wasm-host`, `crates/slicer-sdk`, `crates/slicer-macros`, `crates/slicer-gcode`, `crates/slicer-runtime`, `modules/core-modules/skirt-brim`, and `modules/core-modules/part-cooling`; zero WIT schema edits, zero geometry exceptions, zero gate waivers, zero reference change; literal standing all-8-cell `0.80 %` gate PASSED `8/8` on both wall and CPU — `8/8` even on strict any-pair null, `38/40` ordinary wall wins, `33/40` CPU wins, `8/8` accelerated wall corroboration, `PostPass` `−51.4…−57.4 %`, `LayerFinalization` fuel `−73.99…−75.09 %`, `312/312` runs 100 % byte-identical to `t182/reference.json`; `verify.py` PASS, `--self-test` `20/20`; graduated [193](193-final-closing-orca-scoreboard.md))
+Assignee: 2026-11-24/25 Antigravity wayfinder session ("continue the perf vs orca map", sole remaining frontier ticket)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [`PostPass` (`LayerFinalization` + `GCodeSerialize` + `GCodePostProcess`) attribution and speedup screen](189-postpass-attribution-and-speedup-screen.md) ([`evidence/t189-postpass-screen/FINDINGS.md`](../evidence/t189-postpass-screen/FINDINGS.md)), which attributed all four `PostPass` stages plus the `crates/slicer-runtime/src/run.rs` tail across all 8 cells (`32/32` probe runs byte-identical to `t182/reference.json`) and screened the exact Zero-WIT bundle `PP-1 + PP-2 + PP-3` across `94/94` (`92` measured + `2` warmup) runs (`100 %` byte-identical to `t182/reference.json`, `24/24` A/B wall wins, `+3.56…+9.51 %` wall = `4.45×–11.88×` floor across all 8 cells, `PostPass` `−53.7…−63.6 %`, `LayerFinalization` fuel `−73.98 / −75.08 %`, monotonic ablation across all 4 representative cells).
@@ -74,3 +74,22 @@ Production edits across `crates/slicer-wasm-host`, `crates/slicer-sdk`, `crates/
 - Clean, tested production implementation with zero WIT schema edits and both `cargo xtask build-guests --check` and `--accelerated --check` exiting `0`.
 - Evidence directory `docs/specs/perf-vs-orca/evidence/t192-postpass-exact-accel/` with reduced paired ordinary + null + accelerated + `--profile` JSONs, `FINDINGS.md`, `REPRODUCE.md`, and checkout-only `verify.py` (`verify.py --self-test` exit `0`).
 - Updated `## Answer`, `map.md` update, and clean commit after all gates pass (zero reference-set change).
+
+## Answer
+
+**Yes — LANDED (`PP-1 + PP-2 + PP-3` with zero WIT schema edits, zero geometry exceptions, zero gate waivers, and zero reference change).**
+
+1. **Literal standing all-8-cell `0.80 %` paired gate PASSED (`8/8` ordinary wall & CPU PASS, `8/8` strict any-pair null PASS, `8/8` accelerated wall corroboration, `RAYON_NUM_THREADS=12`, quiet box):**
+   - `benchy-classic-off`: **`+5.75 %`** wall (`4/5`, `7.18×` floor, null `0.65 / 2.68 %`), CPU **`+1.90 %`** (`4/5`), accel **`+4.91 %`** wall (`−0.52 %` CPU inside `5.32 %` null CPU band).
+   - `benchy-classic-on`: **`+7.49 %`** wall (`5/5`, `9.36×` floor, null `2.42 / 2.65 %`), CPU **`+2.95 %`** (`3/5`), accel **`+9.22 %`** wall (`−0.60 %` CPU inside `2.85 %` null CPU band).
+   - `benchy-arachne-off`: **`+5.98 %`** wall (`4/5`, `7.48×` floor, null `0.79 / 3.74 %`), CPU **`+2.77 %`** (`5/5`), accel **`+6.23 % / +1.84 %`**.
+   - `benchy-arachne-on`: **`+10.38 %`** wall (`5/5`, `12.97×` floor, null `5.90 / 6.60 %`), CPU **`+3.75 %`** (`4/5`), accel **`+10.28 % / +1.49 %`**.
+   - `base-classic-off`: **`+3.80 %`** wall (`5/5`, `4.75×` floor, null `1.50 / 2.21 %`), CPU **`+0.82 %`** (`4/5`), accel **`+4.53 % / +0.26 %`**.
+   - `base-classic-on`: **`+6.75 %`** wall (`5/5`, `8.44×` floor, null `1.90 / 3.12 %`), CPU **`+0.89 %`** (`5/5`), accel **`+8.19 % / +1.00 %`**.
+   - `base-arachne-off`: **`+4.65 %`** wall (`5/5`, `5.81×` floor, null `0.63 / 1.70 %`), CPU **`+0.07 %`** (`3/5`), accel **`+2.00 % / +0.55 %`**.
+   - `base-arachne-on`: **`+8.52 %`** wall (`5/5`, `10.65×` floor, null `0.72 / 1.19 %`), CPU **`+1.74 %`** (`5/5`), accel **`+6.82 % / +0.41 %`**.
+2. **Output parity & mechanism corroboration (`312/312` runs 100 % byte-identical to `t182/reference.json`, `0` errors/degraded/code-1200):**
+   - Instrumented `PostPass` phase wall cut **`−51.4…−57.4 %`** across all 8 cells (`LayerFinalization` `−67.5…−77.3 %`, `GCodeEmit` `−11.1…−38.6 %`, `GCodeSerialize` **`12.2×–17.6×`** faster).
+   - Deterministic `--profile` `LayerFinalization` guest fuel cut **`−73.99 %`** (`benchy-classic-on`), **`−74.02 %`** (`benchy-arachne-on`), **`−75.09 %`** (`base-classic-on`), **`−75.06 %`** (`base-arachne-on`).
+3. **Route (`ESTIMATE ONLY`, composed on `t191/reduced/route.json`):** all **8/8** cells projected `< 1.00x` on both arms (`0.5761x–0.9151x` ordinary; `0.5504x–0.8620x` accelerated). Graduated [Final single-HEAD `n >= 4` Orca closing scoreboard (`8/8` destination closure check)](193-final-closing-orca-scoreboard.md).
+4. **Evidence:** [`evidence/t192-postpass-exact-accel/FINDINGS.md`](../evidence/t192-postpass-exact-accel/FINDINGS.md) (`verify.py` PASS, `--self-test` `20/20`).
