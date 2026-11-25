@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_15_pbt-layers-seams
-status: draft
+status: implemented
 ---
 
 # Property Tests: Layer Planning, Seams, and Path Ordering
@@ -76,14 +76,14 @@ For the ordinary generated domain, numeric quanta represent `1/1024 mm` for floa
 
 Build a small **independent event/interval model**, not a call to the SUT, for unique object IDs, finite positive bounded heights, first heights and steps, bounded raft counts and strictly increasing finite explicit tops. Prefer bounded dyadic millimeter quanta with representable intermediate sums and gaps greater than the `1e-6` matching threshold; derive the `f32` conversion envelope, and separately probe selected boundary cases rather than pretending float equality is universal. Bound maximum steps before creating a sequence. Model, compare and label these currently source-derived rules:
 
-1. Uniform local tops start at `first_layer_height`, advance by `layer_height`, and include an endpoint only while the top is at most `height + 1e-6`; explicit nonempty `layer_zs` are forwarded as authored. A first height above the end can give no native tops. Do not replace this with `ceil(height/layer_height)`.
+1. Uniform local tops start at `first_layer_height`, advance by `layer_height`, and include a native plane only while that layer's **band midpoint is below the object height**: `generate_object_layers_f64` breaks on `slice_z = z_f64 − 0.5 × step >= height` (and `merge_same_height` breaks on `slice_z_f64 >= max_height`), so a final print top may legitimately overshoot the object height by up to half a layer. This is the canonical `generate_object_layers` (`Slicing.cpp`) midpoint rule, now landed on this branch; explicit nonempty `layer_zs` are forwarded as authored. A first height whose midpoint is not below the end can give no native tops. Do not replace this with `ceil(height/layer_height)`.
 2. A raft-bearing object's raft tops are `first + j * layer_height` for `0 <= j < raft_layers`; the greatest final raft top is the common `raft_top` added to **all** objects' model tops, including raft-free objects. Raft events precede model events; check object association, first/subsequent credits and `is_raft` through `run_layer_planning` or the actual raft helper, not by inventing a flag on `MergedLayer`.
 3. In the general merge, compare the union of native model tops and each object's actual `RegionLayerProposal` (`object_id`, `region_id == "0"`, `effective_layer_height`, `is_catchup`, `catchup_z_bottom`). Each still-active object without a native event gets a catch-up from its own previous participating global Z, initialized to zero, if the gap exceeds `1e-6`; native and catch-up are distinct. The first **explicit native** event retains `first_layer_height` credit even after a preceding catch-up; subsequent explicit credits are differences of adjacent authored tops. Do not invent LCM-created planes or assert `is_sync_layer`.
-4. The uniform fast merge compares the `f64` base to the end; the general merge compares the `f32` global Z converted back to `f64` minus `raft_top`. Preserve this distinction as a **characterization**, including a deliberately constructed rounding-boundary probe, until parity and the applicable contract are checked. An emitted plane must have a nonempty region population; regions and planes must be ordered and valid within the declared domain, and an ended object must not acquire later events.
+4. The uniform fast merge terminates on the `f64` band midpoint against `max_height` (and filters each object by its own midpoint against `p.height`); the general merge compares the `f32` global Z converted back to `f64` minus `raft_top`, keeps native planes unfiltered because they already satisfy the schedule's midpoint rule, and still bounds catch-up planes top-based by `base_z_f64 > plan.height + 1e-6`. Preserve this fast/general `f64`-versus-`f32`-round-trip distinction as a **characterization**, including a deliberately constructed rounding-boundary probe; a native plane is not re-gated by `height`. Parity and the applicable contract are checked (DEV-201 closed, `docs/02_ir_schemas.md` §"Print top vs sample plane"), so the midpoint end rule is pinned as canonical-correct, while this numeric-type distinction remains a characterization. An emitted plane must have a nonempty region population; regions and planes must be ordered and valid within the declared domain, and an ended object must not acquire later catch-up events.
 
 Deterministic nonempty witnesses include: an explicit A sequence `[0.25, 0.5, 0.75, 1.0]`, height `1.0` and first credit `0.25`, and B sequence `[0.375, 0.75]`, height `0.75` and first credit `0.375`, so B's `0.25` event is catch-up from zero and its `0.375` native event retains first credit; and a raft object with `first=0.25`, `step=0.125`, two raft tops `0.25, 0.375` and first model top `0.625`, paired with a raft-free object. Independently construct the expected event tables and inspect all associations. Also run empty/no-native, one-object, equal-height fast-path, mixed explicit/uniform, exact-end and boundary-neighbor witnesses. No unbounded or non-finite scalar is sent into the potentially nonterminating raw loop.
 
-The delegated source read found canonical `generate_object_layers` (`Slicing.cpp`) uses a center probe, whereas this module's fallback is top-based; those different inputs/boundaries are **not** proof of parity. Before treating an end rule as canonical correctness, trace the host's explicit schedule and corresponding upstream contract. A confirmed divergence requires the canonical-correct fix and an independently justified concrete regression, or an explicitly authorized disposition; do not protect an incorrect rule merely because this event model describes current source. Source-inspected non-finite-loop and fast/general rounding risks are hypotheses, not reproduced failures; isolate any hang probe in a killable process.
+The delegated source read found canonical `generate_object_layers` (`Slicing.cpp`) uses a center probe. At authoring (tree `9b096111`) this module's fallback was top-based, so AC-1 left the end-boundary parity question open, requiring resolution before pinning an end rule. That divergence is now **resolved upstream**: the fast-forwarded tree contains perf-vs-orca ticket 139 (`10114830`, PR #10), which rewrote the host `layer_top_zs`, `generate_object_layers_f64`, `merge_same_height` and the native-plane path of `merge_different_heights` to the canonical band-midpoint probe, closed `DEV-201`, and made `docs/02_ir_schemas.md` §"Print top vs sample plane" normative. The independent event model therefore pins the **midpoint** rule as canonical-correct (see `## Deviations`); the one surviving top-based guard is the general merge's catch-up bound, a source-derived participation rule about catch-up planes, not a native-emission end rule, and is characterized as such. Do not protect an incorrect rule merely because this event model describes current source. Source-inspected non-finite-loop and fast/general rounding risks are hypotheses, not reproduced failures; isolate any hang probe in a killable process.
 
 ### Seam planner: distinct live and dormant paths
 
@@ -240,3 +240,133 @@ Run the repository's non-test gates `cargo build --workspace`, `cargo check --wo
 | 11 | Completeness | PASS | No unresolved scope decision or template placeholder; implementation-time parity investigation, prerequisite recheck and measurements are explicit forward work. |
 
 **Verdict: AUTHOR SELF-PREFLIGHT PASS.** This is source/metadata authoring evidence, not an implementation or test pass.
+
+## Deviations
+
+Recorded by the swarm planner during the implement-mode sanity check on the
+fast-forwarded tree (`origin/master` `84a026e0`, PR #10 merge). None changes scope.
+
+1. **AC-1 end-rule parity is resolved upstream, not by a packet-local fix.**
+   The prior implement attempt (tree `9b096111`, branch
+   `feature/proptest-openrscad`) stopped because canonical
+   `generate_object_layers` (`Slicing.cpp`, present in three local checkouts)
+   emits a layer iff the band midpoint `print_z + 0.5 × height` is below
+   `object_print_z_height()`, whereas the host `layer_top_zs`
+   (`crates/slicer-config/src/resolution.rs`) and the planner's
+   `generate_object_layers_f64` / `merge_same_height` / `merge_different_heights`
+   (`modules/core-modules/layer-planner-default/src/lib.rs`) terminated on the
+   layer top. That canonical-correct fix (`10114830`, perf-vs-orca ticket 139)
+   is now an ancestor of HEAD via PR #10: `DEV-201` is **Closed** in
+   `docs/DEVIATION_LOG.md`, `docs/02_ir_schemas.md` §"Print top vs sample
+   plane" is normative, and all four surfaces use a midpoint probe. The user
+   directed the fast-forward to latest master on 2026-11-25, which supplies the
+   "explicitly authorized disposition" AC-1 required. Consequently the two
+   `M-LAYERS-*` properties pin the midpoint end rule as **canonical-correct**,
+   not as a protected characterization. `DEV-202` remains Open but records
+   only opt-in `agg`-rasterizer fixture re-measurement and a calicat
+   bridge-site index shift; it does not reopen the sample-plane parity
+   question. No WIT/IR/ADR, `docs/02_ir_schemas.md`, `docs/01_system_architecture.md`,
+   or deviation-log edit is made by this packet for the end rule.
+
+2. **Stale design-note prose corrected.** §"Layer sequence and associations"
+   rule 1, rule 4 and the parity paragraph described the retired top-based
+   uniform fallback (`top <= height + 1e-6`) and framed center-vs-top as an
+   unresolved question. They are rewritten to the merged, canonical midpoint
+   rule and to preserve only the fast/general `f64`-versus-`f32`-round-trip
+   distinction and the general-merge catch-up guard
+   (`base_z_f64 > plan.height + 1e-6`) as characterizations. The explicit
+   `A=[0.25,0.5,0.75,1.0]` / `B=[0.375,0.75]`, raft/raft-free, endpoint and
+   no-native witnesses are unchanged: explicit schedules are still forwarded
+   as authored, so this correction affects only the uniform-fallback model. The
+   `[FWD]` open-question row about top-based vs center-probe is likewise
+   resolved by item 1.
+
+3. **`[FWD]` #1 prerequisite recheck (done, no API change).** #1
+   (`proptest-openrscad_01_pbt-foundation`) and #2
+   (`proptest-openrscad_02_pbt-domains`) are both `status: implemented` on this
+   tree. Two corrections are carried into worker briefs: `CaseGuard` lives at
+   `slicer_sdk::test_support::property_testing::CaseGuard` (declared in
+   `property_testing/mod.rs`, not `run.rs`), and `PropertyRun::check` supplies
+   a fresh guard per generated case **and** per shrink attempt. No shared
+   layer/seam/wall/path generator named `dyadic`/`quanta`/`select_modes`
+   exists; owner strategies stay private. The packet's `## Depends on` prose
+   ("draft at authoring", "planned interfaces") is left as authored history and
+   is not retranslated.
+
+4. **Baseline and SUT-symbol calibration on the merged tree.** The seven `B0`
+   baselines pass 7/7; t139's edit to `layer_planning_tdd.rs` was purely
+   additive (two new midpoint regressions), so all seven `--exact` filters
+   still resolve. `test_first_layer_height_respected` still yields 9 layers
+   under the midpoint rule, though its inline comment describes the retired
+   top rule. All cited SUT symbols resolve. Three source-observed defect
+   surfaces named in the packet remain on the merged tree and are to be
+   reproduced/classified (not assumed): `select_seam_candidate`'s `Random` arm
+   divides by `candidates.len()` before `.get()` (empty-list panic);
+   `project_onto_wall_segment` / `insert_projected_point` treat last-to-first
+   as a real segment for open paths and append a closing point/width,
+   breaking `flags.len() == points.len() == widths.len()`; and `role_group`'s
+   `_ => 9` wildcard takes `InternalBridgeInfill`. Only a confirmed,
+   contract-backed defect receives a focused fix and a named concrete
+   regression (AC-N2, AC-4). The `M-SEAM-PLANNER-*` comparator/spline kernels
+   remain dormant-kernel coverage (zero production callers).
+
+5. **Guest freshness after the merge.** `cargo xtask build-guests --check`
+   returns exit `1` (STALE, 49 core/test guests) on the post-merge tree —
+   not an infrastructure error (exit `3`). Per AGENTS.md §Guest WASM
+   Staleness, a plain `cargo xtask build-guests` rebuild is required before
+   any guest/component/host-integration test interpretation; this runs in
+   Step 1 before feature-enabled checks that touch those graphs. No guest
+   source is edited to force freshness.
+
+Recorded during implementation and closure review. None changes scope; each
+is a confirmed defect disposition the packet already authorizes (AC-N2, AC-4)
+or a registry consequence of one.
+
+6. **Three seam-placer SUT defects confirmed and fixed (AC-N2).** Each
+   reproduced against the pre-fix `modules/core-modules/seam-placer/src/lib.rs`
+   before the fix, with a named regression in
+   `modules/core-modules/seam-placer/tests/seam_placer_ac_n2_regression_tdd.rs`:
+   `select_seam_candidate`'s `Random` arm divided by zero on an empty list
+   (`random_empty_candidates_degrade_without_panic`);
+   `project_onto_wall_segment` / `insert_projected_point` projected onto, and
+   closed, an open polyline's fabricated last-to-first chord
+   (`open_polyline_projection_preserves_open_geometry`); and both used
+   full-struct endpoint equality where `rotate_wall_loop` uses the XY-only
+   `ExtrusionPath3D::is_closed`, so a closing repeat with different metadata
+   was treated as open and gained a second repeat
+   (`closed_loop_with_closing_repeat_metadata_mismatch_keeps_closure_and_alignment`).
+   The open-fixture walls in `seam_continuous_projection_tdd.rs` and
+   `seam_aligned_mode_tdd.rs` now carry an explicit closing repeat; their
+   assertions are unchanged.
+
+7. **Cross-partition ADR-0062 locked blocks confirmed and fixed (AC-4).**
+   `PathOptimizationDefault::group_then_nearest_neighbor` partitioned by tool
+   and role group before coalescing locked runs, so a valid contiguous block
+   spanning partitions was interleaved; the host's
+   `validate_entity_order_locks` (`crates/slicer-runtime/src/layer_executor.rs`)
+   rejects that proposal
+   (`order_lock_cross_role_block_split_by_role_partition_rejected`,
+   `crates/slicer-runtime/tests/unit/layer_collection_builder_tdd.rs`). No
+   upstream constraint rules such blocks out: the host validator has no
+   role/tool condition and `apply_cross_layer_tool_rotation`
+   (`crates/slicer-gcode/src/emit.rs`) rotates complete blocks across tools.
+   Locked runs are now coalesced over the staged input first and each unit is
+   placed in its first member's partition. Regression:
+   `tests::cross_role_and_cross_tool_locked_blocks_stay_adjacent_and_forward`
+   (`modules/core-modules/path-optimization-default/src/lib.rs`).
+
+8. **`role_group` wildcard left unchanged (AC-4, open product question).**
+   `InternalBridgeInfill` (emitted by `rectilinear-infill` and
+   `wave-overhangs`) and `SupportBaseInterface` (emitted by
+   `traditional-support` and `tree-support`) fall into `_ => 9`, after
+   support, ironing and tower groups. The only placement text is the archived
+   `docs/spec_packets/_OLD/61_path-optimization-role-sequencing.md`; no
+   binding contract was found, so the wildcard is characterized, not fixed.
+
+9. **`M-SEAM-PLANNER-PICK` `generator_version` 1 → 2.** The extended tier
+   exposed a `RearY` fixture-generator collision in `build_pick_case`
+   (`modules/core-modules/seam-planner-default/src/property_tests.rs`): with
+   two candidates and range `1..2` the in-range target and the out-of-range
+   decoration tied at the coordinate cap, losing the class's Y spread. This was
+   a generator defect, not a SUT defect. The generator change requires the
+   bump per the `generator_version` row in `docs/testing/properties.md`.

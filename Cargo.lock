@@ -2200,6 +2200,7 @@ dependencies = [
 name = "layer-planner-default"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -2912,6 +2913,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 name = "path-optimization-default"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-core",
  "slicer-ir",
  "slicer-schema",
@@ -3826,6 +3828,7 @@ dependencies = [
 name = "seam-placer"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -3837,6 +3840,7 @@ name = "seam-planner-default"
 version = "0.1.0"
 dependencies = [
  "faer",
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",

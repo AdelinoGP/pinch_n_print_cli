@@ -158,13 +158,14 @@ jobs:
       # A passing exit code does not prove the intended records executed: an
       # empty or mis-scoped selector exits 0. `cargo xtask test` writes every
       # record's execution line to target/test-output.log, so assert the IDs
-      # there. The assertion covers the 32 records the property packets' ACs name
-      # (13 geometry/Arachne, 9 infill/linker/wave/ironing, and the 10 support
-      # planner/renderer records of packet proptest-openrscad_14); the lane still
+      # there. The assertion covers the 43 records the property packets' ACs name
+      # (13 geometry/Arachne, 9 infill/linker/wave/ironing, the 10 support
+      # planner/renderer records of packet proptest-openrscad_14, and the 11
+      # layer/seam/path records of packet proptest-openrscad_15); the lane still
       # executes every other selected record. This is the same positive check the
       # scripted SCAD lane uses, and it catches the `--with-scad`-omitted failure
       # mode directly.
-      - name: Assert the 32 required property records executed
+      - name: Assert the 43 required property records executed
         shell: pwsh
         run: |
           $missing = @()
@@ -180,7 +181,11 @@ jobs:
             'M-SUPPORT-RASTER', 'M-SUPPORT-HOLES', 'M-SUPPORT-GRID',
             'M-SUPPORT-TERRITORY', 'M-TREE-SMOOTH', 'M-TREE-ROLES',
             'M-TRADITIONAL-SCAN', 'M-TREE-SCAN', 'M-TREE-RENDER',
-            'M-SUPPORT-IRONING')) {
+            'M-SUPPORT-IRONING',
+            'M-LAYERS-SEQ', 'M-LAYERS-MERGE',
+            'M-SEAM-PLANNER-PICK', 'M-SEAM-PLANNER-PAINT', 'M-SEAM-PLANNER-SPLINE',
+            'M-SEAM-PLACER-SELECT', 'M-SEAM-PLACER-PROJECT', 'M-SEAM-PLACER-ROTATE',
+            'M-PATH-NEAREST', 'M-PATH-LOCKS', 'M-PATH-GROUPS')) {
             if (-not (Select-String -Path target/test-output.log -Pattern $id -SimpleMatch -Quiet)) {
               $missing += $id
             }
@@ -189,7 +194,7 @@ jobs:
             Write-Host "::error::property records did not execute: $($missing -join ', ')"
             exit 1
           }
-          Write-Host "OK: all 32 asserted property records executed"
+          Write-Host "OK: all 43 asserted property records executed"
       - name: Upload property failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4

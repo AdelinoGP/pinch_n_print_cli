@@ -5,6 +5,13 @@ edition.workspace = true
 authors.workspace = true
 description = "Default path-optimization core module implementing LayerModule for the Layer::PathOptimization stage"
 
+[features]
+# Empty selection feature (default off); gates the crate-internal
+# src/property_tests.rs unit-test module. Never enters a production or
+# guest graph: also #[cfg(test)]-gated, and the property engine is a
+# dev-dependency only.
+property_testing = []
+
 [dependencies]
 slicer-sdk = { path = "../../../crates/slicer-sdk" }
 slicer-schema = { path = "../../../crates/slicer-schema" }
@@ -21,7 +28,8 @@ slicer-core = { path = "../../../crates/slicer-core" }
 wit-bindgen.workspace = true
 
 [dev-dependencies]
-slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }
+slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test", "property_testing"] }
+proptest = { workspace = true }
 
 [lints]
 workspace = true

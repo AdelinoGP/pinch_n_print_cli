@@ -464,3 +464,7 @@ fn merge_different_heights(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLay
     }
     layers
 }
+
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;
