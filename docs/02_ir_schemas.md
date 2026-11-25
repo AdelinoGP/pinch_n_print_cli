@@ -502,13 +502,25 @@ caller must call this symbol rather than re-implementing the parse.
 
 `SurfaceClassificationIR` is defined in `crates/slicer-ir/src/slice_ir.rs`.
 It contains per-object surface data plus the host-only
-`overhang_quartile_polygons` and `prev_layer_boundaries` maps, both keyed by
-object id first, then global layer index (nested maps
-`HashMap<ObjectId, HashMap<u32, Vec<…>>>`) and defaulting to empty maps.
+`overhang_areas`, `overhang_quartile_polygons` and `prev_layer_boundaries`
+maps, all keyed by object id first, then global layer index (nested maps
+`HashMap<ObjectId, HashMap<u32, Vec<…>>>`) and defaulting to empty maps, plus
+the producer-resolved `overhang_band_width_mm` scalar.
 
-Both `overhang_quartile_polygons` and `prev_layer_boundaries` are keyed by object id first, then global layer index.
+All three maps are keyed by object id first, then global layer index.
 
-**Consumer note (packet 107):** `overhang_quartile_polygons` is consumed by `SliceRegionView::overhang_areas()` and `SliceRegionView::overhang_quartile_polygons()` (both populated by the host marshaller, keyed by `global_layer_index`; see `docs/05_module_sdk.md` "SliceRegionView accessors (packet 107)"). Per-vertex propagation onto `Point3WithWidth.overhang_quartile` (perimeter-generation side) is now wired on **both** perimeter paths — classic-perimeters (packets 104/107, closing T-024/T-077) and arachne-perimeters (packet 148); the former propagation gap closed 2026-07-03.
+**Consumer note (packet 107, revised by ticket 142):** since ticket 142 the
+overhang annotation builtin publishes the unsupported area in `overhang_areas`
+and the predecessor in `prev_layer_boundaries`, and leaves the legacy
+`overhang_quartile_polygons` partition empty. `SliceRegionView::overhang_areas()`
+is clipped from `overhang_areas`; the quartile is derived per vertex from the
+signed distance to `prev_layer_boundary` and the producer's
+`overhang_band_width_mm` (`crates/slicer-core/src/perimeter_utils.rs`,
+`overhang_quartile_from_distance`). Per-vertex propagation onto
+`Point3WithWidth.overhang_quartile` is wired on **both** perimeter paths —
+classic-perimeters (packets 104/107, closing T-024/T-077) and
+arachne-perimeters (packet 148); the former propagation gap closed 2026-07-03,
+and ticket 142 moved the source from band polygons to the distance bucket.
 
 **Support-eligibility derivation (packet 237):** `OverhangRegion::needs_support`
 is no longer hardcoded `true`. The producer `classify_object`

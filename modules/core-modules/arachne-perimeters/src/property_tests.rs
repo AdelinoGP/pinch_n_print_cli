@@ -55,8 +55,7 @@ use proptest::test_runner::{TestCaseError, TestCaseResult};
 use slicer_core::perimeter_spatial::PerimeterSpatialContext;
 use slicer_ir::{
     mm_to_units, units_to_mm, ExPolygon, ExtrusionJunction, ExtrusionLine, ExtrusionRole, LoopType,
-    Point2, Point3WithWidth, Polygon, QuartileBand, WallBoundaryType, WallFeatureFlags, WallLoop,
-    WidthProfile,
+    Point2, Point3WithWidth, Polygon, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
 };
 use slicer_sdk::host::{ArachneParams, WallSequence};
 use slicer_sdk::test_support::fixtures::{wall_loop_base, SliceRegionViewBuilder};
@@ -84,6 +83,16 @@ fn fail(message: impl Into<String>) -> TestCaseResult {
 // ─────────────────────────────────────────────────────────────────────────────
 // M-ARACHNE-CLASSIFY — the real role table.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Producer-resolved overhang band width (mm), as
+/// `SurfaceClassificationIR::overhang_band_width_mm` would carry it. Since
+/// ticket 142 the consumer buckets the signed distance to the previous-layer
+/// boundary with this width instead of reading producer-side band polygons.
+const OVERHANG_BAND_WIDTH_MM: f32 = 0.4;
+/// Signed-distance tolerance (mm) below which a point counts as lying on the
+/// previous-layer boundary. Restated here from the documented contract so the
+/// oracle does not call the production bucket function.
+const OVERHANG_BOUNDARY_EPSILON_MM: f32 = 1.0e-4;
 
 /// Written ceiling for `max_inset_idx`. The table is exhaustive well before
 /// this; the ceiling only bounds the generated index's narrowing target.
@@ -460,18 +469,13 @@ fn right_half_rect(half_units: i64) -> ExPolygon {
     rect_units(0, -half_units, half_units, half_units)
 }
 
-/// Overhang band covering the region's lower half (`y < 0`), extended well past
-/// the region on the other three sides so every point with `y < 0` lies
-/// *strictly* inside it. The only band boundary is then `y == 0`, which no
-/// generated point ever touches (every y coordinate is a nonzero fraction of
-/// the half-extent), so the predicted quartile never depends on how the
-/// point-in-polygon test resolves a boundary.
-fn lower_half_band(half_units: i64) -> QuartileBand {
-    let reach = 2 * half_units;
-    QuartileBand {
-        quartile: 2,
-        polygons: vec![rect_units(-reach, -reach, reach, 0)],
-    }
+/// The previous-layer footprint: the region's upper half
+/// `[-half, half] x [0, half]`. The lower half is unsupported, so every point
+/// with `y < 0` lies outside this boundary at distance `-y`; no generated point
+/// has `y == 0`, so the predicted quartile never depends on how the
+/// point-in-polygon test resolves the shared edge.
+fn previous_layer_rect(half_units: i64) -> ExPolygon {
+    rect_units(-half_units, 0, half_units, half_units)
 }
 
 /// Exact canonical-unit -> millimetre conversion for generated coordinates. The
@@ -843,15 +847,15 @@ fn region_for(scene: &BuildScene) -> SliceRegionView {
         .z(Z_MM)
         .add_polygon(region_rect(scene.half_units))
         .bridge_areas(scene.bridge_areas.clone())
-        .previous_layer_boundary(vec![region_rect(scene.half_units)])
-        .overhang_quartile_polygons(vec![lower_half_band(scene.half_units)])
+        .previous_layer_boundary(vec![previous_layer_rect(scene.half_units)])
+        .overhang_band_width_mm(OVERHANG_BAND_WIDTH_MM)
         .build()
 }
 
 fn build_context(region: &SliceRegionView) -> PerimeterSpatialContext {
     PerimeterSpatialContext::new(
         region.prev_layer_boundary(),
-        region.overhang_quartile_polygons(),
+        region.overhang_band_width_mm(),
         region.bridge_areas(),
     )
 }
@@ -1000,12 +1004,44 @@ fn predicted_bridge_membership(
     }
 }
 
-/// Exact signed distance to the axis-aligned region boundary for a point inside
-/// it, derived analytically from the square's own half-extent.
+/// Independent signed distance (mm) from a generated point to
+/// [`previous_layer_rect`]. Points below `y = 0` are outside the previous
+/// boundary and report `-y`; points above are inside and report the negative
+/// distance to the nearest edge of that upper-half rectangle (either side, the
+/// top, or the bottom edge at `y = 0`).
 fn expected_signed_distance_mm(x_mm: f32, y_mm: f32, half_units: i64) -> f64 {
     let half_mm = f64::from(units_to_mm(half_units));
-    let nearest_edge = f64::from(x_mm.abs()).max(f64::from(y_mm.abs()));
-    -(half_mm - nearest_edge)
+    let x = f64::from(x_mm);
+    let y = f64::from(y_mm);
+    if y <= 0.0 {
+        -y
+    } else {
+        -(half_mm - x.abs()).min(y).min(half_mm - y)
+    }
+}
+
+/// Independent distance-band oracle for the consumer-side quartile.
+///
+/// The documented thresholds are `0.5 / 1.0 / 1.5 x band_width`; band 4 is the
+/// remainder (never capped). A point on the boundary within
+/// [`OVERHANG_BOUNDARY_EPSILON_MM`] is not overhanging. The bucket arithmetic is
+/// `f32`, matching the consumer's distance type, so a distance that lands
+/// exactly on a threshold buckets the same way.
+fn expected_overhang_quartile(raw_signed_distance_mm: f64) -> Option<u8> {
+    let raw = raw_signed_distance_mm as f32;
+    if raw <= OVERHANG_BOUNDARY_EPSILON_MM {
+        return None;
+    }
+    let width = OVERHANG_BAND_WIDTH_MM;
+    if raw <= width * 0.5 {
+        Some(1)
+    } else if raw <= width {
+        Some(2)
+    } else if raw <= width * 1.5 {
+        Some(3)
+    } else {
+        Some(4)
+    }
 }
 
 /// Verify every nonempty input line against an independent model of the
@@ -1229,15 +1265,12 @@ fn verify_build_walls(
             }
 
             // Per-point overhang metadata authored from the selected region.
-            let expected_quartile = if mm_to_units(point.y) < 0 {
-                Some(2)
-            } else {
-                None
-            };
+            let raw_distance = expected_signed_distance_mm(point.x, point.y, scene.half_units);
+            let expected_quartile = expected_overhang_quartile(raw_distance);
             if point.overhang_quartile != expected_quartile {
                 return Err(format!(
-                    "{where_}: overhang_quartile {:?} disagrees with this point's own \
-                     lower-half position ({expected_quartile:?})",
+                    "{where_}: overhang_quartile {:?} disagrees with the distance-band model \
+                     ({expected_quartile:?}) for raw signed distance {raw_distance}",
                     point.overhang_quartile
                 ));
             }
@@ -1246,12 +1279,13 @@ fn verify_build_walls(
                     "{where_}: a nonempty previous-layer boundary must stamp a distance"
                 ));
             };
-            let expected_distance = expected_signed_distance_mm(point.x, point.y, scene.half_units)
-                + 0.5 * f64::from(point.width);
+            let expected_distance = raw_distance + 0.5 * f64::from(point.width);
             if (f64::from(distance) - expected_distance).abs() > 1.0e-4 {
                 return Err(format!(
                     "{where_}: overhang distance {distance} does not equal the analytical \
-                     {expected_distance} for this point"
+                     {expected_distance} for this point (x={}, y={}, half_units={}, width={}, \
+                     raw={raw_distance})",
+                    point.x, point.y, scene.half_units, point.width
                 ));
             }
         }

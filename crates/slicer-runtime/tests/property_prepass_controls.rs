@@ -707,9 +707,11 @@ fn prepass_overhang_object_delivery() {
         .surface_classification()
         .expect("the wrapper must publish a classification");
     // Each object's published geometry must be ITS OWN: the previous-boundary
-    // entry is that object's previous rectangle, and every band polygon sits
-    // inside that object's current rectangle. A foreign-object or current-layer
-    // substitute cannot satisfy both.
+    // entry is that object's previous rectangle, and every unsupported-area
+    // polygon sits inside that object's current rectangle. A foreign-object or
+    // current-layer substitute cannot satisfy both. Since ticket 142 the
+    // producer publishes the authoritative `overhang_areas`; the legacy
+    // `overhang_quartile_polygons` map stays empty.
     let expected_previous = [
         ("obj_a", (0.0_f32, 0.0, 10.0, 10.0)),
         ("obj_b", (20.0, 0.0, 26.0, 6.0)),
@@ -718,6 +720,10 @@ fn prepass_overhang_object_delivery() {
         ("obj_a", (0.0_f32, 0.0, 11.0, 10.0)),
         ("obj_b", (20.0, 0.0, 27.0, 6.0)),
     ];
+    assert!(
+        published.overhang_quartile_polygons.is_empty(),
+        "ticket 142 removed the producer-side quartile partition; it must stay empty"
+    );
     for ((object, previous), (_, current)) in expected_previous.iter().zip(expected_current.iter())
     {
         let boundaries = published
@@ -760,30 +766,25 @@ fn prepass_overhang_object_delivery() {
             );
         }
 
-        let bands = published
-            .overhang_quartile_polygons
+        let areas = published
+            .overhang_areas
             .get(*object)
             .and_then(|layers| layers.get(&1))
-            .unwrap_or_else(|| panic!("{object} must carry layer 1 bands"));
+            .unwrap_or_else(|| panic!("{object} must carry layer 1 unsupported areas"));
         assert!(
-            bands
-                .iter()
-                .all(|band| band.quartile >= 1 && band.quartile <= 4),
-            "{object}'s quartiles must stay in 1..=4"
+            !areas.is_empty(),
+            "{object}'s layer 1 unsupported area must be nonempty"
         );
-        for band in bands {
-            for polygon in &band.polygons {
-                for point in &polygon.contour.points {
-                    let (x, y) = (point.x as f32 / 10_000.0, point.y as f32 / 10_000.0);
-                    assert!(
-                        x >= current.0 - 1e-3
-                            && x <= current.2 + 1e-3
-                            && y >= current.1 - 1e-3
-                            && y <= current.3 + 1e-3,
-                        "{object} band {} leaves its own current rectangle at ({x}, {y})",
-                        band.quartile
-                    );
-                }
+        for polygon in areas {
+            for point in &polygon.contour.points {
+                let (x, y) = (point.x as f32 / 10_000.0, point.y as f32 / 10_000.0);
+                assert!(
+                    x >= current.0 - 1e-3
+                        && x <= current.2 + 1e-3
+                        && y >= current.1 - 1e-3
+                        && y <= current.3 + 1e-3,
+                    "{object} unsupported area leaves its own current rectangle at ({x}, {y})"
+                );
             }
         }
     }

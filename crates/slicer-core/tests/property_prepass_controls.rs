@@ -42,8 +42,8 @@ fn prepass_paint_partition_and_driver_controls() {
 }
 
 #[test]
-fn prepass_overhang_band_controls() {
-    property_prepass_common::controls_paint::overhang_band_controls();
+fn prepass_overhang_area_controls() {
+    property_prepass_common::controls_paint::overhang_area_controls();
 }
 
 #[test]
