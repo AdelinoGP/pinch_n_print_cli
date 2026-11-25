@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "cells": {
+    "benchy-classic-on": {
+      "baseline": {
+        "fuel_total": 18439055032,
+        "host_sa_calls": 1366,
+        "host_sa_wall_ns": 909157400,
+        "host_sa_clip_calls": 965,
+        "host_sa_offset_calls": 401
+      },
+      "candidate": {
+        "fuel_total": 18439619829,
+        "host_sa_calls": 1046,
+        "host_sa_wall_ns": 683527900,
+        "host_sa_clip_calls": 724,
+        "host_sa_offset_calls": 322
+      },
+      "host_sa_call_delta": -320,
+      "host_sa_call_saving_pct": 23.42606149341142,
+      "host_sa_wall_saving_pct": 24.81742985318054,
+      "guest_fuel_delta": 564797
+    },
+    "benchy-arachne-on": {
+      "baseline": {
+        "fuel_total": 17964208157,
+        "host_sa_calls": 1366,
+        "host_sa_wall_ns": 877291500,
+        "host_sa_clip_calls": 965,
+        "host_sa_offset_calls": 401
+      },
+      "candidate": {
+        "fuel_total": 17964260631,
+        "host_sa_calls": 1046,
+        "host_sa_wall_ns": 670794700,
+        "host_sa_clip_calls": 724,
+        "host_sa_offset_calls": 322
+      },
+      "host_sa_call_delta": -320,
+      "host_sa_call_saving_pct": 23.42606149341142,
+      "host_sa_wall_saving_pct": 23.537991648158,
+      "guest_fuel_delta": 52474
+    },
+    "base-classic-on": {
+      "baseline": {
+        "fuel_total": 137296713750,
+        "host_sa_calls": 4430,
+        "host_sa_wall_ns": 19539021900,
+        "host_sa_clip_calls": 3199,
+        "host_sa_offset_calls": 1231
+      },
+      "candidate": {
+        "fuel_total": 137298691914,
+        "host_sa_calls": 2982,
+        "host_sa_wall_ns": 11881977100,
+        "host_sa_clip_calls": 2107,
+        "host_sa_offset_calls": 875
+      },
+      "host_sa_call_delta": -1448,
+      "host_sa_call_saving_pct": 32.686230248307,
+      "host_sa_wall_saving_pct": 39.18847544768861,
+      "guest_fuel_delta": 1978164
+    },
+    "base-arachne-on": {
+      "baseline": {
+        "fuel_total": 124390722419,
+        "host_sa_calls": 4430,
+        "host_sa_wall_ns": 19119724000,
+        "host_sa_clip_calls": 3199,
+        "host_sa_offset_calls": 1231
+      },
+      "candidate": {
+        "fuel_total": 124391263158,
+        "host_sa_calls": 2982,
+        "host_sa_wall_ns": 10267899800,
+        "host_sa_clip_calls": 2107,
+        "host_sa_offset_calls": 875
+      },
+      "host_sa_call_delta": -1448,
+      "host_sa_call_saving_pct": 32.686230248307,
+      "host_sa_wall_saving_pct": 46.296819975016376,
+      "guest_fuel_delta": 540739
+    }
+  },
+  "classic_arachne_invariance": {
+    "benchy_host_sa_delta_equal": true,
+    "base_host_sa_delta_equal": true
+  }
+}

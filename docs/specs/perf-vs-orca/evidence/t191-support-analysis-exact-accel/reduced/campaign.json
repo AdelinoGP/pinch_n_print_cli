@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "design": {
+    "ordinary_windows": [
+      "ab",
+      "ab2"
+    ],
+    "null_windows": [
+      "null",
+      "null2"
+    ],
+    "accel_windows": [
+      "accel",
+      "accel2"
+    ],
+    "ordinary_pairs_per_window": 5,
+    "null_pairs_per_window": 3,
+    "accelerated_pairs": 6,
+    "accel_cells": [
+      "base-arachne-off",
+      "base-arachne-on",
+      "base-classic-off",
+      "base-classic-on",
+      "benchy-arachne-off",
+      "benchy-arachne-on",
+      "benchy-classic-off",
+      "benchy-classic-on"
+    ],
+    "stage_pairs": 3,
+    "stage_cells": [
+      "base-arachne-off",
+      "base-arachne-on",
+      "base-classic-off",
+      "base-classic-on",
+      "benchy-arachne-off",
+      "benchy-arachne-on",
+      "benchy-classic-off",
+      "benchy-classic-on"
+    ],
+    "profile_cells": [
+      "base-arachne-on",
+      "base-classic-on",
+      "benchy-arachne-on",
+      "benchy-classic-on"
+    ]
+  },
+  "expected_runs": 440
+}
