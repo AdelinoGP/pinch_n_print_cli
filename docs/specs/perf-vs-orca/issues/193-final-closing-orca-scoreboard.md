@@ -2,8 +2,8 @@
 
 Type: task / scoreboard (single-HEAD `n >= 4` matched-pair closing board against OrcaSlicer `2.5.1` across all 8 cells × `{pnp-ordinary, pnp-accelerated, orca}`; zero code edits)
 Label: wayfinder:task
-Status: open
-Assignee: unassigned
+Status: in progress (claimed 2026-11-25; final single-HEAD `n >= 4` closing board)
+Assignee: 2026-11-25 OpenCode wayfinder session — the human said "continue the perf vs orca map" (no ticket named); 193 was the sole open frontier ticket.
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [Exact Zero-WIT `PostPass` acceleration: lazy `LayerFinalization`, parallel zero-alloc `GCodeSerialize`, and `GCodeEmit`/tail cleanup](192-postpass-exact-acceleration.md) ([`evidence/t192-postpass-exact-accel/FINDINGS.md`](../evidence/t192-postpass-exact-accel/FINDINGS.md)), whose cross-window route composition (`ESTIMATE ONLY`) projects **all 8/8 cells `< 1.00x`** on both arms (`0.5761x–0.9151x` ordinary; `0.5504x–0.8620x` accelerated).
