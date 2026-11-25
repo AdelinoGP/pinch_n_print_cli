@@ -15,8 +15,123 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use slicer_gcode::{GCodeEmitError, GCodeEmitter, GCodeSerializer};
-use slicer_ir::{GCodeIR, LayerCollectionIR, ModuleId, PostpassError, PostpassOutput, StageId};
+use slicer_gcode::{
+    take_last_emit_estimate, CachedEmitEstimate, GCodeEmitError, GCodeEmitter, GCodeSerializer,
+};
+use slicer_ir::{
+    ExtrusionRole, GCodeCommand, GCodeIR, LayerCollectionIR, ModuleId, PostpassError,
+    PostpassOutput, StageId,
+};
+
+/// Compact 128-bit + count fingerprint over the kinematic commands of a
+/// `GCodeCommand` stream (`Move`, `Retract`, `Unretract`, `ToolChange`, and
+/// `Raw` `G92 E<val>` resets). Two streams with identical kinematic
+/// fingerprints produce identical `estimate_print` outputs for any given
+/// `(EstimatorLimits, tool_diameters)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KinematicFingerprint {
+    count: u64,
+    h1: u64,
+    h2: u64,
+}
+
+#[inline]
+fn mix_u64(state: &mut u64, prime: u64, val: u64) {
+    *state ^= val;
+    *state = state.wrapping_mul(prime);
+}
+
+#[inline]
+fn feed_kinematic(h1: &mut u64, h2: &mut u64, val: u64) {
+    mix_u64(h1, 0x0000_0100_0000_01b3, val);
+    mix_u64(h2, 0x9e37_79b9_7f4a_7c15, val.rotate_left(27) ^ 0xa076_1d64_78bd_642f);
+}
+
+#[inline]
+fn opt_f32_bits(v: Option<f32>) -> u64 {
+    match v {
+        Some(f) => 0x1_0000_0000 | (f.to_bits() as u64),
+        None => 0,
+    }
+}
+
+/// Compute the kinematic fingerprint of a `GCodeCommand` slice.
+pub fn kinematic_fingerprint(commands: &[GCodeCommand]) -> KinematicFingerprint {
+    let mut count = 0u64;
+    let mut h1 = 0xcbf2_9ce4_8422_2325_u64;
+    let mut h2 = 0x8422_2325_cbf2_9ce4_u64;
+
+    for cmd in commands {
+        match cmd {
+            GCodeCommand::Move {
+                x,
+                y,
+                z,
+                e,
+                f,
+                role,
+            } => {
+                count += 1;
+                let is_travel = matches!(role, ExtrusionRole::Custom(s) if s == "Travel");
+                feed_kinematic(&mut h1, &mut h2, if is_travel { 0x11 } else { 0x10 });
+                feed_kinematic(&mut h1, &mut h2, opt_f32_bits(*x));
+                feed_kinematic(&mut h1, &mut h2, opt_f32_bits(*y));
+                feed_kinematic(&mut h1, &mut h2, opt_f32_bits(*z));
+                feed_kinematic(&mut h1, &mut h2, opt_f32_bits(*e));
+                feed_kinematic(&mut h1, &mut h2, opt_f32_bits(*f));
+            }
+            GCodeCommand::Retract { length, speed, .. } => {
+                count += 1;
+                feed_kinematic(&mut h1, &mut h2, 0x20);
+                feed_kinematic(&mut h1, &mut h2, length.to_bits() as u64);
+                feed_kinematic(&mut h1, &mut h2, speed.to_bits() as u64);
+            }
+            GCodeCommand::Unretract { length, speed, .. } => {
+                count += 1;
+                feed_kinematic(&mut h1, &mut h2, 0x30);
+                feed_kinematic(&mut h1, &mut h2, length.to_bits() as u64);
+                feed_kinematic(&mut h1, &mut h2, speed.to_bits() as u64);
+            }
+            GCodeCommand::ToolChange { to, .. } => {
+                count += 1;
+                feed_kinematic(&mut h1, &mut h2, 0x40);
+                feed_kinematic(&mut h1, &mut h2, *to as u64);
+            }
+            GCodeCommand::Raw { text } => {
+                let trimmed = text.trim();
+                if trimmed.starts_with("G92") {
+                    if let Some(e_str) = trimmed
+                        .split_whitespace()
+                        .find(|tok| tok.starts_with('E') || tok.starts_with('e'))
+                    {
+                        if let Ok(val) = e_str[1..].parse::<f64>() {
+                            count += 1;
+                            feed_kinematic(&mut h1, &mut h2, 0x50);
+                            feed_kinematic(&mut h1, &mut h2, val.to_bits());
+                        }
+                    }
+                }
+            }
+            GCodeCommand::ExtrusionMode { .. }
+            | GCodeCommand::Comment { .. }
+            | GCodeCommand::FanSpeed { .. }
+            | GCodeCommand::Temperature { .. } => {}
+        }
+    }
+
+    KinematicFingerprint { count, h1, h2 }
+}
+
+/// Returns `true` iff `after_commands` has the exact same kinematic command
+/// sequence as `before`, proving `GCodePostProcess` did not insert, delete,
+/// reorder, or alter any kinematic command (`Move`, `Retract`, `Unretract`,
+/// `ToolChange`, or `G92 E<val>` reset).
+pub fn postpass_preserves_kinematics(
+    before: &KinematicFingerprint,
+    after_commands: &[GCodeCommand],
+) -> bool {
+    *before == kinematic_fingerprint(after_commands)
+}
 
 thread_local! {
     /// The final `GCodeIR` of the most recent successful postpass on this
@@ -29,10 +144,15 @@ thread_local! {
     /// `slice_stats` progress event via `slicer_gcode::estimate_print`
     /// without re-implementing any estimator math.
     static FINAL_GCODE_IR: RefCell<Option<GCodeIR>> = const { RefCell::new(None) };
+    /// Optional cached `PrintEstimate` from `GCodeEmit` when `GCodePostProcess`
+    /// proved kinematic invariance (`postpass_preserves_kinematics`), eliminating
+    /// the redundant second `estimate_print` pass in `run.rs`.
+    static FINAL_GCODE_ESTIMATE: RefCell<Option<CachedEmitEstimate>> = const { RefCell::new(None) };
 }
 
-fn stash_final_gcode_ir(ir: GCodeIR) {
+fn stash_final_gcode_ir(ir: GCodeIR, cached_estimate: Option<CachedEmitEstimate>) {
     FINAL_GCODE_IR.with(|cell| *cell.borrow_mut() = Some(ir));
+    FINAL_GCODE_ESTIMATE.with(|cell| *cell.borrow_mut() = cached_estimate);
 }
 
 /// Take (and clear) the final `GCodeIR` stashed by the most recent successful
@@ -41,6 +161,13 @@ fn stash_final_gcode_ir(ir: GCodeIR) {
 /// the emitter (`DefaultGCodeEmitter::emit_gcode`, packet 169 Step 2).
 pub fn take_final_gcode_ir() -> Option<GCodeIR> {
     FINAL_GCODE_IR.with(|cell| cell.borrow_mut().take())
+}
+
+/// Take (and clear) the cached `PrintEstimate` stashed by the most recent
+/// successful postpass on this thread (present iff `GCodeEmit` produced it and
+/// `GCodePostProcess` preserved kinematics).
+pub fn take_final_gcode_estimate() -> Option<CachedEmitEstimate> {
+    FINAL_GCODE_ESTIMATE.with(|cell| cell.borrow_mut().take())
 }
 
 /// Translate a `slicer_gcode::GCodeEmitError` into the matching
@@ -345,6 +472,17 @@ pub fn execute_postpass_with_owned_capture(
         cap.gcode_ir = gcode_ir.clone();
     }
 
+    let mut cached_estimate = take_last_emit_estimate();
+    let has_gcode_postprocess = plan
+        .postpass_stages
+        .iter()
+        .any(|s| s.stage_id.contains("GCodePostProcess") && !s.modules.is_empty());
+    let pre_postprocess_fp = if cached_estimate.is_some() && has_gcode_postprocess {
+        Some(kinematic_fingerprint(&gcode_ir.commands))
+    } else {
+        None
+    };
+
     let mut audits = Vec::new();
 
     // Step 2: Run all GCodePostProcess modules sequentially
@@ -446,6 +584,12 @@ pub fn execute_postpass_with_owned_capture(
         }
     }
 
+    if let Some(before_fp) = pre_postprocess_fp {
+        if !postpass_preserves_kinematics(&before_fp, &gcode_ir.commands) {
+            cached_estimate = None;
+        }
+    }
+
     // Step 3: Check if any TextPostProcess modules exist
     let text_postprocess_stages: Vec<_> = plan
         .postpass_stages
@@ -467,7 +611,7 @@ pub fn execute_postpass_with_owned_capture(
             })?;
         instrumentation.on_module_end(&ser_stage, None, &ser_module, 0, 0);
         instrumentation.on_stage_end(&ser_stage, None);
-        stash_final_gcode_ir(gcode_ir);
+        stash_final_gcode_ir(gcode_ir, cached_estimate);
         return Ok((text, audits));
     }
 
@@ -579,6 +723,102 @@ pub fn execute_postpass_with_owned_capture(
         instrumentation.on_stage_end(&stage.stage_id, None);
     }
 
-    stash_final_gcode_ir(gcode_ir);
+    stash_final_gcode_ir(gcode_ir, cached_estimate);
     Ok((text, audits))
+}
+
+#[cfg(test)]
+mod kinematic_fingerprint_tests {
+    use super::*;
+
+    fn sample_stream() -> Vec<GCodeCommand> {
+        vec![
+            GCodeCommand::ExtrusionMode { absolute: false },
+            GCodeCommand::Move {
+                x: Some(0.0),
+                y: Some(0.0),
+                z: Some(0.2),
+                e: None,
+                f: Some(6000.0),
+                role: ExtrusionRole::Custom("Travel".to_string()),
+            },
+            GCodeCommand::Move {
+                x: Some(10.0),
+                y: Some(0.0),
+                z: Some(0.2),
+                e: Some(0.4),
+                f: Some(3000.0),
+                role: ExtrusionRole::OuterWall,
+            },
+            GCodeCommand::Retract {
+                length: 0.8,
+                speed: 2400.0,
+                mode: slicer_ir::RetractMode::Gcode,
+            },
+        ]
+    }
+
+    #[test]
+    fn postpass_preserves_kinematics_accepts_non_kinematic_wrappers() {
+        let base = sample_stream();
+        let before = kinematic_fingerprint(&base);
+        let mut wrapped = vec![
+            GCodeCommand::Raw {
+                text: "; machine_start_gcode\nM140 S60".to_string(),
+            },
+            GCodeCommand::Comment {
+                text: "custom header".to_string(),
+            },
+        ];
+        wrapped.extend(base);
+        wrapped.push(GCodeCommand::FanSpeed { value: 0 });
+        wrapped.push(GCodeCommand::Raw {
+            text: "; machine_end_gcode\nM84".to_string(),
+        });
+        assert!(postpass_preserves_kinematics(&before, &wrapped));
+    }
+
+    #[test]
+    fn postpass_preserves_kinematics_rejects_any_kinematic_mutation() {
+        let base = sample_stream();
+        let before = kinematic_fingerprint(&base);
+
+        // Inserted Move
+        let mut inserted = base.clone();
+        inserted.push(GCodeCommand::Move {
+            x: Some(15.0),
+            y: Some(0.0),
+            z: Some(0.2),
+            e: Some(0.6),
+            f: Some(3000.0),
+            role: ExtrusionRole::OuterWall,
+        });
+        assert!(!postpass_preserves_kinematics(&before, &inserted));
+
+        // Altered feedrate
+        let mut altered_f = base.clone();
+        if let GCodeCommand::Move { f, .. } = &mut altered_f[2] {
+            *f = Some(2500.0);
+        }
+        assert!(!postpass_preserves_kinematics(&before, &altered_f));
+
+        // Altered E
+        let mut altered_e = base.clone();
+        if let GCodeCommand::Move { e, .. } = &mut altered_e[2] {
+            *e = Some(0.5);
+        }
+        assert!(!postpass_preserves_kinematics(&before, &altered_e));
+
+        // Reordered moves
+        let mut reordered = base.clone();
+        reordered.swap(1, 2);
+        assert!(!postpass_preserves_kinematics(&before, &reordered));
+
+        // Inserted G92 E0 reset
+        let mut with_g92 = base;
+        with_g92.push(GCodeCommand::Raw {
+            text: "G92 E0".to_string(),
+        });
+        assert!(!postpass_preserves_kinematics(&before, &with_g92));
+    }
 }

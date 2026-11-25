@@ -837,16 +837,25 @@ impl LayerCollectionViewData {
     /// Build from a completed `LayerCollectionIR`. Tool-change triples
     /// are stored as `(after_entity_index, from_tool, to_tool)`.
     pub fn from_ir(ir: &slicer_ir::LayerCollectionIR) -> Self {
+        Self::from_ir_shared(ir, Arc::new(ir.ordered_entities.clone()))
+    }
+
+    /// Build from a completed `LayerCollectionIR` using a caller-owned shared
+    /// `ordered_entities` buffer (zero-clone fast path for finalization dispatch).
+    pub fn from_ir_shared(
+        ir: &slicer_ir::LayerCollectionIR,
+        ordered_entities: Arc<Vec<slicer_ir::PrintEntity>>,
+    ) -> Self {
         Self {
             layer_index: ir.global_layer_index,
             z: ir.z,
-            entity_count: ir.ordered_entities.len() as u32,
+            entity_count: ordered_entities.len() as u32,
             tool_changes: ir
                 .tool_changes
                 .iter()
                 .map(|t| (t.after_entity_index, t.from_tool, t.to_tool))
                 .collect(),
-            ordered_entities: Arc::new(ir.ordered_entities.clone()),
+            ordered_entities,
             z_hops: ir.z_hops.clone(),
         }
     }
@@ -2076,7 +2085,19 @@ impl HostExecutionContext {
         &mut self,
         ir: &slicer_ir::LayerCollectionIR,
     ) -> wasmtime::Result<Resource<finalization_types::LayerCollectionView>> {
-        let data = LayerCollectionViewData::from_ir(ir);
+        let ordered_entities = Arc::new(ir.ordered_entities.clone());
+        self.push_finalization_layer_view_shared(ir, ordered_entities)
+    }
+
+    /// Push one `LayerCollectionView` resource sharing a caller-owned
+    /// `Arc<Vec<PrintEntity>>` so finalization dispatch avoids deep-cloning
+    /// and dropping the full layer stack per module.
+    pub fn push_finalization_layer_view_shared(
+        &mut self,
+        ir: &slicer_ir::LayerCollectionIR,
+        ordered_entities: Arc<Vec<slicer_ir::PrintEntity>>,
+    ) -> wasmtime::Result<Resource<finalization_types::LayerCollectionView>> {
+        let data = LayerCollectionViewData::from_ir_shared(ir, ordered_entities);
         self.finalization_layer_snapshot
             .push((ir.global_layer_index, Arc::clone(&data.ordered_entities)));
         let rep = self.table.push(data)?;
@@ -5827,5 +5848,49 @@ mod tests {
             ),
             _ => panic!("expected ConfigValue::PercentVal(25.0)"),
         }
+    }
+
+    #[test]
+    fn layer_collection_view_data_from_ir_shared_restores_without_cloning() {
+        let mut layer = slicer_ir::LayerCollectionIR {
+            global_layer_index: 3,
+            z: 0.6,
+            // exhaustive: PrintEntity does not implement Default
+            ordered_entities: vec![slicer_ir::PrintEntity {
+                entity_id: 99,
+                // exhaustive: ExtrusionPath3D does not implement Default
+                path: slicer_ir::ExtrusionPath3D {
+                    points: Vec::new(),
+                    role: slicer_ir::ExtrusionRole::OuterWall,
+                    speed_factor: 1.0,
+                    tool_index: None,
+                    order_lock: None,
+                },
+                role: slicer_ir::ExtrusionRole::OuterWall,
+                tool_index: 0,
+                region_key: slicer_ir::RegionKey {
+                    global_layer_index: 3,
+                    object_id: "obj".to_string(),
+                    region_id: 1,
+                    variant_chain: Vec::new(),
+                },
+                topo_order: 0,
+            }],
+            ..Default::default()
+        };
+        let original_ptr = layer.ordered_entities.as_ptr();
+        let shared = Arc::new(std::mem::take(&mut layer.ordered_entities));
+        {
+            let mut ctx = HostExecutionContextBuilder::new("com.test.shared-view", 0.0, 0.2).build();
+            let _res = ctx
+                .push_finalization_layer_view_shared(&layer, Arc::clone(&shared))
+                .expect("push shared view");
+            assert_eq!(Arc::strong_count(&shared), 3);
+        }
+        let restored = Arc::try_unwrap(shared)
+            .expect("dropping host context must release all Arc clones for zero-clone restore");
+        assert_eq!(restored.as_ptr(), original_ptr);
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].entity_id, 99);
     }
 }

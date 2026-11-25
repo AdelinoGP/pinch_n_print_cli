@@ -694,8 +694,24 @@ impl FinalizationModule for SkirtBrim {
         output: &mut FinalizationOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
+        if !self.enabled || layers.is_empty() {
+            return Ok(());
+        }
+        let mut needed_layers = 0usize;
+        if self.brim_width > 0.0 {
+            needed_layers = needed_layers.max(1);
+        }
+        if self.skirt_loops > 0 && self.skirt_height > 0 {
+            needed_layers = needed_layers.max(self.skirt_height as usize);
+        }
+        if needed_layers == 0 {
+            return Ok(());
+        }
+        let needed_layers = needed_layers.min(layers.len());
+
         let snapshots: Vec<LayerSnapshot<'_>> = layers
             .iter()
+            .take(needed_layers)
             .map(|view| LayerSnapshot {
                 layer_index: view.layer_index(),
                 z: view.z(),

@@ -2194,63 +2194,23 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                         Err(e) => return Err(__slicer_error_out(e)),
                     };
 
-                    // ── Input deep copy ────────────────────────────
+                    // ── Lazy input view construction ─────────────
                     // Build one SDK `LayerCollectionView` per incoming
-                    // wit-bindgen resource handle by calling the typed
-                    // accessors (`layer-index`, `z`, `entity-count`,
-                    // `ordered-entities`, `tool-changes`, `z-hops`).
-                    // The SDK wrapper stores a full `LayerCollectionIR`,
-                    // so preserve the guest-visible completed-layer
-                    // content rather than synthesizing placeholder
-                    // entities.
+                    // wit-bindgen resource handle without eagerly pulling
+                    // `ordered_entities()` across WIT. Only layers whose
+                    // `ordered_entities()` is actually read by the module
+                    // cross the WIT boundary; any malformed region-id error
+                    // surfaced during lazy load is recorded and returned
+                    // fail-closed immediately after `run_finalization`.
+                    let lazy_parse_error: ::std::rc::Rc<
+                        ::std::cell::RefCell<::std::option::Option<ModuleError>>,
+                    > = ::std::rc::Rc::new(::std::cell::RefCell::new(::std::option::Option::None));
                     let mut sdk_layers: ::std::vec::Vec<::slicer_sdk::traits::LayerCollectionView> =
                         ::std::vec::Vec::with_capacity(layers.len());
-                    for wit_layer in layers.iter() {
-                        let mut ordered_entities: ::std::vec::Vec<::slicer_ir::PrintEntity> =
-                            ::std::vec::Vec::new();
-                        for entity in wit_layer.ordered_entities().into_iter() {
-                            let region_id = match __slicer_parse_region_id(&entity.region_key.region_id) {
-                                Ok(region_id) => region_id,
-                                Err(reason) => {
-                                    return Err(ModuleError {
-                                        code: 1,
-                                        message: format!(
-                                            "finalization input region '{}'/'{}' has invalid region-id: {}",
-                                            entity.region_key.object_id,
-                                            entity.region_key.region_id,
-                                            reason,
-                                        ),
-                                        fatal: true,
-                                    });
-                                }
-                            };
-
-                            ordered_entities.push(::slicer_ir::PrintEntity {
-                                entity_id: entity.entity_id,
-                                path: __slicer_path_wit_to_ir(&entity.path),
-                                role: __slicer_role_wit_to_ir(entity.role),
-                                tool_index: entity.tool_index,
-                                region_key: ::slicer_ir::RegionKey {
-                                    global_layer_index: entity.region_key.layer_index,
-                                    object_id: entity.region_key.object_id,
-                                    region_id,
-                                    // The finalization world deliberately keeps a
-                                    // local `region-key` record
-                                    // (`layer-finalization-types` in
-                                    // finalization-layer-finalization.wit) with no
-                                    // `variant-chain` field: the byte-identity
-                                    // contract that lets this mod alias the
-                                    // record without importing the
-                                    // `ir-handles` package forbids adding one,
-                                    // so the chain is genuinely out of scope
-                                    // at this boundary. The explicit empty
-                                    // chain is the exact identity of this
-                                    // chain-less source — never fabricate one.
-                                    variant_chain: Vec::new(),
-                                },
-                                topo_order: entity.topo_order,
-                            });
-                        }
+                    for wit_layer in layers.into_iter() {
+                        let layer_index = wit_layer.layer_index();
+                        let z = wit_layer.z();
+                        let entity_count = wit_layer.entity_count();
                         let tool_changes: ::std::vec::Vec<::slicer_ir::ToolChange> = wit_layer
                             .tool_changes()
                             .into_iter()
@@ -2268,26 +2228,64 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                                 hop_height: hop.hop_height,
                             })
                             .collect();
-                        let ir = ::slicer_ir::LayerCollectionIR {
-                            schema_version: ::slicer_ir::CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION,
-                            global_layer_index: wit_layer.layer_index(),
-                            z: wit_layer.z(),
-                            ordered_entities,
-                            support_entity_identities: ::std::vec::Vec::new(),
+                        let err_slot = ::std::rc::Rc::clone(&lazy_parse_error);
+                        sdk_layers.push(::slicer_sdk::traits::LayerCollectionView::new_lazy(
+                            layer_index,
+                            z,
+                            entity_count,
                             tool_changes,
                             z_hops,
-                            annotations: ::std::vec::Vec::new(),
-                            retracts: ::std::vec::Vec::new(),
-                            travel_moves: ::std::vec::Vec::new(),
-                            speed_profiles: ::std::vec::Vec::new(),
-                        };
-                        sdk_layers.push(::slicer_sdk::traits::LayerCollectionView::new(ir));
+                            move || {
+                                let raw_entities = wit_layer.ordered_entities();
+                                let mut ordered_entities: ::std::vec::Vec<::slicer_ir::PrintEntity> =
+                                    ::std::vec::Vec::with_capacity(raw_entities.len());
+                                for entity in raw_entities.into_iter() {
+                                    let region_id = match __slicer_parse_region_id(&entity.region_key.region_id) {
+                                        Ok(region_id) => region_id,
+                                        Err(reason) => {
+                                            let mut slot = err_slot.borrow_mut();
+                                            if slot.is_none() {
+                                                *slot = ::std::option::Option::Some(ModuleError {
+                                                    code: 1,
+                                                    message: format!(
+                                                        "finalization input region '{}'/'{}' has invalid region-id: {}",
+                                                        entity.region_key.object_id,
+                                                        entity.region_key.region_id,
+                                                        reason,
+                                                    ),
+                                                    fatal: true,
+                                                });
+                                            }
+                                            return ::std::vec::Vec::new();
+                                        }
+                                    };
+
+                                    ordered_entities.push(::slicer_ir::PrintEntity {
+                                        entity_id: entity.entity_id,
+                                        path: __slicer_path_wit_to_ir(&entity.path),
+                                        role: __slicer_role_wit_to_ir(entity.role),
+                                        tool_index: entity.tool_index,
+                                        region_key: ::slicer_ir::RegionKey {
+                                            global_layer_index: entity.region_key.layer_index,
+                                            object_id: entity.region_key.object_id,
+                                            region_id,
+                                            variant_chain: Vec::new(),
+                                        },
+                                        topo_order: entity.topo_order,
+                                    });
+                                }
+                                ordered_entities
+                            },
+                        ));
                     }
 
                     let mut sdk_output = ::slicer_sdk::traits::FinalizationOutputBuilder::new();
                     let out = <#self_ty as ::slicer_sdk::traits::FinalizationModule>::run_finalization(
                         &module, &sdk_layers, &mut sdk_output, &ir_config,
                     );
+                    if let ::std::option::Option::Some(parse_err) = lazy_parse_error.borrow_mut().take() {
+                        return Err(parse_err);
+                    }
 
                     // ── Output drain-back ──────────────────────────
                     // Every entity push / synthetic layer insert that

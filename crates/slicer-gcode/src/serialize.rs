@@ -891,9 +891,193 @@ impl GCodeSerializer for ThumbnailAwareSerializer {
     }
 }
 
+impl DefaultGCodeSerializer {
+    /// Minimum command count before chunk-parallel serialization engages.
+    const PARALLEL_THRESHOLD: usize = 16_384;
+    /// Coarse chunk size (commands/chunk) to amortize Rayon wakeup and keep CPU overhead negligible.
+    const PARALLEL_CHUNK_SIZE: usize = 32_768;
+
+    /// Compute the exact `e_accumulator` value at `commands[start]` in relative-E mode
+    /// by scanning backward to the nearest absolute-E anchor (`Move { e: Some(_) }` or
+    /// `Raw` `G92 E<val>`) and replaying any subsequent `Retract`/`Unretract` deltas in
+    /// original forward order so floating-point rounding is 0-ULP bit-identical to serial.
+    fn seed_e_accumulator(commands: &[GCodeCommand], start: usize) -> f64 {
+        let mut trailing_deltas: Vec<f64> = Vec::new();
+        let mut base = 0.0_f64;
+        for cmd in commands[..start].iter().rev() {
+            match cmd {
+                GCodeCommand::Move { e: Some(e_val), .. } => {
+                    base = *e_val as f64;
+                    break;
+                }
+                GCodeCommand::Retract {
+                    length,
+                    mode: slicer_ir::RetractMode::Gcode,
+                    ..
+                } => {
+                    trailing_deltas.push(-(*length as f64));
+                }
+                GCodeCommand::Unretract {
+                    length,
+                    mode: slicer_ir::RetractMode::Gcode,
+                    ..
+                } => {
+                    trailing_deltas.push(*length as f64);
+                }
+                GCodeCommand::Raw { text } => {
+                    if let Some(val) = parse_g92_e(text) {
+                        base = val;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut acc = base;
+        for delta in trailing_deltas.into_iter().rev() {
+            acc += delta;
+        }
+        acc
+    }
+
+    fn serialize_commands_chunk(
+        &self,
+        commands: &[GCodeCommand],
+        mut e_accumulator: f64,
+        output: &mut String,
+    ) {
+        for command in commands {
+            match command {
+                GCodeCommand::Move {
+                    x,
+                    y,
+                    z,
+                    e,
+                    f,
+                    role,
+                    ..
+                } => {
+                    let is_travel = matches!(role, ExtrusionRole::Custom(s) if s == "Travel");
+                    output.push_str(if is_travel { "G0" } else { "G1" });
+                    if let Some(x_val) = x {
+                        output.push_str(" X");
+                        push_fixed_trimmed(output, *x_val, self.gcode_xy_decimals);
+                    }
+                    if let Some(y_val) = y {
+                        output.push_str(" Y");
+                        push_fixed_trimmed(output, *y_val, self.gcode_xy_decimals);
+                    }
+                    if let Some(z_val) = z {
+                        output.push_str(" Z");
+                        push_fixed_trimmed(output, *z_val, self.gcode_xy_decimals);
+                    }
+                    if let Some(e_val) = e {
+                        output.push_str(" E");
+                        if self.relative {
+                            let abs_e = *e_val as f64;
+                            let delta = abs_e - e_accumulator;
+                            push_fixed_e5(output, delta);
+                            e_accumulator = abs_e;
+                        } else {
+                            push_fixed_e5_f32(output, *e_val);
+                        }
+                    }
+                    if let Some(f_val) = f {
+                        output.push_str(" F");
+                        push_fixed_trimmed(output, *f_val, 4);
+                    }
+                    output.push('\n');
+                }
+                GCodeCommand::Retract {
+                    length,
+                    speed,
+                    mode,
+                } => match mode {
+                    slicer_ir::RetractMode::Gcode => {
+                        output.push_str("G1 E-");
+                        if self.relative {
+                            push_fixed_e5_f32(output, *length);
+                            output.push_str(" F");
+                            push_fixed_trimmed(output, *speed, 4);
+                            output.push('\n');
+                            e_accumulator -= *length as f64;
+                        } else {
+                            push_fixed_trimmed(output, *length, 4);
+                            output.push_str(" F");
+                            push_fixed_trimmed(output, *speed, 4);
+                            output.push('\n');
+                        }
+                    }
+                    slicer_ir::RetractMode::Firmware => {
+                        output.push_str("G10\n");
+                    }
+                },
+                GCodeCommand::Unretract {
+                    length,
+                    speed,
+                    mode,
+                } => match mode {
+                    slicer_ir::RetractMode::Gcode => {
+                        output.push_str("G1 E");
+                        if self.relative {
+                            push_fixed_e5_f32(output, *length);
+                            output.push_str(" F");
+                            push_fixed_trimmed(output, *speed, 4);
+                            output.push('\n');
+                            e_accumulator += *length as f64;
+                        } else {
+                            push_fixed_trimmed(output, *length, 4);
+                            output.push_str(" F");
+                            push_fixed_trimmed(output, *speed, 4);
+                            output.push('\n');
+                        }
+                    }
+                    slicer_ir::RetractMode::Firmware => {
+                        output.push_str("G11\n");
+                    }
+                },
+                GCodeCommand::Raw { text } => {
+                    if self.relative {
+                        if let Some(val) = parse_g92_e(text) {
+                            e_accumulator = val;
+                        }
+                    }
+                    output.push_str(text);
+                    output.push('\n');
+                }
+                GCodeCommand::FanSpeed { value } => {
+                    output.push_str("M106 S");
+                    push_u64_digits(output, *value as u64);
+                    output.push('\n');
+                }
+                GCodeCommand::Temperature {
+                    tool,
+                    celsius,
+                    wait,
+                } => {
+                    output.push_str(&self.flavor.set_temperature(*tool, *celsius, *wait));
+                }
+                GCodeCommand::ToolChange { to, .. } => {
+                    output.push('T');
+                    push_u64_digits(output, *to as u64);
+                    output.push('\n');
+                }
+                GCodeCommand::Comment { text } => {
+                    output.push_str("; ");
+                    output.push_str(text);
+                    output.push('\n');
+                }
+                GCodeCommand::ExtrusionMode { absolute } => {
+                    output.push_str(if *absolute { "M82\n" } else { "M83\n" });
+                }
+            }
+        }
+    }
+}
+
 impl GCodeSerializer for DefaultGCodeSerializer {
     fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError> {
-        let mut output = String::new();
+        use rayon::prelude::*;
 
         // Compute max Z height (mm) from the GCodeIR commands.
         // Z fields in Move commands are already in mm (f32).
@@ -916,169 +1100,185 @@ impl GCodeSerializer for DefaultGCodeSerializer {
             self.max_z_height_floor_mm
         };
 
-        // Emit HEADER_BLOCK as the first thing in the file (AC-3 through AC-6,
-        // OrcaSlicer parity: GCode.cpp:2644-2704).
-        output.push_str(&serialize_header_block(
+        let header = serialize_header_block(
             gcode_ir.metadata.layer_count,
             self.filament_diameter_mm,
             self.filament_density_g_cm3,
             max_z_mm,
             &gcode_ir.metadata.filament_used_mm,
-        ));
-
-        // Emit extrusion-width comments immediately after HEADER_BLOCK_END (AC-7,
-        // packet 55 Step 4).
-        output.push_str(&serialize_width_comments(
+        );
+        let widths = serialize_width_comments(
             self.outer_wall_line_width,
             self.inner_wall_line_width,
             self.sparse_infill_line_width,
             self.top_surface_line_width,
             self.support_line_width,
-        ));
+        );
 
-        // e_accumulator tracks the absolute E position seen so far (from GCodeIR,
-        // which always stores absolute E values).  Only used in relative mode to
-        // compute per-move deltas.
-        let mut e_accumulator: f64 = 0.0;
+        let commands = &gcode_ir.commands;
+        if commands.len() < Self::PARALLEL_THRESHOLD {
+            let mut output = String::with_capacity(header.len() + widths.len() + commands.len() * 44);
+            output.push_str(&header);
+            output.push_str(&widths);
+            self.serialize_commands_chunk(commands, 0.0, &mut output);
+            return Ok(output);
+        }
 
-        // ExtrusionMode is now at index 0 of gcode_ir.commands (pushed by the emitter).
-        // The per-command renderer handles it — no special-case prepend needed here.
-        for command in gcode_ir.commands.iter() {
-            match command {
-                GCodeCommand::Move {
-                    x,
-                    y,
-                    z,
-                    e,
-                    f,
-                    role,
-                    ..
-                } => {
-                    // Emit G0 for travel moves (Custom("Travel") role), G1 for extrusion moves.
-                    let is_travel = matches!(role, ExtrusionRole::Custom(s) if s == "Travel");
-                    let cmd = if is_travel { "G0" } else { "G1" };
-                    write!(output, "{cmd}").unwrap();
-                    if let Some(x_val) = x {
-                        write!(output, " X{}", format_xyz(*x_val, self.gcode_xy_decimals)).unwrap();
-                    }
-                    if let Some(y_val) = y {
-                        write!(output, " Y{}", format_xyz(*y_val, self.gcode_xy_decimals)).unwrap();
-                    }
-                    if let Some(z_val) = z {
-                        write!(output, " Z{}", format_xyz(*z_val, self.gcode_xy_decimals)).unwrap();
-                    }
-                    if let Some(e_val) = e {
-                        if self.relative {
-                            let abs_e = *e_val as f64;
-                            let delta = abs_e - e_accumulator;
-                            write!(output, " E{:.5}", delta).unwrap();
-                            e_accumulator = abs_e;
-                        } else {
-                            write!(output, " E{:.5}", e_val).unwrap();
-                        }
-                    }
-                    if let Some(f_val) = f {
-                        write!(output, " F{}", format_coord(*f_val)).unwrap();
-                    }
-                    writeln!(output).unwrap();
-                }
-                GCodeCommand::Retract {
-                    length,
-                    speed,
-                    mode,
-                } => match mode {
-                    slicer_ir::RetractMode::Gcode => {
-                        // Retract is always a delta (negative E movement) regardless of mode,
-                        // because it represents a physical retraction amount.  In relative mode
-                        // the retract length IS the delta.  In absolute mode we subtract from
-                        // the accumulator and emit the new absolute position.
-                        if self.relative {
-                            writeln!(output, "G1 E-{:.5} F{}", length, format_coord(*speed))
-                                .unwrap();
-                            e_accumulator -= *length as f64;
-                        } else {
-                            writeln!(
-                                output,
-                                "G1 E-{} F{}",
-                                format_coord(*length),
-                                format_coord(*speed)
-                            )
-                            .unwrap();
-                        }
-                    }
-                    slicer_ir::RetractMode::Firmware => {
-                        writeln!(output, "G10").unwrap();
-                    }
-                },
-                GCodeCommand::Unretract {
-                    length,
-                    speed,
-                    mode,
-                } => match mode {
-                    slicer_ir::RetractMode::Gcode => {
-                        if self.relative {
-                            writeln!(output, "G1 E{:.5} F{}", length, format_coord(*speed))
-                                .unwrap();
-                            e_accumulator += *length as f64;
-                        } else {
-                            writeln!(
-                                output,
-                                "G1 E{} F{}",
-                                format_coord(*length),
-                                format_coord(*speed)
-                            )
-                            .unwrap();
-                        }
-                    }
-                    slicer_ir::RetractMode::Firmware => {
-                        writeln!(output, "G11").unwrap();
-                    }
-                },
-                // Raw commands: detect G92 E resets and sync the accumulator.
-                GCodeCommand::Raw { text } => {
-                    // Detect "G92 E0" (or "G92 E0.0" etc.) to reset accumulator.
-                    let trimmed = text.trim();
-                    if trimmed.starts_with("G92") {
-                        // Parse the E value from the G92 line (e.g. "G92 E0" → 0.0).
-                        if let Some(e_str) = trimmed
-                            .split_whitespace()
-                            .find(|tok| tok.starts_with('E') || tok.starts_with('e'))
-                        {
-                            if let Ok(val) = e_str[1..].parse::<f64>() {
-                                e_accumulator = val;
-                            }
-                        }
-                    }
-                    writeln!(output, "{}", text).unwrap();
-                }
-                GCodeCommand::FanSpeed { value } => {
-                    writeln!(output, "M106 S{}", value).unwrap();
-                }
-                GCodeCommand::Temperature {
-                    tool,
-                    celsius,
-                    wait,
-                } => {
-                    output.push_str(&self.flavor.set_temperature(*tool, *celsius, *wait));
-                }
-                GCodeCommand::ToolChange { to, .. } => {
-                    writeln!(output, "T{}", to).unwrap();
-                }
-                GCodeCommand::Comment { text } => {
-                    writeln!(output, "; {}", text).unwrap();
-                }
-                GCodeCommand::ExtrusionMode { absolute } => {
-                    if *absolute {
-                        writeln!(output, "M82").unwrap();
-                    } else {
-                        writeln!(output, "M83").unwrap();
-                    }
-                }
-            }
+        let chunk_starts: Vec<usize> = (0..commands.len())
+            .step_by(Self::PARALLEL_CHUNK_SIZE)
+            .collect();
+        let chunk_strings: Vec<String> = chunk_starts
+            .par_iter()
+            .map(|&start| {
+                let end = (start + Self::PARALLEL_CHUNK_SIZE).min(commands.len());
+                let seed = if self.relative && start > 0 {
+                    Self::seed_e_accumulator(commands, start)
+                } else {
+                    0.0
+                };
+                let mut buf = String::with_capacity((end - start) * 44);
+                self.serialize_commands_chunk(&commands[start..end], seed, &mut buf);
+                buf
+            })
+            .collect();
+
+        let total_len: usize =
+            header.len() + widths.len() + chunk_strings.iter().map(String::len).sum::<usize>();
+        let mut output = String::with_capacity(total_len);
+        output.push_str(&header);
+        output.push_str(&widths);
+        for chunk in chunk_strings {
+            output.push_str(&chunk);
         }
 
         Ok(output)
     }
+}
+
+#[inline]
+fn parse_g92_e(text: &str) -> Option<f64> {
+    let trimmed = text.trim();
+    if trimmed.starts_with("G92") {
+        let e_str = trimmed
+            .split_whitespace()
+            .find(|tok| tok.starts_with('E') || tok.starts_with('e'))?;
+        e_str[1..].parse::<f64>().ok()
+    } else {
+        None
+    }
+}
+
+#[inline]
+fn push_u64_digits(out: &mut String, mut n: u64) {
+    let mut buf = [0u8; 20];
+    let mut pos = buf.len();
+    loop {
+        pos -= 1;
+        buf[pos] = b'0' + (n % 10) as u8;
+        n /= 10;
+        if n == 0 {
+            break;
+        }
+    }
+    // SAFETY: `buf[pos..]` contains only ASCII digits `b'0'..=b'9'`.
+    out.push_str(std::str::from_utf8(&buf[pos..]).unwrap());
+}
+
+/// Zero-alloc fixed-decimal formatter with trailing-zero trimming, bit-identical to
+/// `format!("{:.*}", decimals as usize, value).trim_end_matches('0').trim_end_matches('.')`.
+/// Guards the IEEE-754 ties-to-even half-way boundary with `|frac - 0.5| > 1e-4` and falls
+/// back to `core::fmt` near ties, non-finite values, huge magnitudes, or `decimals > 6`.
+#[inline]
+pub(crate) fn push_fixed_trimmed(out: &mut String, value: f32, decimals: u32) {
+    if (1..=6).contains(&decimals) && value.is_finite() && value.abs() < 1e9 {
+        let scale_u64 = 10_u64.pow(decimals);
+        let v = value as f64;
+        let abs_scaled = v.abs() * (scale_u64 as f64);
+        let frac = abs_scaled.fract();
+        if (frac - 0.5).abs() > 1e-4 {
+            let rounded = abs_scaled.round() as u64;
+            if v.is_sign_negative() {
+                out.push('-');
+            }
+            push_u64_digits(out, rounded / scale_u64);
+            let mut frac_part = rounded % scale_u64;
+            if decimals > 0 && frac_part != 0 {
+                let mut fbuf = [b'0'; 6];
+                let d = decimals as usize;
+                for i in (0..d).rev() {
+                    fbuf[i] = b'0' + (frac_part % 10) as u8;
+                    frac_part /= 10;
+                }
+                let mut end = d;
+                while end > 0 && fbuf[end - 1] == b'0' {
+                    end -= 1;
+                }
+                out.push('.');
+                out.push_str(std::str::from_utf8(&fbuf[..end]).unwrap());
+            }
+            return;
+        }
+    }
+    let s = format!("{:.*}", decimals as usize, value);
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+    out.push_str(s);
+}
+
+/// Zero-alloc 5-decimal formatter for `f64` extrusion values, bit-identical to
+/// `write!(out, "{:.5}", value)`.
+#[inline]
+pub(crate) fn push_fixed_e5(out: &mut String, value: f64) {
+    if value.is_finite() && value.abs() < 1e9 {
+        const SCALE_U64: u64 = 100_000;
+        let abs_scaled = value.abs() * (SCALE_U64 as f64);
+        let frac = abs_scaled.fract();
+        if (frac - 0.5).abs() > 1e-4 {
+            let rounded = abs_scaled.round() as u64;
+            if value.is_sign_negative() {
+                out.push('-');
+            }
+            push_u64_digits(out, rounded / SCALE_U64);
+            let mut frac_part = rounded % SCALE_U64;
+            let mut fbuf = [b'0'; 5];
+            for i in (0..5).rev() {
+                fbuf[i] = b'0' + (frac_part % 10) as u8;
+                frac_part /= 10;
+            }
+            out.push('.');
+            out.push_str(std::str::from_utf8(&fbuf).unwrap());
+            return;
+        }
+    }
+    write!(out, "{:.5}", value).unwrap();
+}
+
+/// Zero-alloc 5-decimal formatter for `f32` extrusion values, bit-identical to
+/// `write!(out, "{:.5}", value)`.
+#[inline]
+fn push_fixed_e5_f32(out: &mut String, value: f32) {
+    if value.is_finite() && value.abs() < 1e9 {
+        const SCALE_U64: u64 = 100_000;
+        let v = value as f64;
+        let abs_scaled = v.abs() * (SCALE_U64 as f64);
+        let frac = abs_scaled.fract();
+        if (frac - 0.5).abs() > 1e-4 {
+            let rounded = abs_scaled.round() as u64;
+            if v.is_sign_negative() {
+                out.push('-');
+            }
+            push_u64_digits(out, rounded / SCALE_U64);
+            let mut frac_part = rounded % SCALE_U64;
+            let mut fbuf = [b'0'; 5];
+            for i in (0..5).rev() {
+                fbuf[i] = b'0' + (frac_part % 10) as u8;
+                frac_part /= 10;
+            }
+            out.push('.');
+            out.push_str(std::str::from_utf8(&fbuf).unwrap());
+            return;
+        }
+    }
+    write!(out, "{:.5}", value).unwrap();
 }
 
 /// Format a coordinate value, trimming unnecessary trailing zeros.
@@ -1604,5 +1804,131 @@ mod tests {
             "Classic"
         );
         assert_eq!(translate_appendix_enum("wall_direction", "ccw"), "ccw");
+    }
+
+    #[test]
+    fn push_fixed_trimmed_matches_format_xyz_and_coord_across_boundaries() {
+        let samples: [f32; 22] = [
+            0.0,
+            -0.0,
+            -0.0001,
+            0.0001,
+            0.0005,
+            0.0015,
+            0.0025,
+            -0.0005,
+            -0.0015,
+            0.1234,
+            1.5,
+            12.345,
+            12.3455,
+            12.3465,
+            -128.9999,
+            1000.0,
+            999_999.94,
+            1.23e9,
+            -1.23e9,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::NAN,
+        ];
+        for decimals in [0u32, 2, 3, 4, 5] {
+            for &v in &samples {
+                let mut got = String::new();
+                push_fixed_trimmed(&mut got, v, decimals);
+                let expected = format_xyz(v, decimals);
+                assert_eq!(
+                    got, expected,
+                    "push_fixed_trimmed mismatch for v={v:?}, decimals={decimals}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn push_fixed_e5_matches_std_format_across_boundaries() {
+        let samples: [f64; 18] = [
+            0.0,
+            -0.0,
+            -0.000001,
+            0.000005,
+            0.000015,
+            0.000025,
+            -0.000005,
+            -0.000015,
+            0.123456,
+            1.0,
+            123.456789,
+            -98765.43210,
+            999_999.999_99,
+            1.5e9,
+            -1.5e9,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NAN,
+        ];
+        for &v in &samples {
+            let mut got = String::new();
+            push_fixed_e5(&mut got, v);
+            let expected = format!("{:.5}", v);
+            assert_eq!(got, expected, "push_fixed_e5 mismatch for v={v:?}");
+        }
+    }
+
+    #[test]
+    fn parallel_serialize_gcode_is_byte_identical_to_serial_across_g92_and_retracts() {
+        let mut commands = Vec::with_capacity(DefaultGCodeSerializer::PARALLEL_CHUNK_SIZE * 2 + 64);
+        commands.push(GCodeCommand::ExtrusionMode { absolute: false });
+        let mut e_abs = 0.0_f32;
+        for i in 0..(DefaultGCodeSerializer::PARALLEL_CHUNK_SIZE * 2 + 32) {
+            if i == DefaultGCodeSerializer::PARALLEL_CHUNK_SIZE - 2 {
+                commands.push(GCodeCommand::Retract {
+                    length: 0.8,
+                    speed: 2400.0,
+                    mode: slicer_ir::RetractMode::Gcode,
+                });
+            } else if i == DefaultGCodeSerializer::PARALLEL_CHUNK_SIZE - 1 {
+                commands.push(GCodeCommand::Unretract {
+                    length: 0.8,
+                    speed: 2400.0,
+                    mode: slicer_ir::RetractMode::Gcode,
+                });
+            } else if i == DefaultGCodeSerializer::PARALLEL_CHUNK_SIZE + 5 {
+                commands.push(GCodeCommand::Raw {
+                    text: "G92 E0".to_string(),
+                });
+                e_abs = 0.0;
+            }
+            e_abs += 0.03125;
+            commands.push(GCodeCommand::Move {
+                x: Some((i % 200) as f32 * 0.5),
+                y: Some((i / 200) as f32 * 0.25),
+                z: Some(0.2),
+                e: Some(e_abs),
+                f: Some(3600.0),
+                role: ExtrusionRole::OuterWall,
+            });
+        }
+
+        let ir = GCodeIR {
+            commands,
+            ..Default::default()
+        };
+
+        for relative in [true, false] {
+            let ser = DefaultGCodeSerializer::with_extrusion_mode(relative);
+            let parallel = ser.serialize_gcode(&ir).expect("parallel serialize");
+            let mut serial_body = String::new();
+            ser.serialize_commands_chunk(&ir.commands, 0.0, &mut serial_body);
+            let header_end = parallel
+                .find("; support_line_width = ")
+                .and_then(|p| parallel[p..].find('\n').map(|nl| p + nl + 1))
+                .expect("header/widths present");
+            assert_eq!(
+                &parallel[header_end..],
+                serial_body.as_str(),
+                "parallel vs serial mismatch for relative={relative}"
+            );
+        }
     }
 }

@@ -3600,6 +3600,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "log",
+ "rayon",
  "slicer-helpers",
  "slicer-ir",
  "slicer-sdk",

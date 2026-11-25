@@ -814,46 +814,128 @@ pub trait PostpassModule: Sized {
 ///     z-hops: func() -> list<z-hop-view>;
 /// }
 /// ```
-#[derive(Debug, Clone)]
+type OrderedEntitiesLoader = std::rc::Rc<dyn Fn() -> Vec<slicer_ir::PrintEntity>>;
+
+/// Read-only view of a finalized layer collection passed to `FinalizationModule::run_finalization`.
+///
+/// Metadata (`layer_index`, `z`, `entity_count`, `tool_changes`, `z_hops`) is
+/// immediately available; `ordered_entities()` may be backed by a lazy `OnceCell`
+/// loader so modules that skip layers never cross the WIT boundary for unused payloads.
 pub struct LayerCollectionView {
-    layer: LayerCollectionIR,
+    layer_index: u32,
+    z: f32,
+    entity_count: u32,
+    tool_changes: Vec<slicer_ir::ToolChange>,
+    z_hops: Vec<slicer_ir::ZHop>,
+    ordered_entities: std::cell::OnceCell<Vec<slicer_ir::PrintEntity>>,
+    ordered_entities_loader: Option<OrderedEntitiesLoader>,
+}
+
+impl std::fmt::Debug for LayerCollectionView {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LayerCollectionView")
+            .field("layer_index", &self.layer_index)
+            .field("z", &self.z)
+            .field("entity_count", &self.entity_count)
+            .field("tool_changes", &self.tool_changes)
+            .field("z_hops", &self.z_hops)
+            .field("ordered_entities_loaded", &self.ordered_entities.get().is_some())
+            .finish()
+    }
+}
+
+impl Clone for LayerCollectionView {
+    fn clone(&self) -> Self {
+        let ordered_entities = match self.ordered_entities.get() {
+            Some(entities) => std::cell::OnceCell::from(entities.clone()),
+            None => std::cell::OnceCell::new(),
+        };
+        Self {
+            layer_index: self.layer_index,
+            z: self.z,
+            entity_count: self.entity_count,
+            tool_changes: self.tool_changes.clone(),
+            z_hops: self.z_hops.clone(),
+            ordered_entities,
+            ordered_entities_loader: self.ordered_entities_loader.clone(),
+        }
+    }
 }
 
 impl LayerCollectionView {
-    /// Create a new LayerCollectionView wrapping a completed layer.
+    /// Create a new LayerCollectionView wrapping a completed layer eagerly.
     #[doc(hidden)]
     pub fn new(layer: LayerCollectionIR) -> Self {
-        Self { layer }
+        let entity_count = layer.ordered_entities.len() as u32;
+        Self {
+            layer_index: layer.global_layer_index,
+            z: layer.z,
+            entity_count,
+            tool_changes: layer.tool_changes,
+            z_hops: layer.z_hops,
+            ordered_entities: std::cell::OnceCell::from(layer.ordered_entities),
+            ordered_entities_loader: None,
+        }
+    }
+
+    /// Create a new LayerCollectionView whose `ordered_entities()` payload is
+    /// materialized lazily on first access via `loader` and cached in a `OnceCell`.
+    #[doc(hidden)]
+    pub fn new_lazy<F>(
+        layer_index: u32,
+        z: f32,
+        entity_count: u32,
+        tool_changes: Vec<slicer_ir::ToolChange>,
+        z_hops: Vec<slicer_ir::ZHop>,
+        loader: F,
+    ) -> Self
+    where
+        F: Fn() -> Vec<slicer_ir::PrintEntity> + 'static,
+    {
+        Self {
+            layer_index,
+            z,
+            entity_count,
+            tool_changes,
+            z_hops,
+            ordered_entities: std::cell::OnceCell::new(),
+            ordered_entities_loader: Some(std::rc::Rc::new(loader)),
+        }
     }
 
     /// Returns the global layer index.
     pub fn layer_index(&self) -> u32 {
-        self.layer.global_layer_index
+        self.layer_index
     }
 
     /// Returns the Z height of this layer.
     pub fn z(&self) -> f32 {
-        self.layer.z
+        self.z
     }
 
     /// Returns the number of extrusion entities in this layer.
     pub fn entity_count(&self) -> u32 {
-        self.layer.ordered_entities.len() as u32
+        self.entity_count
     }
 
     /// Returns tool changes in this layer as (after_entity_index, from_tool, to_tool).
     pub fn tool_changes(&self) -> &[slicer_ir::ToolChange] {
-        &self.layer.tool_changes
+        &self.tool_changes
     }
 
     /// Returns the ordered extrusion entities in this layer.
     pub fn ordered_entities(&self) -> &[slicer_ir::PrintEntity] {
-        &self.layer.ordered_entities
+        self.ordered_entities
+            .get_or_init(|| match &self.ordered_entities_loader {
+                Some(loader) => loader(),
+                None => Vec::new(),
+            })
+            .as_slice()
     }
 
     /// Returns the Z hops in this layer.
     pub fn z_hops(&self) -> &[slicer_ir::ZHop] {
-        &self.layer.z_hops
+        &self.z_hops
     }
 }
 
@@ -2147,6 +2229,67 @@ mod paint_policy_tests {
         assert_eq!(
             view.paint_policy_for(&probe),
             SupportPaintPolicy::DefaultEligible
+        );
+    }
+
+    #[test]
+    fn layer_collection_view_new_lazy_loads_once_on_first_entities_access() {
+        let calls = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let calls_clone = std::rc::Rc::clone(&calls);
+        let view = LayerCollectionView::new_lazy(
+            7,
+            1.4,
+            2,
+            Vec::new(),
+            Vec::new(),
+            move || {
+                calls_clone.set(calls_clone.get() + 1);
+                // exhaustive: PrintEntity does not implement Default
+                vec![slicer_ir::PrintEntity {
+                    entity_id: 42,
+                    // exhaustive: ExtrusionPath3D does not implement Default
+                    path: slicer_ir::ExtrusionPath3D {
+                        points: Vec::new(),
+                        role: slicer_ir::ExtrusionRole::OuterWall,
+                        speed_factor: 1.0,
+                        tool_index: None,
+                        order_lock: None,
+                    },
+                    role: slicer_ir::ExtrusionRole::OuterWall,
+                    tool_index: 0,
+                    region_key: slicer_ir::RegionKey {
+                        global_layer_index: 7,
+                        object_id: "obj".to_string(),
+                        region_id: 1,
+                        variant_chain: Vec::new(),
+                    },
+                    topo_order: 0,
+                }]
+            },
+        );
+
+        assert_eq!(view.layer_index(), 7);
+        assert!((view.z() - 1.4).abs() < f32::EPSILON);
+        assert_eq!(view.entity_count(), 2);
+        assert!(view.tool_changes().is_empty());
+        assert!(view.z_hops().is_empty());
+        assert_eq!(
+            calls.get(),
+            0,
+            "metadata reads must not trigger ordered_entities loader"
+        );
+
+        let first = view.ordered_entities();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].entity_id, 42);
+        assert_eq!(calls.get(), 1);
+
+        let second = view.ordered_entities();
+        assert_eq!(second.len(), 1);
+        assert_eq!(
+            calls.get(),
+            1,
+            "OnceCell must cache ordered_entities across repeated reads"
         );
     }
 }
