@@ -4816,6 +4816,14 @@ mod shared_target_tests {
     /// may be ordinary, and before this was flattened the mixed spelling made
     /// `strip_prefix` fail and leaked an absolute path into the hash - which
     /// turned every guest stale when the root changed spelling.
+    //
+    // Windows-only: the fixtures use `D:\`-style paths and rely on
+    // `strip_prefix` treating `\` as a separator, which holds only on Windows.
+    // On Unix those strings are single path components, so `strip_prefix` can
+    // never match and the assertion cannot hold. Real Unix inputs use `/` and
+    // need no verbatim flattening; `relative_input_path_strips_native_workspace_root`
+    // below keeps that path covered on every platform.
+    #[cfg(windows)]
     #[test]
     fn relative_input_path_is_spelling_independent() {
         let verbatim_root = Path::new(r"\\?\D:\ws");
@@ -4838,6 +4846,19 @@ mod shared_target_tests {
             relative_input_path(normal_root, Path::new(r"C:\other\x.rs")),
             "C:/other/x.rs",
             "a path outside the root keeps its flattened absolute spelling"
+        );
+    }
+
+    /// Cross-platform counterpart to the Windows-only spelling test above. The
+    /// helper's real inputs use native separators, so a `/`-separated path must
+    /// strip the workspace root on every OS. This keeps Linux CI (whose `test`
+    /// job runs `cargo test -p xtask` on ubuntu) exercising `relative_input_path`.
+    #[test]
+    fn relative_input_path_strips_native_workspace_root() {
+        assert_eq!(
+            relative_input_path(Path::new("/ws"), Path::new("/ws/modules/x/src/lib.rs")),
+            "modules/x/src/lib.rs",
+            "a native `/`-separated path must strip the workspace root"
         );
     }
 
