@@ -1,0 +1,44 @@
+{
+ "ticket": 193,
+ "cell": "benchy-classic-on",
+ "generated_by": "reduce_attribution_t193.py",
+ "raw_sources": {
+  "instrument_stream": "target/t193-attr/instrument.stderr.jsonl",
+  "profile_stream": "target/t193-attr/profile.stderr.log",
+  "gcode": "target/t193-attr/benchy-classic-on.gcode"
+ },
+ "instrumented": {
+  "elapsed_ms": 2547,
+  "phases_ms": {
+   "validation": 3,
+   "prepass": 1629,
+   "per_layer": 563,
+   "postpass": 272
+  },
+  "outside_brackets_ms": 80,
+  "postpass_stages_ms": {
+   "PostPass::LayerFinalization": 82,
+   "PostPass::GCodeEmit": 45,
+   "PostPass::GCodePostProcess": 127,
+   "PostPass::GCodeSerialize": 14
+  }
+ },
+ "profile": {
+  "fuel_total": 17998173710,
+  "wall_total_ns": 6387801700,
+  "module_fuel": {
+   "com.core.part-cooling": 143211608,
+   "com.core.machine-gcode-emit": 218641791,
+   "com.core.classic-perimeters": 7830369933,
+   "com.core.infill-linker": 2668231539,
+   "com.core.tree-support": 1500227658
+  }
+ },
+ "output": {
+  "sha256_of_gcode": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+  "reference_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+  "bytes": 8544099,
+  "reference_bytes": 8544099,
+  "matches_reference": true
+ }
+}

@@ -1,0 +1,2517 @@
+{
+ "ticket": 193,
+ "window": "quiet",
+ "batch_id": "t193-closing-board",
+ "generated_by": "reduce_t193.py",
+ "question": "Final single-HEAD n>=4 matched-pair board against OrcaSlicer 2.5.1: does pnp-ordinary beat Orca in all 8 cells and close the perf-vs-orca map?",
+ "window_utc": {
+  "first_row_completed": "2026-11-25T03:40:46.165Z",
+  "last_row_completed": "2026-11-25T03:58:49.176Z"
+ },
+ "raw_sources": {
+  "campaign_csv": "target/matched-pair/t193-closing-board/scoreboard-rows.csv",
+  "load_samples": "docs/specs/perf-vs-orca/evidence/t193-closing-scoreboard/reduced/load-samples.csv"
+ },
+ "currency_artifact": "docs/specs/perf-vs-orca/evidence/t182-spatial-hierarchical-phase3-union/reference.json",
+ "identities": {
+  "git_head": "97b2474da202f8728c63e23df00dfa08fba6fd18",
+  "last_code_commit": "e7b3c68e93da717481d21290b0df4818b34d11d8",
+  "ordinary_guests_check_exit": 0,
+  "accelerated_guests_check_exit": 0,
+  "orca": {
+   "version": "2.5.1",
+   "vendor_profile_version": "02.08.00.16",
+   "exe_path": "C:/Program Files/OrcaSlicer/orca-slicer.exe",
+   "exe_bytes": 292160,
+   "exe_mtime": "2026-11-13T23:59:44-03:00",
+   "exe_sha256": "5013b1bdeb52a097e1fe2357178342461cf56cc5dccd58479ccd3999f997853c",
+   "support_style_pin": "tree_strong"
+  },
+  "pnp-ordinary": {
+   "exe_path": "target/release/pnp_cli.exe",
+   "exe_sha256": "cc8a2a94a389b7665db4e894b3ba47d873992fcfa3ac767b237175bd13a13319",
+   "module_dir": "modules/core-modules",
+   "module_count": 24,
+   "wasm_tree_sha256": "2371167c710761a29fb95247bc8f1945337bbff073e27187513763b8c2d81829"
+  },
+  "pnp-accelerated": {
+   "exe_path": "target/dist-accelerated/developer/pnp_cli.exe",
+   "exe_sha256": "eec2a2ad15cc21ad5b5735c2fcd5b51835bb48c498dcf8db3f049cab7b3a2a65",
+   "module_dir": "target/dist-accelerated/developer/modules",
+   "module_count": 24,
+   "wasm_tree_sha256": "7197a518ce7f3306c11fcce789980bea4d157c4d1fd335bb79a26aba16bcc52d"
+  }
+ },
+ "protocol": {
+  "cells": 8,
+  "tools": [
+   "orca",
+   "pnp-ordinary",
+   "pnp-accelerated"
+  ],
+  "runs_per_cell_tool": 4,
+  "warmups_per_cell_tool": 1,
+  "retained_runs_min": 4,
+  "threads": 12,
+  "interleaved": true,
+  "measured_rows": 96,
+  "warmup_rows": 24,
+  "warmup_rows_dropped_aborted_launch": 1
+ },
+ "cells": {
+  "benchy-classic-off": {
+   "fixture": "benchy",
+   "generator": "classic",
+   "supports": "off",
+   "orca": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     1.8209,
+     1.8393,
+     1.8724,
+     1.8449
+    ],
+    "cpu_s": [
+     6.4219,
+     6.1406,
+     5.7188,
+     5.8125
+    ],
+    "cpu_wall_ratio": [
+     3.5269,
+     3.3386,
+     3.0542,
+     3.1506
+    ],
+    "retained_wall_s": [
+     1.8209,
+     1.8393,
+     1.8724,
+     1.8449
+    ],
+    "retained_cpu_s": [
+     6.4219,
+     6.1406,
+     5.7188,
+     5.8125
+    ],
+    "wall_median_s": 1.8421,
+    "cpu_median_s": 5.9765,
+    "cpu_wall_ratio_median": 3.2446,
+    "wall_median_all_s": 1.8421,
+    "cpu_median_all_s": 5.9765,
+    "wall_spread_pct": 2.8,
+    "cpu_spread_pct": 11.76,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     1.5865,
+     1.6122,
+     1.5897,
+     1.6575
+    ],
+    "cpu_s": [
+     7.5312,
+     7.5312,
+     7.625,
+     7.4688
+    ],
+    "cpu_wall_ratio": [
+     4.747,
+     4.6715,
+     4.7964,
+     4.5061
+    ],
+    "retained_wall_s": [
+     1.5865,
+     1.6122,
+     1.5897,
+     1.6575
+    ],
+    "retained_cpu_s": [
+     7.5312,
+     7.5312,
+     7.625,
+     7.4688
+    ],
+    "wall_median_s": 1.601,
+    "cpu_median_s": 7.5312,
+    "cpu_wall_ratio_median": 4.7092,
+    "wall_median_all_s": 1.601,
+    "cpu_median_all_s": 7.5312,
+    "wall_spread_pct": 4.43,
+    "cpu_spread_pct": 2.07,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     1.6066,
+     1.6161,
+     1.674,
+     1.6622
+    ],
+    "cpu_s": [
+     7.3281,
+     7.3438,
+     7.6562,
+     7.3125
+    ],
+    "cpu_wall_ratio": [
+     4.5612,
+     4.544,
+     4.5737,
+     4.3992
+    ],
+    "retained_wall_s": [
+     1.6066,
+     1.6161,
+     1.674,
+     1.6622
+    ],
+    "retained_cpu_s": [
+     7.3281,
+     7.3438,
+     7.6562,
+     7.3125
+    ],
+    "wall_median_s": 1.6391,
+    "cpu_median_s": 7.336,
+    "cpu_wall_ratio_median": 4.5526,
+    "wall_median_all_s": 1.6391,
+    "cpu_median_all_s": 7.336,
+    "wall_spread_pct": 4.11,
+    "cpu_spread_pct": 4.69,
+    "starved_indices_075": []
+   },
+   "ratio_ordinary_over_orca": 0.8691,
+   "cpu_ratio_ordinary_over_orca": 1.2601,
+   "required_cut_ordinary_pct": -15.06,
+   "margin_vs_t192_estimate_pct": 6.16,
+   "wall_win_ordinary": true,
+   "strict_separation_ordinary": true,
+   "retained_runs_ok_ordinary": true,
+   "cpu_corroborates_ordinary": false,
+   "margin_tier_ordinary": "close",
+   "ratio_accelerated_over_orca": 0.8898,
+   "cpu_ratio_accelerated_over_orca": 1.2275,
+   "required_cut_accelerated_pct": -12.38,
+   "margin_vs_t192_estimate_accelerated_pct": 3.23,
+   "wall_win_accelerated": true,
+   "strict_separation_accelerated": true,
+   "retained_runs_ok_accelerated": true,
+   "cpu_corroborates_accelerated": false,
+   "margin_tier_accelerated": "close",
+   "accel_vs_ordinary_wall_pct": 2.38,
+   "accel_vs_ordinary_cpu_pct": -2.59,
+   "t192_route_estimate_ordinary": 0.8187,
+   "t192_route_estimate_accelerated": 0.862,
+   "t174_ratio_ordinary": 1.1438,
+   "t174_ratio_accelerated": 1.1179,
+   "identity_ordinary": true,
+   "hash_ordinary": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+   "gcode_bytes_ordinary": 4077945,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+   "gcode_bytes_accelerated": 4077945,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+   "reference_bytes": 4077945,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "default",
+     "resolved": [
+      "default"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    4077463
+   ],
+   "cpu_integrity_guard": true,
+   "cpu_integrity_guard_accelerated": true,
+   "destination_win_ordinary": true,
+   "destination_win_accelerated": true,
+   "closing_cell_pass_ordinary": true,
+   "closing_cell_pass_accelerated": true
+  },
+  "benchy-classic-on": {
+   "fixture": "benchy",
+   "generator": "classic",
+   "supports": "on",
+   "orca": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     2.4884,
+     2.5978,
+     2.5408,
+     2.5333
+    ],
+    "cpu_s": [
+     9.7656,
+     10.5312,
+     10.7188,
+     10.7656
+    ],
+    "cpu_wall_ratio": [
+     3.9244,
+     4.0539,
+     4.2186,
+     4.2496
+    ],
+    "retained_wall_s": [
+     2.4884,
+     2.5978,
+     2.5408,
+     2.5333
+    ],
+    "retained_cpu_s": [
+     9.7656,
+     10.5312,
+     10.7188,
+     10.7656
+    ],
+    "wall_median_s": 2.537,
+    "cpu_median_s": 10.625,
+    "cpu_wall_ratio_median": 4.1363,
+    "wall_median_all_s": 2.537,
+    "cpu_median_all_s": 10.625,
+    "wall_spread_pct": 4.31,
+    "cpu_spread_pct": 9.41,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     2.407,
+     2.3663,
+     2.4913,
+     2.4876
+    ],
+    "cpu_s": [
+     10.3594,
+     10.7812,
+     11.2344,
+     11.0156
+    ],
+    "cpu_wall_ratio": [
+     4.3038,
+     4.5561,
+     4.5094,
+     4.4281
+    ],
+    "retained_wall_s": [
+     2.407,
+     2.3663,
+     2.4913,
+     2.4876
+    ],
+    "retained_cpu_s": [
+     10.3594,
+     10.7812,
+     11.2344,
+     11.0156
+    ],
+    "wall_median_s": 2.4473,
+    "cpu_median_s": 10.8984,
+    "cpu_wall_ratio_median": 4.4688,
+    "wall_median_all_s": 2.4473,
+    "cpu_median_all_s": 10.8984,
+    "wall_spread_pct": 5.11,
+    "cpu_spread_pct": 8.03,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     2.3711,
+     2.3215,
+     2.3289,
+     2.3301
+    ],
+    "cpu_s": [
+     11.125,
+     11.1719,
+     10.8594,
+     10.5781
+    ],
+    "cpu_wall_ratio": [
+     4.692,
+     4.8122,
+     4.6628,
+     4.5399
+    ],
+    "retained_wall_s": [
+     2.3711,
+     2.3215,
+     2.3289,
+     2.3301
+    ],
+    "retained_cpu_s": [
+     11.125,
+     11.1719,
+     10.8594,
+     10.5781
+    ],
+    "wall_median_s": 2.3295,
+    "cpu_median_s": 10.9922,
+    "cpu_wall_ratio_median": 4.6774,
+    "wall_median_all_s": 2.3295,
+    "cpu_median_all_s": 10.9922,
+    "wall_spread_pct": 2.13,
+    "cpu_spread_pct": 5.4,
+    "starved_indices_075": []
+   },
+   "ratio_ordinary_over_orca": 0.9646,
+   "cpu_ratio_ordinary_over_orca": 1.0257,
+   "required_cut_ordinary_pct": -3.67,
+   "margin_vs_t192_estimate_pct": 5.41,
+   "wall_win_ordinary": true,
+   "strict_separation_ordinary": false,
+   "retained_runs_ok_ordinary": true,
+   "cpu_corroborates_ordinary": false,
+   "margin_tier_ordinary": "close",
+   "ratio_accelerated_over_orca": 0.9182,
+   "cpu_ratio_accelerated_over_orca": 1.0346,
+   "required_cut_accelerated_pct": -8.91,
+   "margin_vs_t192_estimate_accelerated_pct": 6.84,
+   "wall_win_accelerated": true,
+   "strict_separation_accelerated": true,
+   "retained_runs_ok_accelerated": true,
+   "cpu_corroborates_accelerated": false,
+   "margin_tier_accelerated": "close",
+   "accel_vs_ordinary_wall_pct": -4.81,
+   "accel_vs_ordinary_cpu_pct": 0.86,
+   "t192_route_estimate_ordinary": 0.9151,
+   "t192_route_estimate_accelerated": 0.8594,
+   "t174_ratio_ordinary": 1.8704,
+   "t174_ratio_accelerated": 1.9162,
+   "identity_ordinary": true,
+   "hash_ordinary": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+   "gcode_bytes_ordinary": 8544099,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+   "gcode_bytes_accelerated": 8544099,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+   "reference_bytes": 8544099,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "tree_strong",
+     "resolved": [
+      "tree_strong"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    9564191
+   ],
+   "cpu_integrity_guard": true,
+   "cpu_integrity_guard_accelerated": true,
+   "destination_win_ordinary": true,
+   "destination_win_accelerated": true,
+   "closing_cell_pass_ordinary": false,
+   "closing_cell_pass_accelerated": true
+  },
+  "benchy-arachne-off": {
+   "fixture": "benchy",
+   "generator": "arachne",
+   "supports": "off",
+   "orca": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     1.9627,
+     2.0643,
+     2.0522,
+     2.6703
+    ],
+    "cpu_s": [
+     7.5156,
+     7.4844,
+     7.7969,
+     8.2969
+    ],
+    "cpu_wall_ratio": [
+     3.8292,
+     3.6256,
+     3.7993,
+     3.1071
+    ],
+    "retained_wall_s": [
+     1.9627,
+     2.0643,
+     2.0522,
+     2.6703
+    ],
+    "retained_cpu_s": [
+     7.5156,
+     7.4844,
+     7.7969,
+     8.2969
+    ],
+    "wall_median_s": 2.0583,
+    "cpu_median_s": 7.6562,
+    "cpu_wall_ratio_median": 3.7125,
+    "wall_median_all_s": 2.0583,
+    "cpu_median_all_s": 7.6562,
+    "wall_spread_pct": 34.38,
+    "cpu_spread_pct": 10.61,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     1.6759,
+     1.7932,
+     1.7797,
+     1.7859
+    ],
+    "cpu_s": [
+     8.1719,
+     8.5312,
+     8.3906,
+     8.8438
+    ],
+    "cpu_wall_ratio": [
+     4.8762,
+     4.7577,
+     4.7146,
+     4.9521
+    ],
+    "retained_wall_s": [
+     1.6759,
+     1.7932,
+     1.7797,
+     1.7859
+    ],
+    "retained_cpu_s": [
+     8.1719,
+     8.5312,
+     8.3906,
+     8.8438
+    ],
+    "wall_median_s": 1.7828,
+    "cpu_median_s": 8.4609,
+    "cpu_wall_ratio_median": 4.817,
+    "wall_median_all_s": 1.7828,
+    "cpu_median_all_s": 8.4609,
+    "wall_spread_pct": 6.58,
+    "cpu_spread_pct": 7.94,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     1.7489,
+     1.9112,
+     1.7261,
+     1.7101
+    ],
+    "cpu_s": [
+     8.4062,
+     8.4531,
+     8.7969,
+     8.6094
+    ],
+    "cpu_wall_ratio": [
+     4.8066,
+     4.4229,
+     5.0964,
+     5.0345
+    ],
+    "retained_wall_s": [
+     1.7489,
+     1.9112,
+     1.7261,
+     1.7101
+    ],
+    "retained_cpu_s": [
+     8.4062,
+     8.4531,
+     8.7969,
+     8.6094
+    ],
+    "wall_median_s": 1.7375,
+    "cpu_median_s": 8.5312,
+    "cpu_wall_ratio_median": 4.9206,
+    "wall_median_all_s": 1.7375,
+    "cpu_median_all_s": 8.5312,
+    "wall_spread_pct": 11.57,
+    "cpu_spread_pct": 4.58,
+    "starved_indices_075": []
+   },
+   "ratio_ordinary_over_orca": 0.8662,
+   "cpu_ratio_ordinary_over_orca": 1.1051,
+   "required_cut_ordinary_pct": -15.45,
+   "margin_vs_t192_estimate_pct": 4.66,
+   "wall_win_ordinary": true,
+   "strict_separation_ordinary": true,
+   "retained_runs_ok_ordinary": true,
+   "cpu_corroborates_ordinary": false,
+   "margin_tier_ordinary": "close",
+   "ratio_accelerated_over_orca": 0.8441,
+   "cpu_ratio_accelerated_over_orca": 1.1143,
+   "required_cut_accelerated_pct": -18.46,
+   "margin_vs_t192_estimate_accelerated_pct": 10.2,
+   "wall_win_accelerated": true,
+   "strict_separation_accelerated": true,
+   "retained_runs_ok_accelerated": true,
+   "cpu_corroborates_accelerated": false,
+   "margin_tier_accelerated": "wide",
+   "accel_vs_ordinary_wall_pct": -2.54,
+   "accel_vs_ordinary_cpu_pct": 0.83,
+   "t192_route_estimate_ordinary": 0.8276,
+   "t192_route_estimate_accelerated": 0.766,
+   "t174_ratio_ordinary": 1.1548,
+   "t174_ratio_accelerated": 1.064,
+   "identity_ordinary": true,
+   "hash_ordinary": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+   "gcode_bytes_ordinary": 4225196,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+   "gcode_bytes_accelerated": 4225196,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+   "reference_bytes": 4225196,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "default",
+     "resolved": [
+      "default"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    4837989
+   ],
+   "cpu_integrity_guard": true,
+   "cpu_integrity_guard_accelerated": true,
+   "destination_win_ordinary": true,
+   "destination_win_accelerated": true,
+   "closing_cell_pass_ordinary": true,
+   "closing_cell_pass_accelerated": true
+  },
+  "benchy-arachne-on": {
+   "fixture": "benchy",
+   "generator": "arachne",
+   "supports": "on",
+   "orca": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     2.6969,
+     2.5757,
+     2.5613,
+     2.5529
+    ],
+    "cpu_s": [
+     12.5781,
+     11.8594,
+     12.4844,
+     11.9844
+    ],
+    "cpu_wall_ratio": [
+     4.6639,
+     4.6043,
+     4.8743,
+     4.6945
+    ],
+    "retained_wall_s": [
+     2.6969,
+     2.5757,
+     2.5613,
+     2.5529
+    ],
+    "retained_cpu_s": [
+     12.5781,
+     11.8594,
+     12.4844,
+     11.9844
+    ],
+    "wall_median_s": 2.5685,
+    "cpu_median_s": 12.2344,
+    "cpu_wall_ratio_median": 4.6792,
+    "wall_median_all_s": 2.5685,
+    "cpu_median_all_s": 12.2344,
+    "wall_spread_pct": 5.61,
+    "cpu_spread_pct": 5.87,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     2.4359,
+     2.4076,
+     2.4622,
+     2.4206
+    ],
+    "cpu_s": [
+     12.75,
+     12.2031,
+     12.1406,
+     11.7031
+    ],
+    "cpu_wall_ratio": [
+     5.2341,
+     5.0685,
+     4.9308,
+     4.8348
+    ],
+    "retained_wall_s": [
+     2.4359,
+     2.4076,
+     2.4622,
+     2.4206
+    ],
+    "retained_cpu_s": [
+     12.75,
+     12.2031,
+     12.1406,
+     11.7031
+    ],
+    "wall_median_s": 2.4283,
+    "cpu_median_s": 12.1718,
+    "cpu_wall_ratio_median": 4.9996,
+    "wall_median_all_s": 2.4283,
+    "cpu_median_all_s": 12.1718,
+    "wall_spread_pct": 2.25,
+    "cpu_spread_pct": 8.6,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     2.4735,
+     2.4265,
+     2.512,
+     2.5345
+    ],
+    "cpu_s": [
+     12.7031,
+     11.6562,
+     12.6719,
+     12.6406
+    ],
+    "cpu_wall_ratio": [
+     5.1357,
+     4.8036,
+     5.0445,
+     4.9875
+    ],
+    "retained_wall_s": [
+     2.4735,
+     2.4265,
+     2.512,
+     2.5345
+    ],
+    "retained_cpu_s": [
+     12.7031,
+     11.6562,
+     12.6719,
+     12.6406
+    ],
+    "wall_median_s": 2.4928,
+    "cpu_median_s": 12.6562,
+    "cpu_wall_ratio_median": 5.016,
+    "wall_median_all_s": 2.4928,
+    "cpu_median_all_s": 12.6562,
+    "wall_spread_pct": 4.33,
+    "cpu_spread_pct": 8.27,
+    "starved_indices_075": []
+   },
+   "ratio_ordinary_over_orca": 0.9454,
+   "cpu_ratio_ordinary_over_orca": 0.9949,
+   "required_cut_ordinary_pct": -5.77,
+   "margin_vs_t192_estimate_pct": 14.37,
+   "wall_win_ordinary": true,
+   "strict_separation_ordinary": true,
+   "retained_runs_ok_ordinary": true,
+   "cpu_corroborates_ordinary": true,
+   "margin_tier_ordinary": "close",
+   "ratio_accelerated_over_orca": 0.9705,
+   "cpu_ratio_accelerated_over_orca": 1.0345,
+   "required_cut_accelerated_pct": -3.04,
+   "margin_vs_t192_estimate_accelerated_pct": 18.68,
+   "wall_win_accelerated": true,
+   "strict_separation_accelerated": true,
+   "retained_runs_ok_accelerated": true,
+   "cpu_corroborates_accelerated": false,
+   "margin_tier_accelerated": "close",
+   "accel_vs_ordinary_wall_pct": 2.66,
+   "accel_vs_ordinary_cpu_pct": 3.98,
+   "t192_route_estimate_ordinary": 0.8266,
+   "t192_route_estimate_accelerated": 0.8178,
+   "t174_ratio_ordinary": 1.6652,
+   "t174_ratio_accelerated": 1.6743,
+   "identity_ordinary": true,
+   "hash_ordinary": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+   "gcode_bytes_ordinary": 8688377,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+   "gcode_bytes_accelerated": 8688377,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+   "reference_bytes": 8688377,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "tree_strong",
+     "resolved": [
+      "tree_strong"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    10404208
+   ],
+   "cpu_integrity_guard": true,
+   "cpu_integrity_guard_accelerated": true,
+   "destination_win_ordinary": true,
+   "destination_win_accelerated": true,
+   "closing_cell_pass_ordinary": true,
+   "closing_cell_pass_accelerated": true
+  },
+  "base-classic-off": {
+   "fixture": "base",
+   "generator": "classic",
+   "supports": "off",
+   "orca": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     12.8988,
+     12.542,
+     12.5775,
+     13.3234
+    ],
+    "cpu_s": [
+     28.3906,
+     27.9062,
+     27.5938,
+     28.3906
+    ],
+    "cpu_wall_ratio": [
+     2.201,
+     2.225,
+     2.1939,
+     2.1309
+    ],
+    "retained_wall_s": [
+     12.8988,
+     12.542,
+     12.5775,
+     13.3234
+    ],
+    "retained_cpu_s": [
+     28.3906,
+     27.9062,
+     27.5938,
+     28.3906
+    ],
+    "wall_median_s": 12.7382,
+    "cpu_median_s": 28.1484,
+    "cpu_wall_ratio_median": 2.1974,
+    "wall_median_all_s": 12.7382,
+    "cpu_median_all_s": 28.1484,
+    "wall_spread_pct": 6.13,
+    "cpu_spread_pct": 2.83,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     9.3437,
+     9.5367,
+     9.1923,
+     10.0237
+    ],
+    "cpu_s": [
+     58.8906,
+     59.2188,
+     59.3125,
+     58.8125
+    ],
+    "cpu_wall_ratio": [
+     6.3027,
+     6.2096,
+     6.4524,
+     5.8674
+    ],
+    "retained_wall_s": [
+     9.3437,
+     9.5367,
+     9.1923,
+     10.0237
+    ],
+    "retained_cpu_s": [
+     58.8906,
+     59.2188,
+     59.3125,
+     58.8125
+    ],
+    "wall_median_s": 9.4402,
+    "cpu_median_s": 59.0547,
+    "cpu_wall_ratio_median": 6.2561,
+    "wall_median_all_s": 9.4402,
+    "cpu_median_all_s": 59.0547,
+    "wall_spread_pct": 8.81,
+    "cpu_spread_pct": 0.85,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     9.3444,
+     9.3773,
+     9.3532,
+     9.6254
+    ],
+    "cpu_s": [
+     58.3438,
+     57.7188,
+     57.25,
+     57.8438
+    ],
+    "cpu_wall_ratio": [
+     6.2437,
+     6.1551,
+     6.1209,
+     6.0095
+    ],
+    "retained_wall_s": [
+     9.3444,
+     9.3773,
+     9.3532,
+     9.6254
+    ],
+    "retained_cpu_s": [
+     58.3438,
+     57.7188,
+     57.25,
+     57.8438
+    ],
+    "wall_median_s": 9.3652,
+    "cpu_median_s": 57.7813,
+    "cpu_wall_ratio_median": 6.138,
+    "wall_median_all_s": 9.3652,
+    "cpu_median_all_s": 57.7813,
+    "wall_spread_pct": 3.0,
+    "cpu_spread_pct": 1.89,
+    "starved_indices_075": []
+   },
+   "ratio_ordinary_over_orca": 0.7411,
+   "cpu_ratio_ordinary_over_orca": 2.098,
+   "required_cut_ordinary_pct": -34.94,
+   "margin_vs_t192_estimate_pct": 23.0,
+   "wall_win_ordinary": true,
+   "strict_separation_ordinary": true,
+   "retained_runs_ok_ordinary": true,
+   "cpu_corroborates_ordinary": false,
+   "margin_tier_ordinary": "wide",
+   "ratio_accelerated_over_orca": 0.7352,
+   "cpu_ratio_accelerated_over_orca": 2.0527,
+   "required_cut_accelerated_pct": -36.02,
+   "margin_vs_t192_estimate_accelerated_pct": 25.06,
+   "wall_win_accelerated": true,
+   "strict_separation_accelerated": true,
+   "retained_runs_ok_accelerated": true,
+   "cpu_corroborates_accelerated": false,
+   "margin_tier_accelerated": "wide",
+   "accel_vs_ordinary_wall_pct": -0.79,
+   "accel_vs_ordinary_cpu_pct": -2.16,
+   "t192_route_estimate_ordinary": 0.6025,
+   "t192_route_estimate_accelerated": 0.5879,
+   "t174_ratio_ordinary": 0.7687,
+   "t174_ratio_accelerated": 0.7656,
+   "identity_ordinary": true,
+   "hash_ordinary": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+   "gcode_bytes_ordinary": 21230739,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+   "gcode_bytes_accelerated": 21230739,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+   "reference_bytes": 21230739,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "default",
+     "resolved": [
+      "default"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    20336099
+   ],
+   "cpu_integrity_guard": true,
+   "cpu_integrity_guard_accelerated": true,
+   "destination_win_ordinary": true,
+   "destination_win_accelerated": true,
+   "closing_cell_pass_ordinary": true,
+   "closing_cell_pass_accelerated": true
+  },
+  "base-classic-on": {
+   "fixture": "base",
+   "generator": "classic",
+   "supports": "on",
+   "orca": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     22.6225,
+     22.7948,
+     22.4223,
+     22.3494
+    ],
+    "cpu_s": [
+     95.5156,
+     94.9062,
+     96.1406,
+     95.9062
+    ],
+    "cpu_wall_ratio": [
+     4.2222,
+     4.1635,
+     4.2877,
+     4.2912
+    ],
+    "retained_wall_s": [
+     22.6225,
+     22.7948,
+     22.4223,
+     22.3494
+    ],
+    "retained_cpu_s": [
+     95.5156,
+     94.9062,
+     96.1406,
+     95.9062
+    ],
+    "wall_median_s": 22.5224,
+    "cpu_median_s": 95.7109,
+    "cpu_wall_ratio_median": 4.255,
+    "wall_median_all_s": 22.5224,
+    "cpu_median_all_s": 95.7109,
+    "wall_spread_pct": 1.98,
+    "cpu_spread_pct": 1.29,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     15.5417,
+     15.9974,
+     15.4584,
+     15.4564
+    ],
+    "cpu_s": [
+     93.4844,
+     94.1562,
+     93.5,
+     92.9375
+    ],
+    "cpu_wall_ratio": [
+     6.0151,
+     5.8857,
+     6.0485,
+     6.0129
+    ],
+    "retained_wall_s": [
+     15.5417,
+     15.9974,
+     15.4584,
+     15.4564
+    ],
+    "retained_cpu_s": [
+     93.4844,
+     94.1562,
+     93.5,
+     92.9375
+    ],
+    "wall_median_s": 15.5,
+    "cpu_median_s": 93.4922,
+    "cpu_wall_ratio_median": 6.014,
+    "wall_median_all_s": 15.5,
+    "cpu_median_all_s": 93.4922,
+    "wall_spread_pct": 3.49,
+    "cpu_spread_pct": 1.3,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     15.7619,
+     15.1795,
+     15.868,
+     16.1103
+    ],
+    "cpu_s": [
+     92.2812,
+     92.0938,
+     91.75,
+     92.1719
+    ],
+    "cpu_wall_ratio": [
+     5.8547,
+     6.067,
+     5.7821,
+     5.7213
+    ],
+    "retained_wall_s": [
+     15.7619,
+     15.1795,
+     15.868,
+     16.1103
+    ],
+    "retained_cpu_s": [
+     92.2812,
+     92.0938,
+     91.75,
+     92.1719
+    ],
+    "wall_median_s": 15.8149,
+    "cpu_median_s": 92.1328,
+    "cpu_wall_ratio_median": 5.8184,
+    "wall_median_all_s": 15.8149,
+    "cpu_median_all_s": 92.1328,
+    "wall_spread_pct": 5.89,
+    "cpu_spread_pct": 0.58,
+    "starved_indices_075": []
+   },
+   "ratio_ordinary_over_orca": 0.6882,
+   "cpu_ratio_ordinary_over_orca": 0.9768,
+   "required_cut_ordinary_pct": -45.31,
+   "margin_vs_t192_estimate_pct": 7.43,
+   "wall_win_ordinary": true,
+   "strict_separation_ordinary": true,
+   "retained_runs_ok_ordinary": true,
+   "cpu_corroborates_ordinary": true,
+   "margin_tier_ordinary": "wide",
+   "ratio_accelerated_over_orca": 0.7022,
+   "cpu_ratio_accelerated_over_orca": 0.9626,
+   "required_cut_accelerated_pct": -42.41,
+   "margin_vs_t192_estimate_accelerated_pct": 11.21,
+   "wall_win_accelerated": true,
+   "strict_separation_accelerated": true,
+   "retained_runs_ok_accelerated": true,
+   "cpu_corroborates_accelerated": true,
+   "margin_tier_accelerated": "wide",
+   "accel_vs_ordinary_wall_pct": 2.03,
+   "accel_vs_ordinary_cpu_pct": -1.45,
+   "t192_route_estimate_ordinary": 0.6406,
+   "t192_route_estimate_accelerated": 0.6314,
+   "t174_ratio_ordinary": 1.7773,
+   "t174_ratio_accelerated": 1.7041,
+   "identity_ordinary": true,
+   "hash_ordinary": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+   "gcode_bytes_ordinary": 39605478,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+   "gcode_bytes_accelerated": 39605478,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+   "reference_bytes": 39605478,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "tree_strong",
+     "resolved": [
+      "tree_strong"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    44955689
+   ],
+   "cpu_integrity_guard": true,
+   "cpu_integrity_guard_accelerated": true,
+   "destination_win_ordinary": true,
+   "destination_win_accelerated": true,
+   "closing_cell_pass_ordinary": true,
+   "closing_cell_pass_accelerated": true
+  },
+  "base-arachne-off": {
+   "fixture": "base",
+   "generator": "arachne",
+   "supports": "off",
+   "orca": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     13.6338,
+     13.5825,
+     13.5971,
+     13.5955
+    ],
+    "cpu_s": [
+     36.9062,
+     36.7969,
+     36.4688,
+     35.7344
+    ],
+    "cpu_wall_ratio": [
+     2.707,
+     2.7091,
+     2.6821,
+     2.6284
+    ],
+    "retained_wall_s": [
+     13.6338,
+     13.5825,
+     13.5971,
+     13.5955
+    ],
+    "retained_cpu_s": [
+     36.9062,
+     36.7969,
+     36.4688,
+     35.7344
+    ],
+    "wall_median_s": 13.5963,
+    "cpu_median_s": 36.6329,
+    "cpu_wall_ratio_median": 2.6946,
+    "wall_median_all_s": 13.5963,
+    "cpu_median_all_s": 36.6329,
+    "wall_spread_pct": 0.38,
+    "cpu_spread_pct": 3.2,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     10.1448,
+     10.267,
+     10.3565,
+     10.5656
+    ],
+    "cpu_s": [
+     64.4844,
+     64.1562,
+     64.375,
+     64.4062
+    ],
+    "cpu_wall_ratio": [
+     6.3564,
+     6.2488,
+     6.2159,
+     6.0958
+    ],
+    "retained_wall_s": [
+     10.1448,
+     10.267,
+     10.3565,
+     10.5656
+    ],
+    "retained_cpu_s": [
+     64.4844,
+     64.1562,
+     64.375,
+     64.4062
+    ],
+    "wall_median_s": 10.3117,
+    "cpu_median_s": 64.3906,
+    "cpu_wall_ratio_median": 6.2324,
+    "wall_median_all_s": 10.3117,
+    "cpu_median_all_s": 64.3906,
+    "wall_spread_pct": 4.08,
+    "cpu_spread_pct": 0.51,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     9.9577,
+     10.6584,
+     10.5694,
+     10.87
+    ],
+    "cpu_s": [
+     62.6562,
+     63.0156,
+     63.1562,
+     62.8438
+    ],
+    "cpu_wall_ratio": [
+     6.2922,
+     5.9123,
+     5.9754,
+     5.7814
+    ],
+    "retained_wall_s": [
+     9.9577,
+     10.6584,
+     10.5694,
+     10.87
+    ],
+    "retained_cpu_s": [
+     62.6562,
+     63.0156,
+     63.1562,
+     62.8438
+    ],
+    "wall_median_s": 10.6139,
+    "cpu_median_s": 62.9297,
+    "cpu_wall_ratio_median": 5.9438,
+    "wall_median_all_s": 10.6139,
+    "cpu_median_all_s": 62.9297,
+    "wall_spread_pct": 8.6,
+    "cpu_spread_pct": 0.79,
+    "starved_indices_075": []
+   },
+   "ratio_ordinary_over_orca": 0.7584,
+   "cpu_ratio_ordinary_over_orca": 1.7577,
+   "required_cut_ordinary_pct": -31.85,
+   "margin_vs_t192_estimate_pct": 17.0,
+   "wall_win_ordinary": true,
+   "strict_separation_ordinary": true,
+   "retained_runs_ok_ordinary": true,
+   "cpu_corroborates_ordinary": false,
+   "margin_tier_ordinary": "wide",
+   "ratio_accelerated_over_orca": 0.7806,
+   "cpu_ratio_accelerated_over_orca": 1.7178,
+   "required_cut_accelerated_pct": -28.1,
+   "margin_vs_t192_estimate_accelerated_pct": 24.37,
+   "wall_win_accelerated": true,
+   "strict_separation_accelerated": true,
+   "retained_runs_ok_accelerated": true,
+   "cpu_corroborates_accelerated": false,
+   "margin_tier_accelerated": "wide",
+   "accel_vs_ordinary_wall_pct": 2.93,
+   "accel_vs_ordinary_cpu_pct": -2.27,
+   "t192_route_estimate_ordinary": 0.6482,
+   "t192_route_estimate_accelerated": 0.6277,
+   "t174_ratio_ordinary": 0.7921,
+   "t174_ratio_accelerated": 0.7739,
+   "identity_ordinary": true,
+   "hash_ordinary": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+   "gcode_bytes_ordinary": 21041068,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+   "gcode_bytes_accelerated": 21041068,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+   "reference_bytes": 21041068,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "default",
+     "resolved": [
+      "default"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    19328597
+   ],
+   "cpu_integrity_guard": true,
+   "cpu_integrity_guard_accelerated": true,
+   "destination_win_ordinary": true,
+   "destination_win_accelerated": true,
+   "closing_cell_pass_ordinary": true,
+   "closing_cell_pass_accelerated": true
+  },
+  "base-arachne-on": {
+   "fixture": "base",
+   "generator": "arachne",
+   "supports": "on",
+   "orca": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     23.2402,
+     22.996,
+     23.3895,
+     23.1862
+    ],
+    "cpu_s": [
+     104.5312,
+     104.9844,
+     104.4688,
+     104.0625
+    ],
+    "cpu_wall_ratio": [
+     4.4979,
+     4.5653,
+     4.4665,
+     4.4881
+    ],
+    "retained_wall_s": [
+     23.2402,
+     22.996,
+     23.3895,
+     23.1862
+    ],
+    "retained_cpu_s": [
+     104.5312,
+     104.9844,
+     104.4688,
+     104.0625
+    ],
+    "wall_median_s": 23.2132,
+    "cpu_median_s": 104.5,
+    "cpu_wall_ratio_median": 4.493,
+    "wall_median_all_s": 23.2132,
+    "cpu_median_all_s": 104.5,
+    "wall_spread_pct": 1.7,
+    "cpu_spread_pct": 0.88,
+    "starved_indices_075": []
+   },
+   "pnp-ordinary": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     15.8024,
+     15.8308,
+     15.7808,
+     15.7034
+    ],
+    "cpu_s": [
+     97.2188,
+     99.3125,
+     98.8125,
+     98.625
+    ],
+    "cpu_wall_ratio": [
+     6.1521,
+     6.2734,
+     6.2616,
+     6.2805
+    ],
+    "retained_wall_s": [
+     15.8024,
+     15.8308,
+     15.7808,
+     15.7034
+    ],
+    "retained_cpu_s": [
+     97.2188,
+     99.3125,
+     98.8125,
+     98.625
+    ],
+    "wall_median_s": 15.7916,
+    "cpu_median_s": 98.7188,
+    "cpu_wall_ratio_median": 6.2675,
+    "wall_median_all_s": 15.7916,
+    "cpu_median_all_s": 98.7188,
+    "wall_spread_pct": 0.81,
+    "cpu_spread_pct": 2.12,
+    "starved_indices_075": []
+   },
+   "pnp-accelerated": {
+    "runs": 4,
+    "retained_runs": 4,
+    "retained_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "wall_s": [
+     15.611,
+     16.1462,
+     16.3727,
+     15.4412
+    ],
+    "cpu_s": [
+     98.0469,
+     98.0469,
+     97.6875,
+     96.9375
+    ],
+    "cpu_wall_ratio": [
+     6.2806,
+     6.0724,
+     5.9665,
+     6.2779
+    ],
+    "retained_wall_s": [
+     15.611,
+     16.1462,
+     16.3727,
+     15.4412
+    ],
+    "retained_cpu_s": [
+     98.0469,
+     98.0469,
+     97.6875,
+     96.9375
+    ],
+    "wall_median_s": 15.8786,
+    "cpu_median_s": 97.8672,
+    "cpu_wall_ratio_median": 6.1752,
+    "wall_median_all_s": 15.8786,
+    "cpu_median_all_s": 97.8672,
+    "wall_spread_pct": 5.87,
+    "cpu_spread_pct": 1.13,
+    "starved_indices_075": []
+   },
+   "ratio_ordinary_over_orca": 0.6803,
+   "cpu_ratio_ordinary_over_orca": 0.9447,
+   "required_cut_ordinary_pct": -47.0,
+   "margin_vs_t192_estimate_pct": 18.08,
+   "wall_win_ordinary": true,
+   "strict_separation_ordinary": true,
+   "retained_runs_ok_ordinary": true,
+   "cpu_corroborates_ordinary": true,
+   "margin_tier_ordinary": "wide",
+   "ratio_accelerated_over_orca": 0.684,
+   "cpu_ratio_accelerated_over_orca": 0.9365,
+   "required_cut_accelerated_pct": -46.19,
+   "margin_vs_t192_estimate_accelerated_pct": 24.28,
+   "wall_win_accelerated": true,
+   "strict_separation_accelerated": true,
+   "retained_runs_ok_accelerated": true,
+   "cpu_corroborates_accelerated": true,
+   "margin_tier_accelerated": "wide",
+   "accel_vs_ordinary_wall_pct": 0.55,
+   "accel_vs_ordinary_cpu_pct": -0.86,
+   "t192_route_estimate_ordinary": 0.5761,
+   "t192_route_estimate_accelerated": 0.5504,
+   "t174_ratio_ordinary": 1.7382,
+   "t174_ratio_accelerated": 1.6843,
+   "identity_ordinary": true,
+   "hash_ordinary": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+   "gcode_bytes_ordinary": 39417439,
+   "exit_codes_ordinary": [
+    "0"
+   ],
+   "degraded_ordinary": [
+    "false"
+   ],
+   "fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "non_fatal_error_counts_ordinary": [
+    "0"
+   ],
+   "code_1200_count_ordinary": 0,
+   "identity_accelerated": true,
+   "hash_accelerated": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+   "gcode_bytes_accelerated": 39417439,
+   "exit_codes_accelerated": [
+    "0"
+   ],
+   "degraded_accelerated": [
+    "false"
+   ],
+   "fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "non_fatal_error_counts_accelerated": [
+    "0"
+   ],
+   "code_1200_count_accelerated": 0,
+   "reference_hash": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+   "reference_bytes": 39417439,
+   "orca_matched_keys": {
+    "resolved_brim_width": {
+     "expected": "8",
+     "resolved": [
+      "8"
+     ],
+     "ok": true
+    },
+    "resolved_brim_type": {
+     "expected": "outer_only",
+     "resolved": [
+      "outer_only"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_loops": {
+     "expected": "6",
+     "resolved": [
+      "6"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_distance": {
+     "expected": "3",
+     "resolved": [
+      "3"
+     ],
+     "ok": true
+    },
+    "resolved_skirt_height": {
+     "expected": "1",
+     "resolved": [
+      "1"
+     ],
+     "ok": true
+    },
+    "resolved_initial_layer_line_width": {
+     "expected": "0.4",
+     "resolved": [
+      "0.4"
+     ],
+     "ok": true
+    },
+    "resolved_tree_support_brim_width": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_enable_arc_fitting": {
+     "expected": "disabled",
+     "resolved": [
+      "disabled"
+     ],
+     "ok": true
+    },
+    "resolved_elefant_foot_compensation": {
+     "expected": "0",
+     "resolved": [
+      "0"
+     ],
+     "ok": true
+    },
+    "resolved_support_style": {
+     "expected": "tree_strong",
+     "resolved": [
+      "tree_strong"
+     ],
+     "ok": true
+    }
+   },
+   "orca_matched_keys_ok": true,
+   "orca_exit_codes": [
+    "0"
+   ],
+   "orca_gcode_bytes": [
+    43948962
+   ],
+   "cpu_integrity_guard": true,
+   "cpu_integrity_guard_accelerated": true,
+   "destination_win_ordinary": true,
+   "destination_win_accelerated": true,
+   "closing_cell_pass_ordinary": true,
+   "closing_cell_pass_accelerated": true
+  }
+ },
+ "ranges": {
+  "ratio_ordinary_over_orca": [
+   0.6803,
+   0.9646
+  ],
+  "ratio_accelerated_over_orca": [
+   0.684,
+   0.9705
+  ],
+  "cpu_ratio_ordinary_over_orca": [
+   0.9447,
+   2.098
+  ],
+  "cpu_ratio_accelerated_over_orca": [
+   0.9365,
+   2.0527
+  ],
+  "accel_vs_ordinary_wall_pct": [
+   -4.81,
+   2.93
+  ],
+  "accel_vs_ordinary_cpu_pct": [
+   -2.59,
+   3.98
+  ],
+  "margin_vs_t192_estimate_pct": [
+   4.66,
+   23.0
+  ],
+  "margin_vs_t192_estimate_accelerated_pct": [
+   3.23,
+   25.06
+  ]
+ },
+ "destination_tally": {
+  "ordinary_wall_wins": 8,
+  "ordinary_wall_win_cells": [
+   "benchy-classic-off",
+   "benchy-classic-on",
+   "benchy-arachne-off",
+   "benchy-arachne-on",
+   "base-classic-off",
+   "base-classic-on",
+   "base-arachne-off",
+   "base-arachne-on"
+  ],
+  "ordinary_cpu_corroborated_wins": 8,
+  "ordinary_cpu_corroborated_win_cells": [
+   "benchy-classic-off",
+   "benchy-classic-on",
+   "benchy-arachne-off",
+   "benchy-arachne-on",
+   "base-classic-off",
+   "base-classic-on",
+   "base-arachne-off",
+   "base-arachne-on"
+  ],
+  "accelerated_wall_wins": 8,
+  "accelerated_wall_win_cells": [
+   "benchy-classic-off",
+   "benchy-classic-on",
+   "benchy-arachne-off",
+   "benchy-arachne-on",
+   "base-classic-off",
+   "base-classic-on",
+   "base-arachne-off",
+   "base-arachne-on"
+  ],
+  "accelerated_cpu_corroborated_wins": 8,
+  "accelerated_cpu_corroborated_win_cells": [
+   "benchy-classic-off",
+   "benchy-classic-on",
+   "benchy-arachne-off",
+   "benchy-arachne-on",
+   "base-classic-off",
+   "base-classic-on",
+   "base-arachne-off",
+   "base-arachne-on"
+  ]
+ },
+ "closing_tally": {
+  "cells_passed": 7,
+  "passed_cells": [
+   "benchy-classic-off",
+   "benchy-arachne-off",
+   "benchy-arachne-on",
+   "base-classic-off",
+   "base-classic-on",
+   "base-arachne-off",
+   "base-arachne-on"
+  ],
+  "all_eight_passed": false,
+  "starved_cells": []
+ },
+ "identity": {
+  "ordinary_all_eight": true,
+  "accelerated_all_eight": true,
+  "ordinary_missing": [],
+  "accelerated_missing": [],
+  "code_1200_total": 0
+ },
+ "matched_keys": {
+  "all_eight": true
+ },
+ "box_load_pct": {
+  "samples": 52,
+  "min": 0.0,
+  "median": 21.0,
+  "max": 100.0
+ },
+ "free_memory_mb": {
+  "samples": 52,
+  "min": 13881.2,
+  "median": 15198.5,
+  "max": 16096.2
+ },
+ "cells_accelerated_faster": 3,
+ "cells_accelerated_slower": 5
+}
