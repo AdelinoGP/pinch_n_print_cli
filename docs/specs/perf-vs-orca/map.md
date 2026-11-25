@@ -1,6 +1,11 @@
 # Wayfinder map: Slice performance vs OrcaSlicer
 
 Label: wayfinder:map
+Status: **closed 2026-11-25 by human ruling** — the final single-HEAD
+`n >= 4` board wins all 8 cells on median wall clock (`0.6803x–0.9646x`);
+`benchy-classic-on` was accepted at `0.9646x` despite a 2.9 ms
+strict-separation overlap. The postpass-WIT follow-on is deferred to the
+planned `<= 0.50x` effort. See the closure paragraph in `## Destination`.
 Effort: `docs/specs/perf-vs-orca/` (local-markdown tracker; wayfinder maps live
 under `docs/specs/` in this repo, per `docs/specs/orca-feature-gap`)
 Charted 2026-09-22 from `docs/specs/perf-vs-orca/evidence/PERF-HANDOFF.md` and the mode-comparative addendum
@@ -29,6 +34,22 @@ forward across later commits that pass their own paired non-regression gate
 map** (a follow-on `<= 0.50x` / 2× faster effort is planned as a fresh map
 afterward, while high-leverage speedup tracks that push cells toward `0.50x`
 are prioritized now).
+
+**Closed 2026-11-25 by human ruling
+([t193](issues/193-final-closing-orca-scoreboard.md)).** The final single-HEAD
+`n >= 4` board wins **8 of 8 cells** on the destination's headline criterion:
+binding `pnp-ordinary` median wall clock **`0.6803x–0.9646x`**, every cell
+`< 1.0x`, all 96 measured samples unstarved, `>= 4` retained per arm,
+`16/16` byte-identical to the active reference set, `40/40` Orca matched-key
+assertions, CPU integrity guard passing 8/8. **Official running tally: 8/8.**
+The board satisfies every t176 clause except one: **`benchy-classic-on`**
+(`0.9646x`, `2.4473 s` vs `2.5370 s`) missed **strict separation by 2.9 ms**
+(binding max `2.4913 s` vs Orca min `2.4884 s`). The human accepted the
+unstarved median win as sufficient, so the **strict-separation clause is
+waived for that cell on that board only**; the measured overlap and the
+`3 ms` postpass attribution stand as disclosure. The graduated follow-on
+[194](issues/194-benchy-classic-on-postpass-wit-close.md) is **deferred** to
+the fresh `<= 0.50x` map, not abandoned.
 
 **Active reference set (2026-11-22, [t182](issues/182-host-spatial-hierarchical-phase3-union.md)): t182's set is the currency — benchy `4c67ef0b…` / `a8c93535…` / `fd631384…` / `7a8d87ae…`, base `02ffa2d6…` / `7e115231…` / `e806296f…` / `da1e41d4…` (classic-off / classic-on / arachne-off / arachne-on; all four supports-off cells unchanged from t175/t172; only the four supports-on cells superseded from t175 by explicit human KEEP ruling for sub-micron Clipper2 scanbeam/associativity rounding strictly inside `Support` with zero `Support interface` movement and `0/1,226,364` non-support part XY diffs), byte-identical on the ordinary and accelerated arms (16/16); the baseline arm of the same campaign reproduced t175's set 16/16 (`4c67ef0b…` / `fdca4e2d…` / `fd631384…` / `2869186c…`, `02ffa2d6…` / `7b90e749…` / `e806296f…` / `f77633af…`), and t175/t172/t169 remain superseded. Every hash below this sentence that predates it is historical for comparison purposes and must be re-recorded before use.**
 
@@ -2059,7 +2080,7 @@ Production exact bundle across five crates (zero WIT changes): `TS-1a` (`crates/
 
 **Destination status (2026-11-25, [Exact Zero-WIT `PostPass` acceleration: lazy `LayerFinalization`, parallel zero-alloc `GCodeSerialize`, and `GCodeEmit`/tail cleanup](issues/192-postpass-exact-acceleration.md)): landed — literal standing all-8-cell `0.80 %` paired gate PASSED 8/8 on both wall and CPU (8/8 even on strict any-pair null, `38/40` ordinary wall wins, `33/40` ordinary CPU wins, 8/8 accelerated wall corroboration across 6 pooled pairs/cell), `312/312` measured runs 100 % byte-identical to `t182/reference.json`, zero WIT schema edits, zero geometry exceptions, zero gate waivers, zero reference change; ALL 8/8 cells now project deep below `1.00x` (`0.5761x–0.9151x` ordinary; `0.5504x–0.8620x` accelerated, `ESTIMATE ONLY`), graduating the final single-HEAD `n >= 4` Orca closing scoreboard.** Ordinary paired walls `+5.75 / +7.49 / +5.98 / +10.38 %` benchy and `+3.80 / +6.75 / +4.65 / +8.52 %` base (`4.75×–12.97×` floor), ordinary CPU `+1.90 / +2.95 / +2.77 / +3.75 %` benchy and `+0.82 / +0.89 / +0.07 / +1.74 %` base, accelerated wall `+4.91 / +9.22 / +6.23 / +10.28 %` benchy and `+4.53 / +8.19 / +2.00 / +6.82 %` base (`benchy-classic-off/on` accel CPU `−0.52 / −0.60 %` inside `5.32 / 2.85 %` null CPU bands disclosed); instrumented `PostPass` phase cut `−51.4…−57.4 %` across all 8 cells (`LayerFinalization` `−67.5…−77.3 %`, `GCodeEmit` `−11.1…−38.6 %`, `GCodeSerialize` `12.2×–17.6×` faster); deterministic `--profile` `LayerFinalization` guest fuel cut `−73.99 / −74.02 / −75.09 / −75.06 %` across all 4 supports-on cells (`wipe-tower` and `overhang-classifier-default` `−99.9 %`, `skirt-brim` `−92.4…−98.5 %`). Route (`ESTIMATE ONLY`, `t191 × t192`, not a ratio of record): benchy `0.8187 / 0.9151 / 0.8276 / 0.8266x` ord (`0.8620 / 0.8594 / 0.7660 / 0.8178x` acc), base `0.6025 / 0.6406 / 0.6482 / 0.5761x` ord (`0.5879 / 0.6314 / 0.6277 / 0.5504x` acc). Official running tally stays **2/8 provisionally won** pending the graduated closing scoreboard. Active reference currency remains [`evidence/t182-spatial-hierarchical-phase3-union/reference.json`](evidence/t182-spatial-hierarchical-phase3-union/reference.json). Evidence: [`evidence/t192-postpass-exact-accel/FINDINGS.md`](evidence/t192-postpass-exact-accel/FINDINGS.md) (`verify.py` PASS, `--self-test` `20/20`). **Remaining frontier (1 AFK, unblocked closing scoreboard):** [Final single-HEAD `n >= 4` Orca closing scoreboard (`8/8` destination closure check)](issues/193-final-closing-orca-scoreboard.md).
 
-**Destination status (2026-11-25, [t193](issues/193-final-closing-orca-scoreboard.md)): the final single-HEAD `n >= 4` closing board wins 8/8 on wall clock but closes 7/8 — binding `benchy-classic-on` is a 2.9 ms strict-separation tie — so the map stays open and the targeted postpass-WIT follow-on [194](issues/194-benchy-classic-on-postpass-wit-close.md) is graduated.** One quiet interleaved board (`t193-closing-board`, HEAD `97b2474d`, last code commit `e7b3c68e` = `t192`, OrcaSlicer **2.5.1** `5013b1bd…`, 8 cells × 3 tools × 1 warmup + 4 measured, `RAYON_NUM_THREADS=12`, 96 measured rows, **zero starvation**, load median **21 %** / free RAM median **15.2 GB**): binding `pnp-ordinary` **0.6803x–0.9646x** (required cut 3.67 %–47.00 %), accelerated **0.6840x–0.9705x**; **8/8 wall wins**, **7/8 closed**, so the official running tally is **7/8** (the two prior provisional `base` supports-off wins plus `benchy-classic-off` `0.8691x`, `benchy-arachne-off` `0.8662x`, `benchy-arachne-on` `0.9454x`, `base-classic-on` `0.6882x`, `base-arachne-on` `0.6803x`, all with `>= 4` retained unstarved runs and strict separation). **`benchy-classic-on` is the one miss:** `2.4473 s` vs `2.5370 s` (**0.9646x**, −3.67 %) but binding max `2.4913 s` > Orca min `2.4884 s` by **2.9 ms**, so the close-tier cell is a tie, not a win; the accelerated arm already closes it (`0.9182x`, +0.117 s) but `pnp-ordinary` binds per [t176](issues/176-destination-cpu-corroboration-ruling.md). **Output/identity:** `16/16` byte-identical to [`t182/reference.json`](evidence/t182-spatial-hierarchical-phase3-union/reference.json), every run clean (`exit 0`, `degraded=false`, `0` fatal/non-fatal, `0` code-1200), **40/40** Orca matched-key assertions; CPU efficiency disclosure `0.9447x–2.0980x` ordinary (`0.9365x–2.0527x` accelerated) with the integrity guard passing 8/8. **Attribution of the miss (fresh `--instrument-stderr`, output hash `a8c93535…`):** total 2,547 ms = prepass **1,629 ms (63.96 %)**, per-layer **563 ms (22.10 %)**, postpass **272 ms (10.68 %)**, outside 80 ms; postpass = `GCodePostProcess` **127 ms** + `LayerFinalization` **82 ms** + `GCodeEmit` **45 ms** + `GCodeSerialize` **14 ms**; `com.core.part-cooling` still burns **143.2 M fuel**. The cell is not prepass-bound: it is a **3 ms postpass tie**. `t189` prices the parked additive-WIT pair `PP-4` (`gcode-stream-view` + `push-input-range`) at **43–86 ms** and `PP-1b` (`part-cooling` `entity-roles`) at **8–35 ms** on `benchy`; combined **51–121 ms = 2.08–4.95 %** of the binding median, **17x–42x** the deficit, projecting **0.917x–0.945x** (`ESTIMATE ONLY`). Evidence: [`evidence/t193-closing-scoreboard/`](evidence/t193-closing-scoreboard/FINDINGS.md) (`verify.py` PASS **853/853**, `--self-test` **34/34**; one aborted-launch warmup row deduped and disclosed). **Frontier (1 AFK, unblocked):** [Close the `benchy-classic-on` tie: land `PP-4` `GCodePostProcess` stream-view and `PP-1b` `part-cooling` `entity-roles`](issues/194-benchy-classic-on-postpass-wit-close.md).
+**Destination status (2026-11-25, [t193](issues/193-final-closing-orca-scoreboard.md)): the final single-HEAD `n >= 4` closing board wins 8/8 on wall clock (official tally 8/8); it closes 7/8 mechanically because binding `benchy-classic-on` overlaps its Orca spread by 2.9 ms, and the human ruled that sufficient — the MAP IS CLOSED, with the postpass-WIT follow-on [194](issues/194-benchy-classic-on-postpass-wit-close.md) deferred to the fresh `<= 0.50x` effort.** One quiet interleaved board (`t193-closing-board`, HEAD `97b2474d`, last code commit `e7b3c68e` = `t192`, OrcaSlicer **2.5.1** `5013b1bd…`, 8 cells × 3 tools × 1 warmup + 4 measured, `RAYON_NUM_THREADS=12`, 96 measured rows, **zero starvation**, load median **21 %** / free RAM median **15.2 GB**): binding `pnp-ordinary` **0.6803x–0.9646x** (required cut 3.67 %–47.00 %), accelerated **0.6840x–0.9705x**; **8/8 wall wins**, **7/8 closed**, so the official running tally is **7/8** (the two prior provisional `base` supports-off wins plus `benchy-classic-off` `0.8691x`, `benchy-arachne-off` `0.8662x`, `benchy-arachne-on` `0.9454x`, `base-classic-on` `0.6882x`, `base-arachne-on` `0.6803x`, all with `>= 4` retained unstarved runs and strict separation). **`benchy-classic-on` is the one miss:** `2.4473 s` vs `2.5370 s` (**0.9646x**, −3.67 %) but binding max `2.4913 s` > Orca min `2.4884 s` by **2.9 ms**, so the close-tier cell is a tie, not a win; the accelerated arm already closes it (`0.9182x`, +0.117 s) but `pnp-ordinary` binds per [t176](issues/176-destination-cpu-corroboration-ruling.md). **Output/identity:** `16/16` byte-identical to [`t182/reference.json`](evidence/t182-spatial-hierarchical-phase3-union/reference.json), every run clean (`exit 0`, `degraded=false`, `0` fatal/non-fatal, `0` code-1200), **40/40** Orca matched-key assertions; CPU efficiency disclosure `0.9447x–2.0980x` ordinary (`0.9365x–2.0527x` accelerated) with the integrity guard passing 8/8. **Attribution of the miss (fresh `--instrument-stderr`, output hash `a8c93535…`):** total 2,547 ms = prepass **1,629 ms (63.96 %)**, per-layer **563 ms (22.10 %)**, postpass **272 ms (10.68 %)**, outside 80 ms; postpass = `GCodePostProcess` **127 ms** + `LayerFinalization` **82 ms** + `GCodeEmit` **45 ms** + `GCodeSerialize` **14 ms**; `com.core.part-cooling` still burns **143.2 M fuel**. The cell is not prepass-bound: it is a **3 ms postpass tie**. `t189` prices the parked additive-WIT pair `PP-4` (`gcode-stream-view` + `push-input-range`) at **43–86 ms** and `PP-1b` (`part-cooling` `entity-roles`) at **8–35 ms** on `benchy`; combined **51–121 ms = 2.08–4.95 %** of the binding median, **17x–42x** the deficit, projecting **0.917x–0.945x** (`ESTIMATE ONLY`). Evidence: [`evidence/t193-closing-scoreboard/`](evidence/t193-closing-scoreboard/FINDINGS.md) (`verify.py` PASS **853/853**, `--self-test` **34/34**; one aborted-launch warmup row deduped and disclosed). **Frontier: none — map closed**; [Close the `benchy-classic-on` tie: land `PP-4` `GCodePostProcess` stream-view and `PP-1b` `part-cooling` `entity-roles`](issues/194-benchy-classic-on-postpass-wit-close.md) is **deferred** to the `<= 0.50x` effort (see `## Out of scope`).
 
 ## Notes
 
@@ -2178,12 +2199,14 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 sole open frontier ticket**, so it was claimed and resolved as a **measured
 final single-HEAD `n >= 4` closing board (zero production edits; both guest
 freshness gates exit `0`; OrcaSlicer 2.5.1 stamped)**. Result: **8/8 wall
-wins, 7/8 closed, the map stays open on the `benchy-classic-on` 2.9 ms
-strict-separation tie** (`0.9646x`; 16/16 identity, 40/40 matched keys, zero
-starvation), with the miss attributed to postpass `GCodePostProcess` WIT
-traffic and the parked `PP-4 + PP-1b` pair graduated as
-[194](issues/194-benchy-classic-on-postpass-wit-close.md) (`51–121 ms`,
-`17x–42x` the deficit, est. `0.917x–0.945x`).
+wins, official tally 8/8; the map was CLOSED by the human's 2026-11-25 ruling
+accepting the `benchy-classic-on` `0.9646x` median win despite a 2.9 ms
+strict-separation overlap** (`16/16` identity, 40/40 matched keys, zero
+starvation). The miss is attributed to postpass `GCodePostProcess` WIT
+traffic; the parked `PP-4 + PP-1b` pair was graduated as
+[194](issues/194-benchy-classic-on-postpass-wit-close.md) and **deferred** to
+the `<= 0.50x` effort (`51–121 ms`, `17x–42x` the deficit, est.
+`0.917x–0.945x`).
 
 **Previous selection scope (2026-11-23, the t183 take):** the human said
 "/wayfinder continue the perf vs orca map" (no ticket named); **183 was the
@@ -5955,9 +5978,13 @@ Standing decisions for this effort (2026-09-22):
 
 - [Exact Zero-WIT `PostPass` acceleration: lazy `LayerFinalization`, parallel zero-alloc `GCodeSerialize`, and `GCodeEmit`/tail cleanup](issues/192-postpass-exact-acceleration.md): **resolved (2026-11-25, LANDED — exact Zero-WIT `PP-1 + PP-2 + PP-3` across `crates/slicer-wasm-host`, `crates/slicer-sdk`, `crates/slicer-macros`, `crates/slicer-gcode`, `crates/slicer-runtime`, `modules/core-modules/skirt-brim`, and `modules/core-modules/part-cooling`; zero WIT schema edits, zero geometry exceptions, zero gate waivers, zero reference change)** — passes the literal standing all-8-cell `0.80 %` paired gate `8/8` on both wall (`+3.80…+10.38 %`, `4.75×–12.97×` floor, `8/8` strict any-pair null PASS, `38/40` wins) and CPU (`+0.07…+3.75 %`, `33/40` wins), accelerated wall `+2.00…+10.28 %` `8/8` (`6` pooled pairs/cell), `PostPass` `−51.4…−57.4 %`, `GCodeSerialize` `12.2×–17.6×`, `LayerFinalization` guest fuel `−73.99…−75.09 %`, `312/312` runs byte-identical to `t182/reference.json`, projecting all **8/8** cells `0.5761x–0.9151x` ord (`0.5504x–0.8620x` acc, `ESTIMATE ONLY`; `verify.py` PASS, `--self-test` `20/20`); graduated [Final single-HEAD `n >= 4` Orca closing scoreboard (`8/8` destination closure check)](issues/193-final-closing-orca-scoreboard.md). Evidence: [`evidence/t192-postpass-exact-accel/FINDINGS.md`](evidence/t192-postpass-exact-accel/FINDINGS.md).
 
-- [Final single-HEAD `n >= 4` Orca closing scoreboard (`8/8` destination closure check)](issues/193-final-closing-orca-scoreboard.md): **resolved (2026-11-25, measured board, zero code edits) — 8/8 wall wins, 7/8 closed, the map stays open on a 2.9 ms `benchy-classic-on` tie** — binding `pnp-ordinary` `0.6803x–0.9646x` (accelerated `0.6840x–0.9705x`), `16/16` byte-identical to `t182/reference.json`, `40/40` Orca matched keys, zero starvation, `code-1200 = 0`; seven cells pass `< 1.00x` + `>= 4` retained unstarved + strict separation + CPU integrity guard, while `benchy-classic-on` is `2.4473 s` vs `2.5370 s` (**0.9646x**) with binding max `2.4913 s` > Orca min `2.4884 s` (**−2.9 ms**). Fresh instrumentation attributes it to postpass (`272 ms` = `10.68 %`: `GCodePostProcess` `127`, `LayerFinalization` `82`, `GCodeEmit` `45`, `GCodeSerialize` `14`) rather than prepass (1,629 ms), so `t189`'s parked additive-WIT pair `PP-4` (`43–86 ms`) + `PP-1b` (`8–35 ms`) = **51–121 ms**, **17x–42x** the deficit, is projected to move the cell to `0.917x–0.945x` (`ESTIMATE ONLY`); graduated [194](issues/194-benchy-classic-on-postpass-wit-close.md). Evidence: [`evidence/t193-closing-scoreboard/FINDINGS.md`](evidence/t193-closing-scoreboard/FINDINGS.md) (`verify.py` PASS `853/853`, `--self-test` `34/34`).
+- [Final single-HEAD `n >= 4` Orca closing scoreboard (`8/8` destination closure check)](issues/193-final-closing-orca-scoreboard.md): **resolved (2026-11-25, measured board, zero code edits) — 8/8 wall wins, official tally 8/8, MAP CLOSED by the human's ruling accepting `benchy-classic-on` at `0.9646x` despite a 2.9 ms strict-separation overlap (mechanically 7/8 under the t176 rule)** — binding `pnp-ordinary` `0.6803x–0.9646x` (accelerated `0.6840x–0.9705x`), `16/16` byte-identical to `t182/reference.json`, `40/40` Orca matched keys, zero starvation, `code-1200 = 0`; seven cells pass `< 1.00x` + `>= 4` retained unstarved + strict separation + CPU integrity guard, while `benchy-classic-on` is `2.4473 s` vs `2.5370 s` (**0.9646x**) with binding max `2.4913 s` > Orca min `2.4884 s` (**−2.9 ms**). Fresh instrumentation attributes it to postpass (`272 ms` = `10.68 %`: `GCodePostProcess` `127`, `LayerFinalization` `82`, `GCodeEmit` `45`, `GCodeSerialize` `14`) rather than prepass (1,629 ms), so `t189`'s parked additive-WIT pair `PP-4` (`43–86 ms`) + `PP-1b` (`8–35 ms`) = **51–121 ms**, **17x–42x** the deficit, is projected to move the cell to `0.917x–0.945x` (`ESTIMATE ONLY`); graduated then **deferred** [194](issues/194-benchy-classic-on-postpass-wit-close.md) to the `<= 0.50x` effort by the closure ruling. Evidence: [`evidence/t193-closing-scoreboard/FINDINGS.md`](evidence/t193-closing-scoreboard/FINDINGS.md) (`verify.py` PASS `853/853`, `--self-test` `34/34`).
 
 ## Not yet specified
+
+**Map closed 2026-11-25.** Nothing below is a live frontier for this map; the
+remaining fog is input to the planned `<= 0.50x` effort (and any future
+re-opening of a cell), not work owed to this destination.
 
 - **The Clipper2 kernel route is now EXHAUSTED for the six non-winning cells;
   the post-t175 speedup discovery tracks are graduated
@@ -6761,6 +6788,16 @@ Standing decisions for this effort (2026-09-22):
   instead of zero.
 
 ## Out of scope
+
+- **Postpass additive-WIT closure work (`PP-4` + `PP-1b`).**
+  [194](issues/194-benchy-classic-on-postpass-wit-close.md) was graduated by
+  [t193](issues/193-final-closing-orca-scoreboard.md) to lift
+  `benchy-classic-on` out of its 2.9 ms strict-separation overlap, then
+  **closed/deferred by the 2026-11-25 human closure ruling**: the cell's
+  `0.9646x` unstarved median win was accepted, so this work is not owed to the
+  closed map. It is a real speed lever and belongs to the fresh `<= 0.50x`
+  effort, where it should be re-ticketed rather than resumed as an open child
+  of this map.
 
 - **Matching Orca's `tree_strong` support engine to make the supports-on
   adhesion-oracle cells pass.** [t138](issues/138-layer0-cross-section-parity.md)

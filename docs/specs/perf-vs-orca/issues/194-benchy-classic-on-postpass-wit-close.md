@@ -2,8 +2,12 @@
 
 Type: task / measured candidate (additive-WIT `PP-4` + `PP-1b`, exact output, final single-HEAD `n >= 4` 8/8 closure)
 Label: wayfinder:task
-Status: open
-Assignee: unassigned
+Status: closed (2026-11-25; **deferred by the human closure ruling** — `t193`'s
+  mechanical 7/8 was accepted, the map closed at 8/8 on median wall, and this
+  work is not owed to the closed map. It is a real speed lever for the fresh
+  `<= 0.50x` effort, where it should be re-ticketed rather than resumed as an
+  open child of this map.)
+Assignee: unassigned (closed before take)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 Graduated from: [Final single-HEAD `n >= 4` Orca closing scoreboard](193-final-closing-orca-scoreboard.md) ([`evidence/t193-closing-scoreboard/FINDINGS.md`](../evidence/t193-closing-scoreboard/FINDINGS.md)), whose closing board won **8/8 on wall clock** but closed **7/8**: binding `benchy-classic-on` is **0.9646x** (2.4473 s vs 2.5370 s) yet misses strict separation by **2.9 ms** (binding max 2.4913 s vs Orca min 2.4884 s); the other seven cells pass `< 1.00x` + `>= 4` retained unstarved + strict separation + identity + CPU integrity guard.
@@ -39,3 +43,13 @@ Graduated from: [Final single-HEAD `n >= 4` Orca closing scoreboard](193-final-c
 - No other WIT additions or `PostPass` rewrites; `PP-4` and `PP-1b` only.
 - No change to the `t176` binding-arm or CPU-disclosure rules.
 - No `<= 0.50x` work; that remains a fresh follow-on map after 8/8 `< 1.00x`.
+
+## Resolution
+
+Closed 2026-11-25, not implemented. [t193](193-final-closing-orca-scoreboard.md)
+measured the final board: 8/8 wall wins, 7/8 under the strict `t176` closure
+rule, with `benchy-classic-on` at **0.9646x** and a **2.9 ms** separation
+overlap. The human ruled that sufficient and **closed the map at 8/8**; the
+strict-separation waiver is scoped to that cell on that board. The
+`PP-4` + `PP-1b` pair (**51–121 ms** on `benchy`) remains priced and should be
+re-graduated under the `<= 0.50x` map if that effort wants the margin.

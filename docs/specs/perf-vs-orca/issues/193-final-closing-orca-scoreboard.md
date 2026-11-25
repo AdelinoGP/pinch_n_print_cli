@@ -2,15 +2,17 @@
 
 Type: task / scoreboard (single-HEAD `n >= 4` matched-pair closing board against OrcaSlicer `2.5.1` across all 8 cells × `{pnp-ordinary, pnp-accelerated, orca}`; zero code edits)
 Label: wayfinder:task
-Status: resolved (2026-11-25; **8/8 wall wins, official running tally 7/8 —
-  the map stays open.** Binding `pnp-ordinary` ratios **0.6803x–0.9646x**, accelerated
+Status: resolved (2026-11-25; **8/8 wall wins, official tally 8/8 — the map is
+  CLOSED by the human's ruling accepting the `benchy-classic-on` 0.9646x
+  median win despite the 2.9 ms strict-separation overlap; the postpass-WIT
+  follow-on is deferred to the `<= 0.50x` effort.** Binding `pnp-ordinary` ratios **0.6803x–0.9646x**, accelerated
   **0.6840x–0.9705x**; seven cells pass `< 1.00x` + `>= 4` retained unstarved +
   strict separation + identity + CPU integrity guard, while `benchy-classic-on`
   is a **0.9646x / −2.9 ms strict-separation tie** (2.4473 s vs 2.5370 s;
   binding max 2.4913 s vs Orca min 2.4884 s). `16/16` byte-identical to
   `t182/reference.json`, 40/40 Orca matched-key assertions, zero starvation,
   `code-1200 = 0`; `verify.py` PASS **853/853**, `--self-test` **34/34**.
-  Graduated [194](194-benchy-classic-on-postpass-wit-close.md).)
+  Graduated then deferred [194](194-benchy-classic-on-postpass-wit-close.md).)
 Assignee: 2026-11-25 OpenCode wayfinder session — the human said "continue the perf vs orca map" (no ticket named); 193 was the sole open frontier ticket.
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
@@ -32,7 +34,7 @@ Graduated from: [Exact Zero-WIT `PostPass` acceleration: lazy `LayerFinalization
 
 ## Answer
 
-**No — 8/8 wall wins, official running tally 7/8 (7 cells close), so the map stays open.**
+**Mechanically 7/8 — but CLOSED by the human's 2026-11-25 ruling: 8/8 wall wins, official tally 8/8.**
 One quiet single-HEAD board (`t193-closing-board`, HEAD `97b2474d`, last code
 commit `e7b3c68e` / `t192`, OrcaSlicer **2.5.1** `5013b1bd…`), 8 cells ×
 3 tools × 1 warmup + 4 measured runs, `RAYON_NUM_THREADS=12`, 96 measured
@@ -67,3 +69,14 @@ rows, zero starvation, load median **21 %** / free RAM median **15.2 GB**.
 - **Evidence:** [`evidence/t193-closing-scoreboard/`](../evidence/t193-closing-scoreboard/FINDINGS.md)
   (`verify.py` PASS 853/853, `--self-test` 34/34; one aborted-launch warmup
   row deduped and disclosed).
+
+### Closure ruling (2026-11-25)
+
+**The human ruled the map closed at 8/8.** The mechanical t176 gate closed 7/8
+because `benchy-classic-on`'s binding max (`2.4913 s`) overlapped Orca's min
+(`2.4884 s`) by 2.9 ms; the human accepted the cell's unstarved **0.9646x**
+median win as sufficient. The strict-separation waiver is **scoped to this
+cell on this board only**; the overlap and the postpass attribution remain
+disclosed. Official running tally: **8/8**. Map status: **closed**.
+[194](194-benchy-classic-on-postpass-wit-close.md) is **closed and deferred**
+to the fresh `<= 0.50x` effort, not abandoned.

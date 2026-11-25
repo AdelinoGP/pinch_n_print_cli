@@ -24,6 +24,13 @@ strict separation on all three measured runs, while spending **1.81x–2.13x**
 OrcaSlicer's process CPU via higher thread concurrency (**5.1–5.2x** vs
 OrcaSlicer's **1.9–2.2x**).
 
+**Closure amendment (2026-11-25, [t193](193-final-closing-orca-scoreboard.md)):**
+the human accepted `benchy-classic-on` at `0.9646x` despite a 2.9 ms
+strict-separation overlap and **closed the map at 8/8**. The `>= 4` retained
+unstarved rule, the CPU integrity guard and every other clause are unchanged;
+the strict-separation waiver is scoped to that cell on that closing board, with
+the overlap disclosed.
+
 ## Question
 
 **Now that PnP beats OrcaSlicer on unstarved wall clock by 21–23 % in

@@ -11,17 +11,19 @@ cell/tool, against OrcaSlicer **2.5.1** (`5013b1bd…`), at HEAD `97b2474d`
 - **Wall clock: 8 of 8 cells beat OrcaSlicer on the binding arm**
   (`pnp-ordinary`), ratios **0.6803x–0.9646x** (required cut 3.67 %–47.00 %).
   The accelerated arm also wins **8/8** (**0.6840x–0.9705x**).
-- **Closing tally: 7 of 8.** Seven cells satisfy `< 1.00x` + `>= 4` retained
+- **Mechanical tally: 7 of 8.** Seven cells satisfy `< 1.00x` + `>= 4` retained
   unstarved runs + strict separation + identity + CPU integrity guard.
   **`benchy-classic-on` fails strict separation by 2.9 ms**: binding median
   **2.4473 s** vs Orca **2.5370 s** (**0.9646x**, −3.67 %), but the binding
   arm's slowest run (**2.4913 s**) is 2.9 ms slower than Orca's fastest run
   (**2.4884 s**). It remains a **close-tier tie**, not a proven win.
-- **The map does not close.** Per the ticket's decision branch, the remaining
+- **Mechanical closure is 7/8; the human ruled that sufficient and closed the
+  map at 8/8 (2026-11-25).** Per the ticket's decision branch, the remaining
   cell is attributed below and the targeted follow-on
   [Close the `benchy-classic-on` tie: land `PP-4` `GCodePostProcess`
   stream-view and `PP-1b` `part-cooling` `entity-roles`](../../issues/194-benchy-classic-on-postpass-wit-close.md)
-  is graduated.
+  was graduated, then **deferred** to the `<= 0.50x` effort by the closure
+  ruling.
 - **Correctness/output identity: 16/16** cell × arm PnP groups (**80 PnP runs**,
   including warmups) byte-identical to `t182/reference.json`; every run
   `exit_code = 0`, `degraded = false`, `fatal = 0`, `non_fatal = 0`,
@@ -131,9 +133,11 @@ Reproduce: [`REPRODUCE.md`](REPRODUCE.md).
 
 ## 4. Decision
 
-`7/8` closed. The remaining cell is a measured 2.9 ms tie caused by postpass
-`GCodePostProcess` WIT traffic (plus the `part-cooling` query), not by a
-prepass or geometry deficit. Graduate
+`7/8` closed mechanically. The remaining cell is a measured 2.9 ms tie caused
+by postpass `GCodePostProcess` WIT traffic (plus the `part-cooling` query), not
+by a prepass or geometry deficit. The human **accepted the cell's unstarved
+`0.9646x` median win and closed the map at 8/8 on 2026-11-25**, with the
+strict-separation waiver scoped to this cell on this board. The graduated
 [Close the `benchy-classic-on` tie: land `PP-4` `GCodePostProcess`
 stream-view and `PP-1b` `part-cooling` `entity-roles`](../../issues/194-benchy-classic-on-postpass-wit-close.md)
-and keep the map open until a fresh single-HEAD `n >= 4` board closes 8/8.
+is **deferred** to the `<= 0.50x` effort.
