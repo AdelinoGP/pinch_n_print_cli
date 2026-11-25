@@ -199,7 +199,12 @@ impl ChunkedPoly {
                     y0: p0.y,
                     x1: p1.x,
                     y1: p1.y,
-                    bounds: (p0.x.min(p1.x), p0.x.max(p1.x), p0.y.min(p1.y), p0.y.max(p1.y)),
+                    bounds: (
+                        p0.x.min(p1.x),
+                        p0.x.max(p1.x),
+                        p0.y.min(p1.y),
+                        p0.y.max(p1.y),
+                    ),
                 });
             }
             let mut start = ring_start;
@@ -251,7 +256,11 @@ fn certify_disjoint(a: &ChunkedPoly, b: &ChunkedPoly) -> bool {
         .filter(|chunk| bounds_overlap(chunk.bounds, a_reach))
         .collect();
     if !b_chunks.is_empty() {
-        for a_chunk in a.chunks.iter().filter(|chunk| bounds_overlap(chunk.bounds, b_reach)) {
+        for a_chunk in a
+            .chunks
+            .iter()
+            .filter(|chunk| bounds_overlap(chunk.bounds, b_reach))
+        {
             let a_chunk_reach = inflate(a_chunk.bounds, m);
             for b_chunk in &b_chunks {
                 if !bounds_overlap(a_chunk_reach, b_chunk.bounds) {
@@ -293,8 +302,8 @@ fn segments_within(a: &Seg, b: &Seg, m: i64) -> bool {
     let d2 = cross(a.x0, a.y0, a.x1, a.y1, b.x1, b.y1);
     let d3 = cross(b.x0, b.y0, b.x1, b.y1, a.x0, a.y0);
     let d4 = cross(b.x0, b.y0, b.x1, b.y1, a.x1, a.y1);
-    let proper = ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0))
-        && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+    let proper =
+        ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
     if proper
         || (d1 == 0 && in_bounds(b.x0, b.y0, a.bounds))
         || (d2 == 0 && in_bounds(b.x1, b.y1, a.bounds))
@@ -390,7 +399,14 @@ mod tests {
 
     fn shifted(p: &ExPolygon, dx: i64, dy: i64) -> ExPolygon {
         let move_ring = |r: &Polygon| Polygon {
-            points: r.points.iter().map(|q| Point2 { x: q.x + dx, y: q.y + dy }).collect(),
+            points: r
+                .points
+                .iter()
+                .map(|q| Point2 {
+                    x: q.x + dx,
+                    y: q.y + dy,
+                })
+                .collect(),
         };
         ExPolygon {
             contour: move_ring(&p.contour),
@@ -403,7 +419,11 @@ mod tests {
     fn check(a: &ExPolygon, b: &ExPolygon) -> (&'static str, bool) {
         let want = clipper_positive_overlap(a, b);
         let (pa, pb) = (PreparedOverlap::new(a), PreparedOverlap::new(b));
-        assert_eq!(pa.overlaps(&pb), want, "prepared vs Clipper2 for {a:?} / {b:?}");
+        assert_eq!(
+            pa.overlaps(&pb),
+            want,
+            "prepared vs Clipper2 for {a:?} / {b:?}"
+        );
         assert_eq!(pb.overlaps(&pa), want, "symmetric prepared vs Clipper2");
         let path = match (pa.bounds, pb.bounds) {
             (Some(x), Some(y)) if strictly_separated(x, y) => "bbox",
@@ -420,30 +440,144 @@ mod tests {
     #[test]
     fn adversarial_cases_match_clipper_and_take_the_expected_path() {
         let big = rect(0, 0, 1_000, 1_000);
-        let holed = poly(&[(0, 0), (1_000, 0), (1_000, 1_000), (0, 1_000)], &[&rect_hole(300, 300, 700, 700)]);
+        let holed = poly(
+            &[(0, 0), (1_000, 0), (1_000, 1_000), (0, 1_000)],
+            &[&rect_hole(300, 300, 700, 700)],
+        );
         let u_bay = poly(
-            &[(0, 0), (900, 0), (900, 900), (600, 900), (600, 300), (300, 300), (300, 900), (0, 900)],
+            &[
+                (0, 0),
+                (900, 0),
+                (900, 900),
+                (600, 900),
+                (600, 300),
+                (300, 300),
+                (300, 900),
+                (0, 900),
+            ],
             &[],
         );
         let cw_big = poly(&[(0, 0), (0, 1_000), (1_000, 1_000), (1_000, 0)], &[]);
         let cases: Vec<(&str, ExPolygon, ExPolygon, &str, bool)> = vec![
-            ("1-unit edge overlap", big.clone(), rect(999, 0, 2_000, 1_000), "clipper", true),
-            ("1-unit^2 corner overlap", big.clone(), rect(999, 999, 2_000, 2_000), "clipper", true),
-            ("shared edge, zero area", big.clone(), rect(1_000, 0, 2_000, 1_000), "clipper", false),
-            ("single vertex touch", big.clone(), rect(1_000, 1_000, 2_000, 2_000), "clipper", false),
-            ("1-unit gap, below margin", big.clone(), rect(1_001, 0, 2_000, 1_000), "bbox", false),
-            ("A strictly inside B", rect(400, 400, 600, 600), big.clone(), "clipper", true),
-            ("B strictly inside A", big.clone(), rect(400, 400, 600, 600), "clipper", true),
-            ("A inside B's hole", rect(400, 400, 600, 600), holed.clone(), "certificate", false),
-            ("A touching B's hole edge", rect(400, 400, 700, 600), holed.clone(), "clipper", false),
-            ("A crossing B's hole edge by 1 unit", rect(400, 400, 701, 600), holed.clone(), "clipper", true),
-            ("A 2 units from B's hole edge", rect(400, 400, 698, 600), holed.clone(), "clipper", false),
-            ("A 5 units from B's hole edge", rect(400, 400, 695, 600), holed.clone(), "certificate", false),
-            ("A surrounding B's hole", rect(200, 200, 800, 800), holed.clone(), "clipper", true),
-            ("CW contour, inside", rect(400, 400, 600, 600), cw_big.clone(), "clipper", true),
-            ("U-bay, clear", rect(350, 400, 550, 950), u_bay.clone(), "certificate", false),
-            ("U-bay, 1-unit graze", rect(299, 400, 550, 950), u_bay.clone(), "clipper", true),
-            ("beyond coordinate guard", shifted(&big, 1 << 31, 0), shifted(&rect(400, 400, 600, 600), 1 << 31, 0), "clipper", true),
+            (
+                "1-unit edge overlap",
+                big.clone(),
+                rect(999, 0, 2_000, 1_000),
+                "clipper",
+                true,
+            ),
+            (
+                "1-unit^2 corner overlap",
+                big.clone(),
+                rect(999, 999, 2_000, 2_000),
+                "clipper",
+                true,
+            ),
+            (
+                "shared edge, zero area",
+                big.clone(),
+                rect(1_000, 0, 2_000, 1_000),
+                "clipper",
+                false,
+            ),
+            (
+                "single vertex touch",
+                big.clone(),
+                rect(1_000, 1_000, 2_000, 2_000),
+                "clipper",
+                false,
+            ),
+            (
+                "1-unit gap, below margin",
+                big.clone(),
+                rect(1_001, 0, 2_000, 1_000),
+                "bbox",
+                false,
+            ),
+            (
+                "A strictly inside B",
+                rect(400, 400, 600, 600),
+                big.clone(),
+                "clipper",
+                true,
+            ),
+            (
+                "B strictly inside A",
+                big.clone(),
+                rect(400, 400, 600, 600),
+                "clipper",
+                true,
+            ),
+            (
+                "A inside B's hole",
+                rect(400, 400, 600, 600),
+                holed.clone(),
+                "certificate",
+                false,
+            ),
+            (
+                "A touching B's hole edge",
+                rect(400, 400, 700, 600),
+                holed.clone(),
+                "clipper",
+                false,
+            ),
+            (
+                "A crossing B's hole edge by 1 unit",
+                rect(400, 400, 701, 600),
+                holed.clone(),
+                "clipper",
+                true,
+            ),
+            (
+                "A 2 units from B's hole edge",
+                rect(400, 400, 698, 600),
+                holed.clone(),
+                "clipper",
+                false,
+            ),
+            (
+                "A 5 units from B's hole edge",
+                rect(400, 400, 695, 600),
+                holed.clone(),
+                "certificate",
+                false,
+            ),
+            (
+                "A surrounding B's hole",
+                rect(200, 200, 800, 800),
+                holed.clone(),
+                "clipper",
+                true,
+            ),
+            (
+                "CW contour, inside",
+                rect(400, 400, 600, 600),
+                cw_big.clone(),
+                "clipper",
+                true,
+            ),
+            (
+                "U-bay, clear",
+                rect(350, 400, 550, 950),
+                u_bay.clone(),
+                "certificate",
+                false,
+            ),
+            (
+                "U-bay, 1-unit graze",
+                rect(299, 400, 550, 950),
+                u_bay.clone(),
+                "clipper",
+                true,
+            ),
+            (
+                "beyond coordinate guard",
+                shifted(&big, 1 << 31, 0),
+                shifted(&rect(400, 400, 600, 600), 1 << 31, 0),
+                "clipper",
+                true,
+            ),
         ];
         for (name, a, b, path, overlap) in cases {
             let (got_path, got_overlap) = check(&a, &b);
@@ -459,9 +593,22 @@ mod tests {
     fn shifted_pairs_match_clipper_on_every_path() {
         let comb = poly(
             &[
-                (0, 0), (3_000, 0), (3_000, 400), (2_600, 400), (2_600, 2_000), (2_200, 2_000),
-                (2_200, 400), (1_800, 400), (1_800, 2_000), (1_400, 2_000), (1_400, 400),
-                (1_000, 400), (1_000, 2_000), (600, 2_000), (600, 400), (0, 400),
+                (0, 0),
+                (3_000, 0),
+                (3_000, 400),
+                (2_600, 400),
+                (2_600, 2_000),
+                (2_200, 2_000),
+                (2_200, 400),
+                (1_800, 400),
+                (1_800, 2_000),
+                (1_400, 2_000),
+                (1_400, 400),
+                (1_000, 400),
+                (1_000, 2_000),
+                (600, 2_000),
+                (600, 400),
+                (0, 400),
             ],
             &[],
         );
@@ -473,8 +620,14 @@ mod tests {
         let tooth = rect(1_100, 600, 1_300, 1_800);
         let mut paths = std::collections::HashMap::<&str, usize>::new();
         let mut overlaps = 0;
-        for (a, b) in [(&comb, &tooth), (&ring_with_hole, &tooth), (&comb, &ring_with_hole)] {
-            for dx in [-500, -60, -10, -5, -4, -3, -1, 0, 1, 3, 4, 5, 10, 60, 500, 5_000] {
+        for (a, b) in [
+            (&comb, &tooth),
+            (&ring_with_hole, &tooth),
+            (&comb, &ring_with_hole),
+        ] {
+            for dx in [
+                -500, -60, -10, -5, -4, -3, -1, 0, 1, 3, 4, 5, 10, 60, 500, 5_000,
+            ] {
                 for dy in [-700, -1, 0, 1, 700] {
                     let (path, overlap) = check(a, &shifted(b, dx, dy));
                     *paths.entry(path).or_default() += 1;
@@ -483,8 +636,14 @@ mod tests {
             }
         }
         for path in ["bbox", "certificate", "clipper"] {
-            assert!(paths.get(path).copied().unwrap_or(0) > 0, "path {path} never taken: {paths:?}");
+            assert!(
+                paths.get(path).copied().unwrap_or(0) > 0,
+                "path {path} never taken: {paths:?}"
+            );
         }
-        assert!(overlaps > 0, "no overlapping pair, so the fallback answer went untested");
+        assert!(
+            overlaps > 0,
+            "no overlapping pair, so the fallback answer went untested"
+        );
     }
 }

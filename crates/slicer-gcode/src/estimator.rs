@@ -410,7 +410,12 @@ fn collect_segments(
         }
     }
 
-    (command_indices, segments, filament_length_mm, toolchange_count)
+    (
+        command_indices,
+        segments,
+        filament_length_mm,
+        toolchange_count,
+    )
 }
 
 fn extruded_volumes(

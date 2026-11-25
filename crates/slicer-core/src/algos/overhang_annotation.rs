@@ -640,14 +640,7 @@ pub fn certify_covered_by_square_offset(
         return false;
     }
 
-    let grid = LowerSegGrid::build(
-        grid_segs,
-        win_min_x,
-        win_min_y,
-        win_max_x,
-        win_max_y,
-        r_in,
-    );
+    let grid = LowerSegGrid::build(grid_segs, win_min_x, win_min_y, win_max_x, win_max_y, r_in);
 
     // Step 2: Certify every contact contour.
     for contact in contacts {
@@ -832,14 +825,7 @@ struct LowerSegGrid {
 }
 
 impl LowerSegGrid {
-    fn build(
-        segs: Vec<Seg2>,
-        min_x: f64,
-        min_y: f64,
-        max_x: f64,
-        max_y: f64,
-        r_in: f64,
-    ) -> Self {
+    fn build(segs: Vec<Seg2>, min_x: f64, min_y: f64, max_x: f64, max_y: f64, r_in: f64) -> Self {
         if segs.is_empty() {
             return Self {
                 segs,
@@ -923,10 +909,10 @@ impl LowerSegGrid {
             return false;
         }
         let limit = limit_sq.sqrt();
-        let cx_c = (((px - self.min_x) * self.inv_cell).floor() as isize)
-            .clamp(0, (self.nx - 1) as isize);
-        let cy_c = (((py - self.min_y) * self.inv_cell).floor() as isize)
-            .clamp(0, (self.ny - 1) as isize);
+        let cx_c =
+            (((px - self.min_x) * self.inv_cell).floor() as isize).clamp(0, (self.nx - 1) as isize);
+        let cy_c =
+            (((py - self.min_y) * self.inv_cell).floor() as isize).clamp(0, (self.ny - 1) as isize);
         let max_ring = (limit * self.inv_cell).ceil() as isize + 1;
 
         let check_cell = |cx: isize, cy: isize| -> bool {
@@ -1218,7 +1204,11 @@ fn point_in_decimated_lower(px: f64, py: f64, lower: &[DecimatedExPoly]) -> bool
         }
         let mut in_hole = false;
         for (hole, hb) in &ep.holes {
-            if px >= hb[0] && px <= hb[2] && py >= hb[1] && py <= hb[3] && point_in_ring(px, py, hole)
+            if px >= hb[0]
+                && px <= hb[2]
+                && py >= hb[1]
+                && py <= hb[3]
+                && point_in_ring(px, py, hole)
             {
                 in_hole = true;
                 break;
@@ -1240,7 +1230,9 @@ fn tile_intersects_ring(x0: f64, y0: f64, x1: f64, y1: f64, ring: &[Point2]) -> 
     for i in 0..n {
         let a = ring[i];
         let b = ring[(i + 1) % n];
-        if seg_intersects_aabb(a.x as f64, a.y as f64, b.x as f64, b.y as f64, px0, py0, px1, py1) {
+        if seg_intersects_aabb(
+            a.x as f64, a.y as f64, b.x as f64, b.y as f64, px0, py0, px1, py1,
+        ) {
             return true;
         }
     }

@@ -156,13 +156,7 @@ pub fn commit_shell_classification_builtin(
             let params =
                 resolve_opening_params(region_map.as_ref(), object_id, *region_id, timeline);
             compute_region_updates(
-                &new_vec,
-                object_id,
-                *region_id,
-                timeline,
-                k_top,
-                k_bot,
-                params,
+                &new_vec, object_id, *region_id, timeline, k_top, k_bot, params,
             )
         })
         .collect();
@@ -405,7 +399,12 @@ fn merge_shadow_contributions(
             .push(contribution);
     }
     let received: HashSet<usize> = grouped.keys().copied().collect();
-    let jobs: Vec<(usize, Option<Vec<ExPolygon>>, Option<u8>, Vec<ShadowContribution>)> = grouped
+    let jobs: Vec<(
+        usize,
+        Option<Vec<ExPolygon>>,
+        Option<u8>,
+        Vec<ShadowContribution>,
+    )> = grouped
         .into_iter()
         .map(|(slice_idx, group)| {
             let entry = local.entry(slice_idx).or_default();
@@ -1067,7 +1066,8 @@ fn dependent_layer_clusters(
     debug_assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
     let mut clusters: Vec<std::ops::Range<usize>> = Vec::new();
     for (index, &dependency_start) in dependency_starts.iter().enumerate() {
-        let first_read = positions[..index].partition_point(|&position| position < dependency_start);
+        let first_read =
+            positions[..index].partition_point(|&position| position < dependency_start);
         if first_read == index {
             clusters.push(index..index + 1);
             continue;
@@ -1554,14 +1554,16 @@ fn gate_internal_bridge_sites_clustered(
                 prep.print_z,
                 prep.target_flow_height,
             );
-            let lower_candidates: Vec<slicer_core::algos::bridge_over_infill::BridgeCandidateLayer> =
-                timeline[filled_start..prep.timeline_position]
-                    .iter()
-                    .filter_map(|&lower_idx| {
-                        let lower = slices_ro[lower_idx].regions.iter().find(|candidate| {
-                            candidate.object_id == *object_id && candidate.region_id == *region_id
-                        })?;
-                        Some(slicer_core::algos::bridge_over_infill::BridgeCandidateLayer {
+            let lower_candidates: Vec<
+                slicer_core::algos::bridge_over_infill::BridgeCandidateLayer,
+            > = timeline[filled_start..prep.timeline_position]
+                .iter()
+                .filter_map(|&lower_idx| {
+                    let lower = slices_ro[lower_idx].regions.iter().find(|candidate| {
+                        candidate.object_id == *object_id && candidate.region_id == *region_id
+                    })?;
+                    Some(
+                        slicer_core::algos::bridge_over_infill::BridgeCandidateLayer {
                             print_z: slices_ro[lower_idx].z,
                             // A commit replaces the slice's
                             // `internal_bridge_areas` with its qualified
@@ -1569,9 +1571,10 @@ fn gate_internal_bridge_sites_clustered(
                             new_polys: committed_on(lower_idx)
                                 .map(<[ExPolygon]>::to_vec)
                                 .unwrap_or_else(|| lower.internal_bridge_areas.clone()),
-                        })
-                    })
-                    .collect();
+                        },
+                    )
+                })
+                .collect();
             // `remove_filled_polygons_on_lower_layers` is the only input that
             // depends on phase B's own earlier writes. When no lower layer
             // carries a bridge polygon the subtraction is a no-op, so the
@@ -2370,7 +2373,10 @@ mod tests {
         // layer 2's longer window reaches past layer 1 into layer 0.
         let positions = [3, 6, 7];
         let dependency_starts = [2, 5, 3];
-        assert_eq!(dependent_layer_clusters(&positions, &dependency_starts), vec![0..3]);
+        assert_eq!(
+            dependent_layer_clusters(&positions, &dependency_starts),
+            vec![0..3]
+        );
         let naive = previous_layer_clusters(&positions, &dependency_starts);
         assert!(
             !respects_dependencies(&naive, &positions, &dependency_starts),
@@ -2420,16 +2426,20 @@ mod tests {
                 }
             }
             split_cases += usize::from(clusters.len() > 1);
-            merge_cases += usize::from(
-                !respects_dependencies(
-                    &previous_layer_clusters(&positions, &dependency_starts),
-                    &positions,
-                    &dependency_starts,
-                ),
-            );
+            merge_cases += usize::from(!respects_dependencies(
+                &previous_layer_clusters(&positions, &dependency_starts),
+                &positions,
+                &dependency_starts,
+            ));
         }
-        assert!(split_cases > 1_000, "too few fixtures split into parallel clusters");
-        assert!(merge_cases > 0, "no fixture needed a merge past the predecessor");
+        assert!(
+            split_cases > 1_000,
+            "too few fixtures split into parallel clusters"
+        );
+        assert!(
+            merge_cases > 0,
+            "no fixture needed a merge past the predecessor"
+        );
     }
 
     /// Fixture for the commit-phase tests: L1 bridges over sparse L0 on the
@@ -2475,7 +2485,10 @@ mod tests {
         let timelines = build_region_timelines(snapshot, &HashSet::new());
         let object_layers = HashMap::from([(
             "o".into(),
-            snapshot.iter().map(|slice| slice.global_layer_index).collect(),
+            snapshot
+                .iter()
+                .map(|slice| slice.global_layer_index)
+                .collect(),
         )]);
         let lower_fills = snapshot
             .iter()
@@ -2516,9 +2529,14 @@ mod tests {
     #[test]
     fn clustered_commits_equal_the_sequential_commit_loop() {
         let (snapshot, region_map) = dependent_bridge_fixture();
-        let sequential: CommitClustering =
-            |positions, _| (!positions.is_empty()).then_some(0..positions.len()).into_iter().collect();
-        let singletons: CommitClustering = |positions, _| (0..positions.len()).map(|i| i..i + 1).collect();
+        let sequential: CommitClustering = |positions, _| {
+            (!positions.is_empty())
+                .then_some(0..positions.len())
+                .into_iter()
+                .collect()
+        };
+        let singletons: CommitClustering =
+            |positions, _| (0..positions.len()).map(|i| i..i + 1).collect();
 
         let (clustered, clustered_stats, bridged) =
             run_gate_with(&snapshot, &region_map, dependent_layer_clusters, true);
@@ -2527,7 +2545,10 @@ mod tests {
             run_gate_with(&snapshot, &region_map, dependent_layer_clusters, false);
         let (_, singleton_stats, _) = run_gate_with(&snapshot, &region_map, singletons, false);
 
-        assert!(bridged.contains(&1) && bridged.contains(&6), "bridged layers: {bridged:?}");
+        assert!(
+            bridged.contains(&1) && bridged.contains(&6),
+            "bridged layers: {bridged:?}"
+        );
         assert!(
             clustered_stats.clusters > 1,
             "the fixture must split into parallel clusters: {clustered_stats:?}"
@@ -2537,8 +2558,14 @@ mod tests {
             "negative control: no layer read a lower commit ({singleton_stats:?} vs {serial_stats:?})"
         );
         assert_eq!(clustered_stats.recomputed, serial_stats.recomputed);
-        assert_eq!(clustered, serial, "clustered commits diverged from the sequential loop");
-        assert_eq!(unspeculated, serial, "unspeculated clusters diverged from the sequential loop");
+        assert_eq!(
+            clustered, serial,
+            "clustered commits diverged from the sequential loop"
+        );
+        assert_eq!(
+            unspeculated, serial,
+            "unspeculated clusters diverged from the sequential loop"
+        );
     }
 
     /// Pass 2's per-target parallel merge must equal the sequential union fold
@@ -2574,7 +2601,10 @@ mod tests {
 
         // Sequential oracle: seeds from the immutable snapshot, then every
         // seed's chain folded in ascending seed order.
-        let polys: Vec<Vec<ExPolygon>> = snapshot.iter().map(|s| s.regions[0].polygons.clone()).collect();
+        let polys: Vec<Vec<ExPolygon>> = snapshot
+            .iter()
+            .map(|s| s.regions[0].polygons.clone())
+            .collect();
         let mut seeds: HashMap<usize, Vec<ExPolygon>> = HashMap::new();
         for pos in 0..polys.len() {
             let upper = polys.get(pos + 1).cloned().unwrap_or_default();
@@ -2656,7 +2686,14 @@ mod tests {
             |member, _| panic!("member {member} must not be re-evaluated"),
         );
         assert!(!missed);
-        assert_eq!(outcomes, vec![(0, speculated[0].clone()), (1, speculated[1].clone()), (2, speculated[2].clone())]);
+        assert_eq!(
+            outcomes,
+            vec![
+                (0, speculated[0].clone()),
+                (1, speculated[1].clone()),
+                (2, speculated[2].clone())
+            ]
+        );
     }
 
     /// The first commit that differs from its precomputed one invalidates the
@@ -2701,10 +2738,17 @@ mod tests {
             ]
         );
         let seen = seen.into_inner();
-        assert_eq!(seen.len(), 2, "exactly the members after the miss are re-evaluated");
+        assert_eq!(
+            seen.len(),
+            2,
+            "exactly the members after the miss are re-evaluated"
+        );
         assert_eq!(
             seen[0],
-            (2, vec![(10, vec![rect(0.0, 1.0)]), (11, vec![rect(0.0, 2.5)])]),
+            (
+                2,
+                vec![(10, vec![rect(0.0, 1.0)]), (11, vec![rect(0.0, 2.5)])]
+            ),
             "member 2 sees member 0's precomputed and member 1's real commit"
         );
         assert_eq!(seen[1].1.last(), Some(&(12, vec![rect(0.0, 9.0)])));

@@ -879,7 +879,10 @@ fn explicit_schedule_keeps_a_native_plane_above_the_object_height() {
     let last = layers.last().expect("three layers");
     assert_eq!(last.active_regions.len(), 1);
     let region = &last.active_regions[0];
-    assert!(!region.is_catchup, "the 0.6 plane is native, not a catch-up");
+    assert!(
+        !region.is_catchup,
+        "the 0.6 plane is native, not a catch-up"
+    );
     assert!(
         (region.effective_layer_height - 0.2).abs() < 1e-6,
         "the native step is 0.2, got {}",

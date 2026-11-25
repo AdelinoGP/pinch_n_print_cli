@@ -5881,7 +5881,8 @@ mod tests {
         let original_ptr = layer.ordered_entities.as_ptr();
         let shared = Arc::new(std::mem::take(&mut layer.ordered_entities));
         {
-            let mut ctx = HostExecutionContextBuilder::new("com.test.shared-view", 0.0, 0.2).build();
+            let mut ctx =
+                HostExecutionContextBuilder::new("com.test.shared-view", 0.0, 0.2).build();
             let _res = ctx
                 .push_finalization_layer_view_shared(&layer, Arc::clone(&shared))
                 .expect("push shared view");

@@ -24,8 +24,22 @@ const IDENTITY: [f64; 16] = [
 fn affine(degrees: f64, scale: f64, tx: f64, ty: f64) -> [f64; 16] {
     let (s, c) = degrees.to_radians().sin_cos();
     [
-        c * scale, s * scale, 0.0, 0.0, -s * scale, c * scale, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, tx, ty,
-        0.0, 1.0,
+        c * scale,
+        s * scale,
+        0.0,
+        0.0,
+        -s * scale,
+        c * scale,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        tx,
+        ty,
+        0.0,
+        1.0,
     ]
 }
 

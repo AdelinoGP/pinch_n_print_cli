@@ -593,7 +593,10 @@ fn t191_cantilever_certificate_matches_uncertified_oracle_across_geometry_classe
             &[],
             &plain_difference_params(),
         );
-        assert!(!ann.contacts.is_empty(), "ledge {ledge} must produce contacts");
+        assert!(
+            !ann.contacts.is_empty(),
+            "ledge {ledge} must produce contacts"
+        );
         let oracle_covered = uncertified_is_covered(&ann.contacts, &lower, threshold_mm);
         assert_eq!(
             !oracle_covered, expect_cantilever,
@@ -634,7 +637,11 @@ fn t191_cantilever_certificate_matches_uncertified_oracle_across_geometry_classe
         (-1.5, 41.5),
     ])];
     for strip in [&l_strip, &c_strip] {
-        assert!(certify_covered_by_square_offset(strip, &frame, threshold_mm));
+        assert!(certify_covered_by_square_offset(
+            strip,
+            &frame,
+            threshold_mm
+        ));
         assert!(uncertified_is_covered(strip, &frame, threshold_mm));
     }
 
@@ -642,9 +649,7 @@ fn t191_cantilever_certificate_matches_uncertified_oracle_across_geometry_classe
     //    - 1.5 mm rim overhanging into a 20 mm hole -> covered & certified.
     //    - Bridge spanning across the center of the 20 mm hole (10 mm from rim)
     //      -> NOT covered (must NOT certify, must flag cantilever).
-    let lower_with_large_hole = vec![rect_with_hole(
-        0.0, 0.0, 40.0, 40.0, 10.0, 10.0, 30.0, 30.0,
-    )];
+    let lower_with_large_hole = vec![rect_with_hole(0.0, 0.0, 40.0, 40.0, 10.0, 10.0, 30.0, 30.0)];
     let covered_hole_rim = vec![rect(10.0, 10.0, 11.5, 30.0)];
     assert!(certify_covered_by_square_offset(
         &covered_hole_rim,
@@ -659,11 +664,7 @@ fn t191_cantilever_certificate_matches_uncertified_oracle_across_geometry_classe
 
     let hole_span_bridge = vec![rect(10.0, 18.0, 30.0, 22.0)];
     assert!(
-        !certify_covered_by_square_offset(
-            &hole_span_bridge,
-            &lower_with_large_hole,
-            threshold_mm
-        ),
+        !certify_covered_by_square_offset(&hole_span_bridge, &lower_with_large_hole, threshold_mm),
         "bridge across 20 mm hole must NEVER be certified covered"
     );
     assert!(!uncertified_is_covered(
@@ -703,7 +704,11 @@ fn t191_cantilever_certificate_matches_uncertified_oracle_across_geometry_classe
     ));
 
     // 6. Empty lower must return false for non-empty contacts, true for empty contacts.
-    assert!(!certify_covered_by_square_offset(&contact_near_tiny, &[], threshold_mm));
+    assert!(!certify_covered_by_square_offset(
+        &contact_near_tiny,
+        &[],
+        threshold_mm
+    ));
     assert!(certify_covered_by_square_offset(&[], &[], threshold_mm));
 
     // 7. CW / reversed lower contour ring is normalized to CCW by `offset_paths`,
@@ -713,8 +718,16 @@ fn t191_cantilever_certificate_matches_uncertified_oracle_across_geometry_classe
     let cw_lower = vec![cw_pillar];
     let near_cw = vec![rect(10.0, 0.0, 11.5, 10.0)];
     let far_cw = vec![rect(10.0, 0.0, 14.0, 10.0)];
-    assert!(certify_covered_by_square_offset(&near_cw, &cw_lower, threshold_mm));
+    assert!(certify_covered_by_square_offset(
+        &near_cw,
+        &cw_lower,
+        threshold_mm
+    ));
     assert!(uncertified_is_covered(&near_cw, &cw_lower, threshold_mm));
-    assert!(!certify_covered_by_square_offset(&far_cw, &cw_lower, threshold_mm));
+    assert!(!certify_covered_by_square_offset(
+        &far_cw,
+        &cw_lower,
+        threshold_mm
+    ));
     assert!(!uncertified_is_covered(&far_cw, &cw_lower, threshold_mm));
 }

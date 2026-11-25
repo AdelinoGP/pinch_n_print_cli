@@ -1891,14 +1891,46 @@ mod tests {
     ) {
         let base = vertices.len() as u32;
         vertices.extend_from_slice(&[
-            Point3 { x: x0, y: y0, z: z0 },
-            Point3 { x: x1, y: y0, z: z0 },
-            Point3 { x: x1, y: y1, z: z0 },
-            Point3 { x: x0, y: y1, z: z0 },
-            Point3 { x: x0, y: y0, z: z1 },
-            Point3 { x: x1, y: y0, z: z1 },
-            Point3 { x: x1, y: y1, z: z1 },
-            Point3 { x: x0, y: y1, z: z1 },
+            Point3 {
+                x: x0,
+                y: y0,
+                z: z0,
+            },
+            Point3 {
+                x: x1,
+                y: y0,
+                z: z0,
+            },
+            Point3 {
+                x: x1,
+                y: y1,
+                z: z0,
+            },
+            Point3 {
+                x: x0,
+                y: y1,
+                z: z0,
+            },
+            Point3 {
+                x: x0,
+                y: y0,
+                z: z1,
+            },
+            Point3 {
+                x: x1,
+                y: y0,
+                z: z1,
+            },
+            Point3 {
+                x: x1,
+                y: y1,
+                z: z1,
+            },
+            Point3 {
+                x: x0,
+                y: y1,
+                z: z1,
+            },
         ]);
         let faces: [[u32; 3]; 12] = if inward_hole {
             [
@@ -1938,11 +1970,14 @@ mod tests {
 
     #[cfg(feature = "host-algos")]
     #[test]
-    fn t191_slice_mesh_ex_parallel_matches_serial_bit_for_bit_across_chunks_holes_grazing_and_empty()
-    {
+    fn t191_slice_mesh_ex_parallel_matches_serial_bit_for_bit_across_chunks_holes_grazing_and_empty(
+    ) {
         // Empty inputs.
         let empty = IndexedTriangleSet::default();
-        assert_eq!(slice_mesh_ex_parallel(&empty, &[]), slice_mesh_ex(&empty, &[]));
+        assert_eq!(
+            slice_mesh_ex_parallel(&empty, &[]),
+            slice_mesh_ex(&empty, &[])
+        );
         assert_eq!(
             slice_mesh_ex_parallel(&empty, &[0.2, 0.4]),
             slice_mesh_ex(&empty, &[0.2, 0.4])
@@ -1961,7 +1996,17 @@ mod tests {
             let y0 = row * 10.0;
             let z0 = if i % 5 == 0 { 1.0 } else { 0.0 };
             let z1 = if i % 7 == 0 { 2.0 } else { 4.0 };
-            append_box_prism(&mut vertices, &mut indices, x0, y0, x0 + 8.0, y0 + 8.0, z0, z1, false);
+            append_box_prism(
+                &mut vertices,
+                &mut indices,
+                x0,
+                y0,
+                x0 + 8.0,
+                y0 + 8.0,
+                z0,
+                z1,
+                false,
+            );
             append_box_prism(
                 &mut vertices,
                 &mut indices,
@@ -1985,7 +2030,10 @@ mod tests {
 
         let serial = slice_mesh_ex(&mesh, &zs);
         let parallel = slice_mesh_ex_parallel(&mesh, &zs);
-        assert_eq!(parallel, serial, "parallel slice must match serial bit-for-bit");
+        assert_eq!(
+            parallel, serial,
+            "parallel slice must match serial bit-for-bit"
+        );
         // Non-vacuous check: verify holes actually exist on interior planes.
         assert!(!parallel[1].is_empty());
         assert!(parallel[1].iter().any(|ep| !ep.holes.is_empty()));

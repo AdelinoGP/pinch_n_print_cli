@@ -150,12 +150,18 @@ fn clip_polygons_batch_large_union_and_difference_preserve_order_and_geometry() 
         contour: g::Polygon {
             points: vec![
                 g::Point2 { x: x0, y: y0 },
-                g::Point2 { x: x0 + size, y: y0 },
+                g::Point2 {
+                    x: x0 + size,
+                    y: y0,
+                },
                 g::Point2 {
                     x: x0 + size,
                     y: y0 + size,
                 },
-                g::Point2 { x: x0, y: y0 + size },
+                g::Point2 {
+                    x: x0,
+                    y: y0 + size,
+                },
             ],
         },
         holes: Vec::new(),
@@ -180,13 +186,12 @@ fn clip_polygons_batch_large_union_and_difference_preserve_order_and_geometry() 
     let results = phs::Host::clip_polygons_batch(&mut ctx, vec![req_union, req_diff])
         .expect("batched clip should not error");
     assert_eq!(results.len(), 2, "one result per request, in input order");
-    assert_eq!(results[0].len(), 1, "12 overlapping squares merge into 1 contour");
-    let xs: Vec<i64> = results[0][0]
-        .contour
-        .points
-        .iter()
-        .map(|p| p.x)
-        .collect();
+    assert_eq!(
+        results[0].len(),
+        1,
+        "12 overlapping squares merge into 1 contour"
+    );
+    let xs: Vec<i64> = results[0][0].contour.points.iter().map(|p| p.x).collect();
     assert_eq!(*xs.iter().min().unwrap(), 0);
     assert_eq!(*xs.iter().max().unwrap(), 650_000);
     assert_eq!(results[1].len(), 1, "difference yields 1 frame");

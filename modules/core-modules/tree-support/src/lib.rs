@@ -196,8 +196,7 @@ fn point_in_ring_units(ring: &[slicer_ir::Point2], x: i64, y: i64) -> bool {
         let a = ring[current];
         let b = ring[previous];
         if (a.y > y) != (b.y > y) {
-            let crossing =
-                (b.x - a.x) as f64 * (y - a.y) as f64 / (b.y - a.y) as f64 + a.x as f64;
+            let crossing = (b.x - a.x) as f64 * (y - a.y) as f64 / (b.y - a.y) as f64 + a.x as f64;
             if (x as f64) < crossing {
                 result = !result;
             }

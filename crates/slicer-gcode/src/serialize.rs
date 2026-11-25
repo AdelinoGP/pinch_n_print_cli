@@ -1117,7 +1117,8 @@ impl GCodeSerializer for DefaultGCodeSerializer {
 
         let commands = &gcode_ir.commands;
         if commands.len() < Self::PARALLEL_THRESHOLD {
-            let mut output = String::with_capacity(header.len() + widths.len() + commands.len() * 44);
+            let mut output =
+                String::with_capacity(header.len() + widths.len() + commands.len() * 44);
             output.push_str(&header);
             output.push_str(&widths);
             self.serialize_commands_chunk(commands, 0.0, &mut output);

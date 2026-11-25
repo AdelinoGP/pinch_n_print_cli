@@ -13,8 +13,8 @@ use slicer_core::algos::prepass_slice::{
     execute_prepass_slice_single_layer_with_cache, PrepassSliceCache,
 };
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, ExPolygon, GlobalLayer, IndexedTriangleSet, MeshIR,
-    ObjectConfig, ObjectMesh, Point2, Point3, Polygon, RegionId, Transform3d,
+    ActiveRegion, BoundingBox3, ExPolygon, GlobalLayer, IndexedTriangleSet, MeshIR, ObjectConfig,
+    ObjectMesh, Point2, Point3, Polygon, RegionId, Transform3d,
 };
 use std::collections::HashMap;
 
@@ -326,8 +326,7 @@ fn non_bridge_region_has_empty_bridge_areas() {
 /// assigning bridge flow; a fully supported candidate must remain ordinary fill.
 #[test]
 fn supported_bridge_candidate_does_not_emit_bridge_fill() {
-    let mesh_ir =
-        bridge_mesh_with_l_walls(5.0, 20.0, 0.0, false);
+    let mesh_ir = bridge_mesh_with_l_walls(5.0, 20.0, 0.0, false);
 
     let current_area = rect_expoly_mm(0.0, 0.0, 5.0, 20.0);
     let previous_area = current_area.clone();

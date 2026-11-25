@@ -665,11 +665,7 @@ impl DefaultGCodeEmitter {
         let estimated_cmds: usize = layer_irs
             .iter()
             .map(|l| {
-                let pts: usize = l
-                    .ordered_entities
-                    .iter()
-                    .map(|e| e.path.points.len())
-                    .sum();
+                let pts: usize = l.ordered_entities.iter().map(|e| e.path.points.len()).sum();
                 pts + l.travel_moves.len() + l.retracts.len() + l.annotations.len() + 8
             })
             .sum::<usize>()

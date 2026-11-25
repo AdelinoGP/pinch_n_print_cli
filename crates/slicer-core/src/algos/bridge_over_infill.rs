@@ -215,7 +215,12 @@ fn ring_box(points: &[Point2]) -> Option<UnitBox> {
     Some(points.iter().fold(
         (first.x, first.y, first.x, first.y),
         |(min_x, min_y, max_x, max_y), p| {
-            (min_x.min(p.x), min_y.min(p.y), max_x.max(p.x), max_y.max(p.y))
+            (
+                min_x.min(p.x),
+                min_y.min(p.y),
+                max_x.max(p.x),
+                max_y.max(p.y),
+            )
         },
     ))
 }
@@ -309,8 +314,8 @@ pub fn unsupported_span_areas_near(
     };
     let spacing = f64::from(spacing_mm);
     let fill_reach = OFFSET_MITER_REACH * expansion_multiplier * spacing;
-    let solid_reach = OFFSET_MITER_REACH * spacing
-        + OFFSET_MITER_REACH * (1.0 + expansion_multiplier) * spacing;
+    let solid_reach =
+        OFFSET_MITER_REACH * spacing + OFFSET_MITER_REACH * (1.0 + expansion_multiplier) * spacing;
     let margin_mm = fill_reach.max(solid_reach) + spacing + 8.0 * SCALED_EPSILON_MM;
     let window = grow_box(bbox, margin_mm);
     let fills = polygons_touching_box(lower_fills, window);
@@ -704,7 +709,8 @@ impl AnchorSegmentIndex {
                     let s = &self.segments[index];
                     // The reference's exact expression.
                     let t = (((p.0 - s.ax) * s.dx + (p.1 - s.ay) * s.dy) / s.len2).clamp(0.0, 1.0);
-                    let distance2 = (p.0 - s.ax - t * s.dx).powi(2) + (p.1 - s.ay - t * s.dy).powi(2);
+                    let distance2 =
+                        (p.0 - s.ax - t * s.dx).powi(2) + (p.1 - s.ay - t * s.dy).powi(2);
                     if distance2 < best_d2 || (distance2 == best_d2 && index < best_index) {
                         best_d2 = distance2;
                         best_index = index;

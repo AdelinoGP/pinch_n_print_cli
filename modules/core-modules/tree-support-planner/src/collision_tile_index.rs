@@ -127,7 +127,10 @@ pub(crate) struct CollisionTileIndex<'a> {
 impl<'a> CollisionTileIndex<'a> {
     /// Build a per-layer tile index for `collision_polys` using `tile_units`
     /// (`> 0`). Returns `None` when `collision_polys` has no valid rings.
-    pub(crate) fn build(collision_polys: &'a [ExPolygon], requested_tile_units: i64) -> Option<Self> {
+    pub(crate) fn build(
+        collision_polys: &'a [ExPolygon],
+        requested_tile_units: i64,
+    ) -> Option<Self> {
         let mut rings: Vec<&'a [Point2]> = Vec::new();
         let mut total_points: usize = 0;
         let mut min_x = i64::MAX;
@@ -526,16 +529,40 @@ impl Frame {
     #[inline]
     fn project(&self, q: Point2) -> (Point2, i64) {
         if q.x > self.ux1 {
-            let p = Point2 { x: self.fx1, y: q.y };
+            let p = Point2 {
+                x: self.fx1,
+                y: q.y,
+            };
             let seg = if q.y > self.y_ref { 0 } else { 4 };
             (p, seg)
         } else if q.x < self.ux0 {
-            (Point2 { x: self.fx0, y: q.y }, 2)
+            (
+                Point2 {
+                    x: self.fx0,
+                    y: q.y,
+                },
+                2,
+            )
         } else if q.y > self.uy1 {
-            (Point2 { x: q.x, y: self.fy1 }, 1)
+            (
+                Point2 {
+                    x: q.x,
+                    y: self.fy1,
+                },
+                1,
+            )
         } else {
-            debug_assert!(q.y < self.uy0, "exterior chain endpoint must lie strictly outside U");
-            (Point2 { x: q.x, y: self.fy0 }, 3)
+            debug_assert!(
+                q.y < self.uy0,
+                "exterior chain endpoint must lie strictly outside U"
+            );
+            (
+                Point2 {
+                    x: q.x,
+                    y: self.fy0,
+                },
+                3,
+            )
         }
     }
 
@@ -777,10 +804,7 @@ fn for_each_edge_cell<F: FnMut(usize)>(
 pub(crate) fn count_expolygon_points(polys: &[ExPolygon]) -> usize {
     polys
         .iter()
-        .map(|p| {
-            p.contour.points.len()
-                + p.holes.iter().map(|h| h.points.len()).sum::<usize>()
-        })
+        .map(|p| p.contour.points.len() + p.holes.iter().map(|h| h.points.len()).sum::<usize>())
         .sum()
 }
 
@@ -888,7 +912,10 @@ mod tests {
                 points: vec![
                     Point2 { x: 0, y: 0 },
                     Point2 { x: 100_000, y: 1 },
-                    Point2 { x: 100_000, y: 20_000 },
+                    Point2 {
+                        x: 100_000,
+                        y: 20_000,
+                    },
                     Point2 { x: 0, y: 20_000 },
                 ],
             },
@@ -980,16 +1007,24 @@ mod tests {
                         host::clip_polygons(&[subj.clone()], clip, ClipOperation::Difference)
                     }
                 };
-                let expected =
-                    host::clip_polygons(&[subj], &collision, ClipOperation::Difference);
+                let expected = host::clip_polygons(&[subj], &collision, ClipOperation::Difference);
                 assert_eq!(
                     got, expected,
                     "center #{ci} ({cx}, {cy}) tile_units={tile_units} diverged"
                 );
             }
-            assert!(saw_empty, "test must cover Empty fast path (tile={tile_units})");
-            assert!(saw_covered, "test must cover Covered fast path (tile={tile_units})");
-            assert!(saw_polys, "test must cover Polys contraction path (tile={tile_units})");
+            assert!(
+                saw_empty,
+                "test must cover Empty fast path (tile={tile_units})"
+            );
+            assert!(
+                saw_covered,
+                "test must cover Covered fast path (tile={tile_units})"
+            );
+            assert!(
+                saw_polys,
+                "test must cover Polys contraction path (tile={tile_units})"
+            );
         }
     }
 
@@ -1018,9 +1053,18 @@ mod tests {
             contour: Polygon {
                 points: vec![
                     Point2 { x: 0, y: 0 },
-                    Point2 { x: 500_000, y: 400_000 },
-                    Point2 { x: 450_000, y: 500_000 },
-                    Point2 { x: -50_000, y: 100_000 },
+                    Point2 {
+                        x: 500_000,
+                        y: 400_000,
+                    },
+                    Point2 {
+                        x: 450_000,
+                        y: 500_000,
+                    },
+                    Point2 {
+                        x: -50_000,
+                        y: 100_000,
+                    },
                 ],
             },
             holes: Vec::new(),

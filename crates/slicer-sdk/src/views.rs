@@ -1086,10 +1086,8 @@ fn expolygons_intersect_area_positive(a: &[ExPolygon], b: &[ExPolygon]) -> bool 
         return false;
     }
 
-    let a_bboxes: Vec<Option<(i64, i64, i64, i64)>> = a
-        .iter()
-        .map(|ep| poly_bbox(&ep.contour.points))
-        .collect();
+    let a_bboxes: Vec<Option<(i64, i64, i64, i64)>> =
+        a.iter().map(|ep| poly_bbox(&ep.contour.points)).collect();
     let Some(a_union) = a_bboxes
         .iter()
         .flatten()
@@ -1111,12 +1109,8 @@ fn expolygons_intersect_area_positive(a: &[ExPolygon], b: &[ExPolygon]) -> bool 
         return false;
     }
 
-    let mut overlapping_pairs: Vec<(
-        usize,
-        (i64, i64, i64, i64),
-        usize,
-        (i64, i64, i64, i64),
-    )> = Vec::new();
+    let mut overlapping_pairs: Vec<(usize, (i64, i64, i64, i64), usize, (i64, i64, i64, i64))> =
+        Vec::new();
     for (ai, bb_a_opt) in a_bboxes.iter().enumerate() {
         let Some(bb_a) = *bb_a_opt else {
             continue;

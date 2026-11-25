@@ -905,7 +905,10 @@ fn test_offset_concave_crossing_eliminates_three_point_loops_and_rounds() {
     let poly: Path64 = (0..n)
         .map(|i| {
             let theta = 2.0 * constants::PI * (i as f64) / (n as f64);
-            Point64::new((radius * theta.cos()).round() as i64, (radius * theta.sin()).round() as i64)
+            Point64::new(
+                (radius * theta.cos()).round() as i64,
+                (radius * theta.sin()).round() as i64,
+            )
         })
         .collect();
 

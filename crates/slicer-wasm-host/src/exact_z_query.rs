@@ -109,7 +109,10 @@ impl ExactZQueryService {
     ) -> Self {
         let mut seeded: HashMap<String, HashMap<u32, usize>> = HashMap::new();
         for (index, entry) in analysis.print_plane_occupancy.iter().enumerate() {
-            let Some(object) = mesh.objects.iter().find(|object| object.id == entry.object_id)
+            let Some(object) = mesh
+                .objects
+                .iter()
+                .find(|object| object.id == entry.object_id)
             else {
                 continue;
             };

@@ -484,8 +484,8 @@ impl SkirtBrim {
                     },
                     holes: Vec::new(),
                 };
-                let anchor_width = geometry::modal_non_zero_width(&layer_widths)
-                    .unwrap_or(self.line_width);
+                let anchor_width =
+                    geometry::modal_non_zero_width(&layer_widths).unwrap_or(self.line_width);
                 let contour = geometry::offset(
                     std::slice::from_ref(&layer_poly),
                     0.5 * anchor_width,
@@ -577,8 +577,8 @@ impl SkirtBrim {
     /// and never returns less than half the line width (a spacing below that is
     /// a degenerate flow).
     fn flow_spacing(&self) -> f32 {
-        let spacing = self.line_width
-            - self.first_layer_height * (1.0 - std::f32::consts::FRAC_PI_4);
+        let spacing =
+            self.line_width - self.first_layer_height * (1.0 - std::f32::consts::FRAC_PI_4);
         if spacing.is_finite() && spacing > self.line_width * 0.5 {
             spacing.max(1e-4)
         } else {

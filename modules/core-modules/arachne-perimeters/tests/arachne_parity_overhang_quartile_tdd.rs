@@ -62,12 +62,7 @@ fn make_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
 /// 10mm square region (centered at origin) over a smaller previous-layer
 /// boundary. Ticket 142: the quartile comes from the signed distance to
 /// `previous_layer_boundary`, bucketed at `overhang_band_width_mm`.
-fn make_region(
-    side_mm: f32,
-    boundary_side_mm: f32,
-    band_width_mm: f32,
-    z: f32,
-) -> SliceRegionView {
+fn make_region(side_mm: f32, boundary_side_mm: f32, band_width_mm: f32, z: f32) -> SliceRegionView {
     SliceRegionViewBuilder::new()
         .object_id("obj-1")
         .region_id(1)
@@ -103,9 +98,8 @@ fn overhang_quartile_set_per_vertex_inside_band() {
     for wall in output.wall_loops() {
         for pt in &wall.path.points {
             checked_any_point = true;
-            let raw = slicer_core::perimeter_utils::signed_distance_to_boundary(
-                pt.x, pt.y, &boundary,
-            );
+            let raw =
+                slicer_core::perimeter_utils::signed_distance_to_boundary(pt.x, pt.y, &boundary);
             let expected =
                 slicer_core::perimeter_utils::overhang_quartile_from_distance(raw, band_width_mm);
             checked_some_overhang |= expected.is_some();

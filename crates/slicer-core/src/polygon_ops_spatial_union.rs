@@ -180,7 +180,9 @@ pub fn union_spatial_tree_with_options(
             #[cfg(feature = "host-algos")]
             let res: Vec<(usize, Vec<ExPolygon>)> = {
                 let total_v: usize = tasks.iter().map(|t| slice_verts(&t.1)).sum();
-                if nested_par && tasks.len() >= NESTED_PAR_MIN_TASKS && total_v >= NESTED_PAR_MIN_VERTS
+                if nested_par
+                    && tasks.len() >= NESTED_PAR_MIN_TASKS
+                    && total_v >= NESTED_PAR_MIN_VERTS
                 {
                     // Indexed `into_par_iter().collect()` preserves exact task order.
                     tasks.into_par_iter().map(run_one).collect()
@@ -213,10 +215,8 @@ pub fn union_spatial_tree_with_options(
                         if !force && sc.len() > k {
                             morton_sort_indices(&merged, &mut sc);
                         }
-                        next_active.push((
-                            sc.into_iter().map(|i| merged[i].clone()).collect(),
-                            force,
-                        ));
+                        next_active
+                            .push((sc.into_iter().map(|i| merged[i].clone()).collect(), force));
                     }
                 }
             }
@@ -241,11 +241,7 @@ fn clip_union_head_tail(polys: &[ExPolygon]) -> Vec<ExPolygon> {
 #[cfg(feature = "host-algos")]
 #[inline]
 fn poly_verts(ep: &ExPolygon) -> usize {
-    ep.contour.points.len()
-        + ep.holes
-            .iter()
-            .map(|h| h.points.len())
-            .sum::<usize>()
+    ep.contour.points.len() + ep.holes.iter().map(|h| h.points.len()).sum::<usize>()
 }
 
 #[cfg(feature = "host-algos")]
@@ -285,10 +281,7 @@ fn expolygon_net_double_area(ep: &ExPolygon) -> i128 {
 #[inline]
 fn has_canonical_winding(ep: &ExPolygon) -> bool {
     ring_double_area(&ep.contour.points) > 0
-        && ep
-            .holes
-            .iter()
-            .all(|h| ring_double_area(&h.points) < 0)
+        && ep.holes.iter().all(|h| ring_double_area(&h.points) < 0)
 }
 
 #[inline]
@@ -637,10 +630,11 @@ fn prune_convex_contained(polys: &[ExPolygon]) -> Vec<ExPolygon> {
                 .iter()
                 .all(|&p| point_in_convex_ccw(p, container_pts));
             if contour_inside
-                && polys[i]
-                    .holes
-                    .iter()
-                    .all(|h| h.points.iter().all(|&p| point_in_convex_ccw(p, container_pts)))
+                && polys[i].holes.iter().all(|h| {
+                    h.points
+                        .iter()
+                        .all(|&p| point_in_convex_ccw(p, container_pts))
+                })
             {
                 dropped[i] = true;
                 break;
@@ -798,10 +792,18 @@ mod tests {
             &[],
         );
         let bay_square = make_expoly(
-            &[(4_000, 4_000), (8_000, 4_000), (8_000, 6_000), (4_000, 6_000)],
+            &[
+                (4_000, 4_000),
+                (8_000, 4_000),
+                (8_000, 6_000),
+                (4_000, 6_000),
+            ],
             &[],
         );
-        assert!(!is_convex_ccw(&c_shape), "C-shape must not pass convexity check");
+        assert!(
+            !is_convex_ccw(&c_shape),
+            "C-shape must not pass convexity check"
+        );
         let pruned = prune_convex_contained(&[c_shape.clone(), bay_square.clone()]);
         assert_eq!(
             pruned.len(),
@@ -809,10 +811,14 @@ mod tests {
             "polygon inside concave bay must never be pruned"
         );
 
-        let got = union_spatial_tree_with_options(&[c_shape.clone()], &[bay_square.clone()], 2, false);
+        let got =
+            union_spatial_tree_with_options(&[c_shape.clone()], &[bay_square.clone()], 2, false);
         let want = clip_polygons(&[c_shape], &[bay_square], ClipOperation::Union);
         let xor_area = total_area_units2(&xor(&got, &want));
-        assert_eq!(xor_area, 0.0, "bay polygon must remain disjoint solid in union");
+        assert_eq!(
+            xor_area, 0.0,
+            "bay polygon must remain disjoint solid in union"
+        );
     }
 
     #[test]
@@ -855,13 +861,16 @@ mod tests {
     fn point_in_convex_ccw_rejects_point_on_collinear_closing_ray_extension() {
         // Convex polygon with collinear vertex `(0, 10)` on the closing edge `(0, 20) -> (0, 0)`.
         // Point `(0, 25)` lies on the ray `o -> convex[n - 1]` strictly OUTSIDE the polygon.
-        let poly = make_expoly(
-            &[(0, 0), (10, 0), (10, 10), (0, 20), (0, 10)],
-            &[],
-        );
+        let poly = make_expoly(&[(0, 0), (10, 0), (10, 10), (0, 20), (0, 10)], &[]);
         assert!(is_convex_ccw(&poly));
-        assert!(point_in_convex_ccw(Point2 { x: 0, y: 15 }, &poly.contour.points));
-        assert!(point_in_convex_ccw(Point2 { x: 0, y: 20 }, &poly.contour.points));
+        assert!(point_in_convex_ccw(
+            Point2 { x: 0, y: 15 },
+            &poly.contour.points
+        ));
+        assert!(point_in_convex_ccw(
+            Point2 { x: 0, y: 20 },
+            &poly.contour.points
+        ));
         assert!(
             !point_in_convex_ccw(Point2 { x: 0, y: 25 }, &poly.contour.points),
             "point beyond closing collinear edge must not test inside"
@@ -878,10 +887,20 @@ mod tests {
         // The hole-bearing polygon must NOT be treated as a convex container.
         let frame = make_expoly(
             &[(0, 0), (20_000, 0), (20_000, 20_000), (0, 20_000)],
-            &[&[(4_000, 4_000), (4_000, 16_000), (16_000, 16_000), (16_000, 4_000)]],
+            &[&[
+                (4_000, 4_000),
+                (4_000, 16_000),
+                (16_000, 16_000),
+                (16_000, 4_000),
+            ]],
         );
         let island = make_expoly(
-            &[(8_000, 8_000), (12_000, 8_000), (12_000, 12_000), (8_000, 12_000)],
+            &[
+                (8_000, 8_000),
+                (12_000, 8_000),
+                (12_000, 12_000),
+                (8_000, 12_000),
+            ],
             &[],
         );
         assert!(!is_convex_ccw(&frame));
@@ -889,7 +908,11 @@ mod tests {
         let want = clip_polygons(&[frame], &[island], ClipOperation::Union);
 
         // Both must preserve the frame with 1 hole AND the separate nested island.
-        assert_eq!(got.len(), 2, "frame + island inside its hole must both survive");
+        assert_eq!(
+            got.len(),
+            2,
+            "frame + island inside its hole must both survive"
+        );
         assert_eq!(total_area_units2(&xor(&got, &want)), 0.0);
     }
 
@@ -899,10 +922,26 @@ mod tests {
         // hole in a larger CCW square under FillRule::NonZero. `union_spatial_tree`
         // must detect non-canonical winding and preserve the hole verbatim.
         let outer = make_expoly(&[(0, 0), (10_000, 0), (10_000, 10_000), (0, 10_000)], &[]);
-        let inner_cw = make_expoly(&[(3_000, 3_000), (3_000, 7_000), (7_000, 7_000), (7_000, 3_000)], &[]);
-        let extra = make_expoly(&[(20_000, 0), (30_000, 0), (30_000, 10_000), (20_000, 10_000)], &[]);
+        let inner_cw = make_expoly(
+            &[
+                (3_000, 3_000),
+                (3_000, 7_000),
+                (7_000, 7_000),
+                (7_000, 3_000),
+            ],
+            &[],
+        );
+        let extra = make_expoly(
+            &[(20_000, 0), (30_000, 0), (30_000, 10_000), (20_000, 10_000)],
+            &[],
+        );
 
-        let got = union_spatial_tree_with_options(&[outer.clone(), inner_cw.clone(), extra.clone()], &[], 2, false);
+        let got = union_spatial_tree_with_options(
+            &[outer.clone(), inner_cw.clone(), extra.clone()],
+            &[],
+            2,
+            false,
+        );
         let want = clip_polygons(&[outer, inner_cw, extra], &[], ClipOperation::Union);
         assert_eq!(got, want);
         assert_eq!(

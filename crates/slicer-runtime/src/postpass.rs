@@ -44,7 +44,11 @@ fn mix_u64(state: &mut u64, prime: u64, val: u64) {
 #[inline]
 fn feed_kinematic(h1: &mut u64, h2: &mut u64, val: u64) {
     mix_u64(h1, 0x0000_0100_0000_01b3, val);
-    mix_u64(h2, 0x9e37_79b9_7f4a_7c15, val.rotate_left(27) ^ 0xa076_1d64_78bd_642f);
+    mix_u64(
+        h2,
+        0x9e37_79b9_7f4a_7c15,
+        val.rotate_left(27) ^ 0xa076_1d64_78bd_642f,
+    );
 }
 
 #[inline]

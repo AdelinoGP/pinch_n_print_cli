@@ -443,7 +443,11 @@ fn nearest_pair_candidates(
         }
     }
     for ring_eps in &mut by_ring {
-        ring_eps.sort_by(|left, right| left.0.total_cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+        ring_eps.sort_by(|left, right| {
+            left.0
+                .total_cmp(&right.0)
+                .then_with(|| left.1.cmp(&right.1))
+        });
     }
 
     let mut best_for: Vec<Option<(usize, f64)>> = vec![None; endpoints.len()];

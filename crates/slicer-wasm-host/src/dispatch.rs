@@ -1819,8 +1819,7 @@ impl WasmRuntimeDispatcher {
         })();
 
         for (layer, shared) in layers.iter_mut().zip(taken_entities) {
-            layer.ordered_entities =
-                Arc::try_unwrap(shared).unwrap_or_else(|arc| (*arc).clone());
+            layer.ordered_entities = Arc::try_unwrap(shared).unwrap_or_else(|arc| (*arc).clone());
         }
 
         call_res

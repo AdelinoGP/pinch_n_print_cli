@@ -1016,7 +1016,10 @@ mod tests {
             .extensions
             .insert("outer_wall_line_width".to_owned(), ConfigValue::Float(0.0));
         let width = resolve_external_perimeter_width_mm(&config);
-        assert_eq!(width, 0.4, "the zero sentinel must fall through to line_width");
+        assert_eq!(
+            width, 0.4,
+            "the zero sentinel must fall through to line_width"
+        );
         assert!(
             0.1 * width > 0.0,
             "the bridge opening radius must be positive for the auto sentinel"

@@ -17,7 +17,9 @@ use slicer_core::algos::bridge_over_infill::{
 use slicer_core::algos::prepass_slice::{
     min_cost_bridging_candidate, min_cost_bridging_candidate_reference,
 };
-use slicer_core::polygon_ops::{closing_ex, difference, intersection, offset, union, OffsetJoinType};
+use slicer_core::polygon_ops::{
+    closing_ex, difference, intersection, offset, union, OffsetJoinType,
+};
 use slicer_ir::{ExPolygon, Point2, Polygon};
 use std::f32::consts::PI;
 
@@ -175,7 +177,9 @@ fn reference_bridging_angle(
         }
     }
     (
-        (best_angle.to_degrees() as f32).rem_euclid(180.0).max(0.001),
+        (best_angle.to_degrees() as f32)
+            .rem_euclid(180.0)
+            .max(0.001),
         ties,
     )
 }
@@ -188,9 +192,17 @@ fn reference_internal_bridge_angles(
     update_expansion: bool,
 ) -> Vec<f32> {
     let spacing = inputs.spacing_mm;
-    let total_fill_area = closing_ex(inputs.total_fill_area, SCALED_EPSILON_MM, OffsetJoinType::Miter);
+    let total_fill_area = closing_ex(
+        inputs.total_fill_area,
+        SCALED_EPSILON_MM,
+        OffsetJoinType::Miter,
+    );
     let mut expansion_area = intersection(
-        &closing_ex(inputs.expansion_area, SCALED_EPSILON_MM, OffsetJoinType::Miter),
+        &closing_ex(
+            inputs.expansion_area,
+            SCALED_EPSILON_MM,
+            OffsetJoinType::Miter,
+        ),
         inputs.deep_infill_clip_area,
     );
     let mut angles: Vec<f32> = Vec::new();
@@ -445,7 +457,16 @@ fn pruned_bridging_selector_matches_brute_force_including_exact_ties() {
     // Shapes symmetric under a quarter turn: pairs of candidates have equal
     // real-number cost and differ, if at all, only in summation rounding.
     for scale in [1i64, 3, 7, 10_000, 123_457] {
-        let side = [(2, 0), (1, 1), (0, 2), (-1, 1), (-2, 0), (-1, -1), (0, -2), (1, -1)];
+        let side = [
+            (2, 0),
+            (1, 1),
+            (0, 2),
+            (-1, 1),
+            (-2, 0),
+            (-1, -1),
+            (0, -2),
+            (1, -1),
+        ];
         let edges: Vec<(f64, f64)> = side
             .iter()
             .flat_map(|&(x, y)| {
@@ -515,12 +536,18 @@ fn pruned_bridging_selector_matches_brute_force_including_exact_ties() {
             "case {index}"
         );
     }
-    assert!(exact_ties > 0, "no fixture had an exact-cost tie; the key tie-break went unexercised");
+    assert!(
+        exact_ties > 0,
+        "no fixture had an exact-cost tie; the key tie-break went unexercised"
+    );
     assert!(
         rounding_ties > 0,
         "no fixture had a rounding-level near tie; the exact re-scoring went unexercised"
     );
-    assert!(pruned_path > 500, "too few fixtures reached the pruned path ({pruned_path})");
+    assert!(
+        pruned_path > 500,
+        "too few fixtures reached the pruned path ({pruned_path})"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -552,7 +579,11 @@ fn lower_layer_fixture() -> (Vec<ExPolygon>, Vec<ExPolygon>, Vec<ExPolygon>) {
         },
         holes: Vec::new(),
     };
-    let fills = vec![plate, rect(260.0, 0.0, 300.0, 40.0), rect(0.0, 250.0, 30.0, 290.0)];
+    let fills = vec![
+        plate,
+        rect(260.0, 0.0, 300.0, 40.0),
+        rect(0.0, 250.0, 30.0, 290.0),
+    ];
     let solids = vec![
         // Near: its shrink-grow reaches into the surface block.
         rect(29.0, 51.0, 40.0, 58.0),
@@ -584,7 +615,10 @@ fn windowed_unsupported_spans_equal_the_full_computation_over_every_surface() {
     for multiplier in [1.0, 3.0] {
         let full = unsupported_span_areas(&fills, &solids, spacing, multiplier);
         let near = unsupported_span_areas_near(&fills, &solids, spacing, multiplier, &surfaces);
-        assert_ne!(full, near, "m={multiplier}: nothing was dropped, so nothing was tested");
+        assert_ne!(
+            full, near,
+            "m={multiplier}: nothing was dropped, so nothing was tested"
+        );
         for (index, surface) in surfaces.iter().enumerate() {
             let surface = std::slice::from_ref(surface);
             assert_eq!(
@@ -611,7 +645,10 @@ fn windowed_unsupported_spans_need_the_full_offset_reach() {
     let (fills, solids, surfaces) = lower_layer_fixture();
     let spacing = 0.45;
     let full = unsupported_span_areas(&fills, &solids, spacing, 3.0);
-    let tight = grow_box(polygons_box(&surfaces).expect("surfaces"), 0.5 * f64::from(spacing));
+    let tight = grow_box(
+        polygons_box(&surfaces).expect("surfaces"),
+        0.5 * f64::from(spacing),
+    );
     let tight_fills = polygons_touching_box(&fills, tight);
     let tight_solids = polygons_touching_box(&solids, tight);
     let too_tight = unsupported_span_areas(&tight_fills, &tight_solids, spacing, 3.0);
@@ -633,11 +670,21 @@ fn touching_box_filter_drops_only_whole_rings_outside_the_window() {
     let window = grow_box(polygons_box(&[rect(5.0, 5.0, 15.0, 15.0)]).unwrap(), 1.0);
     let kept = polygons_touching_box(&input, window);
     assert_eq!(kept.len(), 1, "the island misses the window");
-    assert_eq!(kept[0].contour, plate.contour, "kept contours are passed through unchanged");
-    assert_eq!(kept[0].holes, vec![plate.holes[0].clone()], "only the far hole is dropped");
+    assert_eq!(
+        kept[0].contour, plate.contour,
+        "kept contours are passed through unchanged"
+    );
+    assert_eq!(
+        kept[0].holes,
+        vec![plate.holes[0].clone()],
+        "only the far hole is dropped"
+    );
     let all = grow_box(polygons_box(&input).unwrap(), 0.0);
     assert!(
-        matches!(polygons_touching_box(&input, all), std::borrow::Cow::Borrowed(_)),
+        matches!(
+            polygons_touching_box(&input, all),
+            std::borrow::Cow::Borrowed(_)
+        ),
         "a window covering everything borrows the input"
     );
 }

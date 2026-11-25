@@ -966,8 +966,7 @@ fn print_plane_occupancy_payload(
         .print_plane_occupancy
         .iter()
         .filter(|entry| {
-            entry.object_id == object_id
-                && entry.global_support_layer_index == global_layer_index
+            entry.object_id == object_id && entry.global_support_layer_index == global_layer_index
         })
         .flat_map(|entry| entry.polygons.iter().cloned())
         .collect()
@@ -1475,9 +1474,7 @@ const BATCH_UNION_EXACT_POLY_LIMIT: usize = 8;
 
 /// Execute independent `Union` operations with exact single-op Clipper2
 /// semantics, preserving request order.
-fn run_exact_union_batch(
-    requests: Vec<(Vec<ExPolygon>, Vec<ExPolygon>)>,
-) -> Vec<Vec<ExPolygon>> {
+fn run_exact_union_batch(requests: Vec<(Vec<ExPolygon>, Vec<ExPolygon>)>) -> Vec<Vec<ExPolygon>> {
     if requests.is_empty() {
         return Vec::new();
     }
@@ -2387,7 +2384,8 @@ impl IndexedPolySet {
             return false;
         }
         !ex.holes.iter().zip(&idx.hole_bboxes).any(|(h, hb)| {
-            hb.is_some_and(|b| b.contains_for_raycast(sx, sy)) && point_in_ring_pts(&h.points, sx, sy)
+            hb.is_some_and(|b| b.contains_for_raycast(sx, sy))
+                && point_in_ring_pts(&h.points, sx, sy)
         })
     }
 
@@ -2800,7 +2798,10 @@ impl TreeVolumes {
             } else {
                 expolygons_simplify(&polys, tolerance_units)
             };
-            cache.insert((key, layer), std::rc::Rc::new(IndexedPolySet::new(simplified)));
+            cache.insert(
+                (key, layer),
+                std::rc::Rc::new(IndexedPolySet::new(simplified)),
+            );
         }
     }
 
@@ -2903,10 +2904,8 @@ impl TreeVolumes {
                     prev_by_bucket[b_idx] = Some(existing);
                     continue;
                 }
-                let prev_empty = layer == 0
-                    || prev_by_bucket[b_idx]
-                        .as_ref()
-                        .is_none_or(|p| p.is_empty());
+                let prev_empty =
+                    layer == 0 || prev_by_bucket[b_idx].as_ref().is_none_or(|p| p.is_empty());
                 if prev_empty {
                     let coll = self
                         .collision
@@ -3046,7 +3045,12 @@ impl TreeVolumes {
         if base.is_empty() || !base.contains(from0.0, from0.1) {
             return false;
         }
-        let cache_key = (is_avoidance, radius_key(radius_mm), layer, min_dist.to_bits());
+        let cache_key = (
+            is_avoidance,
+            radius_key(radius_mm),
+            layer,
+            min_dist.to_bits(),
+        );
         let cached = self.move_out_cache.borrow().get(&cache_key).cloned();
         let dilated = if let Some(hit) = cached {
             hit
@@ -3763,30 +3767,30 @@ impl SupportPlanner {
         // `offset_polygons_batch` pass (and prefetch the exact `collision(0)`
         // target layers), preserving exact candidate and polygon order.
         let eligible_candidates: Vec<(_, usize)> = support_analysis
-                .candidates
-                .iter()
-                .filter(|candidate| {
-                    candidate.object_id == obj.object_id
-                        && !candidate.blocked
-                        && candidate_family(candidate, support_analysis).as_deref() == Some("tree")
-                        && candidate
-                            .geometry
-                            .iter()
-                            .any(|polygon| polygon.contour.points.len() >= 3)
-                        && seg_origin_set.contains(&(
-                            candidate.global_layer_index,
-                            candidate.region_id.as_str(),
-                            candidate.variant_chain.as_slice(),
-                        ))
-                })
-                .map(|candidate| {
-                    let layer_idx = layer_idx_by_global
-                        .get(&candidate.global_layer_index)
-                        .copied()
-                        .unwrap_or_else(|| candidate.global_layer_index.min(num_layers - 1) as usize);
-                    (candidate, layer_idx)
-                })
-                .collect();
+            .candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.object_id == obj.object_id
+                    && !candidate.blocked
+                    && candidate_family(candidate, support_analysis).as_deref() == Some("tree")
+                    && candidate
+                        .geometry
+                        .iter()
+                        .any(|polygon| polygon.contour.points.len() >= 3)
+                    && seg_origin_set.contains(&(
+                        candidate.global_layer_index,
+                        candidate.region_id.as_str(),
+                        candidate.variant_chain.as_slice(),
+                    ))
+            })
+            .map(|candidate| {
+                let layer_idx = layer_idx_by_global
+                    .get(&candidate.global_layer_index)
+                    .copied()
+                    .unwrap_or_else(|| candidate.global_layer_index.min(num_layers - 1) as usize);
+                (candidate, layer_idx)
+            })
+            .collect();
         if !eligible_candidates.is_empty() {
             let contact_coll_cells: Vec<(f32, usize)> = eligible_candidates
                 .iter()
@@ -5261,19 +5265,20 @@ impl SupportPlanner {
                                     z: point.z,
                                 })
                                 .collect::<Vec<_>>();
-                            let wall_counts = if extra_wall_xy.is_empty() {
-                                vec![0u32; skeleton_points.len()]
-                            } else {
-                                skeleton_points
-                                    .iter()
-                                    .map(|point| {
-                                        u32::from(extra_wall_xy.contains(&(
-                                            f32_eq_key(point.x),
-                                            f32_eq_key(point.y),
-                                        )))
-                                    })
-                                    .collect::<Vec<_>>()
-                            };
+                            let wall_counts =
+                                if extra_wall_xy.is_empty() {
+                                    vec![0u32; skeleton_points.len()]
+                                } else {
+                                    skeleton_points
+                                        .iter()
+                                        .map(|point| {
+                                            u32::from(extra_wall_xy.contains(&(
+                                                f32_eq_key(point.x),
+                                                f32_eq_key(point.y),
+                                            )))
+                                        })
+                                        .collect::<Vec<_>>()
+                                };
                             assert_eq!(wall_counts.len(), points.len());
                             Some(slicer_ir::SupportPlanSkeleton {
                                 points,
@@ -7271,10 +7276,7 @@ impl LayerOutlineEdgeIndex {
                 continue;
             }
             for e in &ring.edges {
-                if q_max_x < e.min_x
-                    || q_min_x > e.max_x
-                    || q_max_y < e.min_y
-                    || q_min_y > e.max_y
+                if q_max_x < e.min_x || q_min_x > e.max_x || q_max_y < e.min_y || q_min_y > e.max_y
                 {
                     continue;
                 }
@@ -7510,12 +7512,7 @@ fn assign_node_group(parts: &[ExPolygon], to_buildplate: bool, x: f32, y: f32) -
 }
 
 /// Zero-alloc indexed equivalent of `assign_node_group` (`t190` `P2`).
-fn assign_node_group_indexed(
-    parts: &IndexedPolySet,
-    to_buildplate: bool,
-    x: f32,
-    y: f32,
-) -> usize {
+fn assign_node_group_indexed(parts: &IndexedPolySet, to_buildplate: bool, x: f32, y: f32) -> usize {
     if to_buildplate || parts.is_empty() {
         return 0;
     }
@@ -10905,11 +10902,11 @@ mod tests {
             (0.0, 0.0),
             (2.0, 2.0),
             (4.0, 4.0),
-            (2.5, 2.5),  // concave bay of L-shape / inside rect
-            (0.5, 2.5),  // inside L-shape stem
-            (2.5, 0.5),  // inside L-shape foot
-            (3.0, 3.0),  // inside holed exterior or hole depending on coords
-            (5.0, 5.0),  // inside holed cavity / outside rect
+            (2.5, 2.5), // concave bay of L-shape / inside rect
+            (0.5, 2.5), // inside L-shape stem
+            (2.5, 0.5), // inside L-shape foot
+            (3.0, 3.0), // inside holed exterior or hole depending on coords
+            (5.0, 5.0), // inside holed cavity / outside rect
             (10.0, 10.0),
             (19.9999, 20.0),
             (20.0, 20.0),
@@ -10925,7 +10922,10 @@ mod tests {
             let idx_in = indexed.contains(x, y);
             let slice_in = point_in_any_expoly(&polys, x, y);
             assert_eq!(idx_in, ref_in, "contains mismatch at ({x}, {y})");
-            assert_eq!(slice_in, ref_in, "zero-alloc slice contains mismatch at ({x}, {y})");
+            assert_eq!(
+                slice_in, ref_in,
+                "zero-alloc slice contains mismatch at ({x}, {y})"
+            );
             saw_inside |= ref_in;
             saw_outside |= !ref_in;
 
@@ -10952,7 +10952,10 @@ mod tests {
                 );
             }
         }
-        assert!(saw_inside && saw_outside, "probes must exercise both inside and outside");
+        assert!(
+            saw_inside && saw_outside,
+            "probes must exercise both inside and outside"
+        );
     }
 
     #[test]
@@ -11001,11 +11004,17 @@ mod tests {
             let got_fwd = cache.is_line_cut_by_contour(&outlines, a, b);
             let got_rev = cache.is_line_cut_by_contour(&outlines, b, a);
             assert_eq!(got_fwd, expected, "forward cut mismatch on {a:?} -> {b:?}");
-            assert_eq!(got_rev, expected, "reverse cached cut mismatch on {b:?} -> {a:?}");
+            assert_eq!(
+                got_rev, expected,
+                "reverse cached cut mismatch on {b:?} -> {a:?}"
+            );
             saw_cut |= expected;
             saw_clear |= !expected;
         }
-        assert!(saw_cut && saw_clear, "segments must exercise both cut and uncut cases");
+        assert!(
+            saw_cut && saw_clear,
+            "segments must exercise both cut and uncut cases"
+        );
     }
 
     #[test]
@@ -11089,8 +11098,14 @@ mod tests {
         ]);
         let direct_small = host::clip_polygons(&small_sub, &small_clip, ClipOperation::Union);
         let direct_large = host::clip_polygons(&large_sub, &large_clip, ClipOperation::Union);
-        assert_eq!(batched[0], direct_small, "<= 8 union must match direct clip_polygons");
-        assert_eq!(batched[1], direct_large, "> 8 union must match direct clip_polygons");
+        assert_eq!(
+            batched[0], direct_small,
+            "<= 8 union must match direct clip_polygons"
+        );
+        assert_eq!(
+            batched[1], direct_large,
+            "> 8 union must match direct clip_polygons"
+        );
     }
 
     #[test]
@@ -11159,7 +11174,10 @@ mod tests {
         let got = prim_mst(&pts);
         let expected = ref_prim(&pts);
         assert_eq!(got.len(), pts.len() - 1);
-        assert_eq!(got, expected, "squared-distance prim_mst must match sqrt reference on ties");
+        assert_eq!(
+            got, expected,
+            "squared-distance prim_mst must match sqrt reference on ties"
+        );
         let got_len: f32 = got.iter().map(|e| e.2).sum();
         let exp_len: f32 = expected.iter().map(|e| e.2).sum();
         assert_eq!(got_len.to_bits(), exp_len.to_bits());
@@ -11184,7 +11202,10 @@ mod tests {
             &mut output,
             &ConfigView::default(),
         );
-        assert!(res.is_ok(), "enable_support: false must return Ok immediately");
+        assert!(
+            res.is_ok(),
+            "enable_support: false must return Ok immediately"
+        );
         assert!(output.entries().is_empty());
         assert!(output.diagnostics().is_empty());
     }

@@ -496,20 +496,17 @@ fn brim_quantises_on_the_canonical_flow_spacing() {
         .iter()
         .filter(|e| e.role == ExtrusionRole::Brim)
         .count();
-    assert_eq!(brim_count, 22, "flow spacing 0.35708 should yield 22 brim lines");
+    assert_eq!(
+        brim_count, 22,
+        "flow spacing 0.35708 should yield 22 brim lines"
+    );
 
     let spacing = 0.4 - 0.2 * (1.0 - std::f32::consts::FRAC_PI_4);
     let outer = layers[0]
         .ordered_entities
         .iter()
         .filter(|e| e.role == ExtrusionRole::Brim)
-        .map(|e| {
-            e.path
-                .points
-                .iter()
-                .map(|p| p.x)
-                .fold(f32::MIN, f32::max)
-        })
+        .map(|e| e.path.points.iter().map(|p| p.x).fold(f32::MIN, f32::max))
         .fold(f32::MIN, f32::max);
     // Outer boundary at gap + quantised width = 0.1 + 11 * 2 * spacing, less
     // the half-spacing first-line inset. The anchor is the reconstructed
@@ -517,8 +514,7 @@ fn brim_quantises_on_the_canonical_flow_spacing() {
     // outer-wall width (0.4 mm), so the outermost line's max x is
     // 10 + 1.2 + (boundary - spacing/2).
     let anchor_half_extent = 1.0 + 0.5 * 0.4;
-    let expected =
-        10.0 + anchor_half_extent + (0.1 + 11.0 * 2.0 * spacing) - spacing * 0.5;
+    let expected = 10.0 + anchor_half_extent + (0.1 + 11.0 * 2.0 * spacing) - spacing * 0.5;
     assert!(
         (outer - expected).abs() < 0.05,
         "outermost brim x={outer} should be {expected}"

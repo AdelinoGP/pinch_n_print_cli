@@ -839,7 +839,10 @@ impl std::fmt::Debug for LayerCollectionView {
             .field("entity_count", &self.entity_count)
             .field("tool_changes", &self.tool_changes)
             .field("z_hops", &self.z_hops)
-            .field("ordered_entities_loaded", &self.ordered_entities.get().is_some())
+            .field(
+                "ordered_entities_loaded",
+                &self.ordered_entities.get().is_some(),
+            )
             .finish()
     }
 }
@@ -2102,7 +2105,10 @@ mod paint_policy_tests {
             regions: vec![region_with(
                 1,
                 vec![region_poly.clone()],
-                paint_map(&[(PaintSemantic::SupportBlocker, vec![Some(PaintValue::Flag(true))])]),
+                paint_map(&[(
+                    PaintSemantic::SupportBlocker,
+                    vec![Some(PaintValue::Flag(true))],
+                )]),
             )],
             ..Default::default()
         };
@@ -2116,7 +2122,10 @@ mod paint_policy_tests {
             regions: vec![region_with(
                 2,
                 vec![region_poly],
-                paint_map(&[(PaintSemantic::SupportEnforcer, vec![Some(PaintValue::Flag(true))])]),
+                paint_map(&[(
+                    PaintSemantic::SupportEnforcer,
+                    vec![Some(PaintValue::Flag(true))],
+                )]),
             )],
             ..Default::default()
         };
@@ -2140,7 +2149,10 @@ mod paint_policy_tests {
                 region_with(
                     2,
                     vec![big.clone()],
-                    paint_map(&[(PaintSemantic::SupportEnforcer, vec![Some(PaintValue::Flag(true))])]),
+                    paint_map(&[(
+                        PaintSemantic::SupportEnforcer,
+                        vec![Some(PaintValue::Flag(true))],
+                    )]),
                 ),
                 region_with(
                     3,
@@ -2150,7 +2162,10 @@ mod paint_policy_tests {
                 region_with(
                     4,
                     vec![big],
-                    paint_map(&[(PaintSemantic::SupportBlocker, vec![Some(PaintValue::Flag(true))])]),
+                    paint_map(&[(
+                        PaintSemantic::SupportBlocker,
+                        vec![Some(PaintValue::Flag(true))],
+                    )]),
                 ),
             ],
             ..Default::default()
@@ -2180,7 +2195,10 @@ mod paint_policy_tests {
             regions: vec![region_with(
                 10,
                 vec![l_region],
-                paint_map(&[(PaintSemantic::SupportEnforcer, vec![Some(PaintValue::Flag(true))])]),
+                paint_map(&[(
+                    PaintSemantic::SupportEnforcer,
+                    vec![Some(PaintValue::Flag(true))],
+                )]),
             )],
             ..Default::default()
         };
@@ -2211,7 +2229,10 @@ mod paint_policy_tests {
                     vec![region_poly.clone()],
                     paint_map(&[
                         (PaintSemantic::FuzzySkin, vec![Some(PaintValue::Flag(true))]),
-                        (PaintSemantic::Material, vec![Some(PaintValue::ToolIndex(1))]),
+                        (
+                            PaintSemantic::Material,
+                            vec![Some(PaintValue::ToolIndex(1))],
+                        ),
                     ]),
                 ),
                 region_with(
@@ -2236,37 +2257,30 @@ mod paint_policy_tests {
     fn layer_collection_view_new_lazy_loads_once_on_first_entities_access() {
         let calls = std::rc::Rc::new(std::cell::Cell::new(0usize));
         let calls_clone = std::rc::Rc::clone(&calls);
-        let view = LayerCollectionView::new_lazy(
-            7,
-            1.4,
-            2,
-            Vec::new(),
-            Vec::new(),
-            move || {
-                calls_clone.set(calls_clone.get() + 1);
-                // exhaustive: PrintEntity does not implement Default
-                vec![slicer_ir::PrintEntity {
-                    entity_id: 42,
-                    // exhaustive: ExtrusionPath3D does not implement Default
-                    path: slicer_ir::ExtrusionPath3D {
-                        points: Vec::new(),
-                        role: slicer_ir::ExtrusionRole::OuterWall,
-                        speed_factor: 1.0,
-                        tool_index: None,
-                        order_lock: None,
-                    },
+        let view = LayerCollectionView::new_lazy(7, 1.4, 2, Vec::new(), Vec::new(), move || {
+            calls_clone.set(calls_clone.get() + 1);
+            // exhaustive: PrintEntity does not implement Default
+            vec![slicer_ir::PrintEntity {
+                entity_id: 42,
+                // exhaustive: ExtrusionPath3D does not implement Default
+                path: slicer_ir::ExtrusionPath3D {
+                    points: Vec::new(),
                     role: slicer_ir::ExtrusionRole::OuterWall,
-                    tool_index: 0,
-                    region_key: slicer_ir::RegionKey {
-                        global_layer_index: 7,
-                        object_id: "obj".to_string(),
-                        region_id: 1,
-                        variant_chain: Vec::new(),
-                    },
-                    topo_order: 0,
-                }]
-            },
-        );
+                    speed_factor: 1.0,
+                    tool_index: None,
+                    order_lock: None,
+                },
+                role: slicer_ir::ExtrusionRole::OuterWall,
+                tool_index: 0,
+                region_key: slicer_ir::RegionKey {
+                    global_layer_index: 7,
+                    object_id: "obj".to_string(),
+                    region_id: 1,
+                    variant_chain: Vec::new(),
+                },
+                topo_order: 0,
+            }]
+        });
 
         assert_eq!(view.layer_index(), 7);
         assert!((view.z() - 1.4).abs() < f32::EPSILON);

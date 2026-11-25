@@ -58,8 +58,8 @@ use arachne_perimeters::ArachnePerimeters;
 use slicer_core::arachne::{run_arachne_pipeline, ArachneParams};
 use slicer_core::perimeter_utils::point_in_any_polygon;
 use slicer_ir::{
-    mm_to_units, units_to_mm, ConfigView, ExPolygon, ExtrusionLine,
-    LoopType, Point2, WallBoundaryType,
+    mm_to_units, units_to_mm, ConfigView, ExPolygon, ExtrusionLine, LoopType, Point2,
+    WallBoundaryType,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::*;

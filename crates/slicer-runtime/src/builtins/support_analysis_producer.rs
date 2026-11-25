@@ -340,7 +340,10 @@ pub fn commit_support_analysis_builtin(
                         })
                         .collect();
                     indexed_contacts.sort_unstable_by_key(|(idx, _)| *idx);
-                    indexed_contacts.into_iter().map(|(_, c)| c).collect::<Vec<_>>()
+                    indexed_contacts
+                        .into_iter()
+                        .map(|(_, c)| c)
+                        .collect::<Vec<_>>()
                 },
             );
             ir.print_plane_occupancy = print_plane_occupancy;
@@ -710,9 +713,7 @@ fn enforcer_contacts(
 fn expolygon_vertex_count(polys: &[ExPolygon]) -> usize {
     polys
         .iter()
-        .map(|ep| {
-            ep.contour.points.len() + ep.holes.iter().map(|h| h.points.len()).sum::<usize>()
-        })
+        .map(|ep| ep.contour.points.len() + ep.holes.iter().map(|h| h.points.len()).sum::<usize>())
         .sum()
 }
 
@@ -769,10 +770,7 @@ struct ModifierGeometry {
 }
 
 impl ModifierGeometry {
-    fn slice(
-        mesh: &slicer_ir::MeshIR,
-        global_layers: &[slicer_ir::slice_ir::GlobalLayer],
-    ) -> Self {
+    fn slice(mesh: &slicer_ir::MeshIR, global_layers: &[slicer_ir::slice_ir::GlobalLayer]) -> Self {
         let mut geometry = ModifierGeometry::default();
         for object in &mesh.objects {
             if object.modifier_volumes.is_empty() {
@@ -2262,7 +2260,11 @@ mod tests {
         ];
 
         let entries = collect_print_plane_occupancy(&mesh, &slices);
-        assert_eq!(entries.len(), 2, "one entry per (object, layer), no region copies");
+        assert_eq!(
+            entries.len(),
+            2,
+            "one entry per (object, layer), no region copies"
+        );
         assert_eq!(entries[0].global_support_layer_index, 0);
         assert_eq!(entries[1].global_support_layer_index, 1);
         assert!(entries.iter().all(|entry| entry.object_id == "object"));
@@ -2292,8 +2294,7 @@ mod tests {
                     let mut sum = 0_i128;
                     for (i, point) in points.iter().enumerate() {
                         let next = &points[(i + 1) % points.len()];
-                        sum += point.x as i128 * next.y as i128
-                            - next.x as i128 * point.y as i128;
+                        sum += point.x as i128 * next.y as i128 - next.x as i128 * point.y as i128;
                     }
                     (sum as f64 / 2.0 * 1e-8).abs()
                 })

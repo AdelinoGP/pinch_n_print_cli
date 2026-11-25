@@ -1446,12 +1446,12 @@ fn stage_modifier_footprints(slice: &mut SliceIR, blackboard: &Blackboard, layer
             .regions
             .iter()
             .filter(|region| {
-                region.object_id == object.id && !slicer_ir::is_modifier_namespace_id(region.region_id)
+                region.object_id == object.id
+                    && !slicer_ir::is_modifier_namespace_id(region.region_id)
             })
             .map(|region| region.effective_layer_height)
             .fold(0.0_f32, f32::max);
-        let plane_z =
-            slicer_core::algos::prepass_slice::layer_sample_plane_z(layer.z, band);
+        let plane_z = slicer_core::algos::prepass_slice::layer_sample_plane_z(layer.z, band);
         let mut modifier_indices: Vec<usize> = (0..object.modifier_volumes.len()).collect();
         modifier_indices.sort_by_key(|&index| {
             (
@@ -1475,7 +1475,10 @@ fn stage_modifier_footprints(slice: &mut SliceIR, blackboard: &Blackboard, layer
                 continue;
             }
             // Reuse the existing `slice_mesh_ex` path at the single layer plane.
-            let polygons = match slicer_core::slice_mesh_ex(&mv.mesh, &[plane_z]).into_iter().next() {
+            let polygons = match slicer_core::slice_mesh_ex(&mv.mesh, &[plane_z])
+                .into_iter()
+                .next()
+            {
                 Some(polys) => polys,
                 None => continue,
             };

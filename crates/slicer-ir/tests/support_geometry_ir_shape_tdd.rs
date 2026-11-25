@@ -711,7 +711,9 @@ fn print_plane_occupancy_is_additive_and_defaults_empty() {
         "the carrier is an additive minor bump"
     );
     assert!(
-        SupportAnalysisIR::default().print_plane_occupancy.is_empty(),
+        SupportAnalysisIR::default()
+            .print_plane_occupancy
+            .is_empty(),
         "an owner that publishes no print plane carries no polygons"
     );
 
@@ -739,10 +741,21 @@ fn print_plane_occupancy_is_additive_and_defaults_empty() {
             polygons: vec![square(0, 0, 1_000)],
         });
     let encoded = serde_json::to_value(&analysis).expect("populated vec serializes");
-    assert_eq!(encoded["print_plane_occupancy"][0]["global_support_layer_index"], 7);
+    assert_eq!(
+        encoded["print_plane_occupancy"][0]["global_support_layer_index"],
+        7
+    );
     assert_eq!(encoded["print_plane_occupancy"][0]["object_id"], "object-a");
-    assert_eq!(encoded["print_plane_occupancy"][0]["polygons"][0].as_object().is_some(), true);
+    assert_eq!(
+        encoded["print_plane_occupancy"][0]["polygons"][0]
+            .as_object()
+            .is_some(),
+        true
+    );
     let decoded: SupportAnalysisIR =
         serde_json::from_value(encoded).expect("populated vec deserializes");
-    assert_eq!(decoded.print_plane_occupancy, analysis.print_plane_occupancy);
+    assert_eq!(
+        decoded.print_plane_occupancy,
+        analysis.print_plane_occupancy
+    );
 }
