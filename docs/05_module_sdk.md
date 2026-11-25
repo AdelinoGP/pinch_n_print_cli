@@ -1346,6 +1346,214 @@ declared as `[[test]]` targets with `required-features = ["test"]`. `cfg(test)`
 on an integration-test source does not enable the linked SDK feature, so bare
 runs may omit these binaries.
 
+### Property testing
+
+The default-off `slicer-sdk/property_testing` feature implies `test` and enables
+the optional Proptest and `serde_json` dependencies. Its
+`slicer_sdk::test_support::property_testing` module is available only on native
+targets; it is not a guest export. Run registered properties through the
+[property-testing workflow](testing/properties.md).
+
+`slicer_sdk::test_support::property_testing::PropertyRun::check` creates a fresh
+`slicer_sdk::test_support::property_testing::CaseGuard` for every generated case
+and every shrink invocation. The guard resets the thread's log and mesh state,
+installs an empty log sink, and owns fresh output captures and entity IDs.
+`CaseGuard` is `!Send + !Sync`; same-thread nesting panics before mutating the
+active guard's state. On drop, including during unwinding, it retains available
+case logs before teardown; `slicer_sdk::test_support::property_testing::take_case_logs`
+returns and clears those retained thread-local logs. The guard does not install
+or change per-case panic hooks.
+
+Property support does not change private-kernel ownership or expose private
+production kernels for tests: test private kernels in their owning crate.
+
+#### Direct input domains, oracles and concrete fixtures
+
+The same feature gates three helper submodules:
+`slicer_sdk::test_support::property_testing::domains` (construction-first input
+strategies), `oracles` (independent reference predicates) and `regression`
+(concrete regression formatting). They are native-only and absent from every
+guest and production graph.
+
+`domains::anchor_cases`, `domain`-specific builders such as `geometry_cases`, and
+the scalar/graph/ID/permutation helpers are validated by
+`crates/slicer-sdk/tests/property_domains.rs` against the registry records
+`D-SCALARS`, `D-GRAPHS`, `D-IR`, `D-GEOMETRY` and `D-MESH`. Those properties check
+the helpers themselves and are not credits toward host or module SUT coverage.
+`GeometryBounds` and `GeometryDomain` (`domains`) provide documented safe `Default`
+values for FRU, but live profiles must supply their measured bounds explicitly;
+`geometry_cases` rejects bounds its bounded catalog cannot satisfy instead of
+narrowing them.
+
+Downstream SUT families consume those helpers directly rather than re-deriving
+input shapes: `H-COORD` consumes `domains::finite_f32` and
+`domains::rounding_boundary_mm`, `H-IDS` consumes `domains::id_text`, and
+`H-IR-SERDE` consumes `domains::entity_layers`. The coordinate family is the SDK's
+own example as well: `slicer_sdk::coords::{mm_to_units, units_to_mm}` and
+`SCALING_FACTOR` are exercised by `H-COORD`, but that agreement is documented as
+**consistency evidence only** — correctness rests on the derived error envelopes,
+not on two implementations of the same shape agreeing. See the
+[property-testing charters](testing/properties.md#h-coord) for the full family set
+(`H-COORD`, `H-IDS`, `H-IR-SERDE`, `H-CONFIG-INTERN`, `H-CONFIG-BOUNDS`,
+`H-CHAINS`).
+
+Validity and shrinking are part of the helper contract. Every value produced or
+retained by `GeometryValueTree::current` passes `oracles::validate_geometry` for the
+requested `GeometryDomain`, must keep its topology class and minimum hole/component
+witnesses, and every accepted simplification must be strictly smaller in
+`domains::geometry_complexity`. `oracles` import only `slicer-ir` data types and
+exact big-rational arithmetic — never Clipper, `geo`, `slicer-core` geometry
+helpers, production validators or the scheduler — so an oracle never calls a
+production computation. For the geometry families the generator also validates
+shrink candidates with `validate_geometry`, so that predicate is shared by design
+between generation and checking; deterministic hand-worked counterexamples, not
+the generator, are what guard against a shared blind spot there. Oracle and shrink
+kernel tests belong in `crates/slicer-sdk/tests/property_domain_contracts.rs`, not
+in guest module tests.
+
+`regression::format_regression_fixture` emits a readable Rust statement block for a
+concrete failing input and never a generated `#[test]`; the owning crate must add
+its own assertion against the real SUT. It needs no Proptest RNG, `PropertyRun`
+context or slicing engine to compile or evaluate. See
+[`docs/testing/properties.md`](testing/properties.md) for the family charters and
+[`docs/testing/proptest-domain-evidence.md`](testing/proptest-domain-evidence.md)
+for the measured Windows pilots.
+
+#### Scripted SCAD recipes (`property_testing_scad`, native only)
+
+The separate `property_testing_scad` feature enables the typed scripted surface:
+
+```toml
+features = ["slicer-sdk/property_testing_scad"]   # implies property_testing
+```
+
+It adds an optional `slicer-scad` dependency with the engine feature and the
+`sha2` digest dependency, and gates
+`slicer_sdk::test_support::property_testing::scripted` with
+`all(feature = "property_testing_scad", not(target_arch = "wasm32"))`. The
+feature is **default-off** and is not enabled by `test`, by the SDK's self
+dev-dependency, by the production prelude, or by any guest manifest: the default
+and `test` graphs resolve neither Proptest nor the engine,
+`slicer-sdk/property_testing` enables Proptest but stays engine-free, and only
+`property_testing_scad` reaches the adapter. `cargo xtask test`'s
+`property_scripted_feature_isolation_and_union` asserts that from resolved
+metadata and `cargo tree` rather than from source text.
+
+Ownership is a typed recipe, not arbitrary source text. `Recipe2d` / `Recipe3d` /
+`ScadRecipe` carry primitive parameters, transforms, Boolean operations and
+extrusions in **canonical units** (1 unit = 100 nm = 10⁻⁴ mm); `emit_scad` renders
+a readable, self-contained program with exact millimetre decimal text, explicit
+facet counts, and no resource loads, ambient variables, text requests, loops,
+recursion or random programs. Emission is a pure function of the recipe and
+`RecipeBounds`, so a retained source can be compared byte for byte. Evaluation
+goes through the public `slicer_scad::evaluate`; it is never a second renderer.
+
+A successful render is **stimulus, not an oracle**. `ScriptedDomain` names the
+converted contour domain (or a bounded constituent profile domain) plus an
+optional `SolidWitness` (`ClosedSolid`, `Cavity`, `Bridge`, `Overhang`,
+`SeparatedBodies`). `scripted_cases` only exposes values that were emitted,
+evaluated and then independently validated: `oracles::validate_geometry` for
+converted contours, mesh closure/volume checks plus an axis-aligned occupancy
+model for solids. A recipe AST being valid says nothing about its converted
+output, and closed edge incidence alone does not prove self-intersection freedom
+or a cavity.
+
+Two isolation layers are distinct on purpose:
+
+- `PropertyRun::check` gives every **SUT callback** a fresh `CaseGuard`, on
+  failure and shrink invocations alike;
+- generation, candidate rendering and shrink rendering happen **outside** that
+  guard. A fatal adapter/artifact/accounting error there is recorded as a
+  generator fault and fails the run as `generator_or_oracle`; reaching a
+  candidate or evaluation limit on a known failure reports
+  `shrink_completed = false` and never a pass. A callback-only timeout cannot
+  certify this lifecycle, so registered `requires_scad` records also carry a
+  positive `bounds.test_process_timeout_ms` that the xtask executor applies to
+  the whole libtest child, killing the Windows process tree on deadline.
+
+Artifacts and replay use fixed filenames under
+`target/property-testing/<run_token>/<property_id>/attempts/<role>-<pid>-<seq>/`:
+`recipe.json`, `recipe-bounds.json`, `source.scad`, `options.json`, `engine.json`
+and an honest `state.json` are written **before** the adapter runs, then
+`geometry.json`, `diagnostics.json`, `output.json` and a final `state.json`
+follow. `write_scripted_artifacts` writes one complete evaluated case with the
+same layout; `replay_scripted_case` re-emits the retained recipe, compares it
+with the retained source bytes, re-checks the source/input digests, generator
+version and active engine identity, and evaluates with the retained options and
+bounds. It never regenerates a seed and never falls back to defaults; changed
+provenance is `ReplayMismatch`, missing/damaged/oversized or escaping files are
+`Artifact`. See
+[`docs/testing/proptest-scripted-evidence.md`](testing/proptest-scripted-evidence.md)
+for the measured Windows profiles and the combined geometry disposition.
+
+### Module-owned private-kernel property files (packet proptest-openrscad_10)
+
+A module that property-tests its own **private** kernels (functions that `tests/**` integration
+tests cannot see) keeps those properties in a crate-internal unit-test module.
+`arachne-perimeters` is the reference layout:
+
+- **Declaration.** `src/lib.rs` declares the module with two stacked, separate gates:
+
+  ```rust
+  #[cfg(test)]
+  #[cfg(feature = "property_testing")]
+  mod property_tests;
+  ```
+
+  `#[cfg(test)]` confines the module to test builds. `#[cfg(feature = "property_testing")]` makes
+  the properties opt-in. The body lives in `src/property_tests.rs`. Production visibility is never
+  widened for tests.
+- **Owner feature.** The module's `Cargo.toml` declares `property_testing = []`, an empty,
+  default-off selection feature. It enables no dependency and never enters a production or guest
+  graph.
+- **Dev-only edges.** `slicer-sdk` (features `test`, `property_testing`) and `proptest` appear
+  only under `[dev-dependencies]`.
+- **Registry paths.** Records use `target_kind = "lib"`, the Cargo lib target name, and the exact
+  libtest path. For example, `target_name = "arachne_perimeters"` and
+  `test_name = "property_tests::proptest_module_arachne_build_walls"`, with
+  `features = ["arachne-perimeters/property_testing"]` and `requires_host_algos = false`. Run them
+  through `cargo xtask test --properties`. Run bare, a `proptest_` body fails with
+  `missing_property_context` by design.
+- **Deterministic controls.** These run under plain
+  `cargo test -p <module> --features property_testing --lib -- property_tests::<name> --exact`.
+
+**Literal-gate blind spot.** `modules/core-modules/*/src` is outside `cargo xtask check-literals`
+scope:
+
+- `collect_enforced_files` (`xtask/src/check_literals.rs`) does not collect that tree.
+- `LiteralVisitor::visit_item_mod` does not follow an out-of-line `mod property_tests;`.
+
+A green `check-literals` therefore says nothing about such a file. Before committing, review it
+manually per `docs/21_data_defaults_and_fixtures.md` §§1, 3, 4: re-derive the watched types, then
+give every watched-type literal a `..` rest (FRU) or an `// exhaustive: <reason>` waiver. Record
+the review in the packet's evidence file.
+
+The worked examples are [`M-ARACHNE-BUILD`](testing/properties.md#m-arachne-build) and
+[`M-ARACHNE-SEQUENCE`](testing/properties.md#m-arachne-sequence). The manual review is recorded in
+[`docs/testing/proptest-arachne-evidence.md`](testing/proptest-arachne-evidence.md). Host-side
+Arachne properties, which need `slicer-core/host-algos`, stay standalone `slicer-core` test
+targets and are not module files.
+
+Packet `proptest-openrscad_12_pbt-walls` applies the same layout to
+`modules/core-modules/classic-perimeters/src/property_tests.rs` and
+`modules/core-modules/fuzzy-skin/src/property_tests.rs`. Their `property_testing` features are
+empty, default-off selectors; the SDK `test`/`property_testing` support and workspace Proptest
+remain dev-only edges, and production visibility is unchanged. The fuzzy file additionally keeps
+the ordered span matcher and widened-f64 displacement oracle local because no shared wall/fuzzy
+oracle is exported. The `src/**` scanner blind spot and required manual FRU/waiver review apply
+unchanged; see
+[`docs/testing/proptest-walls-evidence.md`](testing/proptest-walls-evidence.md).
+
+Packet `proptest-openrscad_13_pbt-infill` extends the same layout to five infill-owner modules:
+`rectilinear-infill`, `gyroid-infill`, `infill-linker`, `wave-overhangs` and
+`top-surface-ironing`. Each carries an empty, default-off `property_testing` feature, a
+`src/property_tests.rs` with the stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`
+declaration, and a manual watched-type ledger; `M-RECTILINEAR-SCAN`, `M-RECTILINEAR-SPACING`,
+`M-GYROID-PHASE`, `M-GYROID-CLIP`, `M-LINKER-GRAPH`, `M-LINKER-CONNECT`, `M-LINKER-CHAIN`,
+`M-WAVE-TRIM` and `M-IRONING-ZIGZAG` are their charters, and the manual review plus measured
+Windows profiles are recorded in
+[`docs/testing/proptest-infill-evidence.md`](testing/proptest-infill-evidence.md).
+
 ### Mock Host
 
 ```rust
@@ -1989,3 +2197,17 @@ first dispatch. The stage packages are additive-safe per stage — a change to
 the perimeters module the monolithic-world era's all-or-nothing contract
 used to sweep in. See `docs/adr/0045-per-stage-versioned-interfaces-over-monolithic-tier-worlds.md`
 for the reasoning.
+
+### Owner-private module properties
+
+A module may keep its own property tests inside its crate instead of a shared SDK
+target. `lightning-infill` is the worked example: the
+`lightning-infill/property_testing` selection feature gates a private
+`kernel::property_tests` lib module (`modules/core-modules/lightning-infill/src/kernel/property_tests.rs`)
+behind `#[cfg(all(test, feature = "property_testing"))]`, so the guest build and a
+default native test run never compile it, and only
+`cargo test -p lightning-infill --features property_testing --lib` (or the
+registry's `--features lightning-infill/property_testing`) reaches it. The crate's
+existing SDK dev edge carries the `property_testing` feature; no new public API is
+exposed for testing. See `docs/testing/properties.md#h-lightning-seeds` and
+`#h-lightning-trees`.

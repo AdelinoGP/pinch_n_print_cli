@@ -60,6 +60,18 @@ enum Cmd {
         /// Path to the input 3D model (STL, OBJ, or 3MF).
         #[arg(long)]
         model: PathBuf,
+        #[cfg(feature = "scad")]
+        /// Ordered `NAME=EXPR` SCAD overrides; may be repeated.
+        #[arg(long = "scad-param", value_name = "NAME=EXPR")]
+        scad_param: Vec<String>,
+        #[cfg(feature = "scad")]
+        /// Explicit 2D extrusion height in millimetres.
+        #[arg(
+            long = "scad-extrude-height",
+            value_name = "MM",
+            allow_hyphen_values = true
+        )]
+        scad_extrude_height: Option<f64>,
         /// Path to a JSON configuration file.
         #[arg(long)]
         config: Option<PathBuf>,
@@ -262,6 +274,18 @@ enum MeshCmd {
         /// Input STEP or STP file.
         #[arg(long)]
         input: PathBuf,
+        #[cfg(feature = "scad")]
+        /// Ordered `NAME=EXPR` SCAD overrides; may be repeated.
+        #[arg(long = "scad-param", value_name = "NAME=EXPR")]
+        scad_param: Vec<String>,
+        #[cfg(feature = "scad")]
+        /// Explicit 2D extrusion height in millimetres.
+        #[arg(
+            long = "scad-extrude-height",
+            value_name = "MM",
+            allow_hyphen_values = true
+        )]
+        scad_extrude_height: Option<f64>,
         /// Output mesh file path.
         #[arg(long)]
         output: PathBuf,
@@ -431,6 +455,60 @@ fn print_json<T: serde::Serialize>(value: &T) {
     }
 }
 
+/// Parse and validate the command-local SCAD flags into adapter options.
+///
+/// The raw `NAME=EXPR` tokens are split at their **first** `=` and forwarded in
+/// input order with duplicates, identifier case, `$` names and expression bytes
+/// preserved. Nothing here parses the value as JSON, shell code or slicer
+/// config; the adapter owns expression grammar.
+///
+/// Returns the CLI-facing message (already carrying its fragment) on invalid
+/// input; callers print it as `error: <message>` and exit 2.
+#[cfg(feature = "scad")]
+fn scad_cli_options(
+    raw_parameters: &[String],
+    extrude_height_mm: Option<f64>,
+) -> Result<helpers_cmd::ScadImportOptions, String> {
+    let mut parameters = Vec::with_capacity(raw_parameters.len());
+    for raw in raw_parameters {
+        let Some((name, expression)) = raw.split_once('=') else {
+            return Err(format!(
+                "SCAD_INVALID_PARAMETER_ARGUMENT: '{raw}' is not NAME=EXPR; expected NAME=EXPR"
+            ));
+        };
+        if name.is_empty() {
+            return Err(format!(
+                "SCAD_INVALID_PARAMETER_ARGUMENT: '{raw}' has an empty name; \
+                 expected NAME=EXPR with a non-empty name"
+            ));
+        }
+        if expression.is_empty() {
+            return Err(format!(
+                "SCAD_INVALID_PARAMETER_ARGUMENT: '{raw}' has an empty expression; \
+                 expected NAME=EXPR with a non-empty expression"
+            ));
+        }
+        parameters.push(slicer_model_io::ScadParameter {
+            name: name.to_owned(),
+            expression: expression.to_owned(),
+        });
+    }
+
+    if let Some(height) = extrude_height_mm {
+        if !height.is_finite() || height <= 0.0 {
+            return Err(format!(
+                "SCAD_INVALID_EXTRUSION_HEIGHT: {height} is not a valid extrusion height; \
+                 the height must be finite and strictly positive"
+            ));
+        }
+    }
+
+    Ok(helpers_cmd::ScadImportOptions::new(
+        parameters,
+        extrude_height_mm,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -458,6 +536,10 @@ fn main() {
         // ── slice ──────────────────────────────────────────────────────────
         Cmd::Slice {
             model,
+            #[cfg(feature = "scad")]
+            scad_param,
+            #[cfg(feature = "scad")]
+            scad_extrude_height,
             config,
             output,
             module_dir,
@@ -484,8 +566,72 @@ fn main() {
                     std::process::exit(1);
                 }
             }
+            #[cfg(feature = "scad")]
+            let scad_options = match scad_cli_options(&scad_param, scad_extrude_height) {
+                Ok(options) => options,
+                Err(message) => {
+                    eprintln!("error: {message}");
+                    std::process::exit(2);
+                }
+            };
+            #[cfg(not(feature = "scad"))]
+            let scad_options = helpers_cmd::ScadImportOptions::default();
+            #[cfg(not(feature = "scad"))]
+            let _ = &scad_options;
+            #[cfg(feature = "scad")]
+            {
+                if !scad_options.is_empty()
+                    && !matches!(
+                        slicer_model_io::detect_format(&model),
+                        Ok(slicer_model_io::ModelFormat::Scad)
+                    )
+                {
+                    eprintln!(
+                        "error: SCAD_OPTIONS_REQUIRE_SCAD_INPUT: \
+                         --scad-param/--scad-extrude-height require a .scad input ({})",
+                        model.display()
+                    );
+                    std::process::exit(2);
+                }
+            }
             let output_path = output.clone();
             let model_label = model.to_string_lossy().into_owned();
+            // A `.scad` input is evaluated through the explicit adapter; every
+            // other format keeps the non-evaluating `load_model` path. The
+            // branch keys on the *detected* format, not on the flags: a plain
+            // `--model model.scad` slices with default options, while a
+            // non-SCAD input carrying SCAD flags was already rejected above.
+            #[cfg(feature = "scad")]
+            let mesh = if matches!(
+                slicer_model_io::detect_format(&model),
+                Ok(slicer_model_io::ModelFormat::Scad)
+            ) {
+                match slicer_model_io::load_scad_model(&model, &scad_options.eval_options()) {
+                    Ok(loaded) => {
+                        // Accepted information goes to stderr before any G-code
+                        // exists. Slice has no `--stats`/JSONL diagnostic event;
+                        // the plain `note:` line matches `place_model_on_bed`'s
+                        // convention.
+                        for diagnostic in &loaded.diagnostics {
+                            eprintln!("note: scad {}: {}", diagnostic.code, diagnostic.message);
+                        }
+                        loaded.mesh
+                    }
+                    Err(e) => {
+                        eprintln!("error: failed to load model {}: {e}", model.display());
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                match slicer_model_io::load_model(&model) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        eprintln!("error: failed to load model {}: {e}", model.display());
+                        std::process::exit(1);
+                    }
+                }
+            };
+            #[cfg(not(feature = "scad"))]
             let mesh = match slicer_model_io::load_model(&model) {
                 Ok(m) => m,
                 Err(e) => {
@@ -769,19 +915,50 @@ fn main() {
             }
             MeshCmd::Import {
                 input,
+                #[cfg(feature = "scad")]
+                scad_param,
+                #[cfg(feature = "scad")]
+                scad_extrude_height,
                 output,
                 output_format,
                 merge_components,
                 no_repair,
                 stats,
             } => {
-                std::process::exit(helpers_cmd::run_import(
+                #[cfg(feature = "scad")]
+                let scad_options = match scad_cli_options(&scad_param, scad_extrude_height) {
+                    Ok(options) => options,
+                    Err(message) => {
+                        eprintln!("error: {message}");
+                        std::process::exit(2);
+                    }
+                };
+                #[cfg(not(feature = "scad"))]
+                let scad_options = helpers_cmd::ScadImportOptions::default();
+                #[cfg(feature = "scad")]
+                {
+                    if !scad_options.is_empty()
+                        && !matches!(
+                            slicer_model_io::detect_format(&input),
+                            Ok(slicer_model_io::ModelFormat::Scad)
+                        )
+                    {
+                        eprintln!(
+                            "error: SCAD_OPTIONS_REQUIRE_SCAD_INPUT: \
+                             --scad-param/--scad-extrude-height require a .scad input ({})",
+                            input.display()
+                        );
+                        std::process::exit(2);
+                    }
+                }
+                std::process::exit(helpers_cmd::run_import_command(
                     &input,
                     &output,
                     output_format,
                     merge_components,
                     no_repair,
                     stats,
+                    scad_options,
                 ));
             }
             MeshCmd::Convert {
@@ -868,9 +1045,11 @@ fn main() {
 
 /// Place a freshly loaded model on the print bed.
 ///
-/// Bare meshes (STL/OBJ) carry no plate coordinate system — their coordinates
-/// are whatever the authoring tool emitted — so they are dropped onto the bed
-/// and centred on it. A 3MF carries authored plate placement and is returned
+/// Bare meshes carry no plate coordinate system — their coordinates are
+/// whatever the authoring tool emitted — so they are dropped onto the bed and
+/// centred on it. That covers STL and OBJ, plus a SCAD script that was
+/// *explicitly* loaded through `load_scad_model` (source coordinates, exactly
+/// like an STL). A 3MF carries authored plate placement and is returned
 /// untouched.
 ///
 /// Mirrors OrcaSlicer's `ModelObject::ensure_on_bed` and
@@ -882,7 +1061,11 @@ fn place_model_on_bed(
     config_path: Option<&std::path::Path>,
 ) -> slicer_ir::MeshIR {
     match slicer_model_io::detect_format(model_path) {
-        Ok(slicer_model_io::ModelFormat::Stl | slicer_model_io::ModelFormat::Obj) => {}
+        Ok(
+            slicer_model_io::ModelFormat::Stl
+            | slicer_model_io::ModelFormat::Obj
+            | slicer_model_io::ModelFormat::Scad,
+        ) => {}
         // 3MF placement is authored; leave it alone. An undetectable format
         // has already failed in `load_model`, so treat it as pass-through.
         _ => return mesh,
@@ -900,6 +1083,15 @@ fn place_model_on_bed(
                 "note: placed model on bed centre ({:.1}, {:.1}) mm (shift dx={:.2} dy={:.2} dz={:.2} mm)",
                 center.0, center.1, p.dx, p.dy, p.dz
             );
+        }
+        // `world_z_extent` is cached when the object is assembled at load time.
+        // Placement translates the geometry afterwards, so refresh the cache or
+        // it would keep describing the pre-placement Z range (a model loaded
+        // below Z=0 would still report a negative `z_min` while resting on the
+        // plate).
+        for object in &mut mesh.objects {
+            let extent = slicer_model_io::loader::object_world_z_extent(object);
+            object.world_z_extent = extent;
         }
     }
     warn_if_off_bed(&mesh, &bed_shape);
@@ -935,4 +1127,440 @@ fn read_bed_shape(config_path: Option<&std::path::Path>) -> Vec<f64> {
                 .collect::<Option<Vec<f64>>>()
         });
     from_config.unwrap_or_else(|| slicer_ir::ResolvedConfig::default().bed_shape)
+}
+
+// ---------------------------------------------------------------------------
+// SCAD bed placement (inline, feature-gated)
+// ---------------------------------------------------------------------------
+
+/// Placement coverage for the production `place_model_on_bed` helper.
+///
+/// Each test builds its mesh through the real `load_scad_model` ingestion path,
+/// then calls the production placement function directly. Every expected
+/// coordinate is derived analytically from the unplaced AABB and the selected
+/// bed centre, never from observed placed output, so a wrong translation cannot
+/// ratify itself.
+///
+/// Vertices are `f32`, and every fixture coordinate and shift below is an exact
+/// integer multiple of 1 mm, so `EPS_MM = 1e-3` absorbs `f32` round-off only.
+#[cfg(all(test, feature = "scad"))]
+mod scad_placement_tests {
+    use std::path::{Path, PathBuf};
+
+    use super::place_model_on_bed;
+
+    /// Tolerance for placed coordinates: `f32` vertices with
+    /// integer-millimetre fixtures and shifts.
+    const EPS_MM: f32 = 1e-3;
+
+    /// Two disjoint bodies, deliberately off-centre and below the plate.
+    /// Unplaced AABB: `x[-30,-18] y[5,11] z[-4,4]`.
+    const TWO_BODY: &str =
+        "translate([-30,5,-4]) cube([4,6,8]);\ntranslate([-20,7,-2]) cube([2,2,4]);\n";
+
+    fn write_fixture(dir: &Path, name: &str, text: &str) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, text).expect("write fixture");
+        path
+    }
+
+    /// The default `bed_shape` as the resolved config exposes it, so the
+    /// expected centre is derived rather than hardcoded.
+    fn default_bed_shape() -> Vec<f64> {
+        slicer_ir::ResolvedConfig::default().bed_shape
+    }
+
+    /// Load a fixture through the production SCAD ingest path (`load_model`
+    /// refuses implicit evaluation by design).
+    fn load_scad(path: &Path) -> slicer_ir::MeshIR {
+        slicer_model_io::load_scad_model(path, &slicer_model_io::ScadEvalOptions::default())
+            .unwrap_or_else(|e| panic!("load_scad_model {}: {e}", path.display()))
+            .mesh
+    }
+
+    fn aabb_of(vertices: impl Iterator<Item = (f32, f32, f32)>) -> ([f32; 3], [f32; 3]) {
+        let mut min = [f32::INFINITY; 3];
+        let mut max = [f32::NEG_INFINITY; 3];
+        for (x, y, z) in vertices {
+            min[0] = min[0].min(x);
+            min[1] = min[1].min(y);
+            min[2] = min[2].min(z);
+            max[0] = max[0].max(x);
+            max[1] = max[1].max(y);
+            max[2] = max[2].max(z);
+        }
+        (min, max)
+    }
+
+    /// One vertex in world space, applying the object transform with the host's
+    /// zero-matrix-is-identity convention.
+    ///
+    /// Placement folds its shift into `transform.matrix` (the loader assembles
+    /// objects with a real identity matrix, and `place_bare_mesh_on_bed` only
+    /// rewrites vertices for an all-zero matrix), so raw vertices are *not*
+    /// where the placed geometry lives. Reading them directly would inspect the
+    /// pre-placement coordinates and ratify a broken translation.
+    fn world_vertex(object: &slicer_ir::ObjectMesh, vertex: &slicer_ir::Point3) -> (f32, f32, f32) {
+        let m = &object.transform.matrix;
+        if m.iter().all(|value| *value == 0.0) {
+            return (vertex.x, vertex.y, vertex.z);
+        }
+        let (x, y, z) = (vertex.x as f64, vertex.y as f64, vertex.z as f64);
+        (
+            (m[0] * x + m[4] * y + m[8] * z + m[12]) as f32,
+            (m[1] * x + m[5] * y + m[9] * z + m[13]) as f32,
+            (m[2] * x + m[6] * y + m[10] * z + m[14]) as f32,
+        )
+    }
+
+    /// World-space AABB of the vertices matching a geometric filter. Splitting
+    /// the two cubes by their documented X gap avoids depending on triangle
+    /// connectivity and cannot absorb a placement error.
+    fn subset_aabb(
+        mesh: &slicer_ir::MeshIR,
+        keep: impl Fn(f32, f32, f32) -> bool,
+    ) -> ([f32; 3], [f32; 3]) {
+        aabb_of(
+            mesh.objects
+                .iter()
+                .flat_map(|object| {
+                    object
+                        .mesh
+                        .vertices
+                        .iter()
+                        .map(move |vertex| world_vertex(object, vertex))
+                })
+                .filter(|(x, y, z)| keep(*x, *y, *z)),
+        )
+    }
+
+    fn mesh_aabb(mesh: &slicer_ir::MeshIR) -> ([f32; 3], [f32; 3]) {
+        subset_aabb(mesh, |_, _, _| true)
+    }
+
+    fn assert_aabb(
+        mesh: &slicer_ir::MeshIR,
+        expected_min: [f32; 3],
+        expected_max: [f32; 3],
+        context: &str,
+    ) {
+        let (min, max) = mesh_aabb(mesh);
+        for axis in 0..3 {
+            assert!(
+                (min[axis] - expected_min[axis]).abs() <= EPS_MM,
+                "{context}: min[{axis}] expected {} got {} (tolerance {EPS_MM})",
+                expected_min[axis],
+                min[axis]
+            );
+            assert!(
+                (max[axis] - expected_max[axis]).abs() <= EPS_MM,
+                "{context}: max[{axis}] expected {} got {} (tolerance {EPS_MM})",
+                expected_max[axis],
+                max[axis]
+            );
+        }
+    }
+
+    fn assert_vertices_untouched(
+        placed: &slicer_ir::MeshIR,
+        original: &slicer_ir::MeshIR,
+        context: &str,
+    ) {
+        assert_eq!(
+            placed.objects.len(),
+            original.objects.len(),
+            "{context}: object count"
+        );
+        for (placed_object, original_object) in placed.objects.iter().zip(&original.objects) {
+            assert_eq!(placed_object.id, original_object.id, "{context}: object id");
+            assert_eq!(
+                placed_object.mesh.vertices.len(),
+                original_object.mesh.vertices.len(),
+                "{context}: vertex count"
+            );
+            for (index, (placed_vertex, original_vertex)) in placed_object
+                .mesh
+                .vertices
+                .iter()
+                .zip(&original_object.mesh.vertices)
+                .enumerate()
+            {
+                assert_eq!(
+                    placed_vertex, original_vertex,
+                    "{context}: vertex {index} must be untouched"
+                );
+            }
+            assert_eq!(
+                placed_object.mesh.indices, original_object.mesh.indices,
+                "{context}: indices"
+            );
+            assert_eq!(
+                placed_object.transform.matrix, original_object.transform.matrix,
+                "{context}: transform"
+            );
+            assert_eq!(
+                placed_object.world_z_extent, original_object.world_z_extent,
+                "{context}: cached world Z extent"
+            );
+        }
+        assert_eq!(
+            placed.build_volume, original.build_volume,
+            "{context}: build volume"
+        );
+    }
+
+    #[test]
+    fn scad_placement_centers_and_drops_to_bed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let scad = write_fixture(dir.path(), "two_body.scad", TWO_BODY);
+        let unplaced = load_scad(&scad);
+
+        // Fixture AABB, measured from the unplaced source coordinates.
+        let (min, max) = mesh_aabb(&unplaced);
+        assert_aabb(
+            &unplaced,
+            [-30.0, 5.0, -4.0],
+            [-18.0, 11.0, 4.0],
+            "unplaced two-body fixture",
+        );
+
+        // Analytic expectation: whole-model translation onto the bed centre,
+        // dropped so `min_z` becomes 0.
+        let center = slicer_model_io::bed_center_mm(&default_bed_shape())
+            .expect("the default bed_shape describes a plate");
+        assert!(
+            (center.0 - 125.0).abs() <= EPS_MM && (center.1 - 125.0).abs() <= EPS_MM,
+            "default bed centre must be (125, 125), got {center:?}"
+        );
+        let dx = center.0 - (min[0] + max[0]) / 2.0;
+        let dy = center.1 - (min[1] + max[1]) / 2.0;
+        let dz = -min[2];
+        assert!(
+            (dx - 149.0).abs() <= EPS_MM && (dy - 117.0).abs() <= EPS_MM,
+            "expected dx=149 dy=117 from the unplaced AABB, got ({dx}, {dy})"
+        );
+        assert!((dz - 4.0).abs() <= EPS_MM, "expected dz=4, got {dz}");
+
+        let original_id = unplaced.objects[0].id.clone();
+        let placed = place_model_on_bed(unplaced, &scad, None);
+
+        assert_eq!(
+            placed.objects.len(),
+            1,
+            "SCAD ingestion fuses into a single object; placement must not split it"
+        );
+        assert_eq!(
+            placed.objects[0].id, original_id,
+            "bed placement must not re-identify the object"
+        );
+        assert_aabb(
+            &placed,
+            [min[0] + dx, min[1] + dy, min[2] + dz],
+            [max[0] + dx, max[1] + dy, max[2] + dz],
+            "placed two-body fixture (analytic)",
+        );
+        // The same expectation in absolute millimetres: x[119,131] y[122,128]
+        // z[0,8].
+        assert_aabb(
+            &placed,
+            [119.0, 122.0, 0.0],
+            [131.0, 128.0, 8.0],
+            "placed two-body fixture (absolute)",
+        );
+
+        let extent = placed.objects[0]
+            .world_z_extent
+            .expect("a placed solid keeps a world Z extent");
+        assert!(
+            (extent.0 - 0.0).abs() <= EPS_MM && (extent.1 - 8.0).abs() <= EPS_MM,
+            "cached world_z_extent must follow placement: expected (0, 8), got {extent:?}"
+        );
+    }
+
+    #[test]
+    fn scad_placement_preserves_disconnected_offsets() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let scad = write_fixture(dir.path(), "two_body.scad", TWO_BODY);
+        let unplaced = load_scad(&scad);
+
+        // The two cubes are disjoint. Split them at the midpoint of the X gap
+        // (-26 .. -20) so each body's AABB is measured independently.
+        let (a_min, a_max) = subset_aabb(&unplaced, |x, _, _| x < -25.0);
+        let (b_min, b_max) = subset_aabb(&unplaced, |x, _, _| x >= -25.0);
+        assert!(
+            (a_min[0] - (-30.0)).abs() <= EPS_MM
+                && (a_max[0] - (-26.0)).abs() <= EPS_MM
+                && (a_min[1] - 5.0).abs() <= EPS_MM
+                && (a_max[1] - 11.0).abs() <= EPS_MM
+                && (a_min[2] - (-4.0)).abs() <= EPS_MM
+                && (a_max[2] - 4.0).abs() <= EPS_MM,
+            "first body pre-placement AABB must be x[-30,-26] y[5,11] z[-4,4], got {a_min:?}..{a_max:?}"
+        );
+        assert!(
+            (b_min[0] - (-20.0)).abs() <= EPS_MM
+                && (b_max[0] - (-18.0)).abs() <= EPS_MM
+                && (b_min[1] - 7.0).abs() <= EPS_MM
+                && (b_max[1] - 9.0).abs() <= EPS_MM
+                && (b_min[2] - (-2.0)).abs() <= EPS_MM
+                && (b_max[2] - 2.0).abs() <= EPS_MM,
+            "second body pre-placement AABB must be x[-20,-18] y[7,9] z[-2,2], got {b_min:?}..{b_max:?}"
+        );
+
+        let center = slicer_model_io::bed_center_mm(&default_bed_shape())
+            .expect("the default bed_shape describes a plate");
+        let placed = place_model_on_bed(unplaced, &scad, None);
+
+        // The whole model is one rigid translation, so the bodies stay on their
+        // own sides of the X gap and can be re-split with the same filter.
+        let (placed_a_min, placed_a_max) = subset_aabb(&placed, |x, _, _| x < 125.0);
+        let (placed_b_min, placed_b_max) = subset_aabb(&placed, |x, _, _| x >= 125.0);
+
+        // Both bodies must report the same delta. Per-body centring would move
+        // them differently and fail here.
+        let delta_a = [
+            placed_a_min[0] - a_min[0],
+            placed_a_min[1] - a_min[1],
+            placed_a_min[2] - a_min[2],
+        ];
+        let delta_b = [
+            placed_b_min[0] - b_min[0],
+            placed_b_min[1] - b_min[1],
+            placed_b_min[2] - b_min[2],
+        ];
+        for axis in 0..3 {
+            assert!(
+                (delta_a[axis] - delta_b[axis]).abs() <= EPS_MM,
+                "both bodies must receive the same shift; axis {axis}: {delta_a:?} vs {delta_b:?}"
+            );
+        }
+
+        // The inter-body offset vector is invariant under a rigid translation.
+        for axis in 0..3 {
+            assert!(
+                ((placed_b_min[axis] - placed_a_min[axis]) - (b_min[axis] - a_min[axis])).abs()
+                    <= EPS_MM,
+                "inter-body offset min[{axis}] changed under placement"
+            );
+            assert!(
+                ((placed_b_max[axis] - placed_a_max[axis]) - (b_max[axis] - a_max[axis])).abs()
+                    <= EPS_MM,
+                "inter-body offset max[{axis}] changed under placement"
+            );
+        }
+
+        // Analytic absolute placement, from the same whole-model expectation as
+        // the centring test: body A x[119,123] y[122,128] z[0,8], body B
+        // x[129,131] y[124,126] z[2,6].
+        let dx = center.0 - (-24.0);
+        let dy = center.1 - 8.0;
+        let dz = 4.0;
+        assert!(
+            (placed_a_min[0] - (a_min[0] + dx)).abs() <= EPS_MM
+                && (placed_a_max[0] - (a_max[0] + dx)).abs() <= EPS_MM
+                && (placed_b_min[0] - (b_min[0] + dx)).abs() <= EPS_MM
+                && (placed_b_max[0] - (b_max[0] + dx)).abs() <= EPS_MM
+                && (placed_a_min[1] - (a_min[1] + dy)).abs() <= EPS_MM
+                && (placed_a_max[1] - (a_max[1] + dy)).abs() <= EPS_MM
+                && (placed_a_min[2] - (a_min[2] + dz)).abs() <= EPS_MM
+                && (placed_a_max[2] - (a_max[2] + dz)).abs() <= EPS_MM
+                && (placed_b_min[2] - (b_min[2] + dz)).abs() <= EPS_MM
+                && (placed_b_max[2] - (b_max[2] + dz)).abs() <= EPS_MM,
+            "per-body placed AABBs must equal their pre-placement AABB plus ({dx}, {dy}, {dz}); \
+             got A {placed_a_min:?}..{placed_a_max:?}, B {placed_b_min:?}..{placed_b_max:?}"
+        );
+    }
+
+    #[test]
+    fn scad_placement_uses_configured_bed_centre() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let scad = write_fixture(dir.path(), "two_body.scad", TWO_BODY);
+        let config = write_fixture(
+            dir.path(),
+            "bed.json",
+            r#"{"bed_shape":[0,0,100,0,100,100,0,100]}"#,
+        );
+        let unplaced = load_scad(&scad);
+        let (min, max) = mesh_aabb(&unplaced);
+
+        let configured_bed_shape = [0.0, 0.0, 100.0, 0.0, 100.0, 100.0, 0.0, 100.0];
+        let center = slicer_model_io::bed_center_mm(&configured_bed_shape)
+            .expect("the configured bed_shape describes a plate");
+        assert!(
+            (center.0 - 50.0).abs() <= EPS_MM && (center.1 - 50.0).abs() <= EPS_MM,
+            "configured bed centre must be (50, 50), got {center:?}"
+        );
+        let dx = center.0 - (min[0] + max[0]) / 2.0;
+        let dy = center.1 - (min[1] + max[1]) / 2.0;
+        let dz = -min[2];
+        assert!(
+            (dx - 74.0).abs() <= EPS_MM
+                && (dy - 42.0).abs() <= EPS_MM
+                && (dz - 4.0).abs() <= EPS_MM,
+            "expected dx=74 dy=42 dz=4 from the unplaced AABB, got ({dx}, {dy}, {dz})"
+        );
+
+        let placed = place_model_on_bed(unplaced, &scad, Some(&config));
+        // x[-30,-18]+74 = [44,56]; y[5,11]+42 = [47,53]; z[-4,4]+4 = [0,8].
+        assert_aabb(
+            &placed,
+            [44.0, 47.0, 0.0],
+            [56.0, 53.0, 8.0],
+            "configured-bed placement",
+        );
+    }
+
+    #[test]
+    fn scad_placement_leaves_3mf_untouched() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let scad = write_fixture(dir.path(), "two_body.scad", TWO_BODY);
+        let unplaced = load_scad(&scad);
+        assert_aabb(
+            &unplaced,
+            [-30.0, 5.0, -4.0],
+            [-18.0, 11.0, 4.0],
+            "3MF pass-through input (deliberately off-centre and below Z=0)",
+        );
+
+        // The helper branches on the detected extension alone, and
+        // `detect_format` reads only the extension, so this path never has to
+        // exist: if placement ever tried to open the model, the test would fail
+        // loudly instead of silently passing.
+        let authored_path = dir.path().join("authored.3mf");
+        assert!(
+            !authored_path.exists(),
+            "the 3MF pass-through path is intentionally absent"
+        );
+
+        let placed = place_model_on_bed(unplaced.clone(), &authored_path, None);
+        assert_vertices_untouched(&placed, &unplaced, "3MF pass-through");
+        assert_eq!(placed, unplaced, "a 3MF model must be returned unchanged");
+    }
+
+    #[test]
+    fn scad_placement_skips_when_bed_shape_is_unusable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let scad = write_fixture(dir.path(), "two_body.scad", TWO_BODY);
+        let config = write_fixture(dir.path(), "empty_bed.json", r#"{"bed_shape":[]}"#);
+        let unplaced = load_scad(&scad);
+
+        // `bed_center_mm` rejects a polygon with fewer than three points, so the
+        // existing warning path returns the mesh in source coordinates.
+        assert!(
+            slicer_model_io::bed_center_mm(&[]).is_none(),
+            "an empty bed_shape must not describe a plate"
+        );
+
+        let placed = place_model_on_bed(unplaced.clone(), &scad, Some(&config));
+        assert_aabb(
+            &placed,
+            [-30.0, 5.0, -4.0],
+            [-18.0, 11.0, 4.0],
+            "unusable bed_shape keeps source coordinates",
+        );
+        assert_vertices_untouched(&placed, &unplaced, "unusable bed_shape");
+        assert_eq!(
+            placed, unplaced,
+            "an unusable bed_shape must leave the mesh unchanged"
+        );
+    }
 }

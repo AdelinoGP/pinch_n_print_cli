@@ -361,7 +361,7 @@ fn assert_width_delivery(outputs: [(&str, InfillIR); 2]) {
                 .find(|r| r.variant_chain == chain(tool))
                 .unwrap_or_else(|| panic!("{leg}: missing exact variant {tool}"));
             assert_eq!(region.object_id, "variant-cube");
-            // Source law: preserve source IDs, not map IDs (docs/spec_packets/layer-module-preparation_01_shared-selection-prerequisite/requirements.md, family A).
+            // Source law: preserve source IDs, not map IDs (docs/04_host_scheduler.md, ordinary full-identity delivery).
             assert_eq!(region.region_id, 7_000_000 + u64::from(tool) + 1);
             assert!(
                 !region.sparse_infill.is_empty(),
@@ -419,7 +419,7 @@ fn assert_fill_delivery(outputs: [(&str, InfillIR); 2]) {
             .find(|region| region.variant_chain == chain(tool))
             .unwrap_or_else(|| panic!("wasm: missing exact variant {tool}"));
         assert_eq!(region.object_id, "variant-cube");
-        // Source law: preserve source IDs, not map IDs (docs/spec_packets/layer-module-preparation_01_shared-selection-prerequisite/requirements.md, family A).
+        // Source law: preserve source IDs, not map IDs (docs/04_host_scheduler.md, ordinary full-identity delivery).
         assert_eq!(region.region_id, 7_000_000 + u64::from(tool) + 1);
         assert!(
             region.ironing.is_empty(),
@@ -690,7 +690,7 @@ fn unknown_variant_holder_does_not_borrow_sibling_claim() {
         );
         let region = &ir.regions[0];
         assert_eq!(region.object_id, "variant-cube");
-        // Source law: preserve source IDs, not map IDs (docs/spec_packets/layer-module-preparation_01_shared-selection-prerequisite/requirements.md, family A).
+        // Source law: preserve source IDs, not map IDs (docs/04_host_scheduler.md, ordinary full-identity delivery).
         assert_eq!(region.region_id, 7_000_002);
         assert_eq!(region.variant_chain, chain(1));
         assert!(

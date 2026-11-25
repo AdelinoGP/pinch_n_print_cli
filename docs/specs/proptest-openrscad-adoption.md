@@ -59,6 +59,7 @@ These decisions were explicitly approved. Packet generation may refine implement
 | Parameters | SCAD expressions; keep these separate from slicer configuration overrides. |
 | 2D source | Permit explicit positive extrusion height. No implicit thickness. |
 | SCAD object semantics | One fused geometry object, possibly with disconnected components. Display colors do not assign printer materials. |
+| Ordered chain identity | Use `(priority, name)` ordering throughout RegionMapping, paint composition, selection, and exact-chain configuration lookup; reconcile DEV-199's conflicting name-sorted composition requirement and preserve one shared ordered identity across stages. |
 | Placement | Normal bed placement for slicing, preserving relative arrangement. |
 | Diagnostics | Reject partial, approximate, degraded, or unclassified diagnostic outcomes. Allow explicitly recognized informational warnings. |
 | Cache | Evaluation-local caching is allowed; no persistent geometry cache initially. |
@@ -753,3 +754,25 @@ Performed in the authoring session: read-only repository/source/documentation in
 Not performed: dependency integration, native builds, Proptest execution, existing test-suite execution, runtime/compile benchmarks, actual generator/shrinker experiments, or Windows SCAD integration tests.
 
 The plan file is the sole authored artifact of this session. Repository implementation is unchanged. All performance impact and feasibility claims remain unmeasured until the named gates execute.
+
+## Packet Queue
+
+| # | packet slug | goal (one sentence) | depends on | status | packet dir |
+|---|-------------|---------------------|------------|--------|------------|
+| 1 | pbt-foundation | Add the opt-in Proptest/SDK harness, runner registry/selectors, isolation, replay, and one executable IR property. | - | generated | docs/spec_packets/proptest-openrscad_01_pbt-foundation/ |
+| 2 | pbt-domains | Add direct input strategies, independent geometry/data oracles, and validity-preserving shrinking. | #1 | generated | docs/spec_packets/proptest-openrscad_02_pbt-domains/ |
+| 3 | scad-adapter | Prove and implement the optional Windows OpenRSCAD adapter with strict diagnostics and exact conversion. | - | generated | docs/spec_packets/proptest-openrscad_03_scad-adapter/ |
+| 4 | pbt-scripted | Add typed SCAD recipe strategies, topology witnesses, shrinking, and replay artifacts. | #2, #3 | generated | docs/spec_packets/proptest-openrscad_04_pbt-scripted/ |
+| 5 | scad-ingest | Add opt-in SCAD support to `slice` and `mesh import`, including parameters, extrusion, identity, and placement. | #3 | generated | docs/spec_packets/proptest-openrscad_05_scad-ingest/ |
+| 6 | pbt-ir-config | Implement H-COORD, H-IDS, H-IR, H-CONFIG, and H-CHAINS with independent data-model properties. | #1, #2 | generated | docs/spec_packets/proptest-openrscad_06_pbt-ir-config/ |
+| 7 | pbt-scheduler | Implement H-DAG, H-CLAIMS, and H-REGISTRY using independent small models. | #1, #2 | generated | docs/spec_packets/proptest-openrscad_07_pbt-scheduler/ |
+| 8 | pbt-runtime | Implement H-RUNTIME and selected pure host-validation properties. | #2, #6, #7 | generated | docs/spec_packets/proptest-openrscad_08_pbt-runtime/ |
+| 9 | pbt-geometry | Implement H-BOOL, H-OFFSET, H-MESH, and selected helper contracts, with scripted enrichment optional. | #2 | generated | docs/spec_packets/proptest-openrscad_09_pbt-geometry/ |
+| 10 | pbt-arachne | Implement H-ARACHNE and Arachne-module kernel properties. | #2 | generated | docs/spec_packets/proptest-openrscad_10_pbt-arachne/ |
+| 11 | pbt-prepass | Implement H-REGIONMAP, H-PAINT, H-SUPPORT, and H-LIGHTNING. | #2, #6, #9 | generated | docs/spec_packets/proptest-openrscad_11_pbt-prepass/ |
+| 12 | pbt-walls | Add classic-perimeter and fuzzy-skin kernel properties with applicable geometry support. | #2 | generated | docs/spec_packets/proptest-openrscad_12_pbt-walls/ |
+| 13 | pbt-infill | Add rectilinear, gyroid, linker, wave-overhang, and top-surface-ironing properties. | #2, #9 | generated | docs/spec_packets/proptest-openrscad_13_pbt-infill/ |
+| 14 | pbt-support-modules | Add traditional/tree support planner, renderer, and support-surface-ironing properties. | #2, #11 | generated | docs/spec_packets/proptest-openrscad_14_pbt-support-modules/ |
+| 15 | pbt-layers-seams | Add layer-planning, seam, and path-optimization properties. | #1, #2 | generated | docs/spec_packets/proptest-openrscad_15_pbt-layers-seams/ |
+| 16 | pbt-io-gcode | Implement H-IO/H-GCODE and the remaining cooling, speed, template, skirt/brim, and wipe-tower properties. | #2, #6 | generated | docs/spec_packets/proptest-openrscad_16_pbt-io-gcode/ |
+| 17 | pbt-ci-closure | Complete registry auditing, Windows CI, measured profiles, documentation, and rollout acceptance. | #1, #2, #3, #4, #5, #6, #7, #8, #9, #10, #11, #12, #13, #14, #15, #16 | generated | docs/spec_packets/proptest-openrscad_17_pbt-ci-closure/ |

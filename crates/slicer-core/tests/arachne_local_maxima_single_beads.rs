@@ -2,12 +2,29 @@
 //! (`target/arachne_parity_audit_20260706_020657.md`, §N9).
 //!
 //! **Finding N9:** PNP's `generate_toolpaths` lacks the
-//! `generateLocalMaximaSingleBeads` pass
-//! (`SkeletalTrapezoidation.cpp:2383-2413`): for nodes with odd
+//! `generateLocalMaximaSingleBeads` pass (`SkeletalTrapezoidation.cpp`):
+//! for nodes with odd
 //! `beading.bead_widths.size()`, `isLocalMaximum(true)`, and not central,
-//! canonical emits a 6-segment hexagonal micro-loop (radius `width/8`,
-//! `is_odd = true`). Without it, local maxima that never join a domain chain
-//! vanish (pinholes at the center of near-square regions with odd bead counts).
+//! canonical emits a 6-segment **open** hexagonal micro-loop (radius
+//! `width/8`, `is_odd = true`). Without it, local maxima that never join a
+//! domain chain vanish (pinholes at the center of near-square regions with odd
+//! bead counts).
+//!
+//! # Post-stitch outcome (packet `proptest-openrscad_10`, Step 4)
+//!
+//! Canonical `generateLocalMaximaSingleBeads` pushes exactly six junctions and
+//! leaves `ExtrusionLine::is_closed` at its constructor default `false`; the
+//! first junction is never re-appended. The local producer formerly appended a
+//! seventh closing junction and set `is_closed = true`, and this fixture pinned
+//! that non-canonical 7-junction closed shape.
+//!
+//! With the producer corrected, the pentagon below measures **one open,
+//! is_odd, six-junction inset-1 line**. `stitch_extrusions` does not close it:
+//! the six-segment loop's own gap is about 0.072 mm, but canonical
+//! `PolylineStitcher`'s tiny-poly gate (`chain_length + dist < 3 * max_gap`)
+//! rejects closing a loop whose perimeter is still below three stitch gaps. The
+//! post-stitch fixture therefore asserts the measured canonical-correct open
+//! shape, not a manufactured closure.
 //!
 //! Host-only: gated behind `host-algos`.
 
@@ -30,16 +47,17 @@ fn expoly(points: Vec<Point2>) -> ExPolygon {
     }
 }
 
-/// AC-1 — hexagonal micro-loop at local maximum.
+/// AC-1 — open hexagonal micro-loop at a local maximum (post-stitch).
 ///
 /// A small regular pentagon whose center is a geometric local maximum with
 /// odd bead count and no central edges. A pentagon has no parallel edges,
 /// so its medial axis has no flat segments — every edge from the center
 /// radiates outward with `dR/dD ≈ 1.0 >> sin(5°)`, making all edges
 /// non-central under the strict 10° predicate. This mirrors OrcaSlicer's
-/// `generateLocalMaximaSingleBeads` (`SkeletalTrapezoidation.cpp:2383-2413`):
+/// `generateLocalMaximaSingleBeads` (`SkeletalTrapezoidation.cpp`):
 /// isolated thick spots with odd bead count, non-central, at local maxima
-/// get a 6-segment hexagonal micro-loop.
+/// get a 6-segment hexagonal micro-loop. Canonical emits it **open**; this
+/// post-pipeline fixture asserts the measured open outcome after stitching.
 #[test]
 fn ac1_local_maximum_emits_hexagonal_micro_loop() {
     // Regular pentagon centered at origin with circumradius 0.85mm
@@ -117,39 +135,40 @@ fn ac1_local_maximum_emits_hexagonal_micro_loop() {
     )
     .expect("pentagon should produce Ok(lines)");
 
-    // Find the micro-loop: closed is_odd lines with 7 junctions — 6 hexagon
-    // vertices plus the duplicated closing junction the closed-loop convention
-    // requires (`first.xy == last.xy`).
+    // Find the micro-loop: one is_odd, **open** line with exactly six
+    // hexagon junctions. Canonical `generateLocalMaximaSingleBeads` never
+    // appends the first junction, and the stitcher's tiny-poly gate leaves
+    // this sub-three-gap loop open, so there is no seventh closing junction.
     let micro_loops: Vec<&ExtrusionLine> = lines
         .iter()
-        .filter(|l| l.is_odd && l.is_closed && l.junctions.len() == 7)
+        .filter(|l| l.is_odd && !l.is_closed && l.junctions.len() == 6)
         .collect();
 
     assert!(
         !micro_loops.is_empty(),
-        "expected at least one closed is_odd ExtrusionLine with 7 junctions (hexagonal \
-         micro-loop from generateLocalMaximaSingleBeads) for a regular pentagon with odd bead \
-         count and no central edges, got {} total lines with {} closed-is_odd-7j candidates",
+        "expected at least one open is_odd ExtrusionLine with 6 junctions (canonical \
+         hexagonal micro-loop from generateLocalMaximaSingleBeads) for a regular pentagon \
+         with odd bead count and no central edges, got {} total lines with {} \
+         open-is_odd-6j candidates",
         lines.len(),
         micro_loops.len()
     );
 
-    // Verify the micro-loop's geometry: the 6 distinct junctions should form a
-    // roughly hexagonal shape. The 7th is the closing duplicate of the first and
-    // is excluded from every geometric statistic below, so it cannot skew the
-    // centroid.
+    // Verify the micro-loop's geometry: the six junctions form a roughly
+    // hexagonal shape, and there is no repeated closing endpoint.
     let ml = micro_loops[0];
     let verts = &ml.junctions[..6];
 
-    assert_eq!(
-        (ml.junctions[0].p.x, ml.junctions[0].p.y),
-        (ml.junctions[6].p.x, ml.junctions[6].p.y),
-        "micro-loop must be closed: last junction duplicates the first"
+    assert!(
+        (ml.junctions[0].p.x, ml.junctions[0].p.y) != (ml.junctions[5].p.x, ml.junctions[5].p.y),
+        "the open micro-loop must not carry a duplicated closing junction"
     );
-    assert_eq!(
-        ml.inset_idx, ml.junctions[0].perimeter_index,
-        "micro-loop's inset_idx should match its junctions' perimeter_index (the middle bead)"
-    );
+    for (index, junction) in ml.junctions.iter().enumerate() {
+        assert_eq!(
+            junction.perimeter_index, ml.inset_idx,
+            "junction {index} must carry the line's middle-bead inset index"
+        );
+    }
 
     // All 6 junctions should be equidistant from their centroid (within tolerance).
     let cx: f32 = verts.iter().map(|j| j.p.x).sum::<f32>() / 6.0;

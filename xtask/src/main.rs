@@ -1,5 +1,6 @@
 mod build_guests;
 mod check_deviations;
+mod check_fmt;
 mod check_literals;
 mod check_test_quality;
 mod compact_specs;
@@ -7,6 +8,9 @@ mod dist;
 mod editions;
 mod gen_config_docs;
 mod guest_namespaces;
+// The registry/context boundary is wired into the command in packet Step 6.
+#[allow(dead_code)]
+mod properties;
 mod rustc_driver;
 mod sync_agents;
 mod test;
@@ -40,6 +44,11 @@ SUBCOMMANDS:
     build-guests --list   Print every discovered guest (crate name, manifest, expected artifact path).
     check-deviations          Regenerate doc 07 Open Deviation Map + doc 15 config tables.
     check-deviations --check  Exit 1 if doc 07 or doc 15 generated sections are stale.
+    fmt                     Format every workspace member, one `cargo fmt -p`
+                          invocation each. This is the Windows-safe form of
+                          `cargo fmt --all`, which exceeds the Windows
+                          command-line limit on this workspace.
+    check-fmt               Exit 1 if any workspace member needs formatting.
     check-literals          Enforce exhaustive watched-type literal policy.
     check-literals --report Report watched-type literal violations without failing.
     check-literals [PATHS...]  Restrict literal checking to workspace-relative paths.
@@ -70,6 +79,12 @@ SUBCOMMANDS:
                           regression-diagnosis runs. Narrow single-test runs
                           should still use plain `cargo test` directly.
     test --accelerated    Use the controlled compiler policy and debug profile for the test run.
+    test --properties     Run registered properties (test-properties.toml): select
+                          with --tier routine|extended (default routine), repeatable
+                          --property ID, --seed U64, --with-scad (exit 2 with
+                          no_eligible_scad_properties until a SCAD record exists).
+                          Conflicts with --accelerated, --summary-from, cargo/libtest
+                          args. See docs/testing/properties.md.
     test --summary [ARGS]  Same as `test`, but prints a compact LLM-friendly
                           digest (summary lines + failure detail + verdict)
                           instead of streaming every per-test `ok` line.
@@ -139,6 +154,20 @@ fn main() -> ExitCode {
                     ExitCode::from(code as u8)
                 }
             }
+        }
+        Some("fmt") | Some("check-fmt") => {
+            if args.len() > 1 {
+                eprintln!(
+                    "xtask: unknown flag '{}' for {}
+",
+                    args[1], args[0]
+                );
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            }
+            let apply = args[0] == "fmt";
+            let ws = build_guests::workspace_root();
+            ExitCode::from(check_fmt::run(&ws, apply) as u8)
         }
         Some("check-deviations") => {
             let flag = args.get(1).map(String::as_str);

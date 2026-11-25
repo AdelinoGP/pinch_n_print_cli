@@ -116,10 +116,51 @@ boundary_type)`, and `ordered_entity_view_base(role)`. Their explicit enum
 arguments avoid unsafe blanket `Default` implementations, and the returned
 bases are intended for FRU composition.
 
+For `property_testing` fixtures, use FRU over
+`slicer_sdk::test_support::fixtures::print_entity_base` or an appropriate
+`Default`, overriding the fields relevant to the property. Shared strategies
+and oracles belong in `slicer_sdk::test_support::property_testing`; an oracle
+must be independent of the production function under test. A durable
+**concrete regression** is a named test using the concrete input in the owning
+crate's ordinary test target. Seeds are diagnostics, never committed regression
+history.
+
+`regression::format_regression_fixture` turns a concrete failing input into a
+readable Rust fixture statement block binding `input` (floats via `from_bits`, so
+signed zero, infinities and NaN payloads survive; graph tuples, layers, geometry
+and indexed meshes as literals). It is a starting point, not a test: the owning
+crate must add an independently justified assertion against the real SUT and name
+the root cause. Emitted layer fixtures use `print_entity_base` FRU for a
+default `RegionKey` and pin `RegionKey`, `ExtrusionPath3D`, `Point3WithWidth` and
+`TravelMove` field-for-field (with an `// exhaustive:` waiver) whenever a
+non-default value must be preserved; regenerate them when those watched shapes
+change. A layer carrying a side table the formatter cannot represent is rejected
+rather than silently truncated.
+
 `SliceRunOptions::default()` is the quiet test baseline. It uses
 `MeshIR::default()` for the current schema version, leaves paths and options
 empty or `None`, and intentionally keeps `progress_events = false` rather
 than using the CLI default.
+
+Scripted SCAD fixtures follow the same separation with one extra stage:
+
+- The **scripted source** is evidence, not a fixture. `emit_scad` output plus the
+  attempt journal under
+  `target/property-testing/<run_token>/<property_id>/attempts/` records what was
+  actually rendered (`recipe.json`, `recipe-bounds.json`, `source.scad`,
+  `options.json`, `engine.json`, `state.json` before evaluation, then the
+  evaluated `geometry.json` / `diagnostics.json` / `output.json`). It stays
+  target-local and is never committed as an ad-hoc JSON blob.
+- The **durable regression** is still a named owner test. A retained case is
+  converted through `regression::format_regression_fixture` — contours as
+  `ConcreteInput::Geometry`, meshes as `ConcreteInput::Mesh` — and the owning
+  crate adds its own assertion. Seeds are diagnostics here too; a retained case
+  directory is not regression history.
+- `RecipeBounds` has a documented bounded `Default` for FRU composition, but live
+  profiles must pass their measured bounds explicitly. `ScriptedCase` has **no**
+  default: an exhaustive literal in a test carries an `// exhaustive:` waiver
+  naming the complete replay-record contract, so adding a field fails the round
+  trip instead of silently dropping it.
 
 ## 6. `clippy::needless_update` guidance
 
@@ -149,7 +190,10 @@ WIT adapter shims remain compiler-enforced.
 
 An out-of-line `#[cfg(test)]` module declaration is not followed into its
 separately declared module file; only inline `#[cfg(test)]` subtrees are
-scanned.
+scanned. In particular, `modules/core-modules/*/src/property_tests.rs` files
+(such as the classic-perimeter and fuzzy-skin property modules) are outside the
+scanner and require the manual FRU/waiver review recorded in their evidence.
+A green `check-literals` run is not evidence for those files.
 
 1. **Macro range expressions.** A macro token tree with a top-level range
    expression (`field: 0..2`) reads the `..` as an FRU rest, suppressing

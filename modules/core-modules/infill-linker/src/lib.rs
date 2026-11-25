@@ -82,3 +82,12 @@ impl LayerModule for InfillLinker {
         Ok(())
     }
 }
+
+// Out-of-line property module. The two separate gates are load-bearing: the
+// default build never compiles it, and the feature alone (without a test
+// build) cannot pull Proptest or the property engine into a normal graph.
+// `cargo xtask check-literals` does not follow this declaration — see the
+// file's own literal-review note.
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;

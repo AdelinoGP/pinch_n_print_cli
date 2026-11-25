@@ -20,8 +20,16 @@ slicer-core = { path = "../../../crates/slicer-core", default-features = false }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wit-bindgen.workspace = true
 
+[features]
+# Empty selection feature (default off). It gates the crate-internal
+# `src/property_tests.rs` unit-test module that exercises this module's private
+# Arachne kernels. It never enters a production or guest graph: the module is
+# also `#[cfg(test)]`-gated, and the property engine is a dev-dependency only.
+property_testing = []
+
 [dev-dependencies]
-slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }
+slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test", "property_testing"] }
+proptest = { workspace = true }
 toml = "0.8"
 
 [lints]

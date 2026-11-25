@@ -8,6 +8,10 @@ description = "WIT/wasmtime marshalling and dispatch for Pinch 'n Print's WASM m
 [features]
 # Mirrors crates/slicer-runtime for delivery-capture observations in contract tests.
 perimeter-spatial-test-support = ["slicer-core/perimeter-spatial-test-support"]
+# Opt-in gate for the host pre-pass property target. Empty on purpose: it
+# exists so `required-features` keeps the Proptest harness out of default
+# builds and out of the guest graph.
+property_testing = []
 # Controlled-only fixture support; must never be enabled for production runs.
 preparation-test-fixtures = []
 
@@ -25,6 +29,8 @@ slicer-schema = { path = "../slicer-schema" }
 slicer-sdk = { path = "../slicer-sdk" }
 
 [dev-dependencies]
+slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk", features = ["property_testing"] }
+proptest = { workspace = true }
 lightning-portability-guest = { path = "test-guests/lightning-portability-guest" }
 preparation-pilot-infill = { path = "test-guests/preparation-pilot-infill" }
 preparation-pilot-path = { path = "test-guests/preparation-pilot-path" }
@@ -65,3 +71,10 @@ path = "tests/unit/main.rs"
 
 [lints]
 workspace = true
+
+# Host pre-pass property target (packet `proptest-openrscad_11_pbt-prepass`).
+# Gated so a default build never compiles the Proptest harness.
+[[test]]
+name = "property_prepass"
+path = "tests/property_prepass.rs"
+required-features = ["property_testing"]

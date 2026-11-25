@@ -16,11 +16,20 @@ latter defines timing, DAG, and manifest diagnosis.
 cargo build --workspace
 cargo clippy --workspace --all-targets -- -D warnings  # required before committing
 cargo xtask check-literals                              # required before committing
+cargo xtask check-fmt                                   # required before committing; Windows-safe formatting gate
 cargo test -p slicer-scheduler --test scheduler_contract core_module_ir_access_contract_tdd   # narrow run; slicer-runtime's buckets are unit|contract|executor|integration|e2e
 cargo xtask build-guests                             # build all guest WASMs (core-modules + test-guests; needs wasm32 target)
 cargo xtask dist --edition <developer|hybrid|integrated> # build guests + pnp_cli (release), stage into target/dist/<edition>/ (add --debug for debug binary)
 cargo run --bin pnp_cli --release -- slice --input model.stl --output model.gcode
 ```
+
+**Use `cargo xtask check-fmt`, not `cargo fmt --all`.** The aggregate form puts every
+workspace file on one rustfmt command line (~1,200 files here), which exceeds the
+Windows `CreateProcess` limit and fails with `The filename or extension is too long.
+(os error 206)` before rustfmt runs. `check-fmt` runs `cargo fmt -p <package> -- --check`
+once per workspace member — the same packages `cargo fmt --all` covers — and reports
+which packages need formatting; `cargo xtask fmt` applies the fixes. CI runs the same
+command, so both platforms gate identically.
 
 Benchmark commands and the HTML slicer report (`--report`) are rarely needed — read `.agents/aux-commands.md` when you need them.
 
@@ -132,7 +141,7 @@ Module manifest TOML section headers already use snake_case. Runtime key strings
 
 Guest `.wasm` artifacts under `modules/core-modules/*/` and `crates/slicer-wasm-host/test-guests/*.component.wasm` are **not** rebuilt by `cargo build` or `cargo test`. Stale guests fail typed instantiation at runtime and surface as test failures that look unrelated to your edits but are not. **All guests of both trees build into one shared target dir at `<ws_root>/target/guests`** (real layout `target/guests/wasm32-unknown-unknown/release/`; one `CARGO_TARGET_DIR`, not one `target/` per guest). Per-guest `[workspace]` sentinels are retained, so guests remain separate workspaces.
 
-This is **Artifact-verified freshness** as defined in CONTEXT.md: `cargo xtask build-guests --check` decodes each existing artifact (`wasm-tools component wit`) and compares its embedded WIT world against the canonical WIT. The fingerprint covers code inputs only, derived per guest from its Cargo path-dependency closure (dependencies, target-specific dependencies, and build-dependencies via `Cargo.toml` walk; never `dev-dependencies`); WIT staleness is answered by the artifact itself, not by fingerprinting WIT files.
+This is **Artifact-verified freshness** as defined in CONTEXT.md: `cargo xtask build-guests --check` decodes each existing artifact (`wasm-tools component wit`) and compares its embedded WIT world against the canonical WIT. The fingerprint covers code inputs only, derived per guest from its Cargo path-dependency closure (dependencies, target-specific dependencies, and build-dependencies via `Cargo.toml` walk; never `dev-dependencies`). Each `Cargo.toml` in that set is hashed **normalized** (`manifest_fingerprint_bytes` in `xtask/src/build_guests.rs`): comments, formatting, `[dev-dependencies]` (top-level and per-target) and `[[test]]`/`[[bench]]`/`[[example]]` targets are stripped, so a test-only manifest edit (e.g. a property packet adding a test target to `slicer-core`) does not mark guests stale, while feature, dependency and package edits still do; WIT staleness is answered by the artifact itself, not by fingerprinting WIT files.
 
 **You MUST run the freshness check before attributing any guest, component, host-integration, or module-dispatch test failure to your changes, to "flaky tests", to "a separate workstream", or to "unrelated infrastructure":**
 
@@ -162,7 +171,7 @@ When modifying WIT types or interface definitions:
 
 ## Spec Packet Workflow
 
-Implementation work is organized into spec packets under `docs/spec_packets/<prefix>_<NN>_<packet-name>/` (e.g. `test-quality-remediation_01_core-flow-consolidation/`; legacy dirs keep their historical names), each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Packets are authored with `/spec-packet-generator`, gated with `/spec-review <packet> --preflight`, and executed with `/swarm <packet>`. Backpressure gates require `cargo build`, the packet's narrow verification commands, and `cargo clippy` to pass before closing; the full `cargo test --workspace` runs only at the packet-close acceptance ceremony (see Test Discipline above).
+Implementation work is organized into spec packets under `docs/spec_packets/<prefix>_<NN>_<packet-name>/`. New packets contain `packet.spec.md` and `implementation-plan.md`; legacy packets keep their existing files. Use `/spec-packet-generator` to author, `/spec-review <packet> --preflight` for an optional independent preflight, and `/swarm <packet>` to implement and close. See `docs/spec_packets/README.md` for the lifecycle and implementation gotchas. Before closure, run `cargo build --workspace`, the packet's narrow verification commands, and `cargo clippy --workspace --all-targets -- -D warnings`; see Test Discipline above for workspace tests.
 
 ## In-Tree Citation Style (MUST follow)
 

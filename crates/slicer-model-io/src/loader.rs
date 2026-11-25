@@ -5,6 +5,8 @@
 //! - STL (binary and ASCII)
 //! - OBJ (Wavefront)
 //! - 3MF (3D Manufacturing Format â€” ZIP-based)
+//! - SCAD (self-contained script text, behind the default-off `scad` feature;
+//!   [`load_model`] never evaluates it, only `load_scad_model` does)
 
 use std::collections::HashMap;
 use std::fmt;
@@ -28,6 +30,10 @@ pub enum ModelFormat {
     Obj,
     /// 3D Manufacturing Format (3MF).
     ThreeMf,
+    /// Self-contained OpenSCAD script text. Detection is available in every
+    /// build; only `load_scad_model` evaluates it, and only when the
+    /// default-off `scad` feature is enabled.
+    Scad,
 }
 
 /// Errors from model loading.
@@ -61,6 +67,30 @@ pub enum ModelLoadError {
         /// Byte offset into the XML stream where the malformed attribute was found.
         byte_offset: usize,
     },
+    /// SCAD input was requested in a build that has the default-off `scad`
+    /// feature disabled.
+    ScadSupportDisabled,
+    /// SCAD input reached [`load_model`], which deliberately never evaluates
+    /// scripts implicitly. Call `load_scad_model` with explicit options.
+    ScadOptionsRequired,
+    /// The SCAD adapter rejected the source or options. The nested error is
+    /// preserved unmodified.
+    #[cfg(feature = "scad")]
+    ScadEvaluation(slicer_scad::ScadError),
+    /// The SCAD source evaluated to 2D contours and no explicit extrusion height
+    /// was supplied. No implicit thickness is ever assumed.
+    #[cfg(feature = "scad")]
+    ScadNeedsExtrusion {
+        /// Diagnostic label of the source that produced the contours.
+        source_label: String,
+    },
+    /// The SCAD source evaluated to no geometry, even when a valid extrusion
+    /// height was supplied.
+    #[cfg(feature = "scad")]
+    ScadEmpty {
+        /// Diagnostic label of the source that evaluated to nothing.
+        source_label: String,
+    },
 }
 
 impl fmt::Display for ModelLoadError {
@@ -87,11 +117,45 @@ impl fmt::Display for ModelLoadError {
                 reason,
                 byte_offset,
             } => write!(f, "paint metadata error at byte {byte_offset}: {reason}"),
+            Self::ScadSupportDisabled => write!(
+                f,
+                "SCAD_SUPPORT_DISABLED: this build was compiled without the `scad` feature, \
+                 so .scad input cannot be loaded. Enable it with `--features pnp-cli/scad` \
+                 for the CLI, or `--features slicer-model-io/scad` for library consumers."
+            ),
+            Self::ScadOptionsRequired => write!(
+                f,
+                "SCAD_OPTIONS_REQUIRED: load_model never evaluates SCAD scripts implicitly; \
+                 call load_scad_model with explicit ScadEvalOptions."
+            ),
+            #[cfg(feature = "scad")]
+            Self::ScadEvaluation(e) => write!(f, "SCAD_EVALUATION[{}]: {e}", e.kind.as_str()),
+            #[cfg(feature = "scad")]
+            Self::ScadNeedsExtrusion { source_label } => write!(
+                f,
+                "SCAD_NEEDS_EXTRUSION: '{source_label}' evaluates to 2D geometry; supply \
+                 --scad-extrude-height <MM> to extrude it explicitly."
+            ),
+            #[cfg(feature = "scad")]
+            Self::ScadEmpty { source_label } => {
+                write!(
+                    f,
+                    "SCAD_EMPTY_MODEL: '{source_label}' evaluated to no geometry."
+                )
+            }
         }
     }
 }
 
-impl std::error::Error for ModelLoadError {}
+impl std::error::Error for ModelLoadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            #[cfg(feature = "scad")]
+            Self::ScadEvaluation(e) => Some(e),
+            _ => None,
+        }
+    }
+}
 
 impl From<std::io::Error> for ModelLoadError {
     fn from(e: std::io::Error) -> Self {
@@ -115,6 +179,7 @@ pub fn detect_format(path: impl AsRef<Path>) -> Result<ModelFormat, ModelLoadErr
         "stl" => Ok(ModelFormat::Stl),
         "obj" => Ok(ModelFormat::Obj),
         "3mf" => Ok(ModelFormat::ThreeMf),
+        "scad" => Ok(ModelFormat::Scad),
         other => Err(ModelLoadError::UnsupportedFormat(other.to_string())),
     }
 }
@@ -216,11 +281,22 @@ pub fn check_basename_collisions(paths: &[std::path::PathBuf]) -> Result<(), Mod
 /// Detects format by extension, parses geometry, deduplicates vertices,
 /// computes a bounding box, and returns a single-object MeshIR.
 ///
+/// SCAD input is **never** evaluated here, in either feature state: with the
+/// default-off `scad` feature this returns [`ModelLoadError::ScadSupportDisabled`],
+/// and with it enabled this returns [`ModelLoadError::ScadOptionsRequired`].
+/// Call `load_scad_model` for explicit SCAD evaluation.
+///
 /// # Errors
 ///
 /// Returns [`ModelLoadError`] on I/O failure, unsupported format, or parse error.
 pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
     let format = detect_format(path)?;
+    // Refuse SCAD before opening the file: detection is not evaluation, and a
+    // path that does not exist must still produce the feature-appropriate SCAD
+    // diagnostic rather than `Io`.
+    if matches!(format, ModelFormat::Scad) {
+        return Err(scad_refusal());
+    }
     let file = std::fs::File::open(path)?;
     let mut reader = BufReader::new(file);
 
@@ -269,6 +345,7 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
                 })
                 .collect()
         }
+        ModelFormat::Scad => return Err(scad_refusal()),
     };
 
     if objects.is_empty() {
@@ -281,6 +358,143 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
         objects,
         build_volume,
         ..Default::default()
+    })
+}
+
+/// Feature-appropriate refusal for SCAD input reaching the non-evaluating entry.
+fn scad_refusal() -> ModelLoadError {
+    #[cfg(feature = "scad")]
+    {
+        ModelLoadError::ScadOptionsRequired
+    }
+    #[cfg(not(feature = "scad"))]
+    {
+        ModelLoadError::ScadSupportDisabled
+    }
+}
+
+/// Result of an explicit SCAD load: one assembled [`MeshIR`] plus the adapter's
+/// diagnostics and provenance, both passed through unmodified.
+///
+/// [`MeshIR`]: slicer_ir::MeshIR
+#[cfg(feature = "scad")]
+#[derive(Debug, Clone)]
+pub struct ScadModelLoad {
+    /// The assembled, source-coordinate mesh IR with exactly one object.
+    pub mesh: slicer_ir::MeshIR,
+    /// Accepted informational diagnostics from the evaluation.
+    pub diagnostics: Vec<slicer_scad::ScadDiagnostic>,
+    /// Reproduction record from the evaluation.
+    pub provenance: slicer_scad::ScadProvenance,
+}
+
+/// Evaluate one self-contained SCAD script and assemble its 3D mesh into a
+/// single-object, source-identified [`MeshIR`].
+///
+/// The source is read as bounded UTF-8 text (at most
+/// `options.limits.max_source_bytes` bytes) and evaluated exactly once through
+/// [`slicer_scad::evaluate`]. Only a returned [`slicer_scad::ScadGeometry::Mesh`]
+/// is assembled, through [`assemble_object`] with `path_object_id`; contours
+/// become [`ModelLoadError::ScadNeedsExtrusion`] (no implicit thickness) and an
+/// empty result becomes [`ModelLoadError::ScadEmpty`] even when an extrusion
+/// height was supplied. Geometry is returned in source coordinates, unplaced,
+/// with diagnostics and provenance preserved unmodified.
+///
+/// # Errors
+///
+/// Returns [`ModelLoadError::UnsupportedFormat`] for a non-SCAD path,
+/// [`ModelLoadError::Io`] for read/UTF-8 failures, and
+/// [`ModelLoadError::ScadEvaluation`] for adapter rejections (including an
+/// invalid or exceeded `max_source_bytes` bound).
+#[cfg(feature = "scad")]
+pub fn load_scad_model(
+    path: &Path,
+    options: &slicer_scad::ScadEvalOptions,
+) -> Result<ScadModelLoad, ModelLoadError> {
+    let format = detect_format(path)?;
+    if format != ModelFormat::Scad {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .unwrap_or_default();
+        return Err(ModelLoadError::UnsupportedFormat(ext));
+    }
+
+    let cap = options.limits.max_source_bytes;
+    // `0` and `usize::MAX` both mean "capacity cannot be checked"; neither is
+    // treated as unlimited. Refuse before allocating a source buffer.
+    if cap == 0 || cap == usize::MAX {
+        return Err(ModelLoadError::ScadEvaluation(slicer_scad::ScadError {
+            kind: slicer_scad::ScadErrorKind::InvalidOptions,
+            source_label: path.display().to_string(),
+            parameter: None,
+            message: format!(
+                "max_source_bytes is {cap}, which cannot bound a source read \
+                 (0 and usize::MAX are not 'unlimited')"
+            ),
+            diagnostics: Vec::new(),
+        }));
+    }
+
+    let label = path.display().to_string();
+    let file = std::fs::File::open(path)?;
+    let mut bytes = Vec::new();
+    let read = file.take((cap + 1) as u64).read_to_end(&mut bytes)?;
+    if read > cap {
+        return Err(ModelLoadError::ScadEvaluation(slicer_scad::ScadError {
+            kind: slicer_scad::ScadErrorKind::ComplexityLimit,
+            source_label: label,
+            parameter: None,
+            message: format!("source is at least {read} bytes, exceeding max_source_bytes = {cap}"),
+            diagnostics: Vec::new(),
+        }));
+    }
+    let text = String::from_utf8(bytes)
+        .map_err(|e| ModelLoadError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
+
+    let source = slicer_scad::ScadSource {
+        label: label.clone(),
+        text,
+    };
+    let output = slicer_scad::evaluate(&source, options).map_err(ModelLoadError::ScadEvaluation)?;
+
+    let mesh = match output.geometry {
+        slicer_scad::ScadGeometry::Mesh(its) => {
+            // The single assembly owner wraps identity transform + Z extent; the
+            // build volume uses the same union helper as every other loader.
+            let object = assemble_object(
+                path_object_id(path, 0),
+                its,
+                ObjectConfig {
+                    data: HashMap::new(),
+                },
+                Vec::new(),
+                None,
+            );
+            let build_volume = compute_bounding_box_union(std::iter::once(&object.mesh));
+            MeshIR {
+                objects: vec![object],
+                build_volume,
+                ..Default::default()
+            }
+        }
+        slicer_scad::ScadGeometry::Contours(_) => {
+            return Err(ModelLoadError::ScadNeedsExtrusion {
+                source_label: label,
+            })
+        }
+        slicer_scad::ScadGeometry::Empty => {
+            return Err(ModelLoadError::ScadEmpty {
+                source_label: label,
+            })
+        }
+    };
+
+    Ok(ScadModelLoad {
+        mesh,
+        diagnostics: output.diagnostics,
+        provenance: output.provenance,
     })
 }
 

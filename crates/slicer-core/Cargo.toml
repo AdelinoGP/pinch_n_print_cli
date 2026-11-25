@@ -12,6 +12,13 @@ perimeter-spatial-test-support = []
 # workspace's normal test feature set prevents boostvoronoi diagnostics from
 # leaking into unrelated crates' test harnesses.
 voronoi-panic-regression = ["boostvoronoi/console_debug"]
+# Default-off owner feature for the registry-backed geometry properties
+# (`property_geometry`, `property_geometry_controls`). It only selects test
+# targets; the SDK/Proptest edges it relies on are dev-dependencies.
+property_testing = []
+# Scripted (SCAD-backed) geometry enrichment. Inert until its target exists;
+# never part of `default` and never enabled by `property_testing`.
+property_testing_scad = ["property_testing", "slicer-sdk/property_testing_scad"]
 
 [dependencies]
 # [t70 vendoring] Explicit path dep into the in-tree pristine copy of
@@ -37,9 +44,23 @@ serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 criterion = { workspace = true }
+proptest = { workspace = true }
 serde_json = "1"
+# Reads `test-properties.toml` so the seeded-fault control runs H-BOOL-SET's real
+# registry profiles instead of a hand-maintained copy.
+toml = "0.8"
 slicer-model-io = { path = "../slicer-model-io" }
 slicer-scheduler = { path = "../slicer-scheduler" }
+# Dev-only on purpose. `cargo xtask build-guests --check` fingerprints a guest's
+# Cargo path-dependency closure (normal, target-specific and build deps, including
+# optional ones) and excludes dev-dependencies. An optional *normal* edge would
+# put `slicer-scad` sources into every guest's fingerprint and mark all guests
+# stale whenever the SCAD crate changes. `slicer-scad`'s default feature set is
+# engine-free, so this unconditional dev-edge only costs a cheap compile in
+# slicer-core test builds; the engine is reached solely through
+# `slicer-sdk/property_testing_scad` (owner feature `property_testing_scad`).
+slicer-scad = { path = "../slicer-scad" }
+slicer-sdk = { path = "../slicer-sdk", features = ["property_testing"] }
 
 [[bench]]
 name = "polygon_ops"
@@ -108,6 +129,43 @@ required-features = ["host-algos"]
 [[test]]
 name = "voronoi_panic_regression"
 required-features = ["host-algos", "voronoi-panic-regression"]
+
+[[test]]
+name = "property_geometry"
+required-features = ["property_testing"]
+
+[[test]]
+name = "property_geometry_controls"
+required-features = ["property_testing"]
+
+[[test]]
+name = "property_geometry_scad"
+required-features = ["property_testing_scad"]
+
+# Pre-pass charters (`H-REGIONMAP` and the families added by packet
+# `proptest-openrscad_11_pbt-prepass`). Both need the real `host-algos`
+# region-mapping/paint kernel, so a default-feature build never compiles them
+# and a `-p slicer-core` run without both features cannot report a green
+# zero-test pass.
+[[test]]
+name = "property_prepass"
+required-features = ["property_testing", "host-algos"]
+
+[[test]]
+name = "property_prepass_controls"
+required-features = ["property_testing", "host-algos"]
+
+# Arachne beading property (`H-ARACHNE-BEADING`) and its deterministic
+# controls/regressions. Both need the real `host-algos` beading + skeletal
+# graph code, so a default-feature build never compiles them at all rather
+# than silently running zero tests through a source-level `#![cfg]` alone.
+[[test]]
+name = "property_arachne"
+required-features = ["host-algos", "property_testing"]
+
+[[test]]
+name = "property_arachne_contracts"
+required-features = ["host-algos", "property_testing"]
 
 [[test]]
 name = "flow_tdd"

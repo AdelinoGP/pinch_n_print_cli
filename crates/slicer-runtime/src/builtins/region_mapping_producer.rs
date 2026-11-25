@@ -159,12 +159,16 @@ pub fn commit_region_mapping_builtin(
                     active.object_id == key.object_id && active.region_id == base_region_id
                 })
             } else {
+                // A base whose painted id would leave the namespace cannot be
+                // the parent: such an id is never minted, so `try` failing is
+                // an exact non-match rather than a swallowed error.
                 layer.active_regions.iter().find(|active| {
                     active.object_id == key.object_id
-                        && slicer_core::algos::paint_segmentation::paint_variant_region_id(
+                        && slicer_core::algos::paint_segmentation::try_paint_variant_region_id(
                             active.region_id,
                             &key.variant_chain,
-                        ) == base_region_id
+                        )
+                        .is_ok_and(|painted| painted == base_region_id)
                 })
             };
             let mut active = parent.cloned().unwrap_or_else(|| ActiveRegion {

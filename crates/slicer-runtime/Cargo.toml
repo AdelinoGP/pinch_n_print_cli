@@ -7,6 +7,11 @@ authors = ["Pinch 'n Print Team"]
 [features]
 default = ["report"]
 report = []
+# Opt-in gate for the H-RUNTIME property targets and the inline
+# `region_partition::property_tests` unit tests. Empty on purpose: it exists so
+# `required-features` can keep Proptest harnesses out of default builds. The
+# normal `slicer-sdk` edge stays property-free; only the dev alias below opts in.
+property_testing = []
 perimeter-spatial-test-support = ["slicer-core/perimeter-spatial-test-support"]
 
 [dependencies]
@@ -64,7 +69,8 @@ tempfile = "3"
 serde_json = "1.0"
 base64 = "0.22"
 sha2 = "0.10"
-slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk", features = ["test"] }
+slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk", features = ["property_testing"] }
+proptest = { workspace = true }
 preparation-lifecycle-guest = { path = "../slicer-wasm-host/test-guests/preparation-lifecycle-guest" }
 preparation-visual-guest = { path = "../slicer-wasm-host/test-guests/preparation-visual-guest" }
 preparation-lifecycle-anchored-guest = { path = "../slicer-wasm-host/test-guests/preparation-lifecycle-anchored-guest" }
@@ -185,6 +191,34 @@ path = "tests/integration/main.rs"
 [[test]]
 name = "support_family_routing"
 path = "tests/integration/support_family_routing.rs"
+
+# H-RUNTIME registry targets. Both are gated so a default `cargo test` never
+# compiles the Proptest harness; the registry passes
+# `--features slicer-runtime/property_testing` explicitly.
+[[test]]
+name = "property_runtime"
+path = "tests/property_runtime.rs"
+required-features = ["property_testing"]
+
+[[test]]
+name = "property_runtime_contracts"
+path = "tests/property_runtime_contracts.rs"
+required-features = ["property_testing"]
+
+# Pre-pass runtime controls (packet `proptest-openrscad_11_pbt-prepass`). The
+# cross-stage map → paint → selection regression drives the real
+# `build_layer_selection_index` (`slicer-wasm-host`, already a normal
+# dependency of this crate). The target is property-feature gated like the
+# H-RUNTIME records so a default build never compiles it.
+[[test]]
+name = "property_prepass"
+path = "tests/property_prepass.rs"
+required-features = ["property_testing"]
+
+[[test]]
+name = "property_prepass_controls"
+path = "tests/property_prepass_controls.rs"
+required-features = ["property_testing"]
 
 [[bench]]
 name = "pipeline"

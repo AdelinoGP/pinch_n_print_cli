@@ -2,8 +2,9 @@
 // Original Rust: this file and the model DTOs are not translations of OrcaSlicer source.
 //
 // It is the isolated, module-owned feasibility kernel for the Lightning
-// portability gate (packet 07). Type and evidence shapes are defined by
-// `docs/spec_packets/layer-module-preparation_07_lightning-geometry-portability-gate/design.md`.
+// portability gate (packet 07). `GateASourceInput` and related DTOs in
+// `modules/core-modules/lightning-infill/feasibility-kernel/src/model.rs` define
+// its type and evidence shapes.
 // Translated algorithm files carry the standard OrcaSlicer porting header
 // from `docs/ORCASLICER_ATTRIBUTION.md`.
 // -----------------------------------------------------------------------------

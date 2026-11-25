@@ -179,6 +179,6 @@ though collision occupancy and the baseline envelope are object-wide.
   full-origin principle of that ADR is retained, fuller now (chains carried
   everywhere).
 - Packet contract:
-  `docs/spec_packets/layer-module-preparation_01_shared-selection-prerequisite/design.md`
+  `docs/spec_packets/_OLD/layer-module-preparation_01_shared-selection-prerequisite.md`
   — §"Coordinated WIT/SDK/IR contracts" and §"Additional confirmed support
   identity seams".

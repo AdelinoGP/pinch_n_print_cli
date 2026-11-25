@@ -1436,6 +1436,15 @@ fn classify_narrow_island(
     longest_dim_mm >= min_length_mm
 }
 
+// Owner-local, opt-in properties for the private classic perimeter kernel
+// (`ClassicPerimeters::emit_walls`). The two gates stay stacked and separate:
+// `#[cfg(test)]` confines the module to test builds, and
+// `#[cfg(feature = "property_testing")]` makes the properties opt-in. Neither
+// form is a literal-scanner mechanism — see that file's own AC-6 note.
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -96,7 +96,7 @@ Paths below are relative to this file (`docs/`).
 | WIT worlds, manifest contracts, module compatibility      | `03_wit_and_manifest.md`                                  |
 | Scheduler validation, DAG execution, RegionMapIR behavior | `04_host_scheduler.md`                                    |
 | SDK usage, host service wrappers, test workflow           | `05_module_sdk.md`                                        |
-| Packet authoring, preflight gating, and agent orchestration | `../.agents/skills/` (`spec-packet-generator`, `spec-review`, `swarm`) |
+| Packet authoring, review, and implementation             | `../.agents/skills/` (`spec-packet-generator`, `spec-review`, `swarm`) |
 | Current sequencing, progress, and gate status             | `07_implementation_status.md`                             |
 | Coordinate scaling and porting rules                      | `08_coordinate_system.md`                                 |
 | Runtime event schema and ordering guarantees              | `09_progress_events.md`                                   |
@@ -113,10 +113,9 @@ Paths below are relative to this file (`docs/`).
 | Test-code struct-literal conventions (`check-literals`)   | `21_data_defaults_and_fixtures.md`                        |
 | Active architecture deviations                            | `DEVIATION_LOG.md`                                        |
 
-Operational agent orchestration and validation gates live in the repo skills under
-`.agents/skills/` (`spec-packet-generator` authors packets, `spec-review` gates them,
-`swarm` executes them); architecture conflicts are still resolved by the precedence
-order below.
+The packet workflow lives in `spec_packets/README.md` and the repo skills under
+`.agents/skills/` (`spec-packet-generator` authors, `spec-review` reviews, and
+`swarm` implements); architecture conflicts are resolved by the precedence order below.
 
 Precedence rule for conflicts:
 

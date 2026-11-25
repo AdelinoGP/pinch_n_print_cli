@@ -2,9 +2,9 @@
 // Original Rust: this file is not a translation of OrcaSlicer source.
 //
 // It defines the typed input, output, and evidence model for the isolated
-// Lightning feasibility kernel. Field sets and evidence semantics come from
-// `docs/spec_packets/layer-module-preparation_07_lightning-geometry-portability-gate/design.md`
-// ("NET-NEW API and Evidence Shapes", "Lossless boundary/source provenance DTOs").
+// Lightning feasibility kernel. The original packet's detailed design is in Git
+// history; its design digest records the Gate A goal and constraints at
+// `docs/spec_packets/_OLD/layer-module-preparation_07_lightning-geometry-portability-gate.md`.
 //
 // Serde policy: every struct denies unknown fields, every enum is closed, and
 // no `Option` field uses `#[serde(default)]`, so serialization always emits the

@@ -309,6 +309,12 @@ variant chain via per-semantic Voronoi passes and geometric composition
 `SlicedRegion.variant_chain` field definitions, and `docs/03_wit_and_manifest.md`
 for the `[[region_split]]` manifest declaration schema.
 
+The chain order is the shared ascending `(priority, semantic name)` sequence:
+`PrePass::RegionMapping` and paint composition both emit it, and selection and
+exact-chain config lookup match it exactly, never re-sorting it. `H-REGIONMAP`
+(`docs/testing/properties.md#h-regionmap`) covers it; ADR-0018's 2026-11-19
+amendment records the decision.
+
 #### Catch-Up Layer Semantics (Authoritative)
 
 When objects have different layer heights, global layer planning uses sync points so all
@@ -395,15 +401,15 @@ Layer::Perimeters
            wall segment. Sets WallLoop.boundary_type to MaterialBoundary
            where adjacent material semantic regions are detected via
            PaintRegionLayerView.
-           Commit side-effect: the host computes the four canonical
-           pairwise-disjoint fill polygons (`sparse_infill_area`, clipped
-           `top_solid_fill`, `bottom_solid_fill`, `bridge_areas`) into the
-           per-layer arena's `SliceIR` from `perimeter.infill_areas` via
-           `sync_perimeter_infill_areas_into_slice`. Precedence
-           `bridge > bottom > top > sparse` (OrcaSlicer parity). See
-           `crates/slicer-runtime/src/region_partition.rs` and
-           `specs/_OLD/infill-fill-partition-plan.md` (superseded spec,
-           retained for the partition write-up).
+           Commit side-effect: the host partitions the effective wall inset
+           (`perimeter.infill_areas ∩ region.polygons`) into four canonical fill
+           polygons via `sync_perimeter_infill_areas_into_slice`. Nonempty inset
+           obeys `bridge > bottom > top > sparse`; empty inset with walls leaves
+           all four roles empty; empty inset without walls preserves the original
+           bridge and top-minus-bridge; a missing donor warns and keeps the
+           PrePass roles; a rejected modifier split restores the entry-state
+           slice. See `crates/slicer-runtime/src/region_partition.rs` and
+           `docs/testing/properties.md#h-runtime-partition`.
 
 Layer::PerimetersPostProcess
   Input:  PerimeterIR (including feature_flags and boundary_type on WallLoops)
@@ -804,6 +810,21 @@ These rules are enforced by the host at runtime. Violations trap the WASM module
 | `LayerCollectionIR`                           | Per-layer arena → Host after join | Read-only in PostPass                                           |
 | `GCodeIR`                                     | Host PostPass buffer              | Write builder (GCodePostProcess only)                           |
 
+### Optional SCAD ingress (`slicer-scad`)
+
+`slicer-scad` (`docs/scad/adapter.md`) is an optional, engine-opaque geometry
+ingress: it converts self-contained OpenSCAD source into checked `ExPolygon`
+contours or an `IndexedTriangleSet`. It does **not** own any of the data above.
+
+- It returns geometry only. `ObjectMesh`/`MeshIR` assembly, source-derived
+  identity, object IDs, bed placement and material/colour assignment stay with the
+  host — `assemble_object` (`crates/slicer-model-io/src/loader.rs`) remains the
+  assembly owner under `docs/02_ir_schemas.md` § `ObjectMesh` Assembly Contract.
+- It is default-off. A default workspace build does not compile the engine or its
+  native kernel, and the crate has no SDK, runtime or Proptest edge.
+- Its output types are existing IR types, so nothing here introduces an IR, WIT or
+  schema version change.
+
 ---
 
 ## Private prepared-plan storage and atomic publication
@@ -1024,6 +1045,27 @@ Determinism constraints:
 - A claim holder must be stable across layers for the same `(object, claim)` unless the stage explicitly supports temporal transitions.
 - If two overrides of equal precedence select different holders for the same key, startup validation fails.
 - If no holder remains for a required claim, startup validation fails.
+
+**Tested and enforced boundaries.** `validate_startup_dag`
+(`crates/slicer-scheduler/src/validation.rs`) receives caller-supplied
+`claim_holders`; it has no module-disable input of its own, so the effective
+universe — modules, holder observations and stage DAG nodes — must already have
+removed disabled, shadowed or unloaded modules. A retained consumer that still
+requires a removed module or capability then fails with `MissingDependency`
+rather than resurrecting the disabled candidate. Claim observations are compared
+as typed `(object_id, region_id, global_layer_index)` values; `ConflictScope`
+promises no delimiter grammar, so identity is never reassembled from a
+concatenated key. The validator keys the four non-transitionable rows
+(`perimeter-generator`, `seam-placer`, `layer-planner`, `mesh-analyzer`) on the
+object alone — one holder across every layer **and** region of that object —
+while ordinary and transition-capable claims are compared only inside one typed
+scope. `support-planner` is deliberately not in that stable set: family-scoped
+planners are retained per family and paired with their renderer at dispatch time
+(see `docs/04_host_scheduler.md` § "Planner-Renderer Pairing"). Property
+`H-CLAIMS` (`docs/testing/properties.md#h-claims`, evidence in
+[proptest-scheduler-evidence.md](testing/proptest-scheduler-evidence.md)) models
+these rules independently and pins the negative mutations; it covers the public
+validator contract, not live per-region support aggregation.
 
 Worked example — valid:
 

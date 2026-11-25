@@ -1,5 +1,5 @@
 //! Step 2 of the lightning-migration packet: the acceptance harness (AC-1..AC-5,
-//! AC-N1..AC-N4) for `docs/spec_packets/layer-module-preparation_08_lightning-migration`.
+//! AC-N1..AC-N4) for `docs/spec_packets/_OLD/layer-module-preparation_08_lightning-migration.md`.
 //!
 //! # What each test protects
 //!

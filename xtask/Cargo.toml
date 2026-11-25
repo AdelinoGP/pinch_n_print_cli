@@ -11,3 +11,23 @@ syn = { version = "2.0", features = ["full", "visit"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 slicer-schema = { path = "../crates/slicer-schema" }
 wit-parser = "0.247"
+serde = { workspace = true }
+serde_json = "1"
+getrandom = "0.4"
+sha2 = "0.10"
+
+[target.'cfg(windows)'.dependencies]
+# Already in the dependency graph (0.59 line); this only adds the edge xtask
+# needs to own a Job Object for whole-process containment of property children.
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+proptest = { workspace = true }
+slicer-ir = { path = "../crates/slicer-ir" }
+slicer-sdk = { path = "../crates/slicer-sdk", features = ["property_testing"] }
